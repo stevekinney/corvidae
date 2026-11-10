@@ -1,15 +1,19 @@
 /**
- * COR-1893 — `bureau.plugins.kinds` and `bureau.events.format` over a real Bureau that loads a
+ * COR-1893 — `bureau.plugins.contributions` and `bureau.events.format` over a real Bureau that loads a
  * plugin: the trigger kinds it contributes are listed with their configuration as JSON Schema, a
  * contributed formatter's sentence is served, and an event no formatter claims is served raw.
  */
 import { definePlugin } from '@lostgradient/interborough-plugin';
+import type { ProviderDefinition } from '@lostgradient/operative/provider-kit';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { composePlugins } from '../../plugins/compose-plugins.ts';
 import { createPluginRegistry } from '../../plugins/plugin-registry.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
+import { OPERATION_MAP } from '../operation-map.ts';
+import { WORKSPACE_CONFORMANCE_GROUPS } from '../workspace-conformance.test-support.ts';
+import { workspaceProjectionFields } from '../workspace-projection-schema.test-support.ts';
 import { openBureau, type OpenedBureau, rpc } from './management-fixtures.test-support.ts';
 import { eventsFormatOperation, pluginKindsOperation } from './plugin-kinds-operations.ts';
 
@@ -22,8 +26,15 @@ const inbox = definePlugin({
   name: 'inbox',
   version: '2.0.0',
   description: 'Mail arrives.',
+  configuration: z.object({ baseURL: z.string().url() }),
   setup: () => ({
-    triggerKinds: [
+    providers: [
+      {
+        name: 'openai-compatible',
+        generate: () => async () => ({ content: 'ok', toolCalls: [] }),
+      } satisfies ProviderDefinition<'openai-compatible'>,
+    ],
+    triggers: [
       {
         name: 'message',
         description: 'A message arrives in a mailbox.',
@@ -34,7 +45,7 @@ const inbox = definePlugin({
         start: async () => () => undefined,
       },
     ],
-    eventFormatters: [
+    formatters: [
       {
         name: 'reviews',
         eventKinds: ['review.requested'],
@@ -48,13 +59,14 @@ async function open(): Promise<OpenedBureau> {
   const opened = await openBureau({
     bureauOptions: {
       plugins: [{ descriptor: inbox, source: 'package', location: '@example/inbox' }],
+      pluginConfiguration: { inbox: { configuration: { baseURL: 'http://localhost:8080' } } },
     },
   });
   cleanups.push(() => opened.dispose());
   return opened;
 }
 
-describe('bureau.plugins.kinds', () => {
+describe('bureau.plugins.contributions', () => {
   it('is served, described, read-only, and open to any authenticated caller', () => {
     expect(BUREAU_HANDLER_OPERATIONS).toContain(pluginKindsOperation);
     expect(pluginKindsOperation.destructive).toBe(false);
@@ -64,17 +76,17 @@ describe('bureau.plugins.kinds', () => {
 
   it('lists a contributed trigger kind with its configuration as JSON Schema', async () => {
     const opened = await open();
-    const body = await rpc(opened.handler, 'bureau.plugins.kinds', {}, 'alice-key');
+    const body = await rpc(opened.handler, 'bureau.plugins.contributions', {}, 'alice-key');
     expect(body.error).toBeUndefined();
-    const triggerKinds = body.result!['triggerKinds'] as Array<Record<string, unknown>>;
-    expect(triggerKinds).toHaveLength(1);
-    expect(triggerKinds[0]).toMatchObject({
+    const triggers = body.result!['triggers'] as Array<Record<string, unknown>>;
+    expect(triggers).toHaveLength(1);
+    expect(triggers[0]).toMatchObject({
       plugin: 'inbox',
       id: 'inbox:message',
       description: 'A message arrives in a mailbox.',
       version: '2.0.0',
     });
-    const configuration = triggerKinds[0]!['configuration'] as {
+    const configuration = triggers[0]!['configuration'] as {
       properties: Record<string, { type: string; description?: string }>;
       required: string[];
     };
@@ -83,12 +95,39 @@ describe('bureau.plugins.kinds', () => {
       description: 'The mailbox to watch.',
     });
     expect(configuration.required).toEqual(['mailbox']);
-    expect(body.result!['hookActionKinds']).toEqual([]);
+    expect(body.result!['reactions']).toEqual([]);
+    expect(body.result!['providers']).toEqual([
+      {
+        plugin: 'inbox',
+        name: 'openai-compatible',
+        configuration: {
+          $schema: 'https://json-schema.org/draft/2020-12/schema',
+          type: 'object',
+          properties: { baseURL: { type: 'string', format: 'uri' } },
+          required: ['baseURL'],
+        },
+      },
+    ]);
+  });
+
+  it('is the only name the operation answers to: no map, grant fixture or projection names the old one', () => {
+    const retired = ['bureau', 'plugins', 'kinds'].join('.');
+    expect(Object.keys(OPERATION_MAP)).toContain('bureau.plugins.contributions');
+    expect(Object.keys(OPERATION_MAP)).not.toContain(retired);
+    const conformanceOperations = WORKSPACE_CONFORMANCE_GROUPS.flatMap((group) =>
+      group.operations.map(([operation]) => operation as string),
+    );
+    expect(conformanceOperations).toContain('bureau.plugins.contributions');
+    expect(conformanceOperations).not.toContain(retired);
+    const projected = Object.keys(workspaceProjectionFields());
+    expect(projected).toContain('output:bureau.plugins.contributions');
+    expect(projected.filter((key) => key.includes(retired))).toEqual([]);
+    expect(pluginKindsOperation.name).toBe('bureau.plugins.contributions');
   });
 
   it('refuses a request with no credential', async () => {
     const opened = await open();
-    const body = await rpc(opened.handler, 'bureau.plugins.kinds', {}, 'no-such-key');
+    const body = await rpc(opened.handler, 'bureau.plugins.contributions', {}, 'no-such-key');
     expect(body.error).toBeDefined();
   });
 });
@@ -100,7 +139,7 @@ describe('plugin registry kinds', () => {
       version: '1.0.0',
       description: 'Pages someone.',
       setup: () => ({
-        hookActionKinds: [
+        reactions: [
           {
             name: 'page',
             version: '0.3.0',
@@ -113,10 +152,10 @@ describe('plugin registry kinds', () => {
     });
     const entry = { descriptor: pager, source: 'package', location: '@example/pager' } as const;
     const bare = await composePlugins({ plugins: [entry] });
-    expect(createPluginRegistry(bare.records).plugins.hookActionKinds()).toEqual([]);
+    expect(createPluginRegistry(bare.records).plugins.reactions()).toEqual([]);
 
     const given = await composePlugins({ plugins: [entry], hooks: {} });
-    const [kind] = createPluginRegistry(given.records).plugins.hookActionKinds();
+    const [kind] = createPluginRegistry(given.records).plugins.reactions();
     expect(kind).toMatchObject({
       plugin: 'pager',
       kind: 'page',

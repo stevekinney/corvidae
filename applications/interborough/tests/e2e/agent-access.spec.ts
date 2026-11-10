@@ -84,7 +84,7 @@ test.describe('the Access tab', () => {
       .selectOption('always');
     await save(page);
     expect(await definitionOf(request, id)).toMatchObject({
-      toolApproval: { 'demo:lookup-order': 'always' },
+      approvals: { 'demo:lookup-order': 'always' },
     });
 
     // After: the same chat is held on an approval, and the tool has not run.
@@ -112,7 +112,7 @@ test.describe('the Access tab', () => {
     await page.getByLabel('Tool calls per run').fill('1');
     await save(page);
     expect(await definitionOf(request, id)).toMatchObject({
-      toolBudget: { maxCalls: 1 },
+      limits: { tools: { calls: 1 } },
     });
 
     const thread = newThreadId('access-budget');
@@ -152,7 +152,7 @@ test.describe('the Access tab', () => {
 
     const definition = await definitionOf(request, id);
     expect(definition?.tools).toEqual([]);
-    expect(definition).not.toHaveProperty('toolApproval.demo:lookup-order');
+    expect(definition).not.toHaveProperty('approvals.demo:lookup-order');
   });
 
   test('grants a trusted skill, and cannot grant an untrusted one', async ({ page, request }) => {
@@ -169,7 +169,7 @@ test.describe('the Access tab', () => {
     await skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name }).check();
     await save(page);
     const granted = await definitionOf(request, id);
-    expect(granted?.allowedSkills).toEqual([E2E_SKILLS.summarize.name]);
+    expect(granted?.skills).toEqual([E2E_SKILLS.summarize.name]);
 
     await page.reload();
     await expect(skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name })).toBeChecked();
@@ -188,13 +188,13 @@ test.describe('the Access tab', () => {
       definition: {
         model: definition.model,
         instructions: definition.instructions,
-        allowedSkills: [E2E_SKILLS.deploy.name],
+        skills: [E2E_SKILLS.deploy.name],
       },
     });
 
     expect(refused.fault?.code).toBe('Unprocessable');
     const unchanged = await definitionOf(request, id);
-    expect(unchanged?.allowedSkills).toBeNull();
+    expect(unchanged?.skills).toBeNull();
   });
 });
 

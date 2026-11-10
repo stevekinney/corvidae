@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAgent } from '@lostgradient/operative';
 
+import { demoPlugin, seen } from '../../testing/demo-plugin-agents.test-support.ts';
 import { lookupTool } from '../../testing/agent-file-fixtures.test-support.ts';
 import {
   callAs,
@@ -17,7 +18,10 @@ import {
   type Served,
 } from './agent-definitions-fixtures.test-support.ts';
 
-afterEach(disposeServed);
+afterEach(async () => {
+  await disposeServed();
+  seen.length = 0;
+});
 
 async function currentHash(served: Served, id = 'alpha'): Promise<string> {
   const response = await callAs(served.owner, 'bureau.agents.overrides.get', { id });
@@ -44,14 +48,13 @@ describe('bureau.agents.overrides', () => {
       overrides: {
         instructions: null,
         tools: null,
-        toolApproval: null,
+        approvals: null,
         guardrails: null,
-        costBudget: null,
-        toolBudget: null,
+        interceptors: null,
+        limits: null,
         model: null,
         models: null,
-        defaultEffort: null,
-        stepLimit: null,
+        effort: null,
       },
     });
     const versions = await callAs(served.owner, 'bureau.agents.versions.list', { id: 'alpha' });
@@ -84,13 +87,12 @@ describe('bureau.agents.overrides', () => {
 
   it('saves each change as the next version, listed newest first with its overrides', async () => {
     const served = await serve();
-    const first = await save(served, { tools: ['lookup-order'], stepLimit: 20 });
+    const first = await save(served, { tools: ['lookup-order'], limits: { steps: 20 } });
     expect(first.result).toMatchObject({ id: 'alpha', version: 1 });
     const second = await save(served, {
       tools: ['lookup-order'],
-      toolApproval: { 'lookup-order': 'always' },
-      stepLimit: 20,
-      costBudget: { perRunUsd: 2 },
+      approvals: { 'lookup-order': 'always' },
+      limits: { steps: 20, cost: { run: 2 } },
     });
     expect(second.result).toMatchObject({ version: 2 });
 
@@ -99,8 +101,8 @@ describe('bureau.agents.overrides', () => {
       'versions',
     );
     expect(versions.map((entry) => [entry['revision'], entry['changedKeys']])).toEqual([
-      [2, ['toolApproval', 'costBudget']],
-      [1, ['tools', 'stepLimit']],
+      [2, ['approvals', 'limits']],
+      [1, ['tools', 'limits']],
     ]);
     expect(versions[0]).toMatchObject({
       hash: (second.result as { hash: string }).hash,
@@ -110,20 +112,88 @@ describe('bureau.agents.overrides', () => {
       referenceDigests: null,
       overrides: {
         tools: ['lookup-order'],
-        toolApproval: { 'lookup-order': 'always' },
-        costBudget: { perRunUsd: 2 },
-        stepLimit: 20,
+        approvals: { 'lookup-order': 'always' },
+        limits: { steps: 20, cost: { run: 2 } },
         model: null,
       },
     });
     const now = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
-    expect(now.result).toMatchObject({ version: 2, overrides: { stepLimit: 20 } });
+    expect(now.result).toMatchObject({ version: 2, overrides: { limits: { steps: 20 } } });
+  });
+
+  it('overrides only the limits a save states, and treats a limit left out or null as not overridden', async () => {
+    const served = await serve();
+    await save(served, { limits: { steps: null, cost: { run: 2 }, tools: null } });
+    const now = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(now.result).toMatchObject({ version: 1, overrides: { limits: { cost: { run: 2 } } } });
+    const stored = (now.result as { overrides: { limits: Record<string, unknown> } }).overrides;
+    expect(Object.keys(stored.limits)).toEqual(['cost']);
+
+    // Saving no limit at all is not an override of limits: it removes them.
+    await save(served, { limits: { steps: null } });
+    const cleared = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'alpha' });
+    expect(cleared.result).toMatchObject({ overrides: { limits: null } });
+  });
+
+  it('saves, serves and versions the interceptors of a running plugin’s agent, and refuses an id no plugin contributes', async () => {
+    const served = await serve({
+      overrides: {
+        plugins: [
+          demoPlugin({
+            interceptors: [{ name: 'watch', onStep: { handler: async () => {}, replay: 'safe' } }],
+          }),
+        ],
+      },
+    });
+    const update = async (interceptors: string[] | null) =>
+      callAs(served.owner, 'bureau.agents.overrides.update', {
+        id: 'demo:echo',
+        expectedHash: await currentHash(served, 'demo:echo'),
+        overrides: { interceptors },
+      });
+
+    const refused = await update(['demo:missing']);
+    expect(refused.error?.data).toMatchObject({ httpStatus: 422 });
+    const saved = await update(['demo:watch']);
+    expect(saved.result).toMatchObject({ id: 'demo:echo', version: 1 });
+
+    const now = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'demo:echo' });
+    expect(now.result).toMatchObject({ overrides: { interceptors: ['demo:watch'] } });
+    const versions = listOf(
+      await callAs(served.owner, 'bureau.agents.versions.list', { id: 'demo:echo' }),
+      'versions',
+    );
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({
+      changedKeys: ['interceptors'],
+      overrides: { interceptors: ['demo:watch'], guardrails: null },
+    });
+    // `null` removes the set, as it does any other key.
+    await update(null);
+    const cleared = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'demo:echo' });
+    expect(cleared.result).toMatchObject({ overrides: { interceptors: null } });
+  });
+
+  it('refuses the old override keys and the old field names', async () => {
+    const served = await serve();
+    for (const overrides of [
+      { stepLimit: 5 },
+      { costBudget: { perRunUsd: 1 } },
+      { toolBudget: { maxCalls: 1 } },
+      { limits: { cost: { perRunUsd: 1 } } },
+    ]) {
+      const response = await save(served, overrides);
+      expect([JSON.stringify(overrides), response.error?.data?.httpStatus]).toEqual([
+        JSON.stringify(overrides),
+        400,
+      ]);
+    }
   });
 
   it('restores a version as a new one and leaves the others listed', async () => {
     const served = await serve();
-    await save(served, { stepLimit: 20 });
-    await save(served, { stepLimit: 20, tools: ['lookup-order'] });
+    await save(served, { limits: { steps: 20 } });
+    await save(served, { limits: { steps: 20 }, tools: ['lookup-order'] });
 
     const restored = await callAs(served.owner, 'bureau.agents.versions.restore', {
       id: 'alpha',
@@ -138,15 +208,15 @@ describe('bureau.agents.overrides', () => {
       'versions',
     );
     expect(versions.map((entry) => entry['revision'])).toEqual([3, 2, 1]);
-    expect(versions[0]).toMatchObject({ overrides: { stepLimit: 20, tools: null } });
+    expect(versions[0]).toMatchObject({ overrides: { limits: { steps: 20 }, tools: null } });
   });
 
   it('audits every save and restore that made a version, naming the versions and the tools', async () => {
     const served = await serve();
-    await save(served, { stepLimit: 20 });
-    await save(served, { stepLimit: 20, tools: ['lookup-order'] });
+    await save(served, { limits: { steps: 20 } });
+    await save(served, { limits: { steps: 20 }, tools: ['lookup-order'] });
     // Saving the same overrides makes no version and no entry.
-    await save(served, { stepLimit: 20, tools: ['lookup-order'] });
+    await save(served, { limits: { steps: 20 }, tools: ['lookup-order'] });
     await callAs(served.owner, 'bureau.agents.versions.restore', {
       id: 'alpha',
       revision: 1,
@@ -155,7 +225,7 @@ describe('bureau.agents.overrides', () => {
 
     const page = await served.bureau.audit.query({ runId: 'agent:alpha', type: 'agent.updated' });
     expect(page.records.map((record) => [record.principal, record.detail])).toEqual([
-      ['anonymous:local', { agentName: 'alpha', revision: 1, changedKeys: 'stepLimit' }],
+      ['anonymous:local', { agentName: 'alpha', revision: 1, changedKeys: 'limits' }],
       [
         'anonymous:local',
         {
@@ -182,12 +252,12 @@ describe('bureau.agents.overrides', () => {
   it('refuses a stale save with the current hash and writes nothing', async () => {
     const served = await serve();
     const before = await currentHash(served);
-    await save(served, { stepLimit: 20 });
+    await save(served, { limits: { steps: 20 } });
 
     const stale = await callAs(served.owner, 'bureau.agents.overrides.update', {
       id: 'alpha',
       expectedHash: before,
-      overrides: { stepLimit: 30 },
+      overrides: { limits: { steps: 30 } },
     });
 
     expect(stale.error?.data).toMatchObject({
@@ -209,7 +279,7 @@ describe('bureau.agents.overrides', () => {
     const file = await callAs(served.owner, 'bureau.agents.overrides.update', {
       id: 'researcher',
       expectedHash: 'x',
-      overrides: { stepLimit: 5 },
+      overrides: { limits: { steps: 5 } },
     });
     expect(file.error?.data).toMatchObject({ reason: 'agent-file-read-only' });
     const read = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'researcher' });
@@ -228,5 +298,83 @@ describe('bureau.agents.overrides', () => {
       overrides: null,
       definition: { model: expect.any(String) },
     });
+  });
+});
+
+describe('bureau.agents.overrides on a plugin’s code agent (COR-2228)', () => {
+  const saveFor = async (served: Served, id: string, overrides: Record<string, unknown>) =>
+    callAs(served.owner, 'bureau.agents.overrides.update', {
+      id,
+      expectedHash: await currentHash(served, id),
+      overrides,
+    });
+
+  it('reads, saves, lists, audits and restores a running plugin’s agent as a built-in one', async () => {
+    const served = await serve({ overrides: { plugins: [demoPlugin()] } });
+
+    const before = await callAs(served.owner, 'bureau.agents.overrides.get', { id: 'demo:echo' });
+    expect(before.result).toMatchObject({ id: 'demo:echo', version: null });
+    const first = await saveFor(served, 'demo:echo', { instructions: 'You echo in capitals.' });
+    expect(first.result).toMatchObject({ id: 'demo:echo', version: 1 });
+    const second = await saveFor(served, 'demo:echo', { instructions: 'You echo quietly.' });
+    expect(second.result).toMatchObject({ version: 2 });
+
+    const versions = listOf(
+      await callAs(served.owner, 'bureau.agents.versions.list', { id: 'demo:echo' }),
+      'versions',
+    );
+    expect(versions.map((entry) => entry['revision'])).toEqual([2, 1]);
+    expect(versions[1]).toMatchObject({ overrides: { instructions: 'You echo in capitals.' } });
+    const restored = await callAs(served.owner, 'bureau.agents.versions.restore', {
+      id: 'demo:echo',
+      revision: 1,
+      expectedHash: (second.result as { hash: string }).hash,
+    });
+    expect(restored.result).toMatchObject({ id: 'demo:echo', revision: 3 });
+    const detail = await callAs(served.owner, 'bureau.agents.definitions.get', {
+      id: 'demo:echo',
+    });
+    expect(detail.result).toMatchObject({
+      codeDefinition: { instructions: 'You echo in capitals.' },
+    });
+    // The audit entries are filed under the agent, whose identifier holds a `:`.
+    const page = await served.bureau.audit.query({
+      runId: 'agent:demo:echo',
+      type: 'agent.updated',
+    });
+    expect(page.records.map((record) => record.detail?.['revision'])).toEqual([1, 2, 3]);
+    expect(page.records[0]?.detail).toMatchObject({ agentName: 'demo:echo', revision: 1 });
+  });
+
+  it('answers each agent that takes no override with its reason, and writes no version', async () => {
+    const disabled = await serve({
+      overrides: { plugins: [demoPlugin()], pluginConfiguration: { demo: { enabled: false } } },
+    });
+    const unavailable = await callAs(disabled.owner, 'bureau.agents.overrides.update', {
+      id: 'demo:echo',
+      expectedHash: 'x',
+      overrides: { limits: { steps: 5 } },
+    });
+    expect(unavailable.error?.data).toMatchObject({ reason: 'agent-unavailable' });
+    expect(unavailable.error?.data?.httpStatus).toBe(422);
+    const read = await callAs(disabled.owner, 'bureau.agents.overrides.get', { id: 'demo:echo' });
+    expect(read.error?.data?.httpStatus).toBe(404);
+    const listed = await callAs(disabled.owner, 'bureau.agents.versions.list', {
+      id: 'demo:echo',
+    });
+    expect(listOf(listed, 'versions')).toEqual([]);
+
+    const served = await serve({ overrides: { plugins: [demoPlugin()] } });
+    const scripted = await callAs(served.owner, 'bureau.agents.overrides.update', {
+      id: 'demo:scripted',
+      expectedHash: 'x',
+      overrides: { limits: { steps: 5 } },
+    });
+    expect(scripted.error?.data).toMatchObject({ reason: 'agent-not-overridable' });
+    expect(scripted.error?.data?.httpStatus).toBe(422);
+    const none = await callAs(served.owner, 'bureau.agents.versions.list', {
+      id: 'demo:scripted',
+    });
+    expect(listOf(none, 'versions')).toEqual([]);
   });
 });

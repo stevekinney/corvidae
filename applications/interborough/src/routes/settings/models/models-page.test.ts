@@ -96,7 +96,7 @@ function open(
           model: agents[id] ?? '',
           models: options.listedModels?.[id] ?? null,
           tools: [],
-          skillDescriptors: [],
+          card: [],
           instructions: '',
         },
       };

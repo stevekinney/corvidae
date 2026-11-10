@@ -2,7 +2,7 @@
  * Which agent files name the tools of a saved tool source (COR-1931), so the owner sees what a
  * removal will break before it happens and the removal reports it afterwards.
  *
- * An agent file names a tool twice: in `tools`, and in `toolApproval`, which can hold an entry the
+ * An agent file names a tool twice: in `tools`, and in `approvals`, which can hold an entry the
  * `tools` list does not (such a file is already invalid, `unknown-approval-tool`, but it still
  * names the tool and still needs the owner's attention when the tool goes). Both are read, from the
  * parsed definition the Bureau keeps even for an invalid file. A file that does not parse names
@@ -22,8 +22,8 @@ export type AgentToolUse = {
   readonly name: string;
   /** The names in the file's `tools`. */
   readonly tools: readonly string[];
-  /** The names in the file's `toolApproval`. */
-  readonly toolApproval: readonly string[];
+  /** The names in the file's `approvals`. */
+  readonly approvals: readonly string[];
 };
 
 /** An agent file that names at least one tool of a source. */
@@ -34,8 +34,8 @@ export type AffectedAgent = {
   readonly name: string;
   /** The source's tools the file lists in `tools`, sorted. */
   readonly tools: readonly string[];
-  /** The source's tools the file names in `toolApproval`, sorted; may include a tool `tools` does not list. */
-  readonly toolApproval: readonly string[];
+  /** The source's tools the file names in `approvals`, sorted; may include a tool `tools` does not list. */
+  readonly approvals: readonly string[];
 };
 
 /** What the Bureau's agent catalog offers that this reads. */
@@ -59,7 +59,7 @@ export function agentToolUseOf(catalog: AgentFileReader): () => Promise<readonly
         id: listing.id,
         name: listing.name,
         tools: definition.tools,
-        toolApproval: Object.keys(definition.toolApproval ?? {}),
+        approvals: Object.keys(definition.approvals ?? {}),
       });
     }
     return found;
@@ -77,9 +77,9 @@ export function affectedAgents(
   const affected: AffectedAgent[] = [];
   for (const file of use) {
     const tools = file.tools.filter(isSourceTool).toSorted();
-    const toolApproval = file.toolApproval.filter(isSourceTool).toSorted();
-    if (tools.length === 0 && toolApproval.length === 0) continue;
-    affected.push({ id: file.id, name: file.name, tools, toolApproval });
+    const approvals = file.approvals.filter(isSourceTool).toSorted();
+    if (tools.length === 0 && approvals.length === 0) continue;
+    affected.push({ id: file.id, name: file.name, tools, approvals });
   }
   return affected;
 }

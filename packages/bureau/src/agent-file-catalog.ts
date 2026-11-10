@@ -84,7 +84,7 @@ import { createAgentSkills } from './agent-skills';
 import {
   AGENT_COMPACTION_DEFAULT_THRESHOLD_PERCENT,
   AGENT_FILE_SIZE_LIMIT,
-  type AgentCostBudget,
+  type AgentCostLimit,
   type AgentFileDefinition,
   type AgentFileDefinitionInput,
   type AgentFileIssue,
@@ -115,7 +115,8 @@ import {
   type AgentContributions,
   guardrailAdditionsOf,
   NO_AGENT_CONTRIBUTIONS,
-  runHooksOf,
+  interceptorsOf,
+  refusedGuardrailConfigurations,
   unresolvedContributions,
 } from './agent-contributions';
 import { createToolApprovalHooks, defaultToolApproval } from './tool-approval';
@@ -216,9 +217,9 @@ export interface AgentToolDescription {
   readonly tier: CapabilityTier | null;
   /**
    * What happens by default when an agent calls the tool: the rule a file agent's tool follows
-   * when its `toolApproval` says nothing (COR-1913, `TOOL_APPROVAL_DEFAULT_MODE`, `on-changes`)
+   * when its `approvals` says nothing (COR-1913, `TOOL_APPROVAL_DEFAULT_MODE`, `on-changes`)
    * applied to {@link AgentToolDescription.tier}, so `allow` for a read-only tool and `ask` for a
-   * tool that changes something, is dangerous, or declares nothing. A file's own `toolApproval`
+   * tool that changes something, is dangerous, or declares nothing. A file's own `approvals`
    * entry for the tool replaces it for that agent: this is the default, not any one agent's setting.
    */
   readonly defaultApproval: Exclude<ApprovalStatus, 'deny'>;
@@ -394,18 +395,17 @@ export function readFileAgentBinding(agent: object): FileAgentBinding | undefine
 
 const fileAgentCostBudgets = new WeakMap<
   object,
-  { readonly budget: AgentCostBudget; readonly models: readonly string[] | undefined }
+  { readonly budget: AgentCostLimit; readonly models: readonly string[] | undefined }
 >();
 
 /**
- * The `costBudget` of the file agent `agent` was built from, and the `models` list that says which
+ * The `limits.cost` of the file agent `agent` was built from, and the `models` list that says which
  * rows a session of it may be switched to (COR-1921). Unlike {@link readFileAgentBinding} it also
  * answers for an `ephemeral` agent, whose budget is enforced all the same.
  */
 export function readFileAgentCostBudget(
   agent: object,
-):
-  { readonly budget: AgentCostBudget; readonly models: readonly string[] | undefined } | undefined {
+): { readonly budget: AgentCostLimit; readonly models: readonly string[] | undefined } | undefined {
   return fileAgentCostBudgets.get(agent);
 }
 
@@ -425,7 +425,7 @@ function skillGrantRefusal(
     : `"${name}", which is not available (${refused.unavailableReason ?? 'unknown reason'})`;
 }
 
-/** What the catalog needs to give a file agent the skills its `allowedSkills` names (COR-1975). */
+/** What the catalog needs to give a file agent the skills its `skills` names (COR-1975). */
 export interface AgentFileSkills {
   /**
    * The deployment's skill catalog as it is now, or `undefined` while it has none. Read when a run
@@ -479,13 +479,13 @@ export interface AgentFileCatalogOptions {
    */
   readonly secretResolver?: ToolSecretResolver | undefined;
   /**
-   * The plugin guardrails and run hooks a file's `guardrails` and `hooks` may list (COR-1877). A
+   * The plugin guardrails and interceptors a file's `guardrails` and `interceptors` may list (COR-1877). A
    * file that lists an id these do not hold is `invalid` with `reference-unresolved`. Omitted,
    * nothing is contributed, so a file that lists any is invalid.
    */
   readonly contributions?: AgentContributions | undefined;
   /**
-   * The executable skills a file's `allowedSkills` draws on (COR-1975). Omitted, no skill can be
+   * The executable skills a file’s `skills` draws on (COR-1975). Omitted, no skill can be
    * granted, and a file that lists one has no skills.
    */
   readonly skills?: AgentFileSkills | undefined;
@@ -510,7 +510,7 @@ export interface AgentFileCatalogOptions {
    */
   readonly modelPolicy?: (() => BureauModelPolicyOptions | undefined) | undefined;
   /**
-   * What a step does when the model it runs on cannot do its file's `defaultEffort` (COR-1961),
+   * What a step does when the model it runs on cannot do its file's `effort` (COR-1961),
    * for the run `runId` names, or for a step with no run id: `reject` fails the step and `degrade`
    * sends the lowered tier or none. Asked only on that path. Omitted, `reject`.
    */
@@ -562,7 +562,7 @@ export interface AgentFileCatalog extends AgentFileWriter {
   /**
    * Builds an agent from `definition` as `create` would, and writes nothing (COR-1911): the same
    * serialization, size limit, frontmatter schema and deployment checks (reserved names, the model,
-   * the tools, `toolApproval`, compaction, skill grants), so a definition that would not load as a file is
+   * the tools, `approvals`, compaction, skill grants), so a definition that would not load as a file is
    * refused with the same field-named {@link AgentFileError} and one that would is built. The
    * agent is not in the catalog, is not tied to a file or a snapshot, and exists only as long as
    * the caller holds it. `id` names the agent in the run records it makes; it is not checked as a
@@ -766,14 +766,12 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     definition: AgentFileDefinition,
     before: AgentFileDefinition | undefined,
   ): AgentFileProblem | undefined {
-    const held = new Set(before?.allowedSkills ?? []);
+    const held = new Set(before?.skills ?? []);
     const catalog = options.skills?.catalog();
-    const issues = (definition.allowedSkills ?? []).flatMap((name, index) => {
+    const issues = (definition.skills ?? []).flatMap((name, index) => {
       if (held.has(name)) return [];
       const message = skillGrantRefusal(name, catalog);
-      return message === undefined
-        ? []
-        : [{ path: `allowedSkills.${index}`, message, reference: name }];
+      return message === undefined ? [] : [{ path: `skills.${index}`, message, reference: name }];
     });
     if (issues.length === 0) return undefined;
     return {
@@ -837,14 +835,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   }
 
   /**
-   * Whether the default model of `definition` can do its `defaultEffort` (COR-1961): the tier must
+   * Whether the default model of `definition` can do its `effort` (COR-1961): the tier must
    * be one of the row's `effort.portable`, the tiers it takes unchanged. Asked by a write and never
    * by a scan, for the reason {@link checkModelPolicy} is: the catalog can change without the file,
    * and a file left over a tier its model has since lost still runs, answered by the run's own
    * check. A model the catalog does not hold is left to the checks that already refuse it.
    */
   function checkDefaultEffort(definition: AgentFileDefinition): AgentFileProblem | undefined {
-    const effort = definition.defaultEffort;
+    const effort = definition.effort;
     if (effort === undefined) return undefined;
     const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
     if (isProblem(resolved) || resolved.effort.portable.includes(effort)) return undefined;
@@ -855,14 +853,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return {
       code: 'effort-not-supported',
       message,
-      issues: [{ path: 'defaultEffort', message, reference: definition.model }],
+      issues: [{ path: 'effort', message, reference: definition.model }],
     };
   }
 
   /** The skills of `definition` as a run's `createAgent` option: none for a file that grants none. */
   function fileAgentSkills(definition: AgentFileDefinition): { readonly skills?: AgentSkills } {
     const hostSkills = options.skills;
-    const allowedSkills = definition.allowedSkills;
+    const allowedSkills = definition.skills;
     if (hostSkills === undefined || allowedSkills === undefined || allowedSkills.length === 0) {
       return {};
     }
@@ -891,14 +889,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   ): { readonly descriptor: BackendDescriptor } | { readonly problem: AgentFileProblem } {
     const resolved = resolveModelDescriptor(definition.model, options.models.catalog().descriptors);
     if (isProblem(resolved)) return { problem: resolved };
-    if (definition.costBudget !== undefined && usdPricingOfRow(resolved) === undefined) {
+    if (definition.limits?.cost !== undefined && usdPricingOfRow(resolved) === undefined) {
       return {
         problem: {
           code: 'invalid-frontmatter',
-          message: `The model "${definition.model}" has no price in US dollars in the model catalog, so the file's costBudget could not be enforced. Use a model that has one, or remove costBudget.`,
+          message: `The model "${definition.model}" has no price in US dollars in the model catalog, so the file's limits.cost could not be enforced. Use a model that has one, or remove limits.cost.`,
           issues: [
             {
-              path: 'costBudget',
+              path: 'limits.cost',
               message: `"${definition.model}" has no price in US dollars in the model catalog`,
             },
           ],
@@ -919,16 +917,16 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         },
       };
     }
-    const unlisted = Object.keys(definition.toolApproval ?? {}).filter(
+    const unlisted = Object.keys(definition.approvals ?? {}).filter(
       (name) => !definition.tools.includes(name),
     );
     if (unlisted.length > 0) {
       return {
         problem: {
           code: 'unknown-approval-tool',
-          message: `toolApproval names ${unlisted.map((name) => `"${name}"`).join(', ')}, which the file's tools do not list. Add the tool to tools, or remove its toolApproval entry.`,
+          message: `approvals names ${unlisted.map((name) => `"${name}"`).join(', ')}, which the file's tools do not list. Add the tool to tools, or remove its approvals entry.`,
           issues: unlisted.map((name) => ({
-            path: `toolApproval.${name}`,
+            path: `approvals.${name}`,
             message: `"${name}" is not in tools`,
           })),
         },
@@ -942,8 +940,21 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       return {
         problem: {
           code: 'reference-unresolved',
-          message: `The definition lists ${unresolved.map((issue) => issue.message).join('; ')}. A guardrail or run hook is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
+          message: `The definition lists ${unresolved.map((issue) => issue.message).join('; ')}. A guardrail or interceptor is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
           issues: unresolved,
+        },
+      };
+    }
+    const refusedConfigurations = refusedGuardrailConfigurations(
+      definition,
+      options.contributions ?? NO_AGENT_CONTRIBUTIONS,
+    );
+    if (refusedConfigurations.length > 0) {
+      return {
+        problem: {
+          code: 'invalid-guardrail-configuration',
+          message: `The definition configures a guardrail in a way it refuses: ${refusedConfigurations.map((issue) => issue.message).join('; ')}.`,
+          issues: refusedConfigurations,
         },
       };
     }
@@ -985,7 +996,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     definition: AgentFileDefinition,
     entries?: Iterable<FileEntry>,
   ): AgentFileProblem | undefined {
-    const names = definition.childAgents;
+    const names = definition.children;
     if (names === undefined) return undefined;
     const available = new Set(options.reservedIdentifiers);
     for (const entry of entries ?? directoryWatcher?.entries().values() ?? []) {
@@ -998,9 +1009,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           : available.has(name)
             ? undefined
             : `Agent "${name}" is not a code agent or ready file agent.`;
-      return message === undefined
-        ? []
-        : [{ path: `childAgents.${index}`, message, reference: name }];
+      return message === undefined ? [] : [{ path: `children.${index}`, message, reference: name }];
     });
     return issues.length === 0
       ? undefined
@@ -1055,10 +1064,10 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
     return additions === undefined ? {} : { additionalGuardrails: additions };
   }
 
-  function optionalRunHooks(
+  function optionalInterceptors(
     definition: AgentFileDefinition,
-  ): { readonly hooks: NonNullable<ReturnType<typeof runHooksOf>> } | Record<string, never> {
-    const hooks = runHooksOf(definition, options.contributions ?? NO_AGENT_CONTRIBUTIONS);
+  ): { readonly hooks: NonNullable<ReturnType<typeof interceptorsOf>> } | Record<string, never> {
+    const hooks = interceptorsOf(definition, options.contributions ?? NO_AGENT_CONTRIBUTIONS);
     return hooks === undefined ? {} : { hooks };
   }
 
@@ -1090,11 +1099,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         allowed: () =>
           allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
         resolveGenerate: options.resolveGenerate,
-        costBudgeted: definition.costBudget !== undefined,
+        costBudgeted: definition.limits?.cost !== undefined,
         // COR-1980: read at each step, so the policy as it is then binds a file saved before it.
         policyDenial: (row) => modelPolicyDenialOf(row, options.modelPolicy?.()),
         // COR-1961: the file's default effort, seeded per step against the row the step uses.
-        defaultEffort: definition.defaultEffort,
+        defaultEffort: definition.effort,
         effortFallbackMode: options.effortFallbackMode,
       }),
       allowedCandidates: allowedDescriptorsOfFileAgent(
@@ -1102,9 +1111,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         options.models.catalog().descriptors,
       ).map((row) => ({ provider: row.provider, model: row.model })),
       ...(definition.description === null ? {} : { description: definition.description }),
-      ...(definition.skillDescriptors.length === 0
-        ? {}
-        : { skillDescriptors: definition.skillDescriptors }),
+      ...(definition.card.length === 0 ? {} : { skillDescriptors: definition.card }),
       ...(instructions === '' ? {} : { instructions }),
       ...(Object.keys(tools).length === 0 ? {} : { tools }),
       ...fileAgentSkills(definition),
@@ -1115,8 +1122,8 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
         const rememberedTools = options.rememberedTools;
         return {
           // Only the agent's own tools: the toolbox also holds the tools Bureau adds to a run.
-          policy: createToolApprovalHooks(definition.toolApproval, {
-            // By the key the file declared each tool under, which `toolApproval` is keyed by too.
+          policy: createToolApprovalHooks(definition.approvals, {
+            // By the key the file declared each tool under, which `approvals` is keyed by too.
             tools,
             // A tool a person allowed for the rest of this chat skips its `on-changes` ask.
             ...(rememberedTools === undefined || runId === undefined
@@ -1134,9 +1141,9 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
           }),
           // COR-1915: the toolbox is built for this run, so its counters are the run's own. It
           // counts every call the run makes through it, the tools Bureau adds included.
-          ...(definition.toolBudget === undefined
+          ...(definition.limits?.tools === undefined
             ? {}
-            : { budget: toolboxBudgetOf(definition.toolBudget) }),
+            : { budget: toolboxBudgetOf(definition.limits.tools) }),
           ...(options.approvalSecret === undefined
             ? {}
             : { approvalSecret: options.approvalSecret }),
@@ -1149,17 +1156,17 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
       // model, and a model that is told "action required" would only ask again.
       stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       // The default guardrail preset guards every agent; the plugin guardrails the file lists are
-      // added to it (COR-1877), and so are the plugin run hooks to the agent's hook tier.
+      // added to it (COR-1877), and so are the plugin interceptors to the agent's hook tier.
       ...optionalGuardrailAdditions(definition),
-      ...optionalRunHooks(definition),
-      ...(definition.costBudget === undefined
+      ...optionalInterceptors(definition),
+      ...(definition.limits?.cost === undefined
         ? {}
         : costBudgetOptions(
-            definition.costBudget,
+            definition.limits.cost,
             descriptor,
             allowedDescriptorsOfFileAgent(definition.models, options.models.catalog().descriptors),
           )),
-      ...(definition.stepLimit === undefined ? {} : { maximumSteps: definition.stepLimit }),
+      ...(definition.limits?.steps === undefined ? {} : { maximumSteps: definition.limits.steps }),
       ...contextManagementOf(id, definition, descriptor),
       ...(definition.retry === undefined
         ? {}
@@ -1172,8 +1179,11 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             },
           }),
     }) as AnyRunnableAgent;
-    if (definition.costBudget !== undefined) {
-      fileAgentCostBudgets.set(agent, { budget: definition.costBudget, models: definition.models });
+    if (definition.limits?.cost !== undefined) {
+      fileAgentCostBudgets.set(agent, {
+        budget: definition.limits.cost,
+        models: definition.models,
+      });
     }
     // An agent that is not tied to a file (`ephemeral`) has no binding, so a run of it records no
     // snapshot and no hash: nothing about it outlives the run's own records.
@@ -1549,7 +1559,7 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
   }
 
   function isChildAgentsProblem(problem: AgentFileProblem | undefined): boolean {
-    return problem?.issues?.some((issue) => issue.path.startsWith('childAgents.')) === true;
+    return problem?.issues?.some((issue) => issue.path.startsWith('children.')) === true;
   }
 
   const directoryWatcher = createDefinitionScanner<FileEntry>({

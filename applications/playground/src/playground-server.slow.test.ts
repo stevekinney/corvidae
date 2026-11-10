@@ -14,7 +14,7 @@ import { loadPageServerRenderer, setPreparedShellServerRenderer } from './ssr-re
  * serially in `test:slow` with its own untimed, module-scope warmup, and its assertions are
  * unchanged. The stand-in renderers below mirror that file's: a page only has to embed what the
  * renderer returns, and the real featured-example render is asserted in
- * `featured-example-server-renderer.test.ts`.
+ * `featured-example-server-renderer.integration.test.ts`.
  */
 const testShellServerRenderer: NonNullable<
   Parameters<typeof setPreparedShellServerRenderer>[0]

@@ -37,7 +37,7 @@ function fileDetail(id: string, model: string, models: string[] | null = null) {
       model,
       models,
       tools: [],
-      skillDescriptors: [],
+      card: [],
       instructions: '',
     },
   };
@@ -61,7 +61,7 @@ function codeDetail(id: string, model: string | null, models: string[]) {
       models,
       tools: [],
       skills: [],
-      skillDescriptors: [],
+      card: [],
       instructions: null,
     },
   };

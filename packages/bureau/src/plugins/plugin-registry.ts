@@ -1,5 +1,5 @@
 /**
- * COR-1879 — `bureau.plugins`: the plugins composition loaded, their `afterStart`, and the listing.
+ * COR-1879 — `bureau.plugins`: the plugins composition loaded, their `start`, and the listing.
  *
  * The listing is built fresh on every call from the descriptor's declared fields, never from the
  * descriptor itself, so it carries no schema, no function, no configuration value and no secret.
@@ -10,23 +10,29 @@
 import { formatToolId, fromNamespacedToolName, parseToolId } from 'armorer';
 import { z } from 'zod';
 
-import type {
-  PluginHostApi,
-  PluginSetupContext,
-  PluginSetupResult,
+import {
+  isGuardrailFactory,
+  type PluginGuardrails,
+  type PluginHost,
+  type PluginSetupContext,
+  type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
+import { guardrailOf } from '@lostgradient/operative';
 
+import type { AgentContributions } from '../agent-contributions';
 import type {
   BureauPluginEntry,
   BureauPlugins,
+  GuardrailListing,
   PluginContribution,
   PluginContributionListing,
   PluginContributionReferences,
-  PluginHookActionKindListing,
+  PluginReactionListing,
   PluginListing,
+  PluginProviderListing,
   PluginProblem,
   PluginStatus,
-  PluginTriggerKindListing,
+  PluginTriggerListing,
 } from './plugin-types';
 import type { AgentListing } from '../agent-file-catalog';
 import type { PluginSecretGate } from './plugin-secret-gate';
@@ -52,7 +58,7 @@ export interface PluginRecord {
     readonly context: PluginSetupContext;
     readonly redact: (message: string) => string;
     /** Points the context's `host` at the plugin's own host API once the Bureau exists. */
-    readonly bindHost: (host: PluginHostApi) => void;
+    readonly bindHost: (host: PluginHost) => void;
   };
 }
 
@@ -82,7 +88,7 @@ export function pluginListingOf(
       version: descriptor.version,
       description: descriptor.description,
       required: descriptor.required === true,
-      enabledByDefault: descriptor.enabledByDefault ?? true,
+      enabledByDefault: descriptor.enabled ?? true,
       secrets: (descriptor.secrets ?? []).map((declaration) =>
         typeof declaration === 'string'
           ? { key: declaration, generated: false }
@@ -113,11 +119,11 @@ export interface PluginRegistry {
   /** The value served as `bureau.plugins`. */
   readonly plugins: BureauPlugins;
   /**
-   * Binds each running plugin's `host` to the API `hostFor` builds for it, then runs `afterStart`
+   * Binds each running plugin's `host` to the API `hostFor` builds for it, then runs `start`
    * once for each, in load order, each after the one before has settled, with that same API. A
-   * rejection becomes that plugin's `after-start-failed` problem; it never rejects.
+   * rejection becomes that plugin's `start-failed` problem; it never rejects.
    */
-  start(hostFor: (plugin: string) => PluginHostApi): Promise<void>;
+  start(hostFor: (plugin: string) => PluginHost): Promise<void>;
   /**
    * Reads the Bureau from now on: the agent listing, so a file a running plugin ships that names a
    * contribution nothing loaded holds is that plugin's `reference-unresolved`, and what names each
@@ -140,8 +146,8 @@ export interface PluginAgentReferences {
   readonly tools: readonly string[];
   /** The guardrails it names (a file's `guardrails`). */
   readonly guardrails: readonly string[];
-  /** The run hook sets it names (a file's `hooks`). */
-  readonly hooks: readonly string[];
+  /** The interceptors it names (a file's `interceptors`). */
+  readonly interceptors: readonly string[];
 }
 
 /** A run waiting on a person, as one pending review shows it. */
@@ -197,8 +203,8 @@ async function countReferences(
         ? agent.tools
         : contribution.kind === 'guardrail'
           ? agent.guardrails
-          : contribution.kind === 'run-hooks'
-            ? agent.hooks
+          : contribution.kind === 'interceptor'
+            ? agent.interceptors
             : [];
     const key = referenceKey(contribution.id);
     return names.some((name) => referenceKey(name) === key);
@@ -210,8 +216,7 @@ async function countReferences(
     // A schedule or a run of the contribution itself, when it is a code agent.
     const runsIt = (agentName: string | undefined): boolean =>
       agentName !== undefined &&
-      (users.has(agentName) ||
-        (contribution.kind === 'code-agent' && agentName === contribution.id));
+      (users.has(agentName) || (contribution.kind === 'agent' && agentName === contribution.id));
     const key = referenceKey(contribution.id);
     const waiting = new Set(
       waitingRuns
@@ -262,6 +267,69 @@ function jsonSchemaOf(schema: z.ZodType): Readonly<Record<string, unknown>> | nu
   }
 }
 
+/** One guardrail's row: its description, and its configuration schema when it is a factory. */
+function guardrailRow(
+  plugin: string,
+  family: GuardrailListing['family'],
+  guardrail: unknown,
+  source: GuardrailListing['source'],
+): GuardrailListing {
+  const { name, description } = guardrail as {
+    readonly name: string;
+    readonly description?: string;
+  };
+  const configurable = isGuardrailFactory(guardrail);
+  return {
+    id: formatToolId({ namespace: plugin, name }),
+    family,
+    description: description ?? '',
+    configurable,
+    configuration: configurable ? jsonSchemaOf(guardrail.configuration) : null,
+    source,
+    plugin,
+  };
+}
+
+/** The guardrails a plugin's setup returned, family by family. */
+function pluginGuardrailRows(
+  plugin: string,
+  guardrails: PluginGuardrails | undefined,
+  keep: (family: GuardrailListing['family'], name: string) => boolean,
+): GuardrailListing[] {
+  const rows = (family: GuardrailListing['family'], items: readonly unknown[] | undefined) =>
+    (items ?? [])
+      .map((entry) => guardrailOf(entry) as { name: string })
+      .filter((guardrail) => keep(family, guardrail.name))
+      .map((guardrail) => guardrailRow(plugin, family, guardrail, 'plugin'));
+  return [
+    ...rows('input', guardrails?.input),
+    ...rows('output', guardrails?.output),
+    ...rows('tools', guardrails?.tools),
+    ...rows('memory', guardrails?.memory),
+  ];
+}
+
+/**
+ * The guardrails the host gave the Bureau (`BureauOptions.agentContributions`), family by family,
+ * as `bureau.plugins.guardrails()` lists them. Read when the Bureau is built, before it awaits
+ * anything, so a caller that changes its own map afterwards does not change the listing.
+ */
+export function hostGuardrailRows(host: AgentContributions | undefined): GuardrailListing[] {
+  return [...(host?.guardrails.values() ?? [])].flatMap(
+    ({ plugin, inputDetector, outputValidator, toolValidator }) => [
+      ...(inputDetector === undefined
+        ? []
+        : [guardrailRow(plugin, 'input', guardrailOf(inputDetector), 'host')]),
+      ...(outputValidator === undefined
+        ? []
+        : [guardrailRow(plugin, 'output', guardrailOf(outputValidator), 'host')]),
+      ...(toolValidator === undefined
+        ? []
+        : [guardrailRow(plugin, 'tools', toolValidator, 'host')]),
+    ],
+  );
+}
+
 /** Whether `record` registered the contribution `kind` named `plugin:name`. */
 function registered(record: PluginRecord, kind: PluginContribution['kind'], name: string): boolean {
   const id = `${record.entry.descriptor.name}:${name}`;
@@ -271,9 +339,16 @@ function registered(record: PluginRecord, kind: PluginContribution['kind'], name
 }
 
 /** The registry over the records composition produced. */
-export function createPluginRegistry(records: readonly PluginRecord[]): PluginRegistry {
+export function createPluginRegistry(
+  records: readonly PluginRecord[],
+  hostListing: {
+    /** The rows of the guardrails the host gave the Bureau ({@link hostGuardrailRows}), listed first. */
+    readonly guardrails?: readonly GuardrailListing[] | undefined;
+  } = {},
+): PluginRegistry {
+  const hostGuardrails = [...(hostListing.guardrails ?? [])];
   const laterProblems = new Map<string, PluginProblem[]>();
-  // The MCP apps the host could not build, by plugin name, then app name, with the message.
+  // The panels the host could not build, by plugin name, then app name, with the message.
   const failedApps = new Map<string, Map<string, string>>();
   const pinned: PinnedTally = new Map();
   let reads: PluginReferenceReads | undefined;
@@ -291,7 +366,7 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         waitingRuns: runs.size,
       })),
       ...[...(failedApps.get(name) ?? [])].map(([app, message]): PluginProblem => ({
-        code: 'mcp-app-failed',
+        code: 'panel-failed',
         app,
         message,
       })),
@@ -308,10 +383,10 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
         records
           .filter((record) => record.status === 'running')
           .map((record) => record.entry.descriptor.name),
-      mcpApps: () =>
+      panels: () =>
         records.flatMap((record) =>
           record.status === 'running'
-            ? (record.setup?.result.mcpApps ?? [])
+            ? (record.setup?.result.panels ?? [])
                 .filter((app) => !failedApps.get(record.entry.descriptor.name)?.has(app.name))
                 .map((app) => ({
                   plugin: record.entry.descriptor.name,
@@ -320,11 +395,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      triggerKinds: () =>
-        records.flatMap((record): PluginTriggerKindListing[] =>
+      triggers: () =>
+        records.flatMap((record): PluginTriggerListing[] =>
           record.status === 'running'
-            ? (record.setup?.result.triggerKinds ?? [])
-                .filter((kind) => registered(record, 'trigger-kind', kind.name))
+            ? (record.setup?.result.triggers ?? [])
+                .filter((kind) => registered(record, 'trigger', kind.name))
                 .map((kind) => ({
                   plugin: record.entry.descriptor.name,
                   id: `${record.entry.descriptor.name}:${kind.name}`,
@@ -334,11 +409,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      hookActionKinds: () =>
-        records.flatMap((record): PluginHookActionKindListing[] =>
+      reactions: () =>
+        records.flatMap((record): PluginReactionListing[] =>
           record.status === 'running'
-            ? (record.setup?.result.hookActionKinds ?? [])
-                .filter((kind) => registered(record, 'hook-action', kind.name))
+            ? (record.setup?.result.reactions ?? [])
+                .filter((kind) => registered(record, 'reaction', kind.name))
                 .map((kind) => ({
                   plugin: record.entry.descriptor.name,
                   kind: kind.name,
@@ -348,12 +423,39 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
                 }))
             : [],
         ),
-      reportMcpAppFailure: (plugin, app, message) => {
+      guardrails: () => [
+        ...hostGuardrails,
+        ...records.flatMap((record): GuardrailListing[] =>
+          record.status === 'running'
+            ? pluginGuardrailRows(
+                record.entry.descriptor.name,
+                record.setup?.result.guardrails,
+                (family, name) =>
+                  registered(record, family === 'memory' ? 'memory-detector' : 'guardrail', name),
+              )
+            : [],
+        ),
+      ],
+      providers: () =>
+        records.flatMap((record): PluginProviderListing[] =>
+          record.status === 'running'
+            ? (record.setup?.result.providers ?? [])
+                .filter((provider) => registered(record, 'provider', provider.name))
+                .map((provider) => ({
+                  plugin: record.entry.descriptor.name,
+                  name: provider.name,
+                  configuration: jsonSchemaOf(
+                    record.entry.descriptor.configuration ?? z.object({}),
+                  ),
+                }))
+            : [],
+        ),
+      reportPanelFailure: (plugin, app, message) => {
         const record = records.find(
           (candidate) =>
             candidate.status === 'running' && candidate.entry.descriptor.name === plugin,
         );
-        const declared = record?.setup?.result.mcpApps?.some((each) => each.name === app);
+        const declared = record?.setup?.result.panels?.some((each) => each.name === app);
         if (record?.setup === undefined || declared !== true) return;
         const byApp = failedApps.get(plugin) ?? new Map<string, string>();
         failedApps.set(plugin, byApp);
@@ -381,7 +483,7 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
       entry.runs.add(runId);
     },
     async start(hostFor) {
-      const hosts = new Map<string, PluginHostApi>();
+      const hosts = new Map<string, PluginHost>();
       for (const record of records) {
         if (record.setup === undefined) continue;
         const host = hostFor(record.entry.descriptor.name);
@@ -391,13 +493,13 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
       for (const record of records) {
         const { setup } = record;
         const host = hosts.get(record.entry.descriptor.name);
-        if (setup?.result.afterStart === undefined || host === undefined) continue;
+        if (setup?.result.start === undefined || host === undefined) continue;
         try {
-          await setup.result.afterStart(host, setup.context);
+          await setup.result.start(host, setup.context);
         } catch (error) {
           laterProblems.set(record.entry.descriptor.name, [
             {
-              code: 'after-start-failed',
+              code: 'start-failed',
               message: setup.redact(error instanceof Error ? error.message : String(error)),
             },
           ]);
@@ -414,11 +516,11 @@ export function createPluginRegistry(records: readonly PluginRecord[]): PluginRe
  * the bind rejects.
  */
 export function lateHostApi(plugin: string): {
-  readonly api: PluginHostApi;
-  readonly bind: (host: PluginHostApi) => void;
+  readonly api: PluginHost;
+  readonly bind: (host: PluginHost) => void;
 } {
-  let bound: PluginHostApi | undefined;
-  const host = (): PluginHostApi => {
+  let bound: PluginHost | undefined;
+  const host = (): PluginHost => {
     if (bound === undefined) {
       throw new Error(`The host of plugin "${plugin}" has not started yet.`);
     }

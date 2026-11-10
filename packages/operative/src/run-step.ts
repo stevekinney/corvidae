@@ -4,6 +4,7 @@ import type { MediaContent, MultiModalContent } from 'conversationalist';
 import { Conversation } from 'conversationalist';
 import type { ZodType } from 'zod';
 
+import type { BureauChildInvariants } from './bureau-invariants';
 import type { ContextEpochSealer } from './context-epoch';
 import type { AccumulatedCost } from './cost-estimation';
 import type { PendingChildWait } from './durable/types';
@@ -123,6 +124,11 @@ export interface StepDeps {
    * (see the toolbox execute call site), matching `delegatedAuthority`.
    */
   readonly parentSignals: RunOptions['parentSignals'];
+  /**
+   * COR-2106 — set when Bureau owns this run: handed to every tool call so a
+   * child it dispatches gets Bureau's invariant hooks. See `bureau-invariants.ts`.
+   */
+  readonly bureauInvariants: BureauChildInvariants | undefined;
   readonly requestChildWait?:
     | ((
         request: Omit<PendingChildWait, 'schemaVersion'>,

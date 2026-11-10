@@ -302,6 +302,16 @@
     font-size: var(--cinder-text-sm);
   }
 
+  /* A long label ("Allow Issue refund for the rest of this chat") wraps beside its box, not under it. */
+  .cinder-approval-card__remember .cinder-checkbox-field {
+    flex-wrap: nowrap;
+    align-items: flex-start;
+  }
+
+  .cinder-approval-card__remember .cinder-checkbox-field > .cinder-form-field__label {
+    min-inline-size: 0;
+  }
+
   /* Why Deny and Approve are off, or why an approval cannot be answered now. */
   .cinder-approval-card__reason {
     margin: 0;
@@ -501,6 +511,25 @@
     font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-tight);
+  }
+
+  /* Decided on another page: a glyph in the decision's tone stands where the risk shield stood,
+     and the question is the size of the line under it. */
+  .cinder-approval-card__decided-glyph {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    margin-block-start: 2px;
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card__decided-glyph[data-cinder-tone='success'] {
+    color: var(--cinder-status-success-text);
+  }
+
+  .cinder-approval-card__row[data-cinder-collapsed] .cinder-approval-card__row-question {
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
   }
 
   .cinder-approval-card__line {

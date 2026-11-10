@@ -68,6 +68,42 @@ export interface Decision<T> {
   readonly usage?: TokenUsage;
 }
 
+/**
+ * One question in a {@link DecisionBatch}: a {@link DecisionRequest} without
+ * its `context`, because every question in a batch reads the batch's context.
+ */
+export type DecisionQuestion = DecisionRequest extends infer Request
+  ? Request extends DecisionRequest
+    ? Omit<Request, 'context'>
+    : never
+  : never;
+
+/**
+ * Several questions about the same context. A model that can answers them in
+ * one provider request, so the context is sent, and paid for, once.
+ */
+export interface DecisionBatch {
+  /** The text every question is about. */
+  readonly context?: string;
+  /**
+   * The questions, each under a caller-chosen name that the result uses for
+   * its answer. At least one; names are non-empty.
+   */
+  readonly questions: ReadonlyMap<string, DecisionQuestion>;
+}
+
+/** The answers to a {@link DecisionBatch}. */
+export interface DecisionBatchResult {
+  /**
+   * Each question's decision, under the name it was asked with. A decision in
+   * a batch carries no `usage` of its own, because a provider bills the batch
+   * as a whole; the batch's usage is on {@link DecisionBatchResult.usage}.
+   */
+  readonly decisions: ReadonlyMap<string, Decision<unknown>>;
+  /** Tokens spent on the whole batch, summed across requests. Absent when the provider reports none. */
+  readonly usage?: TokenUsage;
+}
+
 /** Per-call options for {@link DecisionModel.decide}. */
 export interface DecideOptions {
   /** Who is asking; carried for the caller's audit, never sent to the model. */
@@ -88,4 +124,12 @@ export interface DecisionModel {
    * error when the provider fails.
    */
   decide(request: DecisionRequest, options?: DecideOptions): Promise<Decision<unknown>>;
+  /**
+   * Answers every question in a batch in one provider request, for a model
+   * whose provider can. Callers use `decideBatch(model, batch)` instead, which
+   * validates the batch and asks one question at a time through
+   * {@link DecisionModel.decide} when a model has no batch method, so a
+   * wrapper that does not forward this still answers correctly.
+   */
+  decideBatch?(batch: DecisionBatch, options?: DecideOptions): Promise<DecisionBatchResult>;
 }

@@ -9,6 +9,7 @@
   import { Avatar, Select } from '@lostgradient/cinder';
 
   import { CHAT_COPY } from '../../app/copy.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
   import { agentAvatarName, agentTone } from './session-groups.ts';
 
@@ -19,16 +20,19 @@
     value: string | undefined;
     /** Whether any provider holds a key. `undefined` until the host has answered. */
     providerConnected: boolean | undefined;
+    /** Whether the choice is closed: the first message is on its way, and the agent is fixed. */
+    disabled?: boolean;
     onChange: (agentName: string) => void;
   }
 
-  let { agents, value, providerConnected, onChange }: AgentSelectProps = $props();
+  let { agents, value, providerConnected, disabled = false, onChange }: AgentSelectProps = $props();
 
   const options = $derived(
     agents.map((agent) => ({
       value: agent.name,
-      label: agent.displayName,
-      ...(agent.description === null ? {} : { description: agent.description }),
+      label: agentLabel(agent.name, agents),
+      // An agent with no description shows its name and, muted beside it, that it has none.
+      description: agent.description ?? CHAT_COPY.agentSelect.noDescription,
       ...(providerConnected === false && agent.media !== null
         ? { note: CHAT_COPY.agentSelect.needsProvider }
         : {}),
@@ -44,6 +48,7 @@
     label={CHAT_COPY.agentLabel}
     labelVisible={false}
     variant="ghost"
+    {disabled}
     presentation="listbox"
     size="sm"
     placeholder={CHAT_COPY.agentPlaceholder}

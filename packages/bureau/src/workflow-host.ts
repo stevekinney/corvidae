@@ -44,7 +44,7 @@ export interface WorkflowCatalog {
     readonly description: string | null;
     readonly inputSchema: Readonly<Record<string, unknown>> | null;
   }[];
-  readonly triggerKinds: readonly {
+  readonly triggers: readonly {
     readonly id: string;
     readonly description: string;
     readonly configuration: Readonly<Record<string, unknown>> | null;
@@ -144,12 +144,12 @@ export function workflowCatalogOf(
       configuration: WORKFLOW_TRIGGER_CONFIGURATION_SCHEMAS.manual,
     },
   ];
-  const pluginTriggers = [...contributions.triggerKinds.values()].map((entry) => ({
+  const pluginTriggers = [...contributions.triggers.values()].map((entry) => ({
     id: entry.name,
     description: entry.value.description,
     configuration: schemaOf(entry.value.configuration),
   }));
-  return { stepKinds, activities, triggerKinds: [...builtInTriggers, ...pluginTriggers] };
+  return { stepKinds, activities, triggers: [...builtInTriggers, ...pluginTriggers] };
 }
 
 /** The overlap policies a `schedule` trigger may name; `skip` when it names none. */
@@ -247,6 +247,7 @@ export interface AgentStepRequest {
   /** The instance and the step, which together name this step's run across a restart. */
   readonly workflowId: string;
   readonly step: number;
+  readonly stepAddress?: string;
 }
 
 export interface WorkflowHostDependencies {
@@ -341,6 +342,7 @@ export function createWorkflowDocumentHost(
         message: composeAgentMessage(message, argument.trigger, argument.previous, argument.signal),
         workflowId: argument.workflowId,
         step: argument.step,
+        ...(argument.stepAddress === undefined ? {} : { stepAddress: argument.stepAddress }),
         ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
       });
     },

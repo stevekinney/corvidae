@@ -12,19 +12,28 @@ import {
   reloadProviders,
   replaceCatalogEdits,
   testProviderKey,
+  type CatalogEdit,
+  type ProvidersSnapshot,
 } from './host-providers.ts';
 
 const KEY = 'sk-test-key-that-must-never-be-repeated';
 
 const mutation = { operationId: 'test-operation', expectedRevision: 'test-revision' };
 
-const SNAPSHOT = {
+const SNAPSHOT: ProvidersSnapshot = {
   configurationRevision: 'test-revision',
   providers: [
     { name: 'anthropic', configured: true, hasKey: true, models: ['sonnet'] },
     { name: 'openai', configured: false, hasKey: false },
   ],
-  catalog: [{ provider: 'anthropic', model: 'haiku', off: true }],
+  catalog: [
+    {
+      provider: 'anthropic',
+      model: 'haiku',
+      off: true,
+      decisions: { kinds: ['boolean', 'structured'], only: true },
+    },
+  ],
   models: [
     {
       provider: 'anthropic',
@@ -35,6 +44,7 @@ const SNAPSHOT = {
       streaming: true,
       tools: true,
       structuredOutput: true,
+      decisions: { kinds: ['boolean'], only: false },
       images: true,
       pricing: { inputPerMillionTokens: 3, outputPerMillionTokens: 15, currency: 'USD' },
       off: false,
@@ -72,7 +82,8 @@ describe('getProviders', () => {
     expect(seen.map((entry) => entry.path)).toEqual([HOST_PROVIDERS_ROUTE]);
     expect(snapshot.providers.map((provider) => provider.name)).toEqual(['anthropic', 'openai']);
     expect(snapshot.models[0]?.aliases).toEqual(['sonnet']);
-    expect(snapshot.catalog).toEqual([{ provider: 'anthropic', model: 'haiku', off: true }]);
+    expect(snapshot.catalog).toEqual(SNAPSHOT.catalog);
+    expect(snapshot.models[0]?.decisions).toEqual({ kinds: ['boolean'], only: false });
     expect(snapshot.lockReason).toBeUndefined();
   });
 
@@ -176,7 +187,14 @@ describe('connectProvider', () => {
 describe('replaceCatalogEdits and reloadProviders', () => {
   test('put the whole list of edits, and post the reload', async () => {
     const { seen, fetch } = recording(() => Response.json({}));
-    const edits = [{ provider: 'anthropic', model: 'haiku', off: true }];
+    const edits: CatalogEdit[] = [
+      {
+        provider: 'anthropic',
+        model: 'haiku',
+        off: true,
+        decisions: { kinds: ['boolean', 'structured'], only: true },
+      },
+    ];
     await replaceCatalogEdits(edits, { fetch, mutation });
     await reloadProviders({ fetch });
     expect(seen).toEqual([

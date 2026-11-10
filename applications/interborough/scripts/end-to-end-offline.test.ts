@@ -19,7 +19,7 @@ const OFFLINE = /\.setOffline\(\s*true\s*\)/;
 const EXEMPT = new Set(['tests/e2e/fixtures.ts', 'tests/e2e/00-page-errors.spec.ts']);
 
 function specFiles(): string[] {
-  return ['tests/e2e/**/*.ts', 'tests/mcp-apps/**/*.ts'].flatMap((pattern) => [
+  return ['tests/e2e/**/*.ts', 'tests/panels/**/*.ts'].flatMap((pattern) => [
     ...new Glob(pattern).scanSync({ cwd: root }),
   ]);
 }

@@ -407,7 +407,7 @@ describe('the open event', () => {
       description: null,
       model: 'sonnet',
       tools: [],
-      skillDescriptors: [],
+      card: [],
       a2a: false,
       instructions: text,
     });

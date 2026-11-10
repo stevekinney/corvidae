@@ -79,6 +79,19 @@ describe('the top bar', () => {
     expect(button.getAttribute('aria-expanded')).toBe('true');
   });
 
+  test('marks a page below a top-level one, whose back link takes the menu button’s place on a phone (06m)', () => {
+    viewport([DRAWER_QUERY]);
+    for (const [path, nested] of [
+      ['/health', false],
+      ['/chats/sample-chat', true],
+    ] as const) {
+      landAt(path);
+      const { container, unmount } = mount();
+      expect(container.querySelector('header')?.hasAttribute('data-nested'), path).toBe(nested);
+      unmount();
+    }
+  });
+
   test('names the page in words in the breadcrumb, and Home at the root', () => {
     viewport([EXPANDED_QUERY]);
     for (const [path, name] of [

@@ -25,7 +25,7 @@ function unreadyAgentNames(snapshot: PluginsSnapshot): ReadonlySet<string> {
   for (const plugin of snapshot.plugins) {
     if (plugin.status === 'running') continue;
     for (const contribution of plugin.contributions) {
-      if (contribution.kind === 'code-agent') names.add(contribution.id);
+      if (contribution.kind === 'agent') names.add(contribution.id);
     }
   }
   return names;
@@ -59,8 +59,35 @@ export async function findDefaultAgent(options: Options = {}): Promise<string | 
   return agents.find((agent) => agent.ready)?.name ?? null;
 }
 
+/** The Bureau's Create workflow tool, as an agent's `tools` names it. */
+export const CREATE_WORKFLOW_TOOL = 'bureau:workflows-create';
+
+/**
+ * The first listed agent that can run and has the Create workflow tool, or `null` when there is
+ * none. It is the agent "Ask an agent to write one" on the Workflows page starts a chat with.
+ * An agent whose tools the Bureau does not say is not assumed to have it.
+ */
+export async function findWorkflowAuthor(options: Options = {}): Promise<string | null> {
+  const agents = await listAgentsWithReadiness(options);
+  return (
+    agents.find((agent) => agent.ready && agent.tools?.includes(CREATE_WORKFLOW_TOOL) === true)
+      ?.name ?? null
+  );
+}
+
 /** How long a default agent is trusted before it is asked for again. */
 const DEFAULT_AGENT_STALE_TIME_MS = 5_000;
+
+/** The query that reads the agent a chat started from Workflows begins with, shared by the view and the page. */
+export function workflowAuthorQuery() {
+  return {
+    queryKey: queryKeys.agents.workflowAuthor(),
+    queryFn: ({ signal }: { readonly signal?: AbortSignal }) =>
+      findWorkflowAuthor(signal === undefined ? {} : { signal }),
+    staleTime: DEFAULT_AGENT_STALE_TIME_MS,
+    retry: false,
+  };
+}
 
 /** The query that reads the default agent, shared by the view probe and the pages that start from it. */
 export function defaultAgentQuery() {

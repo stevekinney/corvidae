@@ -1508,7 +1508,7 @@ describe('ApprovalCard row layout', () => {
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
   });
 
-  test('holds Deny and Approve while the reason is given, and names it on both', async () => {
+  test('holds Deny and Approve while the reason is given, with aria-disabled, and names it on both', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
     const { getByRole, getByText } = render(ApprovalCard, {
       props: refundRow({
@@ -1520,8 +1520,13 @@ describe('ApprovalCard row layout', () => {
     const reason = getByText('Approving is off until Interborough is reachable');
     for (const name of ['Deny', 'Approve']) {
       const button = requiredInstance(getByRole('button', { name }), HTMLButtonElement);
-      expect(button.disabled).toBe(true);
+      // Off with aria-disabled, never the disabled property, so the control stays focusable and
+      // the reason is read when it is focused.
+      expect(button.disabled).toBe(false);
+      expect(button.getAttribute('aria-disabled')).toBe('true');
       expect(button.getAttribute('aria-describedby')).toBe(reason.id);
+      button.focus();
+      expect(document.activeElement).toBe(button);
       await fireEvent.click(button);
     }
     expect(onResolve).not.toHaveBeenCalled();
@@ -1673,6 +1678,61 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
     summary: "Couldn't approve.",
     detail: "Interborough couldn't reach the agent. Nothing was refunded.",
   };
+
+  describe('a row decided on another page while it was shown waiting (Chat frame r)', () => {
+    test('collapses to a check, the question and the decision, with no tool line, no Input and no dot', () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({
+          state: 'approved',
+          decidedBy: 'you',
+          decidedIn: 'Reviews',
+          decidedAt: '2026-11-02T10:46:00.000Z',
+        }),
+      });
+      const article = container.querySelector('.cinder-approval-card--row');
+      expect(squash(article?.textContent)).toBe(
+        'Refund order 4471 for $42.00? Approved by you in Reviews · 10:46 AM',
+      );
+      expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__outcome-dot')).toBeNull();
+      expect(container.querySelector('.cinder-approval-card__risk-icon')).toBeNull();
+      const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
+      expect(glyph?.getAttribute('data-cinder-tone')).toBe('success');
+      expect(glyph?.querySelector('svg')?.classList.contains('lucide-check')).toBe(true);
+    });
+
+    test('a denial collapses the same way, with the prohibition glyph in neutral', () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({
+          state: 'denied',
+          decidedBy: 'you',
+          decidedIn: 'Reviews',
+          decidedAt: '2026-11-02T10:46:00.000Z',
+        }),
+      });
+      expect(squash(container.querySelector('.cinder-approval-card--row')?.textContent)).toBe(
+        'Refund order 4471 for $42.00? Denied by you in Reviews · 10:46 AM',
+      );
+      const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
+      expect(glyph?.getAttribute('data-cinder-tone')).toBe('neutral');
+      expect(glyph?.querySelector('svg')?.classList.contains('lucide-ban')).toBe(true);
+    });
+
+    test('a row decided here keeps its tool line, its Input summary and the dot', () => {
+      const { container } = render(ApprovalCard, {
+        props: refundRow({
+          state: 'approved',
+          decidedBy: 'you',
+          decidedAt: '2026-11-02T10:33:00.000Z',
+        }),
+      });
+      expect(container.querySelector('.cinder-approval-card__line')).not.toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-input')).not.toBeNull();
+      expect(container.querySelector('.cinder-approval-card__outcome-dot')).not.toBeNull();
+      expect(container.querySelector('.cinder-approval-card__decided-glyph')).toBeNull();
+    });
+  });
 
   for (const layout of ['row', 'card', 'detail'] as const) {
     describe(`${layout} layout`, () => {
@@ -1831,7 +1891,10 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         ).toBe(
           layout === 'detail'
             ? 'Approved by you in Reviews at 10:44 AM · Tool runner'
-            : 'Approved by you in Reviews at 10:44 AM',
+            : layout === 'row'
+              ? // The row writes the time after a middot, as it does for a decision made here.
+                'Approved by you in Reviews · 10:44 AM'
+              : 'Approved by you in Reviews at 10:44 AM',
         );
         expect(container.textContent).toContain("You don't need to do anything here.");
         expect(queryByRole('button', { name: 'Approve' })).toBeNull();

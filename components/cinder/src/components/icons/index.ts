@@ -23,6 +23,7 @@ export { default as Globe } from '@lucide/svelte/icons/globe';
 export { default as Heading1 } from '@lucide/svelte/icons/heading-1';
 export { default as Heading2 } from '@lucide/svelte/icons/heading-2';
 export { default as Heading3 } from '@lucide/svelte/icons/heading-3';
+export { default as Info } from '@lucide/svelte/icons/info';
 export { default as Italic } from '@lucide/svelte/icons/italic';
 export { default as LinkIcon } from '@lucide/svelte/icons/link';
 export { default as List } from '@lucide/svelte/icons/list';

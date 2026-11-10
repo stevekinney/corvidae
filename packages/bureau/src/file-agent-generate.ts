@@ -18,7 +18,7 @@
  * step, so a change applies from the next one; a call already in flight finishes. It never falls
  * back to another model either.
  *
- * A file's `defaultEffort` (COR-1961) is the effort a step is sent when the person has steered none.
+ * A file's `effort` (COR-1961) is the effort a step is sent when the person has steered none.
  * It is seeded into a copy of the step's context for the one call, never written to the session's
  * steering, so steering stays what the person changed. The row each step uses decides it: a row that
  * takes the tier unchanged is sent it; one that cannot is judged by the principal's
@@ -186,7 +186,7 @@ export interface FileAgentGenerateOptions {
   /** Turns a catalog row into the generate a run calls. May throw for a model it cannot set up. */
   readonly resolveGenerate: (descriptor: BackendDescriptor) => GenerateFunction;
   /**
-   * The agent has a `costBudget` (COR-1921). A step whose chosen row has no price in US dollars
+   * The agent has `limits.cost` (COR-1921). A step whose chosen row has no price in US dollars
    * then ends the run with `budget-exceeded` before the model is asked: the run's pricing is
    * keyed by name, and a name can reach a row other than the one it was priced from.
    */
@@ -198,7 +198,7 @@ export interface FileAgentGenerateOptions {
    */
   readonly policyDenial?: ((row: BackendDescriptor) => ModelPolicyDenial | undefined) | undefined;
   /**
-   * The file's `defaultEffort` (COR-1961): the effort a step is sent when its steering names none.
+   * The file's `effort` (COR-1961): the effort a step is sent when its steering names none.
    * Omitted, the context passes through untouched.
    */
   readonly defaultEffort?: Effort | undefined;
@@ -290,7 +290,7 @@ export function createFileAgentGenerate(options: FileAgentGenerateOptions): Gene
     if (costBudgeted === true && usdPricingOfRow(row) === undefined) {
       return Promise.reject(
         new BudgetExceededError(
-          `The session runs on the model "${row.model}" from "${row.provider}", which has no price in US dollars in the model catalog, so its spend cannot be counted against the agent's costBudget.`,
+          `The session runs on the model "${row.model}" from "${row.provider}", which has no price in US dollars in the model catalog, so its spend cannot be counted against the agent's limits.cost.`,
         ),
       );
     }

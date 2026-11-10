@@ -22,8 +22,8 @@ import { expectEngineMissesForRuns } from './task-support.ts';
 const composer = (page: Page) => page.getByRole('textbox');
 
 /**
- * The New chat action of the empty Chat page. A fresh host also shows the first-run checklist,
- * whose last step links to /chats/new; the page's own action is the primary button.
+ * The New chat action of the chat list's first-use state: the one primary button. The header's "+"
+ * is a secondary icon button of the same name.
  */
 const newChatAction = (page: Page) =>
   page.getByRole('link', { name: 'New chat' }).and(page.locator('[data-cinder-variant="primary"]'));
@@ -89,7 +89,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   });
 
   for (const width of WIDTHS) {
-    test(`opens /chats with a welcome and a New chat link, not on the goal's session, at ${width} pixels`, async ({
+    test(`opens /chats on the list's first use and a New chat button, not on the goal's session, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -104,30 +104,13 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
       await page.goto('/chats');
 
       await expect(page).toHaveURL(/\/chats$/);
-      const frame = page.locator('[data-view="chat"]');
-      await expect(frame).toHaveAttribute('data-state', 'empty');
-      await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-        VIEW_COPY.chat.empty?.title ?? '',
-      );
+      // The frame is ready: the list words its own first use, inside its pane.
+      await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+      const list = page.getByRole('region', { name: 'Chats' });
+      await expect(list.getByRole('heading', { level: 3, name: 'No chats yet' })).toBeVisible();
+      await expect(list).toContainText('Start one with an agent.');
       await expect(newChatAction(page)).toBeVisible();
-      // The welcome names the agents a chat can start with, each identifier in monospace: the two
-      // the host's chat proof adds (`e2e-server.ts`, listed before a plugin's), then the demo plugin's.
-      const agents = page.getByTestId('welcome-agents');
-      await expect(agents).toContainText('Agents:');
-      await expect(agents.locator('code.ib-identifier')).toHaveText([
-        'e2e:chat-proof-parent',
-        'e2e:workflow-reviewer',
-        'demo:assistant',
-        'demo:tool-runner',
-        'demo:request-human-input',
-        'demo:echo',
-        'demo:model-switcher',
-        'demo:internal',
-        'demo:release-helper',
-        'demo:changelog-writer',
-      ]);
-      await expect(agents.locator('code.ib-identifier').first()).toHaveCSS('font-family', /mono/i);
-      await checkA11y(`chat — the welcome at ${width}px`);
+      await checkA11y(`chat — the first use at ${width}px`);
     });
   }
 
@@ -151,7 +134,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
 
     await page.goto('/chats');
-    const rows = page.getByRole('region', { name: 'Chats' }).getByRole('listitem');
+    const rows = page.getByRole('region', { name: 'Chats' }).locator('[data-chat]');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
   });
@@ -194,7 +177,7 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
     expect(order.indexOf(chatId)).toBeLessThan(order.indexOf(SEEDED_GOAL_SESSION));
 
     await page.goto('/chats');
-    const rows = page.getByRole('region', { name: 'Chats' }).getByRole('listitem');
+    const rows = page.getByRole('region', { name: 'Chats' }).locator('[data-chat]');
     await expect(rows).toHaveCount(1);
     await expect(rows.first()).toContainText(chatTitle);
   });
@@ -235,11 +218,11 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   });
 });
 
-test.describe('the list of sessions, grouped', () => {
+test.describe('the list of sessions, by day', () => {
   const AWAITING_QUESTION = 'Which environment should the release go to?';
 
   for (const width of WIDTHS) {
-    test(`lists a chat that waits on you under Needs you, above the rest, with its question and a chip, and a finished chat with its latest reply and no chip, at ${width} pixels`, async ({
+    test(`lists a chat that waits on you with its question and Waiting on you, and a finished chat with its latest reply and Done, under Today, at ${width} pixels`, async ({
       page,
       request,
       checkA11y,
@@ -255,38 +238,35 @@ test.describe('the list of sessions, grouped', () => {
       await page.goto('/chats');
 
       const list = page.getByRole('region', { name: 'Chats' });
-      // Needs you comes first, and it holds the waiting chat and not the finished one.
-      await expect(list.locator('[data-chat]').first()).toHaveAttribute('data-group', 'needs-you');
-      const waitingRow = list.locator(`[data-group="needs-you"][data-chat="${waiting}"]`);
+      // Both chats are today's, so both sit under the Today band, newest first.
+      await expect(list.locator('.cinder-data-list-group__header').first()).toContainText('Today');
+      const waitingRow = list.locator(`[data-chat="${waiting}"]`);
       await expect(waitingRow).toHaveCount(1);
       await expect(waitingRow).toContainText(waitingTitle);
       await expect(waitingRow).toContainText(AWAITING_QUESTION);
-      await expect(waitingRow.locator('.cinder-badge')).toHaveText('Needs you');
-      await expect(waitingRow.getByRole('time')).toHaveText(/now|ago/);
-      // The finished chat is under Today, shows what the agent said last and not the title again,
-      // and has no chip.
-      const finishedRow = list.locator(`[data-group="today"][data-chat="${finished}"]`);
+      await expect(waitingRow).toContainText('Waiting on you');
+      await expect(waitingRow.getByRole('time')).toHaveText(/\d{1,2}:\d{2} [AP]M/);
+      // The finished chat shows what the agent said last and not the title again, and says Done.
+      const finishedRow = list.locator(`[data-chat="${finished}"]`);
       await expect(finishedRow).toHaveCount(1);
       await expect(finishedRow).toContainText(finishedTitle);
       await expect(finishedRow).toContainText('Hello from the assistant.');
-      await expect(finishedRow.locator('.cinder-badge')).toHaveCount(0);
-      await expect(list.locator(`[data-chat="${finished}"]`)).toHaveCount(1);
+      await expect(finishedRow).toContainText('Done');
+      await expect(finishedRow).not.toContainText('Waiting on you');
+      await expect(list.locator('.cinder-badge')).toHaveCount(0);
       await expect(list.getByText('End of list')).toHaveCount(0);
       await expect(list.getByText('Agent:')).toHaveCount(0);
       // No view scrolls sideways.
       expect(
         await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
       ).toBe(true);
-      await checkA11y(`the list of chats, grouped, at ${width}px`);
+      await checkA11y(`the list of chats, by day, at ${width}px`);
     });
   }
 });
 
 test.describe('the list of sessions', () => {
-  test('is newest first, labelled with the agent, and pages with Load more', async ({
-    page,
-    request,
-  }) => {
+  test('is newest first and pages with Load more', async ({ page, request }) => {
     const label = crypto.randomUUID().slice(0, 8);
     for (let index = 1; index <= 22; index += 1) {
       await runToEnd(
@@ -300,15 +280,12 @@ test.describe('the list of sessions', () => {
     await page.goto('/chats');
 
     const list = page.getByRole('region', { name: 'Chats' });
-    const rows = list.getByRole('listitem');
-    // A chat waiting on someone is listed above the rest, so the newest is first in Today, and the
-    // row names the agent.
-    const today = list.locator('[data-group="today"]');
-    await expect(today.first()).toContainText(`${label} chat 22`);
-    await expect(today.first()).toContainText('demo:assistant');
+    const rows = list.locator('[data-chat]');
+    // The newest chat is first, whatever else waits.
+    await expect(rows.first()).toContainText(`${label} chat 22`);
     // A page is twenty rows. The list loads the next page as the end comes into view, or when
     // Load more is pressed, so keep asking for it until the oldest of these chats is there.
-    const oldest = list.getByRole('button', { name: new RegExp(`${label} chat 01`) });
+    const oldest = list.getByRole('link', { name: new RegExp(`${label} chat 01`) });
     await expect(async () => {
       const more = list.getByRole('button', { name: 'Load more' });
       if (await more.isVisible()) await more.click();
@@ -325,7 +302,7 @@ test.describe('the list of sessions', () => {
 
     await page
       .getByRole('region', { name: 'Chats' })
-      .getByRole('button', { name: /Open me from the list/ })
+      .getByRole('link', { name: /Open me from the list/ })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));
@@ -339,10 +316,11 @@ test.describe('a new chat', () => {
   }) => {
     await page.goto('/chats/new');
     const agent = page.getByRole('combobox', { name: 'Agent' });
-    await expect(agent).toContainText(E2E_DEFAULT_AGENT);
+    // The pill names the agent as a person reads it: the identifier in words.
+    await expect(agent).toContainText(new RegExp(E2E_DEFAULT_AGENT, 'i'));
 
     await agent.click();
-    await page.getByRole('option', { name: /tool-runner/i }).click();
+    await page.getByRole('option', { name: /tool runner/i }).click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)tool-runner$/);
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
@@ -352,7 +330,7 @@ test.describe('a new chat', () => {
     page,
   }) => {
     await page.goto('/chats/new?agent=demo:tool-runner');
-    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('tool-runner');
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('Tool runner');
     // A reload would discard this.
     await page.evaluate(() => {
       Reflect.set(window, '__stillHere', true);
@@ -361,14 +339,16 @@ test.describe('a new chat', () => {
     await send(page, 'Refund order-1001');
 
     await expect(page).toHaveURL(sessionUrl);
-    await expect(page.locator('.ib-decision')).toBeVisible();
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
     expect(await page.evaluate(() => Reflect.get(window, '__stillHere'))).toBe(true);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toHaveCount(0);
-    await expect(
-      page
-        .getByRole('region', { name: 'Conversation' })
-        .getByText('demo:tool-runner', { exact: true }),
-    ).toHaveCount(1);
+    // The agent is named where a message goes to it, and no line under the title repeats it.
+    const conversationRegion = page.getByRole('region', { name: 'Conversation' });
+    await expect(conversationRegion.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      'Message Tool runner…',
+    );
+    await expect(conversationRegion.getByText('demo:tool-runner', { exact: true })).toHaveCount(0);
   });
 
   test('replaces its history entry when it starts, so Back returns to where the person came from', async ({
@@ -446,7 +426,7 @@ test.describe('returning to a session', () => {
     await page.goto('/chats');
     await page
       .getByRole('region', { name: 'Chats' })
-      .getByRole('button', { name: new RegExp(`${label} first topic`) })
+      .getByRole('link', { name: new RegExp(`${label} first topic`) })
       .click();
 
     expect(sessionOf(page)).toBe(first);
@@ -513,7 +493,7 @@ test.describe('returning to a session', () => {
     await page.getByRole('link', { name: 'Chat', exact: true }).first().click();
     await page
       .getByRole('region', { name: 'Chats' })
-      .getByRole('button', { name: new RegExp(first) })
+      .getByRole('link', { name: new RegExp(first) })
       .click();
     await expect(page).toHaveURL(address);
     await expectWholeTranscript(page, first);

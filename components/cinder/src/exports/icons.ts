@@ -20,6 +20,7 @@ export {
   Heading1,
   Heading2,
   Heading3,
+  Info,
   Italic,
   LinkIcon,
   List,

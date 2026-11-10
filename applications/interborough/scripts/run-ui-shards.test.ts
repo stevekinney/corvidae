@@ -129,7 +129,7 @@ describe('discoverTestFiles', () => {
     expect(files.length).toBeGreaterThan(50);
     expect(files).toContain('scripts/run-ui-shards.test.ts');
     for (const file of files) {
-      expect(file).not.toMatch(/^src\/host\/|^tests\/e2e\/|^tests\/mcp-apps\/|\.slow\.test\.ts$/);
+      expect(file).not.toMatch(/^src\/host\/|^tests\/e2e\/|^tests\/panels\/|\.slow\.test\.ts$/);
     }
     expectPartition(partitionIntoShards(files), files);
   });

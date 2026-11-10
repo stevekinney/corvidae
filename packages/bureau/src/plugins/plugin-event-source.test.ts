@@ -3,7 +3,7 @@
  * `schedule.created` of a schedule it creates, and every `goal.*` event of a goal it creates, which
  * the goal's record stores. The same calls made through `bureau` carry none.
  */
-import { definePlugin, type PluginHostApi } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginHost } from '@lostgradient/interborough-plugin';
 import { createAgent } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
@@ -24,7 +24,7 @@ afterEach(async () => {
 
 /** A durable Bureau with plugin `p`, whose setup keeps the host API its context hands it. */
 async function start() {
-  const held: { host?: PluginHostApi; early?: unknown } = {};
+  const held: { host?: PluginHost; early?: unknown } = {};
   const plugin = definePlugin({
     name: 'p',
     version: '1.0.0',

@@ -3,7 +3,8 @@
  * a sweep relies on, the narrowing a sign-off uses, and the refusals that keep a typo from
  * silently capturing the wrong thing.
  */
-import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -51,6 +52,15 @@ describe('parseArguments', () => {
       'tests/e2e/settings-data-and-retention.spec.ts',
       'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
+      'tests/e2e/home.spec.ts',
+      'tests/e2e/chat-list.spec.ts',
+      'tests/e2e/chat-page.spec.ts',
+      'tests/e2e/chat-responsive.spec.ts',
+      'tests/e2e/chat-tool-call-turn.spec.ts',
+      'tests/e2e/chat-states.spec.ts',
+      'tests/e2e/chat-new.spec.ts',
+      'tests/e2e/chat-new-states.spec.ts',
+      'tests/e2e/chat-new-workflows.spec.ts',
       'tests/e2e/responsive.spec.ts',
       'tests/e2e/15-view-states.spec.ts',
     ]);
@@ -101,6 +111,15 @@ describe('parseArguments', () => {
       'tests/e2e/settings-data-and-retention.spec.ts',
       'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
+      'tests/e2e/home.spec.ts',
+      'tests/e2e/chat-list.spec.ts',
+      'tests/e2e/chat-page.spec.ts',
+      'tests/e2e/chat-responsive.spec.ts',
+      'tests/e2e/chat-tool-call-turn.spec.ts',
+      'tests/e2e/chat-states.spec.ts',
+      'tests/e2e/chat-new.spec.ts',
+      'tests/e2e/chat-new-states.spec.ts',
+      'tests/e2e/chat-new-workflows.spec.ts',
     ]);
     expect(specificationsOf(['--data', 'stress'])).toEqual([
       'tests/e2e/responsive.spec.ts',
@@ -135,6 +154,15 @@ describe('parseArguments', () => {
       'tests/e2e/settings-data-and-retention.spec.ts',
       'tests/e2e/api-reference.spec.ts',
       'tests/e2e/first-run.spec.ts',
+      'tests/e2e/home.spec.ts',
+      'tests/e2e/chat-list.spec.ts',
+      'tests/e2e/chat-page.spec.ts',
+      'tests/e2e/chat-responsive.spec.ts',
+      'tests/e2e/chat-tool-call-turn.spec.ts',
+      'tests/e2e/chat-states.spec.ts',
+      'tests/e2e/chat-new.spec.ts',
+      'tests/e2e/chat-new-states.spec.ts',
+      'tests/e2e/chat-new-workflows.spec.ts',
       'tests/e2e/responsive.spec.ts',
     ]);
     // `--specs` alone keeps meaning what it always meant: one of the stress specifications.
@@ -357,4 +385,10 @@ describe('hostEnvironment', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+});
+
+afterAll(() => {
+  // A spawned Bun child can leave the coverage loader resolving the next late import against the
+  // document origin. Keep the next UI test file from handing it a network origin.
+  if (window instanceof Window) window.happyDOM.setURL('about:blank');
 });

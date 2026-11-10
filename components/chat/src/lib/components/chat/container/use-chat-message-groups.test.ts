@@ -103,6 +103,22 @@ describe('chat message grouping', () => {
     expect(dates).toEqual(['2026-05-04', '2026-05-06']);
   });
 
+  test('never opens a day for a system message, whatever time it was written at', () => {
+    const messages = [
+      message({ id: 'instructions', role: 'system', createdAt: '2026-11-07T13:34:00.000Z' }),
+      message({ id: 'first-day', role: 'user', createdAt: '2026-10-29T16:04:00.000Z' }),
+    ];
+
+    const items = buildMessagesWithDateSeparators(messages, findPairedToolResultIds(messages));
+
+    expect(items.map((item) => item.type)).toEqual(['message', 'date', 'message']);
+    expect(
+      items
+        .filter((item) => item.type === 'date')
+        .map((item) => item.date.toISOString().slice(0, 10)),
+    ).toEqual(['2026-10-29']);
+  });
+
   test('skips invalid timestamps and starts a new separator on valid day changes', () => {
     const messages = [
       message({ id: 'invalid', role: 'user', createdAt: 'not-a-date' }),

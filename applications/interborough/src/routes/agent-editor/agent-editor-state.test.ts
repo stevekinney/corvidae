@@ -1,7 +1,7 @@
 /**
  * The agent editor's form: what it offers from the catalog, how the identifier follows the name,
  * which models and tools a save may name, and what a save sends. A save carries the loaded
- * `skillDescriptors` through untouched, sends its A2A opt-in, and writes an unchanged model back
+ * `card` through untouched, sends its A2A opt-in, and writes an unchanged model back
  * exactly as the file wrote it.
  */
 import { describe, expect, test } from 'bun:test';
@@ -122,13 +122,11 @@ describe('a new agent', () => {
       description: null,
       model: 'anthropic/claude-sonnet-5',
       tools: ['lookup-order'],
-      skillDescriptors: [],
+      card: [],
       a2a: false,
       // A limit left empty is `null`, which removes it from a file that had one.
       guardrails: null,
-      stepLimit: null,
-      costBudget: null,
-      toolBudget: null,
+      limits: { steps: null, cost: null, tools: null },
       instructions: 'Cite everything.',
     });
     form.a2a = true;
@@ -149,10 +147,10 @@ describe('a new agent', () => {
 
   test('preserves child-agent grants through an edit definition', () => {
     const form = AgentEditorState.edit(
-      readyAgent({ definition: { ...readyAgent().definition!, childAgents: ['researcher'] } }),
+      readyAgent({ definition: { ...readyAgent().definition!, children: ['researcher'] } }),
       catalogFixture(),
     );
-    expect(form.toDefinition().childAgents).toEqual(['researcher']);
+    expect(form.toDefinition().children).toEqual(['researcher']);
   });
 });
 
@@ -259,11 +257,11 @@ describe('an agent that exists', () => {
     const form = AgentEditorState.edit(
       {
         ...detail,
-        definition: detail.definition && { ...detail.definition, skillDescriptors: [skill] },
+        definition: detail.definition && { ...detail.definition, card: [skill] },
       },
       catalogFixture(),
     );
-    expect(form.toDefinition().skillDescriptors).toEqual([skill]);
+    expect(form.toDefinition().card).toEqual([skill]);
   });
 
   test('carries the loaded skills through a save unchanged, and writes an unchanged alias back as written', () => {
@@ -271,7 +269,7 @@ describe('an agent that exists', () => {
     const form = AgentEditorState.edit(detail, catalogFixture());
     form.instructions = 'Changed.';
     const sent = form.toDefinition();
-    expect(sent.skillDescriptors).toEqual(detail.definition?.skillDescriptors ?? []);
+    expect(sent.card).toEqual(detail.definition?.card ?? []);
     expect(sent.model).toBe('anthropic/sonnet');
     expect(sent.instructions).toBe('Changed.');
   });
@@ -367,16 +365,18 @@ describe('the guardrails and limits', () => {
         definition: {
           ...detail.definition,
           guardrails: ['acme:tripwire', 'acme:pii'],
-          stepLimit: 12,
-          costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
-          toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+          limits: {
+            steps: 12,
+            cost: { run: 1.5, chat: 4, warn: [0.5, 0.9] },
+            tools: { calls: 30, seconds: 90 },
+          },
         },
       },
       catalogFixture(),
     );
   };
 
-  test('fills the fields from the file and writes them back, warnAt included', () => {
+  test('fills the fields from the file and writes them back, warn included', () => {
     const form = withLimits();
     expect(form.guardrails).toBe('acme:tripwire\nacme:pii');
     expect(form.stepLimit).toBe('12');
@@ -385,9 +385,11 @@ describe('the guardrails and limits', () => {
     expect(form.limitErrors).toEqual({});
     expect(form.toDefinition()).toMatchObject({
       guardrails: ['acme:tripwire', 'acme:pii'],
-      stepLimit: 12,
-      costBudget: { perRunUsd: 1.5, perChatUsd: 4, warnAt: [0.5, 0.9] },
-      toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+      limits: {
+        steps: 12,
+        cost: { run: 1.5, chat: 4, warn: [0.5, 0.9] },
+        tools: { calls: 30, seconds: 90 },
+      },
     });
   });
 
@@ -401,12 +403,10 @@ describe('the guardrails and limits', () => {
     form.toolSeconds = '';
     expect(form.toDefinition()).toMatchObject({
       guardrails: null,
-      stepLimit: null,
-      costBudget: null,
-      toolBudget: null,
+      limits: { steps: null, cost: null, tools: null },
     });
     form.toolCalls = '5';
-    expect(form.toDefinition().toolBudget).toEqual({ maxCalls: 5 });
+    expect(form.toDefinition().limits?.tools).toEqual({ calls: 5 });
   });
 
   test('names each field that holds something the Bureau would refuse, and cannot save', () => {
@@ -426,6 +426,24 @@ describe('the guardrails and limits', () => {
       'toolSeconds',
     ]);
     expect(form.canSave).toBe(false);
+  });
+
+  // COR-2118 — the field edits ids; a guardrail the file configures keeps its configuration.
+  test('shows a configured guardrail by its id and saves its configuration back', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const configured = { id: 'acme:grounding', configuration: { threshold: 0.95 } };
+    const form = AgentEditorState.edit(
+      { ...detail, definition: { ...detail.definition, guardrails: ['acme:pii', configured] } },
+      catalogFixture(),
+    );
+    expect(form.guardrails).toBe('acme:pii\nacme:grounding');
+    expect(form.toDefinition().guardrails).toEqual(['acme:pii', configured]);
+
+    form.guardrails = 'acme:grounding\nacme:tripwire';
+    expect(form.toDefinition().guardrails).toEqual([configured, 'acme:tripwire']);
+    form.guardrails = 'acme:tripwire';
+    expect(form.toDefinition().guardrails).toEqual(['acme:tripwire']);
   });
 
   test('refuses a chat limit when there is no run limit under it', () => {
@@ -452,66 +470,66 @@ describe('the default effort', () => {
     ],
   });
 
-  /** An agent whose file writes `defaultEffort` on `model`. */
-  function writing(defaultEffort: Effort | null, model: string) {
+  /** An agent whose file writes `effort` on `model`. */
+  function writing(effort: Effort | null, model: string) {
     const detail = readyAgent();
     if (detail.definition === null) throw new Error('expected a definition');
-    detail.definition = { ...detail.definition, model, defaultEffort };
+    detail.definition = { ...detail.definition, model, effort };
     return AgentEditorState.edit(detail, catalog);
   }
 
   test('starts as none, offers the tiers the model supports from least to most, and sends nothing', () => {
     const form = AgentEditorState.edit(readyAgent({ id: 'researcher' }), catalogFixture({}));
-    expect(form.defaultEffort).toBe('');
-    expect('defaultEffort' in form.toDefinition()).toBe(false);
+    expect(form.effort).toBe('');
+    expect('effort' in form.toDefinition()).toBe(false);
 
     const sonnet = writing(null, 'anthropic/claude-sonnet-5');
     expect(sonnet.effortChoices).toEqual(['low', 'medium', 'high', 'xhigh']);
-    expect('defaultEffort' in sonnet.toDefinition()).toBe(false);
+    expect('effort' in sonnet.toDefinition()).toBe(false);
     expect(sonnet.effortError).toBe('');
     expect(sonnet.canSave).toBe(true);
   });
 
   test('is filled from the file and sent back, and a new agent sends the one that is chosen', () => {
     const form = writing('high', 'anthropic/claude-sonnet-5');
-    expect(form.defaultEffort).toBe('high');
-    expect(form.toDefinition().defaultEffort).toBe('high');
-    expect(form.toTryDefinition().defaultEffort).toBe('high');
+    expect(form.effort).toBe('high');
+    expect(form.toDefinition().effort).toBe('high');
+    expect(form.toTryDefinition().effort).toBe('high');
 
     const created = AgentEditorState.create(catalog);
-    created.defaultEffort = 'medium';
-    expect(created.toDefinition().defaultEffort).toBe('medium');
+    created.effort = 'medium';
+    expect(created.toDefinition().effort).toBe('medium');
   });
 
   test('sends null once the person clears an effort the file had, which removes it', () => {
     const form = writing('high', 'anthropic/claude-sonnet-5');
-    form.defaultEffort = '';
-    expect(form.toDefinition().defaultEffort).toBeNull();
+    form.effort = '';
+    expect(form.toDefinition().effort).toBeNull();
   });
 
   test('sends nothing for a new agent that never chose one, even after it chose and cleared', () => {
     const created = AgentEditorState.create(catalog);
-    created.defaultEffort = 'low';
-    created.defaultEffort = '';
-    expect('defaultEffort' in created.toDefinition()).toBe(false);
+    created.effort = 'low';
+    created.effort = '';
+    expect('effort' in created.toDefinition()).toBe(false);
   });
 
   test('keeps the effort when the new model supports it, with no notice', () => {
     const form = writing('low', 'anthropic/claude-sonnet-5');
     form.model = 'anthropic/claude-haiku-5';
-    expect(form.defaultEffort).toBe('low');
+    expect(form.effort).toBe('low');
     expect(form.effortNotice).toBe('');
   });
 
   test('clears an effort the new model does not support, says so, and drops the notice once another is chosen', () => {
     const form = writing('xhigh', 'anthropic/claude-sonnet-5');
     form.model = 'anthropic/claude-haiku-5';
-    expect(form.defaultEffort).toBe('');
+    expect(form.effort).toBe('');
     expect(form.effortNotice).toBe(
       AGENT_EDITOR_COPY.effort.cleared('Extra high', 'anthropic/claude-haiku-5'),
     );
-    expect(form.toDefinition().defaultEffort).toBeNull();
-    form.defaultEffort = 'low';
+    expect(form.toDefinition().effort).toBeNull();
+    form.effort = 'low';
     expect(form.effortNotice).toBe('');
   });
 
@@ -519,7 +537,7 @@ describe('the default effort', () => {
     const form = writing('high', 'anthropic/claude-sonnet-5');
     form.model = 'openai/gpt-4.1';
     expect(form.effortChoices).toEqual([]);
-    expect(form.defaultEffort).toBe('');
+    expect(form.effort).toBe('');
     expect(form.effortNotice).not.toBe('');
   });
 
@@ -532,13 +550,13 @@ describe('the default effort', () => {
 
   test('refuses to save an effort the file’s own model does not support, and saves once another is chosen', () => {
     const form = writing('max', 'anthropic/claude-sonnet-5');
-    expect(form.defaultEffort).toBe('max');
+    expect(form.effort).toBe('max');
     expect(form.effortError).toBe(
       AGENT_EDITOR_COPY.effort.unsupported('Maximum', 'anthropic/claude-sonnet-5'),
     );
     expect(form.canSave).toBe(false);
     expect(form.canTry).toBe(false);
-    form.defaultEffort = 'high';
+    form.effort = 'high';
     expect(form.effortError).toBe('');
     expect(form.canSave).toBe(true);
   });
@@ -546,12 +564,12 @@ describe('the default effort', () => {
   test('leaves the effort of a model the catalog lacks as the file wrote it', () => {
     const form = writing('low', 'anthropic/retired-model');
     expect(form.effortChoices).toEqual([]);
-    expect(form.defaultEffort).toBe('low');
+    expect(form.effort).toBe('low');
     expect(form.effortError).toBe('');
     form.model = 'anthropic/claude-haiku-5';
-    expect(form.defaultEffort).toBe('low');
+    expect(form.effort).toBe('low');
     form.model = 'anthropic/retired-model';
-    expect(form.defaultEffort).toBe('low');
+    expect(form.effort).toBe('low');
   });
 });
 
@@ -560,17 +578,17 @@ describe('the tool approvals the Access tab sets', () => {
     const detail = readyAgent();
     if (detail.definition === null) throw new Error('expected a definition');
     return AgentEditorState.edit(
-      { ...detail, definition: { ...detail.definition, toolApproval: approvals } },
+      { ...detail, definition: { ...detail.definition, approvals: approvals } },
       catalogFixture(),
     );
   };
 
   test('sends none when the file had none, so an update keeps the file’s value', () => {
-    expect('toolApproval' in withApprovals(null).toDefinition()).toBe(false);
+    expect('approvals' in withApprovals(null).toDefinition()).toBe(false);
   });
 
   test('writes them back for a tool that is still chosen', () => {
-    expect(withApprovals({ 'lookup-order': 'always' }).toDefinition().toolApproval).toEqual({
+    expect(withApprovals({ 'lookup-order': 'always' }).toDefinition().approvals).toEqual({
       'lookup-order': 'always',
     });
   });
@@ -579,7 +597,7 @@ describe('the tool approvals the Access tab sets', () => {
     const form = withApprovals({ 'lookup-order': 'always' });
     form.setTool('lookup-order', false);
     expect(form.toDefinition().tools).toEqual([]);
-    expect(form.toDefinition().toolApproval).toBeNull();
+    expect(form.toDefinition().approvals).toBeNull();
   });
 });
 
@@ -599,12 +617,12 @@ describe('the tools the form shows', () => {
   });
   const withTools = (
     tools: string[],
-    toolApproval: Record<string, 'always' | 'never' | 'blocked'> | null,
+    approvals: Record<string, 'always' | 'never' | 'blocked'> | null,
   ) => {
     const detail = readyAgent();
     if (detail.definition === null) throw new Error('expected a definition');
     return AgentEditorState.edit(
-      { ...detail, definition: { ...detail.definition, tools, toolApproval } },
+      { ...detail, definition: { ...detail.definition, tools, approvals } },
       catalog,
     );
   };
@@ -647,9 +665,9 @@ describe('the tools the form shows', () => {
   test('keeps the approval of a tool that is cleared and ticked again before the save', () => {
     const form = withTools(['b-change'], { 'b-change': 'never' });
     form.setTool('b-change', false);
-    expect(form.toDefinition().toolApproval).toBeNull();
+    expect(form.toDefinition().approvals).toBeNull();
     form.setTool('b-change', true);
-    expect(form.toDefinition().toolApproval).toEqual({ 'b-change': 'never' });
+    expect(form.toDefinition().approvals).toEqual({ 'b-change': 'never' });
     expect(form.standingOf(form.chosenTools[0]!)).toBe('runs');
   });
 });

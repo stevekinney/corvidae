@@ -5,7 +5,12 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * the secrets; the provider path here runs against a fake client, and the secret is a fixture.
  */
 import { openBungalow } from '@lostgradient/bungalow';
-import { resolveProviderGenerate, type ProviderConfiguration } from '@lostgradient/bureau';
+import {
+  createManualRuntimeServices,
+  resolveProviderGenerate,
+  type ProviderConfiguration,
+} from '@lostgradient/bureau';
+import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -16,6 +21,8 @@ import { pluginsWithUnseededDemo } from './demo-plugin.test-support.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 import { runTask } from './run-task.test-support.ts';
 
+/** Bureau's rescan interval for a directory (not exported): one second. */
+const SAFETY_RESCAN_MILLISECONDS = 1000;
 const FIXTURE_KEY = 'fixture-anthropic-key-9c1d';
 const directories: string[] = [];
 const hosts: Host[] = [];
@@ -188,6 +195,28 @@ describe('the host’s agent directory', () => {
     await writeFile(join(home, 'agents', 'late.md'), RESEARCHER);
     expect(await added).toContain('late');
     expect(host.bureau.agents.list().find((listing) => listing.id === 'late')?.state).toBe('ready');
+  });
+
+  test('finds an added file by its rescan alone under directoryWatch: poll, and never under false', async () => {
+    for (const directoryWatch of ['poll', false] as const) {
+      const home = await prepareHome();
+      const runtime = createManualRuntimeServices({ origin: '2026-11-09T00:00:00.000Z' });
+      const host = await startAt(home, { directoryWatch, runtime });
+      const added: string[] = [];
+      host.bureau.agents.onChange((change) => added.push(...change.added));
+      await mkdir(join(home, 'agents'), { recursive: true });
+      await writeFile(join(home, 'agents', 'late.md'), RESEARCHER);
+      await runtime.advance(SAFETY_RESCAN_MILLISECONDS);
+      if (directoryWatch === 'poll') {
+        await waitUntil(() => added.includes('late'), { message: 'the rescan to find the file' });
+      } else {
+        // No watcher and no rescan: nothing but a scan asked for can find the file.
+        await quietFor(50);
+        expect(added).toEqual([]);
+        await host.bureau.agents.refresh();
+        expect(added).toEqual(['late']);
+      }
+    }
   });
 
   test('a file named like a demo agent is its own agent, beside the plugin’s', async () => {

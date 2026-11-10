@@ -1,15 +1,15 @@
 # @lostgradient/interborough-plugin
 
-The authoring package for Interborough plugins. A plugin is trusted, in-process code that the host loads once at startup; this package gives it `definePlugin`, the descriptor it declares, the context `setup` receives, the host API `afterStart` receives, and the types of everything it can contribute. Bureau depends on this package and never the other way around, so a plugin imports nothing from Bureau.
+The authoring package for Interborough plugins. A plugin is trusted, in-process code that the host loads once at startup; this package gives it `definePlugin`, the descriptor it declares, the context `setup` receives, the host API `start` receives, and the types of everything it can contribute. Bureau depends on this package and never the other way around, so a plugin imports nothing from Bureau.
 
 | Export | What it is |
 | --- | --- |
 | `definePlugin` | Declares a plugin and refuses a malformed descriptor where it is written. |
-| `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabledByDefault`, `configuration`, `secrets`, `content`, and `setup`. |
-| `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `toolApprovalHooks`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
-| `PluginSetupResult` | What `setup` returns: the contributions, and `afterStart(bureau, context)`. |
-| `PluginHostApi` | The structural slice of Bureau `afterStart` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
-| `PluginContributions` | Tools, activities, validators, guardrails, run hooks, decision routers, trigger kinds, hook action kinds, providers (each with its catalog rows), embedders, memory detectors, eval judges, MCP apps, event formatters, and code agents. |
+| `PluginDescriptor` | `name`, `version`, `description`, `required`, `enabled`, `configuration`, `secrets`, `content`, and `setup`. |
+| `PluginSetupContext` | The parsed `configuration`, the `secrets` reader, `storage` confined to the key prefix `plugin:<name>:`, the `host` API, and `approvals`, the host's tool-approval rule as a `policy` for a toolbox the plugin builds for a code agent. |
+| `PluginSetupResult` | What `setup` returns: the contributions, and `start(bureau, context)`. |
+| `PluginHost` | The structural slice of Bureau `start` receives: `agents.list`, `schedules.list`, `schedules.create`, `goals.create`. |
+| `PluginContributions` | Tools, activities, validators, guardrails, interceptors, decision routers, triggers, reactions, providers (each with its catalog rows), embedders, scorers, panels, formatters, and agents. |
 | `createPluginStorage` | Scopes a `Storage` to a plugin's key prefix. The host calls it; a plugin receives the result. |
 
 ## Where a plugin lives
@@ -77,11 +77,11 @@ The descriptor's members:
 
 - `name`, `version`, `description`: required. The name prefixes every contribution's id.
 - `required`: the owner cannot disable the plugin.
-- `enabledByDefault`: whether the plugin runs before the owner has chosen. It defaults to `true`; the demo plugin sets `false`.
+- `enabled`: whether the plugin runs before the owner has chosen. It defaults to `true`; the demo plugin sets `false`.
 - `configuration`: a Zod schema. The owner's value for it is parsed before `setup` runs.
 - `secrets`: the Bungalow secret keys the plugin needs.
 - `content`: the directory of agent, workflow and skill files the plugin ships.
-- `setup`: builds the contributions once at startup and may return `afterStart`.
+- `setup`: builds the contributions once at startup and may return `start`.
 
 ## What a plugin can contribute
 
@@ -92,18 +92,17 @@ The descriptor's members:
 | `tools` | Tools agents can call. |
 | `activities` | Activities a shipped workflow calls as `plugin:name`. |
 | `validators` | Goal validators, registered by name and version. |
-| `guardrails` | `inputDetectors` and `outputValidators`, added to the ones Operative applies to every agent. |
-| `runHooks` | Hooks added to every run. |
+| `guardrails` | `input` detectors and `output` validators, added to the ones Operative applies to every agent, `tools` validators that judge each tool call before it runs (COR-2104), and `memory` detectors that guard governed memory (each may declare `gates`: `admission`, `recall`, or both by default). An `input` or `output` entry may be `{ guardrail, action }` to keep an action of its own whatever its group's, and a `tools` validator carries its own `action` (`block`, `warn` or `tripwire`). An agent file chooses an `input`, `output` or `tools` guardrail with `guardrails: [plugin:name]`. Every guardrail has a non-empty `description`. An `input`, `output` or `tools` guardrail may instead be a `PluginGuardrailFactory` (COR-2118): `{ name, description, configuration, create }`, where `configuration` is the Zod schema an agent's configuration is parsed with and `create` builds the guardrail from the parsed value. An agent file configures it as `{ id: plugin:name, configuration }` (a bare id is configured with `{}`), each agent gets its own guardrail, and a field the agent leaves out takes the schema's default, so a plugin-wide setting belongs in the schema as that field's `.default(...)`. A factory wrapped as `{ guardrail: factory, action }` gives every guardrail it builds that action. |
+| `interceptors` | Run hooks, at any of Operative's hook points, that an agent file chooses with `interceptors: [plugin:name]`; they apply to the agents that select them, or to every agent with `appliesTo: 'every-agent'`. |
 | `decisionRouters` | Decision models that answer decisions of the kinds they name. |
-| `triggerKinds` | New external sources that start work. |
-| `hookActionKinds` | New things a hook can do when its event happens. |
+| `triggers` | New external sources that start work. |
+| `reactions` | New things a hook can do when its event happens. |
 | `providers` | Model providers, each with the catalog rows of its models. |
 | `embedders` | Embedders the `memory.embedder` setting can name. |
-| `memoryDetectors` | Detectors run after the default poisoning detector, on memory admission and on recall. |
-| `evalJudges` | Judges that score a sample of completed runs. |
-| `mcpApps` | Interface panels. |
-| `eventFormatters` | Titles and bodies for the activity views. |
-| `codeAgents` | Agents defined in code. |
+| `scorers` | Scorers that score a sample of completed runs. |
+| `panels` | Interface panels. |
+| `formatters` | Titles and bodies for the activity views. |
+| `agents` | Agents defined in code. |
 
 Four kinds are worth seeing in code, because they take a schema or a callback whose shape is not obvious from the name. A trigger kind starts listening and resolves with the function that stops it; a hook action kind receives an `idempotencyKey` that is the same for every attempt of one delivery, because a delivery interrupted by a restart is attempted again.
 
@@ -122,7 +121,7 @@ export default definePlugin({
         execute: async (argument: { input: unknown }) => ({ found: argument.input }),
       },
     ],
-    triggerKinds: [
+    triggers: [
       {
         name: 'heartbeat',
         description: 'Fires every interval.',
@@ -136,7 +135,7 @@ export default definePlugin({
         },
       },
     ],
-    hookActionKinds: [
+    reactions: [
       {
         name: 'notify',
         description: 'Posts the event somewhere, once per delivery.',
@@ -147,23 +146,68 @@ export default definePlugin({
         },
       },
     ],
-    eventFormatters: [
+    formatters: [
       {
         name: 'completed',
-        eventKinds: ['run.completed'],
-        format: (event) => ({ title: `A run completed on ${event.bureauId}` }),
+        eventKinds: ['run.settled'],
+        format: (event) => ({ title: `A run settled on ${event.bureauId}` }),
       },
     ],
   }),
 });
 ```
 
+An interceptor has a member for each point of Operative's hook map (`onRunError`, `validateToolResult` and `selectTools` among them), and a point is written as the function or as `{ handler, replay, onError, priority }`. `replay: 'safe'` marks a hook with no external side effect, so a recovered durable run knows it can run again; a hook that says nothing is `effectful`. `onError` returns `'continue'` to go on to the next hook when this one throws, or `'abort'` to fail the step, which is also what a hook with no `onError` does. A `priority` sorts a higher number first, within a range of at most 999: a number below the one just above Operative's guardrails is raised to it, so a plugin never sorts behind them, and a number above 999 is lowered to it, because the host adds a tier's band to a priority and bands are 1000 apart, so a higher one would sort the plugin's hook ahead of the host's own invariants. The observing points (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) and `onError` are settled by Operative whatever `onError` says. While the plugin needs setup (a declared secret is missing), every hook of every interceptor refuses to run its handler.
+
+An interceptor that declares `appliesTo: 'every-agent'` runs for every run the host starts (file agents, code agents, dispatched agents and their children) without any agent file listing it. The host composes it in a `plugin` tier between its own hooks and the agent's, so its entries show `tier: 'plugin'` in a run's hook plan. An agent file that also lists it gets it once, in its own tier, as an interceptor it chose. While its plugin needs setup, such an interceptor refuses for an agent that lists it, as any chosen interceptor does, and is skipped for every other agent: its handlers do not run, and the run goes on as if it were absent, so a missing secret never fails an agent that did not choose it.
+
+The demo plugin's `audit` set (`plugins/demo/src/audit.ts`) is the worked example. It applies to every agent, because the demo's agents are code agents, which no agent file can list, and it has one `onStep` hook that writes what each step spent and which tool calls it made (their ids and the tools they named) to the plugin's own storage, keyed by the run and the step. The key is the point of the example: a hook declared `replay: 'effectful'` runs again when a durable run recovers a step, so an entry keyed by `run:<runId>:step:<n>` is overwritten by the replay instead of repeated. `runId` is on every `StepResult`, including a step that only called tools and committed no row, so it is the key to read, not a message id. A step with no `runId` (a run the host started with none) has no key, so the hook writes nothing for it.
+
+```ts
+import { definePlugin, type PluginInterceptor } from '@lostgradient/interborough-plugin';
+import { textValueStore, type Storage } from '@lostgradient/storage';
+
+/** The key one step's entry is stored under: the same for a step and its replay. */
+function auditStepKey(runId: string, step: number): string {
+  return `run:${runId}:step:${step}`;
+}
+
+/** The `audit` set over the plugin's own storage. */
+function auditInterceptor(storage: Storage): PluginInterceptor {
+  const entries = textValueStore(storage, { disposeUnderlyingStorage: false });
+  return {
+    name: 'audit',
+    appliesTo: 'every-agent',
+    onStep: {
+      replay: 'effectful',
+      handler: async (result) => {
+        if (result.runId === undefined) return;
+        const entry = {
+          step: result.step,
+          usage: result.usage ?? null,
+          toolCallIds: result.toolCalls.map((call) => call.id),
+          toolNames: result.toolCalls.map((call) => call.name),
+        };
+        await entries.set(auditStepKey(result.runId, result.step), JSON.stringify(entry));
+      },
+    },
+  };
+}
+
+export default definePlugin({
+  name: 'audit-example',
+  version: '1.0.0',
+  description: 'Records what each step of every run spent and which tools it called.',
+  setup: ({ storage }) => ({ interceptors: [auditInterceptor(storage)] }),
+});
+```
+
 An interface panel is a page the host bundles from a browser entry at startup and serves as a `ui://` resource, under a content security policy that denies every origin and permission. A panel may call only the tools in `allowedTools`, and `opensFromTool` is the one of them a client runs to open it. The tool must be unique across plugins, because a tool links to one page: a second app that opens from the same tool is skipped with `name-clash`. Put the version in the `uri`, so a changed contract is a new resource.
 
 ```ts
-import { definePlugin, type PluginMcpApp } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginPanel } from '@lostgradient/interborough-plugin';
 
-const runInspector: PluginMcpApp = {
+const runInspector: PluginPanel = {
   name: 'run-inspector',
   title: 'Run inspector',
   uri: 'ui://example/run-inspector/v1',
@@ -176,11 +220,11 @@ export default definePlugin({
   name: 'inspector',
   version: '1.0.0',
   description: 'A run inspector panel.',
-  setup: () => ({ mcpApps: [runInspector] }),
+  setup: () => ({ panels: [runInspector] }),
 });
 ```
 
-An entry that does not build leaves the plugin `running` with an `mcp-app-failed` problem, and the other contributions keep working.
+An entry that does not build leaves the plugin `running` with a `panel-failed` problem, and the other contributions keep working.
 
 ## Identities: files float, records pin
 
@@ -240,7 +284,7 @@ You greet people with the example:greet tool.
 }
 ```
 
-A running plugin's agents and workflows are listed as `plugin:name`, and a plugin that is disabled or skipped ships nothing. The one exception is a disabled plugin's code agents: the host runs its `setup` once, with scratch storage, no secrets and no host API, keeps only `codeAgents`, and lists each as `unavailable` with the reason `Plugin <title> is disabled`, so a person can read it and duplicate it but no run starts on it. Nothing else the plugin returns is registered, and `afterStart` never runs, so keep `setup` free of side effects. Files reload while the host runs, but they are read-only: the host refuses to write or delete a definition a plugin holds, and says to duplicate it. Duplicate writes an editable copy into the owner's directory, and an owner file's stem has no `:`, so a copy can never claim a plugin's namespace. A workflow file calls a plugin activity as `plugin:name`, with no version.
+A running plugin's agents and workflows are listed as `plugin:name`, and a plugin that is disabled or skipped ships nothing. The one exception is a disabled plugin's code agents: the host runs its `setup` once, with scratch storage, no secrets and no host API, keeps only `agents`, and lists each as `unavailable` with the reason `Plugin <title> is disabled`, so a person can read it and duplicate it but no run starts on it. Nothing else the plugin returns is registered, and `start` never runs, so keep `setup` free of side effects. Files reload while the host runs, but they are read-only: the host refuses to write or delete a definition a plugin holds, and says to duplicate it. Duplicate writes an editable copy into the owner's directory, and an owner file's stem has no `:`, so a copy can never claim a plugin's namespace. A workflow file calls a plugin activity as `plugin:name`, with no version.
 
 A file that names a contribution nothing loaded holds (a tool you misspelled, a plugin that is disabled) is invalid with a `reference-unresolved` problem naming the file and the id. The plugin stays `running`.
 
@@ -277,13 +321,13 @@ export default definePlugin({
 });
 ```
 
-A plugin whose declared secret is missing still loads. Every contribution it registered is available but refuses to run, and the plugin is `needs-setup` with one `secret-missing` problem per key. Saving the secret (`PUT /host/plugins/<name>/secrets/<key>`) makes them available at once, and removing it makes them refuse again, with no restart. Because the check is per call, read the secret inside `execute`, not once in `setup`. The only contributions the gate does not cover are providers and MCP apps, which the host handles itself. No listing, response or log line contains a secret's value.
+A plugin whose declared secret is missing still loads. Every contribution it registered is available but refuses to run, and the plugin is `needs-setup` with one `secret-missing` problem per key. Saving the secret (`PUT /host/plugins/<name>/secrets/<key>`) makes them available at once, and removing it makes them refuse again, with no restart. Because the check is per call, read the secret inside `execute`, not once in `setup`. The only contributions the gate does not cover are providers and panels, which the host handles itself. No listing, response or log line contains a secret's value.
 
 `setup`'s `storage` is confined to the key prefix `plugin:<name>:`, so a plugin cannot read another's records.
 
 ## Do work after Bureau starts
 
-`afterStart` runs once, after Bureau has been built, with the host API and the same context `setup` received, `secrets` and `storage` included. It runs even when a secret is missing. A rejection marks the plugin with an `after-start-failed` problem and leaves its contributions registered.
+`start` runs once, after Bureau has been built, with the host API and the same context `setup` received, `secrets` and `storage` included. It runs even when a secret is missing. A rejection marks the plugin with a `start-failed` problem and leaves its contributions registered.
 
 ```ts
 import { definePlugin } from '@lostgradient/interborough-plugin';
@@ -294,7 +338,7 @@ export default definePlugin({
   description: 'Schedules a daily digest.',
   setup() {
     return {
-      async afterStart(bureau, { storage }) {
+      async start(bureau, { storage }) {
         const existing = await bureau.schedules.list();
         const agent = bureau.agents.list().find((listing) => listing.state === 'ready');
         if (agent && existing?.items.length === 0) {
@@ -311,7 +355,7 @@ export default definePlugin({
 });
 ```
 
-`afterStart` runs on every start, so record that you did the work (here, in `storage`) and check before repeating it. A contributed tool that needs the host API reads it from the setup context's `host`; a call made from `setup` itself, before the host has started, rejects.
+`start` runs on every start, so record that you did the work (here, in `storage`) and check before repeating it. A contributed tool that needs the host API reads it from the setup context's `host`; a call made from `setup` itself, before the host has started, rejects.
 
 ## Problems and statuses
 
@@ -325,8 +369,8 @@ export default definePlugin({
 | `name-clash` | `skipped` | A name is already held; the first loaded wins. `name`, `first`, `second` (each `{ source, location }`). |
 | `pinned-version-unavailable` | `running` | Work recorded a version that is not loaded. `id`, `version`, `waitingRuns`. |
 | `setup-failed` | `skipped` | `setup` threw, or returned something that cannot be registered. `message`. |
-| `after-start-failed` | `running` | `afterStart` threw. `message`. |
-| `mcp-app-failed` | `running` | An app's entry did not build. `app`, `message`. |
+| `start-failed` | `running` | `start` threw. `message`. |
+| `panel-failed` | `running` | An app's entry did not build. `app`, `message`. |
 | `secret-refused` | `skipped` | The host cannot honor a declared secret. `key`, `message`. |
 | `load-failed` | not listed | A folder's code could not load, such as an import nothing provides. `message`. The folder appears in the `unloaded` array. |
 | `development-source` | as its own | Loaded with `--plugin`. `path`. |
@@ -360,6 +404,6 @@ const plugin = definePlugin({
 pluginContract(plugin, { createHost: createPluginTestHost });
 ```
 
-The suite registers one test per check. The descriptor must be valid, the identities it holds must read without a host and never repeat, and the host must report the plugin `running` with no problems, which includes every file it ships resolving the contributions it names. `checkPluginContract` runs the same checks and returns the failures instead of registering tests.
+The suite registers one test per check. The descriptor must be valid, the identities it holds must read without a host and never repeat, and the host must report the plugin `running` with no problems, which includes every file it ships resolving the contributions it names. It also runs a scripted run for each hook point an interceptor declares and fails when the declared hook throws, even when its own `onError` would have continued: the host's scripted model answers once (the `answer` run), calls a read-only tool and then answers (`tool`), or throws (`failure`), and the agent it runs chooses every interceptor the plugin declares. The points no scripted run reaches are unchecked, and the suite never runs a hook declared at one of them: `beforeCompaction`, `beforeBackgroundCompaction` and `afterCompaction` (the scripted conversation is never long enough to compact) and `onRunAbort` (the scripted run is never aborted). `PLUGIN_CONTRACT_UNCHECKED_HOOK_POINTS` lists them. `checkPluginContract` runs the same checks and returns the failures instead of registering tests.
 
 For the host's side of all this, the routes and the Settings screen, see the Plugins section of [the Interborough README](../../applications/interborough/README.md).

@@ -20,7 +20,7 @@ import {
 } from './environment-configuration.ts';
 import { PLUGIN_RUNTIME_DIRECTORY_VARIABLE } from './folder-plugins.ts';
 import { launchCommandEnvironment, shellQuote } from './launch-command.ts';
-import { MCP_APP_PREBUILT_DIRECTORY_VARIABLE } from './mcp-app-mounts.ts';
+import { PANEL_PREBUILT_DIRECTORY_VARIABLE } from './panel-mounts.ts';
 import { serveHost } from './serve.ts';
 import { supervise } from './supervisor.ts';
 
@@ -161,6 +161,37 @@ async function run(arguments_: string[]): Promise<number> {
           readline.close();
         }
       },
+      promptSecret: async (question, signal) => {
+        if (!process.stdin.isTTY || process.stdin.setRawMode === undefined)
+          throw new Error('A protected secret prompt requires a TTY.');
+        process.stderr.write(question);
+        process.stdin.setRawMode(true);
+        process.stdin.resume();
+        return await new Promise<string>((_resolve, reject) => {
+          let answer = '';
+          const onAbort = () => finish(new DOMException('Aborted', 'AbortError'));
+          const onData = (chunk: Buffer) => {
+            for (const byte of chunk) {
+              if (byte === 3) return finish(new DOMException('Aborted', 'AbortError'));
+              if (byte === 13 || byte === 10) return finish();
+              if (byte === 127) answer = answer.slice(0, -1);
+              else answer += String.fromCharCode(byte);
+            }
+          };
+          const finish = (error?: Error) => {
+            process.stdin.setRawMode?.(false);
+            process.stdin.pause();
+            process.stdin.off('data', onData);
+            signal?.removeEventListener('abort', onAbort);
+            if (error === undefined) {
+              process.stderr.write('\n');
+              _resolve(answer);
+            } else reject(error);
+          };
+          process.stdin.on('data', onData);
+          signal?.addEventListener('abort', onAbort, { once: true });
+        });
+      },
     });
     process.removeListener('SIGINT', onInterrupt);
     if (result.stdoutBytes !== undefined) process.stdout.write(result.stdoutBytes);
@@ -196,12 +227,12 @@ async function run(arguments_: string[]): Promise<number> {
       ...result.environment,
       [BUILD_DIRECTORY_VARIABLE]: buildDirectory,
       [PLUGIN_RUNTIME_DIRECTORY_VARIABLE]: pluginRuntimeDirectory(executable),
-      [MCP_APP_PREBUILT_DIRECTORY_VARIABLE]: join(
+      [PANEL_PREBUILT_DIRECTORY_VARIABLE]: join(
         dirname(executable),
         '..',
         'share',
         'interborough',
-        'mcp-apps',
+        'panels',
       ),
       ...launchCommandEnvironment({
         command: [executable, ...arguments_].map(shellQuote).join(' '),

@@ -14,6 +14,13 @@
  * up; it reports nothing when nothing changed. A directory that does not exist is empty, watched
  * through its nearest existing ancestor until it appears.
  *
+ * `watch: 'poll'` (COR-2291) is the same loop without `fs.watch`: no native watcher is opened or
+ * asked for, and the safety rescan is the only trigger, so a change is seen within one
+ * {@link DIRECTORY_POLL_INTERVAL_MILLISECONDS}. The rescan lists the real directory, so an edit, a
+ * rename, a removal, and the directory itself being deleted and created again are all found the
+ * same way. Stopping a polled directory waits for a scan already in flight, so nothing scans in the
+ * background after it resolves.
+ *
  * @module watched-directory
  */
 
@@ -41,6 +48,13 @@ export interface DirectoryChange {
   readonly removed: string[];
 }
 
+/**
+ * How a directory is watched. `true` arms `fs.watch` and the safety rescan; `false` arms neither,
+ * so a change is picked up by the next `refresh()`; `'poll'` arms the safety rescan alone and
+ * opens no native watcher, for a host where native watchers are unavailable or too slow to close.
+ */
+export type DirectoryWatchMode = boolean | 'poll';
+
 export interface WatchedDirectoryOptions {
   readonly directory: string;
   /** What the directory holds, for diagnostics: `agent directory`. */
@@ -54,8 +68,11 @@ export interface WatchedDirectoryOptions {
   /** Where watcher and scan failures are reported. */
   readonly diagnose: (message: string, cause: unknown) => void;
   readonly operations?: AgentFileOperations | undefined;
-  /** Watch the directory. Defaults to `true`; `false` leaves reloading to `refresh()`. */
-  readonly watch?: boolean | undefined;
+  /**
+   * Watch the directory: `true` (the default) with `fs.watch` and the safety rescan, `'poll'` with
+   * the safety rescan alone, `false` not at all, which leaves reloading to `refresh()`.
+   */
+  readonly watch?: DirectoryWatchMode | undefined;
   /** How a directory is watched. Defaults to `fs.watch` without keeping the process alive. */
   readonly openWatcher?:
     | ((path: string, listener: (event: string, filename: string | null) => void) => FSWatcher)
@@ -71,8 +88,13 @@ export interface WatchedDirectory {
   readonly onChange: (listener: (change: DirectoryChange) => void) => () => void;
   /** Begin watching: arm `fs.watch` and the safety rescan. Does nothing under `watch: false`. */
   readonly startWatching: () => void;
-  /** Stop watching: close the watchers and the safety rescan. A scan in flight finishes. */
-  readonly stopWatching: () => void;
+  /**
+   * Stop watching: close the watchers and the safety rescan, and report nothing the watchers or the
+   * rescan would still trigger. A scan in flight finishes; under `watch: 'poll'` the returned
+   * promise settles only once it has, so a caller can wait for the directory to go quiet. Under
+   * `true` it is already settled.
+   */
+  readonly stopWatching: () => Promise<void>;
 }
 
 const NO_BYTES = new Uint8Array(0);
@@ -167,6 +189,12 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
   /** The watchers that are open, by the path each watches. */
   const watchers = new Map<string, { readonly watcher: FSWatcher; readonly watches: string }>();
   let forceRearm = false;
+  /**
+   * Which watch this is, raised by `stopWatching()`. A watcher event or a timer tick carries the
+   * generation it was armed under, and one from an earlier generation is dropped, so an event that
+   * was already queued when the watch stopped cannot start a scan afterward.
+   */
+  let generation = 0;
   let pollTimer: unknown;
   let pollRuntime: RuntimeServices | undefined;
 
@@ -191,14 +219,17 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
 
   function open(path: string, entry: string | undefined): void {
     if (!watching) return;
+    const armedIn = generation;
     try {
       const opened = openWatcher(path, (event, filename) => {
+        if (armedIn !== generation) return;
         const name = filename ?? null;
         if (entry !== undefined && name !== null && name !== entry) return;
         if (entry === undefined && event === 'rename' && name === null) forceRearm = true;
         trigger();
       });
       opened.on('error', (error) => {
+        if (armedIn !== generation) return;
         options.diagnose(`The ${options.label} watcher failed.`, error);
         forceRearm = true;
         trigger();
@@ -234,8 +265,10 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
 
   function startPolling(): void {
     if (pollTimer !== undefined || !watching) return;
+    const armedIn = generation;
     pollRuntime = options.runtime();
     pollTimer = pollRuntime.timers.setInterval(() => {
+      if (armedIn !== generation) return;
       polled = true;
       trigger();
     }, DIRECTORY_POLL_INTERVAL_MILLISECONDS);
@@ -253,9 +286,10 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
       dirty = false;
       const heartbeat = polled;
       polled = false;
-      // Armed before the scan, so a change after the scan reads the directory is not missed.
+      // Armed before the scan, so a change after the scan reads the directory is not missed. A
+      // polled directory opens no watcher: its rescan is what looks.
       try {
-        await arm();
+        if (options.watch !== 'poll') await arm();
         await scanOnce(heartbeat);
       } catch (error) {
         options.diagnose(`The ${options.label} could not be scanned.`, error);
@@ -290,10 +324,12 @@ export function createWatchedDirectory(options: WatchedDirectoryOptions): Watche
     stopWatching() {
       // A scan in flight may be setting watchers up: it opens none once `watching` is cleared.
       watching = false;
+      generation += 1;
       if (pollTimer !== undefined) pollRuntime?.timers.clearInterval(pollTimer);
       pollTimer = undefined;
       for (const held of watchers.values()) held.watcher.close();
       watchers.clear();
+      return options.watch === 'poll' ? (running ?? Promise.resolve()) : Promise.resolve();
     },
   };
 }

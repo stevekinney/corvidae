@@ -8,6 +8,7 @@ import {
   AgentRunError,
   BudgetExceededError,
   ElicitationDeniedError,
+  type GuardrailPhase,
   GuardrailTripwireError,
   MaximumStepsExceededError,
 } from '../errors';
@@ -56,6 +57,7 @@ export async function readRunStateFromCheckpoint(
     runState.schemaAttempts = checkpoint.cursor.schemaAttempts;
     runState.steps = checkpoint.steps.map((record, index) => ({
       step: record.step,
+      runId,
       conversation,
       content: record.content,
       parts: record.parts,
@@ -478,7 +480,7 @@ interface FinalizeArgs {
     | {
         guardrailName: string;
         category: string;
-        phase: 'input' | 'output';
+        phase: GuardrailPhase;
         confidence: number;
         detail?: string;
       }

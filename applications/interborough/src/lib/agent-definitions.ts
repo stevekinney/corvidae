@@ -31,7 +31,7 @@ export const AGENT_IDENTIFIER_MAX_LENGTH = 64;
 export const DEFAULT_STEP_LIMIT = 25;
 
 /**
- * The agent's `skillDescriptors` entry. The editor never edits one, but a save sends them back unchanged, so
+ * The agent's `card` entry. The editor never edits one, but a save sends them back unchanged, so
  * a key this page does not know is kept as it was read and never stripped.
  */
 const skillSchema = z.looseObject({
@@ -44,17 +44,17 @@ const skillSchema = z.looseObject({
   outputModes: z.array(z.string()).optional(),
 });
 
-/** An agent definition's `skillDescriptors` entry, as the Bureau reads it back. */
+/** An agent definition's `card` entry, as the Bureau reads it back. */
 export type AgentSkill = z.infer<typeof skillSchema>;
 
-/** When a tool asks a person before it runs (`toolApproval` in an agent file). A tool the file leaves out is `on-changes`. */
+/** When a tool asks a person before it runs (`approvals` in an agent file). A tool the file leaves out is `on-changes`. */
 export const TOOL_APPROVALS = ['never', 'on-changes', 'always', 'blocked'] as const;
 
 /** One of the four answers to "when does this tool ask first?". */
 export type ToolApproval = (typeof TOOL_APPROVALS)[number];
 
 /**
- * The reasoning efforts an agent file may start a chat at (`defaultEffort`), from least to most:
+ * The reasoning efforts an agent file may start a chat at (`effort`), from least to most:
  * the Bureau's `agentDefaultEffortSchema`, which the browser cannot import.
  * `src/host/host-agent-definitions.test.ts` fails if the two drift apart.
  */
@@ -63,13 +63,46 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 /** One of the efforts an agent file may name. */
 export type Effort = (typeof EFFORTS)[number];
 
+/**
+ * One entry of a definition's `guardrails` (COR-2118): a guardrail's id, `plugin:name`, or the id
+ * with the configuration the agent gives it.
+ */
+const guardrailEntrySchema = z.union([
+  z.string(),
+  z.object({ id: z.string(), configuration: z.record(z.string(), z.unknown()) }),
+]);
+
+/** An entry of a definition's `guardrails`: an id, or an id with its configuration. */
+export type AgentGuardrailEntry = z.infer<typeof guardrailEntrySchema>;
+
+/** The guardrail an entry names, whichever form it is written in. */
+export function guardrailEntryId(entry: AgentGuardrailEntry): string {
+  return typeof entry === 'string' ? entry : entry.id;
+}
+
+/**
+ * The entries to save for the guardrail ids a form holds: each id an entry of `kept` configures
+ * keeps that entry, so a form that edits ids alone never drops a configuration it does not show.
+ */
+export function guardrailEntriesFor(
+  ids: readonly string[],
+  kept: readonly AgentGuardrailEntry[] | null | undefined,
+): AgentGuardrailEntry[] {
+  const configured = new Map(
+    (kept ?? []).flatMap((entry) =>
+      typeof entry === 'string' ? [] : [[entry.id, entry] as const],
+    ),
+  );
+  return ids.map((id) => configured.get(id) ?? id);
+}
+
 const definitionSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
   model: z.string(),
   /**
    * The models a session of the agent may be switched to (COR-1559), or `null` when the file lists
-   * none. The editor never edits it, but a save sends it back unchanged, as it does `skillDescriptors`: an
+   * none. The editor never edits it, but a save sends it back unchanged, as it does `card`: an
    * update that omits it removes the list.
    */
   models: z.array(z.string()).nullable().default(null),
@@ -77,15 +110,36 @@ const definitionSchema = z.object({
    * The reasoning effort a chat of the agent starts at (COR-1961), or `null` when the file sets none
    * and the provider's own default applies. The default model must support it.
    */
-  defaultEffort: z.enum(EFFORTS).nullable().default(null),
+  effort: z.enum(EFFORTS).nullable().default(null),
   tools: z.array(z.string()),
-  skillDescriptors: z.array(skillSchema),
+  card: z.array(skillSchema),
   /** The executable skills a run may activate; `null` when the file lists none, and the agent has none. */
-  allowedSkills: z.array(z.string()).nullable().default(null),
-  childAgents: z.array(z.string()).nullable().optional(),
+  skills: z.array(z.string()).nullable().default(null),
+  children: z.array(z.string()).nullable().optional(),
   a2a: z.boolean(),
-  /** The most steps one run may take; `null` when the file sets none. */
-  stepLimit: z.number().int().nullable().default(null),
+  /**
+   * What a run may take, spend and use: `steps`, the most steps one run may take; `cost`, what the
+   * agent may spend in US dollars (`run`, `chat`, and `warn`, fractions of `run`); `tools`, what one
+   * run's tools may use (`calls`, `seconds`). Each is `null` when the file sets none.
+   */
+  limits: z
+    .object({
+      steps: z.number().int().nullable().default(null),
+      cost: z
+        .object({
+          run: z.number(),
+          chat: z.number().optional(),
+          /** The fractions of `run` at which a run warns. The editor never edits them; a save sends them back. */
+          warn: z.array(z.number()).optional(),
+        })
+        .nullable()
+        .default(null),
+      tools: z
+        .object({ calls: z.number().optional(), seconds: z.number().optional() })
+        .nullable()
+        .default(null),
+    })
+    .default({ steps: null, cost: null, tools: null }),
   /**
    * How a run retries a failed generate call (`attempts`, `delayMilliseconds`, `jitter`); `null`
    * when the file sets none. The editor never edits it: a save sends it back, and a copy keeps it.
@@ -93,37 +147,42 @@ const definitionSchema = z.object({
   retry: z.looseObject({ attempts: z.number() }).nullable().default(null),
   /** Whether and when a run compacts its conversation; `null` when the file sets none. Carried like `retry`. */
   compaction: z.looseObject({ enabled: z.boolean() }).nullable().default(null),
-  /** The plugin run hook sets (`plugin:name`) the file lists; `null` when it lists none. Carried like `retry`. */
-  hooks: z.array(z.string()).nullable().default(null),
+  /** The plugin interceptors (`plugin:name`) the file lists; `null` when it lists none. Carried like `retry`. */
+  interceptors: z.array(z.string()).nullable().default(null),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: z.array(z.string()).nullable().default(null),
-  /** The plugin guardrails (`plugin:name`) the file lists besides the default preset; `null` when it lists none. */
-  guardrails: z.array(z.string()).nullable().default(null),
-  /** What one run may spend; `null` when the file sets no limit. */
-  costBudget: z
-    .object({
-      perRunUsd: z.number(),
-      perChatUsd: z.number().optional(),
-      /** The fractions of the budget at which a run warns. The editor never edits them; a save sends them back. */
-      warnAt: z.array(z.number()).optional(),
-    })
-    .nullable()
-    .default(null),
-  /** What one run's tools may use; `null` when the file sets no limit. */
-  toolBudget: z
-    .object({ maxCalls: z.number().optional(), maxDurationSeconds: z.number().optional() })
-    .nullable()
-    .default(null),
+  /**
+   * The plugin guardrails the file lists besides the default preset, each `plugin:name` or
+   * `{ id, configuration }` (COR-2118); `null` when it lists none.
+   */
+  guardrails: z.array(guardrailEntrySchema).nullable().default(null),
   /**
    * When each listed tool asks first, by tool name; `null` when the file sets none. A tool the
    * map leaves out is `on-changes`. Every key is one of `tools`.
    */
-  toolApproval: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
+  approvals: z.record(z.string(), z.enum(TOOL_APPROVALS)).nullable().default(null),
   instructions: z.string(),
 });
 
 /** The definition of a file agent, as `bureau.agents.definitions.get` shows it. */
 type AgentDefinition = z.infer<typeof definitionSchema>;
+
+/** The limits an update sends: a limit left out keeps the file's, and `null` removes it. */
+export interface AgentLimitsInput {
+  /** The most steps one run may take, in whole steps. */
+  readonly steps?: number | null;
+  /** What the agent may spend, in US dollars: `run`, `chat`, and `warn` as fractions of `run`. */
+  readonly cost?: {
+    readonly run: number;
+    readonly chat?: number;
+    readonly warn?: readonly number[];
+  } | null;
+  /** What one run's tools may use: a count of `calls`, and `seconds` of running. */
+  readonly tools?: {
+    readonly calls?: number;
+    readonly seconds?: number;
+  } | null;
+}
 
 const problemSchema = z.object({
   code: z.string(),
@@ -169,7 +228,7 @@ const detailSchema = z.object({
       tools: z.array(z.string()),
       /** The executable skills the agent can activate, by name. */
       skills: z.array(z.string()),
-      skillDescriptors: z.array(skillSchema),
+      card: z.array(skillSchema),
       instructions: z.string().nullable(),
     })
     .nullable()
@@ -236,7 +295,7 @@ const catalogModelSchema = z.object({
   /** What the model takes and gives, by modality (`text`, `image`, ...): only `input` is read. */
   modalities: z.record(z.string(), z.object({ input: z.boolean() })),
   /**
-   * The efforts the model supports: `portable` is the tiers an agent file's `defaultEffort` may
+   * The efforts the model supports: `portable` is the tiers an agent file's `effort` may
    * name, and the Bureau refuses a save that names another (`effort-not-supported`). It is empty
    * for a model with no effort control.
    */
@@ -300,23 +359,29 @@ export type AgentDefinitionInput = {
    * The reasoning effort a chat of the agent starts at, which the default `model` must support.
    * `null` removes it; left out, an update keeps the file's.
    */
-  readonly defaultEffort?: Effort | null;
+  readonly effort?: Effort | null;
   readonly tools: readonly string[];
   /** Carried through a save unchanged: the editor shows no control for them. */
-  readonly skillDescriptors: readonly AgentSkill[];
+  readonly card: readonly AgentSkill[];
   /**
    * The executable skills a run may activate. An update that leaves it out keeps the file's list,
    * `null` removes it, and an empty list grants none.
    */
-  readonly allowedSkills?: readonly string[] | null;
+  readonly skills?: readonly string[] | null;
   /** File agents this definition may dispatch as durable children. */
-  readonly childAgents?: readonly string[] | null;
+  readonly children?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */
   readonly a2a?: boolean;
-  /** The most steps a run may take. `null` removes the limit; left out, an update keeps the file's. */
-  readonly stepLimit?: number | null;
-  /** The plugin guardrails (`plugin:name`). `null` removes them; left out, an update keeps the file's. */
-  readonly guardrails?: readonly string[] | null;
+  /**
+   * What a run may take, spend and use. `null` removes every limit; left out, an update keeps the
+   * file's. Inside it, a limit left out keeps the file's and `null` removes it.
+   */
+  readonly limits?: AgentLimitsInput | null;
+  /**
+   * The plugin guardrails, each `plugin:name` or `{ id, configuration }`. `null` removes them; left
+   * out, an update keeps the file's.
+   */
+  readonly guardrails?: readonly AgentGuardrailEntry[] | null;
   /**
    * How a run retries a failed generate call. The editor shows no control for it: a save carries it
    * through and a copy keeps it. Left out, an update keeps the file's.
@@ -324,24 +389,13 @@ export type AgentDefinitionInput = {
   readonly retry?: AgentDefinition['retry'];
   /** Whether and when a run compacts its conversation; carried like `retry`. */
   readonly compaction?: AgentDefinition['compaction'];
-  /** The plugin run hook sets (`plugin:name`); carried like `retry`. */
-  readonly hooks?: readonly string[] | null;
-  /** What one run, and one chat, may spend. `null` removes the limit; left out, an update keeps the file's. */
-  readonly costBudget?: {
-    readonly perRunUsd: number;
-    readonly perChatUsd?: number;
-    readonly warnAt?: readonly number[];
-  } | null;
-  /** What one run's tools may use. `null` removes the limit; left out, an update keeps the file's. */
-  readonly toolBudget?: {
-    readonly maxCalls?: number;
-    readonly maxDurationSeconds?: number;
-  } | null;
+  /** The plugin interceptors (`plugin:name`); carried like `retry`. */
+  readonly interceptors?: readonly string[] | null;
   /**
    * When each tool asks first. `null` removes the map; left out, an update keeps the file's. A
    * key must be one of `tools`, or the Bureau refuses the write.
    */
-  readonly toolApproval?: Readonly<Record<string, ToolApproval>> | null;
+  readonly approvals?: Readonly<Record<string, ToolApproval>> | null;
   /**
    * Documents beside the agent's file that its instructions are read with. Only a create sends it (a
    * copy of an agent that has them); left out, an update keeps the file's.
@@ -359,10 +413,10 @@ export async function getAgentDefinition(id: string, options?: Options): Promise
 }
 
 /**
- * The model a person chose for a built-in agent, as `provider/model`, or `null` when the agent keeps
- * its own. A built-in agent's definition does not name the model while no provider serves it, so
- * this is how a schedule learns the agent needs one. An identifier that is no built-in agent is a
- * `NotFound` fault.
+ * The model a person chose for a code agent (a built-in agent, or a running plugin's), as
+ * `provider/model`, or `null` when the agent keeps its own. A code agent's definition does not name
+ * the model while no provider serves it, so this is how a schedule learns the agent needs one. An
+ * identifier that is no code agent the catalog runs is a `NotFound` fault.
  */
 export async function getAgentOverrideModel(id: string, options?: Options): Promise<string | null> {
   const answer = z

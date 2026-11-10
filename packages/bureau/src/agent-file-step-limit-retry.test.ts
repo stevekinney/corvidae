@@ -1,5 +1,5 @@
 /**
- * COR-1865 — an agent file's `stepLimit` and `retry`: what they accept, how a write keeps them,
+ * COR-1865 — an agent file's `limits.steps` and `retry`: what they accept, how a write keeps them,
  * that a definition without them still loads, and that they reach the run.
  */
 import { type GenerateFunction, ProviderError } from '@lostgradient/operative';
@@ -35,16 +35,16 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe('stepLimit and retry in the frontmatter', () => {
+describe('limits.steps and retry in the frontmatter', () => {
   it('parses both, and a file without them has neither', () => {
     const { definition } = parsed(
-      '---\nmodel: a/b\nstepLimit: 40\nretry:\n  attempts: 3\n  delayMilliseconds: 250\n  jitter: true\n---\n',
+      '---\nmodel: a/b\nlimits: { steps: 40 }\nretry:\n  attempts: 3\n  delayMilliseconds: 250\n  jitter: true\n---\n',
     );
-    expect(definition.stepLimit).toBe(40);
+    expect(definition.limits?.steps).toBe(40);
     expect(definition.retry).toEqual({ attempts: 3, delayMilliseconds: 250, jitter: true });
 
     const bare = parsed('---\nmodel: a/b\n---\n').definition;
-    expect(Object.hasOwn(bare, 'stepLimit')).toBe(false);
+    expect(Object.hasOwn(bare, 'limits')).toBe(false);
     expect(Object.hasOwn(bare, 'retry')).toBe(false);
     expect(parsed('---\nmodel: a/b\nretry: {attempts: 2}\n---\n').definition.retry).toEqual({
       attempts: 2,
@@ -52,10 +52,10 @@ describe('stepLimit and retry in the frontmatter', () => {
   });
 
   it('names the field of every out-of-range or malformed value', () => {
-    expect(issuePaths('stepLimit: 0')).toEqual(['stepLimit']);
-    expect(issuePaths('stepLimit: 1001')).toEqual(['stepLimit']);
-    expect(issuePaths('stepLimit: 2.5')).toEqual(['stepLimit']);
-    expect(issuePaths('stepLimit: "25"')).toEqual(['stepLimit']);
+    expect(issuePaths('limits: { steps: 0 }')).toEqual(['limits.steps']);
+    expect(issuePaths('limits: { steps: 1001 }')).toEqual(['limits.steps']);
+    expect(issuePaths('limits: { steps: 2.5 }')).toEqual(['limits.steps']);
+    expect(issuePaths('limits: { steps: "25" }')).toEqual(['limits.steps']);
     expect(issuePaths('retry: {attempts: 0}')).toEqual(['retry.attempts']);
     expect(issuePaths('retry: {attempts: 11}')).toEqual(['retry.attempts']);
     expect(issuePaths('retry: {attempts: 1.5}')).toEqual(['retry.attempts']);
@@ -73,8 +73,8 @@ describe('stepLimit and retry in the frontmatter', () => {
   });
 
   it('accepts the bounds', () => {
-    expect(issuePaths('stepLimit: 1')).toBeUndefined();
-    expect(issuePaths('stepLimit: 1000')).toBeUndefined();
+    expect(issuePaths('limits: { steps: 1 }')).toBeUndefined();
+    expect(issuePaths('limits: { steps: 1000 }')).toBeUndefined();
     expect(
       issuePaths('retry: {attempts: 10, delayMilliseconds: 60000, jitter: false}'),
     ).toBeUndefined();
@@ -82,30 +82,30 @@ describe('stepLimit and retry in the frontmatter', () => {
   });
 });
 
-describe('writing stepLimit and retry', () => {
+describe('writing limits.steps and retry', () => {
   it('writes a new file that parses back to the same values', () => {
     const bytes = serializeNewAgentFile({
       model: 'a/b',
-      stepLimit: 12,
+      limits: { steps: 12 },
       retry: { attempts: 4, delayMilliseconds: 500, jitter: true },
       instructions: 'Body.\n',
     });
     const text = decoder.decode(bytes);
-    expect(text).toContain('stepLimit: 12');
+    expect(text).toContain('steps: 12');
     const { definition } = parsed(text);
-    expect(definition.stepLimit).toBe(12);
+    expect(definition.limits?.steps).toBe(12);
     expect(definition.retry).toEqual({ attempts: 4, delayMilliseconds: 500, jitter: true });
   });
 
   it('writes neither key when the definition sets neither', () => {
     const text = decoder.decode(serializeNewAgentFile({ model: 'a/b', instructions: 'Body.\n' }));
-    expect(text).not.toContain('stepLimit');
+    expect(text).not.toContain('limits');
     expect(text).not.toContain('retry');
   });
 
   it('keeps both when an update leaves them out, and adds neither to a file without them', () => {
     const file = parsed(
-      '---\nmodel: a/b\nstepLimit: 7\nretry: {attempts: 2, jitter: true}\ncolor: blue\n---\nBody.\n',
+      '---\nmodel: a/b\nlimits: { steps: 7 }\nretry: {attempts: 2, jitter: true}\ncolor: blue\n---\nBody.\n',
     );
     const kept = decoder.decode(
       serializeUpdatedAgentFile('helper', file, {
@@ -116,7 +116,7 @@ describe('writing stepLimit and retry', () => {
     );
     expect(parsed(kept).definition).toMatchObject({
       name: 'Named',
-      stepLimit: 7,
+      limits: { steps: 7 },
       retry: { attempts: 2, jitter: true },
     });
     expect(kept).toContain('color: blue');
@@ -129,44 +129,48 @@ describe('writing stepLimit and retry', () => {
         instructions: 'Body.\n',
       }),
     );
-    expect(renamed).not.toContain('stepLimit');
+    expect(renamed).not.toContain('limits');
     expect(renamed).not.toContain('retry');
   });
 
   it('changes a value the update states, and removes one the update sets to null', () => {
-    const file = parsed('---\nmodel: a/b\nstepLimit: 7\nretry: {attempts: 2}\n---\nBody.\n');
+    const file = parsed(
+      '---\nmodel: a/b\nlimits: { steps: 7 }\nretry: {attempts: 2}\n---\nBody.\n',
+    );
     const changed = parsed(
       decoder.decode(
         serializeUpdatedAgentFile('helper', file, {
           model: 'a/b',
-          stepLimit: 9,
+          limits: { steps: 9 },
           retry: { attempts: 5, delayMilliseconds: 100 },
           instructions: 'Body.\n',
         }),
       ),
     );
-    expect(changed.definition.stepLimit).toBe(9);
+    expect(changed.definition.limits?.steps).toBe(9);
     expect(changed.definition.retry).toEqual({ attempts: 5, delayMilliseconds: 100 });
 
     const removed = decoder.decode(
       serializeUpdatedAgentFile('helper', changed, {
         model: 'a/b',
-        stepLimit: null,
+        limits: { steps: null },
         retry: null,
         instructions: 'Body.\n',
       }),
     );
-    expect(removed).not.toContain('stepLimit');
+    expect(removed).not.toContain('limits');
     expect(removed).not.toContain('retry');
-    expect(parsed(removed).definition).not.toHaveProperty('stepLimit');
+    expect(parsed(removed).definition).not.toHaveProperty('limits');
   });
 
   it('rewrites nothing when the update states the values the file has', () => {
-    const file = parsed('---\nmodel: a/b\nstepLimit: 7\nretry: {attempts: 2}\n---\nBody.\n');
+    const file = parsed(
+      '---\nmodel: a/b\nlimits: { steps: 7 }\nretry: {attempts: 2}\n---\nBody.\n',
+    );
     expect(
       serializeUpdatedAgentFile('helper', file, {
         model: 'a/b',
-        stepLimit: 7,
+        limits: { steps: 7 },
         retry: { attempts: 2 },
         instructions: 'Body.\n',
       }),
@@ -180,27 +184,30 @@ describe('a stored definition', () => {
     description: null,
     model: KNOWN_MODEL,
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions: 'Recorded.\n',
   };
 
   it('loads when it was written before the fields existed', () => {
     const loaded = agentFileDefinitionSchema.parse(OLD_SNAPSHOT);
-    expect(loaded.stepLimit).toBeUndefined();
+    expect(loaded.limits?.steps).toBeUndefined();
     expect(loaded.retry).toBeUndefined();
   });
 
   it('keeps both when it has them, and refuses an out-of-range value', () => {
     const loaded = agentFileDefinitionSchema.parse({
       ...OLD_SNAPSHOT,
-      stepLimit: 3,
+      limits: { steps: 3 },
       retry: { attempts: 2, delayMilliseconds: 10 },
     });
-    expect(loaded).toMatchObject({ stepLimit: 3, retry: { attempts: 2, delayMilliseconds: 10 } });
-    expect(agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, stepLimit: 0 }).success).toBe(
-      false,
-    );
+    expect(loaded).toMatchObject({
+      limits: { steps: 3 },
+      retry: { attempts: 2, delayMilliseconds: 10 },
+    });
+    expect(
+      agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, limits: { steps: 0 } }).success,
+    ).toBe(false);
     expect(
       agentFileDefinitionSchema.safeParse({ ...OLD_SNAPSHOT, retry: { attempts: 99 } }).success,
     ).toBe(false);
@@ -238,9 +245,9 @@ describe('a file agent’s run', () => {
     };
   }
 
-  it('stops at the file’s stepLimit', async () => {
+  it('stops at the file’s limits.steps', async () => {
     const { generate, calls } = looping();
-    const { agent } = await agentOf({ stepLimit: '2', tools: '[lookup-order]' }, generate);
+    const { agent } = await agentOf({ limits: '{ steps: 2 }', tools: '[lookup-order]' }, generate);
 
     const result = await agent.run('go').result();
 
@@ -248,7 +255,7 @@ describe('a file agent’s run', () => {
     expect(calls()).toBe(2);
   });
 
-  it('runs to Operative’s default when the file sets no stepLimit', async () => {
+  it('runs to Operative’s default when the file sets no limits.steps', async () => {
     const { generate, calls } = looping();
     const { agent } = await agentOf({ tools: '[lookup-order]' }, generate);
 

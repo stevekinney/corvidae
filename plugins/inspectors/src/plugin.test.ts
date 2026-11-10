@@ -12,7 +12,7 @@ describe('the inspectors plugin', () => {
   it('contributes the panels at the URIs a client already opens', async () => {
     const host = await createPluginTestHost(inspectors);
     try {
-      expect(host.plugins.mcpApps()).toEqual([
+      expect(host.plugins.panels()).toEqual([
         { plugin: 'inspectors', version: '1.0.0', app: runInspector },
         { plugin: 'inspectors', version: '1.0.0', app: pendingReview },
         { plugin: 'inspectors', version: '1.0.0', app: workflowRevisionReview },

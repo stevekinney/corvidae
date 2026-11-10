@@ -26,6 +26,7 @@
   let {
     columns = 'auto',
     variant = 'default',
+    edge = 'shadow',
     children,
     class: customClassName,
     label,
@@ -54,6 +55,7 @@
   aria-label={groupAriaLabel}
   class={classNames('cinder-statistic-group', customClassName)}
   data-cinder-variant={variant}
+  data-cinder-edge={variant === 'cards' && edge === 'border' ? 'border' : undefined}
   data-cinder-columns={String(columns)}
 >
   <div class="cinder-statistic-group__grid">

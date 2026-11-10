@@ -267,7 +267,7 @@ A skill-enabled run follows this sequence:
 
 `createAgent`'s `skills` option runs the sequence above for every run that agent starts, with a fresh client per run. Build its value with `createAgentSkills({ catalog })` from `@lostgradient/bureau`. That adapter lives in Bureau, not here, because this package sits below operative in the package graph and does not import it (`test/package-graph.test.ts`).
 
-`createAgentSkills({ catalog, allowedSkills })` narrows that agent's runs to the skills named, through the same admission rule as `admissionPolicy`. An agent file does the same with its `allowedSkills` key, against the catalog the host hands in as `BureauOptions.agentSkillCatalog`; see [Agent files](./agent-files.md#skills).
+`createAgentSkills({ catalog, allowedSkills })` narrows that agent's runs to the skills named, through the same admission rule as `admissionPolicy`. An agent file does the same with its `skills` key, against the catalog the host hands in as `BureauOptions.agentSkillCatalog`; see [Agent files](./agent-files.md#skills).
 
 ## Lifecycle events
 
@@ -506,7 +506,7 @@ From the Corvidae root, run `bunx turbo run lint typecheck test --filter=@lostgr
 The pinned corpus in `test/fixtures/agent-skills-corpus.ts` runs against this package on every `bun test`. It can also be run against the **actual** official reference validator, which proves the corpus's expectations match upstream rather than merely matching this package:
 
 ```bash
-AGENT_SKILLS_REFERENCE_VALIDATOR=uvx bun test packages/bureau/test/skills/conformance-reference.test.ts
+AGENT_SKILLS_REFERENCE_VALIDATOR=uvx bun test packages/bureau/test/skills/conformance-reference.integration.test.ts
 ```
 
 This is opt-in on purpose. `skills-ref` is a Python package, and wiring it into the default suite would put a hard `uv` dependency on `bun run validate` in a Bun-only workspace. `uvx` fetches it pinned at `AGENT_SKILLS_SPECIFICATION_REVISION`; set the variable to an executable name instead to use an installed copy.

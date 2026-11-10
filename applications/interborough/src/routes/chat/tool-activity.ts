@@ -14,6 +14,12 @@ import type { ToolCallRailCall } from '@lostgradient/cinder';
 
 import { CHAT_COPY } from '../../app/copy.ts';
 import { resultSummary } from '../../lib/tool-text.ts';
+import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
+import {
+  continuesAfterDecision,
+  decidedLine,
+  type DecisionContext,
+} from './approval-decision-words.ts';
 import { opensTurn } from './event-notes.ts';
 
 /** One row of a conversation. */
@@ -46,14 +52,49 @@ export type ToolCallEntry = {
   readonly state: ToolCallState;
   /** One line about the answer, empty while there is none. */
   readonly summary: string;
+  /** Where the answer goes, when it is a page: the workflow a Create workflow call made. */
+  readonly resultHref?: string | undefined;
   /** The answer, for the details. */
   readonly result: unknown;
+  /**
+   * Why a failed call failed, as the tool reported it: what went wrong, its machine code, and
+   * whether trying again can work. Absent for a call that did not fail, and for a failure that
+   * carries no error.
+   */
+  readonly failure?: ToolFailure | undefined;
   /**
    * How long the call ran, in milliseconds: from its start to its end as the Bureau recorded them,
    * so far for a call still running, and to when the run stopped for an interrupted one. Absent
    * when nothing recorded says (a call that waits on a person, or one whose start is not known).
    */
   readonly durationMilliseconds?: number | undefined;
+  /**
+   * How a person decided the call's approval, when the Bureau recorded it on the call's outcome:
+   * who, when, and the note they left. Absent for a call that never asked, and for one decided
+   * before the Bureau recorded decisions.
+   */
+  readonly decision?: ApprovalDecision | undefined;
+};
+
+/** Why a call failed: the tool's own error. */
+export type ToolFailure = {
+  readonly message: string;
+  readonly code?: string | undefined;
+  readonly retryable?: boolean | undefined;
+};
+
+/** How a person decided a tool approval, as the Bureau wrote it on the call's outcome row. */
+export type ApprovalDecision = {
+  /** Approved, or refused (a rejection is a refusal that carries a reason). */
+  readonly outcome: 'approved' | 'denied';
+  /** The principal that decided, as the Bureau recorded it: the chat's owner when it was you. */
+  readonly decidedBy: string;
+  /** When it was decided, in epoch milliseconds. */
+  readonly decidedAt: number;
+  /** The note left with the decision, which the agent read as the reason for a refusal. */
+  readonly reason?: string | undefined;
+  /** The sentence the tool asked with, which the outcome replaced along with the waiting row. */
+  readonly asked?: string | undefined;
 };
 
 /** Where a `tool-result` row keeps when its call ran: Operative's `TOOL_TIMING_METADATA_KEY`. */
@@ -101,6 +142,36 @@ export function recordedTiming(
     : { startedAt: start, endedAt: end };
 }
 
+/** Where a `tool-result` row keeps how its approval was decided: Bureau's `APPROVAL_DECISION_METADATA_KEY`. */
+export const APPROVAL_DECISION_METADATA_KEY = 'approvalDecision';
+
+/** How a person decided the approval, as a result row records it under {@link APPROVAL_DECISION_METADATA_KEY}. */
+export function recordedDecision(
+  metadata: Readonly<Record<string, unknown>> | undefined,
+): ApprovalDecision | undefined {
+  const value = metadata?.[APPROVAL_DECISION_METADATA_KEY];
+  if (typeof value !== 'object' || value === null) return undefined;
+  const decision: unknown = Reflect.get(value, 'decision');
+  const decidedBy: unknown = Reflect.get(value, 'decidedBy');
+  const decidedAt = epochOf(Reflect.get(value, 'decidedAt'));
+  const reason: unknown = Reflect.get(value, 'reason');
+  const asked: unknown = Reflect.get(value, 'asked');
+  if (
+    (decision !== 'approve' && decision !== 'deny' && decision !== 'reject') ||
+    typeof decidedBy !== 'string' ||
+    decidedAt === undefined
+  ) {
+    return undefined;
+  }
+  return {
+    outcome: decision === 'approve' ? 'approved' : 'denied',
+    decidedBy,
+    decidedAt,
+    ...(typeof reason === 'string' && reason.trim() !== '' ? { reason } : {}),
+    ...(typeof asked === 'string' && asked.trim() !== '' ? { asked } : {}),
+  };
+}
+
 /** The rows a call's times are read from: its own row, and its result's when it has one. */
 type CallRows = {
   readonly call: Message;
@@ -108,20 +179,21 @@ type CallRows = {
 };
 
 /**
- * How long a call ran, from the times the Bureau recorded: the result row's start and end. A call
+ * When a call ran, from the times the Bureau recorded: the result row's start and end. A call
  * whose answer records none counts from its start (the Bureau's time on its `TOOL_CALL_START`, else
  * its row's recorded time) to its answer (the Bureau's time on its `TOOL_CALL_RESULT`, else the
  * answer row's), to the Bureau's now while it runs, or to the run's stop once it was interrupted.
- * A call a person denied never ran, so it has a duration only when one was recorded.
+ * A call a person denied never ran, so it has times only when they were recorded, and a call that
+ * waits on a person has none.
  */
-function durationOf(
+function intervalOf(
   state: ToolCallState,
   rows: CallRows,
   timing: ToolTimingContext | undefined,
-): number | undefined {
+): { readonly start: number; readonly end: number } | undefined {
   if (timing === undefined || state === 'needs-you') return undefined;
   const recorded = recordedTiming(rows.result?.metadata);
-  if (recorded !== undefined) return recorded.endedAt - recorded.startedAt;
+  if (recorded !== undefined) return { start: recorded.startedAt, end: recorded.endedAt };
   if (state === 'denied') return undefined;
   const callId = rows.call.toolCall?.id ?? '';
   const start = timing.callStarts?.get(callId) ?? epochOf(rows.call.createdAt);
@@ -132,7 +204,41 @@ function durationOf(
       : state === 'interrupted'
         ? timing.stoppedAt
         : (timing.callEnds?.get(callId) ?? epochOf(rows.result?.createdAt));
-  return end === undefined ? undefined : Math.max(0, end - start);
+  return end === undefined ? undefined : { start, end: Math.max(start, end) };
+}
+
+/** How long a call ran, in milliseconds, from the times {@link intervalOf} reads; absent when none. */
+function durationOf(
+  state: ToolCallState,
+  rows: CallRows,
+  timing: ToolTimingContext | undefined,
+): number | undefined {
+  const interval = intervalOf(state, rows, timing);
+  return interval === undefined ? undefined : interval.end - interval.start;
+}
+
+/**
+ * How long a turn spent on its tools, in milliseconds: the time at least one call was under way,
+ * so calls that ran together count once and the time the turn waited on a person counts for
+ * nothing. Absent when no call has recorded times, and while any call is still running (the rail's
+ * summary says "so far" and shows no duration then).
+ */
+function turnDuration(
+  intervals: readonly ({ readonly start: number; readonly end: number } | undefined)[],
+  entries: readonly ToolCallEntry[],
+): number | undefined {
+  if (entries.some((entry) => entry.state === 'running')) return undefined;
+  const known = intervals
+    .filter((interval) => interval !== undefined)
+    .toSorted((left, right) => left.start - right.start);
+  if (known.length === 0) return undefined;
+  let total = 0;
+  let reach = -Infinity;
+  for (const { start, end } of known) {
+    total += Math.max(0, end - Math.max(start, reach));
+    reach = Math.max(reach, end);
+  }
+  return total;
 }
 
 /** A call's duration as the rail prints it: `0.4s`, `12s`, `1m 5s`. */
@@ -147,6 +253,11 @@ export function formatCallDuration(milliseconds: number): string {
 export type ToolGroup = {
   readonly entries: readonly ToolCallEntry[];
   readonly messageIds: readonly string[];
+  /**
+   * How long the turn spent on its tools, in milliseconds (the time at least one call was under
+   * way); absent while a call is running and when no call recorded its times.
+   */
+  readonly durationMilliseconds?: number | undefined;
 };
 
 /** The code this page writes on a call the person denied (`run-wiring.ts`). */
@@ -197,11 +308,58 @@ export function keyInput(args: unknown): string {
   return '';
 }
 
+/**
+ * What the catalog says of each tool, by the name a call carries. The catalog names a namespaced
+ * tool `bureau:workflows-create`, and a model calls it by the form a provider takes, `bureau__workflows-create`,
+ * so a tool is listed under both.
+ */
+export function toolInfoByName(
+  tools: readonly {
+    readonly name: string;
+    readonly title: string | null;
+    readonly tier: ToolInfo['tier'];
+  }[],
+): ReadonlyMap<string, ToolInfo> {
+  const info = new Map<string, ToolInfo>();
+  for (const tool of tools) {
+    const entry = { title: tool.title, tier: tool.tier };
+    info.set(tool.name, entry);
+    info.set(tool.name.replaceAll(':', '__'), entry);
+  }
+  return info;
+}
+
 /** A tool's identifier as a person reads it when the catalog gives no title: "lookup-order" is "Lookup order". */
 export function toolDisplayName(identifier: string, title?: string | null): string {
   if (title !== undefined && title !== null && title.trim() !== '') return title;
   const words = identifier.replaceAll(/[-_]+/g, ' ').trim();
   return words === '' ? identifier : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+}
+
+/** The Bureau's tool that creates a workflow, as a call names it (`bureau:workflows-create` in the catalog). */
+const CREATE_WORKFLOW_CALL = 'bureau__workflows-create';
+
+/**
+ * The workflow a finished Create workflow call made: what it was called, which is what the row
+ * says came back, and the address of its page. A call that did not create one (it was refused, or
+ * the file already existed) points nowhere.
+ */
+export function createdWorkflow(
+  name: string,
+  args: unknown,
+  result: unknown,
+): { readonly title: string; readonly href: string } | undefined {
+  if (name !== CREATE_WORKFLOW_CALL || typeof result !== 'object' || result === null) {
+    return undefined;
+  }
+  const { status, id } = result as { status?: unknown; id?: unknown };
+  if (status !== 'ok' || typeof id !== 'string' || id === '') return undefined;
+  const called =
+    typeof args === 'object' && args !== null ? (args as { name?: unknown }).name : undefined;
+  return {
+    title: typeof called === 'string' && called.trim() !== '' ? called.trim() : id,
+    href: workflowTypePath(id),
+  };
 }
 
 function entryOf(
@@ -213,10 +371,17 @@ function entryOf(
 ): ToolCallEntry {
   const state = toolCallState(pair, runActive);
   const failure = pair.result?.error?.message;
+  const error = pair.result?.error;
   const info = tools.get(pair.call.name);
   const durationMilliseconds = rows === undefined ? undefined : durationOf(state, rows, timing);
+  const decision = recordedDecision(rows?.result?.metadata);
+  const created =
+    state === 'done'
+      ? createdWorkflow(pair.call.name, pair.call.arguments, pair.result?.content)
+      : undefined;
   return {
     ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
+    ...(decision === undefined ? {} : { decision }),
     callId: pair.call.id,
     name: pair.call.name,
     title: toolDisplayName(pair.call.name, info?.title),
@@ -224,15 +389,27 @@ function entryOf(
     input: keyInput(pair.call.arguments),
     arguments: pair.call.arguments,
     state,
+    ...(created === undefined ? {} : { resultHref: created.href }),
     summary:
-      state === 'needs-you' || state === 'running' || state === 'interrupted'
-        ? ''
-        : state === 'denied'
-          ? (refusalReason(pair) ?? '')
-          : state === 'failed'
-            ? (failure ?? resultSummary(pair.result?.content))
-            : resultSummary(pair.result?.content),
+      created !== undefined
+        ? created.title
+        : state === 'needs-you' || state === 'running' || state === 'interrupted'
+          ? ''
+          : state === 'denied'
+            ? (refusalReason(pair) ?? '')
+            : state === 'failed'
+              ? (failure ?? resultSummary(pair.result?.content))
+              : resultSummary(pair.result?.content),
     result: pair.result?.content,
+    ...(state === 'failed' && error !== undefined
+      ? {
+          failure: {
+            message: error.message,
+            ...(error.code === '' ? {} : { code: error.code }),
+            retryable: error.retryable,
+          },
+        }
+      : {}),
   };
 }
 
@@ -248,8 +425,17 @@ export function interruptedWords(entry: Pick<ToolCallEntry, 'tier'>): string {
     : CHAT_COPY.tools.interruptedReads;
 }
 
-/** One call as a row of the rail. */
-export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCall {
+/**
+ * One call as a row of the rail. A call whose approval a person decided says so in their words
+ * ("Approved by you 10:33 AM · $18.50 refunded", "Denied by you 10:40 AM"), which `context` words:
+ * who the person is to this chat, and which decisions were made away from it.
+ */
+export function railCall(
+  entry: ToolCallEntry,
+  nested: boolean,
+  context: DecisionContext = {},
+): ToolCallRailCall {
+  const decided = decidedLine(entry, context);
   const named = {
     id: entry.callId,
     name: entry.title ?? entry.name,
@@ -268,7 +454,12 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
     case 'interrupted':
       return { ...named, status: 'interrupted', result: interruptedWords(entry) };
     case 'denied':
-      return { ...named, status: 'denied', result: entry.summary || CHAT_COPY.tools.denied };
+      return {
+        ...named,
+        status: 'denied',
+        result: entry.summary || CHAT_COPY.tools.denied,
+        ...(decided === undefined ? {} : { decision: decided }),
+      };
     case 'failed':
       return {
         ...named,
@@ -276,11 +467,29 @@ export function railCall(entry: ToolCallEntry, nested: boolean): ToolCallRailCal
         ...(entry.summary === '' ? {} : { result: entry.summary }),
       };
     case 'done':
-      return {
-        ...named,
-        status: 'done',
-        ...(entry.summary === '' ? {} : { result: entry.summary }),
-      };
+      // A call whose answer is a page keeps its answer on the row, as a link, so a person's
+      // approval of it is told in the approval under the row and not in place of the answer.
+      if (entry.resultHref !== undefined) {
+        return {
+          ...named,
+          status: entry.decision?.outcome === 'approved' ? 'approved' : 'done',
+          ...(entry.summary === '' ? {} : { result: entry.summary }),
+          resultHref: entry.resultHref,
+        };
+      }
+      // A call decided in Reviews whose continuing run is going reads as that run (design row
+      // 18i): the spinner, the decision with "running…" as its words, and no duration of its own.
+      if (decided !== undefined && continuesAfterDecision(entry, context)) {
+        const { duration: _finished, ...going } = named;
+        return { ...going, status: 'running', result: decided };
+      }
+      return decided !== undefined && entry.decision?.outcome === 'approved'
+        ? { ...named, status: 'approved', decision: decided }
+        : {
+            ...named,
+            status: 'done',
+            ...(entry.summary === '' ? {} : { result: entry.summary }),
+          };
   }
 }
 
@@ -329,11 +538,22 @@ export function toolGroups(
   }
   const groups = new Map<string, ToolGroup>();
   const absorbed = new Set<string>();
-  let current: { ids: string[]; entries: ToolCallEntry[] } | undefined;
+  let current:
+    | {
+        ids: string[];
+        entries: ToolCallEntry[];
+        intervals: ({ readonly start: number; readonly end: number } | undefined)[];
+      }
+    | undefined;
   const close = (): void => {
     const first = current?.ids[0];
     if (current !== undefined && first !== undefined) {
-      groups.set(first, { entries: current.entries, messageIds: current.ids });
+      const durationMilliseconds = turnDuration(current.intervals, current.entries);
+      groups.set(first, {
+        entries: current.entries,
+        messageIds: current.ids,
+        ...(durationMilliseconds === undefined ? {} : { durationMilliseconds }),
+      });
       for (const id of current.ids.slice(1)) absorbed.add(id);
     }
     current = undefined;
@@ -349,17 +569,18 @@ export function toolGroups(
       continue;
     }
     const pair = pairs.get(call.id) ?? { call };
-    current ??= { ids: [], entries: [] };
+    current ??= { ids: [], entries: [], intervals: [] };
     current.ids.push(id);
-    current.entries.push(
-      entryOf(
-        pair,
-        index >= lastTurn && (options.runActive ?? true),
-        options.tools ?? new Map(),
-        { call: message, result: resultRows.get(call.id) },
-        options.timing,
-      ),
+    const rows = { call: message, result: resultRows.get(call.id) };
+    const entry = entryOf(
+      pair,
+      index >= lastTurn && (options.runActive ?? true),
+      options.tools ?? new Map(),
+      rows,
+      options.timing,
     );
+    current.entries.push(entry);
+    current.intervals.push(intervalOf(entry.state, rows, options.timing));
   }
   close();
   return { groups, absorbed };

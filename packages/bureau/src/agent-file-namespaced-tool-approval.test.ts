@@ -1,7 +1,7 @@
 /**
  * COR-1879 — a file agent's approvals name a tool by its identity, not by the bare name two
  * namespaces can share: a chat grant for `a:search` does not let `b:search` run, and the
- * `toolApproval` value of the key the file declared applies to the tool under that key, even when
+ * `approvals` value of the key the file declared applies to the tool under that key, even when
  * the host registered a namespaced tool under a bare key.
  */
 import { mkdtemp, rm } from 'node:fs/promises';
@@ -128,10 +128,10 @@ describe('a file agent with two namespaces that share a tool name (COR-1879)', (
 });
 
 describe('a namespaced tool the host registered under a bare key (COR-1879)', () => {
-  it('applies the toolApproval value of the key the file declared', async () => {
+  it('applies the approvals value of the key the file declared', async () => {
     const { bureau } = await start(
       { lookup: searchIn('a') },
-      { tools: '[lookup]', toolApproval: '{ lookup: blocked }' },
+      { tools: '[lookup]', approvals: '{ lookup: blocked }' },
     );
 
     const run = await ask(bureau, 'a__lookup', 'q1');

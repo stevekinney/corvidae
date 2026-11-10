@@ -36,18 +36,18 @@ export function createIssueRefundTool() {
 /**
  * The toolbox of the `tool-runner` agent: its own two tools, with approvals signed by
  * `approvalSecret`. A tool that reads runs and one that changes something waits for an operator,
- * the rule a file agent's tools follow with no `toolApproval`, and the chat's permission mode
+ * the rule a file agent's tools follow with no `approvals`, and the chat's permission mode
  * applies as it does to a file agent. The hook governs the two tools only, because the Bureau adds
  * `requestHumanInput` and the like to a run.
  */
 export function createToolRunnerToolbox(
   approvalSecret: string | undefined,
-  toolApprovalHooks: PluginSetupContext['toolApprovalHooks'],
+  approvals: PluginSetupContext['approvals'],
 ) {
   const lookupOrder = createLookupOrderTool();
   const issueRefund = createIssueRefundTool();
   return createToolbox([lookupOrder, issueRefund], {
     ...(approvalSecret === undefined ? {} : { approvalSecret }),
-    policy: toolApprovalHooks([lookupOrder.name, issueRefund.name]),
+    policy: approvals([lookupOrder.name, issueRefund.name]),
   });
 }

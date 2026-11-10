@@ -45,18 +45,7 @@ You can inspect a component's props, CSS variables, cross-prop constraints, and 
 
 Use lower-camel component names, such as `button` or `dataTable`. Check the manifest's `hasConstraints` and `hasExamples` flags for optional artifacts.
 
-## Local component discovery
-
-From `components/cinder`, run the retained knowledge CLI with Bun:
-
-```bash
-bun run knowledge list --json
-bun run knowledge search modal --json
-bun run knowledge show button --json
-bun run knowledge best-practices styles --json
-```
-
-The CLI reads the manifest and source artifacts from this workspace. Its filesystem-backed knowledge service stays internal to developer tooling. Applications import `manifest` and named metadata from `@lostgradient/cinder`; the library root supports browser and server rendering.
+Applications import `manifest` and named metadata from `@lostgradient/cinder`; the library root supports browser and server rendering.
 
 ## Token data
 
@@ -105,6 +94,24 @@ Public tokens use the `--cinder-` prefix. Internal implementation variables use 
 - **What a property keeps.** Model-generated UI gets no ambient authority. Styling hooks (`class`, `style`), DOM identity and form association (`id`, `form`, `name`), anything that fetches or navigates (`href`, `src`), raw markup (`html`), event handlers, ARIA references to other elements, and `data-*` attributes never reach the catalog. Each entry carries an accessible name as its `label`, taken from the component's `label`, `ariaLabel`, `alt`, or `title`; the generator fails when a listed component has none.
 - **Regenerating.** `bun run a2ui-catalog:generate` rewrites the file; `bun run a2ui-catalog:check` fails on drift. The generator validates the result against the vendored A2UI v0.9.1 schemas (`scripts/a2ui/PROVENANCE.json` names the upstream commit) and writes nothing if a listed component has no schema or no accessible name.
 - **Rendering.** `A2uiSurface` in `@lostgradient/chat` renders the basic catalog only, so it does not render this catalog's components; they report as `unsupported-component`. A renderer that lists this catalog has to implement those components itself.
+
+## Design system
+
+Cinder's design system for Claude Design is generated from this workspace: the tokens from `src/tokens/resolved/`, a guideline page per component from `components.json` and the component's README, and a preview card per component that mounts up to four of its playground examples. Build it after Cinder changes. From the Corvidae root:
+
+```bash
+bun run --filter=@lostgradient/cinder design-system:build
+```
+
+The build writes the publishable folder to `tmp/cinder-design-system/out/project/` (`--out <directory>` moves the `out` directory). It renders every card in headless Chromium, in light and dark, and exits non-zero when a preview fails to build, logs an error, or renders empty; the folder is not ready to publish until it passes. The output is deterministic for a commit, apart from its timestamps and card heights, which depend on the fonts installed. The brand book and the cover card are checked in as `scripts/design-system/assets/brand-book.md` and `scripts/design-system/assets/cover.html`.
+
+Each person publishes to their own artifact, so its URL is per-user configuration and never in the repository: the `CORVIDAE_DESIGN_SYSTEM_URL` environment variable, or else `url` in `~/.config/corvidae/design-system.json`. Print the configured URL, or learn that none is set, with:
+
+```bash
+bun run --filter=@lostgradient/cinder design-system:url
+```
+
+On the first publish, create the artifact from the Design System type with Claude Code's Artifact tool, then save its URL with `design-system:url --set <url>` or by writing the file by hand. Later runs republish to that URL. First list the artifact's files (`action: "list"`, `scope: "files"`), because the tool refuses to overwrite files the session has not seen; an account that can't open the artifact can't republish it, and creates its own instead. Then publish once for each entry of `tmp/cinder-design-system/out/publish-batches.json`, in order. Each publish passes the artifact's `url`, `root` set to `tmp/cinder-design-system/out`, and that entry's paths as `files`. A batch holds at most 240 files, and the last one holds only the index, `project/design-system.json`, so the system never points at files that have not arrived. A publish keeps files it does not name, so when a component leaves Cinder, remove its paths with `null` entries.
 
 ## What Cinder Does Not Provide
 

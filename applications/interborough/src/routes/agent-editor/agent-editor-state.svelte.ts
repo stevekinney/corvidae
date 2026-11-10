@@ -3,7 +3,7 @@
  *
  * An agent is a Markdown file whose name is its identifier, so the form works from three facts the
  * Bureau holds. The catalog says which models and tools an agent may name. The loaded definition
- * says what the file holds now, `skillDescriptors` included, which the editor never edits and sends back
+ * says what the file holds now, `card` included, which the editor never edits and sends back
  * unchanged. The `hash` says which version of the file the form was filled from, and every write
  * names it, so a file that changed since is refused rather than overwritten.
  */
@@ -12,9 +12,12 @@ import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   AGENT_IDENTIFIER_PATTERN,
   EFFORTS,
+  guardrailEntriesFor,
+  guardrailEntryId,
   type AgentCatalog,
   type AgentDefinitionInput,
   type AgentDetail,
+  type AgentGuardrailEntry,
   type AgentSkill,
   type Effort,
   type IdentifierConflictReason,
@@ -107,35 +110,44 @@ export function limitErrorsOf(fields: LimitFields): Readonly<Partial<Record<Limi
 
 /**
  * The limits of `fields` as the Bureau takes them: a field left empty is `null`, which removes the
- * limit. `warnAt` is the file's own, which neither surface edits and a save sends back.
+ * limit. `warn` is the file's own, which neither surface edits and a save sends back. A surface
+ * that does not edit the step limit (`editsSteps` false, the Access tab) leaves `steps` out of
+ * `limits`, so a save keeps the file's step limit instead of removing it.
  */
 export function limitsOf(
   fields: LimitFields,
-  warnAt: readonly number[] | undefined,
-): Pick<AgentDefinitionInput, 'guardrails' | 'stepLimit' | 'costBudget' | 'toolBudget'> {
-  const guardrails = parseGuardrails(fields.guardrails);
+  warn: readonly number[] | undefined,
+  editsSteps = true,
+  keptGuardrails: readonly AgentGuardrailEntry[] | null = null,
+): Pick<AgentDefinitionInput, 'guardrails' | 'limits'> {
+  // The field holds ids alone; an id the file configures keeps its configuration (COR-2118).
+  const guardrails = guardrailEntriesFor(parseGuardrails(fields.guardrails), keptGuardrails);
   const perRun = parseLimit(fields.spendPerRun, false, LIMIT_BOUNDS.spendUsd) ?? null;
   const perChat = parseLimit(fields.spendPerChat, false, LIMIT_BOUNDS.spendUsd) ?? null;
   const calls = parseLimit(fields.toolCalls, true, LIMIT_BOUNDS.toolCalls) ?? null;
   const seconds = parseLimit(fields.toolSeconds, false, LIMIT_BOUNDS.toolSeconds) ?? null;
   return {
     guardrails: guardrails.length === 0 ? null : guardrails,
-    stepLimit: parseLimit(fields.stepLimit, true, LIMIT_BOUNDS.stepLimit) ?? null,
-    costBudget:
-      perRun === null
-        ? null
-        : {
-            perRunUsd: perRun,
-            ...(perChat === null ? {} : { perChatUsd: perChat }),
-            ...(warnAt === undefined ? {} : { warnAt }),
-          },
-    toolBudget:
-      calls === null && seconds === null
-        ? null
-        : {
-            ...(calls === null ? {} : { maxCalls: calls }),
-            ...(seconds === null ? {} : { maxDurationSeconds: seconds }),
-          },
+    limits: {
+      ...(editsSteps
+        ? { steps: parseLimit(fields.stepLimit, true, LIMIT_BOUNDS.stepLimit) ?? null }
+        : {}),
+      cost:
+        perRun === null
+          ? null
+          : {
+              run: perRun,
+              ...(perChat === null ? {} : { chat: perChat }),
+              ...(warn === undefined ? {} : { warn }),
+            },
+      tools:
+        calls === null && seconds === null
+          ? null
+          : {
+              ...(calls === null ? {} : { calls }),
+              ...(seconds === null ? {} : { seconds }),
+            },
+    },
   };
 }
 
@@ -174,18 +186,18 @@ export class AgentEditorState {
   /** Whether the catalog holds any model row at all, offered or not. */
   readonly #catalogHasModels: boolean;
   readonly toolChoices: AgentCatalog['tools'];
-  /** `skillDescriptors` is carried through a save untouched. */
-  readonly skillDescriptors: readonly AgentSkill[];
+  /** `card` is carried through a save untouched. */
+  readonly card: readonly AgentSkill[];
   /**
    * The skills a run may activate, as the file lists them, or `null` when it lists none. The Access
    * tab edits them. They are carried through a save so a copy of an agent keeps them; an update
    * that left them out would keep the file's too, but a create would have none.
    */
-  readonly allowedSkills: readonly string[] | null;
-  readonly childAgents: readonly string[] | null;
+  readonly skills: readonly string[] | null;
+  readonly children: readonly string[] | null;
   /**
    * The models a session may be switched to (COR-1559), as the file lists them, or `null` when it
-   * lists none. Carried through a save untouched, like `skillDescriptors`: the editor shows no control for
+   * lists none. Carried through a save untouched, like `card`: the editor shows no control for
    * it, and an update that left it out would remove the list.
    */
   readonly models: readonly string[] | null;
@@ -202,7 +214,7 @@ export class AgentEditorState {
    * The effort a chat of the agent starts at, or `''` for none. The default model must support it
    * (`effortChoices`); choosing another model clears one the new model cannot do.
    */
-  defaultEffort = $state<Effort | ''>('');
+  effort = $state<Effort | ''>('');
   /** The effort a change of model cleared, and the model that could not do it, until another is chosen. */
   #clearedEffort = $state<{ readonly effort: Effort; readonly model: string } | null>(null);
   tools = $state<string[]>([]);
@@ -226,11 +238,16 @@ export class AgentEditorState {
   /** The fractions at which a run warns about its spend: not edited here, carried through a save. */
   readonly #warnAt: readonly number[] | undefined;
   /**
+   * The guardrails as the file lists them, configurations included (COR-2118): the form edits the
+   * ids, and a save keeps the configuration of each id it still lists.
+   */
+  #keptGuardrails: readonly AgentGuardrailEntry[] | null = null;
+  /**
    * When each tool asks first, as the file wrote it (the Access tab edits it): carried through a
-   * save, pruned to the tools still chosen, because the Bureau refuses a file whose `toolApproval`
+   * save, pruned to the tools still chosen, because the Bureau refuses a file whose `approvals`
    * names a tool that `tools` does not.
    */
-  readonly #toolApproval: Readonly<Record<string, ToolApproval>> | null;
+  readonly #approvals: Readonly<Record<string, ToolApproval>> | null;
 
   /**
    * The documents the file's `references` name, beside it. A save of an existing agent leaves them
@@ -244,10 +261,10 @@ export class AgentEditorState {
   #seededTools: readonly string[] = [];
 
   /**
-   * What the file says about retries, compaction and run hooks, which the editor shows no control
+   * What the file says about retries, compaction and interceptors, which the editor shows no control
    * for: carried through a save, and into a copy.
    */
-  readonly #carried: Pick<AgentDefinitionInput, 'retry' | 'compaction' | 'hooks'>;
+  readonly #carried: Pick<AgentDefinitionInput, 'retry' | 'compaction' | 'interceptors'>;
 
   /** What the person typed into the identifier field, or `null` while it follows the name. */
   #typedIdentifier = $state<string | null>(null);
@@ -268,18 +285,18 @@ export class AgentEditorState {
     this.toolChoices = catalog.tools;
     const definition = seed ?? detail?.definition ?? null;
     this.#editedId = detail?.id;
-    this.skillDescriptors = definition?.skillDescriptors ?? [];
-    this.allowedSkills = definition?.allowedSkills ?? null;
-    this.childAgents = definition?.childAgents ?? null;
+    this.card = definition?.card ?? [];
+    this.skills = definition?.skills ?? null;
+    this.children = definition?.children ?? null;
     this.models = definition?.models ?? null;
-    this.#writtenEffort = definition?.defaultEffort ?? null;
-    this.#warnAt = definition?.costBudget?.warnAt;
-    this.#toolApproval = definition?.toolApproval ?? null;
+    this.#writtenEffort = definition?.effort ?? null;
+    this.#warnAt = definition?.limits.cost?.warn;
+    this.#approvals = definition?.approvals ?? null;
     this.references = definition?.references ?? [];
     this.#carried = {
       ...(definition?.retry == null ? {} : { retry: definition.retry }),
       ...(definition?.compaction == null ? {} : { compaction: definition.compaction }),
-      ...(definition?.hooks == null ? {} : { hooks: definition.hooks }),
+      ...(definition?.interceptors == null ? {} : { interceptors: definition.interceptors }),
     };
     this.#writtenModel = definition?.model ?? '';
     // The option the file's model names. A model the catalog lacks stays the selection under the
@@ -304,26 +321,22 @@ export class AgentEditorState {
       this.#writtenModelOption === ''
         ? firstAvailableModel(this.modelGroups)
         : this.#writtenModelOption;
-    this.defaultEffort = this.#writtenEffort ?? '';
+    this.effort = this.#writtenEffort ?? '';
     this.tools = [...definition.tools];
     if (mode === 'create') this.#seededTools = definition.tools;
     this.instructions = definition.instructions;
     this.hash = detail?.hash ?? null;
     this.a2a = definition.a2a;
-    this.guardrails = (definition.guardrails ?? []).join('\n');
-    this.stepLimit = definition.stepLimit === null ? '' : String(definition.stepLimit);
-    this.spendPerRun =
-      definition.costBudget === null ? '' : String(definition.costBudget.perRunUsd);
+    this.#keptGuardrails = definition.guardrails;
+    this.guardrails = (definition.guardrails ?? []).map(guardrailEntryId).join('\n');
+    this.stepLimit = definition.limits.steps === null ? '' : String(definition.limits.steps);
+    this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
-      definition.costBudget?.perChatUsd === undefined
-        ? ''
-        : String(definition.costBudget.perChatUsd);
+      definition.limits.cost?.chat === undefined ? '' : String(definition.limits.cost.chat);
     this.toolCalls =
-      definition.toolBudget?.maxCalls === undefined ? '' : String(definition.toolBudget.maxCalls);
+      definition.limits.tools?.calls === undefined ? '' : String(definition.limits.tools.calls);
     this.toolSeconds =
-      definition.toolBudget?.maxDurationSeconds === undefined
-        ? ''
-        : String(definition.toolBudget.maxDurationSeconds);
+      definition.limits.tools?.seconds === undefined ? '' : String(definition.limits.tools.seconds);
   }
 
   /** A form for a new agent, with the first model that can be chosen. */
@@ -424,13 +437,9 @@ export class AgentEditorState {
     this.#model = next;
     this.#clearedEffort = null;
     const portable = this.chosenModel?.row?.effort.portable;
-    if (
-      this.defaultEffort !== '' &&
-      portable !== undefined &&
-      !portable.includes(this.defaultEffort)
-    ) {
-      this.#clearedEffort = { effort: this.defaultEffort, model: next };
-      this.defaultEffort = '';
+    if (this.effort !== '' && portable !== undefined && !portable.includes(this.effort)) {
+      this.#clearedEffort = { effort: this.effort, model: next };
+      this.effort = '';
     }
   }
 
@@ -448,7 +457,7 @@ export class AgentEditorState {
    * already holds can be unsupported: a change of model clears it, and the field offers no other.
    */
   get effortError(): string {
-    const effort = this.defaultEffort;
+    const effort = this.effort;
     const portable = this.chosenModel?.row?.effort.portable;
     if (effort === '' || portable === undefined || portable.includes(effort)) return '';
     return AGENT_EDITOR_COPY.effort.unsupported(EFFORT_LABELS[effort], this.model);
@@ -457,7 +466,7 @@ export class AgentEditorState {
   /** What a change of model did to the effort, in words, or `''` when it cleared none. */
   get effortNotice(): string {
     const cleared = this.#clearedEffort;
-    if (cleared === null || this.defaultEffort !== '') return '';
+    if (cleared === null || this.effort !== '') return '';
     return AGENT_EDITOR_COPY.effort.cleared(EFFORT_LABELS[cleared.effort], cleared.model);
   }
 
@@ -515,7 +524,7 @@ export class AgentEditorState {
 
   /** What the file says about when the tool asks first, or `undefined` when it says nothing. */
   approvalOf(name: string): ToolApproval | undefined {
-    const written = this.#toolApproval;
+    const written = this.#approvals;
     return written !== null && Object.hasOwn(written, name) ? written[name] : undefined;
   }
 
@@ -525,14 +534,14 @@ export class AgentEditorState {
   }
 
   /** The limits as the Bureau takes them: a field left empty is `null`, which removes the limit. */
-  #limits(): Pick<AgentDefinitionInput, 'guardrails' | 'stepLimit' | 'costBudget' | 'toolBudget'> {
-    return limitsOf(this, this.#warnAt);
+  #limits(): Pick<AgentDefinitionInput, 'guardrails' | 'limits'> {
+    return limitsOf(this, this.#warnAt, true, this.#keptGuardrails);
   }
 
   /** The tool approvals that still name a chosen tool: `undefined` when the file had none, `null` when none is left. */
-  #approvalsFor(chosen: readonly string[]): AgentDefinitionInput['toolApproval'] {
-    if (this.#toolApproval === null) return undefined;
-    const kept = Object.entries(this.#toolApproval).filter(([tool]) => chosen.includes(tool));
+  #approvalsFor(chosen: readonly string[]): AgentDefinitionInput['approvals'] {
+    if (this.#approvals === null) return undefined;
+    const kept = Object.entries(this.#approvals).filter(([tool]) => chosen.includes(tool));
     return kept.length === 0 ? null : Object.fromEntries(kept);
   }
 
@@ -554,9 +563,9 @@ export class AgentEditorState {
    * now has none, which removes it; and nothing otherwise, which an update reads as keeping the
    * file's (there is none).
    */
-  #effortInput(): Pick<AgentDefinitionInput, 'defaultEffort'> {
-    if (this.defaultEffort !== '') return { defaultEffort: this.defaultEffort };
-    return this.mode === 'edit' && this.#writtenEffort !== null ? { defaultEffort: null } : {};
+  #effortInput(): Pick<AgentDefinitionInput, 'effort'> {
+    if (this.effort !== '') return { effort: this.effort };
+    return this.mode === 'edit' && this.#writtenEffort !== null ? { effort: null } : {};
   }
 
   /** The definition to try: the form's fields without `references`, which `bureau.agents.try` refuses. */
@@ -564,7 +573,7 @@ export class AgentEditorState {
     const name = this.name.trim();
     const offered = this.toolChoices.map((tool) => tool.name);
     const chosen = offered.filter((tool) => this.tools.includes(tool));
-    const toolApproval = this.#approvalsFor(chosen);
+    const approvals = this.#approvalsFor(chosen);
     return {
       ...(name === '' ? {} : { name }),
       description: this.description.trim() === '' ? null : this.description,
@@ -572,12 +581,12 @@ export class AgentEditorState {
       ...(this.models === null ? {} : { models: this.models }),
       ...this.#effortInput(),
       tools: chosen,
-      skillDescriptors: this.skillDescriptors,
-      ...(this.allowedSkills === null ? {} : { allowedSkills: this.allowedSkills }),
-      ...(this.childAgents === null ? {} : { childAgents: this.childAgents }),
+      card: this.card,
+      ...(this.skills === null ? {} : { skills: this.skills }),
+      ...(this.children === null ? {} : { children: this.children }),
       a2a: this.a2a,
       ...this.#carried,
-      ...(toolApproval === undefined ? {} : { toolApproval }),
+      ...(approvals === undefined ? {} : { approvals }),
       ...this.#limits(),
       instructions: this.instructions,
     };

@@ -26,7 +26,7 @@ let substituteRenderer: FeaturedExampleRenderer | null = null;
  * page to embed SOME featured example cannot pay that inside Bun's per-test budget, so they
  * substitute one here, as they already do for the shell renderer with
  * `setPreparedShellServerRenderer`. The real render is proven by
- * `featured-example-server-renderer.test.ts`. Production never sets this.
+ * `featured-example-server-renderer.integration.test.ts`. Production never sets this.
  */
 export function setFeaturedExampleRenderer(renderer: FeaturedExampleRenderer | null): void {
   substituteRenderer = renderer;

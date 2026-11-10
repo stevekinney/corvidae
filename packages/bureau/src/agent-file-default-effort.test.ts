@@ -1,5 +1,5 @@
 /**
- * COR-1961 — an agent file's `defaultEffort`: what it accepts, how a write keeps it, that a write
+ * COR-1961 — an agent file's `effort`: what it accepts, how a write keeps it, that a write
  * is refused for an effort the default model cannot do, that the definition output carries it, that
  * a chat starts at it unless steered away, and that a file without it behaves as it did before.
  */
@@ -47,51 +47,43 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe('defaultEffort in the frontmatter', () => {
+describe('effort in the frontmatter', () => {
   it('holds the tier as written, and a file without the key, or with a null one, has none', () => {
-    expect(parsed('---\nmodel: a/b\ndefaultEffort: high\n---\n').definition.defaultEffort).toBe(
-      'high',
-    );
-    expect(parsed('---\nmodel: a/b\n---\n').definition).not.toHaveProperty('defaultEffort');
-    expect(parsed('---\nmodel: a/b\ndefaultEffort:\n---\n').definition).not.toHaveProperty(
-      'defaultEffort',
-    );
+    expect(parsed('---\nmodel: a/b\neffort: high\n---\n').definition.effort).toBe('high');
+    expect(parsed('---\nmodel: a/b\n---\n').definition).not.toHaveProperty('effort');
+    expect(parsed('---\nmodel: a/b\neffort:\n---\n').definition).not.toHaveProperty('effort');
   });
 
   it('accepts every tier Operative knows', () => {
     for (const tier of ['low', 'medium', 'high', 'xhigh', 'max'] as const) {
-      expect(
-        parsed(`---\nmodel: a/b\ndefaultEffort: ${tier}\n---\n`).definition.defaultEffort,
-      ).toBe(tier);
+      expect(parsed(`---\nmodel: a/b\neffort: ${tier}\n---\n`).definition.effort).toBe(tier);
     }
   });
 
   it('names the field of a value it refuses', () => {
-    expect(issuePaths('defaultEffort: extreme')).toEqual(['defaultEffort']);
-    expect(issuePaths('defaultEffort: 3')).toEqual(['defaultEffort']);
-    expect(issuePaths('defaultEffort: [high]')).toEqual(['defaultEffort']);
+    expect(issuePaths('effort: extreme')).toEqual(['effort']);
+    expect(issuePaths('effort: 3')).toEqual(['effort']);
+    expect(issuePaths('effort: [high]')).toEqual(['effort']);
   });
 });
 
-describe('writing defaultEffort', () => {
+describe('writing effort', () => {
   const BASE = { model: 'a/b', instructions: 'Body.\n' };
 
   it('writes the tier, and no key for none', () => {
-    const text = (defaultEffort: 'high' | null | undefined) =>
-      decoder.decode(serializeNewAgentFile({ ...BASE, defaultEffort }));
-    expect(parsed(text('high')).definition.defaultEffort).toBe('high');
-    expect(text(null)).not.toContain('defaultEffort');
-    expect(text(undefined)).not.toContain('defaultEffort');
+    const text = (effort: 'high' | null | undefined) =>
+      decoder.decode(serializeNewAgentFile({ ...BASE, effort }));
+    expect(parsed(text('high')).definition.effort).toBe('high');
+    expect(text(null)).not.toContain('effort');
+    expect(text(undefined)).not.toContain('effort');
   });
 
   it('keeps the file’s tier when an update omits it, and keeps every other line', () => {
-    const file = parsed(
-      '---\nmodel: a/b\n# a comment\ndefaultEffort: low\ncolor: blue\n---\nBody.\n',
-    );
+    const file = parsed('---\nmodel: a/b\n# a comment\neffort: low\ncolor: blue\n---\nBody.\n');
     const kept = decoder.decode(
       serializeUpdatedAgentFile('helper', file, { ...BASE, name: 'Named' }) ?? new Uint8Array(),
     );
-    expect(parsed(kept).definition).toMatchObject({ name: 'Named', defaultEffort: 'low' });
+    expect(parsed(kept).definition).toMatchObject({ name: 'Named', effort: 'low' });
     expect(kept).toContain('color: blue');
     expect(kept).toContain('# a comment');
   });
@@ -101,29 +93,27 @@ describe('writing defaultEffort', () => {
     const renamed = decoder.decode(
       serializeUpdatedAgentFile('helper', file, { ...BASE, name: 'Named' }) ?? new Uint8Array(),
     );
-    expect(renamed).not.toContain('defaultEffort');
+    expect(renamed).not.toContain('effort');
   });
 
   it('changes a tier the update states, and removes it for null', () => {
-    const file = parsed('---\nmodel: a/b\ndefaultEffort: low\n---\nBody.\n');
-    const update = (defaultEffort: 'max' | null) =>
+    const file = parsed('---\nmodel: a/b\neffort: low\n---\nBody.\n');
+    const update = (effort: 'max' | null) =>
       decoder.decode(
-        serializeUpdatedAgentFile('helper', file, { ...BASE, defaultEffort }) ?? new Uint8Array(),
+        serializeUpdatedAgentFile('helper', file, { ...BASE, effort }) ?? new Uint8Array(),
       );
-    expect(parsed(update('max')).definition.defaultEffort).toBe('max');
-    expect(update(null)).not.toContain('defaultEffort');
+    expect(parsed(update('max')).definition.effort).toBe('max');
+    expect(update(null)).not.toContain('effort');
   });
 
   it('rewrites nothing when the update states the tier the file has', () => {
-    const file = parsed('---\nmodel: a/b\ndefaultEffort: low\n---\nBody.\n');
-    expect(
-      serializeUpdatedAgentFile('helper', file, { ...BASE, defaultEffort: 'low' }),
-    ).toBeUndefined();
+    const file = parsed('---\nmodel: a/b\neffort: low\n---\nBody.\n');
+    expect(serializeUpdatedAgentFile('helper', file, { ...BASE, effort: 'low' })).toBeUndefined();
   });
 
   it('says `null` for a definition with none, so a restore removes what the file gained', () => {
     const { definition } = parsed('---\nmodel: a/b\n---\nBody.\n');
-    expect(agentFileInputOf(definition).defaultEffort).toBeNull();
+    expect(agentFileInputOf(definition).effort).toBeNull();
   });
 });
 
@@ -133,22 +123,20 @@ describe('a stored definition', () => {
     description: null,
     model: KNOWN_MODEL,
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions: '',
   };
 
   it('loads when it was written before the field existed, and keeps a tier when it has one', () => {
-    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).defaultEffort).toBeUndefined();
-    expect(
-      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, defaultEffort: 'high' }).defaultEffort,
-    ).toBe('high');
+    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).effort).toBeUndefined();
+    expect(agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, effort: 'high' }).effort).toBe(
+      'high',
+    );
   });
 
   it('refuses a stored tier that is not one', () => {
-    expect(() =>
-      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, defaultEffort: 'extreme' }),
-    ).toThrow();
+    expect(() => agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, effort: 'extreme' })).toThrow();
   });
 });
 
@@ -182,17 +170,17 @@ async function modelOf(bureau: FileBureauHarness['bureau']) {
   return definition?.model;
 }
 
-describe('a write of defaultEffort', () => {
+describe('a write of effort', () => {
   it('saves a tier the default model supports', async () => {
     const { bureau } = await start();
-    await bureau.agents.create('helper', { ...DEFINITION, defaultEffort: 'xhigh' });
-    expect(await definitionOf(bureau)).toMatchObject({ defaultEffort: 'xhigh' });
+    await bureau.agents.create('helper', { ...DEFINITION, effort: 'xhigh' });
+    expect(await definitionOf(bureau)).toMatchObject({ effort: 'xhigh' });
   });
 
   it('refuses a create for a tier the default model cannot do, naming the model and its tiers', async () => {
     const { bureau, directory } = await start();
     const error = await rejectionOf(
-      bureau.agents.create('helper', { ...DEFINITION, model: THREE_TIERS, defaultEffort: 'max' }),
+      bureau.agents.create('helper', { ...DEFINITION, model: THREE_TIERS, effort: 'max' }),
     );
     expect(error).toBeInstanceOf(AgentFileError);
     const refused = error as AgentFileError;
@@ -200,7 +188,7 @@ describe('a write of defaultEffort', () => {
     expect(refused.message).toContain(THREE_TIERS);
     expect(refused.message).toContain('low, medium, high');
     expect(refused.problem?.issues).toEqual([
-      expect.objectContaining({ path: 'defaultEffort', reference: THREE_TIERS }),
+      expect.objectContaining({ path: 'effort', reference: THREE_TIERS }),
     ]);
     expect(await Bun.file(`${directory}/helper.md`).exists()).toBe(false);
   });
@@ -208,7 +196,7 @@ describe('a write of defaultEffort', () => {
   it('refuses any tier for a model with no effort support', async () => {
     const { bureau } = await start();
     const error = await rejectionOf(
-      bureau.agents.create('helper', { ...DEFINITION, model: NO_EFFORT, defaultEffort: 'low' }),
+      bureau.agents.create('helper', { ...DEFINITION, model: NO_EFFORT, effort: 'low' }),
     );
     expect((error as AgentFileError).code).toBe('effort-not-supported');
     expect((error as AgentFileError).message).toContain(NO_EFFORT);
@@ -226,7 +214,7 @@ describe('a write of defaultEffort', () => {
     const error = await rejectionOf(
       harness.bureau.agents.update(
         'helper',
-        { ...DEFINITION, model: THREE_TIERS, defaultEffort: 'max' },
+        { ...DEFINITION, model: THREE_TIERS, effort: 'max' },
         { expectedHash: await hashOf(harness, 'helper') },
       ),
     );
@@ -235,7 +223,7 @@ describe('a write of defaultEffort', () => {
 
   it('keeps the tier through an update that omits it, and removes it for null', async () => {
     const harness = await start();
-    await harness.bureau.agents.create('helper', { ...DEFINITION, defaultEffort: 'high' });
+    await harness.bureau.agents.create('helper', { ...DEFINITION, effort: 'high' });
     const kept = await harness.bureau.agents.update(
       'helper',
       { ...DEFINITION, name: 'Renamed' },
@@ -243,19 +231,19 @@ describe('a write of defaultEffort', () => {
     );
     expect(await definitionOf(harness.bureau)).toMatchObject({
       name: 'Renamed',
-      defaultEffort: 'high',
+      effort: 'high',
     });
     await harness.bureau.agents.update(
       'helper',
-      { ...DEFINITION, defaultEffort: null },
+      { ...DEFINITION, effort: null },
       { expectedHash: kept.hash },
     );
-    expect(await definitionOf(harness.bureau)).not.toHaveProperty('defaultEffort');
+    expect(await definitionOf(harness.bureau)).not.toHaveProperty('effort');
   });
 
   it('refuses an update that switches the model and omits the tier the new model cannot do', async () => {
     const harness = await start();
-    await harness.bureau.agents.create('helper', { ...DEFINITION, defaultEffort: 'max' });
+    await harness.bureau.agents.create('helper', { ...DEFINITION, effort: 'max' });
     const hash = await hashOf(harness, 'helper');
     const error = await rejectionOf(
       harness.bureau.agents.update(
@@ -268,7 +256,7 @@ describe('a write of defaultEffort', () => {
     // Naming the tier away lets the same switch save.
     await harness.bureau.agents.update(
       'helper',
-      { ...DEFINITION, model: THREE_TIERS, defaultEffort: null },
+      { ...DEFINITION, model: THREE_TIERS, effort: null },
       { expectedHash: hash },
     );
     expect(await modelOf(harness.bureau)).toBe(THREE_TIERS);
@@ -277,7 +265,7 @@ describe('a write of defaultEffort', () => {
   it('refuses a try of an unsupported tier and builds nothing', async () => {
     const { bureau } = await start();
     const error = await rejectionOf(
-      bureau.agents.try({ ...DEFINITION, model: NO_EFFORT, defaultEffort: 'high' }, 'hello', {
+      bureau.agents.try({ ...DEFINITION, model: NO_EFFORT, effort: 'high' }, 'hello', {
         principal: OWNER.alice,
       }),
     );
@@ -288,7 +276,7 @@ describe('a write of defaultEffort', () => {
     const harness = await start();
     await harness.put(
       'helper.md',
-      agentFileText({ name: 'Helper', model: THREE_TIERS, defaultEffort: 'max' }),
+      agentFileText({ name: 'Helper', model: THREE_TIERS, effort: 'max' }),
     );
     await harness.bureau.agents.refresh();
     expect(harness.bureau.agents.list().find((agent) => agent.id === 'helper')?.state).toBe(
@@ -301,11 +289,11 @@ describe('a write of defaultEffort', () => {
     await harness.bureau.agents.create('helper', DEFINITION);
     await harness.bureau.agents.update(
       'helper',
-      { ...DEFINITION, defaultEffort: 'low' },
+      { ...DEFINITION, effort: 'low' },
       { expectedHash: await hashOf(harness, 'helper') },
     );
     const [latest] = await harness.bureau.agents.versions.list('helper');
-    expect(latest?.changedKeys).toEqual(['defaultEffort']);
+    expect(latest?.changedKeys).toEqual(['effort']);
   });
 });
 
@@ -314,14 +302,14 @@ describe('the agent definition operations', () => {
     const served = await serve();
     const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'effortful',
-      definition: { ...DEFINITION, defaultEffort: 'high' },
+      definition: { ...DEFINITION, effort: 'high' },
     });
     const effortNow = async () => {
       const read = await callAs(served.owner, 'bureau.agents.definitions.get', {
         id: 'effortful',
       });
-      const { definition } = read.result as { definition: { defaultEffort: string | null } };
-      return definition.defaultEffort;
+      const { definition } = read.result as { definition: { effort: string | null } };
+      return definition.effort;
     };
     expect(await effortNow()).toBe('high');
 
@@ -335,7 +323,7 @@ describe('the agent definition operations', () => {
     await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'effortful',
       expectedHash: (kept.result as { hash: string }).hash,
-      definition: { ...DEFINITION, defaultEffort: null },
+      definition: { ...DEFINITION, effort: null },
     });
     expect(await effortNow()).toBeNull();
   });
@@ -344,25 +332,23 @@ describe('the agent definition operations', () => {
     const served = await serve();
     const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'versioned',
-      definition: { ...DEFINITION, defaultEffort: 'low' },
+      definition: { ...DEFINITION, effort: 'low' },
     });
     const cleared = await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'versioned',
       expectedHash: (created.result as { hash: string }).hash,
-      definition: { ...DEFINITION, defaultEffort: null },
+      definition: { ...DEFINITION, effort: null },
     });
     const listed = await callAs(served.owner, 'bureau.agents.versions.list', { id: 'versioned' });
     const versions = (
       listed.result as {
-        versions: Array<{ revision: number; definition: { defaultEffort: unknown } }>;
+        versions: Array<{ revision: number; definition: { effort: unknown } }>;
       }
     ).versions;
-    expect(versions.map((version) => [version.revision, version.definition.defaultEffort])).toEqual(
-      [
-        [2, null],
-        [1, 'low'],
-      ],
-    );
+    expect(versions.map((version) => [version.revision, version.definition.effort])).toEqual([
+      [2, null],
+      [1, 'low'],
+    ]);
 
     await callAs(served.owner, 'bureau.agents.versions.restore', {
       id: 'versioned',
@@ -370,9 +356,9 @@ describe('the agent definition operations', () => {
       expectedHash: (cleared.result as { hash: string }).hash,
     });
     const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'versioned' });
-    expect(
-      (read.result as { definition: { defaultEffort: string | null } }).definition.defaultEffort,
-    ).toBe('low');
+    expect((read.result as { definition: { effort: string | null } }).definition.effort).toBe(
+      'low',
+    );
   });
 
   it('answer null for an agent whose file has none', async () => {
@@ -382,16 +368,14 @@ describe('the agent definition operations', () => {
       definition: DEFINITION,
     });
     const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'plain' });
-    expect(
-      (read.result as { definition: { defaultEffort: string | null } }).definition.defaultEffort,
-    ).toBeNull();
+    expect((read.result as { definition: { effort: string | null } }).definition.effort).toBeNull();
   });
 
   it('answer Unprocessable for an unsupported tier, naming the reason, and write nothing', async () => {
     const served = await serve();
     const refused = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'refused',
-      definition: { ...DEFINITION, model: NO_EFFORT, defaultEffort: 'high' },
+      definition: { ...DEFINITION, model: NO_EFFORT, effort: 'high' },
     });
     expect(refused.error?.data?.httpStatus).toBe(422);
     expect(refused.error?.data).toMatchObject({ reason: 'effort-not-supported' });
@@ -402,7 +386,7 @@ describe('the agent definition operations', () => {
     const served = await serve();
     const refused = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'bad',
-      definition: { ...DEFINITION, defaultEffort: 'extreme' },
+      definition: { ...DEFINITION, effort: 'extreme' },
     });
     expect(refused.error?.data?.httpStatus).toBe(400);
   });
@@ -424,7 +408,7 @@ describe('a chat of an agent with a default effort', () => {
   it('starts at the default, as the model is told on its first step', async () => {
     const { generate, efforts } = recording();
     const { bureau } = await start(generate);
-    await bureau.agents.create('helper', { ...DEFINITION, defaultEffort: 'high' });
+    await bureau.agents.create('helper', { ...DEFINITION, effort: 'high' });
     const run = await bureau.tasks.start('helper', 'go', { principal: OWNER.alice });
     await waitForTaskState(bureau, run.id);
     expect(efforts).toEqual(['high']);
@@ -433,7 +417,7 @@ describe('a chat of an agent with a default effort', () => {
   it('uses the effort the person steered to, and writes the default into no session state', async () => {
     const { generate, efforts } = recording();
     const { bureau } = await start(generate);
-    await bureau.agents.create('helper', { ...DEFINITION, defaultEffort: 'high' });
+    await bureau.agents.create('helper', { ...DEFINITION, effort: 'high' });
     const first = await bureau.tasks.start('helper', 'go', { principal: OWNER.alice });
     await waitForTaskState(bureau, first.id);
     const steered = await bureau.contexts.steer(first.contextId, {

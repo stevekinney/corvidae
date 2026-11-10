@@ -1,12 +1,12 @@
 # Planning and routing
 
-Read this when writing the work-package table, deciding how much grooming the work needs, choosing a model or effort outside the defaults in `SKILL.md`, or escalating a failing package.
+Read this when writing the work-package table, deciding how much grooming the work needs, choosing a model or effort, or escalating a failing package.
 
 ## Grooming
 
 Choose how much grooming the work needs. When the `intake-curmudgeon` and `junior-engineer` agents are installed, you may use either or both up front to interrogate unclear tickets, dependencies, and acceptance criteria. You may instead supply precise context and decisions to the team as needed. Do not run both reviewers by habit or make exhaustive grooming a prerequisite for clear work. Record the chosen approach and its cost/quality rationale; provide context before a worker makes a dependent decision, and update the saved charter when that context changes. This discretion does not waive intake gates required for actual Linear creation or edits. Without those agents, apply the Definition of Ready in [the Linear policy](linear-policy.md) yourself and record the result.
 
-Grooming is discretionary; the readiness pass in `SKILL.md` "Understand the work" is not. It runs on every issue before dispatch, however clear the issue reads.
+Grooming is discretionary; the readiness pass in [coordination](coordination.md#understand-the-work) "Understand the work" is not. It runs on every issue before dispatch, however clear the issue reads.
 
 ## Work packages
 
@@ -24,7 +24,7 @@ Distinguish the gate that starts a package from the gate it produces. When imple
 
 Give each batch its own binary acceptance criteria, required verification, integration boundary, and tracking closeout. Close independently completed issues as their gates pass even if another batch remains unfinished; preserve real dependencies and explicit user-required whole-program gates.
 
-For Linear work, maintain native blocker relations. When the `scope-work`, `linear-create-issue`, or `linear-create-project` skills are installed, use them for required new execution boundaries; otherwise write the issue yourself with `scripts/chef/linear.ts create`, which refuses a duplicate title and reads the issue back, after checking the draft against the Definition of Ready in [the Linear policy](linear-policy.md). Reuse existing issues rather than cloning them into worker tickets. Run required intake gates for new or materially revised Linear payloads before writing. Coordinator approval within the user's authorized scope does not require asking the user again.
+For Linear work, maintain native blocker relations. Shape a required new execution boundary in the `create-task` issue shape (or the `create-project` shape for a new project), check it against the Definition of Ready in [the Linear policy](linear-policy.md), and write it with `bun scripts/chef/linear.ts create`, which refuses a duplicate title and reads the issue back. Reuse existing issues rather than cloning them into worker tickets. Run required intake gates for new or materially revised Linear payloads before writing. Coordinator approval within the user's authorized scope does not require asking the user again.
 
 ## Design programmes
 
@@ -43,7 +43,14 @@ A zero-worker plan records why direct coordinator execution costs less without c
 
 Optimize total cost of accepted work, including context, review, retries, and reasoning. Do not equate a fast model or low effort with the cheapest successful result. Use current runtime availability and authoritative pricing if making monetary comparisons; otherwise record relative cost assumptions without inventing prices or token savings.
 
-The table in `SKILL.md` gives starting choices, not a price ranking. At the cached list prices Opus 5.5 costs 40% of Fable 5.1 per token, so reserve Fable for the cases `SKILL.md` names. Haiku 5.5's listed price applies to prompts up to 100K tokens; longer prompts cost $0.50/$2.50. Recheck prices before any monetary comparison.
+| Work | Starting selection | Escalation evidence |
+| --- | --- | --- |
+| Bounded lookup, inventory, deterministic verification | Economical model, low effort; Codex `gpt-5.6-luna` where selectable | Missing relationships or repeated factual mistakes |
+| Clear implementation with known interfaces and tests | Economical coding worker, medium effort; Codex `worker` / `gpt-5.6-luna` | Failed causal diagnosis, interface ambiguity, or rejected implementation |
+| Broader investigation or integration | Capable middle tier, medium effort; Codex `gpt-5.6-terra` or `gpt-5.6-sol` where available | Cross-cutting reasoning or unresolved correctness risk |
+| Architecture, concurrency, security, final high-risk review | Relevant specialist or stronger model, high effort where supported | A specific unresolved risk warrants additional depth |
+
+The table gives starting choices, not a price ranking. On Claude Code the per-role efforts in "Claude Code prices" below replace its effort column. At the cached list prices Opus 5.5 costs 40% of Fable 5.1 per token, so reserve Fable for the cases "Claude Code prices" names. Haiku 5.5's listed price applies to prompts up to 100K tokens; longer prompts cost $0.50/$2.50. Recheck prices before any monetary comparison.
 
 An implementation dispatch on Opus or Fable instead of Sonnet records its reason in the note at dispatch: a named escalation trigger from the table, or a fixed role that cannot be overridden. The spend report flags every such dispatch with that reason, so a missing reason is visible.
 
@@ -53,7 +60,7 @@ Effort runs low through max, and `xhigh` is the usual sweet spot for capability-
 
 Keep the current coordinator model unless a supported mechanism and authorization allow changing it. Record its actual or inherited settings. Reserve its context for dependency decisions, integration, review, and delivery. Specialist roles can have fixed model and effort settings; never claim an override worked without evidence. For Codex overrides, use a fresh charter such as `fork_turns: "none"` and only supported `model` and `reasoning_effort` fields. For Claude Code, pass the Agent tool's `model` (`sonnet`, `opus`, `haiku`, or `fable`) and `effort` on each dispatch; this routing policy is the explicit instruction that authorizes setting effort. A fixed role definition overrides both. Record the requested values, and the resolved model when a result reports it; a dispatch result is not proof of what ran.
 
-Keep the same owner, meaning the same package, charter, and findings, through a coherent correction cycle. Whether that owner is resumed or re-dispatched fresh with a compact brief is a context decision; see "Keep contexts small" in `SKILL.md`. Measure cache behavior from transcripts rather than inferring it from dispatch shape, and record observed usage.
+Keep the same owner, meaning the same package, charter, and findings, through a coherent correction cycle. Whether that owner is resumed or re-dispatched fresh with a compact brief is a context decision; see [coordination](coordination.md#keep-contexts-small) "Keep contexts small". Measure cache behavior from transcripts rather than inferring it from dispatch shape, and record observed usage.
 
 ## Escalation
 

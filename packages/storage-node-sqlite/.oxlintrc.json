@@ -170,7 +170,7 @@
       }
     },
     {
-      "files": ["src/node-sqlite-loader.ts", "src/node-sqlite.test.ts"],
+      "files": ["src/node-sqlite-loader.ts", "src/node-sqlite.integration.test.ts"],
       "rules": {
         "typescript/no-unnecessary-type-parameters": "off"
       }

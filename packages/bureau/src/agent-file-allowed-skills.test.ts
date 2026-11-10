@@ -1,5 +1,5 @@
 /**
- * COR-1975 — an agent file's `allowedSkills`: what it accepts, how a write keeps it, that a run may
+ * COR-1975 — an agent file's `skills`: what it accepts, how a write keeps it, that a run may
  * activate only what it names, that a skill from a source the host does not trust is refused at
  * activation, and that a write cannot grant one. A file that lists nothing has no skills, as a file
  * agent had none before the key existed.
@@ -63,56 +63,67 @@ function issuePaths(frontmatter: string): string[] | undefined {
   return result.problem.issues?.map((issue) => issue.path);
 }
 
-describe('allowedSkills in the frontmatter', () => {
+describe('skills in the frontmatter', () => {
   it('holds the list as written, and a file without the key, or with a null one, has none', () => {
-    expect(
-      parsed('---\nmodel: a/b\nallowedSkills: [b, a]\n---\n').definition.allowedSkills,
-    ).toEqual(['b', 'a']);
-    expect(parsed('---\nmodel: a/b\n---\n').definition).not.toHaveProperty('allowedSkills');
-    expect(parsed('---\nmodel: a/b\nallowedSkills:\n---\n').definition).not.toHaveProperty(
-      'allowedSkills',
-    );
+    expect(parsed('---\nmodel: a/b\nskills: [b, a]\n---\n').definition.skills).toEqual(['b', 'a']);
+    expect(parsed('---\nmodel: a/b\n---\n').definition).not.toHaveProperty('skills');
+    expect(parsed('---\nmodel: a/b\nskills:\n---\n').definition).not.toHaveProperty('skills');
   });
 
   it('keeps an empty list, which grants none and is what the file says', () => {
-    expect(parsed('---\nmodel: a/b\nallowedSkills: []\n---\n').definition.allowedSkills).toEqual(
-      [],
-    );
+    expect(parsed('---\nmodel: a/b\nskills: []\n---\n').definition.skills).toEqual([]);
   });
 
   it('names the field of a value it refuses', () => {
-    expect(issuePaths('allowedSkills: reviewer')).toEqual(['allowedSkills']);
-    expect(issuePaths('allowedSkills: [a, a]')).toEqual(['allowedSkills']);
-    expect(issuePaths('allowedSkills: [""]')).toEqual(['allowedSkills.0']);
-    expect(issuePaths('allowedSkills: [{ id: a }]')).toEqual(['allowedSkills.0']);
+    expect(issuePaths('skills: reviewer')).toEqual(['skills']);
+    expect(issuePaths('skills: [a, a]')).toEqual(['skills']);
+    expect(issuePaths('skills: [""]')).toEqual(['skills.0']);
   });
 
-  it('does not read the old `skills` list as a grant', () => {
-    const file = parsed('---\nmodel: a/b\nskills:\n  - id: reviewer\n---\n');
-    expect(file.definition).not.toHaveProperty('allowedSkills');
+  it('refuses `allowedSkills`, its name before COR-2139, at its own path', () => {
+    const result = parseAgentFile('helper', '---\nmodel: a/b\nallowedSkills: [a]\n---\n');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problem.issues).toEqual([
+      { path: 'allowedSkills', message: expect.stringContaining('renamed to `skills`') },
+    ]);
+  });
+
+  it('refuses a stale `skills` list of descriptive skills at `skills`, naming `card`, and never reads it as a grant', () => {
+    for (const frontmatter of [
+      'skills:\n  - id: reviewer',
+      'skills: [{ id: reviewer, name: Reviewer, description: Reviews }]',
+      'skills: [reviewer, { id: writer }]',
+    ]) {
+      const result = parseAgentFile('helper', `---\nmodel: a/b\n${frontmatter}\n---\n`);
+      expect(result.ok).toBe(false);
+      if (result.ok) continue;
+      expect(result.problem.code).toBe('invalid-frontmatter');
+      expect(result.problem.issues).toEqual([
+        { path: 'skills', message: expect.stringContaining('`card`') },
+      ]);
+    }
   });
 });
 
-describe('writing allowedSkills', () => {
+describe('writing skills', () => {
   const BASE = { model: 'a/b', instructions: 'Body.\n' };
 
   it('writes a list, an empty list, and no key for no list', () => {
-    const text = (allowedSkills: readonly string[] | null | undefined) =>
-      decoder.decode(serializeNewAgentFile({ ...BASE, allowedSkills }));
-    expect(parsed(text(['a'])).definition.allowedSkills).toEqual(['a']);
-    expect(parsed(text([])).definition.allowedSkills).toEqual([]);
-    expect(text(null)).not.toContain('allowedSkills');
-    expect(text(undefined)).not.toContain('allowedSkills');
+    const text = (skills: readonly string[] | null | undefined) =>
+      decoder.decode(serializeNewAgentFile({ ...BASE, skills }));
+    expect(parsed(text(['a'])).definition.skills).toEqual(['a']);
+    expect(parsed(text([])).definition.skills).toEqual([]);
+    expect(text(null)).not.toContain('skills');
+    expect(text(undefined)).not.toContain('skills');
   });
 
   it('keeps the file’s list when an update omits it, and keeps every other line', () => {
-    const file = parsed(
-      '---\nmodel: a/b\n# a comment\nallowedSkills: [a]\ncolor: blue\n---\nBody.\n',
-    );
+    const file = parsed('---\nmodel: a/b\n# a comment\nskills: [a]\ncolor: blue\n---\nBody.\n');
     const kept = decoder.decode(
       serializeUpdatedAgentFile('helper', file, { ...BASE, name: 'Named' }) ?? new Uint8Array(),
     );
-    expect(parsed(kept).definition).toMatchObject({ name: 'Named', allowedSkills: ['a'] });
+    expect(parsed(kept).definition).toMatchObject({ name: 'Named', skills: ['a'] });
     expect(kept).toContain('color: blue');
     expect(kept).toContain('# a comment');
   });
@@ -122,36 +133,34 @@ describe('writing allowedSkills', () => {
     const renamed = decoder.decode(
       serializeUpdatedAgentFile('helper', file, { ...BASE, name: 'Named' }) ?? new Uint8Array(),
     );
-    expect(renamed).not.toContain('allowedSkills');
+    expect(renamed).not.toContain('skills');
   });
 
   it('changes a list the update states, empties it, and removes it for null', () => {
-    const file = parsed('---\nmodel: a/b\nallowedSkills: [a]\n---\nBody.\n');
-    const update = (allowedSkills: readonly string[] | null) =>
+    const file = parsed('---\nmodel: a/b\nskills: [a]\n---\nBody.\n');
+    const update = (skills: readonly string[] | null) =>
       decoder.decode(
-        serializeUpdatedAgentFile('helper', file, { ...BASE, allowedSkills }) ?? new Uint8Array(),
+        serializeUpdatedAgentFile('helper', file, { ...BASE, skills }) ?? new Uint8Array(),
       );
-    expect(parsed(update(['b'])).definition.allowedSkills).toEqual(['b']);
-    expect(parsed(update([])).definition.allowedSkills).toEqual([]);
-    expect(update(null)).not.toContain('allowedSkills');
+    expect(parsed(update(['b'])).definition.skills).toEqual(['b']);
+    expect(parsed(update([])).definition.skills).toEqual([]);
+    expect(update(null)).not.toContain('skills');
   });
 
   it('rewrites nothing when the update states the list the file has', () => {
-    const file = parsed('---\nmodel: a/b\nallowedSkills: [a]\n---\nBody.\n');
-    expect(
-      serializeUpdatedAgentFile('helper', file, { ...BASE, allowedSkills: ['a'] }),
-    ).toBeUndefined();
+    const file = parsed('---\nmodel: a/b\nskills: [a]\n---\nBody.\n');
+    expect(serializeUpdatedAgentFile('helper', file, { ...BASE, skills: ['a'] })).toBeUndefined();
   });
 
   it('treats no list and an empty one as different statements', () => {
     const file = parsed('---\nmodel: a/b\n---\nBody.\n');
-    const emptied = serializeUpdatedAgentFile('helper', file, { ...BASE, allowedSkills: [] });
-    expect(parsed(decoder.decode(emptied)).definition.allowedSkills).toEqual([]);
+    const emptied = serializeUpdatedAgentFile('helper', file, { ...BASE, skills: [] });
+    expect(parsed(decoder.decode(emptied)).definition.skills).toEqual([]);
   });
 
   it('says `null` for a definition with none, so a restore removes what the file gained', () => {
     const { definition } = parsed('---\nmodel: a/b\n---\nBody.\n');
-    expect(agentFileInputOf(definition).allowedSkills).toBeNull();
+    expect(agentFileInputOf(definition).skills).toBeNull();
   });
 });
 
@@ -161,16 +170,34 @@ describe('a stored definition', () => {
     description: null,
     model: KNOWN_MODEL,
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions: '',
   };
 
   it('loads when it was written before the field existed, and keeps a list when it has one', () => {
-    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).allowedSkills).toBeUndefined();
-    expect(
-      agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, allowedSkills: ['a'] }).allowedSkills,
-    ).toEqual(['a']);
+    expect(agentFileDefinitionSchema.parse(OLD_SNAPSHOT).skills).toBeUndefined();
+    expect(agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, skills: ['a'] }).skills).toEqual([
+      'a',
+    ]);
+  });
+
+  it('reads `allowedSkills`, written before COR-2139, as the same skills', () => {
+    const definition = agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, allowedSkills: ['a'] });
+    expect(definition.skills).toEqual(['a']);
+    expect(definition).not.toHaveProperty('allowedSkills');
+  });
+
+  it('reads a pre-`card` `skills` list of descriptive skills as no skills, and keeps its `allowedSkills`', () => {
+    const stale = [{ id: 'reviewer', name: 'Reviewer', description: 'Reviews', tags: [] }];
+    const without = agentFileDefinitionSchema.parse({ ...OLD_SNAPSHOT, skills: stale });
+    expect(without).not.toHaveProperty('skills');
+    const withGrant = agentFileDefinitionSchema.parse({
+      ...OLD_SNAPSHOT,
+      skills: stale,
+      allowedSkills: ['writer'],
+    });
+    expect(withGrant.skills).toEqual(['writer']);
   });
 });
 
@@ -287,7 +314,7 @@ describe('a run of a file agent', () => {
   it('has no skills when the list is empty', async () => {
     const catalog = await catalogOf();
     const { bureau, put, seen } = await start(() => catalog);
-    await put('helper.md', agentFileText({ model: KNOWN_MODEL, allowedSkills: '[]' }));
+    await put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[]' }));
     await bureau.agents.refresh();
     await runOnce(bureau);
     expect(seen[0]?.tools).not.toContain('activate_skill');
@@ -296,7 +323,7 @@ describe('a run of a file agent', () => {
   it('is offered and activates only what the file names', async () => {
     const catalog = await catalogOf();
     const { bureau, put, seen } = await start(() => catalog, ['reviewer', 'writer']);
-    await put('helper.md', agentFileText({ model: KNOWN_MODEL, allowedSkills: '[reviewer]' }));
+    await put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[reviewer]' }));
     await bureau.agents.refresh();
     await runOnce(bureau);
 
@@ -312,10 +339,7 @@ describe('a run of a file agent', () => {
   it('refuses a skill the file names from a source the host does not trust', async () => {
     const catalog = await catalogOf();
     const { bureau, put, seen } = await start(() => catalog, ['deploy']);
-    await put(
-      'helper.md',
-      agentFileText({ model: KNOWN_MODEL, allowedSkills: '[reviewer, deploy]' }),
-    );
+    await put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[reviewer, deploy]' }));
     await bureau.agents.refresh();
     expect(bureau.agents.list().find((agent) => agent.id === 'helper')?.state).toBe('ready');
     await runOnce(bureau);
@@ -327,7 +351,7 @@ describe('a run of a file agent', () => {
   it('reads the catalog per run, so a source trusted later is offered without a new file', async () => {
     let catalog = await catalogOf([], ['reviewer']);
     const { bureau, put, seen } = await start(() => catalog);
-    await put('helper.md', agentFileText({ model: KNOWN_MODEL, allowedSkills: '[reviewer]' }));
+    await put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[reviewer]' }));
     await bureau.agents.refresh();
     await runOnce(bureau);
     expect(seen.at(-1)?.tools).not.toContain('activate_skill');
@@ -339,7 +363,7 @@ describe('a run of a file agent', () => {
 
   it('runs with no skills while the host has no catalog yet', async () => {
     const { bureau, put, seen } = await start(() => undefined);
-    await put('helper.md', agentFileText({ model: KNOWN_MODEL, allowedSkills: '[reviewer]' }));
+    await put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[reviewer]' }));
     await bureau.agents.refresh();
     await runOnce(bureau);
     expect(seen[0]?.tools).not.toContain('activate_skill');
@@ -361,10 +385,7 @@ describe('a run of a file agent', () => {
       return { content: 'done', toolCalls: [] };
     };
     const harness = await start(() => catalog, [], { models: { generate: () => generate } });
-    await harness.put(
-      'helper.md',
-      agentFileText({ model: KNOWN_MODEL, allowedSkills: '[reviewer]' }),
-    );
+    await harness.put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[reviewer]' }));
     await harness.bureau.agents.refresh();
     await runOnce(harness.bureau);
     // The current catalog names the skill under another source, so the run's own is gone.
@@ -378,23 +399,23 @@ describe('a write that grants a skill', () => {
   it('grants a skill the deployment can grant', async () => {
     const catalog = await catalogOf();
     const { bureau } = await start(() => catalog);
-    await bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer'] });
+    await bureau.agents.create('helper', { ...DEFINITION, skills: ['reviewer'] });
     const definition = await definitionOf(bureau);
-    expect(definition?.allowedSkills).toEqual(['reviewer']);
+    expect(definition?.skills).toEqual(['reviewer']);
   });
 
   it('refuses a skill from a source the host does not trust, and writes nothing', async () => {
     const catalog = await catalogOf();
     const { bureau } = await start(() => catalog);
     const error = await rejectionOf(
-      bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer', 'deploy'] }),
+      bureau.agents.create('helper', { ...DEFINITION, skills: ['reviewer', 'deploy'] }),
     );
     expect(error).toBeInstanceOf(AgentFileError);
     const { code, problem, message } = error as AgentFileError;
     expect(code).toBe('skill-not-grantable');
     expect(message).toContain('source-untrusted');
     expect(problem?.issues).toEqual([
-      { path: 'allowedSkills.1', message: expect.stringContaining('deploy'), reference: 'deploy' },
+      { path: 'skills.1', message: expect.stringContaining('deploy'), reference: 'deploy' },
     ]);
     expect(await bureau.agents.detail('helper')).toBeUndefined();
   });
@@ -403,14 +424,14 @@ describe('a write that grants a skill', () => {
     const catalog = await catalogOf();
     const { bureau } = await start(() => catalog);
     const unknown = await rejectionOf(
-      bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['ghost'] }),
+      bureau.agents.create('helper', { ...DEFINITION, skills: ['ghost'] }),
     );
     expect((unknown as AgentFileError).code).toBe('skill-not-grantable');
     expect((unknown as AgentFileError).message).toContain('not in the deployment');
 
     const none = await start(() => undefined);
     const refused = await rejectionOf(
-      none.bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer'] }),
+      none.bureau.agents.create('helper', { ...DEFINITION, skills: ['reviewer'] }),
     );
     expect((refused as AgentFileError).code).toBe('skill-not-grantable');
   });
@@ -426,9 +447,9 @@ describe('a write that grants a skill', () => {
     });
     expect(catalog.records.some((record) => record.unavailableReason === 'shadowed')).toBe(true);
     const { bureau } = await start(() => catalog);
-    await bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer'] });
+    await bureau.agents.create('helper', { ...DEFINITION, skills: ['reviewer'] });
     const definition = await definitionOf(bureau);
-    expect(definition?.allowedSkills).toEqual(['reviewer']);
+    expect(definition?.skills).toEqual(['reviewer']);
   });
 
   it('offers a granted name to a run though its shadowed twin sorts first', async () => {
@@ -446,7 +467,7 @@ describe('a write that grants a skill', () => {
       ['zeta', true],
     ]);
     const { bureau, seen } = await start(() => catalog, ['reviewer']);
-    await bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer'] });
+    await bureau.agents.create('helper', { ...DEFINITION, skills: ['reviewer'] });
     await runOnce(bureau);
 
     expect(seen[0]?.tools).toContain('activate_skill');
@@ -458,10 +479,7 @@ describe('a write that grants a skill', () => {
   it('does not refuse an edit for a skill the file already names', async () => {
     const catalog = await catalogOf();
     const harness = await start(() => catalog);
-    await harness.put(
-      'helper.md',
-      agentFileText({ model: KNOWN_MODEL, allowedSkills: '[deploy]' }),
-    );
+    await harness.put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[deploy]' }));
     const hash = await hashOf(harness, 'helper');
     // Omitted, and stated: neither grants anything the file does not already hold.
     const omitted = await harness.bureau.agents.update(
@@ -471,26 +489,23 @@ describe('a write that grants a skill', () => {
     );
     await harness.bureau.agents.update(
       'helper',
-      { ...DEFINITION, name: 'Again', allowedSkills: ['deploy'] },
+      { ...DEFINITION, name: 'Again', skills: ['deploy'] },
       { expectedHash: omitted.hash },
     );
     expect(await definitionOf(harness.bureau)).toMatchObject({
       name: 'Again',
-      allowedSkills: ['deploy'],
+      skills: ['deploy'],
     });
   });
 
   it('refuses an update that adds one beside a skill the file already names', async () => {
     const catalog = await catalogOf();
     const harness = await start(() => catalog);
-    await harness.put(
-      'helper.md',
-      agentFileText({ model: KNOWN_MODEL, allowedSkills: '[reviewer]' }),
-    );
+    await harness.put('helper.md', agentFileText({ model: KNOWN_MODEL, skills: '[reviewer]' }));
     const error = await rejectionOf(
       harness.bureau.agents.update(
         'helper',
-        { ...DEFINITION, allowedSkills: ['reviewer', 'deploy'] },
+        { ...DEFINITION, skills: ['reviewer', 'deploy'] },
         { expectedHash: await hashOf(harness, 'helper') },
       ),
     );
@@ -500,11 +515,11 @@ describe('a write that grants a skill', () => {
   it('refuses a restore that would grant a skill the source has since lost', async () => {
     let catalog = await catalogOf(['reviewer'], []);
     const harness = await start(() => catalog);
-    await harness.bureau.agents.create('helper', { ...DEFINITION, allowedSkills: ['reviewer'] });
+    await harness.bureau.agents.create('helper', { ...DEFINITION, skills: ['reviewer'] });
     const hash = await hashOf(harness, 'helper');
     await harness.bureau.agents.update(
       'helper',
-      { ...DEFINITION, allowedSkills: [] },
+      { ...DEFINITION, skills: [] },
       { expectedHash: hash },
     );
     catalog = await catalogOf([], ['reviewer']);
@@ -522,11 +537,11 @@ describe('a write that grants a skill', () => {
     await harness.bureau.agents.create('helper', DEFINITION);
     await harness.bureau.agents.update(
       'helper',
-      { ...DEFINITION, allowedSkills: ['reviewer'] },
+      { ...DEFINITION, skills: ['reviewer'] },
       { expectedHash: await hashOf(harness, 'helper') },
     );
     const [latest] = await harness.bureau.agents.versions.list('helper');
-    expect(latest?.changedKeys).toEqual(['allowedSkills']);
+    expect(latest?.changedKeys).toEqual(['skills']);
   });
 });
 
@@ -566,7 +581,7 @@ describe('a run of a file agent reattached after its process died', () => {
     roots.push(directory);
     await writeFile(
       join(directory, 'helper.md'),
-      agentFileText({ model: KNOWN_MODEL, tools: '[lookup-order]', allowedSkills: '[lock]' }),
+      agentFileText({ model: KNOWN_MODEL, tools: '[lookup-order]', skills: '[lock]' }),
     );
     const path = crashes.nextDatabasePath();
     const life = { current: 'first' };
@@ -612,12 +627,12 @@ describe('the agent definition operations', () => {
     const served = await serve({ overrides: { agentSkillCatalog: () => catalog } });
     const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'granted',
-      definition: { ...DEFINITION, allowedSkills: ['reviewer'] },
+      definition: { ...DEFINITION, skills: ['reviewer'] },
     });
     const allowedNow = async () => {
       const read = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'granted' });
-      const { definition } = read.result as { definition: { allowedSkills: string[] | null } };
-      return definition.allowedSkills;
+      const { definition } = read.result as { definition: { skills: string[] | null } };
+      return definition.skills;
     };
     expect(await allowedNow()).toEqual(['reviewer']);
 
@@ -631,7 +646,7 @@ describe('the agent definition operations', () => {
     await callAs(served.owner, 'bureau.agents.definitions.update', {
       id: 'granted',
       expectedHash: (kept.result as { hash: string }).hash,
-      definition: { ...DEFINITION, allowedSkills: null },
+      definition: { ...DEFINITION, skills: null },
     });
     expect(await allowedNow()).toBeNull();
   });
@@ -641,7 +656,7 @@ describe('the agent definition operations', () => {
     const served = await serve({ overrides: { agentSkillCatalog: () => catalog } });
     const refused = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'refused',
-      definition: { ...DEFINITION, allowedSkills: ['deploy'] },
+      definition: { ...DEFINITION, skills: ['deploy'] },
     });
     expect(refused.error?.data?.httpStatus).toBe(422);
     expect(refused.error?.data).toMatchObject({ reason: 'skill-not-grantable' });
@@ -654,7 +669,7 @@ describe('the agent definition operations', () => {
     const served = await serve({ overrides: { agentSkillCatalog: () => catalog } });
     const refused = await callAs(served.owner, 'bureau.agents.definitions.create', {
       id: 'repeated',
-      definition: { ...DEFINITION, allowedSkills: ['reviewer', 'reviewer'] },
+      definition: { ...DEFINITION, skills: ['reviewer', 'reviewer'] },
     });
     expect(refused.error?.data?.httpStatus).toBe(400);
   });

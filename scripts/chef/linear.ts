@@ -8,17 +8,34 @@
 // files through credentials.ts; it is never printed or written):
 //   bun scripts/chef/linear.ts read <ID> [--json]
 //   bun scripts/chef/linear.ts state <ID> <State Name> [--json]
-//   bun scripts/chef/linear.ts comment <ID> --file <md> [--json]
+//   bun scripts/chef/linear.ts comment <ID> --file <md> [--update <comment-id>] [--json]
 //   bun scripts/chef/linear.ts append <ID> --file <md> [--json]
 //   bun scripts/chef/linear.ts create --team <KEY> [--project <id>] --title <t> --file <md> --label <name>
 //                                [--state <name>] [--json]
 //   bun scripts/chef/linear.ts blockers <ID> [--json]
 //   bun scripts/chef/linear.ts block <ID> --by <ID> [--json]
+//   bun scripts/chef/linear.ts project-read <project> [--json]
+//   bun scripts/chef/linear.ts project-state <project> <State Name> [--json]
+//   bun scripts/chef/linear.ts project-update <project> --health <onTrack|atRisk|offTrack> --file <md> [--json]
 //
 // `read` prints the summary line, the last three comments' first lines, then the full description
 // (`--json` adds it as `description`).
 // `create` refuses (exit 1) when an issue with the same title already exists in the project, or in
 // the team when no project is named. `block <ID> --by <OTHER>` makes OTHER block ID.
+// `comment --update <comment-id>` replaces that comment's body instead of posting a new one, and
+// refuses (exit 1) a comment on another issue or one that another user wrote.
+//
+// `<project>` is a project id, slug id or exact name; an unknown or ambiguous name is exit 1 naming
+// the candidates. `project-read` prints the project's name, status, the health of its latest
+// update, and its issue counts by state type (completed, started, unstarted, backlog, canceled),
+// and refuses (exit 1) to report a count it could not read whole. `project-state` resolves the
+// status by name from the workspace's project statuses (a project status, not an issue state),
+// refuses an unknown name listing the available ones, sets it and reads it back.
+// `project-update` posts a native project status update with the given health and body, and reads
+// it back (body compared as `normalizeMarkdown` normalizes it, health equal). The body must carry
+// each of these count lines, at the start of a line (a list marker or bold may precede it):
+// "Open:", "Ready:", "Done this run:", "Batches merged:", "Batches running:", "Blockers:"; a body
+// without one, or a health other than onTrack, atRisk or offTrack, is exit 2 before any request.
 //
 // Exit codes: 0 success and read back, 1 refused, not found, API failure or read-back mismatch,
 // 2 invalid CLI usage (including an unavailable LINEAR_API_KEY).
@@ -335,6 +352,59 @@ export async function postComment(
   };
 }
 
+/**
+ * Replace the body of comment `commentId` on `identifier`, then read it back. Refuses a comment on
+ * another issue, and one that another user wrote, so a resumed run never overwrites someone
+ * else's record.
+ */
+export async function updateComment(
+  client: LinearClient,
+  identifier: string,
+  commentId: string,
+  body: string,
+): Promise<Outcome> {
+  const issue = await fetchIssue(client, identifier);
+  const owner = await client.request<{
+    viewer: { id: string };
+    comment: {
+      id: string;
+      user: { id: string } | null;
+      issue: { identifier: string } | null;
+    } | null;
+  }>(
+    `query CommentOwner($id: String!) { viewer { id } comment(id: $id) { id user { id } issue { identifier } } }`,
+    { id: commentId },
+  );
+  const refuse = (reason: string): Outcome => ({
+    ok: false,
+    summary: `${identifier}: comment ${commentId} ${reason}; nothing was changed.`,
+    data: { identifier, commentId, updated: false, reason },
+  });
+  if (owner.comment === null) return refuse('does not exist');
+  if (owner.comment.issue?.identifier !== issue.identifier)
+    return refuse(`belongs to ${owner.comment.issue?.identifier ?? 'no issue'}`);
+  if (owner.comment.user?.id !== owner.viewer.id) return refuse('was written by another user');
+  const updated = await client.request<{ commentUpdate: { success: boolean } }>(
+    `mutation CommentUpdate($id: String!, $body: String!) { commentUpdate(id: $id, input: { body: $body }) { success } }`,
+    { id: commentId, body },
+  );
+  const back = await client.request<{ comment: { id: string; body: string } | null }>(
+    `query CommentRead($id: String!) { comment(id: $id) { id body issue { identifier } } }`,
+    { id: commentId },
+  );
+  const verified =
+    updated.commentUpdate.success &&
+    back.comment !== null &&
+    normalizeMarkdown(back.comment.body) === normalizeMarkdown(body);
+  return {
+    ok: verified,
+    summary: verified
+      ? `${identifier}: comment ${commentId} updated (read back).`
+      : `${identifier}: comment ${commentId} read-back mismatch.`,
+    data: { identifier, commentId, updated: updated.commentUpdate.success, verified },
+  };
+}
+
 export async function appendDescription(
   client: LinearClient,
   identifier: string,
@@ -500,7 +570,7 @@ export async function createIssue(client: LinearClient, options: CreateOptions):
 interface RelatedIssue {
   identifier: string;
   title: string;
-  state: { name: string };
+  state: { name: string; type: string };
 }
 
 interface PageInfo {
@@ -516,7 +586,7 @@ interface RelationRead {
   } | null;
 }
 
-const relationDocument = `query IssueRelations($id: String!) { issue(id: $id) { id identifier relations(first: 100) { nodes { type relatedIssue { identifier title state { name } } } pageInfo { hasNextPage } } inverseRelations(first: 100) { nodes { type issue { identifier title state { name } } } pageInfo { hasNextPage } } } }`;
+const relationDocument = `query IssueRelations($id: String!) { issue(id: $id) { id identifier relations(first: 100) { nodes { type relatedIssue { identifier title state { name type } } } pageInfo { hasNextPage } } inverseRelations(first: 100) { nodes { type issue { identifier title state { name type } } } pageInfo { hasNextPage } } } }`;
 
 async function fetchRelations(client: LinearClient, identifier: string) {
   const data = await client.request<RelationRead>(relationDocument, {
@@ -537,6 +607,7 @@ async function fetchRelations(client: LinearClient, identifier: string) {
         identifier: relation.issue.identifier,
         title: relation.issue.title,
         state: relation.issue.state.name,
+        stateType: relation.issue.state.type,
       })),
     blocks: data.issue.relations.nodes
       .filter((relation) => relation.type === 'blocks')
@@ -544,8 +615,27 @@ async function fetchRelations(client: LinearClient, identifier: string) {
         identifier: relation.relatedIssue.identifier,
         title: relation.relatedIssue.title,
         state: relation.relatedIssue.state.name,
+        stateType: relation.relatedIssue.state.type,
       })),
   };
+}
+
+/** An issue that blocks another, with its state's name and its type (`completed`, `canceled`, …). */
+export interface Blocker {
+  identifier: string;
+  title: string;
+  state: string;
+  stateType: string;
+}
+
+/**
+ * The issues blocking `identifier` that are still open. Only a blocker whose state type is
+ * `completed` clears; a canceled or duplicate blocker stays open, because whether it still blocks
+ * is the owner's call, not a silent release. Throws `LinearError` rather than return a partial list.
+ */
+export async function openBlockers(client: LinearClient, identifier: string): Promise<Blocker[]> {
+  const { blockedBy } = await fetchRelations(client, identifier);
+  return blockedBy.filter((blocker) => blocker.stateType !== 'completed');
 }
 
 export async function listBlockers(client: LinearClient, identifier: string): Promise<Outcome> {
@@ -606,6 +696,266 @@ export async function blockIssue(
   };
 }
 
+/** Pages of 100 read before a project listing or issue count gives up rather than report a partial one. */
+export const projectPageLimit = 100;
+
+/** The count lines a project status update must carry, each at the start of a line. */
+export const projectUpdateCountLines = [
+  'Open:',
+  'Ready:',
+  'Done this run:',
+  'Batches merged:',
+  'Batches running:',
+  'Blockers:',
+] as const;
+
+/** The health values Linear accepts on a project update. */
+export const projectHealthValues = ['onTrack', 'atRisk', 'offTrack'] as const;
+export type ProjectHealth = (typeof projectHealthValues)[number];
+
+function isProjectHealth(value: string): value is ProjectHealth {
+  return (projectHealthValues as readonly string[]).includes(value);
+}
+
+/** The count lines `body` lacks. A line may start with a list marker and bold markers. */
+export function missingCountLines(body: string): string[] {
+  const lines = body.split('\n').map((line) => line.replace(/^\s*(?:[-*+]\s+)?(?:\*\*|__)?/, ''));
+  return projectUpdateCountLines.filter((label) => !lines.some((line) => line.startsWith(label)));
+}
+
+interface PagedNodes<T> {
+  nodes: T[];
+  pageInfo: { hasNextPage: boolean; endCursor: string | null };
+}
+
+/** Follows `fetchPage` until the last page; throws rather than return a partial list. */
+async function collectPages<T>(
+  what: string,
+  fetchPage: (after: string | null) => Promise<PagedNodes<T>>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let after: string | null = null;
+  for (let page = 0; page < projectPageLimit; page += 1) {
+    const data: PagedNodes<T> = await fetchPage(after);
+    all.push(...data.nodes);
+    if (!data.pageInfo.hasNextPage) return all;
+    after = data.pageInfo.endCursor;
+  }
+  throw new LinearError(
+    `More than ${projectPageLimit * 100} ${what}; refusing to report a partial list.`,
+  );
+}
+
+interface ProjectReference {
+  id: string;
+  name: string;
+  slugId: string;
+}
+
+/**
+ * The project a user named by id, slug id or exact name. An unknown or ambiguous name throws
+ * `LinearError` naming the candidates, so a write never lands on a guess.
+ */
+async function resolveProject(client: LinearClient, reference: string): Promise<ProjectReference> {
+  const projects = await collectPages<ProjectReference>('projects', async (after) => {
+    const data = await client.request<{ projects: PagedNodes<ProjectReference> }>(
+      `query ProjectList($after: String) { projects(first: 100, after: $after) { nodes { id name slugId } pageInfo { hasNextPage endCursor } } }`,
+      { after },
+    );
+    return data.projects;
+  });
+  const wanted = reference.trim();
+  const byIdentity = projects.filter(
+    (project) => project.id === wanted || project.slugId === wanted,
+  );
+  const matches =
+    byIdentity.length > 0
+      ? byIdentity
+      : projects.filter((project) => project.name.trim().toLowerCase() === wanted.toLowerCase());
+  const describe = (candidates: ProjectReference[]) =>
+    candidates.map((project) => `"${project.name}" (${project.slugId})`).join(', ');
+  if (matches.length === 1) return matches[0] as ProjectReference;
+  if (matches.length > 1)
+    throw new LinearError(`"${reference}" is ambiguous; it matches ${describe(matches)}.`);
+  const near = projects.filter((project) =>
+    project.name.toLowerCase().includes(wanted.toLowerCase()),
+  );
+  const candidates = near.length > 0 ? near : projects.slice(0, 20);
+  throw new LinearError(
+    `No project "${reference}"; ${near.length > 0 ? 'similar' : 'available'}: ${describe(candidates)}.`,
+  );
+}
+
+interface ProjectSnapshot {
+  id: string;
+  name: string;
+  slugId: string;
+  status: { id: string; name: string } | null;
+  lastUpdate: { id: string; health: string | null } | null;
+}
+
+async function fetchProject(client: LinearClient, id: string): Promise<ProjectSnapshot> {
+  const data = await client.request<{ project: ProjectSnapshot | null }>(
+    `query ProjectRead($id: String!) { project(id: $id) { id name slugId status { id name } lastUpdate { id health } } }`,
+    { id },
+  );
+  if (data.project === null || data.project === undefined)
+    throw new LinearError(`No project ${id}.`);
+  return data.project;
+}
+
+/** The state types an issue count reports; any other type is counted under `other`. */
+const issueStateTypes = ['completed', 'started', 'unstarted', 'backlog', 'canceled'] as const;
+
+async function countProjectIssues(
+  client: LinearClient,
+  id: string,
+): Promise<Record<(typeof issueStateTypes)[number] | 'other', number>> {
+  const issues = await collectPages<{ state: { type: string } }>(
+    'issues in the project',
+    async (after) => {
+      const data = await client.request<{
+        project: { issues: PagedNodes<{ state: { type: string } }> } | null;
+      }>(
+        `query ProjectIssues($id: String!, $after: String) { project(id: $id) { issues(first: 100, after: $after) { nodes { state { type } } pageInfo { hasNextPage endCursor } } } }`,
+        { id, after },
+      );
+      if (data.project === null) throw new LinearError(`No project ${id}.`);
+      return data.project.issues;
+    },
+  );
+  const counts = { completed: 0, started: 0, unstarted: 0, backlog: 0, canceled: 0, other: 0 };
+  for (const issue of issues) {
+    const type = issueStateTypes.find((candidate) => candidate === issue.state.type) ?? 'other';
+    counts[type] += 1;
+  }
+  return counts;
+}
+
+/** The project's name, status, the health of its latest update, and its issue counts by state type. */
+export async function readProject(client: LinearClient, reference: string): Promise<Outcome> {
+  const resolved = await resolveProject(client, reference);
+  const project = await fetchProject(client, resolved.id);
+  const counts = await countProjectIssues(client, resolved.id);
+  const health = project.lastUpdate?.health ?? 'none';
+  const status = project.status?.name ?? 'none';
+  const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
+  return {
+    ok: true,
+    summary: [
+      `${project.name}: status=${status} health=${health} issues=${total}`,
+      `  completed=${counts.completed} started=${counts.started} unstarted=${counts.unstarted} backlog=${counts.backlog} canceled=${counts.canceled}${counts.other > 0 ? ` other=${counts.other}` : ''}`,
+    ].join('\n'),
+    data: {
+      project: project.name,
+      id: project.id,
+      slugId: project.slugId,
+      status,
+      health,
+      issues: total,
+      counts,
+    },
+  };
+}
+
+interface ProjectStatus {
+  id: string;
+  name: string;
+}
+
+/** Set the project's status by name from the workspace's project statuses, then read it back. */
+export async function setProjectState(
+  client: LinearClient,
+  reference: string,
+  statusName: string,
+): Promise<Outcome> {
+  const resolved = await resolveProject(client, reference);
+  const statuses = await collectPages<ProjectStatus>('project statuses', async (after) => {
+    const data = await client.request<{ projectStatuses: PagedNodes<ProjectStatus> }>(
+      `query ProjectStatuses($after: String) { projectStatuses(first: 100, after: $after) { nodes { id name } pageInfo { hasNextPage endCursor } } }`,
+      { after },
+    );
+    return data.projectStatuses;
+  });
+  const wanted = statusName.trim().toLowerCase();
+  const status = statuses.find((candidate) => candidate.name.trim().toLowerCase() === wanted);
+  if (status === undefined) {
+    const available = statuses.map((candidate) => candidate.name).toSorted();
+    return {
+      ok: false,
+      summary: `No project status "${statusName}"; it has: ${available.join(', ')}.`,
+      data: { project: resolved.name, requested: statusName, updated: false, available },
+    };
+  }
+  const before = await fetchProject(client, resolved.id);
+  const result = await client.request<{ projectUpdate: { success: boolean } }>(
+    `mutation ProjectSetStatus($id: String!, $statusId: String!) { projectUpdate(id: $id, input: { statusId: $statusId }) { success } }`,
+    { id: resolved.id, statusId: status.id },
+  );
+  const after = await fetchProject(client, resolved.id);
+  const verified = result.projectUpdate.success && after.status?.id === status.id;
+  return {
+    ok: verified,
+    summary: verified
+      ? `${resolved.name}: ${before.status?.name ?? 'none'} -> ${status.name} (read back).`
+      : `${resolved.name}: read-back mismatch; the status is ${after.status?.name ?? 'none'}, expected ${status.name}.`,
+    data: {
+      project: resolved.name,
+      from: before.status?.name ?? null,
+      to: after.status?.name ?? null,
+      requested: status.name,
+      verified,
+    },
+  };
+}
+
+/** Create a project status update with `health` and `body`, then read it back. */
+export async function postProjectUpdate(
+  client: LinearClient,
+  reference: string,
+  health: ProjectHealth,
+  body: string,
+): Promise<Outcome> {
+  const resolved = await resolveProject(client, reference);
+  const created = await client.request<{
+    projectUpdateCreate: { success: boolean; projectUpdate: { id: string } | null };
+  }>(
+    `mutation ProjectUpdateMake($input: ProjectUpdateCreateInput!) { projectUpdateCreate(input: $input) { success projectUpdate { id } } }`,
+    { input: { projectId: resolved.id, health, body } },
+  );
+  const id = created.projectUpdateCreate.projectUpdate?.id;
+  if (!created.projectUpdateCreate.success || id === undefined)
+    return {
+      ok: false,
+      summary: `${resolved.name}: the project update was not created.`,
+      data: { project: resolved.name, verified: false },
+    };
+  const back = await client.request<{
+    projectUpdate: {
+      id: string;
+      body: string;
+      health: string;
+      project: { id: string } | null;
+    } | null;
+  }>(
+    `query ProjectUpdateRead($id: String!) { projectUpdate(id: $id) { id body health project { id } } }`,
+    { id },
+  );
+  const update = back.projectUpdate;
+  const verified =
+    update !== null &&
+    update.health === health &&
+    update.project?.id === resolved.id &&
+    normalizeMarkdown(update.body) === normalizeMarkdown(body);
+  return {
+    ok: verified,
+    summary: verified
+      ? `${resolved.name}: project update ${id} posted with health ${health} (read back).`
+      : `${resolved.name}: project update ${id} read-back mismatch.`,
+    data: { project: resolved.name, updateId: id, health, verified },
+  };
+}
+
 interface Parsed {
   positionals: string[];
   options: Map<string, string>;
@@ -651,11 +1001,36 @@ export async function run(
   const command = argv[0];
   if (command === undefined)
     throw new UsageError(
-      'Name a command: read, state, comment, append, create, blockers or block.',
+      'Name a command: read, state, comment, append, create, blockers, block, project-read, project-state or project-update.',
     );
-  const known = ['read', 'state', 'comment', 'append', 'create', 'blockers', 'block'];
+  const known = [
+    'read',
+    'state',
+    'comment',
+    'append',
+    'create',
+    'blockers',
+    'block',
+    'project-read',
+    'project-state',
+    'project-update',
+  ];
   if (!known.includes(command)) throw new UsageError(`Unknown command ${command}.`);
-  const parsed = parse(argv, ['file', 'team', 'project', 'title', 'label', 'state', 'by']);
+  const parsed = parse(argv, [
+    'file',
+    'team',
+    'project',
+    'title',
+    'label',
+    'state',
+    'by',
+    'update',
+    'health',
+  ]);
+  if (command !== 'comment' && parsed.options.has('update'))
+    throw new UsageError('--update applies only to comment.');
+  if (command !== 'project-update' && parsed.options.has('health'))
+    throw new UsageError('--health applies only to project-update.');
   // Validate the arguments before any request, so a usage mistake never costs a network call.
   let plan: (client: LinearClient) => Promise<Outcome>;
   if (command === 'read') {
@@ -667,7 +1042,12 @@ export async function run(
   } else if (command === 'comment') {
     const [id] = identifierArgument(parsed, 1);
     const body = readFileOption(parsed);
-    plan = (client) => postComment(client, id as string, body);
+    const update = parsed.options.get('update');
+    if (update === '') throw new UsageError('--update needs a comment id.');
+    plan = (client) =>
+      update === undefined
+        ? postComment(client, id as string, body)
+        : updateComment(client, id as string, update, body);
   } else if (command === 'append') {
     const [id] = identifierArgument(parsed, 1);
     const body = readFileOption(parsed);
@@ -686,6 +1066,26 @@ export async function run(
   } else if (command === 'blockers') {
     const [id] = identifierArgument(parsed, 1);
     plan = (client) => listBlockers(client, id as string);
+  } else if (command === 'project-read') {
+    const [project] = identifierArgument(parsed, 1);
+    plan = (client) => readProject(client, project as string);
+  } else if (command === 'project-state') {
+    const [project, name] = identifierArgument(parsed, 2);
+    plan = (client) => setProjectState(client, project as string, name as string);
+  } else if (command === 'project-update') {
+    const [project] = identifierArgument(parsed, 1);
+    const health = required(parsed, 'health');
+    if (!isProjectHealth(health))
+      throw new UsageError(
+        `--health must be one of ${projectHealthValues.join(', ')}; got "${health}".`,
+      );
+    const body = readFileOption(parsed);
+    const missing = missingCountLines(body);
+    if (missing.length > 0)
+      throw new UsageError(
+        `The project update lacks the count line${missing.length === 1 ? '' : 's'}: ${missing.join(' ')}`,
+      );
+    plan = (client) => postProjectUpdate(client, project as string, health, body);
   } else {
     const [id] = identifierArgument(parsed, 1);
     const by = required(parsed, 'by');

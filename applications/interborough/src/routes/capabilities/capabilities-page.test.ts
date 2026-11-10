@@ -102,7 +102,7 @@ function codeDetail(id: string, skills: string[]) {
       models: [],
       tools: [],
       skills,
-      skillDescriptors: [],
+      card: [],
       instructions: null,
     },
   };

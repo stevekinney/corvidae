@@ -344,16 +344,27 @@
   // Sent but not yet acknowledged by the transport (a follow-up during a run).
   const isPending = $derived(deliveryStatus === 'sending');
 
-  const messageTimestampFormatter = new Intl.DateTimeFormat(undefined, {
+  const messageTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  const messageDateTimeFormatter = new Intl.DateTimeFormat(undefined, {
+    month: 'short',
+    day: 'numeric',
     hour: 'numeric',
     minute: '2-digit',
   });
 
+  /**
+   * The time of day for a message written today, and the date with it ("Oct 29, 11:04 AM") for one
+   * written on another day, so a message read later still says which day it is from.
+   */
   function formatMessageTimestamp(value: unknown): string | undefined {
     if (typeof value !== 'string' || value.length === 0) return undefined;
     const timestamp = new Date(value);
     if (Number.isNaN(timestamp.getTime())) return undefined;
-    return messageTimestampFormatter.format(timestamp);
+    const today = timestamp.toDateString() === new Date().toDateString();
+    return (today ? messageTimeFormatter : messageDateTimeFormatter).format(timestamp);
   }
 
   // Derived values for content processing. `textContent` drives message chrome
@@ -448,6 +459,7 @@
   // Accessibility IDs
   const messageId = $derived(idPrefix ? `${idPrefix}-message` : `message-${message.id}`);
   const roleId = $derived(`${messageId}-role`);
+  const retryNoteId = $derived(`${messageId}-retry-note`);
 
   function toggleExpanded() {
     expanded = !expanded;
@@ -507,13 +519,16 @@
                 class="chat-message-retry"
                 size="xs"
                 variant="secondary"
-                disabled={notSent?.retryDisabled === true}
+                aria-disabled={notSent?.retryDisabled === true ? 'true' : undefined}
+                aria-describedby={notSent?.retryDisabled === true && notSent?.retryNote
+                  ? retryNoteId
+                  : undefined}
                 onclick={() => onRetry(message.id)}
               >
                 Retry
               </Button>
               {#if notSent?.retryNote}
-                <span class="chat-message-not-sent-note">{notSent.retryNote}</span>
+                <span class="chat-message-not-sent-note" id={retryNoteId}>{notSent.retryNote}</span>
               {/if}
             </div>
           {/if}

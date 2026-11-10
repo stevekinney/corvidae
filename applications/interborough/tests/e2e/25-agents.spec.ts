@@ -250,7 +250,7 @@ for (const width of WIDTHS) {
                   a2a: false,
                   model: `provider/${'m'.repeat(55)}`,
                   tools: [longTool, longTool],
-                  skillDescriptors: [
+                  card: [
                     { id: 'skill-a', name: longSkill, description: '', tags: [] },
                     { id: 'skill-b', name: longSkill, description: '', tags: [] },
                   ],

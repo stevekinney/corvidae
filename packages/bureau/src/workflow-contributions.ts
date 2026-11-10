@@ -1,7 +1,7 @@
 /**
- * COR-1874 — the activities and trigger kinds a Bureau's workflow files can name beyond the
+ * COR-1874 — the activities and triggers a Bureau's workflow files can name beyond the
  * `agent` activity and the `schedule` and `signal` triggers. They come from the versioned catalog
- * (`versioned-catalog.ts`), under the kinds `activity` and `trigger-kind`, as `plugin:name`.
+ * (`versioned-catalog.ts`), under the kinds `activity` and `trigger`, as `plugin:name`.
  *
  * ## Files float, records pin
  *
@@ -12,14 +12,14 @@
  * revision it started on, and after a restart it resumes only if exactly that version is loaded;
  * otherwise it is reported `missing` or `version-mismatch` and never run on another version.
  *
- * A trigger kind is not pinned: it binds a file to a source of starts, not a run to code. A run
- * that has started does not need its trigger kind, so a revision whose trigger kind is gone still
+ * A trigger is not pinned: it binds a file to a source of starts, not a run to code. A run
+ * that has started does not need its trigger, so a revision whose trigger is gone still
  * resumes its runs.
  *
  * @module workflow-contributions
  */
 
-import type { PluginActivity, PluginTriggerKind } from '@lostgradient/interborough-plugin';
+import type { PluginActivity, PluginTrigger } from '@lostgradient/interborough-plugin';
 import type { DocumentActivity, DocumentTriggerValidator } from '@lostgradient/weft';
 
 import { isNamespacedIdentifier, toWeftName } from './namespaced-identifier';
@@ -39,10 +39,10 @@ export interface WorkflowContributions {
   readonly activities: Readonly<Record<string, DocumentActivity>>;
   /** The version each contributed activity is loaded at, by the Weft name of its `plugin:name`. */
   readonly activityVersions: Readonly<Record<string, string>>;
-  /** A validator for each contributed trigger kind, by its `plugin:name`. */
+  /** A validator for each contributed trigger, by its `plugin:name`. */
   readonly triggerValidators: Readonly<Record<string, DocumentTriggerValidator>>;
-  /** The contributed trigger kinds, by their `plugin:name`. */
-  readonly triggerKinds: ReadonlyMap<string, VersionedCatalogEntry<PluginTriggerKind>>;
+  /** The contributed triggers, by their `plugin:name`. */
+  readonly triggers: ReadonlyMap<string, VersionedCatalogEntry<PluginTrigger>>;
   /**
    * The exact contributed activity `id` (`plugin:name`) at `version`: the entry, or `missing`
    * when no version of it is loaded and `version-mismatch` when only others are.
@@ -55,7 +55,7 @@ export const NO_WORKFLOW_CONTRIBUTIONS: WorkflowContributions = Object.freeze({
   activities: Object.freeze({}),
   activityVersions: Object.freeze({}),
   triggerValidators: Object.freeze({}),
-  triggerKinds: new Map(),
+  triggers: new Map(),
   resolveActivity: (id: string, version: string): VersionedCatalogResolution<PluginActivity> => ({
     ok: false,
     reason: 'missing',
@@ -89,7 +89,7 @@ function onePerName<TValue>(
 }
 
 function configurationProblem(
-  kind: PluginTriggerKind,
+  kind: PluginTrigger,
   trigger: Record<string, unknown>,
 ): string | undefined {
   const { kind: _kind, ...configuration } = trigger;
@@ -111,10 +111,7 @@ export function createWorkflowContributions(
 ): WorkflowContributions {
   if (catalog === undefined) return NO_WORKFLOW_CONTRIBUTIONS;
   const activityEntries = onePerName<PluginActivity>(catalog.entries('activity'), 'activity');
-  const triggerEntries = onePerName<PluginTriggerKind>(
-    catalog.entries('trigger-kind'),
-    'trigger kind',
-  );
+  const triggerEntries = onePerName<PluginTrigger>(catalog.entries('trigger'), 'trigger');
   for (const entry of activityEntries) {
     if (typeof entry.value?.execute !== 'function') {
       throw new TypeError(`The activity "${entry.name}" has no execute function.`);
@@ -124,7 +121,7 @@ export function createWorkflowContributions(
     const kind = entry.value;
     if (typeof kind?.start !== 'function' || typeof kind.configuration?.safeParse !== 'function') {
       throw new TypeError(
-        `The trigger kind "${entry.name}" needs a configuration schema and a start function.`,
+        `The trigger "${entry.name}" needs a configuration schema and a start function.`,
       );
     }
   }
@@ -142,16 +139,16 @@ export function createWorkflowContributions(
     activityVersions[weftName] = entry.version;
   }
   const triggerValidators: Record<string, DocumentTriggerValidator> = {};
-  const triggerKinds = new Map<string, VersionedCatalogEntry<PluginTriggerKind>>();
+  const triggers = new Map<string, VersionedCatalogEntry<PluginTrigger>>();
   for (const entry of triggerEntries) {
-    triggerKinds.set(entry.name, entry);
+    triggers.set(entry.name, entry);
     triggerValidators[entry.name] = (trigger) => configurationProblem(entry.value, trigger);
   }
   return Object.freeze({
     activities: Object.freeze(activities),
     activityVersions: Object.freeze(activityVersions),
     triggerValidators: Object.freeze(triggerValidators),
-    triggerKinds,
+    triggers,
     resolveActivity: (id: string, version: string) =>
       catalog.resolve('activity', {
         name: id,

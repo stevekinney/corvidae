@@ -10,7 +10,7 @@
  * bundle graphs that take seconds under host load; paid inside a test's 5-second budget, that
  * compile timed these tests out whenever other work loaded the host. The featured example is a
  * stand-in for the same reason: its real fresh-process render is asserted in
- * `featured-example-server-renderer.test.ts`, and a route here only has to answer with HTML.
+ * `featured-example-server-renderer.integration.test.ts`, and a route here only has to answer with HTML.
  */
 
 import { describe, expect, it } from 'bun:test';

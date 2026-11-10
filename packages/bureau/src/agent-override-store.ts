@@ -1,10 +1,11 @@
 /**
- * The saved overrides of a built-in (code) agent, and their versions (COR-2009, coordinator call of
- * Nov 3).
+ * The saved overrides of a code agent, and their versions (COR-2009, coordinator call of Nov 3;
+ * COR-2228).
  *
- * A code agent has no file, so an agent file's history (`agent-version-store.ts`) has nothing to
- * hold for it. What a person changes on a built-in agent (which tools it may use and how each asks,
- * its guardrails and budgets, its model, the models a chat may switch to, its effort and step
+ * A code agent (a built-in agent the host defines, or the agent of a running plugin) has no file,
+ * so an agent file's history (`agent-version-store.ts`) has nothing to hold for it. What a person
+ * changes on a code agent (which tools it may use and how each asks,
+ * its guardrails, interceptors and budgets, its model, the models a chat may switch to, its effort and step
  * limit, and its instructions) is saved here instead, as a set of overrides over what the agent
  * states about itself. Every save is a new version, numbered from 1 for each agent, so the editor
  * can list them and restore one exactly as it does a file agent's. An agent nobody changed has no
@@ -13,12 +14,25 @@
  *
  * ## The record
  *
- * `bureau-agent-override-version:v1:<identifier>:<version>` holds, as JSON, a
+ * `bureau-agent-override-version:v2:agent:<identifier>:<version>` holds, as JSON, a
  * {@link AgentOverrideVersionRecord}: the `version`, the `hash` of its overrides (the SHA-256 of
  * {@link encodeAgentOverrides}, which a later save names as its `expectedHash`), when and by whom it
  * was saved, the owner of record, the `overrides` themselves, and the `changedKeys` that differ from
- * the version before it (every key it sets, for a first version). An identifier cannot hold `:`
- * and a version is a decimal integer, so the key needs no encoding and one prefix lists an agent.
+ * the version before it (every key it sets, for a first version). The identifier is percent-encoded
+ * (`encodeURIComponent`), so a plugin agent's `plugin:name` is `plugin%3Aname` and holds no `:`: a
+ * version is a decimal integer after the last `:`, and one prefix lists an agent and no other.
+ *
+ * ## The first format
+ *
+ * Only a built-in agent could be overridden before COR-2228, and its record was
+ * `bureau-agent-override-version:v1:<identifier>:<version>`, with the identifier unencoded (it held
+ * no `:`). Version 1 records are still read, never written. An agent's versions are the union of
+ * its version 1 and version 2 records: where both hold one number, the version 2 record is the
+ * version and the version 1 record is ignored, so a read is the same whatever order the store lists
+ * them in. The newest version is the highest number in the union, and a save writes the next
+ * number as a version 2 record, so an agent saved under version 1 continues its numbering and keeps
+ * the versions it had. Both formats hold the same record, so a hash from either one is a valid
+ * `expectedHash`.
  *
  * ## Writing
  *
@@ -46,15 +60,18 @@ import {
   AgentFileConflictError,
   AgentFileError,
   agentContributionIdsSchema,
-  agentCostBudgetSchema,
+  storedAgentGuardrailSelectionsSchema,
   agentDefaultEffortSchema,
-  agentStepLimitSchema,
+  agentLimitsSchema,
   agentToolApprovalSchema,
-  agentToolBudgetSchema,
+  withFoldedLegacyLimits,
 } from './agent-file';
 
-/** Where the override versions live. */
-export const AGENT_OVERRIDE_VERSION_KEY_PREFIX = 'bureau-agent-override-version:v1:';
+/** Where the override versions live: version 2 records, under `agent:` and the encoded identifier. */
+export const AGENT_OVERRIDE_VERSION_KEY_PREFIX = 'bureau-agent-override-version:v2:';
+
+/** Where the first format kept an agent's versions, which are read and never written. */
+export const LEGACY_AGENT_OVERRIDE_VERSION_KEY_PREFIX = 'bureau-agent-override-version:v1:';
 
 /** How many versions of one code agent's overrides are kept; the oldest go first. */
 export const AGENT_OVERRIDE_VERSION_LIMIT = 50;
@@ -74,13 +91,30 @@ export const agentOverridesSchema = z.strictObject({
     })
     .optional(),
   /** When each tool asks a person first, by tool name: the Access tab's Asks column. */
-  toolApproval: agentToolApprovalSchema.optional(),
-  /** The plugin guardrails (`plugin:name`) a run applies. */
-  guardrails: agentContributionIdsSchema.optional(),
-  /** What one run, and one chat, may spend. */
-  costBudget: agentCostBudgetSchema.optional(),
-  /** What one run's tools may use. */
-  toolBudget: agentToolBudgetSchema.optional(),
+  approvals: agentToolApprovalSchema.optional(),
+  /**
+   * The plugin guardrails a run applies, each `plugin:name` or `{ id, configuration }` (COR-2118).
+   * A record written before COR-2118 holds ids alone and reads as it is; a save refuses a repeated
+   * id (`code-agent-overrides.ts`), and one an older record repeats applies once.
+   */
+  guardrails: storedAgentGuardrailSelectionsSchema.optional(),
+  /**
+   * The plugin interceptors a run applies, each `plugin:name` (COR-2253): the key an agent file
+   * calls `interceptors` (COR-2126), in the agent's own hook tier for the run. A record written
+   * before COR-2253 has no such key and reads as it is, with none applied; the key is left out of
+   * a record's JSON, and so of its hash, when it is not set.
+   */
+  interceptors: agentContributionIdsSchema.optional(),
+  /**
+   * What a run may take, a run and a chat may spend (in US dollars), and a run's tools may use
+   * (COR-2138): `steps`, `cost` and `tools`. Each limit named replaces the agent's own; one left out
+   * keeps it.
+   */
+  limits: agentLimitsSchema
+    .refine((limits) => Object.keys(limits).length > 0, {
+      message: 'limits must set at least one of steps, cost or tools',
+    })
+    .optional(),
   /** The model a chat starts on, `<provider>/<model>`. */
   model: z.string().min(1).optional(),
   /** The models a chat may be switched to, `<provider>/<model>`. */
@@ -91,9 +125,7 @@ export const agentOverridesSchema = z.strictObject({
     })
     .optional(),
   /** The reasoning effort a chat starts at. */
-  defaultEffort: agentDefaultEffortSchema.optional(),
-  /** The most steps one run may take. */
-  stepLimit: agentStepLimitSchema.optional(),
+  effort: agentDefaultEffortSchema.optional(),
 });
 
 /** One save's overrides; see {@link agentOverridesSchema}. */
@@ -189,13 +221,22 @@ export interface AgentOverrideStoreOptions {
   readonly nowISO: () => string;
 }
 
-/** The key of version `version` of `id`. */
+/** The key of version `version` of `id`: `agent:` and the percent-encoded identifier. */
 export function agentOverrideVersionKey(id: string, version: number): string {
-  return `${AGENT_OVERRIDE_VERSION_KEY_PREFIX}${id}:${version}`;
+  return `${keyPrefixOf(id)}${version}`;
+}
+
+/** The key a version 1 record of `id` was written under; no save writes it now. */
+export function legacyAgentOverrideVersionKey(id: string, version: number): string {
+  return `${legacyKeyPrefixOf(id)}${version}`;
 }
 
 function keyPrefixOf(id: string): string {
-  return `${AGENT_OVERRIDE_VERSION_KEY_PREFIX}${id}:`;
+  return `${AGENT_OVERRIDE_VERSION_KEY_PREFIX}agent:${encodeURIComponent(id)}:`;
+}
+
+function legacyKeyPrefixOf(id: string): string {
+  return `${LEGACY_AGENT_OVERRIDE_VERSION_KEY_PREFIX}${id}:`;
 }
 
 /** The overrides as they are hashed and stored: keys in {@link AGENT_OVERRIDE_KEYS} order. */
@@ -234,14 +275,56 @@ function encodeRecord(record: AgentOverrideVersionRecord): string {
   });
 }
 
+/**
+ * The override keys that were renamed in COR-2137 and COR-2138, from the old name to the new one. A
+ * record saved before then holds the old names; it reads under the new ones and is never written
+ * back with them. `limits` is not here, because three old keys became one: see
+ * {@link withFoldedLegacyLimits}.
+ */
+const RENAMED_OVERRIDE_KEYS: ReadonlyMap<string, string> = new Map([
+  ['toolApproval', 'approvals'],
+  ['defaultEffort', 'effort'],
+]);
+
+/**
+ * `value` with each renamed override key under its new name. The new name wins when both are
+ * present. Anything that is not a plain object is returned as it is, for the schema to refuse.
+ */
+function withRenamedOverrideKeys(value: unknown): unknown {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return value;
+  const renamed: Record<string, unknown> = {};
+  for (const [key, held] of Object.entries(value)) {
+    if (!RENAMED_OVERRIDE_KEYS.has(key)) renamed[key] = held;
+  }
+  for (const [oldKey, newKey] of RENAMED_OVERRIDE_KEYS) {
+    if (Object.hasOwn(value, oldKey) && !Object.hasOwn(renamed, newKey)) {
+      renamed[newKey] = (value as Record<string, unknown>)[oldKey];
+    }
+  }
+  return renamed;
+}
+
+/** The override key a stored `changedKeys` entry names now; the three old limits are all `limits`. */
+function renamedChangedKey(key: string): string {
+  return LEGACY_LIMIT_KEYS.has(key) ? 'limits' : (RENAMED_OVERRIDE_KEYS.get(key) ?? key);
+}
+
+/** The override keys that held one limit each before COR-2138, which `limits` now holds. */
+const LEGACY_LIMIT_KEYS: ReadonlySet<string> = new Set(['stepLimit', 'costBudget', 'toolBudget']);
+
 const recordSchema = z.object({
   version: z.number().int().positive(),
   hash: z.string().min(1),
   savedAt: z.string().min(1),
   savedBy: z.string(),
   owner: z.string(),
-  overrides: agentOverridesSchema,
-  changedKeys: z.array(z.string()),
+  overrides: z.preprocess(
+    (value) => withFoldedLegacyLimits(withRenamedOverrideKeys(value)),
+    agentOverridesSchema,
+  ),
+  changedKeys: z
+    .array(z.string())
+    .transform((keys) => [...new Set(keys.map((key) => renamedChangedKey(key)))]),
 });
 
 /** A stored record, or `undefined` when `text` is not a valid one. */
@@ -259,9 +342,9 @@ export function parseAgentOverrideVersion(
   return parsed.success ? parsed.data : undefined;
 }
 
-/** The version a key of `id` names, or `undefined` for a key that names none. */
-function versionOfKey(id: string, key: string): number | undefined {
-  const suffix = key.slice(keyPrefixOf(id).length);
+/** The version a key under `prefix` names, or `undefined` for a key that names none. */
+function versionOfKey(prefix: string, key: string): number | undefined {
+  const suffix = key.slice(prefix.length);
   if (!/^[1-9][0-9]*$/u.test(suffix)) return undefined;
   const version = Number(suffix);
   return Number.isSafeInteger(version) ? version : undefined;
@@ -277,16 +360,30 @@ interface StoredVersion {
 export function createAgentOverrideStore(options: AgentOverrideStoreOptions): AgentOverrideStore {
   const store = options.store ?? textValueStore(new MemoryStorage());
 
-  async function stored(id: string): Promise<StoredVersion[]> {
+  async function storedUnder(prefix: string): Promise<StoredVersion[]> {
     const found: StoredVersion[] = [];
-    for (const key of await store.list(keyPrefixOf(id))) {
+    for (const key of await store.list(prefix)) {
       const text = await store.get(key);
       const record = parseAgentOverrideVersion(text);
-      if (text !== null && record !== undefined && versionOfKey(id, key) === record.version) {
+      if (text !== null && record !== undefined && versionOfKey(prefix, key) === record.version) {
         found.push({ key, text, record });
       }
     }
-    return found.toSorted((left, right) => right.record.version - left.record.version);
+    return found;
+  }
+
+  /**
+   * The versions of `id` in either format, newest first: where both formats hold one number, the
+   * version 2 record is the version. Only a built-in agent has version 1 records, and its
+   * identifier holds no `:`, so a plugin agent's `plugin:name` never reads a version 1 prefix.
+   */
+  async function stored(id: string): Promise<StoredVersion[]> {
+    const current = await storedUnder(keyPrefixOf(id));
+    const legacy = id.includes(':') ? [] : await storedUnder(legacyKeyPrefixOf(id));
+    const held = new Set(current.map((entry) => entry.record.version));
+    return [...current, ...legacy.filter((entry) => !held.has(entry.record.version))].toSorted(
+      (left, right) => right.record.version - left.record.version,
+    );
   }
 
   async function newestOf(id: string): Promise<StoredVersion | undefined> {

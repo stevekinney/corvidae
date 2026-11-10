@@ -1,26 +1,29 @@
 # Hierarchical hook composition
 
-Hooks in this workspace are owned by _tiers_. A Bureau owns invariants it will not let a lower level remove. An agent extends its own behavior. A caller constructing a run directly extends that run. All three compose into one immutable plan per run, and an inspector can ask a run which sources applied and in what order.
+Hooks in this workspace are owned by _tiers_. A Bureau owns invariants it will not let a lower level remove. A plugin can apply an interceptor set to every agent. An agent extends its own behavior. A caller constructing a run directly extends that run. All four compose into one immutable plan per run, and an inspector can ask a run which sources applied, in which tier, and in what order.
 
-This document is the contract. The decision behind it is COR-567; the implementation slices are COR-1265 through COR-1270.
+This document is the contract. The decision behind it is COR-567; the implementation slices are COR-1265 through COR-1270, and COR-2127 added the `plugin` tier.
 
-## The three tiers
+## The four tiers
 
 | Tier | Where a registry comes from | What it may do |
 | --- | --- | --- |
 | `bureau` | Built per run inside `createRunRuntime` | Enforce and narrow. Never grants capability. |
-| `agent` | `createAgent({ hooks })`, surfaced as `RunnableAgent.hooks` | Extend behavior within whatever Bureau already permits. |
+| `plugin` | Every plugin interceptor that declares `appliesTo: 'every-agent'`, built per run by Bureau (`run-hook-tiers.ts`) | Extend every agent's runs, under Bureau's narrowing. |
+| `agent` | `createAgent({ hooks })`, surfaced as `RunnableAgent.hooks`, including the plugin interceptors an agent file lists | Extend behavior within whatever Bureau already permits. |
 | `direct` | `createActiveRun({ hooks })` on a run constructed by hand | Extend that one run. |
 
-A run's plan is `mergeHookRegistries(bureauRegistry, agentRegistry, directRegistry)`, absent tiers passed as `undefined` and filtered out. The merge copies every entry into a fresh registry, so the plan a dispatched run holds is a _snapshot_: registering on a source registry afterwards changes that tier's future runs and not the one already in flight.
+A run's plan is `mergeHookRegistries({ bureau, plugin, agent, direct })`, each tier's registry under its name and an absent tier left out. The merge copies every entry into a fresh registry, so the plan a dispatched run holds is a _snapshot_: registering on a source registry afterwards changes that tier's future runs and not the one already in flight. Each entry is stamped with its tier as `tier`, separately from its `source`: an every-agent interceptor's source is its plugin's name and its tier is `plugin`.
 
-> [!NOTE] No path populates all three tiers at once
+Every Bureau site that hands a run its hooks composes them through one helper, `composeRunHooks` in `packages/bureau/src/run-hook-tiers.ts`, which builds the plugin tier itself, so a site cannot leave it out; a source guard in `run-hook-tiers.test.ts` fails when any other Bureau file merges registries. An every-agent set that an agent file also lists is registered once, in that agent's tier, and that run's plugin tier leaves it out. While its plugin needs setup it refuses there, as any interceptor an agent chose does; in every other run the plugin tier turns the refusal into "no answer" without running the handler, so a missing secret never fails an agent that did not choose the set.
+
+> [!NOTE] No path populates the agent and direct tiers at once
 >
-> `AgentRunContext` declares no `hooks` field and `BureauOptions` exposes none, both by decision (COR-567 Decision 4). The reachable shapes are Bureau → `(bureau, agent, undefined)`, a plain `agent.run()` → `(undefined, agent, undefined)`, and a hand-built `createActiveRun` → `(undefined, undefined, direct)`. The three-tier ordering is a real property of `mergeHookRegistries` and is tested directly against it; it is not currently reachable through a dispatch. That is a stated limitation, not a gap.
+> `AgentRunContext` declares no `hooks` field and `BureauOptions` exposes none, both by decision (COR-567 Decision 4). The reachable shapes are Bureau → `{ bureau, plugin, agent }`, a plain `agent.run()` → `{ agent }`, and a hand-built `createActiveRun` → `{ direct }`. The full four-tier ordering is a real property of `mergeHookRegistries` and is tested directly against it; it is not reachable through a dispatch. That is a stated limitation, not a gap.
 
 ## Ordering, and why it is not one rule
 
-`mergeHookRegistries` offsets each participant's priorities by `(participants - 1 - index) * 1000`. Bureau is always first, so it takes the largest offset — `+2000` with three tiers, `+1000` with two. The registry sorts descending, so a higher priority runs earlier.
+`mergeHookRegistries` adds each tier's fixed band, `HOOK_TIER_PRIORITY_BANDS`, to the priority of every entry it stamps: `bureau` +3000, `plugin` +2000, `agent` +1000, `direct` +0. The band belongs to the tier, not to its position among the tiers a run happens to have, so Bureau's and an agent's priorities are the same whether or not a plugin tier is present. An entry that already has a tier keeps it and its priority through any later merge, so the band is added once: `createAgent` stamps its own plan `agent`, and Bureau's merge of that plan moves nothing. The registry sorts descending, so a higher priority runs earlier.
 
 Which end of that order _wins_ depends on the hook point's dispatch shape, and the three shapes disagree:
 
@@ -28,9 +31,9 @@ Which end of that order _wins_ depends on the hook point's dispatch shape, and t
 - **`runLast`** — every handler runs against the same arguments and the _last_ defined result is kept. `selectTools` and `selectToolChoice` use this.
 - **`run` (waterfall)** — every handler runs, and each defined return replaces the first argument for the next. `validateResponse`, `validateToolResult` and `onStep` use this.
 
-On the latter two, running last means winning, and the tier band works _against_ Bureau: its large offset pushes it toward running first. A Bureau registration that must hold final narrowing power therefore carries an explicit `BUREAU_PINNED_LAST_PRIORITY` — `Number.MIN_SAFE_INTEGER + 2000`, sized so the largest offset added back cannot leave the safe-integer range. Today that is `bureau:guardrails-validate-response`, plus the two trailing `onStep` hooks, which take the same value for an ordering reason rather than an authority one: they persist the session after the step's mutations settle, and an agent-tier `onStep` handler is one of those mutations.
+On the latter two, running last means winning, and the tier band works _against_ Bureau: its large band pushes it toward running first. A Bureau registration that must hold final narrowing power therefore carries an explicit `BUREAU_PINNED_LAST_PRIORITY` — `Number.MIN_SAFE_INTEGER + HOOK_TIER_PRIORITY_BANDS.bureau`, sized so the band added to it cannot leave the safe-integer range. It still runs last with all four tiers present, behind the plugin tier, the agent's own hooks and the agent's guardrails (`AGENT_POLICY_PINNED_LAST_PRIORITY` in the `agent` band), and a plugin interceptor's floor (`INTERCEPTOR_PRIORITY_FLOOR`, one above the agent's guardrails) holds in either band, and its ceiling (`INTERCEPTOR_PRIORITY_CEILING`, one less than the band width) keeps a declared priority from carrying the entry into the next tier up. Today that is `bureau:guardrails-validate-response`, `bureau:guardrails-validate-tool-result` (COR-2103; `validateToolResult` is a waterfall too) and `bureau:guardrails-before-tool-execution` (COR-2104; `beforeToolExecution` waterfalls the call list), plus the two trailing `onStep` hooks, which take the same value for an ordering reason rather than an authority one: they persist the session after the step's mutations settle, and an agent-tier `onStep` handler is one of those mutations.
 
-The limit, stated rather than implied: a lower tier that deliberately registers at or below `MIN_SAFE_INTEGER + 2000` sorts after Bureau anyway. A priority is a plain number with no floor, so no finite constant closes that, and `-Infinity` closes it only until a second entry carries it — `b.priority - a.priority` then returns `NaN` and the sort is no longer defined. What the constant defends against is an ordinary registration that happens to outrank Bureau, not a tier reaching for the bottom of the number line.
+The limit, stated rather than implied: a lower tier whose entry, band included, sits at or below the pinned entry's merged priority sorts after Bureau anyway. A priority is a plain number with no floor, so no finite constant closes that, and `-Infinity` closes it only until a second entry carries it — `b.priority - a.priority` then returns `NaN` and the sort is no longer defined. What the constant defends against is an ordinary registration that happens to outrank Bureau, not a tier reaching for the bottom of the number line.
 
 ## Authority
 
@@ -44,33 +47,29 @@ A child's delegated-authority grant is composed by `attenuateDelegatedAuthority`
 
 A catalog-dispatched run (a `bureau.children.dispatch` child, a goal attempt, or a workflow step) resolves its provider, toolbox, memory and skills through the _agent's own_ `OPERATIVE_RESOLVE_RUN_OPTIONS`, never through `createRunRuntime`. That separation is deliberate and reattaching such a run against the Bureau's defaults is its rollback trigger.
 
-The whole Bureau tier cannot travel there: `bureau:memory-recall`, `bureau:memory-persist` and `bureau:skill-record-snapshot` close over a session, a memory and a skill session a catalog run does not have. The three registrations that close over composition-level configuration only — `bureau:identity` and both guardrails — do travel, through `RuntimeComposition.createBureauInvariantHooks()`, merged in front of the agent's own tier. The guardrails travel only to an agent that does not resolve its own (COR-1367): a `createAgent` agent carries `OPERATIVE_RESOLVES_GUARDRAILS`, receives the bureau-level policy as `AgentRunContext.inheritedGuardrails`, and registers its resolved guardrails in its own tier as `agent:guardrails-prepare-step` and `agent:guardrails-validate-response`, so Bureau passes `agentResolvesGuardrails` and registers none. Those two entries sit at `AGENT_POLICY_PINNED_LAST_PRIORITY`, behind every ordinary agent hook and still ahead of Bureau's own pinned-last entries.
+The whole Bureau tier cannot travel there: `bureau:memory-recall`, `bureau:memory-persist` and `bureau:skill-record-snapshot` close over a session, a memory and a skill session a catalog run does not have. The registrations that close over composition-level configuration only — `bureau:identity` and the four guardrail hooks — do travel, through `RuntimeComposition.createBureauInvariantHooks()`, merged in front of the plugin tier and the agent's own. The guardrails travel only to an agent that does not resolve its own (COR-1367): a `createAgent` agent carries `OPERATIVE_RESOLVES_GUARDRAILS`, receives the bureau-level policy as `AgentRunContext.inheritedGuardrails`, and registers its resolved guardrails in its own tier as `agent:guardrails-prepare-step`, `agent:guardrails-validate-tool-result`, `agent:guardrails-validate-response` and `agent:guardrails-before-tool-execution`, so Bureau passes `agentResolvesGuardrails` and registers none. Those four entries sit at `AGENT_POLICY_PINNED_LAST_PRIORITY` plus the agent band (`HOOK_TIER_PRIORITY_BANDS.agent`), behind every ordinary agent hook and still ahead of Bureau's own pinned-last entries.
 
-Which paths that reaches — and the axis is the resolver, not durability. `bureau-catalog-dispatch.ts` composes the invariants for any agent satisfying `hasDefinitionResolver`, whether or not the bureau was built durable, by resolving the agent's own `RunOptions` and merging into that bag. An agent exposing no resolver builds its options entirely inside `run()`, so there is nothing to merge into:
+Which paths that reaches — and the axis is the resolver, not durability. `bureau-catalog-dispatch.ts` composes the invariants for any agent satisfying `hasDefinitionResolver`, whether or not the bureau was built durable, by resolving the agent's own `RunOptions` and merging into that bag. An agent exposing no resolver builds its options entirely inside `run()`, so there is nothing to merge into, and it is refused rather than run without them (COR-2106):
 
-| Catalog path                                          | Bureau invariants |
-| ----------------------------------------------------- | ----------------- |
-| Dispatch of an agent that resolves run options        | Yes               |
-| Recovery of a durably dispatched catalog run          | Yes               |
-| Dispatch of an agent exposing no run-options resolver | **No**            |
+| Catalog path | Bureau invariants |
+| --- | --- |
+| Dispatch of an agent that resolves run options | Yes |
+| Recovery of a durably dispatched catalog run | Yes |
+| Dispatch of an agent exposing no run-options resolver | Refused with `AgentContractError`, which names the agent |
 
-> [!WARNING] The last row is a real gap
->
-> It calls `agent.run(input, context)` directly, so no `RunOptions` exists outside the agent for anything to augment. The only remaining injection point would be a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines, and COR-1276 accepted the gap rather than taking that.
->
-> It applies to a hand-written `RunnableAgent` placed in a catalog — a deliberate act by whoever wrote the agent, not a configuration anybody falls into. `durable` has nothing to do with it: tests pin the same outcome on both sides of that flag, so a future change that reintroduces a durability dependency fails rather than quietly narrowing this row.
+The refusal holds on every route Bureau dispatches by: the eager check, a `createLazyAgent` wrapper whose module turns out to expose no resolver (in a durable bureau too), and a child dispatched under a Bureau-owned run, including one a `createSubagentTool` call dispatches after an approval resumed it. It does not reach code that calls `agent.run()` itself outside a Bureau-owned run: that run is not under Bureau and runs as it always did. Wrapping such an agent would need a caller-facing hook field on `AgentRunContext`, which COR-567 Decision 4 declines, and COR-1276, which had accepted the gap, was reversed on 2026-11-05. `durable` has nothing to do with it.
 
 ## Child runs
 
-A child dispatched through `dispatchChildRun` gets its effective plan entirely from its own `agent.run()` path — the child agent's own tier, and nothing else. No parent hook reaches it.
+A child dispatched through `dispatchChildRun` gets its effective plan from its own agent's tier, and — when the dispatching run is Bureau-owned — Bureau's invariant tier and the plugin tier in front of it. No other parent hook reaches it.
 
-This is structural rather than a convention anybody has to remember. Neither `child-run.ts` nor `create-subagent-tool.ts` contains a hook-registry reference, and `parentContext` declares no `hooks` field; there is nothing to copy from. Sibling children of one fan-out hold independent plans for the same reason.
+Bureau's tier travels as a factory, not a registry, on a symbol-keyed field (`bureauInvariantsField` and `withBureauInvariants` in `bureau-invariants.ts`). The field is not declared on any options or context type and its symbol is private to Operative, never `Symbol.for`, so plain data (a request body, a stored record, an `AgentRunContext` literal) has no name to write it under: this is not the caller-facing hook field COR-567 Decision 4 declines. It is not a capability only a host holds. Operative's index exports both functions, so any in-process caller can attach a factory, and a factory is a function that builds hooks that run in-process, as every hook a caller registers does. Every place Bureau builds a run's `RunOptions` attaches it (`RuntimeComposition.bureauChildInvariants`), the agent loop hands it to each tool call, `createSubagentTool` passes it to `dispatchChildRun`, and `dispatchChildRun` attaches it to the child's own context so a grandchild inherits it. It is never persisted: a recovered run is rebuilt by the same Bureau code that built it, which attaches it again. A parked tool call is resumed by Bureau outside the run's step, so the approval resume builds the call's `executionContext` from the same function the step does (`runScopedExecutionContextOf` over the run's options, kept per live run), which carries the factory together with the child registry, delegated authority and tool capabilities, and parent signals; Bureau keeps those options for a chat or task run it starts or recovers, so a run it does not (an approval restored after a restart, or a catalog dispatch) resumes its call with the factory and its `parentRunId` alone.
 
-> [!WARNING] Bureau's invariants do not reach a child run either
->
-> A child dispatched by a Bureau-owned agent carries the child agent's tier and **no Bureau tier at all** — not the identity hook, not the guardrails. `dispatchChildRun` calls `agent.run()`, which builds its `RunOptions` inside the agent, so there is no options bag for a Bureau tier to be merged into. Structurally this is the same gap as a non-durable catalog dispatch, with the same only-remaining fix — a caller-facing hook field on `AgentRunContext` — which COR-567 Decision 4 declines.
->
-> COR-1269's criterion 1 originally stated the opposite. It was amended to match the implementation once the discrepancy was verified by probe rather than argued, and a test in `packages/bureau/src/bureau-run.test.ts` pins the actual behavior. Do not read the tier table above as applying to child runs.
+`dispatchChildRun` reads it in one place, `composeBureauInvariantsIntoChild`. The factory returns both upper tiers (`BureauChildTiers`: `bureau`, and `plugin` when a plugin applies an interceptor to every agent), each a fresh registry. A child with a run-options resolver has its options resolved and both merged in front of its own tier, so its plan carries `bureau:identity`, the guardrails and every every-agent interceptor, exactly as a catalog dispatch does. A child with none is refused: the dispatch fails with an `AgentContractError` that names it, through the same path as any child that cannot start (`multiagent.child-workflow.failed`, a failed registry entry, and a failed tool call for the parent).
+
+A parent that carries no factory is not under Bureau, so a standalone Operative parent's resolver-less child still runs through `agent.run()`, as it always did. Nothing Bureau-specific applies to it, and there are no Bureau invariants to skip.
+
+This is structural rather than a convention anybody has to remember. Neither `child-run.ts` nor `create-subagent-tool.ts` contains a hook-registry reference other than that single seam, and `parentContext` declares no `hooks` field. Sibling children of one fan-out hold independent plans for the same reason: each gets a fresh registry from the factory.
 
 Narrowing and veto do work inside a child, through the child's own tier: a child-tier `validateResponse` narrows what its run returns, and a child-tier `prepareStep` that answers replaces the generate call entirely. What a child does not get is inheritance from above.
 
@@ -78,7 +77,7 @@ What _does_ cross is correlation. `dispatchChildRun` passes `AgentRunContext.chi
 
 ## Inspecting a plan
 
-`ActiveRun.describeHookPlan()` answers which hook sources applied and in what order. It returns a redacted description — hook name, registration id, priority, the replay class in force, and the owning tier — built field by field so a field added to a registration does not silently become readable. The handler, its `onError` closure, and anything either closes over are absent by construction.
+`ActiveRun.describeHookPlan()` answers which hook sources applied and in what order. It returns a redacted description — hook name, registration id, priority, the replay class in force, the owning `source`, and the composition `tier` — built field by field so a field added to a registration does not silently become readable. The handler, its `onError` closure, and anything either closes over are absent by construction.
 
 Ordering is reported as _iteration_ order, highest priority first, not winner order. The three dispatch shapes disagree about which end wins, so a single winner ordering would be a lie for two of them.
 
@@ -90,7 +89,7 @@ The `hook-plan.*` events are the live counterpart for an event-stream consumer, 
 
 ## Durable replay
 
-A crashed in-flight step re-runs from its boundary, so its hooks fire again — at-least-once, by design. A completed step does not: it returns its memoized result without re-executing the body, and invokes no hooks. A purely terminal reattachment builds no hook plan at all.
+A crashed in-flight step re-runs from its boundary, so its hooks fire again — at-least-once, by design. Hooks are never persisted: a durable run that resumes or reattaches after a restart has its plan composed again by the same Bureau code, so its plugin tier is the one the restarted Bureau's plugins contribute. A completed step does not: it returns its memoized result without re-executing the body, and invokes no hooks. A purely terminal reattachment builds no hook plan at all.
 
 `HookRegistrationOptions.replay` classifies a registration as `safe` or `effectful`, defaulting to the conservative `effectful` when unset. It is metadata: it never gates whether a hook runs, because skipping an `effectful` hook on replay would drop the side effect for a step whose generation and tools genuinely did re-execute. The correct mitigation is an idempotent handler, and every `effectful` Bureau registration has a test that invokes it twice and asserts one effect.
 
@@ -98,6 +97,6 @@ One thing reads the classification, and only to report. `HookRegistryOptions.onU
 
 ## Reference
 
-- Registry mechanics, the offset formula and the merge: [`packages/lifecycle/README.md`](../packages/lifecycle/README.md#hierarchical-hook-priority-bands-cor-567)
+- Registry mechanics, the tier bands and the merge: [`packages/lifecycle/README.md`](../packages/lifecycle/README.md#hierarchical-hook-priority-bands-cor-567)
 - `RunnableAgent.hooks` and the run contract: [Operative's type-safe API](./operative-type-safe-api.md)
 - Tier construction and the invariant subset: `packages/bureau/src/runtime-composition.ts`

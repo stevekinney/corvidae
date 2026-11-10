@@ -1,5 +1,5 @@
 /**
- * COR-1936 — the approval precedence table. A chat's permission mode, a tool's own `toolApproval`
+ * COR-1936 — the approval precedence table. A chat's permission mode, a tool's own `approvals`
  * value, a remembered grant, and the tool's capability tier decide whether a call runs, asks, or is
  * denied. Every combination is written out below as data, read top to bottom as a person reviews
  * the rule, and not derived from the code under test. The same table is asserted twice: on the
@@ -24,7 +24,7 @@ const TIERS = ['read-only', 'mutating', 'dangerous', 'unclassified'] as const;
 type Tier = (typeof TIERS)[number];
 /** One verdict for each of {@link TIERS}. */
 type Row = readonly [Verdict, Verdict, Verdict, Verdict];
-/** `none` is a tool the agent's `toolApproval` says nothing about. */
+/** `none` is a tool the agent's `approvals` says nothing about. */
 type Setting = ToolApprovalMode | 'none';
 /** What a row decides without a remembered grant, and with one. */
 type Cell = { readonly ungranted: Row; readonly granted: Row };

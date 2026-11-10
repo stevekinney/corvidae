@@ -34,6 +34,7 @@ import type { GenerateContext, StreamingHandle } from '@lostgradient/operative/p
 import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { Conversation } from 'conversationalist';
+import { openaiProvider } from '../src/openai-definition.ts';
 import { createOpenAIProvider, createOpenAIProviderStream } from '../src/openai.ts';
 
 const PLACEHOLDER_TOKEN = 'placeholder-not-a-real-key-0000';
@@ -182,6 +183,25 @@ describe('OpenAI provider behind a proxy', () => {
 
       expect(proxy.requests).toHaveLength(1);
       expect(proxy.requests[0]?.headers['authorization']).toBe(`Bearer ${PLACEHOLDER_TOKEN}`);
+    } finally {
+      proxy.stop();
+    }
+  });
+
+  it('uses the validated plugin baseURL when the provider definition builds the SDK client', async () => {
+    const proxy = createRecordingProxy(openAIResponseBody);
+    try {
+      const generate = openaiProvider.generate!(
+        {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
+          apiKey: PLACEHOLDER_TOKEN,
+        },
+        { baseURL: proxy.baseURL },
+      );
+      await generate(makeContext(twoStepConversation()));
+      expect(proxy.requests).toHaveLength(1);
+      expect(proxy.requests[0]?.path).toBe('/chat/completions');
     } finally {
       proxy.stop();
     }

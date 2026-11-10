@@ -194,21 +194,25 @@
       ? formatTimeOfDay(decidedDate)
       : undefined,
   );
-  // "Approved by you in Reviews at 10:44 AM" when it was decided somewhere else, otherwise
-  // "Denied by you" with the time after a middot.
+  // "Approved by you in Reviews at 10:44 AM" when a card was decided somewhere else, otherwise
+  // "Denied by you" with the time after a middot, as the row writes it too: "Approved by you in
+  // Reviews · 10:46 AM".
   const outcomeBase = $derived(
     effectiveState === 'pending' || effectiveState === 'unavailable'
       ? undefined
       : `${outcomeLabel ?? STATE_LABELS[effectiveState]}${decidedBy === undefined ? '' : ` by ${decidedBy}`}${decidedIn === undefined ? '' : ` in ${decidedIn}`}`,
   );
   const outcomeText = $derived(
-    outcomeBase !== undefined && decidedIn !== undefined && outcomeTime !== undefined
+    outcomeBase !== undefined &&
+      decidedIn !== undefined &&
+      outcomeTime !== undefined &&
+      layout !== 'row'
       ? `${outcomeBase} at ${outcomeTime}`
       : outcomeBase,
   );
   // The Done detail writes the day after the time ("10:33 AM today"); the other layouts keep the clock alone.
   const outcomeClock = $derived(
-    decidedIn !== undefined
+    decidedIn !== undefined && layout !== 'row'
       ? undefined
       : isDetail && decidedDate !== undefined && outcomeTime !== undefined
         ? describeDecisionTime(decidedDate, now)
@@ -483,6 +487,7 @@
       {requestedIso}
       {consequence}
       {rememberScope}
+      decidedElsewhere={decidedIn !== undefined}
       {outcomeText}
       outcomeTime={outcomeClock}
       {outcomeTone}

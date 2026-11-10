@@ -154,20 +154,18 @@ describe('an agent’s facts', () => {
     description: null,
     model: 'anthropic/sonnet',
     models: null,
-    defaultEffort: null,
+    effort: null,
     tools: [...tools],
-    skillDescriptors: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
-    allowedSkills: null,
+    card: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
+    skills: null,
     a2a: true,
-    stepLimit: null,
+    limits: { steps: null, cost: null, tools: null },
     retry: null,
     compaction: null,
-    hooks: null,
+    interceptors: null,
     references: null,
     guardrails: null,
-    costBudget: null,
-    toolBudget: null,
-    toolApproval: null,
+    approvals: null,
     instructions: '',
   });
 
@@ -190,7 +188,7 @@ describe('an agent’s facts', () => {
     const twin = (id: string) => ({ id, name: 'Cite', description: '', tags: [] });
     const facts = agentFacts(
       { kind: 'file', media: null },
-      { ...definition([]), skillDescriptors: [twin('cite-a'), twin('cite-b')] },
+      { ...definition([]), card: [twin('cite-a'), twin('cite-b')] },
       undefined,
     );
 

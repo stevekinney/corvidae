@@ -10,6 +10,8 @@
     mode: 'group' | 'actions' | 'detail';
     actions?: StackedListItemAction[];
     expanded?: boolean;
+    /** What the actions become on a phone; the component's own default when omitted. */
+    phoneActions?: 'menu' | 'buttons';
   };
 </script>
 
@@ -21,6 +23,7 @@
     mode,
     actions = [],
     expanded = $bindable(false),
+    phoneActions,
   }: StackedListItemExtrasFixtureProps = $props();
 </script>
 
@@ -43,7 +46,7 @@
         >{/snippet}
     </StackedListItem>
   {:else}
-    <StackedListItem {actions}>
+    <StackedListItem {actions} {...phoneActions === undefined ? {} : { phoneActions }}>
       {#snippet title()}Assistant{/snippet}
     </StackedListItem>
   {/if}

@@ -5,7 +5,7 @@
  */
 import { render } from '@testing-library/svelte';
 import { describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { breadcrumbTrail } from './breadcrumbs.svelte.ts';
 import Harness from './breadcrumbs.test-harness.svelte';
@@ -15,6 +15,25 @@ import { routes } from './routes.ts';
 const NONE = new Map<string, string>();
 
 describe('the breadcrumb trail', () => {
+  test('a page’s details are the popover its own entry opens, and no other entry has one (COR-2016)', () => {
+    const popover = createRawSnippet(() => ({ render: () => '<p>Details</p>' }));
+    const details = new Map([['/chats/chat-1', popover]]);
+    const labels = new Map([['/chats/chat-1', 'Please refund order 4471']]);
+
+    expect(breadcrumbTrail('/chats/chat-1', labels, routes, true, details)).toEqual([
+      { label: 'Chat', href: '/chats' },
+      { label: 'Please refund order 4471', popover },
+    ]);
+    // A page that is not the last entry, or has none, stays a plain label.
+    expect(breadcrumbTrail('/chats/chat-1', labels, routes, true, new Map())).toEqual([
+      { label: 'Chat', href: '/chats' },
+      { label: 'Please refund order 4471' },
+    ]);
+    expect(
+      breadcrumbTrail('/chats', labels, routes, true, new Map([['/chats/chat-1', popover]])),
+    ).toEqual([{ label: 'Chat' }]);
+  });
+
   test('an address no route owns links every part it does match, so “Not found” can follow', () => {
     expect(breadcrumbTrail('/runs', NONE, routes, false)).toEqual([
       { label: 'Runs', href: '/runs' },

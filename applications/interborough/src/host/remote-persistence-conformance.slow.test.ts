@@ -89,7 +89,7 @@ const remoteConformance = await (async () => {
   if (anthropic === undefined) throw new Error('The provider plugin fixture is unavailable');
   const unseededDemo = {
     ...demo,
-    descriptor: { ...createDemoPlugin({ seedOnStart: false }), enabledByDefault: true },
+    descriptor: { ...createDemoPlugin({ seedOnStart: false }), enabled: true },
   };
   const plugins = [plugin, unseededDemo, anthropic];
   async function start(

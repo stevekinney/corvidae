@@ -376,10 +376,9 @@ test.describe('Duplicate', () => {
         description: 'Has approvals and budgets',
         model: 'anthropic/claude-sonnet-5',
         tools: ['demo:lookup-order'],
-        skillDescriptors: [],
-        stepLimit: 12,
-        costBudget: { perRunUsd: 2 },
-        toolApproval: { 'demo:lookup-order': 'always' },
+        card: [],
+        limits: { steps: 12, cost: { run: 2 } },
+        approvals: { 'demo:lookup-order': 'always' },
         instructions: 'Ask first.',
       },
     });
@@ -398,9 +397,8 @@ test.describe('Duplicate', () => {
     });
     expect(detail.result).toMatchObject({
       definition: {
-        stepLimit: 12,
-        costBudget: { perRunUsd: 2 },
-        toolApproval: { 'demo:lookup-order': 'always' },
+        limits: { steps: 12, cost: { run: 2 } },
+        approvals: { 'demo:lookup-order': 'always' },
         instructions: 'Ask first.',
       },
     });

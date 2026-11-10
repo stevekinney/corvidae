@@ -207,7 +207,7 @@
       ? hookSentence({ ...hook, scope: form.draftScope })
       : hookSentence({ events: form.events, action: form.draftAction, scope: form.draftScope }),
   );
-  const contributedKinds = $derived(contributed.data?.hookActionKinds ?? []);
+  const contributedKinds = $derived(contributed.data?.reactions ?? []);
   const actionOptions = $derived([
     ...HOOK_ACTION_TYPES.map((type) => ({
       value: type,

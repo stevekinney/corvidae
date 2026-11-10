@@ -465,15 +465,27 @@ describe('catalog edits', () => {
         .toSorted(),
     );
     const haiku = snapshot.models.find((row) => row.model === 'claude-haiku-4-5');
+    const haiku55 = snapshot.models.find((row) => row.model === 'claude-haiku-5-5');
     const sonnet = snapshot.models.find((row) => row.model === 'claude-sonnet-5');
     expect(haiku?.off).toBe(true);
     expect(sonnet).toMatchObject({
       provider: 'anthropic',
       off: false,
       contextWindowTokens: 100_000,
-      pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
+      pricing: {
+        inputPerMillionTokens: 1,
+        outputPerMillionTokens: 2,
+        currency: 'USD',
+        cacheReadPerMillionTokens: 0.2,
+        cacheWritePerMillionTokens: 2.5,
+      },
     });
     expect(sonnet?.aliases).toContain('sonnet');
+    expect(haiku55?.pricing?.longContext).toMatchObject({
+      inputTokensAbove: 100_000,
+      cacheReadPerMillionTokens: 0.05,
+      cacheWritePerMillionTokens: 0.625,
+    });
     expect(JSON.stringify(snapshot)).not.toContain(KEY_A);
   });
 
@@ -489,17 +501,24 @@ describe('catalog edits', () => {
         pricing: { inputPerMillionTokens: 1, outputPerMillionTokens: 2, currency: 'USD' },
       },
     ]);
-    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toEqual({
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toMatchObject({
       inputPerMillionTokens: 1,
       outputPerMillionTokens: 2,
       currency: 'USD',
+      cacheWritePerMillionTokens: 0.125,
       longContext: kept,
     });
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing?.cacheReadPerMillionTokens).toBeCloseTo(
+      0.01,
+      12,
+    );
 
     const replacement = {
       inputTokensAbove: 50_000,
       inputPerMillionTokens: 3,
       outputPerMillionTokens: 4,
+      cacheWritePerMillionTokens: kept?.cacheWritePerMillionTokens,
+      cacheReadPerMillionTokens: kept?.cacheReadPerMillionTokens,
     };
     await host.providers.editCatalog([
       {
@@ -527,10 +546,67 @@ describe('catalog edits', () => {
         },
       },
     ]);
-    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toEqual({
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing).toMatchObject({
       inputPerMillionTokens: 1,
       outputPerMillionTokens: 2,
       currency: 'USD',
+      cacheWritePerMillionTokens: 0.125,
+    });
+    expect(rowOf(host, 'claude-haiku-5-5')?.pricing?.cacheReadPerMillionTokens).toBeCloseTo(
+      0.01,
+      12,
+    );
+  });
+
+  test('a price edit can set cache rates and persists edits without them', async () => {
+    const directory = await home();
+    await writeFile(
+      join(directory, 'configuration.json'),
+      JSON.stringify({
+        plugins: { anthropic: {} },
+        catalog: [
+          {
+            provider: 'anthropic',
+            model: 'sonnet',
+            pricing: { inputPerMillionTokens: 0.02, outputPerMillionTokens: 0.1, currency: 'USD' },
+          },
+        ],
+      }),
+    );
+    await storeKey(directory, 'anthropic-api-key', KEY_A);
+    const host = await startAt(directory);
+    expect(rowOf(host, 'claude-sonnet-5')?.pricing).toMatchObject({
+      inputPerMillionTokens: 0.02,
+      outputPerMillionTokens: 0.1,
+      cacheReadPerMillionTokens: 0.2,
+      cacheWritePerMillionTokens: 2.5,
+    });
+
+    await host.close();
+    const restarted = await startAt(directory);
+    expect(rowOf(restarted, 'claude-sonnet-5')?.pricing).toMatchObject({
+      inputPerMillionTokens: 0.02,
+      outputPerMillionTokens: 0.1,
+      cacheReadPerMillionTokens: 0.2,
+      cacheWritePerMillionTokens: 2.5,
+    });
+
+    await restarted.providers.editCatalog([
+      {
+        provider: 'anthropic',
+        model: 'sonnet',
+        pricing: {
+          inputPerMillionTokens: 0.02,
+          outputPerMillionTokens: 0.1,
+          cacheReadPerMillionTokens: 0.01,
+          cacheWritePerMillionTokens: 0.02,
+          currency: 'USD',
+        },
+      },
+    ]);
+    expect(rowOf(restarted, 'claude-sonnet-5')?.pricing).toMatchObject({
+      cacheReadPerMillionTokens: 0.01,
+      cacheWritePerMillionTokens: 0.02,
     });
   });
 
@@ -580,6 +656,21 @@ describe('catalog edits', () => {
       [
         [{ provider: 'anthropic', model: 'haiku', pricing: { currency: 'USD' } }],
         'catalog[0].pricing.inputPerMillionTokens',
+      ],
+      [
+        [
+          {
+            provider: 'anthropic',
+            model: 'haiku',
+            pricing: {
+              inputPerMillionTokens: 1,
+              outputPerMillionTokens: 2,
+              currency: 'USD',
+              cacheReadPerMillionTokens: -1,
+            },
+          },
+        ],
+        'catalog[0].pricing.cacheReadPerMillionTokens',
       ],
       [
         [{ provider: 'anthropic', model: 'haiku', contextWindowTokens: 10, maxOutputTokens: 20 }],

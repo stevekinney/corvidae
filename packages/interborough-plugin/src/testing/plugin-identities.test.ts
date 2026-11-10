@@ -143,7 +143,7 @@ describe('pluginIdentities', () => {
     const plugin = definePlugin({
       ...base,
       setup: () => ({
-        triggerKinds: [
+        triggers: [
           {
             name: 'poll',
             description: 'Polls',
@@ -151,7 +151,7 @@ describe('pluginIdentities', () => {
             start: async () => () => {},
           },
         ],
-        hookActionKinds: [
+        reactions: [
           {
             name: 'post',
             version: '2.0.0',
@@ -165,22 +165,55 @@ describe('pluginIdentities', () => {
     const { entries } = await pluginIdentities(plugin);
     expect(entries.map(({ kind, id, version }) => `${kind} ${id} ${version}`)).toEqual([
       'configuration example 1.2.0',
-      'hook-action example:post 2.0.0',
-      'trigger-kind example:poll 1.2.0',
+      'reaction example:post 2.0.0',
+      'trigger example:poll 1.2.0',
     ]);
   });
 
-  test('lists each guardrail an agent file can name, by kind and id', async () => {
+  test('lists each guardrail as a guardrail whose id records its family', async () => {
     const plugin = definePlugin({
       ...base,
       setup: () => ({
         guardrails: {
-          inputDetectors: [{ name: 'no-secrets', detect: async () => ({ safe: true }) } as never],
-          outputValidators: [
+          input: [
             {
-              name: 'no-forbidden',
+              name: 'no-secrets',
+              description: 'Flags secrets.',
+              detect: async () => ({ safe: true }),
+            } as never,
+          ],
+          output: [
+            {
+              // An entry with an action of its own is listed by its guardrail's name (COR-2104).
+              guardrail: {
+                name: 'no-forbidden',
+                description: 'Flags forbidden words.',
+                validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
+              },
+              action: 'warn',
+            },
+          ],
+          tools: [
+            {
+              name: 'refund-cap',
+              description: 'Caps refunds.',
+              action: 'block',
               validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
             },
+          ],
+          // One detector can serve two families under one name: the family is in the identity.
+          memory: [
+            {
+              name: 'no-secrets',
+              description: 'Flags secrets.',
+              detect: async () => ({ safe: true }),
+            } as never,
+            {
+              name: 'recall-only',
+              description: 'Flags recalled secrets.',
+              gates: ['recall'],
+              detect: async () => ({ safe: true }),
+            } as never,
           ],
         },
       }),
@@ -189,10 +222,44 @@ describe('pluginIdentities', () => {
     expect(entries.map(({ kind, id, version, schema }) => ({ kind, id, version, schema }))).toEqual(
       [
         { kind: 'configuration', id: 'example', version: '1.2.0', schema: expect.any(String) },
-        { kind: 'input-guardrail', id: 'example:no-secrets', version: '1.2.0', schema: null },
-        { kind: 'output-guardrail', id: 'example:no-forbidden', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:input/no-secrets', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:memory/no-secrets', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:memory/recall-only', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:output/no-forbidden', version: '1.2.0', schema: null },
+        { kind: 'guardrail', id: 'example:tools/refund-cap', version: '1.2.0', schema: null },
       ],
     );
+  });
+
+  test('records a guardrail factory with its configuration schema (COR-2118)', async () => {
+    const factory = (threshold: number) => ({
+      name: 'grounding',
+      description: 'Flags unsupported claims.',
+      configuration: z.object({ threshold: z.number().default(threshold) }),
+      create: () => ({
+        name: 'grounding',
+        validate: async () => ({ valid: true, confidence: 0, category: 'x' }),
+      }),
+    });
+    const identitiesWith = async (threshold: number) => {
+      const identities = await pluginIdentities(
+        definePlugin({
+          ...base,
+          setup: () => ({ guardrails: { output: [factory(threshold)] } }),
+        }),
+      );
+      return identities.entries.find(({ id }) => id === 'example:output/grounding');
+    };
+    const entry = await identitiesWith(0.8);
+    expect(entry).toEqual({
+      kind: 'guardrail',
+      id: 'example:output/grounding',
+      version: '1.2.0',
+      schema: schemaDigest(z.object({ threshold: z.number().default(0.8) })),
+    });
+    // The digest moves with the schema, so a changed contract is a changed identity.
+    const moved = await identitiesWith(0.5);
+    expect(moved?.schema).not.toBe(entry?.schema);
   });
 
   test('names the plugin when its configuration refuses an empty object', async () => {

@@ -41,7 +41,7 @@ export interface AgentModelChoice {
    */
   readonly displayName: string;
   /**
-   * Present, as `true`, when the agent has a `costBudget` and the catalog has no price in US
+   * Present, as `true`, when the agent has `limits.cost` and the catalog has no price in US
    * dollars for this model (COR-1921): a steer to it is refused, because its spend could not be
    * counted against the budget. Absent for every other choice.
    */
@@ -115,7 +115,7 @@ export function describeAgentModels(
       selectable: true,
       models: distinct(
         allowedDescriptorsOfFileAgent(binding.definition.models, descriptors).map((row) =>
-          choiceOf(row, policy, binding.definition.costBudget !== undefined),
+          choiceOf(row, policy, binding.definition.limits?.cost !== undefined),
         ),
       ),
       default: isDescriptor(resolved) ? choiceOf(resolved, policy) : null,

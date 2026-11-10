@@ -10,7 +10,10 @@ import { join } from 'node:path';
 
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { workflowFileDirectory } from '@lostgradient/bureau/sources';
+import { readGenerationProfile } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { waitUntil } from '@lostgradient/testing/wait-until';
+import { createToolbox, createToolCall, resolveCapabilityTier } from 'armorer';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import {
@@ -21,18 +24,27 @@ import {
   SHOWCASE_AGENT_IDENTIFIERS,
   SHOWCASE_ASSISTANT_REPLY,
   SHOWCASE_HUMAN_INPUT,
+  SHOWCASE_MODEL_AGENT_MODEL,
   SHOWCASE_ORDERS,
+  SHOWCASE_SCRIPTED_AGENTS,
   SHOWCASE_TOOL_APPROVAL,
   SHOWCASE_TOOL_RUNNER_PLAN,
   SHOWCASE_WORKFLOW_AUTHOR_REPLY,
   SHOWCASE_WORKFLOW_AUTHOR_TOOLS,
   showcaseBuiltInAgents,
+  showcaseCatalogTools,
   showcaseHumanInputGenerate,
   showcaseToolRunnerGenerate,
   toolRunnerLookupReply,
   type ShowcasePacing,
   type ShowcaseToolRunnerMoment,
 } from './showcase-agents.ts';
+import {
+  humanInputAnsweredReply,
+  lookupOrderResult,
+  toolRunnerRefundAsk,
+  toolRunnerRefundedReply,
+} from './showcase-sentences.ts';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const directories: string[] = [];
@@ -84,6 +96,32 @@ describe('the showcase built-in agents', () => {
     expect(Object.keys(showcaseBuiltInAgents().agents)).not.toContain('release-helper');
   });
 
+  test('name a model only for the agents that need one, so a chat with no provider is blocked for them alone (06m, 14h)', async () => {
+    const bureau = await start();
+    const model = (id: string) => {
+      const agent = bureau.agents.find(id);
+      if (agent === undefined) throw new Error(`No agent ${id}.`);
+      return readGenerationProfile(agent as never).descriptors.map(
+        (descriptor) => `${descriptor.provider}/${descriptor.model}`,
+      );
+    };
+    const needsAModel = SHOWCASE_AGENT_IDENTIFIERS.filter(
+      (id) => !(SHOWCASE_SCRIPTED_AGENTS as readonly string[]).includes(id),
+    );
+    expect(needsAModel).toEqual([
+      'tool-runner',
+      'request-human-input',
+      'workflow-author',
+      'model-switcher',
+    ]);
+    for (const id of needsAModel) {
+      expect(model(id), id).toContain(
+        `${SHOWCASE_MODEL_AGENT_MODEL.provider}/${SHOWCASE_MODEL_AGENT_MODEL.model}`,
+      );
+    }
+    for (const id of SHOWCASE_SCRIPTED_AGENTS) expect(model(id), id).toEqual([]);
+  });
+
   test('Workflow author holds Create workflow and Discover agents, Bureau’s own tools', async () => {
     const bureau = await start();
     const author = bureau.agents.find('workflow-author');
@@ -96,6 +134,16 @@ describe('the showcase built-in agents', () => {
       'bureau:workflows-create': 'on-changes',
       'bureau:discover-agents': 'never',
     });
+  });
+
+  test('Lookup order answers in the words the chat rail shows (19f)', () => {
+    const orders = SHOWCASE_ORDERS;
+    expect(lookupOrderResult(orders['4471'] ?? { totalCents: 0, delivered: '' })).toBe(
+      '$42.00, delivered Monday, flagged damaged',
+    );
+    expect(lookupOrderResult(orders['4468'] ?? { totalCents: 0, delivered: '' })).toBe(
+      '$18.00, shipped Oct 27, delivered Oct 29',
+    );
   });
 
   test('name each tool for a person, and call Issue refund Dangerous (S64)', () => {
@@ -111,6 +159,46 @@ describe('the showcase built-in agents', () => {
       mutates: true,
       title: 'Triage refunds',
     });
+  });
+
+  test('Lookup order takes as long as its pacing, which the seed uses to give the 4471 lookup its 0.4s', async () => {
+    const paced: string[] = [];
+    let release: () => void = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    const toolbox = createToolbox([
+      createShowcaseLookupOrderTool({
+        lookup: async ({ orderId }) => {
+          paced.push(orderId);
+          await held;
+        },
+      }),
+    ]);
+    let settled = false;
+    const result = toolbox
+      .execute(createToolCall('lookup-order', { orderId: '4471' }, 'lookup-call'))
+      .finally(() => (settled = true));
+    await waitUntil(() => paced.length === 1);
+    expect(paced).toEqual(['4471']);
+    // The lookup has not answered while its pacing holds it.
+    expect(settled).toBe(false);
+    release();
+    const answered = await result;
+    expect(JSON.stringify(answered.result)).toContain('$42.00');
+  });
+
+  test('are offered to the catalog by name, so a screen reads Issue refund as dangerous from it', () => {
+    const tools = showcaseCatalogTools();
+    expect(Object.keys(tools)).toEqual(['lookup-order', 'issue-refund', 'triage-refunds']);
+    expect(
+      Object.values(tools).map((tool) => [
+        tool.name,
+        resolveCapabilityTier(tool.metadata, tool.tags),
+      ]),
+    ).toEqual([
+      ['lookup-order', 'read-only'],
+      ['issue-refund', 'dangerous'],
+      ['triage-refunds', 'mutating'],
+    ]);
   });
 
   test('Assistant, Echo and Workflow author answer from their scripts', async () => {
@@ -138,7 +226,7 @@ describe('the showcase built-in agents', () => {
     expect(pending?.pendingApproval).toBeDefined();
   });
 
-  test('Tool runner says the order’s note as it asks, the answer it remembers, and is paced before each answer', async () => {
+  test('Tool runner says what it found and that it needs approval as it asks, and is paced before each answer', async () => {
     const moments: ShowcaseToolRunnerMoment[] = [];
     const bureau = await start({ toolRunner: (moment) => void moments.push(moment) });
     const result = await run(
@@ -146,7 +234,12 @@ describe('the showcase built-in agents', () => {
       'tool-runner',
       'Please refund order 4471, it arrived damaged.',
     );
-    expect(result.steps.at(-1)?.content).toBe(SHOWCASE_ORDERS['4471']?.note);
+    expect(result.steps.at(-1)?.content).toBe(
+      'I found order 4471 ($42.00). I need your approval to refund it.',
+    );
+    expect(result.steps.at(-1)?.content).toBe(
+      toolRunnerRefundAsk('4471', SHOWCASE_ORDERS['4471']?.totalCents ?? 0),
+    );
     expect(moments.map(({ step, orderId }) => [step, orderId])).toEqual([
       ['lookup', '4471'],
       ['refund-ask', '4471'],
@@ -181,23 +274,54 @@ describe('the showcase built-in agents', () => {
     });
   });
 
-  test('Tool runner ends a refund’s run with no reply once the refund is decided', async () => {
+  test('Tool runner says the person approved the refund and what it did once the refund is issued', async () => {
     const generate = showcaseToolRunnerGenerate();
-    const conversation = {
+    const conversation = (outcome: string) => ({
       getMessages: () => [
-        { role: 'user', content: 'Please refund order 4472, $18.50.' },
+        { role: 'user', content: 'Please refund order 4471, it arrived damaged.' },
         {
           role: 'assistant',
           toolResult: { callId: 'showcase-lookup-order-1', outcome: 'success' },
         },
         {
           role: 'assistant',
-          toolResult: { callId: 'showcase-issue-refund-1', outcome: 'success' },
+          toolResult: { callId: 'showcase-issue-refund-1', outcome },
         },
       ],
-    };
-    const response = await generate({ conversation } as unknown as Parameters<typeof generate>[0]);
-    expect(response).toEqual({ content: '', toolCalls: [] });
+    });
+    const approved = await generate({
+      conversation: conversation('success'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(approved).toEqual({
+      content: 'You approved it. Refunded $42.00 to the original payment method.',
+      toolCalls: [],
+    });
+    expect(approved.content).toBe(toolRunnerRefundedReply(4200));
+    // A refund that was not issued has nothing to say.
+    const refused = await generate({
+      conversation: conversation('error'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(refused).toEqual({ content: '', toolCalls: [] });
+  });
+
+  test('Request human input says which answer the person gave once the question is answered', async () => {
+    const generate = showcaseHumanInputGenerate();
+    const answered = (content: string) => ({
+      getMessages: () => [
+        { role: 'user', content: 'Ship the release.' },
+        { role: 'user', content: `[signal:environment] ${content}` },
+      ],
+    });
+    const staging = await generate({
+      conversation: answered('"staging"'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(staging.content).toBe('You answered Staging.');
+    expect(humanInputAnsweredReply('Staging')).toBe(staging.content);
+    // The person's own words are said as they wrote them.
+    const own = await generate({
+      conversation: answered('"the canary ring"'),
+    } as unknown as Parameters<typeof generate>[0]);
+    expect(own.content).toBe('You answered the canary ring.');
   });
 
   test('Tool runner answers a message that names no order with its plan, once its pace lets it', async () => {

@@ -97,7 +97,7 @@
   const actionsOff = $derived(disabledReason !== undefined || isBusy);
 
   function emitResolution(decision: ApprovalResolutionDecision, editedArgs?: unknown): void {
-    if (isBusy) return;
+    if (actionsOff) return;
     const trimmedReason = resolutionReason.trim();
     const resolution: ApprovalResolution = {
       decision,
@@ -159,7 +159,8 @@
         type="button"
         variant="secondary"
         mutating
-        disabled={actionsOff && resolving !== 'deny'}
+        disabled={isBusy && resolving !== 'deny'}
+        aria-disabled={disabledReason === undefined ? undefined : 'true'}
         loading={resolving === 'deny'}
         loadingStatus="Denying…"
         aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
@@ -184,7 +185,8 @@
         type="button"
         variant="primary"
         mutating
-        disabled={actionsOff && resolving !== 'approve'}
+        disabled={isBusy && resolving !== 'approve'}
+        aria-disabled={disabledReason === undefined ? undefined : 'true'}
         loading={resolving === 'approve'}
         loadingStatus="Approving…"
         aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}

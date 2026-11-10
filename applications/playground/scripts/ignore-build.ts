@@ -10,9 +10,7 @@
  *   {@link PREVIEW_OPT_IN}. `bun run validate` already runs the same static export.
  * - A production deployment builds when a commit since the last successful one touches a file
  *   the export can read: a non-test file in a workspace of the playground's dependency closure,
- *   or a root input to `bun install` or TypeScript. The published versions the documentation
- *   displays live in `src/published-versions.json`, a file of this workspace, so changing one
- *   rebuilds like any other source change.
+ *   or a root input to `bun install` or TypeScript.
  *
  * Whenever it cannot tell, it builds. Exit 1 means build and exit 0 means skip.
  */

@@ -1,14 +1,18 @@
 import { describe, expect, test } from 'bun:test';
 
 import type { ChatContext } from '../../lib/bureau-client.ts';
+import { contextFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import type { BureauReview } from '../../lib/bureau-reviews.ts';
 import {
   agentAvatarName,
   agentTone,
+  chatDayGroup,
   chatListRows,
-  dayGroupOf,
-  groupSessions,
+  chatStatusWord,
+  inSegment,
+  matchingRows,
   pendingQuestions,
+  segmentCounts,
   sessionRow,
   type SessionRow,
   waitingChatIds,
@@ -74,15 +78,15 @@ const approval = (
 });
 
 describe('the question a waiting chat asks', () => {
-  test('is an approval’s own sentence, the call when it has none, or a question’s prompt', () => {
+  test('is a question’s prompt, and nothing for an approval, which the chat’s own message tells (16f)', () => {
     const questions = pendingQuestions([
       approval('a', 'Refund order order-1001 for $42.00'),
       approval('b', undefined),
       humanWait('c', 'Which environment?'),
     ]);
 
-    expect(questions.get('a')).toBe('Refund order order-1001 for $42.00?');
-    expect(questions.get('b')).toBe('Run issue-refund with orderId order-1001?');
+    expect(questions.has('a')).toBe(false);
+    expect(questions.has('b')).toBe(false);
     expect(questions.get('c')).toBe('Which environment?');
   });
 
@@ -116,28 +120,29 @@ describe('the chats that wait on you', () => {
 });
 
 describe('a session as a row', () => {
-  test('shows the latest message, the title, the agent and when it changed', () => {
+  test('shows the latest message, the title, the agent, when it changed and its status', () => {
     expect(sessionRow(context, new Map())).toEqual({
       id: 'session-1',
       title: 'Plan the week',
       snippet: 'Sounds good.',
       agentName: 'assistant',
       updatedAt: Date.parse('2026-10-19T09:00:00.000Z'),
-      needsYou: false,
-      failed: false,
+      status: 'Done',
     });
   });
 
-  test('is failed only for an idle chat whose latest run failed', () => {
+  test('is Failed only for an idle chat whose latest run failed', () => {
     const failed = new Set(['session-1']);
 
-    expect(sessionRow(context, new Map(), failed).failed).toBe(true);
-    expect(sessionRow(context, new Map(), new Set(['other'])).failed).toBe(false);
+    expect(sessionRow(context, new Map(), failed).status).toBe('Failed');
+    expect(sessionRow(context, new Map(), new Set(['other'])).status).toBe('Done');
     // A chat that waits on you or is running again is not a failure to report.
-    expect(sessionRow({ ...context, activity: 'awaiting-input' }, new Map(), failed).failed).toBe(
-      false,
+    expect(sessionRow({ ...context, activity: 'awaiting-input' }, new Map(), failed).status).toBe(
+      'Waiting on you',
     );
-    expect(sessionRow({ ...context, activity: 'running' }, new Map(), failed).failed).toBe(false);
+    expect(sessionRow({ ...context, activity: 'running' }, new Map(), failed).status).toBe(
+      'Running',
+    );
   });
 
   test('shows the question a waiting chat asks in place of the last message, and only while it waits', () => {
@@ -145,13 +150,27 @@ describe('a session as a row', () => {
 
     expect(sessionRow({ ...context, activity: 'awaiting-input' }, questions)).toMatchObject({
       snippet: 'Which environment?',
-      needsYou: true,
+      status: 'Waiting on you',
     });
     expect(sessionRow({ ...context, activity: 'idle' }, questions)).toMatchObject({
       snippet: 'Sounds good.',
-      needsYou: false,
+      status: 'Done',
     });
-    expect(sessionRow({ ...context, activity: 'running' }, questions).needsYou).toBe(false);
+    expect(sessionRow({ ...context, activity: 'running' }, questions).status).toBe('Running');
+  });
+
+  test('says why a chat the host ended ended, in place of its last message', () => {
+    expect(
+      sessionRow(
+        { ...context, endReason: 'host-stopped', lastMessagePreview: 'Rename it' },
+        new Map(),
+      ),
+    ).toMatchObject({
+      status: 'Ended',
+      snippet: 'The server restarted before I finished.',
+    });
+    // A chat that ran again since is no longer ended, and says its last message.
+    expect(sessionRow({ ...context, endReason: null }, new Map()).snippet).toBe('Sounds good.');
   });
 
   test('says how many messages a chat holds when there is none to show, and names an untitled chat', () => {
@@ -168,138 +187,144 @@ describe('a session as a row', () => {
   });
 });
 
-describe('the day a change belongs to', () => {
-  const now = new Date(2026, 9, 23, 0, 30).getTime();
-
-  test('is Today from local midnight, Yesterday the day before, and Earlier before that', () => {
-    expect(dayGroupOf(new Date(2026, 9, 23, 0, 0).getTime(), now)).toBe('today');
-    expect(dayGroupOf(new Date(2026, 9, 22, 23, 59).getTime(), now)).toBe('yesterday');
-    expect(dayGroupOf(new Date(2026, 9, 22, 0, 0).getTime(), now)).toBe('yesterday');
-    expect(dayGroupOf(new Date(2026, 9, 21, 23, 59).getTime(), now)).toBe('earlier');
-  });
-
-  test('puts a change in the future in Today and one with no time in Earlier', () => {
-    expect(dayGroupOf(now + 3_600_000, now)).toBe('today');
-    expect(dayGroupOf(null, now)).toBe('earlier');
+describe('the status word of a chat', () => {
+  test('is its activity, its latest run and how it ended, in that order', () => {
+    const word = (overrides: Parameters<typeof contextFixture>[1], failed = false) =>
+      chatStatusWord(contextFixture('c', overrides), failed ? new Set(['c']) : new Set());
+    expect(word({ activity: 'awaiting-input' })).toBe('Waiting on you');
+    expect(word({ activity: 'running' })).toBe('Running');
+    expect(word({ activity: 'idle' }, true)).toBe('Failed');
+    expect(word({ activity: 'idle', endReason: 'host-stopped' })).toBe('Ended');
+    expect(word({ activity: 'idle' })).toBe('Done');
   });
 });
 
-describe('the groups of the list', () => {
-  const now = new Date(2026, 9, 23, 15, 0).getTime();
-  const row = (id: string, at: Date | null, needsYou = false): SessionRow => ({
-    id,
-    title: id,
-    snippet: '',
-    agentName: 'assistant',
-    updatedAt: at?.getTime() ?? null,
-    needsYou,
-    failed: false,
-  });
-
-  test('puts Needs you first whatever the age, then Today, Yesterday and Earlier, newest first in each', () => {
-    const groups = groupSessions(
-      [
-        row('old', new Date(2026, 9, 1)),
-        row('today-early', new Date(2026, 9, 23, 8)),
-        row('waiting-old', new Date(2026, 9, 2), true),
-        row('yesterday', new Date(2026, 9, 22, 12)),
-        row('today-late', new Date(2026, 9, 23, 14)),
-        row('waiting-new', new Date(2026, 9, 23, 13), true),
-      ],
-      now,
-    );
-
-    expect(
-      groups.map((group) => [group.key, group.label, group.rows.map((entry) => entry.id)]),
-    ).toEqual([
-      ['needs-you', 'Needs you', ['waiting-new', 'waiting-old']],
-      ['today', 'Today', ['today-late', 'today-early']],
-      ['yesterday', 'Yesterday', ['yesterday']],
-      ['earlier', 'Earlier', ['old']],
-    ]);
-  });
-
-  test('leaves out a group with no row, and gives no group for no row', () => {
-    expect(
-      groupSessions([row('a', new Date(2026, 9, 23, 9))], now).map((group) => group.key),
-    ).toEqual(['today']);
-    expect(groupSessions([], now)).toEqual([]);
-  });
-
-  test('keeps the Bureau’s order for rows with the same time', () => {
-    const at = new Date(2026, 9, 23, 9);
-
-    const [group] = groupSessions([row('first', at), row('second', at), row('third', at)], now);
-
-    expect(group?.rows.map((entry) => entry.id)).toEqual(['first', 'second', 'third']);
-  });
-});
-
-describe('the chat list as one list', () => {
-  const row = (id: string, updatedAt: number | null, needsYou = false): SessionRow => ({
+describe('the chats as the list orders them', () => {
+  const row = (id: string, updatedAt: number | null): SessionRow => ({
     id,
     title: id,
     snippet: '',
     agentName: 'assistant',
     updatedAt,
-    needsYou,
-    failed: false,
-  });
-  const now = new Date(2026, 9, 21, 12).getTime();
-
-  test('lists the chats that need you first, whatever their age, then the rest newest first, each with its group', () => {
-    const rows = chatListRows(
-      [
-        row('older', new Date(2026, 9, 1).getTime()),
-        row('today', new Date(2026, 9, 21, 9).getTime()),
-        row('waiting-old', new Date(2026, 8, 1).getTime(), true),
-        row('unreadable', null),
-      ],
-      now,
-    );
-
-    expect(rows.map((entry) => [entry.id, entry.group])).toEqual([
-      ['waiting-old', 'needs-you'],
-      ['today', 'today'],
-      ['older', 'earlier'],
-      ['unreadable', 'earlier'],
-    ]);
+    status: 'Done',
   });
 
-  test('puts a new chat that no run has started above everything, with no time and no chip', () => {
-    const rows = chatListRows([row('waiting', 1, true)], now, {
-      id: 'draft',
-      title: 'New chat',
-      snippet: 'assistant',
-      agentName: 'assistant',
-    });
+  test('are newest first, with the unreadable ones last, whatever they wait on', () => {
+    const waiting: SessionRow = { ...row('waiting-old', 1), status: 'Waiting on you' };
 
-    expect(rows.map((entry) => entry.id)).toEqual(['draft', 'waiting']);
-    expect(rows[0]).toMatchObject({ group: 'draft', updatedAt: null, needsYou: false });
+    expect(
+      chatListRows([row('older', 5), waiting, row('unreadable', null), row('newest', 9)]).map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(['newest', 'older', 'waiting-old', 'unreadable']);
+  });
+
+  test('keeps the Bureau’s order for rows with the same time', () => {
+    expect(
+      chatListRows([row('first', 3), row('second', 3), row('third', 3)]).map((r) => r.id),
+    ).toEqual(['first', 'second', 'third']);
   });
 });
 
-describe('a new chat the Bureau already lists', () => {
-  test('is listed once, as the Bureau’s row', () => {
-    const listed: SessionRow = {
-      id: 'draft',
-      title: 'Hello',
-      snippet: 'Hi.',
-      agentName: 'assistant',
-      updatedAt: 1,
-      needsYou: false,
-      failed: false,
-    };
+describe('the day band of a row', () => {
+  const ZONE = 'America/Chicago';
+  const now = Date.parse('2026-11-02T10:46:00-06:00');
+  const group = (at: string | null, wide = false) =>
+    chatDayGroup({ updatedAt: at === null ? null : Date.parse(at) }, now, ZONE, wide);
 
-    const rows = chatListRows([listed], 2, {
-      id: 'draft',
-      title: 'New chat',
-      snippet: 'assistant',
-      agentName: 'assistant',
+  test('names Today alone in a narrow pane and the zone the times are in', () => {
+    expect(group('2026-11-02T10:42:00-06:00')).toEqual({
+      key: 'today',
+      label: 'Today',
+      detail: 'Central time',
     });
+  });
 
-    expect(rows.map((entry) => [entry.id, entry.title])).toEqual([['draft', 'Hello']]);
-    expect(rows[0]?.group).not.toBe('draft');
+  test('names today’s date too in a wide pane, as the list pattern does', () => {
+    expect(group('2026-11-02T10:42:00-06:00', true).label).toBe('Today · Monday, Nov 2');
+  });
+
+  test('names Yesterday with its date, and an older day by its date alone, each its own band', () => {
+    expect(group('2026-11-01T16:12:00-06:00')).toEqual({
+      key: 'yesterday',
+      label: 'Yesterday · Sunday, Nov 1',
+      detail: 'Central time',
+    });
+    const older = group('2026-10-29T11:05:00-05:00');
+    expect(older.label).toBe('Thursday, Oct 29');
+    expect(group('2026-10-28T11:05:00-05:00').key).not.toBe(older.key);
+    expect(group('2026-10-29T15:00:00-05:00').key).toBe(older.key);
+  });
+
+  test('on a phone names Today and Yesterday alone, and an older day by its date (06l)', () => {
+    const phone = (at: string) =>
+      chatDayGroup({ updatedAt: Date.parse(at) }, now, ZONE, false, true);
+    expect(phone('2026-11-02T10:42:00-06:00')).toEqual({
+      key: 'today',
+      label: 'Today',
+      detail: 'Central time',
+    });
+    expect(phone('2026-11-01T16:12:00-06:00')).toEqual({
+      key: 'yesterday',
+      label: 'Yesterday',
+      detail: 'Central time',
+    });
+    expect(phone('2026-10-29T11:05:00-05:00').label).toBe('Thursday, Oct 29');
+  });
+
+  test('reads the day in the viewer’s zone, not the instant’s own, and puts a future time in Today', () => {
+    // 9:30 PM Sunday in Chicago is already Monday at UTC.
+    expect(group('2026-11-02T03:30:00Z').label).toBe('Yesterday · Sunday, Nov 1');
+    expect(group('2026-11-02T12:00:00-06:00').key).toBe('today');
+  });
+
+  test('puts a chat with no readable time in Earlier', () => {
+    expect(group(null)).toEqual({ key: 'earlier', label: 'Earlier', detail: 'Central time' });
+  });
+});
+
+describe('the segments of the list', () => {
+  const status = (value: SessionRow['status']) => ({ status: value });
+  const rows = [
+    status('Waiting on you'),
+    status('Waiting on you'),
+    status('Done'),
+    status('Ended'),
+    status('Failed'),
+    status('Running'),
+  ];
+
+  test('count every chat in All, the ones that wait in Waiting on you, and the finished ones in Done', () => {
+    expect(segmentCounts(rows)).toEqual({ all: 6, waiting: 2, done: 1 });
+    expect(segmentCounts([])).toEqual({ all: 0, waiting: 0, done: 0 });
+  });
+
+  test('leave a chat that ended, failed or runs in All only', () => {
+    for (const word of ['Ended', 'Failed', 'Running'] as const) {
+      expect(inSegment(status(word), 'all')).toBe(true);
+      expect(inSegment(status(word), 'waiting')).toBe(false);
+      expect(inSegment(status(word), 'done')).toBe(false);
+    }
+  });
+});
+
+describe('searching the list', () => {
+  const rows = [
+    { title: 'Please refund order 4471', snippet: 'I found the order.', agent: 'Tool runner' },
+    { title: 'Say hello', snippet: 'Hello! How can I help?', agent: 'Assistant' },
+  ];
+  const agentOf = (row: (typeof rows)[number]) => row.agent;
+
+  test('matches the title, the message or the agent, whatever the case', () => {
+    expect(matchingRows(rows, 'REFUND', agentOf)).toEqual(rows.slice(0, 1));
+    expect(matchingRows(rows, 'how can i', agentOf)).toEqual(rows.slice(1));
+    expect(matchingRows(rows, 'tool runner', agentOf)).toEqual(rows.slice(0, 1));
+    expect(matchingRows(rows, 'parcelly', agentOf)).toEqual([]);
+  });
+
+  test('leaves every row for a search of nothing but space', () => {
+    expect(matchingRows(rows, '   ', agentOf)).toEqual(rows);
+    expect(matchingRows(rows, '', agentOf)).toEqual(rows);
   });
 });
 
@@ -310,11 +335,18 @@ describe('an agent’s avatar', () => {
       expect(agentTone(name)).toBeGreaterThanOrEqual(0);
       expect(agentTone(name)).toBeLessThan(8);
     }
-    // The seeded agents do not all share one colour.
+    // The sample world's six agents, which a new chat draws side by side, each have a colour of their own.
     const tones = new Set(
-      ['assistant', 'tool-runner', 'request-human-input', 'echo', 'model-switcher'].map(agentTone),
+      [
+        'assistant',
+        'tool-runner',
+        'request-human-input',
+        'workflow-author',
+        'echo',
+        'model-switcher',
+      ].map(agentTone),
     );
-    expect(tones.size).toBeGreaterThan(2);
+    expect(tones.size).toBe(6);
   });
 
   test('spells the first letters of the first two parts of the identifier', () => {

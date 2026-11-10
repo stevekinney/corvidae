@@ -95,7 +95,7 @@ afterEach(async () => {
 const plan: { tool: string; orderId: string } = { tool: 'issue-refund', orderId: 'A1' };
 
 async function start(
-  toolApproval?: string,
+  approvals?: string,
   storage?: MemoryStorage,
   tools = '[issue-refund, send-receipt]',
 ): Promise<FileBureauHarness> {
@@ -132,7 +132,7 @@ async function start(
     agentFileText({
       model: KNOWN_MODEL,
       tools,
-      ...(toolApproval === undefined ? {} : { toolApproval }),
+      ...(approvals === undefined ? {} : { approvals }),
     }),
   );
   await harness.bureau.agents.refresh();
@@ -237,7 +237,7 @@ describe('approving with remember (COR-1828)', () => {
       agentFileText({
         model: KNOWN_MODEL,
         tools: '[issue-refund, send-receipt]',
-        toolApproval: '{ issue-refund: blocked }',
+        approvals: '{ issue-refund: blocked }',
       }),
     );
     await bureau.agents.refresh();
@@ -443,8 +443,8 @@ describe('Allow for the rest of this chat, answered on an AG-UI resume (COR-1990
   const OWNER = 'anonymous:local';
 
   /** Asks for a refund in `thread-1` through AG-UI, then answers its approval with Allow. */
-  async function allowThroughResume(toolApproval?: string) {
-    const { bureau } = await start(toolApproval);
+  async function allowThroughResume(approvals?: string) {
+    const { bureau } = await start(approvals);
     const handler = createBureauHandler(bureau, {
       unauthenticatedAccess: 'allow',
       agUi: {},
@@ -515,7 +515,7 @@ describe('Allow for the rest of this chat, answered on an AG-UI resume (COR-1990
 
 describe('Allow for the rest of this chat, in a tried agent’s chat (COR-1990)', () => {
   /** Tries a definition whose one tool asks, and returns the tried chat and the first approval. */
-  async function tryAsking(toolApproval?: Record<string, 'always' | 'on-changes'>) {
+  async function tryAsking(approvals?: Record<string, 'always' | 'on-changes'>) {
     const { bureau } = await start();
     plan.tool = 'issue-refund';
     plan.orderId = 'A1';
@@ -524,7 +524,7 @@ describe('Allow for the rest of this chat, in a tried agent’s chat (COR-1990)'
         name: 'Sketch',
         model: KNOWN_MODEL,
         tools: ['issue-refund'],
-        ...(toolApproval === undefined ? {} : { toolApproval }),
+        ...(approvals === undefined ? {} : { approvals }),
         instructions: 'You are a sketch of an agent.\n',
       },
       'Go.',

@@ -17,7 +17,7 @@ import {
   type PluginDescriptor,
   type PluginSecretDeclaration,
 } from '@lostgradient/interborough-plugin';
-import { type GovernedMemory } from '@lostgradient/memory';
+import { createMemoryAuthority, type GovernedMemory } from '@lostgradient/memory';
 import type { ProviderDefinition } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
@@ -69,7 +69,7 @@ function fixturePlugins(): readonly BureauPluginEntry[] {
         name: 'quiet',
         version: '1.0.0',
         description: 'Waits to be turned on.',
-        enabledByDefault: false,
+        enabled: false,
       }),
     ),
     entry(
@@ -106,7 +106,7 @@ function fixturePlugins(): readonly BureauPluginEntry[] {
         name: 'later',
         version: '1.0.0',
         description: 'Gets a signing key once it is turned on.',
-        enabledByDefault: false,
+        enabled: false,
         secrets: [{ key: LATER_SECRET, generated: true }],
       }),
     ),
@@ -371,7 +371,7 @@ describe('GET /host/plugins', () => {
 });
 
 describe('a plugin the file does not name', () => {
-  test('is enabled when its enabledByDefault is true and disabled when it is false', async () => {
+  test('is enabled when its enabled is true and disabled when it is false', async () => {
     const host = await startAt(await scratch());
     const plugins = await standings(host);
 
@@ -1022,7 +1022,7 @@ describe('/host/paths', () => {
 describe('the host’s governed memory', () => {
   test('registers the embedders plugins contribute beside the built-in one', () => {
     const memory: GovernedMemory = createHostMemory(new MemoryStorage(), {
-      detectors: [],
+      guardrails: { admission: [], recall: [] },
       embedders: [
         {
           id: 'keyed:tiny',
@@ -1033,6 +1033,49 @@ describe('the host’s governed memory', () => {
     });
 
     expect(memory.embedding.availability('keyed:tiny')).toBe('available');
+  });
+
+  test('runs a memory guardrail at the gates its plugin gave it, and no others', async () => {
+    const scanned: string[] = [];
+    const detector = (name: string) => ({
+      name,
+      detect: async (input: string) => {
+        scanned.push(`${name}: ${input}`);
+        return { triggered: false, confidence: 0, category: 'none' };
+      },
+    });
+    const both = detector('both');
+    const memory = createHostMemory(new MemoryStorage(), {
+      // What Bureau hands the factory: `both` declared no gates, `reads` declared `recall`.
+      guardrails: { admission: [both], recall: [both, detector('reads')] },
+      embedders: [],
+    });
+    await memory.init();
+    const authority = createMemoryAuthority({
+      principal: { kind: 'user', id: 'owner:principal' },
+      tenantId: 'tenant',
+      ownerId: 'owner',
+      purpose: 'plugin-test',
+      capabilities: ['memory:list', 'memory:get', 'memory:search', 'memory:write'],
+      policyRevision: 'authorization:1',
+      projection: 'bureau',
+    });
+
+    const receipt = await memory.write(authority, 'Invoices carry a tag.', {
+      collection: 'chat',
+      source: 'conversation',
+    });
+    expect(receipt.status).toBe('admitted');
+    // Admission runs the guardrail that declared none, and not the one gated to recall.
+    expect(scanned).toEqual(['both: Invoices carry a tag.']);
+
+    scanned.length = 0;
+    await memory.recallForModel(authority, 'invoices tag', { collection: 'chat' });
+    expect(scanned.toSorted()).toEqual([
+      'both: Invoices carry a tag.',
+      'reads: Invoices carry a tag.',
+    ]);
+    await memory.close();
   });
 });
 

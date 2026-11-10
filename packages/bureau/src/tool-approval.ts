@@ -1,7 +1,7 @@
 /**
  * Per-tool approval (COR-1913): when each tool of an agent asks a person before it runs.
  *
- * An agent file's `toolApproval` maps a tool name to one of four values, and a code agent's
+ * An agent file's `approvals` maps a tool name to one of four values, and a code agent's
  * toolbox takes the same helper, so both answer the question the same way. {@link
  * createToolApprovalHooks} turns the map into a registry-level policy hook for the agent's
  * toolbox. The hook answers `allow`, `ask` or `deny` for each call, and Armorer's toolbox composes
@@ -41,7 +41,7 @@
  * every policy hook of the toolbox, and adds {@link decideChatPermission}, which holds each tool of
  * the run to `read-only` and `always`. A hook from {@link createToolApprovalHooks} reads the same
  * value, so its rules (`allow-all`, a grant) apply to a code agent's toolbox as they do to a file
- * agent's, with no option to pass. Only the toolbox's own tools have a `toolApproval` setting to
+ * agent's, with no option to pass. Only the toolbox's own tools have an `approvals` setting to
  * decide by; {@link decideChatPermission} decides the rest, by the tier alone.
  *
  * @module tool-approval
@@ -66,7 +66,7 @@ import {
 
 import { withToolboxLayer } from './toolbox-additions';
 
-/** The values a tool's `toolApproval` entry may take. */
+/** The values a tool's `approvals` entry may take. */
 export const TOOL_APPROVAL_MODES = ['never', 'on-changes', 'always', 'blocked'] as const;
 
 /**
@@ -82,7 +82,7 @@ export const TOOL_APPROVAL_MODES = ['never', 'on-changes', 'always', 'blocked'] 
  */
 export type ToolApprovalMode = (typeof TOOL_APPROVAL_MODES)[number];
 
-/** What a tool with no `toolApproval` entry does: `on-changes`. */
+/** What a tool with no `approvals` entry does: `on-changes`. */
 export const TOOL_APPROVAL_DEFAULT_MODE: ToolApprovalMode = 'on-changes';
 
 /** The Armorer approval mode each value stands for. */
@@ -94,7 +94,7 @@ const ARMORER_MODE: Readonly<Record<ToolApprovalMode, ApprovalMode>> = {
 };
 
 /**
- * What a call to a tool of capability `tier` does when its agent's `toolApproval` says nothing
+ * What a call to a tool of capability `tier` does when its agent's `approvals` says nothing
  * about it: `allow`, or `ask`. The default mode never denies, so those are the only two. A tool
  * with no tier (it declares none) asks, because Armorer never lets a call it cannot classify
  * through unasked. The tool catalog reports it as each tool's default approval.
@@ -109,7 +109,7 @@ export function defaultToolApproval(tier: CapabilityTier | undefined): 'allow' |
 export interface ToolApprovalInput {
   /** The chat's permission mode. */
   readonly mode: PermissionMode;
-  /** The tool's `toolApproval` value, `on-changes` when it has none. */
+  /** The tool's `approvals` value, `on-changes` when it has none. */
   readonly setting: ToolApprovalMode;
   /** The tool's capability tier, `undefined` when it declares none, which is not read-only. */
   readonly tier: CapabilityTier | undefined;
@@ -136,7 +136,7 @@ export function decideToolApproval(input: ToolApprovalInput): ApprovalStatus {
 
 /** What {@link grantLoosensTool} reads about one tool and the chat it is called in. */
 export interface GrantLoosensToolInput {
-  /** The agent's `toolApproval`, or `undefined` for an agent with none (a code agent's is the host's own). */
+  /** The agent's `approvals`, or `undefined` for an agent with none (a code agent's is the host's own). */
   readonly toolApproval: Readonly<Record<string, ToolApprovalMode>> | undefined;
   /**
    * The agent's own tools, by the key it declared each under (the same record
@@ -171,7 +171,7 @@ export function grantLoosensTool(input: GrantLoosensToolInput): boolean {
 
 /**
  * What a chat's mode alone makes of a call, whatever else decides it: the part of the mode that
- * holds for every tool of a run, the ones with no `toolApproval` setting included. `read-only`
+ * holds for every tool of a run, the ones with no `approvals` setting included. `read-only`
  * denies a tool that is not read-only, `always` asks, and the other two leave the call to the
  * toolbox, so a code agent's toolbox decides under `on-changes` as it always has. A tool that
  * cannot wait for an approval is denied where `always` would ask: a call made after the approval
@@ -387,14 +387,14 @@ export interface ToolApprovalHooksOptions {
    * The tools the hook governs. A call to any other tool is allowed by this hook, and left to
    * whatever else decides it. A run's toolbox holds more than the agent's own tools: Bureau adds
    * `requestHumanInput`, `scheduleWakeup`, the skill tools and the like. Name the agent's tools here
-   * so only they are governed by `toolApproval`: a chat's permission mode reaches the others by
+   * so only they are governed by `approvals`: a chat's permission mode reaches the others by
    * itself ({@link withChatPermission}). Omitted, every tool in the toolbox is.
    *
    * Given as names, each is the name a call reports the tool by (Armorer's `formatToolName`:
    * `plugin:tool` for a tool outside the default namespace). Given as the agent's `tools` record,
    * each key is the key the agent declared, and the hook finds the tool `createAgent` puts under
    * it ({@link toolIdentityUnderKey}), so a namespaced tool a host registered under a bare key is
-   * governed by, and takes the `toolApproval` value of, that bare key (COR-1879).
+   * governed by, and takes the `approvals` value of, that bare key (COR-1879).
    */
   readonly tools?:
     readonly string[] | Readonly<Record<string, Pick<Tool, 'configuration'>>> | undefined;
@@ -424,7 +424,7 @@ export interface ToolApprovalHooksOptions {
 }
 
 /**
- * COR-1879 — the key `toolApproval` and `tools` give each tool, by the name a call reports the tool
+ * COR-1879 — the key `approvals` and `tools` give each tool, by the name a call reports the tool
  * by. A name in a list is its own key; a key of a `tools` record maps from the name of the tool
  * `createAgent` puts under it.
  */
@@ -484,13 +484,13 @@ function decisionOf(
 }
 
 /**
- * The policy hook for an agent's tools: each call is decided by the value `toolApproval` gives its
+ * The policy hook for an agent's tools: each call is decided by the value `approvals` gives its
  * tool, or by `options.defaultMode` (`on-changes`) when it gives none, and by the chat's permission
  * mode when `options.permissionMode` gives one ({@link decideToolApproval}). Give the result to a
  * toolbox as `policy`. The hook holds no state, but build one for each run all the same, as a
  * toolbox does: nothing then leaks between runs if the hook ever keeps some.
  *
- * `toolApproval` and `options.tools` are read once, here, so a later change to the caller's
+ * `approvals` and `options.tools` are read once, here, so a later change to the caller's
  * objects does not reach a run in flight.
  */
 export function createToolApprovalHooks(

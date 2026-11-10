@@ -437,12 +437,19 @@
     padding-inline-end: var(--cinder-space-2);
   }
 
+  /* A phone puts the status of either placement on line two with no fixed column. The chat list's
+     line-two status gives up its column here too (a phone-only exception, COR-2016): the word, a
+     dot-separator, then the latest message. */
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    > .cinder-stacked-list-item__layout,
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
     > .cinder-stacked-list-item__layout {
     --_cinder-status-track: auto;
   }
 
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
+    .cinder-stacked-list-item__status,
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
     .cinder-stacked-list-item__status {
     align-items: center;
     min-block-size: calc(var(--cinder-text-xs) * var(--cinder-leading-normal));
@@ -453,6 +460,8 @@
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
+    .cinder-stacked-list-item__status::after,
+  .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
     .cinder-stacked-list-item__status::after {
     content: '·' / '';
     margin-inline: var(--cinder-space-1-5);
@@ -690,6 +699,51 @@
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-2);
+  }
+
+  /* A phone row that keeps its actions as buttons: they sit under the text, one per line, each the
+     full width of the row. */
+  .cinder-stacked-list-item--phone-buttons .cinder-stacked-list-item__trailing {
+    inline-size: 100%;
+    margin-inline-start: 0;
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  /* A two-line row keeps its trailing region beside the lines; here it takes a row of its own under
+     them, across every column. */
+  .cinder-stacked-list-item.cinder-stacked-list-item--lines.cinder-stacked-list-item--phone-buttons
+    > .cinder-stacked-list-item__layout {
+    grid-template-columns:
+      [status] var(--_cinder-status-track) [leading] auto [title] minmax(0, 1fr)
+      [time] auto;
+    grid-template-areas:
+      'status leading title time'
+      'status leading line line'
+      'trailing trailing trailing trailing'
+      '. . details details';
+  }
+
+  .cinder-stacked-list-item--lines.cinder-stacked-list-item--phone-buttons[data-cinder-phone].cinder-stacked-list-item--status-leading
+    > .cinder-stacked-list-item__layout {
+    grid-template-columns:
+      [leading] auto [status] var(--_cinder-status-track) [title] minmax(0, 1fr)
+      [time] auto;
+    grid-template-areas:
+      'leading title title time'
+      'leading status line line'
+      'trailing trailing trailing trailing'
+      '. . details details';
+  }
+
+  .cinder-stacked-list-item--phone-buttons .cinder-stacked-list-item__actions {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    inline-size: 100%;
+  }
+
+  .cinder-stacked-list-item--phone-buttons .cinder-stacked-list-item__actions > .cinder-button {
+    inline-size: 100%;
   }
 
   .cinder-stacked-list-item__reason {

@@ -203,7 +203,7 @@ Accepted focused integration evidence:
 | `applications/weft-console` | `bun run test:e2e --max-failures=1` | 0 | 17 browser cases; `/tmp/corvidae-weft-console-browser-after-ownership-status.json` |
 | `components/editor` | `bun run lint`; `bun run typecheck` | 0 each | `/tmp/corvidae-root-selection-static/status.json` |
 | `applications/chat-room` | `bun run lint`; `bun run typecheck` | 0 each | `/tmp/corvidae-root-selection-static/status.json` |
-| Repository root | `bun test scripts/workspace-contract.test.ts scripts/workspace-imports.test.ts` | 0 | 27 architecture cases; `/tmp/corvidae-architecture-after-cli-owner.log` |
+| Repository root | `bun test scripts/workspace-contract.integration.test.ts scripts/workspace-imports.test.ts` | 0 | 27 architecture cases; `/tmp/corvidae-architecture-after-cli-owner.log` |
 | Repository root | `bunx tsc --noEmit`; `bun run test:self`; `bun run format:check` | 0 each | Final source-ownership checks, including all 59 repository tests; `/tmp/corvidae-final-source-ownership-quality/status.json` |
 
 ### Focused workspace gates
@@ -269,7 +269,7 @@ The reviewed file inventory contains 38 tracked changes and 10,001 new files or 
 
 - Workspace policy and dependency ownership: `package.json`, `bun.lock`, `turbo.json`, `packages/shared/package.json`, `packages/shared/tsconfig.json`, and `internal/typescript/{package.json,library.json}`.
 - Quality and editor configuration: `.oxlintrc.json`, `.prettierrc.json`, `.prettierignore`, `.gitignore`, and `.vscode/{extensions.json,tasks.json}`.
-- Local validation: `scripts/{bun-matchers.test.ts,lint-policy.test.ts,task-cache.test.ts,typecheck-contracts.ts,workspace-contract.test.ts,workspace-imports.test.ts}` and `scripts/shiki-grammar-assets{.ts,.test.ts}`.
+- Local validation: `scripts/{bun-matchers.test.ts,lint-policy.integration.test.ts,task-cache.integration.test.ts,typecheck-contracts.ts,workspace-contract.integration.test.ts,workspace-imports.test.ts}` and `scripts/shiki-grammar-assets{.ts,.test.ts}`.
 - Existing application tooling: `applications/server/{package.json,tsconfig.json,scripts/build.ts}`; redundant local lint, Bun test, and build TypeScript configurations were removed.
 - Documentation and agent guidance: `README.md`, `MIGRATION.md`, `AGENTS.md`, and the existing project skills, now owned once under `.agents/skills/{add-dependency,add-workspace,validate-monorepo}/SKILL.md` with relative links from both `.claude/skills` and `.codex/skills`. The existing `CLAUDE.md` delegates to `AGENTS.md`.
 
@@ -384,7 +384,7 @@ The relocated Weft benchmark suites pass the same 31 tests and 361 assertions be
 | --- | --- | --- | --- |
 | `packages/weft`, before relocation | `bun test ./src/benchmarks ./src/storage/bun-sql-benchmark.test.ts ./src/benchmarks/speculation.bench.ts` | 0 | 31 tests, 361 assertions; `/tmp/corvidae-remove-starters/benchmarks-before.log` |
 | `packages/weft`, after relocation | `bun test ./scripts/benchmarks ./src/storage/bun-sql-benchmark.test.ts ./scripts/benchmarks/speculation.bench.ts` | 0 | 31 tests, 361 assertions; `/tmp/corvidae-remove-starters/benchmarks-after.log` |
-| Repository root | `bun test scripts/lint-policy.test.ts scripts/workspace-contract.test.ts` | 0 | 56 tests, 1,889 assertions; `/tmp/corvidae-remove-starters/focused.log` |
+| Repository root | `bun test scripts/lint-policy.integration.test.ts scripts/workspace-contract.integration.test.ts` | 0 | 56 tests, 1,889 assertions; `/tmp/corvidae-remove-starters/focused.log` |
 | Repository root | `bun scripts/measure-codebase.ts /tmp/corvidae-remove-starters/measurement-final` | 0 | Exact original/new collector parity |
 | Repository root | `bun scripts/inventory-dependencies.ts` | 0 | `/tmp/corvidae-dependency-inventory.json` |
 
@@ -392,7 +392,7 @@ Independent integration review accepted the tooling moves, dependency ownership,
 
 - Removed starter files: `applications/server/{package.json,tsconfig.json,scripts/build.ts,src/index.ts,src/index.test.ts}` and `packages/shared/{package.json,tsconfig.json,src/index.ts,src/index.test.ts}`.
 - Relocated tooling: all 21 files from `packages/weft/src/benchmarks/` to `packages/weft/scripts/benchmarks/`; the two report collectors from `documentation/reports/codebase-baseline/` to `scripts/{measure-codebase.ts,inventory-dependencies.ts}`.
-- Updated executable references and guardrails: `packages/weft/src/storage/bun-sql-benchmark.test.ts`, `scripts/{lint-policy.test.ts,workspace-contract.test.ts}`, `.oxlintrc.json`, and `.vscode/launch.json`.
+- Updated executable references and guardrails: `packages/weft/src/storage/bun-sql-benchmark.test.ts`, `scripts/{lint-policy.integration.test.ts,workspace-contract.integration.test.ts}`, `.oxlintrc.json`, and `.vscode/launch.json`.
 - Updated dependency ownership: `package.json`, `bun.lock`, and `components/{cinder,weft-ui}/package.json`.
 - Updated durable documentation: `AGENTS.md`, `README.md`, and this inventory. The generated `documentation/reports/codebase-baseline` snapshot was subsequently removed; the collectors remain under `scripts/` and write to `/tmp` by default.
 
@@ -444,7 +444,7 @@ The independent MCP-v2 task's Armorer, catalog, lockfile, and patch-removal chan
 | Repository root | `bun run test:browser documentation-product.playwright.ts --workers=1 --max-failures=1` | 0 | 20 development browser tests |
 | `components/weft-ui` | `bun run test:browser` | 0 | 17 operator workflow tests against the Bun host and real Weft backend |
 | `applications/chat-room` | `bun run test:browser 'hydration.e2e\|page.svelte.e2e\|shiki-grammar-assets.e2e' --max-failures=1` | 0 | 58 tests exercising supported Vite development and production-preview tooling |
-| `packages/weft` | `bun test src/cli src/cli-edge-coverage.test.ts src/cold-start.test.ts` | 0 | 758 focused CLI, client, and cold-start tests |
+| `packages/weft` | `bun test src/cli src/cli-edge-coverage.test.ts src/cold-start.integration.test.ts` | 0 | 758 focused CLI, client, and cold-start tests |
 | Disposable authored-source copy | `bun install --frozen-lockfile` and root fixture task cache miss/hit | 0 | Cold generation succeeds; a cache hit restores the generated manifest and module catalog after both are removed |
 | Disposable authored-source copy | Native Bun development host and Chromium provider-edit probe | 0 | 190 fixture groups; an actual Cinder Button source edit appears after rebuild, with no browser diagnostics |
 
@@ -500,7 +500,7 @@ The generated `documentation/reports/codebase-baseline` snapshot has been remove
 
 The dependency graph above includes the renamed configuration provider. No new dependency direction or runtime dependency was introduced. The Turbo regression proves that changing the internal preset invalidates downstream application checks through the existing transit graph. The architecture regression verifies the two public exports and rejects direct imports of the private base and removed server preset. Root documentation, canonical project skills, and agent instructions describe the new boundary; provider instruction and skill links retain their shared owner.
 
-The reviewed change includes the four-file configuration move and server removal; workspace manifests and TypeScript configurations; `scripts/{workspace-contract.test.ts,workspace-imports.test.ts,task-cache.test.ts,lint-policy.test.ts,measure-codebase.ts,inventory-dependencies.ts}`; the Bureau comment reference and Operative README contract wording; root workspace/lock/configuration files; README, this inventory, and the two restored documents. The independent architecture review found no correctness defects. Source repositories and unrelated working-tree changes remain untouched.
+The reviewed change includes the four-file configuration move and server removal; workspace manifests and TypeScript configurations; `scripts/{workspace-contract.integration.test.ts,workspace-imports.test.ts,task-cache.integration.test.ts,lint-policy.integration.test.ts,measure-codebase.ts,inventory-dependencies.ts}`; the Bureau comment reference and Operative README contract wording; root workspace/lock/configuration files; README, this inventory, and the two restored documents. The independent architecture review found no correctness defects. Source repositories and unrelated working-tree changes remain untouched.
 
 ### Verification of the configuration move
 

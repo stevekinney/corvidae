@@ -89,7 +89,8 @@ export const OPERATION_MAP = {
     exempt: 'a static description of the published event kinds; it reads no Bureau state',
   },
   'bureau.events.format': { workspaceClass: 'member-shared-read', member: 'formatEvent' },
-  'bureau.plugins.kinds': { workspaceClass: 'member-shared-read', member: 'plugins' },
+  'bureau.plugins.contributions': { workspaceClass: 'member-shared-read', member: 'plugins' },
+  'bureau.guardrails.list': { workspaceClass: 'member-shared-read', member: 'plugins.guardrails' },
   'operative.runs.events': {
     workspaceClass: 'private-owned',
     exempt: 'a transport subscription over a run’s event feed',

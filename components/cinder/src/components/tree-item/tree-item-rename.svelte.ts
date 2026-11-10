@@ -10,7 +10,7 @@ export type TreeItemRenameControllerOptions = {
    * Not in the extraction's original sketch, but load-bearing: `canRename`
    * gates F2/double-click/Enter entry into edit mode, and the existing
    * "disabled items do not enter edit mode" coverage
-   * (tree/tree-rename.test.ts) requires it to keep gating after the move.
+   * (tree/tree-rename.integration.test.ts) requires it to keep gating after the move.
    */
   getDisabled: () => boolean;
   getOuterElement: () => HTMLElement | undefined;

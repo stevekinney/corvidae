@@ -47,3 +47,5 @@ components/chat/src/lib/a2ui/basic-catalog.schema.json
 packages/bureau/src/a2ui/common-types.schema.json
 packages/bureau/src/a2ui/server-to-client.schema.json
 components/chat/src/lib/a2ui/examples/
+# The design system's cover card is published byte for byte; its `@dsCard` marker must stay its first line.
+components/cinder/scripts/design-system/assets/cover.html

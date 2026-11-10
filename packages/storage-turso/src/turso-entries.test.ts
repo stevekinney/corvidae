@@ -1,7 +1,7 @@
 /**
  * The two package entries differ only in the libSQL driver they load. The native entry builds its
  * client from `@libsql/client`, the web entry from `@libsql/client/web`, and the adapter they share
- * never asks which runtime it is on. The driver-deferral gate in `turso-driver-deferred.test.ts`
+ * never asks which runtime it is on. The driver-deferral gate in `turso-driver-deferred.integration.test.ts`
  * proves each entry imports its driver lazily.
  */
 

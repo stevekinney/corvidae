@@ -57,7 +57,7 @@ From `packages/weft`:
 
 ```bash
 bun test src/core/realm
-bun test src/core/worker-execution-strategy.test.ts
+bun test src/core/worker-execution-strategy.integration.test.ts
 bun test src/workers/pool.test.ts
 bun test src/core/engine/catalog-activation.test.ts
 ```

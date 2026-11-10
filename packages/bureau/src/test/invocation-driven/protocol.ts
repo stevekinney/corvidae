@@ -1,5 +1,5 @@
 /**
- * COR-1437 — the shared protocol between `invocation-driven-execution.test.ts`
+ * COR-1437 — the shared protocol between `invocation-driven-execution.integration.test.ts`
  * (the driver) and the invocation entry points beside this file.
  *
  * Each invocation is a fresh Bun process. It reads the driver's virtual clock

@@ -49,7 +49,7 @@ const chatComponentsRoot = resolve(componentsRoot, '../../../chat/src/lib/compon
  * the terminal scenarios, which import the programs beside them), the manifest checks, the fixture
  * extraction behind `extractFixtures` and the schema it validates against, and the lockfile that
  * pins the TypeScript parser (the whole file, not one version: a lockfile change costs one
- * needless regeneration, never a stale manifest). `prepare-manifest.test.ts` follows the relative
+ * needless regeneration, never a stale manifest). `prepare-manifest.integration.test.ts` follows the relative
  * imports of every one of these and fails when a module they reach is missing from this list.
  */
 export const manifestCodeInputs: string[] = [

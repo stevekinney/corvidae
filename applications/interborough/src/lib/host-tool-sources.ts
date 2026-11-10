@@ -68,7 +68,7 @@ const affectedAgentSchema = z.object({
   id: z.string(),
   name: z.string(),
   tools: z.array(z.string()),
-  toolApproval: z.array(z.string()),
+  approvals: z.array(z.string()),
 });
 
 const removalPreviewSchema = z.object({

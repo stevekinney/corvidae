@@ -92,7 +92,7 @@ export function contributionCatalog(options: ContributionOptions): VersionedCata
   }
   if (ticker !== undefined) {
     catalog.register({
-      kind: 'trigger-kind',
+      kind: 'trigger',
       name: 'x:ticker',
       version: '1',
       value: {

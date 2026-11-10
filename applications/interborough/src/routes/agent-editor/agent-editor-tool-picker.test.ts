@@ -70,11 +70,11 @@ const TOOLS: readonly CatalogToolFixture[] = [
 
 function agentWith(
   tools: readonly string[],
-  toolApproval: Record<string, 'never' | 'on-changes' | 'always' | 'blocked'> | null = null,
+  approvals: Record<string, 'never' | 'on-changes' | 'always' | 'blocked'> | null = null,
 ): AgentDetail {
   const detail = readyAgent();
   if (detail.definition === null) throw new Error('expected a definition');
-  return { ...detail, definition: { ...detail.definition, tools: [...tools], toolApproval } };
+  return { ...detail, definition: { ...detail.definition, tools: [...tools], approvals } };
 }
 
 function mountEditor(agent: AgentDetail | undefined, tools: readonly CatalogToolFixture[] = TOOLS) {
@@ -301,7 +301,7 @@ describe('saving the tools', () => {
 
     const definition = writtenDefinition(stub, 'bureau.agents.definitions.update');
     expect(definition['tools']).toEqual(['lookup-order', 'github__create_issue']);
-    expect(definition['toolApproval']).toEqual({ github__create_issue: 'never' });
+    expect(definition['approvals']).toEqual({ github__create_issue: 'never' });
   });
 
   test('creates a new agent with the tools picked, and no approvals of its own', async () => {
@@ -317,6 +317,6 @@ describe('saving the tools', () => {
 
     const definition = writtenDefinition(stub, 'bureau.agents.definitions.create');
     expect(definition['tools']).toEqual(['github__list_repos']);
-    expect('toolApproval' in definition).toBe(false);
+    expect('approvals' in definition).toBe(false);
   });
 });

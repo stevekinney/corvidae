@@ -23,11 +23,15 @@ const pricingSchema = z.object({
   inputPerMillionTokens: z.number(),
   outputPerMillionTokens: z.number(),
   currency: z.string(),
+  cacheWritePerMillionTokens: z.number().optional(),
+  cacheReadPerMillionTokens: z.number().optional(),
   longContext: z
     .object({
       inputTokensAbove: z.number(),
       inputPerMillionTokens: z.number(),
       outputPerMillionTokens: z.number(),
+      cacheWritePerMillionTokens: z.number().optional(),
+      cacheReadPerMillionTokens: z.number().optional(),
     })
     .nullish(),
 });
@@ -40,6 +44,12 @@ const catalogEditSchema = z.object({
   contextWindowTokens: z.number().optional(),
   maxOutputTokens: z.number().optional(),
   basedOn: z.string().optional(),
+  decisions: z
+    .object({
+      kinds: z.array(z.enum(['boolean', 'choice', 'scale', 'structured'])),
+      only: z.boolean(),
+    })
+    .optional(),
 });
 
 const providerModelSchema = z.object({
@@ -51,12 +61,29 @@ const providerModelSchema = z.object({
   streaming: z.boolean(),
   tools: z.boolean(),
   structuredOutput: z.boolean(),
+  decisions: z
+    .object({
+      kinds: z.array(z.enum(['boolean', 'choice', 'scale', 'structured'])),
+      only: z.boolean(),
+    })
+    .optional(),
   images: z.boolean(),
   pricing: z
     .object({
       inputPerMillionTokens: z.number(),
       outputPerMillionTokens: z.number(),
       currency: z.string(),
+      cacheWritePerMillionTokens: z.number().optional(),
+      cacheReadPerMillionTokens: z.number().optional(),
+      longContext: z
+        .object({
+          inputTokensAbove: z.number(),
+          inputPerMillionTokens: z.number(),
+          outputPerMillionTokens: z.number(),
+          cacheWritePerMillionTokens: z.number().optional(),
+          cacheReadPerMillionTokens: z.number().optional(),
+        })
+        .optional(),
     })
     .optional(),
   off: z.boolean(),

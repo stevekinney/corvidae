@@ -1,3 +1,4 @@
+import type { DecisionModel } from '../decisions/types.ts';
 import type { GenerateFunction, StreamingGenerateFunction } from './types.ts';
 
 /**
@@ -22,7 +23,7 @@ export interface ProviderConfigurationBase {
 }
 
 /**
- * What a model provider package offers a host: a name and the two ways to build a generate function.
+ * What a model provider package offers a host: a name and one or more capability factories.
  *
  * Methods, not function-typed properties, so a definition for a narrower configuration (one that
  * adds an injected `client`, say) is assignable to `ProviderDefinition<string>` and can sit in a
@@ -33,19 +34,43 @@ export interface ProviderConfigurationBase {
  * @typeParam Configuration - The configuration the provider accepts; a refinement of
  * {@link ProviderConfigurationBase}.
  */
-export interface ProviderDefinition<
+interface ProviderDefinitionCapabilities<
+  Configuration extends ProviderConfigurationBase,
+  PluginConfiguration,
+> {
+  /** Builds a generate function that returns each response whole. */
+  generate?(
+    configuration: Configuration,
+    pluginConfiguration: PluginConfiguration,
+  ): GenerateFunction;
+  /** Builds a generate function that reports the response while it arrives. */
+  stream?(
+    configuration: Configuration,
+    pluginConfiguration: PluginConfiguration,
+  ): StreamingGenerateFunction;
+  /** Builds a model that answers structured decisions natively. */
+  decide?(configuration: Configuration, pluginConfiguration: PluginConfiguration): DecisionModel;
+}
+
+/** A provider definition with at least one callable capability. */
+export type ProviderDefinition<
   Name extends string = string,
   Configuration extends ProviderConfigurationBase = ProviderConfigurationBase,
-> {
-  /** The name this provider registers under, matched against `ProviderConfigurationBase.provider`. */
-  readonly name: Name;
-  /** Builds a generate function that returns each response whole. */
-  generate(configuration: Configuration): GenerateFunction;
-  /**
-   * Builds a generate function that reports the response while it arrives.
-   *
-   * It returns a {@link StreamingGenerateFunction}, which needs a streaming handle in its context;
-   * a host wraps it (for example with `withEnhancedStreaming`) to get an ordinary generate function.
-   */
-  stream(configuration: Configuration): StreamingGenerateFunction;
-}
+  PluginConfiguration = unknown,
+> = { readonly name: Name } & (
+  | (Omit<ProviderDefinitionCapabilities<Configuration, PluginConfiguration>, 'generate'> & {
+      generate(
+        configuration: Configuration,
+        pluginConfiguration: PluginConfiguration,
+      ): GenerateFunction;
+    })
+  | (Omit<ProviderDefinitionCapabilities<Configuration, PluginConfiguration>, 'stream'> & {
+      stream(
+        configuration: Configuration,
+        pluginConfiguration: PluginConfiguration,
+      ): StreamingGenerateFunction;
+    })
+  | (Omit<ProviderDefinitionCapabilities<Configuration, PluginConfiguration>, 'decide'> & {
+      decide(configuration: Configuration, pluginConfiguration: PluginConfiguration): DecisionModel;
+    })
+);

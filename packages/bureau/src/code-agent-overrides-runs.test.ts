@@ -7,12 +7,17 @@
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { createAgent, type GenerateFunction, stopWhen } from '@lostgradient/operative';
-import { MemoryStorage } from '@lostgradient/storage';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
-import type { AgentOverrides } from './agent-override-store';
+import {
+  type AgentOverrides,
+  agentOverrideVersionKey,
+  hashAgentOverrides,
+  legacyAgentOverrideVersionKey,
+} from './agent-override-store';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { runTask } from './test';
@@ -108,7 +113,7 @@ describe('a built-in agent with saved overrides', () => {
 
   it('refuses a tool the overrides set to Blocked', async () => {
     const harness = await start();
-    await save(harness, { toolApproval: { 'issue-refund': 'blocked' } });
+    await save(harness, { approvals: { 'issue-refund': 'blocked' } });
 
     const result = await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
 
@@ -137,12 +142,92 @@ describe('a built-in agent with saved overrides', () => {
 
   it('starts from the overridden instructions and stops at the overridden step limit', async () => {
     const harness = await start();
-    await save(harness, { instructions: 'You only look orders up.', stepLimit: 1 });
+    await save(harness, { instructions: 'You only look orders up.', limits: { steps: 1 } });
 
     const result = await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
 
     expect(seen.map((step) => step.system)).toEqual(['You only look orders up.']);
     expect(result.finishReason).toBe('maximum-steps');
+  });
+
+  it('leaves the agent’s own toolbox in place when the overrides state only a step limit', async () => {
+    const harness = await start();
+    await save(harness, { limits: { steps: 1 } });
+
+    const result = await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
+
+    // The overrides' tool settings rebuild the toolbox with approvals; a step limit does not.
+    expect(executed).toEqual(['issue-refund']);
+    expect(seen[0]?.tools).toEqual(['issue-refund', 'lookup-order']);
+    expect(result.finishReason).toBe('maximum-steps');
+  });
+
+  it('rebuilds the toolbox, with every tool asking as the overrides say, for a tool limit', async () => {
+    const harness = await start();
+    await save(harness, { limits: { tools: { calls: 5 } } });
+
+    await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
+
+    // A tool limit is a toolbox setting, as `toolBudget` was: no approval is stated, so the
+    // mutating tool asks first and does not run unasked.
+    expect(executed).toEqual([]);
+    expect(seen[0]?.tools).toEqual(['issue-refund', 'lookup-order']);
+  });
+
+  it('applies a record saved under the old limit keys', async () => {
+    const storage = new MemoryStorage();
+    await textValueStore(storage).set(
+      legacyAgentOverrideVersionKey('refunder', 1),
+      JSON.stringify({
+        version: 1,
+        hash: 'd'.repeat(64),
+        savedAt: '2026-10-01T00:00:00.000Z',
+        savedBy: 'anonymous:local',
+        owner: 'anonymous:local',
+        overrides: { instructions: 'You only look orders up.', stepLimit: 1 },
+        changedKeys: ['instructions', 'stepLimit'],
+      }),
+    );
+    const harness = await start({ refunder: refunder() }, storage);
+
+    const result = await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
+
+    expect(seen.map((step) => step.system)).toEqual(['You only look orders up.']);
+    expect(result.finishReason).toBe('maximum-steps');
+    const current = await harness.bureau.agents.overrides.get('refunder');
+    expect(current?.overrides).toEqual({
+      instructions: 'You only look orders up.',
+      limits: { steps: 1 },
+    });
+  });
+
+  it('applies a version 1 record of a built-in agent, and continues its numbering as version 2', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage);
+    const overrides = { instructions: 'You only look orders up.' };
+    await kv.set(
+      legacyAgentOverrideVersionKey('refunder', 1),
+      JSON.stringify({
+        version: 1,
+        hash: hashAgentOverrides(overrides),
+        savedAt: '2026-10-01T00:00:00.000Z',
+        savedBy: 'anonymous:local',
+        owner: 'anonymous:local',
+        overrides,
+        changedKeys: ['instructions'],
+      }),
+    );
+    const harness = await start({ refunder: refunder() }, storage);
+
+    await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
+    expect(seen[0]?.system).toBe('You only look orders up.');
+    const saved = await save(harness, { instructions: 'You refund nothing.' });
+
+    expect(saved.version).toBe(2);
+    expect(await kv.get(agentOverrideVersionKey('refunder', 2))).not.toBeNull();
+    expect(await kv.get(legacyAgentOverrideVersionKey('refunder', 2))).toBeNull();
+    const versions = await harness.bureau.agents.overrides.versions('refunder');
+    expect(versions.map((entry) => entry.version)).toEqual([2, 1]);
   });
 
   it('answers from the overridden model, and shows it as the agent’s model', async () => {
@@ -183,7 +268,7 @@ describe('a built-in agent with saved overrides', () => {
   it('reads the overrides in force from the store when the Bureau starts again', async () => {
     const storage = new MemoryStorage();
     const first = await start({ refunder: refunder() }, storage);
-    await save(first, { toolApproval: { 'issue-refund': 'blocked' } });
+    await save(first, { approvals: { 'issue-refund': 'blocked' } });
     await first.dispose();
     harnesses.splice(harnesses.indexOf(first), 1);
 

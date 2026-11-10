@@ -5,6 +5,7 @@ export default ErrorState;
 export type {
   ErrorStateProps,
   ErrorStateRetryVariant,
+  ErrorStateSize,
   ErrorStateTone,
   ErrorStateVariant,
 } from './error-state.types.ts';

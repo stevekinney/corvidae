@@ -35,7 +35,7 @@
   import { untrack, type Snippet } from 'svelte';
 
   import { Button, EmptyState, ErrorState, RelativeTime, Skeleton } from '@lostgradient/cinder';
-  import { Inbox } from '@lucide/svelte';
+  import { Bot, Inbox, Plus } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { getClient } from '../lib/client.ts';
@@ -48,14 +48,13 @@
     workflowViewInstance,
   } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
+  import NewChatLoading from '../routes/chat/new-chat-loading.svelte';
   import { getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
   import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
-  import FirstRunChecklist from './first-run-checklist.svelte';
   import ForbiddenState from './forbidden-state.svelte';
   import NotFoundState from './not-found-state.svelte';
   import { useBureauEventsLive, useFleetEventsLive } from './live-polling.svelte.ts';
-  import WelcomeAgents from './welcome-agents.svelte';
   import { probeFor, ViewProbeFault, type ViewProbeResult } from './view-probes.ts';
   import { VIEWS, type ViewName } from './views.ts';
 
@@ -89,6 +88,8 @@
   const errorCopy = copy.errorByPattern?.[initial.pattern ?? ''] ?? copy.error;
   const forbiddenCopy = copy.forbiddenByPattern?.[initial.pattern ?? ''];
   const definition = VIEWS[initial.view];
+  /** Whether this frame holds New chat, whose loading, empty and error states are drawn as its own page (design rows 24o to 24q). */
+  const startsNewChat = initial.view === 'chat' && initial.pattern === '/chats/new';
   const ownsStates = definition.ownsStates === true;
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
@@ -268,65 +269,85 @@
     {/if}
     {@render children()}
   {:else if state === 'loading'}
-    <div class="weft-view__loading" role="status" aria-busy="true">
-      <h1 class="weft-view__loading-title">{loadingCopy.title}</h1>
-      <p class="weft-view__loading-description">{loadingCopy.description}</p>
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="10rem" />
-    </div>
+    {#if startsNewChat}
+      <!-- New chat's own layout in placeholders, with the composer already there (design row 24o). -->
+      <NewChatLoading onCancel={() => router.navigate('/chats')} />
+    {:else}
+      <div class="weft-view__loading" role="status" aria-busy="true">
+        <h1 class="weft-view__loading-title">{loadingCopy.title}</h1>
+        <p class="weft-view__loading-description">{loadingCopy.description}</p>
+        <Skeleton height="1.5rem" width="40%" />
+        <Skeleton height="10rem" />
+      </div>
+    {/if}
   {:else if state === 'empty' && emptyCopy}
     {#if refreshFailed && !connection.unreachable}
       {@render refreshError()}
     {/if}
-    <EmptyState
-      class="weft-view__empty"
-      title={emptyCopy.title}
-      description={emptyCopy.description}
-      headingLevel={1}
-      kind="first-use"
-    >
-      {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
-      {#snippet action()}
-        {#if initial.view === 'chat'}
-          <FirstRunChecklist />
-        {/if}
-        {#if emptyCopy.action}
-          {@const emptyAction = emptyCopy.action}
-          {#if initial.view === 'chat'}
+    {#if startsNewChat}
+      <!-- No agent to start a chat with is the Agents first-use state, not a composer (design row 24q). -->
+      <EmptyState
+        class="weft-view__empty"
+        title={emptyCopy.title}
+        description={emptyCopy.description}
+        headingLevel={1}
+        kind="first-use"
+      >
+        {#snippet icon()}<Bot size={28} aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          {#if emptyCopy.action}
+            {@const emptyAction = emptyCopy.action}
             <div class="weft-view__actions">
               <Button
                 variant="primary"
                 href={router.href(emptyAction.href)}
-                onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</Button
+                onclick={(event) => navigateTo(event, emptyAction.href)}
               >
+                {#snippet leadingIcon()}<Plus size={16} aria-hidden="true" />{/snippet}
+                {emptyAction.label}
+              </Button>
               <Button
                 variant="secondary"
                 href={router.href('/agents')}
                 onclick={(event) => navigateTo(event, '/agents')}>{CHAT_COPY.browseAgents}</Button
               >
             </div>
-          {:else}
+          {/if}
+        {/snippet}
+      </EmptyState>
+    {:else}
+      <EmptyState
+        class="weft-view__empty"
+        title={emptyCopy.title}
+        description={emptyCopy.description}
+        headingLevel={1}
+        kind="first-use"
+      >
+        {#snippet icon()}<Inbox size={28} aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          {#if emptyCopy.action}
+            {@const emptyAction = emptyCopy.action}
             <a
               class="weft-view__action"
               href={router.href(emptyAction.href)}
               onclick={(event) => navigateTo(event, emptyAction.href)}>{emptyAction.label}</a
             >
           {/if}
-        {/if}
-        {#if initial.view === 'chat'}
-          <WelcomeAgents />
-        {/if}
-      {/snippet}
-    </EmptyState>
+        {/snippet}
+      </EmptyState>
+    {/if}
   {:else if state === 'not-found' && notFoundCopy}
     <NotFoundState
       title={notFoundCopy.title}
       description={notFoundCopy.description}
       view={initial.view}
+      create={notFoundCopy.create}
+      back={notFoundCopy.back}
     />
   {:else if state === 'error'}
+    <!-- New chat's error is the page with its disc, because it replaces a greeting and a composer. -->
     <ErrorState
-      variant="flat"
+      variant={startsNewChat ? 'default' : 'flat'}
       title={errorCopy.title}
       description={errorCopy.description}
       headingLevel={1}

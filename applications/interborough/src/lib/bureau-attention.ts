@@ -221,3 +221,18 @@ export async function readAttention(options?: {
     checks: parsed.checks,
   };
 }
+
+/**
+ * Every problem that needs attention now, most recent first as the Bureau lists them, for Home's
+ * Needs attention card. A kind this build has no schema for is left out, since a row has to say
+ * what to look at; the Health dot still counts it. A caller without `bureau.diagnostics:read` is
+ * refused with a fault, which the caller lets through so a card can say it could not read them
+ * instead of claiming that nothing needs attention.
+ */
+export async function listAttentionItems(options?: {
+  readonly signal?: AbortSignal;
+  readonly fetch?: Fetcher;
+}): Promise<readonly AttentionItem[]> {
+  const { items } = await readAttention(options);
+  return items;
+}

@@ -25,6 +25,7 @@ import {
 } from '../agent-file-catalog.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
 import type { AgentSource } from '../sources/definition-source.ts';
+import type { DirectorySourceOptions } from '../sources/directory-source.ts';
 import { agentFileDirectory } from '../sources/agent-file-directory.ts';
 import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createModels, type Models } from '../models/create-models.ts';
@@ -38,7 +39,7 @@ export const lookupTool = createTool({
   name: 'lookup-order',
   description: 'Looks an order up',
   input: z.object({}),
-  // Read-only, so a file agent's default `toolApproval` (`on-changes`) lets a call run.
+  // Read-only, so a file agent's default `approvals` (`on-changes`) lets a call run.
   metadata: { readOnly: true },
   execute: async () => 'order',
 });
@@ -53,26 +54,28 @@ export const summarizedTool = createTool({
   execute: async () => 'summary',
 });
 
-/** Two guardrails, `x:check` and `y:other`, and a run hook set, `x:audit`, for the tests that list them. */
+/** Two guardrails, `x:check` and `y:other`, and an interceptor, `x:audit`, for the tests that list them. */
 export const TEST_CONTRIBUTIONS = createAgentContributions([
   {
     plugin: 'x',
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'check',
+          description: 'A test guardrail.',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
         },
       ],
     },
-    runHooks: [{ name: 'audit' }],
+    interceptors: [{ name: 'audit' }],
   },
   {
     plugin: 'y',
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'other',
+          description: 'A test guardrail.',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
         },
       ],
@@ -123,7 +126,7 @@ export interface AgentFileFixtureOptions {
   /** A subdirectory of the temporary root that does not exist yet, to use as the agent directory. */
   readonly subdirectory?: string;
   readonly reserved?: readonly string[];
-  readonly watch?: boolean;
+  readonly watch?: DirectorySourceOptions['watch'];
   /** Replaces the tool catalog, which holds {@link lookupTool} by default. */
   readonly tools?: AgentFileCatalogOptions['tools'];
   readonly operations?: AgentFileOperations;
@@ -137,7 +140,7 @@ export interface AgentFileFixtureOptions {
   readonly resolveGenerate?: (descriptor: BackendDescriptor) => GenerateFunction;
   /** Replaces how a directory is watched, to observe the watchers the catalog opens. */
   readonly openWatcher?: NonNullable<Parameters<typeof agentFileDirectory>[1]>['watchFactory'];
-  /** The guardrails and run hooks a file may list; none by default. */
+  /** The guardrails and interceptors a file may list; none by default. */
   readonly contributions?: AgentFileCatalogOptions['contributions'];
   /** The model policy in force (COR-1980), read on every write; none by default, so nothing is denied. */
   readonly modelPolicy?: () => BureauModelPolicyOptions | undefined;

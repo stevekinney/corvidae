@@ -6,7 +6,7 @@ import {
   type PluginSetupContext,
   type PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createAgent } from '@lostgradient/operative';
+import { createAgent, guardrailOf } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
@@ -81,12 +81,12 @@ const HOST_ENTRY: Record<
     },
     contribution: { activities: [{ name: 'x', execute: async () => 'x' }] },
   },
-  'trigger-kind': {
+  trigger: {
     host: {
       contributionCatalog: (() => {
         const catalog = createVersionedCatalog();
         catalog.register({
-          kind: 'trigger-kind',
+          kind: 'trigger',
           name: 'p:x',
           version: '1',
           value: {},
@@ -96,7 +96,7 @@ const HOST_ENTRY: Record<
       })(),
     },
     contribution: {
-      triggerKinds: [
+      triggers: [
         {
           name: 'x',
           version: '1',
@@ -121,17 +121,22 @@ const HOST_ENTRY: Record<
   },
   guardrail: {
     host: {
-      agentContributions: { guardrails: new Map([['p:x', {} as never]]), runHooks: new Map() },
+      agentContributions: {
+        guardrails: new Map([['p:x', { inputDetector: { name: 'x' } } as never]]),
+        interceptors: new Map(),
+      },
     },
     contribution: {
-      guardrails: { inputDetectors: [{ name: 'x', detect: async () => ({}) as never }] },
+      guardrails: {
+        input: [{ name: 'x', description: 'A test guardrail.', detect: async () => ({}) as never }],
+      },
     },
   },
-  'run-hooks': {
+  interceptor: {
     host: {
-      agentContributions: { guardrails: new Map(), runHooks: new Map([['p:x', {} as never]]) },
+      agentContributions: { guardrails: new Map(), interceptors: new Map([['p:x', {} as never]]) },
     },
-    contribution: { runHooks: [{ name: 'x' }] },
+    contribution: { interceptors: [{ name: 'x' }] },
   },
   'decision-router': {
     host: {
@@ -143,29 +148,28 @@ const HOST_ENTRY: Record<
       decisionRouters: [{ name: 'x', kinds: new Set(), decide: async () => ({}) as never }],
     },
   },
-  'hook-action': {
+  reaction: {
     host: { hooks: { actionKinds: [{ plugin: 'p', kind: actionKind('x') }] } },
-    contribution: { hookActionKinds: [actionKind('x')] },
+    contribution: { reactions: [actionKind('x')] },
   },
-  'event-formatter': {
-    host: { eventFormatters: [{ plugin: 'p', formatter: formatter('x') }] },
-    contribution: { eventFormatters: [formatter('x')] },
+  formatter: {
+    host: { formatters: [{ plugin: 'p', formatter: formatter('x') }] },
+    contribution: { formatters: [formatter('x')] },
   },
-  'code-agent': {
+  agent: {
     host: { agents: { 'p:x': agent() } },
-    contribution: { codeAgents: [{ name: 'x', agent: agent() }] },
+    contribution: { agents: [{ name: 'x', agent: agent() }] },
   },
-  'eval-judge': {
-    host: { onlineEvals: { judges: [judge('p:x')], sampleRate: 1 } },
-    contribution: { evalJudges: [judge('x')] },
+  scorer: {
+    host: { scorers: { list: [judge('p:x')], sampleRate: 1 } },
+    contribution: { scorers: [judge('x')] },
   },
   provider: {
     noHostEntry:
       'A provider is handed to the host’s `models.catalog` factory, which holds no names.',
   },
-  'mcp-app': {
-    noHostEntry:
-      'Bureau has no MCP app option; the host reads them from `bureau.plugins.mcpApps()`.',
+  panel: {
+    noHostEntry: 'Bureau has no panel option; the host reads them from `bureau.plugins.panels()`.',
   },
   embedder: {
     noHostEntry:
@@ -184,7 +188,7 @@ describe('composePlugins', () => {
       description: 'Contributes one of each.',
       setup: () => ({
         activities: [{ name: 'fetch', execute: async () => 'fetched' }],
-        triggerKinds: [
+        triggers: [
           {
             name: 'inbox',
             version: '0.1.0',
@@ -199,10 +203,14 @@ describe('composePlugins', () => {
             validate: () => ({ status: 'met' }) as never,
           },
         ],
-        guardrails: { inputDetectors: [{ name: 'scan', detect: async () => ({}) as never }] },
-        runHooks: [{ name: 'audit' }],
+        guardrails: {
+          input: [
+            { name: 'scan', description: 'A test guardrail.', detect: async () => ({}) as never },
+          ],
+        },
+        interceptors: [{ name: 'audit' }],
         decisionRouters: [{ name: 'router', kinds: new Set(), decide: async () => ({}) as never }],
-        hookActionKinds: [
+        reactions: [
           {
             name: 'page',
             description: 'Pages someone.',
@@ -210,10 +218,10 @@ describe('composePlugins', () => {
             run: async () => undefined,
           },
         ],
-        evalJudges: [
+        scorers: [
           { name: 'judge', version: '1', evaluate: () => ({ pass: true, score: 1, message: '' }) },
         ],
-        codeAgents: [
+        agents: [
           {
             name: 'writer',
             agent: createAgent({ generate: async () => ({ content: '', toolCalls: [] }) }),
@@ -224,18 +232,18 @@ describe('composePlugins', () => {
     const given: ComposableOptions = {
       plugins: [{ descriptor: everything, source: 'package', location: '@example/kit' }],
       hooks: {},
-      onlineEvals: { judges: [], sampleRate: 1 },
+      scorers: { list: [], sampleRate: 1 },
     };
     const { options, records } = await composePlugins(given);
 
     expect(records[0]?.status).toBe('running');
     expect(options.contributionCatalog?.resolve('activity', 'kit:fetch@1.2.0').ok).toBe(true);
-    expect(options.contributionCatalog?.resolve('trigger-kind', 'kit:inbox@0.1.0').ok).toBe(true);
+    expect(options.contributionCatalog?.resolve('trigger', 'kit:inbox@0.1.0').ok).toBe(true);
     expect(options.validators?.map(({ identity }) => identity)).toEqual([
       { name: 'kit:tidy', version: '1' },
     ]);
     expect([...(options.agentContributions?.guardrails.keys() ?? [])]).toEqual(['kit:scan']);
-    expect([...(options.agentContributions?.runHooks.keys() ?? [])]).toEqual(['kit:audit']);
+    expect([...(options.agentContributions?.interceptors.keys() ?? [])]).toEqual(['kit:audit']);
     expect(Object.keys(options.decisions?.models ?? {})).toEqual(['kit:router']);
     // A delivery of the kind pins the plugin's version, since the kind declares none.
     expect(
@@ -243,18 +251,18 @@ describe('composePlugins', () => {
         ({ plugin, kind, version }) => `${plugin}/${kind.name}@${String(version)}`,
       ),
     ).toEqual(['kit/page@1.2.0']);
-    expect(options.onlineEvals?.judges.map(({ name }) => name)).toEqual(['kit:judge']);
+    expect(options.scorers?.list.map(({ name }) => name)).toEqual(['kit:judge']);
     expect(Object.keys(options.agents ?? {})).toEqual(['kit:writer']);
   });
 
   it('gives setup the host’s tool-approval rule for the tools a plugin names, and no others', async () => {
-    let hooks: ReturnType<PluginSetupContext['toolApprovalHooks']> | undefined;
+    let hooks: ReturnType<PluginSetupContext['approvals']> | undefined;
     const descriptor = definePlugin({
       name: 'p',
       version: '1.0.0',
       description: 'p',
-      setup: ({ toolApprovalHooks }) => {
-        hooks = toolApprovalHooks(['governed']);
+      setup: ({ approvals }) => {
+        hooks = approvals(['governed']);
         return {};
       },
     });
@@ -280,14 +288,20 @@ describe('composePlugins', () => {
       const { records } = await composePlugins({
         // Each kind registers only where its option is given.
         hooks: {},
-        onlineEvals: { judges: [], sampleRate: 1 },
+        scorers: { list: [], sampleRate: 1 },
         ...entry.host,
         plugins: [pluginEntry('p', () => entry.contribution)],
       });
       expect({ kind, status: records[0]?.status, problems: records[0]?.problems }).toEqual({
         kind,
         status: 'skipped',
-        problems: [expect.objectContaining({ code: 'name-clash', name: 'p:x' })],
+        // A guardrail's name is claimed within its family.
+        problems: [
+          expect.objectContaining({
+            code: 'name-clash',
+            name: kind === 'guardrail' ? 'p:input/x' : 'p:x',
+          }),
+        ],
       });
     }
   });
@@ -295,33 +309,334 @@ describe('composePlugins', () => {
   it('lists only the contributions whose option the host gave', async () => {
     const contributing = () =>
       pluginEntry('kit', () => ({
-        hookActionKinds: [actionKind('page')],
-        evalJudges: [judge('judge')],
+        reactions: [actionKind('page')],
+        scorers: [judge('judge')],
         embedders: [{ name: 'small', dimensions: 4, embed: async (texts) => texts.map(() => []) }],
-        memoryDetectors: [{ name: 'tags', detect: async () => ({}) as never }],
-        runHooks: [{ name: 'audit' }],
+        guardrails: {
+          memory: [
+            { name: 'tags', description: 'A test guardrail.', detect: async () => ({}) as never },
+          ],
+        },
+        interceptors: [{ name: 'audit' }],
       }));
     const bare = await composePlugins<ComposableOptions>({ plugins: [contributing()] });
-    expect(bare.records[0]?.contributions).toEqual([{ kind: 'run-hooks', id: 'kit:audit' }]);
+    expect(bare.records[0]?.contributions).toEqual([{ kind: 'interceptor', id: 'kit:audit' }]);
     expect(bare.options.hooks).toBeUndefined();
-    expect(bare.options.onlineEvals).toBeUndefined();
+    expect(bare.options.scorers).toBeUndefined();
 
     const given = await composePlugins({
       plugins: [contributing()],
       hooks: {},
-      onlineEvals: { judges: [], sampleRate: 1 },
+      scorers: { list: [], sampleRate: 1 },
       memory: () => undefined as never,
     });
     expect(given.records[0]?.contributions.map(({ kind }) => kind).toSorted()).toEqual([
       'embedder',
-      'eval-judge',
-      'hook-action',
+      'interceptor',
       'memory-detector',
-      'run-hooks',
+      'reaction',
+      'scorer',
     ]);
-    for (const kind of ['embedder', 'eval-judge', 'hook-action'] as const) {
+    for (const kind of ['embedder', 'scorer', 'reaction'] as const) {
       expect(registersKind(kind, {})).toBe(false);
     }
+  });
+
+  describe('guardrail families', () => {
+    const detect = async () => ({}) as never;
+    const validate = async () => ({ valid: true, confidence: 0, category: 'x' });
+
+    it('claims a guardrail name per family, so one name serves input, output and memory', async () => {
+      const { options, records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: {
+              input: [{ name: 'scan', description: 'A test guardrail.', detect }],
+              output: [{ name: 'scan', description: 'A test guardrail.', validate }],
+              memory: [{ name: 'scan', description: 'A test guardrail.', detect }],
+            },
+          })),
+        ],
+        memory: () => undefined as never,
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[0]?.contributions.map(({ kind, id }) => `${kind} ${id}`).toSorted()).toEqual([
+        'guardrail kit:scan',
+        'guardrail kit:scan',
+        'memory-detector kit:scan',
+      ]);
+      // An agent file names `kit:scan`, which selects the input detector and the output validator.
+      const chosen = options.agentContributions?.guardrails.get('kit:scan');
+      expect([
+        chosen?.inputDetector && guardrailOf(chosen.inputDetector).name,
+        chosen?.outputValidator && guardrailOf(chosen.outputValidator).name,
+      ]).toEqual(['scan', 'scan']);
+    });
+
+    it('refuses a name contributed twice within one family', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: {
+              input: [
+                { name: 'scan', description: 'A test guardrail.', detect },
+                { name: 'scan', description: 'A test guardrail.', detect },
+              ],
+            },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({ code: 'name-clash', name: 'kit:input/scan' }),
+      ]);
+    });
+
+    it('lets a host entry and a plugin hold one name in different families', async () => {
+      const held = {
+        id: 'kit:scan',
+        plugin: 'kit',
+        outputValidator: { name: 'scan', description: 'A test guardrail.', validate },
+      };
+      const { options, records } = await composePlugins<ComposableOptions>({
+        agentContributions: {
+          guardrails: new Map([['kit:scan', held as never]]),
+          interceptors: new Map(),
+        },
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: { input: [{ name: 'scan', description: 'A test guardrail.', detect }] },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      const chosen = options.agentContributions?.guardrails.get('kit:scan');
+      expect([
+        chosen?.inputDetector && guardrailOf(chosen.inputDetector).name,
+        chosen?.outputValidator && guardrailOf(chosen.outputValidator).name,
+      ]).toEqual(['scan', 'scan']);
+    });
+
+    it.each([[[]], [['write']]])('refuses memory gates %j', async (gates) => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: {
+              memory: [
+                { name: 'scan', description: 'A test guardrail.', detect, gates: gates as never },
+              ],
+            },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
+    });
+
+    it('claims a tool-call validator in the tools family, selectable as plugin:name (COR-2104)', async () => {
+      const toolValidator = {
+        name: 'scan',
+        description: 'A test guardrail.',
+        action: 'block' as const,
+        validate,
+      };
+      const { options, records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: {
+              input: [
+                {
+                  guardrail: { name: 'scan', description: 'A test guardrail.', detect },
+                  action: 'warn',
+                },
+              ],
+              tools: [toolValidator],
+            },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(records[0]?.contributions.map(({ kind, id }) => `${kind} ${id}`)).toEqual([
+        'guardrail kit:scan',
+        'guardrail kit:scan',
+      ]);
+      const chosen = options.agentContributions?.guardrails.get('kit:scan');
+      expect(chosen?.toolValidator).toMatchObject({ name: 'scan', action: 'block' });
+      expect(chosen?.inputDetector).toMatchObject({ action: 'warn' });
+    });
+
+    it('refuses a tool-call validator name a host entry already holds in that family', async () => {
+      const held = {
+        id: 'kit:scan',
+        plugin: 'kit',
+        toolValidator: { name: 'scan', description: 'A test guardrail.', validate },
+      };
+      const { records } = await composePlugins<ComposableOptions>({
+        agentContributions: {
+          guardrails: new Map([['kit:scan', held as never]]),
+          interceptors: new Map(),
+        },
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: { tools: [{ name: 'scan', description: 'A test guardrail.', validate }] },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({ code: 'name-clash', name: 'kit:tools/scan' }),
+      ]);
+    });
+
+    it.each([
+      [
+        'an input entry',
+        {
+          input: [
+            {
+              guardrail: { name: 'scan', description: 'A test guardrail.', detect },
+              action: 'redact',
+            },
+          ],
+        },
+      ],
+      [
+        'an output entry',
+        {
+          output: [
+            {
+              guardrail: { name: 'scan', description: 'A test guardrail.', validate },
+              action: 'sanitize',
+            },
+          ],
+        },
+      ],
+      [
+        'a tool-call validator',
+        { tools: [{ name: 'scan', description: 'A test guardrail.', validate, action: 'redact' }] },
+      ],
+    ])(
+      'skips a plugin whose %s carries an action its family does not have',
+      async (_, guardrails) => {
+        const { records } = await composePlugins<ComposableOptions>({
+          plugins: [pluginEntry('kit', () => ({ guardrails: guardrails as never }))],
+        });
+
+        expect(records[0]?.status).toBe('skipped');
+        expect(records[0]?.problems).toEqual([expect.objectContaining({ code: 'setup-failed' })]);
+      },
+    );
+
+    // COR-2118 — every guardrail says what it guards, so a listing can tell them apart; a plugin
+    // that returns one that does not (a cast past the type, or plain JavaScript) is skipped.
+    it.each([
+      ['an input detector', { input: [{ name: 'scan', detect }] }],
+      ['an output entry', { output: [{ guardrail: { name: 'scan', validate }, action: 'warn' }] }],
+      ['a tool-call validator', { tools: [{ name: 'scan', description: ' ', validate }] }],
+      ['a memory guardrail', { memory: [{ name: 'scan', detect }] }],
+      [
+        'a factory',
+        {
+          output: [{ name: 'scan', configuration: z.object({}), create: () => ({ validate }) }],
+        },
+      ],
+    ])('skips a plugin whose %s has no description', async (_, guardrails) => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [pluginEntry('kit', () => ({ guardrails: guardrails as never }))],
+        memory: () => undefined as never,
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining('without a description'),
+        }),
+      ]);
+    });
+
+    it('skips a plugin whose guardrail factory has no configuration schema', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('kit', () => ({
+            guardrails: {
+              input: [
+                {
+                  name: 'scan',
+                  description: 'A test guardrail.',
+                  configuration: {},
+                  create: () => ({ name: 'scan', detect }),
+                } as never,
+              ],
+            },
+          })),
+        ],
+      });
+
+      expect(records[0]?.status).toBe('skipped');
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining('without a configuration schema'),
+        }),
+      ]);
+    });
+
+    // `typeof null` is `'object'`: a factory with a null configuration is malformed, and only its
+    // own plugin is skipped.
+    it('skips only the plugin whose guardrail factory has a null configuration', async () => {
+      const { records } = await composePlugins<ComposableOptions>({
+        plugins: [
+          pluginEntry('broken', () => ({
+            guardrails: {
+              output: [
+                {
+                  name: 'scan',
+                  description: 'A test guardrail.',
+                  configuration: null,
+                  create: () => ({ name: 'scan', validate }),
+                } as never,
+              ],
+            },
+          })),
+          pluginEntry('sound', () => ({
+            guardrails: { input: [{ name: 'scan', description: 'A test guardrail.', detect }] },
+          })),
+        ],
+      });
+
+      expect(records.map((record) => [record.entry.descriptor.name, record.status])).toEqual([
+        ['broken', 'skipped'],
+        ['sound', 'running'],
+      ]);
+      expect(records[0]?.problems).toEqual([
+        expect.objectContaining({
+          code: 'setup-failed',
+          message: expect.stringContaining('without a configuration schema'),
+        }),
+      ]);
+    });
+
+    it('registers a guardrail factory in its family, selectable as plugin:name', async () => {
+      const factory = {
+        name: 'scan',
+        description: 'A test guardrail.',
+        configuration: z.object({ level: z.number().default(1) }),
+        create: () => ({ name: 'scan', validate }),
+      };
+      const { options, records } = await composePlugins<ComposableOptions>({
+        plugins: [pluginEntry('kit', () => ({ guardrails: { output: [factory] } }))],
+      });
+
+      expect(records[0]?.status).toBe('running');
+      expect(options.agentContributions?.guardrails.get('kit:scan')?.outputValidator).toBe(factory);
+    });
   });
 
   it('skips a malformed plugin instead of failing composition', async () => {
@@ -342,7 +657,7 @@ describe('composePlugins', () => {
         pluginEntry('flat', () => ({
           embedders: [{ name: 'zero', dimensions: 0, embed: async () => [] }],
         })),
-        pluginEntry('fine', () => ({ runHooks: [{ name: 'audit' }] })),
+        pluginEntry('fine', () => ({ interceptors: [{ name: 'audit' }] })),
       ],
     });
     // Package plugins first, then the folder plugin.
@@ -353,6 +668,44 @@ describe('composePlugins', () => {
       ['skipped', 'setup-failed'],
     ]);
   });
+
+  it.each([
+    ['a priority of NaN', { handler: async () => {}, priority: Number.NaN }, '`priority`'],
+    ['an infinite priority', { handler: async () => {}, priority: Infinity }, '`priority`'],
+    ['a replay of its own invention', { handler: async () => {}, replay: 'maybe' }, '`replay`'],
+    ['an onError that is not a function', { handler: async () => {}, onError: 'x' }, '`onError`'],
+    ['a handler that is not a function', { handler: 'nope' }, 'must be a function or an object'],
+  ])(
+    'skips only the plugin whose interceptor declares %s, and composition succeeds',
+    async (_name, onStep, message) => {
+      // Once as written, and once for a plugin with a declared secret, whose hooks the secret gate
+      // wraps before the plan reads them.
+      for (const secrets of [undefined, ['api-key']]) {
+        const descriptor = definePlugin({
+          name: 'broken',
+          version: '1.0.0',
+          description: 'broken',
+          ...(secrets === undefined ? {} : { secrets }),
+          setup: () => ({ interceptors: [{ name: 'audit', onStep } as never] }),
+        });
+        const { records } = await composePlugins({
+          plugins: [
+            { descriptor, source: 'package', location: '@example/broken' },
+            pluginEntry('fine', () => ({
+              interceptors: [{ name: 'audit', onStep: { handler: async () => {}, priority: 5 } }],
+            })),
+          ],
+        });
+        expect(records.map(({ status }) => status)).toEqual(['skipped', 'running']);
+        expect(records[0]?.problems).toEqual([
+          expect.objectContaining({
+            code: 'setup-failed',
+            message: expect.stringContaining(message),
+          }),
+        ]);
+      }
+    },
+  );
 
   it('reads the caller’s plugin list and configuration before the first setup awaits', async () => {
     const seen: unknown[] = [];
@@ -398,22 +751,22 @@ describe('MCP apps a plugin contributes', () => {
   it('lists the apps of the running plugins, in load order, for the host to serve', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
-        pluginEntry('first', () => ({ mcpApps: [mcpApp('one', 'ui://first/one/v1')] })),
-        pluginEntry('second', () => ({ mcpApps: [mcpApp('two', 'ui://second/two/v1')] })),
+        pluginEntry('first', () => ({ panels: [mcpApp('one', 'ui://first/one/v1')] })),
+        pluginEntry('second', () => ({ panels: [mcpApp('two', 'ui://second/two/v1')] })),
       ],
       pluginConfiguration: { second: { enabled: false } },
     });
     const { plugins } = createPluginRegistry(records);
-    expect(plugins.mcpApps().map(({ plugin, version, app }) => [plugin, version, app.uri])).toEqual(
-      [['first', '1.0.0', 'ui://first/one/v1']],
-    );
+    expect(plugins.panels().map(({ plugin, version, app }) => [plugin, version, app.uri])).toEqual([
+      ['first', '1.0.0', 'ui://first/one/v1'],
+    ]);
   });
 
   it('skips a plugin whose app is opened from a tool it may not call', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
         pluginEntry('a', () => ({
-          mcpApps: [{ ...mcpApp('one', 'ui://a/one/v1'), opensFromTool: 'bureau.tasks.cancel' }],
+          panels: [{ ...mcpApp('one', 'ui://a/one/v1'), opensFromTool: 'bureau.tasks.cancel' }],
         })),
       ],
     });
@@ -423,9 +776,9 @@ describe('MCP apps a plugin contributes', () => {
   it('skips a plugin whose app has no ui:// URI, or whose URI another plugin holds', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
-        pluginEntry('a', () => ({ mcpApps: [mcpApp('one', 'https://example.test/one')] })),
-        pluginEntry('b', () => ({ mcpApps: [mcpApp('one', 'ui://shared/v1', 'tool.b')] })),
-        pluginEntry('c', () => ({ mcpApps: [mcpApp('two', 'ui://shared/v1', 'tool.c')] })),
+        pluginEntry('a', () => ({ panels: [mcpApp('one', 'https://example.test/one')] })),
+        pluginEntry('b', () => ({ panels: [mcpApp('one', 'ui://shared/v1', 'tool.b')] })),
+        pluginEntry('c', () => ({ panels: [mcpApp('two', 'ui://shared/v1', 'tool.c')] })),
       ],
     });
     expect(records.map(({ status }) => status)).toEqual(['skipped', 'running', 'skipped']);
@@ -438,8 +791,8 @@ describe('MCP apps a plugin contributes', () => {
   it('skips the later plugin whose app opens from a tool an earlier app already opens', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
-        pluginEntry('a', () => ({ mcpApps: [mcpApp('one', 'ui://a/one/v1')] })),
-        pluginEntry('b', () => ({ mcpApps: [mcpApp('two', 'ui://b/two/v1')] })),
+        pluginEntry('a', () => ({ panels: [mcpApp('one', 'ui://a/one/v1')] })),
+        pluginEntry('b', () => ({ panels: [mcpApp('two', 'ui://b/two/v1')] })),
       ],
     });
     expect(records.map(({ status }) => status)).toEqual(['running', 'skipped']);
@@ -447,14 +800,14 @@ describe('MCP apps a plugin contributes', () => {
       expect.objectContaining({ code: 'name-clash', name: 'bureau.tasks.inspect' }),
     ]);
     const { plugins } = createPluginRegistry(records);
-    expect(plugins.mcpApps().map(({ plugin }) => plugin)).toEqual(['a']);
+    expect(plugins.panels().map(({ plugin }) => plugin)).toEqual(['a']);
   });
 
   it('records a build failure the host reports against the plugin and stops listing the app', async () => {
     const { records } = await composePlugins<ComposableOptions>({
       plugins: [
         pluginEntry('a', () => ({
-          mcpApps: [
+          panels: [
             mcpApp('one', 'ui://a/one/v1'),
             mcpApp('two', 'ui://a/two/v1', 'bureau.tasks.events'),
           ],
@@ -462,13 +815,13 @@ describe('MCP apps a plugin contributes', () => {
       ],
     });
     const registry = createPluginRegistry(records);
-    registry.plugins.reportMcpAppFailure('a', 'one', 'The entry does not build.');
-    registry.plugins.reportMcpAppFailure('absent', 'one', 'No such plugin.');
-    expect(registry.plugins.mcpApps().map(({ app }) => app.name)).toEqual(['two']);
+    registry.plugins.reportPanelFailure('a', 'one', 'The entry does not build.');
+    registry.plugins.reportPanelFailure('absent', 'one', 'No such plugin.');
+    expect(registry.plugins.panels().map(({ app }) => app.name)).toEqual(['two']);
     const [listing] = await registry.plugins.list();
     expect(listing?.status).toBe('running');
     expect(listing?.problems).toEqual([
-      { code: 'mcp-app-failed', app: 'one', message: 'The entry does not build.' },
+      { code: 'panel-failed', app: 'one', message: 'The entry does not build.' },
     ]);
   });
 });

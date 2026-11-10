@@ -6,6 +6,7 @@
    */
   import { router } from '../lib/router.svelte.ts';
   import { breadcrumbTrail } from './breadcrumbs.svelte.ts';
+  import type { ViewLink } from './copy.ts';
   import NotFoundState from './not-found-state.svelte';
   import { provideSearchOpener } from './shell/search-opener.ts';
   import type { ViewName } from './views.ts';
@@ -13,11 +14,15 @@
   interface NotFoundHarnessProps {
     title: string;
     view?: ViewName;
+    /** A primary button that starts the thing again, as the chat page's New chat. */
+    create?: ViewLink;
+    /** The way back in the view's own words. */
+    back?: ViewLink;
     /** Called when the page asks to open search. When omitted, the page is mounted without a shell. */
     onSearch?: () => void;
   }
 
-  let { title, view, onSearch }: NotFoundHarnessProps = $props();
+  let { title, view, create, back, onSearch }: NotFoundHarnessProps = $props();
 
   // `$props` are read once: the shell's opener does not change.
   // svelte-ignore state_referenced_locally
@@ -27,4 +32,9 @@
 </script>
 
 <p data-testid="trail">{trail.join(' › ')}</p>
-<NotFoundState {title} {...view === undefined ? {} : { view }} />
+<NotFoundState
+  {title}
+  {...view === undefined ? {} : { view }}
+  {...create === undefined ? {} : { create }}
+  {...back === undefined ? {} : { back }}
+/>

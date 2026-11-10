@@ -69,7 +69,7 @@ describe('the list of agents', () => {
           a2a: true,
           model: 'anthropic/sonnet',
           tools: ['lookup-order', 'issue-refund'],
-          skillDescriptors: [],
+          card: [],
           instructions: '',
         },
       }),
@@ -499,7 +499,7 @@ describe('one agent’s page', () => {
     const served = serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: ['lookup-order'],
-      skillDescriptors: [{ id: 'cite', name: 'Cite', description: 'Cites sources', tags: [] }],
+      card: [{ id: 'cite', name: 'Cite', description: 'Cites sources', tags: [] }],
       instructions: 'Be careful.',
     });
     landAt('/agents/researcher');
@@ -535,7 +535,7 @@ describe('one agent’s page', () => {
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: [],
-      skillDescriptors: [twin('cite-a'), twin('cite-b')],
+      card: [twin('cite-a'), twin('cite-b')],
       instructions: '',
     });
     landAt('/agents/researcher');
@@ -563,7 +563,7 @@ describe('one agent’s page', () => {
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: ['lookup-order', 'lookup-order'],
-      skillDescriptors: [twin('cite-a'), twin('cite-b')],
+      card: [twin('cite-a'), twin('cite-b')],
       instructions: '',
     });
     landAt('/agents/researcher');
@@ -603,7 +603,7 @@ describe('one agent’s page', () => {
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: [],
-      skillDescriptors: [],
+      card: [],
       instructions: '',
     });
     landAt('/agents/researcher');
@@ -766,7 +766,7 @@ describe('one agent’s page', () => {
     serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: [],
-      skillDescriptors: [],
+      card: [],
       instructions: '',
     });
     landAt('/agents/researcher');

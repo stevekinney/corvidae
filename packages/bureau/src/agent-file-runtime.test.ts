@@ -51,7 +51,7 @@ const DEFINITION: AgentFileDefinition = {
   description: null,
   model: KNOWN_MODEL,
   tools: ['lookup-order'],
-  skillDescriptors: [],
+  card: [],
   a2a: false,
   instructions: 'Recorded instructions.\n',
 };

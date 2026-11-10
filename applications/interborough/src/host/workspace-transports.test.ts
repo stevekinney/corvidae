@@ -183,7 +183,7 @@ describe('injected workspace transport authority', () => {
     for (const path of [
       '/api/v1/principal',
       '/api/v1/workflows',
-      '/host/mcp-apps',
+      '/host/panels',
       '/bureau/jsonrpc',
     ]) {
       const response = await request(

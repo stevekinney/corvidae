@@ -54,6 +54,10 @@
       "type": "string",
       "description": "Accessible name of the phone menu button that holds `actions`. Default `More actions`."
     },
+    "phoneActions": {
+      "enum": ["menu", "buttons"],
+      "description": "What `actions` become on a phone: one menu button (`'menu'`, the default) or full-width\nbuttons stacked under the row's text (`'buttons'`), each a 44px target under a coarse pointer."
+    },
     "groupLayout": {
       "enum": ["row", "band"],
       "description": "How a group row is drawn. Default `row`."

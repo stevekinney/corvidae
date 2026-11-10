@@ -7,6 +7,7 @@ import type { ZodType } from 'zod';
 
 import type { SuccessfulRunResult } from './agent-run';
 import { isSuccessfulRunResult } from './agent-run';
+import { readBureauInvariants, withBureauInvariants } from './bureau-invariants';
 import type { MutableChildRunRegistry } from './child-run';
 import {
   attenuateDelegatedAuthority,
@@ -120,6 +121,12 @@ interface CreateSubagentToolOptionsBase<
 > {
   name: string;
   description: string;
+  /**
+   * The tool's version (COR-2298). Armorer binds an approval only to a versioned tool, so a
+   * subagent call can be put behind approval only when this is set. Omitted, the tool is
+   * unversioned, as before.
+   */
+  version?: string | undefined;
   /**
    * The child agent (AB-19). `createAgent`'s returned agent satisfies this
    * structurally: its `run(input, context?)` is invoked with the exact
@@ -347,6 +354,7 @@ export function createSubagentTool<
   const {
     name,
     description,
+    version,
     agent,
     agentName,
     input,
@@ -383,6 +391,7 @@ export function createSubagentTool<
 
   return createTool({
     name,
+    ...(version === undefined ? {} : { version }),
     description,
     input,
     execute: async (params: TInput, context: ToolContext) => {
@@ -434,18 +443,25 @@ export function createSubagentTool<
       // "preserve child-start events" criterion) a plain string — a
       // conversation-history `agentInput` is projected to a named, lossy
       // marker rather than widening the event's field.
-      const childRun = dispatchChildRun(agent, agentInput, {
-        agentName,
-        parentRunId,
-        parentAgentName: parentContext?.parentAgentName,
-        signal: context.signal,
-        traceContext: context.traceContext,
-        withTraceContext,
-        emitter: parentContext?.emitter,
-        durable: parentContext?.durable,
-        registry,
-        ...(delegatedAuthority === undefined ? {} : { delegatedAuthority }),
-      });
+      const childRun = dispatchChildRun(
+        agent,
+        agentInput,
+        withBureauInvariants(
+          {
+            agentName,
+            parentRunId,
+            parentAgentName: parentContext?.parentAgentName,
+            signal: context.signal,
+            traceContext: context.traceContext,
+            withTraceContext,
+            emitter: parentContext?.emitter,
+            durable: parentContext?.durable,
+            registry,
+            ...(delegatedAuthority === undefined ? {} : { delegatedAuthority }),
+          },
+          readBureauInvariants(context.executionContext),
+        ),
+      );
       const result = await childRun.result();
 
       // Every non-success terminal (abort, execution error, tripwire,

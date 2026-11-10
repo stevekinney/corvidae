@@ -25,6 +25,7 @@ export function contributedFixtures(
     plugin: name,
     name,
     definition: DEFINITIONS[name],
+    configuration: {},
     rows: rowsOf.filter((row) => row.provider === name),
     secretKey: `${name}-api-key`,
   }));

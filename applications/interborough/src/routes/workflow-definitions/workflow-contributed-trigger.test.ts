@@ -1,7 +1,7 @@
 /**
  * COR-1893: a trigger kind a running plugin contributes is a choice under the builder's trigger
  * ("Starts"), its configuration is drawn from the schema the Bureau reports
- * (`bureau.plugins.kinds`), and an edit writes the trigger the file holds: the kind and its fields.
+ * (`bureau.plugins.contributions`), and an edit writes the trigger the file holds: the kind and its fields.
  * A trigger kind no running plugin contributes is kept as the file has it and edited in the JSON tab.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -51,7 +51,7 @@ function open(
   options: {
     kinds?: unknown[];
     trigger?: Record<string, unknown>;
-    /** Answers `bureau.plugins.kinds` in place of the list in `kinds`. */
+    /** Answers `bureau.plugins.contributions` in place of the list in `kinds`. */
     answer?: () => unknown;
   } = {},
 ) {
@@ -75,11 +75,11 @@ function open(
     }),
   );
   stub.on(
-    'bureau.plugins.kinds',
+    'bureau.plugins.contributions',
     options.answer ??
       (() => ({
-        triggerKinds: options.kinds ?? [INBOX_MESSAGE],
-        hookActionKinds: [],
+        triggers: options.kinds ?? [INBOX_MESSAGE],
+        reactions: [],
       })),
   );
   router.navigate('/workflows/digest/edit', { replace: true });
@@ -178,7 +178,7 @@ describe('a contributed trigger kind in the builder', () => {
 
   test('offers only the built-in triggers when the host cannot say what plugins add', async () => {
     const { container } = open();
-    stub?.on('bureau.plugins.kinds', () => {
+    stub?.on('bureau.plugins.contributions', () => {
       throw new Error('down');
     });
     await builderReady(container);
@@ -236,7 +236,7 @@ describe('a contributed trigger kind in the builder', () => {
       'inbox:message',
     );
 
-    release({ triggerKinds: [INBOX_MESSAGE], hookActionKinds: [] });
+    release({ triggers: [INBOX_MESSAGE], reactions: [] });
     await waitFor(() =>
       expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('billing'),
     );
@@ -253,9 +253,7 @@ describe('a contributed trigger kind in the builder', () => {
     await waitFor(() =>
       expect(container.querySelector('[data-testid="contributed-trigger-error"]')).toBeTruthy(),
     );
-    expect(container.textContent).toContain(
-      WORKFLOW_COPY.builder.triggerKindsFailed('inbox:message'),
-    );
+    expect(container.textContent).toContain(WORKFLOW_COPY.builder.triggersFailed('inbox:message'));
     expect(container.textContent).not.toContain(
       WORKFLOW_COPY.builder.unavailableTrigger('inbox:message'),
     );
@@ -263,11 +261,11 @@ describe('a contributed trigger kind in the builder', () => {
       'inbox:message',
     );
 
-    stub?.on('bureau.plugins.kinds', () => ({
-      triggerKinds: [INBOX_MESSAGE],
-      hookActionKinds: [],
+    stub?.on('bureau.plugins.contributions', () => ({
+      triggers: [INBOX_MESSAGE],
+      reactions: [],
     }));
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.builder.retryTriggerKinds }));
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.builder.retryTriggers }));
     await waitFor(() =>
       expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('billing'),
     );

@@ -1,8 +1,9 @@
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 
 /**
- * `bureau.agents.overrides.get` and `bureau.agents.overrides.update` (COR-2009): what a person
- * changed on a built-in agent, a code agent the host defines. Such an agent has no file, so its
+ * `bureau.agents.overrides.get` and `bureau.agents.overrides.update` (COR-2009, COR-2228): what a
+ * person changed on a code agent the catalog runs, a built-in agent the host defines or the agent
+ * of a running plugin (`plugin:name`). Such an agent has no file, so its
  * Access and Settings tabs save overrides over what it states about itself, and every save is a
  * numbered version that `bureau.agents.versions.list` lists and `bureau.agents.versions.restore`
  * restores, as for a file agent. Access follows the agent definition operations: reading needs
@@ -39,7 +40,9 @@ const agentIdentifier = z
   .string()
   .min(1)
   .max(AGENT_IDENTIFIER_MAX_LENGTH)
-  .describe('The identifier of the built-in agent.');
+  .describe(
+    'The identifier of the code agent: a built-in agent, or a running plugin’s (`plugin:name`).',
+  );
 
 const getInput = z.object({ id: agentIdentifier });
 const getOutput = z.object({
@@ -65,9 +68,9 @@ export const agentOverridesGetOperation = defineOperation<
   name: 'bureau.agents.overrides.get',
   authorize: authorizeWorkspaceOperation('bureau.agents.overrides.get'),
   mcpExposable: false,
-  summary: 'Read the saved overrides of a built-in agent',
+  summary: 'Read the saved overrides of a code agent',
   description:
-    'Returns what a person changed on the built-in agent `id` (a code agent the host defines, not a plugin’s): its `overrides`, each key `null` when it is not overridden and the agent’s own value applies (`instructions`, the `tools` it may use, `toolApproval`, `guardrails`, `costBudget`, `toolBudget`, `model`, `models`, `defaultEffort`, `stepLimit`), the `version` they were saved as (`null` for an agent nobody changed, which has no versions), its `ownTools` (the tools the agent states itself, by name, before any override, which `codeDefinition.tools` on `bureau.agents.definitions.get` does not show once `tools` is overridden, so a removed tool can be added back), and their `hash`, which `bureau.agents.overrides.update` and `bureau.agents.versions.restore` take as `expectedHash`. An identifier that is no built-in agent is `NotFound`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns what a person changed on the code agent `id` (a built-in agent the host defines, or the agent of a running plugin, `plugin:name`): its `overrides`, each key `null` when it is not overridden and the agent’s own value applies (`instructions`, the `tools` it may use, `approvals`, `guardrails`, `interceptors` (the plugin interceptors it runs, each `plugin:name`), `limits` (its `steps`, `cost` in US dollars and `tools`, each left out when it is not overridden), `model`, `models`, `effort`), the `version` they were saved as (`null` for an agent nobody changed, which has no versions), its `ownTools` (the tools the agent states itself, by name, before any override, which `codeDefinition.tools` on `bureau.agents.definitions.get` does not show once `tools` is overridden, so a removed tool can be added back), and their `hash`, which `bureau.agents.overrides.update` and `bureau.agents.versions.restore` take as `expectedHash`. An identifier that is no code agent the catalog runs (an agent file, a disabled plugin’s agent, or no agent) is `NotFound`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -118,9 +121,9 @@ export const agentOverridesUpdateOperation = defineOperation<
   name: 'bureau.agents.overrides.update',
   authorize: authorizeWorkspaceOperation('bureau.agents.overrides.update'),
   mcpExposable: false,
-  summary: 'Save the overrides of a built-in agent as a new version',
+  summary: 'Save the overrides of a code agent as a new version',
   description:
-    'Saves `overrides` as the next version of the built-in agent `id`, if the overrides in force still hash to `expectedHash`, and returns the new `hash` and `version`. The set replaces the one in force: a key left out or `null` is no longer overridden. Overrides equal to those in force write nothing and return the same hash and version. Every save that made a version is appended to the audit trail as `agent.updated`, naming the version made and the one before it. A plugin’s agent or an agent file takes no overrides and is `Unprocessable` (`agent-file-read-only`); an identifier that is no agent is `NotFound`; overrides that changed since are `StaleRevision` with `currentRevision`; a tool the deployment does not hold (`unknown-tool`), an Asks entry on a tool the agent may not use (`unknown-approval-tool`), and a model the catalog lacks (`unknown-model`) or the model policy forbids (`model-policy-denied`) are `Unprocessable`; each writes nothing. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Saves `overrides` as the next version of the code agent `id` (a built-in agent, or the agent of a running plugin, `plugin:name`), if the overrides in force still hash to `expectedHash`, and returns the new `hash` and `version`. The set replaces the one in force: a key left out or `null` is no longer overridden. Overrides equal to those in force write nothing and return the same hash and version. Every save that made a version is appended to the audit trail as `agent.updated`, naming the version made and the one before it. An agent file or a plugin’s content agent takes no overrides and is `Unprocessable` (`agent-file-read-only`), as is the agent of a plugin that is not running (`agent-unavailable`) and a code agent that resolves no run options, so that an override has nothing to change (`agent-not-overridable`); an identifier that is no agent is `NotFound`; overrides that changed since are `StaleRevision` with `currentRevision`; a tool the deployment does not hold (`unknown-tool`), an Asks entry on a tool the agent may not use (`unknown-approval-tool`), and a model the catalog lacks (`unknown-model`) or the model policy forbids (`model-policy-denied`), a guardrail configuration its schema refuses (`invalid-guardrail-configuration`), and an interceptor no plugin contributes (`reference-unresolved`) are `Unprocessable`; a guardrail id listed twice never reaches the save, because the input schema refuses it as `InvalidParams` first (a 400), and an interceptor listed twice is `Unprocessable` (`invalid-frontmatter`); each writes nothing. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,

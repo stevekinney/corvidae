@@ -94,6 +94,25 @@ describe('the configuration shape', () => {
     expect(Object.hasOwn(parseProviderConfiguration('{}', PATH), 'catalog')).toBe(false);
   });
 
+  test('round-trips native decision metadata and preserves legacy edits', () => {
+    const edit = {
+      provider: 'openai',
+      model: 'gpt-4.1',
+      decisions: { kinds: ['boolean', 'structured'], only: true },
+    } as const;
+    expect(parseProviderConfiguration(JSON.stringify({ catalog: [edit] }), PATH)).toEqual({
+      catalog: [edit],
+    });
+    expect(
+      parseProviderConfiguration(
+        JSON.stringify({ catalog: [{ provider: 'openai', model: 'gpt-4.1' }] }),
+        PATH,
+      ),
+    ).toEqual({
+      catalog: [{ provider: 'openai', model: 'gpt-4.1' }],
+    });
+  });
+
   test('ignores every other key, a top-level providers key among them', () => {
     expect(
       parseProviderConfiguration(
@@ -210,6 +229,20 @@ describe('the catalog rows', () => {
     );
     expect(stale.field).toBe('catalog[0].model');
     expect(stale.message).not.toContain('gpt-unheard-of');
+  });
+
+  test('projects decision metadata onto the selected catalog row', () => {
+    const rows = select({
+      configuration: {
+        catalog: [
+          { provider: 'openai', model: 'gpt-4.1', decisions: { kinds: ['boolean'], only: true } },
+        ],
+      },
+    });
+    expect(rows.find((row) => row.model === 'gpt-4.1')?.decisions).toEqual({
+      kinds: ['boolean'],
+      only: true,
+    });
   });
 
   test('ignore an edit for a provider no loaded plugin contributes', () => {
@@ -352,6 +385,7 @@ describe('the catalog rows', () => {
       plugin: 'lender',
       name: 'lender',
       definition: { ...anthropicProvider, name: 'lender' },
+      configuration: {},
       rows: [own],
       secretKey: 'lender-api-key',
     };

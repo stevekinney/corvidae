@@ -22,38 +22,85 @@
  * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
- * | guardrail (`detect`, `validate`) | refuses; an agent file that lists it cannot run | works | refuses |
- * | run hooks (every hook) | refuses; an agent file that lists them cannot run | works | refuses |
+ * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run fails closed (COR-2300): the refusal is a `detector-failure` finding that blocks the input, reply or call it would judge, under a `warn` action too, and taints the session as a block does (a `tripwire` action halts the run) | works | refuses |
+ * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run fails closed on it (COR-2300) | works | refuses |
+ * | interceptor, a point Operative runs through its hook registry (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `selectTools`, `validateResponse`, `validateToolResult`, the compaction points, `selectToolChoice`, `beforeGenerate`, `afterGenerate`, `onRunStart`) | refuses; the step or the run fails with the refusal, so an agent file that lists the interceptor cannot run | works | refuses |
+ * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
+ * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run. One `try` wraps the loop over the recovery handlers, so the refusal also skips every lower-priority `onError` handler of the run, whatever any `onError` option says | works | refuses |
+ * | interceptor with `appliesTo: 'every-agent'`, every point (COR-2127) | refuses, as any interceptor does; for an agent that lists it, the step or the run fails as above. The plugin tier every other agent's run holds turns the refusal into `undefined` without running the handler (`run-hook-tiers.ts`), which every point reads as "no answer", so those runs go on as if the set were absent | works | refuses for an agent that lists it, skipped for every other |
  * | decision router (`decide`) | refuses | works | refuses |
  * | hook action kind (`run`) | refuses; the delivery fails and is retried by the hook's policy | works | refuses |
  * | embedder (`embed`, `availability`) | refuses; `availability` is `needs-setup` | works; `available` | refuses; `needs-setup` |
- * | memory detector (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
- * | eval judge (`evaluate`) | refuses; the sample is not scored | works | refuses |
+ * | memory guardrail, `guardrails.memory` (`detect`) | not run: it answers that it detected nothing (`triggered: false`, category `plugin-needs-setup`), so memory's other detectors decide | works | not run |
+ * | scorer (`evaluate`) | refuses; the sample is not scored | works | refuses |
  * | event formatter (`format`) | refuses; the event gets the default title | works | refuses |
  * | code agent (`run`, `OPERATIVE_RESOLVE_RUN_OPTIONS`) | throws or rejects; `bureau.tasks.start` rejects and the run is not started, and a recovered or claimed durable run fails to resolve | works | throws or rejects |
- * | provider, MCP app | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for an MCP app, which the host serves as a static page from `bureau.plugins.mcpApps()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
+ * | provider, panel | not gated: Bureau hands a provider to the host's `models.catalog` factory and has no entry point for a panel, which the host serves as a static page from `bureau.plugins.panels()`, and the host reads the plugin's status and its secret (COR-1880, COR-1884) | | |
  *
- * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
+ * An interceptor's hook written as `{ handler, replay, onError, priority }` is gated as the bare
+ * function is: its `handler` refuses, and the fields beside it are kept, so a plugin's own
+ * `onError: () => 'continue'` also swallows the refusal. The handler does not run either way.
+ *
+ * `start` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
  *
  * @module plugin-secret-gate
  */
 
-import type {
-  PluginContributions,
-  PluginRunHooks,
-  PluginTriggerKind,
+import {
+  isGuardrailFactory,
+  type PluginContributions,
+  type PluginGuardrailFactory,
+  type PluginInterceptor,
+  type PluginTrigger,
 } from '@lostgradient/interborough-plugin';
-import { OPERATIVE_RESOLVE_RUN_OPTIONS } from '@lostgradient/operative';
+import {
+  type GuardrailEntry,
+  guardrailOf,
+  type InputDetector,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type OutputValidator,
+  type ToolCallValidator,
+} from '@lostgradient/operative';
 import type { DetectionResult, DetectorContext } from 'armorer';
 
+import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import type { BureauPluginSecrets } from './plugin-types';
 
 /**
- * The `category` of the result a gated memory detector answers with while its plugin needs setup:
+ * The `category` of the result a gated memory guardrail answers with while its plugin needs setup:
  * it did not run, and detected nothing.
  */
 export const PLUGIN_NEEDS_SETUP_CATEGORY = 'plugin-needs-setup';
+
+/**
+ * `entry` with its guardrail replaced by `wrap`'s, keeping the action it carries (COR-2104).
+ */
+function withGuardrail<T, A extends string>(
+  entry: GuardrailEntry<T, A>,
+  wrap: (guardrail: T) => T,
+): GuardrailEntry<T, A> {
+  const guardrail = guardrailOf(entry);
+  return guardrail === entry
+    ? wrap(guardrail)
+    : { ...(entry as object), guardrail: wrap(guardrail) };
+}
+
+/**
+ * `guardrail` with `wrap` applied: to the guardrail itself, or, for a factory (COR-2118), to every
+ * guardrail its `create` builds, so `create` itself runs ungated and only what it built refuses.
+ */
+function gatedFactoryOr<T, G extends T | PluginGuardrailFactory<T>>(
+  guardrail: G,
+  wrap: (built: T) => T,
+): G {
+  if (!isGuardrailFactory<T>(guardrail)) return wrap(guardrail as T) as G;
+  const factory: PluginGuardrailFactory<T> = guardrail;
+  return {
+    ...factory,
+    create: (configuration: unknown) => wrap(factory.create(configuration)),
+  } as G;
+}
 
 /** A plugin's contribution was called while a secret its plugin declared is not set. */
 export class PluginNeedsSetupError extends Error {
@@ -183,28 +230,27 @@ function gated<A extends unknown[], R>(
   };
 }
 
-function gatedRunHooks(
+function gatedInterceptor(
   gate: PluginSecretGate,
   contribution: string,
-  hooks: PluginRunHooks,
-): PluginRunHooks {
-  const { prepareStep, beforeToolExecution, afterToolExecution, onStep, validateResponse } = hooks;
-  return {
-    ...hooks,
-    ...(prepareStep === undefined
-      ? {}
-      : { prepareStep: gated(gate, contribution, prepareStep.bind(hooks)) }),
-    ...(beforeToolExecution === undefined
-      ? {}
-      : { beforeToolExecution: gated(gate, contribution, beforeToolExecution.bind(hooks)) }),
-    ...(afterToolExecution === undefined
-      ? {}
-      : { afterToolExecution: gated(gate, contribution, afterToolExecution.bind(hooks)) }),
-    ...(onStep === undefined ? {} : { onStep: gated(gate, contribution, onStep.bind(hooks)) }),
-    ...(validateResponse === undefined
-      ? {}
-      : { validateResponse: gated(gate, contribution, validateResponse.bind(hooks)) }),
-  };
+  interceptor: PluginInterceptor,
+): PluginInterceptor {
+  const gatedPoints: Record<string, unknown> = {};
+  for (const point of INTERCEPTOR_POINTS) {
+    const hook = interceptor[point];
+    if (hook === undefined) continue;
+    // Either written form: a function, or `{ handler, replay, onError, priority }`, whose handler
+    // is gated and whose other fields are kept, so the gate does not change how the hook sorts,
+    // replays or handles an error.
+    const gatedHandler = (handler: (...args: never[]) => unknown) =>
+      gated(gate, contribution, (handler as (...args: unknown[]) => unknown).bind(interceptor));
+    gatedPoints[point] =
+      typeof hook === 'function'
+        ? gatedHandler(hook)
+        : { ...hook, handler: gatedHandler(hook.handler) };
+  }
+  // Each point's gated handler keeps the signature of the one it wraps.
+  return { ...interceptor, ...gatedPoints };
 }
 
 /**
@@ -213,7 +259,7 @@ function gatedRunHooks(
  * the secret is saved again. The returned stop stops whichever is running and follows the gate no
  * more. Every transition runs in order on one chain, so a start and a stop never overlap.
  */
-function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTriggerKind): PluginTriggerKind {
+function gatedTriggerKind(gate: PluginSecretGate, kind: PluginTrigger): PluginTrigger {
   return {
     ...kind,
     start: async (context) => {
@@ -304,10 +350,10 @@ export function gatedContributions<T extends PluginContributions>(
             };
           }),
         }),
-    ...(result.triggerKinds === undefined
+    ...(result.triggers === undefined
       ? {}
       : {
-          triggerKinds: result.triggerKinds.map((kind) => gatedTriggerKind(gate, kind)),
+          triggers: result.triggers.map((kind) => gatedTriggerKind(gate, kind)),
         }),
     ...(result.validators === undefined
       ? {}
@@ -326,27 +372,77 @@ export function gatedContributions<T extends PluginContributions>(
       ? {}
       : {
           guardrails: {
-            ...(guardrails.inputDetectors === undefined
+            ...(guardrails.input === undefined
               ? {}
               : {
-                  inputDetectors: guardrails.inputDetectors.map((detector) => ({
-                    ...detector,
-                    detect: gated(gate, idOf(detector.name), detector.detect.bind(detector)),
-                  })),
+                  input: guardrails.input.map((entry) =>
+                    withGuardrail(entry, (detector) =>
+                      gatedFactoryOr(detector, (built: InputDetector) => ({
+                        ...built,
+                        detect: gated(gate, idOf(detector.name), built.detect.bind(built)),
+                      })),
+                    ),
+                  ),
                 }),
-            ...(guardrails.outputValidators === undefined
+            ...(guardrails.output === undefined
               ? {}
               : {
-                  outputValidators: guardrails.outputValidators.map((validator) => ({
-                    ...validator,
-                    validate: gated(gate, idOf(validator.name), validator.validate.bind(validator)),
+                  output: guardrails.output.map((entry) =>
+                    withGuardrail(entry, (validator) =>
+                      gatedFactoryOr(validator, (built: OutputValidator) => ({
+                        ...built,
+                        validate: gated(gate, idOf(validator.name), built.validate.bind(built)),
+                      })),
+                    ),
+                  ),
+                }),
+            ...(guardrails.tools === undefined
+              ? {}
+              : {
+                  // The validator's own `action` is kept by the spread.
+                  tools: guardrails.tools.map((validator) =>
+                    gatedFactoryOr(validator, (built: ToolCallValidator) => ({
+                      ...built,
+                      validate: gated(gate, idOf(validator.name), built.validate.bind(built)),
+                    })),
+                  ),
+                }),
+            ...(guardrails.memory === undefined
+              ? {}
+              : {
+                  memory: guardrails.memory.map((detector) => ({
+                    ...detector,
+                    detect: async (
+                      input: string,
+                      context: DetectorContext,
+                    ): Promise<DetectionResult> => {
+                      // Not run: memory counts a detector's failure as a detection, so a refusal here
+                      // would hold back every write and recall while the plugin needs setup.
+                      if (!gate.available()) {
+                        return {
+                          triggered: false,
+                          confidence: 0,
+                          category: PLUGIN_NEEDS_SETUP_CATEGORY,
+                          detail: new PluginNeedsSetupError(
+                            gate.plugin,
+                            idOf(detector.name),
+                            gate.missing(),
+                          ).message,
+                        };
+                      }
+                      return detector.detect(input, context);
+                    },
                   })),
                 }),
           },
         }),
-    ...(result.runHooks === undefined
+    ...(result.interceptors === undefined
       ? {}
-      : { runHooks: result.runHooks.map((hooks) => gatedRunHooks(gate, idOf(hooks.name), hooks)) }),
+      : {
+          interceptors: result.interceptors.map((interceptor) =>
+            gatedInterceptor(gate, idOf(interceptor.name), interceptor),
+          ),
+        }),
     ...(result.decisionRouters === undefined
       ? {}
       : {
@@ -356,10 +452,10 @@ export function gatedContributions<T extends PluginContributions>(
             decide: gated(gate, idOf(model.name), model.decide.bind(model)),
           })),
         }),
-    ...(result.hookActionKinds === undefined
+    ...(result.reactions === undefined
       ? {}
       : {
-          hookActionKinds: result.hookActionKinds.map((kind) => ({
+          reactions: result.reactions.map((kind) => ({
             ...kind,
             run: gated(gate, idOf(kind.name), kind.run.bind(kind)),
           })),
@@ -372,42 +468,18 @@ export function gatedContributions<T extends PluginContributions>(
             embed: gated(gate, idOf(embedder.name), embedder.embed),
           })),
         }),
-    ...(result.memoryDetectors === undefined
+    ...(result.scorers === undefined
       ? {}
       : {
-          memoryDetectors: result.memoryDetectors.map((detector) => ({
-            ...detector,
-            detect: async (input: string, context: DetectorContext): Promise<DetectionResult> => {
-              // Not run: memory counts a detector's failure as a detection, so a refusal here
-              // would hold back every write and recall while the plugin needs setup.
-              if (!gate.available()) {
-                return {
-                  triggered: false,
-                  confidence: 0,
-                  category: PLUGIN_NEEDS_SETUP_CATEGORY,
-                  detail: new PluginNeedsSetupError(
-                    gate.plugin,
-                    idOf(detector.name),
-                    gate.missing(),
-                  ).message,
-                };
-              }
-              return detector.detect(input, context);
-            },
-          })),
-        }),
-    ...(result.evalJudges === undefined
-      ? {}
-      : {
-          evalJudges: result.evalJudges.map((judge) => ({
+          scorers: result.scorers.map((judge) => ({
             ...judge,
             evaluate: gated(gate, idOf(judge.name), judge.evaluate.bind(judge)),
           })),
         }),
-    ...(result.eventFormatters === undefined
+    ...(result.formatters === undefined
       ? {}
       : {
-          eventFormatters: result.eventFormatters.map((formatter) => ({
+          formatters: result.formatters.map((formatter) => ({
             ...formatter,
             format: (event: Parameters<typeof formatter.format>[0]) => {
               gate.assertAvailable(idOf(formatter.name));
@@ -415,10 +487,10 @@ export function gatedContributions<T extends PluginContributions>(
             },
           })),
         }),
-    ...(result.codeAgents === undefined
+    ...(result.agents === undefined
       ? {}
       : {
-          codeAgents: result.codeAgents.map(({ name, agent }) => ({
+          agents: result.agents.map(({ name, agent }) => ({
             name,
             agent: gatedAgent(gate, idOf(name), agent),
           })),

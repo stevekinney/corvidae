@@ -161,8 +161,12 @@ function validateComponent(file: string): string[] {
 
 function checkSubstantiveTest(file: string, name: string): string[] {
   if (NO_TEST_REQUIRED_ALLOW_LIST.has(name)) return [];
-  const testFilePath = join(COMPONENTS_DIR, file.replace(/\.svelte$/, '.test.ts'));
-  return hasSubstantiveTest(testFilePath).pass
+  // A component's test may live in the fast lane or, when it starts a process (server rendering,
+  // hydration), in the isolated lane under the `*.integration.test.ts` or `*.slow.test.ts` name.
+  const passes = ['.test.ts', '.integration.test.ts', '.slow.test.ts'].some(
+    (suffix) => hasSubstantiveTest(join(COMPONENTS_DIR, file.replace(/\.svelte$/, suffix))).pass,
+  );
+  return passes
     ? []
     : [
         `${file}: missing a substantive ${name}.test.ts (needs >=1 active test()/it() call; ` +

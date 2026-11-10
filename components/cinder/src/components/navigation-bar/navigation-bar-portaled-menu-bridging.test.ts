@@ -36,7 +36,7 @@ describe('NavigationBar', () => {
     // open shadow root (e.g. a brand logo that exposes its last tabbable
     // control from its own shadow DOM). happy-dom does not implement that
     // spec retargeting natively, so this test overrides `event.target`
-    // directly -- the same pattern portal.test.ts uses -- to reproduce what
+    // directly -- the same pattern portal.integration.test.ts uses -- to reproduce what
     // a real browser delivers, while `composedPath()` (driven by the actual
     // dispatch target) still reports the true originating shadow element.
     await withResizeObserver(async () => {

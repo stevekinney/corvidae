@@ -23,6 +23,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { composeRunHooks, type RunHookTiers } from './run-hook-tiers';
 import {
   type CatalogRunEnded,
   createCatalogDispatcher,
@@ -34,6 +35,9 @@ import { registerGoalAttemptFence } from './goal-attempt-fence';
 import type { RuntimeComposition } from './runtime-composition';
 import type { RunAttribution } from './serialization';
 import { lastPromptOf } from './testing/goal-fixtures.test-support';
+
+/** What the runtime composition's `composeRunHooks` does, with no plugin contributing (COR-2127). */
+const composeTestRunHooks = (tiers: RunHookTiers) => composeRunHooks(undefined, tiers);
 
 function createDispatcher(
   shuttingDown: boolean,
@@ -71,6 +75,7 @@ function durableRuntime(claimed: boolean): RuntimeComposition {
   return {
     durable: { engine: {}, checkpointStore: {} },
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,
@@ -128,6 +133,7 @@ describe('createCatalogDispatcher — startChildRun', () => {
     const dispatcher = createDispatcher(false, {
       runtime: {
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -142,6 +148,42 @@ describe('createCatalogDispatcher — startChildRun', () => {
     expect(result.content).toBe('done');
     expect(run.id).toBe('child-1');
     expect(run.snapshot().id).toBe('child-1');
+  });
+
+  // COR-2106 — an agent with no `OPERATIVE_RESOLVE_RUN_OPTIONS` could only run without Bureau's
+  // hooks, so it is refused before the child has a handle, an attribution or a run.
+  it('refuses a child whose agent has no run-options resolver with an error naming it, and starts nothing', () => {
+    let runs = 0;
+    const resolverless = {
+      name: 'worker',
+      hasOutput: false,
+      run: () => {
+        runs += 1;
+        return undefined as never;
+      },
+    };
+    const runAttribution = new Map<string, RunAttribution>();
+    const dispatcher = createCatalogDispatcher({
+      agentCatalog: { find: (name: string) => (name === 'worker' ? resolverless : undefined) },
+      runtime: {} as RuntimeComposition,
+      runtimeServices: createManualRuntimeServices(),
+      getShutdownPromise: () => undefined,
+      catalogRuns: new Set(),
+      runAttribution,
+      detachBestEffortPromise: () => {},
+      createBureauError: (message, code) => Object.assign(new Error(message), { code }),
+      validateAgentRunInput: () => {},
+      onDurableRunAborted: () => {},
+    });
+
+    expect(() => dispatcher.startChildRun({ ...start, agentName: 'worker' })).toThrow(
+      expect.objectContaining({
+        name: 'AgentContractError',
+        message: expect.stringContaining('Agent "worker" exposes no run-options resolver'),
+      }),
+    );
+    expect(runs).toBe(0);
+    expect(runAttribution.size).toBe(0);
   });
 
   it('refuses to start a child for an agent the catalog does not have', () => {
@@ -219,6 +261,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     const runtime = {
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
+      composeRunHooks: composeTestRunHooks,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
       holdToModelPolicy: (options: unknown) => options,
@@ -274,6 +317,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
     const runtime = {
       durable: { engine: {}, checkpointStore: {} },
       createBureauInvariantHooks: () => undefined,
+      composeRunHooks: composeTestRunHooks,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
       holdToModelPolicy: (options: unknown) => options,
@@ -346,6 +390,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -472,6 +517,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -594,6 +640,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
           }
           return hooks;
         },
+        composeRunHooks: composeTestRunHooks,
         claimCatalogRunRecoveryRecord: async () => {
           // The claim lands, and the goal's ending tombstones it before the engine starts.
           tombstoned = true;
@@ -689,6 +736,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine, checkpointStore },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -827,6 +875,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
         runtime: {
           durable: { engine, checkpointStore: {} },
           createBureauInvariantHooks: () => undefined,
+          composeRunHooks: composeTestRunHooks,
           mediaOptionsFor: () => ({}),
           withChatPermission: (toolbox: unknown) => toolbox,
           holdToModelPolicy: (options: unknown) => options,
@@ -907,6 +956,7 @@ describe('createCatalogDispatcher — startGoalAttemptRun', () => {
       const runtime = {
         durable: { engine: {}, checkpointStore: {} },
         createBureauInvariantHooks: () => undefined,
+        composeRunHooks: composeTestRunHooks,
         mediaOptionsFor: () => ({}),
         withChatPermission: (toolbox: unknown) => toolbox,
         holdToModelPolicy: (options: unknown) => options,
@@ -958,6 +1008,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
 
   const processLocal = {
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,
@@ -977,6 +1028,7 @@ describe('createCatalogDispatcher — telling Bureau a run settled (COR-1630)', 
     return {
       durable: { engine, checkpointStore },
       createBureauInvariantHooks: () => undefined,
+      composeRunHooks: composeTestRunHooks,
       mediaOptionsFor: () => ({}),
       withChatPermission: (toolbox: unknown) => toolbox,
       holdToModelPolicy: (options: unknown) => options,

@@ -36,6 +36,7 @@ export {
 } from './model-catalog-projection.ts';
 export { createModelCatalog } from './model-catalog.ts';
 export type {
+  BackendDecisions,
   BackendDescriptor,
   BackendLifecycleState,
   CatalogProjection,

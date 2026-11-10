@@ -6,9 +6,11 @@
 
 import type { ContributedEmbedder, GovernedMemory } from '@lostgradient/memory';
 import type { BackendDescriptor, ProviderDefinition } from '@lostgradient/operative/provider-kit';
-import type { PluginDescriptor, PluginMcpApp } from '@lostgradient/interborough-plugin';
+import type { PluginDescriptor, PluginPanel } from '@lostgradient/interborough-plugin';
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
+
+import type { PluginProblemCode } from './plugin-problem-codes.ts';
 
 /**
  * Where a plugin was loaded from: a workspace package the host lists, Bungalow's `plugins/` folder,
@@ -38,7 +40,7 @@ export interface BureauPluginEntry {
 
 /** The owner's choices for one plugin, persisted under `plugins.<name>` in Bungalow's configuration. */
 export interface BureauPluginSettings {
-  /** Whether the plugin runs; absent takes the descriptor's `enabledByDefault`, itself `true` by default. */
+  /** Whether the plugin runs; absent takes the descriptor's `enabled`, itself `true` by default. */
   readonly enabled?: boolean | undefined;
   /** The value the plugin's `configuration` schema parses; absent parses `{}`. */
   readonly configuration?: unknown;
@@ -58,6 +60,8 @@ export interface PluginProviderContribution {
   readonly plugin: string;
   /** The provider definition the host resolves a generate through. */
   readonly definition: ProviderDefinition;
+  /** The validated plugin configuration handed to every provider factory. */
+  readonly configuration: unknown;
   /** The catalog rows of its models; each row's `provider` is `definition.name`. */
   readonly rows: readonly BackendDescriptor[];
 }
@@ -70,8 +74,17 @@ export interface PluginModelContributions {
 
 /** What plugins contribute to governed memory, for a `memory` factory to build with. */
 export interface PluginMemoryContributions {
-  /** Detectors run after the default poisoning detector, on admission and on recall. */
-  readonly detectors: readonly InputDetector[];
+  /**
+   * The `guardrails.memory` detectors of the running plugins, in load order, split by the gates
+   * each declares (both when it declares none): `admission` run after the default poisoning
+   * detector on every write, and `recall` run after it on every recalled record.
+   */
+  readonly guardrails: {
+    /** The detectors that run on admission. */
+    readonly admission: readonly InputDetector[];
+    /** The detectors that run on recall. */
+    readonly recall: readonly InputDetector[];
+  };
   /** Embedders a `memory.embedder` setting can name, by `plugin:name`. */
   readonly embedders: readonly ContributedEmbedder[];
 }
@@ -90,7 +103,7 @@ export interface PluginClashParty {
   readonly location: string;
 }
 
-/** Something wrong with a plugin, by `code`. */
+/** Something wrong with a plugin, by `code`; its codes are exactly `PLUGIN_PROBLEM_CODES`. */
 export type PluginProblem =
   | {
       /**
@@ -151,6 +164,17 @@ export type PluginProblem =
     }
   | {
       /**
+       * A formatter lists an event kind that is not in `BUREAU_EVENT_CATALOG`, so it would never
+       * format anything; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'formatter-unknown-kind';
+      /** The formatter's name within the plugin. */
+      readonly formatter: string;
+      /** The kind no event carries. */
+      readonly kind: string;
+    }
+  | {
+      /**
        * `setup` threw or rejected, or returned a contribution that cannot be registered (a name
        * outside the plugin name grammar, a tool that cannot be rebuilt, an embedder without a
        * positive integer dimension); the plugin is `skipped` and the host starts.
@@ -194,41 +218,55 @@ export type PluginProblem =
     }
   | {
       /**
-       * The host could not build the page of an MCP app the plugin contributed, such as an entry
+       * The host could not build the page of a panel the plugin contributed, such as an entry
        * that does not exist or does not compile. The plugin stays `running` with its other
        * contributions; the app is not listed or served, and the host starts. Reported by the host
-       * through {@link BureauPlugins.reportMcpAppFailure} once it has tried to build the app.
+       * through {@link BureauPlugins.reportPanelFailure} once it has tried to build the app.
        */
-      readonly code: 'mcp-app-failed';
+      readonly code: 'panel-failed';
       /** The app's name. */
       readonly app: string;
       /** The build failure's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     }
   | {
-      /** `afterStart` threw or rejected; the plugin's contributions stay registered. */
-      readonly code: 'after-start-failed';
+      /** `start` threw or rejected; the plugin's contributions stay registered. */
+      readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
 
-/** A kind of contribution, as the listing names it. */
+/** Fails to compile when `PluginProblem` and `PLUGIN_PROBLEM_CODES` disagree on the codes. */
+export type PluginProblemCodesAgree = AssertTrue<
+  [PluginProblem['code']] extends [PluginProblemCode]
+    ? [PluginProblemCode] extends [PluginProblem['code']]
+      ? true
+      : false
+    : false
+>;
+
+type AssertTrue<T extends true> = T;
+
+/**
+ * A kind of contribution, as the listing names it. A guardrail of the `input` or `output` family
+ * lists as `guardrail`, and one of the `memory` family as `memory-detector`.
+ */
 export type PluginContributionKind =
   | 'tool'
   | 'activity'
-  | 'trigger-kind'
+  | 'trigger'
   | 'validator'
   | 'guardrail'
-  | 'run-hooks'
+  | 'interceptor'
   | 'decision-router'
-  | 'hook-action'
+  | 'reaction'
   | 'provider'
   | 'embedder'
   | 'memory-detector'
-  | 'eval-judge'
-  | 'mcp-app'
-  | 'event-formatter'
-  | 'code-agent';
+  | 'scorer'
+  | 'panel'
+  | 'formatter'
+  | 'agent';
 
 /** One contribution a running plugin registered, as composition records it. */
 export interface PluginContribution {
@@ -250,7 +288,7 @@ export interface PluginContribution {
 export interface PluginContributionReferences {
   /**
    * The ready agents whose definition names it: a tool in a file's or a code agent's `tools`, a
-   * guardrail in a file's `guardrails`, a run hook set in a file's `hooks`. No other kind is named
+   * guardrail in a file's `guardrails`, an interceptor in a file's `interceptors`. No other kind is named
    * by an agent, so it counts none.
    */
   readonly agents: number;
@@ -304,8 +342,8 @@ export interface PluginListing {
   readonly problems: readonly PluginProblem[];
   /**
    * What it registered; empty unless it is `running` or `needs-setup`. A contribution whose option the host did not
-   * give (`hooks` for a hook action kind, `onlineEvals` for an eval judge, a `memory` factory for an
-   * embedder or memory detector) is not registered, and is not listed.
+   * give (`hooks` for a hook action kind, `scorers` for a scorer, a `memory` factory for an
+   * embedder or memory guardrail) is not registered, and is not listed.
    */
   readonly contributions: readonly PluginContributionListing[];
 }
@@ -315,7 +353,7 @@ export interface PluginListing {
  * name a file's `trigger.kind` uses, what it listens for, and the fields its configuration takes
  * (COR-1893). Carries no function.
  */
-export interface PluginTriggerKindListing {
+export interface PluginTriggerListing {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** `plugin:name`, the `kind` a workflow file's trigger names. */
@@ -336,7 +374,7 @@ export interface PluginTriggerKindListing {
  * `plugin` and `kind` an action `{ type: 'plugin' }` names, what it does, and the fields its
  * configuration takes. Carries no function.
  */
-export interface PluginHookActionKindListing {
+export interface PluginReactionListing {
   /** The contributing plugin's name. */
   readonly plugin: string;
   /** The kind's name within the plugin. */
@@ -346,6 +384,38 @@ export interface PluginHookActionKindListing {
   /** The version a delivery pins: the kind's own, else its plugin's. */
   readonly version: string;
   /** The kind's configuration schema as JSON Schema, or `null` when it cannot be written as one. */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+}
+
+/**
+ * One guardrail installed in the Bureau (COR-2118), as `bureau.guardrails.list` shows it: what an
+ * agent file can choose, and the memory guardrails no file chooses. A name is claimed per family,
+ * so one `id` may list once for each family it serves. Carries no function.
+ */
+export interface GuardrailListing {
+  /** `plugin:name`, the id an agent file's `guardrails` lists it by. */
+  readonly id: string;
+  /** What it guards: `input`, `output`, `tools` (tool calls) or `memory`, which no file can choose. */
+  readonly family: 'input' | 'output' | 'tools' | 'memory';
+  /** What the guardrail guards, in a sentence. */
+  readonly description: string;
+  /** Whether an agent file can configure it: it is a factory, which takes `{ id, configuration }`. */
+  readonly configurable: boolean;
+  /**
+   * The fields its configuration takes, as JSON Schema, with the defaults a field the agent leaves
+   * out takes; `null` when it takes none, or when the schema cannot be written as one.
+   */
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+  /** Who installed it: a running plugin, or the host through `BureauOptions.agentContributions`. */
+  readonly source: 'plugin' | 'host';
+  /** The contributing plugin's name, the first half of `id`. */
+  readonly plugin: string;
+}
+
+/** A model provider a running plugin contributes, without exposing executable code or values. */
+export interface PluginProviderListing {
+  readonly plugin: string;
+  readonly name: string;
   readonly configuration: Readonly<Record<string, unknown>> | null;
 }
 
@@ -363,36 +433,45 @@ export interface BureauPlugins {
    */
   registered(): readonly string[];
   /**
-   * The MCP apps of the running plugins, in load order, each with the plugin that contributed it.
+   * The panels of the running plugins, in load order, each with the plugin that contributed it.
    * Fixed once the Bureau is built: Bureau serves none of them, so a host builds and serves the
    * pages from this list.
    */
-  mcpApps(): readonly {
+  panels(): readonly {
     /** The contributing plugin's name. */
     readonly plugin: string;
     /** The contributing plugin's version. */
     readonly version: string;
     /** The app as the plugin declared it. */
-    readonly app: PluginMcpApp;
+    readonly app: PluginPanel;
   }[];
   /**
-   * Records that the host could not build the page of `plugin`'s MCP app `app`: the plugin lists
-   * an `mcp-app-failed` problem with `message` (secrets removed), and {@link mcpApps} stops
+   * Records that the host could not build the page of `plugin`'s panel `app`: the plugin lists
+   * a `panel-failed` problem with `message` (secrets removed), and {@link panels} stops
    * listing the app. The plugin keeps its status. Names no running plugin or app, and repeats, are
    * ignored.
    */
-  reportMcpAppFailure(plugin: string, app: string, message: string): void;
+  reportPanelFailure(plugin: string, app: string, message: string): void;
   /**
    * The trigger kinds of the running plugins, in load order: what a workflow file's trigger can
    * name besides `schedule` and `signal`. Fixed once the Bureau is built.
    */
-  triggerKinds(): readonly PluginTriggerKindListing[];
+  triggers(): readonly PluginTriggerListing[];
   /**
    * The hook action kinds of the running plugins, in load order: what a hook's action
    * `{ type: 'plugin' }` can name. Empty when the Bureau composes no hooks. Fixed once the Bureau
    * is built.
    */
-  hookActionKinds(): readonly PluginHookActionKindListing[];
-  /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
+  reactions(): readonly PluginReactionListing[];
+  /**
+   * Every installed guardrail (COR-2118): the host's (`BureauOptions.agentContributions`), then
+   * the running plugins' in load order, each family of a plugin's in the order input, output,
+   * tools, memory. A host's memory guardrails live inside its own memory and are not listed. Fixed
+   * once the Bureau is built.
+   */
+  guardrails(): readonly GuardrailListing[];
+  /** The model providers of running plugins, with the plugin configuration schema only. */
+  providers(): readonly PluginProviderListing[];
+  /** Settles once every running plugin's `start` has settled. Never rejects. */
   ready(): Promise<void>;
 }

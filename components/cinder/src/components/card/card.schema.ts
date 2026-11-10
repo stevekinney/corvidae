@@ -52,6 +52,11 @@ const schema = {
       enum: ['default', 'muted'],
       description: 'Footer surface treatment. `muted` renders a grey/inset footer region.',
     },
+    headerTone: {
+      enum: ['default', 'muted'],
+      description:
+        'Header surface treatment. `muted` renders a grey/inset header region, for a card whose title row reads as a band over its rows.',
+    },
     edgeToEdgeOnMobile: {
       type: 'boolean',
       description: 'Remove side borders/radius and bleed to the viewport edge on narrow screens.',

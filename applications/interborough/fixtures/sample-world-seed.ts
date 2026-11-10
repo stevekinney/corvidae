@@ -95,6 +95,9 @@ export const SAMPLE_WORLD_TIMES = {
 /** How long after its run starts Issue refund asks to refund order 4471 (10:42:00 to 10:42:20). */
 export const REFUND_4471_ASK_DELAY_MILLISECONDS = 20_000;
 
+/** How long Lookup order takes to find order 4471 (0.4s, as the chat's row says). */
+export const LOOKUP_4471_MILLISECONDS = 400;
+
 /** The chats of the sample world: each thread, the agent it is with, and what you write. */
 export const SAMPLE_WORLD_CHATS = {
   billing: {
@@ -127,28 +130,28 @@ export const TOOL_RUNNER_VERSIONS = [
   {
     instructions: 'You help customers with orders.',
     tools: ['lookup-order', 'triage-refunds'],
-    toolApproval: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
+    approvals: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
     model: 'anthropic/claude-haiku-5-5',
   },
   {
     instructions:
       'You help customers with orders. Look an order up with lookup-order before you answer anything about it.',
     tools: ['lookup-order', 'triage-refunds'],
-    toolApproval: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
+    approvals: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
     model: 'anthropic/claude-haiku-5-5',
   },
   {
     instructions:
       'You help customers with orders. Look an order up with lookup-order before you answer anything about it.',
     tools: ['lookup-order', 'triage-refunds'],
-    toolApproval: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
+    approvals: { 'lookup-order': 'never', 'triage-refunds': 'on-changes' },
     model: 'anthropic/claude-sonnet-5-5',
   },
   {
     instructions:
       'You help customers with orders. Look an order up with lookup-order before you answer anything about it.\n\nEvery refund over $25 needs a person to approve it first.',
     tools: ['lookup-order', 'issue-refund', 'triage-refunds'],
-    toolApproval: {
+    approvals: {
       'lookup-order': 'never',
       'issue-refund': 'always',
       'triage-refunds': 'on-changes',
@@ -309,10 +312,14 @@ function samplePacing(
   return {
     assistant: async (moment) => director.scene.assistant?.(moment),
     check: async (moment) => director.scene.check?.(moment),
+    // The lookup's time is part of the twenty seconds before the ask, which stays at 10:42:20 AM.
+    lookup: (moment) => {
+      if (moment.orderId === '4471') runtime.advance(LOOKUP_4471_MILLISECONDS);
+    },
     toolRunner: async (moment) => {
       await director.scene.toolRunner?.(moment);
       if (moment.step === 'refund-ask' && moment.orderId === '4471') {
-        runtime.advance(REFUND_4471_ASK_DELAY_MILLISECONDS);
+        runtime.advance(REFUND_4471_ASK_DELAY_MILLISECONDS - LOOKUP_4471_MILLISECONDS);
         return;
       }
       if (moment.step !== 'answer' || moment.request !== SAMPLE_WORLD_CHATS.billing.message) return;
@@ -481,6 +488,13 @@ async function monday(context: SessionContext): Promise<Omit<SampleWorld, 'host'
     round: refund4472.round ?? 0,
   });
   await waitForIdle(host, refund.threadId);
+  // The refund chat runs at Medium effort, which its details popover and composer say (ChatPage).
+  await bureauCall(host, 'bureau.contexts.steer', {
+    contextId: refund.threadId,
+    commandId: `sample-world-effort-${refund.threadId}`,
+    expectedRevision: 0,
+    effort: 'medium',
+  });
 
   runtime.setTime(SAMPLE_WORLD_TIMES.refund4471Started);
   await sendChatMessage(host, refund.agent, refund.threadId, refund.second);

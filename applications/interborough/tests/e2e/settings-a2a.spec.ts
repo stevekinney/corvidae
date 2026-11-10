@@ -38,16 +38,17 @@ async function open(page: Page) {
 }
 
 /**
- * The sample world's eight agents, in the order the board lists them: the six built-ins, then the
- * two the disabled Demo plugin holds back, which a switch is still drawn for.
+ * The sample world's eight agents, in the one order every agent list shares, the New chat board's:
+ * the six built-ins, then the two the disabled Demo plugin holds back, which a switch is still
+ * drawn for.
  */
 const AGENTS = [
   ['Assistant', true],
   ['Tool runner', true],
   ['Request human input', false],
+  ['Workflow author', false],
   ['Echo', false],
   ['Model switcher', false],
-  ['Workflow author', false],
   ['Release helper', false],
   ['Changelog writer', false],
 ] as const;

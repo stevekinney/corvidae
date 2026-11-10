@@ -1,6 +1,6 @@
 /**
  * Turns a Bureau event into the line a person reads (COR-1876). A plugin contributes formatters
- * for the event kinds it knows (`PluginEventFormatter`); an event no formatter claims is shown by
+ * for the event kinds it knows (`PluginFormatter`); an event no formatter claims is shown by
  * its raw kind, with the run it names so the view can still link to it.
  *
  * Each kind has at most one formatter. Two that claim the same kind are refused when the
@@ -9,7 +9,7 @@
  * @module bureau-event-formatting
  */
 
-import type { PluginEvent, PluginEventFormatter } from '@lostgradient/interborough-plugin';
+import type { PluginEvent, PluginFormatter } from '@lostgradient/interborough-plugin';
 
 import { runOfPayload } from './hooks/hook-origin.ts';
 
@@ -18,7 +18,7 @@ export interface EventFormatterRegistration {
   /** The plugin's name. */
   readonly plugin: string;
   /** The formatter itself. */
-  readonly formatter: PluginEventFormatter;
+  readonly formatter: PluginFormatter;
 }
 
 /** An event as a person reads it. */

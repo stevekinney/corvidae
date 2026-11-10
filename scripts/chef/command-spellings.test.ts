@@ -17,17 +17,29 @@ import { parseCommandLine } from './worktree-scope.ts';
 
 const repositoryRoot = join(import.meta.dir, '../..');
 const skillFiles = [
+  '.agents/skills/chef/references/coordination.md',
   '.agents/skills/chef/references/execution-record.md',
+  '.agents/skills/chef/references/execution-report.md',
+  '.agents/skills/chef/references/linear-policy.md',
   '.agents/skills/chef/references/planning-and-routing.md',
+  '.agents/skills/chef/references/program-runs.md',
   '.agents/skills/chef/references/review-and-deliver.md',
   '.agents/skills/chef/SKILL.md',
+  '.agents/skills/create-project/SKILL.md',
+  '.agents/skills/create-task/SKILL.md',
 ];
 
 const minimumInvocations: Record<string, number> = {
+  '.agents/skills/chef/references/coordination.md': 5,
   '.agents/skills/chef/references/execution-record.md': 8,
+  '.agents/skills/chef/references/execution-report.md': 3,
+  '.agents/skills/chef/references/linear-policy.md': 5,
   '.agents/skills/chef/references/planning-and-routing.md': 1,
+  '.agents/skills/chef/references/program-runs.md': 6,
   '.agents/skills/chef/references/review-and-deliver.md': 8,
-  '.agents/skills/chef/SKILL.md': 4,
+  '.agents/skills/chef/SKILL.md': 10,
+  '.agents/skills/create-project/SKILL.md': 3,
+  '.agents/skills/create-task/SKILL.md': 4,
 };
 
 describe('the spelling checker', () => {
@@ -153,7 +165,8 @@ describe('chef command spellings', () => {
     const named = new Set(
       charterRules.flatMap((rule) => invocationsIn(rule).map((invocation) => invocation.script)),
     );
-    for (const script of ['merge-gate', 'review-threads', 'leftovers'])
+    // Workers never run `merge-gate`; the coordinator delivers through `deliver.ts`.
+    for (const script of ['review-threads', 'leftovers'])
       expect(named.has(script), script).toBe(true);
   });
 

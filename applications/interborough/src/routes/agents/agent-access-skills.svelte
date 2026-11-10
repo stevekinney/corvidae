@@ -52,7 +52,7 @@
   /** The skills the file names that the host did not list. */
   const unlisted = $derived.by(() => {
     const listed = new Set((skills.data ?? []).map((skill) => skill.name));
-    return (form?.allowedSkills ?? []).filter((name) => !listed.has(name));
+    return (form?.skills ?? []).filter((name) => !listed.has(name));
   });
 
   function openSkills(event: MouseEvent): void {

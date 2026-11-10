@@ -172,9 +172,15 @@ describe('localized calendar labels', () => {
     expect(formatDateTime(Date.UTC(2026, 10, 1, 22, 12), { ...central, locale: 'de' })).toMatch(
       /^Gestern, /,
     );
-    expect(formatDateTime(Date.UTC(2026, 9, 29, 9, 0), { ...central, locale: 'de' })).toMatch(
-      /^Do\. 29\. Okt\., /,
-    );
+    const date = Date.UTC(2026, 9, 29, 9, 0);
+    const formatted = formatDateTime(date, { ...central, locale: 'de' });
+    const localizedDay = new Intl.DateTimeFormat('de', {
+      timeZone: CENTRAL,
+      weekday: 'short',
+      month: 'short',
+      day: 'numeric',
+    }).format(new Date(date));
+    expect(formatted).toBe(`${localizedDay}, 4:00 AM`);
   });
 });
 

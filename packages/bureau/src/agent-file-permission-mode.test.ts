@@ -76,7 +76,7 @@ interface Opened {
 }
 
 async function open(
-  toolApproval?: string,
+  approvals?: string,
   shared?: { readonly directory: string; readonly storage: MemoryStorage },
 ): Promise<Opened> {
   const directory = shared?.directory ?? (await mkdtemp(join(tmpdir(), 'bureau-permission-mode-')));
@@ -99,7 +99,7 @@ async function open(
     agentFileText({
       model: KNOWN_MODEL,
       tools: '[read-order, issue-refund]',
-      ...(toolApproval === undefined ? {} : { toolApproval }),
+      ...(approvals === undefined ? {} : { approvals }),
     }),
   );
   await harness.bureau.agents.refresh();

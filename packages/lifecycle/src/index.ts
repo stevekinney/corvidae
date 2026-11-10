@@ -4,7 +4,13 @@ export { allEventsObservable, eventObservable } from './event-observable';
 export { ForwardedEvent, forwardEvents } from './forwarded-event';
 export type { ForwardableSource } from './forwarded-event';
 export { HookRegistry } from './hooks/hook-registry';
-export { mergeHookRegistries } from './hooks/merge-hook-registries';
+export {
+  HOOK_TIERS,
+  HOOK_TIER_BAND_WIDTH,
+  HOOK_TIER_PRIORITY_BANDS,
+  mergeHookRegistries,
+  type HookTierRegistries,
+} from './hooks/merge-hook-registries';
 export type {
   HookErrorHandler,
   HookMap,
@@ -19,6 +25,7 @@ export type {
   HookRegistrationOptions,
   HookRegistryOptions,
   HookReplayPolicy,
+  HookTier,
 } from './hooks/types';
 export { createManualRuntimeServices } from './manual-runtime-services';
 export type {

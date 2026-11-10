@@ -39,7 +39,20 @@ export type DocumentActivityArgument = Readonly<{
   signal?: unknown;
   workflowId: string;
   step: number;
+  /** Stable iteration path for this step; absent for flat documents. */
+  iteration?: readonly (string | number)[];
+  /** Canonical address combining the preorder step and iteration path. */
+  stepAddress?: string;
 }>;
+
+/** Canonical address for a document step. Dots are encoded to preserve path boundaries. */
+export function documentStepAddress(
+  step: number,
+  iteration?: readonly (string | number)[],
+): string {
+  if (iteration === undefined || iteration.length === 0) return String(step);
+  return `${String(step)}#${iteration.map((segment) => encodeURIComponent(String(segment)).replaceAll('.', '%2E')).join('.')}`;
+}
 
 /**
  * A host-registered activity handler a document names by key. A thrown error
@@ -128,9 +141,15 @@ export interface DocumentWorkflowHost {
 
 /** One step of a {@link WorkflowDocument}. */
 export type WorkflowDocumentStep =
-  | Readonly<{ kind: 'activity'; handler: string; input?: JSONValue }>
+  | Readonly<{ kind: 'activity'; handler: string; input?: JSONValue | undefined }>
   | Readonly<{ kind: 'sleep'; duration: string | number }>
-  | Readonly<{ kind: 'await-signal'; signal: string }>;
+  | Readonly<{ kind: 'await-signal'; signal: string }>
+  | Readonly<{
+      kind: 'branch';
+      on: string;
+      cases: Readonly<Record<string, readonly WorkflowDocumentStep[]>>;
+      otherwise?: readonly WorkflowDocumentStep[] | undefined;
+    }>;
 
 /** A declarative workflow: a name, an opaque trigger, and ordered steps. */
 export interface WorkflowDocument {
@@ -195,15 +214,29 @@ const durationSchema = z.union([z.string(), z.number()]).superRefine((duration, 
 });
 
 /** The schema of one document step, exposed so workflow editors can derive its field catalog. */
-export const workflowDocumentStepSchema = z.discriminatedUnion('kind', [
-  z.strictObject({
-    kind: z.literal('activity'),
-    handler: z.string().min(1),
-    input: jsonValueSchema.optional(),
-  }),
-  z.strictObject({ kind: z.literal('sleep'), duration: durationSchema }),
-  z.strictObject({ kind: z.literal('await-signal'), signal: z.string().min(1) }),
-]);
+export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.lazy(() =>
+  z.discriminatedUnion('kind', [
+    z.strictObject({
+      kind: z.literal('activity'),
+      handler: z.string().min(1),
+      input: jsonValueSchema.optional(),
+    }),
+    z.strictObject({ kind: z.literal('sleep'), duration: durationSchema }),
+    z.strictObject({ kind: z.literal('await-signal'), signal: z.string().min(1) }),
+    z.strictObject({
+      kind: z.literal('branch'),
+      on: z.string().min(1),
+      cases: z
+        .record(z.string(), z.array(workflowDocumentStepSchema))
+        .superRefine((cases, context) => {
+          if (Object.keys(cases).length === 0) {
+            context.addIssue({ code: 'custom', message: 'must contain at least one case' });
+          }
+        }),
+      otherwise: z.array(workflowDocumentStepSchema).optional(),
+    }),
+  ]),
+);
 
 /**
  * Structural schema for a {@link WorkflowDocument}. It does not know the
@@ -237,6 +270,14 @@ export class WorkflowDocumentValidationError extends Error {
     super(`Invalid workflow document: ${summary}`);
     this.name = 'WorkflowDocumentValidationError';
     this.issues = issues;
+  }
+}
+
+/** Thrown when a branch has no matching case and no `otherwise` steps. */
+export class WorkflowDocumentBranchError extends Error {
+  constructor(field: string, value: unknown) {
+    super(`Branch has no matching case for field "${field}" with value ${JSON.stringify(value)}`);
+    this.name = 'WorkflowDocumentBranchError';
   }
 }
 
@@ -315,18 +356,36 @@ function hostIssues(
     const reason = validator(document.trigger);
     if (reason !== undefined) issues.push({ path: 'trigger', message: reason });
   }
-  for (const [index, step] of document.steps.entries()) {
-    if (step.kind !== 'activity') continue;
-    const path = `steps[${String(index)}].handler`;
+  visitSteps(document.steps, 'steps', (step, path) => {
+    if (step.kind !== 'activity') return;
     const nameIssue = activityNameIssue(step.handler);
     if (nameIssue !== undefined) {
-      issues.push({ path, message: nameIssue });
+      issues.push({ path: `${path}.handler`, message: nameIssue });
     } else if (!Object.hasOwn(host.activities, step.handler)) {
-      issues.push({ path, message: `activity handler "${step.handler}" is not registered` });
+      issues.push({
+        path: `${path}.handler`,
+        message: `activity handler "${step.handler}" is not registered`,
+      });
     }
-  }
+  });
   issues.push(...pinIssues(document, host));
   return issues;
+}
+
+function visitSteps(
+  steps: readonly WorkflowDocumentStep[],
+  path: string,
+  visit: (step: WorkflowDocumentStep, path: string) => void,
+): void {
+  for (const [index, step] of steps.entries()) {
+    const stepPath = `${path}[${String(index)}]`;
+    visit(step, stepPath);
+    if (step.kind !== 'branch') continue;
+    for (const [literal, nested] of Object.entries(step.cases)) {
+      visitSteps(nested, `${stepPath}.cases.${literal}`, visit);
+    }
+    if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
+  }
 }
 
 /** The issues with a document's `activityVersions`: a pin for a handler no step uses, or one the host cannot honor. */
@@ -335,9 +394,10 @@ function pinIssues(
   host: DocumentWorkflowHost,
 ): WorkflowDocumentIssue[] {
   if (document.activityVersions === undefined) return [];
-  const used = new Set(
-    document.steps.flatMap((step) => (step.kind === 'activity' ? [step.handler] : [])),
-  );
+  const used = new Set<string>();
+  visitSteps(document.steps, 'steps', (step) => {
+    if (step.kind === 'activity') used.add(step.handler);
+  });
   const issues: WorkflowDocumentIssue[] = [];
   for (const [handler, version] of Object.entries(document.activityVersions)) {
     const path = `activityVersions.${handler}`;

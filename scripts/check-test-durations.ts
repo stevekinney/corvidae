@@ -28,7 +28,11 @@
  *     allowlist;
  *   - every root `*.slow.test.ts` file must be named by a pattern in `test:self:slow`, because the
  *     fast lane ignores slow test files wherever it looks: a slow file the slow lane does
- *     not list would run in no lane and leave the gate unnoticed.
+ *     not list would run in no lane and leave the gate unnoticed;
+ *   - `*.integration.test.ts` files (a test that starts a process or an out-of-process service,
+ *     which `check-test-process-spawns.ts` requires) follow the same two rules: `test` ignores
+ *     them and the slow lane runs them. They stay in `test:coverage`, which runs only in
+ *     `bun run validate`.
  *
  * Entries are keyed `<workspace> :: <file> :: <classname> :: <name>` using the
  * report's own `file`, `classname` and `name` attributes. `--shrink` rewrites
@@ -48,6 +52,8 @@ import { workspaceParentDirectories } from './workspace-directories.ts';
 export const BUDGET_MILLISECONDS = 2000;
 export const STALE_FLOOR_MILLISECONDS = BUDGET_MILLISECONDS / 2;
 export const SLOW_LANE_SUFFIX = '.slow.test.ts';
+/** Tests that start a process or an out-of-process service; they share the slow lane. */
+export const INTEGRATION_LANE_SUFFIX = '.integration.test.ts';
 const WRAPPER_NAMES = ['bun-test-junit.ts', 'run-tests.ts'];
 const RUNNER_NAME = 'run-tests.ts';
 
@@ -171,29 +177,33 @@ function walkWorkspaces(): string[] {
   return ['.', ...workspaces];
 }
 
-/** Slow-lane files under one workspace. The root workspace excludes the nested workspaces, which own theirs. */
-function slowTestFiles(
+/**
+ * Files under one workspace whose names end in `suffix`. The root workspace excludes the nested
+ * workspaces, which own theirs.
+ */
+function laneTestFiles(
   directory: string,
+  suffix: string,
   skipped: ReadonlySet<string> = SKIPPED_DIRECTORIES,
   found: string[] = [],
 ): string[] {
   for (const entry of readdirSync(directory, { withFileTypes: true })) {
     if (entry.isDirectory()) {
       if (entry.name.startsWith('.') || skipped.has(entry.name)) continue;
-      slowTestFiles(join(directory, entry.name), SKIPPED_DIRECTORIES, found);
-    } else if (entry.isFile() && entry.name.endsWith(SLOW_LANE_SUFFIX)) {
+      laneTestFiles(join(directory, entry.name), suffix, SKIPPED_DIRECTORIES, found);
+    } else if (entry.isFile() && entry.name.endsWith(suffix)) {
       found.push(join(directory, entry.name));
     }
   }
   return found;
 }
 
-/** The slow-file patterns a `test:self:slow` script names: its words ending in `.slow.test.ts`. */
-function slowLanePatterns(script: string): string[] {
+/** The file patterns a `test:self:slow` script names: its words ending in `suffix`. */
+function laneFilePatterns(script: string, suffix: string): string[] {
   return script
     .split(/\s+/)
     .map((word) => word.replace(/^['"]|['"]$/g, '').replace(/^\.\//, ''))
-    .filter((word) => word.endsWith(SLOW_LANE_SUFFIX));
+    .filter((word) => word.endsWith(suffix));
 }
 
 /**
@@ -205,6 +215,7 @@ export function laneProblems(
   scripts: Readonly<Record<string, string>>,
   hasSlowFiles: boolean,
   rootSlowFiles: readonly string[] = [],
+  integrationFiles: readonly string[] = [],
 ): string[] {
   const problems: string[] = [];
   // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`, and
@@ -218,11 +229,12 @@ export function laneProblems(
       `${workspace}: its test script does not run through scripts/bun-test-junit.ts (or the playground runner), so the duration ratchet cannot see its tests`,
     );
   }
-  if (!hasSlowFiles) return problems;
   // `run-tests.ts` is the playground runner, which splits the lanes by file name itself.
   const ignoresSlowFiles = (script: string): boolean =>
     script.includes(RUNNER_NAME) ||
     (script.includes('--path-ignore-patterns') && script.includes(SLOW_LANE_SUFFIX));
+  problems.push(...integrationLaneProblems(workspace, test, scripts, slowScript, integrationFiles));
+  if (!hasSlowFiles) return problems;
   if (!ignoresSlowFiles(test)) {
     problems.push(
       `${workspace}: has ${SLOW_LANE_SUFFIX} files but its test script does not ignore them with --path-ignore-patterns`,
@@ -233,7 +245,7 @@ export function laneProblems(
       `${workspace}: has ${SLOW_LANE_SUFFIX} files but defines no ${slowScript} script`,
     );
   } else if (isRoot) {
-    const patterns = slowLanePatterns(scripts[slowScript]);
+    const patterns = laneFilePatterns(scripts[slowScript], SLOW_LANE_SUFFIX);
     for (const file of rootSlowFiles) {
       if (!patterns.some((pattern) => new Bun.Glob(pattern).match(file))) {
         problems.push(
@@ -250,6 +262,51 @@ export function laneProblems(
   if (runsBunTest && !ignoresSlowFiles(coverage)) {
     problems.push(
       `${workspace}: test:coverage runs ${SLOW_LANE_SUFFIX} files in its parallel phase; ignore them there too with --path-ignore-patterns`,
+    );
+  }
+  return problems;
+}
+
+/**
+ * The wiring problems of a workspace's `*.integration.test.ts` files, given relative to the
+ * workspace (the repository root for the root workspace). Like slow files, they stay out of `test`
+ * and run in the serial slow lane, which `bun run check` never runs. Unlike slow files they stay in
+ * `test:coverage`: coverage runs only in `bun run validate`, and the per-file floors were measured
+ * with them.
+ */
+export function integrationLaneProblems(
+  workspace: string,
+  test: string,
+  scripts: Readonly<Record<string, string>>,
+  slowScript: string,
+  integrationFiles: readonly string[],
+): string[] {
+  if (integrationFiles.length === 0) return [];
+  const problems: string[] = [];
+  const suffix = INTEGRATION_LANE_SUFFIX;
+  if (
+    !test.includes(RUNNER_NAME) &&
+    !(test.includes('--path-ignore-patterns') && test.includes(suffix))
+  ) {
+    problems.push(
+      `${workspace}: has ${suffix} files but its test script does not ignore them with --path-ignore-patterns`,
+    );
+  }
+  const lane = scripts[slowScript];
+  if (lane === undefined) {
+    problems.push(`${workspace}: has ${suffix} files but defines no ${slowScript} script`);
+  } else if (workspace === '.') {
+    const patterns = laneFilePatterns(lane, suffix);
+    for (const file of integrationFiles) {
+      if (!patterns.some((pattern) => new Bun.Glob(pattern).match(file))) {
+        problems.push(
+          `${workspace}: ${file} is a ${suffix} file that ${slowScript} does not run, so no lane would; list its directory in ${slowScript}`,
+        );
+      }
+    }
+  } else if (!lane.includes(RUNNER_NAME) && !lane.includes(suffix)) {
+    problems.push(
+      `${workspace}: ${slowScript} does not run its ${suffix} files; name ${suffix} in it`,
     );
   }
   return problems;
@@ -302,18 +359,19 @@ function collect(mode: 'report' | 'enforce'): Collected {
       scripts?: Record<string, string>;
     };
     const scripts = manifest.scripts ?? {};
-    const slowFiles = slowTestFiles(
-      directory,
+    const skipped =
       workspace === '.'
         ? new Set([...SKIPPED_DIRECTORIES, ...WORKSPACE_DIRECTORIES])
-        : SKIPPED_DIRECTORIES,
-    );
+        : SKIPPED_DIRECTORIES;
+    const slowFiles = laneTestFiles(directory, SLOW_LANE_SUFFIX, skipped);
+    const integrationFiles = laneTestFiles(directory, INTEGRATION_LANE_SUFFIX, skipped);
     collected.problems.push(
       ...laneProblems(
         workspace,
         scripts,
         slowFiles.length > 0,
         slowFiles.map((file) => relative(directory, file)),
+        integrationFiles.map((file) => relative(directory, file)),
       ),
     );
 

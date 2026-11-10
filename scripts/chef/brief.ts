@@ -10,16 +10,22 @@
 //
 // It reads the issue with `linear.ts`'s client and writes `<main checkout>/tmp/chef/briefs/<ID>.md`
 // (gitignored; `--out-dir` replaces the directory) holding:
-//   - the issue's execution brief and acceptance criteria: the description sections under those
-//     headings, or the whole description when it has neither;
+//   - the issue's brief (an "Execution brief" or "Brief" heading) followed by its Current behavior,
+//     Acceptance criteria, Decisions, Out of scope, Constraints and Delivery boundary sections and
+//     every dated revision, or the whole description when it has no brief heading;
 //   - when the issue names a design (a claude.ai artifact link or a "Design source" section): the
 //     design rows, the rows its acceptance criteria leave out, and the instruction to build against
 //     the saved boards and return a design-review verdict per row;
+//   - the open blockers: every blocked-by issue whose state type is not `completed`, or "None", or
+//     why the relations could not be read;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
-//   - the verification commands: each `--verify`, else the focused checks for what the worker changed;
-//   - the charter rules every worker gets (`references/execution-record.md` "Worker charter"): the
-//     merge gate, the review rounds, the turn rule, and the defect-class self-check.
+//   - the verification commands: each `--verify`, else the issue's Verification section, else the
+//     focused checks for what the worker changed, with the root lint always among them;
+//   - the charter rules every worker gets (`charterRules` below, their one source; the
+//     `references/execution-record.md` "Worker charter" template points here): the merge gate, the
+//     review rounds, the turn rule, the defect-class self-check, context, the report, corrections,
+//     and acceptance-criteria statuses.
 //
 // The script only prepares the brief. The coordinator tool starts the session: one fresh session
 // per issue, on Sonnet unless the brief names a reason for another model, from this file, and the
@@ -30,11 +36,13 @@
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  type Blocker,
   createClient,
   fetchIssue,
   type IssueSummary,
   type LinearDependencies,
   LinearError,
+  openBlockers,
 } from './linear.ts';
 import {
   defaultRunner,
@@ -47,34 +55,38 @@ import { resolveMainCheckout } from './repository-locations.ts';
 
 export { UsageError };
 
-/** The charter rules, kept equal to `references/execution-record.md` by `brief.test.ts`. */
+/**
+ * The charter rules: the one source of the worker-facing rules. `brief.test.ts` keeps each in step
+ * with the AGENTS.md rule it restates and keeps `references/execution-record.md` from restating them.
+ */
 export const charterRules = [
-  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: `bun test` on the touched files, `bun run lint:root` always, because its guards scan the tests of every workspace, `bun run typecheck:root` when root or `scripts/` files changed, `bunx turbo run lint typecheck --filter=<workspace>` for each changed workspace, and `bunx prettier --check` on the changed files. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved: after the coordinator has accepted your ready-for-review return, merge only with `bun scripts/chef/merge-gate.ts --pr <n> --worktree <path> --comment-file <file> --head <sha>`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
+  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: one command, `bun scripts/chef/focused-checks.ts`, which runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and the affected tests, and prints one summary line; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` itself when your change reaches one. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved. You do not merge: after the coordinator accepts your ready-for-review return, it delivers with `deliver.ts`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
   '**Review rounds (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
   '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait for a gate, a check, or a review bot in a background command and keep working; never end a turn to report that you are still waiting.',
   "**Defect-class self-check:** before opening the pull request, check the diff against every class in `.agents/skills/chef/references/defect-classes.md`, fix what applies, and report each class's result in the return. Before every fix push, run `bun scripts/chef/review-threads.ts classes --pr <n>`; on exit 1, push no further patch and return blocked.",
   '**Context:** keep it small. Write gate output to a log and read a failure with a targeted search. A context past about 250K tokens means: write a handoff brief under `tmp/chef/` and hand off to a fresh session.',
   '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Write logs and evidence under `tmp/chef/<package>/round-<n>/` in the main checkout, with a new directory for each correction round. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
-  '**Corrections:** after two unsuccessful attempts at the same defect, stop patching and return evidence for causal reassessment.',
+  '**Corrections:** after two unsuccessful attempts at the same defect or acceptance criterion, stop patching and return evidence for causal reassessment.',
+  '**Acceptance criteria:** give every criterion exactly one status in the return. Implemented: not yet checked. Verified: a named command passed or a manual check was done. Failed: a check failed. Blocked: an external dependency prevents checking. Not verified: not checked, with the reason. Criteria include dated revisions and amending comments; a conflict between them is needs-decision. Number unnumbered criteria AC1, AC2 in the return only.',
 ];
 
 const rootLint = 'bun run lint:root';
+const focusedChecks = 'bun scripts/chef/focused-checks.ts';
 
-const defaultVerification = [
-  'bun test <the test files you changed>',
-  rootLint,
-  'bun run typecheck:root',
-  'bunx prettier --check <the files you changed>',
-];
+/** Whether a verification list already runs the root lint, directly or through `focused-checks.ts`. */
+const runsRootLint = (text: string) => text.includes(rootLint) || text.includes(focusedChecks);
+
+const defaultVerification = [focusedChecks];
 
 /**
  * The verification list: the explicit commands, or the defaults when there are none. The
- * root lint is always on it, because its guards scan the tests of every workspace, so a
- * change inside one workspace can fail it.
+ * default `focused-checks.ts` runs the root lint itself; explicit commands get it appended,
+ * because its guards scan the tests of every workspace, so a change inside one workspace can
+ * fail it.
  */
 export function verificationCommands(explicit: string[]): string[] {
   if (explicit.length === 0) return defaultVerification;
-  return explicit.includes(rootLint) ? explicit : [...explicit, rootLint];
+  return explicit.some(runsRootLint) ? explicit : [...explicit, rootLint];
 }
 
 /** The body of the description section whose heading matches `heading`, or `undefined`. */
@@ -238,19 +250,62 @@ function designLines(identifier: string, description: string, descriptionInclude
 }
 
 const descriptionLimit = 16_000;
+
+/** The heading that opens an issue's brief: "Execution brief", or "Brief" alone. */
+const briefHeading = /execution\s+brief|^brief$/i;
+
+/**
+ * The sections a brief carries after the issue's own brief, in this order. Each is the issue's
+ * section under a matching heading; Acceptance criteria is the one that is always shown.
+ */
+const carriedSections: { title: string; heading: RegExp; missing?: string }[] = [
+  { title: 'Current behavior', heading: /^current\s+behaviou?r\b/i },
+  {
+    title: 'Acceptance criteria',
+    heading: /acceptance\s+criteria/i,
+    missing: '(none stated; derive them from the execution brief and write them down first)',
+  },
+  { title: 'Decisions', heading: /^decisions?\b/i },
+  { title: 'Out of scope', heading: /^out\s+of\s+scope\b/i },
+  { title: 'Constraints', heading: /^constraints?\b/i },
+  { title: 'Delivery boundary', heading: /^delivery\s+boundary\b/i },
+];
 const pathLimit = 40;
+
+/** The issue's open blockers as read from Linear, or why they could not be read. */
+export type BlockerRead = { open: Blocker[] } | { unreadable: string };
 
 export interface BriefOptions {
   paths: string[];
   verify: string[];
   model: string;
+  /** Omitted when the blockers were not read; the brief then says so instead of "None". */
+  blockers?: BlockerRead | undefined;
+}
+
+/** The "Open blockers" section: never "None" unless the relations were actually read. */
+export function blockerLines(blockers: BlockerRead | undefined): string[] {
+  const body =
+    blockers === undefined
+      ? ['- (not read; run `bun scripts/chef/linear.ts blockers <ID>` before starting)']
+      : 'unreadable' in blockers
+        ? [`- (could not be read: ${blockers.unreadable})`]
+        : blockers.open.length === 0
+          ? ['None']
+          : [
+              ...blockers.open.map(
+                (blocker) => `- ${blocker.identifier} [${blocker.state}] ${blocker.title}`,
+              ),
+              '',
+              'Do not start while a blocker is open: return blocked. A Canceled or Duplicate blocker is a question for the owner, not a release.',
+            ];
+  return ['## Open blockers', '', ...body, ''];
 }
 
 /** Render the brief for `issue`. Pure. */
 export function renderBrief(issue: IssueSummary, options: BriefOptions): string {
   const description = (issue.description ?? '').trim();
-  const execution = sectionOf(description, /execution\s+brief/i);
-  const criteria = sectionOf(description, /acceptance\s+criteria/i);
+  const execution = sectionOf(description, briefHeading);
   const filesSection = sectionOf(description, /^files?\b|files? to (?:change|touch)/i);
   const paths =
     options.paths.length > 0
@@ -258,8 +313,8 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       : (filesSection !== undefined ? pathsIn(filesSection) : []).concat(
           filesSection === undefined ? pathsIn(description) : [],
         );
-  // Without an execution-brief heading, the whole description is the brief: its scope,
-  // verification, and delivery sections would otherwise be dropped.
+  // Without a brief heading, the whole description is the brief: its scope, verification, and
+  // delivery sections would otherwise be dropped.
   const source =
     execution === undefined
       ? description.length > descriptionLimit
@@ -277,15 +332,23 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     '',
   ];
   if (execution !== undefined) {
-    lines.push(
-      '## Acceptance criteria',
-      '',
-      criteria ?? '(none stated; derive them from the execution brief and write them down first)',
-      '',
-    );
+    for (const section of carriedSections) {
+      const body = sectionOf(description, section.heading) ?? section.missing;
+      if (body !== undefined) lines.push(`## ${section.title}`, '', body, '');
+    }
+    // Dated revisions settle decisions and amend criteria, so they travel whole and in order.
+    for (const revision of sectionsOf(description).filter((entry) =>
+      /\brevision\b/i.test(entry.heading),
+    ))
+      lines.push(`## ${revision.heading}`, '', revision.body.trim(), '');
   }
+  lines.push(...blockerLines(options.blockers));
   lines.push(...designLines(issue.identifier, description, execution === undefined));
   lines.push('## Files', '');
+  const issueVerification =
+    execution !== undefined && options.verify.length === 0
+      ? sectionOf(description, /^verification\b/i)
+      : undefined;
   lines.push(
     ...(paths.length > 0
       ? paths.slice(0, pathLimit).map((path) => `- \`${path}\``)
@@ -293,7 +356,11 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     '',
     '## Verification',
     '',
-    ...verificationCommands(options.verify).map((command) => `- \`${command}\``),
+    ...(issueVerification === undefined
+      ? verificationCommands(options.verify).map((command) => `- \`${command}\``)
+      : runsRootLint(issueVerification)
+        ? [issueVerification]
+        : [issueVerification, `- \`${rootLint}\``]),
     '',
     '## Charter rules',
     '',
@@ -314,8 +381,16 @@ export async function writeBrief(
   options: BriefOptions & { outDirectory: string },
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
-  const issue = await fetchIssue(createClient(dependencies), identifier);
-  const text = renderBrief(issue, options);
+  const client = createClient(dependencies);
+  const issue = await fetchIssue(client, identifier);
+  let blockers: BlockerRead;
+  try {
+    blockers = { open: await openBlockers(client, issue.identifier) };
+  } catch (error) {
+    if (!(error instanceof LinearError)) throw error;
+    blockers = { unreadable: error.message };
+  }
+  const text = renderBrief(issue, { ...options, blockers });
   mkdirSync(options.outDirectory, { recursive: true });
   const path = join(options.outDirectory, `${issue.identifier}.md`);
   writeFileSync(path, text);

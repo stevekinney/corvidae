@@ -244,7 +244,7 @@ describe('the Instructions tab', () => {
           models: [],
           tools: [],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: 'Answer every message.',
         },
       }),
@@ -348,10 +348,8 @@ describe('the Settings tab', () => {
       definition: {
         ...definition.definition,
         models: ['anthropic/haiku'],
-        stepLimit: 12,
         guardrails: ['acme:tripwire'],
-        costBudget: { perRunUsd: 1.5 },
-        toolBudget: { maxCalls: 30, maxDurationSeconds: 90 },
+        limits: { steps: 12, cost: { run: 1.5 }, tools: { calls: 30, seconds: 90 } },
       },
     };
   };
@@ -390,7 +388,7 @@ describe('the Settings tab', () => {
       { 'bureau.agents.versions.list': () => ({ versions: [] }) },
       {
         ...agent,
-        definition: { ...agent.definition, defaultEffort: 'high' },
+        definition: { ...agent.definition, effort: 'high' },
       },
     );
     const { findByTestId } = mount();

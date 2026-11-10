@@ -93,6 +93,7 @@ export type {
   GuardrailsDeclaration,
 } from './agent-policy';
 export * from './agent-skill-descriptor';
+export * from './bureau-invariants';
 export { RUN_COST_BUDGET_MAXIMUM_WARNINGS } from './cost-budget';
 export type { RunCostBudget } from './cost-budget';
 export * from './cost-budget-monitor';
@@ -165,6 +166,7 @@ export type {
   ClassifiedError,
   ErrorCategory,
   GeneratedMediaNotAdmittedReason,
+  GuardrailPhase,
   GuardrailTripwireDetail,
   ResponsePartsMismatchSource,
   SerializedAgentRunError,
@@ -240,6 +242,7 @@ export {
   rowContentForParts,
   runWideParts,
 } from './response-parts';
+export { runScopedExecutionContextOf } from './run-scoped-execution-context';
 export * from './runnable-agent';
 export * from './selection-gate';
 export { admitToolResultMedia } from './tool-result-media';
@@ -257,7 +260,12 @@ export { createDefaultRuntimeServices, createManualRuntimeServices } from '@lost
 // naming the registry; now it cannot, and re-exporting here spares every
 // caller a direct dependency on @lostgradient/lifecycle for the one type the
 // operative run contract requires. Source owner is still lifecycle.
-export { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
+export {
+  HOOK_TIERS,
+  HOOK_TIER_PRIORITY_BANDS,
+  HookRegistry,
+  mergeHookRegistries,
+} from '@lostgradient/lifecycle';
 export type {
   CreateManualRuntimeServicesOptions,
   DeferredDrainReport,
@@ -269,6 +277,8 @@ export type {
   HookRegistrationOptions,
   HookRegistryOptions,
   HookReplayPolicy,
+  HookTier,
+  HookTierRegistries,
   ManualRuntimeServices,
   RuntimeClock,
   RuntimeDeferred,

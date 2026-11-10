@@ -93,7 +93,7 @@ describe('what a plugin adds and what names it', () => {
     const mixed = standing({
       name: 'web-search',
       contributions: [
-        contribution('trigger-kind', 'web-search:changed'),
+        contribution('trigger', 'web-search:changed'),
         contribution('activity', 'web-search:fetch-page'),
         contribution('tool', 'web-search:search@1.0.0', {}, 'Search the web'),
       ],
@@ -337,14 +337,10 @@ describe('problemView', () => {
         body: 'it broke',
       });
     }
-    expect(problemView({ code: 'after-start-failed', message: 'it broke' }).status.dot).toBe(
-      'warning',
-    );
-    expect(
-      problemView({ code: 'mcp-app-failed', app: 'panel', message: 'no entry' }),
-    ).toMatchObject({
-      status: { label: 'Loaded, a page was not built', dot: 'warning' },
-      body: 'The page panel is not served. no entry',
+    expect(problemView({ code: 'start-failed', message: 'it broke' }).status.dot).toBe('warning');
+    expect(problemView({ code: 'panel-failed', app: 'one', message: 'no entry' })).toMatchObject({
+      status: { label: 'Loaded, a panel was not built', dot: 'warning' },
+      body: 'The panel one is not served. no entry',
     });
   });
 

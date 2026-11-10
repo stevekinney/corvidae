@@ -145,7 +145,7 @@ describe('the tab', () => {
       {},
       detailWith({
         tools: ['lookup-order', 'issue-refund'],
-        toolApproval: { 'lookup-order': 'never', 'issue-refund': 'never' },
+        approvals: { 'lookup-order': 'never', 'issue-refund': 'never' },
       }),
     );
     const { container, findByTestId } = mount();
@@ -191,7 +191,7 @@ describe('the tab', () => {
         name: 'Researcher',
         model: 'anthropic/sonnet',
         tools: ['lookup-order'],
-        toolApproval: { 'lookup-order': 'always' },
+        approvals: { 'lookup-order': 'always' },
         instructions: 'You are a careful researcher.',
       },
     });
@@ -201,7 +201,7 @@ describe('the tab', () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ defaultEffort: 'high' }),
+      detailWith({ effort: 'high' }),
     );
     const { container, findByRole } = mount();
 
@@ -216,15 +216,15 @@ describe('the tab', () => {
     await fireEvent.click(save);
 
     await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
-    // An update that omits `defaultEffort` keeps the file's; the editor owns the field.
-    expect(updatesOf(served)[0]?.params['definition']).not.toHaveProperty('defaultEffort');
+    // An update that omits `effort` keeps the file's; the editor owns the field.
+    expect(updatesOf(served)[0]?.params['definition']).not.toHaveProperty('effort');
   });
 
   test('drops a tool’s approval in the same write that withdraws the tool', async () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ toolApproval: { 'lookup-order': 'always' } }),
+      detailWith({ approvals: { 'lookup-order': 'always' } }),
     );
     const { findByRole, getByRole } = mount();
 
@@ -234,7 +234,7 @@ describe('the tab', () => {
 
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     const definition = updatesOf(served)[0]?.params['definition'];
-    expect(definition).toMatchObject({ tools: [], toolApproval: null });
+    expect(definition).toMatchObject({ tools: [], approvals: null });
   });
 
   test('saves the budgets and refuses a number the Bureau would refuse', async () => {
@@ -256,8 +256,7 @@ describe('the tab', () => {
     await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
     const definition = updatesOf(served)[0]?.params['definition'];
     expect(definition).toMatchObject({
-      costBudget: { perRunUsd: 0.5 },
-      toolBudget: { maxCalls: 3 },
+      limits: { cost: { run: 0.5 }, tools: { calls: 3 } },
     });
   });
 
@@ -419,7 +418,7 @@ describe('the tab', () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ toolApproval: { 'lookup-order': 'blocked' } }),
+      detailWith({ approvals: { 'lookup-order': 'blocked' } }),
     );
     const { container, findByRole, getByRole } = mount();
 
@@ -438,7 +437,7 @@ describe('the tab', () => {
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
       tools: ['lookup-order', 'issue-refund'],
-      toolApproval: { 'lookup-order': 'blocked' },
+      approvals: { 'lookup-order': 'blocked' },
     });
   });
 
@@ -466,8 +465,7 @@ describe('the tab', () => {
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
       guardrails: ['acme:pii', 'acme:tripwire'],
-      costBudget: { perRunUsd: 2, perChatUsd: 9 },
-      toolBudget: { maxDurationSeconds: 30 },
+      limits: { cost: { run: 2, chat: 9 }, tools: { seconds: 30 } },
     });
   });
 
@@ -565,14 +563,14 @@ describe('the skills', () => {
     await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     const [update] = updatesOf(served);
-    expect(update?.params['definition']).toMatchObject({ allowedSkills: ['summarize'] });
+    expect(update?.params['definition']).toMatchObject({ skills: ['summarize'] });
   });
 
   test('withdraws the last skill as an empty list, which grants none', async () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ allowedSkills: ['summarize'] }),
+      detailWith({ skills: ['summarize'] }),
     );
     const { findByRole } = mount();
 
@@ -583,12 +581,12 @@ describe('the skills', () => {
     await waitFor(() => expect(save).toHaveProperty('disabled', false));
     await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ allowedSkills: [] });
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ skills: [] });
   });
 
   test('lets a skill the file names be withdrawn once its source is untrusted, and not granted back', async () => {
     landAt('/agents/researcher?tab=access');
-    serve({}, detailWith({ allowedSkills: ['deploy'] }));
+    serve({}, detailWith({ skills: ['deploy'] }));
     const { findByRole } = mount();
 
     const box = await findByRole('checkbox', { name: 'deploy' });
@@ -603,7 +601,7 @@ describe('the skills', () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ allowedSkills: ['gone', 'summarize'] }),
+      detailWith({ skills: ['gone', 'summarize'] }),
       [],
     );
     const { container, findByRole, queryByText } = mount();
@@ -621,7 +619,7 @@ describe('the skills', () => {
     await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
-      allowedSkills: ['summarize'],
+      skills: ['summarize'],
     });
   });
 
@@ -765,7 +763,7 @@ describe('the states', () => {
           models: [],
           tools: [],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: null,
         },
       }),
@@ -792,7 +790,7 @@ describe('the states', () => {
           models: [],
           tools: ['lookup-order'],
           skills: [],
-          skillDescriptors: [],
+          card: [],
           instructions: null,
         },
       }),
@@ -834,17 +832,16 @@ describe('the form state', () => {
   test('writes the keys it does not edit as they were, and leaves out the ones it must not touch', () => {
     const form = formOf({
       models: ['anthropic/haiku'],
-      costBudget: { perRunUsd: 2, warnAt: [0.5] },
-      stepLimit: 9,
+      limits: { steps: 9, cost: { run: 2, warn: [0.5] } },
     });
     form.spendPerChat = '5';
     const written = form.toDefinition();
     expect(written).toMatchObject({
       models: ['anthropic/haiku'],
-      costBudget: { perRunUsd: 2, perChatUsd: 5, warnAt: [0.5] },
+      limits: { cost: { run: 2, chat: 5, warn: [0.5] } },
     });
     // Left out, the Bureau keeps the file’s step limit.
-    expect('stepLimit' in written).toBe(false);
+    expect(written.limits).not.toHaveProperty('steps');
   });
 
   test('allows a tool after the ones the file lists, and counts what the host offers', () => {
@@ -863,5 +860,25 @@ describe('the form state', () => {
     form.guardrails = 'tripwire';
     expect(Object.keys(form.limitErrors).toSorted()).toEqual(['guardrails', 'spendPerChat']);
     expect(form.canSave).toBe(false);
+  });
+});
+
+// COR-2118 — the Access tab edits guardrail ids; one the file configures keeps its configuration.
+describe('a configured guardrail on the Access tab', () => {
+  test('is shown by its id and saved back with its configuration', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const configured = { id: 'acme:grounding', configuration: { threshold: 0.95 } };
+    const form = AgentAccessState.from(
+      { ...detail, definition: { ...detail.definition, guardrails: ['acme:pii', configured] } },
+      catalogFixture(),
+    );
+    if (form === undefined) throw new Error('expected a form');
+
+    expect(form.guardrails).toBe('acme:pii\nacme:grounding');
+    expect(form.dirty).toBe(false);
+    expect(form.toDefinition().guardrails).toEqual(['acme:pii', configured]);
+    form.guardrails = 'acme:grounding';
+    expect(form.toDefinition().guardrails).toEqual([configured]);
   });
 });

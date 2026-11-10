@@ -247,6 +247,12 @@ export type MessageNoteInfo =
        * (`noteAction`); a stop the person asked for is a neutral line.
        */
       failed?: boolean;
+      /**
+       * Whether the line is a notice about the chat rather than a stop: it keeps the muted text
+       * of a stop the person asked for, drops the "Stopped" label and leads with an info glyph.
+       * Ignored on a note that `failed`.
+       */
+      notice?: boolean;
     };
 
 /** A {@link MessageNoteInfo} as a render part. */
@@ -434,6 +440,9 @@ export type ChatNotSent = {
   summary?: string | undefined;
   /** Said beside the Retry button, such as "Retries when you're back online." */
   retryNote?: string | undefined;
-  /** Whether Retry is inert, for example while the server cannot be reached. */
+  /**
+   * Whether Retry is inert, for example while the server cannot be reached. It is `aria-disabled`,
+   * so it keeps keyboard focus, and `retryNote` is its description.
+   */
   retryDisabled?: boolean | undefined;
 };

@@ -644,7 +644,7 @@ describe('bureau.agents.definitions.get for a code-defined agent', () => {
         tools: ['lookup-order'],
         // Only what the agent can activate: the untrusted source's skill is not named.
         skills: ['summarize', 'translate'],
-        skillDescriptors: [
+        card: [
           { id: 'research', name: 'Research', description: 'Looks things up', tags: ['search'] },
         ],
       },
@@ -676,7 +676,7 @@ describe('bureau.agents.definitions.get for a code-defined agent', () => {
       instructions: null,
       tools: [],
       skills: [],
-      skillDescriptors: [],
+      card: [],
     });
   });
 

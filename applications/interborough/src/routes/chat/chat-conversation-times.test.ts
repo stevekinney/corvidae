@@ -5,14 +5,18 @@
  * recorded, or to when the run stopped for a call it left without an answer.
  */
 import { cleanup, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, setSystemTime, test } from 'bun:test';
 
 import ChatConversation from './chat-conversation.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
 let restore: (() => void) | undefined;
+// The chat is read on the day it was written, so its times are times of day (a message from another
+// day carries its date, which `chat-message` tests).
+beforeEach(() => setSystemTime(new Date('2026-11-02T17:00:00.000Z')));
 afterEach(() => {
+  setSystemTime();
   cleanup();
   restore?.();
   restore = undefined;

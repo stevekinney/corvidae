@@ -438,6 +438,7 @@ export { default as EmptyState } from './components/empty-state/index.ts';
 export type {
   EmptyStateAlign,
   EmptyStateKind,
+  EmptyStateLayout,
   EmptyStateProps,
   EmptyStateSize,
 } from './components/empty-state/index.ts';
@@ -446,6 +447,7 @@ export { default as ErrorState } from './components/error-state/index.ts';
 export type {
   ErrorStateProps,
   ErrorStateRetryVariant,
+  ErrorStateSize,
   ErrorStateTone,
   ErrorStateVariant,
 } from './components/error-state/index.ts';
@@ -1012,6 +1014,7 @@ export type {
   StackedListItemDensity,
   StackedListItemGroupLayout,
   StackedListItemLeadingTone,
+  StackedListItemPhoneActions,
   StackedListItemProps,
   StackedListItemStatusPlacement,
   StackedListItemTitleLines,
@@ -1088,6 +1091,7 @@ export type {
 export { default as StatisticGroup } from './components/statistic-group/index.ts';
 export type {
   StatisticGroupColumns,
+  StatisticGroupEdge,
   StatisticGroupProps,
   StatisticGroupVariant,
 } from './components/statistic-group/index.ts';

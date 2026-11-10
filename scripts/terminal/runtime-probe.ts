@@ -24,7 +24,7 @@ async function sourceSha(): Promise<string> {
       'scripts/terminal',
       'documentation/terminal',
       'package.json',
-      'scripts/workspace-contract.test.ts',
+      'scripts/workspace-contract.integration.test.ts',
       'bun.lock',
     ],
     { cwd: root, stdout: 'pipe', stderr: 'pipe' },

@@ -68,6 +68,7 @@ export async function finalizeStep(input: StepFinalizationDependencies): Promise
 
   const stepResult: StepResult = {
     step,
+    ...(deps.runId === undefined ? {} : { runId: deps.runId }),
     conversation,
     content,
     parts,

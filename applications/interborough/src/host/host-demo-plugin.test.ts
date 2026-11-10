@@ -38,7 +38,7 @@ async function start(home?: string): Promise<Host> {
     port: 0,
   });
   hosts.push(host);
-  // The plugin seeds the schedule and the goal in `afterStart`, which the host does not wait for.
+  // The plugin seeds the schedule and the goal in `start`, which the host does not wait for.
   await host.bureau.plugins.ready();
   return host;
 }

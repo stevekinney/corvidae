@@ -14,11 +14,14 @@ import { z } from 'zod';
 
 import {
   agentContributionIdsSchema,
-  agentCostBudgetSchema,
+  agentGuardrailSelectionsSchema,
+  storedAgentGuardrailSelectionsSchema,
+  agentCostLimitSchema,
   agentDefaultEffortSchema,
+  agentLimitsSchema,
   agentStepLimitSchema,
   agentToolApprovalSchema,
-  agentToolBudgetSchema,
+  agentToolLimitSchema,
 } from '../../agent-file.ts';
 import {
   AGENT_OVERRIDE_KEYS,
@@ -36,35 +39,43 @@ export const agentOverridesOutputSchema = z.object({
   /** The tools the agent may use, by catalog name; the Access tab's allowed set. */
   tools: z.array(z.string()).nullable(),
   /** When each tool asks a person first, by tool name. */
-  toolApproval: agentToolApprovalSchema.nullable(),
-  /** The plugin guardrails (`plugin:name`) a run applies. */
-  guardrails: agentContributionIdsSchema.nullable(),
-  /** What one run, and one chat, may spend. */
-  costBudget: agentCostBudgetSchema.nullable(),
-  /** What one run's tools may use. */
-  toolBudget: agentToolBudgetSchema.nullable(),
+  approvals: agentToolApprovalSchema.nullable(),
+  /** The plugin guardrails a run applies, each `plugin:name` or `{ id, configuration }` (COR-2118). */
+  guardrails: storedAgentGuardrailSelectionsSchema.nullable(),
+  /** The plugin interceptors a run applies, each `plugin:name` (COR-2253). */
+  interceptors: agentContributionIdsSchema.nullable(),
+  /**
+   * The limits overridden (COR-2138): `steps`, the most steps one run may take; `cost`, what a run
+   * and a chat may spend in US dollars; `tools`, what one run's tools may use. A limit that is not
+   * overridden is left out, and the agent's own applies; `null` when none is.
+   */
+  limits: agentLimitsSchema.nullable(),
   /** The model a chat starts on, `<provider>/<model>`. */
   model: z.string().nullable(),
   /** The models a chat may be switched to. */
   models: z.array(z.string()).nullable(),
   /** The reasoning effort a chat starts at. */
-  defaultEffort: agentDefaultEffortSchema.nullable(),
-  /** The most steps one run may take. */
-  stepLimit: z.number().int().nullable(),
+  effort: agentDefaultEffortSchema.nullable(),
 });
 
 /** What a save sends: any override key, `null` or left out when it is not overridden. */
 export const agentOverridesInputSchema = z.strictObject({
   instructions: z.string().min(1).nullable().optional(),
   tools: z.array(z.string().min(1)).nullable().optional(),
-  toolApproval: agentToolApprovalSchema.nullable().optional(),
-  guardrails: agentContributionIdsSchema.nullable().optional(),
-  costBudget: agentCostBudgetSchema.nullable().optional(),
-  toolBudget: agentToolBudgetSchema.nullable().optional(),
+  approvals: agentToolApprovalSchema.nullable().optional(),
+  guardrails: agentGuardrailSelectionsSchema.nullable().optional(),
+  interceptors: agentContributionIdsSchema.nullable().optional(),
+  limits: z
+    .strictObject({
+      steps: agentStepLimitSchema.nullable().optional(),
+      cost: agentCostLimitSchema.nullable().optional(),
+      tools: agentToolLimitSchema.nullable().optional(),
+    })
+    .nullable()
+    .optional(),
   model: z.string().min(1).nullable().optional(),
   models: z.array(z.string().min(1)).nullable().optional(),
-  defaultEffort: agentDefaultEffortSchema.nullable().optional(),
-  stepLimit: agentStepLimitSchema.nullable().optional(),
+  effort: agentDefaultEffortSchema.nullable().optional(),
 });
 
 /** `overrides` as the wire shows them, every key present. */
@@ -85,6 +96,13 @@ export function overridesOf(input: z.infer<typeof agentOverridesInputSchema>): A
     const value = input[key];
     if (value !== null && value !== undefined) overrides[key] = value;
   }
+  // A limit left out or `null` is not overridden, so `limits` holds only the ones that are, and
+  // is not overridden at all when it holds none.
+  const limits = Object.fromEntries(
+    Object.entries(input.limits ?? {}).filter(([, held]) => held !== null && held !== undefined),
+  );
+  if (Object.keys(limits).length === 0) delete overrides['limits'];
+  else overrides['limits'] = limits;
   return overrides;
 }
 

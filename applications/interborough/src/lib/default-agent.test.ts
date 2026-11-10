@@ -1,7 +1,13 @@
 /** The agent a new chat or a new workflow step starts with: the first one that can run. */
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { findDefaultAgent, listAgentsWithReadiness } from './default-agent.ts';
+import {
+  CREATE_WORKFLOW_TOOL,
+  findDefaultAgent,
+  findWorkflowAuthor,
+  listAgentsWithReadiness,
+  workflowAuthorQuery,
+} from './default-agent.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
 import { writePreferredAgent } from './preferred-agent.ts';
 
@@ -11,7 +17,7 @@ afterEach(() => {
   restore = undefined;
 });
 
-function agent(name: string) {
+function agent(name: string, tools?: readonly string[]) {
   return {
     name,
     displayName: name,
@@ -19,6 +25,7 @@ function agent(name: string) {
     definitionRevision: 1,
     kind: 'code',
     a2a: false,
+    ...(tools === undefined ? {} : { tools }),
   };
 }
 
@@ -38,7 +45,7 @@ function plugin(name: string, status: string, agents: readonly string[]) {
     status,
     problems: [],
     contributions: agents.map((id) => ({
-      kind: 'code-agent',
+      kind: 'agent',
       id,
       references: { agents: 0, schedules: 0, waitingRuns: 0 },
     })),
@@ -52,7 +59,10 @@ function plugin(name: string, status: string, agents: readonly string[]) {
 }
 
 /** A host that lists `agents` and reports `plugins`, or whose plugin route fails when `plugins` is null. */
-function host(agents: readonly string[], plugins: readonly unknown[] | null): void {
+function host(
+  agents: readonly (string | { name: string; tools?: readonly string[] })[],
+  plugins: readonly unknown[] | null,
+): void {
   restore = installFetchImplementation(async (input) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     if (url.endsWith('/host/plugins')) {
@@ -60,7 +70,15 @@ function host(agents: readonly string[], plugins: readonly unknown[] | null): vo
         ? new Response('down', { status: 500 })
         : Response.json({ configurationRevision: null, plugins, unloaded: [] });
     }
-    return Response.json({ jsonrpc: '2.0', id: 1, result: { agents: agents.map(agent) } });
+    return Response.json({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        agents: agents.map((entry) =>
+          typeof entry === 'string' ? agent(entry) : agent(entry.name, entry.tools),
+        ),
+      },
+    });
   });
 }
 
@@ -126,5 +144,47 @@ describe('the default agent', () => {
       if (original === undefined) Reflect.deleteProperty(globalThis, 'window');
       else Object.defineProperty(globalThis, 'window', original);
     }
+  });
+});
+
+describe('the agent a chat started from Workflows begins with', () => {
+  test('is the first agent that can run and has the Create workflow tool', async () => {
+    host(
+      [
+        { name: 'tool-runner', tools: ['lookup-order'] },
+        { name: 'workflow-author', tools: [CREATE_WORKFLOW_TOOL, 'bureau:discover-agents'] },
+        { name: 'other-author', tools: [CREATE_WORKFLOW_TOOL] },
+      ],
+      [],
+    );
+    expect(await findWorkflowAuthor()).toBe('workflow-author');
+  });
+
+  test('is none when no agent has the tool, or the Bureau does not say what tools they have', async () => {
+    host([{ name: 'tool-runner', tools: ['lookup-order'] }, 'assistant'], []);
+    expect(await findWorkflowAuthor()).toBeNull();
+  });
+
+  test('is never an agent of a plugin that needs setup', async () => {
+    host(
+      [
+        { name: 'demo:author', tools: [CREATE_WORKFLOW_TOOL] },
+        { name: 'notes', tools: [CREATE_WORKFLOW_TOOL] },
+      ],
+      [plugin('demo', 'needs-setup', ['demo:author'])],
+    );
+    expect(await findWorkflowAuthor()).toBe('notes');
+  });
+});
+
+describe('workflowAuthorQuery', () => {
+  test('reads the workflow author, with the signal it was given, and trusts it for a moment', async () => {
+    host([{ name: 'workflow-author', tools: [CREATE_WORKFLOW_TOOL] }, 'assistant'], []);
+    const query = workflowAuthorQuery();
+
+    expect(await query.queryFn({ signal: new AbortController().signal })).toBe('workflow-author');
+    expect(await query.queryFn({})).toBe('workflow-author');
+    expect(query.staleTime).toBeGreaterThan(0);
+    expect(query.retry).toBe(false);
   });
 });

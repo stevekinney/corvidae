@@ -2,7 +2,7 @@
  * The agent editor page against a stand-in for the Bureau's management plane: what the form offers
  * from the catalog, what a save sends, what deleting names, and the states a write can end in.
  * Every write names the `hash` the form was filled from, a save carries the A2A switch with the
- * rest of the definition, and `skillDescriptors` comes back as it was read.
+ * rest of the definition, and `card` comes back as it was read.
  */
 import { focusManager } from '@tanstack/svelte-query';
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
@@ -341,12 +341,10 @@ describe('a new agent', () => {
             description: null,
             model: 'anthropic/claude-sonnet-5',
             tools: ['lookup-order'],
-            skillDescriptors: [],
+            card: [],
             a2a: false,
             guardrails: null,
-            stepLimit: null,
-            costBudget: null,
-            toolBudget: null,
+            limits: { steps: null, cost: null, tools: null },
             instructions: 'Be careful.',
           },
         },
@@ -477,7 +475,7 @@ describe('an agent that exists', () => {
         // The file wrote an alias, and an unchanged model is written back as it was.
         model: 'anthropic/sonnet',
         tools: ['lookup-order'],
-        skillDescriptors: [
+        card: [
           {
             id: 'cite',
             name: 'Cite',
@@ -487,9 +485,7 @@ describe('an agent that exists', () => {
         ],
         a2a: true,
         guardrails: null,
-        stepLimit: null,
-        costBudget: null,
-        toolBudget: null,
+        limits: { steps: null, cost: null, tools: null },
         instructions: 'Changed.',
       },
     });
@@ -501,7 +497,7 @@ describe('an agent that exists', () => {
     const calls = bureau({
       agent: {
         ...detail,
-        definition: detail.definition && { ...detail.definition, skillDescriptors: [skill] },
+        definition: detail.definition && { ...detail.definition, card: [skill] },
       },
     });
     const { findByRole, getByRole } = mountEditor('researcher');
@@ -509,7 +505,7 @@ describe('an agent that exists', () => {
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ skillDescriptors: [skill] });
+    expect(update?.params['definition']).toMatchObject({ card: [skill] });
   });
 
   test('sends the model it was changed to, and only a model the catalog offers can be chosen', async () => {
@@ -569,9 +565,9 @@ describe('the default effort', () => {
         { provider: 'openai', model: 'gpt-4.1', effort: { portable: [] } },
       ],
     });
-  const agentWith = (defaultEffort: 'low' | 'high' | null): AgentDetail => {
+  const agentWith = (effort: 'low' | 'high' | null): AgentDetail => {
     const detail = readyAgent();
-    return { ...detail, definition: { ...detail.definition!, defaultEffort } };
+    return { ...detail, definition: { ...detail.definition!, effort } };
   };
   const optionsOf = (select: HTMLElement) =>
     [...select.querySelectorAll('option')].map((option) => option.textContent);
@@ -587,7 +583,7 @@ describe('the default effort', () => {
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ defaultEffort: 'medium' });
+    expect(update?.params['definition']).toMatchObject({ effort: 'medium' });
   });
 
   test('shows the effort the file holds, and sends null once it is set back to None', async () => {
@@ -600,7 +596,7 @@ describe('the default effort', () => {
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ defaultEffort: null });
+    expect(update?.params['definition']).toMatchObject({ effort: null });
   });
 
   test('keeps the effort across an unrelated edit, and writes it back unchanged', async () => {
@@ -610,7 +606,7 @@ describe('the default effort', () => {
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ defaultEffort: 'high' });
+    expect(update?.params['definition']).toMatchObject({ effort: 'high' });
   });
 
   test('clears an effort the newly chosen model cannot do, says so, and sends null', async () => {
@@ -632,7 +628,7 @@ describe('the default effort', () => {
     const [update] = calls.callsTo('bureau.agents.definitions.update');
     expect(update?.params['definition']).toMatchObject({
       model: 'anthropic/claude-haiku-5',
-      defaultEffort: null,
+      effort: null,
     });
   });
 
@@ -654,7 +650,7 @@ describe('the default effort', () => {
         definition: {
           ...agentWith(null).definition!,
           model: 'anthropic/claude-haiku-5',
-          defaultEffort: 'high',
+          effort: 'high',
         },
       },
     });
@@ -1092,9 +1088,7 @@ describe('the header Save', () => {
     expect(update?.params).toMatchObject({
       definition: {
         guardrails: ['acme:tripwire'],
-        stepLimit: 12,
-        costBudget: { perRunUsd: 1.5 },
-        toolBudget: { maxCalls: 30 },
+        limits: { steps: 12, cost: { run: 1.5 }, tools: { calls: 30 } },
       },
     });
   });

@@ -8,29 +8,42 @@
  * later plugin that claims a held name is `skipped` whole with `name-clash`, so none of its
  * contributions is registered. A plugin that passes registers every contribution through the
  * option it belongs to (`contributionCatalog`, `agentContributions`, `validators`, `hooks`,
- * `eventFormatters`, `decisions`, `onlineEvals`, the agent catalog, the agent tool catalog and the
+ * `formatters`, `decisions`, `scorers`, the agent catalog, the agent tool catalog and the
  * `memory` factory), and the providers they contribute reach the `models.catalog` factory, so the rest of construction never needs to know a plugin was involved.
  *
  * A disabled plugin registers nothing. Its `setup` still runs once, isolated, only to read the code
- * agents the agent catalog lists as `unavailable` (COR-2009); see `codeAgentsOfDisabledPlugin`.
+ * agents the agent catalog lists as `unavailable` (COR-2009); see `agentsOfDisabledPlugin`.
  *
  * @module compose-plugins
  */
 
 import type {
+  GuardrailFamily,
   PluginContributions,
-  PluginHostApi,
+  PluginHost,
+  PluginMemoryGate,
   PluginSecrets,
   PluginSetupContext,
   PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createPluginStorage, isPluginName } from '@lostgradient/interborough-plugin';
+import {
+  createPluginStorage,
+  guardrailId,
+  isGuardrailFactory,
+  isPluginName,
+} from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
-import { createModelCatalog } from '@lostgradient/operative';
+import {
+  createModelCatalog,
+  type GuardrailEntry,
+  guardrailActionOf,
+  guardrailOf,
+} from '@lostgradient/operative';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   formatToolId,
   fromNamespacedToolName,
+  parseToolId,
   PROVIDER_TOOL_NAME_LIMIT,
   readToolTitle,
   toNamespacedToolName,
@@ -39,8 +52,13 @@ import {
 
 import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
+import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
-import { createAgentContributions } from '../agent-contributions';
+import {
+  assertInterceptorHooks,
+  createAgentContributions,
+  guardrailContractFault,
+} from '../agent-contributions';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../types';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -93,7 +111,7 @@ export interface ComposedPlugins<O extends ComposableOptions> {
   /**
    * COR-2009 — the code agents of the disabled plugins, in load order, which the agent catalog
    * lists `unavailable` (`Plugin Demo is disabled`) so they can be read and duplicated, never run.
-   * See {@link codeAgentsOfDisabledPlugin} for how they are read without the plugin running.
+   * See {@link agentsOfDisabledPlugin} for how they are read without the plugin running.
    */
   readonly unavailableAgents: readonly UnavailableCodeAgent[];
   /**
@@ -134,7 +152,7 @@ function settingsOf(
 
 function isEnabled(entry: BureauPluginEntry, settings: BureauPluginSettings): boolean {
   if (entry.descriptor.required === true) return true;
-  return settings.enabled ?? entry.descriptor.enabledByDefault ?? true;
+  return settings.enabled ?? entry.descriptor.enabled ?? true;
 }
 
 function configurationProblems(
@@ -213,8 +231,60 @@ interface PluginContributionPlan {
   readonly tools: ReadonlyMap<string, Tool>;
 }
 
+/** The points at which a memory guardrail that declares no `gates` runs. */
+const MEMORY_GATES: readonly PluginMemoryGate[] = ['admission', 'recall'];
+
+/** The actions an input, output and tool-call guardrail may carry (COR-2104). */
+const GUARDRAIL_ACTIONS: Readonly<Record<'input' | 'output' | 'tools', readonly string[]>> = {
+  input: ['block', 'warn', 'sanitize', 'tripwire'],
+  output: ['block', 'warn', 'redact', 'tripwire'],
+  tools: ['block', 'warn', 'tripwire'],
+};
+
+/**
+ * Checks what every guardrail says about itself (COR-2118): a non-empty `description`, and for a
+ * factory a Zod schema to parse an agent's configuration with, so a plugin that returns neither is
+ * skipped at setup instead of listing a guardrail nobody can tell apart or failing the agents that
+ * choose it.
+ */
+function checkGuardrailContract(family: GuardrailFamily, guardrail: unknown): void {
+  const { name } = guardrail as { readonly name?: unknown };
+  const fault = guardrailContractFault(guardrail);
+  if (fault === 'description') {
+    throw new TypeError(
+      `setup returned the ${family} guardrail "${String(name)}" without a description: every guardrail says what it guards.`,
+    );
+  }
+  if (fault === 'factory') {
+    throw new TypeError(
+      `setup returned the ${family} guardrail factory "${String(name)}" without a configuration schema and a create function.`,
+    );
+  }
+}
+
+/**
+ * The name of a guardrail entry, after checking the action it carries is one its family has, so a
+ * plugin that returns another is skipped at setup instead of failing the runs that use it, and the
+ * guardrail's own contract ({@link checkGuardrailContract}).
+ */
+function checkedGuardrailName(
+  family: 'input' | 'output' | 'tools',
+  entry: GuardrailEntry<{ readonly name: string }, string>,
+): string {
+  const guardrail = guardrailOf(entry);
+  const { name } = guardrail;
+  const action = guardrailActionOf(entry, GUARDRAIL_ACTIONS[family][0]!);
+  if (!GUARDRAIL_ACTIONS[family].includes(action)) {
+    throw new TypeError(
+      `setup returned the ${family} guardrail "${name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS[family].join(', ')}.`,
+    );
+  }
+  checkGuardrailContract(family, guardrail);
+  return name;
+}
+
 /** A `ui://` resource URI: the scheme, then a host and path with no whitespace. */
-const MCP_APP_URI_PATTERN = /^ui:\/\/\S+$/;
+const PANEL_URI_PATTERN = /^ui:\/\/\S+$/;
 
 /**
  * What `contributions` claims and registers. Throws when a contribution cannot be registered: a
@@ -240,14 +310,15 @@ function planOf(
     name: string,
     id?: string,
     title?: string,
+    claimName?: string,
   ) => {
     if (!isPluginName(name)) {
       throw new TypeError(
-        `setup returned a ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
+        `setup returned ${/^[aeiou]/.test(kind) ? 'an' : 'a'} ${kind} named ${JSON.stringify(name)}: a contribution name starts with a lowercase letter and uses only lowercase letters, digits and hyphens, ending in a letter or digit.`,
       );
     }
     const contributionId = id ?? formatToolId({ namespace: plugin, name });
-    claims.push({ space: kind, name: formatToolId({ namespace: plugin, name }) });
+    claims.push({ space: kind, name: claimName ?? formatToolId({ namespace: plugin, name }) });
     listings.push({ kind, id: contributionId, ...(title === undefined ? {} : { title }) });
   };
   for (const tool of contributions.tools ?? []) {
@@ -262,20 +333,39 @@ function planOf(
     tools.set(formatToolId({ namespace: plugin, name: rebuilt.name }), rebuilt);
   }
   for (const activity of contributions.activities ?? []) contribute('activity', activity.name);
-  for (const kind of contributions.triggerKinds ?? []) contribute('trigger-kind', kind.name);
+  for (const kind of contributions.triggers ?? []) contribute('trigger', kind.name);
   for (const validator of contributions.validators ?? []) {
     contribute('validator', validator.identity.name);
   }
-  for (const detector of contributions.guardrails?.inputDetectors ?? []) {
-    contribute('guardrail', detector.name);
+  // A guardrail's name is claimed within its family, so one name may serve more than one.
+  const guardrail = (
+    kind: 'guardrail' | 'memory-detector',
+    family: GuardrailFamily,
+    name: string,
+  ) => contribute(kind, name, undefined, undefined, guardrailId(plugin, family, name));
+  for (const detector of contributions.guardrails?.input ?? []) {
+    guardrail('guardrail', 'input', checkedGuardrailName('input', detector));
   }
-  for (const validator of contributions.guardrails?.outputValidators ?? []) {
-    contribute('guardrail', validator.name);
+  for (const validator of contributions.guardrails?.output ?? []) {
+    guardrail('guardrail', 'output', checkedGuardrailName('output', validator));
   }
-  for (const hooks of contributions.runHooks ?? []) contribute('run-hooks', hooks.name);
+  for (const validator of contributions.guardrails?.tools ?? []) {
+    // A factory carries no action: the validator it builds carries its own.
+    const action = isGuardrailFactory(validator) ? 'block' : (validator.action ?? 'block');
+    if (!GUARDRAIL_ACTIONS.tools.includes(action)) {
+      throw new TypeError(
+        `setup returned the tools guardrail "${validator.name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS.tools.join(', ')}.`,
+      );
+    }
+    checkGuardrailContract('tools', validator);
+    guardrail('guardrail', 'tools', validator.name);
+  }
+  for (const interceptor of contributions.interceptors ?? []) {
+    contribute('interceptor', interceptor.name);
+  }
   for (const model of contributions.decisionRouters ?? [])
     contribute('decision-router', model.name);
-  for (const kind of contributions.hookActionKinds ?? []) contribute('hook-action', kind.name);
+  for (const kind of contributions.reactions ?? []) contribute('reaction', kind.name);
   for (const provider of contributions.providers ?? []) {
     contribute('provider', provider.name);
     // The host resolves a generate by the bare provider name, so the name is held across plugins.
@@ -299,26 +389,36 @@ function planOf(
     }
     contribute('embedder', embedder.name);
   }
-  for (const detector of contributions.memoryDetectors ?? []) {
-    contribute('memory-detector', detector.name);
-  }
-  for (const judge of contributions.evalJudges ?? []) contribute('eval-judge', judge.name);
-  for (const app of contributions.mcpApps ?? []) {
-    // A host serves the page by this URI alone, so it must be a `ui://` resource and unique.
-    if (!MCP_APP_URI_PATTERN.test(app.uri)) {
+  for (const detector of contributions.guardrails?.memory ?? []) {
+    const { gates } = detector;
+    if (
+      gates !== undefined &&
+      (gates.length === 0 || gates.some((at) => !MEMORY_GATES.includes(at)))
+    ) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
+        `setup returned the memory guardrail "${detector.name}" with gates ${JSON.stringify(gates)}: gates list "admission", "recall" or both, and are left out to run at both.`,
+      );
+    }
+    checkGuardrailContract('memory', detector);
+    guardrail('memory-detector', 'memory', detector.name);
+  }
+  for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);
+  for (const app of contributions.panels ?? []) {
+    // A host serves the page by this URI alone, so it must be a `ui://` resource and unique.
+    if (!PANEL_URI_PATTERN.test(app.uri)) {
+      throw new TypeError(
+        `setup returned the panel "${app.name}" with the URI "${app.uri}", which is not a ui:// resource URI.`,
       );
     }
     if (!app.allowedTools.includes(app.opensFromTool)) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
+        `setup returned the panel "${app.name}" opened from "${app.opensFromTool}", which is not one of its allowedTools.`,
       );
     }
     for (const tool of app.hostOnlyTools ?? []) {
       if (!app.allowedTools.includes(tool) || !tool.startsWith('bureau.')) {
         throw new TypeError(
-          `setup returned the MCP app "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
+          `setup returned the panel "${app.name}" with host-only tool "${tool}" outside its Bureau allowlist.`,
         );
       }
     }
@@ -332,19 +432,19 @@ function planOf(
       )
     ) {
       throw new TypeError(
-        `setup returned the MCP app "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
+        `setup returned the panel "${app.name}" opened from unknown agent tool "${app.opensFromAgentTool}".`,
       );
     }
-    contribute('mcp-app', app.name);
-    claims.push({ space: 'mcp-app-uri', name: app.uri });
+    contribute('panel', app.name);
+    claims.push({ space: 'panel-uri', name: app.uri });
     // A tool links to one page, so the host cannot serve two apps opened from the same tool.
-    claims.push({ space: 'mcp-app-tool', name: app.opensFromTool });
+    claims.push({ space: 'panel-tool', name: app.opensFromTool });
   }
-  for (const formatter of contributions.eventFormatters ?? []) {
-    contribute('event-formatter', formatter.name);
+  for (const formatter of contributions.formatters ?? []) {
+    contribute('formatter', formatter.name);
     for (const kind of formatter.eventKinds) claims.push({ space: 'event-kind', name: kind });
   }
-  for (const agent of contributions.codeAgents ?? []) contribute('code-agent', agent.name);
+  for (const agent of contributions.agents ?? []) contribute('agent', agent.name);
   return { claims, listings, tools };
 }
 
@@ -370,45 +470,54 @@ function heldByHost(options: ComposableOptions): Claims {
   for (const entry of options.contributionCatalog?.entries('activity') ?? []) {
     claims.hold({ space: 'activity', name: entry.name }, HOST_PARTY);
   }
-  for (const entry of options.contributionCatalog?.entries('trigger-kind') ?? []) {
-    claims.hold({ space: 'trigger-kind', name: entry.name }, HOST_PARTY);
+  for (const entry of options.contributionCatalog?.entries('trigger') ?? []) {
+    claims.hold({ space: 'trigger', name: entry.name }, HOST_PARTY);
   }
   for (const validator of options.validators ?? []) {
     claims.hold({ space: 'validator', name: validator.identity.name }, HOST_PARTY);
   }
-  for (const id of options.agentContributions?.guardrails.keys() ?? []) {
-    claims.hold({ space: 'guardrail', name: id }, HOST_PARTY);
+  for (const [id, held] of options.agentContributions?.guardrails ?? []) {
+    const { namespace, name } = parseToolId(id);
+    if (held.inputDetector !== undefined) {
+      claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'input', name) }, HOST_PARTY);
+    }
+    if (held.outputValidator !== undefined) {
+      claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'output', name) }, HOST_PARTY);
+    }
+    if (held.toolValidator !== undefined) {
+      claims.hold({ space: 'guardrail', name: guardrailId(namespace, 'tools', name) }, HOST_PARTY);
+    }
   }
-  for (const id of options.agentContributions?.runHooks.keys() ?? []) {
-    claims.hold({ space: 'run-hooks', name: id }, HOST_PARTY);
+  for (const id of options.agentContributions?.interceptors.keys() ?? []) {
+    claims.hold({ space: 'interceptor', name: id }, HOST_PARTY);
   }
   for (const name of Object.keys(options.decisions?.models ?? {})) {
     claims.hold({ space: 'decision-router', name }, HOST_PARTY);
   }
   for (const { plugin, kind } of options.hooks?.actionKinds ?? []) {
     claims.hold(
-      { space: 'hook-action', name: formatToolId({ namespace: plugin, name: kind.name }) },
+      { space: 'reaction', name: formatToolId({ namespace: plugin, name: kind.name }) },
       HOST_PARTY,
     );
   }
-  for (const { plugin, formatter } of options.eventFormatters ?? []) {
+  for (const { plugin, formatter } of options.formatters ?? []) {
     claims.hold(
-      { space: 'event-formatter', name: formatToolId({ namespace: plugin, name: formatter.name }) },
+      { space: 'formatter', name: formatToolId({ namespace: plugin, name: formatter.name }) },
       HOST_PARTY,
     );
     for (const kind of formatter.eventKinds)
       claims.hold({ space: 'event-kind', name: kind }, HOST_PARTY);
   }
   for (const name of Object.keys(options.agents ?? {})) {
-    claims.hold({ space: 'code-agent', name }, HOST_PARTY);
+    claims.hold({ space: 'agent', name }, HOST_PARTY);
   }
-  for (const judge of options.onlineEvals?.judges ?? []) {
-    claims.hold({ space: 'eval-judge', name: judge.name }, HOST_PARTY);
+  for (const judge of options.scorers?.list ?? []) {
+    claims.hold({ space: 'scorer', name: judge.name }, HOST_PARTY);
   }
-  // Embedders and memory detectors reach memory only through the host's `memory` factory, which
+  // Embedders and memory guardrails reach memory only through the host's `memory` factory, which
   // holds no names composition can see; a plugin's embedder id is always `plugin:name`, so it never
   // meets memory's built-in `hashing`, and two plugins' ids are kept apart by the claims above.
-  // Providers reach the host's `models.catalog` factory, not a held name; MCP apps have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.mcpApps()`.
+  // Providers reach the host's `models.catalog` factory, not a held name; panels have no Bureau option, so no host entry holds a URI: the host reads them from `bureau.plugins.panels()`.
   return claims;
 }
 
@@ -419,28 +528,28 @@ function heldByHost(options: ComposableOptions): Claims {
 export const HOST_HELD_KINDS: ReadonlySet<PluginContributionKind> = new Set([
   'tool',
   'activity',
-  'trigger-kind',
+  'trigger',
   'validator',
   'guardrail',
-  'run-hooks',
+  'interceptor',
   'decision-router',
-  'hook-action',
-  'event-formatter',
-  'code-agent',
-  'eval-judge',
+  'reaction',
+  'formatter',
+  'agent',
+  'scorer',
 ]);
 
 /**
  * Whether a contribution of `kind` is registered with these options. A hook action kind needs
- * `hooks`, an eval judge `onlineEvals`, and an embedder or memory detector a `memory` factory;
+ * `hooks`, a scorer `scorers`, and an embedder or memory guardrail a `memory` factory;
  * without one the contribution goes nowhere, so the listing leaves it out.
  */
 export function registersKind(kind: PluginContributionKind, options: ComposableOptions): boolean {
   switch (kind) {
-    case 'hook-action':
+    case 'reaction':
       return options.hooks !== undefined;
-    case 'eval-judge':
-      return options.onlineEvals !== undefined;
+    case 'scorer':
+      return options.scorers !== undefined;
     case 'embedder':
     case 'memory-detector':
       return typeof options.memory === 'function';
@@ -461,28 +570,30 @@ class Contributed {
   > = {};
   readonly actionKinds: NonNullable<NonNullable<BureauOptions['hooks']>['actionKinds']>[number][] =
     [];
-  readonly formatters: NonNullable<BureauOptions['eventFormatters']>[number][] = [];
-  readonly judges: NonNullable<PluginContributions['evalJudges']>[number][] = [];
+  readonly formatters: NonNullable<BureauOptions['formatters']>[number][] = [];
+  readonly scorers: NonNullable<PluginContributions['scorers']>[number][] = [];
   readonly agents: Record<string, unknown> = {};
   readonly memory: {
-    detectors: PluginMemoryContributions['detectors'][number][];
+    admission: PluginMemoryContributions['guardrails']['admission'][number][];
+    recall: PluginMemoryContributions['guardrails']['recall'][number][];
     embedders: PluginMemoryContributions['embedders'][number][];
-  } = { detectors: [], embedders: [] };
+  } = { admission: [], recall: [], embedders: [] };
   readonly providers: PluginProviderContribution[] = [];
 
   add(
     plugin: string,
     version: string,
     result: PluginSetupResult,
+    configuration: unknown,
     tools: ReadonlyMap<string, Tool>,
     gate: PluginSecretGate | undefined,
   ): void {
     const id = (name: string) => formatToolId({ namespace: plugin, name });
     for (const [key, tool] of tools) this.tools[key] = tool;
-    if ((result.activities?.length ?? 0) + (result.triggerKinds?.length ?? 0) > 0) {
+    if ((result.activities?.length ?? 0) + (result.triggers?.length ?? 0) > 0) {
       this.activities.push({ plugin, version, result });
     }
-    if (result.guardrails !== undefined || result.runHooks !== undefined) {
+    if (result.guardrails !== undefined || result.interceptors !== undefined) {
       this.agentSources.push({ plugin, result });
     }
     for (const validator of result.validators ?? []) {
@@ -493,18 +604,23 @@ class Contributed {
       });
     }
     for (const model of result.decisionRouters ?? []) this.decisionModels[id(model.name)] = model;
-    for (const kind of result.hookActionKinds ?? []) {
+    for (const kind of result.reactions ?? []) {
       // A delivery pins the kind's own version, else its plugin's (COR-1879).
       this.actionKinds.push({ plugin, kind, version: kind.version ?? version });
     }
-    for (const formatter of result.eventFormatters ?? [])
-      this.formatters.push({ plugin, formatter });
-    for (const judge of result.evalJudges ?? []) {
-      this.judges.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
+    for (const formatter of result.formatters ?? []) this.formatters.push({ plugin, formatter });
+    for (const judge of result.scorers ?? []) {
+      this.scorers.push({ ...judge, name: id(judge.name), evaluate: (run) => judge.evaluate(run) });
     }
-    for (const { name, agent } of result.codeAgents ?? []) this.agents[id(name)] = agent;
-    this.providers.push(...providersOf(plugin, result));
-    this.memory.detectors.push(...(result.memoryDetectors ?? []));
+    for (const { name, agent } of result.agents ?? []) this.agents[id(name)] = agent;
+    this.providers.push(...providersOf(plugin, configuration, result));
+    for (const detector of result.guardrails?.memory ?? []) {
+      // The detector itself, not a copy of its fields: it may be an instance whose methods live on
+      // its prototype.
+      const gates = detector.gates ?? MEMORY_GATES;
+      if (gates.includes('admission')) this.memory.admission.push(detector);
+      if (gates.includes('recall')) this.memory.recall.push(detector);
+    }
     for (const embedder of result.embedders ?? []) {
       this.memory.embedders.push({
         id: id(embedder.name),
@@ -520,10 +636,15 @@ class Contributed {
 }
 
 /** The providers a plugin's setup returned, each with the rows it carries or Operative's static ones. */
-function providersOf(plugin: string, result: PluginSetupResult): PluginProviderContribution[] {
+function providersOf(
+  plugin: string,
+  configuration: unknown,
+  result: PluginSetupResult,
+): PluginProviderContribution[] {
   return (result.providers ?? []).map((provider) => ({
     plugin,
     definition: provider,
+    configuration,
     rows:
       provider.rows ??
       createModelCatalog().descriptors.filter((row) => row.provider === provider.name),
@@ -550,9 +671,9 @@ function catalogWith(
         source,
       });
     }
-    for (const kind of result.triggerKinds ?? []) {
+    for (const kind of result.triggers ?? []) {
       catalog.register({
-        kind: 'trigger-kind',
+        kind: 'trigger',
         name: formatToolId({ namespace: plugin, name: kind.name }),
         version: kind.version,
         value: kind,
@@ -572,12 +693,17 @@ function agentContributionsWith(
     contributed.map(({ plugin, result }) => ({
       plugin,
       guardrails: result.guardrails,
-      runHooks: result.runHooks,
+      interceptors: result.interceptors,
     })),
   );
+  // A name is claimed per family, so a host entry and a plugin's may share an id (`plugin:name`)
+  // and carry different families; the claims keep one family from being held twice.
+  const guardrails = new Map(host?.guardrails);
+  for (const [id, entry] of plugins.guardrails)
+    guardrails.set(id, { ...guardrails.get(id), ...entry });
   return {
-    guardrails: new Map([...(host?.guardrails ?? []), ...plugins.guardrails]),
-    runHooks: new Map([...(host?.runHooks ?? []), ...plugins.runHooks]),
+    guardrails,
+    interceptors: new Map([...(host?.interceptors ?? []), ...plugins.interceptors]),
   };
 }
 
@@ -607,7 +733,10 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
     options.agentContributions,
     contributed.agentSources,
   );
-  const memory = memoryOf(options.memory, contributed.memory);
+  const memory = memoryOf(options.memory, {
+    guardrails: { admission: contributed.memory.admission, recall: contributed.memory.recall },
+    embedders: contributed.memory.embedders,
+  });
   // A factory never reaches the rest of construction: it is replaced by what it built.
   const { memory: _given, ...rest } = options;
   // `rest` is `O` without `memory`, which comes back below as what the factory built.
@@ -639,13 +768,13 @@ function optionsWith<O extends ComposableOptions>(options: O, contributed: Contr
         }),
     ...(contributed.formatters.length === 0
       ? {}
-      : { eventFormatters: [...(options.eventFormatters ?? []), ...contributed.formatters] }),
-    ...(options.onlineEvals === undefined || contributed.judges.length === 0
+      : { formatters: [...(options.formatters ?? []), ...contributed.formatters] }),
+    ...(options.scorers === undefined || contributed.scorers.length === 0
       ? {}
       : {
-          onlineEvals: {
-            ...options.onlineEvals,
-            judges: [...options.onlineEvals.judges, ...contributed.judges],
+          scorers: {
+            ...options.scorers,
+            list: [...options.scorers.list, ...contributed.scorers],
           },
         }),
     ...(memory === undefined ? {} : { memory }),
@@ -681,7 +810,7 @@ async function setUp(
       readonly plan: PluginContributionPlan;
       readonly redact: (message: string) => string;
       readonly gate: PluginSecretGate | undefined;
-      readonly bindHost: (host: PluginHostApi) => void;
+      readonly bindHost: (host: PluginHost) => void;
     }
 > {
   const { descriptor } = entry;
@@ -705,9 +834,18 @@ async function setUp(
       secrets,
       storage: createPluginStorage(storage, descriptor.name),
       host: host.api,
-      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+      approvals: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
+    // A malformed hook skips this plugin here, where every other malformed contribution does:
+    // `createAgentContributions` reads them after every plugin's setup, outside this `try`, and
+    // would fail the whole composition. It runs before the gate below wraps each hook.
+    for (const interceptor of returned.interceptors ?? []) {
+      assertInterceptorHooks(
+        formatToolId({ namespace: descriptor.name, name: interceptor.name }),
+        interceptor,
+      );
+    }
     // Registered now and refused while a declared secret is missing: the options that receive
     // contributions are read once, so one added later would never be seen (COR-1874).
     const result =
@@ -737,12 +875,12 @@ async function setUp(
  * `unavailable` and `duplicate` can copy one. Only `setup` can say what they are, so it runs once,
  * with nothing it could change or reveal: storage confined to `plugin:<name>:` of a scratch
  * `MemoryStorage` that is dropped after, no secret (every `get` answers `undefined`), and a host
- * API that is never bound, so a call to it rejects. Only `codeAgents` is kept; no other
- * contribution is registered, `afterStart` never runs, and none of the agents can start a run. A
+ * API that is never bound, so a call to it rejects. Only `agents` is kept; no other
+ * contribution is registered, `start` never runs, and none of the agents can start a run. A
  * plugin whose configuration does not parse, or whose `setup` throws, lists none: it is disabled
  * either way, and enabling it reports the failure where a running plugin's would be.
  */
-async function codeAgentsOfDisabledPlugin(
+async function agentsOfDisabledPlugin(
   entry: BureauPluginEntry,
   options: Pick<ComposableOptions, 'pluginConfiguration'>,
 ): Promise<UnavailableCodeAgent[]> {
@@ -759,11 +897,11 @@ async function codeAgentsOfDisabledPlugin(
       secrets: { get: () => Promise.resolve(undefined) },
       storage: createPluginStorage(new MemoryStorage(), descriptor.name),
       host: lateHostApi(descriptor.name).api,
-      toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
+      approvals: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup(context as never)) ?? {};
     const message = `Plugin ${descriptor.title ?? descriptor.name} is disabled`;
-    return (returned.codeAgents ?? []).map(({ name, agent }) => ({
+    return (returned.agents ?? []).map(({ name, agent }) => ({
       id: formatToolId({ namespace: descriptor.name, name }),
       plugin: descriptor.name,
       agent,
@@ -774,15 +912,31 @@ async function codeAgentsOfDisabledPlugin(
   }
 }
 
+/**
+ * The `formatter-unknown-kind` problems of a plugin whose formatters list an event kind Bureau
+ * never publishes, so a formatter cannot wait on an event that never fires (COR-2101).
+ */
+function formatterUnknownKinds(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const formatter of contributions.formatters ?? []) {
+    for (const kind of formatter.eventKinds) {
+      if (!Object.hasOwn(BUREAU_EVENT_CATALOG, kind)) {
+        problems.push({ code: 'formatter-unknown-kind', formatter: formatter.name, kind });
+      }
+    }
+  }
+  return problems;
+}
+
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
     agents,
     validators,
-    eventFormatters,
+    formatters,
     decisions,
     hooks,
-    onlineEvals,
+    scorers,
     plugins,
     pluginConfiguration,
   } = given;
@@ -799,16 +953,14 @@ function snapshotOf<O extends ComposableOptions>(given: O): O {
         }),
     ...(agents === undefined ? {} : { agents: { ...agents } }),
     ...(validators === undefined ? {} : { validators: [...validators] }),
-    ...(eventFormatters === undefined ? {} : { eventFormatters: [...eventFormatters] }),
+    ...(formatters === undefined ? {} : { formatters: [...formatters] }),
     ...(decisions?.models === undefined
       ? {}
       : { decisions: { ...decisions, models: { ...decisions.models } } }),
     ...(hooks?.actionKinds === undefined
       ? {}
       : { hooks: { ...hooks, actionKinds: [...hooks.actionKinds] } }),
-    ...(onlineEvals === undefined
-      ? {}
-      : { onlineEvals: { ...onlineEvals, judges: [...onlineEvals.judges] } }),
+    ...(scorers === undefined ? {} : { scorers: { ...scorers, list: [...scorers.list] } }),
   };
 }
 
@@ -844,14 +996,23 @@ export async function composePlugins<O extends ComposableOptions>(
     claims.hold({ space: 'plugin', name: entry.descriptor.name }, party);
     const outcome = await setUp(entry, options, storage);
     if (outcome.status === 'disabled') {
-      unavailableAgents.push(...(await codeAgentsOfDisabledPlugin(entry, options)));
+      unavailableAgents.push(...(await agentsOfDisabledPlugin(entry, options)));
     }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);
       continue;
     }
+    const unknownKinds = formatterUnknownKinds(outcome.result);
+    if (unknownKinds.length > 0) {
+      record('skipped', unknownKinds);
+      continue;
+    }
     const { plan } = outcome;
-    const providers = providersOf(entry.descriptor.name, outcome.result);
+    const providers = providersOf(
+      entry.descriptor.name,
+      outcome.context.configuration,
+      outcome.result,
+    );
     const checked =
       providers.length === 0
         ? []
@@ -877,6 +1038,7 @@ export async function composePlugins<O extends ComposableOptions>(
       entry.descriptor.name,
       entry.descriptor.version,
       outcome.result,
+      outcome.context.configuration,
       plan.tools,
       outcome.gate,
     );

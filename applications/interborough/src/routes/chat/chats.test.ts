@@ -1,5 +1,5 @@
 import { cleanup, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, spyOn, test } from 'bun:test';
 
 import { router } from '../../lib/router.svelte.ts';
 import Chats from './chats.svelte';
@@ -25,7 +25,7 @@ const page = (offset: number, count: number, more: boolean) => ({
 });
 
 describe('the list of sessions', () => {
-  test('is the sessions the Bureau lists, newest first, each as a link with its latest message and its agent', async () => {
+  test('is the sessions the Bureau lists, newest first, each as a link with its latest message and its status', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 3, false),
       'bureau.agents.list': () => ({ agents: [AGENT] }),
@@ -37,17 +37,24 @@ describe('the list of sessions', () => {
     const { findByRole } = mount();
 
     const list = await findByRole('region', { name: 'Chats' });
-    await waitFor(() => expect(list.querySelectorAll('li')).toHaveLength(3));
-    const rows = [...list.querySelectorAll('li')];
+    await waitFor(() => expect(list.querySelectorAll('[data-chat]')).toHaveLength(3));
+    const rows = [...list.querySelectorAll('[data-chat]')];
+    // Newest first: the pages share one time, so the Bureau's order is kept.
+    expect(rows.map((row) => row.getAttribute('data-chat'))).toEqual([
+      'session-0',
+      'session-1',
+      'session-2',
+    ]);
     expect(rows[0]?.textContent).toContain('Chat 0');
-    expect(rows[2]?.textContent).toContain('Chat 2');
-    // The snippet is the latest message, not the title again, and the agent is named for a screen
-    // reader through its avatar, with no visible "Agent:" label.
+    // Line two is the status word and the latest message, not the title again.
+    expect(rows[0]?.textContent).toContain('Done');
     expect(rows[0]?.textContent).toContain(CONTEXT.lastMessagePreview);
-    expect(rows[0]?.textContent).toContain(CONTEXT.agentName);
-    expect(list.textContent).not.toContain('Agent:');
-    expect(rows[0]?.querySelector('button')).not.toBeNull();
+    // Each row is one link to its chat, with its time.
+    expect(rows[0]?.querySelector('a[href="/chats/session-0"]')).not.toBeNull();
     expect(rows[0]?.querySelector('time')).not.toBeNull();
+    // No avatar or "Agent:" label: a narrow pane names no agent on line two.
+    expect(list.textContent).not.toContain('Agent:');
+    expect(rows[0]?.querySelector('.cinder-avatar')).toBeNull();
     expect(served.calls.find((call) => call.method === 'bureau.contexts.list')?.params).toEqual({
       // Only the chats a person started: a goal's or a schedule's session is reached from its run.
       origin: 'chat',
@@ -56,7 +63,7 @@ describe('the list of sessions', () => {
     });
   });
 
-  test('lists a chat whose run waits on you under Needs you, above the others, with the question it asks and a chip; a finished chat has none', async () => {
+  test('says Waiting on you for a chat whose run waits on you, with the question it asks, and Done for one that finished', async () => {
     const now = new Date().toISOString();
     const served = bureau({
       'bureau.contexts.list': () => ({
@@ -69,8 +76,7 @@ describe('the list of sessions', () => {
             agentName: 'request-human-input',
             lastMessagePreview: 'Ship the release',
             activity: 'awaiting-input',
-            // Older than the finished chat: Needs you comes first whatever the age.
-            updatedAt: '2026-10-01T09:00:00.000Z',
+            updatedAt: now,
           },
         ],
         nextOffset: null,
@@ -100,20 +106,18 @@ describe('the list of sessions', () => {
     await waitFor(() =>
       expect(list.textContent).toContain('Which environment should the release go to?'),
     );
-    // One flat list, the chat that waits on the person first.
-    const groups = [...list.querySelectorAll('[data-group]')].map((row) =>
-      row.getAttribute('data-group'),
-    );
-    expect(groups.slice(0, 2)).toEqual(['needs-you', 'today']);
-    const needs = list.querySelector('[data-group="needs-you"]');
-    const today = list.querySelector('[data-group="today"]');
-    expect(needs?.textContent).toContain('Waiting chat');
-    expect(needs?.querySelectorAll('.cinder-badge')).toHaveLength(1);
-    expect(today?.textContent).toContain('Finished chat');
-    expect(today?.querySelectorAll('.cinder-badge')).toHaveLength(0);
+    const waiting = list.querySelector('[data-chat="waiting"]');
+    const finished = list.querySelector('[data-chat="finished"]');
+    expect(waiting?.textContent).toContain('Waiting on you');
+    // The question replaces the last message, which for a waiting chat is only the person's own.
+    expect(waiting?.textContent).not.toContain('Ship the release');
+    expect(finished?.textContent).toContain('Done');
+    expect(finished?.textContent).not.toContain('Waiting on you');
+    // No chip: the status word is the one mark.
+    expect(list.querySelectorAll('.cinder-badge')).toHaveLength(0);
   });
 
-  test('lists a waiting chat from a page that is not loaded under Needs you, read on its own', async () => {
+  test('lists a waiting chat from a page that is not loaded, read on its own', async () => {
     const waitingReview = (sessionId: string, id: string) => ({
       id,
       runId: `run-${id}`,
@@ -156,9 +160,9 @@ describe('the list of sessions', () => {
 
     const list = await findByRole('region', { name: 'Chats' });
     await waitFor(() => expect(list.textContent).toContain('Late late-waiting'));
-    const needs = list.querySelectorAll('[data-group="needs-you"]');
-    expect(needs).toHaveLength(1);
-    expect(needs[0]?.textContent).toContain('Question of late-waiting?');
+    const late = list.querySelector('[data-chat="late-waiting"]');
+    expect(late?.textContent).toContain('Waiting on you');
+    expect(late?.textContent).toContain('Question of late-waiting?');
     expect(list.textContent).not.toContain('late-goal');
     // Only the chats the loaded pages lack are read: `session-3` is already on the page.
     const reads = served.calls
@@ -168,7 +172,7 @@ describe('the list of sessions', () => {
     expect(reads).toEqual(['late-goal', 'late-waiting']);
   });
 
-  test('marks an idle chat whose latest run failed with a Failed chip, and none whose latest run recovered', async () => {
+  test('says Failed for an idle chat whose latest run failed, and not for one whose latest run recovered', async () => {
     const run = (id: string, contextId: string, status: string, updatedAt: string) => ({
       id,
       contextId,
@@ -230,7 +234,7 @@ describe('the list of sessions', () => {
 
     const list = await findByRole('region', { name: 'Chats' });
     await waitFor(() => expect(list.textContent).toContain('Last said'));
-    expect(list.querySelectorAll('.cinder-badge')).toHaveLength(1);
+    expect(list.querySelector('[data-chat="waiting"]')?.textContent).toContain('Waiting on you');
   });
 
   test('says nothing at the end of the list', async () => {
@@ -244,7 +248,7 @@ describe('the list of sessions', () => {
     const { findByRole } = mount();
 
     const list = await findByRole('region', { name: 'Chats' });
-    await waitFor(() => expect(list.querySelectorAll('li')).toHaveLength(2));
+    await waitFor(() => expect(list.querySelectorAll('[data-chat]')).toHaveLength(2));
     expect(list.textContent).not.toContain('End of list');
   });
 
@@ -300,7 +304,7 @@ describe('the list of sessions', () => {
     landAt('/chats');
     const { findByRole } = mount();
 
-    const row = await findByRole('button', { name: /Chat 0/ });
+    const row = await findByRole('link', { name: /Chat 0/ });
     row.click();
 
     expect(router.pathname).toBe('/chats/session-0');
@@ -318,9 +322,9 @@ describe('the list of sessions', () => {
     landAt('/chats');
     const { findByRole } = mount();
 
-    const row = await findByRole('button', { name: /Chat 0/ });
+    const row = await findByRole('link', { name: /Chat 0/ });
 
-    expect(row.querySelector('time')).toBeNull();
+    expect(row.closest('[data-chat]')?.querySelector('time')).toBeNull();
   });
 
   test('says to pick a chat, with New chat as an action, until one is open', async () => {
@@ -355,7 +359,7 @@ describe('the list of sessions', () => {
 
     const { findByRole } = mount();
 
-    const row = await findByRole('button', { name: /An old chat/ });
+    const row = await findByRole('link', { name: /An old chat/ });
     expect(row.getAttribute('aria-current')).toBe('true');
     const title = await findByRole('heading', { level: 1 });
     expect(title.textContent?.trim()).toBe('An old chat');
@@ -363,7 +367,7 @@ describe('the list of sessions', () => {
     expect(await findByRole('heading', { level: 2, name: 'Chats' })).not.toBeNull();
   });
 
-  test('lists a new chat first, as a row of its own, until the Bureau lists it', async () => {
+  test('lists no row for a new chat, and shows its pane beside the chats the Bureau lists', async () => {
     const served = bureau({
       'bureau.contexts.list': () => page(0, 2, false),
       'bureau.reviews.list': () => ({ reviews: [] }),
@@ -372,13 +376,16 @@ describe('the list of sessions', () => {
     restore = served.restore;
     landAt('/chats/new?agent=assistant');
 
-    const { findAllByRole } = mount();
+    const { findByRole } = mount();
 
-    const rows = await findAllByRole('button', { name: /Chat \d|New chat/ });
-    const draft = rows.find((row) => row.getAttribute('data-group') === 'draft');
-    expect(draft?.textContent).toContain('New chat');
-    expect(draft?.getAttribute('aria-current')).toBe('true');
-    expect(rows[0]).toBe(draft as HTMLElement);
+    const list = await findByRole('region', { name: 'Chats' });
+    await waitFor(() => expect(list.querySelectorAll('[data-chat]')).toHaveLength(2));
+    // The chat that nothing has started yet is the pane, not a row: the list is the chats there are.
+    for (const row of list.querySelectorAll('[data-chat]')) {
+      expect(row.textContent).not.toContain('New chat');
+    }
+    expect(list.querySelector('[aria-current="true"]')).toBeNull();
+    expect(await findByRole('region', { name: 'Open chat' })).not.toBeNull();
   });
 
   test('reads the session, not a new chat, for a pane that mounts after the new chat has started', async () => {
@@ -390,6 +397,10 @@ describe('the list of sessions', () => {
     const observers: Array<() => void> = [];
     HTMLElement.prototype.getBoundingClientRect = () =>
       ({ width, height: 800, x: 0, y: 0, top: 0, left: 0, right: width, bottom: 800 }) as DOMRect;
+    // The new chat names itself once, so the test knows the name the address takes later.
+    const draftName = spyOn(crypto, 'randomUUID').mockReturnValue(
+      'draft-chat-0000-0000-0000-000000000000',
+    );
     globalThis.ResizeObserver = class {
       constructor(callback: () => void) {
         observers.push(callback);
@@ -414,9 +425,9 @@ describe('the list of sessions', () => {
 
       const { findByRole, findAllByRole } = mount();
 
-      await findAllByRole('button', { name: /Chat \d|New chat/ });
-      const draftId = document.querySelector('[data-group="draft"]')?.getAttribute('data-chat');
-      expect(draftId).toBeTruthy();
+      await findAllByRole('link', { name: /Chat \d/ });
+      const draftId = 'draft-chat-0000-0000-0000-000000000000';
+      expect(draftName).toHaveBeenCalled();
       // The run has started: the address is the chat's own and the page is kept.
       router.navigate(`/chats/${draftId}`, { replace: true, keep: true });
       expect(served.calls.some((call) => call.method === 'bureau.contexts.get')).toBe(false);
@@ -430,6 +441,7 @@ describe('the list of sessions', () => {
     } finally {
       HTMLElement.prototype.getBoundingClientRect = measure;
       globalThis.ResizeObserver = observer;
+      draftName.mockRestore();
     }
   });
 

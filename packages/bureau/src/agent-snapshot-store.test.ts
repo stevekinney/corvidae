@@ -6,6 +6,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 
+import { createAgentContributions, interceptorsOf } from './agent-contributions';
 import { AgentSnapshotError, type AgentFileDefinition } from './agent-file';
 import {
   AGENT_RUN_REFERENCE_KEY_PREFIX,
@@ -22,7 +23,7 @@ function definition(instructions: string): AgentFileDefinition {
     description: null,
     model: 'anthropic/claude-opus-5-5',
     tools: [],
-    skillDescriptors: [],
+    card: [],
     a2a: false,
     instructions,
   };
@@ -397,7 +398,7 @@ describe('a stored snapshot whose definition is not valid', () => {
   const invalid: unknown[] = [
     {},
     { model: 'anthropic/claude-opus-5-5' },
-    { ...definition('x'), skillDescriptors: undefined, tools: 'lookup-order' },
+    { ...definition('x'), card: undefined, tools: 'lookup-order' },
     { ...definition('x'), a2a: 'yes' },
   ];
 
@@ -452,13 +453,13 @@ describe('a stored snapshot whose definition is not valid', () => {
       description: null,
       model: 'anthropic/claude-opus-5-5',
       tools: [],
-      skillDescriptors: [],
+      card: [],
       a2a: false,
       instructions: 'Hi.\n',
     });
   });
 
-  it('loads a snapshot written before the A2A opt-in and `skillDescriptors` existed', async () => {
+  it('loads a snapshot written before the A2A opt-in and `card` existed', async () => {
     const { backing, store } = setup();
     // The exact shape of a definition stored before COR-1864: `skills` and `published` keys.
     await backing.set(
@@ -481,13 +482,14 @@ describe('a stored snapshot whose definition is not valid', () => {
       }),
     );
     const loaded = await store.load('helper', 'aa');
-    // The old keys are dropped, and the new fields take their defaults: the run still resumes.
+    // The old keys are dropped, and the new fields take their defaults: the run still resumes. The
+    // old `skills` descriptor list is not read as the skills a run may activate (COR-2139).
     expect(loaded?.definition).toEqual({
       name: 'Helper',
       description: 'Helps',
       model: 'anthropic/claude-opus-5-5',
       tools: ['lookup-order'],
-      skillDescriptors: [],
+      card: [],
       a2a: false,
       instructions: 'Hi.\n',
     });
@@ -518,6 +520,30 @@ describe('a snapshot written when `guardrails` named a preset', () => {
       expect(revisions.map((revision) => revision.hash)).toEqual(['aa']);
     },
   );
+});
+
+describe('a snapshot written when `interceptors` was named `hooks` (COR-2126)', () => {
+  it('resumes with the same interceptors, so the run keeps the hooks it started with', async () => {
+    const { backing, store } = setup();
+    await backing.set(
+      `${AGENT_SNAPSHOT_KEY_PREFIX}helper:aa`,
+      JSON.stringify({
+        schemaVersion: 1,
+        id: 'helper',
+        hash: 'aa',
+        firstRunAt: '2026-10-01T00:00:00.000Z',
+        lastRunAt: '2026-10-01T00:00:00.000Z',
+        definition: { ...definition('Hi.\n'), hooks: ['x:audit'] },
+      }),
+    );
+    const loaded = await store.load('helper', 'aa');
+    expect(loaded?.definition).toEqual({ ...definition('Hi.\n'), interceptors: ['x:audit'] });
+    const contributions = createAgentContributions([
+      { plugin: 'x', interceptors: [{ name: 'audit', onStep: async () => undefined }] },
+    ]);
+    const registry = interceptorsOf(loaded!.definition, contributions);
+    expect(registry?.getHookNames()).toEqual(['onStep']);
+  });
 });
 
 describe('referencedRevisions', () => {

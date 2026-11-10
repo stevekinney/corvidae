@@ -23,7 +23,7 @@ describe('playground test process isolation', () => {
     ['src/playground-server.test.ts', "import { handleRequest } from './playground-server.ts';"],
     ['scripts/static-export.test.ts', "import { runStaticExport } from './static-export.ts';"],
     [
-      'src/featured-example-server-renderer.test.ts',
+      'src/featured-example-server-renderer.integration.test.ts',
       "import { renderFeaturedExample } from './featured-example-server-renderer.ts';",
     ],
     ['src/page-bundle.test.ts', "import { compilePageBundleArtifacts } from './page-bundle.ts';"],
@@ -110,8 +110,8 @@ describe('playground test process isolation', () => {
     const testFiles = await discoverTestFiles();
     const paths = testFiles.map((testFile) => testFile.path);
 
-    expect(paths).toContain('scripts/static-playground-lifecycle.test.ts');
-    expect(paths).toContain('scripts/check-static-playground.test.ts');
+    expect(paths).toContain('scripts/static-playground-lifecycle.integration.test.ts');
+    expect(paths).toContain('scripts/check-static-playground.integration.test.ts');
     expect(
       await Bun.file(
         join(import.meta.dirname, 'static-playground-browser-lifecycle.check.ts'),
@@ -133,7 +133,7 @@ describe('playground test process isolation', () => {
     );
 
     expect(spawning.map((testFile) => testFile.path)).toContain(
-      'scripts/static-playground-lifecycle.test.ts',
+      'scripts/static-playground-lifecycle.integration.test.ts',
     );
     expect(
       spawning.filter((testFile) => !requiresFreshProcess(testFile)).map((t) => t.path),
@@ -158,6 +158,16 @@ describe('playground test lanes', () => {
   it('runs only slow files in the slow lane', () => {
     expect(selectLaneFiles(files, 'slow').map(({ path }) => path)).toEqual([
       'src/analyze.slow.test.ts',
+    ]);
+  });
+  it('puts integration files in the slow lane and keeps them out of the fast lane', () => {
+    const withIntegration = [...files, testFile('src/server.integration.test.ts')];
+    expect(selectLaneFiles(withIntegration, 'fast').map(({ path }) => path)).not.toContain(
+      'src/server.integration.test.ts',
+    );
+    expect(selectLaneFiles(withIntegration, 'slow').map(({ path }) => path)).toEqual([
+      'src/analyze.slow.test.ts',
+      'src/server.integration.test.ts',
     ]);
   });
 });

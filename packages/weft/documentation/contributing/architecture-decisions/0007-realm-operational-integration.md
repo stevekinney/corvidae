@@ -22,7 +22,7 @@ The Console's System route (`applications/interborough/src/routes/system/`) alre
 
 ### `bun --watch`: coarse, but consistent, because it reloads uniformly
 
-Confirmed empirically against Bun 1.4.2 before writing `bun-watch-restart.test.ts`: `bun --watch <entrypoint>` reloads the target module in the **same OS process** (no child process spawned, so no orphan-process cleanup concern) but with a **fresh module scope** on every reload — every top-level binding, including an `Engine` instance and its `Bun.serve()` listener, is torn down and recreated together. A durable checkpoint (`ctx.waitForSignal`, a timer, a remote activity result) lives in storage, not in the reloaded module's memory, so the freshly constructed `Engine`'s own `recoverAll()` resumes it exactly as an ordinary process restart would. That is documented as a supported development and coarse-production strategy in `documentation/guides/workflow-revisions.md`, with the stated cost: no isolation between generations and no rolling/staged rollout, unlike a real process-manager-driven restart.
+Confirmed empirically against Bun 1.4.2 before writing `bun-watch-restart.integration.test.ts`: `bun --watch <entrypoint>` reloads the target module in the **same OS process** (no child process spawned, so no orphan-process cleanup concern) but with a **fresh module scope** on every reload — every top-level binding, including an `Engine` instance and its `Bun.serve()` listener, is torn down and recreated together. A durable checkpoint (`ctx.waitForSignal`, a timer, a remote activity result) lives in storage, not in the reloaded module's memory, so the freshly constructed `Engine`'s own `recoverAll()` resumes it exactly as an ordinary process restart would. That is documented as a supported development and coarse-production strategy in `documentation/guides/workflow-revisions.md`, with the stated cost: no isolation between generations and no rolling/staged rollout, unlike a real process-manager-driven restart.
 
 `bun --hot` is explicitly rejected for this host in production, documented with the concrete reason: `--hot`'s design goal is preserving as much running state as possible across a reload, including an **already-executing generator's closure**, while the module's other top-level bindings (the `Engine` instance, timers, the HTTP listener) still get recreated fresh. That is a torn mix of one generation's generator against another generation's singletons that nothing in this project's execution model is built to detect or reconcile — the failure mode is silent rather than a clean restart. This hazard is orthogonal to the engine's own workflow **revision** isolation (0003–0006): it happens at the Bun module-reload layer, beneath any revision the engine itself tracks.
 
@@ -49,7 +49,7 @@ bun test src/core/realm/revision-realm-pool.test.ts
 bun test src/core/realm/revision-realm-registry.test.ts
 bun test src/core/engine/revision-realm-execution.test.ts
 bun test src/server/operations/get-realm-diagnostics.test.ts
-bun test src/server/bun-watch-restart.test.ts
+bun test src/server/bun-watch-restart.integration.test.ts
 bun scripts/generate-operation-client.ts
 bun test scripts/generate-operation-client.test.ts
 ```

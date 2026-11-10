@@ -46,6 +46,27 @@ refund.value; // true or false
 refund.probability; // Jev's probability for that value; undefined from a plain language model
 ```
 
+## Batches
+
+The model also has a `decideBatch` method, which Operative's `decideBatch(model, batch)` uses: every question in the batch goes to Jev in one request, with the batch's context as its `state`, so the context is billed once. Measured on 2026-11-09, one yes/no question about a short email cost 373 input tokens, two cost 393, and five cost 441. Questions are sent under positional names (`q0`, `q1`, …), so a caller's names never reach the wire or collide with the response's own fields. A `structured` question is refused before anything is sent.
+
+```ts
+import { decideBatch } from '@lostgradient/operative';
+import { typesafeJev } from '@lostgradient/operative-typesafe';
+
+declare const apiKey: string;
+
+const { decisions, usage } = await decideBatch(typesafeJev({ apiKey }), {
+  context: 'Your build failed on main.',
+  questions: new Map([
+    ['ci', { kind: 'boolean', question: 'Is this a failed build notification?' }],
+    ['receipt', { kind: 'boolean', question: 'Is this a receipt?' }],
+  ]),
+});
+decisions.get('ci')?.probability; // Jev's probability for its answer
+usage?.prompt; // one request's input tokens
+```
+
 ## Recorded fixtures
 
-The contract suite replays JSON recordings in `test/fixtures/decisions/`, so no test reaches the network. `scripts/record-decision-fixtures.ts` writes them by sending each scenario in `decisionScenarios` to the live TypeSafe API. It runs by hand, reads the key from `TYPESAFE_API_KEY` or the macOS Keychain service `typesafe-api`, and refuses to write a fixture that holds the key.
+The contract suite replays JSON recordings in `test/fixtures/decisions/`, so no test reaches the network. `scripts/record-decision-fixtures.ts` writes them by sending each scenario in `decisionScenarios`, and each batch in `decisionBatchScenarios`, to the live TypeSafe API; pass scenario names (`bun scripts/record-decision-fixtures.ts batch`) to record only those. It runs by hand, reads the key from `TYPESAFE_API_KEY` or the macOS Keychain service `typesafe-api`, and refuses to write a fixture that holds the key or whose answers differ from the scenario's.

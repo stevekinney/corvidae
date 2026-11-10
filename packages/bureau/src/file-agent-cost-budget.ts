@@ -1,13 +1,12 @@
 /**
- * What a file agent's `costBudget` needs from the model catalog (COR-1914): the prices that turn a
+ * What a file agent's `limits.cost` needs from the model catalog (COR-1914): the prices that turn a
  * run's token usage into dollars.
  *
  * The budget is measured against Operative's per-run cost estimate, which prices each request at
  * its model's rate. The rates come from the catalog's own price rows, so the budget follows the
  * deployment's catalog and not Operative's built-in table. A row prices a model in US dollars per
- * million input and output tokens, and says nothing about prompt caching; where Operative's table
- * knows the model, its cache rates are kept, so a run that reads a cache is not priced as if the
- * cache were free.
+ * million input and output tokens, and may carry prompt-cache rates, so a run that reads a cache is
+ * not priced as if the cache were free.
  *
  * @module file-agent-cost-budget
  */
@@ -15,14 +14,13 @@
 import {
   type BackendDescriptor,
   type CostEstimationOptions,
-  getModelPricing,
   providerModelPricingKey,
   type ModelPricing,
   type RunCostBudget,
   type RunOptions,
 } from '@lostgradient/operative';
 
-import type { AgentCostBudget, AgentToolBudget } from './agent-file';
+import type { AgentCostLimit, AgentToolLimit } from './agent-file';
 
 /**
  * The price of a catalog row as Operative prices a request, or `undefined` when the row has no
@@ -32,30 +30,28 @@ import type { AgentCostBudget, AgentToolBudget } from './agent-file';
 export function usdPricingOfRow(row: BackendDescriptor): ModelPricing | undefined {
   const price = row.pricing;
   if (price === undefined || price.currency.toUpperCase() !== 'USD') return undefined;
-  // Operative's table, when it knows the model, supplies the cache rates the catalog row lacks.
-  const known = getModelPricing(row.model);
   const longContext = price.longContext;
   return {
-    ...(known?.cacheWriteCostPerMillionTokens === undefined
+    ...(price.cacheWritePerMillionTokens === undefined
       ? {}
-      : { cacheWriteCostPerMillionTokens: known.cacheWriteCostPerMillionTokens }),
-    ...(known?.cacheReadCostPerMillionTokens === undefined
+      : { cacheWriteCostPerMillionTokens: price.cacheWritePerMillionTokens }),
+    ...(price.cacheReadPerMillionTokens === undefined
       ? {}
-      : { cacheReadCostPerMillionTokens: known.cacheReadCostPerMillionTokens }),
+      : { cacheReadCostPerMillionTokens: price.cacheReadPerMillionTokens }),
     promptCostPerMillionTokens: price.inputPerMillionTokens,
     completionCostPerMillionTokens: price.outputPerMillionTokens,
     ...(longContext === undefined
       ? {}
       : {
           longContext: {
-            ...(known?.longContext?.cacheWriteCostPerMillionTokens === undefined
+            ...(longContext.cacheWritePerMillionTokens === undefined
               ? {}
               : {
-                  cacheWriteCostPerMillionTokens: known.longContext.cacheWriteCostPerMillionTokens,
+                  cacheWriteCostPerMillionTokens: longContext.cacheWritePerMillionTokens,
                 }),
-            ...(known?.longContext?.cacheReadCostPerMillionTokens === undefined
+            ...(longContext.cacheReadPerMillionTokens === undefined
               ? {}
-              : { cacheReadCostPerMillionTokens: known.longContext.cacheReadCostPerMillionTokens }),
+              : { cacheReadCostPerMillionTokens: longContext.cacheReadPerMillionTokens }),
             inputTokensAbove: longContext.inputTokensAbove,
             promptCostPerMillionTokens: longContext.inputPerMillionTokens,
             completionCostPerMillionTokens: longContext.outputPerMillionTokens,
@@ -65,7 +61,7 @@ export function usdPricingOfRow(row: BackendDescriptor): ModelPricing | undefine
 }
 
 /**
- * The `costBudget` and `costEstimation` a file agent is built with. `descriptor` is the agent's
+ * The `costBudget` and `costEstimation` a file agent's `limits.cost` builds, in Operative's terms. `descriptor` is the agent's
  * default model, which must be priced; `allowed` are the rows a session may switch it to, whose
  * prices are included so a step on a switched model is counted at that model's rate. A switched
  * model with no price is entered as unpriced, never counted at another model's rate (COR-1921): a
@@ -73,7 +69,7 @@ export function usdPricingOfRow(row: BackendDescriptor): ModelPricing | undefine
  * the run with `budget-exceeded`.
  */
 export function costBudgetOptions(
-  budget: AgentCostBudget,
+  limit: AgentCostLimit,
   descriptor: BackendDescriptor,
   allowed: readonly BackendDescriptor[],
 ): Pick<RunOptions, 'costBudget' | 'costEstimation'> {
@@ -91,62 +87,61 @@ export function costBudgetOptions(
     if (!Object.hasOwn(customPricing, row.model)) customPricing[row.model] = pricing;
   }
   return {
-    costBudget: runCostBudgetOf(budget),
+    costBudget: runCostBudgetOf(limit),
     costEstimation: { model: descriptor.model, pricing: { customPricing } },
   };
 }
 
 /**
- * An agent's `costBudget` as Operative's run option states it. The chat's earlier spend is not
- * known to an agent, only to the Bureau that starts a chat's run: it passes it as
- * `priorChatSpendUsd` (`chat-spend-ledger.ts`).
+ * An agent's `limits.cost` as Operative's run option states it: `run`, `chat` and `warn` are its
+ * `perRunUsd`, `perChatUsd` and `warnAt`, which Operative's own `CostBudget` keeps. The chat's
+ * earlier spend is not known to an agent, only to the Bureau that starts a chat's run: it passes it
+ * as `priorChatSpendUsd` (`chat-spend-ledger.ts`).
  */
-export function runCostBudgetOf(budget: AgentCostBudget): RunCostBudget {
+export function runCostBudgetOf(limit: AgentCostLimit): RunCostBudget {
   return {
-    perRunUsd: budget.perRunUsd,
-    ...(budget.perChatUsd === undefined ? {} : { perChatUsd: budget.perChatUsd }),
-    ...(budget.warnAt === undefined ? {} : { warnAt: [...budget.warnAt] }),
+    perRunUsd: limit.run,
+    ...(limit.chat === undefined ? {} : { perChatUsd: limit.chat }),
+    ...(limit.warn === undefined ? {} : { warnAt: [...limit.warn] }),
   };
 }
 
 /**
- * A file's `toolBudget` as Armorer's `ToolboxOptions.budget` states it (COR-1915): seconds become
+ * A file's `limits.tools` as Armorer's `ToolboxOptions.budget` states it (COR-1915): seconds become
  * milliseconds, and a limit the file leaves out is left out. The counters live in the run's
  * toolbox, in memory: a durable run that is recovered rebuilds its toolbox, so they start over
  * (COR-1933; documented in `documentation/agent-files.md`).
  */
-export function toolboxBudgetOf(budget: AgentToolBudget): {
+export function toolboxBudgetOf(limit: AgentToolLimit): {
   maxCalls?: number;
   maxDurationMs?: number;
 } {
   return {
-    ...(budget.maxCalls === undefined ? {} : { maxCalls: budget.maxCalls }),
-    ...(budget.maxDurationSeconds === undefined
-      ? {}
-      : { maxDurationMs: Math.ceil(budget.maxDurationSeconds * 1000) }),
+    ...(limit.calls === undefined ? {} : { maxCalls: limit.calls }),
+    ...(limit.seconds === undefined ? {} : { maxDurationMs: Math.ceil(limit.seconds * 1000) }),
   };
 }
 
 /**
- * Why a session of an agent with a `costBudget` may not be switched to `override`, or `undefined`
+ * Why a session of an agent with `limits.cost` may not be switched to `override`, or `undefined`
  * when it may (COR-1921). `allowed` are the rows the agent allows, in the order it runs them: a
  * switch that names no provider runs the first of them that serves the model
  * (`createFileAgentGenerate`), so that row is the one judged. A model with no price in US dollars
  * in the catalog cannot be counted against the budget, and counting it at another model's rate
- * would let the budget be spent unseen, so the switch is refused. An agent with no budget is never
+ * would let the budget be spent unseen, so the switch is refused. An agent with no cost limit is never
  * refused, and a model that none of the rows serves is for the caller's own allowed-model check.
  */
 export function unpricedSwitchReason(
-  budget: AgentCostBudget | undefined,
+  limit: AgentCostLimit | undefined,
   allowed: readonly BackendDescriptor[],
   override: { readonly model: string; readonly provider?: string | undefined },
 ): string | undefined {
-  if (budget === undefined) return undefined;
+  if (limit === undefined) return undefined;
   const row = allowed.find(
     (candidate) =>
       candidate.model === override.model &&
       (override.provider === undefined || candidate.provider === override.provider),
   );
   if (row === undefined || usdPricingOfRow(row) !== undefined) return undefined;
-  return `The model "${override.model}" from "${row.provider}" has no price in US dollars in the model catalog, so the agent's costBudget could not count its spend. Choose a model that has one.`;
+  return `The model "${override.model}" from "${row.provider}" has no price in US dollars in the model catalog, so the agent's limits.cost could not count its spend. Choose a model that has one.`;
 }

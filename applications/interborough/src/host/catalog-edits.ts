@@ -22,7 +22,7 @@
  * @module catalog-edits
  */
 
-import type { BackendDescriptor } from '@lostgradient/operative';
+import type { BackendDescriptor, DecisionKind } from '@lostgradient/operative';
 
 import { ProviderConfigurationError } from './provider-configuration-error.ts';
 
@@ -34,6 +34,10 @@ export type CatalogPricing = {
   readonly outputPerMillionTokens: number;
   /** The currency both prices are in, such as `USD`. */
   readonly currency: string;
+  /** The price of a million tokens written to the prompt cache. */
+  readonly cacheWritePerMillionTokens?: number;
+  /** The price of a million tokens served from the prompt cache. */
+  readonly cacheReadPerMillionTokens?: number;
   /**
    * The rates for a request whose input is long. Left out, the row keeps the rates it has, so a
    * price edit never drops them; an object replaces them; `null` removes them.
@@ -49,6 +53,18 @@ export type CatalogLongContextPricing = {
   readonly inputPerMillionTokens: number;
   /** The price of a million output tokens at that size. */
   readonly outputPerMillionTokens: number;
+  /** The price of a million tokens written to the prompt cache at that size. */
+  readonly cacheWritePerMillionTokens?: number;
+  /** The price of a million tokens served from the prompt cache at that size. */
+  readonly cacheReadPerMillionTokens?: number;
+};
+
+/** The decision capabilities to replace on a catalog model. */
+export type CatalogDecisions = {
+  /** The decision kinds the model supports. */
+  readonly kinds: readonly DecisionKind[];
+  /** Whether these are the only decision kinds the model supports. */
+  readonly only: boolean;
 };
 
 /** One edit to the catalog. `provider` and `model` identify the row; every other field is optional. */
@@ -67,6 +83,8 @@ export type CatalogEdit = {
   readonly maxOutputTokens?: number;
   /** An added row only: a current model of the same provider whose capabilities it copies. */
   readonly basedOn?: string;
+  /** The decision capabilities to replace on the model. */
+  readonly decisions?: CatalogDecisions;
 };
 
 const EDIT_FIELDS = [
@@ -77,17 +95,31 @@ const EDIT_FIELDS = [
   'contextWindowTokens',
   'maxOutputTokens',
   'basedOn',
+  'decisions',
 ] as const;
+const DECISION_KINDS = [
+  'boolean',
+  'choice',
+  'scale',
+  'structured',
+] as const satisfies readonly DecisionKind[];
+function isDecisionKind(value: unknown): value is DecisionKind {
+  return typeof value === 'string' && (DECISION_KINDS as readonly string[]).includes(value);
+}
 const PRICING_FIELDS = [
   'inputPerMillionTokens',
   'outputPerMillionTokens',
   'currency',
+  'cacheWritePerMillionTokens',
+  'cacheReadPerMillionTokens',
   'longContext',
 ] as const;
 const LONG_CONTEXT_FIELDS = [
   'inputTokensAbove',
   'inputPerMillionTokens',
   'outputPerMillionTokens',
+  'cacheWritePerMillionTokens',
+  'cacheReadPerMillionTokens',
 ] as const;
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -139,6 +171,24 @@ function parseLongContext(value: unknown, path: string, field: string): CatalogL
       path,
       `${field}.outputPerMillionTokens`,
     ),
+    ...(value['cacheWritePerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheWritePerMillionTokens: nonNegativeNumber(
+            value['cacheWritePerMillionTokens'],
+            path,
+            `${field}.cacheWritePerMillionTokens`,
+          ),
+        }),
+    ...(value['cacheReadPerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheReadPerMillionTokens: nonNegativeNumber(
+            value['cacheReadPerMillionTokens'],
+            path,
+            `${field}.cacheReadPerMillionTokens`,
+          ),
+        }),
   };
 }
 
@@ -161,6 +211,24 @@ function parsePricing(value: unknown, path: string, field: string): CatalogPrici
       `${field}.outputPerMillionTokens`,
     ),
     currency: nonEmptyText(value['currency'], path, `${field}.currency`),
+    ...(value['cacheWritePerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheWritePerMillionTokens: nonNegativeNumber(
+            value['cacheWritePerMillionTokens'],
+            path,
+            `${field}.cacheWritePerMillionTokens`,
+          ),
+        }),
+    ...(value['cacheReadPerMillionTokens'] === undefined
+      ? {}
+      : {
+          cacheReadPerMillionTokens: nonNegativeNumber(
+            value['cacheReadPerMillionTokens'],
+            path,
+            `${field}.cacheReadPerMillionTokens`,
+          ),
+        }),
     ...(value['longContext'] === undefined
       ? {}
       : {
@@ -170,6 +238,28 @@ function parsePricing(value: unknown, path: string, field: string): CatalogPrici
               : parseLongContext(value['longContext'], path, `${field}.longContext`),
         }),
   };
+}
+
+function parseDecisions(value: unknown, path: string, field: string): CatalogDecisions {
+  if (!isPlainObject(value)) throw problem(path, field, 'expected an object.');
+  for (const key of Object.keys(value)) {
+    if (key !== 'kinds' && key !== 'only')
+      throw problem(path, `${field}.${key}`, 'not a known field.');
+  }
+  if (!Array.isArray(value['kinds']) || value['kinds'].length === 0) {
+    throw problem(path, `${field}.kinds`, 'expected a non-empty list of decision kinds.');
+  }
+  const kinds = value['kinds'].map((kind: unknown, index: number) => {
+    if (!isDecisionKind(kind)) {
+      throw problem(path, `${field}.kinds[${index}]`, 'expected a known decision kind.');
+    }
+    return kind;
+  });
+  if (new Set(kinds).size !== kinds.length)
+    throw problem(path, `${field}.kinds`, 'must not contain duplicates.');
+  if (typeof value['only'] !== 'boolean')
+    throw problem(path, `${field}.only`, 'expected true or false.');
+  return { kinds, only: value['only'] };
 }
 
 /**
@@ -233,6 +323,8 @@ export function parseCatalogEdits(
     if (entry['basedOn'] !== undefined) {
       edit.basedOn = nonEmptyText(entry['basedOn'], path, `${field}.basedOn`);
     }
+    if (entry['decisions'] !== undefined)
+      edit.decisions = parseDecisions(entry['decisions'], path, `${field}.decisions`);
     return edit;
   });
 }
@@ -265,7 +357,12 @@ function patchedPricing(
 ): BackendDescriptor['pricing'] {
   const { longContext: editedLongContext, ...rates } = edit;
   const { longContext: keptLongContext, ...kept } = row.pricing ?? {};
-  const longContext = editedLongContext === undefined ? keptLongContext : editedLongContext;
+  const longContext =
+    editedLongContext === undefined
+      ? keptLongContext
+      : editedLongContext === null
+        ? undefined
+        : { ...keptLongContext, ...editedLongContext };
   return {
     ...kept,
     ...rates,
@@ -284,6 +381,7 @@ function patched(row: BackendDescriptor, edit: CatalogEdit): BackendDescriptor {
       ? {}
       : { contextWindowTokens: edit.contextWindowTokens }),
     ...(edit.maxOutputTokens === undefined ? {} : { maxOutputTokens: edit.maxOutputTokens }),
+    ...(edit.decisions === undefined ? {} : { decisions: edit.decisions }),
   };
 }
 

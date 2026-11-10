@@ -196,6 +196,13 @@
     box-shadow: var(--cinder-shadow-sm);
   }
 
+  /* A flat edge: the card keeps its hairline border and drops the shadow. */
+  .cinder-statistic-group[data-cinder-variant='cards'][data-cinder-edge='border']
+    > .cinder-statistic-group__grid
+    > .cinder-statistic {
+    box-shadow: none;
+  }
+
   /*
  * variant: shared-borders — outer border on the root; the 1px grid gap is filled by
  * the root's background and acts as the divider between cells (the grid element is

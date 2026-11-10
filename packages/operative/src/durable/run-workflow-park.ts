@@ -3,6 +3,7 @@ import type { NormalizeActivities, WorkflowContext, WorkflowOperation } from '@l
 import type { ToolExecutionResult } from 'armorer';
 import { Conversation, withMessageId } from 'conversationalist';
 
+import type { GuardrailPhase } from '../errors';
 import { ToolSettledBubbleEvent } from '../events';
 import { isFailureFinishReason } from '../finish-reason';
 import { signalMessageIdentifier } from '../message-identifiers';
@@ -42,7 +43,7 @@ export interface WorkflowParkState {
     | {
         guardrailName: string;
         category: string;
-        phase: 'input' | 'output';
+        phase: GuardrailPhase;
         confidence: number;
         detail?: string;
       }

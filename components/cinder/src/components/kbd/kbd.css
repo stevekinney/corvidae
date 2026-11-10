@@ -46,4 +46,33 @@
     padding: 0 var(--cinder-space-1-5);
     font-size: var(--cinder-text-2xs);
   }
+
+  /* A shortcut hint inside a Button (the `shortcut` prop or hand-written markup) is plain glyphs in
+ * the button's own text color on every variant: no border, fill, shadow, or key-cap chip. The rule
+ * names the Button, never a variant, so a new variant gets it too. The extra attribute selector
+ * outranks the size rules above; the button's color is theme-aware, so both themes stay legible. */
+  .cinder-button .cinder-kbd,
+  .cinder-button .cinder-kbd[data-cinder-size] {
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    font-family: inherit;
+    font-size: var(--cinder-text-xs);
+    font-weight: inherit;
+    color: inherit;
+    background: transparent;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    opacity: 0.72;
+  }
+
+  .cinder-button .cinder-shortcut-hint__separator,
+  .cinder-button .cinder-shortcut-hint__label {
+    color: inherit;
+  }
+
+  .cinder-button .cinder-shortcut-hint__separator {
+    opacity: 0.72;
+  }
 }

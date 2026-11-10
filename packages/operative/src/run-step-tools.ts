@@ -6,7 +6,7 @@ import {
 import type { JSONValue, ToolCall } from 'armorer/protocol';
 import { Conversation, materializeToolCalls } from 'conversationalist';
 
-import { reclassifyToolError } from './errors';
+import { GuardrailTripwireError, reclassifyToolError } from './errors';
 import {
   RunErrorEvent,
   StepAbortedEvent,
@@ -16,12 +16,22 @@ import {
   ToolsExecutingEvent,
 } from './events';
 import type { StepGeneratedMediaAdmitter } from './generated-media';
+import { guardrailRefusedCallResult } from './guardrails/tool-call-guardrail';
+import {
+  guardrailBlockedMessage,
+  guardrailBlockedResult,
+} from './guardrails/tool-result-guardrail';
 import type { ErrorRecoveryAction } from './hooks/types';
 import { modelFacingToolResult } from './human-wait-parks';
 import { assistantMessageIdentifier, toolCallMessageIdentifiers } from './message-identifiers';
+import { runScopedExecutionContext } from './run-scoped-execution-context';
 import type { EventDispatcher, StepDeps, StepOutcome } from './run-step';
 import { dispatchSettledResults, resultRowBatch, sealDanglingToolCalls } from './run-step-support';
-import { explicitAbortReason } from './run-step-utilities';
+import {
+  applyWaterfallHandlerErrorPolicy,
+  explicitAbortReason,
+  guardrailReporter,
+} from './run-step-utilities';
 import { admitToolResultMedia, retainToolResultMedia } from './tool-result-media';
 import { ToolTimingRecorder } from './tool-timing';
 import type { GenerateResponse } from './types';
@@ -46,6 +56,21 @@ export interface ToolExecutionDependencies {
    * assistant message to carry it (a response with tool calls and no text).
    */
   firstToolCallMetadata?: Record<string, JSONValue> | undefined;
+}
+
+/** The message a call a `beforeToolExecution` hook left out, without a guardrail's refusal, carries. */
+const SKIPPED_CALL_MESSAGE = 'Tool execution skipped by beforeToolExecution hook';
+
+function skippedCallResult(call: ToolCall): ToolExecutionResult {
+  return {
+    callId: call.id,
+    toolCallId: call.id,
+    ...(call.providerCallId === undefined ? {} : { providerCallId: call.providerCallId }),
+    toolName: call.name,
+    outcome: 'error',
+    content: SKIPPED_CALL_MESSAGE,
+    result: SKIPPED_CALL_MESSAGE,
+  };
 }
 
 export interface ToolExecutionResultSet {
@@ -138,8 +163,16 @@ export async function executeTools(
 
     let callsToExecute = materializedToolCalls;
     let filteredResults: ToolExecutionResult[] = [];
+    // COR-2104 — the calls a guardrail refused, by id, with the guardrail that refused each.
+    const refusedCalls = new Map<string, string>();
 
     if (hooks?.has('beforeToolExecution')) {
+      const refuse = (callId: string, guardrailName: string) => {
+        if (refusedCalls.has(callId)) return;
+        if (materializedToolCalls.some((call) => call.id === callId)) {
+          refusedCalls.set(callId, guardrailName);
+        }
+      };
       try {
         // Iterated by hand rather than dispatched: `beforeToolExecution`
         // waterfalls a FIELD of its context (`toolCalls`) while the rest of
@@ -148,25 +181,59 @@ export async function executeTools(
         // with a bare
         // `ToolCall[]` for the second handler. Invocations still go through
         // `runHandler` so an observer sees them like any dispatched hook.
-        for (const entry of hooks.getHandlers('beforeToolExecution')) {
+        // A throwing handler goes through the policy `run()` applies (the handler's own `onError`,
+        // then the registry's), so `'continue'` skips it and `'abort'` or no policy fails the step.
+        for (const [index, entry] of hooks.getHandlers('beforeToolExecution').entries()) {
           const beforeContext = {
             conversation,
             step,
             toolCalls: [...callsToExecute],
             elicit,
+            reportGuardrail: guardrailReporter(emitter, step),
+            refuse,
           };
-          const registryResult = await hooks.runHandler('beforeToolExecution', entry, [
-            beforeContext,
-          ]);
+          let registryResult: unknown;
+          try {
+            registryResult = await hooks.runHandler('beforeToolExecution', entry, [beforeContext]);
+          } catch (handlerError) {
+            // COR-2104: a tool-call tripwire halts the run and is never recovered, so no
+            // `onError` policy, a plugin interceptor's or the registry's, may skip it.
+            if (handlerError instanceof GuardrailTripwireError) throw handlerError;
+            applyWaterfallHandlerErrorPolicy(
+              handlerError,
+              'beforeToolExecution',
+              index,
+              entry.options,
+              hooks.onError,
+              entry.id,
+            );
+            // A `'continue'` skips the handler's result, not a refusal it recorded before it threw:
+            // fall through to the filter below.
+            registryResult = undefined;
+          }
           if (registryResult !== undefined) {
             callsToExecute = registryResult as ToolCall[];
           }
+          // A refused call stays out whatever a later hook returns.
+          if (refusedCalls.size > 0) {
+            callsToExecute = callsToExecute.filter((call) => !refusedCalls.has(call.id));
+          }
         }
       } catch (error) {
+        // COR-2104: a tool-call tripwire halts the run before any call of the step runs, as an
+        // input tripwire does, and is never recovered. Every call is answered with a refusal
+        // naming the guardrail, so the conversation stays paired.
+        const tripwire = error instanceof GuardrailTripwireError ? error : undefined;
         const sealedResults = await sealDanglingToolCalls(
           conversation,
           deps.collectAsync,
-          'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)',
+          tripwire === undefined
+            ? 'Tool execution aborted before a result could be produced (beforeToolExecution hook failed)'
+            : (call) =>
+                guardrailRefusedCallResult(
+                  call,
+                  refusedCalls.get(call.id) ?? tripwire.guardrailName,
+                ),
           undefined,
           resultRowScope,
         );
@@ -178,8 +245,9 @@ export async function executeTools(
           sealedResults,
           emittedSettledCallIds,
         );
-        emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));
-        return { kind: 'error', error, errorKind: 'tool' };
+        const errorKind = tripwire === undefined ? 'tool' : 'policy';
+        emitter?.dispatch(new RunErrorEvent(step, error, errorKind));
+        return { kind: 'error', error, errorKind };
       }
     }
 
@@ -187,14 +255,20 @@ export async function executeTools(
     // (or to empty) without throwing. Every filtered-out call was already
     // appended to the conversation via appendToolCalls above and now has no
     // path to a result — seal it here rather than leaving it dangling for a
-    // later provider replay to choke on.
+    // later provider replay to choke on. A call a guardrail refused is answered
+    // with a GUARDRAIL_BLOCKED error naming it (COR-2104).
     if (callsToExecute.length < materializedToolCalls.length) {
       const executingIds = new Set(callsToExecute.map((tc) => tc.id));
       const filteredOutCalls = materializedToolCalls.filter((tc) => !executingIds.has(tc.id));
       const synthesizedResults = await sealDanglingToolCalls(
         conversation,
         deps.collectAsync,
-        'Tool execution skipped by beforeToolExecution hook',
+        (call) => {
+          const guardrailName = refusedCalls.get(call.id);
+          return guardrailName === undefined
+            ? skippedCallResult(call)
+            : guardrailRefusedCallResult(call, guardrailName);
+        },
         filteredOutCalls,
         resultRowScope,
       );
@@ -223,6 +297,7 @@ export async function executeTools(
         // survives unless it collides with `childRegistry`/`parentRunId`/
         // `delegatedAuthority`/`parentSignals`.
         const { concurrency, mode, errorMode, ...baseExecuteOptions } = deps.executeOptions ?? {};
+        const runScopedContext = runScopedExecutionContext(deps);
         const toolboxExecuteOptions = {
           ...baseExecuteOptions,
           ...(concurrency === undefined ? {} : { concurrency }),
@@ -240,29 +315,12 @@ export async function executeTools(
           // sharing one `Toolbox`.
           ...(deps.runId !== undefined ? { ownerId: deps.runId } : {}),
           ...(deps.parentContext !== undefined ? { traceContext: deps.parentContext } : {}),
-          ...(deps.childRegistry !== undefined ||
-          deps.runId !== undefined ||
-          deps.delegatedAuthority !== undefined ||
-          deps.delegatedToolCapabilities !== undefined ||
-          deps.parentSignals !== undefined
+          ...(runScopedContext !== undefined
             ? {
                 executionContext: {
-                  ...deps.executeOptions?.executionContext,
-                  ...(deps.childRegistry !== undefined
-                    ? { childRegistry: deps.childRegistry }
-                    : {}),
-                  ...(deps.runId !== undefined ? { parentRunId: deps.runId } : {}),
-                  ...(deps.delegatedAuthority !== undefined
-                    ? { delegatedAuthority: deps.delegatedAuthority }
-                    : {}),
-                  ...(deps.delegatedToolCapabilities !== undefined
-                    ? { delegatedToolCapabilities: deps.delegatedToolCapabilities }
-                    : {}),
-                  // COR-814 — this run's own port to its parent, replacing any
-                  // `parentSignals` key a caller put in `executeOptions`.
-                  ...(deps.parentSignals !== undefined
-                    ? { parentSignals: deps.parentSignals }
-                    : {}),
+                  // COR-2106 — the run-scoped fields come from the one function a host also uses
+                  // to resume a parked call, so a field added there reaches both.
+                  ...runScopedContext,
                   ...(deps.requestChildWait !== undefined && deps.runId !== undefined
                     ? {
                         durableChildWait: (request: { childRunId: string; toolCallId: string }) => {
@@ -444,8 +502,8 @@ export async function executeTools(
 
       // Validate tool results guardrail
       if (hooks?.has('validateToolResult')) {
+        const validatedResults: ToolExecutionResult[] = [];
         try {
-          const validatedResults: ToolExecutionResult[] = [];
           for (const originalResult of results) {
             let currentResult = originalResult;
             {
@@ -456,6 +514,7 @@ export async function executeTools(
                 toolCalls: callsToExecute,
                 results,
                 elicit,
+                reportGuardrail: guardrailReporter(emitter, step),
               });
               const replaced = validated !== undefined && validated !== currentResult;
               // A hook can replace the result or mutate it in place, so whatever it leaves is
@@ -474,6 +533,19 @@ export async function executeTools(
           }
           results = validatedResults;
         } catch (error) {
+          // COR-2103: a tool-result tripwire halts the run, as an input or output tripwire does,
+          // and is never recovered. The call stays paired, but not with what tripped it: the
+          // flagged result, and every result after it that no guardrail has read, is withheld.
+          if (error instanceof GuardrailTripwireError) {
+            const message = guardrailBlockedMessage(error.guardrailName);
+            const withheld = results
+              .slice(validatedResults.length)
+              .map((result) => guardrailBlockedResult(result, message));
+            results = [...validatedResults, ...withheld];
+            await commitToolResults(results);
+            emitter?.dispatch(new RunErrorEvent(step, error, 'policy'));
+            return { kind: 'error', error, errorKind: 'policy' };
+          }
           // Validation failed, but the underlying tool execution already
           // produced real results — seal the tool calls with those
           // (unvalidated) results rather than leaving them dangling.
@@ -521,6 +593,7 @@ export async function executeTools(
             toolCalls: callsToExecute,
             results,
             elicit,
+            reportGuardrail: guardrailReporter(emitter, step),
           });
         } catch (error) {
           emitter?.dispatch(new RunErrorEvent(step, error, 'tool'));

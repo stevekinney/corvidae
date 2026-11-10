@@ -2,7 +2,7 @@
  * COR-1876 — a contributed formatter's sentence appears for its kind, and an event no formatter
  * claims is shown by its raw kind and the run it names.
  */
-import type { PluginEventFormatter } from '@lostgradient/interborough-plugin';
+import type { PluginFormatter } from '@lostgradient/interborough-plugin';
 import { describe, expect, it } from 'bun:test';
 
 import { createBureauEventFormatter } from './bureau-event-formatting.ts';
@@ -14,7 +14,7 @@ const EVENT = {
   payload: { runId: 'run-7' },
 };
 
-const settled: PluginEventFormatter = {
+const settled: PluginFormatter = {
   name: 'settled',
   eventKinds: ['run.settled'],
   format: (event) => ({ title: `Run finished (${event.kind})`, body: 'It went well.' }),
@@ -57,14 +57,14 @@ describe('formatting an event', () => {
 
   it('shows the raw kind, and says so, when a formatter throws or returns no title', () => {
     const messages: string[] = [];
-    const throwing: PluginEventFormatter = {
+    const throwing: PluginFormatter = {
       name: 'throwing',
       eventKinds: ['run.settled'],
       format: () => {
         throw new Error('boom');
       },
     };
-    const untitled: PluginEventFormatter = {
+    const untitled: PluginFormatter = {
       name: 'untitled',
       eventKinds: ['run.removed'],
       format: () => ({ title: '' }),

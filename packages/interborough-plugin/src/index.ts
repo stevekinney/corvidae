@@ -1,27 +1,40 @@
 export type {
   PluginActivity,
-  PluginCodeAgent,
+  PluginAgent,
   PluginContributions,
   PluginEmbedder,
   PluginEvent,
-  PluginEventFormatter,
-  PluginEventFormatting,
+  PluginFormatter,
+  PluginFormatting,
+  PluginGuardrailDescription,
+  PluginGuardrailFactory,
   PluginGuardrails,
-  PluginHookActionContext,
-  PluginHookActionKind,
-  PluginMcpApp,
+  PluginInputGuardrail,
+  PluginInputGuardrailEntry,
+  PluginInterceptor,
+  PluginInterceptorHook,
+  PluginInterceptorHookOptions,
+  PluginMemoryGate,
+  PluginMemoryGuardrail,
+  PluginOutputGuardrail,
+  PluginOutputGuardrailEntry,
+  PluginPanel,
   PluginProvider,
-  PluginRunHooks,
+  PluginReaction,
+  PluginReactionContext,
   PluginSetupResult,
+  PluginToolGuardrail,
+  PluginToolGuardrailEntry,
+  PluginTrigger,
   PluginTriggerContext,
-  PluginTriggerKind,
 } from './contributions.ts';
 export { definePlugin } from './define-plugin.ts';
-export type { EvalScore, OnlineEvalJudge } from './eval-judge.ts';
+export { guardrailId, isGuardrailFactory } from './guardrail-family.ts';
+export type { GuardrailFamily } from './guardrail-family.ts';
 export type {
   PluginAgentListing,
   PluginGoalRequest,
-  PluginHostApi,
+  PluginHost,
   PluginScheduleDefinition,
 } from './host-api.ts';
 export type {
@@ -33,3 +46,4 @@ export type {
 } from './plugin-descriptor.ts';
 export { isPluginName, pluginNamePattern } from './plugin-name.ts';
 export { createPluginStorage, pluginStoragePrefix } from './plugin-storage.ts';
+export type { PluginScore, PluginScorer } from './scorer.ts';

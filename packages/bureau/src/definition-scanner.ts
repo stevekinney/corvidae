@@ -209,7 +209,9 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
   let subscribing = false;
   let running: Promise<void> | undefined;
   let closed = false;
-  let unwatch: (() => void) | undefined;
+  /** The one close every `close()` call shares. */
+  let closing: Promise<void> | undefined;
+  let unwatch: (() => void | Promise<void>) | undefined;
 
   async function loop(): Promise<void> {
     // Listening starts with the first scan, never at construction: a catalog nobody has
@@ -283,14 +285,22 @@ export function createDefinitionScanner<TEntry extends ScannedEntry>(
         listeners.delete(listener);
       };
     },
-    async close() {
-      closed = true;
-      if (repairTimer !== undefined) options.runtime.timers.clearTimeout(repairTimer);
-      repairTimer = undefined;
-      unwatch?.();
-      unwatch = undefined;
-      listeners.clear();
-      await running;
+    close() {
+      // Every caller shares one close, so a second call made while a scan is in flight waits for
+      // that scan as the first does.
+      closing ??= (async () => {
+        closed = true;
+        if (repairTimer !== undefined) options.runtime.timers.clearTimeout(repairTimer);
+        repairTimer = undefined;
+        const stopping = unwatch?.();
+        unwatch = undefined;
+        listeners.clear();
+        // A source whose watch has a scan in flight of its own settles it here, so nothing scans
+        // after `close()` resolves.
+        await stopping;
+        await running;
+      })();
+      return closing;
     },
   };
 }

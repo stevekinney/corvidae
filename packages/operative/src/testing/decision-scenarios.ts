@@ -1,4 +1,4 @@
-import type { DecisionRequest } from '../decisions/types';
+import type { DecisionQuestion, DecisionRequest } from '../decisions/types';
 
 /**
  * One request the Jev contract suite replays, and the answer the recording
@@ -67,5 +67,56 @@ export const decisionScenarios: readonly DecisionScenario[] = [
       levels: ['low', 'medium', 'high'],
     },
     expected: 2,
+  },
+];
+
+/** A batch question Jev can answer: a boolean, choice, or scale question. */
+export type DecisionBatchScenarioQuestion = Exclude<DecisionQuestion, { kind: 'structured' }>;
+
+/**
+ * One batch the Jev contract suite replays, and the answers the recording must
+ * have produced, by question name. The recorder refuses to write a fixture
+ * whose answers differ from `expected`.
+ */
+export interface DecisionBatchScenario {
+  /** The fixture's file name, without `.json`. */
+  readonly name: string;
+  /** The context every question reads. */
+  readonly context: string;
+  /** The questions, by name, in the order they are asked. */
+  readonly questions: ReadonlyMap<string, DecisionBatchScenarioQuestion>;
+  /** The value each question's recorded answer carries, by question name. */
+  readonly expected: ReadonlyMap<string, boolean | string | number>;
+}
+
+/**
+ * The batches recorded against the live Jev API by
+ * `@lostgradient/operative-typesafe`'s `scripts/record-decision-fixtures.ts`.
+ */
+export const decisionBatchScenarios: readonly DecisionBatchScenario[] = [
+  {
+    name: 'batch',
+    context: 'Hi, I was charged twice for my subscription this month. Please send the money back.',
+    questions: new Map<string, DecisionBatchScenarioQuestion>([
+      ['refund', { kind: 'boolean', question: 'Is the customer asking for a refund?' }],
+      ['outage', { kind: 'boolean', question: 'Is the customer reporting an outage?' }],
+      [
+        'team',
+        {
+          kind: 'choice',
+          question: 'Which team should handle this ticket?',
+          options: [
+            { key: 'billing', label: 'Payments, invoices, refunds' },
+            { key: 'tech', label: 'Bugs, outages, integrations' },
+            { key: 'sales', label: 'Pricing, upgrades, new accounts' },
+          ],
+        },
+      ],
+    ]),
+    expected: new Map<string, boolean | string | number>([
+      ['refund', true],
+      ['outage', false],
+      ['team', 'billing'],
+    ]),
   },
 ];

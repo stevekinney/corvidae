@@ -166,3 +166,57 @@ export function failedStopNoteId(conversation: ConversationHistory): string | un
   }
   return undefined;
 }
+
+/**
+ * `conversation` with the notice that the server stopped the chat when it restarted, when it did
+ * (`ended`). The notice is the last turn's: it takes the place of the plain "The run was stopped."
+ * line the canceled run left on the turn, and is put on the turn's last row when the run left none.
+ * It is an info line (`notice`), not a failure: nothing is retried and nothing went wrong that the
+ * person can fix, because the chat cannot continue. What arrived stays as it is.
+ */
+export function withEndedLine(
+  conversation: ConversationHistory,
+  ended: boolean,
+): ConversationHistory {
+  if (!ended || conversation.ids.length === 0) return conversation;
+  const from = lastTurnStart(conversation);
+  const note = (id: string): MessageNoteInfo => ({
+    kind: 'stopped',
+    id,
+    reason: COPY.ended,
+    notice: true,
+  });
+  for (const id of conversation.ids.slice(from).toReversed()) {
+    const row = conversation.messages[id];
+    if (row === undefined) continue;
+    const notes = notesOf(row);
+    const stopped = notes.find((entry) => entry.kind === 'stopped' && entry.failed !== true);
+    if (stopped === undefined) continue;
+    return withRowNotes(
+      conversation,
+      id,
+      notes.map((entry) => (entry === stopped ? note(entry.id) : entry)),
+    );
+  }
+  const lastId = conversation.ids.at(-1);
+  const last = lastId === undefined ? undefined : conversation.messages[lastId];
+  if (lastId === undefined || last === undefined) return conversation;
+  return withRowNotes(conversation, lastId, [...notesOf(last), note('ended')]);
+}
+
+/** `conversation` with `notes` as the lines of the row `id`. */
+function withRowNotes(
+  conversation: ConversationHistory,
+  id: string,
+  notes: readonly MessageNoteInfo[],
+): ConversationHistory {
+  const row = conversation.messages[id];
+  if (row === undefined) return conversation;
+  return {
+    ...conversation,
+    messages: {
+      ...conversation.messages,
+      [id]: { ...row, metadata: { ...row.metadata, [CINDER_NOTES_METADATA_KEY]: notes } },
+    },
+  };
+}

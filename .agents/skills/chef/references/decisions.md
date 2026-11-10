@@ -1,14 +1,12 @@
 # Decisions and Jev
 
-Read this when a run meets a choice that the evidence does not settle. `SKILL.md` keeps the summary; this file holds the thresholds, the command, its exit codes, how to ask the owner, how to record a decision, and worked examples.
+Read this when a run meets a choice that the evidence does not settle. The command line, wire format, and exit codes are in the header of `scripts/chef/jev.ts`.
 
-An autonomous run still meets choices. Settle each with the cheapest authority that is allowed to settle it: the evidence first, then Jev, then the owner.
+Settle each choice with the cheapest authority allowed to settle it: the evidence first, then Jev, then the owner. A choice the repository, the code, or an instruction already settles is decided from that evidence, and you say what was picked. Neither Jev nor the owner is consulted for an answer that is already written down.
 
-- **Jev**: TypeSafe AI's decision model. It returns probabilities for a yes/no, choice, or scale question, and it does not generate text. It needs `TYPESAFE_API_KEY`, resolved as in [credentials](credentials.md).
-- **routine call**: a choice inside the authorized scope that the coordinator would otherwise make alone, such as whether a failure is shared with the base, which of two compatible batchings to use, or how much grooming an issue needs.
+- **Jev**: TypeSafe AI's decision model. It returns probabilities for a yes/no, choice, or scale question, and no text. It needs `TYPESAFE_API_KEY`, resolved as in [credentials](credentials.md).
+- **routine call**: a choice inside the authorized scope that the coordinator would otherwise make alone.
 - **owner decision**: a product, architecture, or scope choice that is genuinely the owner's.
-
-A choice that the repository, the code, or an instruction already settles is decided from that evidence, and you say what was picked. Neither Jev nor the owner is consulted for an answer that is already written down.
 
 ## Remit and thresholds
 
@@ -26,22 +24,45 @@ At any confidence, these go to the owner, or stay with the evidence and the inst
 
 A high probability on one of these is not permission. Do not rephrase a forbidden question as a routine one to get an answer.
 
-## What to send
+## Decisions made by hand
 
-`state` is a compact summary of the options and the evidence a careful colleague would need: what was observed, the exit codes or counts that matter, and what each option would cost or risk. Keep it to a few sentences or a short list. Never send secrets, credentials, tokens, environment values, or personal data. Do not paste logs or diffs; summarize them and cite the evidence path in the note instead. Use `--state-file <path>` when the summary is longer than a command line should hold, and write that file under `tmp/chef/` in the main checkout, never into the repository's tracked files.
+The coordinator still makes these itself, asking Jev with `bun scripts/chef/jev.ts decide --kind <routine|owner> --question "<question>" --state "<summary>"` and one of `--yes-no`, `--choice <key>=<description>`, or `--scale <levels>` when the evidence does not settle them:
 
-## Running a decision
+- every predicate in the table below, because shadow mode records Jev's answer and never acts on it;
+- any other routine call (grooming depth, which of two compatible batchings to use, whether a failure is shared with the base);
+- every owner decision, with Jev's probabilities shown as the recommendation when it does not clear 0.9.
 
-```bash
-bun scripts/chef/jev.ts decide --kind routine --question "<question>" --state "<summary>" --yes-no
-```
+`state` summarizes the options and evidence in a few sentences: what was observed, the counts that matter, and what each option costs or risks. Never send secrets, credentials, tokens, environment values, or personal data, and never paste logs or diffs; cite the evidence path in the note. A longer summary goes in `--state-file <path>` under the main checkout's `tmp/chef/`, never in tracked files.
 
-The result is the answer, its probability, the model, and whether it cleared the threshold. The script appends every call to `<main checkout>/tmp/chef/jev-decisions.jsonl` (override with `--record <jsonl>`), storing a SHA-256 of the state and never the state itself. Add `--json` to read the result programmatically.
+- Exit 0 (decided): act on the answer; `no (p=0.98)` is a decision too. For a shared-failure question, a `yes` records the failure as shared and continues to the delivery boundary, and a `no` treats it as this change's blocker.
+- Exit 1 (below the threshold): a routine call goes back to the coordinator, which decides from the evidence and records why (for a shared-failure question, widen the control run first); an owner decision goes to the owner.
+- Exit 2: invalid usage, not an answer.
+- Exit 3 (Jev unavailable): routine calls go back to the coordinator and owner decisions to the owner, with no probabilities. Record that Jev was skipped and why; do not retry in a loop or let the outage stall independent work.
 
-- Exit 0: Jev decided, at or above the threshold. Act on the answer.
-- Exit 1: the probability fell below the threshold. A routine call goes back to the coordinator, which decides from the evidence and records why. An owner decision goes to the owner.
-- Exit 2: invalid usage. Fix the command; it is not an answer.
-- Exit 3: Jev is unavailable (no credential, a 401, a 5xx or 529, or a network error; a 429 is retried once after the wait the response asks for). Skip Jev: routine calls go back to the coordinator, and owner decisions go to the owner, with no probabilities to show. Record in the note that Jev was skipped and why. Do not retry in a loop, and do not let the outage stall independent work.
+## Jev predicates
+
+`scripts/chef/jev-predicates.ts` turns the coordinator's recurring questions into Jev questions and runs them in shadow mode: `bun scripts/chef/jev-predicates.ts shadow <predicate> --evidence-file <json>` logs Jev's answer, `outcome <id> --actual <value>` logs the coordinator's, and `report` measures agreement. Shadow mode never changes control flow: no predicate decides until its agreement is measured and it is promoted. Every predicate is `routine` (threshold 0.85).
+
+Promote a predicate (let its decided answers act, below-threshold ones still going to the coordinator) only when, counting records made since its question or its evidence last changed: at least 20 outcomes are recorded, agreement is at least 0.95, and at least half its calls cleared the threshold. Record each outcome from what actually happened, never from Jev's answer. A promotion, and a demotion after a disagreement on a decided answer, is a reviewed edit to this section that names the date and the counts.
+
+Measured so far (2026-11-09, first batch: COR-2101 and COR-2102, plus triage of ten Backlog issues): no predicate meets the rule. `unanswered-question` answered yes for every issue while an absent section reached Jev as "unknown"; once `triage.ts` stated absence explicitly it answered no on the settled issues and leaned yes (0.69) on COR-2300, whose open owner decisions the mechanical checks miss. `criteria-binary` disagreed on a settled issue (COR-2102), and `verification-exact`, `dispatch-plan` and `split-before-dispatch` agreed but rarely cleared 0.85.
+
+| Predicate | Rule it applies | Kind (threshold) |
+| --- | --- | --- |
+| `thread-triage` | AGENTS.md "Review guidelines": fix a real defect in changed lines, decline the out-of-scope or speculative, track what a COR issue already captures | routine (0.85) |
+| `review-tier` | One-way doors, locks, and `turbo.json` get full review; small two-way-door changes light; mechanical or documentation-only none | routine (0.85) |
+| `dispatch-plan` | AGENTS.md "Parallel runs": an economical model when the interfaces are known and the issue has tests, a stronger one for one-way doors | routine (0.85) |
+| `split-before-dispatch` | [Sizing and splitting](planning-and-routing.md#sizing-and-splitting): split an issue too large for one reviewable pull request | routine (0.85) |
+| `flake-verdict` | AGENTS.md "Test tiers": a flake fails on the base too or passes on a rerun of the same head; a regression fails only on the head, consistently | routine (0.85) |
+| `drift-action` | `scripts/chef/drift.ts` findings: `merged-open` closes the issue, `review-without-pr` reopens it, `stale-in-progress` links a pull request or is ignored | routine (0.85) |
+| `escalate` | AGENTS.md "Parallel runs": a stronger model for a defect that survived two corrections | routine (0.85) |
+| `criteria-binary` | Definition of Ready: every acceptance criterion is binary and names its check | routine (0.85) |
+| `verification-exact` | Definition of Ready: Verification gives exact commands runnable from the repository root | routine (0.85) |
+| `unanswered-question` | Definition of Ready: no open or deferred question remains | routine (0.85) |
+| `premise-stale` | The readiness pass: an issue whose named files, symbols, or issues are gone no longer matches the repository | routine (0.85) |
+| `already-done` | The readiness pass: merged pull requests or current code already deliver the acceptance criteria | routine (0.85) |
+
+`scripts/chef/jev-predicates.test.ts` keeps this table equal to the registry.
 
 ## Owner instructions outrank process rules
 
@@ -57,44 +78,8 @@ An explicit owner instruction in the current scope outranks process rules and gu
 
 When Jev does not decide an owner decision, ask the owner directly with a recommendation. In Claude Code, use `AskUserQuestion`: two to four genuinely comparable options per question, the recommended option first with "(Recommended)" in its label, and each description stating the consequence for this codebase, with Jev's probabilities in the description of the options they rate. In Codex, ask the same question directly in the conversation, in that shape. A subagent or worker cannot ask: it returns the question and its recommendation to the coordinator, which asks. Keep working on packages that do not depend on the answer. Never park a decision in a ticket; see [the Linear policy](linear-policy.md).
 
-Ask the questions the readiness pass surfaces in one batch before dispatch, as `SKILL.md` "Understand the work" describes, rather than one at a time as workers reach them.
+Ask the questions the readiness pass surfaces in one batch before dispatch, as [coordination](coordination.md#understand-the-work) describes, rather than one at a time as workers reach them.
 
 ## Recording
 
-Every owner choice that Jev decided gets two records, so the owner can audit it later. First, a line in the work-history log (`bun scripts/chef/note.ts log <note> --file <entry>`) giving the question, the answer, the probability, the model, and the threshold. Second, a comment on the issue or pull request the choice affects, with the same facts. A routine call that Jev decided needs the log line; add the comment when it changed the shape of the delivered work.
-
-## Worked examples
-
-A yes/no routine call: a repository gate failed in a file the candidate did not touch, and a control run produced counts.
-
-```bash
-bun scripts/chef/jev.ts decide --kind routine \
-  --question "Is this test failure shared with the base commit, so it is not this change's blocker?" \
-  --state "Candidate fails checkpoint-prune in 3 of 5 interleaved runs; the base commit fails it in 2 of 5 under the same load. The candidate does not touch that file or its dependencies." \
-  --yes-no
-```
-
-The answer is the likelier side with that side's probability, and both probabilities are printed, so `no (p=0.98)` is a decision too. A `yes` at 0.85 or above records the failure as shared and continues to the delivery boundary; a `no` at 0.85 or above treats it as this change's blocker; below the threshold, widen the control before deciding.
-
-A choice owner decision: two designs for an exported surface, which is a one-way door.
-
-```bash
-bun scripts/chef/jev.ts decide --kind owner \
-  --question "Which shape should the new public export take?" \
-  --state "Option flat: one function taking an options object, matching the three existing exports. Option builder: a chainable object, more flexible, no existing precedent in the package. The export is consumed by two applications and is hard to change once adopted." \
-  --choice flat="One function taking an options object" \
-  --choice builder="A chainable builder object"
-```
-
-At 0.9 or above for one key, take it and record it as above. Below 0.9, ask the owner with both probabilities shown, recommending the likelier key first.
-
-A scale routine call: how much grooming the next issue needs before a worker takes it.
-
-```bash
-bun scripts/chef/jev.ts decide --kind routine \
-  --question "How much up-front grooming does this issue need?" \
-  --state "The issue names the files, has four binary acceptance criteria and the exact test command, and touches one workspace with no shared contract." \
-  --scale none,light,full
-```
-
-The answer is the level with its probability. At 0.85 or above, use that level; otherwise decide from the evidence and record the choice.
+`jev.ts` appends every call to `<main checkout>/tmp/chef/jev-decisions.jsonl` (override with `--record <jsonl>`), storing a SHA-256 of the state and never the state itself. Every owner choice that Jev decided also gets two records, so the owner can audit it later: a line in the work-history log (`bun scripts/chef/note.ts log <note> --file <entry>`) giving the question, the answer, the probability, the model, and the threshold, and a comment with the same facts on the issue or pull request the choice affects. A routine call that Jev decided needs the log line; add the comment when it changed the shape of the delivered work.

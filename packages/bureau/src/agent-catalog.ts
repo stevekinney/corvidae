@@ -18,7 +18,11 @@ import type {
   BackendDescriptor,
   RunnableAgent,
 } from '@lostgradient/operative';
-import { projectDescriptor, readGenerationProfile } from '@lostgradient/operative';
+import {
+  hasDefinitionResolver,
+  projectDescriptor,
+  readGenerationProfile,
+} from '@lostgradient/operative';
 import type { Tool } from 'armorer';
 
 import { AgentFileError, type AgentFileDefinitionInput } from './agent-file';
@@ -259,10 +263,12 @@ export interface BureauAgentCatalog<D extends AgentDefinitions> {
     restore: AgentFileVersions['restore'];
   };
   /**
-   * COR-2009 — the saved overrides of the built-in agents (code agents the host defines, never a
-   * plugin's): what a person changed on one (its tools and how each asks, guardrails, budgets,
-   * model, switchable models, effort, step limit and instructions), each save numbered as a
-   * version that can be restored like a file agent's. An agent never changed has none.
+   * COR-2009, COR-2228 — the saved overrides of the code agents the catalog runs (the built-in
+   * agents the host defines, and the agents of running plugins): what a person changed on one (its
+   * tools and how each asks, guardrails, limits, model, switchable models, effort and
+   * instructions), each save numbered as a version that can be restored like a file agent's. An
+   * agent never changed has none; an agent file, a disabled plugin's agent, and an agent with no
+   * definition resolver take none.
    */
   readonly overrides: CodeAgentOverrides;
   /**
@@ -350,7 +356,7 @@ export interface CreateAgentCatalogOptions {
    */
   readonly unavailable?: readonly UnavailableCodeAgent[] | undefined;
   /**
-   * COR-2009 — where the built-in agents' override versions live. Defaults to a memory store,
+   * COR-2009 — where the code agents' override versions live. Defaults to a memory store,
    * which a restart forgets.
    */
   readonly overrides?: AgentOverrideStore | undefined;
@@ -475,13 +481,20 @@ export function createAgentCatalog<D extends AgentDefinitions>(
         nowISO: options?.codeAgentRuns?.runtime?.clock.nowISO ?? (() => new Date().toISOString()),
       }),
     codeAgents: new Map(
-      entries.map((entry) => [entry.name, { tools: codeToolNames(entry.agent) }] as const),
+      entries.map(
+        (entry) =>
+          [
+            entry.name,
+            { tools: codeToolNames(entry.agent), resolvesRuns: hasDefinitionResolver(entry.agent) },
+          ] as const,
+      ),
     ),
-    listsOtherAgent: (id) =>
-      unavailable.has(id) || (files?.list() ?? []).some((listing) => listing.id === id),
+    isUnavailable: (id) => unavailable.has(id),
+    listsOtherAgent: (id) => (files?.list() ?? []).some((listing) => listing.id === id),
     toolNames: () => new Set((files?.tools() ?? []).map((tool) => tool.name)),
     descriptors,
     modelPolicy,
+    contributions: options?.codeAgentRuns?.contributions,
   });
 
   /**
@@ -496,7 +509,7 @@ export function createAgentCatalog<D extends AgentDefinitions>(
   }
   const effectiveAgents = new Map<string, EffectiveEntry>();
   const effectiveEntry = (name: string, agent: AnyRunnableAgent): EffectiveEntry | undefined => {
-    if (!overrides.isBuiltIn(name)) return undefined;
+    if (!overrides.isCodeAgent(name)) return undefined;
     const inForce = overrides.inForce(name);
     const catalogNow = descriptors();
     const cached = effectiveAgents.get(name);
@@ -732,8 +745,8 @@ function copyOfCodeAgent(
     tools: stated.tools.map((tool) =>
       !toolNames.has(tool) && toolNames.has(`${plugin}:${tool}`) ? `${plugin}:${tool}` : tool,
     ),
-    skillDescriptors: stated.skillDescriptors,
-    ...(stated.skills.length === 0 ? {} : { allowedSkills: stated.skills }),
+    card: stated.skillDescriptors,
+    ...(stated.skills.length === 0 ? {} : { skills: stated.skills }),
     instructions: stated.instructions ?? '',
   };
 }

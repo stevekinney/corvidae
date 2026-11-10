@@ -1,5 +1,5 @@
 /**
- * COR-1877 — `guardrails` and `hooks` over `bureau.agents.definitions.*`: a create writes the ids,
+ * COR-1877 — `guardrails` and `interceptors` over `bureau.agents.definitions.*`: a create writes the ids,
  * `get` shows them (`null` for a file that lists none), an update that leaves one out keeps the
  * file's list and `null` removes it, an id no plugin contributes is refused as
  * `reference-unresolved` before anything is written, and the old preset name is refused as a
@@ -8,6 +8,7 @@
 import { readFile } from 'node:fs/promises';
 
 import { afterEach, describe, expect, it } from 'bun:test';
+import { z } from 'zod';
 
 import { createAgentContributions } from '../../agent-contributions.ts';
 import {
@@ -25,14 +26,15 @@ const contributions = createAgentContributions([
   {
     plugin: 'x',
     guardrails: {
-      inputDetectors: [
+      input: [
         {
           name: 'check',
+          description: 'A test guardrail.',
           detect: async () => ({ triggered: false, category: 'policy', confidence: 0 }),
         },
       ],
     },
-    runHooks: [{ name: 'audit' }],
+    interceptors: [{ name: 'audit' }],
   },
 ]);
 
@@ -40,7 +42,7 @@ function servedWithContributions() {
   return serve({ overrides: { agentContributions: contributions } });
 }
 
-describe.each(['guardrails', 'hooks'] as const)('%s on the definition operations', (key) => {
+describe.each(['guardrails', 'interceptors'] as const)('%s on the definition operations', (key) => {
   const id = key === 'guardrails' ? 'x:check' : 'x:audit';
 
   it('creates an agent that lists an id, and shows it on get', async () => {
@@ -118,5 +120,102 @@ describe.each(['guardrails', 'hooks'] as const)('%s on the definition operations
       ]);
     }
     expect(await Bun.file(ownerPath(served, 'strict')).exists()).toBe(false);
+  });
+});
+
+/**
+ * COR-2118 — a configured guardrail over the wire: a create writes `{ id, configuration }` and
+ * `get` shows it as written, a configuration the guardrail's schema refuses is
+ * `invalid-guardrail-configuration` naming the field, and a repeated id is refused at the boundary.
+ */
+describe('a configured guardrail on the definition operations', () => {
+  const configured = createAgentContributions([
+    {
+      plugin: 'x',
+      guardrails: {
+        output: [
+          {
+            name: 'limit',
+            description: 'Flags a long reply.',
+            configuration: z.strictObject({ maximum: z.number().int().min(1).default(20) }),
+            create: ({ maximum }: { maximum: number }) => ({
+              name: 'limit',
+              validate: async (output: string) => ({
+                valid: output.length <= maximum,
+                category: 'long',
+                confidence: 1,
+              }),
+            }),
+          },
+        ],
+      },
+    },
+  ]);
+  const entry = { id: 'x:limit', configuration: { maximum: 5 } };
+
+  it('creates an agent that configures a guardrail, and shows the entry on get', async () => {
+    const served = await serve({ overrides: { agentContributions: configured } });
+    const created = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'configured',
+      definition: { ...DEFINITION, guardrails: [entry] },
+    });
+    expect(created.error).toBeUndefined();
+
+    const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'configured' });
+    expect(got.result?.['definition']).toMatchObject({ guardrails: [entry] });
+  });
+
+  // The fault carries the reason; the field is named by the catalog's problem (agent-guardrail-configuration.test.ts).
+  it('refuses a configuration the schema refuses as invalid-guardrail-configuration, and writes nothing', async () => {
+    const served = await serve({ overrides: { agentContributions: configured } });
+    const response = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'refused',
+      definition: {
+        ...DEFINITION,
+        guardrails: [{ id: 'x:limit', configuration: { maximum: 'five' } }],
+      },
+    });
+    expect(response.error?.data?.['reason']).toBe('invalid-guardrail-configuration');
+    expect(await Bun.file(ownerPath(served, 'refused')).exists()).toBe(false);
+  });
+
+  it('shows a file whose configuration the schema refuses as invalid, the issue naming the field', async () => {
+    const served = await serve({ overrides: { agentContributions: configured } });
+    await served.put(
+      'refused.md',
+      `---\nmodel: ${DEFINITION.model}\nguardrails: [{id: x:limit, configuration: {maximum: 0}}]\n---\nBody.\n`,
+    );
+    await served.bureau.agents.refresh();
+
+    const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'refused' });
+    expect(got.error).toBeUndefined();
+    expect(got.result).toMatchObject({
+      state: 'invalid',
+      problem: {
+        code: 'invalid-guardrail-configuration',
+        issues: [
+          {
+            path: 'guardrails.0.configuration.maximum',
+            message: expect.stringContaining('"x:limit" refuses `maximum`'),
+          },
+        ],
+      },
+    });
+  });
+
+  it('refuses a guardrail listed twice at the boundary', async () => {
+    const served = await serve({ overrides: { agentContributions: configured } });
+    const response = await callAs(served.owner, 'bureau.agents.definitions.create', {
+      id: 'twice',
+      definition: { ...DEFINITION, guardrails: ['x:limit', entry] },
+    });
+    expect(response.error?.data?.httpStatus).toBe(400);
+    expect(response.error?.data?.['issues']).toEqual([
+      expect.objectContaining({
+        path: ['definition', 'guardrails', 1],
+        message: '"x:limit" is listed more than once; list each guardrail once',
+      }),
+    ]);
+    expect(await Bun.file(ownerPath(served, 'twice')).exists()).toBe(false);
   });
 });

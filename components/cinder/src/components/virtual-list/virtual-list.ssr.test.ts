@@ -14,7 +14,7 @@
  * the test loudly instead of silently working in this environment and breaking in
  * a real server.
  *
- * The compile-and-render mechanics mirror `resizable-panels.ssr.test.ts`: compile
+ * The compile-and-render mechanics mirror `resizable-panels.ssr.integration.test.ts`: compile
  * in `generate: 'server'` mode, rewrite bare `svelte` imports to the SSR entry, and
  * use the SERVER `createRawSnippet` (the client one builds DOM nodes and crashes
  * once `window` is nulled).

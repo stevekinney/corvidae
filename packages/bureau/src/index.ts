@@ -53,6 +53,7 @@ export type {
   BureauPlugins,
   BureauPluginSecrets,
   BureauPluginSettings,
+  GuardrailListing,
   PluginClashParty,
   PluginContributionKind,
   PluginContributionListing,
@@ -75,7 +76,7 @@ export type {
   AgentContributions,
   AgentContributionSource,
   ContributedGuardrail,
-  ContributedRunHooks,
+  ContributedInterceptor,
 } from './agent-contributions';
 export {
   createToolApprovalHooks,
@@ -92,22 +93,25 @@ export type {
   AgentFileProblem,
   AgentFileProblemCode,
   AgentCompaction,
-  AgentCostBudget,
+  AgentCostLimit,
+  AgentLimits,
+  AgentLimitsInput,
   AgentRetry,
-  AgentToolBudget,
+  AgentToolLimit,
 } from './agent-file';
 export {
-  AGENT_COST_BUDGET_MAXIMUM_USD,
-  AGENT_COST_BUDGET_MAXIMUM_WARNINGS,
+  AGENT_COST_LIMIT_MAXIMUM_USD,
+  AGENT_COST_LIMIT_MAXIMUM_WARNINGS,
   AGENT_FILE_STEM_PATTERN,
   AGENT_IDENTIFIER_PATTERN,
-  AGENT_TOOL_BUDGET_MAXIMUM_CALLS,
-  AGENT_TOOL_BUDGET_MAXIMUM_DURATION_SECONDS,
+  AGENT_TOOL_LIMIT_MAXIMUM_CALLS,
+  AGENT_TOOL_LIMIT_MAXIMUM_SECONDS,
   agentFileFrontmatterSchema,
   agentAllowedSkillsSchema,
   agentDefaultEffortSchema,
   agentToolApprovalSchema,
-  agentToolBudgetSchema,
+  agentLimitsSchema,
+  agentToolLimitSchema,
   AgentFileConflictError,
   AgentFileError,
   AgentSnapshotError,
@@ -605,8 +609,8 @@ export type {
   TaskOriginKind,
   TaskPersonSurface,
 } from './task-origin';
-export type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
-export { createOnlineEvalSampler } from './online-evals';
+export type { ScorerSampler, ScorerSamplerOptions } from './scorers';
+export { createScorerSampler } from './scorers';
 export type { BureauToolbox, DurableComposition, RuntimeComposition } from './runtime-composition';
 export {
   createMemoryPersistHook,
@@ -617,6 +621,7 @@ export {
   DEFAULT_RUN_MEMORY_CAPABILITIES,
   DEFAULT_TOOL_MEMORY_CAPABILITIES,
   resolveProviderGenerate,
+  resolveProviderDecide,
 } from './runtime-composition';
 export {
   serializeActionDetail,

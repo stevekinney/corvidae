@@ -104,12 +104,74 @@ describe('the formatting row', () => {
     );
   });
 
-  test('is drawn only while the composer has focus', async () => {
+  test('is drawn only once the box or the row has focus, and stays while focus is in the composer', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     expect(source).toMatch(/\.chat-input-format\s*\{[^}]*display:\s*none;/);
     expect(source).toMatch(
-      /\.chat-input\[data-formatting\] \.chat-input-format\s*\{\s*display:\s*flex;/,
+      /\.chat-input\[data-formatting-open\] \.chat-input-format\s*\{\s*display:\s*flex;/,
     );
+  });
+
+  test('opens for the box, not for a control the host puts in the composer, so that control stays where a click found it', async () => {
+    const { container, getByRole } = render(ChatInput, {
+      id: 'surface-open',
+      formattingToolbar: true,
+      header: createRawSnippet(() => ({
+        render: () => '<button type="button" data-testid="host-control">Agent</button>',
+      })),
+    });
+    const form = container.querySelector('form')!;
+    const control = container.querySelector<HTMLElement>('[data-testid="host-control"]')!;
+    const box = container.querySelector<HTMLTextAreaElement>('textarea')!;
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+
+    // The host's control takes focus: the row stays closed, so nothing moves under the pointer.
+    control.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+
+    // The box takes focus: the row opens, and stays open while focus moves on inside the composer.
+    box.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+    control.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+    getByRole('button', { name: 'Bold' }).focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // Focus leaves the composer: the row closes.
+    box.blur();
+    control.blur();
+    getByRole('button', { name: 'Bold' }).blur();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+  });
+
+  test('closes when a press elsewhere takes focus away only once the press is over, so the click it makes still lands', async () => {
+    const { container } = render(ChatInput, { id: 'surface-press', formattingToolbar: true });
+    const form = container.querySelector('form')!;
+    const box = container.querySelector<HTMLTextAreaElement>('textarea')!;
+    const elsewhere = document.createElement('button');
+    document.body.append(elsewhere);
+    box.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // The press goes down on a button elsewhere on the page, which takes focus from the box: the row
+    // would give its height back and move that button before the click, so it stays open.
+    document.dispatchEvent(new Event('pointerdown', { bubbles: true }));
+    elsewhere.focus();
+    await tick();
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+
+    // The press is over: the click is delivered first, then the row closes.
+    document.dispatchEvent(new Event('pointerup', { bubbles: true }));
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
+    await waitUntil(() => !form.hasAttribute('data-formatting-open'));
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
+    elsewhere.remove();
   });
 
   test('opens when the text box takes focus, not when a header control does, and stays while focus moves inside the composer', async () => {
@@ -128,18 +190,18 @@ describe('the formatting row', () => {
     const editor = container.querySelector('textarea')!;
 
     await fireEvent.focusIn(select);
-    expect(form.hasAttribute('data-formatting')).toBe(false);
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
 
     await fireEvent.focusIn(editor);
-    expect(form.hasAttribute('data-formatting')).toBe(true);
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
 
     // Focus moving to the header's control within the composer keeps the row, so nothing moves.
     await fireEvent.focusOut(editor, { relatedTarget: select });
     await fireEvent.focusIn(select);
-    expect(form.hasAttribute('data-formatting')).toBe(true);
+    expect(form.hasAttribute('data-formatting-open')).toBe(true);
 
     await fireEvent.focusOut(select, { relatedTarget: document.body });
-    expect(form.hasAttribute('data-formatting')).toBe(false);
+    expect(form.hasAttribute('data-formatting-open')).toBe(false);
   });
 
   test('draws no row unless the toolbar is on', () => {

@@ -5,13 +5,15 @@ import { initializeWorkspaceHome } from './workspace-home.test-support.ts';
  * allowlist from `plugins.<name>.configuration.models`; and a top-level `providers` key is not read.
  */
 import { openBungalow } from '@lostgradient/bungalow';
+import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { definePlugin } from '@lostgradient/interborough-plugin';
-import { createModelCatalog } from '@lostgradient/operative';
+import { createAgent, createModelCatalog } from '@lostgradient/operative';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 import { startHost, type Host } from './host.ts';
 import { workspacePlugins } from './plugins.ts';
@@ -112,7 +114,8 @@ describe('a plugin that contributes a provider', () => {
       resolveProviderGenerate: (definitions, provider) => {
         const found = definitions.find((candidate) => candidate.name === provider.provider);
         if (found === undefined) throw new Error('No such provider.');
-        return found.generate(provider);
+        if (found.generate === undefined) throw new Error('Provider has no generate capability.');
+        return found.generate(provider, {});
       },
     });
 
@@ -120,6 +123,85 @@ describe('a plugin that contributes a provider', () => {
     const generate = host.generateFor({ provider: 'lender', model: 'lender-1' });
     expect(await generate({ messages: [] } as never)).toMatchObject({ content: 'lent' });
     expect(handed).toEqual([{ provider: 'lender', model: 'lender-1', apiKey: KEY }]);
+  });
+
+  test('keeps schema defaults and transforms on reload, and rejects invalid stored configuration', async () => {
+    const [seed] = staticRows;
+    if (seed === undefined) throw new Error('The static catalog is empty.');
+    const handed: unknown[] = [];
+    const lender = definePlugin({
+      name: 'configured-lender',
+      version: '1.0.0',
+      description: 'Contributes a provider with schema-parsed configuration.',
+      configuration: z.object({
+        endpoint: z
+          .string()
+          .default('default')
+          .transform((value) => value.toUpperCase()),
+      }),
+      secrets: ['configured-lender-api-key'],
+      setup: () => ({
+        providers: [
+          {
+            name: 'configured-lender',
+            generate: (configuration: unknown, pluginConfiguration: unknown) => {
+              void configuration;
+              handed.push(pluginConfiguration);
+              return async () => ({ content: 'lent', toolCalls: [] });
+            },
+            stream: () => {
+              throw new Error('The fixture provider does not stream.');
+            },
+            rows: [
+              { ...seed, provider: 'configured-lender', model: 'configured-lender-1', aliases: [] },
+            ],
+          },
+        ],
+      }),
+    });
+    const home = await prepareHome({ secrets: { 'configured-lender-api-key': KEY } });
+    const host = await startAt(home, {
+      plugins: [{ descriptor: lender, source: 'package', location: '@fixture/configured-lender' }],
+      resolveProviderGenerate: (
+        definitions,
+        provider,
+        streamEventTarget,
+        streaming,
+        pluginConfiguration,
+      ) =>
+        resolveProviderGenerate(
+          definitions,
+          provider,
+          streamEventTarget,
+          streaming,
+          pluginConfiguration,
+        ),
+    });
+
+    await createAgent({
+      name: 'configured-lender-default',
+      generate: host.generateFor({ provider: 'configured-lender', model: 'configured-lender-1' }),
+    })
+      .run('First')
+      .result();
+    await host.plugins.update('configured-lender', { configuration: { endpoint: 'next' } });
+    await createAgent({
+      name: 'configured-lender-transformed',
+      generate: host.generateFor({ provider: 'configured-lender', model: 'configured-lender-1' }),
+    })
+      .run('Second')
+      .result();
+    expect(handed).toEqual([{ endpoint: 'DEFAULT' }, { endpoint: 'NEXT' }]);
+
+    await writeFile(
+      join(home, 'configuration.json'),
+      JSON.stringify({ plugins: { 'configured-lender': { configuration: { endpoint: 7 } } } }),
+    );
+    const failure = await host.providers.reload().then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect(failure).toBeInstanceOf(ProviderConfigurationError);
   });
 
   test('offers nothing from a plugin whose secret is not set', async () => {
@@ -286,6 +368,64 @@ describe('changing a provider plugin’s configuration through the plugin routes
     await host.plugins.update('openai', { configuration: null });
 
     expect(openaiPairs(host)).toEqual(all);
+  });
+
+  test('uses the updated endpoint on the next model call after a live plugin update', async () => {
+    const responseBody = {
+      id: 'chatcmpl_reload_test',
+      object: 'chat.completion',
+      created: 0,
+      model: 'gpt-4.1',
+      choices: [{ index: 0, message: { role: 'assistant', content: 'ok' }, finish_reason: 'stop' }],
+      usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+    };
+    const requests: string[] = [];
+    const serverA = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        requests.push('A');
+        return Response.json(responseBody);
+      },
+    });
+    const serverB = Bun.serve({
+      port: 0,
+      hostname: '127.0.0.1',
+      fetch() {
+        requests.push('B');
+        return Response.json(responseBody);
+      },
+    });
+    try {
+      const home = await prepareHome({
+        configuration: {
+          plugins: { openai: { configuration: { baseURL: `http://127.0.0.1:${serverA.port}` } } },
+        },
+        secrets: { 'openai-api-key': KEY },
+      });
+      const host = await startAt(home);
+      await createAgent({
+        name: 'reload-a',
+        generate: host.generateFor({ provider: 'openai', model: 'gpt-4.1' }),
+      })
+        .run('First')
+        .result();
+
+      await host.plugins.update('openai', {
+        configuration: { baseURL: `http://127.0.0.1:${serverB.port}` },
+      });
+      await createAgent({
+        name: 'reload-b',
+        generate: host.generateFor({ provider: 'openai', model: 'gpt-4.1' }),
+      })
+        .run('Second')
+        .result();
+
+      expect(requests).toEqual(['A', 'B']);
+    } finally {
+      serverA.stop();
+      serverB.stop();
+    }
   });
 
   test('refuses an allowlist entry that matches no model, writes nothing, and keeps the catalog', async () => {

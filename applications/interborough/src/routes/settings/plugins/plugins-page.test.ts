@@ -53,7 +53,7 @@ function fixtures(): PluginFixture[] {
       contributions: [
         contribution('tool', 'linear:create-issue@1.0.0', { agents: 1 }, 'Create an issue'),
         contribution('activity', 'linear:sync-issue', { waitingRuns: 1 }),
-        contribution('trigger-kind', 'linear:issue-created', { schedules: 2 }),
+        contribution('trigger', 'linear:issue-created', { schedules: 2 }),
       ],
     },
     {

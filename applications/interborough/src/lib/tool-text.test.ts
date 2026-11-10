@@ -4,6 +4,7 @@ import {
   approvalQuestion,
   argumentLine,
   declaredSummary,
+  reasonSaysAlways,
   resultSummary,
   shorten,
 } from './tool-text.ts';
@@ -16,6 +17,19 @@ describe('declaredSummary', () => {
     expect(declaredSummary('Tool requires approval.', 'Tool requires approval.')).toBeUndefined();
     expect(declaredSummary('  ', 'x')).toBeUndefined();
     expect(declaredSummary(undefined, 'x')).toBeUndefined();
+  });
+});
+
+describe('reasonSaysAlways', () => {
+  test('is true for the policy sentence of a tool set to Always, and for nothing else', () => {
+    expect(
+      reasonSaysAlways('Tool "issue-refund" (dangerous tier) requires approval (mode: always).'),
+    ).toBe(true);
+    expect(
+      reasonSaysAlways('Tool "create-issue" (mutating tier) requires approval (mode: on-changes).'),
+    ).toBe(false);
+    expect(reasonSaysAlways('Always ask me.')).toBe(false);
+    expect(reasonSaysAlways(undefined)).toBe(false);
   });
 });
 

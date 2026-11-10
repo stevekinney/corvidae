@@ -5,12 +5,13 @@
  * action's. The hooks are built over a scripted engine, as `hooks-action-retry.test.ts` does.
  */
 import { generateEncryptionKey } from '@lostgradient/cryptography';
-import type { PluginHookActionContext } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginReactionContext } from '@lostgradient/interborough-plugin';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import type { BureauEventEnvelope } from '../bureau-event-feed.ts';
+import { composePlugins } from '../plugins/compose-plugins.ts';
 import type { WebhookDeliveryEngine } from '../webhook-notifier.ts';
 import { createHooks } from './create-hooks.ts';
 import {
@@ -25,9 +26,9 @@ const CONFIGURATION = z.object({ channel: z.string(), urgent: z.boolean().defaul
 
 function fixture(
   options: {
-    readonly run?: (context: PluginHookActionContext) => Promise<void>;
+    readonly run?: (context: PluginReactionContext) => Promise<void>;
     readonly registrations?: (
-      run: (context: PluginHookActionContext) => Promise<void>,
+      run: (context: PluginReactionContext) => Promise<void>,
     ) => readonly HookActionKindRegistration[];
     readonly keys?: Awaited<ReturnType<typeof generateEncryptionKey>>;
     readonly kv?: ReturnType<typeof textValueStore>;
@@ -57,10 +58,10 @@ function fixture(
     },
     tracked: (_id, _hookId, work) => work(),
   };
-  const received: PluginHookActionContext[] = [];
+  const received: PluginReactionContext[] = [];
   const run =
     options.run ??
-    ((context: PluginHookActionContext) => {
+    ((context: PluginReactionContext) => {
       received.push(context);
       return Promise.resolve();
     });
@@ -284,7 +285,7 @@ describe('a contributed hook action', () => {
     const kv = textValueStore(new MemoryStorage(), { disposeUnderlyingStorage: false });
     const ran: string[] = [];
     const at =
-      (version: string, onRun: (context: PluginHookActionContext) => Promise<void>) =>
+      (version: string, onRun: (context: PluginReactionContext) => Promise<void>) =>
       (): readonly HookActionKindRegistration[] => [
         {
           plugin: 'slack',
@@ -440,7 +441,7 @@ describe('a contributed hook action', () => {
 
 describe('a Bureau composed with contributed hook actions and event formatters', () => {
   it('runs the contributed action for a real event and formats events with the contributed formatter', async () => {
-    const received: PluginHookActionContext[] = [];
+    const received: PluginReactionContext[] = [];
     const { bureau, dispose } = await openHooksBureau({
       storage: new MemoryStorage(),
       fetch: (() => Promise.reject(new Error('no request is made'))) as unknown as typeof fetch,
@@ -461,7 +462,7 @@ describe('a Bureau composed with contributed hook actions and event formatters',
           },
         ],
       },
-      eventFormatters: [
+      formatters: [
         {
           plugin: 'reports',
           formatter: {
@@ -490,6 +491,65 @@ describe('a Bureau composed with contributed hook actions and event formatters',
       });
     } finally {
       await dispose();
+    }
+  });
+});
+
+describe('a hook record written before reactions were renamed', () => {
+  it('still delivers through the reactions a plugin contributes, after a restart', async () => {
+    const received: PluginReactionContext[] = [];
+    const slack = definePlugin({
+      name: 'slack',
+      version: '1.0.0',
+      description: 'Posts to channels.',
+      setup: () => ({
+        reactions: [
+          {
+            name: 'post-message',
+            description: 'Posts the event to a channel.',
+            configuration: CONFIGURATION,
+            run: (context) => {
+              received.push(context);
+              return Promise.resolve();
+            },
+          },
+        ],
+      }),
+    });
+    const storage = new MemoryStorage();
+    const key = await newEncryptionKey();
+    const reject = (() =>
+      Promise.reject(new Error('no request is made'))) as unknown as typeof fetch;
+    const open = async () => {
+      const composed = await composePlugins({
+        plugins: [{ descriptor: slack, source: 'package', location: '@example/slack' }],
+        hooks: {},
+      });
+      return openHooksBureau({ storage, fetch: reject, key, hooks: composed.options.hooks });
+    };
+
+    const first = await open();
+    // The stored action is `{ type: 'plugin', plugin, kind, configuration }`: the field named
+    // `kind` is not the contribution key, so the rename leaves the record as it was written.
+    const hook = await first.bureau.hooks!.create({ events: ['run.registered'], action: ACTION });
+    expect(Object.keys(hook.action).toSorted()).toEqual([
+      'configuration',
+      'kind',
+      'plugin',
+      'type',
+    ]);
+    await first.dispose();
+
+    const second = await open();
+    try {
+      const stored = await second.bureau.hooks!.get(hook.id);
+      expect(stored?.action).toEqual(ACTION);
+      await fireRunEvents(second.bureau);
+      const [delivery] = await waitForSettledDeliveries(second.bureau, hook.id, 1);
+      expect(delivery).toMatchObject({ actionType: 'plugin', status: 'delivered' });
+      expect(received[0]?.configuration).toEqual({ channel: 'ops', urgent: false });
+    } finally {
+      await second.dispose();
     }
   });
 });

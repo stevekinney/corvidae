@@ -17,6 +17,7 @@ import {
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import { composeRunHooks, type RunHookTiers } from './run-hook-tiers';
 import type { AnyRunnableAgent } from './agent-catalog';
 import { readFileAgentBinding } from './agent-file-catalog';
 import { createFileAgentRuntime, type FileAgentRuntime } from './agent-file-runtime';
@@ -33,6 +34,9 @@ import {
   createAgentFileFixture,
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
+
+/** What the runtime composition's `composeRunHooks` does, with no plugin contributing (COR-2127). */
+const composeTestRunHooks = (tiers: RunHookTiers) => composeRunHooks(undefined, tiers);
 
 const fixtures: AgentFileFixture[] = [];
 const disposers: Array<() => void> = [];
@@ -119,6 +123,7 @@ function claimRuntime(options: {
   return {
     durable: { engine: {}, checkpointStore: {} },
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,
@@ -145,6 +150,7 @@ async function engineRuntime(
   return {
     durable: { engine, checkpointStore },
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,
@@ -456,6 +462,7 @@ describe('a run that wins its claim', () => {
 describe('a run that is not durable', () => {
   const plain = {
     createBureauInvariantHooks: () => undefined,
+    composeRunHooks: composeTestRunHooks,
     mediaOptionsFor: () => ({}),
     withChatPermission: (toolbox: unknown) => toolbox,
     holdToModelPolicy: (options: unknown) => options,

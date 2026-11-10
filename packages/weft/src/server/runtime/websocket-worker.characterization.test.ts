@@ -1549,7 +1549,7 @@ describe('handleWorkerWebSocketMessage', () => {
     // fire-and-forget — the worker is never blocked on it, and no protocol
     // frame acknowledges it — so a caller needing to know the write actually
     // landed (or didn't) has no signal to await except this test-only hook.
-    // These pin the hook's own contract; `remote-worker-reconnection.test.ts`
+    // These pin the hook's own contract; `remote-worker-reconnection.integration.test.ts`
     // is the consumer that replaces a fixed-budget ledger poll with it.
     it('reports outcome "committed" once the durable lease-renewal write lands', async () => {
       const context = minimalServerContext();

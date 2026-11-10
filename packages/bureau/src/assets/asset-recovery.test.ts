@@ -5,7 +5,7 @@
  * cleanup, and storage failure.
  *
  * Time only moves through the harness's `ManualRuntimeServices` (the
- * timer-agnostic manual-clock style of `online-evals.test.ts`); a process
+ * timer-agnostic manual-clock style of `scorers.test.ts`); a process
  * restart is a new Bureau over a reopened durable fixture, with the clock
  * set backwards the way `audit-trail.ts` handles a restart after a manual
  * clock set; storage failures are injected with operative's fault engine

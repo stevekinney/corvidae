@@ -6,7 +6,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { VIEW_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import {
   approveThroughMount,
   conversation,
@@ -15,7 +15,6 @@ import {
   releaseBarrier,
   runToEnd,
 } from './chat-support.ts';
-import { E2E_DEFAULT_AGENT } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
 
 const BARRIER = 'barrier';
@@ -74,11 +73,14 @@ test.describe('a session', () => {
 
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('First hello');
-    await expect(
-      page
-        .getByRole('region', { name: 'Conversation' })
-        .getByText('demo:assistant', { exact: true }),
-    ).toHaveCount(1);
+    // The header is the title and its status: the agent is named once, where a message goes to it
+    // (the composer), and in the details the breadcrumb opens, not on a line under the title.
+    const region = page.getByRole('region', { name: 'Conversation' });
+    await expect(region.getByText('demo:assistant', { exact: true })).toHaveCount(0);
+    await expect(region.getByRole('textbox', { name: 'Message' })).toHaveAttribute(
+      'placeholder',
+      'Message Assistant…',
+    );
     await send(page, 'Hello again');
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
   });
@@ -105,18 +107,24 @@ test.describe('a tool approval', () => {
 
     await send(page, 'Refund order-1001 again');
 
-    const alert = page.locator('.ib-decision');
+    const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
     // One flat row: the question in the call's own words, with Deny and Approve, and none of the
     // policy's string or the run's identifier anywhere in the view's text.
     await expect(alert).toContainText('Refund order order-1001 for $42.00?');
     const text = (await transcript(page).innerText()) ?? '';
     expect(text).not.toMatch(/requires approval|mutating tier|run-\d/);
-    // The turn's two calls are folded to one line, and the call that needs a decision is not in it.
+    // Two calls are two plain rows of the rail, with no summary: the lookup, and the refund that
+    // waits on a decision, whose approval is nested under its own row.
+    const rail = conversation(page).getByRole('region', { name: 'Tool calls' });
+    await expect(rail.getByRole('button', { name: /^Lookup order/ }).last()).toBeVisible();
+    await expect(rail.getByRole('button', { name: /^Issue refund/ })).toContainText(
+      'Waiting on you',
+    );
+    await expect(conversation(page).getByText(/^Used \d+ tools/)).toHaveCount(0);
     await expect(
-      conversation(page).getByText('Used 2 tools · lookup-order, issue-refund · 1 needs you'),
+      conversation(page).locator('code').filter({ hasText: 'issue-refund' }).first(),
     ).toBeVisible();
-    await expect(conversation(page).getByText('issue-refund').first()).toBeVisible();
     // The seeded turn already refunded the order once, so one reply is the one the session opened with.
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(1);
     // Chat's own card for the approval is not in the transcript: there is one place to decide.
@@ -138,7 +146,7 @@ test.describe('a tool approval', () => {
 
     await page.goto(`/chats/${threadId}`);
 
-    const alert = page.locator('.ib-decision');
+    const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
     await alert.getByRole('button', { name: 'Deny' }).click();
     await expect(conversation(page).getByText(NOT_ISSUED)).toHaveCount(1);
@@ -160,12 +168,15 @@ test.describe('a tool approval', () => {
     });
     await page.goto(`/chats/${threadId}`);
     await send(page, 'Refund the order');
-    const alert = page.locator('.ib-decision');
+    const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
 
     // The run has stopped on the approval, so nothing is going to deliver this follow-up.
     await send(page, 'And one more thing');
+    // The message says "Not sent", and its Retry is in the details beside that word.
+    await page.getByRole('button', { name: 'Not sent: details' }).click();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
+    await page.keyboard.press('Escape');
     await alert.getByRole('button', { name: 'Approve' }).click();
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(2);
 
@@ -178,7 +189,7 @@ test.describe('a tool approval', () => {
 });
 
 test.describe('a tool call', () => {
-  test('is one short row with its summary, and its chevron shows its arguments and its result', async ({
+  test('is one short row with its summary, and choosing it opens its arguments and its result in a panel', async ({
     page,
     request,
   }) => {
@@ -193,12 +204,18 @@ test.describe('a tool call', () => {
     await expect(lookup).toContainText('status delivered');
     const box = await lookup.boundingBox();
     expect(box?.height ?? 999).toBeLessThanOrEqual(48);
-    // Choosing the row opens what the call was given and what it answered.
+    // Choosing the row opens what the call was given and what it answered in the call's panel,
+    // beside the conversation, and the rail's rows stay one line each.
     await lookup.click();
-    const details = page.locator('.ib-tool__details');
-    await expect(details.locator('dt', { hasText: 'orderId' }).first()).toBeVisible();
-    await expect(details.locator('dt', { hasText: 'Result: totalCents' })).toBeVisible();
-    await expect(details.locator('dd', { hasText: '4200' })).toBeVisible();
+    const panel = page.locator('.cinder-tool-call-panel');
+    await expect(panel).toContainText('Lookup order');
+    const given = panel.getByRole('region', { name: 'Input' });
+    await expect(given.getByText('Order ID')).toBeVisible();
+    await expect(given.getByText('order-1001')).toBeVisible();
+    const answered = panel.getByRole('region', { name: 'Result' });
+    await expect(answered.getByText('Total cents')).toBeVisible();
+    await expect(answered.getByText('4200')).toBeVisible();
+    await expect(page.locator('.ib-tool__details')).toHaveCount(0);
   });
 });
 
@@ -276,6 +293,8 @@ test.describe('a follow-up sent while the run is going', () => {
 
     await page.getByRole('button', { name: /stop/i }).click();
 
+    await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
+    await page.getByRole('button', { name: 'Not sent: details' }).click();
     await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
     await page.getByRole('button', { name: 'Retry' }).click();
     await expectWaiting(request, 1);
@@ -383,7 +402,7 @@ test('a reload while the run is going restores the transcript and continues live
   await expect(conversation(page).getByText(FIRST_REPLY)).toHaveCount(2);
 });
 
-/** The one request the view frame's probe makes for a session, answered the way the server would. */
+/** The one request the chat pane makes for a session, answered the way the server would. */
 async function answerSessionProbe(
   page: Page,
   outcome: 'loading' | 'error' | 'forbidden',
@@ -421,38 +440,59 @@ for (const width of [375, 1280] as const) {
       await checkA11y(`a session, ready, at ${width}px`);
     });
 
-    test('is not found for a session that does not exist, with the words copy.ts holds', async ({
+    test('is not found for a session that does not exist, with the words copy.ts holds, beside a live list', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/chats/no-such-session');
       const frame = page.locator('[data-view="chat"]');
-      await expect(frame).toHaveAttribute('data-state', 'not-found');
       await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
         VIEW_COPY.chat.notFound?.title ?? '',
       );
+      // Beside a list that stays live where there is room for both; a phone shows one at a time.
+      if (width > 640) {
+        await expect(
+          frame.getByRole('region', { name: 'Open chat' }).getByRole('link', { name: 'New chat' }),
+        ).toBeVisible();
+        // The list beside it keeps its own "+", which is named the same.
+        await expect(
+          frame.getByRole('region', { name: 'Chats' }).getByRole('link', { name: 'New chat' }),
+        ).toBeVisible();
+      }
       await checkA11y(`a session, not found, at ${width}px`);
     });
 
     for (const outcome of ['loading', 'error', 'forbidden'] as const) {
-      test(`is ${outcome} when the Bureau answers that way, and passes axe`, async ({
+      test(`is ${outcome} in the conversation area when the Bureau answers that way, and passes axe`, async ({
         page,
         checkA11y,
         pageErrors,
       }) => {
         if (outcome !== 'loading') {
-          pageErrors.expect({
+          pageErrors.expectEvery({
             pattern: loggedFailedResponse(outcome === 'error' ? 500 : 403, /bureau\/jsonrpc/),
-            reason: `the test answers the session probe with a ${outcome === 'error' ? 500 : 403}`,
+            reason: `the test answers the session read with a ${outcome === 'error' ? 500 : 403}`,
           });
         }
         await answerSessionProbe(page, outcome);
         await page.goto('/chats/any-session');
         const frame = page.locator('[data-view="chat"]');
-        await expect(frame).toHaveAttribute('data-state', outcome);
-        await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-          VIEW_COPY.chat[outcome].title,
-        );
+        // The chat's own states are drawn by its pane, so the frame, and the list in it, stay up.
+        await expect(frame).toHaveAttribute('data-state', 'ready');
+        if (outcome === 'loading') {
+          await expect(page.getByTestId('chat-loading')).toBeVisible();
+          await expect(page.getByRole('textbox', { name: /^Message/ })).toBeDisabled();
+        } else {
+          await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+            outcome === 'error' ? CHAT_COPY.load.errorTitle : VIEW_COPY.chat.forbidden.title,
+          );
+        }
+        // The list beside it stays live where there is room for both, with its own "+".
+        if (width > 640) {
+          await expect(
+            frame.getByRole('region', { name: 'Chats' }).getByRole('link', { name: 'New chat' }),
+          ).toBeVisible();
+        }
         await checkA11y(`a session, ${outcome}, at ${width}px`);
       });
     }
@@ -473,18 +513,24 @@ for (const width of [375, 1280] as const) {
 
       const welcome = page.getByTestId('new-chat-welcome');
       await expect(welcome).toBeVisible();
-      await expect(welcome.locator('.ib-new-chat__greeting')).toContainText('demo:tool-runner');
-      await expect(welcome.locator('.ib-new-chat__greeting code')).toHaveCount(1);
+      await expect(welcome.getByRole('heading', { level: 1 })).toHaveText(
+        'What should Tool runner do?',
+      );
       await expect(welcome).toContainText(
         'Looks an order up, then asks for approval to refund it.',
       );
-      // The greeting is a line, not a second title: the chat's own title is the page's one heading.
-      await expect(welcome.getByRole('heading')).toHaveCount(0);
-      // `?agent=` is the person's own choice, so the other agents are not offered.
-      await expect(page.getByRole('group', { name: 'Or start with another agent' })).toHaveCount(0);
+      // The greeting is the page's one title: there is no header over it.
+      await expect(page.getByRole('heading', { level: 1 })).toHaveCount(1);
+      // The other agents are offered whichever agent is chosen, and the chosen one is not repeated.
+      const others = page.getByRole('group', { name: 'Or chat with' });
+      await expect(others).toBeVisible();
+      await expect(others.getByRole('button', { name: /Tool runner/ })).toHaveCount(0);
       await checkA11y(`a new chat greeting the tool-runner at ${width}px`);
 
-      await welcome.getByRole('button', { name: 'Refund order 1234' }).click();
+      await page
+        .getByTestId('agent-prompts')
+        .getByRole('button', { name: 'Refund order 1234' })
+        .click();
 
       await expect(composer(page)).toHaveValue('Refund order 1234');
       await expect(composer(page)).toBeFocused();
@@ -512,7 +558,7 @@ for (const width of [375, 1280] as const) {
       });
       await page.goto('/chats/new?agent=demo:tool-runner');
 
-      const button = page.getByTestId('new-chat-welcome').getByRole('button', { name: prompt });
+      const button = page.getByTestId('agent-prompts').getByRole('button', { name: prompt });
       await expect(button).toBeVisible();
       const outlet = page.locator('main.weft-shell-outlet');
       const outletBox = await outlet.boundingBox();
@@ -535,25 +581,29 @@ for (const width of [375, 1280] as const) {
       ).toBe(true);
     });
 
-    test('offers the other agents as one row until one is chosen, and choosing one selects it', async ({
+    test('offers the other agents as one row, and choosing one selects it', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/chats/new');
       const welcome = page.getByTestId('new-chat-welcome');
-      await expect(welcome).toContainText(E2E_DEFAULT_AGENT);
-      const others = page.getByRole('group', { name: 'Or start with another agent' });
+      await expect(welcome.getByRole('heading', { level: 1 })).toContainText(/What should .* do\?/);
+      const others = page.getByRole('group', { name: 'Or chat with' });
       await expect(others).toBeVisible();
       await checkA11y(`a new chat with the agents to choose from at ${width}px`);
 
-      await others.getByRole('button', { name: /request-human-input/ }).click();
+      await others.getByRole('button', { name: /request human input/i }).click();
 
       await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Arequest-human-input$/);
-      await expect(welcome).toContainText('demo:request-human-input');
+      await expect(welcome.getByRole('heading', { level: 1 })).toHaveText(
+        'What should Request human input do?',
+      );
       await expect(page.getByTestId('agent-prompts').getByRole('button')).toHaveText(
         'Ship the release',
       );
-      await expect(others).toHaveCount(0);
+      // The row stays, and now lists the agent that was left behind instead of the chosen one.
+      await expect(others).toBeVisible();
+      await expect(others.getByRole('button', { name: /request human input/i })).toHaveCount(0);
     });
   });
 }

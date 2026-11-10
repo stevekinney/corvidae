@@ -39,7 +39,7 @@ function pluginWithAgent(agent: string, status: string) {
     status,
     problems: [],
     contributions: [
-      { kind: 'code-agent', id: agent, references: { agents: 0, schedules: 0, waitingRuns: 0 } },
+      { kind: 'agent', id: agent, references: { agents: 0, schedules: 0, waitingRuns: 0 } },
     ],
     enabled: true,
     configuration: {},
@@ -115,17 +115,21 @@ describe('a new chat with no agent named', () => {
     ).restore;
     landAt('/chats/new');
 
-    const { container, findAllByRole, findByRole } = mount();
+    const { container, findByTestId, findByRole } = mount();
 
-    const statuses = await findAllByRole('status');
+    // New chat's own placeholders, with the composer already there but not yet usable.
+    expect(await findByTestId('new-chat-loading')).not.toBeNull();
+    expect(container.querySelector('[data-testid="new-chat-welcome"]')).toBeNull();
     expect(
-      statuses.some((status) => status.getAttribute('aria-label') === 'Loading the conversation'),
-    ).toBe(true);
-    expect(container.querySelector('textarea')).toBeNull();
+      container
+        .querySelector('[data-testid="new-chat-loading"] textarea')
+        ?.hasAttribute('disabled'),
+    ).not.toBe(false);
 
     release();
     const agent = await findByRole('combobox', { name: 'Agent' });
     await waitFor(() => expect(agent.textContent).toMatch(/assistant/i));
-    expect(container.querySelector('textarea')).not.toBeNull();
+    expect(container.querySelector('[data-testid="new-chat-loading"]')).toBeNull();
+    expect(container.querySelector('textarea')?.hasAttribute('disabled')).toBe(false);
   });
 });

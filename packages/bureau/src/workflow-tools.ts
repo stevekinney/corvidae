@@ -133,7 +133,7 @@ export type WorkflowToolResult =
         readonly description: string | null;
         readonly inputSchema: Readonly<Record<string, unknown>> | null;
       }[];
-      readonly triggerKinds: readonly {
+      readonly triggers: readonly {
         readonly id: string;
         readonly description: string;
         readonly configuration: Readonly<Record<string, unknown>> | null;

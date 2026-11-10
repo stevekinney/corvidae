@@ -1,0 +1,4 @@
+interface:
+  display_name: 'Create task'
+  short_description: 'Turn a goal into one Ready-shaped COR issue, created only after approval'
+  default_prompt: 'Use $create-task to draft this as a COR issue from the ticket template, interrogate it, check for duplicates and the Definition of Ready, and create it only after I approve the draft.'

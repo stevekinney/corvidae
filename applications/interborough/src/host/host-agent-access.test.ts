@@ -7,7 +7,8 @@
  *   once the tab sets it to `always`, the next chat parks on an approval before the tool runs;
  *   set to `blocked`, the tool never runs and the model is told so.
  * - A tool budget saved on the tab ends a run that reaches it, with the limit named in the reason.
- * - A cost budget saved on the tab ends a run that reaches it, with `perRunUsd` named.
+ * - A cost limit saved on the tab ends a run that reaches it, with `perRunUsd` (Operative's name
+ *   for it) named.
  */
 import { resolveProviderGenerate } from '@lostgradient/bureau';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -113,7 +114,7 @@ const BASE: AgentDefinitionInput = {
   description: 'Looks orders up.',
   model: 'anthropic/sonnet',
   tools: ['demo:lookup-order'],
-  skillDescriptors: [],
+  card: [],
   instructions: 'Look the order up.',
 };
 
@@ -123,7 +124,7 @@ const BASE: AgentDefinitionInput = {
  */
 async function saveAccess(
   fetcher: Fetcher,
-  access: Pick<AgentDefinitionInput, 'toolApproval' | 'costBudget' | 'toolBudget'>,
+  access: Pick<AgentDefinitionInput, 'approvals' | 'limits'>,
 ): Promise<void> {
   const detail = await getAgentDefinition('clerk', { fetch: fetcher });
   if (detail.definition === null || detail.hash === null) throw new Error('expected a file');
@@ -136,7 +137,7 @@ async function saveAccess(
       description: file.description,
       model: file.model,
       tools: file.tools,
-      skillDescriptors: file.skillDescriptors,
+      card: file.card,
       a2a: file.a2a,
       instructions: file.instructions,
       ...access,
@@ -186,7 +187,7 @@ describe('a per-tool setting saved on the Access tab, in a chat', () => {
   test('asks first for a tool set to always, before the tool runs', async () => {
     const { host, fetcher } = await start(false);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolApproval: { 'demo:lookup-order': 'always' } });
+    await saveAccess(fetcher, { approvals: { 'demo:lookup-order': 'always' } });
 
     const stream = await chat(host, 'thread-always');
 
@@ -198,7 +199,7 @@ describe('a per-tool setting saved on the Access tab, in a chat', () => {
   test('never runs a tool set to blocked', async () => {
     const { host, fetcher } = await start(false);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolApproval: { 'demo:lookup-order': 'blocked' } });
+    await saveAccess(fetcher, { approvals: { 'demo:lookup-order': 'blocked' } });
 
     const stream = await chat(host, 'thread-blocked');
 
@@ -214,7 +215,7 @@ describe('a budget saved on the Access tab, in a chat', () => {
   test('stops a run at its tool-call limit, and names the limit', async () => {
     const { host, fetcher } = await start(true);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { toolBudget: { maxCalls: 1 } });
+    await saveAccess(fetcher, { limits: { tools: { calls: 1 } } });
 
     const stream = await chat(host, 'thread-tool-budget');
 
@@ -226,7 +227,7 @@ describe('a budget saved on the Access tab, in a chat', () => {
   test('stops a run at its spend limit, and names it', async () => {
     const { host, fetcher } = await start(true);
     await createAgent('clerk', BASE, { fetch: fetcher });
-    await saveAccess(fetcher, { costBudget: { perRunUsd: 0.01 } });
+    await saveAccess(fetcher, { limits: { cost: { run: 0.01 } } });
 
     const stream = await chat(host, 'thread-cost-budget');
 

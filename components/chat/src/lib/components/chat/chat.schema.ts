@@ -48,6 +48,21 @@ const schema = {
       description:
         "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`.",
     },
+    clearComposerOnSubmit: {
+      type: 'boolean',
+      description:
+        "Whether Send empties the composer's text and files. Default `true`. Set it to `false` while a host must keep what was typed until the message has gone through, such as the first message of a new conversation that is still being started, and empty the box itself with `clearInput()` once it has.",
+    },
+    composerStarting: {
+      type: 'string',
+      description:
+        'Set while the host is starting what the message belongs to, such as the conversation its first message opens: Send reads this word with a spinner and is off, there is no Stop because nothing is running yet, and the typed text and files stay in the box. Left out, Send is Send.',
+    },
+    composerPlacement: {
+      enum: ['docked', 'centered'],
+      description:
+        "Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one.",
+    },
     composerAnswering: {
       type: 'boolean',
       description:
@@ -205,6 +220,18 @@ const schema = {
         reason: 'function-or-snippet',
         description:
           "The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it.",
+      },
+      {
+        name: 'composerLead',
+        reason: 'function-or-snippet',
+        description:
+          "Content above the composer, outside its border and at its width, after the transcript: the host's own note on where the conversation comes from, such as a chip that says a new chat was started from another page. It is drawn whether the composer is live or blocked. The snippet takes no arguments, and the caller owns the semantics inside it.",
+      },
+      {
+        name: 'composerFooter',
+        reason: 'function-or-snippet',
+        description:
+          "Content under the composer, after its hint or status line: the host's own next steps for an empty chat, such as example prompts and other agents to start with. The snippet takes no arguments, and the caller owns the semantics inside it.",
       },
       {
         name: 'composerHint',

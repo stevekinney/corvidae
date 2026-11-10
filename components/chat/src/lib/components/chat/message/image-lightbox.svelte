@@ -155,7 +155,7 @@
   // this seeding does not itself put any dialog markup into the server
   // HTML — Modal's own internal `{#if mounted}` gate keeps its overlay
   // surface SSR-empty regardless of `hasOpenedOnce`; see
-  // image-lightbox.ssr.test.ts.
+  // image-lightbox.ssr.integration.test.ts.
   //
   // Wrapped in `untrack()` (the established idiom elsewhere in this
   // codebase for exactly this — see `popover-bindable-fixture.svelte`'s

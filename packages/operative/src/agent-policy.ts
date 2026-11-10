@@ -9,7 +9,12 @@
  * answers for the same configuration.
  */
 
-import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  HOOK_TIER_PRIORITY_BANDS,
+  type HookRegistrationOptions,
+  type HookRegistry,
+  type RuntimeServices,
+} from '@lostgradient/lifecycle';
 import { toolListEntryMatches, type AnyToolbox } from 'armorer';
 
 import { createGatedExecute } from './active-skill-tool-gate';
@@ -20,8 +25,9 @@ import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
 import type {
   GuardrailHooks,
   GuardrailsOptions,
-  InputDetector,
-  OutputValidator,
+  InputGuardrailEntry,
+  OutputGuardrailEntry,
+  ToolCallValidator,
 } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 
@@ -73,13 +79,17 @@ export interface AgentSkills {
 
 /**
  * Detectors and validators added to whatever guardrails an agent's run resolves (COR-1877). They
- * run beside the resolved configuration's own and never replace it.
+ * run beside the resolved configuration's own and never replace it. An entry may carry an action of
+ * its own (COR-2104), which it keeps whatever the resolved configuration's mode and group action;
+ * a bare entry takes the group's.
  */
 export interface GuardrailAdditions {
   /** Detectors run over the input, after the resolved configuration's own. */
-  readonly inputDetectors?: readonly InputDetector[] | undefined;
+  readonly inputDetectors?: readonly InputGuardrailEntry[] | undefined;
   /** Validators run over a response, after the resolved configuration's own. */
-  readonly outputValidators?: readonly OutputValidator[] | undefined;
+  readonly outputValidators?: readonly OutputGuardrailEntry[] | undefined;
+  /** Validators run over each tool call before it runs, after the resolved configuration's own. */
+  readonly toolValidators?: readonly ToolCallValidator[] | undefined;
 }
 
 /**
@@ -94,7 +104,8 @@ function withGuardrailAdditions(
 ): GuardrailsOptions | undefined {
   const detectors = additions.inputDetectors ?? [];
   const validators = additions.outputValidators ?? [];
-  if (detectors.length === 0 && validators.length === 0) {
+  const toolValidators = additions.toolValidators ?? [];
+  if (detectors.length === 0 && validators.length === 0 && toolValidators.length === 0) {
     return resolved === false ? undefined : resolved;
   }
   const base: GuardrailsOptions = resolved === false ? { mode: 'tripwire' } : resolved;
@@ -109,6 +120,14 @@ function withGuardrailAdditions(
           output: {
             ...base.output,
             validators: [...(base.output?.validators ?? []), ...validators],
+          },
+        }),
+    ...(toolValidators.length === 0
+      ? {}
+      : {
+          tools: {
+            ...base.tools,
+            validators: [...(base.tools?.validators ?? []), ...toolValidators],
           },
         }),
   };
@@ -225,20 +244,33 @@ export function withDelegatedToolCapabilities(
 
 /**
  * Priority placing an agent policy registration behind the agent's own hooks
- * on the same hook point.
+ * on the same hook point, before the agent tier's band is added.
  *
  * The input guardrail has to scan a step every other agent `prepareStep` hook
  * has already contributed to, and on the `validateResponse` waterfall the last
  * handler decides the response, so the output guardrail must not be overruled
  * by an ordinary agent hook. Far enough above `Number.MIN_SAFE_INTEGER` that
  * Bureau's own pinned-last registrations (`BUREAU_PINNED_LAST_PRIORITY` plus
- * its tier offset) still sort after these: under Bureau, Bureau's narrowing
- * keeps the final word.
+ * the `bureau` band, `Number.MIN_SAFE_INTEGER + 2 * HOOK_TIER_PRIORITY_BANDS.bureau`)
+ * still sort after these, with the `agent` band added: under Bureau, Bureau's
+ * narrowing keeps the final word. A plugin's interceptor sorts no lower than
+ * one above it, in either the `agent` or the `plugin` band (COR-2128, COR-2127).
  */
 export const AGENT_POLICY_PINNED_LAST_PRIORITY = Number.MIN_SAFE_INTEGER + 100_000;
 
 /** The ownership tier stamped on every registration this module makes. */
 export const AGENT_POLICY_HOOK_SOURCE = 'agent';
+
+/**
+ * Where each policy registration sits: the `agent` tier, already in that tier's band, so the run's
+ * plan shows its tier on a plain `agent.run()` too, and a later merge under Bureau keeps the entry
+ * where it is (COR-2127).
+ */
+const AGENT_POLICY_REGISTRATION = {
+  source: AGENT_POLICY_HOOK_SOURCE,
+  tier: 'agent',
+  priority: AGENT_POLICY_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.agent,
+} as const satisfies HookRegistrationOptions;
 
 /** Inputs for one run's policy composition. */
 export interface ComposeAgentRunPolicyOptions {
@@ -257,15 +289,28 @@ function registerGuardrails(
 ): void {
   hooks.on('prepareStep', guardrails.prepareStep, {
     id: 'agent:guardrails-prepare-step',
-    source: AGENT_POLICY_HOOK_SOURCE,
-    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    ...AGENT_POLICY_REGISTRATION,
     // Scans and may taint in-process session state; no external write.
+    replay: 'safe',
+  });
+  // COR-2103 — the input detectors over each tool result. A waterfall, like `validateResponse`, so
+  // pinned last: an agent hook running after it would decide what the guardrail's refusal was worth.
+  hooks.on('validateToolResult', guardrails.validateToolResult, {
+    id: 'agent:guardrails-validate-tool-result',
+    ...AGENT_POLICY_REGISTRATION,
     replay: 'safe',
   });
   hooks.on('validateResponse', guardrails.validateResponse, {
     id: 'agent:guardrails-validate-response',
-    source: AGENT_POLICY_HOOK_SOURCE,
-    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    ...AGENT_POLICY_REGISTRATION,
+    replay: 'safe',
+  });
+  // COR-2104 — the tool-call validators. Pinned last, so they judge the calls every other agent
+  // hook settled on, and no later agent hook can put back a call they refused.
+  hooks.on('beforeToolExecution', guardrails.beforeToolExecution, {
+    id: 'agent:guardrails-before-tool-execution',
+    ...AGENT_POLICY_REGISTRATION,
+    // Reads the calls and the session's taint state; no external write.
     replay: 'safe',
   });
 }

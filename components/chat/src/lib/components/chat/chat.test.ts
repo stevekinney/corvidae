@@ -1039,11 +1039,7 @@ describe('Chat — public wrapper forwards bind:atBottom/unreadCount/newMessageI
   // testing-library/svelte mount path for *any* nested `bind:` + template
   // read of a bindable prop, independent of Chat entirely (reproduced with a
   // two-line throwaway parent/child pair). That is a pre-existing harness
-  // limitation, not something this fix introduces, so the runtime contract is
-  // instead covered by `bun run --filter=@lostgradient/chat validate:consumer`,
-  // which runs `svelte-check` against the *packed, installed* artifact with a
-  // real `bind:atBottom` / `bind:unreadCount` / `bind:newMessageIndicatorVisible`
-  // consumer file — the exact failure mode from the issue. The compiler-output
+  // limitation, not something this fix introduces. The compiler-output
   // check below guards the wrapper's server behavior at the unit-test layer.
   test('chat.svelte declares bindable state and avoids an SSR settle re-render', async () => {
     const { resolve } = await import('node:path');

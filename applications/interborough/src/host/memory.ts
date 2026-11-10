@@ -45,7 +45,7 @@ export const MEMORY_DELETION_PROPAGATION: MemoryDeletionPropagation = {
  * Governed memory over `storage`, which the Bureau and the engine share. The Bureau initializes and
  * closes it. It is built once plugin setup has run (COR-1879, `BureauOptions.memory`), with what the
  * running plugins contribute: their embedders join the registry beside the built-in hashing one, and
- * their detectors run after the default poisoning detector on admission and on recall. It runs on
+ * their memory guardrails run after the default poisoning detector on admission, on recall, or on both as each declares. It runs on
  * `runtime` (the host's, `HostOptions.runtime`), so a memory and its ledger events are stamped on the
  * host's clock, as the Bureau's own records are; the process's own services when none is given.
  */
@@ -62,8 +62,8 @@ export function createHostMemory(
     vectors: createMemoryVectorStore(storage),
     policy: createMemoryGovernancePolicy({
       revision: MEMORY_POLICY_REVISION,
-      admission: { contributedDetectors: contributions.detectors },
-      recall: { contributedDetectors: contributions.detectors },
+      admission: { contributedDetectors: contributions.guardrails.admission },
+      recall: { contributedDetectors: contributions.guardrails.recall },
     }),
     propagation: MEMORY_DELETION_PROPAGATION,
   });

@@ -109,7 +109,7 @@ async function home(): Promise<string> {
   directories.push(directory);
   await writeProviderHome(directory);
   await mkdir(join(directory, 'agents'), { recursive: true });
-  // The default approval: no `toolApproval`, so a tool that changes things asks first.
+  // The default approval: no `approvals`, so a tool that changes things asks first.
   await writeFile(
     join(directory, 'agents', 'helper.md'),
     [

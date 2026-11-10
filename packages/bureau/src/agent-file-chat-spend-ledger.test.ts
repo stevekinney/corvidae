@@ -106,7 +106,7 @@ describe.each(['non-durable', 'durable'] as const)(
     it('writes a run’s record before the session records how the run ended', async () => {
       const logged = loggingStorage(new MemoryStorage());
       const { bureau } = await start(
-        { costBudget: '{ perRunUsd: 5, perChatUsd: 9 }' },
+        { limits: '{ cost: { run: 5, chat: 9 } }' },
         undefined,
         logged.storage,
       );
@@ -126,7 +126,7 @@ describe.each(['non-durable', 'durable'] as const)(
     });
 
     it('records a run that ends over its own budget once, as it records one that ends normally', async () => {
-      const { bureau, storage } = await start({ costBudget: '{ perRunUsd: 0.1, perChatUsd: 9 }' });
+      const { bureau, storage } = await start({ limits: '{ cost: { run: 0.1, chat: 9 } }' });
       const task = await bureau.tasks.start('helper', 'Go.');
       const result = await task.result();
       await bureau.internals.whenTaskRecorded(task.id);
@@ -134,7 +134,7 @@ describe.each(['non-durable', 'durable'] as const)(
       expect(await ledgerKeys(storage)).toHaveLength(1);
     });
 
-    const CHAT = { tools: '[lookup-order]', costBudget: '{ perRunUsd: 5, perChatUsd: 9 }' };
+    const CHAT = { tools: '[lookup-order]', limits: '{ cost: { run: 5, chat: 9 } }' };
 
     it('records a run cancelled in this process once', async () => {
       const model = heldSecondStep();
@@ -164,7 +164,7 @@ describe.each(['non-durable', 'durable'] as const)(
     });
 
     it('refuses the next run with a typed error when the chat’s ledger cannot be read', async () => {
-      const { bureau, storage } = await start({ costBudget: '{ perRunUsd: 5, perChatUsd: 9 }' });
+      const { bureau, storage } = await start({ limits: '{ cost: { run: 5, chat: 9 } }' });
       const first = await bureau.tasks.start('helper', 'Go.');
       await first.result();
       await bureau.internals.whenTaskRecorded(first.id);

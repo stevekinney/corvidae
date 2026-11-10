@@ -2,7 +2,7 @@
 
 The Linear rules a chef run relies on, so the skill works without any personal skills installed. It covers routing, the issue lifecycle, the Definition of Ready, the shapes of the work-session comments, and the read-back rule. Verify routing and workflow states against live Linear before writing, because a table in a document goes stale.
 
-When the `linear-track-work`, `linear-update-project`, `linear-create-issue`, `linear-create-project`, or `scope-work` skills are installed, use them for the writes they cover. Otherwise do the same step with `scripts/chef/linear.ts`, run from the repository root. It reads `LINEAR_API_KEY` through `scripts/chef/credentials.ts`, so no wrapper is needed, and it reads every write back. Each section below says which command performs the step.
+Shape new work with this repository's own skills: [`create-task`](../../create-task/SKILL.md) for one issue and [`create-project`](../../create-project/SKILL.md) for a project with its milestones and issues. Make every other write with `scripts/chef/linear.ts`, run from the repository root: issues (`read`, `state`, `comment`, `append`, `create`, `blockers`, `block`) and projects (`project-read`, `project-state`, `project-update`). Only creating a project or a milestone goes through the Linear MCP tools (`save_project`, `save_milestone`), because `linear.ts` has no command for it. It reads `LINEAR_API_KEY` through `scripts/chef/credentials.ts`, so no wrapper is needed, and it reads every write back. Each section below says which command performs the step.
 
 ## Team routing
 
@@ -13,7 +13,7 @@ When the `linear-track-work`, `linear-update-project`, `linear-create-issue`, `l
 
 ## Lifecycle
 
-- Issues use Backlog, Ready, In Progress, In Review, and Done. `Todo` is not Ready.
+- Issues use Backlog, Ready, In Progress, In Review, and Done. `Todo` is not Ready. The coordinator moves an issue to Ready when it meets the Definition of Ready; the worker moves its own issue to In Progress when it starts; the coordinator moves it to In Review when it accepts the submission; and `deliver.ts` moves it to Done after the merge, with the completion comment.
 - Projects use `Backlog`, `Ready`, `In Progress`, `Completed`, and `Canceled`, and the API accepts only those names. Intents such as Candidate, Shaping, Paused, and Verified are predicates that gate a transition, not statuses: write `Backlog` for a candidate, a shaping project, or a paused one (record the reason and any native blocker in a comment), and `Completed` only once every required published, deployed, and downstream artifact is independently verified.
 - Never create a `type:decision` issue, and never put a "Decide …" or "Define the … contract" issue in a project draft. A decision is resolved in conversation, as [decisions](decisions.md) describes, and recorded in the issue or scope it settles. An existing `type:decision` issue is answered, recorded, and closed as Done.
 - Each cohesive batch has its own acceptance criteria, verification, integration boundary, and tracking closeout. Move an independently completed issue to Done as its own gates pass; an unfinished neighbor does not hold it open. Preserve native dependencies, publication, deployment, and explicit whole-program gates.
@@ -23,7 +23,7 @@ When the `linear-track-work`, `linear-update-project`, `linear-create-issue`, `l
 
 ## Definition of Ready
 
-An issue is Ready only when it has all of these:
+An issue is Ready only when it has all of these (the `create-task` skill's [ticket template](../../create-task/ticket-template.md) is the shape that meets them):
 
 - exactly one target team, which is `COR`;
 - exactly one Work Type label;
@@ -31,7 +31,8 @@ An issue is Ready only when it has all of these:
 - binary acceptance criteria, each independently checkable;
 - exact verification commands;
 - a delivery boundary, stating what artifact ends the work;
-- no unresolved native blocker.
+- no open question: every question the work raised is answered and recorded under Decisions, with its source;
+- no unresolved native blocker: every blocker's state type is `completed` (a Canceled or Duplicate blocker is a question for the owner, not a release).
 
 A project is Ready only when its document, teams, milestones, execution-boundary issues, native dependency graph, operational risks, and success evidence are complete, and it has at least one unblocked Ready child issue. Project readiness and issue readiness are separate predicates.
 
@@ -39,7 +40,7 @@ Check the predicates against the issue text and `bun scripts/chef/linear.ts bloc
 
 ## Work-session comments
 
-Write each as a Markdown file and post it with `bun scripts/chef/linear.ts comment <ID> --file <md>`, which reads the comment back by id.
+Write each as a Markdown file and post it with `bun scripts/chef/linear.ts comment <ID> --file <md>`, which reads the comment back by id. Completion, blocker, and handoff comments are execution reports in the form [the execution report](execution-report.md) gives.
 
 - A claim records the provider, the session or agent, the branch, the worktree, the base SHA, the scope, the first verification gate, and the current blocker state. Post the claim, then move the issue to In Progress. In a delegated run the coordinator posts the claim at dispatch, and the worker moves its own issue to In Progress when it starts.
 - A checkpoint records the current evidence and the next executable command.

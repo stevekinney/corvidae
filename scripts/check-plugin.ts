@@ -68,6 +68,16 @@ async function run(
   return { exitCode: child.exitCode, output: `${out}${err}` };
 }
 
+/** Rewrites compiler paths from the scratch copy back to the folder the author supplied. */
+export function normalizePluginDiagnostics(text: string, source: string, scratch: string): string {
+  const scratchName = basename(scratch);
+  const scratchPath = new RegExp(`(?:\\.\\./)*(?:[^\\s(:]*/)?${scratchName}/plugin/`, 'g');
+  return text
+    .replace(scratchPath, `${source}/`)
+    .replace(/(^|[\\s(:])plugin\//g, `$1${source}/`)
+    .trim();
+}
+
 /** The problems found in `folder`; empty when the plugin conforms. */
 export async function checkPlugin(folder: string): Promise<string[]> {
   const source = resolve(folder);
@@ -92,9 +102,7 @@ export async function checkPlugin(folder: string): Promise<string[]> {
     const problems: string[] = [];
     // A diagnostic names the copy as the compiler saw it: absolute, resolved, or relative to the
     // scratch directory. Each reads as the folder the author gave.
-    const scratchName = basename(scratch);
-    const copyPath = new RegExp(`(?:\\.\\./)*(?:[^\\s(:]*/)?${scratchName}/plugin/`, 'g');
-    const named = (text: string): string => text.replace(copyPath, `${source}/`).trim();
+    const named = (text: string): string => normalizePluginDiagnostics(text, source, scratch);
     const typecheck = await run(
       [
         process.execPath,

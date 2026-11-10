@@ -77,14 +77,22 @@ test.describe('a run that asks two questions', () => {
     await reread;
     await expect(question(page, REGION_QUESTION)).toBeVisible();
     await expect(question(page, ENVIRONMENT_QUESTION)).toHaveCount(0);
-    await expect(conversation(page).getByText('staging', { exact: true })).toHaveCount(1);
+    await expect(
+      conversation(page)
+        .getByRole('article', { name: 'You' })
+        .getByText('staging', { exact: true }),
+    ).toHaveCount(1);
     await checkA11y('a chat waiting on the second of two questions');
 
     await send(page, 'eu');
 
     await expect(conversation(page).getByText(TWO_QUESTIONS_THANKS)).toBeVisible();
     await expect(question(page, REGION_QUESTION)).toHaveCount(0);
-    await expect(conversation(page).getByText('staging', { exact: true })).toHaveCount(1);
+    await expect(
+      conversation(page)
+        .getByRole('article', { name: 'You' })
+        .getByText('staging', { exact: true }),
+    ).toHaveCount(1);
     await expect(conversation(page).getByText('eu', { exact: true })).toHaveCount(1);
     await expect(conversation(page).getByText('[signal:')).toHaveCount(0);
     // One start, then one resume for each answer.
@@ -93,7 +101,11 @@ test.describe('a run that asks two questions', () => {
     await page.reload();
 
     await expect(conversation(page).getByText(TWO_QUESTIONS_THANKS)).toBeVisible();
-    await expect(conversation(page).getByText('staging', { exact: true })).toHaveCount(1);
+    await expect(
+      conversation(page)
+        .getByRole('article', { name: 'You' })
+        .getByText('staging', { exact: true }),
+    ).toHaveCount(1);
     await expect(conversation(page).getByText('eu', { exact: true })).toHaveCount(1);
     await expect(conversation(page).getByText('[signal:')).toHaveCount(0);
   });
@@ -111,16 +123,24 @@ test.describe('a run that asks a question and then for an approval', () => {
 
     await send(page, 'staging');
 
-    const approval = page.locator('.ib-decision');
+    const approval = page.locator('[data-approval-decision]');
     await expect(approval).toBeVisible();
     await expect(question(page, ENVIRONMENT_QUESTION)).toHaveCount(0);
-    await expect(conversation(page).getByText('staging', { exact: true })).toHaveCount(1);
+    await expect(
+      conversation(page)
+        .getByRole('article', { name: 'You' })
+        .getByText('staging', { exact: true }),
+    ).toHaveCount(1);
     await checkA11y('a chat waiting on an approval after a question');
     await approval.getByRole('button', { name: 'Approve' }).click();
 
     await expect(conversation(page).getByText(RELEASE_SENT)).toBeVisible();
     await expect(approval).toHaveCount(0);
-    await expect(conversation(page).getByText('staging', { exact: true })).toHaveCount(1);
+    await expect(
+      conversation(page)
+        .getByRole('article', { name: 'You' })
+        .getByText('staging', { exact: true }),
+    ).toHaveCount(1);
     expect(starts.map((body) => body.resume?.length ?? 0)).toEqual([0, 1, 1]);
   });
 });

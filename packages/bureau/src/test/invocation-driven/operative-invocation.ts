@@ -14,7 +14,7 @@
  *   `generate`, so the continuation step runs here.
  * - `read` only reads.
  *
- * Not a test file: it is spawned by `invocation-driven-execution.test.ts`.
+ * Not a test file: it is spawned by `invocation-driven-execution.integration.test.ts`.
  */
 import { join } from 'node:path';
 

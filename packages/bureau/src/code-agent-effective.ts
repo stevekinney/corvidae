@@ -11,21 +11,26 @@
  * Each override replaces the agent's own value:
  *
  * - `instructions` is the system message a run starts with.
- * - `tools`, `toolApproval` and `toolBudget` build the run's toolbox the way an agent file's is
+ * - `tools`, `approvals` and `limits.tools` build the run's toolbox the way an agent file's is
  *   built: from the allowed tools (the agent's own, found in the toolbox its definition resolves
- *   to, and the deployment's tool catalog), asked as `toolApproval` says (a tool it does not list
+ *   to, and the deployment's tool catalog), asked as `approvals` says (a tool it does not list
  *   takes the default, `on-changes`, so a tool is never let through unasked because nothing was
- *   said), counted by `toolBudget`, and signed with the Bureau's agent approval secret. The code
+ *   said), counted by `limits.tools`, and signed with the Bureau's agent approval secret. The code
  *   agent's own toolbox options do not carry over, because a toolbox does not expose them: once
  *   any of the three is overridden, the overrides say how every allowed tool asks. A tool the
  *   run's own composition added to that toolbox (a skill tool) is kept as it was.
  * - `model` is the default model, `models` the models a chat may be switched to, and
- *   `defaultEffort` the effort a step is sent when its steering names none. They are applied by the
+ *   `effort` the effort a step is sent when its steering names none. They are applied by the
  *   generate a file agent runs with, so the model policy is read at each step.
- * - `costBudget` is what one run, and one chat, may spend; `stepLimit` is the most steps one run
+ * - `limits.cost` is what one run, and one chat, may spend; `limits.steps` is the most steps one run
  *   may take.
  * - `guardrails` are plugin guardrails added to the agent's own. An override cannot remove a
  *   guardrail the code agent declares itself.
+ * - `interceptors` are plugin interceptors (`plugin:name`, COR-2253) added to the agent's own hook
+ *   tier for the run, as an agent file's `interceptors` are, so the plugin's needs-setup refusal
+ *   applies to a run that chose them, and an every-agent set the override also lists registers
+ *   once (`run-hook-tiers.ts` leaves it out of the plugin tier). Each is built from the
+ *   contributions at the run, so one a plugin no longer contributes is skipped.
  *
  * A code agent that cannot resolve its run options (one with no `OPERATIVE_RESOLVE_RUN_OPTIONS`)
  * has nothing the overrides can be applied to, and runs as it is.
@@ -66,7 +71,11 @@ import {
 import { Conversation, replaceSystemMessage } from 'conversationalist';
 
 import type { AnyRunnableAgent } from './agent-catalog';
-import { type AgentContributions, guardrailAdditionsOf } from './agent-contributions';
+import {
+  type AgentContributions,
+  guardrailAdditionsOf,
+  interceptorsOf,
+} from './agent-contributions';
 import { allowedDescriptorsOfFileAgent, resolveModelDescriptor } from './agent-file-catalog';
 import { describeAgentModels } from './agent-models';
 import type { AgentOverrides } from './agent-override-store';
@@ -83,7 +92,7 @@ export interface EffectiveCodeAgentDeployment {
   readonly modelPolicy: () => BureauModelPolicyOptions | undefined;
   /**
    * Turns a catalog row into the generate a run calls. Without it no generate can be built for a
-   * model, so `model`, `models` and `defaultEffort` leave the agent's own generate in place.
+   * model, so `model`, `models` and `effort` leave the agent's own generate in place.
    */
   readonly resolveGenerate?: ((row: BackendDescriptor) => GenerateFunction) | undefined;
   /**
@@ -91,13 +100,16 @@ export interface EffectiveCodeAgentDeployment {
    * may allow only the agent's own tools.
    */
   readonly toolCatalog?: (() => Readonly<Record<string, Tool>>) | undefined;
-  /** The plugin guardrails a `guardrails` override may name. Omitted, none resolves. */
+  /**
+   * The plugin guardrails and interceptors a `guardrails` or `interceptors` override may name.
+   * Omitted, none resolves.
+   */
   readonly contributions?: AgentContributions | undefined;
   /** The secret that signs the approvals a rebuilt toolbox raises; unsigned without one. */
   readonly approvalSecret?: string | undefined;
   /** Resolves the secrets a rebuilt toolbox's tools ask for. */
   readonly secretResolver?: ToolSecretResolver | undefined;
-  /** What to do with a step whose model cannot do `defaultEffort`; see the file agent generate. */
+  /** What to do with a step whose model cannot do `effort`; see the file agent generate. */
   readonly effortFallbackMode?: FileAgentGenerateOptions['effortFallbackMode'];
   /** The Bureau's services, whose clock a deferred run reads before its options resolve. */
   readonly runtime?: RuntimeServices | undefined;
@@ -108,8 +120,7 @@ export function hasAgentOverrides(overrides: AgentOverrides): boolean {
   return Object.values(overrides).some((value) => value !== undefined);
 }
 
-const TOOLBOX_KEYS = ['tools', 'toolApproval', 'toolBudget'] as const;
-const GENERATE_KEYS = ['model', 'models', 'defaultEffort'] as const;
+const GENERATE_KEYS = ['model', 'models', 'effort'] as const;
 
 /** The name a call reports `configuration` by, and the name it was registered under. */
 function namesOf(configuration: ToolConfiguration): readonly string[] {
@@ -226,9 +237,9 @@ export function effectiveCodeAgent(
     const common = {
       allowed: () => allowed,
       resolveGenerate,
-      costBudgeted: overrides.costBudget !== undefined,
+      costBudgeted: overrides.limits?.cost !== undefined,
       policyDenial: (row: BackendDescriptor) => modelPolicyDenialOf(row, deployment.modelPolicy()),
-      defaultEffort: overrides.defaultEffort,
+      defaultEffort: overrides.effort,
       effortFallbackMode: deployment.effortFallbackMode,
     };
     if (defaultRow !== undefined) {
@@ -251,7 +262,15 @@ export function effectiveCodeAgent(
   }
 
   function toolboxOf(own: AnyToolbox): AnyToolbox {
-    if (TOOLBOX_KEYS.every((key) => overrides[key] === undefined)) return own;
+    // `limits.steps` and `limits.cost` are not the toolbox's: only the tools, how they ask, and the
+    // tool limit rebuild it.
+    if (
+      overrides.tools === undefined &&
+      overrides.approvals === undefined &&
+      overrides.limits?.tools === undefined
+    ) {
+      return own;
+    }
     const configurations = own.toJSON();
     const ownOf = (name: string) =>
       ownNames.includes(name)
@@ -276,10 +295,10 @@ export function effectiveCodeAgent(
       if (!ownConfigurations.has(configuration)) entries.push(configuration);
     }
     return createToolbox(entries, {
-      policy: createToolApprovalHooks(overrides.toolApproval, { tools: governed }),
-      ...(overrides.toolBudget === undefined
+      policy: createToolApprovalHooks(overrides.approvals, { tools: governed }),
+      ...(overrides.limits?.tools === undefined
         ? {}
-        : { budget: toolboxBudgetOf(overrides.toolBudget) }),
+        : { budget: toolboxBudgetOf(overrides.limits.tools) }),
       ...(deployment.approvalSecret === undefined
         ? {}
         : { approvalSecret: deployment.approvalSecret }),
@@ -302,7 +321,36 @@ export function effectiveCodeAgent(
     return replaceSystemMessage(conversation, overrides.instructions);
   }
 
-  function hooksOf(own: RunOptions['hooks']): RunOptions['hooks'] {
+  /**
+   * The agent's hooks with the interceptors the override names registered in the same tier
+   * (COR-2253). `own` is the registry the agent resolved for this run, so what is added reaches this
+   * run only; an entry `own` already holds under the same id is left alone.
+   */
+  function withInterceptors(own: RunOptions['hooks']): RunOptions['hooks'] {
+    if (overrides.interceptors === undefined || deployment.contributions === undefined) return own;
+    const chosen = interceptorsOf(
+      { interceptors: overrides.interceptors },
+      deployment.contributions,
+    );
+    if (chosen === undefined) return own;
+    const hooks = own ?? new HookRegistry<OperativeHookMap>();
+    const held = new Set(
+      hooks.getHookNames().flatMap((name) => hooks.getHandlers(name).map((entry) => entry.id)),
+    );
+    for (const name of chosen.getHookNames()) {
+      for (const entry of chosen.getHandlers(name)) {
+        if (held.has(entry.id)) continue;
+        hooks.on(name, entry.handler, { ...entry.options, id: entry.id });
+      }
+    }
+    return hooks;
+  }
+
+  function hooksOf(agentHooks: RunOptions['hooks']): RunOptions['hooks'] {
+    const own = withInterceptors(agentHooks);
+    // COR-2118: a configured guardrail is built for this run from the override's configuration. A
+    // save checks it against the guardrail's schema; one a plugin's later schema no longer accepts
+    // throws here, so the run fails to start rather than run without a guardrail it chose.
     const additions =
       overrides.guardrails === undefined || deployment.contributions === undefined
         ? undefined
@@ -319,8 +367,21 @@ export function effectiveCodeAgent(
       priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
       replay: 'safe',
     });
+    hooks.on('validateToolResult', guardrails.validateToolResult, {
+      id: 'agent:override-guardrails-validate-tool-result',
+      source: AGENT_POLICY_HOOK_SOURCE,
+      priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+      replay: 'safe',
+    });
     hooks.on('validateResponse', guardrails.validateResponse, {
       id: 'agent:override-guardrails-validate-response',
+      source: AGENT_POLICY_HOOK_SOURCE,
+      priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+      replay: 'safe',
+    });
+    // COR-2104 — the tool-call validators the override names.
+    hooks.on('beforeToolExecution', guardrails.beforeToolExecution, {
+      id: 'agent:override-guardrails-before-tool-execution',
       source: AGENT_POLICY_HOOK_SOURCE,
       priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
       replay: 'safe',
@@ -329,7 +390,7 @@ export function effectiveCodeAgent(
   }
 
   function costOf(): Pick<RunOptions, 'costBudget' | 'costEstimation'> | Record<string, never> {
-    const budget = overrides.costBudget;
+    const budget = overrides.limits?.cost;
     if (budget === undefined) return {};
     return models.defaultRow === undefined
       ? { costBudget: runCostBudgetOf(budget) }
@@ -346,7 +407,7 @@ export function effectiveCodeAgent(
       conversation: conversationOf(input, own.conversation),
       ...(hooks === undefined ? {} : { hooks }),
       ...costOf(),
-      ...(overrides.stepLimit === undefined ? {} : { maximumSteps: overrides.stepLimit }),
+      ...(overrides.limits?.steps === undefined ? {} : { maximumSteps: overrides.limits.steps }),
     };
   }
 

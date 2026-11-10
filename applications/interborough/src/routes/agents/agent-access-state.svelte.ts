@@ -2,20 +2,21 @@
  * The Access tab's form: which tools an agent may call, when each asks first, the skills it may
  * activate, the plugin guardrails it runs, and its spend and tool budgets. It is filled from the agent's file and sends
  * a whole definition back, because `bureau.agents.definitions.update` removes `tools` and `models`
- * when they are left out. The keys the tab does not edit (`stepLimit`, `references`, `retry`,
+ * when they are left out. The keys the tab does not edit (`limits.steps`, `references`, `retry`,
  * `compaction`, `hooks`) are left out of the write, which keeps the file's value.
  *
- * `toolApproval` may only name a tool the file lists, or the Bureau refuses the write, so a tool
+ * `approvals` may only name a tool the file lists, or the Bureau refuses the write, so a tool
  * that is not allowed has its approval left out of the write. The approval itself is kept in the
  * form, so allowing the tool again restores what was chosen instead of loosening it.
  *
- * `allowedSkills` is written whole, so a skill the file names that the host no longer offers stays
+ * `skills` is written whole, so a skill the file names that the host no longer offers stays
  * until someone withdraws it. A file with no list keeps none until a skill is granted, and a list
  * emptied box by box is written empty, which is what the file then says.
  */
 import { SvelteMap } from 'svelte/reactivity';
 
 import {
+  guardrailEntryId,
   type AgentCatalog,
   type AgentDefinitionInput,
   type AgentDetail,
@@ -66,7 +67,7 @@ export class AgentAccessState {
   /** The approvals the file states. A tool absent here asks `on-changes`. */
   readonly approvals = new SvelteMap<string, ToolApproval>();
   /** The skills the agent may activate, in the order the file lists them and then the order they were granted. */
-  allowedSkills = $state<string[]>([]);
+  skills = $state<string[]>([]);
   /** The plugin guardrails as typed, one per line. */
   guardrails = $state('');
   spendPerRun = $state('');
@@ -85,23 +86,18 @@ export class AgentAccessState {
         .map((tool) => ({ name: tool, catalog: undefined })),
     ];
     this.tools = [...definition.tools];
-    for (const [tool, approval] of Object.entries(definition.toolApproval ?? {})) {
+    for (const [tool, approval] of Object.entries(definition.approvals ?? {})) {
       this.approvals.set(tool, approval);
     }
-    this.allowedSkills = [...(definition.allowedSkills ?? [])];
-    this.guardrails = (definition.guardrails ?? []).join('\n');
-    this.spendPerRun =
-      definition.costBudget === null ? '' : String(definition.costBudget.perRunUsd);
+    this.skills = [...(definition.skills ?? [])];
+    this.guardrails = (definition.guardrails ?? []).map(guardrailEntryId).join('\n');
+    this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
-      definition.costBudget?.perChatUsd === undefined
-        ? ''
-        : String(definition.costBudget.perChatUsd);
+      definition.limits.cost?.chat === undefined ? '' : String(definition.limits.cost.chat);
     this.toolCalls =
-      definition.toolBudget?.maxCalls === undefined ? '' : String(definition.toolBudget.maxCalls);
+      definition.limits.tools?.calls === undefined ? '' : String(definition.limits.tools.calls);
     this.toolSeconds =
-      definition.toolBudget?.maxDurationSeconds === undefined
-        ? ''
-        : String(definition.toolBudget.maxDurationSeconds);
+      definition.limits.tools?.seconds === undefined ? '' : String(definition.limits.tools.seconds);
     this.#baseline = JSON.stringify(this.toDefinition());
   }
 
@@ -129,16 +125,16 @@ export class AgentAccessState {
 
   /** Whether the agent may activate the skill. */
   isGranted(name: string): boolean {
-    return this.allowedSkills.includes(name);
+    return this.skills.includes(name);
   }
 
   /** Grants or withdraws one skill. */
   setGranted(name: string, granted: boolean): void {
     if (granted) {
-      if (!this.allowedSkills.includes(name)) this.allowedSkills = [...this.allowedSkills, name];
+      if (!this.skills.includes(name)) this.skills = [...this.skills, name];
       return;
     }
-    this.allowedSkills = this.allowedSkills.filter((skill) => skill !== name);
+    this.skills = this.skills.filter((skill) => skill !== name);
   }
 
   /** When the tool asks first: the file's statement, or `on-changes`. */
@@ -198,21 +194,19 @@ export class AgentAccessState {
   /** The definition to write: the file's own, with the access this form edits. */
   toDefinition(): AgentDefinitionInput {
     const file = this.#definition;
-    const limits = limitsOf(this.#fields(), file.costBudget?.warnAt);
+    const limits = limitsOf(this.#fields(), file.limits.cost?.warn, false, file.guardrails);
     return {
       name: file.name,
       description: file.description,
       model: file.model,
       ...(file.models === null ? {} : { models: file.models }),
       tools: this.tools,
-      skillDescriptors: file.skillDescriptors,
-      allowedSkills:
-        file.allowedSkills === null && this.allowedSkills.length === 0 ? null : this.allowedSkills,
+      card: file.card,
+      skills: file.skills === null && this.skills.length === 0 ? null : this.skills,
       a2a: file.a2a,
       guardrails: limits.guardrails ?? null,
-      costBudget: limits.costBudget ?? null,
-      toolBudget: limits.toolBudget ?? null,
-      toolApproval: this.#approvalsToWrite(),
+      limits: limits.limits ?? null,
+      approvals: this.#approvalsToWrite(),
       instructions: file.instructions,
     };
   }

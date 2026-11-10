@@ -139,6 +139,14 @@ describe('the sample world, part A', () => {
     });
     expectAt(release?.createdAt, SAMPLE_WORLD_TIMES.releaseAsked);
 
+    // The refund chat runs at Medium effort and asks on changes, which its details popover shows
+    // (ChatPage frame b).
+    const refundDetail = await call<{ effort: string | null; permissionMode: string }>(
+      'bureau.contexts.get',
+      { contextId: SAMPLE_WORLD_CHATS.refund.threadId },
+    );
+    expect(refundDetail).toMatchObject({ effort: 'medium', permissionMode: 'on-changes' });
+
     // Each message you sent is stamped at its moment, as the run that answered it is.
     const session = await world.host.bureau.contexts.get(SAMPLE_WORLD_CHATS.refund.threadId);
     const history = session?.conversationHistory;
@@ -253,10 +261,10 @@ describe('the sample world, part A', () => {
     }>('bureau.agents.versions.list', { id: 'tool-runner' });
     expect(versions.map((version) => version.revision)).toEqual([4, 3, 2, 1]);
     expect(versions.map((version) => version.changedKeys)).toEqual([
-      ['instructions', 'tools', 'toolApproval'],
+      ['instructions', 'tools', 'approvals'],
       ['model'],
       ['instructions'],
-      ['instructions', 'tools', 'toolApproval', 'model'],
+      ['instructions', 'tools', 'approvals', 'model'],
     ]);
     const [version4, version3, version2, version1] = versions;
     expectAt(version4?.savedAt, SAMPLE_WORLD_TIMES.toolRunnerVersion4);
@@ -268,7 +276,7 @@ describe('the sample world, part A', () => {
     );
   });
 
-  test('lists the four memories the Memory page shows, the correction with its history', async () => {
+  test('lists the six memories the Memory page shows, the correction with its history', async () => {
     const { memories } = await call<{
       memories: Array<{
         id: string;
@@ -280,21 +288,33 @@ describe('the sample world, part A', () => {
       }>;
     }>('bureau.memory.list', { agentId: 'tool-runner' });
     expect(memories.map(({ content, kind, writer }) => ({ content, kind, writer }))).toEqual([
+      // What Tool runner says as it asks for the 4471 refund, which is its last answer in that run.
       {
-        content: 'Order 4471 arrived with a cracked mug; the customer asked for a refund.',
+        content: 'I found order 4471 ($42.00). I need your approval to refund it.',
+        kind: 'fact',
+        writer: 'agent',
+      },
+      // And what it says once the 4472 refund was approved at 10:33 AM, and as it asked at 10:30 AM.
+      {
+        content: 'You approved it. Refunded $18.50 to the original payment method.',
         kind: 'fact',
         writer: 'agent',
       },
       { content: TOOL_RUNNER_CORRECTION.corrected, kind: 'fact', writer: 'agent' },
+      {
+        content: 'I found order 4472 ($18.50). I need your approval to refund it.',
+        kind: 'fact',
+        writer: 'agent',
+      },
       { content: TOOL_RUNNER_HOW_TOS.lookUpBeforeAnswering, kind: 'how-to', writer: 'person' },
       { content: TOOL_RUNNER_HOW_TOS.neverShareEmails, kind: 'how-to', writer: 'person' },
     ]);
-    const [cracked, corrected, lookUp, emails] = memories;
+    const [asked4471, , corrected, , lookUp, emails] = memories;
     expectAt(
-      cracked?.createdAt,
+      asked4471?.createdAt,
       SAMPLE_WORLD_TIMES.refund4471Started + REFUND_4471_ASK_DELAY_MILLISECONDS,
     );
-    expect(cracked?.sessionId).toBe(SAMPLE_WORLD_CHATS.refund.threadId);
+    expect(asked4471?.sessionId).toBe(SAMPLE_WORLD_CHATS.refund.threadId);
     expectAt(corrected?.createdAt, SAMPLE_WORLD_TIMES.memoryCorrected);
     expect(corrected?.sessionId).toBe(SAMPLE_WORLD_CHATS.refund.threadId);
     expectAt(lookUp?.createdAt, SAMPLE_WORLD_TIMES.lookUpBeforeAnswering);
@@ -531,6 +551,14 @@ describe('the sample world, part B', () => {
         status: 'Done',
         seconds: 'any',
       },
+      // The run that carried on once the 4472 refund was approved, which now says so.
+      {
+        at: times.refund4472Approved,
+        workflow: chat,
+        startedBy: 'Chats',
+        status: 'Done',
+        seconds: 'any',
+      },
       {
         at: times.releaseAsked,
         workflow: chat,
@@ -648,21 +676,21 @@ describe('the sample world, part B', () => {
       expect(seconds).toBeLessThan(row.seconds + DURATION_SLACK_SECONDS);
     }
 
-    // All 20 = Waiting on you 2 + Done 15 + Failed 1 + Canceled 2 (the board's 19 and the billing chat).
+    // All 21 = Waiting on you 2 + Done 16 + Failed 1 + Canceled 2 (the board's 19, the billing chat, and the run after the 4472 approval).
     expect(countBy(rows, (row) => row.status)).toEqual({
       'Waiting on you': 2,
-      Done: 15,
+      Done: 16,
       Failed: 1,
       Canceled: 2,
     });
     expect(countBy(rows, (row) => row.startedBy)).toEqual({
-      Chats: 6,
+      Chats: 7,
       Schedules: 4,
       Goals: 8,
       Interborough: 2,
     });
     expect(countBy(rows, (row) => row.workflow)).toEqual({
-      'Chat with an agent': 7,
+      'Chat with an agent': 8,
       'Goal attempts': 8,
       'Schedule tick': 2,
       'triage-inbox': 2,

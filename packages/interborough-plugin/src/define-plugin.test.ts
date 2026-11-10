@@ -5,14 +5,14 @@ import { z } from 'zod';
 import {
   createPluginStorage,
   definePlugin,
-  type PluginHostApi,
+  type PluginHost,
   pluginStoragePrefix,
 } from './index.ts';
 
 const valid = { name: 'example', version: '1.0.0', description: 'An example plugin.' };
 
 /** A host API no test here calls. */
-const unstartedHost: PluginHostApi = {
+const unstartedHost: PluginHost = {
   agents: { list: () => [] },
   schedules: { create: async () => undefined, list: async () => undefined },
   goals: { create: async () => ({ outcome: 'rejected' }) },
@@ -29,7 +29,7 @@ describe('definePlugin', () => {
       ...valid,
       configuration: z.object({ teamKey: z.string().default('COR') }),
       setup: ({ configuration }) => ({
-        evalJudges: [
+        scorers: [
           {
             name: configuration.teamKey,
             version: '1.0.0',
@@ -43,9 +43,9 @@ describe('definePlugin', () => {
       secrets: { get: async () => undefined },
       storage: new MemoryStorage(),
       host: unstartedHost,
-      toolApprovalHooks: () => ({}),
+      approvals: () => ({}),
     });
-    expect(result?.evalJudges?.[0]?.name).toBe('COR');
+    expect(result?.scorers?.[0]?.name).toBe('COR');
   });
 
   test('types an activity that declares its own version', async () => {
@@ -62,7 +62,7 @@ describe('definePlugin', () => {
       secrets: { get: async () => undefined },
       storage: new MemoryStorage(),
       host: unstartedHost,
-      toolApprovalHooks: () => ({}),
+      approvals: () => ({}),
     });
     expect(result?.activities?.[0]?.version).toBe('2.1.0');
   });

@@ -20,7 +20,7 @@
  * (COR-1499), and each scenario runs once at module scope, off Bun's per-test
  * clock, while its test only reports how it went (see `test/hoisted-scenario.ts`). Polls use a small real
  * delay because a zero-delay poll starves LMDB's own completion callbacks (see
- * `event-history-run-ownership-recovery-lmdb.test.ts`).
+ * `event-history-run-ownership-recovery-lmdb.integration.test.ts`).
  */
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';

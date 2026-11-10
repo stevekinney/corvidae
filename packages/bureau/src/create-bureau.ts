@@ -6,7 +6,6 @@ import {
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
-  mergeHookRegistries,
   type RuntimeServices,
   type RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
@@ -118,7 +117,13 @@ import {
   summarizeSession,
   TOOL_TIMING_METADATA_KEY,
   type ToolTiming,
+  bureauInvariantsField,
+  runScopedExecutionContextOf,
 } from '@lostgradient/operative';
+import {
+  approvalDecisionMetadata,
+  type ApprovalDecisionRecord,
+} from './approval-decision-metadata';
 import {
   createSkillArtifactLoader,
   SkillActivatedEvent,
@@ -164,7 +169,7 @@ import {
   getOwn,
 } from 'conversationalist';
 
-import type { PluginHostApi } from '@lostgradient/interborough-plugin';
+import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
 import {
   BUREAU_PLUGIN_NAME,
@@ -176,7 +181,7 @@ import { composePlugins } from './plugins/compose-plugins';
 import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
-import { createPluginRegistry } from './plugins/plugin-registry';
+import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
 import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
 import {
@@ -185,7 +190,12 @@ import {
   createAgentCatalog,
   type CreateAgentCatalogOptions,
 } from './agent-catalog';
-import { AgentFileError, AgentSnapshotError, type AgentFileDefinitionInput } from './agent-file';
+import {
+  AgentFileError,
+  AgentSnapshotError,
+  type AgentFileDefinitionInput,
+  guardrailIdOf,
+} from './agent-file';
 import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
 import {
   allowedDescriptorsOfFileAgent,
@@ -362,7 +372,7 @@ import {
   validateSettingsOptions,
 } from './settings/settings-options';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
-import { createOnlineEvalSampler, type OnlineEvalSampler } from './online-evals';
+import { createScorerSampler, type ScorerSampler } from './scorers';
 import {
   buildTerminalReportFromAbortedEvent,
   buildTerminalReportFromCompletedEvent,
@@ -1416,7 +1426,7 @@ class ReviewAnswerInvalidError extends BureauError {
 }
 
 /**
- * A steering command was refused because it switches the model of an agent with a `costBudget` to
+ * A steering command was refused because it switches the model of an agent with `limits.cost` to
  * one the catalog has no price for (COR-1921). It is a `BAD_REQUEST` `BureauError`, so the
  * catalog's steer answers `InvalidParams` naming the `override` field and the budget; a fork
  * that carries a model across catches it, and answers the carry as rejected.
@@ -2833,6 +2843,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   if (agentsWithOwnTools !== undefined) options = { ...options, agents: agentsWithOwnTools };
   // COR-1879 — plugin setup runs once the caller's options are known to be usable, and what the
   // running plugins contribute is folded into the options the rest of construction reads.
+  // COR-2118 — the guardrails the host gave, read before plugins' join them (and before any await),
+  // so a listing tells them apart.
+  const hostGuardrails = hostGuardrailRows(options.agentContributions);
   const composedPlugins = await composePlugins({
     ...options,
     plugins: withBuiltInPlugin(options.plugins, bureauTools),
@@ -2841,7 +2854,9 @@ async function constructBureau<const D extends AgentDefinitions>(
   options = withPluginContentLayers(options, given, composedPlugins.shippedContent);
   // COR-1879: `decisions.model` may name a decision router a plugin contributed.
   validateDecisionsModelChoice(options.decisions, toBadRequest);
-  const pluginRegistry = createPluginRegistry(composedPlugins.records);
+  const pluginRegistry = createPluginRegistry(composedPlugins.records, {
+    guardrails: hostGuardrails,
+  });
   // COR-1721 — the one choke point every Bureau diagnostic passes through: it reaches the sink, and,
   // once the emitter below is bound, is dispatched as a `diagnostic` event (level and scope only).
   const diagnostics = createDiagnosticDispatcher(resolveDiagnosticSink(options.onDiagnostic));
@@ -2926,7 +2941,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     onPublish: (envelope) => hooksInstance?.dispatch(envelope),
   });
   // COR-1876: the event formatters plugins contribute; a clash between two is refused here.
-  const eventFormatter = createBureauEventFormatter(options.eventFormatters, (message, cause) =>
+  const eventFormatter = createBureauEventFormatter(options.formatters, (message, cause) =>
     diagnostics.diagnose({ level: 'warn', scope: 'events', message: `[bureau] ${message}`, cause }),
   );
   // Guarded for the reason `emitLiveFrame` is (AB-96): `dispatchEvent` walks its all-events
@@ -3633,7 +3648,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
-              // COR-1975: the skills a file's `allowedSkills` draws on, read through the host.
+              // COR-1975: the skills a file's `skills` draws on, read through the host.
               ...(options.agentSkillCatalog === undefined
                 ? {}
                 : {
@@ -3954,6 +3969,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   const catalogRunIds = new Set<string>();
   const runToolboxes = new Set<BureauToolbox>();
   const runToolboxesByRunId = new Map<string, BureauToolbox>();
+  /**
+   * COR-2106 — the run-scoped `executionContext` of each live run, from the options it was built
+   * with (`runScopedExecutionContextOf`), for the approved call that resumes outside the run's step.
+   * Released wherever `runToolboxesByRunId` releases the run.
+   */
+  const runScopedContexts = new Map<string, Record<string, unknown>>();
   let shutdownPromise: Promise<BureauShutdownReport> | undefined;
   // COR-690: flipped synchronously the moment `shutdown()` starts, before it
   // snapshots the runs and toolboxes it drains, so an API or scheduler run
@@ -5666,7 +5687,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     return undefined;
   }
 
-  // COR-1915: what each run of a chat spent, which a file agent's `costBudget.perChatUsd` is
+  // COR-1915: what each run of a chat spent, which a file agent's `limits.cost.chat` is
   // measured against. A Bureau with no key-value store keeps it in memory, as it does its tasks.
   const chatSpendLedger = createChatSpendLedger({ kv: runtime.kv, diagnose });
   // COR-1946: a Bureau over a store that outlives the process names itself on every task it admits
@@ -6372,6 +6393,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
         runToolboxesByRunId.delete(removedRunId);
+        runScopedContexts.delete(removedRunId);
         terminalReviewSessions.delete(removedRunId);
         announcedReviewRequests.delete(removedRunId);
         fireReviewSeeds.release(removedRunId);
@@ -8025,6 +8047,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (!scheduledFireApprovalRuns.has(runId) || holdsFireApproval(runId)) return;
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
+    runScopedContexts.delete(runId);
     if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
       detachBestEffortPromise(tasks.announceChanged(runId));
     }
@@ -9041,6 +9064,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       terminalReviewSessions.delete(runId);
       runRequestContexts.delete(runId);
       runToolboxesByRunId.delete(runId);
+      runScopedContexts.delete(runId);
       releaseScheduledFireReviews(scheduledFireReviewState, runId);
       unfollowFireReviewsWhenNoneRemain(runId);
     } else if (scheduledFire) {
@@ -9467,7 +9491,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
     const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
     const effectiveMaximumTokens = sessionAgent?.options.maximumTokens;
-    // COR-1915 — the agent's `costBudget.perChatUsd` is measured against what the chat's earlier
+    // COR-1915 — the agent's `limits.cost.chat` is measured against what the chat's earlier
     // runs spent. It is read here, before anything is persisted, so a chat whose spend cannot be
     // read refuses the run instead of starting it unmeasured. The run is told the total once and
     // is stopped by it only before its first step. Two runs that start together both read the
@@ -9860,6 +9884,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // synchronous, so a `shutdown()` that started during the awaits above
       // rejects this run instead of letting it start outside shutdown's snapshot.
       let activeRun: ReturnType<typeof createActiveRun>;
+      let startedRunOptions: RunOptions;
       // COR-1707 — with no session store, nothing saves the context's rows or claims what they
       // reference, so the task holds its own rows, its input included, under its run for the
       // task's life, as a catalog run does; its end releases them (the terminal listeners below).
@@ -9893,65 +9918,68 @@ async function constructBureau<const D extends AgentDefinitions>(
         if (inFlightSessionDeletions.has(sessionId)) {
           throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
         }
-        activeRun = createActiveRun(
-          {
-            generate: runRuntime.generate,
-            toolbox: runToolbox,
-            conversation,
-            // COR-1577 — the named agent's own options (stop conditions, structured output and
-            // its retries, …), before the ones Bureau sets below, which win.
-            ...copyAgentOwnedRunOptions(sessionAgent?.options),
-            ...(chatCostBudget === undefined ? {} : { costBudget: chatCostBudget }),
-            // COR-716 — a managed asset in this run's input (or in input admitted to
-            // its session mid-run) resolves as the run's owner.
-            ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
-            maximumSteps: effectiveMaximumSteps,
-            maximumTokens: effectiveMaximumTokens,
-            // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
-            stopWhen: sessionAgent?.options.stopWhen,
-            // AB-260: the bureau's single composed RuntimeServices instance,
-            // snapshotted into every run it starts.
-            runtime: runtimeServices,
-            ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-            // COR-1269 — stamped onto this run's hook-plan observations.
-            sessionId,
-            // COR-1476 — input admitted while this run is live, delivered at
-            // each of its step boundaries.
-            ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
-            // COR-1265 criterion 8 — merged AFTER the trailing registration, so
-            // the Bureau tier is complete before it becomes the merge's first
-            // argument. A single-tier merge still copies every entry into a fresh
-            // registry, which is what makes the plan a snapshot: a registration
-            // added to `runRuntime.hooks` afterwards cannot reach this run.
-            hooks: mergeHookRegistries(
-              registerTrailingOnStep(
-                runRuntime.hooks,
-                'bureau:pending-approval-persist',
-                createPendingApprovalPersistHook(
-                  runId,
-                  sessionId,
-                  pendingApprovalOverrides,
-                  persistPendingApprovalOverrideWithRetry,
-                ),
+        startedRunOptions = {
+          generate: runRuntime.generate,
+          toolbox: runToolbox,
+          conversation,
+          // COR-2106 — children this run dispatches carry Bureau's tier.
+          ...bureauInvariantsField(runtime.bureauChildInvariants),
+          // COR-1577 — the named agent's own options (stop conditions, structured output and
+          // its retries, …), before the ones Bureau sets below, which win.
+          ...copyAgentOwnedRunOptions(sessionAgent?.options),
+          ...(chatCostBudget === undefined ? {} : { costBudget: chatCostBudget }),
+          // COR-716 — a managed asset in this run's input (or in input admitted to
+          // its session mid-run) resolves as the run's owner.
+          ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
+          maximumSteps: effectiveMaximumSteps,
+          maximumTokens: effectiveMaximumTokens,
+          // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
+          stopWhen: sessionAgent?.options.stopWhen,
+          // AB-260: the bureau's single composed RuntimeServices instance,
+          // snapshotted into every run it starts.
+          runtime: runtimeServices,
+          ...(runSteeringGate ? { steering: runSteeringGate } : {}),
+          // COR-1269 — stamped onto this run's hook-plan observations.
+          sessionId,
+          // COR-1476 — input admitted while this run is live, delivered at
+          // each of its step boundaries.
+          ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
+          // COR-1265 criterion 8 — merged AFTER the trailing registration, so
+          // the Bureau tier is complete before it becomes the merge's `bureau`
+          // tier. The merge copies every entry into a fresh
+          // registry, which is what makes the plan a snapshot: a registration
+          // added to `runRuntime.hooks` afterwards cannot reach this run.
+          hooks: runtime.composeRunHooks({
+            bureau: registerTrailingOnStep(
+              runRuntime.hooks,
+              'bureau:pending-approval-persist',
+              createPendingApprovalPersistHook(
+                runId,
+                sessionId,
+                pendingApprovalOverrides,
+                persistPendingApprovalOverrideWithRetry,
               ),
-              // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
-              sessionAgent?.options.hooks,
             ),
-            executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
-            // Thread agentName and runId so curated tool.* bubble events are stamped
-            // with {agentName, runId, step} metadata (C3) and durable launch input
-            // carries the owning agent for audit/recovery attribution (F2). Fall back
-            // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
-            // session is stamped with — otherwise the durable input + tool events
-            // carry an empty agentName while the session says 'bureau'.
-            agentName,
-            runId,
-            // The start's trace context parents this run's spans, as a catalog dispatch's does.
-            ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
-            ...(request.withTraceContext === undefined
-              ? {}
-              : { withTraceContext: request.withTraceContext }),
-          },
+            // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
+            agent: sessionAgent?.options.hooks,
+          }),
+          executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
+          // Thread agentName and runId so curated tool.* bubble events are stamped
+          // with {agentName, runId, step} metadata (C3) and durable launch input
+          // carries the owning agent for audit/recovery attribution (F2). Fall back
+          // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
+          // session is stamped with — otherwise the durable input + tool events
+          // carry an empty agentName while the session says 'bureau'.
+          agentName,
+          runId,
+          // The start's trace context parents this run's spans, as a catalog dispatch's does.
+          ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
+          ...(request.withTraceContext === undefined
+            ? {}
+            : { withTraceContext: request.withTraceContext }),
+        };
+        activeRun = createActiveRun(
+          startedRunOptions,
           // Route through the durable engine when one was composed (durable
           // + storage). The conversation already carries the seeded user/system
           // messages, so no separate `prompt` is passed — the workflow snapshots it.
@@ -10011,6 +10039,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       request.onActiveRun?.(activeRun);
       runToolboxes.add(runToolbox);
       runToolboxesByRunId.set(runId, runToolbox);
+      // COR-2106 — what the run gives its tool calls, kept for the approved call that resumes later.
+      const startedScope = runScopedExecutionContextOf(startedRunOptions);
+      if (startedScope !== undefined) runScopedContexts.set(runId, startedScope);
       // AB-96 — the versioned run-lifecycle frame stream. Registered before
       // `store.register` so `run-started` is the first frame a live subscriber
       // ever sees for this run.
@@ -10656,6 +10687,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         recoveredRunIds.add(runId);
       }
       runToolboxesByRunId.set(runId, recoveredServices.toolbox);
+      const recoveredScope = runScopedExecutionContextOf(recoveredServices.options);
+      if (recoveredScope !== undefined) runScopedContexts.set(runId, recoveredScope);
     }
     // AB-359 — rehydrate `runAttribution`'s `principal` from the durably
     // persisted `lastRunOwningPrincipals` map so a recovered run's REAL owner
@@ -12109,6 +12142,8 @@ async function constructBureau<const D extends AgentDefinitions>(
                     generate: runRuntime.generate,
                     toolbox: runRuntime.toolbox,
                     conversation: new Conversation(fullSession.conversationHistory),
+                    // COR-2106 — children this run dispatches carry Bureau's tier.
+                    ...bureauInvariantsField(runtime.bureauChildInvariants),
                     ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
                     ...sessionRunMediaOptions(
                       reattachedSessionAgent,
@@ -12120,10 +12155,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                     runtime: runtimeServices,
                     sessionId: ownedSessionId,
                     // COR-1265 — the Bureau tier, snapshotted.
-                    hooks: mergeHookRegistries(
-                      runRuntime.hooks,
-                      reattachedSessionAgent?.options.hooks,
-                    ),
+                    hooks: runtime.composeRunHooks({
+                      bureau: runRuntime.hooks,
+                      agent: reattachedSessionAgent?.options.hooks,
+                    }),
                     executeOptions: sessionExecuteOptions(
                       reattachedSessionAgent?.options,
                       requestContext,
@@ -12801,6 +12836,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     runToolboxesByRunId.delete(id);
+    runScopedContexts.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
     // A task record that cannot be removed is diagnosed, like every step after the run has left
@@ -16617,6 +16653,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       for (const runId of sessionRunIds) {
         runRequestContexts.delete(runId);
         runToolboxesByRunId.delete(runId);
+        runScopedContexts.delete(runId);
         terminalReviewSessions.delete(runId);
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
@@ -17121,7 +17158,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1921 — why a session of `agentName`'s agent may not be switched to `override` because the
-   * agent has a `costBudget` and the model's row has no price in the catalog, or `undefined` when
+   * agent has `limits.cost` and the model's row has no price in the catalog, or `undefined` when
    * it may. The agent is a file agent, bound or `ephemeral` (tried): a code-defined agent has no
    * budget. The row judged is the one the agent's generate runs for the switch.
    */
@@ -17353,7 +17390,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * Admits the model a fork carries from its parent. An agent whose `costBudget` cannot count the
+   * Admits the model a fork carries from its parent. An agent whose `limits.cost` cannot count the
    * model (COR-1921: its price left the catalog since) refuses it, and the fork answers the carry
    * as rejected, as it does a model the agent no longer allows, rather than failing half made.
    */
@@ -18879,6 +18916,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
+    runScopedContexts.delete(runId);
     recoveredRunIds.delete(runId);
   }
 
@@ -18925,9 +18963,26 @@ async function constructBureau<const D extends AgentDefinitions>(
   function approvalOutcomeMetadata(
     waiting: Readonly<Record<string, JSONValue>> | undefined,
     ran: ToolTiming | undefined,
+    decided: ApprovalDecisionRecord,
   ): Record<string, JSONValue> {
     const { [TOOL_TIMING_METADATA_KEY]: _asked, ...kept } = waiting ?? {};
-    return ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } };
+    return {
+      ...(ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } }),
+      // COR-2016: who decided and when, so a page that was not there can say so.
+      ...approvalDecisionMetadata(decided),
+    };
+  }
+
+  /**
+   * The sentence the tool asked with, when it wrote one of its own: a message equal to the policy's
+   * reason is the reason again, not a sentence the tool chose.
+   */
+  function askedOf(review: Extract<PendingReview, { kind: 'tool-approval' }>): string | undefined {
+    const action = review.approval.action;
+    const message = action?.type === 'approval' ? action.message : undefined;
+    return message === undefined || message.trim() === '' || message === review.approval.reason
+      ? undefined
+      : message.trim();
   }
 
   async function writeApprovalOutcomeToSession(
@@ -18940,6 +18995,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     const callId = review.approval.callId;
     const refusal = input.decision === 'reject' ? 'Tool call rejected' : 'Tool call denied';
     const message = input.reason === undefined ? refusal : `${refusal}: ${input.reason}`;
+    const decidedAtISO = runtimeServices.clock.nowISO();
+    const asked = askedOf(review);
     const outcome =
       input.decision === 'approve'
         ? (result as Parameters<typeof materializeToolResultAsync>[0])
@@ -18989,7 +19046,13 @@ async function constructBureau<const D extends AgentDefinitions>(
             return {
               ...session,
               conversationHistory: resolveToolResult(history, callId, toolResult, {
-                metadata: approvalOutcomeMetadata(waiting?.metadata, ran),
+                metadata: approvalOutcomeMetadata(waiting?.metadata, ran, {
+                  decision: input.decision,
+                  decidedBy: input.principal,
+                  decidedAt: decidedAtISO,
+                  ...(input.reason === undefined ? {} : { reason: input.reason }),
+                  ...(asked === undefined ? {} : { asked }),
+                }),
               }),
             };
           });
@@ -19368,6 +19431,20 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
+   * COR-2106 — the `executionContext` an approved call resumes with: what the run gives a call it
+   * does not park (its child registry, delegated grant, parent signals, Bureau's invariants), from
+   * the one function the step builds it with, and the run's id as the call's `parentRunId`. A run
+   * this process does not hold has no options to build it from, but it is still Bureau's, so its
+   * children still get Bureau's tier.
+   */
+  function approvedCallExecutionContext(runId: string): Record<string, unknown> {
+    return {
+      ...(runScopedContexts.get(runId) ?? bureauInvariantsField(runtime.bureauChildInvariants)),
+      parentRunId: runId,
+    };
+  }
+
+  /**
    * COR-1828 — what a decision's records keep beyond the decision itself. A human wait's approved
    * answer is kept as the digest the decision fence already took over its reference form
    * (`answerDigest`); a tool approval approved with `remember` names the tool its grant allows
@@ -19728,7 +19805,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               ...(approvalRequestContext ? { requestContext: approvalRequestContext } : {}),
               // COR-1920: the approved call is the run's, so a secret answer it names resolves for
               // that run, as it would have had the call not waited for approval.
-              executionContext: { parentRunId: review.runId },
+              // COR-2106: and so is the rest of the run's context (`approvedCallExecutionContext`).
+              executionContext: approvedCallExecutionContext(review.runId),
               ...(peerRecovery === undefined
                 ? {}
                 : { durableOperationKey: peerRecovery.durableOperationKey }),
@@ -20003,7 +20081,7 @@ async function constructBureau<const D extends AgentDefinitions>(
 
   /**
    * COR-1990 — whether the grant a tool approval stored makes the tool's next ask in its chat be
-   * skipped, read as the next call is decided: the agent's `toolApproval` for the tool and the
+   * skipped, read as the next call is decided: the agent's `approvals` for the tool and the
    * chat's permission mode now. Only an agent the file catalog builds reads a grant (that catalog is
    * the one place `approvalGrantsOfRun` is wired in), and that is a file agent and a tried agent,
    * which `files.ephemeral` builds the same way: a file agent is weighed by its file's definition,
@@ -20032,7 +20110,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runSessionIncarnations.get(review.runId),
       );
       return grantLoosensTool({
-        toolApproval: definition.toolApproval ?? undefined,
+        toolApproval: definition.approvals ?? undefined,
         tools,
         reportedName: review.approval.toolName,
         mode,
@@ -20043,12 +20121,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * The tools and `toolApproval` of the agent `agentName` as its toolbox is built from them: a tried
+   * The tools and `approvals` of the agent `agentName` as its toolbox is built from them: a tried
    * agent's from the registry, a file agent's from its file, and nothing for any other agent.
    */
   async function weighableDefinitionOf(
     agentName: string | undefined,
-  ): Promise<Pick<AgentFileDefinitionInput, 'tools' | 'toolApproval'> | undefined> {
+  ): Promise<Pick<AgentFileDefinitionInput, 'tools' | 'approvals'> | undefined> {
     if (agentName === undefined) return undefined;
     if (isTryAgentName(agentName)) return tryAgents.definitionOf(agentName);
     const detail = await fileAgents?.files.detail(agentName);
@@ -21705,7 +21783,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Which owners this bureau actually composes — a report row is emitted
     // ONLY for a composed owner (2026-09-02 coordinator ruling).
     const composedOwnerKinds = ALL_SHUTDOWN_OWNER_KINDS.filter((kind) => {
-      if (kind === 'online-evals') return Boolean(onlineEvalSamplerInstance);
+      if (kind === 'online-evals') return Boolean(scorerSamplerInstance);
       if (kind === 'webhook-notifier') return Boolean(webhookNotifierInstance);
       if (kind === 'audit-trail') return Boolean(auditTrailInstance);
       if (kind === 'event-history') return Boolean(eventHistoryInstance);
@@ -22102,9 +22180,9 @@ async function constructBureau<const D extends AgentDefinitions>(
             const webhookNotifier = webhookNotifierInstance;
             ownerDrains.push(settleOwner('webhook-notifier', () => webhookNotifier.dispose()));
           }
-          if (onlineEvalSamplerInstance) {
-            const onlineEvalSampler = onlineEvalSamplerInstance;
-            ownerDrains.push(settleOwner('online-evals', () => onlineEvalSampler.dispose()));
+          if (scorerSamplerInstance) {
+            const scorerSampler = scorerSamplerInstance;
+            ownerDrains.push(settleOwner('online-evals', () => scorerSampler.dispose()));
           }
           if (assetServiceInstance) {
             // COR-794: aborts every in-flight asset operation and awaits each
@@ -22332,7 +22410,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   // createAuditTrail).
   let auditTrailInstance: AuditTrail | undefined;
   let webhookNotifierInstance: WebhookNotifier | undefined;
-  let onlineEvalSamplerInstance: OnlineEvalSampler | undefined;
+  let scorerSamplerInstance: ScorerSampler | undefined;
   // The durable event history store (AB-91's `ab91-01` slice, AB-310) —
   // built eagerly (unlike `auditTrailInstance`/`webhookNotifierInstance`
   // below, which need `bureau` itself to subscribe to action events) since
@@ -23044,6 +23122,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (hooks === undefined) {
       throw new Error(`Schedule fire "${fire.runId}" has no hook registry to list its approvals.`);
     }
+    // COR-2298 — what the fire gives its tool calls, kept for the approved call that resumes later,
+    // as a session run's is. Stored only once the fire holds an approval, so it is released with the
+    // fire's other approval state (`endScheduledFireWhenNoApprovalRemains`).
+    const fireScope = runScopedExecutionContextOf(services.options);
     // Registered after the merge `registerTrailingOnStep` documents avoiding (COR-1265), and
     // that is sound here: a fire's registry holds the Bureau's tier alone, so the merge's tier
     // offset is zero and the raw trailing priority lands exactly where a registration before the
@@ -23058,6 +23140,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         const session = await runtime.sessionStore?.load(fire.sessionId);
         const decided = session?.metadata['resolvedReviewIds'];
         if (Array.isArray(decided) && decided.includes(reviewId)) return;
+        if (fireScope !== undefined) runScopedContexts.set(fire.runId, fireScope);
         registerScheduledFireApproval(
           scheduledFireReviewState,
           fire,
@@ -23219,7 +23302,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         `Agent "${request.agent}" cannot run: this Bureau has no durable engine.`,
       );
     }
-    const runId = workflowStepRunId(request.workflowId, request.step);
+    const runId = workflowStepRunId(request.workflowId, request.stepAddress ?? request.step);
     if ((await engine.get(runId)) !== null) {
       // Adopt the run at this id only if it is this step's own: its recovery record carries the
       // step's marker. Anything else holding the id is not a run to take a result from.
@@ -23228,6 +23311,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         claim.status !== 'found' ||
         claim.record.workflowStep?.workflowId !== request.workflowId ||
         claim.record.workflowStep.step !== request.step ||
+        claim.record.workflowStep.stepAddress !== request.stepAddress ||
         claim.record.agentName !== request.agent ||
         claim.record.principal !== owner
       ) {
@@ -23252,7 +23336,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         agentName: request.agent,
         input: request.message,
         runId,
-        workflowStep: { workflowId: request.workflowId, step: request.step },
+        workflowStep: {
+          workflowId: request.workflowId,
+          step: request.step,
+          ...(request.stepAddress === undefined ? {} : { stepAddress: request.stepAddress }),
+        },
         principal: owner,
         ...(authority === undefined ? {} : { workspaceAuthority: authority }),
       });
@@ -23707,8 +23795,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       get webhookNotifier(): WebhookNotifier | undefined {
         return webhookNotifierInstance;
       },
-      get onlineEvalSampler(): OnlineEvalSampler | undefined {
-        return onlineEvalSamplerInstance;
+      get scorerSampler(): ScorerSampler | undefined {
+        return scorerSamplerInstance;
       },
       abortingTasks: listAbortingRuns,
       whenTaskRecorded: whenRunRecorded,
@@ -24200,22 +24288,18 @@ async function constructBureau<const D extends AgentDefinitions>(
   // notifier exist (a sampled score is recorded to the former; a threshold
   // breach is delivered through the latter). Only created when at least one
   // judge is configured with a positive sample rate — the common case (no
-  // `options.onlineEvals`) costs nothing beyond the `undefined` check inside
-  // `createOnlineEvalSampler`.
-  if (
-    options.onlineEvals &&
-    options.onlineEvals.judges.length > 0 &&
-    options.onlineEvals.sampleRate > 0
-  ) {
-    onlineEvalSamplerInstance = createOnlineEvalSampler(
+  // `options.scorers`) costs nothing beyond the `undefined` check inside
+  // `createScorerSampler`.
+  if (options.scorers && options.scorers.list.length > 0 && options.scorers.sampleRate > 0) {
+    scorerSamplerInstance = createScorerSampler(
       bureau,
       auditTrailInstance,
       webhookNotifierInstance,
       {
-        ...options.onlineEvals,
+        ...options.scorers,
         // AB-207: same bounded-abort wiring as the webhook notifier above, for
         // an in-flight judge invocation.
-        signal: withBackgroundShutdownSignal(options.onlineEvals.signal),
+        signal: withBackgroundShutdownSignal(options.scorers.signal),
       },
       runtimeServices,
     );
@@ -24443,7 +24527,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   trackFireReviewSeeds(bureau, fireReviewSeeds);
   if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
   construction.built(bureau);
-  // COR-1879 — after the caller has the Bureau, so a plugin's `afterStart` costs a recovered run's
+  // COR-1879 — after the caller has the Bureau, so a plugin's `start` costs a recovered run's
   // first events nothing; `bureau.plugins.ready()` settles when every one has.
   // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds, and
   // what names each contribution, counted on every `plugins.list()`.
@@ -24459,8 +24543,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               {
                 id: detail.id,
                 tools: detail.definition?.tools ?? detail.codeDefinition?.tools ?? [],
-                guardrails: detail.definition?.guardrails ?? [],
-                hooks: detail.definition?.hooks ?? [],
+                guardrails: (detail.definition?.guardrails ?? []).map(guardrailIdOf),
+                interceptors: detail.definition?.interceptors ?? [],
               },
             ],
       );
@@ -24497,7 +24581,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the plugin's: the schedule it creates announces `schedule.created` with `source: plugin`, and
    * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
    */
-  function pluginHostApiOf(host: Bureau, plugin: string): PluginHostApi {
+  function pluginHostApiOf(host: Bureau, plugin: string): PluginHost {
     return {
       agents: { list: () => host.agents.list() },
       schedules: {

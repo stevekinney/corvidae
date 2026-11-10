@@ -13,7 +13,7 @@ export interface AgentSettingsView {
   readonly model: string | null;
   readonly models: readonly string[];
   readonly stepLimit: string | null;
-  readonly defaultEffort: string | null;
+  readonly effort: string | null;
 }
 
 /** The settings of `detail`: the file's for an agent with one, the agent's own statement for one in code. */
@@ -24,14 +24,13 @@ export function settingsOf(detail: AgentDetail): AgentSettingsView {
       model: detail.codeDefinition?.model ?? null,
       models: detail.codeDefinition?.models ?? [],
       stepLimit: null,
-      defaultEffort: null,
+      effort: null,
     };
   }
   return {
     model: definition.model,
     models: definition.models ?? [],
-    stepLimit: definition.stepLimit === null ? null : String(definition.stepLimit),
-    defaultEffort:
-      definition.defaultEffort === null ? null : EFFORT_LABELS[definition.defaultEffort],
+    stepLimit: definition.limits.steps === null ? null : String(definition.limits.steps),
+    effort: definition.effort === null ? null : EFFORT_LABELS[definition.effort],
   };
 }

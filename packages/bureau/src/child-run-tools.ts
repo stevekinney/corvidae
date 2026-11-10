@@ -73,7 +73,7 @@ export function createChildRunTools(host: ChildRunToolHost): readonly Tool[] {
       const detail = agent === undefined ? undefined : await host.agentDetail(agent);
       if (
         detail?.source !== 'file' ||
-        detail.definition?.childAgents?.includes(input.agent) !== true
+        detail.definition?.children?.includes(input.agent) !== true
       ) {
         return {
           status: 'refused' as const,

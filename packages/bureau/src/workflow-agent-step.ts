@@ -24,9 +24,9 @@ import { type AgentStepResult, WorkflowAgentStepError } from './workflow-host';
  * a step a restart re-executes finds its own run. A hash and not a concatenation, because a
  * workflow id can already be close to Weft's 128 characters.
  */
-export function workflowStepRunId(workflowId: string, step: number): string {
+export function workflowStepRunId(workflowId: string, stepAddress: number | string): string {
   const digest = createHash('sha256')
-    .update(`${workflowId}:${String(step)}`)
+    .update(`${workflowId}:${String(stepAddress)}`)
     .digest('hex');
   return `workflow-agent-${digest.slice(0, 32)}`;
 }
@@ -56,7 +56,7 @@ function approvalUnavailable(agent: string, tool: string): WorkflowAgentStepErro
   return new WorkflowAgentStepError(
     'agent-run-failed',
     agent,
-    `Agent "${agent}" called "${tool}", which needs a person's approval, and a workflow step has no one to ask, so the call did not run. Set "${tool}" to "never" in the agent file's toolApproval to let a workflow use it, or take the tool away from the agent.`,
+    `Agent "${agent}" called "${tool}", which needs a person's approval, and a workflow step has no one to ask, so the call did not run. Set "${tool}" to "never" in the agent file's approvals to let a workflow use it, or take the tool away from the agent.`,
   );
 }
 

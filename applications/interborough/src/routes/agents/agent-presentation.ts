@@ -90,8 +90,7 @@ export function agentFacts(
           ? { kind: 'unknown' }
           : { kind: 'model', name: definition.model },
       tools: definition?.tools ?? agent.tools ?? null,
-      skills:
-        definition?.skillDescriptors.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
+      skills: definition?.card.map((skill) => ({ id: skill.id, name: skill.name })) ?? [],
     };
   }
   // A code-defined agent with no model descriptor has an opaque generator: it may be a script or a

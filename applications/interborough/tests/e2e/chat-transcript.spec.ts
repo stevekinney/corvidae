@@ -51,7 +51,7 @@ function recordResolutions(page: Page): Array<Record<string, unknown>> {
 }
 
 test.describe('an approval in the chat', () => {
-  test('is one 40px row with Show input, Allow for the rest of this chat, Deny and Approve', async ({
+  test('is Cinder’s approval row: Input, a note, Allow for the rest of this chat, Deny and Approve', async ({
     page,
     request,
     checkA11y,
@@ -62,21 +62,26 @@ test.describe('an approval in the chat', () => {
     await page.setViewportSize({ width: 1600, height: 900 });
     await page.goto(`/chats/${threadId}`);
 
-    const approval = page.locator('.ib-decision');
+    const approval = page.locator('[data-approval-decision]');
     await expect(approval).toBeVisible();
-    for (const name of ['Show input', 'Allow for the rest of this chat', 'Deny', 'Approve']) {
-      await expect(approval.getByRole('button', { name })).toBeVisible();
+    // Cinder's shared approval row: the Input disclosure, a note on request, the grant for the rest
+    // of the chat as a checkbox on its own line, then Deny and Approve.
+    for (const name of ['Input', 'Add a note', 'Deny', 'Approve']) {
+      await expect(approval.getByRole('button', { name: new RegExp(`^${name}`) })).toBeVisible();
     }
-    const row = await approval.locator('.ib-decision__row').boundingBox();
-    expect(row?.height).toBe(40);
+    await expect(
+      approval.getByRole('checkbox', { name: /^Allow .* for the rest of this chat$/ }),
+    ).toBeVisible();
     await checkA11y('a chat waiting on an approval');
 
     // The input stays out of the row until it is asked for.
-    await expect(approval.locator('.ib-decision__input')).toHaveCount(0);
-    await approval.getByRole('button', { name: 'Show input' }).click();
-    await expect(approval.locator('.ib-decision__input')).toContainText('orderId');
-    await approval.getByRole('button', { name: 'Hide input' }).click();
-    await expect(approval.locator('.ib-decision__input')).toHaveCount(0);
+    const input = approval.getByRole('button', { name: /^Input/ });
+    await expect(input).toHaveAttribute('aria-expanded', 'false');
+    await input.click();
+    await expect(input).toHaveAttribute('aria-expanded', 'true');
+    await expect(approval).toContainText('Order ID');
+    await input.click();
+    await expect(input).toHaveAttribute('aria-expanded', 'false');
   });
 
   test('resumes the run with remember when allowed for the rest of the chat, and the call is settled', async ({
@@ -87,11 +92,12 @@ test.describe('an approval in the chat', () => {
     const resumes = recordResumes(page);
     const resolutions = recordResolutions(page);
     await page.goto(`/chats/${threadId}`);
-    const approval = page.locator('.ib-decision');
-    const allow = approval.getByRole('button', { name: 'Allow for the rest of this chat' });
+    const approval = page.locator('[data-approval-decision]');
+    const allow = approval.getByRole('checkbox', { name: /^Allow .* for the rest of this chat$/ });
     await expect(allow).toBeEnabled();
 
-    await allow.click();
+    await allow.check();
+    await approval.getByRole('button', { name: 'Approve' }).click();
 
     await expect(approval).toHaveCount(0);
     expect(resumes).toHaveLength(1);
@@ -113,9 +119,9 @@ test.describe('an approval in the chat', () => {
     const resumes = recordResumes(page);
     await page.goto(`/chats/${threadId}`);
 
-    await page.locator('.ib-decision').getByRole('button', { name: 'Approve' }).click();
+    await page.locator('[data-approval-decision]').getByRole('button', { name: 'Approve' }).click();
 
-    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     expect(resumes).toHaveLength(1);
     expect(resumes[0]?.[0]?.payload).toEqual({ decision: 'approve' });
   });
@@ -129,9 +135,9 @@ test.describe('a denied call', () => {
     const threadId = await waitingSession(request);
     await page.goto(`/chats/${threadId}`);
 
-    await page.locator('.ib-decision').getByRole('button', { name: 'Deny' }).click();
+    await page.locator('[data-approval-decision]').getByRole('button', { name: 'Deny' }).click();
 
-    await expect(page.locator('.ib-decision')).toHaveCount(0);
+    await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     await expect(
       conversation(page).locator('.cinder-tool-call-rail__item[data-cinder-status="denied"]'),
     ).toBeVisible();
@@ -149,7 +155,7 @@ test.describe('the transcript', () => {
   }) => {
     const threadId = await waitingSession(request);
     await page.goto(`/chats/${threadId}`);
-    await expect(page.locator('.ib-decision')).toBeVisible();
+    await expect(page.locator('[data-approval-decision]')).toBeVisible();
 
     const backgrounds = await page.evaluate(() => {
       const paint = (selector: string): string | undefined => {
@@ -193,7 +199,10 @@ test('shows a durable specialist child while held, then restores its completed c
     const childLink = conversation(page).getByRole('link', { name: 'View run' });
     await expect(childLink).toHaveCount(1);
     await expect(conversation(page).getByText(CHAT_PROOF_CHILD, { exact: true })).toHaveCount(1);
-    await expect(conversation(page).getByText('Running', { exact: true })).toHaveCount(1);
+    // The child's card says Running once; the heading above the transcript says it too, for the chat.
+    await expect(
+      page.getByRole('region', { name: 'Chat conversation' }).getByText('Running', { exact: true }),
+    ).toHaveCount(1);
     const childHref = await childLink.getAttribute('href');
     expect(childHref).toMatch(/^\/runs\/[^/]+$/);
     childRunId = childHref?.slice('/runs/'.length);

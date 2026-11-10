@@ -1,8 +1,18 @@
 import type { Snippet } from 'svelte';
 import type { HTMLAttributes } from 'svelte/elements';
 
-/** Layout of an error state: the centred page layout with a tinted disc, or a flat block with no disc or padding. */
-export type ErrorStateVariant = 'default' | 'flat';
+/**
+ * Layout of an error state: the centred page layout with a tinted disc, a flat block with no disc
+ * or padding, or one row (a small warning glyph, the words on one line and a secondary retry
+ * button at the end) for a card or a list that failed to load.
+ */
+export type ErrorStateVariant = 'default' | 'flat' | 'row';
+
+/**
+ * Scale of the centred state: `'default'` fills a page region, `'compact'` fits a list pane or a
+ * panel (a smaller neutral disc, quieter type, and a secondary retry button).
+ */
+export type ErrorStateSize = 'default' | 'compact';
 
 /** How prominent the retry button is: the page's one `'primary'` action, or `'secondary'` where the page has none to protect. */
 export type ErrorStateRetryVariant = 'primary' | 'secondary';
@@ -80,10 +90,22 @@ export type ErrorStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | 'ti
    * Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title,
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
-   * own, for a card or tab whose container already pads it.
+   * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
+   * the title and description as one sentence, and a secondary retry button (no refresh glyph
+   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
+   * live; the retry drops under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and
+   * tints it neutral, sets the title in the base size, and makes the retry a small secondary
+   * button with no refresh glyph, so the state fits a list pane that failed to load without
+   * claiming the page's one primary action. It has no effect on the `'flat'` and `'row'`
+   * variants.
+   * @default 'default'
+   */
+  size?: ErrorStateSize;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state. It
@@ -147,10 +169,22 @@ export interface ErrorStateSchemaProps {
    * Layout. `'default'` is the centred page layout: a 48px tinted disc with a glyph, the title,
    * the description, the progress line, then the actions, centred in the region it fills.
    * `'flat'` renders the same text as a start-aligned block with no disc and no padding of its
-   * own, for a card or tab whose container already pads it.
+   * own, for a card or tab whose container already pads it. `'row'` lays a small warning glyph,
+   * the title and description as one sentence, and a secondary retry button (no refresh glyph
+   * unless `retryIcon` is given) on one line, for the failure of one card among others that are
+   * live; the retry drops under the words on a phone.
    * @default 'default'
    */
   variant?: ErrorStateVariant;
+  /**
+   * Scale of the centred layout. `'compact'` tightens the padding, shrinks the disc to 40px and
+   * tints it neutral, sets the title in the base size, and makes the retry a small secondary
+   * button with no refresh glyph, so the state fits a list pane that failed to load without
+   * claiming the page's one primary action. It has no effect on the `'flat'` and `'row'`
+   * variants.
+   * @default 'default'
+   */
+  size?: ErrorStateSize;
   /**
    * Draws the state inside a bordered, rounded box, for a list or page body that has no
    * container of its own. Leave it off when a card or panel already surrounds the state. It

@@ -51,12 +51,14 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 
 import { isConversationInput } from './agent-input';
 import type { RunEvent } from './agent-run';
+import { readBureauInvariants, withBureauInvariants } from './bureau-invariants';
 import {
   type ChildSignalCloseReason,
   type ChildSignalContract,
   createChildSignalChannel,
   type ParentSignalEndpoint,
 } from './child-signals';
+import { composeBureauInvariantsIntoChild } from './compose-bureau-child';
 import {
   ChildWorkflowAbortedEvent,
   ChildWorkflowCompletedEvent,
@@ -890,25 +892,42 @@ export function dispatchChildRun<O = never, H extends boolean = false>(
   // `agentRun.result()` promise to attach to.
   let agentRun: ReturnType<typeof agent.run>;
   try {
-    agentRun = agent.run(input, {
-      agentName: options.agentName,
-      signal,
-      traceContext: options.traceContext,
-      withTraceContext: options.withTraceContext,
-      ...(options.delegatedAuthority === undefined
-        ? {}
-        : { delegatedAuthority: options.delegatedAuthority }),
-      // COR-1269 — the same four fields the `multiagent.child-workflow.*`
-      // events already carry, handed to the child so ITS hook observations are
-      // attributable to this parent-child pair. Data, not a hook surface: this
-      // function composes no registry and references none, which is what makes
-      // "no parent hook reaches a child" structural rather than a convention.
-      childCorrelation: correlation,
-      // COR-814 — the child's own end of this pair's channel. Only this
-      // child receives it; nothing here forwards a port the parent itself
-      // may hold from its own parent.
-      ...(channel === undefined ? {} : { parentSignals: channel.child }),
-    });
+    // COR-2106 — the single seam where Bureau's tier reaches a child. A parent that carries
+    // Bureau's invariants (it runs under Bureau) hands a child no way to run without them: a
+    // child with no run-options resolver is refused here, inside this try, so it fails through the
+    // same path as any other child that cannot start. A standalone parent carries none, and its
+    // child runs through `agent.run()` exactly as before.
+    const bureauInvariants = readBureauInvariants(options);
+    const runnable =
+      bureauInvariants === undefined
+        ? agent
+        : composeBureauInvariantsIntoChild(agent, options.agentName, bureauInvariants);
+    agentRun = runnable.run(
+      input,
+      withBureauInvariants(
+        {
+          agentName: options.agentName,
+          signal,
+          traceContext: options.traceContext,
+          withTraceContext: options.withTraceContext,
+          ...(options.delegatedAuthority === undefined
+            ? {}
+            : { delegatedAuthority: options.delegatedAuthority }),
+          // COR-1269 — the same four fields the `multiagent.child-workflow.*`
+          // events already carry, handed to the child so ITS hook observations are
+          // attributable to this parent-child pair. Data, not a hook surface: the only
+          // thing that reaches a child's plan is Bureau's own factory, through the seam
+          // above, and no parent hook does, which keeps "no parent hook reaches a child"
+          // structural rather than a convention.
+          childCorrelation: correlation,
+          // COR-814 — the child's own end of this pair's channel. Only this
+          // child receives it; nothing here forwards a port the parent itself
+          // may hold from its own parent.
+          ...(channel === undefined ? {} : { parentSignals: channel.child }),
+        },
+        bureauInvariants,
+      ),
+    );
   } catch (error) {
     closeChannel('failed');
     options.registry?.settle(childRunId, 'failed');

@@ -10,7 +10,7 @@
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--head <sha>]
-//                               [--issue <ID> --completion-file <md>]
+//                               [--issue <ID> --completion-file <md>]...
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
 //                               [--fixes-main] [--config <json>] [--json]
@@ -24,13 +24,18 @@
 //              merge pinned to the head, and the confirmation of the merged tree. A conflict is
 //              reported and nothing is merged in: the worker resolves it and returns a new head. A
 //              red `main` is a warning in the report, not a refusal;
-//   issue      with `--issue` and `--completion-file`: `linear.ts`'s comment, then the state Done,
-//              each read back. A failure leaves `merged` true and names step `issue`;
+//   issue      with `--issue` and `--completion-file`, each of which may repeat and which pair in
+//              order (a combined pull request that carries several issues): for each issue in turn,
+//              `linear.ts`'s comment, then the state Done, each read back. The first failure stops
+//              the step, leaves `merged` true, and names step `issue` and the failing identifier;
+//              the report lists the issues closed before it. Every completion file must be an
+//              execution report (`references/execution-report.md`), and the counts must match:
+//              anything else is refused as invalid usage before the merge;
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
 // Output: at most five lines, or with `--json` one object: pr, merged, mergeCommit, mergeable,
-// mainHealthWarning, failedStep, detail and issue.
+// mainHealthWarning, failedStep, detail and issues (each closed issue's identifier and state).
 //
 // Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named), 2
 // invalid CLI usage.
@@ -58,8 +63,10 @@ export interface DeliverOptions {
   commentFile: string;
   /** The head pinned at acceptance; the merge refuses when the pull request head differs. */
   expectedHead?: string | undefined;
-  issue?: string | undefined;
-  completionFile?: string | undefined;
+  /** The issues to close after the merge, in order; each pairs with the completion file at its index. */
+  issues?: string[] | undefined;
+  /** One execution report per issue, in the same order as `issues`. */
+  completionFiles?: string[] | undefined;
   removeWorktree?: { provider: string; name: string } | undefined;
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
@@ -77,8 +84,8 @@ export interface DeliverReport {
   mainHealthWarning: string | null;
   failedStep: string | null;
   detail: string | null;
-  /** The Linear state the issue was left in, or `null` when no issue was named or it failed. */
-  issue: string | null;
+  /** The issues closed, in order, each with the Linear state it was left in. */
+  issues: { identifier: string; state: string }[];
 }
 
 export interface DeliverDependencies {
@@ -87,6 +94,48 @@ export interface DeliverDependencies {
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
+}
+
+/**
+ * The level-2 headings of an execution report, in order. `references/execution-report.md` lists
+ * the same headings, and `deliver.test.ts` keeps the two equal.
+ */
+export const executionReportHeadings = [
+  'Execution status',
+  'Agent and session',
+  'Attempt',
+  'Branch and pull request',
+  'Requirements implemented',
+  'Acceptance criteria',
+  'Verification',
+  'Changes',
+  'Blockers and open questions',
+  'Remaining work',
+];
+
+/**
+ * What keeps `text` from being an execution report: a first line that is not the
+ * `Execution report: <branch> attempt <n>` marker, or a required heading that is missing or out
+ * of order. Empty when it is one.
+ */
+export function executionReportProblems(text: string): string[] {
+  const problems: string[] = [];
+  const first = text.split('\n').find((line) => line.trim() !== '') ?? '';
+  if (!/^Execution report: \S+ attempt [1-9]\d*$/.test(first.trim()))
+    problems.push('the first line is not "Execution report: <branch> attempt <n>"');
+  const headings = [...text.matchAll(/^## (.+?)\s*$/gm)].map((match) => match[1] ?? '');
+  let cursor = 0;
+  for (const heading of executionReportHeadings) {
+    const found = headings.indexOf(heading, cursor);
+    if (found === -1) problems.push(`"## ${heading}" is missing or out of order`);
+    else cursor = found + 1;
+  }
+  return problems;
+}
+
+/** `text` led by `identifier` unless it already is, so a failure names its issue exactly once. */
+function named(identifier: string, text: string): string {
+  return text.startsWith(`${identifier}:`) ? text : `${identifier}: ${text}`;
 }
 
 /** Run the lifecycle. Never throws for a failed step; the report names it. */
@@ -98,11 +147,26 @@ export async function deliver(
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
   if (!existsSync(options.commentFile))
     throw new UsageError(`No such comment file: ${options.commentFile}`);
-  if (options.issue !== undefined) {
-    if (options.completionFile === undefined || !existsSync(options.completionFile))
-      throw new UsageError(`No such completion file: ${options.completionFile ?? '(none)'}`);
-    if (readFileSync(options.completionFile, 'utf8').trim() === '')
-      throw new UsageError(`${options.completionFile} is empty.`);
+  const issues = options.issues ?? [];
+  const completionFiles = options.completionFiles ?? [];
+  if (issues.length !== completionFiles.length)
+    throw new UsageError(
+      `--issue and --completion-file pair in order: got ${issues.length} issue(s) and ${completionFiles.length} completion file(s).`,
+    );
+  const duplicate = issues.find((identifier, index) => issues.indexOf(identifier) !== index);
+  if (duplicate !== undefined) throw new UsageError(`--issue ${duplicate} is given twice.`);
+  const completions: string[] = [];
+  for (const completionFile of completionFiles) {
+    if (!existsSync(completionFile))
+      throw new UsageError(`No such completion file: ${completionFile}`);
+    const completion = readFileSync(completionFile, 'utf8');
+    if (completion.trim() === '') throw new UsageError(`${completionFile} is empty.`);
+    const problems = executionReportProblems(completion);
+    if (problems.length > 0)
+      throw new UsageError(
+        `${completionFile} is not an execution report (references/execution-report.md): ${problems.join('; ')}.`,
+      );
+    completions.push(completion);
   }
   const report: DeliverReport = {
     pr: options.pr,
@@ -112,7 +176,7 @@ export async function deliver(
     mainHealthWarning: null,
     failedStep: null,
     detail: null,
-    issue: null,
+    issues: [],
   };
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
@@ -143,22 +207,18 @@ export async function deliver(
   if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
 
   // issue
-  if (options.issue !== undefined && options.completionFile !== undefined) {
+  for (const [index, identifier] of issues.entries()) {
     try {
       const client = partial.client;
       if (client === undefined) return fail('issue', 'no Linear client was provided.');
-      const comment = await postComment(
-        client,
-        options.issue,
-        readFileSync(options.completionFile, 'utf8'),
-      );
-      if (!comment.ok) return fail('issue', comment.summary);
-      const state = await setState(client, options.issue, 'Done');
-      if (!state.ok) return fail('issue', state.summary);
-      report.issue = 'Done';
+      const comment = await postComment(client, identifier, completions[index] ?? '');
+      if (!comment.ok) return fail('issue', named(identifier, comment.summary));
+      const state = await setState(client, identifier, 'Done');
+      if (!state.ok) return fail('issue', named(identifier, state.summary));
+      report.issues.push({ identifier, state: 'Done' });
     } catch (error) {
       if (!(error instanceof LinearError) && !(error instanceof UsageError)) throw error;
-      return fail('issue', error.message);
+      return fail('issue', named(identifier, error.message));
     }
   }
 
@@ -187,7 +247,10 @@ export function renderDeliver(report: DeliverReport): string {
   ];
   if (report.mainHealthWarning !== null)
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
-  if (report.issue !== null) lines.push(`issue: ${report.issue}`);
+  if (report.issues.length > 0)
+    lines.push(
+      `issues: ${report.issues.map((closed) => `${closed.identifier} ${closed.state}`).join(', ')}`,
+    );
   if (report.failedStep !== null)
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
   return lines.join('\n');
@@ -198,19 +261,8 @@ export async function run(
   dependencies: Partial<DeliverDependencies> = {},
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
-    values: [
-      'config',
-      'pr',
-      'worktree',
-      'comment-file',
-      'head',
-      'issue',
-      'completion-file',
-      'usage-log',
-      'provider',
-      'name',
-    ],
-    repeated: ['transcript'],
+    values: ['config', 'pr', 'worktree', 'comment-file', 'head', 'usage-log', 'provider', 'name'],
+    repeated: ['transcript', 'issue', 'completion-file'],
     flags: ['remove-worktree', 'fixes-main', 'json'],
   });
   if (parsed.positionals.length > 0)
@@ -220,10 +272,12 @@ export async function run(
   const expectedHead = parsed.values['head'];
   if (expectedHead !== undefined && !/^[0-9a-f]{40}$/.test(expectedHead))
     throw new UsageError(`--head "${expectedHead}" is not a full commit SHA.`);
-  const issue = parsed.values['issue'];
-  const completionFile = parsed.values['completion-file'];
-  if ((issue === undefined) !== (completionFile === undefined))
-    throw new UsageError('--issue and --completion-file go together.');
+  const issues = parsed.repeated['issue'] ?? [];
+  const completionFiles = parsed.repeated['completion-file'] ?? [];
+  if (issues.length !== completionFiles.length)
+    throw new UsageError(
+      `--issue and --completion-file go together and pair in order: got ${issues.length} and ${completionFiles.length}.`,
+    );
   const usageLog = parsed.values['usage-log'];
   const transcripts = parsed.repeated['transcript'] ?? [];
   if ((usageLog === undefined) !== (transcripts.length === 0))
@@ -244,8 +298,8 @@ export async function run(
       worktree: requireOption(parsed, 'worktree'),
       commentFile: requireOption(parsed, 'comment-file'),
       expectedHead,
-      issue,
-      completionFile,
+      issues,
+      completionFiles,
       usageLog,
       transcripts,
       fixesMain: parsed.flags.has('fixes-main'),

@@ -115,7 +115,7 @@ import type { BureauDecisions, DecisionsOptions } from './decisions/types';
 import type { BureauSettings, SettingsOptions } from './settings/types';
 import type { Models, ModelsOptions } from './models/create-models';
 import type { BureauNotifications } from './notifications/notification-types';
-import type { OnlineEvalSampler, OnlineEvalSamplerOptions } from './online-evals';
+import type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
 import type {
   SessionSteeringState,
@@ -602,7 +602,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   /**
    * COR-1913 — the secret that signs the tool approvals the file agents of
    * {@link BureauOptions.agentSource} raise. A file agent's tools ask a person before they run
-   * according to the file's `toolApproval` (`on-changes` for a tool it does not name), and an
+   * according to the file's `approvals` (`on-changes` for a tool it does not name), and an
    * approval is resolved by presenting the signed token that raised it, so the secret must be the
    * same after a restart and in every process that resolves reviews of the same store. Keep it
    * with the deployment's other secrets. Without one a file agent's approval is raised unsigned:
@@ -611,17 +611,17 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentApprovalSecret?: string;
   /**
-   * COR-1877 — the guardrails and run hooks plugins contribute, which an agent file chooses with
-   * `guardrails: [plugin:name]` and `hooks: [plugin:name]`. Build the value with
+   * COR-1877 — the guardrails and interceptors plugins contribute, which an agent file chooses with
+   * `guardrails: [plugin:name]` and `interceptors: [plugin:name]`. Build the value with
    * `createAgentContributions`. Operative's default guardrail preset still guards every agent, and a
-   * chosen guardrail runs beside it; a chosen run hook set joins the agent's hook tier, each entry
+   * chosen guardrail runs beside it; a chosen interceptor joins the agent's hook tier, each entry
    * tagged with its plugin as its `source`. A file that lists an id this does not hold is `invalid`
    * with `reference-unresolved`. Omitted, nothing is contributed, so a file that lists any is
    * invalid. Used only with {@link BureauOptions.agentSource}.
    */
   agentContributions?: AgentContributions;
   /**
-   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `allowedSkills`
+   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `skills`
    * draws on. Discovery and the trust decision stay the host's (COR-752), so this is a read, called
    * when a file agent's run starts, each time the run uses a skill, and when a write grants a skill.
    * Bureau recovers durable runs before `createBureau` returns, so answer from the first read: a
@@ -648,7 +648,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   workflowSource?: WorkflowSource | readonly WorkflowSource[];
   /**
    * COR-1874 — the versioned catalog (`createVersionedCatalog`) whose `activity` and
-   * `trigger-kind` entries workflow files may use besides the `agent` activity and the `schedule`
+   * `trigger` entries workflow files may use besides the `agent` activity and the `schedule`
    * and `signal` triggers. An entry is named `plugin:name` and holds a plugin's activity or
    * trigger kind. A file names a contributed activity without a version and floats with it; the
    * revision Bureau registers pins the version that is loaded, and a run resumes after a restart
@@ -775,9 +775,10 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * instance (`createGovernedMemory` from `@lostgradient/memory`) so it owns
    * the storage, ledger, and policy.
    *
-   * COR-1879: a factory instead builds memory once plugin setup has run, with the detectors and
+   * COR-1879: a factory instead builds memory once plugin setup has run, with the memory guardrails and
    * embedders the running plugins contribute ({@link PluginMemoryContributions}), so the host can
-   * hand them to `createEmbedderRegistry` and the policy's `contributedDetectors`. It is called
+   * hand them to `createEmbedderRegistry` and the policy's `contributedDetectors`, each guardrail at the gates it
+   * declares. It is called
    * once, during construction, with empty lists when no plugin contributes either.
    */
   memory?: GovernedMemory | BureauMemoryFactory;
@@ -787,7 +788,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * plugins by folder name), with storage confined to `plugin:<name>:`, and its contributions are
    * registered through the options they belong to. A plugin whose configuration does not parse,
    * whose `setup` fails, or that claims a name already held is skipped and the Bureau still
-   * starts; `afterStart` runs once the Bureau is built. {@link Bureau.plugins} reports each.
+   * starts; `start` runs once the Bureau is built. {@link Bureau.plugins} reports each.
    */
   plugins?: readonly BureauPluginEntry[];
   /** COR-1879 — the owner's `{ enabled, configuration }` for each plugin, by plugin name. */
@@ -998,11 +999,11 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
   hooks?: BureauHooksOptions;
   /**
    * The event formatters plugins contribute (COR-1876), the entry point plugin composition feeds
-   * with each plugin's `eventFormatters`. {@link Bureau.formatEvent} uses them; an event no
+   * with each plugin's `formatters`. {@link Bureau.formatEvent} uses them; an event no
    * formatter claims is shown by its raw kind. Two formatters that claim one event kind are
    * refused at construction.
    */
-  eventFormatters?: readonly EventFormatterRegistration[];
+  formatters?: readonly EventFormatterRegistration[];
   /**
    * Online evaluations (AB-53) — samples a fraction of completed live runs
    * through configured judges/matchers, records every sampled score to the
@@ -1011,7 +1012,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * alert threshold. Omit, pass no judges, or pass `sampleRate: 0` to
    * disable — the default.
    */
-  onlineEvals?: OnlineEvalSamplerOptions;
+  scorers?: ScorerSamplerOptions;
   /**
    * Managed assets (COR-794) — composes one asset service over the injected
    * asset storage, policy, and ports, running on this bureau's runtime
@@ -1380,7 +1381,7 @@ export interface ResolveReviewResult {
   remembered?: boolean;
   /**
    * COR-1990 — set with {@link ResolveReviewResult.remembered}: whether the next ask for the tool in
-   * this chat will be skipped, as the next call is decided now (the agent's `toolApproval` for the
+   * this chat will be skipped, as the next call is decided now (the agent's `approvals` for the
    * tool and the chat's permission mode). `false` when `remembered` is, and `false` for a tool its
    * agent sets to `always` or `blocked`, a chat in `always` mode, and a tool a `read-only` chat
    * denies: the grant is stored for those, but they answer `ask` or `deny` whatever it says. Also
@@ -1597,7 +1598,7 @@ export interface BureauHooksOptions {
   /**
    * The hook action kinds plugins contribute (COR-1876): a hook whose action is
    * `{ type: 'plugin', plugin, kind, configuration? }` runs the named kind. This is the entry point
-   * plugin composition feeds with each plugin's `hookActionKinds`. A plugin and kind name given
+   * plugin composition feeds with each plugin's `reactions`. A plugin and kind name given
    * twice is refused at construction. Omitted, only the built-in actions exist.
    */
   actionKinds?: readonly HookActionKindRegistration[];
@@ -1721,8 +1722,14 @@ export interface BureauReviews {
    * conversation (COR-855): the executed result on approve, an error result
    * carrying the reason on deny and reject, each replacing the pending
    * `action_required` tool-result row in place, so the next run started on the
-   * session answers an up-to-date conversation. A resolution the policy gates
-   * again (`superseded`) writes nothing.
+   * session answers an up-to-date conversation. The row's metadata says who
+   * decided and when, with the note and the sentence the tool asked with
+   * (`approvalDecision`, COR-2016), so a page that was not there can say so. A
+   * resolution the policy gates again (`superseded`) writes nothing.
+   *
+   * It starts no run. The chat's AG-UI resume and the `bureau.reviews.resolve`
+   * operation each start the run that answers a chat's decided approvals, under
+   * one command id per decided run (`http/review-continuation.ts`, COR-2016).
    *
    * Throws `BureauError('NOT_FOUND')` when `input.id` does not match a
    * currently pending review (including an already-resolved one).
@@ -2880,14 +2887,14 @@ export interface BureauInternals {
   readonly webhookNotifier: WebhookNotifier | undefined;
 
   /**
-   * The online eval sampler (AB-53). Present whenever `options.onlineEvals`
+   * The online eval sampler (AB-53). Present whenever `options.scorers`
    * configures at least one judge with a positive `sampleRate`; `undefined`
    * when online evals are disabled (the default). Use
-   * `onlineEvalSampler.sampledCount()`/`observedCount()` to inspect sampling
-   * state and `onlineEvalSampler.flush()` to await in-flight judge
+   * `scorerSampler.sampledCount()`/`observedCount()` to inspect sampling
+   * state and `scorerSampler.flush()` to await in-flight judge
    * evaluations deterministically.
    */
-  readonly onlineEvalSampler: OnlineEvalSampler | undefined;
+  readonly scorerSampler: ScorerSampler | undefined;
 
   /**
    * AB-369: every run whose cancellation `tasks.cancel` or a task handle's `abort` has requested
@@ -2945,7 +2952,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * COR-1879 — the plugins {@link BureauOptions.plugins} named, in load order: `list()` reports
    * each one's descriptor, status, problems and contributions, with what names each contribution
    * counted afresh, `registered()` names the plugins whose contributions are registered, and
-   * `ready()` settles once every running plugin's `afterStart` has. Empty without plugins.
+   * `ready()` settles once every running plugin's `start` has. Empty without plugins.
    */
   readonly plugins: BureauPlugins;
   /**

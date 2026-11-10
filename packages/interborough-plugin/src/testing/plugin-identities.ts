@@ -1,16 +1,18 @@
 import { createHash } from 'node:crypto';
 
+import { guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
 import { type DefinitionSchema, definitionSchemaToJsonSchema } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import type { PluginContributions } from '../contributions.ts';
-import type { PluginHostApi } from '../host-api.ts';
+import { type GuardrailFamily, isGuardrailFactory } from '../guardrail-family.ts';
+import type { PluginHost } from '../host-api.ts';
 import type { PluginDescriptor } from '../plugin-descriptor.ts';
 
 /** One name a plugin's durable records, files or settings can refer to, with the shape it has. */
 export interface PluginIdentityEntry {
-  /** What the entry is: `configuration`, `tool`, `activity`, `trigger-kind` and the other kinds. */
+  /** What the entry is: `configuration`, `tool`, `activity`, `trigger` and the other kinds. */
   readonly kind: string;
   /** The identifier a file or record names it by: the plugin's name for `configuration`, otherwise `plugin:name`. */
   readonly id: string;
@@ -145,10 +147,10 @@ export function schemaDigest(schema: unknown): string | null {
   return `sha256:${hash}`;
 }
 
-const unstartedMessage = 'The host has not started: a plugin may call it only after afterStart.';
+const unstartedMessage = 'The host has not started: a plugin may call it only after start.';
 
 /** A host API whose every call rejects, as the real one does before the host has started. */
-const unstartedHost: PluginHostApi = {
+const unstartedHost: PluginHost = {
   agents: {
     list: () => {
       throw new Error(unstartedMessage);
@@ -181,7 +183,7 @@ export async function pluginContributions(
     secrets: { get: async () => undefined },
     storage: new MemoryStorage(),
     host: unstartedHost,
-    toolApprovalHooks: () => ({}),
+    approvals: () => ({}),
   });
 }
 
@@ -216,12 +218,28 @@ function named(item: Named, kind: string, schema?: unknown) {
 }
 
 /**
+ * A guardrail's entry: kind `guardrail`, named `family/name`, so the id is `plugin:family/name`.
+ * Names are claimed per family, which lets one detector serve `input` and `memory` under one name.
+ */
+function guardrailNamed(item: Named, family: GuardrailFamily) {
+  return named(
+    { ...item, name: `${family}/${item.name}` },
+    'guardrail',
+    // A factory's configuration schema is part of its contract with the agent files that configure
+    // it (COR-2118); a detector or validator has none.
+    isGuardrailFactory(item) ? item.configuration : undefined,
+  );
+}
+
+/**
  * The identities a plugin holds: its configuration schema, and for every contribution that a
  * record, file or setting can name, its id, version and schema digest. A contribution that
  * declares no version of its own takes the plugin's. The entries are ordered, so equal plugins
- * produce equal snapshots. Guardrails are listed by the name an agent file lists them under
- * (`input-guardrail` and `output-guardrail`, with no schema). Decision routers and memory detectors
- * carry no name a record or file can refer to, so they are not listed.
+ * produce equal snapshots. Every guardrail is a `guardrail`, whose schema is a factory's configuration
+ * schema or none for a detector or validator, and its id records its
+ * family (`plugin:input/name`, `plugin:output/name`, `plugin:tools/name`, `plugin:memory/name`); an
+ * agent file lists an input, output or tool-call guardrail as `plugin:name`. Decision routers carry no name a record or file can
+ * refer to, so they are not listed.
  */
 export async function pluginIdentities(
   descriptor: PluginDescriptor<z.ZodType>,
@@ -267,13 +285,13 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.triggerKinds,
-      (kind) => named(kind, 'trigger-kind', kind.configuration),
+      contributions.triggers,
+      (kind) => named(kind, 'trigger', kind.configuration),
       descriptor,
     ),
     ...entriesOf(
-      contributions.hookActionKinds,
-      (kind) => named(kind, 'hook-action', kind.configuration),
+      contributions.reactions,
+      (kind) => named(kind, 'reaction', kind.configuration),
       descriptor,
     ),
     ...entriesOf(
@@ -282,32 +300,42 @@ export async function pluginIdentities(
       descriptor,
     ),
     ...entriesOf(
-      contributions.mcpApps,
-      (app) => named(app, 'mcp-app', { allowedTools: app.allowedTools.toSorted(compareText) }),
+      contributions.panels,
+      (app) => named(app, 'panel', { allowedTools: app.allowedTools.toSorted(compareText) }),
       descriptor,
     ),
     ...entriesOf(
-      contributions.guardrails?.inputDetectors,
-      (detector) => named(detector, 'input-guardrail'),
+      contributions.guardrails?.input,
+      (entry) => guardrailNamed(guardrailOf(entry), 'input'),
       descriptor,
     ),
     ...entriesOf(
-      contributions.guardrails?.outputValidators,
-      (validator) => named(validator, 'output-guardrail'),
+      contributions.guardrails?.output,
+      (entry) => guardrailNamed(guardrailOf(entry), 'output'),
       descriptor,
     ),
-    ...entriesOf(contributions.evalJudges, (judge) => named(judge, 'eval-judge'), descriptor),
+    ...entriesOf(
+      contributions.guardrails?.tools,
+      (validator) => guardrailNamed(validator, 'tools'),
+      descriptor,
+    ),
+    ...entriesOf(
+      contributions.guardrails?.memory,
+      (detector) => guardrailNamed(detector, 'memory'),
+      descriptor,
+    ),
+    ...entriesOf(contributions.scorers, (judge) => named(judge, 'scorer'), descriptor),
     ...entriesOf(contributions.providers, (provider) => named(provider, 'provider'), descriptor),
-    ...entriesOf(contributions.runHooks, (hooks) => named(hooks, 'run-hooks'), descriptor),
+    ...entriesOf(contributions.interceptors, (hooks) => named(hooks, 'interceptor'), descriptor),
     ...entriesOf(
-      contributions.eventFormatters,
+      contributions.formatters,
       (formatter) =>
-        named(formatter, 'event-formatter', {
+        named(formatter, 'formatter', {
           eventKinds: [...formatter.eventKinds].toSorted(compareText),
         }),
       descriptor,
     ),
-    ...entriesOf(contributions.codeAgents, (agent) => named(agent, 'code-agent'), descriptor),
+    ...entriesOf(contributions.agents, (agent) => named(agent, 'agent'), descriptor),
   ];
   return {
     plugin: descriptor.name,

@@ -30,7 +30,7 @@
  *   sources requires current deployment authority immediately before the configuration CAS.
  * - **A catalog is replaced, never edited.** Each discovery makes a new revision. A skill client
  *   offers the revision it was built with and, given `currentCatalog` (COR-1926), checks a skill
- *   against the current catalog when the skill is used. A file agent that lists `allowedSkills`
+ *   against the current catalog when the skill is used. A file agent that lists `skills`
  *   (COR-1975) gets a skill client per run: Bureau reads `standing` for the revision the run is
  *   bound to, for that check, and when a write grants a skill. The manager needs the Bureau, and
  *   Bureau recovers durable runs before `createBureau` returns, so a run recovered then reads

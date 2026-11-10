@@ -866,20 +866,21 @@ describe('workflows-validate and workflows-catalog', () => {
     const catalog = result as {
       stepKinds: { kind: string }[];
       activities: { id: string }[];
-      triggerKinds: { id: string; configuration: Record<string, unknown> | null }[];
+      triggers: { id: string; configuration: Record<string, unknown> | null }[];
     };
     expect(catalog.stepKinds.map(({ kind }) => kind)).toEqual([
       'activity',
       'sleep',
       'await-signal',
+      'branch',
     ]);
     expect(catalog.activities.map(({ id }) => id)).toContain('agent');
-    expect(catalog.triggerKinds.map(({ id }) => id)).toEqual(['schedule', 'signal', 'manual']);
-    expect(catalog.triggerKinds[0]?.configuration).toMatchObject({
+    expect(catalog.triggers.map(({ id }) => id)).toEqual(['schedule', 'signal', 'manual']);
+    expect(catalog.triggers[0]?.configuration).toMatchObject({
       required: ['spec'],
       additionalProperties: false,
     });
-    expect(catalog.triggerKinds[1]?.configuration).toMatchObject({
+    expect(catalog.triggers[1]?.configuration).toMatchObject({
       required: ['name'],
       additionalProperties: false,
     });
