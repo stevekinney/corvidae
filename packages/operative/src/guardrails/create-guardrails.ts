@@ -27,7 +27,7 @@ const INPUT_ACTIONS: readonly InputGuardrailAction[] = ['tripwire', 'block', 'sa
 const OUTPUT_ACTIONS: readonly OutputGuardrailAction[] = ['tripwire', 'block', 'redact', 'warn'];
 
 /** Default confidence threshold for tainting a session. */
-const DEFAULT_TAINT_THRESHOLD = 0.9;
+export const DEFAULT_TAINT_THRESHOLD = 0.9;
 
 /**
  * Creates coordinated guardrail hooks (input, tool result, and output) with session tainting.
