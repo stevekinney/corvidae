@@ -10,8 +10,6 @@ on:
   push:
     branches:
       - main
-      # Temporary trial trigger: a workflow that is not on the default branch cannot be dispatched.
-      - cor-2369-advisory-ci
 
 permissions:
   contents: read
@@ -96,12 +94,20 @@ jobs:
           # file" (the catalog lacks `late` after the change event) and a sibling "a file with an
           # unrecognized key and a schedule > leaves the schedule running when the file gains a
           # key on a step, and reports it" failed on one run and passed on another, so they race.
+          # The last run also failed "a workflow’s history on a Bureau > records the file it finds
+          # as 1.0.0, and a save through Bureau as the next version, with who saved it and from
+          # where".
           - name: bureau
             filter: --filter=@lostgradient/bureau
             advisory: true
           - name: weft coverage
             filter: --filter=@lostgradient/weft
             advisory: true
+          # Catch-all: it only excludes what the shards above select (including bureau and weft,
+          # which live under packages/), so a new top-level workspace folder lands here rather
+          # than in no shard.
+          - name: everything else
+            filter: --filter=!./components/* --filter=!./packages/* --filter=!./applications/* --filter=!./plugins/* --filter=!./testing/*
     continue-on-error: ${{ matrix.advisory == true }}
     env:
       # One task at a time: a task runs up to four Bun workers on a 4 vCPU runner.
