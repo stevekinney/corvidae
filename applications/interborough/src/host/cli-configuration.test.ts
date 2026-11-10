@@ -1,6 +1,13 @@
 import { describe, expect, test } from 'bun:test';
 
-import { parseCliArguments, executeCli as commandRunner } from './cli-client.ts';
+import { parseCliArguments } from './cli-client.ts';
+
+async function commandRunner(
+  ...arguments_: Parameters<(typeof import('./cli-client.ts'))['executeCli']>
+) {
+  const { executeCli } = await import('./cli-client.ts');
+  return executeCli(...arguments_);
+}
 
 function response(data: unknown): Response {
   return Response.json(data);
@@ -111,27 +118,30 @@ describe('CLI configuration commands', () => {
         configuration: { baseURL: 'https://api.invalid' },
       }),
     );
-    const result = await commandRunner(['providers', 'connect', 'openai', '--input-file', inputPath], {
-      fetch: async (url, init) => {
-        const path = new URL(url).pathname;
-        calls.push(`${init?.method ?? 'GET'} ${path}`);
-        if (path === '/bureau/jsonrpc')
-          return response({
-            result: {
-              providers: [
-                {
-                  plugin: 'openai',
-                  name: 'openai',
-                  configuration: { type: 'object', properties: { baseURL: { type: 'string' } } },
-                },
-              ],
-            },
-          });
-        if (path === '/host/plugins') return response({ configurationRevision: 'p1' });
-        if (path === '/host/providers') return response({ configurationRevision: 'r1' });
-        return response({ configurationRevision: 'p2', providers: [] });
+    const result = await commandRunner(
+      ['providers', 'connect', 'openai', '--input-file', inputPath],
+      {
+        fetch: async (url, init) => {
+          const path = new URL(url).pathname;
+          calls.push(`${init?.method ?? 'GET'} ${path}`);
+          if (path === '/bureau/jsonrpc')
+            return response({
+              result: {
+                providers: [
+                  {
+                    plugin: 'openai',
+                    name: 'openai',
+                    configuration: { type: 'object', properties: { baseURL: { type: 'string' } } },
+                  },
+                ],
+              },
+            });
+          if (path === '/host/plugins') return response({ configurationRevision: 'p1' });
+          if (path === '/host/providers') return response({ configurationRevision: 'r1' });
+          return response({ configurationRevision: 'p2', providers: [] });
+        },
       },
-    });
+    );
     expect(result.exitCode).toBe(0);
     expect(calls).toEqual([
       'POST /bureau/jsonrpc',
@@ -214,9 +224,12 @@ describe('CLI configuration commands', () => {
           ? response({ configurationRevision: 'r1' })
           : response({ authorized: false, authorizationUrl: 'https://auth.invalid/' }),
     });
-    const inline = await commandRunner(['providers', 'connect', 'openai', '--input', '{"apiKey":"x"}'], {
-      fetch: async () => response({ configurationRevision: 'r1' }),
-    });
+    const inline = await commandRunner(
+      ['providers', 'connect', 'openai', '--input', '{"apiKey":"x"}'],
+      {
+        fetch: async () => response({ configurationRevision: 'r1' }),
+      },
+    );
     expect(noInput.exitCode).toBe(0);
     expect(opened).toBe(false);
     expect(inline.exitCode).toBe(2);
