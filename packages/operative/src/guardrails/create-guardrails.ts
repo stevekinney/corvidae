@@ -138,6 +138,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
         taintTracker.taint({
           reason: event.detail ?? `Failure of ${event.validator}`,
           detector: event.validator,
+          category: event.category,
           confidence: event.confidence,
           step: context.step,
         });
@@ -254,6 +255,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
           taintTracker.taint({
             reason: event.detail ?? `Detection by ${event.validator}`,
             detector: event.validator,
+            category: event.category,
             confidence: event.confidence,
             step: context.step,
           });

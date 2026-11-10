@@ -225,7 +225,9 @@ describe('createGuardrails tool-call validators', () => {
     expect(guardrails.taint.isTainted()).toBe(false);
     await guardrails.beforeToolExecution(hookContext([REFUND]).context);
     expect(guardrails.taint.isTainted()).toBe(true);
-    expect(taints).toEqual([expect.objectContaining({ detector: 'refund-cap', step: 3 })]);
+    expect(taints).toEqual([
+      expect.objectContaining({ detector: 'refund-cap', category: 'refund-limit', step: 3 }),
+    ]);
   });
 
   it('does not taint the session for a warning below the threshold, or a passing call', async () => {
@@ -238,7 +240,9 @@ describe('createGuardrails tool-call validators', () => {
   });
 
   it('taints the session when a validator fails closed', async () => {
+    const taints: SessionTaintedEvent[] = [];
     const guardrails = createGuardrails({
+      taint: { onTainted: (event) => taints.push(event) },
       tools: {
         validators: [
           {
@@ -252,6 +256,9 @@ describe('createGuardrails tool-call validators', () => {
     });
     await guardrails.beforeToolExecution(hookContext([REFUND]).context);
     expect(guardrails.taint.isTainted()).toBe(true);
+    expect(taints).toEqual([
+      expect.objectContaining({ detector: 'broken', category: 'detector-failure' }),
+    ]);
   });
 
   it('returns the calls unchanged without tool validators', async () => {
