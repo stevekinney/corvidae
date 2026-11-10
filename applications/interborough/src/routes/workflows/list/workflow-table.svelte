@@ -173,7 +173,7 @@
         <Table.Cell as="th">
           <span class="weft-workflows-table__id-cell">
             <span class="weft-workflows-table__id-line">
-              <Tooltip text={row.id} placement="top">
+              <Tooltip text={row.id} placement="top" class="weft-workflows-table__id-tooltip">
                 <a
                   class="weft-workflows-table__id-link"
                   href={router.href(workflowRunPath(row.type, row.id))}
