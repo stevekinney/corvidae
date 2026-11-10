@@ -100,14 +100,6 @@
   gap: var(--cinder-space-2);
 }
 
-/* Table: no page-level horizontal scroll — the table itself scrolls inside
- * its own container (`Table`'s own `scrollable` prop wraps it in Cinder's
- * generated scroll wrapper, per binding responsive rule). */
-.weft-workflows-table {
-  table-layout: fixed;
-  width: 100%;
-}
-
 .weft-workflows-table__id-cell {
   display: flex;
   flex-direction: column;

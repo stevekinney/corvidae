@@ -64,7 +64,8 @@
   data-status={status ?? undefined}
 >
   <Table.Cell class="ib-records__wrap">
-    <a class="ib-workflow-name" href={router.href(path)} onclick={go}>{row.name}</a>
+    <a class="ib-workflow-name ib-records__truncate" href={router.href(path)} title={row.name} onclick={go}>{row.name}</a
+    >
     {#if row.description}
       <p class="ib-workflow-row__description" data-testid="workflow-description">
         {row.description}

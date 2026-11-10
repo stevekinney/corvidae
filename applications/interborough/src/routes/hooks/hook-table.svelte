@@ -78,7 +78,7 @@
   </Alert>
 {/if}
 
-<Table caption={HOOKS_COPY.caption} density="condensed">
+<Table caption={HOOKS_COPY.caption} density="condensed" fit>
   <Table.Header>
     <Table.Row>
       <Table.HeaderCell>{HOOKS_COPY.hookColumn}</Table.HeaderCell>
@@ -95,12 +95,15 @@
       <Table.Row data-hook={hook.id} data-enabled={hook.enabled ? 'true' : 'false'}>
         <Table.Cell class="ib-records__wrap">
           <a
-            class="ib-hooks__sentence"
+            class="ib-hooks__sentence ib-records__truncate"
+            title={sentence}
             href={router.href(hookPath(hook.id))}
             onclick={(event) => go(event, hookPath(hook.id))}>{sentence}</a
           >
           {#if hook.name !== null}
-            <span class="ib-records__muted ib-hooks__name">{hook.name}</span>
+            <span class="ib-records__muted ib-records__truncate ib-hooks__name" title={hook.name}
+              >{hook.name}</span
+            >
           {/if}
         </Table.Cell>
         <Table.Cell class="ib-records__wrap" data-only-for>
@@ -151,11 +154,6 @@
     margin: 4px 0 8px;
   }
 
-  .ib-hooks__sentence {
-    overflow-wrap: anywhere;
-  }
-
-  .ib-hooks__name,
   .ib-hooks__line {
     display: block;
     overflow-wrap: anywhere;

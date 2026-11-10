@@ -194,7 +194,7 @@
       onClearFilters={clearFilters}
     />
   {:else}
-    <Table caption={copy.listLabel} density="condensed">
+    <Table caption={copy.listLabel} density="condensed" fit>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>{copy.list.columns.workflow}</Table.HeaderCell>

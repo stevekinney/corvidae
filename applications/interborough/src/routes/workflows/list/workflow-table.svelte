@@ -17,7 +17,10 @@
    * the *Schedule* list's grid (`Weft UI.dc.html` line ~931); the
    * `.dc.html` markup is PROJECT-BRIEF's pixel-fidelity source of truth.
    * `<colgroup>` + `table-layout:fixed` reproduces the same fixed/flexible
-   * column split for a real `<table>` (Tags is the flexible column).
+   * column split for a real `<table>` (Tags is the flexible column). The
+   * widths are those columns' shares of a 1,000px row rather than pixels, so
+   * the table fits its container at every width (Cinder's `fit`, row 16c):
+   * at a phone's width seven pixel columns would add up to 826px.
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -121,16 +124,16 @@
   }
 </script>
 
-<Table caption="Workflows" selectable={selectionEnabled} scrollable class="weft-workflows-table">
+<Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
-    <col style="width: 116px" />
-    <col style="width: 220px" />
-    <col style="width: 150px" />
-    <col style="width: 120px" />
+    <col style="width: 11.6%" />
+    <col style="width: 22%" />
+    <col style="width: 15%" />
+    <col style="width: 12%" />
     <col />
-    <col style="width: 92px" />
-    <col style="width: 92px" />
+    <col style="width: 9.2%" />
+    <col style="width: 9.2%" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
@@ -193,7 +196,7 @@
             {/if}
           </span>
         </Table.Cell>
-        <Table.Cell>{row.type}</Table.Cell>
+        <Table.Cell truncate>{row.type}</Table.Cell>
         <Table.Cell>
           {#if row.revision !== undefined}
             <span class="weft-workflows-table__revision-cell">

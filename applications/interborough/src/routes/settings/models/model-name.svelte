@@ -27,13 +27,14 @@
   {:else}
     <label class="ib-model-name__title ib-model-name__title--label" for={labelFor}>{name}</label>
   {/if}
-  <code class="ib-model-name__identifier">{identifier}</code>
+  <code class="ib-model-name__identifier" title={identifier}>{identifier}</code>
 </span>
 
 <style>
   .ib-model-name {
     display: inline-flex;
     min-inline-size: 0;
+    max-inline-size: 100%;
     gap: var(--cinder-space-0-5) var(--cinder-space-2);
   }
 
@@ -41,9 +42,13 @@
     flex-direction: column;
   }
 
-  /* An identifier is one word; a table scrolls sideways before it breaks one in pieces. */
-  .ib-model-name[data-layout='stacked'] .ib-model-name__identifier {
-    overflow-wrap: normal;
+  /* An identifier is one word, so it is never broken in pieces: a long one ends with an ellipsis,
+   * and its title holds the whole of it (row 16c). */
+  .ib-model-name__identifier {
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
@@ -64,6 +69,5 @@
     color: var(--cinder-text-muted);
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
-    overflow-wrap: anywhere;
   }
 </style>
