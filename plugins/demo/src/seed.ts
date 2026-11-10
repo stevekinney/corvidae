@@ -7,7 +7,7 @@
  * @module seed
  */
 
-import type { PluginHostApi } from '@lostgradient/interborough-plugin';
+import type { PluginHost } from '@lostgradient/interborough-plugin';
 import {
   textValueStore,
   type ConditionalTextValueStore,
@@ -75,12 +75,12 @@ function registeredScheduleOf(error: unknown): string | undefined {
  * without its schedule. A start that finds a `claimed:` record left behind reports it through
  * `warn`. A rejection from here marks the plugin failed; the host keeps running.
  *
- * @param host The host API `afterStart` received.
+ * @param host The host API `start` received.
  * @param storage The plugin's scoped storage.
  * @param warn Receives a possibly stale claim. Defaults to `console.warn`.
  */
 export async function seedDemo(
-  host: PluginHostApi,
+  host: PluginHost,
   storage: Storage,
   // The plugin has no logger, so a stale claim is reported on the console the host runs on.
   // eslint-disable-next-line no-console

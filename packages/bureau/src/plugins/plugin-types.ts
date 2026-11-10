@@ -38,7 +38,7 @@ export interface BureauPluginEntry {
 
 /** The owner's choices for one plugin, persisted under `plugins.<name>` in Bungalow's configuration. */
 export interface BureauPluginSettings {
-  /** Whether the plugin runs; absent takes the descriptor's `enabledByDefault`, itself `true` by default. */
+  /** Whether the plugin runs; absent takes the descriptor's `enabled`, itself `true` by default. */
   readonly enabled?: boolean | undefined;
   /** The value the plugin's `configuration` schema parses; absent parses `{}`. */
   readonly configuration?: unknown;
@@ -228,8 +228,8 @@ export type PluginProblem =
       readonly message: string;
     }
   | {
-      /** `afterStart` threw or rejected; the plugin's contributions stay registered. */
-      readonly code: 'after-start-failed';
+      /** `start` threw or rejected; the plugin's contributions stay registered. */
+      readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
@@ -459,6 +459,6 @@ export interface BureauPlugins {
   guardrails(): readonly GuardrailListing[];
   /** The model providers of running plugins, with the plugin configuration schema only. */
   providers(): readonly PluginProviderListing[];
-  /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
+  /** Settles once every running plugin's `start` has settled. Never rejects. */
   ready(): Promise<void>;
 }

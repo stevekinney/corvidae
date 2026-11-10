@@ -1,7 +1,7 @@
 import type { GoalBudget, GoalIdentity, ValidatorIdentity } from '@lostgradient/operative';
 import type { PaginatedResult, ScheduleFilter, ScheduleSummary } from '@lostgradient/weft';
 
-/** One agent as `PluginHostApi.agents.list` reports it. */
+/** One agent as `PluginHost.agents.list` reports it. */
 export interface PluginAgentListing {
   /** The agent's identifier. */
   readonly id: string;
@@ -18,7 +18,7 @@ export interface PluginAgentListing {
   readonly description: string | null;
 }
 
-/** The recurring schedule `PluginHostApi.schedules.create` registers. */
+/** The recurring schedule `PluginHost.schedules.create` registers. */
 export interface PluginScheduleDefinition {
   /** What the schedule is for. */
   description?: string;
@@ -38,7 +38,7 @@ export interface PluginScheduleDefinition {
   principal?: string;
 }
 
-/** The durable goal `PluginHostApi.goals.create` starts. */
+/** The durable goal `PluginHost.goals.create` starts. */
 export interface PluginGoalRequest {
   /** The agent that runs each attempt. */
   readonly agentName: string;
@@ -59,13 +59,13 @@ export interface PluginGoalRequest {
 }
 
 /**
- * What the host serves a plugin's `afterStart`: a structural slice of Bureau, kept narrow so a
+ * What the host serves a plugin's `start`: a structural slice of Bureau, kept narrow so a
  * plugin cannot reach past the calls it is meant to make. `Bureau` satisfies it, and a type test
  * in Bureau keeps that true. The package does not import Bureau, because Bureau depends on it.
  * Its calls are function-typed properties, not methods, so TypeScript checks their parameters
  * strictly and a Bureau request type that grows a required field breaks that test.
  */
-export interface PluginHostApi {
+export interface PluginHost {
   /** The agents the host runs. */
   readonly agents: {
     /** Every agent, code-defined and file-based together. */

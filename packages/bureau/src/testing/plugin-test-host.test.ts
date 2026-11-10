@@ -81,7 +81,7 @@ describe('checkPluginContract over a Bureau', () => {
   });
 
   test('enables the plugin under test even when it is off by default', async () => {
-    const optIn = await pluginShipping('[p:lookup]', { enabledByDefault: false });
+    const optIn = await pluginShipping('[p:lookup]', { enabled: false });
     expect(await checkPluginContract(optIn, { createHost: createPluginTestHost })).toEqual([]);
   });
 

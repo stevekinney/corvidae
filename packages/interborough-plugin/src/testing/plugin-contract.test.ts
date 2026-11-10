@@ -162,7 +162,7 @@ function hostRunningHooks(runs: string[]): CreatePluginTestHost {
           secrets: { get: async () => undefined },
           storage: undefined as never,
           host: undefined as never,
-          toolApprovalHooks: () => ({}),
+          approvals: () => ({}),
         });
         const [onStep] = (contributions?.interceptors ?? []).map(({ onStep: hook }) => hook);
         const handler = typeof onStep === 'function' ? onStep : onStep?.handler;

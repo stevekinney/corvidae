@@ -2427,8 +2427,8 @@ export const PLUGINS_COPY = {
       title: 'The plugin’s setup failed',
       body: (message: string): string => message,
     },
-    /** The plugin’s `afterStart` threw; what it adds stays registered. */
-    afterStartFailed: {
+    /** The plugin’s `start` threw; what it adds stays registered. */
+    startFailed: {
       status: 'Loaded, a step after startup failed',
       title: 'A step after startup failed',
       body: (message: string): string => message,
