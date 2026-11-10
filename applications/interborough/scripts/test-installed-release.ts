@@ -295,6 +295,7 @@ export async function runInstalled(
             args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
             json: true,
           },
+          { args: ['workflows', 'start', 'installed-cli-workflow', '--wait'], json: true },
           {
             args: ['schedules', 'create', '--file', scheduleFile],
             json: true,

@@ -63,6 +63,21 @@ document.body.innerHTML = '<main>Installed fixture MCP panel</main>';
     join(plugins, 'broken', 'plugin.ts'),
     `import './missing-installed-import.ts';\nexport default {};\n`,
   );
+  await mkdir(join(home, 'workflows'), { recursive: true });
+  await writeFile(
+    join(home, 'workflows', 'installed-cli-workflow.json'),
+    JSON.stringify({
+      name: 'installed-cli-workflow',
+      trigger: { kind: 'manual' },
+      steps: [
+        {
+          kind: 'activity',
+          handler: 'agent',
+          input: { agent: 'installed-fixture-assistant', message: 'workflow hello' },
+        },
+      ],
+    }),
+  );
 }
 
 export async function linkPluginRuntime(home: string, runtime: string): Promise<void> {
