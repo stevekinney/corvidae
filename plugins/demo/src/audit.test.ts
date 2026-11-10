@@ -95,6 +95,9 @@ describe('the demo audit interceptor set', () => {
     const first = entries.get(`plugin:demo:${auditStepKey(task.id, 0)}`);
     expect(first).toMatchObject({ step: 0 });
     expect(first?.toolCallIds).toHaveLength(1);
+    expect(first?.toolNames).toEqual(['lookup-order']);
+    // Every step the Bureau reports carries the id of its run, which is what the key is built from.
+    expect(result.steps.map((step) => step.runId)).toEqual(result.steps.map(() => task.id));
   });
 
   test('keeps the entries of two runs apart', async () => {
@@ -142,6 +145,7 @@ describe('the demo audit interceptor set', () => {
       step: 3,
       usage: { prompt: 5, completion: 6, total: 11 },
       toolCallIds: ['call-a'],
+      toolNames: ['lookup-order'],
     });
   });
 

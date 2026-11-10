@@ -34,6 +34,11 @@ export interface AuditStepEntry {
   } | null;
   /** The ids of the tool calls the step made, in order. */
   readonly toolCallIds: readonly string[];
+  /**
+   * The name of the tool each call named, in the same order. A step's hook sees the name a call
+   * asked for, not the versioned identity a durable record pins after the hooks have run.
+   */
+  readonly toolNames: readonly string[];
 }
 
 /**
@@ -63,6 +68,7 @@ export function createAuditInterceptor(storage: Storage): PluginInterceptor {
               }
             : null,
           toolCallIds: result.toolCalls.map((call) => call.id),
+          toolNames: result.toolCalls.map((call) => call.name),
         };
         await entries.set(auditStepKey(result.runId, result.step), JSON.stringify(entry));
       },

@@ -161,7 +161,7 @@ An interceptor has a member for each point of Operative's hook map (`onRunError`
 
 An interceptor that declares `appliesTo: 'every-agent'` runs for every run the host starts (file agents, code agents, dispatched agents and their children) without any agent file listing it. The host composes it in a `plugin` tier between its own hooks and the agent's, so its entries show `tier: 'plugin'` in a run's hook plan. An agent file that also lists it gets it once, in its own tier, as an interceptor it chose. While its plugin needs setup, such an interceptor refuses for an agent that lists it, as any chosen interceptor does, and is skipped for every other agent: its handlers do not run, and the run goes on as if it were absent, so a missing secret never fails an agent that did not choose it.
 
-The demo plugin's `audit` set (`plugins/demo/src/audit.ts`) is the worked example. It applies to every agent, because the demo's agents are code agents, which no agent file can list, and it has one `onStep` hook that writes what each step spent and which tool calls it made to the plugin's own storage, keyed by the run and the step. The key is the point of the example: a hook declared `replay: 'effectful'` runs again when a durable run recovers a step, so an entry keyed by `run:<runId>:step:<n>` is overwritten by the replay instead of repeated. `runId` is on every `StepResult`, including a step that only called tools and committed no row, so it is the key to read, not a message id. A step with no `runId` (a run the host started with none) has no key, so the hook writes nothing for it.
+The demo plugin's `audit` set (`plugins/demo/src/audit.ts`) is the worked example. It applies to every agent, because the demo's agents are code agents, which no agent file can list, and it has one `onStep` hook that writes what each step spent and which tool calls it made (their ids and the tools they named) to the plugin's own storage, keyed by the run and the step. The key is the point of the example: a hook declared `replay: 'effectful'` runs again when a durable run recovers a step, so an entry keyed by `run:<runId>:step:<n>` is overwritten by the replay instead of repeated. `runId` is on every `StepResult`, including a step that only called tools and committed no row, so it is the key to read, not a message id. A step with no `runId` (a run the host started with none) has no key, so the hook writes nothing for it.
 
 ```ts
 import { definePlugin, type PluginInterceptor } from '@lostgradient/interborough-plugin';
@@ -186,6 +186,7 @@ function auditInterceptor(storage: Storage): PluginInterceptor {
           step: result.step,
           usage: result.usage ?? null,
           toolCallIds: result.toolCalls.map((call) => call.id),
+          toolNames: result.toolCalls.map((call) => call.name),
         };
         await entries.set(auditStepKey(result.runId, result.step), JSON.stringify(entry));
       },

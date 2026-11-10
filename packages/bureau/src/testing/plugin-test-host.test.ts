@@ -250,6 +250,37 @@ describe('the hook points the contract runs, over a Bureau', () => {
     ]);
   });
 
+  test('fails a plugin whose bare onStep throws, which also ends the scripted run in an error', async () => {
+    const bare = definePlugin({
+      name: 'bare',
+      version: '1.0.0',
+      description: 'Its onStep is a bare function that throws.',
+      setup: () => ({
+        interceptors: [
+          {
+            name: 'audit',
+            appliesTo: 'every-agent' as const,
+            onStep: async () => {
+              throw new Error('no storage');
+            },
+          },
+        ],
+      }),
+    });
+    const host = await createPluginTestHost(bare);
+    try {
+      await host.plugins.ready();
+      expect(await host.scriptedRun({ scenario: 'answer', interceptors: ['audit'] })).toEqual({
+        finishReason: 'error',
+      });
+    } finally {
+      await host.dispose();
+    }
+    expect(await checkPluginContract(bare, { createHost: createPluginTestHost })).toEqual([
+      { check: HOOK_CHECK, message: 'The onStep hook of "audit" threw: no storage' },
+    ]);
+  });
+
   test('does not run a hook declared where the scripted host cannot reach, and does not fail it', async () => {
     const ran = new Set<string>();
     const unreachable = pluginRecording(['onRunAbort', 'beforeCompaction'], ran);
