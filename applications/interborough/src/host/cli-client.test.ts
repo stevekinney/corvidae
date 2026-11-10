@@ -4,7 +4,13 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
-import { executeCli, parseCliArguments } from './cli-client.ts';
+import {
+  CLI_COMMAND_REGISTRY,
+  CLI_OPERATION_INVENTORY,
+  executeCli,
+  parseCliArguments,
+  renderCliCompletion,
+} from './cli-client.ts';
 
 async function fixture() {
   const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-'));
@@ -31,6 +37,27 @@ async function fixture() {
 }
 
 describe('Interborough command client', () => {
+  test('keeps the public command registry complete and completion output data-only', () => {
+    const publicCommands = Object.keys(CLI_COMMAND_REGISTRY);
+    expect(publicCommands).toContain('providers');
+    expect(publicCommands).not.toContain('__interborough-host');
+    for (const command of publicCommands) {
+      const metadata = CLI_COMMAND_REGISTRY[command]!;
+      expect(metadata.command).toBe(command);
+      expect(metadata.help).toContain(`interborough ${command}`);
+      expect(metadata.options).toContain('help');
+      expect(parseCliArguments([command, '--help'])).toMatchObject({ exitCode: 0 });
+    }
+    for (const shell of ['bash', 'zsh', 'fish'] as const) {
+      const completion = renderCliCompletion(shell);
+      expect(completion).toContain('interborough');
+      expect(completion).toContain('providers');
+      expect(completion).toContain(shell === 'fish' ? '-l help' : '--help');
+    }
+    expect(CLI_OPERATION_INVENTORY).toContain('connection.list');
+    expect(CLI_OPERATION_INVENTORY).toContain('workflows.*');
+  });
+
   // spawn-free: injected fetch and no process opener stand in for command execution.
   test('rejects unknown and duplicate options before making a request', async () => {
     const fixture_ = await fixture();

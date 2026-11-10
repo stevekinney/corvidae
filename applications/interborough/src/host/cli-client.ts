@@ -535,6 +535,44 @@ const helpText: Record<string, string> = {
   skills: 'Usage: interborough skills list [options]',
   settings: 'Usage: interborough settings <get|set|schema> [options]',
 };
+
+/** The shell-facing metadata for every public command in the installed CLI. */
+export const CLI_COMMAND_REGISTRY = Object.freeze(
+  Object.fromEntries(
+    Object.entries(commandOptions).map(([command, options]) => [
+      command,
+      Object.freeze({
+        command,
+        options: Object.freeze([...options]),
+        help: helpText[command] ?? `Usage: interborough ${command} [options]`,
+      }),
+    ]),
+  ),
+) as Readonly<
+  Record<
+    string,
+    { readonly command: string; readonly options: readonly string[]; readonly help: string }
+  >
+>;
+
+/** Render completion source from the same registry used to validate CLI options. */
+export function renderCliCompletion(shell: 'bash' | 'zsh' | 'fish'): string {
+  const commands = Object.keys(CLI_COMMAND_REGISTRY).sort();
+  const options = [
+    ...new Set(commands.flatMap((command) => CLI_COMMAND_REGISTRY[command]!.options)),
+  ].sort();
+  if (shell === 'fish')
+    return [
+      `complete -c interborough -f -a '${commands.join(' ')}'`,
+      ...options.map((option) => `complete -c interborough -l ${option}`),
+    ].join('\n');
+  const words = commands.join(' ');
+  const flags = options.map((option) => `--${option}`).join(' ');
+  if (shell === 'zsh')
+    return `#compdef interborough\n_arguments '1:command:(${words})' '*:option:(${flags})'`;
+  return `complete -W '${words} ${flags}' interborough`;
+}
+
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
 );

@@ -148,6 +148,33 @@ export type InstalledJourneyOperations = {
   readonly isProcessAlive?: (pid: number) => boolean;
 };
 
+async function runInstalledCliCommand(
+  executable: string,
+  arguments_: readonly string[],
+  home: string,
+  cwd: string,
+  registryUrl: string,
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const child = Bun.spawn([executable, ...arguments_], {
+    cwd,
+    env: {
+      PATH: '/usr/bin:/bin',
+      HOME: home,
+      INTERBOROUGH_HOME: home,
+      npm_config_registry: registryUrl,
+      BUN_CONFIG_REGISTRY: registryUrl,
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+  });
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
 export async function runInstalled(
   executable: string,
   prefix: string,
@@ -214,6 +241,33 @@ export async function runInstalled(
       port: listening.port,
       sanitizedPath: '/usr/bin:/bin',
     });
+    if (operations.spawn === undefined && executable.endsWith('/interborough')) {
+      for (const command of [
+        'status',
+        'doctor',
+        'providers list',
+        'agents list',
+        'workflows list',
+        'schedules list',
+      ]) {
+        const result = await runInstalledCliCommand(
+          executable,
+          [...command.split(' '), '--url', url, '--output', 'json'],
+          home,
+          cwd,
+          registryUrl,
+        );
+        if (result.exitCode !== 0)
+          throw new Error(`Installed CLI ${command} exited ${result.exitCode}: ${result.stderr}`);
+        const payload = JSON.parse(result.stdout) as { schemaVersion?: number };
+        if (payload.schemaVersion !== 1)
+          throw new Error(`Installed CLI ${command} returned an invalid envelope`);
+      }
+      pass(
+        'installed CLI status, diagnosis, provider, definition, workflow, and schedule journeys',
+        'interborough CLI JSON commands',
+      );
+    }
     const pluginResponse = await processOperations.fetch(`${url}/host/plugins`);
     const plugins = (await pluginResponse.json()) as {
       plugins: Array<Record<string, unknown>>;
