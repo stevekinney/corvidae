@@ -102,8 +102,7 @@ function isLayerOrderPreludeNode(node: { type: string }): boolean {
     atRule.name === 'layer' &&
     atRule.nodes === undefined &&
     // Normalize comma-separated layer names (collapse incidental whitespace
-    // between them) before comparing, so this linter and the prelude rewriter
-    // (`prepend-sidecar-layer-prelude.ts`) agree on what counts as the prelude.
+    // between them) before comparing, so incidental whitespace does not hide the prelude.
     atRule.params
       .split(',')
       .map((part) => part.trim())

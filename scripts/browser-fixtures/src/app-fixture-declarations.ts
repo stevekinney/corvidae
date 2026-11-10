@@ -14,7 +14,6 @@ export const appFixtureDeclarations = {
   'find-bar': ['assertion'],
   form: ['assertion'],
   'guidance-region': ['assertion'],
-  'host-provider': ['assertion'],
   'inline-confirm': ['assertion'],
   'key-value-editor': ['assertion'],
   'modal-region': ['assertion'],

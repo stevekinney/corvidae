@@ -181,7 +181,6 @@ Useful root commands:
 ```bash
 bun run build
 bun run typecheck
-bun run validate:consumer
 ```
 
 Source lint, unit, coverage, and browser suites run in the private Corvidae workspace. Public mirror pull requests run the generated `mirror-verify` workflow against their exact package artifacts.
@@ -193,10 +192,8 @@ bun run --filter=@lostgradient/cinder build
 bun run --filter=@lostgradient/cinder components:check
 bun run --filter=@lostgradient/cinder components:generate
 bun run --filter=@lostgradient/cinder exports:check
-bun run --filter=@lostgradient/cinder validate:consumer
 bun run --filter=@lostgradient/chat build
 bun run --filter=@lostgradient/chat components:check
-bun run --filter=@lostgradient/chat validate:consumer
 ```
 
 When adding or changing core components, update files under `packages/components/src/components/<component-id>/`, then run:
@@ -218,9 +215,7 @@ Each public package owns its packed artifact. Consumer validation, release dry r
 Before a release, run:
 
 ```bash
-bun run --filter=@lostgradient/cinder validate:consumer
 bun run --filter=@lostgradient/cinder package:weight:check -- --existing-tarball
-bun run --filter=@lostgradient/chat validate:consumer
 bun run --filter=@lostgradient/chat package:weight:check -- --existing-tarball
 ```
 

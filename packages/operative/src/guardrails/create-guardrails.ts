@@ -132,6 +132,16 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     context: StepContext,
   ): Promise<GenerateResponse | void> => {
     const onTriggered: OutputGuardrailOptions['onTriggered'] = (event) => {
+      // A validator that failed blocked the reply unjudged, and that taints as any block does
+      // (COR-2300). Other output findings do not taint.
+      if (event.category === 'detector-failure') {
+        taintTracker.taint({
+          reason: event.detail ?? `Failure of ${event.validator}`,
+          detector: event.validator,
+          confidence: event.confidence,
+          step: context.step,
+        });
+      }
       if (event.action !== 'tripwire') {
         context.reportGuardrail?.({
           guardrailName: event.validator,
@@ -239,6 +249,15 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
       action: mode === 'tripwire' ? 'tripwire' : tools.action,
       getSessionTainted: () => taintTracker.isTainted(),
       onTriggered: (event) => {
+        // A call the guardrail refuses taints the session, as a refused tool result does (COR-2300).
+        if (event.action === 'block' || event.confidence >= taintThreshold) {
+          taintTracker.taint({
+            reason: event.detail ?? `Detection by ${event.validator}`,
+            detector: event.validator,
+            confidence: event.confidence,
+            step: context.step,
+          });
+        }
         if (event.action !== 'tripwire') {
           context.reportGuardrail?.({
             guardrailName: event.validator,

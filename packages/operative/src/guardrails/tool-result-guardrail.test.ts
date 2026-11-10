@@ -84,6 +84,32 @@ const resultCarrying: Record<string, () => ToolExecutionResult> = {
 };
 
 describe('createToolResultGuardrail', () => {
+  it('fails closed when a detector throws: the result is refused, even under warn (COR-2300)', async () => {
+    const broken: InputDetector = {
+      name: 'broken',
+      detect: async () => {
+        throw new Error('detector down');
+      },
+    };
+    for (const action of ['block', 'warn'] as const) {
+      const events: GuardrailTriggeredEvent[] = [];
+      const hook = createToolResultGuardrail({
+        detectors: [broken],
+        action,
+        onTriggered: (event) => events.push(event),
+      });
+      const replaced = await hook(toolResult({ content: 'a page', result: 'a page' }), context());
+      expect(replaced?.error?.code).toBe(GUARDRAIL_BLOCKED_CODE);
+      expect(events).toEqual([
+        expect.objectContaining({
+          detector: 'broken',
+          category: 'detector-failure',
+          action: 'block',
+        }),
+      ]);
+    }
+  });
+
   describe.each(Object.entries(resultCarrying))('an injection in %s', (_where, make) => {
     it('is replaced by a GUARDRAIL_BLOCKED error naming only the guardrail under block', async () => {
       const events: GuardrailTriggeredEvent[] = [];

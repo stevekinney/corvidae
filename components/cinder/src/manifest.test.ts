@@ -316,8 +316,6 @@ describe('required constraints', () => {
     const { existsSync } = await import('node:fs');
     const { join } = await import('node:path');
     const componentsRoot = join(import.meta.dir, 'components');
-    // discoverComponents tracks which ids are experimental — we need
-    // that flag to resolve the path correctly for experimental components.
     const components = await discoverComponents();
     const byId = new Map(components.map((c) => [c.name, c]));
 
@@ -325,9 +323,7 @@ describe('required constraints', () => {
     for (const id of requiredConstraints) {
       const component = byId.get(id);
       if (!component) continue; // Already reported by the previous test.
-      const sidecarPath = component.isExperimental
-        ? join(componentsRoot, 'experimental', id, `${id}.constraints.ts`)
-        : join(componentsRoot, id, `${id}.constraints.ts`);
+      const sidecarPath = join(componentsRoot, id, `${id}.constraints.ts`);
       if (!existsSync(sidecarPath)) missing.push(id);
     }
     expect(missing).toEqual([]);

@@ -38,7 +38,7 @@ bun applications/playground/scripts/run-linux-lifecycle.ts
 
 ## Decisions to know about
 
-- Displayed package versions come from `published-versions.json` at the root of this workspace. It is updated by hand after each batch backport, from `npm view <package> version`; a Cinder bump also needs that version's digest in `src/cinder-published-bases.json`. Corvidae packages carry no version, and the `components.json` files carry an absent or stale one, so they are never consulted.
+- Displayed package versions are the `workspace` sentinel, because Corvidae packages carry no version and the `components.json` files carry an absent or stale one.
 - Every component import goes through its package root (`@lostgradient/cinder`, `@lostgradient/chat`, `@lostgradient/editor`, `@lostgradient/markdown`), the single entry point each package exports. A dynamic import of a package root keeps every export, so `src/page-bundle.ts` writes a small per-page module that re-exports only the documented component, and the Playground tab loads that instead.
 - Filesystem roots resolve from the package name with `import.meta.resolve`, never from a spelled-out layout. The GitHub links the pages build point at the public mirror's layout (`packages/components`, `packages/chat`, `packages/editor` in `stevekinney/cinder`) on purpose, so those strings do not follow the move.
 - The playground keeps its own copies of the example-harness strip, the source fingerprint, the fixture loader wrapper, and the token introspection helpers rather than reaching into another workspace.

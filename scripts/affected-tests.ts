@@ -45,6 +45,7 @@ import {
   type Selection,
   type WorkspaceSelection,
 } from './affected-tests-selection.ts';
+import { exportSourceTarget } from './workspace-exports.ts';
 
 // --- Workspace discovery ----------------------------------------------------------------------
 
@@ -79,8 +80,11 @@ function stringExports(exportsField: unknown): Record<string, string> | null {
   if (typeof exportsField !== 'object' || exportsField === null || Array.isArray(exportsField)) {
     return null;
   }
-  const entries = Object.entries(exportsField);
-  if (!entries.every(([, target]) => typeof target === 'string')) return null;
+  const entries = Object.entries(exportsField).map(([subpath, target]) => [
+    subpath,
+    exportSourceTarget(target),
+  ]);
+  if (!entries.every(([, target]) => target !== null)) return null;
   return Object.fromEntries(entries);
 }
 

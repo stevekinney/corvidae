@@ -216,8 +216,8 @@ export interface ToolCallValidator {
    */
   readonly action?: ToolCallGuardrailAction | undefined;
   /**
-   * Judges one call. A validator that throws or rejects is contained, as a detector is: it finds
-   * nothing, and the call is judged by the other validators.
+   * Judges one call. A validator that throws or rejects fails closed (COR-2300): the call is
+   * refused as a `detector-failure` finding, and the session is tainted.
    */
   readonly validate: (
     call: ToolCallValidatorCall,

@@ -110,7 +110,7 @@ type Manifest = {
   name: string;
   private?: boolean;
   type?: string;
-  exports?: Record<string, string>;
+  exports?: Record<string, unknown>;
   scripts?: Record<string, string>;
   dependencies?: Record<string, string>;
   devDependencies?: Record<string, string>;
@@ -582,10 +582,24 @@ describe('internal workspace architecture', () => {
       expect(manifest.name).toBe(publicWorkspaceName(library));
       expect(manifest.private).toBe(true);
       expect(manifest.type).toBe('module');
+      // A component library's `svelte-check` cannot substitute declarations for Svelte source, so
+      // its `types` condition names the `.d.ts` its `types` script emits (COR-2076).
+      const isComponentLibrary = componentLibraries.includes(library);
       expect(
-        sourceExportViolations(manifest.exports, (path) => existsSync(join(root, directory, path))),
+        sourceExportViolations(
+          manifest.exports,
+          (path) => existsSync(join(root, directory, path)),
+          { declarations: isComponentLibrary },
+        ),
         `${library} exports`,
       ).toEqual([]);
+      if (isComponentLibrary) {
+        expect(Object.keys(manifest.exports ?? {}).length, library).toBeGreaterThan(0);
+        for (const [subpath, target] of Object.entries(manifest.exports ?? {})) {
+          expect(typeof target, `${library} ${subpath}`).toBe('object');
+        }
+        expect(manifest.scripts?.['types'], library).toMatch(/emit-declarations\.ts$/);
+      }
       expect(await Bun.file(join(root, directory, 'src/index.ts')).exists()).toBe(true);
       for (const command of ['lint', 'lint:fix', 'test', 'typecheck']) {
         expect(manifest.scripts?.[command], `${library}: ${command}`).toBeString();

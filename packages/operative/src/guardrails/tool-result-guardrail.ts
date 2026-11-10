@@ -121,7 +121,7 @@ export function guardrailBlockedMessage(guardrailName: string): string {
  * whose outcome is `action_required` is a call that has not run, and is passed through unread.
  *
  * The first piece of text a detector flags decides; the rest of the result is not read further.
- * Detector errors are contained by the shared detector pipeline, as on the input side.
+ * A detector that throws fails closed, as on the input side (COR-2300): the result is refused.
  */
 export function createToolResultGuardrail(
   options: ToolResultGuardrailOptions,
@@ -141,7 +141,7 @@ export function toolResultGuardrailHook(
 ): ValidateToolResultHook {
   const {
     detectors,
-    action = 'block',
+    action: configuredAction = 'block',
     onTriggered,
     mode = 'parallel',
     getSessionTainted,
@@ -161,14 +161,19 @@ export function toolResultGuardrailHook(
 
     const { texts, uninspectable } = inspectResult(result);
     let flagged: GuardrailTriggeredEvent | undefined;
+    let detectorFailed = false;
     for (const text of texts) {
-      const pipeline = await runDetectorPipeline(text, detectors, detectorContext, mode);
+      const pipeline = await runDetectorPipeline(text, detectors, detectorContext, mode, true);
       if (pipeline === undefined) continue;
+      // A detector that failed is refused under a warning too (COR-2300).
+      detectorFailed = pipeline.failed === true;
+      const eventAction =
+        detectorFailed && configuredAction === 'warn' ? 'block' : configuredAction;
       flagged = {
         detector: pipeline.detectorName,
         category: pipeline.result.category,
         confidence: pipeline.result.confidence,
-        action,
+        action: eventAction,
         input: text,
         ...(pipeline.result.detail === undefined ? {} : { detail: pipeline.result.detail }),
         provenance: 'tool-result',
@@ -179,6 +184,8 @@ export function toolResultGuardrailHook(
     // Text a provider would read but no detector could decode is a finding of its own, handled as
     // the input guardrail handles it: a detector's finding is reported first, and the result is
     // refused whatever the action, because warning about it would show the model what nothing read.
+    const action: typeof configuredAction =
+      detectorFailed && configuredAction === 'warn' ? 'block' : configuredAction;
     const undecodable = inspectsMedia ? uninspectable[0] : undefined;
     const event: GuardrailTriggeredEvent | undefined =
       flagged ??

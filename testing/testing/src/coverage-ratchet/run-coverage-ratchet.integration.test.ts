@@ -125,26 +125,6 @@ describe('runCoverageRatchet', () => {
     expect(errors.at(-1)?.text).toContain('Uncovered svelte lines (1 file(s)):');
   });
 
-  test('warns when the Svelte floor was measured on another platform, without failing', async () => {
-    const lcov = covered + lcovRecord('src/widget.svelte', [[1, 1]], [1, 1]);
-    const root = packageFixture(
-      {
-        lines: 1,
-        functions: 1,
-        svelte: { lines: 0.5, functions: 0.5 },
-        svelteMeasuredOn: { platform: 'linux', architecture: 'x64' },
-      },
-      lcov,
-    );
-    const result = await runCoverageRatchet({
-      packageRoot: root,
-      platform: { platform: 'darwin', architecture: 'arm64' },
-    });
-    expect(result.exitCode).toBe(0);
-    expect(result.messages[0]).toMatchObject({ stream: 'warn' });
-    expect(result.messages[0]?.text).toContain('linux/x64');
-  });
-
   test('fails a fully covered run when runtime source imports test support', async () => {
     const root = packageFixture({ lines: 1, functions: 1 }, covered, {
       'src/index.ts': "export { open } from './index-test-helpers.js';\n",

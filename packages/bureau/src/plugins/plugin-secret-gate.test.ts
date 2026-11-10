@@ -10,6 +10,8 @@ import {
 } from '@lostgradient/interborough-plugin';
 import {
   createAgent,
+  createInputGuardrail,
+  createOutputGuardrail,
   createToolCallGuardrail,
   guardrailOf,
   hasDefinitionResolver,
@@ -597,13 +599,12 @@ describe('the secret-gating outcome matrix', () => {
 });
 
 /**
- * COR-2104 — a needs-setup plugin's tool-call validator follows the guardrail rule: its `validate`
- * refuses, and the tool-call guardrail contains the refusal as it contains any validator that
- * throws (as the input pipeline contains a detector's), so it finds nothing and the call runs. Once
- * the secret is saved it judges calls again.
+ * COR-2104, COR-2300 — a needs-setup plugin's tool-call validator follows the guardrail rule: its
+ * `validate` refuses, and the tool-call guardrail fails closed on the refusal, so the call is
+ * refused. Once the secret is saved it judges calls again.
  */
 describe('a needs-setup plugin’s tool-call validator', () => {
-  it('finds nothing while its plugin needs setup, and refuses calls once the secret is saved', async () => {
+  it('fails closed while its plugin needs setup, and judges calls once the secret is saved', async () => {
     const { gate, secrets } = await gateOver();
     const gatedResult = gatedContributions<PluginContributions>(
       {
@@ -613,7 +614,7 @@ describe('a needs-setup plugin’s tool-call validator', () => {
               name: 'cap',
               description: 'A test guardrail.',
               action: 'block',
-              validate: async () => ({ valid: false, category: 'limit', confidence: 1 }),
+              validate: async () => ({ valid: true, category: 'limit', confidence: 0 }),
             },
           ],
         },
@@ -628,11 +629,65 @@ describe('a needs-setup plugin’s tool-call validator', () => {
     const judge = () =>
       hook({ conversation: new Conversation(), step: 0, toolCalls: [call], refuse: () => {} });
 
-    expect(await judge()).toEqual([call]);
+    expect(await judge()).toEqual([]);
 
     secrets.save(KEY, SECRET);
     await settleTo(gate, true);
-    expect(await judge()).toEqual([]);
+    expect(await judge()).toEqual([call]);
+  });
+});
+
+/**
+ * COR-2300 — a needs-setup plugin's input and output guardrails fail closed too: the gate's refusal
+ * is a `detector-failure` finding that blocks, where Armorer's pipeline used to swallow it.
+ */
+describe('a needs-setup plugin’s input and output guardrails', () => {
+  it('block the input and the reply while its plugin needs setup, and judge them once the secret is saved', async () => {
+    const { gate, secrets } = await gateOver();
+    const gatedResult = gatedContributions<PluginContributions>(
+      {
+        guardrails: {
+          input: [
+            {
+              name: 'scan-in',
+              description: 'A test guardrail.',
+              detect: async () => ({ triggered: false, confidence: 0, category: 'none' }),
+            },
+          ],
+          output: [
+            {
+              name: 'scan-out',
+              description: 'A test guardrail.',
+              validate: async () => ({ valid: true, category: 'none', confidence: 0 }),
+            },
+          ],
+        },
+      },
+      gate,
+      (name) => `kit:${name}`,
+    );
+    const conversation = new Conversation();
+    conversation.appendUserMessage('hello');
+    const context = { conversation, step: 0 } as never;
+    const inputHook = createInputGuardrail({
+      detectors: [guardrailOf(gatedResult.guardrails!.input![0]!) as InputDetector],
+      action: 'warn',
+    });
+    const outputHook = createOutputGuardrail({
+      validators: [guardrailOf(gatedResult.guardrails!.output![0]!) as OutputValidator],
+      action: 'warn',
+    });
+    const response = { content: 'hi', toolCalls: [] };
+
+    const inputRefusal = await inputHook(context);
+    const outputRefusal = await outputHook(response, context);
+    expect(inputRefusal?.content).toContain('blocked by input guardrail');
+    expect(outputRefusal?.content).toContain('blocked by output guardrail');
+
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    expect(await inputHook(context)).toBeUndefined();
+    expect(await outputHook(response, context)).toBeUndefined();
   });
 });
 

@@ -8,8 +8,7 @@
  * svelte/elements attribute interface hit TS2590 ("Expression produces a union type that is
  * too complex to represent") once a consumer type-checked the published declaration under
  * `skipLibCheck: false`. This is an intentional, verified-behavior-preserving restructuring
- * (see `scripts/consumer-strict-types.ts`, which exhaustively checks real prop combinations
- * including every one this file's `Assignable` helper is too coarse to pin down precisely on a
+ * (the `Assignable` helper below is too coarse to pin down real prop combinations precisely on a
  * deep discriminated union — see its own caveat below). Future refactors must still explicitly
  * update both the migrated type AND this snapshot.
  */

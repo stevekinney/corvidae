@@ -70,7 +70,7 @@ export const COMPOSE_ONLY_COMPONENTS: ReadonlySet<string> = new Set([
  *
  * Exclusions, applied identically to both layouts:
  *  - underscore-prefixed names (internal-only),
- *  - the `experimental/` and `icons/` directories,
+ *  - the `icons/` directory,
  *  - directories whose `<name>/<name>.svelte` file does not exist.
  *
  * This is the single source of truth shared by {@link discoverComponents}
@@ -90,7 +90,7 @@ export async function discoverComponentFilePaths(root: string): Promise<string[]
   for await (const dir of new Bun.Glob('*/').scan({ cwd: root, onlyFiles: false })) {
     const dirName = dir.replace(/\/$/, '');
     if (dirName.startsWith('_')) continue;
-    if (dirName === 'experimental' || dirName === 'icons') continue;
+    if (dirName === 'icons') continue;
     // Confirm the directory holds a top-level .svelte file matching its name.
     const candidate = join(root, dirName, `${dirName}.svelte`);
     if (await Bun.file(candidate).exists()) filePaths.add(candidate);
