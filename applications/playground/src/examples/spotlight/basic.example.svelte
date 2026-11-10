@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'One focal value with a caveat';
   export const description =
-    'The value is display-size neutral text, never the accent. The caveat sits at label size directly under it and says how fresh the value is.';
+    'The value is display-size neutral text, never the accent. The caveat sits in warning text directly under it and says how fresh the value is.';
 </script>
 
 <script lang="ts">

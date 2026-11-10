@@ -30,7 +30,7 @@
   }
 
   /* The liveness word sits at label size (16px). */
-  .cinder-spotlight__status {
+  .cinder-status-dot.cinder-spotlight__status {
     font-size: var(--cinder-text-lg);
   }
 }
