@@ -317,7 +317,9 @@ async function choosePicker(page: Page, label: RegExp, option: string): Promise<
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
   '/settings/models': async (page) => {
-    await expect(page.locator(`code.ib-model-name__identifier[title="${LONG_MODEL}"]`)).toBeVisible();
+    await expect(
+      page.locator(`code.ib-model-name__identifier[title="${LONG_MODEL}"]`),
+    ).toBeVisible();
   },
   '/hooks': async (page) => {
     await expect(page.locator(`a.ib-hooks__sentence[title*="${LONG_HOOK_URL}"]`)).toBeVisible();
@@ -478,8 +480,31 @@ async function reviewOfRun(
   return review.id;
 }
 
+let seed: ResponsiveSeed;
 let addresses: Readonly<Record<string, string>>;
 let variantAddresses: Readonly<Record<string, string>>;
+
+/**
+ * The routes that print the waiting review. A tool approval stops waiting a few minutes after it is
+ * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes; each
+ * asks for a fresh one first when it is.
+ */
+const NEEDS_WAITING_REVIEW = new Set([
+  '/reviews',
+  '/chats/:chat (approval waiting)',
+  '/reviews (review open)',
+]);
+
+async function ensureWaitingReview(request: APIRequestContext): Promise<void> {
+  const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+    reviews: { id: string; sessionId?: string }[];
+  };
+  if (listed.reviews.some((review) => review.sessionId === REVIEW_THREAD)) return;
+  const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
+  seed = { ...seed, review: `bureau:${waitingReview}` };
+  addresses = responsiveAddresses(seed);
+  variantAddresses = responsiveVariants(seed);
+}
 
 test.beforeAll(async ({ playwright }) => {
   const request = await playwright.request.newContext({ baseURL: E2E_BASE_URL });
@@ -558,7 +583,7 @@ test.beforeAll(async ({ playwright }) => {
       scope: { kind: 'agent', id: INSTRUCTIONS_AGENT_ID },
       action: { type: 'notify' },
     });
-    const seed: ResponsiveSeed = {
+    seed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,
       instructionsAgent: INSTRUCTIONS_AGENT_ID,
@@ -712,6 +737,7 @@ for (const route of routes) {
 
   if (owner === undefined) {
     test(`${route.pattern} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
+      if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
       for (const width of WIDTHS) {
         expect(
           await problemsAt(page, route.pattern, width),
@@ -744,6 +770,7 @@ for (const route of routes) {
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));
 for (const variant of VARIANTS) {
   test(`${variant} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
+    if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
     for (const width of WIDTHS) {
       expect(await problemsAt(page, variant, width), `${variant} at ${width}px`).toEqual([]);
     }
