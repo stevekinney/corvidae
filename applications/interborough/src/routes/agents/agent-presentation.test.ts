@@ -157,7 +157,7 @@ describe('an agent’s facts', () => {
     effort: null,
     tools: [...tools],
     card: [{ id: 'cite', name: 'Cite', description: '', tags: [] }],
-    allowedSkills: null,
+    skills: null,
     a2a: true,
     limits: { steps: null, cost: null, tools: null },
     retry: null,

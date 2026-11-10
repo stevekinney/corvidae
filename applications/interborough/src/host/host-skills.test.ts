@@ -227,10 +227,10 @@ describe('skills in configuration.json', () => {
       }),
     );
     const host = await startAt(home);
-    const create = (id: string, allowedSkills: readonly string[]) =>
+    const create = (id: string, skills: readonly string[]) =>
       rpc(host, 'bureau.agents.definitions.create', {
         id,
-        definition: { model: 'anthropic/sonnet', instructions: 'Help.', allowedSkills },
+        definition: { model: 'anthropic/sonnet', instructions: 'Help.', skills },
       });
 
     const granted = await create('granted', ['summarize']);

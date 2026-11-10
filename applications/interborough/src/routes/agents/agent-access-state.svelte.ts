@@ -9,7 +9,7 @@
  * that is not allowed has its approval left out of the write. The approval itself is kept in the
  * form, so allowing the tool again restores what was chosen instead of loosening it.
  *
- * `allowedSkills` is written whole, so a skill the file names that the host no longer offers stays
+ * `skills` is written whole, so a skill the file names that the host no longer offers stays
  * until someone withdraws it. A file with no list keeps none until a skill is granted, and a list
  * emptied box by box is written empty, which is what the file then says.
  */
@@ -67,7 +67,7 @@ export class AgentAccessState {
   /** The approvals the file states. A tool absent here asks `on-changes`. */
   readonly approvals = new SvelteMap<string, ToolApproval>();
   /** The skills the agent may activate, in the order the file lists them and then the order they were granted. */
-  allowedSkills = $state<string[]>([]);
+  skills = $state<string[]>([]);
   /** The plugin guardrails as typed, one per line. */
   guardrails = $state('');
   spendPerRun = $state('');
@@ -89,7 +89,7 @@ export class AgentAccessState {
     for (const [tool, approval] of Object.entries(definition.approvals ?? {})) {
       this.approvals.set(tool, approval);
     }
-    this.allowedSkills = [...(definition.allowedSkills ?? [])];
+    this.skills = [...(definition.skills ?? [])];
     this.guardrails = (definition.guardrails ?? []).map(guardrailEntryId).join('\n');
     this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
@@ -125,16 +125,16 @@ export class AgentAccessState {
 
   /** Whether the agent may activate the skill. */
   isGranted(name: string): boolean {
-    return this.allowedSkills.includes(name);
+    return this.skills.includes(name);
   }
 
   /** Grants or withdraws one skill. */
   setGranted(name: string, granted: boolean): void {
     if (granted) {
-      if (!this.allowedSkills.includes(name)) this.allowedSkills = [...this.allowedSkills, name];
+      if (!this.skills.includes(name)) this.skills = [...this.skills, name];
       return;
     }
-    this.allowedSkills = this.allowedSkills.filter((skill) => skill !== name);
+    this.skills = this.skills.filter((skill) => skill !== name);
   }
 
   /** When the tool asks first: the file's statement, or `on-changes`. */
@@ -202,8 +202,7 @@ export class AgentAccessState {
       ...(file.models === null ? {} : { models: file.models }),
       tools: this.tools,
       card: file.card,
-      allowedSkills:
-        file.allowedSkills === null && this.allowedSkills.length === 0 ? null : this.allowedSkills,
+      skills: file.skills === null && this.skills.length === 0 ? null : this.skills,
       a2a: file.a2a,
       guardrails: limits.guardrails ?? null,
       limits: limits.limits ?? null,

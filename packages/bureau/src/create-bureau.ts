@@ -3647,7 +3647,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
-              // COR-1975: the skills a file's `allowedSkills` draws on, read through the host.
+              // COR-1975: the skills a file's `skills` draws on, read through the host.
               ...(options.agentSkillCatalog === undefined
                 ? {}
                 : {

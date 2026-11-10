@@ -158,7 +158,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 /**
  * The definition keys that were renamed, from the name a stored `changedKeys` may still hold to the
- * key now (COR-2126, COR-2137, COR-2138), so a version saved earlier names the same key a new one would.
+ * key now (COR-2126, COR-2137, COR-2138, COR-2139), so a version saved earlier names the same key a new one would.
  */
 const RENAMED_DEFINITION_KEYS: ReadonlyMap<string, string> = new Map([
   ['hooks', 'interceptors'],
@@ -166,6 +166,7 @@ const RENAMED_DEFINITION_KEYS: ReadonlyMap<string, string> = new Map([
   ['toolApproval', 'approvals'],
   ['childAgents', 'children'],
   ['skillDescriptors', 'card'],
+  ['allowedSkills', 'skills'],
   ['stepLimit', 'limits'],
   ['costBudget', 'limits'],
   ['toolBudget', 'limits'],
