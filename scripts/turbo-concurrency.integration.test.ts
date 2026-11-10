@@ -206,6 +206,35 @@ const focusedChecks = await outcomeOf(async () => {
   expect(peak).toBeLessThanOrEqual(configuredCap());
 });
 
+// Turborepo refuses to start persistent tasks unless its concurrency exceeds their count, and the
+// percentage above gives one task on a host of five or fewer processors. `dev` runs outside the
+// wrapper, so only its own flag (which beats the variable and `turbo.json`) keeps it startable.
+const developmentScript = await outcomeOf(async () => {
+  const { scripts } = JSON.parse(await readFile(join(root, 'package.json'), 'utf8')) as {
+    scripts: Record<string, string>;
+  };
+  const command = scripts['dev'] as string;
+  const dry = spawnWithHangGuard(
+    [
+      turboBinary,
+      ...command
+        .replace(/^turbo /, '')
+        .split(' ')
+        .filter((word) => !word.startsWith('--concurrency')),
+      '--dry=json',
+    ],
+    { cwd: root, stdout: 'pipe', stderr: 'ignore', env: cleanEnvironment(logPath) },
+  );
+  const plan = JSON.parse(await new Response(dry.stdout).text()) as {
+    tasks: { resolvedTaskDefinition: { persistent: boolean } }[];
+  };
+  const persistent = plan.tasks.filter((task) => task.resolvedTaskDefinition.persistent).length;
+  expect(persistent).toBeGreaterThan(0);
+  const concurrency = /--concurrency=(\d+)/.exec(command)?.[1];
+  expect(concurrency).toBeDefined();
+  expect(Number(concurrency)).toBeGreaterThan(persistent);
+});
+
 const explicitFlag = await outcomeOf(async () => {
   rethrow(setup);
   const peak = await measure((environment) =>
@@ -230,5 +259,8 @@ test("affected-tests.ts's runner stays within the configured cap", () => rethrow
 
 test('the command focused-checks.ts plans stays within the configured cap', () =>
   rethrow(focusedChecks));
+
+test('the root dev script passes a concurrency above its persistent-task count', () =>
+  rethrow(developmentScript));
 
 test('an explicit --concurrency=1 still wins over the configured cap', () => rethrow(explicitFlag));
