@@ -3,10 +3,19 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts",
-    "./tokens/runtime": "./src/tokens/runtime/index.ts"
+    ".": {
+      "types": "./.types/src/index.d.ts",
+      "svelte": "./src/index.ts",
+      "default": "./src/index.ts"
+    },
+    "./tokens/runtime": {
+      "types": "./.types/src/tokens/runtime/index.d.ts",
+      "svelte": "./src/tokens/runtime/index.ts",
+      "default": "./src/tokens/runtime/index.ts"
+    }
   },
   "scripts": {
+    "types": "bun scripts/emit-declarations.ts",
     "lint": "oxlint --deny-warnings --type-aware --tsconfig ./tsconfig.json src scripts && bun run check:prop-conventions && bun run check:test-cleanup && bun ../../scripts/check-inherited-key-reads.ts && bun ../../scripts/check-documentation-coverage.ts",
     "typecheck": "svelte-check --workspace . --tsconfig ./tsconfig.browser.json --fail-on-warnings && svelte-check --workspace . --tsconfig ./tsconfig.json --fail-on-warnings && bun run typecheck:documentation",
     "typecheck:documentation": "bun ../../scripts/check-documentation-code-blocks.ts",
