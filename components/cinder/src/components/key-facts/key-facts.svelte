@@ -30,7 +30,7 @@
       {#if fact.icon}
         <span class="cinder-key-facts__icon" aria-hidden="true">{@render fact.icon()}</span>
       {/if}
-      {#if fact.label}<span class="cinder-sr-only">{fact.label}: </span>{/if}
+      {#if fact.label}<span class="cinder-sr-only">{`${fact.label}: `}</span>{/if}
       {#if fact.href}
         <Link href={fact.href} class="cinder-key-facts__value">{fact.value}</Link>
       {:else}
