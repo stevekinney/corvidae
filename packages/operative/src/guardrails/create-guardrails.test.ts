@@ -134,7 +134,8 @@ describe('createGuardrails', () => {
           action: 'warn',
         },
       });
-      expect((await input.prepareStep(createTestContext()))?.content).toContain('blocked');
+      const refused = await input.prepareStep(createTestContext());
+      expect(refused?.content).toContain('blocked');
       expect(input.taint.isTainted()).toBe(true);
 
       const output = createGuardrails({

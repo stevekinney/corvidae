@@ -273,20 +273,29 @@ describe('tool-call validators', () => {
     expect(ofType(outcome.events, 'run.tripwire')).toEqual([]);
   });
 
-  it.each([
-    ['validate mode', validateMode(throwingValidator)],
-    ['default preset', defaultPreset(throwingValidator)],
-  ] as const)(
-    'a validator that throws (%s) is contained, as a detector is: it finds nothing',
-    async (_, setup) => {
-      const outcome = await runAgent(setup);
+  it('a validator that throws (validate mode) fails closed: the call is refused as a detector failure (COR-2300)', async () => {
+    const outcome = await runAgent(validateMode(throwingValidator));
 
-      expect(outcome.finishReason).toBe('stop-condition');
-      expect(outcome.executed).toEqual(['refund', 'lookup']);
-      expect(ofType(outcome.events, 'run.guardrail')).toEqual([]);
-      expect(ofType(outcome.events, 'run.tripwire')).toEqual([]);
-    },
-  );
+    expect(outcome.finishReason).toBe('stop-condition');
+    // The validator throws on every call, so none of the step's calls runs.
+    expect(outcome.executed).toEqual([]);
+    expect(outcome.shownToModel.get('call-1')).toMatchObject({
+      outcome: 'error',
+      error: { code: GUARDRAIL_BLOCKED_CODE },
+    });
+    const fired = ofType(outcome.events, 'run.guardrail');
+    expect(fired).toHaveLength(2);
+    expect(fired[0]).toMatchObject({ category: 'detector-failure', phase: 'tool-call' });
+    expect(ofType(outcome.events, 'run.tripwire')).toEqual([]);
+  });
+
+  it('a validator that throws (default preset) fails closed: the run halts with a tripwire (COR-2300)', async () => {
+    const outcome = await runAgent(defaultPreset(throwingValidator));
+
+    expect(outcome.finishReason).toBe('tripwire');
+    expect(outcome.executed).toEqual([]);
+    expect(ofType(outcome.events, 'run.tripwire')).toHaveLength(1);
+  });
 });
 
 /** Trips on the word "forbidden" with full confidence. */
