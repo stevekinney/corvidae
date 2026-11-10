@@ -107,24 +107,26 @@ describe('CLI configuration commands', () => {
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
         calls.push(`${init?.method ?? 'GET'} ${path}`);
-        if (path === '/host/plugins')
+        if (path === '/bureau/jsonrpc')
           return response({
-            configurationRevision: 'p1',
-            plugins: [
-              {
-                name: 'openai',
-                contributions: { providers: ['openai'] },
-                configurationSchema: { properties: { baseURL: { type: 'string' } } },
-              },
-            ],
+            result: {
+              providers: [
+                {
+                  plugin: 'openai',
+                  name: 'openai',
+                  configuration: { type: 'object', properties: { baseURL: { type: 'string' } } },
+                },
+              ],
+            },
           });
+        if (path === '/host/plugins') return response({ configurationRevision: 'p1' });
         if (path === '/host/providers') return response({ configurationRevision: 'r1' });
         return response({ configurationRevision: 'p2', providers: [] });
       },
     });
     expect(result.exitCode).toBe(0);
     expect(calls).toEqual([
-      'GET /host/plugins',
+      'POST /bureau/jsonrpc',
       'GET /host/plugins',
       'PUT /host/plugins/openai',
       'GET /host/providers',

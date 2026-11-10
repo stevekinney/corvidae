@@ -121,6 +121,18 @@ const productionServer = Bun.serve({
       if (body.method === 'bureau.assets.uploads.complete')
         return Response.json({ result: { assetId: 'compiled-asset' } });
       if (body.method === 'bureau.assets.uploads.abort') return Response.json({ result: {} });
+      if (body.method === 'bureau.plugins.contributions')
+        return Response.json({
+          result: {
+            providers: [
+              {
+                plugin: 'openai',
+                name: 'openai',
+                configuration: { type: 'object', properties: { baseURL: { type: 'string' } } },
+              },
+            ],
+          },
+        });
       return Response.json({ jsonrpc: '2.0', id: 'production', result: body.params });
     }
     if (pathname === '/bureau/v1/subscriptions/bureau.tasks.events') {
@@ -252,6 +264,8 @@ const productionServer = Bun.serve({
       });
     if (new URL(request.url).pathname === '/host/providers' && request.method === 'GET')
       return Response.json({ configurationRevision: 'compiled-r1', providers: [], models: [] });
+    if (new URL(request.url).pathname === '/host/plugins' && request.method === 'GET')
+      return Response.json({ configurationRevision: 'compiled-p1' });
     if (new URL(request.url).pathname === '/host/plugins' && request.method === 'GET')
       return Response.json({
         configurationRevision: 'compiled-p1',

@@ -5,6 +5,10 @@ import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-clie
 
 type RecordValue = Record<string, unknown>;
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 function record(value: unknown): RecordValue {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? Object.fromEntries(Object.entries(value))
@@ -74,6 +78,39 @@ function revisionOf(value: unknown): string | null {
   }
   const catalog = record(row['catalog']);
   return typeof catalog['revision'] === 'number' ? String(catalog['revision']) : null;
+}
+
+function schemaError(value: unknown, schema: unknown, path = 'configuration'): string | undefined {
+  const definition = record(schema);
+  const type = definition['type'];
+  if (type === 'object') {
+    if (!isRecord(value)) return `${path} must be an object.`;
+    const required = Array.isArray(definition['required']) ? definition['required'] : [];
+    for (const key of required) {
+      if (typeof key === 'string' && !Object.hasOwn(value, key))
+        return `${path}.${key} is required.`;
+    }
+    const properties = record(definition['properties']);
+    if (definition['additionalProperties'] === false) {
+      const unknown = Object.keys(value).find((key) => !Object.hasOwn(properties, key));
+      if (unknown !== undefined) return `${path}.${unknown} is not allowed.`;
+    }
+    for (const [key, child] of Object.entries(properties)) {
+      if (Object.hasOwn(value, key)) {
+        const error = schemaError(value[key], child, `${path}.${key}`);
+        if (error !== undefined) return error;
+      }
+    }
+  } else if (
+    (type === 'string' && typeof value !== 'string') ||
+    (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) ||
+    (type === 'integer' && (typeof value !== 'number' || !Number.isInteger(value))) ||
+    (type === 'boolean' && typeof value !== 'boolean') ||
+    (type === 'array' && !Array.isArray(value))
+  ) {
+    return `${path} has the wrong type.`;
+  }
+  return undefined;
 }
 
 function mutation(parsed: Parsed, expectedRevision: string | null): RecordValue {
@@ -154,17 +191,25 @@ async function providers(target: CliTarget, parsed: Parsed, dependencies: CliCli
     const configuration = value['configuration'];
     let configurationChange: CliCommandResult | undefined;
     if (configuration !== undefined) {
-      const plugins = await request(target, '/host/plugins', parsed, dependencies);
-      const rows = Array.isArray(record(plugins.data)['plugins'])
-        ? (record(plugins.data)['plugins'] as unknown[])
+      const contributions = await rpc(
+        target,
+        parsed,
+        dependencies,
+        'bureau.plugins.contributions',
+        {},
+      );
+      const rows = Array.isArray(record(contributions.data)['providers'])
+        ? (record(contributions.data)['providers'] as unknown[])
         : [];
-      const plugin = rows.find((entry) => {
-        const row = record(entry);
-        return row['name'] === name || JSON.stringify(row['contributions'] ?? '').includes(name);
-      });
-      const pluginName = record(plugin)['name'];
+      const provider = rows.find((entry) => record(entry)['name'] === name);
+      const pluginName = record(provider)['plugin'];
       if (typeof pluginName !== 'string')
-        throw Object.assign(new Error(`No provider plugin configuration was found for ${name}.`), {
+        throw Object.assign(new Error(`Unknown provider: ${name}.`), {
+          usage: true,
+        });
+      const validation = schemaError(configuration, record(provider)['configuration']);
+      if (validation !== undefined)
+        throw Object.assign(new Error(`Invalid provider configuration: ${validation}`), {
           usage: true,
         });
       configurationChange = await hostMutation(
