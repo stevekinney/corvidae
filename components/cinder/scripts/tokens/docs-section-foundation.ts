@@ -86,6 +86,7 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-leading-normal',
       '--cinder-leading-relaxed',
       '--cinder-tracking-tight',
+      '--cinder-tracking-display',
       '--cinder-tracking-normal',
       '--cinder-tracking-wide',
       '--cinder-font-normal',
@@ -218,6 +219,8 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
     headings: ['## Type roles'],
     cssProperties: [
       '--cinder-text-page-title',
+      '--cinder-text-page-title-large',
+      '--cinder-text-display',
       '--cinder-text-section-title',
       '--cinder-text-body',
       '--cinder-text-secondary',

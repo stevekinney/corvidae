@@ -1197,13 +1197,40 @@
   },
   "type-role": {
     "$type": "dimension",
-    "$description": "Intent layer over the raw type scale: the five sizes a page uses. A page title is 20px at weight 600, a section title 16px at 600, body 14px at 400, secondary text 13px at 400 in the muted color, and code 13px in the mono stack.",
+    "$description": "Intent layer over the raw type scale: the five sizes a page uses. A page title is 24px at weight 600 (28px large), a display heading 36px, a section title 16px at 600, body 14px at 400, secondary text 13px at 400 in the muted color, and code 13px in the mono stack.",
     "page-title": {
-      "$value": "{font.size.2xl}",
-      "$description": "Page title size (20px); set it at semibold.",
+      "$value": "{font.size.3xl}",
+      "$description": "Page title size (24px); set it at semibold with --cinder-tracking-display.",
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-text-page-title",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "page-title-large": {
+      "$value": {
+        "value": 1.75,
+        "unit": "rem"
+      },
+      "$description": "Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-page-title-large",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "display": {
+      "$value": "{font.size.5xl}",
+      "$description": "Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-text-display",
           "public": true,
           "category": "typography",
           "cssRecipe": null

@@ -152,6 +152,7 @@ Chat exposes `--cinder-chat-font-size` on its root as a scoped, inheritable base
 | `--cinder-leading-normal` | `1.5` | Default body line height. |
 | `--cinder-leading-relaxed` | `1.625` | Relaxed line height for long-form reading. |
 | `--cinder-tracking-tight` | `-0.01em` | Tight letter-spacing, -0.01em. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. |
+| `--cinder-tracking-display` | `-0.02em` | Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. |
 | `--cinder-tracking-normal` | `0` | Default letter spacing (no adjustment). |
 | `--cinder-tracking-wide` | `0.02em` | Wide letter-spacing, 0.02em. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. |
 | `--cinder-font-normal` | `400` | Normal font weight. |
@@ -497,7 +498,9 @@ The type scale above is a ladder of sizes; a page uses five of its steps, and th
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-text-page-title` | `var(--cinder-text-2xl)` | Page title size (20px); set it at semibold. |
+| `--cinder-text-page-title` | `var(--cinder-text-3xl)` | Page title size (24px); set it at semibold with --cinder-tracking-display. |
+| `--cinder-text-page-title-large` | `1.75rem` | Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display. |
+| `--cinder-text-display` | `var(--cinder-text-5xl)` | Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display. |
 | `--cinder-text-section-title` | `var(--cinder-text-lg)` | Section title size (16px); set it at semibold. |
 | `--cinder-text-body` | `var(--cinder-text-base)` | Body text size (14px). |
 | `--cinder-text-secondary` | `var(--cinder-text-sm)` | Secondary text size (13px); set it in the muted text color. |

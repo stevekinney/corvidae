@@ -147,6 +147,8 @@
   --cinder-tracking-normal: 0;
   /* Tight letter-spacing, -0.01em. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. */
   --cinder-tracking-tight: -0.01em;
+  /* Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. */
+  --cinder-tracking-display: -0.02em;
   /* Wide letter-spacing, 0.02em. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. */
   --cinder-tracking-wide: 0.02em;
   /* Tab width for monospace/code surfaces (`variant="code"` on Input/Textarea, CodeBlock). Tab characters render as this many spaces' worth. */
@@ -369,8 +371,12 @@
   --cinder-density-pad-inline: var(--cinder-space-4);
   /* Padding of a card or panel: 16px comfortable, 12px compact. */
   --cinder-density-pad-card: var(--cinder-space-4);
-  /* Page title size (20px); set it at semibold. */
-  --cinder-text-page-title: var(--cinder-text-2xl);
+  /* Page title size (24px); set it at semibold with --cinder-tracking-display. */
+  --cinder-text-page-title: var(--cinder-text-3xl);
+  /* Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display. */
+  --cinder-text-page-title-large: 1.75rem;
+  /* Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display. */
+  --cinder-text-display: var(--cinder-text-5xl);
   /* Section title size (16px); set it at semibold. */
   --cinder-text-section-title: var(--cinder-text-lg);
   /* Body text size (14px). */

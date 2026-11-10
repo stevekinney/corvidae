@@ -926,6 +926,19 @@
       }
     }
   },
+  "tracking.display": {
+    "$type": "number",
+    "$value": -0.02,
+    "$description": "Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-tracking-display",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": "-0.02em"
+      }
+    }
+  },
   "tracking.wide": {
     "$type": "number",
     "$value": 0.02,
@@ -2205,11 +2218,37 @@
     "$type": "dimension"
   },
   "type-role.page-title": {
-    "$value": { "value": 1.25, "unit": "rem" },
-    "$description": "Page title size (20px); set it at semibold.",
+    "$value": { "value": 1.5, "unit": "rem" },
+    "$description": "Page title size (24px); set it at semibold with --cinder-tracking-display.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-page-title",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.page-title-large": {
+    "$value": { "value": 1.75, "unit": "rem" },
+    "$description": "Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-page-title-large",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.display": {
+    "$value": { "value": 2.25, "unit": "rem" },
+    "$description": "Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-display",
         "public": true,
         "category": "typography",
         "cssRecipe": null

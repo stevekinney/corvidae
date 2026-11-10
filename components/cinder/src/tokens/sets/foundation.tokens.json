@@ -1040,6 +1040,19 @@
         }
       }
     },
+    "display": {
+      "$type": "number",
+      "$value": -0.02,
+      "$description": "Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-tracking-display",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": "-0.02em"
+        }
+      }
+    },
     "wide": {
       "$type": "number",
       "$value": 0.02,

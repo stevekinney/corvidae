@@ -142,6 +142,20 @@ describe('PageHeader', () => {
     );
   });
 
+  test('the title renders at the page-title token, which resolves to 24px', () => {
+    const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+    const declared = (name: string) =>
+      tokens.match(new RegExp(`${name}:\\s*([^;]+);`))?.[1]?.trim() ?? '';
+    const titleRule = stylesheet.match(/__title\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(titleRule).toContain('font-size: var(--cinder-text-page-title)');
+    expect(titleRule).toContain('letter-spacing: var(--cinder-tracking-display)');
+    expect(declared('--cinder-text-page-title')).toBe('var(--cinder-text-3xl)');
+    expect(declared('--cinder-text-3xl')).toBe('1.5rem');
+    expect(declared('--cinder-text-page-title-large')).toBe('1.75rem');
+    expect(declared('--cinder-text-display')).toBe('var(--cinder-text-5xl)');
+    expect(declared('--cinder-tracking-display')).toBe('-0.02em');
+  });
+
   test('a header with other actions beside the create "+" still drops them to their own row', () => {
     const actions = createRawSnippet(() => ({
       render: () => `<button>Export</button>`,
