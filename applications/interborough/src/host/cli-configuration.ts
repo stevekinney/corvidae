@@ -184,9 +184,8 @@ async function providers(target: CliTarget, parsed: Parsed, dependencies: CliCli
       'bureau.plugins.contributions',
       {},
     );
-    const rows = Array.isArray(record(contributions.data)['providers'])
-      ? (record(contributions.data)['providers'] as unknown[])
-      : [];
+    const providerRows = record(contributions.data)['providers'];
+    const rows = Array.isArray(providerRows) ? providerRows : [];
     const provider = rows.find((entry) => record(entry)['name'] === name);
     const pluginName = record(provider)['plugin'];
     if (typeof pluginName !== 'string')

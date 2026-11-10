@@ -128,7 +128,10 @@ const productionServer = Bun.serve({
               {
                 plugin: 'openai',
                 name: 'openai',
-                configuration: { type: 'object', properties: { baseURL: { type: 'string' } } },
+                configuration: {
+                  type: 'object',
+                  properties: { baseURL: { type: 'string', format: 'uri' } },
+                },
               },
             ],
           },

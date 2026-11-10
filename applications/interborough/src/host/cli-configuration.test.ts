@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'bun:test';
 
-import { executeCli, parseCliArguments } from './cli-client.ts';
+import { parseCliArguments, executeCli as commandRunner } from './cli-client.ts';
 
 function response(data: unknown): Response {
   return Response.json(data);
@@ -25,7 +25,7 @@ describe('CLI configuration commands', () => {
   test('routes read commands through host APIs and Bureau operations', async () => {
     const calls: string[] = [];
     const result = async (arguments_: string[]) =>
-      executeCli(arguments_, {
+      commandRunner(arguments_, {
         fetch: async (url, init) => {
           calls.push(`${init?.method ?? 'GET'} ${new URL(url).pathname}`);
           if (new URL(url).pathname === '/bureau/jsonrpc') {
@@ -72,7 +72,7 @@ describe('CLI configuration commands', () => {
 
   test('uses protected secret input and sends one revisioned provider mutation', async () => {
     const calls: Array<{ method: string; path: string; body?: Record<string, unknown> }> = [];
-    const result = await executeCli(['providers', 'connect', 'anthropic', '--secret-stdin'], {
+    const result = await commandRunner(['providers', 'connect', 'anthropic', '--secret-stdin'], {
       stdin: async () => 'not-an-argument-secret\n',
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
@@ -111,7 +111,7 @@ describe('CLI configuration commands', () => {
         configuration: { baseURL: 'https://api.invalid' },
       }),
     );
-    const result = await executeCli(['providers', 'connect', 'openai', '--input-file', inputPath], {
+    const result = await commandRunner(['providers', 'connect', 'openai', '--input-file', inputPath], {
       fetch: async (url, init) => {
         const path = new URL(url).pathname;
         calls.push(`${init?.method ?? 'GET'} ${path}`);
@@ -166,7 +166,7 @@ describe('CLI configuration commands', () => {
           })
         : response({ configurationRevision: 'r1' });
     };
-    const unknown = await executeCli(['providers', 'connect', 'typo', '--secret-stdin'], {
+    const unknown = await commandRunner(['providers', 'connect', 'typo', '--secret-stdin'], {
       stdin: async () => 'secret',
       fetch,
     });
@@ -174,7 +174,7 @@ describe('CLI configuration commands', () => {
       '/tmp/cor2061-invalid-provider.json',
       JSON.stringify({ apiKey: 'secret', configuration: { baseURL: 'not a uri' } }),
     );
-    const invalid = await executeCli(
+    const invalid = await commandRunner(
       ['providers', 'connect', 'openai', '--input-file', '/tmp/cor2061-invalid-provider.json'],
       { fetch },
     );
@@ -186,7 +186,7 @@ describe('CLI configuration commands', () => {
   test('never opens OAuth when no-open is requested and reports settings restart state', async () => {
     let opened = false;
     const calls: string[] = [];
-    const result = await executeCli(['tool-sources', 'authorize', 'github', '--no-open'], {
+    const result = await commandRunner(['tool-sources', 'authorize', 'github', '--no-open'], {
       open: () => {
         opened = true;
       },
@@ -205,7 +205,7 @@ describe('CLI configuration commands', () => {
 
   test('never opens OAuth in non-interactive mode and rejects inline credential input', async () => {
     let opened = false;
-    const noInput = await executeCli(['tool-sources', 'authorize', 'github', '--no-input'], {
+    const noInput = await commandRunner(['tool-sources', 'authorize', 'github', '--no-input'], {
       open: () => {
         opened = true;
       },
@@ -214,12 +214,9 @@ describe('CLI configuration commands', () => {
           ? response({ configurationRevision: 'r1' })
           : response({ authorized: false, authorizationUrl: 'https://auth.invalid/' }),
     });
-    const inline = await executeCli(
-      ['providers', 'connect', 'openai', '--input', '{"apiKey":"x"}'],
-      {
-        fetch: async () => response({ configurationRevision: 'r1' }),
-      },
-    );
+    const inline = await commandRunner(['providers', 'connect', 'openai', '--input', '{"apiKey":"x"}'], {
+      fetch: async () => response({ configurationRevision: 'r1' }),
+    });
     expect(noInput.exitCode).toBe(0);
     expect(opened).toBe(false);
     expect(inline.exitCode).toBe(2);
@@ -228,7 +225,7 @@ describe('CLI configuration commands', () => {
 
   test('settings set reads the current revision before updating', async () => {
     const methods: string[] = [];
-    const result = await executeCli(['settings', 'set', '--input', '{"tools.wakeup":false}'], {
+    const result = await commandRunner(['settings', 'set', '--input', '{"tools.wakeup":false}'], {
       fetch: async (_url, init) => {
         const body = JSON.parse(
           typeof init?.body === 'string' ? init.body : JSON.stringify(init?.body),
@@ -250,7 +247,7 @@ describe('CLI configuration commands', () => {
 
   test('rejects a nonnumeric settings revision before the mutation request', async () => {
     const methods: string[] = [];
-    const result = await executeCli(
+    const result = await commandRunner(
       ['settings', 'set', '--expected-revision', 'not-a-number', '--input', '{}'],
       {
         fetch: async (_url, init) => {
@@ -267,7 +264,7 @@ describe('CLI configuration commands', () => {
   });
 
   test('treats an aborted DELETE as an unknown mutation outcome', async () => {
-    const result = await executeCli(['providers', 'disconnect', 'anthropic'], {
+    const result = await commandRunner(['providers', 'disconnect', 'anthropic'], {
       fetch: async (_url, init) => {
         if (init?.method === 'DELETE') throw new DOMException('aborted', 'AbortError');
         return response({ configurationRevision: 'r1' });
