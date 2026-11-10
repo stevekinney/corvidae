@@ -26,7 +26,7 @@ Its source imports Operative only through `@lostgradient/operative/provider-kit`
 
 ## Registering the provider
 
-A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. `geminiProvider` passes the configuration object, whole, to `createGeminiProvider` and `createGeminiProviderStream`, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory:
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration, pluginConfiguration)` and `stream(configuration, pluginConfiguration)`. `geminiProvider` passes both objects, whole, to `createGeminiProvider` and `createGeminiProviderStream`, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. Pass `{}` for `pluginConfiguration` when the provider has no plugin-specific configuration:
 
 ```typescript
 import type { ProviderDefinition } from '@lostgradient/operative';
