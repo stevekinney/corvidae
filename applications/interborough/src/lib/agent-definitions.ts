@@ -63,6 +63,39 @@ export const EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const;
 /** One of the efforts an agent file may name. */
 export type Effort = (typeof EFFORTS)[number];
 
+/**
+ * One entry of a definition's `guardrails` (COR-2118): a guardrail's id, `plugin:name`, or the id
+ * with the configuration the agent gives it.
+ */
+const guardrailEntrySchema = z.union([
+  z.string(),
+  z.object({ id: z.string(), configuration: z.record(z.string(), z.unknown()) }),
+]);
+
+/** An entry of a definition's `guardrails`: an id, or an id with its configuration. */
+export type AgentGuardrailEntry = z.infer<typeof guardrailEntrySchema>;
+
+/** The guardrail an entry names, whichever form it is written in. */
+export function guardrailEntryId(entry: AgentGuardrailEntry): string {
+  return typeof entry === 'string' ? entry : entry.id;
+}
+
+/**
+ * The entries to save for the guardrail ids a form holds: each id an entry of `kept` configures
+ * keeps that entry, so a form that edits ids alone never drops a configuration it does not show.
+ */
+export function guardrailEntriesFor(
+  ids: readonly string[],
+  kept: readonly AgentGuardrailEntry[] | null | undefined,
+): AgentGuardrailEntry[] {
+  const configured = new Map(
+    (kept ?? []).flatMap((entry) =>
+      typeof entry === 'string' ? [] : [[entry.id, entry] as const],
+    ),
+  );
+  return ids.map((id) => configured.get(id) ?? id);
+}
+
 const definitionSchema = z.object({
   name: z.string(),
   description: z.string().nullable(),
@@ -118,8 +151,11 @@ const definitionSchema = z.object({
   interceptors: z.array(z.string()).nullable().default(null),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: z.array(z.string()).nullable().default(null),
-  /** The plugin guardrails (`plugin:name`) the file lists besides the default preset; `null` when it lists none. */
-  guardrails: z.array(z.string()).nullable().default(null),
+  /**
+   * The plugin guardrails the file lists besides the default preset, each `plugin:name` or
+   * `{ id, configuration }` (COR-2118); `null` when it lists none.
+   */
+  guardrails: z.array(guardrailEntrySchema).nullable().default(null),
   /**
    * When each listed tool asks first, by tool name; `null` when the file sets none. A tool the
    * map leaves out is `on-changes`. Every key is one of `tools`.
@@ -341,8 +377,11 @@ export type AgentDefinitionInput = {
    * file's. Inside it, a limit left out keeps the file's and `null` removes it.
    */
   readonly limits?: AgentLimitsInput | null;
-  /** The plugin guardrails (`plugin:name`). `null` removes them; left out, an update keeps the file's. */
-  readonly guardrails?: readonly string[] | null;
+  /**
+   * The plugin guardrails, each `plugin:name` or `{ id, configuration }`. `null` removes them; left
+   * out, an update keeps the file's.
+   */
+  readonly guardrails?: readonly AgentGuardrailEntry[] | null;
   /**
    * How a run retries a failed generate call. The editor shows no control for it: a save carries it
    * through and a copy keeps it. Left out, an update keeps the file's.
@@ -374,10 +413,10 @@ export async function getAgentDefinition(id: string, options?: Options): Promise
 }
 
 /**
- * The model a person chose for a built-in agent, as `provider/model`, or `null` when the agent keeps
- * its own. A built-in agent's definition does not name the model while no provider serves it, so
- * this is how a schedule learns the agent needs one. An identifier that is no built-in agent is a
- * `NotFound` fault.
+ * The model a person chose for a code agent (a built-in agent, or a running plugin's), as
+ * `provider/model`, or `null` when the agent keeps its own. A code agent's definition does not name
+ * the model while no provider serves it, so this is how a schedule learns the agent needs one. An
+ * identifier that is no code agent the catalog runs is a `NotFound` fault.
  */
 export async function getAgentOverrideModel(id: string, options?: Options): Promise<string | null> {
   const answer = z

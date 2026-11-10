@@ -5,6 +5,7 @@
 import {
   definePlugin,
   type PluginContributions,
+  type PluginGuardrailFactory,
   type PluginTriggerContext,
 } from '@lostgradient/interborough-plugin';
 import {
@@ -12,7 +13,10 @@ import {
   createToolCallGuardrail,
   guardrailOf,
   hasDefinitionResolver,
+  type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
+  type OutputValidator,
+  type ToolCallValidator,
 } from '@lostgradient/operative';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { createTool } from 'armorer';
@@ -21,6 +25,7 @@ import { Conversation } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog';
+import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
 import type { Bureau } from '../types';
@@ -78,7 +83,7 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) stop();
 });
 
-const event = { kind: 'kit.happened', bureauId: 'b', emittedAtMs: 0, payload: {} };
+const event = { kind: 'run.settled', bureauId: 'b', emittedAtMs: 0, payload: {} };
 
 describe('a plugin missing a declared secret', () => {
   it('loads needs-setup with secret-missing, and its contributions work once watch reports the secret, with no restart', async () => {
@@ -93,7 +98,7 @@ describe('a plugin missing a declared secret', () => {
           createTool({ name: 'lookup', description: 'Looks up', execute: async () => 'found' }),
         ],
         formatters: [
-          { name: 'fmt', eventKinds: ['kit.happened'], format: () => ({ title: 'Formatted' }) },
+          { name: 'fmt', eventKinds: ['run.settled'], format: () => ({ title: 'Formatted' }) },
         ],
       }),
     });
@@ -116,7 +121,7 @@ describe('a plugin missing a declared secret', () => {
     ]);
     expect(missing?.contributions.map(({ id }) => id)).toEqual(['kit:lookup@1.0.0', 'kit:fmt']);
     // Registered at construction, refusing until the secret is saved: the default title.
-    expect(bureau.formatEvent(event).title).toBe('kit.happened');
+    expect(bureau.formatEvent(event).title).toBe('run.settled');
 
     secrets.save(KEY, SECRET);
     await waitForCondition(
@@ -133,7 +138,7 @@ describe('a plugin missing a declared secret', () => {
       async () => (await statusOf()) === 'needs-setup',
       'the plugin kept running after its secret was removed',
     );
-    expect(bureau.formatEvent(event).title).toBe('kit.happened');
+    expect(bureau.formatEvent(event).title).toBe('run.settled');
 
     await bureau.dispose();
     bureaus.length = 0;
@@ -282,17 +287,47 @@ describe('the secret-gating outcome matrix', () => {
           // Wrapped with an action of its own, which the gate keeps (COR-2104).
           input: [
             {
-              guardrail: { name: 'scan', detect: note('guardrail-input', {}) as never },
+              guardrail: {
+                name: 'scan',
+                description: 'A test guardrail.',
+                detect: note('guardrail-input', {}) as never,
+              },
               action: 'warn',
             },
           ],
-          output: [{ name: 'check', validate: note('guardrail-output', {}) as never }],
-          tools: [{ name: 'cap', action: 'block', validate: note('guardrail-tools', {}) as never }],
+          output: [
+            {
+              name: 'check',
+              description: 'A test guardrail.',
+              validate: note('guardrail-output', {}) as never,
+            },
+          ],
+          tools: [
+            {
+              name: 'cap',
+              description: 'A test guardrail.',
+              action: 'block',
+              validate: note('guardrail-tools', {}) as never,
+            },
+          ],
           memory: [
-            { name: 'tags', gates: ['recall'], detect: note('memory-detector', {}) as never },
+            {
+              name: 'tags',
+              description: 'A test guardrail.',
+              gates: ['recall'],
+              detect: note('memory-detector', {}) as never,
+            },
           ],
         },
-        interceptors: [{ name: 'audit', onStep: note('interceptor', undefined) }],
+        // A handler at every point of the hook map, each of which must refuse.
+        interceptors: [
+          {
+            name: 'audit',
+            ...Object.fromEntries(
+              INTERCEPTOR_POINTS.map((point) => [point, note('interceptor', undefined)]),
+            ),
+          },
+        ],
         decisionRouters: [
           { name: 'router', kinds: new Set(), decide: note('decision-router', {}) as never },
         ],
@@ -315,7 +350,7 @@ describe('the secret-gating outcome matrix', () => {
         formatters: [
           {
             name: 'fmt',
-            eventKinds: ['kit.happened'],
+            eventKinds: ['run.settled'],
             format: () => {
               called.push('formatter');
               return { title: 'Formatted' };
@@ -339,12 +374,27 @@ describe('the secret-gating outcome matrix', () => {
       validator: () =>
         gatedResult.validators?.[0]?.validate({} as never, new AbortController().signal),
       'guardrail-input': () =>
-        guardrailOf(gatedResult.guardrails!.input![0]!).detect('x', {} as never),
+        (guardrailOf(gatedResult.guardrails!.input![0]!) as InputDetector).detect('x', {} as never),
       'guardrail-output': () =>
-        guardrailOf(gatedResult.guardrails!.output![0]!).validate('x', {} as never),
+        (guardrailOf(gatedResult.guardrails!.output![0]!) as OutputValidator).validate(
+          'x',
+          {} as never,
+        ),
       'guardrail-tools': () =>
-        gatedResult.guardrails?.tools?.[0]?.validate({} as never, {} as never),
-      interceptor: () => gatedResult.interceptors?.[0]?.onStep?.({} as never),
+        (gatedResult.guardrails?.tools?.[0] as ToolCallValidator | undefined)?.validate(
+          {} as never,
+          {} as never,
+        ),
+      ...Object.fromEntries(
+        INTERCEPTOR_POINTS.map((point) => [
+          `interceptor ${point}`,
+          () =>
+            (
+              gatedResult.interceptors?.[0]?.[point] as
+                ((...args: unknown[]) => unknown) | undefined
+            )?.({}, {}),
+        ]),
+      ),
       'decision-router': () => gatedResult.decisionRouters?.[0]?.decide({} as never),
       reaction: () => gatedResult.reactions?.[0]?.run({} as never),
       embedder: () => gatedResult.embedders?.[0]?.embed(['x']),
@@ -405,6 +455,51 @@ describe('the secret-gating outcome matrix', () => {
     secrets.remove(KEY);
     await settleTo(gate, false);
     expect(await outcomes()).toEqual(missing);
+  });
+
+  it('gates the object form of a hook as it gates the function, and keeps what the object declares', async () => {
+    const { gate, secrets } = await gateOver();
+    const called: string[] = [];
+    const onError = () => 'continue' as const;
+    const declared = Object.fromEntries(
+      INTERCEPTOR_POINTS.map((point) => [
+        point,
+        {
+          handler: async () => {
+            called.push(point);
+          },
+          replay: 'safe' as const,
+          onError,
+          priority: 7,
+        },
+      ]),
+    );
+    const [interceptor] =
+      gatedContributions<PluginContributions>(
+        { interceptors: [{ name: 'audit', ...declared }] },
+        gate,
+        (name) => `kit:${name}`,
+      ).interceptors ?? [];
+    const handlerOf = (point: (typeof INTERCEPTOR_POINTS)[number]) => {
+      const hook = interceptor?.[point];
+      if (typeof hook !== 'object') throw new Error(`Expected ${point} to stay an object.`);
+      return hook;
+    };
+
+    for (const point of INTERCEPTOR_POINTS) {
+      const hook = handlerOf(point);
+      expect(hook).toMatchObject({ replay: 'safe', onError, priority: 7 });
+      expect(await rejectionOf((hook.handler as () => Promise<void>)())).toBeInstanceOf(
+        PluginNeedsSetupError,
+      );
+    }
+    expect(called).toEqual([]);
+
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    for (const point of INTERCEPTOR_POINTS)
+      await (handlerOf(point).handler as () => Promise<void>)();
+    expect(called).toEqual([...INTERCEPTOR_POINTS]);
   });
 
   it('starts a trigger kind once the secret is saved, stops it on removal, and starts it again on a second save', async () => {
@@ -516,6 +611,7 @@ describe('a needs-setup plugin’s tool-call validator', () => {
           tools: [
             {
               name: 'cap',
+              description: 'A test guardrail.',
               action: 'block',
               validate: async () => ({ valid: false, category: 'limit', confidence: 1 }),
             },
@@ -525,7 +621,9 @@ describe('a needs-setup plugin’s tool-call validator', () => {
       gate,
       (name) => `kit:${name}`,
     );
-    const hook = createToolCallGuardrail({ validators: gatedResult.guardrails?.tools ?? [] });
+    const hook = createToolCallGuardrail({
+      validators: (gatedResult.guardrails?.tools ?? []) as readonly ToolCallValidator[],
+    });
     const call = { id: 'call-1', name: 'refund', arguments: { amount: 150 } };
     const judge = () =>
       hook({ conversation: new Conversation(), step: 0, toolCalls: [call], refuse: () => {} });
@@ -535,5 +633,58 @@ describe('a needs-setup plugin’s tool-call validator', () => {
     secrets.save(KEY, SECRET);
     await settleTo(gate, true);
     expect(await judge()).toEqual([]);
+  });
+});
+
+/**
+ * COR-2118 — a needs-setup plugin's guardrail factory follows the guardrail rule: `create` runs, so
+ * an agent that configures the guardrail stays valid and builds, and the guardrail it builds refuses
+ * until the secret is saved, as a detector or validator does.
+ */
+describe('a needs-setup plugin’s guardrail factory', () => {
+  it('builds while its plugin needs setup, and what it builds refuses until the secret is saved', async () => {
+    const { gate, secrets } = await gateOver();
+    const built: number[] = [];
+    const gatedResult = gatedContributions<PluginContributions>(
+      {
+        guardrails: {
+          output: [
+            {
+              guardrail: {
+                name: 'grounding',
+                description: 'A test guardrail.',
+                configuration: z.object({ threshold: z.number().default(0.8) }),
+                create: (configuration: { threshold: number }) => {
+                  built.push(configuration.threshold);
+                  return {
+                    name: 'grounding',
+                    validate: async () => ({ valid: true, category: 'x', confidence: 0 }),
+                  };
+                },
+              },
+              action: 'warn',
+            },
+          ],
+        },
+      },
+      gate,
+      (name) => `kit:${name}`,
+    );
+    const entry = gatedResult.guardrails!.output![0]!;
+    expect(entry).toMatchObject({ action: 'warn' });
+    const factory = guardrailOf(entry) as PluginGuardrailFactory<OutputValidator>;
+    const validator = factory.create({ threshold: 0.5 });
+    expect(built).toEqual([0.5]);
+
+    expect(await rejectionOf(validator.validate('x', {} as never))).toBeInstanceOf(
+      PluginNeedsSetupError,
+    );
+    secrets.save(KEY, SECRET);
+    await settleTo(gate, true);
+    expect(await validator.validate('x', {} as never)).toEqual({
+      valid: true,
+      category: 'x',
+      confidence: 0,
+    });
   });
 });

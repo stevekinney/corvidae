@@ -1,0 +1,12 @@
+# Codex delivery protocol
+
+The same delivery sequence as the Claude Code workflow `.claude/workflows/deliver-issue.js`, run by hand from Codex. Work one issue at a time, at most two implementation workers at once (AGENTS.md "Parallel runs"). Shadow calls measure Jev and never change what you do.
+
+1. Brief. `bun scripts/chef/brief.ts <ID> --json` writes `tmp/chef/briefs/<ID>.md`. Stop as blocked when it lists an open blocker.
+2. Shadow, before dispatch. Write evidence JSON under `tmp/chef/` and run `bun scripts/chef/jev-predicates.ts shadow dispatch-plan --evidence-file <file> --json`, then the same for `split-before-dispatch`.
+3. Implement. Start the `chef-worker` agent from `.codex/agents/chef-worker.toml`, in its own worktree, pointed at the brief file only. It runs `bun scripts/chef/focused-checks.ts` before opening the pull request and returns ready-for-review, blocked, or needs-decision, with the pull request and head.
+4. Review. Run `bun scripts/chef/jev-predicates.ts shadow review-tier --evidence-file <file> --json`, then start the `chef-reviewer` agent from `.codex/agents/chef-reviewer.toml` against the diff at that head. It returns approve or the blocking findings.
+5. One correction. On blocked, run `bun scripts/chef/jev-predicates.ts shadow escalate --evidence-file <file> --json`, then send the findings to a `chef-worker` in the same worktree. It runs `bun scripts/chef/focused-checks.ts`, pushes once, and returns the new head. Review that head again. A second blocked verdict is needs-decision for the owner.
+6. Review rounds. For each round (at most three) run `bun scripts/chef/review-threads.ts list --pr <n> --unresolved --json`, shadow `thread-triage` per thread, fix and answer every thread, run `bun scripts/chef/review-threads.ts classes --pr <n>` before the push (exit 1 means push nothing), and push once.
+7. Deliver. Move the issue with `bun scripts/chef/linear.ts state <ID> "In Review"`, then run `bun scripts/chef/deliver.ts --pr <n> --head <sha> --worktree <path> --comment-file <file>` in the background. The worker never merges.
+8. Outcomes. Record what actually happened with `bun scripts/chef/jev-predicates.ts outcome <id> --actual <value>`; `bun scripts/chef/jev-predicates.ts report` summarizes agreement.

@@ -6,7 +6,7 @@ Read this when chef's scope is a whole Linear project, or any body of work that 
 
 - Pull every open child issue with the native relations that block it (its `blockedBy` side, including blockers outside the project), following pagination. Linear rejects a project query that nests issues, labels, and relations past its complexity limit (10,000), so page issues in groups of 25 or fewer when you nest relations.
 - Give each issue a wave: 0 when it has no open blocker, otherwise one more than its deepest open blocker. Name the critical path, the longest chain of open blockers.
-- Group issues into batches using `SKILL.md`'s batching rule. Record a batch table in the work-history note: batch identifier, issues, repository, wave, files and contracts touched, review tier (Opus 5.5, or Fable 5.1 for a one-way door), and the evidence that releases it.
+- Group issues into batches using [the batching rule](planning-and-routing.md#batching). Record a batch table in the work-history note: batch identifier, issues, repository, wave, files and contracts touched, review tier (Opus 5.5, or Fable 5.1 for a one-way door), and the evidence that releases it.
 - Report and leave out `type:decision` and `type:release` issues, tracking-only issues, and issues another session has actively claimed. A `type:decision` issue gets a question for the owner, not an implementation.
 - A program built from a design canvas follows [planning and routing](planning-and-routing.md) "Design programmes": the design ledger exits 0 before the first dispatch and again before the project closes, and the close also needs a full drift audit with no unexplained miss.
 

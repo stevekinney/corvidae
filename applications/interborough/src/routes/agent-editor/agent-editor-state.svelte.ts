@@ -12,9 +12,12 @@ import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   AGENT_IDENTIFIER_PATTERN,
   EFFORTS,
+  guardrailEntriesFor,
+  guardrailEntryId,
   type AgentCatalog,
   type AgentDefinitionInput,
   type AgentDetail,
+  type AgentGuardrailEntry,
   type AgentSkill,
   type Effort,
   type IdentifierConflictReason,
@@ -115,8 +118,10 @@ export function limitsOf(
   fields: LimitFields,
   warn: readonly number[] | undefined,
   editsSteps = true,
+  keptGuardrails: readonly AgentGuardrailEntry[] | null = null,
 ): Pick<AgentDefinitionInput, 'guardrails' | 'limits'> {
-  const guardrails = parseGuardrails(fields.guardrails);
+  // The field holds ids alone; an id the file configures keeps its configuration (COR-2118).
+  const guardrails = guardrailEntriesFor(parseGuardrails(fields.guardrails), keptGuardrails);
   const perRun = parseLimit(fields.spendPerRun, false, LIMIT_BOUNDS.spendUsd) ?? null;
   const perChat = parseLimit(fields.spendPerChat, false, LIMIT_BOUNDS.spendUsd) ?? null;
   const calls = parseLimit(fields.toolCalls, true, LIMIT_BOUNDS.toolCalls) ?? null;
@@ -233,6 +238,11 @@ export class AgentEditorState {
   /** The fractions at which a run warns about its spend: not edited here, carried through a save. */
   readonly #warnAt: readonly number[] | undefined;
   /**
+   * The guardrails as the file lists them, configurations included (COR-2118): the form edits the
+   * ids, and a save keeps the configuration of each id it still lists.
+   */
+  #keptGuardrails: readonly AgentGuardrailEntry[] | null = null;
+  /**
    * When each tool asks first, as the file wrote it (the Access tab edits it): carried through a
    * save, pruned to the tools still chosen, because the Bureau refuses a file whose `approvals`
    * names a tool that `tools` does not.
@@ -317,7 +327,8 @@ export class AgentEditorState {
     this.instructions = definition.instructions;
     this.hash = detail?.hash ?? null;
     this.a2a = definition.a2a;
-    this.guardrails = (definition.guardrails ?? []).join('\n');
+    this.#keptGuardrails = definition.guardrails;
+    this.guardrails = (definition.guardrails ?? []).map(guardrailEntryId).join('\n');
     this.stepLimit = definition.limits.steps === null ? '' : String(definition.limits.steps);
     this.spendPerRun = definition.limits.cost === null ? '' : String(definition.limits.cost.run);
     this.spendPerChat =
@@ -524,7 +535,7 @@ export class AgentEditorState {
 
   /** The limits as the Bureau takes them: a field left empty is `null`, which removes the limit. */
   #limits(): Pick<AgentDefinitionInput, 'guardrails' | 'limits'> {
-    return limitsOf(this, this.#warnAt);
+    return limitsOf(this, this.#warnAt, true, this.#keptGuardrails);
   }
 
   /** The tool approvals that still name a chosen tool: `undefined` when the file had none, `null` when none is left. */

@@ -46,6 +46,7 @@ const plugin = definePlugin({
       input: [
         {
           name: 'scan',
+          description: 'A test guardrail.',
           detect: async () => ({ triggered: false, confidence: 0, category: 'clean' }),
         },
       ],

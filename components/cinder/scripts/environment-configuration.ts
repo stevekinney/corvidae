@@ -4,12 +4,14 @@ import { z } from 'zod';
 
 const schema = z.object({
   cinderSvgDataUriRoots: z.string().optional().meta({ env: 'CINDER_SVG_DATA_URI_ROOTS' }),
+  designSystemUrl: z.string().optional().meta({ env: 'CORVIDAE_DESIGN_SYSTEM_URL' }),
   githubStepSummary: z.string().optional().meta({ env: 'GITHUB_STEP_SUMMARY' }),
   tz: z.string().optional().meta({ env: 'TZ' }),
 });
 
 const environmentNames = {
   cinderSvgDataUriRoots: 'CINDER_SVG_DATA_URI_ROOTS',
+  designSystemUrl: 'CORVIDAE_DESIGN_SYSTEM_URL',
   githubStepSummary: 'GITHUB_STEP_SUMMARY',
   tz: 'TZ',
 } as const;

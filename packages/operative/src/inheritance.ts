@@ -84,8 +84,9 @@ export function combineProvider(
 // run. It also never had a production caller: the axis it documented was real,
 // but nothing wired it up.
 //
-// The rule itself is preserved, not dropped. `mergeHookRegistries(bureau,
-// agent, direct)` composes the tiers in that order, and Bureau's invariants
+// The rule itself is preserved, not dropped. `mergeHookRegistries({ bureau,
+// plugin, agent, direct })` composes the tiers in that order, each in its own
+// fixed priority band (COR-2127), and Bureau's invariants
 // additionally pin themselves first or last per dispatch shape so a lower tier
 // cannot pre-empt or post-empt them (COR-1265). Re-adding a second mechanism
 // here would give the same rule two implementations to disagree about.

@@ -1,6 +1,6 @@
 # Review guidance
 
-This is a pre-1.0, internal-only Bun and Turborepo workspace. The full policy is the "Review guidelines" section of `AGENTS.md`.
+This is a public, pre-1.0 Bun and Turborepo workspace. The full policy is the "Review guidelines" section of `AGENTS.md`.
 
 Before posting a finding or suggesting a change, read the linked COR issues and search Linear's COR backlog for the affected behavior, symbols, and proposed work, including other projects. Verify plausible matches against their scope, status, acceptance criteria, and decisions. Cite an existing ticket's identifier and link instead of duplicating its request or requiring unrelated work in this pull request. A ticket does not excuse a concrete blocker introduced by the diff; explain why that failure must be fixed before merge. If Linear is unavailable, disclose the incomplete lookup without treating it as a merge blocker or claiming no match exists.
 

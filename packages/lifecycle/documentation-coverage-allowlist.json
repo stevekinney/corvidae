@@ -12,7 +12,6 @@
     ". HookRegistryOptions",
     ". ObservableLike",
     ". Observer",
-    ". Subscription",
-    ". mergeHookRegistries"
+    ". Subscription"
   ]
 }

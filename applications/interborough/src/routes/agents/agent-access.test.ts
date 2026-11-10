@@ -862,3 +862,23 @@ describe('the form state', () => {
     expect(form.canSave).toBe(false);
   });
 });
+
+// COR-2118 — the Access tab edits guardrail ids; one the file configures keeps its configuration.
+describe('a configured guardrail on the Access tab', () => {
+  test('is shown by its id and saved back with its configuration', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const configured = { id: 'acme:grounding', configuration: { threshold: 0.95 } };
+    const form = AgentAccessState.from(
+      { ...detail, definition: { ...detail.definition, guardrails: ['acme:pii', configured] } },
+      catalogFixture(),
+    );
+    if (form === undefined) throw new Error('expected a form');
+
+    expect(form.guardrails).toBe('acme:pii\nacme:grounding');
+    expect(form.dirty).toBe(false);
+    expect(form.toDefinition().guardrails).toEqual(['acme:pii', configured]);
+    form.guardrails = 'acme:grounding';
+    expect(form.toDefinition().guardrails).toEqual([configured]);
+  });
+});

@@ -22,8 +22,10 @@
 //     description;
 //   - the verification commands: each `--verify`, else the issue's Verification section, else the
 //     focused checks for what the worker changed, with the root lint always among them;
-//   - the charter rules every worker gets (`references/execution-record.md` "Worker charter"): the
-//     merge gate, the review rounds, the turn rule, and the defect-class self-check.
+//   - the charter rules every worker gets (`charterRules` below, their one source; the
+//     `references/execution-record.md` "Worker charter" template points here): the merge gate, the
+//     review rounds, the turn rule, the defect-class self-check, context, the report, corrections,
+//     and acceptance-criteria statuses.
 //
 // The script only prepares the brief. The coordinator tool starts the session: one fresh session
 // per issue, on Sonnet unless the brief names a reason for another model, from this file, and the
@@ -53,35 +55,38 @@ import { resolveMainCheckout } from './repository-locations.ts';
 
 export { UsageError };
 
-/** The charter rules, kept equal to `references/execution-record.md` by `brief.test.ts`. */
+/**
+ * The charter rules: the one source of the worker-facing rules. `brief.test.ts` keeps each in step
+ * with the AGENTS.md rule it restates and keeps `references/execution-record.md` from restating them.
+ */
 export const charterRules = [
-  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: `bun test` on the touched files, `bun run lint:root` always, because its guards scan the tests of every workspace, `bun run typecheck:root` when root or `scripts/` files changed, `bunx turbo run lint typecheck --filter=<workspace>` for each changed workspace, and `bunx prettier --check` on the changed files. A test file that starts a process is named `*.integration.test.ts`; when `bun scripts/affected-tests.ts --explain --isolated` lists one your change reaches, run `bun scripts/affected-tests.ts run --isolated`. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved. You do not merge: after the coordinator accepts your ready-for-review return, it delivers with `deliver.ts`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
+  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: one command, `bun scripts/chef/focused-checks.ts`, which runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and the affected tests, and prints one summary line; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` itself when your change reaches one. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved. You do not merge: after the coordinator accepts your ready-for-review return, it delivers with `deliver.ts`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
   '**Review rounds (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
   '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait for a gate, a check, or a review bot in a background command and keep working; never end a turn to report that you are still waiting.',
   "**Defect-class self-check:** before opening the pull request, check the diff against every class in `.agents/skills/chef/references/defect-classes.md`, fix what applies, and report each class's result in the return. Before every fix push, run `bun scripts/chef/review-threads.ts classes --pr <n>`; on exit 1, push no further patch and return blocked.",
   '**Context:** keep it small. Write gate output to a log and read a failure with a targeted search. A context past about 250K tokens means: write a handoff brief under `tmp/chef/` and hand off to a fresh session.',
   '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Write logs and evidence under `tmp/chef/<package>/round-<n>/` in the main checkout, with a new directory for each correction round. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
-  '**Corrections:** after two unsuccessful attempts at the same defect, stop patching and return evidence for causal reassessment.',
+  '**Corrections:** after two unsuccessful attempts at the same defect or acceptance criterion, stop patching and return evidence for causal reassessment.',
   '**Acceptance criteria:** give every criterion exactly one status in the return. Implemented: not yet checked. Verified: a named command passed or a manual check was done. Failed: a check failed. Blocked: an external dependency prevents checking. Not verified: not checked, with the reason. Criteria include dated revisions and amending comments; a conflict between them is needs-decision. Number unnumbered criteria AC1, AC2 in the return only.',
 ];
 
 const rootLint = 'bun run lint:root';
+const focusedChecks = 'bun scripts/chef/focused-checks.ts';
 
-const defaultVerification = [
-  'bun test <the test files you changed>',
-  rootLint,
-  'bun run typecheck:root',
-  'bunx prettier --check <the files you changed>',
-];
+/** Whether a verification list already runs the root lint, directly or through `focused-checks.ts`. */
+const runsRootLint = (text: string) => text.includes(rootLint) || text.includes(focusedChecks);
+
+const defaultVerification = [focusedChecks];
 
 /**
  * The verification list: the explicit commands, or the defaults when there are none. The
- * root lint is always on it, because its guards scan the tests of every workspace, so a
- * change inside one workspace can fail it.
+ * default `focused-checks.ts` runs the root lint itself; explicit commands get it appended,
+ * because its guards scan the tests of every workspace, so a change inside one workspace can
+ * fail it.
  */
 export function verificationCommands(explicit: string[]): string[] {
   if (explicit.length === 0) return defaultVerification;
-  return explicit.includes(rootLint) ? explicit : [...explicit, rootLint];
+  return explicit.some(runsRootLint) ? explicit : [...explicit, rootLint];
 }
 
 /** The body of the description section whose heading matches `heading`, or `undefined`. */
@@ -353,7 +358,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     '',
     ...(issueVerification === undefined
       ? verificationCommands(options.verify).map((command) => `- \`${command}\``)
-      : issueVerification.includes(rootLint)
+      : runsRootLint(issueVerification)
         ? [issueVerification]
         : [issueVerification, `- \`${rootLint}\``]),
     '',

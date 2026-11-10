@@ -1,7 +1,11 @@
 import { describe, expect, it } from 'bun:test';
 
 import { HookRegistry } from '../../src/hooks/hook-registry';
-import { mergeHookRegistries } from '../../src/hooks/merge-hook-registries';
+import {
+  HOOK_TIER_PRIORITY_BANDS,
+  HOOK_TIERS,
+  mergeHookRegistries,
+} from '../../src/hooks/merge-hook-registries';
 
 type TestHooks = {
   transform: (value: string) => string;
@@ -9,8 +13,8 @@ type TestHooks = {
 };
 
 describe('mergeHookRegistries', () => {
-  it('returns an empty registry when merging zero registries', async () => {
-    const merged = mergeHookRegistries<TestHooks>();
+  it('returns an empty registry when no tier is given', async () => {
+    const merged = mergeHookRegistries<TestHooks>({});
 
     expect(merged.has('transform')).toBe(false);
 
@@ -18,102 +22,128 @@ describe('mergeHookRegistries', () => {
     expect(result).toBeUndefined();
   });
 
-  it('returns an equivalent registry when merging one registry', async () => {
+  it('returns an equivalent registry when merging one tier', async () => {
     const original = new HookRegistry<TestHooks>();
     original.on('transform', (value) => value + '-only');
 
-    const merged = mergeHookRegistries(original);
+    const merged = mergeHookRegistries({ agent: original });
 
     const result = await merged.run('transform', 'input');
     expect(result).toBe('input-only');
   });
 
-  it('gives handlers from earlier registries a +1000 priority offset', async () => {
-    const first = new HookRegistry<TestHooks>();
-    const second = new HookRegistry<TestHooks>();
+  it('runs a higher tier first at an equal declared priority', async () => {
+    const bureau = new HookRegistry<TestHooks>();
+    const agent = new HookRegistry<TestHooks>();
+    bureau.on('transform', (value) => value + '-bureau', { priority: 0 });
+    agent.on('transform', (value) => value + '-agent', { priority: 0 });
 
-    first.on(
-      'transform',
-      (value) => {
-        return value + '-first';
-      },
-      { priority: 0 },
-    );
+    const merged = mergeHookRegistries({ agent, bureau });
 
-    second.on(
-      'transform',
-      (value) => {
-        return value + '-second';
-      },
-      { priority: 0 },
-    );
-
-    const merged = mergeHookRegistries(first, second);
-
-    // first registry gets +1000 offset, so its handler (effective priority 1000)
-    // runs before second registry's handler (effective priority 0)
-    const result = await merged.run('transform', 'start');
-    expect(result).toBe('start-first-second');
+    expect(await merged.run('transform', 'start')).toBe('start-bureau-agent');
   });
 
-  it('interleaves handlers from both registries correctly by final priority', async () => {
-    const first = new HookRegistry<TestHooks>();
-    const second = new HookRegistry<TestHooks>();
+  it('interleaves handlers from two tiers by their banded priority', async () => {
+    const plugin = new HookRegistry<TestHooks>();
+    const agent = new HookRegistry<TestHooks>();
     const order: string[] = [];
+    plugin.on('notify', () => void order.push('plugin-low'), { priority: 0 });
+    agent.on('notify', () => void order.push('agent-high'), { priority: 1500 });
+    plugin.on('notify', () => void order.push('plugin-high'), { priority: 500 });
+    agent.on('notify', () => void order.push('agent-low'), { priority: 0 });
 
-    first.on(
-      'notify',
-      () => {
-        order.push('first-low');
-      },
-      { priority: 0 },
-    );
+    const merged = mergeHookRegistries({ plugin, agent });
 
-    second.on(
-      'notify',
-      () => {
-        order.push('second-high');
-      },
-      { priority: 1500 },
-    );
-
-    first.on(
-      'notify',
-      () => {
-        order.push('first-high');
-      },
-      { priority: 500 },
-    );
-
-    second.on(
-      'notify',
-      () => {
-        order.push('second-low');
-      },
-      { priority: 0 },
-    );
-
-    const merged = mergeHookRegistries(first, second);
-
-    // first-high: 500 + 1000 = 1500
-    // second-high: 1500 + 0 = 1500 (same priority, but first-high from earlier registry)
-    // first-low: 0 + 1000 = 1000
-    // second-low: 0 + 0 = 0
-    // Execution order by descending priority: first-high(1500), second-high(1500), first-low(1000), second-low(0)
+    // plugin-high: 500 + 2000 = 2500; agent-high: 1500 + 1000 = 2500 (a tie, and the plugin tier
+    // was copied first); plugin-low: 0 + 2000; agent-low: 0 + 1000.
     await merged.run('notify', 'test');
+    expect(order).toEqual(['plugin-high', 'agent-high', 'plugin-low', 'agent-low']);
+  });
+});
 
-    expect(order).toEqual(['first-high', 'second-high', 'first-low', 'second-low']);
+/**
+ * COR-2127 — each tier's band is fixed, so a plan's priorities do not depend on which other tiers
+ * a run happens to have.
+ */
+describe('fixed tier bands (COR-2127)', () => {
+  it('orders the four tiers bureau, plugin, agent, direct, a band apart', () => {
+    expect([...HOOK_TIERS]).toEqual(['bureau', 'plugin', 'agent', 'direct']);
+    expect(HOOK_TIERS.map((tier) => HOOK_TIER_PRIORITY_BANDS[tier])).toEqual([3000, 2000, 1000, 0]);
   });
 
-  it('skips undefined registries in the input', async () => {
-    const registry = new HookRegistry<TestHooks>();
-    registry.on('transform', (value) => value + '-present');
+  it('gives a tier the same band whichever other tiers are present', () => {
+    const tiers = () => {
+      const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+      bureau.on('notify', () => {}, { id: 'bureau:one', priority: 5 });
+      const plugin = new HookRegistry<TestHooks>();
+      plugin.on('notify', () => {}, { id: 'plugin:one', priority: 5 });
+      const agent = new HookRegistry<TestHooks>({ source: 'agent' });
+      agent.on('notify', () => {}, { id: 'agent:one', priority: 5 });
+      return { bureau, plugin, agent };
+    };
+    const priorities = (registry: HookRegistry<TestHooks>) =>
+      Object.fromEntries(
+        registry.describePlan().entries.map((entry) => [entry.id, entry.priority] as const),
+      );
 
-    const merged = mergeHookRegistries(undefined, registry, undefined);
+    const { bureau, plugin, agent } = tiers();
+    const withPlugin = priorities(mergeHookRegistries({ bureau, plugin, agent }));
+    const withoutPlugin = priorities(mergeHookRegistries({ bureau, agent }));
+    const agentAlone = priorities(mergeHookRegistries({ agent }));
 
-    // The non-undefined registry is at index 1, which gets +1000 * (count - 1 - index) offset
-    // But actually, undefined registries should be filtered out first
-    const result = await merged.run('transform', 'input');
-    expect(result).toBe('input-present');
+    expect(withPlugin).toEqual({ 'bureau:one': 3005, 'plugin:one': 2005, 'agent:one': 1005 });
+    expect(withoutPlugin).toEqual({ 'bureau:one': 3005, 'agent:one': 1005 });
+    expect(agentAlone).toEqual({ 'agent:one': 1005 });
+  });
+
+  it('stamps each entry with the tier it was merged under, beside its source', () => {
+    const bureau = new HookRegistry<TestHooks>({ source: 'bureau' });
+    bureau.on('notify', () => {}, { id: 'bureau:one' });
+    const plugin = new HookRegistry<TestHooks>();
+    plugin.on('notify', () => {}, { id: 'audit:one', source: 'audit' });
+
+    const entries = mergeHookRegistries({ bureau, plugin }).describePlan().entries;
+
+    expect(entries.map(({ id, tier, source }) => ({ id, tier, source }))).toEqual([
+      { id: 'bureau:one', tier: 'bureau', source: 'bureau' },
+      { id: 'audit:one', tier: 'plugin', source: 'audit' },
+    ]);
+  });
+
+  it('never moves an entry that already has a tier, so merging a plan again is a copy', () => {
+    const agent = new HookRegistry<TestHooks>();
+    agent.on('notify', () => {}, { id: 'agent:one', priority: 7 });
+    const once = mergeHookRegistries({ agent });
+    // A registration made on the merged plan, as Operative's agent policy does, has no tier yet.
+    once.on('notify', () => {}, { id: 'agent:late', priority: 3 });
+
+    const bureau = new HookRegistry<TestHooks>();
+    bureau.on('notify', () => {}, { id: 'bureau:one' });
+    const twice = mergeHookRegistries({ bureau, agent: once });
+
+    expect(
+      twice.describePlan().entries.map(({ id, tier, priority }) => ({ id, tier, priority })),
+    ).toEqual([
+      { id: 'bureau:one', tier: 'bureau', priority: 3000 },
+      { id: 'agent:one', tier: 'agent', priority: 1007 },
+      { id: 'agent:late', tier: 'agent', priority: 1003 },
+    ]);
+  });
+
+  it('keeps a tier a registration names for itself, even under another tier’s key', () => {
+    const agent = new HookRegistry<TestHooks>();
+    agent.on('notify', () => {}, { id: 'claimed', tier: 'plugin', priority: 2001 });
+
+    const [entry] = mergeHookRegistries({ agent }).describePlan().entries;
+
+    expect(entry).toMatchObject({ id: 'claimed', tier: 'plugin', priority: 2001 });
+  });
+
+  it.each([
+    ['a registry passed in the positional form', () => new HookRegistry<TestHooks>()],
+    ['a tier name it does not know', () => ({ agents: new HookRegistry<TestHooks>() })],
+    ['nothing at all', () => undefined],
+  ])('refuses %s, rather than compose a plan without that tier', (_label, tiers) => {
+    expect(() => mergeHookRegistries(tiers() as never)).toThrow(TypeError);
   });
 });

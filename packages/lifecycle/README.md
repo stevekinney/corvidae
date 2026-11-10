@@ -442,13 +442,15 @@ console.log(hooks.has('before-compile')); // false
 
 ### Hierarchical hook priority bands (COR-567)
 
-`@lostgradient/operative` and `@lostgradient/bureau` compose a Bureau/Agent/direct-run hook hierarchy on top of this registry. `mergeHookRegistries` (below) offsets each tier by `(tierCount - 1 - tierIndex) * 1000`, over the fixed tier order `[bureau, agent, direct]`—the earliest-listed tier (Bureau) receives the highest offset.
+`@lostgradient/operative` and `@lostgradient/bureau` compose a Bureau/plugin/agent/direct-run hook hierarchy on top of this registry. `mergeHookRegistries` (below) takes each tier's registry under its name and adds that tier's fixed band from `HOOK_TIER_PRIORITY_BANDS` to every entry it stamps: `bureau` +3000, `plugin` +2000, `agent` +1000, `direct` +0, a `HOOK_TIER_BAND_WIDTH` apart in the order of `HOOK_TIERS` (COR-2127). The band belongs to the tier, not to its position among the tiers a run happens to have, so an entry's priority is the same whether or not another tier is present.
 
 `HookRegistry` dispatches through three shapes, and which one a hook point uses decides who that offset actually protects. `runFirst` runs handlers in priority order against the same arguments and returns the first defined result, leaving the rest uninvoked—the highest band wins outright, so the default Bureau-highest offset is already enough. `runLast` and the plain `run` waterfall both run every handler; `runLast` hands every handler the same unmodified arguments and keeps the last defined result, while `run` additionally feeds each handler's defined return to the next as its first argument. Either way the lowest-priority handler runs last and answers last, so on these two shapes the lowest band—typically direct-run—has the final say by default, the opposite of `runFirst`. A Bureau invariant registered on a `runLast` or plain `run` hook point must therefore use an explicit low `priority` to remain the final word; on a `runFirst` point, the bureau band already wins without one.
 
-That explicit value is `BUREAU_PINNED_LAST_PRIORITY` in `@lostgradient/bureau`, and it is `Number.MIN_SAFE_INTEGER + 2000` rather than a small negative number. The offset is what forces the size: Bureau is always the first participant, so it receives the largest one, and a pinned entry has to sit far enough below `MIN_SAFE_INTEGER` plus that offset to stay under anything another tier declared. `+2000` is the largest offset three tiers can produce, so adding it back cannot leave the safe-integer range. The limit is worth knowing: a tier that deliberately registers at or below `MIN_SAFE_INTEGER + 2000` sorts after Bureau anyway. No finite constant closes that, and `-Infinity` closes it only until a second entry carries it, at which point `b.priority - a.priority` returns `NaN` and the sort is no longer defined.
+That explicit value is `BUREAU_PINNED_LAST_PRIORITY` in `@lostgradient/bureau`, and it is `Number.MIN_SAFE_INTEGER + HOOK_TIER_PRIORITY_BANDS.bureau` rather than a small negative number. The band is what forces the size: Bureau's is the largest, and a pinned entry has to sit far enough below `MIN_SAFE_INTEGER` plus that band to stay under anything another tier declared, while the band added to it cannot leave the safe-integer range. The limit is worth knowing: a tier whose entry, band included, sits at or below the pinned entry's merged priority sorts after Bureau anyway. No finite constant closes that, and `-Infinity` closes it only until a second entry carries it, at which point `b.priority - a.priority` returns `NaN` and the sort is no longer defined.
 
-Tiers are named, not inferred. A tier builds its registry with `new HookRegistry({ source: 'bureau' })`, `on()` stamps that name onto each entry, and the stamp rides in `options` through any number of merges. It lives on the entry rather than only on the registry because a merged plan is one registry holding many tiers: afterwards the registry can no longer say where an entry came from, but the entry still can. `describePlan()` reports it, which is what lets an inspector answer which hook sources applied to a run.
+Sources are named, not inferred. A tier builds its registry with `new HookRegistry({ source: 'bureau' })`, `on()` stamps that name onto each entry, and the stamp rides in `options` through any number of merges. It lives on the entry rather than only on the registry because a merged plan is one registry holding many tiers: afterwards the registry can no longer say where an entry came from, but the entry still can. `describePlan()` reports it, which is what lets an inspector answer which hook sources applied to a run.
+
+The tier is stamped beside the source, as `tier`, by the merge, and the two can differ: an interceptor a plugin applies to every agent has the plugin's name as its `source` and `plugin` as its `tier`. An entry that already has a tier keeps it and its priority through every later merge, so a band is added once, by whichever merge stamps the entry first, and merging a plan again moves nothing.
 
 ### Observing a hook plan
 
@@ -490,14 +492,18 @@ stop();
 **Signature:**
 
 ```typescript
-import { mergeHookRegistries, type HookMap, type HookRegistry } from '@lostgradient/lifecycle';
+import {
+  mergeHookRegistries,
+  type HookMap,
+  type HookRegistry,
+  type HookTierRegistries,
+} from '@lostgradient/lifecycle';
 
-const merge: <M extends HookMap>(
-  ...registries: (HookRegistry<M> | undefined)[]
-) => HookRegistry<M> = mergeHookRegistries;
+const merge: <M extends HookMap>(tiers: HookTierRegistries<M>) => HookRegistry<M> =
+  mergeHookRegistries;
 ```
 
-Combines multiple `HookRegistry` instances into a new registry. Registries listed earlier receive a higher priority offset (increments of 1000 per position), so handlers from the first registry run before those from later ones at equal declared priority. `undefined` entries are silently skipped, making it safe to spread optional hook sources.
+Composes one plan from each tier's registry, given under the tier's name (`bureau`, `plugin`, `agent`, `direct`). Every entry is copied into a new registry, so the plan is a snapshot of its tiers. An entry with no tier yet is stamped with the one it was given under and that tier's band is added to its priority, so a higher tier's handlers run before a lower one's at an equal declared priority. An absent or `undefined` tier contributes nothing.
 
 ```typescript
 import { HookRegistry, mergeHookRegistries } from '@lostgradient/lifecycle';
@@ -514,10 +520,14 @@ pluginHooks.on('on-request', (url) => `${url}?plugin=true`);
 
 const optionalHooks: HookRegistry<AppHooks> | undefined = undefined;
 
-const merged = mergeHookRegistries(coreHooks, pluginHooks, optionalHooks);
+const merged = mergeHookRegistries({
+  bureau: coreHooks,
+  plugin: pluginHooks,
+  agent: optionalHooks,
+});
 
 const result = await merged.run('on-request', 'https://Example.com/API');
-// coreHooks handler runs first (higher offset): 'https://example.com/api'
+// coreHooks handler runs first (the higher band): 'https://example.com/api'
 // pluginHooks handler runs second: 'https://example.com/api?plugin=true'
 console.log(result); // 'https://example.com/api?plugin=true'
 ```

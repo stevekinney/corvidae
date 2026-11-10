@@ -1,6 +1,6 @@
 # Review and deliver
 
-Read this when reviewing a submission, choosing or reading a gate, triaging a failed batch gate, or closing out delivery. `SKILL.md` "Gate, merge, and record" keeps the sequence; this file holds the detail behind each step.
+Read this when reviewing a submission, choosing or reading a gate, triaging a failed batch gate, or closing out delivery. [Coordination](coordination.md#gate-merge-and-record) keeps the sequence; this holds the detail behind each step.
 
 ## Review
 

@@ -9,7 +9,12 @@
  * answers for the same configuration.
  */
 
-import type { HookRegistry, RuntimeServices } from '@lostgradient/lifecycle';
+import {
+  HOOK_TIER_PRIORITY_BANDS,
+  type HookRegistrationOptions,
+  type HookRegistry,
+  type RuntimeServices,
+} from '@lostgradient/lifecycle';
 import { toolListEntryMatches, type AnyToolbox } from 'armorer';
 
 import { createGatedExecute } from './active-skill-tool-gate';
@@ -239,20 +244,33 @@ export function withDelegatedToolCapabilities(
 
 /**
  * Priority placing an agent policy registration behind the agent's own hooks
- * on the same hook point.
+ * on the same hook point, before the agent tier's band is added.
  *
  * The input guardrail has to scan a step every other agent `prepareStep` hook
  * has already contributed to, and on the `validateResponse` waterfall the last
  * handler decides the response, so the output guardrail must not be overruled
  * by an ordinary agent hook. Far enough above `Number.MIN_SAFE_INTEGER` that
  * Bureau's own pinned-last registrations (`BUREAU_PINNED_LAST_PRIORITY` plus
- * its tier offset) still sort after these: under Bureau, Bureau's narrowing
- * keeps the final word.
+ * the `bureau` band, `Number.MIN_SAFE_INTEGER + 2 * HOOK_TIER_PRIORITY_BANDS.bureau`)
+ * still sort after these, with the `agent` band added: under Bureau, Bureau's
+ * narrowing keeps the final word. A plugin's interceptor sorts no lower than
+ * one above it, in either the `agent` or the `plugin` band (COR-2128, COR-2127).
  */
 export const AGENT_POLICY_PINNED_LAST_PRIORITY = Number.MIN_SAFE_INTEGER + 100_000;
 
 /** The ownership tier stamped on every registration this module makes. */
 export const AGENT_POLICY_HOOK_SOURCE = 'agent';
+
+/**
+ * Where each policy registration sits: the `agent` tier, already in that tier's band, so the run's
+ * plan shows its tier on a plain `agent.run()` too, and a later merge under Bureau keeps the entry
+ * where it is (COR-2127).
+ */
+const AGENT_POLICY_REGISTRATION = {
+  source: AGENT_POLICY_HOOK_SOURCE,
+  tier: 'agent',
+  priority: AGENT_POLICY_PINNED_LAST_PRIORITY + HOOK_TIER_PRIORITY_BANDS.agent,
+} as const satisfies HookRegistrationOptions;
 
 /** Inputs for one run's policy composition. */
 export interface ComposeAgentRunPolicyOptions {
@@ -271,8 +289,7 @@ function registerGuardrails(
 ): void {
   hooks.on('prepareStep', guardrails.prepareStep, {
     id: 'agent:guardrails-prepare-step',
-    source: AGENT_POLICY_HOOK_SOURCE,
-    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    ...AGENT_POLICY_REGISTRATION,
     // Scans and may taint in-process session state; no external write.
     replay: 'safe',
   });
@@ -280,22 +297,19 @@ function registerGuardrails(
   // pinned last: an agent hook running after it would decide what the guardrail's refusal was worth.
   hooks.on('validateToolResult', guardrails.validateToolResult, {
     id: 'agent:guardrails-validate-tool-result',
-    source: AGENT_POLICY_HOOK_SOURCE,
-    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    ...AGENT_POLICY_REGISTRATION,
     replay: 'safe',
   });
   hooks.on('validateResponse', guardrails.validateResponse, {
     id: 'agent:guardrails-validate-response',
-    source: AGENT_POLICY_HOOK_SOURCE,
-    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    ...AGENT_POLICY_REGISTRATION,
     replay: 'safe',
   });
   // COR-2104 — the tool-call validators. Pinned last, so they judge the calls every other agent
   // hook settled on, and no later agent hook can put back a call they refused.
   hooks.on('beforeToolExecution', guardrails.beforeToolExecution, {
     id: 'agent:guardrails-before-tool-execution',
-    source: AGENT_POLICY_HOOK_SOURCE,
-    priority: AGENT_POLICY_PINNED_LAST_PRIORITY,
+    ...AGENT_POLICY_REGISTRATION,
     // Reads the calls and the session's taint state; no external write.
     replay: 'safe',
   });

@@ -12,7 +12,12 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { type AgentOverrides, agentOverrideVersionKey } from './agent-override-store';
+import {
+  type AgentOverrides,
+  agentOverrideVersionKey,
+  hashAgentOverrides,
+  legacyAgentOverrideVersionKey,
+} from './agent-override-store';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { runTask } from './test';
@@ -172,7 +177,7 @@ describe('a built-in agent with saved overrides', () => {
   it('applies a record saved under the old limit keys', async () => {
     const storage = new MemoryStorage();
     await textValueStore(storage).set(
-      agentOverrideVersionKey('refunder', 1),
+      legacyAgentOverrideVersionKey('refunder', 1),
       JSON.stringify({
         version: 1,
         hash: 'd'.repeat(64),
@@ -194,6 +199,35 @@ describe('a built-in agent with saved overrides', () => {
       instructions: 'You only look orders up.',
       limits: { steps: 1 },
     });
+  });
+
+  it('applies a version 1 record of a built-in agent, and continues its numbering as version 2', async () => {
+    const storage = new MemoryStorage();
+    const kv = textValueStore(storage);
+    const overrides = { instructions: 'You only look orders up.' };
+    await kv.set(
+      legacyAgentOverrideVersionKey('refunder', 1),
+      JSON.stringify({
+        version: 1,
+        hash: hashAgentOverrides(overrides),
+        savedAt: '2026-10-01T00:00:00.000Z',
+        savedBy: 'anonymous:local',
+        owner: 'anonymous:local',
+        overrides,
+        changedKeys: ['instructions'],
+      }),
+    );
+    const harness = await start({ refunder: refunder() }, storage);
+
+    await runTask(harness.bureau, 'refunder', 'Refund order 4471.');
+    expect(seen[0]?.system).toBe('You only look orders up.');
+    const saved = await save(harness, { instructions: 'You refund nothing.' });
+
+    expect(saved.version).toBe(2);
+    expect(await kv.get(agentOverrideVersionKey('refunder', 2))).not.toBeNull();
+    expect(await kv.get(legacyAgentOverrideVersionKey('refunder', 2))).toBeNull();
+    const versions = await harness.bureau.agents.overrides.versions('refunder');
+    expect(versions.map((entry) => entry.version)).toEqual([2, 1]);
   });
 
   it('answers from the overridden model, and shows it as the agent’s model', async () => {

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { createBureau, type AgentDefinitions, type Bureau } from '@lostgradient/bureau';
 import { agentFileDirectory } from '@lostgradient/bureau/sources';
 import { createPluginTestHost } from '@lostgradient/bureau/testing';
+import { isGuardrailFactory, type PluginGuardrailFactory } from '@lostgradient/interborough-plugin';
 import { pluginContract } from '@lostgradient/interborough-plugin/testing';
 import { guardrailOf } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -74,6 +75,56 @@ async function run(
   return { finishReason: result.finishReason, content: result.content, tripwires };
 }
 
+/**
+ * A Bureau over agent files named by `agents`' keys, each listing the `guardrails` its value
+ * writes, with a model that always replies `reply` and only the guardrails plugin loaded.
+ */
+async function bureauOf(
+  agents: Readonly<Record<string, string>>,
+  reply: string,
+  configuration: unknown = {},
+): Promise<Bureau<AgentDefinitions>> {
+  const directory = await mkdtemp(join(tmpdir(), 'plugin-guardrails-'));
+  directories.push(directory);
+  for (const [name, list] of Object.entries(agents)) {
+    await writeFile(
+      join(directory, `${name}.md`),
+      `---\nmodel: ${MODEL}\nguardrails: ${list}\n---\nHelp.\n`,
+    );
+  }
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {},
+    agentSource: agentFileDirectory(directory),
+    storage: new MemoryStorage(),
+    durable: true,
+    models: { generate: () => async () => ({ content: reply, toolCalls: [] }) },
+    plugins: [{ descriptor: guardrails, source: 'folder', location: guardrails.name }],
+    pluginSecrets: { get: async () => undefined, watch: () => () => {} },
+    pluginConfiguration: { guardrails: { enabled: true, configuration } },
+  });
+  bureaus.push(bureau);
+  await bureau.agents.refresh();
+  return bureau;
+}
+
+/** Runs agent `name` of `bureau` over `input`. */
+async function runIn(
+  bureau: Bureau<AgentDefinitions>,
+  name: string,
+  input: string,
+): Promise<Activity> {
+  const task = await bureau.tasks.start(name, input);
+  const result = await task.result();
+  const feed = bureau.internals.runEventFeeds.get(task.id);
+  const tripwires: unknown[] = [];
+  if (feed !== undefined) {
+    for await (const envelope of feed.feed.replay()) {
+      if (envelope.kind === 'run.tripwire') tripwires.push(envelope.payload['guardrailName']);
+    }
+  }
+  return { finishReason: result.finishReason, content: result.content, tripwires };
+}
+
 describe('guardrails plugin', () => {
   it('contributes the code-safety and grounding validators and declares no secret', async () => {
     const result = await guardrails.setup!({
@@ -85,6 +136,27 @@ describe('guardrails plugin', () => {
       'grounding',
     ]);
     expect(guardrails.secrets ?? []).toEqual([]);
+  });
+
+  it('describes each guardrail and makes each one an agent configures (COR-2118)', async () => {
+    const result = await guardrails.setup!({
+      configuration: guardrails.configuration!.parse({ groundingThreshold: 0.6 }),
+      secrets: { get: async () => undefined },
+    } as never);
+    const [codeSafety, grounding] = (result.guardrails?.output ?? []).map((entry) =>
+      guardrailOf(entry),
+    ) as unknown as PluginGuardrailFactory<unknown>[];
+    for (const factory of [codeSafety!, grounding!]) {
+      expect(isGuardrailFactory(factory)).toBe(true);
+      expect(factory.description.length).toBeGreaterThan(0);
+    }
+    // The plugin's own setting is the default an agent's configuration replaces, field by field.
+    expect(grounding!.configuration.parse({})).toEqual({ threshold: 0.6 });
+    expect(grounding!.configuration.parse({ threshold: 0.95 })).toEqual({ threshold: 0.95 });
+    expect(grounding!.configuration.safeParse({ threshold: 2 }).success).toBe(false);
+    expect(grounding!.configuration.safeParse({ treshold: 0.5 }).success).toBe(false);
+    expect(codeSafety!.configuration.parse({})).toEqual({ blockedPatterns: [] });
+    expect(codeSafety!.configuration.safeParse({ blockedPatterns: ['('] }).success).toBe(false);
   });
 
   describe('an agent that lists guardrails:grounding', () => {
@@ -129,6 +201,60 @@ describe('guardrails plugin', () => {
     });
   });
 
+  describe('two agents that configure guardrails:grounding differently (COR-2118)', () => {
+    it('judge the same reply differently', async () => {
+      const reply = 'The total is 72 dollars and the fee is 5 dollars.';
+      const input = 'The invoice total is 72 dollars. What does the invoice say?';
+      const bureau = await bureauOf(
+        {
+          lenient: '[{id: guardrails:grounding, configuration: {threshold: 0.5}}]',
+          strict: '[{id: guardrails:grounding, configuration: {threshold: 0.95}}]',
+        },
+        reply,
+      );
+
+      const lenient = await runIn(bureau, 'lenient', input);
+      const strict = await runIn(bureau, 'strict', input);
+
+      expect(lenient.finishReason).not.toBe('tripwire');
+      expect(lenient.content).toBe(reply);
+      expect(strict.finishReason).toBe('tripwire');
+      expect(strict.tripwires).toEqual(['grounding']);
+    });
+
+    it('takes the plugin-wide threshold for an agent that sets none, and its own over it', async () => {
+      const reply = 'The total is 72 dollars and the fee is 5 dollars.';
+      const input = 'The invoice total is 72 dollars. What does the invoice say?';
+      const bureau = await bureauOf(
+        {
+          plain: '[guardrails:grounding]',
+          own: '[{id: guardrails:grounding, configuration: {threshold: 0.9}}]',
+        },
+        reply,
+        { groundingThreshold: 0.5 },
+      );
+
+      const plainRun = await runIn(bureau, 'plain', input);
+      expect(plainRun.finishReason).not.toBe('tripwire');
+      const ownRun = await runIn(bureau, 'own', input);
+      expect(ownRun.finishReason).toBe('tripwire');
+    });
+
+    it('makes an agent whose threshold is out of range invalid, naming the field', async () => {
+      const bureau = await bureauOf(
+        { wrong: '[{id: guardrails:grounding, configuration: {threshold: 2}}]' },
+        'unused',
+      );
+      const listing = bureau.agents.list().find(({ id }) => id === 'wrong');
+
+      expect(listing?.state).toBe('invalid');
+      expect(listing?.problem?.code).toBe('invalid-guardrail-configuration');
+      expect(listing?.problem?.issues?.map(({ path }) => path)).toEqual([
+        'guardrails.0.configuration.threshold',
+      ]);
+    });
+  });
+
   describe('an agent that lists guardrails:code-safety', () => {
     const listed = ['guardrails:code-safety'];
 
@@ -137,6 +263,27 @@ describe('guardrails plugin', () => {
 
       expect(activity.finishReason).toBe('tripwire');
       expect(activity.tripwires).toEqual(['code-safety']);
+    });
+
+    it('flags a pattern the agent’s own configuration adds, in place of the plugin’s', async () => {
+      const reply = 'Use shutdown -h now.';
+      const bureau = await bureauOf(
+        {
+          plain: '[guardrails:code-safety]',
+          own: "[{id: guardrails:code-safety, configuration: {blockedPatterns: ['shutdown\\s+-h']}}]",
+          other: "[{id: guardrails:code-safety, configuration: {blockedPatterns: ['reboot']}}]",
+        },
+        reply,
+        { blockedPatterns: ['shutdown'] },
+      );
+
+      const plainRun = await runIn(bureau, 'plain', 'Stop.');
+      expect(plainRun.finishReason).toBe('tripwire');
+      const ownRun = await runIn(bureau, 'own', 'Stop.');
+      expect(ownRun.finishReason).toBe('tripwire');
+      // The agent's list replaces the plugin's, so `shutdown` alone is no longer flagged.
+      const otherRun = await runIn(bureau, 'other', 'Stop.');
+      expect(otherRun.finishReason).not.toBe('tripwire');
     });
 
     it('flags a pattern the plugin configuration adds', async () => {

@@ -340,7 +340,7 @@ async function fencedRun(
   registerGoalAttemptFence(bureauTier, fence, target, extras.registration);
   const agentTier = new HookRegistry<OperativeHookMap>({ source: 'agent' });
   extras.agentTier?.(agentTier);
-  const hooks = mergeHookRegistries(bureauTier, agentTier);
+  const hooks = mergeHookRegistries({ bureau: bureauTier, agent: agentTier });
   let generates = 0;
   const result = await startDurableRunResult(context, {
     runId: target.runId,

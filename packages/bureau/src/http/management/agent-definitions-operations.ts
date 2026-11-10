@@ -58,6 +58,8 @@ import {
   agentCostLimitSchema,
   agentReferencesSchema,
   agentContributionIdsSchema,
+  agentGuardrailSelectionsSchema,
+  storedAgentGuardrailSelectionsSchema,
   agentRetrySchema,
   agentToolApprovalSchema,
   agentToolLimitSchema,
@@ -225,8 +227,11 @@ const definitionOutputSchema = z.object({
   compaction: agentCompactionSchema.nullable(),
   /** The reference documents, as paths beside the file; `null` when the file lists none. */
   references: agentReferencesSchema.nullable(),
-  /** The plugin guardrails (`plugin:name`) the file lists; `null` when it lists none, and only Operative's default applies. */
-  guardrails: agentContributionIdsSchema.nullable(),
+  /**
+   * The plugin guardrails the file lists, each `plugin:name` or `{ id, configuration }` (COR-2118);
+   * `null` when it lists none, and only Operative's default applies.
+   */
+  guardrails: storedAgentGuardrailSelectionsSchema.nullable(),
   /** The plugin interceptors (`plugin:name`) the file lists; `null` when it lists none. */
   interceptors: agentContributionIdsSchema.nullable(),
   /** When each tool asks a person first; `null` when the file sets none and every tool asks on changes. */
@@ -334,12 +339,13 @@ const definitionInputSchema = z
      */
     references: agentReferencesSchema.nullable().optional(),
     /**
-     * The plugin guardrails (`plugin:name`, no version) the agent runs besides Operative's default
-     * preset, which every agent runs. Omitted, a create lists none and an update keeps the file's
-     * list; `null`, or an empty list, removes it. An id no plugin contributes is refused as
-     * `reference-unresolved`.
+     * The plugin guardrails the agent runs besides Operative's default preset, which every agent
+     * runs: each `plugin:name` (no version) or `{ id, configuration }` (COR-2118), and each id once.
+     * Omitted, a create lists none and an update keeps the file's list; `null`, or an empty list,
+     * removes it. An id no plugin contributes is refused as `reference-unresolved`, and a
+     * configuration the guardrail's schema refuses as `invalid-guardrail-configuration`.
      */
-    guardrails: agentContributionIdsSchema.nullable().optional(),
+    guardrails: agentGuardrailSelectionsSchema.nullable().optional(),
     /**
      * The plugin interceptors (`plugin:name`, no version) the agent runs. Omitted, a create lists none
      * and an update keeps the file's list; `null`, or an empty list, removes it. An id no plugin
@@ -454,7 +460,8 @@ function definitionView(definition: AgentFileDefinition) {
     retry: definition.retry === undefined ? null : { ...definition.retry },
     compaction: definition.compaction === undefined ? null : { ...definition.compaction },
     references: definition.references === undefined ? null : [...definition.references],
-    guardrails: definition.guardrails === undefined ? null : [...definition.guardrails],
+    guardrails:
+      definition.guardrails === undefined ? null : structuredClone([...definition.guardrails]),
     interceptors: definition.interceptors === undefined ? null : [...definition.interceptors],
     approvals: definition.approvals === undefined ? null : { ...definition.approvals },
     instructions: definition.instructions,
@@ -878,7 +885,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only, with a built-in agent’s saved overrides in force applied (`bureau.agents.overrides.get` reads them apart): its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `card`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only, with a code agent’s saved overrides in force applied (`bureau.agents.overrides.get` reads them apart): its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `card`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -1025,7 +1032,7 @@ export const agentVersionsListOperation = defineOperation<
   mcpExposable: false,
   summary: 'List the saved versions of an agent',
   description:
-    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `["references"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A built-in agent (a code agent the host defines) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. A plugin’s code agent has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.',
+    'Lists the versions of the agent’s definition, newest first, each with its `revision`, the `hash` it was saved at (the file’s hash, or for an agent with references the identity hash described below, which is not the `expectedHash` a write takes), when it was saved (`savedAt`), who saved it (`savedBy`, or `null` for an edit made to the file directly), the whole `definition`, the `referenceDigests` of the reference documents it read (`null` without references; for an agent that has them `hash` is the identity hash that folds the digests in, and an edit to a document alone gives `changedKeys` `["references"]`), and the `changedKeys` that differ from the version before it (a change to the instructions alone gives `["instructions"]`). Every save and every direct edit is one version, whether or not the agent ran, and a version outlives the runs that used it. Bureau keeps the newest 50 and any older version a retained run still references. A file agent’s version has its `definition` and `overrides: null`. A code agent the catalog runs (a built-in agent the host defines, or the agent of a running plugin) has a version for each save of its overrides (`bureau.agents.overrides.update`, COR-2009, COR-2228), numbered from 1, with `definition: null`, its `overrides` (each key `null` when not overridden), `hash` the hash of those overrides, `referenceDigests: null`, and the override keys that changed in `changedKeys`; one nobody changed has none, and the newest 50 are kept. The agent of a plugin that is not running has none. `bureau.agents.definitions.revisions` is the history of the runs, not of the saves. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else, and an identifier with neither an agent nor a stored version, is answered `NotFound`; a deleted agent still lists the versions it kept.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,
@@ -1037,7 +1044,7 @@ export const agentVersionsListOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const definitions = requireAccess(host, principal, 'bureau.agents:read', input.id);
-    if (definitions.agents.overrides.isBuiltIn(input.id)) {
+    if (definitions.agents.overrides.isCodeAgent(input.id)) {
       const saved = await definitions.agents.overrides.versions(input.id);
       return { versions: saved.map(overrideVersionView) };
     }
@@ -1080,7 +1087,7 @@ export const agentVersionsRestoreOperation = defineOperation<
   mcpExposable: false,
   summary: 'Restore a saved version of an agent',
   description:
-    'Writes the definition of version `revision` back to the agent’s file as a new revision, if the file still hashes to `expectedHash`, and returns the new `hash` and `revision`. The restore is itself a save, so it appends a new version equal in content to the one restored and leaves the older versions as they were. `expectedHash` is the hash of the file’s bytes as `bureau.agents.definitions.get` returns it (`hash`), never the `hash` of a version from `versions.list`, which for an agent with references is an identity hash that also folds in the reference documents; sending it is a `StaleRevision` fault. The definition’s `references` list is restored, but the documents are not: they are whatever those paths name when the file is read again (the version’s `referenceDigests` say what they were), and `examples` are not restored either; the file keeps what it has. A file that moved since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk; a definition that no longer resolves (its model or a tool is gone from the deployment, a reference document is missing or too large (`missing-reference`, `reference-too-large`), a guardrail or interceptor it lists is no longer contributed (`reference-unresolved`), it enables compaction with no summarizer, the `modelPolicy` deployment or Bureau layer now forbids its model (`model-policy-denied`), or its model does not support its `effort` (`effort-not-supported`)) is `Unprocessable`; an unknown version is `NotFound`; each writes nothing. Restoring the definition the file already has writes nothing and returns the same hash. For a built-in agent (a code agent the host defines, COR-2009) the version’s overrides are saved again as a new version under the checks of `bureau.agents.overrides.update`, `expectedHash` is the hash `bureau.agents.overrides.get` returns, and `revision` in the answer is the new version; the restore is audited as `agent.updated`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Writes the definition of version `revision` back to the agent’s file as a new revision, if the file still hashes to `expectedHash`, and returns the new `hash` and `revision`. The restore is itself a save, so it appends a new version equal in content to the one restored and leaves the older versions as they were. `expectedHash` is the hash of the file’s bytes as `bureau.agents.definitions.get` returns it (`hash`), never the `hash` of a version from `versions.list`, which for an agent with references is an identity hash that also folds in the reference documents; sending it is a `StaleRevision` fault. The definition’s `references` list is restored, but the documents are not: they are whatever those paths name when the file is read again (the version’s `referenceDigests` say what they were), and `examples` are not restored either; the file keeps what it has. A file that moved since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk; a definition that no longer resolves (its model or a tool is gone from the deployment, a reference document is missing or too large (`missing-reference`, `reference-too-large`), a guardrail or interceptor it lists is no longer contributed (`reference-unresolved`), a guardrail’s schema no longer accepts the configuration it gives (`invalid-guardrail-configuration`), it enables compaction with no summarizer, the `modelPolicy` deployment or Bureau layer now forbids its model (`model-policy-denied`), or its model does not support its `effort` (`effort-not-supported`)) is `Unprocessable`; an unknown version is `NotFound`; each writes nothing. Restoring the definition the file already has writes nothing and returns the same hash. For a code agent the catalog runs (a built-in agent, or the agent of a running plugin, COR-2009, COR-2228) the version’s overrides are saved again as a new version under the checks of `bureau.agents.overrides.update`, `expectedHash` is the hash `bureau.agents.overrides.get` returns, and `revision` in the answer is the new version; the restore is audited as `agent.updated`. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: restoreInput,
@@ -1098,7 +1105,7 @@ export const agentVersionsRestoreOperation = defineOperation<
   unknownKeyPolicy,
   invoke: async ({ input, host, principal }) => {
     const readable = requireAccess(host, principal, 'bureau.agents:write', input.id);
-    if (readable.agents.overrides.isBuiltIn(input.id)) {
+    if (readable.agents.overrides.isCodeAgent(input.id)) {
       try {
         const result = await readable.agents.overrides.restore(input.id, input.revision, {
           expectedHash: input.expectedHash,

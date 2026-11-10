@@ -26,7 +26,12 @@ import type {
   PluginSetupContext,
   PluginSetupResult,
 } from '@lostgradient/interborough-plugin';
-import { createPluginStorage, guardrailId, isPluginName } from '@lostgradient/interborough-plugin';
+import {
+  createPluginStorage,
+  guardrailId,
+  isGuardrailFactory,
+  isPluginName,
+} from '@lostgradient/interborough-plugin';
 import type { GovernedMemory } from '@lostgradient/memory';
 import {
   createModelCatalog,
@@ -47,8 +52,13 @@ import {
 
 import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
+import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
-import { createAgentContributions } from '../agent-contributions';
+import {
+  assertInterceptorHooks,
+  createAgentContributions,
+  guardrailContractFault,
+} from '../agent-contributions';
 import { createToolApprovalHooks } from '../tool-approval';
 import type { BureauOptions } from '../types';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
@@ -232,20 +242,44 @@ const GUARDRAIL_ACTIONS: Readonly<Record<'input' | 'output' | 'tools', readonly 
 };
 
 /**
+ * Checks what every guardrail says about itself (COR-2118): a non-empty `description`, and for a
+ * factory a Zod schema to parse an agent's configuration with, so a plugin that returns neither is
+ * skipped at setup instead of listing a guardrail nobody can tell apart or failing the agents that
+ * choose it.
+ */
+function checkGuardrailContract(family: GuardrailFamily, guardrail: unknown): void {
+  const { name } = guardrail as { readonly name?: unknown };
+  const fault = guardrailContractFault(guardrail);
+  if (fault === 'description') {
+    throw new TypeError(
+      `setup returned the ${family} guardrail "${String(name)}" without a description: every guardrail says what it guards.`,
+    );
+  }
+  if (fault === 'factory') {
+    throw new TypeError(
+      `setup returned the ${family} guardrail factory "${String(name)}" without a configuration schema and a create function.`,
+    );
+  }
+}
+
+/**
  * The name of a guardrail entry, after checking the action it carries is one its family has, so a
- * plugin that returns another is skipped at setup instead of failing the runs that use it.
+ * plugin that returns another is skipped at setup instead of failing the runs that use it, and the
+ * guardrail's own contract ({@link checkGuardrailContract}).
  */
 function checkedGuardrailName(
   family: 'input' | 'output' | 'tools',
   entry: GuardrailEntry<{ readonly name: string }, string>,
 ): string {
-  const { name } = guardrailOf(entry);
+  const guardrail = guardrailOf(entry);
+  const { name } = guardrail;
   const action = guardrailActionOf(entry, GUARDRAIL_ACTIONS[family][0]!);
   if (!GUARDRAIL_ACTIONS[family].includes(action)) {
     throw new TypeError(
       `setup returned the ${family} guardrail "${name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS[family].join(', ')}.`,
     );
   }
+  checkGuardrailContract(family, guardrail);
   return name;
 }
 
@@ -316,12 +350,14 @@ function planOf(
     guardrail('guardrail', 'output', checkedGuardrailName('output', validator));
   }
   for (const validator of contributions.guardrails?.tools ?? []) {
-    const action = validator.action ?? 'block';
+    // A factory carries no action: the validator it builds carries its own.
+    const action = isGuardrailFactory(validator) ? 'block' : (validator.action ?? 'block');
     if (!GUARDRAIL_ACTIONS.tools.includes(action)) {
       throw new TypeError(
         `setup returned the tools guardrail "${validator.name}" with the action ${JSON.stringify(action)}: it is one of ${GUARDRAIL_ACTIONS.tools.join(', ')}.`,
       );
     }
+    checkGuardrailContract('tools', validator);
     guardrail('guardrail', 'tools', validator.name);
   }
   for (const interceptor of contributions.interceptors ?? []) {
@@ -363,6 +399,7 @@ function planOf(
         `setup returned the memory guardrail "${detector.name}" with gates ${JSON.stringify(gates)}: gates list "admission", "recall" or both, and are left out to run at both.`,
       );
     }
+    checkGuardrailContract('memory', detector);
     guardrail('memory-detector', 'memory', detector.name);
   }
   for (const judge of contributions.scorers ?? []) contribute('scorer', judge.name);
@@ -800,6 +837,15 @@ async function setUp(
       toolApprovalHooks: (tools) => createToolApprovalHooks(undefined, { tools }),
     };
     const returned: PluginSetupResult = (await descriptor.setup?.(context as never)) ?? {};
+    // A malformed hook skips this plugin here, where every other malformed contribution does:
+    // `createAgentContributions` reads them after every plugin's setup, outside this `try`, and
+    // would fail the whole composition. It runs before the gate below wraps each hook.
+    for (const interceptor of returned.interceptors ?? []) {
+      assertInterceptorHooks(
+        formatToolId({ namespace: descriptor.name, name: interceptor.name }),
+        interceptor,
+      );
+    }
     // Registered now and refused while a declared secret is missing: the options that receive
     // contributions are read once, so one added later would never be seen (COR-1874).
     const result =
@@ -864,6 +910,22 @@ async function agentsOfDisabledPlugin(
   } catch {
     return [];
   }
+}
+
+/**
+ * The `formatter-unknown-kind` problems of a plugin whose formatters list an event kind Bureau
+ * never publishes, so a formatter cannot wait on an event that never fires (COR-2101).
+ */
+function formatterUnknownKinds(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const formatter of contributions.formatters ?? []) {
+    for (const kind of formatter.eventKinds) {
+      if (!Object.hasOwn(BUREAU_EVENT_CATALOG, kind)) {
+        problems.push({ code: 'formatter-unknown-kind', formatter: formatter.name, kind });
+      }
+    }
+  }
+  return problems;
 }
 
 /** `given` with every caller-owned collection composition reads after an await copied now. */
@@ -938,6 +1000,11 @@ export async function composePlugins<O extends ComposableOptions>(
     }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);
+      continue;
+    }
+    const unknownKinds = formatterUnknownKinds(outcome.result);
+    if (unknownKinds.length > 0) {
+      record('skipped', unknownKinds);
       continue;
     }
     const { plan } = outcome;
