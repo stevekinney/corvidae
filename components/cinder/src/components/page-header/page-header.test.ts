@@ -23,6 +23,13 @@ const { readFileSync } = await import('node:fs');
 const stylesheet = readFileSync(new URL('./page-header.css', import.meta.url), 'utf8');
 const { default: pageHeaderSchema } = await import('./page-header.schema.ts');
 
+describe('PageHeader actions row height', () => {
+  test('adds no block padding beyond the title line box', () => {
+    const rule = stylesheet.match(/\.cinder-page-header__actions\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).not.toMatch(/padding/);
+  });
+});
+
 describe('PageHeader', () => {
   test('schema requires a string title and supports an optional string description', () => {
     const validate = new Ajv2020({ strict: false }).compile(pageHeaderSchema);

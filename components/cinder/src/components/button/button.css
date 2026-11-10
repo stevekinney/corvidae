@@ -123,6 +123,21 @@
     width: 100%;
   }
 
+  /* A button in a header's actions draws at xs but keeps a touch-sized hit area on coarse
+     pointers: an invisible block-axis extension, never visual height. */
+  @media (pointer: coarse) {
+    .cinder-button[data-cinder-compact] {
+      position: relative;
+    }
+
+    .cinder-button[data-cinder-compact]::before {
+      content: '';
+      position: absolute;
+      inset-inline: 0;
+      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
+    }
+  }
+
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */
