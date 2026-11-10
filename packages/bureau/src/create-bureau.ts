@@ -169,7 +169,7 @@ import {
   getOwn,
 } from 'conversationalist';
 
-import type { PluginHostApi } from '@lostgradient/interborough-plugin';
+import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
 import {
   BUREAU_PLUGIN_NAME,
@@ -24521,7 +24521,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   trackFireReviewSeeds(bureau, fireReviewSeeds);
   if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
   construction.built(bureau);
-  // COR-1879 — after the caller has the Bureau, so a plugin's `afterStart` costs a recovered run's
+  // COR-1879 — after the caller has the Bureau, so a plugin's `start` costs a recovered run's
   // first events nothing; `bureau.plugins.ready()` settles when every one has.
   // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds, and
   // what names each contribution, counted on every `plugins.list()`.
@@ -24575,7 +24575,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the plugin's: the schedule it creates announces `schedule.created` with `source: plugin`, and
    * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
    */
-  function pluginHostApiOf(host: Bureau, plugin: string): PluginHostApi {
+  function pluginHostApiOf(host: Bureau, plugin: string): PluginHost {
     return {
       agents: { list: () => host.agents.list() },
       schedules: {

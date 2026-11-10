@@ -69,12 +69,12 @@ export const CHANGELOG_WRITER_REPLY =
 /**
  * The eight agents. `approvalSecret` signs the refund approvals `tool-runner` raises; `undefined`
  * builds its toolbox without one, which only happens while the plugin is `needs-setup`, and the
- * plugin's gate then refuses every run of every demo agent. `toolApprovalHooks` is the host's
+ * plugin's gate then refuses every run of every demo agent. `approvals` is the host's
  * tool-approval rule, from the plugin's setup context.
  */
 export function createDemoAgents(
   approvalSecret: string | undefined,
-  toolApprovalHooks: PluginSetupContext['toolApprovalHooks'],
+  approvals: PluginSetupContext['approvals'],
 ): PluginAgent[] {
   return [
     {
@@ -98,7 +98,7 @@ export function createDemoAgents(
         description: 'Looks an order up, then asks for approval to refund it.',
         examples: ['Refund order 1234'],
         generate: toolRunnerGenerate(),
-        toolbox: createToolRunnerToolbox(approvalSecret, toolApprovalHooks),
+        toolbox: createToolRunnerToolbox(approvalSecret, approvals),
         stopWhen: [stopWhen.pendingApproval(), stopWhen.noToolCalls()],
       }),
     },

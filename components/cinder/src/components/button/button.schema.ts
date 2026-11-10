@@ -65,6 +65,21 @@ const schema = {
       type: 'string',
       description: 'Visible text label. Must be non-empty if provided.',
     },
+    shortcut: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'array',
+          items: {
+            type: 'string',
+          },
+        },
+      ],
+      description:
+        'Keyboard shortcut hint rendered after the label, `aria-hidden`; a key or an array of keys.',
+    },
     class: {
       type: 'string',
       description: 'Custom class merged with `.cinder-button`.',

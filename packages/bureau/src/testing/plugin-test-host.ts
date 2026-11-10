@@ -91,7 +91,7 @@ function shippedAgentDirectory(content: URL | undefined): string | undefined {
  * the `agents/` directory of the plugin's `content` are layered beneath an empty owner directory
  * as the plugin's read-only layer, so a file naming a contribution the plugin does not hold is
  * reported on `plugins.list()` as `reference-unresolved`. The plugin is enabled whatever its
- * `enabledByDefault`, and every other way a shipped file can be invalid is on `agents.list()`. Models are scripted: nothing calls a
+ * `enabled`, and every other way a shipped file can be invalid is on `agents.list()`. Models are scripted: nothing calls a
  * provider. The `workflows/` and `skills/` directories of `content` are not loaded.
  *
  * Call `dispose` when the test ends.

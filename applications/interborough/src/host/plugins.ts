@@ -6,7 +6,7 @@
  * { "plugins": { "example": { "enabled": true, "configuration": { "limit": 3 } } } }
  * ```
  *
- * A plugin absent from the key takes its descriptor's `enabledByDefault` (itself `true` when the
+ * A plugin absent from the key takes its descriptor's `enabled` (itself `true` when the
  * descriptor leaves it out) and an empty configuration. Both fields are optional. Every other key
  * of the file is left alone, and an entry for a plugin the host does not load is kept and ignored,
  * so a plugin that is taken out of the workspace and put back finds its settings where it left them.
@@ -61,7 +61,7 @@ export function defaultDecisionOptions(
   const enabled = Object.hasOwn(settings, typesafe.name)
     ? settings[typesafe.name]?.enabled
     : undefined;
-  if (enabled ?? entry.descriptor.enabledByDefault ?? true) {
+  if (enabled ?? entry.descriptor.enabled ?? true) {
     return { decisions: { model: DEFAULT_DECISION_MODEL } };
   }
   return {};

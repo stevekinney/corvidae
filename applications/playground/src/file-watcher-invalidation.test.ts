@@ -12,7 +12,6 @@ import {
 } from './component-sources.ts';
 import { invalidateCachesForChange, startWatcher, waitForPendingRebuild } from './file-watcher.ts';
 import { pageEntryByName } from './page-bundle.ts';
-import { PUBLISHED_VERSIONS_PATH } from './playground-paths.ts';
 import { getRebuildGeneration } from './rebuild-generation.ts';
 
 describe('invalidateCachesForChange', () => {
@@ -208,13 +207,10 @@ describe('startWatcher and the metadata files that change what every page shows'
     return after > before;
   }
 
-  const metadataFiles = [
-    { label: 'the published versions', path: PUBLISHED_VERSIONS_PATH },
-    ...COMPONENT_SOURCES.flatMap((source) => [
-      { label: `${source.id}'s package.json`, path: join(source.packageRoot, 'package.json') },
-      { label: `${source.id}'s components.json`, path: source.manifestPath },
-    ]),
-  ];
+  const metadataFiles = COMPONENT_SOURCES.flatMap((source) => [
+    { label: `${source.id}'s package.json`, path: join(source.packageRoot, 'package.json') },
+    { label: `${source.id}'s components.json`, path: source.manifestPath },
+  ]);
 
   // A tool that saves one of these files by writing a temporary file and renaming it over the
   // original leaves a watch on the file attached to the replaced inode (measured under Node on
@@ -238,23 +234,6 @@ describe('startWatcher and the metadata files that change what every page shows'
     }
   });
 
-  // Every documentation page shows its package's last published version, which it reads from
-  // `published-versions.json`. A dev server that never noticed that file change would keep showing
-  // the old version until it restarted.
-  it('invalidates when the published versions file is replaced by a rename', async () => {
-    const { callbackByPath } = startWithFakeWatch();
-    const onPlaygroundRootChange = callbackByPath.get(dirname(PUBLISHED_VERSIONS_PATH));
-    expect(onPlaygroundRootChange).toBeDefined();
-
-    // An atomic save reaches a directory watcher as a rename of the target's name.
-    expect(await invalidates(onPlaygroundRootChange!, 'rename', 'published-versions.json')).toBe(
-      true,
-    );
-    expect(await invalidates(onPlaygroundRootChange!, 'change', 'published-versions.json')).toBe(
-      true,
-    );
-  });
-
   it('invalidates when a component package replaces its package.json or components.json', async () => {
     const { callbackByPath } = startWithFakeWatch();
 
@@ -268,15 +247,11 @@ describe('startWatcher and the metadata files that change what every page shows'
     }
   });
 
-  // The playground root holds its manifest, configuration and tests, and a package root holds its
-  // README, tests, and build output; none of them changes what a page shows.
+  // A package root holds its README, tests, and build output; none of them changes what a page
+  // shows.
   it('ignores a change to any other file in a watched metadata directory', async () => {
     const { callbackByPath } = startWithFakeWatch();
 
-    const onPlaygroundRootChange = callbackByPath.get(dirname(PUBLISHED_VERSIONS_PATH));
-    expect(await invalidates(onPlaygroundRootChange!, 'change', 'playwright.config.ts')).toBe(
-      false,
-    );
     for (const source of COMPONENT_SOURCES) {
       const onPackageRootChange = callbackByPath.get(source.packageRoot);
       expect(await invalidates(onPackageRootChange!, 'change', 'README.md')).toBe(false);
@@ -295,10 +270,9 @@ describe('startWatcher and the metadata files that change what every page shows'
 
   it('matches a metadata file named with the separators a Windows watcher reports', async () => {
     const { callbackByPath } = startWithFakeWatch();
-    const onPlaygroundRootChange = callbackByPath.get(dirname(PUBLISHED_VERSIONS_PATH));
-
-    expect(await invalidates(onPlaygroundRootChange!, 'change', '.\\published-versions.json')).toBe(
-      true,
-    );
+    for (const source of COMPONENT_SOURCES) {
+      const onPackageRootChange = callbackByPath.get(source.packageRoot);
+      expect(await invalidates(onPackageRootChange!, 'change', '.\\package.json')).toBe(true);
+    }
   });
 });

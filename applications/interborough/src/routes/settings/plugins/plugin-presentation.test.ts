@@ -337,9 +337,7 @@ describe('problemView', () => {
         body: 'it broke',
       });
     }
-    expect(problemView({ code: 'after-start-failed', message: 'it broke' }).status.dot).toBe(
-      'warning',
-    );
+    expect(problemView({ code: 'start-failed', message: 'it broke' }).status.dot).toBe('warning');
     expect(problemView({ code: 'panel-failed', app: 'one', message: 'no entry' })).toMatchObject({
       status: { label: 'Loaded, a panel was not built', dot: 'warning' },
       body: 'The panel one is not served. no entry',

@@ -25,7 +25,6 @@
     "test:coverage": "TZ=UTC LANG=en_US.UTF-8 bun ../../scripts/bun-test.ts --conditions browser --conditions svelte --parallel=4 --coverage --coverage-reporter=lcov --path-ignore-patterns='**/*.slow.test.ts' src scripts && bun scripts/check-coverage-ratchet.ts",
     "tokens:check": "bun scripts/tokens/validate-corpus.ts && bun scripts/tokens/generate-artifacts.ts --check",
     "tokens:generate": "bun scripts/tokens/generate-artifacts.ts",
-    "validate:consumer": "bun scripts/validate-consumers.ts",
     "tokens:audit": "bun scripts/check-component-css-token-usage.ts",
     "components:check": "bun scripts/generate-component-artifacts.ts --check",
     "a2ui-catalog:generate": "bun scripts/generate-a2ui-catalog.ts",
@@ -35,8 +34,7 @@
     "design-system:url": "bun scripts/design-system/url.ts",
     "check:prop-conventions": "bun scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components",
     "check:test-cleanup": "bun scripts/check-test-cleanup.ts",
-    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts",
-    "knowledge": "bun scripts/knowledge/index.ts"
+    "lint:fix": "oxlint --deny-warnings --fix --type-aware --tsconfig ./tsconfig.json src scripts"
   },
   "dependencies": {
     "@codemirror/autocomplete": "catalog:",
