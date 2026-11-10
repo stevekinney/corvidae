@@ -189,6 +189,7 @@ const optionNames = new Set([
   'secret-file',
   'secret-stdin',
   'no-open',
+  'shell',
 ]);
 
 const commandOptions: Record<string, readonly string[]> = {
@@ -497,6 +498,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'file',
     'expected-revision',
   ],
+  completion: ['help'],
 };
 
 const helpText: Record<string, string> = {
@@ -534,6 +536,7 @@ const helpText: Record<string, string> = {
   plugins: 'Usage: interborough plugins <list|enable|disable> [plugin] [options]',
   skills: 'Usage: interborough skills list [options]',
   settings: 'Usage: interborough settings <get|set|schema> [options]',
+  completion: 'Usage: interborough completion <bash|zsh|fish>',
 };
 
 /** The shell-facing metadata for every public command in the installed CLI. */
@@ -558,24 +561,68 @@ export const CLI_COMMAND_REGISTRY = Object.freeze(
 /** Render completion source from the same registry used to validate CLI options. */
 export function renderCliCompletion(shell: 'bash' | 'zsh' | 'fish'): string {
   const commands = Object.keys(CLI_COMMAND_REGISTRY).sort();
-  const options = [
-    ...new Set(commands.flatMap((command) => CLI_COMMAND_REGISTRY[command]!.options)),
-  ].sort();
+  const optionsFor = (command: string) =>
+    CLI_COMMAND_REGISTRY[command]!.options.map((option) => `--${option}`).join(' ');
   if (shell === 'fish')
     return [
       `complete -c interborough -f -a '${commands.join(' ')}'`,
-      ...options.map((option) => `complete -c interborough -l ${option}`),
+      ...commands.map(
+        (command) =>
+          `complete -c interborough -n '__fish_seen_subcommand_from ${command}' -l ${CLI_COMMAND_REGISTRY[command]!.options.join(' -l ')}`,
+      ),
     ].join('\n');
-  const words = commands.join(' ');
-  const flags = options.map((option) => `--${option}`).join(' ');
   if (shell === 'zsh')
-    return `#compdef interborough\n_arguments '1:command:(${words})' '*:option:(${flags})'`;
-  return `complete -W '${words} ${flags}' interborough`;
+    return [
+      '#compdef interborough',
+      '_interborough_completion() {',
+      '  case "$words[2]" in',
+      ...commands.map(
+        (command) => `    ${command}) _arguments '*:option:(${optionsFor(command)})' ;;`,
+      ),
+      `    *) _arguments '1:command:(${commands.join(' ')})' ;;`,
+      '  esac',
+      '}',
+      'compdef _interborough_completion interborough',
+    ].join('\n');
+  return [
+    '_interborough_complete() {',
+    '  local command="${COMP_WORDS[1]}"',
+    '  case "$command" in',
+    ...commands.map(
+      (command) =>
+        `    ${command}) COMPREPLY=( $(compgen -W '${optionsFor(command)}' -- "\${COMP_WORDS[COMP_CWORD]}") ) ;;`,
+    ),
+    `    *) COMPREPLY=( $(compgen -W '${commands.join(' ')}' -- "\${COMP_WORDS[COMP_CWORD]}") ) ;;`,
+    '  esac',
+    '}',
+    'complete -F _interborough_complete interborough',
+  ].join('\n');
 }
 
 const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
 );
+
+/** Exhaustive mapping from the engine catalog to a public CLI action or an explicit exclusion. */
+export const CLI_OPERATION_COVERAGE = Object.freeze(
+  Object.fromEntries(
+    createCatalogSnapshot().operations.map((operation) => [
+      operation.name,
+      operation.transports.jsonRpcHttp && operation.kind === 'unary'
+        ? { command: 'api', action: 'call' }
+        : {
+            excluded: true,
+            reason: 'The operation has no unary JSON-RPC-over-HTTP transport exposed by the CLI.',
+          },
+    ]),
+  ),
+) as Readonly<
+  Record<
+    string,
+    | { readonly command: string; readonly action: string }
+    | { readonly excluded: true; readonly reason: string }
+  >
+>;
 
 function usage(message: string): CliResult {
   return { stdout: '', stderr: message, exitCode: 2 };
@@ -815,6 +862,12 @@ async function execute(
   parsed: Parsed,
   dependencies: CliClientDependencies,
 ): Promise<CliCommandResult> {
+  if (parsed.command === 'completion') {
+    const shell = parsed.arguments[0];
+    if (shell !== 'bash' && shell !== 'zsh' && shell !== 'fish')
+      throw Object.assign(new Error('completion requires bash, zsh, or fish.'), { usage: true });
+    return { data: renderCliCompletion(shell) };
+  }
   if (parsed.command === 'connection')
     return executeConnection(
       parsed,

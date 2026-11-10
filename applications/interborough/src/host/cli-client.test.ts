@@ -6,6 +6,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   CLI_COMMAND_REGISTRY,
+  CLI_OPERATION_COVERAGE,
   CLI_OPERATION_INVENTORY,
   executeCli,
   parseCliArguments,
@@ -37,7 +38,7 @@ async function fixture() {
 }
 
 describe('Interborough command client', () => {
-  test('keeps the public command registry complete and completion output data-only', () => {
+  test('keeps the public command registry complete and completion output data-only', async () => {
     const publicCommands = Object.keys(CLI_COMMAND_REGISTRY);
     expect(publicCommands).toContain('providers');
     expect(publicCommands).not.toContain('__interborough-host');
@@ -54,8 +55,25 @@ describe('Interborough command client', () => {
       expect(completion).toContain('providers');
       expect(completion).toContain(shell === 'fish' ? '-l help' : '--help');
     }
+    const bash = renderCliCompletion('bash');
+    expect(bash).toContain('status)');
+    expect(bash.match(/status\).*--file/g)).toBeNull();
+    expect(bash).toContain('completion)');
+    expect(bash).toContain('complete -F _interborough_complete interborough');
+    expect(parseCliArguments(['completion', 'bash'])).toMatchObject({ command: 'completion' });
+    const completion = await executeCli(['completion', 'fish']);
+    expect(completion.exitCode).toBe(0);
+    expect(completion.stdout).toContain('complete -c interborough');
     expect(CLI_OPERATION_INVENTORY).toContain('connection.list');
     expect(CLI_OPERATION_INVENTORY).toContain('workflows.*');
+    for (const [operation, coverage] of Object.entries(CLI_OPERATION_COVERAGE)) {
+      if ('excluded' in coverage) expect(coverage.reason).not.toBe('');
+      else {
+        expect(coverage.command).toBe('api');
+        expect(coverage.action).toBe('call');
+      }
+      expect(operation).toMatch(/^[a-z]+\.[a-z0-9_.-]+$/);
+    }
   });
 
   // spawn-free: injected fetch and no process opener stand in for command execution.
