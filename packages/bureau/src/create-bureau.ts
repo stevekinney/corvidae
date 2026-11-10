@@ -120,6 +120,7 @@ import {
   bureauInvariantsField,
   runScopedExecutionContextOf,
   scanToolResult,
+  type GuardrailFiring,
   type OperativeHookMap,
 } from '@lostgradient/operative';
 import type { SessionTaintSeam } from './session-taint-seam';
@@ -18235,24 +18236,31 @@ async function constructBureau<const D extends AgentDefinitions>(
     const hooks =
       runHookPlans.get(review.runId) ??
       (await catalogRunHookPlan(review.runId, seam, review.agentName));
-    const scanned = await scanToolResult(executed, { hooks, conversation, step: 0 });
+    const firings: GuardrailFiring[] = [];
+    const scanned = await scanToolResult(executed, {
+      hooks,
+      conversation,
+      step: 0,
+      reportGuardrail: (firing) => firings.push(firing),
+    });
     if (scanned.blocked) {
-      // A result a guardrail refused taints the session, and the trackers do it as they refuse. A
-      // tripwire, or a scan that failed before a tracker could, is recorded here; a session that
-      // already holds a taint keeps it (the write is compare-and-set), so this never publishes twice.
-      if (scanned.tripwire !== undefined || scanned.failed === true) {
-        await seam.onTainted({
-          reason:
-            scanned.tripwire === undefined
-              ? 'The guardrail scan of an approved call failed'
-              : `Guardrail tripwire on an approved call's result: ${scanned.tripwire.guardrailName}`,
-          detector: scanned.tripwire?.guardrailName ?? 'tool-result-scan',
-          category: scanned.tripwire?.category ?? 'detector-failure',
-          confidence: scanned.tripwire?.confidence ?? 1,
-          step: 0,
-          provenance: 'tool-result',
-        });
-      }
+      // A result a guardrail refused taints the session. The tracker that refused it stores the
+      // taint when it holds the seam, which every agent tier does; a tier built without one (a
+      // hand-written agent under Bureau's guardrails), a tripwire below the taint threshold, and a
+      // scan that failed before a tracker could are stored here. A session that already holds a
+      // taint keeps it (the write is compare-and-set), so this never publishes twice.
+      const firing = firings[0];
+      await seam.onTainted({
+        reason: 'A guardrail refused the result of an approved call',
+        detector: scanned.tripwire?.guardrailName ?? firing?.guardrailName ?? 'tool-result-scan',
+        category:
+          scanned.tripwire?.category ??
+          firing?.category ??
+          (scanned.failed === true ? 'detector-failure' : 'blocked-tool-result'),
+        confidence: scanned.tripwire?.confidence ?? firing?.confidence ?? 1,
+        step: 0,
+        provenance: 'tool-result',
+      });
       diagnose({
         level: 'warn',
         scope: 'guardrails',

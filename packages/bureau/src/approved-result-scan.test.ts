@@ -6,7 +6,9 @@ import {
   createAgent,
   GUARDRAIL_BLOCKED_CODE,
   type GuardrailsOptions,
+  hasDefinitionResolver,
   type InputDetector,
+  OPERATIVE_RESOLVE_RUN_OPTIONS,
   type PersistedSessionTaint,
   readSessionTaint,
   SESSION_TAINT_METADATA_KEY,
@@ -258,6 +260,51 @@ describe('an approved call’s result and the session’s taint (COR-2299)', () 
       expect(row).toMatchObject({ outcome: 'error', error: { code: GUARDRAIL_BLOCKED_CODE } });
       expect(JSON.stringify(row)).not.toContain('a page the detector cannot read');
       expect(taint).toMatchObject({ category: 'detector-failure', provenance: 'tool-result' });
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('an approved call under Bureau’s own guardrails (COR-2299)', () => {
+  it('stores the taint of a result Bureau’s tier blocked, for an agent that holds no guardrails of its own', async () => {
+    let step = 0;
+    const inner = createAgent({
+      name: 'supervisor',
+      toolbox: fetchToolbox(INJECTION),
+      generate: async () =>
+        step++ === 0
+          ? { content: '', toolCalls: [{ id: 'call-1', name: 'fetch', arguments: {} }] }
+          : { content: 'done', toolCalls: [] },
+      stopWhen: stopWhen.toolOutcome('action_required'),
+      guardrails: false,
+    });
+    if (!hasDefinitionResolver(inner)) throw new Error('expected an agent with a resolver');
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        supervisor: {
+          name: 'supervisor',
+          hasOutput: false,
+          run: (input, context) => inner.run(input, context),
+          [OPERATIVE_RESOLVE_RUN_OPTIONS]: (input, context) =>
+            inner[OPERATIVE_RESOLVE_RUN_OPTIONS](input, context),
+        },
+      },
+      guardrails: { mode: 'validate', input: { detectors: [sentinel], action: 'block' } },
+      storage: new MemoryStorage(),
+      durable: false,
+    });
+    try {
+      const task = await bureau.tasks.start('supervisor', 'fetch the page');
+      await task.result();
+      const { row, taint } = await approveParked(bureau);
+
+      expect(row).toMatchObject({ outcome: 'error', error: { code: GUARDRAIL_BLOCKED_CODE } });
+      expect(taint).toMatchObject({
+        category: 'prompt-injection',
+        detector: 'sentinel',
+        provenance: 'tool-result',
+      });
     } finally {
       await bureau.dispose();
     }
