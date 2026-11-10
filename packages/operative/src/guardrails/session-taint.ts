@@ -111,14 +111,14 @@ export function createSessionTaintTracker(options: SessionTaintOptions = {}): Se
         event.runId === undefined && trackerRunId !== undefined
           ? { ...event, runId: trackerRunId }
           : event;
-      const result = onTainted?.(stamped);
-      if (result instanceof Promise) {
-        const settledCall = result.then(
-          () => undefined,
-          () => undefined,
-        );
-        pending = pending.then(() => settledCall);
-      }
+      if (onTainted === undefined) return;
+      // An async wrapper turns a synchronous throw or a non-Promise thenable into a promise that
+      // `settled()` awaits, so the callback cannot be outrun and cannot escape.
+      const settledCall = (async () => onTainted(stamped))().then(
+        () => undefined,
+        () => undefined,
+      );
+      pending = pending.then(() => settledCall);
     },
 
     settled(): Promise<void> {

@@ -50,8 +50,9 @@ export function withSessionTaint(
   const onTainted: SessionTaintOptions['onTainted'] =
     own !== undefined && inherited !== undefined
       ? (event) => {
-          const stored = Promise.resolve(inherited(event));
-          const called = Promise.resolve(own(event));
+          // An async wrapper turns a synchronous throw into a rejection, so both calls always run.
+          const stored = (async () => inherited(event))();
+          const called = (async () => own(event))();
           return Promise.allSettled([stored, called]).then(() => undefined);
         }
       : (own ?? inherited);

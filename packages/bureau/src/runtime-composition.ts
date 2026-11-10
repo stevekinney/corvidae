@@ -60,6 +60,7 @@ import type {
   StopCondition,
   StreamEventMap,
   HumanInputSchema,
+  PersistedSessionTaint,
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
@@ -98,7 +99,6 @@ import {
   SESSION_ORIGIN_METADATA_KEY,
   SESSION_TAINT_METADATA_KEY,
   readSessionTaint,
-  type PersistedSessionTaint,
   sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';

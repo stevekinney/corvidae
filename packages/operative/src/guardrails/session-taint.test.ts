@@ -166,6 +166,34 @@ describe('createSessionTaintTracker with an initial taint (COR-2105)', () => {
     await tracker.settled();
     expect(finished).toBe(true);
   });
+
+  it('does not throw from taint() when onTainted throws synchronously, and settles', async () => {
+    const tracker = createSessionTaintTracker({
+      onTainted: () => {
+        throw new Error('sync failure');
+      },
+    });
+    expect(() => tracker.taint(baseTaintEvent)).not.toThrow();
+    expect(tracker.isTainted()).toBe(true);
+    await tracker.settled();
+  });
+
+  it('awaits a non-Promise thenable returned by onTainted', async () => {
+    let finished = false;
+    const tracker = createSessionTaintTracker({
+      onTainted: () => ({
+        then: (resolve: () => void) => {
+          queueMicrotask(() => {
+            finished = true;
+            resolve();
+          });
+        },
+      }),
+    });
+    tracker.taint(baseTaintEvent);
+    await tracker.settled();
+    expect(finished).toBe(true);
+  });
 });
 
 describe('readSessionTaint', () => {

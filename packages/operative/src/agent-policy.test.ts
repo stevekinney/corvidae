@@ -346,7 +346,7 @@ describe('withSessionTaint (COR-2105)', () => {
       { onTainted: async () => void order.push('session') },
       'run-1',
     );
-    expect(() => configuration.taint?.onTainted?.(event)).toThrow('own failed');
+    expect(await configuration.taint?.onTainted?.(event)).toBeUndefined();
     expect(order).toEqual(['session', 'own']);
   });
 
