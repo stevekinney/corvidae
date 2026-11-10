@@ -1,0 +1,120 @@
+# Advisory full suite on every push to `main` (COR-2369): every stage of `bun run validate`,
+# split into jobs so no job's peak memory passes the 16 GB standard runner (Cinder's coverage run
+# peaked at 7.8 GB on a laptop, so it runs alone). Nothing here is a required status check.
+# Playwright browser suites (`bun run test:browser:chromium`) are not run; see the pull request
+# that added this file.
+name: Main
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+      # Temporary trial trigger: a workflow that is not on the default branch cannot be dispatched.
+      - cor-2369-advisory-ci
+
+permissions:
+  contents: read
+
+# Runs of different commits never cancel each other.
+concurrency:
+  group: main-${{ github.sha }}
+  cancel-in-progress: false
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  root:
+    name: Root checks, scripts tests, audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bun run lint:root
+      - run: bun run typecheck:root
+        if: ${{ !cancelled() }}
+      - run: bun run test:self
+        if: ${{ !cancelled() }}
+      - run: bun run test:browser-fixtures
+        if: ${{ !cancelled() }}
+      - run: bun run format:check
+        if: ${{ !cancelled() }}
+      - run: bun run audit
+        if: ${{ !cancelled() }}
+
+  workspaces:
+    name: Workspace lint and type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      TURBO_CONCURRENCY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bunx turbo run lint typecheck --continue
+
+  tests:
+    name: Tests (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Cinder's coverage run peaked at 7.8 GB on a laptop, so it runs alone.
+          - name: cinder
+            filter: --filter=@lostgradient/cinder
+          - name: components
+            filter: --filter=./components/* --filter=!@lostgradient/cinder
+          - name: packages
+            filter: --filter=./packages/*
+          - name: applications, plugins, testing
+            filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/*
+    env:
+      # One task at a time: a task runs up to four Bun workers on a 4 vCPU runner.
+      TURBO_CONCURRENCY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bunx turbo run test:gate --continue ${{ matrix.filter }}
+      # Reads the JUnit reports this job wrote, so it warns about workspaces outside the shard; it exits 0.
+      - run: bun run report:test-durations
+        if: ${{ !cancelled() }}
+
+  tests-slow:
+    name: Slow and integration tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bun run test:slow --continue

@@ -1,0 +1,77 @@
+# Advisory checks for pull requests (COR-2369). Nothing here is a required status check; the jobs
+# produce evidence for making CI the full tier. This is the quick tier, `bun run check`, split into
+# jobs. The full tier runs from `main.yml`.
+name: Pull request
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pull-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  # `--affected` and the test selection compare against the pull request's base branch.
+  TURBO_SCM_BASE: origin/${{ github.base_ref }}
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+
+jobs:
+  static:
+    name: Format and root checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bun run format:check
+      - run: bun run lint:root
+        if: ${{ !cancelled() }}
+      - run: bun run typecheck:root
+        if: ${{ !cancelled() }}
+
+  workspaces:
+    name: Affected workspaces lint and type-check
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TURBO_CONCURRENCY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bunx turbo run lint typecheck --affected --continue
+
+  tests:
+    name: Affected fast-lane tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      TURBO_CONCURRENCY: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version-file: package.json
+      - run: bun --version
+      - run: bun install --frozen-lockfile
+      - run: bun scripts/affected-tests.ts run --base "$TURBO_SCM_BASE"
