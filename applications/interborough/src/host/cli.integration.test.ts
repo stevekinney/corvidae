@@ -337,6 +337,35 @@ const compiledConfigurationMutation = await invoke(
   ],
   { INTERBOROUGH_TOKEN: 'production-secret' },
 );
+const compiledUnknownProvider = await invoke(
+  [
+    'providers',
+    'connect',
+    'typo',
+    '--connection',
+    'production',
+    '--input-file',
+    compiledConfigurationInput,
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
+const compiledInvalidConfigurationInput = join(directory, 'invalid-provider-configuration.json');
+writeFileSync(
+  compiledInvalidConfigurationInput,
+  JSON.stringify({ apiKey: 'compiled-provider-secret', configuration: { baseURL: 'not a uri' } }),
+);
+const compiledInvalidConfiguration = await invoke(
+  [
+    'providers',
+    'connect',
+    'openai',
+    '--connection',
+    'production',
+    '--input-file',
+    compiledInvalidConfigurationInput,
+  ],
+  { INTERBOROUGH_TOKEN: 'production-secret' },
+);
 const compiledInlineSecret = await invoke(
   [
     'providers',
@@ -839,9 +868,17 @@ test('compiled binary routes configuration commands through the authenticated ho
 
 test('compiled binary performs revisioned provider configuration and rejects argv secrets', () => {
   expect(compiledConfigurationMutation.exitCode).toBe(0);
+  expect(compiledUnknownProvider.exitCode).toBe(2);
+  expect(compiledInvalidConfiguration.exitCode).toBe(2);
   expect(compiledInlineSecret.exitCode).toBe(2);
   expect(compiledConfigurationMutation.stdout.toString()).not.toContain('compiled-provider-secret');
   expect(compiledInlineSecret.stderr.toString()).toContain('never --input');
+  expect(
+    productionRequests.filter(
+      (request) =>
+        new URL(request.url).pathname === '/host/providers/openai' && request.method === 'PUT',
+    ),
+  ).toHaveLength(1);
   expect(
     productionRequests.some(
       (request) =>

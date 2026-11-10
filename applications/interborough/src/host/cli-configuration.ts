@@ -1,5 +1,8 @@
 import { readFile } from 'node:fs/promises';
 
+import addFormats from 'ajv-formats';
+import Ajv2020 from 'ajv/dist/2020.js';
+
 import { request, type CliTarget } from './cli-client-transport.ts';
 import type { CliClientDependencies, CliCommandResult, Parsed } from './cli-client.ts';
 
@@ -80,37 +83,25 @@ function revisionOf(value: unknown): string | null {
   return typeof catalog['revision'] === 'number' ? String(catalog['revision']) : null;
 }
 
-function schemaError(value: unknown, schema: unknown, path = 'configuration'): string | undefined {
-  const definition = record(schema);
-  const type = definition['type'];
-  if (type === 'object') {
-    if (!isRecord(value)) return `${path} must be an object.`;
-    const required = Array.isArray(definition['required']) ? definition['required'] : [];
-    for (const key of required) {
-      if (typeof key === 'string' && !Object.hasOwn(value, key))
-        return `${path}.${key} is required.`;
-    }
-    const properties = record(definition['properties']);
-    if (definition['additionalProperties'] === false) {
-      const unknown = Object.keys(value).find((key) => !Object.hasOwn(properties, key));
-      if (unknown !== undefined) return `${path}.${unknown} is not allowed.`;
-    }
-    for (const [key, child] of Object.entries(properties)) {
-      if (Object.hasOwn(value, key)) {
-        const error = schemaError(value[key], child, `${path}.${key}`);
-        if (error !== undefined) return error;
-      }
-    }
-  } else if (
-    (type === 'string' && typeof value !== 'string') ||
-    (type === 'number' && (typeof value !== 'number' || !Number.isFinite(value))) ||
-    (type === 'integer' && (typeof value !== 'number' || !Number.isInteger(value))) ||
-    (type === 'boolean' && typeof value !== 'boolean') ||
-    (type === 'array' && !Array.isArray(value))
-  ) {
-    return `${path} has the wrong type.`;
+function validateConfiguration(value: unknown, schema: unknown): string | undefined {
+  if (!isRecord(schema)) return 'the provider did not publish a usable configuration schema.';
+  try {
+    const ajv = new Ajv2020({
+      allErrors: true,
+      strict: false,
+      validateFormats: true,
+      logger: false,
+    });
+    addFormats(ajv);
+    const validate = ajv.compile(schema);
+    if (validate(value)) return undefined;
+    const issue = validate.errors?.[0];
+    return issue?.instancePath === ''
+      ? (issue?.message ?? 'does not satisfy the provider schema.')
+      : `${issue?.instancePath ?? 'configuration'} ${issue?.message ?? 'is invalid.'}`;
+  } catch {
+    return 'the provider configuration schema could not be compiled.';
   }
-  return undefined;
 }
 
 function mutation(parsed: Parsed, expectedRevision: string | null): RecordValue {
@@ -186,28 +177,27 @@ async function providers(target: CliTarget, parsed: Parsed, dependencies: CliCli
         { usage: true },
       );
     const value = record(await input(parsed, dependencies, { allowInline: false }));
+    const contributions = await rpc(
+      target,
+      parsed,
+      dependencies,
+      'bureau.plugins.contributions',
+      {},
+    );
+    const rows = Array.isArray(record(contributions.data)['providers'])
+      ? (record(contributions.data)['providers'] as unknown[])
+      : [];
+    const provider = rows.find((entry) => record(entry)['name'] === name);
+    const pluginName = record(provider)['plugin'];
+    if (typeof pluginName !== 'string')
+      throw Object.assign(new Error(`Unknown provider: ${name}.`), { usage: true });
+    const configurationSchema = record(provider)['configuration'];
     const apiKey =
       typeof value['apiKey'] === 'string' ? value['apiKey'] : await secret(parsed, dependencies);
     const configuration = value['configuration'];
     let configurationChange: CliCommandResult | undefined;
     if (configuration !== undefined) {
-      const contributions = await rpc(
-        target,
-        parsed,
-        dependencies,
-        'bureau.plugins.contributions',
-        {},
-      );
-      const rows = Array.isArray(record(contributions.data)['providers'])
-        ? (record(contributions.data)['providers'] as unknown[])
-        : [];
-      const provider = rows.find((entry) => record(entry)['name'] === name);
-      const pluginName = record(provider)['plugin'];
-      if (typeof pluginName !== 'string')
-        throw Object.assign(new Error(`Unknown provider: ${name}.`), {
-          usage: true,
-        });
-      const validation = schemaError(configuration, record(provider)['configuration']);
+      const validation = validateConfiguration(configuration, configurationSchema);
       if (validation !== undefined)
         throw Object.assign(new Error(`Invalid provider configuration: ${validation}`), {
           usage: true,
@@ -236,8 +226,14 @@ async function providers(target: CliTarget, parsed: Parsed, dependencies: CliCli
       '/host/providers',
     );
     return configurationChange === undefined
-      ? connected
-      : { data: { configuration: configurationChange.data, connected: connected.data } };
+      ? { data: { configurationSchema, connected: connected.data } }
+      : {
+          data: {
+            configurationSchema,
+            configuration: configurationChange.data,
+            connected: connected.data,
+          },
+        };
   }
   throw Object.assign(
     new Error('Usage: providers list|connect <provider>|disconnect <provider>.'),

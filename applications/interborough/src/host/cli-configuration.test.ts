@@ -78,15 +78,23 @@ describe('CLI configuration commands', () => {
         const path = new URL(url).pathname;
         const body = typeof init?.body === 'string' ? JSON.parse(init.body) : undefined;
         calls.push({ method: init?.method ?? 'GET', path, body });
+        if (path === '/bureau/jsonrpc')
+          return response({
+            result: {
+              providers: [
+                { plugin: 'anthropic', name: 'anthropic', configuration: { type: 'object' } },
+              ],
+            },
+          });
         return path === '/host/providers'
           ? response({ configurationRevision: 'r1', providers: [] })
           : response({ providers: [], revision: 'r2' });
       },
     });
     expect(result.exitCode).toBe(0);
-    expect(calls).toHaveLength(2);
-    expect(calls[1]).toMatchObject({ method: 'PUT', path: '/host/providers/anthropic' });
-    expect(calls[1]?.body).toMatchObject({
+    expect(calls).toHaveLength(3);
+    expect(calls[2]).toMatchObject({ method: 'PUT', path: '/host/providers/anthropic' });
+    expect(calls[2]?.body).toMatchObject({
       operationId: expect.any(String),
       expectedRevision: 'r1',
     });
@@ -132,6 +140,47 @@ describe('CLI configuration commands', () => {
       'GET /host/providers',
       'PUT /host/providers/openai',
     ]);
+  });
+
+  test('rejects unknown and schema-invalid providers before any durable write', async () => {
+    const mutations: string[] = [];
+    const fetch = async (url: RequestInfo | URL, init?: RequestInit) => {
+      const path = new URL(url).pathname;
+      if (init?.method === 'PUT' || init?.method === 'DELETE')
+        mutations.push(`${init.method} ${path}`);
+      return path === '/bureau/jsonrpc'
+        ? response({
+            result: {
+              providers: [
+                {
+                  plugin: 'openai',
+                  name: 'openai',
+                  configuration: {
+                    type: 'object',
+                    properties: { baseURL: { type: 'string', format: 'uri' } },
+                    required: ['baseURL'],
+                  },
+                },
+              ],
+            },
+          })
+        : response({ configurationRevision: 'r1' });
+    };
+    const unknown = await executeCli(['providers', 'connect', 'typo', '--secret-stdin'], {
+      stdin: async () => 'secret',
+      fetch,
+    });
+    await Bun.write(
+      '/tmp/cor2061-invalid-provider.json',
+      JSON.stringify({ apiKey: 'secret', configuration: { baseURL: 'not a uri' } }),
+    );
+    const invalid = await executeCli(
+      ['providers', 'connect', 'openai', '--input-file', '/tmp/cor2061-invalid-provider.json'],
+      { fetch },
+    );
+    expect(unknown.exitCode).toBe(2);
+    expect(invalid.exitCode).toBe(2);
+    expect(mutations).toEqual([]);
   });
 
   test('never opens OAuth when no-open is requested and reports settings restart state', async () => {
