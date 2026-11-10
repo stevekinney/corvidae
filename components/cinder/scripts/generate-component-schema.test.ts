@@ -38,7 +38,6 @@ describe('run-step-timeline generated schema', () => {
       'run-step-timeline.types.ts',
     ),
     componentName: 'run-step-timeline',
-    depthToSrc: 2,
   }).schema;
   const validate = new Ajv2020({ strict: false }).compile(schema);
 
@@ -220,7 +219,6 @@ describe('schedule-builder generated schema', () => {
       'schedule-builder.types.ts',
     ),
     componentName: 'schedule-builder',
-    depthToSrc: 2,
   }).schema;
   const validate = new Ajv2020({ strict: false }).compile(schema);
 

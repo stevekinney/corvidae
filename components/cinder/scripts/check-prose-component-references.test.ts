@@ -6,12 +6,7 @@ import {
   proseSourcePaths,
 } from './check-prose-component-references.ts';
 
-const componentNames = new Set([
-  'container',
-  'experimental/live-component',
-  'page-header',
-  'virtual-list',
-]);
+const componentNames = new Set(['container', 'live-component', 'page-header', 'virtual-list']);
 const publicExports = new Set(['Button', 'ButtonSchema', 'Icon']);
 
 describe('check-prose-component-references', () => {

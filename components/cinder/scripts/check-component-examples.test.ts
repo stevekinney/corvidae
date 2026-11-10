@@ -36,7 +36,6 @@ async function testContext() {
   const location = {
     directory: `${PACKAGE_ROOT}/src/components/button`,
     id: 'button',
-    isExperimental: false,
   } as const;
   return { component, location, validator };
 }

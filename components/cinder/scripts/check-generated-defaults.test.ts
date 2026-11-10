@@ -75,7 +75,6 @@ const CASES: Record<string, string[]> = {
   'find-bar': ['activeIndex', 'debounceMs', 'label', 'matchCount', 'minQueryLength', 'value'],
   'guidance-region': ['storageKey'],
   'hover-card': ['openDelay', 'closeDelay', 'placement', 'offset'],
-  'host-provider': ['platform', 'safeHeaderLeft', 'safeHeaderRight'],
   'inline-confirm': ['cancelLabel', 'destructive', 'open'],
   'json-editor': ['rows', 'validFeedbackVisible'],
   'kanban-board': ['collapsible', 'reorderColumns'],

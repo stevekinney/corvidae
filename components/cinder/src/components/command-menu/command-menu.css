@@ -69,8 +69,7 @@
    * text measurement (see caret-rect.svelte.ts) rather than laid out in
    * normal flow — see command-menu.a11y.md decision (a). Consumes
    * `cinder-_floating-surface` for its shared `position: fixed` +
-   * `z-index` (the check-primitive-composition guard requires that class
-   * for anything with that pairing rather than a hand-rolled one), then
+   * `z-index` rather than a hand-rolled pairing, then
    * strips the panel chrome that class also brings — a ghost span is bare
    * text, not a bordered/backgrounded surface. */
   .cinder-_floating-surface.cinder-command-menu__ghost {

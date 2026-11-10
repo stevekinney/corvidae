@@ -108,9 +108,6 @@ export const SHARED_PARTIAL_OWNED_PREFIXES: Record<string, string[]> = {
   'src/styles/components/_floating-surface.css': ['--cinder-floating-surface'],
   'src/styles/components/_scroll-fade.css': ['--cinder-scroll-fade'],
   'src/styles/components/json-highlight.css': ['--cinder-json-highlight'],
-  'src/styles/components/experimental/_json-viewer-node.css': ['--cinder-json-viewer'],
-  'src/styles/components/experimental/popover.css': ['--cinder-popover'],
-  'src/styles/components/experimental.css': [],
 };
 
 export type TokenCategory = 'global' | 'component-owned' | 'private' | 'runtime' | 'unresolved';

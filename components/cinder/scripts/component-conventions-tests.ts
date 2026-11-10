@@ -71,9 +71,7 @@ export function isInteractive(manifestEntry: { category?: string }): boolean {
  *   2. Legacy flat: `src/components/<name>.a11y.md`
  *
  * The legacy flat path is always anchored at the `src/components` root, not at
- * the component's immediate parent — for an experimental component at
- * `src/components/experimental/<name>/`, the flat doc still lives at
- * `src/components/<name>.a11y.md`, not `src/components/experimental/<name>.a11y.md`.
+ * the component's immediate parent.
  */
 export function hasA11yDoc(componentDir: string, componentName: string): boolean {
   const adjacent = join(componentDir, `${componentName}.a11y.md`);
