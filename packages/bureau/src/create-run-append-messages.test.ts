@@ -17,7 +17,8 @@ import {
 } from 'conversationalist';
 
 import { BureauLedgerConflictError } from './command-ledger';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';

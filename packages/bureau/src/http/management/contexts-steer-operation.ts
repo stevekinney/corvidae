@@ -44,7 +44,7 @@ import {
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError, BureauShuttingDownError } from '../../create-bureau.ts';
+import { BureauError, BureauShuttingDownError } from '../../bureau-errors.ts';
 import type { SteeringCommandAdmissionOutcome, SteeringCommandSnapshot } from '../../steering.ts';
 import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';

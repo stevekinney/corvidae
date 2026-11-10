@@ -2946,6 +2946,8 @@ Input detectors run against a `GuardrailProvenance` tag—every `DetectorContext
 
 The three retrieval tags and `'tool-result'` mark a distinct trust boundary from `'user-input'`: that content was authored by someone (or something) other than the current session's user and may have been crafted specifically to manipulate the model. Callers that assemble context from memory, documents, or skills should tag detector calls with the matching provenance so guardrail triggers and audit logs can distinguish "the user asked for this" from "this arrived via retrieval." (Provenance is an input-side concept—output validators run against generated text with no retrieval source to tag; a taint raised from a retrieval surface can still carry its `provenance` through `SessionTaintedEvent.provenance` into `createSessionTaintTracker`.)
 
+Taint can outlive a run (COR-2105). `SessionTaintOptions.initial` starts a tracker tainted from a stored `PersistedSessionTaint` (read with `readSessionTaint` from `AgentSession.metadata[SESSION_TAINT_METADATA_KEY]`, `guardrailTaint`, where a missing key reads as untainted), and `onTainted` may return a promise that the guardrail hooks await before they return or throw, so a tripwire cannot outrun the write that stores the taint. `AgentRunContext.sessionTaint` hands an agent that resolves its own guardrails the same seed and write-back, and a session fork keeps the taint.
+
 ### The Bureau Default Preset
 
 `bureau` wires a guardrail preset automatically whenever `BureauOptions.guardrails` is left `undefined`:

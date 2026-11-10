@@ -7,6 +7,9 @@
   .cinder-tooltip-wrapper {
     display: inline-flex;
     align-items: center;
+    /* In a flex row the wrapper may shrink, so a trigger that truncates (a long link or value) can
+     * end with its ellipsis instead of pushing its row wider. */
+    min-inline-size: 0;
   }
 
   /* ----------------------------------------

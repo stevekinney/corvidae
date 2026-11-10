@@ -132,6 +132,18 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
+  /* Cut at the end: one line of whatever holds it, ending with an ellipsis when it is too long. */
+  .cinder-text[data-cinder-truncate='end'] {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    font: inherit;
+    letter-spacing: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   /* Cut in the middle: the head gives way with an ellipsis and the tail always shows. */
   .cinder-text[data-cinder-truncate='middle'] {
     display: flex;

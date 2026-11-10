@@ -10,7 +10,8 @@ import { join } from 'node:path';
 import { createToolbox, readToolShortDescription, type Tool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { lookupTool } from './testing/agent-file-fixtures.test-support';
 import {
   startWorkflowToolsBureau,

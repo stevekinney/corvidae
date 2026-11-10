@@ -40,6 +40,7 @@ import {
   GoalLifecycleEvent,
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
+  SessionTaintEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
   RecoveryRejectedEvent,
@@ -210,6 +211,16 @@ const EVENTS: Record<
   'session.created': { sparsest: () => new SessionCreatedEvent('s', 'agent', 'i-1', 1, 5) },
   'session.saved': { sparsest: () => new SessionSavedEvent('s', 'agent', 'i-1', 1, 5) },
   'session.deleted': { sparsest: () => new SessionDeletedEvent('s', 'i-1', 1, 5) },
+  'session.tainted': {
+    sparsest: () =>
+      new SessionTaintEvent({
+        sessionId: 's',
+        runId: 'r',
+        detector: 'prompt-injection',
+        provenance: 'user-input',
+        confidence: 0.95,
+      }),
+  },
   'review.requested': {
     sparsest: () => new ReviewRequestedEvent('review-1', 'run-1', 'api-key:a', 'human-wait'),
   },

@@ -17,9 +17,9 @@ import { z } from 'zod';
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
-  createBureau,
   ReviewRoundChangedError,
-} from '../create-bureau.ts';
+} from '../bureau-errors.ts';
+import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
 import type { Bureau, PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
 import {

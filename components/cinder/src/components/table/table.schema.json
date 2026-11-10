@@ -26,6 +26,11 @@
       "description": "Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and\nthe clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade\nat the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out\nas a bare `<table>`.\n\nWhen combined with `stickyHeader`, the generated wrapper is the sticky\nheader's scroll container. Set a bounded block size on `scrollContainerProps`\nwhen the table should scroll vertically inside that wrapper.",
       "default": true
     },
+    "fit": {
+      "type": "boolean",
+      "description": "Fits the table to its container's width so a long value never makes it scroll sideways. The\ncolumns share the width (a fixed table layout: set a column's width on its header cell or a\n`<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full\ntext in the `title`, and any other cell wraps its text. Leave it off for a table whose columns\nshould keep their natural widths and scroll when they do not fit.",
+      "default": false
+    },
     "stackBelow": {
       "anyOf": [
         {

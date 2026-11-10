@@ -27,7 +27,7 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError } from '../../bureau-errors.ts';
 import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {

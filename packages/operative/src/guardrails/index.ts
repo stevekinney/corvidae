@@ -21,7 +21,12 @@ export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';
 export { SCAN_FAILED_MESSAGE, collectStreamedToolResult, scanToolResult } from './scan-tool-result';
 export type { ScanToolResultOptions, ScannedToolResult } from './scan-tool-result';
-export { createSessionTaintTracker } from './session-taint';
+export {
+  SESSION_TAINT_METADATA_KEY,
+  createSessionTaintTracker,
+  persistedSessionTaintOf,
+  readSessionTaint,
+} from './session-taint';
 export { createToolCallGuardrail } from './tool-call-guardrail';
 export { GUARDRAIL_BLOCKED_CODE, createToolResultGuardrail } from './tool-result-guardrail';
 export type { ToolResultGuardrailOptions } from './tool-result-guardrail';
@@ -46,6 +51,7 @@ export type {
   OutputGuardrailOptions,
   OutputGuardrailTriggeredEvent,
   OutputValidator,
+  PersistedSessionTaint,
   SessionTaintOptions,
   SessionTaintTracker,
   SessionTaintedEvent,

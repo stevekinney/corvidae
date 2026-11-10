@@ -27,9 +27,9 @@ import { z } from 'zod';
 import {
   ApprovalOutcomeNotWrittenError,
   BureauError,
-  createBureau,
   ReviewRoundChangedError,
-} from './create-bureau';
+} from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { APPROVAL_DECISION_METADATA_KEY } from './approval-decision-metadata';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';

@@ -83,7 +83,13 @@
 <div class="ib-models" data-section="models">
   {#if failure === undefined && models.length > 0}
     <FormSection grouped heading={copy.heading} description={copy.description} />
-    <Table caption={copy.tableLabel} density="comfortable" bind:sort>
+    <Table caption={copy.tableLabel} density="comfortable" fit class="ib-records__table" bind:sort>
+      <colgroup>
+        <col style="width: 40%" />
+        <col style="width: 32%" />
+        <col style="width: 14%" />
+        <col style="width: 14%" />
+      </colgroup>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell column="model" sortable>{copy.columns.model}</Table.HeaderCell>

@@ -29,7 +29,7 @@ import { type DecisionRequest, DecisionSchemaError } from '@lostgradient/operati
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError } from '../../bureau-errors.ts';
 import { ModelPolicyDeniedError } from '../../file-agent-generate.ts';
 import {
   DecisionSchemaRefusedError,

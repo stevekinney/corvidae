@@ -12,7 +12,6 @@ import {
 } from '@lostgradient/lifecycle';
 import { createGovernedMemoryTools } from '@lostgradient/memory';
 import {
-  AbortAgentRunError,
   type ActiveRun,
   AgentContractError,
   type AgentInput,
@@ -148,7 +147,6 @@ import {
   type ListOptions,
   Mailbox,
   type RecoveredWorkflowInfo,
-  isWeftErrorLike,
   type WorkflowState,
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
@@ -171,7 +169,6 @@ import {
   resolveToolResult,
   getOwn,
 } from 'conversationalist';
-
 import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
 import {
@@ -337,6 +334,7 @@ import {
   RunSettledEvent,
   RunRemovedEvent,
   NotificationCreatedEvent,
+  SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   DiagnosticEvent,
 } from './events';
@@ -396,7 +394,6 @@ import {
   createMaintenanceMemoryAuthority,
   createToolMemoryAuthority,
   createRuntimeComposition,
-  decodeScheduleRunMarker,
   isScheduledFireAuthority,
   recordRecoveredSkillPolicy,
   recoveredSkillPolicyOf,
@@ -429,13 +426,10 @@ import {
 } from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
-  type CatalogRunSettlement,
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
-  type CatalogSettlementTracker,
   publishFreshCatalogRun,
-  settlementForRejection,
 } from './catalog-run-settlement';
 import {
   createTaskRegistry,
@@ -554,11 +548,7 @@ import {
   type ReviewDecisionAuditPayload,
   resolvedReviewOfAudit,
 } from './resolved-review-record';
-import {
-  formatReviewAnswerIssues,
-  type ReviewAnswerIssue,
-  validateReviewAnswer,
-} from './review-answer';
+import { validateReviewAnswer } from './review-answer';
 import {
   type AnswerEncryptionKeys,
   gateSecretAnswer,
@@ -695,7 +685,6 @@ import type {
   SessionPendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
-  BureauRetentionOptions,
   ExpiredRecordKind,
   ExpiredRecordRemoval,
   ReviewResolutionFields,
@@ -728,11 +717,7 @@ import {
 } from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
-import {
-  TASKS_RESPOND_LEDGER_KEY_PREFIX,
-  type TaskRespondRefusal,
-  type TasksRespondClaim,
-} from './tasks/respond-to-task';
+import { TASKS_RESPOND_LEDGER_KEY_PREFIX, type TasksRespondClaim } from './tasks/respond-to-task';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import {
@@ -757,6 +742,47 @@ import type { HookSubjectSources } from './hooks/hook-scope';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
+import {
+  BureauError,
+  APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE,
+  ApprovalOutcomeNotWrittenError,
+  PinnedToolUnavailableError,
+  pinnedToolUnavailable,
+  ReviewRoundChangedError,
+  ReviewAnswerInvalidError,
+  UnpricedSwitchRefusedError,
+  BureauShuttingDownError,
+  TaskRespondError,
+  TerminalSessionRecordAbandonedError,
+  ScheduleLocatorUnavailableError,
+  UnknownScheduleAgentError,
+  toBadRequest,
+} from './bureau-errors';
+import {
+  ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
+  DURABLE_FORCIBLY_TERMINABLE_STATUSES,
+  resolveWaitForDurableRun,
+  resolveCancelDurableRun,
+  COMMITTED_ELSEWHERE,
+  isCommittedElsewhere,
+  endedElsewhereAs,
+  terminalActionTimestamp,
+} from './durable-run-waits';
+import {
+  hasRecoverableTransportAuthority,
+  isTerminalApprovalBindingError,
+  emptyRecoveredStepMetadata,
+  type SessionLoadOutcome,
+  type ClassifyRecoveredRunArgs,
+  RECOVERED_RUN_TERMINAL_STATUSES,
+  classifyRecoveredRunDetailed,
+  dedupeRecoveryPerRunFailures,
+  isRecoverableScheduledFireInput,
+  loadScheduleIdForRecoveredRun,
+  loadExistingScheduledSessionId,
+  monitorRecoveredScheduledFire,
+  monitorRecoveredCatalogRun,
+} from './recovered-run-classification';
 
 const BUREAU_AGENT_NAME = 'bureau';
 
@@ -825,59 +851,6 @@ const SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS = 10;
 const SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS = 2_000;
 /** After the first failure is reported, how long passes before the next one is. */
 const SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS = 60_000;
-/**
- * How long `shutdown({ policy: 'abort' })` waits for the runs it aborted to
- * reach a terminal event before it stops waiting and tears storage down. A
- * run that honors its `AbortSignal` settles within a few ticks; this bound
- * exists only so a run that ignores it cannot hold shutdown open.
- */
-export const ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS = 1_000;
-
-/**
- * Returns whether a persisted session can still resume under transport-issued
- * authority. Terminal sessions retain their authority for auditability, but
- * must not defer boot recovery because no user code can resume from them.
- */
-export function hasRecoverableTransportAuthority(metadata: Record<string, JSONValue>): boolean {
-  if (metadata['lastRunStatus'] !== 'running') return false;
-  const requiresTransportValidator = (revision: unknown): boolean =>
-    typeof revision === 'string' && revision !== 'bureau:1' && revision !== 'bureau:scheduler:1';
-  const lastRunId = metadata['lastRunId'];
-  if (typeof lastRunId !== 'string' || !lastRunId) return false;
-  const authorities = metadata['lastRequestAuthorities'];
-  if (authorities && typeof authorities === 'object' && !Array.isArray(authorities)) {
-    const activeAuthority = ownEntry(authorities as Record<string, JSONValue>, lastRunId);
-    if (!activeAuthority || typeof activeAuthority !== 'object' || Array.isArray(activeAuthority)) {
-      return false;
-    }
-    return requiresTransportValidator(
-      (activeAuthority as Record<string, JSONValue>)['authorizationRevision'],
-    );
-  }
-  const legacyAuthority = metadata['lastRequestAuthority'];
-  if (!legacyAuthority || typeof legacyAuthority !== 'object' || Array.isArray(legacyAuthority)) {
-    return false;
-  }
-  return requiresTransportValidator(
-    (legacyAuthority as Record<string, JSONValue>)['authorizationRevision'],
-  );
-}
-
-export function isTerminalApprovalBindingError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const code = (error as Record<string, unknown>)['code'];
-  return (
-    code === 'expired' ||
-    code === 'revoked' ||
-    code === 'already-consumed' ||
-    code === 'not-found' ||
-    code === 'invalid-binding'
-  );
-}
-
-export function emptyRecoveredStepMetadata(): Record<string, never> {
-  return {};
-}
 
 export function omitKeysWithPrefix(
   record: Record<string, JSONValue>,
@@ -1122,470 +1095,6 @@ type CanceledReviewTarget = {
   readonly round: number;
 };
 
-const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
-
-/**
- * Whether a durable run's status is one it has not settled from: Bureau's own
- * non-terminal set ({@link DURABLE_FORCIBLY_TERMINABLE_STATUSES}), read by the
- * AG-UI mount's busy decision so it cannot drift from what `waitForDurableRun` and
- * `cancelDurableRun` call unsettled. `pending` counts: `createRun` returns once the
- * durable record commits, and Weft reports the workflow `pending` until its inline
- * launch runs.
- */
-export function isDurableRunUnsettled(status: string): boolean {
-  return DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(status);
-}
-
-/**
- * Dependencies {@link resolveCancelDurableRun} needs, factored out for
- * direct dependency injection in tests (AB-205) — in particular the
- * "resolves `already-terminal`, never `requested`" race fixture, which needs
- * to observe/control exactly when `cancel` resolves relative to a workflow
- * completing normally, something a real Weft engine cannot be made to do
- * deterministically.
- */
-export interface CancelDurableRunDependencies {
-  getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  cancel: (runId: string) => Promise<unknown>;
-}
-
-/** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
-export interface WaitForDurableRunDependencies {
-  getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  /** Weft's result waiter for the run: resolves, or rejects with the run's own failure or another error. */
-  awaitResult: (runId: string) => Promise<void>;
-  /** `maintenance: 'manual'`, where Weft installs no cross-engine poll. */
-  manualBackgroundTasks: boolean;
-}
-
-/**
- * The resolution algorithm behind {@link BureauTasks.wait}, independent of a real
- * `runtime.durable.engine`. A rejection of the result waiter is accepted only when the store then
- * confirms the run is terminal (a failed, cancelled or timed-out run rejects its own result);
- * any other rejection says nothing about the run and propagates.
- */
-export async function resolveWaitForDurableRun(
-  runId: string,
-  dependencies: WaitForDurableRunDependencies,
-): Promise<WorkflowState | null | undefined> {
-  const isTerminal = (state: WorkflowState) =>
-    !DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status);
-  const current = await dependencies.getDurableRun(runId);
-  if (current === undefined || current === null) return current;
-  if (isTerminal(current)) return current;
-  // Weft's result waiter rechecks the store only inside `runMaintenance()` under
-  // `backgroundTasks: 'manual'`, so a wait nothing re-drives could pend forever for a run another
-  // bureau completes. Refuse it plainly instead of hanging.
-  if (dependencies.manualBackgroundTasks) {
-    throw new BureauError(
-      `waitForDurableRun("${runId}") cannot wait under maintenance: 'manual', ` +
-        `where nothing re-reads the durable store between maintenance passes; call ` +
-        `maintain() and then getDurableRun() instead`,
-      'UNSUPPORTED_CAPABILITY',
-    );
-  }
-  let rejection: unknown;
-  try {
-    await dependencies.awaitResult(runId);
-  } catch (error) {
-    rejection = error;
-  }
-  const settled = await dependencies.getDurableRun(runId);
-  if (settled === undefined || settled === null) return settled;
-  if (isTerminal(settled)) return settled;
-  throw rejection ?? new Error(`Durable run "${runId}" settled without reaching a terminal state`);
-}
-
-/**
- * The pure resolution algorithm behind {@link Bureau.cancelDurableRun}
- * (AB-37, AB-205), independent of any real `runtime.durable.engine` — see
- * {@link CancelDurableRunDependencies}. Never rejects.
- *
- * Resolution order: `getDurableRun` resolving `undefined` (no durable engine
- * composed) resolves `'unsupported-capability'`; resolving `null` (unknown to
- * the engine) resolves `'not-found'`; a resolved `WorkflowState.status`
- * already outside {@link DURABLE_FORCIBLY_TERMINABLE_STATUSES} resolves
- * `'already-terminal'` WITHOUT calling `cancel`. Otherwise `cancel(runId)` is
- * called — a rejection resolves `'failed'` with the error attached; a
- * resolution triggers a REQUIRED post-cancel re-read via `getDurableRun`,
- * because `cancel` resolving is not proof a cancellation record committed (it
- * can win OR lose a race against the workflow completing on its own): a
- * re-read observing `status === 'cancelled'` resolves `'requested'`; a
- * re-read observing any OTHER status outside
- * {@link DURABLE_FORCIBLY_TERMINABLE_STATUSES} (the race where normal
- * completion won instead) resolves `'already-terminal'`; a re-read
- * observing `null` (the run was purged between the two reads) resolves
- * `'not-found'`; a re-read observing `undefined` (the durable engine
- * vanished between the two reads — not expected in practice, since nothing
- * decomposes a bureau's durable engine mid-call, but never assumed) resolves
- * `'unsupported-capability'`; a re-read still reporting a status WITHIN
- * {@link DURABLE_FORCIBLY_TERMINABLE_STATUSES} means `cancel` resolved
- * without the cancellation actually committing — genuinely unproven, not a
- * success — and resolves `'failed'` rather than being misreported as
- * `'already-terminal'` (a code-review finding on this pull request).
- */
-export async function resolveCancelDurableRun(
-  runId: string,
-  dependencies: CancelDurableRunDependencies,
-): Promise<CancelDurableRunOutcome> {
-  try {
-    const state = await dependencies.getDurableRun(runId);
-    if (state === undefined) {
-      return { status: 'unsupported-capability' };
-    }
-    if (state === null) {
-      return { status: 'not-found' };
-    }
-    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status)) {
-      return { status: 'already-terminal' };
-    }
-
-    try {
-      await dependencies.cancel(runId);
-    } catch (error) {
-      return { status: 'failed', error };
-    }
-
-    const rereadState = await dependencies.getDurableRun(runId);
-    if (rereadState === undefined) {
-      return { status: 'unsupported-capability' };
-    }
-    if (rereadState === null) {
-      return { status: 'not-found' };
-    }
-    if (rereadState.status === 'cancelled') {
-      return { status: 'requested' };
-    }
-    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(rereadState.status)) {
-      return { status: 'already-terminal' };
-    }
-    // `cancel` resolved without rejecting, but the post-cancel re-read still
-    // reports a forcibly-terminable status — the cancellation record did not
-    // actually commit. Reporting `'already-terminal'` here would be a false
-    // positive; reporting `'requested'` would be an unproven claim. Neither
-    // is honest, so this resolves `'failed'`.
-    return {
-      status: 'failed',
-      error: new Error(
-        `cancelDurableRun("${runId}"): engine.cancel resolved but the post-cancel re-read still ` +
-          `reports status "${rereadState.status}" — the cancellation did not commit.`,
-      ),
-    };
-  } catch (error) {
-    return { status: 'failed', error };
-  }
-}
-
-/**
- * Discriminates *why* a `BureauError` with code `NOT_CONFIGURED` was thrown.
- * `NOT_CONFIGURED` alone is not enough for a consumer to decide an HTTP status:
- * some subjects mean "this deployment does not compose that capability at all"
- * (`durable` — a 501 case), others mean "the capability exists but
- * is unconfigured, and the operator can fix it" (`generate`, `persistence`,
- * `approval` — a 503 case). Only set on `NOT_CONFIGURED` errors.
- */
-export type BureauErrorNotConfiguredSubject =
-  | 'generate'
-  | 'durable'
-  | 'persistence'
-  | 'approval'
-  /** COR-1920: a secret answer arrived, and the Bureau has no `answerEncryption` key or no storage for it. */
-  | 'encryption';
-
-class BureauError extends Error {
-  readonly code:
-    | 'NOT_FOUND'
-    | 'CONFLICT'
-    | 'NOT_CONFIGURED'
-    | 'BAD_REQUEST'
-    | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY'
-    | 'STORAGE_UNAVAILABLE';
-  readonly subject: BureauErrorNotConfiguredSubject | undefined;
-
-  // `subject` is required for NOT_CONFIGURED and disallowed for every other
-  // code — a compile-time guarantee that a future NOT_CONFIGURED throw site
-  // cannot skip disambiguation and reintroduce the ambiguity #264 fixed.
-  constructor(message: string, code: Exclude<BureauError['code'], 'NOT_CONFIGURED'>);
-  constructor(message: string, code: 'NOT_CONFIGURED', subject: BureauErrorNotConfiguredSubject);
-  constructor(
-    message: string,
-    code:
-      | 'NOT_FOUND'
-      | 'CONFLICT'
-      | 'NOT_CONFIGURED'
-      | 'BAD_REQUEST'
-      | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY'
-      | 'STORAGE_UNAVAILABLE',
-    subject?: BureauErrorNotConfiguredSubject,
-  ) {
-    super(message);
-    this.name = 'BureauError';
-    this.code = code;
-    this.subject = subject;
-  }
-}
-
-/**
- * `resolveReview` resolved a tool approval, and the tool ran or was refused, but
- * the outcome could not be written into the session's conversation. The review is
- * resolved and will not be offered again; the conversation still shows it as
- * pending until a later write replaces the row.
- *
- * The decision took effect: only the write into the conversation failed. The code
- * is `CONFLICT` for lack of a better one, and a management-plane consumer must not
- * read it as another resolver having won.
- */
-const APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE =
-  'The decision was recorded, but its outcome could not be written into the conversation, which still shows the approval as pending';
-
-class ApprovalOutcomeNotWrittenError extends BureauError {
-  constructor(message: string) {
-    super(message, 'CONFLICT');
-    this.name = 'ApprovalOutcomeNotWrittenError';
-  }
-}
-
-/**
- * A tool call waiting for approval names a tool version the toolbox no longer holds (COR-1872). A
- * durable record pins `namespace:name@version` and runs only that version: `reason` is
- * `version-mismatch` when other versions of the tool are loaded, which `candidates` lists, and
- * `missing` when none is. Recovery reports it as the cause of the review it cannot restore, and
- * `resolveReview` throws it rather than run another version; either way the tool does not run.
- */
-class PinnedToolUnavailableError extends BureauError {
-  /** Why the pinned id did not resolve. */
-  readonly reason: 'missing' | 'ambiguous' | 'version-mismatch';
-  /** The `namespace:name@version` the run recorded. */
-  readonly toolId: string;
-  /** The ids of the loaded tools that came closest; empty for `missing`. */
-  readonly candidates: readonly string[];
-  constructor(
-    toolId: string,
-    reason: 'missing' | 'ambiguous' | 'version-mismatch',
-    candidates: readonly string[],
-  ) {
-    super(
-      `The run recorded tool "${toolId}", and the toolbox ${
-        candidates.length === 0 ? 'holds no version of it' : `holds ${candidates.join(', ')}`
-      } (${reason}).`,
-      'CONFLICT',
-    );
-    this.name = 'PinnedToolUnavailableError';
-    this.reason = reason;
-    this.toolId = toolId;
-    this.candidates = candidates;
-  }
-}
-
-/**
- * The error for an approval whose binding pins a tool id `toolbox` no longer resolves, or
- * `undefined` when it resolves or the approval pins none.
- */
-function pinnedToolUnavailable(
-  toolbox: Pick<BureauToolbox, 'resolveTool'>,
-  approval: Pick<SignedPendingToolApproval, 'approvalBinding'>,
-): PinnedToolUnavailableError | undefined {
-  const toolId = approval.approvalBinding?.toolDefinitionRevision;
-  if (typeof toolId !== 'string') return undefined;
-  const resolution = toolbox.resolveTool(toolId);
-  return resolution.ok
-    ? undefined
-    : new PinnedToolUnavailableError(toolId, resolution.reason, resolution.candidates);
-}
-
-/**
- * `resolveReview` was given the round the caller read, and the review has moved past it: another
- * resolver superseded the approval, which replaces it under the same id with the next round
- * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
- * again; it names no other resolver's decision.
- */
-class ReviewRoundChangedError extends BureauError {
-  constructor(message: string) {
-    super(message, 'CONFLICT');
-    this.name = 'ReviewRoundChangedError';
-  }
-}
-
-/**
- * `reviews.resolve` was given an answer that does not satisfy the schema of the human wait it
- * answers (COR-1804), or none where the schema needs one. Nothing was claimed, delivered or
- * audited, so the review stays pending and the caller may answer again. It is a `BAD_REQUEST`
- * `BureauError`; the catalog maps it to `InvalidParams` with the issues under `data.issues`.
- */
-class ReviewAnswerInvalidError extends BureauError {
-  /** Every way the answer fails its schema; paths are relative to the answer. */
-  readonly issues: readonly ReviewAnswerIssue[];
-
-  constructor(issues: readonly ReviewAnswerIssue[]) {
-    super(
-      `The answer does not satisfy the question’s schema: ${formatReviewAnswerIssues(issues)}`,
-      'BAD_REQUEST',
-    );
-    this.name = 'ReviewAnswerInvalidError';
-    this.issues = issues;
-  }
-}
-
-/**
- * A steering command was refused because it switches the model of an agent with `limits.cost` to
- * one the catalog has no price for (COR-1921). It is a `BAD_REQUEST` `BureauError`, so the
- * catalog's steer answers `InvalidParams` naming the `override` field and the budget; a fork
- * that carries a model across catches it, and answers the carry as rejected.
- */
-class UnpricedSwitchRefusedError extends BureauError {
-  constructor(message: string) {
-    super(message, 'BAD_REQUEST');
-    this.name = 'UnpricedSwitchRefusedError';
-  }
-}
-
-/**
- * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
- * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
- * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
- */
-class BureauShuttingDownError extends BureauError {
-  /** When Bureau refused the command, as an ISO timestamp of its runtime clock. */
-  readonly at: string;
-
-  constructor(message: string, at: string) {
-    super(message, 'CONFLICT');
-    this.name = 'BureauShuttingDownError';
-    this.at = at;
-  }
-}
-
-/**
- * A refusal of {@link BureauTasks.respond}, made before anything took effect. It is a
- * `BureauError` (`NOT_FOUND`, `CONFLICT`, or `BAD_REQUEST`) that also says which request `field`
- * a `BAD_REQUEST` is about, or the short `reason` an addressed wait cannot take the answer, so the
- * management plane answers it as `InvalidParams` or `Unprocessable` without reading the message.
- */
-class TaskRespondError extends BureauError {
-  readonly field: string | undefined;
-  readonly reason: string | undefined;
-  /** Every field of the answer that failed the wait's schema, when that is what was refused (COR-1804). */
-  readonly issues: TaskRespondRefusal['issues'];
-
-  constructor(refusal: TaskRespondRefusal) {
-    super(refusal.message, refusal.code);
-    this.name = 'TaskRespondError';
-    this.field = refusal.field;
-    this.reason = refusal.reason;
-    this.issues = refusal.issues;
-  }
-}
-
-export {
-  ApprovalOutcomeNotWrittenError,
-  BureauError,
-  BureauShuttingDownError,
-  PinnedToolUnavailableError,
-  ReviewAnswerInvalidError,
-  ReviewRoundChangedError,
-  TaskRespondError,
-};
-
-/**
- * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
- * end in the session, so no record of it is coming from here.
- */
-/**
- * COR-1614 — the field that marks a store action ending a run another process ended. Such an
- * action reaches this process's live frames and nothing else that reads the store's actions.
- */
-const COMMITTED_ELSEWHERE = 'committedElsewhere';
-
-function isCommittedElsewhere(action: { readonly detail: unknown }): boolean {
-  const detail = action.detail;
-  return typeof detail === 'object' && detail !== null && COMMITTED_ELSEWHERE in detail;
-}
-
-/**
- * The end a durable run another process cancelled, timed out, or failed stands for on this
- * process's store; `undefined` for any other state. A completed run is left out: a Bureau run that
- * is cancelled or times out never completes its workflow, and one that completes was driven by an
- * engine that reported it.
- */
-function endedElsewhereAs(
-  state: WorkflowState,
-): { readonly type: 'run.aborted' | 'run.error'; readonly error: Error } | undefined {
-  if (state.status === 'cancelled') {
-    return {
-      type: 'run.aborted',
-      error: new AbortAgentRunError('The run was cancelled by another process'),
-    };
-  }
-  if (state.status === 'timed-out' || state.status === 'failed') {
-    return {
-      type: 'run.error',
-      // Uncoded, so a stream reports it as `RUN_FAILED`, the code a peer streaming the same run
-      // reads from its durable status.
-      error: new Error(
-        state.error ?? (state.status === 'timed-out' ? 'The run timed out' : 'The run failed'),
-      ),
-    };
-  }
-  return undefined;
-}
-
-class TerminalSessionRecordAbandonedError extends Error {
-  constructor(runId: string) {
-    super(`Run "${runId}" ended without its end being recorded in its session by this process.`);
-    this.name = 'TerminalSessionRecordAbandonedError';
-  }
-}
-
-/**
- * Thrown by `schedules.create` when a schedule registers successfully against
- * the engine but its {@link import('@lostgradient/weft').ScheduleSummary}
- * cannot be retrieved immediately afterward (`AgentScheduleHandle.describe()`
- * rejects). Mirrors `DurableCapabilityUnavailableError`'s shape discipline
- * (AB-41/AB-43) — `.code`, `.category`, `.retryable` — so the same
- * `isToolError`-style consumer contract can discriminate it without a bare,
- * untyped `Error` leaking through. The schedule itself IS registered; only
- * its locator (the summary) is unavailable.
- */
-export class ScheduleLocatorUnavailableError extends Error {
-  readonly code = 'ScheduleLocatorUnavailableError';
-  readonly category = 'unavailable' as const;
-  readonly retryable = false as const;
-  /** The already-registered schedule whose locator could not be read. */
-  readonly scheduleId: string;
-
-  constructor(scheduleId: string, options?: { cause?: unknown }) {
-    super(
-      `Schedule ${scheduleId} was registered, but its summary could not be retrieved. ` +
-        `The schedule is registered; retry describing it (e.g. bureau.schedules.get('${scheduleId}')) later.`,
-      options,
-    );
-    this.name = 'ScheduleLocatorUnavailableError';
-    this.scheduleId = scheduleId;
-  }
-}
-
-/**
- * Thrown by `schedules.create` (COR-1667) when `agentName` is not in the agent catalog, instead of
- * registering a schedule whose every fire would be refused with `missing-agent`. A `NOT_FOUND`
- * {@link BureauError}, so the management plane answers it as a client error; the name is on
- * `agentName`.
- */
-export class UnknownScheduleAgentError extends BureauError {
-  /** The catalog name no agent resolves. */
-  readonly agentName: string;
-
-  constructor(agentName: string) {
-    super(
-      `Unknown agent "${agentName}": a schedule can only run an agent in the catalog`,
-      'NOT_FOUND',
-    );
-    this.name = 'UnknownScheduleAgentError';
-    this.agentName = agentName;
-  }
-}
-
 /** {@link BureauOptions} once each definition-source option is one source (COR-1873). */
 type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
   BureauOptions<D>,
@@ -1669,10 +1178,6 @@ function layeredWithPlugins<const Source extends AgentSource | WorkflowSource>(
   });
   if (layers.length === 0) return undefined;
   return resolveDefinitionSource(option, kind, [...owners, ...layers], toBadRequest) as Source;
-}
-
-function toBadRequest(message: string): never {
-  throw new BureauError(message, 'BAD_REQUEST');
 }
 
 /**
@@ -1980,348 +1485,6 @@ function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
 }
 
 /**
- * The session metadata boot recovery needs to decide a recovered run's fate,
- * loaded by id from the owning session. `null` ⇒ the session does not exist.
- */
-export type RecoveredRunSessionMetadata = { lastRunId?: unknown; lastRunStatus?: unknown } | null;
-
-/**
- * The outcome of loading a recovered run's owning session: a successful load
- * (the metadata, possibly `null` for "absent") or a transient read FAILURE that
- * leaves ownership UNKNOWN.
- */
-export type SessionLoadOutcome = { ok: true; session: RecoveredRunSessionMetadata } | { ok: false };
-
-/**
- * Decide what boot recovery does with one handle from `engine.recoverAll()`:
- *
- * - `reattach` — bureau-owned, in-flight, session-confirmed: wrap it in a live
- *   ActiveRun and register it.
- * - `monitor` — native scheduled fire: leave the recovered Weft workflow running
- *   and attach a detached result monitor, but do not register an ActiveRun because
- *   scheduled fires intentionally have no interactive session ownership.
- * - `cancel` — POSITIVELY not a reattachable bureau-owned in-flight run (bad/
- *   missing launch metadata, foreign run id, or a session that is absent / owns a
- *   different run / is already terminal). `engine.cancel` terminalizes it so it
- *   does not run unowned with no monitor.
- * - `skip` — ownership could NOT be confirmed (a transient session-load failure,
- *   or no session store): do NOTHING. `engine.cancel` is terminal, so we never
- *   cancel a run that may be legitimately recovering — the worst case is it
- *   resumes without live `getRun` visibility (the pre-#3 behaviour).
- *
- * Pure (no I/O) so every branch is unit-testable. `recoverAll()` fires the
- * services resolver synchronously per run before returning, and the resolver
- * reconciles a deps-unrebuildable run's session to `lastRunStatus: 'error'` — so
- * by the time this classifies, a session still `'running'` is one the resolver
- * kept. The gate is on SESSION status, NOT engine run-status: a run that
- * resolved-and-finished fast during `recoverAll` is terminal in the engine but its
- * session is still `'running'` (its monitor has not written yet), and it must
- * still be reattached so its completion is persisted.
- */
-export interface ClassifyRecoveredRunArgs {
-  handleId: string;
-  /** Whether the launch metadata identifies a native scheduled fire. */
-  scheduledFire: boolean;
-  /** The narrowed agentRun input when the launch metadata is bureau-owned, else `undefined`. */
-  ownedSessionId: string | undefined;
-  /** Whether reading the handle's launch metadata threw. */
-  metadataReadFailed: boolean;
-  /** A session store is configured (recovery cannot reattach without one). */
-  hasSessionStore: boolean;
-  /** The session-load outcome; only meaningful when `ownedSessionId` is set + `hasSessionStore`. */
-  sessionLoad: SessionLoadOutcome;
-  /**
-   * AB-10 — true when the durable engine flagged this run's checkpointed
-   * `workflowVersion` as differing from the currently-registered one (see
-   * `RuntimeComposition.workflowVersionMismatches`). Only changes the verdict
-   * for what would otherwise be `'reattach'` — the run still reattaches
-   * (pin-and-warn), it is just flagged distinctly so callers can log/alert on
-   * the drift.
-   */
-  versionMismatch?: boolean;
-  /**
-   * COR-297 — the status of the run's durable record, when it was read. A `'pending'` record was
-   * prepared and never launched, so a run that would otherwise reattach is cancelled instead
-   * (`'prepared-not-launched'`). A terminal status (`RECOVERED_RUN_TERMINAL_STATUSES`) on a run
-   * whose session is no longer running means a peer already finished the run, so there is nothing
-   * to cancel (`'skip'`, COR-1916). Omitted, or any other status, changes nothing.
-   */
-  engineRecordStatus?: string;
-}
-
-/**
- * COR-1916 — the durable statuses a run never leaves. A recovered handle whose record already
- * reads one of these, with its session settled, was finished by a peer while this boot was
- * classifying it (a peer takes the claim of a process that stalled past its lease TTL).
- */
-const RECOVERED_RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  'completed',
-  'failed',
-  'cancelled',
-  'timed-out',
-]);
-
-/**
- * `classifyRecoveredRun`'s verdict, plus — only when the verdict is
- * `'cancel'` — the structured reason (AB-90/ab90-09's `recovery.rejected`
- * payload). Both derived from the SAME branch pass over `args` as the plain
- * verdict below, so the verdict `emitter.dispatch`es as `recovery.attempted`
- * and the reason it dispatches as `recovery.rejected` can never drift apart.
- */
-export function classifyRecoveredRunDetailed(args: ClassifyRecoveredRunArgs): {
-  verdict: RecoveredRunVerdict;
-  rejection?: RecoveryRejectionReason;
-} {
-  // A failed metadata read means we cannot even identify the run — but it WAS
-  // resumed by recoverAll, so cancel it rather than leave it unowned.
-  if (args.metadataReadFailed) {
-    return { verdict: 'cancel', rejection: 'metadata-read-failed' };
-  }
-  if (args.ownedSessionId === undefined) {
-    // A scheduled fire has no interactive session ownership to confirm. Weft has
-    // already resumed it via the scheduled-fire resolver branch, so monitor its
-    // result without registering it as an ActiveRun or cancelling it as foreign.
-    if (args.scheduledFire) return { verdict: 'monitor' };
-    // Not a bureau-owned agentRun (foreign run id / non-agentRun input) — cancel.
-    return { verdict: 'cancel', rejection: 'foreign-input' };
-  }
-  // Owned input but no session store to confirm against / reattach into — skip.
-  if (!args.hasSessionStore) return { verdict: 'skip' };
-  // Transient session-load failure — ownership UNKNOWN, never cancel; skip.
-  if (!args.sessionLoad.ok) return { verdict: 'skip' };
-  const session = args.sessionLoad.session;
-  // Session absent / owns a different run / not in-flight — positively unowned.
-  if (!session) return { verdict: 'cancel', rejection: 'session-absent' };
-  if (session.lastRunId !== args.handleId) {
-    return { verdict: 'cancel', rejection: 'session-run-mismatch' };
-  }
-  if (session.lastRunStatus !== 'running') {
-    // COR-1916 — session and record agree the run is over: a peer finished it after this boot
-    // took its handle. Cancelling it would be a no-op and reporting it a recovery failure a lie.
-    if (
-      args.engineRecordStatus !== undefined &&
-      RECOVERED_RUN_TERMINAL_STATUSES.has(args.engineRecordStatus)
-    ) {
-      return { verdict: 'skip' };
-    }
-    return { verdict: 'cancel', rejection: 'session-not-running' };
-  }
-  // A pending record never resumes, so a version mismatch is moot for it.
-  if (args.engineRecordStatus === 'pending') {
-    return { verdict: 'cancel', rejection: 'prepared-not-launched' };
-  }
-  return { verdict: args.versionMismatch ? 'reattach-version-mismatch' : 'reattach' };
-}
-
-/**
- * Plain-verdict view of {@link classifyRecoveredRunDetailed}, unchanged for
- * every existing caller and test — this wrapper exists only so the
- * rejection-reason derivation above has exactly one place to live.
- */
-export function classifyRecoveredRun(args: ClassifyRecoveredRunArgs): RecoveredRunVerdict {
-  return classifyRecoveredRunDetailed(args).verdict;
-}
-
-/**
- * Dedupes {@link BureauRecoveryReport.perRunFailures} by `runId`, keeping
- * the FIRST entry seen. A recovered handle whose owning session is absent/
- * mismatched/not-running is classified once by the awaited `onRecoveredWorkflow`
- * hook (during `recoverAll()`) and, because that verdict never registers an
- * `ActiveRun`, classified AGAIN by `recoverDurableRuns`'s own post-`recoverAll()`
- * pass over every unregistered handle — both classifications agree (nothing
- * about the handle changed between them), so without this dedupe the SAME
- * `{runId, reason}` would appear twice, violating the one-entry-per-handle
- * contract (code-review regression fixture, AB-349). Pure and exported for
- * direct unit testing, matching {@link classifyRecoveredRunDetailed}.
- */
-export function dedupeRecoveryPerRunFailures(
-  perRunFailures: readonly { readonly runId: string; readonly reason: string }[],
-): { readonly runId: string; readonly reason: string }[] {
-  const seen = new Set<string>();
-  const deduped: { readonly runId: string; readonly reason: string }[] = [];
-  for (const failure of perRunFailures) {
-    if (seen.has(failure.runId)) continue;
-    seen.add(failure.runId);
-    deduped.push(failure);
-  }
-  return deduped;
-}
-
-export function isRecoverableScheduledFireInput(input: unknown): input is ScheduledAgentRunInput {
-  return (
-    isScheduledAgentRunInput(input) &&
-    typeof input.scheduleId === 'string' &&
-    input.scheduleId.trim().length > 0
-  );
-}
-
-async function loadScheduleIdForRecoveredRun(
-  engine: { storage: { get(key: string): Promise<Uint8Array | null> } },
-  workflowId: string,
-): Promise<
-  | { status: 'found'; scheduleId: string }
-  | { status: 'missing' }
-  | { status: 'read-error'; error: unknown }
-> {
-  try {
-    const value = await engine.storage.get(KEYS.scheduleRun(workflowId));
-    if (!value) return { status: 'missing' };
-    const scheduleId = decodeScheduleRunMarker(decode(value));
-    return scheduleId !== undefined ? { status: 'found', scheduleId } : { status: 'missing' };
-  } catch (error) {
-    return { status: 'read-error', error };
-  }
-}
-
-export async function loadExistingScheduledSessionId(
-  store: SessionStore,
-  input: ScheduledAgentRunInput,
-  runId: string,
-): Promise<string | undefined> {
-  if (input.sessionId !== undefined) {
-    const session = await store.load(input.sessionId);
-    return session?.metadata['lastScheduledFireRunId'] === runId ? input.sessionId : undefined;
-  }
-  const sessions = await store.list();
-  return sessions.find(
-    (session: SessionSummary) =>
-      session.id.startsWith('sched-') &&
-      session.id.endsWith(`-${runId}`) &&
-      session.metadata['lastScheduledFireRunId'] === runId,
-  )?.id;
-}
-
-/**
- * This engine's own disposal rejected a recovered run's handle. The run is still durable and the
- * next boot resumes it, so a shutdown is not reported as the run failing.
- */
-function rejectedByOwnDisposal(error: unknown): boolean {
-  return isWeftErrorLike(error) && error.code === 'EngineDisposedError';
-}
-
-export async function monitorRecoveredScheduledFire(
-  handle: RecoveredRunHandle,
-  diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
-): Promise<void> {
-  try {
-    const result = await handle.result();
-    if (
-      typeof result === 'object' &&
-      result !== null &&
-      'finishReason' in result &&
-      isFailureFinishReason(result.finishReason)
-    ) {
-      const errorMessage =
-        'errorMessage' in result && typeof result.errorMessage === 'string'
-          ? `: ${result.errorMessage}`
-          : '';
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Recovered scheduled fire "${handle.id}" finished with ${String(result.finishReason)}${errorMessage}`,
-      });
-    }
-  } catch (error) {
-    if (rejectedByOwnDisposal(error)) return;
-    diagnose({
-      level: 'error',
-      scope: 'recovery',
-      message: `[bureau] Recovered scheduled fire "${handle.id}" failed: ${serializeUnknownError(error)}`,
-    });
-  }
-}
-
-/**
- * AB-240: the catalog-dispatch analog of {@link monitorRecoveredScheduledFire}.
- * A catalog run (`bureau.run(...)`) has no bureau session and — like a
- * scheduled fire — no interactive session surface, so a recovered one gets
- * the same headless detached-result monitor rather than the
- * session-ownership reattach path. A LIVE catalog run is registered on
- * `store` (COR-1302, `registerCatalogRun`) so `getRun`/`abortRun` resolve its
- * handle's id; a recovered one is not, and stays with this monitor.
- */
-export async function monitorRecoveredCatalogRun(
-  handle: RecoveredRunHandle,
-  agentName: string,
-  diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
-  settled?: (settlement: CatalogRunSettlement) => Promise<void>,
-  durableEnd?: DurableEndReader,
-  tracker?: Pick<CatalogSettlementTracker, 'commit'>,
-): Promise<void> {
-  let ended: { readonly result: unknown } | { readonly error: unknown };
-  try {
-    ended = { result: await handle.result() };
-  } catch (error) {
-    ended = { error };
-  }
-  // The run's end is known, and what follows is storage work (the durable run's state, then every
-  // listener's reads and writes). A shutdown waits for it however long the database takes.
-  const commit =
-    tracker?.commit ??
-    (async (work: () => Promise<void>) => {
-      await work();
-      return true;
-    });
-  await commit(async () => {
-    if ('result' in ended) {
-      const { result } = ended;
-      if (
-        typeof result === 'object' &&
-        result !== null &&
-        'finishReason' in result &&
-        isFailureFinishReason(result.finishReason)
-      ) {
-        const errorMessage =
-          'errorMessage' in result && typeof result.errorMessage === 'string'
-            ? `: ${result.errorMessage}`
-            : '';
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") finished with ${String(result.finishReason)}${errorMessage}`,
-        });
-      }
-      const fields =
-        typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
-      const finishReason =
-        typeof fields['finishReason'] === 'string' ? fields['finishReason'] : undefined;
-      await settled?.({
-        runId: handle.id,
-        agentName,
-        status: settledTaskState('completed', finishReason),
-        finishReason: finishReason ?? null,
-        message:
-          typeof fields['errorMessage'] === 'string' ? fields['errorMessage'].slice(0, 1000) : null,
-        content: typeof fields['content'] === 'string' ? fields['content'] : null,
-        recovered: true,
-      });
-      return;
-    }
-    // A rejection is not an end: disposing the engine rejects the handle of a run that is still
-    // running, and the next boot resumes it. Only a terminal state the durable run reached is
-    // published (see `settlementForRejection`).
-    const { error } = ended;
-    const settlement = await settlementForRejection({
-      runId: handle.id,
-      agentName,
-      error,
-      recovered: true,
-      durableEnd,
-    });
-    if (settlement === undefined && rejectedByOwnDisposal(error)) return;
-    diagnose({
-      level: 'error',
-      scope: 'recovery',
-      message:
-        settlement === undefined
-          ? `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") is no longer followed, and its durable run is not over: ${serializeUnknownError(error)}`
-          : `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") failed: ${serializeUnknownError(error)}`,
-    });
-    if (settlement !== undefined) await settled?.(settlement);
-  });
-}
-
-/**
  * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
  * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
  */
@@ -2355,24 +1518,6 @@ function assertMemoryTenantIsStable(
       '"options.memory" over "options.storage" needs an explicit "options.id": the memory tenant is the Bureau id, and a generated id changes on every start, so a restarted Bureau would read an empty tenant',
     );
   }
-}
-
-/** The action types a run records as it reaches its terminal status. */
-const TERMINAL_RUN_ACTION_TYPES: ReadonlySet<string> = new Set([
-  'run.completed',
-  'run.aborted',
-  'run.error',
-]);
-
-/**
- * COR-424 — when a run reached its terminal status, by the runtime-clock
- * timestamp of its terminal action; `undefined` until it has recorded one.
- * A run-creation binding's retention window starts here.
- */
-function terminalActionTimestamp(
-  actions: readonly { readonly type: string; readonly timestamp: number }[],
-): number | undefined {
-  return actions.findLast((action) => TERMINAL_RUN_ACTION_TYPES.has(action.type))?.timestamp;
 }
 
 /**
@@ -3144,6 +2289,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      // COR-2105 — a session's taint, once it is stored: the one `session.tainted` the session gets.
+      onSessionTainted: (publication) => emitter.dispatch(new SessionTaintEvent(publication)),
       onScheduleAuthorityDenied: (scheduleId) => {
         runtimeServices.deferred.track(
           pauseInvalidSchedule(scheduleId).catch(() => {
@@ -8877,6 +8024,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         restored.agentName,
         review.runId,
         session?.metadata ?? {},
+        review.sessionId,
       );
       if (resolved === 'unavailable') return refuse('its agent can no longer be resolved');
       policyAgent = resolved;
@@ -8894,6 +8042,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
       {
         sessionAgent: policyAgent,
+        sessionMetadata: session?.metadata,
         initialActiveSkillRecords: records,
         memoryOwner: resolveRunMemoryOwner(session?.metadata ?? {}, review.runId),
       },
@@ -8913,6 +8062,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     agentName: string,
     runId: string,
     metadata: Record<string, JSONValue>,
+    sessionId: string,
   ): Promise<SessionAgentRun | undefined | 'unavailable'> {
     if (agentName === BUREAU_AGENT_NAME) {
       // COR-323 — the implicit Bureau-wide agent no longer exists: a run stored under it is
@@ -8947,6 +8097,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         definitionRevision:
           ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
       },
+      { sessionId, metadata },
     );
     if (resolution.status === 'resolved') return resolution.run;
     diagnose({
@@ -9010,6 +8161,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       recoveredAgentName,
       runId,
       session.metadata,
+      session.id,
     );
     if (recoveredSessionAgent === 'unavailable') {
       terminalReviewSessions.delete(runId);
@@ -9040,6 +8192,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
       {
         sessionAgent: recoveredSessionAgent,
+        sessionMetadata: session.metadata,
         initialActiveSkillRecords,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
       },
@@ -9491,7 +8644,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
-    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
+    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner, undefined, {
+      sessionId,
+      metadata: session?.metadata,
+    });
     if (resolution.status === 'missing-agent') throw missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(
@@ -9651,7 +8807,12 @@ async function constructBureau<const D extends AgentDefinitions>(
           runId,
           requestContext,
         },
-        { sessionAgent, memoryOwner: owner, withoutMemory: triedRun },
+        {
+          sessionAgent,
+          memoryOwner: owner,
+          withoutMemory: triedRun,
+          sessionMetadata: session?.metadata,
+        },
       );
       runRequestContexts.set(runId, requestContext);
 
@@ -12135,6 +11296,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 recoveredAgentName,
                 handle.id,
                 fullSession.metadata,
+                ownedSessionId,
               );
               if (reattachedSessionAgent !== 'unavailable') {
                 const runRuntime = await runtime.createRunRuntime(
@@ -12150,6 +11312,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                   },
                   {
                     sessionAgent: reattachedSessionAgent,
+                    sessionMetadata: fullSession.metadata,
                     memoryOwner: resolveRunMemoryOwner(fullSession.metadata, handle.id),
                   },
                 );

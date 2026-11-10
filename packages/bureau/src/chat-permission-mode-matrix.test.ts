@@ -25,7 +25,7 @@ import {
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { createBureauHandler } from './http/create-bureau-handler';
 import { authentication, OWNER, rpc } from './http/management/management-fixtures.test-support';
 import { agentFileDirectory } from './sources/agent-file-directory';

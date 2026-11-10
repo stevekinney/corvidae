@@ -107,6 +107,15 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   scrollable?: boolean;
   /**
+   * Fits the table to its container's width so a long value never makes it scroll sideways. The
+   * columns share the width (a fixed table layout: set a column's width on its header cell or a
+   * `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full
+   * text in the `title`, and any other cell wraps its text. Leave it off for a table whose columns
+   * should keep their natural widths and scroll when they do not fit.
+   * @default false
+   */
+  fit?: boolean;
+  /**
    * Attributes forwarded to the generated `.cinder-table-scroll` wrapper when
    * `scrollable` is true. The wrapper is focusable by default so keyboard users
    * can scroll read-only wide tables. When the table has a caption, or when

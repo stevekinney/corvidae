@@ -27,9 +27,45 @@ import type {
   GuardrailsOptions,
   InputGuardrailEntry,
   OutputGuardrailEntry,
+  SessionTaintOptions,
   ToolCallValidator,
 } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
+
+/**
+ * Seeds a run's guardrails with the session's taint (COR-2105): the persisted taint it starts
+ * from, the callback that persists a new one (called after the configuration's own `onTainted`),
+ * and the run's id. Returns a copy; the shared configuration is never mutated.
+ */
+export function withSessionTaint(
+  configuration: GuardrailsOptions,
+  sessionTaint: Pick<SessionTaintOptions, 'initial' | 'onTainted'> | undefined,
+  runId: string | undefined,
+): GuardrailsOptions {
+  if (sessionTaint === undefined) return configuration;
+  const own = configuration.taint?.onTainted;
+  const inherited = sessionTaint.onTainted;
+  // The session's write starts first, so a configuration callback that throws cannot keep the taint
+  // from being stored, and both are awaited whether or not either rejects.
+  const onTainted: SessionTaintOptions['onTainted'] =
+    own !== undefined && inherited !== undefined
+      ? (event) => {
+          // An async wrapper turns a synchronous throw into a rejection, so both calls always run.
+          const stored = (async () => inherited(event))();
+          const called = (async () => own(event))();
+          return Promise.allSettled([stored, called]).then(() => undefined);
+        }
+      : (own ?? inherited);
+  return {
+    ...configuration,
+    taint: {
+      ...configuration.taint,
+      ...(sessionTaint.initial === undefined ? {} : { initial: sessionTaint.initial }),
+      ...(configuration.taint?.runId === undefined && runId !== undefined ? { runId } : {}),
+      ...(onTainted === undefined ? {} : { onTainted }),
+    },
+  };
+}
 
 /**
  * A guardrail declaration: a configuration to run, or `false` for none.
@@ -290,7 +326,8 @@ function registerGuardrails(
   hooks.on('prepareStep', guardrails.prepareStep, {
     id: 'agent:guardrails-prepare-step',
     ...AGENT_POLICY_REGISTRATION,
-    // Scans and may taint in-process session state; no external write.
+    // Scans and may taint the session. The taint is stored by a compare-and-swap that keeps the first
+    // one, so a replayed step stores nothing twice (COR-2105).
     replay: 'safe',
   });
   // COR-2103 — the input detectors over each tool result. A waterfall, like `validateResponse`, so

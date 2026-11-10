@@ -17,7 +17,14 @@
    * the *Schedule* list's grid (`Weft UI.dc.html` line ~931); the
    * `.dc.html` markup is PROJECT-BRIEF's pixel-fidelity source of truth.
    * `<colgroup>` + `table-layout:fixed` reproduces the same fixed/flexible
-   * column split for a real `<table>` (Tags is the flexible column).
+   * column split for a real `<table>` (Tags is the flexible column). The
+   * table fits its container at every width (Cinder's `fit`, row 16c): a
+   * column whose content never wraps (a status badge with its icon, a
+   * shortened ID with its copy button, a time) is a fixed rem width that holds
+   * it, so the ID is never cut a second time; Revision wraps a shortened
+   * revision onto two lines at most, and its comparison badge ends with an
+   * ellipsis beside its own tooltip; Type and Tags share what is left, and each ends a long value with
+   * an ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -121,16 +128,16 @@
   }
 </script>
 
-<Table caption="Workflows" selectable={selectionEnabled} scrollable class="weft-workflows-table">
+<Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
   <colgroup>
-    {#if selectionEnabled}<col class="weft-workflows-table__col-select" />{/if}
-    <col class="weft-workflows-table__col-status" />
-    <col class="weft-workflows-table__col-id" />
-    <col class="weft-workflows-table__col-type" />
-    <col class="weft-workflows-table__col-revision" />
-    <col class="weft-workflows-table__col-tags" />
-    <col class="weft-workflows-table__col-time" />
-    <col class="weft-workflows-table__col-time" />
+    {#if selectionEnabled}<col style="width: 36px" />{/if}
+    <col style="width: 7rem" />
+    <col style="width: 10.25rem" />
+    <col />
+    <col style="width: 5.5rem" />
+    <col />
+    <col style="width: 4.75rem" />
+    <col style="width: 4.75rem" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
@@ -138,7 +145,7 @@
       <Table.HeaderCell>Workflow ID</Table.HeaderCell>
       <Table.HeaderCell>Type</Table.HeaderCell>
       <Table.HeaderCell>Revision</Table.HeaderCell>
-      <Table.HeaderCell class="weft-workflows-table__col-tags">Tags</Table.HeaderCell>
+      <Table.HeaderCell>Tags</Table.HeaderCell>
       <Table.HeaderCell align="right">Created</Table.HeaderCell>
       <Table.HeaderCell align="right">Updated</Table.HeaderCell>
     </Table.Row>
@@ -193,7 +200,7 @@
             {/if}
           </span>
         </Table.Cell>
-        <Table.Cell>{row.type}</Table.Cell>
+        <Table.Cell truncate>{row.type}</Table.Cell>
         <Table.Cell>
           {#if row.revision !== undefined}
             <span class="weft-workflows-table__revision-cell">
@@ -208,11 +215,11 @@
             <Badge variant="neutral" size="xs">Unpinned</Badge>
           {/if}
         </Table.Cell>
-        <Table.Cell class="weft-workflows-table__col-tags">
+        <Table.Cell>
           {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
             <span class="weft-workflows-table__tags">
               {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}
-                <Badge variant="neutral" size="xs">{tag}</Badge>
+                <Badge variant="neutral" size="xs" truncate>{tag}</Badge>
               {/each}
             </span>
           {/if}

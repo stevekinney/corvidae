@@ -59,6 +59,7 @@ import {
   resolveAgentGuardrails,
   type RunOptions,
   toolIdentityUnderKey,
+  withSessionTaint,
 } from '@lostgradient/operative';
 import {
   type AnyToolbox,
@@ -346,7 +347,10 @@ export function effectiveCodeAgent(
     return hooks;
   }
 
-  function hooksOf(agentHooks: RunOptions['hooks']): RunOptions['hooks'] {
+  function hooksOf(
+    agentHooks: RunOptions['hooks'],
+    context: AgentRunContext | undefined,
+  ): RunOptions['hooks'] {
     const own = withInterceptors(agentHooks);
     // COR-2118: a configured guardrail is built for this run from the override's configuration. A
     // save checks it against the guardrail's schema; one a plugin's later schema no longer accepts
@@ -359,7 +363,10 @@ export function effectiveCodeAgent(
     // The additions alone, as a tripwire beside the agent's own guardrails, which already run.
     const configuration = resolveAgentGuardrails(false, undefined, additions);
     if (configuration === undefined) return own;
-    const guardrails = createGuardrails(configuration);
+    // COR-2105 — this tracker holds taint too: it starts from the session's and writes back.
+    const guardrails = createGuardrails(
+      withSessionTaint(configuration, context?.sessionTaint, context?.runId),
+    );
     const hooks = own ?? new HookRegistry<OperativeHookMap>();
     hooks.on('prepareStep', guardrails.prepareStep, {
       id: 'agent:override-guardrails-prepare-step',
@@ -399,7 +406,7 @@ export function effectiveCodeAgent(
 
   async function resolve(input: AgentInput, context?: AgentRunContext): Promise<RunOptions> {
     const own = await resolveOwn(input, context);
-    const hooks = hooksOf(own.hooks);
+    const hooks = hooksOf(own.hooks, context);
     return {
       ...own,
       generate: generateOf(own.generate),

@@ -42,6 +42,7 @@ import {
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
+  SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   RunAbortSettledEvent,
   RecoveryAttemptedEvent,
@@ -184,6 +185,7 @@ export const BUREAU_EVENT_CLASSIFICATION = {
   'session.created': 'published',
   'session.saved': 'published',
   'session.deleted': 'published',
+  'session.tainted': 'published',
   'review.requested': 'published',
   'review.approved': 'published',
   'review.denied': 'published',
@@ -428,6 +430,15 @@ const PROJECTIONS: readonly BureauEventProjection[] = [
   projection(DiagnosticEvent.type, isInstance(DiagnosticEvent), (event) => ({
     level: event.level,
     scope: event.scope,
+  })),
+  // Identifiers, the detector, where the content came from, and a confidence: never the flagged
+  // text or the detector's detail (COR-2105).
+  projection(SessionTaintEvent.type, isInstance(SessionTaintEvent), (event) => ({
+    sessionId: event.sessionId,
+    runId: event.runId,
+    detector: event.detector,
+    provenance: event.provenance,
+    confidence: event.confidence,
   })),
   // Identifiers, statuses, and a timestamp: the notification is already redacted, and the event
   // keeps no principal, correlation, or record content.

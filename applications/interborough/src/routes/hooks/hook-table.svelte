@@ -7,7 +7,7 @@
    * The switch names the revision of the hook the list read. A hook that changed since is refused
    * and the list is read again, and nothing was changed.
    */
-  import { Alert, Button, RelativeTime, Table } from '@lostgradient/cinder';
+  import { Alert, Button, RelativeTime, Table, Text } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
   import { STALE_COPY } from '../../app/copy.ts';
@@ -78,7 +78,15 @@
   </Alert>
 {/if}
 
-<Table caption={HOOKS_COPY.caption} density="condensed" class="ib-records__table">
+<Table caption={HOOKS_COPY.caption} density="condensed" fit class="ib-records__table">
+  <colgroup>
+    <!-- The hook's sentence takes what the fixed columns leave. -->
+    <col />
+    <col style="width: 18%" />
+    <!-- A delivery's time can be a whole date ("Mon Nov 2, 9:42 AM"), which does not wrap. -->
+    <col style="width: 10rem" />
+    <col style="width: 5.5rem" />
+  </colgroup>
   <Table.Header>
     <Table.Row>
       <Table.HeaderCell>{HOOKS_COPY.hookColumn}</Table.HeaderCell>
@@ -97,10 +105,16 @@
           <a
             class="ib-hooks__sentence"
             href={router.href(hookPath(hook.id))}
-            onclick={(event) => go(event, hookPath(hook.id))}>{sentence}</a
+            onclick={(event) => go(event, hookPath(hook.id))}
+            ><Text as="span" truncate="end" text={sentence} /></a
           >
           {#if hook.name !== null}
-            <span class="ib-records__muted ib-hooks__name">{hook.name}</span>
+            <Text
+              as="span"
+              truncate="end"
+              text={hook.name}
+              class="ib-records__muted ib-hooks__name"
+            />
           {/if}
         </Table.Cell>
         <Table.Cell class="ib-records__wrap" data-only-for>
@@ -151,11 +165,12 @@
     margin: 4px 0 8px;
   }
 
+  /* The sentence is a line of its own; a long one ends with an ellipsis (Cinder's `Text`). */
   .ib-hooks__sentence {
-    overflow-wrap: anywhere;
+    display: block;
+    min-inline-size: 0;
   }
 
-  .ib-hooks__name,
   .ib-hooks__line {
     display: block;
     overflow-wrap: anywhere;

@@ -25,6 +25,7 @@ Use Badge for attached counts, statuses, and compact annotations; use `Chip mode
 | `severity` | `"info"` \| `"low"` \| `"medium"` \| `"high"` \| `"critical"` | no | — | Ordered severity preset; critical uses the dedicated critical token. |
 | `size` | `"xs"` \| `"sm"` \| `"md"` | no | `"md"` | Size of the badge. |
 | `subscriptionState` | `"active"` \| `"trialing"` \| `"past-due"` \| `"canceled"` \| `"expired"` \| `"refunded"` | no | — | Render a standardized subscription lifecycle badge without hand-wiring tone, icon, and label. |
+| `truncate` | `boolean` | no | `false` | Keeps the badge within the width it is given and ends a long label with an ellipsis, with the full label in the `title`. |
 | `variant` | `"neutral"` \| `"success"` \| `"warning"` \| `"danger"` \| `"info"` \| `"accent"` | no | `"neutral"` | Visual style. |
 | `children` | `(opaque)` | no | — | Required badge content unless subscriptionState is provided; optional content override for the subscription preset label. Not expressible in JSON Schema; see the component types for the signature. |
 

@@ -6,7 +6,8 @@ import {
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { AgentDefinitions } from './agent-catalog';

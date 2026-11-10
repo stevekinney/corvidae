@@ -11,7 +11,8 @@ import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from './agent-catalog';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import {
   createScheduleFireHarness,
