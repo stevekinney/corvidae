@@ -250,11 +250,23 @@ export async function runInstalled(
     if (operations.spawn === undefined && executable.endsWith('/interborough')) {
       const definitionFile = join(cwd, 'installed-cli-agent.json');
       const providerFile = join(cwd, 'installed-cli-provider.json');
+      const workflowFile = join(cwd, 'installed-cli-workflow.json');
+      const scheduleFile = join(cwd, 'installed-cli-schedule.json');
       await writeFile(
         definitionFile,
         JSON.stringify({ model: 'installed-fixture/scripted', instructions: 'Use the fixture.' }),
       );
       await writeFile(providerFile, JSON.stringify({ configuration: {} }));
+      await writeFile(workflowFile, JSON.stringify({ title: 'Installed workflow', steps: [] }));
+      await writeFile(
+        scheduleFile,
+        JSON.stringify({
+          agentName: 'installed-cli-agent',
+          spec: '* * * * *',
+          input: 'hello',
+          timeZone: 'UTC',
+        }),
+      );
       const cliJourneyResults: Record<string, unknown> = {};
       const commands: Array<{ args: string[]; json: boolean; input?: string }> = [
         { args: ['status'], json: true },
@@ -281,6 +293,18 @@ export async function runInstalled(
           },
           {
             args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
+            json: true,
+          },
+          {
+            args: ['workflows', 'create', 'installed-cli-workflow', '--file', workflowFile],
+            json: true,
+          },
+          {
+            args: ['workflows', 'start', 'installed-cli-workflow', '--wait'],
+            json: true,
+          },
+          {
+            args: ['schedules', 'create', '--file', scheduleFile],
             json: true,
           },
           {
