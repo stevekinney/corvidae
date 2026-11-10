@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path';
 
 import { afterEach, expect, test } from 'bun:test';
 
-import { exportNames } from './export-names.ts';
+import { exportNames, formatExportNames } from './export-names.ts';
 
 const roots: string[] = [];
 
@@ -54,31 +54,53 @@ export * from './index.ts';
     'nested.ts': 'export function nestedHelper(): void {}',
   });
 
-  expect(exportNames(join(root, 'index.ts'))).toEqual([
-    'Engine',
-    'Level',
-    'Mode',
-    'Options',
-    'UtilityType',
-    'Widget',
-    'WidgetProps',
-    'WidgetSize',
-    'b',
-    'default',
-    'first',
-    'fromUtilities',
-    'nestedHelper',
-    'ns',
-    'renamed',
-    'run',
-    'second',
-    'visible',
-  ]);
+  expect(exportNames(join(root, 'index.ts'))).toEqual({
+    runtime: [
+      'Engine',
+      'Level',
+      'Widget',
+      'b',
+      'default',
+      'first',
+      'fromUtilities',
+      'nestedHelper',
+      'ns',
+      'renamed',
+      'run',
+      'second',
+      'visible',
+    ],
+    types: ['Mode', 'Options', 'UtilityType', 'WidgetProps', 'WidgetSize'],
+  });
 });
 
 test('an unreadable-as-TypeScript re-export contributes only its own name', () => {
   const root = fixture({
     'index.ts': `export { default as Button } from './button.svelte';\nexport * from './component.svelte';\n`,
   });
-  expect(exportNames(join(root, 'index.ts'))).toEqual(['Button']);
+  expect(exportNames(join(root, 'index.ts'))).toEqual({
+    runtime: ['Button'],
+    types: [],
+  });
+});
+
+test('splits type-only elements from runtime ones and prints one sorted list for each', () => {
+  const root = fixture({
+    'index.ts': `
+export { type Alpha, beta } from './leaf.ts';
+export type * from './types.ts';
+export class Merged {}
+export interface Merged {}
+`,
+    'leaf.ts': 'export interface Alpha {} export const beta = 1;',
+    'types.ts': 'export interface FromTypes {} export const alsoType = 1;',
+  });
+  const names = exportNames(join(root, 'index.ts'));
+  expect(names).toEqual({
+    runtime: ['Merged', 'beta'],
+    types: ['Alpha', 'FromTypes', 'alsoType'],
+  });
+  expect(formatExportNames(names)).toBe(
+    '# runtime\nMerged\nbeta\n# types\nAlpha\nFromTypes\nalsoType\n',
+  );
 });

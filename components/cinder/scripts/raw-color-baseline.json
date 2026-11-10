@@ -35,7 +35,7 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/popover/popover.css",
+    "filePath": "src/components/popover/popover-surface.css",
     "colorClass": "oklch",
     "allowedCount": 2
   },

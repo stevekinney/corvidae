@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -201,16 +202,56 @@ describe('css-fingerprint flattening', () => {
 });
 
 describe('css-fingerprint command', () => {
-  test('prints a hash, the rules, or the sorted rules for the entry', () => {
-    const root = fixture({ 'src/styles/all.css': BASE });
-    const hash = runFingerprintCommand([], root);
-    expect(hash).toMatch(/^[0-9a-f]{64}\n$/);
-    expect(runFingerprintCommand(['--rules'], root).split('\n')).toContain(
-      '@layer app.components :: .a{color:red;margin:0;}',
+  const entries = {
+    'src/styles/all.css': BASE,
+    'src/styles/index.css': `@import './all.css' layer(app.base);\n.extra { color: blue }`,
+  };
+
+  test('prints a value for each of all.css and index.css, then the resolved theme JSON hashes', () => {
+    const root = fixture({
+      ...entries,
+      'src/tokens/resolved/dark.json': '{"a":1}',
+      'src/tokens/resolved/light.json': '{"a":2}',
+      'src/tokens/resolved/notes.txt': 'not json',
+    });
+    const lines = runFingerprintCommand([], root).trimEnd().split('\n');
+    expect(lines).toEqual([
+      '# src/styles/all.css',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      '# src/styles/index.css',
+      expect.stringMatching(/^[0-9a-f]{64}$/),
+      '# resolved theme JSON',
+      `src/tokens/resolved/dark.json ${createHash('sha256').update('{"a":1}').digest('hex')}`,
+      `src/tokens/resolved/light.json ${createHash('sha256').update('{"a":2}').digest('hex')}`,
+    ]);
+    expect(lines[1]).not.toBe(lines[3]);
+  });
+
+  test('a changed theme JSON changes the output while the stylesheet hashes stay', () => {
+    const before = fixture({ ...entries, 'src/tokens/resolved/dark.json': '{"a":1}' });
+    const after = fixture({ ...entries, 'src/tokens/resolved/dark.json': '{"a":3}' });
+    const [first, second] = [before, after].map((root) =>
+      runFingerprintCommand([], root).trimEnd().split('\n'),
     );
-    expect(runFingerprintCommand(['--rule-multiset', 'src/styles/all.css'], root)).toBe(
-      runFingerprintCommand(['--rule-multiset'], root),
+    expect(first!.slice(0, 4)).toEqual(second!.slice(0, 4));
+    expect(first!.at(-1)).not.toBe(second!.at(-1));
+  });
+
+  test('prints the rules, or the sorted rules, of both entries or of the named one', () => {
+    const root = fixture(entries);
+    const rules = runFingerprintCommand(['--rules'], root).split('\n');
+    expect(rules).toContain('# src/styles/all.css');
+    expect(rules).toContain('# src/styles/index.css');
+    expect(rules).toContain('@layer app.components :: .a{color:red;margin:0;}');
+    expect(rules).toContain('.extra{color:blue;}');
+    const multiset = runFingerprintCommand(['--rule-multiset', 'src/styles/index.css'], root);
+    expect(multiset.split('\n')[0]).toBe('# src/styles/index.css');
+    expect(multiset).toContain(
+      '@layer app.base > @layer app.components :: .a{color:red;margin:0;}',
     );
-    expect(runFingerprintCommand(['--package-root', root], '/nonexistent')).toBe(hash);
+    expect(multiset).not.toContain('# src/styles/all.css');
+    expect(runFingerprintCommand(['--package-root', root], '/nonexistent')).toBe(
+      runFingerprintCommand([], root),
+    );
   });
 });

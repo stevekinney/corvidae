@@ -76,6 +76,7 @@
 @import '../components/feed-boundary/feed-boundary.css';
 @import '../components/feed-event/feed-event.css';
 @import '../components/feed/feed.css';
+@import '../components/popover/popover-surface.css';
 @import '../components/file-upload/file-upload.css';
 @import '../components/filter-bar/filter-bar.css';
 @import '../components/find-bar/find-bar.css';

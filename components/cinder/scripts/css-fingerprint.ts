@@ -10,22 +10,25 @@
  * Usage (from `components/cinder`):
  *
  * ```sh
- * bun scripts/css-fingerprint.ts [entry.css]                 # one hash of the ordered flattened CSS
- * bun scripts/css-fingerprint.ts --rules [entry.css]         # every rule, in cascade order
- * bun scripts/css-fingerprint.ts --rule-multiset [entry.css] # the same lines, sorted
- * bun scripts/css-fingerprint.ts --package-root <dir> …      # fingerprint another checkout's package
+ * bun scripts/css-fingerprint.ts [entry.css …]                 # a hash of the ordered flattened CSS
+ * bun scripts/css-fingerprint.ts --rules [entry.css …]         # every rule, in cascade order
+ * bun scripts/css-fingerprint.ts --rule-multiset [entry.css …] # the same lines, sorted
+ * bun scripts/css-fingerprint.ts --package-root <dir> …        # fingerprint another checkout's package
  * ```
  *
- * The entry defaults to `src/styles/all.css`, the full cascade aggregator. `--rules` is the order
- * check (diff it before and after); `--rule-multiset` ignores order, so a diff of it lists exactly
- * the rules that were added or removed.
+ * With no entry the command flattens both package entries, `src/styles/all.css` (the full cascade
+ * aggregator) and `src/styles/index.css` (the base the root entry imports), and prints a value for
+ * each under a `# <entry>` heading. The hash mode also prints the SHA-256 of every resolved theme
+ * JSON (`src/tokens/resolved/*.json`), the data the generated token stylesheets come from.
+ * `--rules` is the order check (diff it before and after); `--rule-multiset` ignores order, so a
+ * diff of it lists exactly the rules that were added or removed.
  *
  * The flattening is separable from the file system: {@link flattenStylesheet} takes a resolver, so
  * the playground's parity script flattens stylesheets by URL with the same code.
  */
 
 import { createHash } from 'node:crypto';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, isAbsolute, join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
@@ -290,6 +293,28 @@ export function flattenFile(entryPath: string): FlattenedStylesheet {
   return flattenStylesheet({ id: path, source: readFileSync(path, 'utf8') }, fileResolver());
 }
 
+/** The entries the command flattens when it is given none. */
+export const DEFAULT_ENTRIES = [
+  join('src', 'styles', 'all.css'),
+  join('src', 'styles', 'index.css'),
+];
+
+/** Where the resolved theme JSON lives, relative to the package root. */
+const RESOLVED_THEME_DIRECTORY = join('src', 'tokens', 'resolved');
+
+/** The SHA-256 of every resolved theme JSON of a package, as `path hash` lines sorted by path. */
+export function themeJsonHashes(packageRoot: string): string[] {
+  const directory = resolve(packageRoot, RESOLVED_THEME_DIRECTORY);
+  if (!existsSync(directory)) return [];
+  return readdirSync(directory)
+    .filter((name) => name.endsWith('.json'))
+    .toSorted()
+    .map((name) => {
+      const bytes = readFileSync(join(directory, name));
+      return `${join(RESOLVED_THEME_DIRECTORY, name)} ${createHash('sha256').update(bytes).digest('hex')}`;
+    });
+}
+
 /** The command line, as a pure function of its arguments so a test can run it. */
 export function runFingerprintCommand(argv: readonly string[], defaultPackageRoot: string): string {
   const { values, positionals } = parseArgs({
@@ -302,11 +327,19 @@ export function runFingerprintCommand(argv: readonly string[], defaultPackageRoo
     },
   });
   const packageRoot = resolve(values['package-root'] ?? defaultPackageRoot);
-  const entry = positionals[0] ?? join('src', 'styles', 'all.css');
-  const { nodes } = flattenFile(resolve(packageRoot, entry));
-  if (values.rules) return `${ruleLines(nodes).join('\n')}\n`;
-  if (values['rule-multiset']) return `${ruleMultiset(nodes).join('\n')}\n`;
-  return `${fingerprintNodes(nodes)}\n`;
+  const entries = positionals.length === 0 ? DEFAULT_ENTRIES : positionals;
+  const lines: string[] = [];
+  for (const entry of entries) {
+    const { nodes } = flattenFile(resolve(packageRoot, entry));
+    lines.push(`# ${entry}`);
+    if (values.rules) lines.push(...ruleLines(nodes));
+    else if (values['rule-multiset']) lines.push(...ruleMultiset(nodes));
+    else lines.push(fingerprintNodes(nodes));
+  }
+  if (!values.rules && !values['rule-multiset']) {
+    lines.push('# resolved theme JSON', ...themeJsonHashes(packageRoot));
+  }
+  return `${lines.join('\n')}\n`;
 }
 
 if (import.meta.main) {
