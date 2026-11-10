@@ -19,12 +19,22 @@ const WIDTHS = [375, 1280] as const;
 const ASSISTANT_REPLY = 'Hello from the assistant.';
 const HUMAN_INPUT_THANKS = 'Thanks, the release will go to the environment you named.';
 
-/** The cursor the page kept for a task, or `null` before it has kept one. */
+/**
+ * The cursor the page kept for a task, or `null` before it has kept one. The page keeps it in the
+ * signed-in identity's own view of `sessionStorage` (`workspaceStorage`, which puts the workspace
+ * and the actor in front of the key), so the entry is the one whose key ends with the task's.
+ */
 async function keptCursor(page: Page, taskId: string): Promise<string | null> {
-  return page.evaluate((key) => {
-    const text = window.sessionStorage.getItem(key);
-    return text === null ? null : (JSON.parse(text) as { cursor: string }).cursor;
-  }, taskCursorKey(taskId));
+  return page.evaluate(
+    (suffix) => {
+      const key = Object.keys(window.sessionStorage).find((candidate) =>
+        candidate.endsWith(suffix),
+      );
+      const text = key === undefined ? null : window.sessionStorage.getItem(key);
+      return text === null ? null : (JSON.parse(text) as { cursor: string }).cursor;
+    },
+    `:${taskCursorKey(taskId)}`,
+  );
 }
 
 /**

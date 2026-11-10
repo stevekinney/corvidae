@@ -3,13 +3,13 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
 
-export type TextVariant = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body';
+export type TextVariant = 'display' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body';
 
 /** Element tags valid for the `as` prop: visible, non-void content elements. */
 export type TextElement = NonMetadataHTMLElementTagName;
 
 type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
-  /** Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs. @default 'body' */
+  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. @default 'body' */
   variant?: TextVariant;
   /** Element tag that overrides the variant's default element. */
   as?: TextElement;
@@ -54,7 +54,7 @@ type TextContentProps =
 export type TextProps = TextBaseProps & TextContentProps;
 
 export interface TextSchemaProps {
-  /** Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs. @default "body" */
+  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. @default "body" */
   variant?: TextVariant;
   /** Element tag that overrides the variant's default element. */
   as?: TextElement;

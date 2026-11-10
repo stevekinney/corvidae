@@ -1034,6 +1034,13 @@ export const AUDIT_SKILL_SOURCE_OWNER_PREFIX = 'skill-source:';
 export const AUDIT_TOOL_SOURCE_OWNER_PREFIX = 'tool-source:';
 
 /**
+ * The `runId` of the host's own records, such as `host.started` (COR-2009). The host is not a run
+ * and has no owner field: its records belong to the deployment's owner, like an agent file's. It is
+ * an exact id rather than a prefix, so `reservedWorkflowIdentifierReason` refuses it by equality.
+ */
+export const AUDIT_HOST_OWNER_ID = 'host';
+
+/**
  * Every synthetic owner prefix above. A `runId` with one of these prefixes resolves to an owner
  * without a run, so `reservedWorkflowIdentifierReason` refuses each as the start of a run id a
  * caller chooses; `reserved-identifiers.test.ts` fails when an `AUDIT_*_OWNER_PREFIX` is missing.

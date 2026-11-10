@@ -159,7 +159,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
   // The long-named schedule's page prints its runs and the zone they are shown in.
   '/schedules/:schedule': /Upcoming above, past below/,
-  '/schedules/:schedule/edit': /Description/,
+  '/schedules/:schedule/edit': /If Interborough was off/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
@@ -174,16 +174,16 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/workers (worker open)': /Last heard from/,
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
-  // The audit log lists the seeded schedule's creation.
-  '/health/audit': /Created a schedule/,
+  // The newest events are the hooks the seed made last; `reveal` loads back to the schedule's creation.
+  '/health/audit': /Created a hook/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
-  // The agent that opts in prints its name, and its card address holds it too.
-  '/settings/a2a': /responsive-long-description/,
+  // The agent that opts in is listed by its name as a person says it.
+  '/settings/a2a': /Responsive long description/,
   // Each tab of the API reference prints a value only its own read gives.
   '/settings/api-reference': /\/api\//,
   '/settings/api-reference (discovery)': /\/openapi\.json/,
-  '/settings/api-reference (scopes)': /workflows:read/,
+  '/settings/api-reference (scopes)': /hooks:write/,
   '/settings/api-reference (sources)': /Where Interborough reads workflow files from/,
 };
 
@@ -310,6 +310,18 @@ async function choosePicker(page: Page, label: RegExp, option: string): Promise<
  * time, so it searches for the long key's start and opens the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  // The log loads a page of events at a time as it scrolls, and the seeded schedule's creation is
+  // older than the first page once the earlier specifications have written their own events.
+  '/health/audit': async (page) => {
+    const created = page.getByText('Created a schedule').first();
+    await expect
+      .poll(async () => {
+        if ((await created.count()) > 0) return true;
+        await page.locator('main.weft-shell-outlet tbody tr').last().scrollIntoViewIfNeeded();
+        return false;
+      })
+      .toBe(true);
+  },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {
     const logs = page.locator('[data-section="logs"]');

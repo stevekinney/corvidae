@@ -11,6 +11,7 @@ import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME } from './text-echo-agent.ts';
+import { expectTabOpen } from './workflow-support.ts';
 
 const WIDTHS = [375, 1280] as const;
 const CHATS = AGENT_PAGE_COPY.chats;
@@ -191,10 +192,8 @@ for (const width of WIDTHS) {
         agents.add(id);
         await createAgentFile(request, id);
         await page.goto(`/agents/${id}${tab === 'chats' ? '' : `?tab=${tab}`}`);
-        await expect(page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs[tab] })).toHaveAttribute(
-          'aria-selected',
-          'true',
-        );
+        // At the phone width the tab bar is one select named Tab, and the open tab is its value.
+        await expectTabOpen(page.locator('body'), AGENT_PAGE_COPY.tabs[tab]);
         if (tab === 'settings') await expect(page.getByTestId('agent-versions')).toBeVisible();
         await checkA11y(`the ${tab} tab of an agent at ${width}px`);
       });

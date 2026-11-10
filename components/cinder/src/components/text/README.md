@@ -58,7 +58,7 @@ A run of text in one of the typography variants `h1` to `h5`, `caption`, and `bo
 | `tailLength` | `number` | no | `4` | With `truncate="middle"`, how many characters at the end of the text stay visible. |
 | `text` | `string` | no | — | The plain text to cut in the middle with `truncate="middle"`. |
 | `truncate` | `"middle"` | no | — | Cuts the text in the middle when it is too long for one line. Needs `text`. |
-| `variant` | `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"body"` | no | `"body"` | Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs. |
+| `variant` | `"display"` \| `"h1"` \| `"h2"` \| `"h3"` \| `"h4"` \| `"h5"` \| `"caption"` \| `"body"` | no | `"body"` | Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. |
 | `actions` | `(opaque)` | no | — | Content that sits beside the "Show all" button on the line under a clamped run, separated from it by a middle dot, such as a "Show raw payloads" link. Ignored without `clamp`. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Required text content. Not expressible in JSON Schema; see the component types for the signature. |
 

@@ -4,7 +4,9 @@ import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
   endToEndPort,
+  endToEndPortOverride,
   isContinuousIntegration,
+  requiresFreshServer,
 } from './environment-configuration.ts';
 
 describe('the end-to-end port', () => {
@@ -24,6 +26,17 @@ describe('the end-to-end port', () => {
     expect(endToEndPort()).toBe(7399);
     process.env['INTERBOROUGH_E2E_PORT'] = '';
     expect(endToEndPort()).toBe(7399);
+  });
+
+  test('has no override unless the environment names a port, and refuses one that is not a port', () => {
+    delete process.env['INTERBOROUGH_E2E_PORT'];
+    expect(endToEndPortOverride()).toBeUndefined();
+    process.env['INTERBOROUGH_E2E_PORT'] = '';
+    expect(endToEndPortOverride()).toBeUndefined();
+    process.env['INTERBOROUGH_E2E_PORT'] = '7721';
+    expect(endToEndPortOverride()).toBe(7721);
+    process.env['INTERBOROUGH_E2E_PORT'] = 'seven';
+    expect(() => endToEndPortOverride()).toThrow('INTERBOROUGH_E2E_PORT');
   });
 
   test('is the port the environment names', () => {
@@ -100,5 +113,22 @@ describe('the design-review capture settings', () => {
     expect(designReviewColorScheme()).toBe('dark');
     process.env['INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME'] = 'sepia';
     expect(() => designReviewColorScheme()).toThrow('must be light or dark, not "sepia"');
+  });
+});
+
+describe('the fresh-server flag', () => {
+  test('is on when INTERBOROUGH_E2E_FRESH_SERVER is set to anything and off when it is empty or absent', () => {
+    const saved = process.env['INTERBOROUGH_E2E_FRESH_SERVER'];
+    try {
+      process.env['INTERBOROUGH_E2E_FRESH_SERVER'] = '1';
+      expect(requiresFreshServer()).toBe(true);
+      process.env['INTERBOROUGH_E2E_FRESH_SERVER'] = '';
+      expect(requiresFreshServer()).toBe(false);
+      delete process.env['INTERBOROUGH_E2E_FRESH_SERVER'];
+      expect(requiresFreshServer()).toBe(false);
+    } finally {
+      if (saved === undefined) delete process.env['INTERBOROUGH_E2E_FRESH_SERVER'];
+      else process.env['INTERBOROUGH_E2E_FRESH_SERVER'] = saved;
+    }
   });
 });

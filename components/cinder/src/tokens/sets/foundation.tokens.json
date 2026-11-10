@@ -763,6 +763,19 @@
         }
       }
     },
+    "heading": {
+      "$type": "fontWeight",
+      "$value": 650,
+      "$description": "Heading font weight (650), between semibold and bold, for headings set at the heading type role.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-font-heading",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
     "bold": {
       "$type": "fontWeight",
       "$value": 700,
@@ -973,6 +986,18 @@
         }
       }
     },
+    "heading": {
+      "$value": 1.2,
+      "$description": "Heading line height (1.2), for headings set at the heading type role.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-leading-heading",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
     "snug": {
       "$value": 1.3,
       "$description": "Snug line height.",
@@ -1037,6 +1062,19 @@
           "public": true,
           "category": "typography",
           "cssRecipe": "-0.01em"
+        }
+      }
+    },
+    "display": {
+      "$type": "number",
+      "$value": -0.02,
+      "$description": "Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-tracking-display",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": "-0.02em"
         }
       }
     },

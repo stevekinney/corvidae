@@ -3086,6 +3086,36 @@
       }
     },
     {
+      "name": "KeyFacts",
+      "id": "key-facts",
+      "import": "@lostgradient/cinder",
+      "exportName": "KeyFacts",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Row of typed facts, each an icon plus a value with an optional link, separated by space rather than a glyph, wrapping only between facts.",
+      "tags": ["facts", "metadata", "icons"],
+      "useWhen": [
+        "Showing a few short facts about one item, such as a category, a neighbourhood and a price band, on a detail header or a card.",
+        "Replacing a line of facts joined by a separator glyph with facts that wrap as whole units."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing labelled key and value pairs in a grid — use description-list."
+        },
+        {
+          "reason": "Showing a status word — use status-dot."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/key-facts/key-facts.schema.json",
+        "variables": "src/components/key-facts/key-facts.variables.json",
+        "examples": "src/components/key-facts/key-facts.examples.json"
+      }
+    },
+    {
       "name": "KeyValueEditor",
       "id": "key-value-editor",
       "import": "@lostgradient/cinder",
@@ -5357,6 +5387,36 @@
       }
     },
     {
+      "name": "Spotlight",
+      "id": "spotlight",
+      "import": "@lostgradient/cinder",
+      "exportName": "Spotlight",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "The one focal value of a screen, set at display size in neutral text, with an optional liveness dot and a caveat line for staleness directly under it.",
+      "tags": ["focal", "value", "display"],
+      "useWhen": [
+        "Giving a screen one value to read first, such as a deadline or the number of items that need you.",
+        "Showing that a value may be stale with a caveat directly under it."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing several metrics side by side — use statistic-group."
+        },
+        {
+          "reason": "Showing a metric with a label and a change indicator — use statistic."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/spotlight/spotlight.schema.json",
+        "variables": "src/components/spotlight/spotlight.variables.json",
+        "examples": "src/components/spotlight/spotlight.examples.json"
+      }
+    },
+    {
       "name": "Stack",
       "id": "stack",
       "import": "@lostgradient/cinder",
@@ -6003,7 +6063,7 @@
       "exportName": "Text",
       "category": "typography",
       "status": "stable",
-      "purpose": "Run of text in one of the typography variants h1 to h5, caption, or body that inherits its color from its container.",
+      "purpose": "Run of text in one of the typography variants display, h1 to h5, caption, or body that inherits its color from its container.",
       "tags": ["typography", "text"],
       "useWhen": [
         "Rendering a heading, paragraph, or caption in the design system's type scale.",

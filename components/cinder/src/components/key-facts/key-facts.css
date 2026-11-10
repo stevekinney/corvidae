@@ -1,0 +1,42 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * KEY FACTS
+ *
+ * A wrapping row of facts, each an icon and a value. Facts are separated by space only, and a
+ * fact never breaks inside: the row wraps between facts.
+ * ======================================== */
+
+  .cinder-key-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1-5) 1.125rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-key-facts__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    white-space: nowrap;
+  }
+
+  .cinder-key-facts__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  /* A value longer than its row is cut with an ellipsis instead of breaking inside the fact. */
+  .cinder-key-facts__value {
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+}

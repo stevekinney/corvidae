@@ -148,15 +148,18 @@ Chat exposes `--cinder-chat-font-size` on its root as a scoped, inheritable base
 | `--cinder-text-5xl` | `2.25rem` | 5xl font size (36px). |
 | `--cinder-leading-none` | `1` | No extra line height. |
 | `--cinder-leading-tight` | `1.15` | Tight line height for headings. |
+| `--cinder-leading-heading` | `1.2` | Heading line height (1.2), for headings set at the heading type role. |
 | `--cinder-leading-snug` | `1.3` | Snug line height. |
 | `--cinder-leading-normal` | `1.5` | Default body line height. |
 | `--cinder-leading-relaxed` | `1.625` | Relaxed line height for long-form reading. |
 | `--cinder-tracking-tight` | `-0.01em` | Tight letter-spacing, -0.01em. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. |
+| `--cinder-tracking-display` | `-0.02em` | Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. |
 | `--cinder-tracking-normal` | `0` | Default letter spacing (no adjustment). |
 | `--cinder-tracking-wide` | `0.02em` | Wide letter-spacing, 0.02em. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem. |
 | `--cinder-font-normal` | `400` | Normal font weight. |
 | `--cinder-font-medium` | `500` | Medium font weight. |
 | `--cinder-font-semibold` | `600` | Semibold font weight. |
+| `--cinder-font-heading` | `650` | Heading font weight (650), between semibold and bold, for headings set at the heading type role. |
 | `--cinder-font-bold` | `700` | Bold font weight. |
 | `--cinder-type-tab-size` | `2` | Tab width for monospace/code surfaces (`variant="code"` on Input/Textarea, CodeBlock). Tab characters render as this many spaces' worth. |
 | `--cinder-touch-target-min` | `44px` | Minimum touch target size. |
@@ -497,7 +500,10 @@ The type scale above is a ladder of sizes; a page uses five of its steps, and th
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-text-page-title` | `var(--cinder-text-2xl)` | Page title size (20px); set it at semibold. |
+| `--cinder-text-page-title` | `var(--cinder-text-3xl)` | Page title size (24px); set it at semibold with --cinder-tracking-display. |
+| `--cinder-text-page-title-large` | `1.75rem` | Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display. |
+| `--cinder-text-display` | `var(--cinder-text-5xl)` | Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display. |
+| `--cinder-text-heading` | `var(--cinder-text-2xl)` | Heading size (20px), for a heading below the page title; set it at --cinder-font-heading weight, --cinder-leading-heading line height and --cinder-tracking-tight. |
 | `--cinder-text-section-title` | `var(--cinder-text-lg)` | Section title size (16px); set it at semibold. |
 | `--cinder-text-body` | `var(--cinder-text-base)` | Body text size (14px). |
 | `--cinder-text-secondary` | `var(--cinder-text-sm)` | Secondary text size (13px); set it in the muted text color. |

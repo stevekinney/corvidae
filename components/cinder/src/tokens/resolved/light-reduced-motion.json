@@ -679,6 +679,19 @@
       }
     }
   },
+  "font.heading": {
+    "$type": "fontWeight",
+    "$value": 650,
+    "$description": "Heading font weight (650), between semibold and bold, for headings set at the heading type role.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-font-heading",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    }
+  },
   "font.bold": {
     "$type": "fontWeight",
     "$value": 700,
@@ -861,6 +874,19 @@
     },
     "$type": "number"
   },
+  "leading.heading": {
+    "$value": 1.2,
+    "$description": "Heading line height (1.2), for headings set at the heading type role.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-leading-heading",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "number"
+  },
   "leading.snug": {
     "$value": 1.3,
     "$description": "Snug line height.",
@@ -923,6 +949,19 @@
         "public": true,
         "category": "typography",
         "cssRecipe": "-0.01em"
+      }
+    }
+  },
+  "tracking.display": {
+    "$type": "number",
+    "$value": -0.02,
+    "$description": "Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-tracking-display",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": "-0.02em"
       }
     }
   },
@@ -2205,11 +2244,50 @@
     "$type": "dimension"
   },
   "type-role.page-title": {
-    "$value": { "value": 1.25, "unit": "rem" },
-    "$description": "Page title size (20px); set it at semibold.",
+    "$value": { "value": 1.5, "unit": "rem" },
+    "$description": "Page title size (24px); set it at semibold with --cinder-tracking-display.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-page-title",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.page-title-large": {
+    "$value": { "value": 1.75, "unit": "rem" },
+    "$description": "Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-page-title-large",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.display": {
+    "$value": { "value": 2.25, "unit": "rem" },
+    "$description": "Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-display",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.heading": {
+    "$value": { "value": 1.25, "unit": "rem" },
+    "$description": "Heading size (20px), for a heading below the page title; set it at --cinder-font-heading weight, --cinder-leading-heading line height and --cinder-tracking-tight.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-heading",
         "public": true,
         "category": "typography",
         "cssRecipe": null

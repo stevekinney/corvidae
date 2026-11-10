@@ -75,14 +75,19 @@ test('operator edits a schedule across a background refetch and the unsaved chan
   await editor.getByRole('button', { name: 'Save changes' }).click();
   await expect(page).toHaveURL(new RegExp(`/schedules/${SCHEDULE_ID}$`));
 
-  // Persisted: the detail page reflects the policy it shows.
-  await expect(
-    page.getByText('Starts a fire even if the previous run is still going'),
-  ).toBeVisible();
+  // Persisted: the details card shows both choices as the page now words them, the overlap policy
+  // with its consequence a hover away.
+  const behaviour = page.getByTestId('schedule-details');
+  await expect(behaviour.getByTestId('schedule-overlap')).toHaveText('Start another run');
+  await expect(behaviour.getByTestId('schedule-overlap')).toHaveAttribute(
+    'title',
+    /Concurrent runs are permitted/,
+  );
+  await expect(behaviour.getByTestId('schedule-catch-up')).toHaveText('Catch up on missed runs');
   await checkA11y('schedule detail — edited options persisted');
 
-  // The detail page renders neither the name nor the catch-up choice, so reopen the edit page
-  // (built from the server's copy) to prove both reached the server.
+  // The details card does not show the name, so reopen the edit page (built from the server's
+  // copy) to prove it reached the server too.
   await page.reload();
   await page.getByRole('button', { name: 'Edit' }).click();
   const reopened = page.locator('[data-page="schedule-edit"]');
