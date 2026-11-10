@@ -29,7 +29,7 @@ const COMPONENT_ID = 'test-component';
 const FILE_PATH = '/fake/test-component/test-component.svelte';
 
 function extract(source: string) {
-  return extractFromSource(source, COMPONENT_ID, FILE_PATH, false);
+  return extractFromSource(source, COMPONENT_ID, FILE_PATH);
 }
 
 // ---------------------------------------------------------------------------
@@ -63,7 +63,6 @@ export type { ButtonProps } from './button.types.ts';
 
     const { metadata } = result;
     expect(metadata.id).toBe(COMPONENT_ID);
-    expect(metadata.isExperimental).toBe(false);
     expect(metadata.category).toBe('action');
     expect(metadata.status).toBe('stable');
     expect(metadata.purpose).toBe(
@@ -80,24 +79,6 @@ export type { ButtonProps } from './button.types.ts';
     ]);
     expect(metadata.related).toEqual(['button-group', 'copy-button']);
     expect(metadata.a11y).toBeUndefined();
-  });
-
-  it('returns isExperimental=true when passed true', () => {
-    const source = svelteFile(
-      moduleScript(`
-/**
- * @cinder
- * @category form
- * @status alpha
- * @purpose Experimental color picker widget.
- */
-`),
-    );
-
-    const result = extractFromSource(source, 'color-picker', FILE_PATH, true);
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error('expected ok');
-    expect(result.metadata.isExperimental).toBe(true);
   });
 
   it('returns empty arrays for optional fields when omitted', () => {
@@ -889,7 +870,7 @@ describe('@related parsing', () => {
 describe('error result fields', () => {
   it('carries the componentId and file path in the error', () => {
     const source = `<div>no script</div>`;
-    const result = extractFromSource(source, 'my-widget', '/abs/path/my-widget.svelte', false);
+    const result = extractFromSource(source, 'my-widget', '/abs/path/my-widget.svelte');
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error('expected error');
     expect(result.error.componentId).toBe('my-widget');

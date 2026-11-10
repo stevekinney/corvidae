@@ -22,9 +22,7 @@ test('every component source entry imports its co-located stylesheet', async () 
   for (const component of await discoverComponents()) {
     if (!component.hasCss) continue;
     sidecarCount++;
-    const directory = component.isExperimental
-      ? join(componentRoot, 'experimental', component.name)
-      : join(componentRoot, component.name);
+    const directory = join(componentRoot, component.name);
     const entry = join(directory, 'index.ts');
     if (!importsSidecar(await Bun.file(entry).text(), component.name)) {
       missing.push(entry);

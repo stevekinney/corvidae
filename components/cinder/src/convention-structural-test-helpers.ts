@@ -111,7 +111,7 @@ export function getPublicComponentSvelteFiles(): string[] {
       continue;
     }
     if (entry.isDirectory()) {
-      if (entry.name === 'experimental' || entry.name === 'icons') continue;
+      if (entry.name === 'icons') continue;
       const inner = `${entry.name}/${entry.name}.svelte`;
       if (existsSync(join(COMPONENTS_DIR, inner))) {
         files.push(inner);

@@ -40,15 +40,6 @@ export function discoverReadmeComponents(rootDirectory: string): ReadonlyArray<R
     if (name.startsWith('_') || name === 'icons') continue;
     const entryPath = join(rootDirectory, name);
     if (!existsSync(entryPath)) continue;
-    if (name === 'experimental') {
-      for (const subName of readdirSync(entryPath).toSorted()) {
-        if (subName.startsWith('_')) continue;
-        const directory = join(entryPath, subName);
-        if (existsSync(join(directory, 'README.md')))
-          results.push({ componentId: subName, directory });
-      }
-      continue;
-    }
     if (existsSync(join(entryPath, 'README.md')))
       results.push({ componentId: name, directory: entryPath });
   }

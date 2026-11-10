@@ -274,16 +274,6 @@ describe('checkComponentCssSource', () => {
     }
   });
 
-  it('rejects a private import that cannot resolve from an experimental sidecar', () => {
-    const source = `${LAYER_ORDER_PRELUDE}\n@import '../_internal/section-skeleton.css';\n@layer cinder.components { .cinder-experimental-section {} }`;
-    const violations = checkComponentCssSource(
-      source,
-      '/virtual/components/cinder/src/components/experimental/example/example.css',
-    );
-
-    expect(violations.some((violation) => violation.message.includes('@import'))).toBe(true);
-  });
-
   it('rejects private imports nested inside the component layer', () => {
     const root = mkdtempSync(join(tmpdir(), 'component-css-private-nested-'));
     try {
@@ -301,16 +291,6 @@ describe('checkComponentCssSource', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
-  });
-
-  it('rejects a nested components directory that cannot resolve a private import', () => {
-    const source = `${LAYER_ORDER_PRELUDE}\n@import '../_internal/section-skeleton.css';\n@layer cinder.components { .cinder-experimental-section {} }`;
-    const violations = checkComponentCssSource(
-      source,
-      '/virtual/components/cinder/src/components/experimental/components/example/example.css',
-    );
-
-    expect(violations.some((violation) => violation.message.includes('@import'))).toBe(true);
   });
 
   it('rejects a non-sibling-leaf @import (mismatched dir/basename)', () => {

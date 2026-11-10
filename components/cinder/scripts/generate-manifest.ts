@@ -136,10 +136,8 @@ function kebabToPascal(id: string): string {
  * component. We base the manifest flag on the artifact's presence so the
  * manifest cannot advertise an artifact that is absent from the package.
  */
-function hasExamplesArtifact(id: string, isExperimental: boolean): boolean {
-  const componentDir = isExperimental
-    ? join(COMPONENTS_ROOT, 'experimental', id)
-    : join(COMPONENTS_ROOT, id);
+function hasExamplesArtifact(id: string): boolean {
+  const componentDir = join(COMPONENTS_ROOT, id);
   return existsSync(join(componentDir, `${id}.examples.json`));
 }
 
@@ -148,31 +146,24 @@ function hasExamplesArtifact(id: string, isExperimental: boolean): boolean {
  * the manifest flag on the artifact, not the source sidecar, for the same
  * reason as `hasExamplesArtifact`.
  */
-function hasConstraintsArtifact(id: string, isExperimental: boolean): boolean {
-  const componentDir = isExperimental
-    ? join(COMPONENTS_ROOT, 'experimental', id)
-    : join(COMPONENTS_ROOT, id);
+function hasConstraintsArtifact(id: string): boolean {
+  const componentDir = join(COMPONENTS_ROOT, id);
   return existsSync(join(componentDir, `${id}.constraints.json`));
 }
 
 /** Paths are local tooling artifacts, independent of the public package entry. */
-function artifactPath(id: string, isExperimental: boolean, suffix: string): string {
-  const directory = isExperimental ? `experimental/${id}` : id;
+function artifactPath(id: string, suffix: string): string {
   const filename = suffix === 'enhancement' ? `${id}-enhancement.ts` : `${id}.${suffix}.json`;
-  return `src/components/${directory}/${filename}`;
+  return `src/components/${id}/${filename}`;
 }
 
 /** Return the manifest subpath when this component owns a runtime enhancement. */
 export function enhancementArtifactPath(
   id: string,
-  isExperimental: boolean,
   componentsRoot: string = COMPONENTS_ROOT,
 ): string | undefined {
-  const enhancement = discoverComponentEnhancements(
-    [{ name: id, isExperimental }],
-    componentsRoot,
-  )[0];
-  return enhancement === undefined ? undefined : artifactPath(id, isExperimental, 'enhancement');
+  const enhancement = discoverComponentEnhancements([{ name: id }], componentsRoot)[0];
+  return enhancement === undefined ? undefined : artifactPath(id, 'enhancement');
 }
 
 // ---------------------------------------------------------------------------
@@ -260,21 +251,21 @@ export async function buildManifest(): Promise<Manifest> {
   const componentEntries = await Promise.all(
     metadata.map(async (meta: ComponentMetadata): Promise<ManifestComponent> => {
       const exportName = kebabToPascal(meta.id);
-      const hasExamplesFlag = hasExamplesArtifact(meta.id, meta.isExperimental);
-      const hasConstraintsFlag = hasConstraintsArtifact(meta.id, meta.isExperimental);
+      const hasExamplesFlag = hasExamplesArtifact(meta.id);
+      const hasConstraintsFlag = hasConstraintsArtifact(meta.id);
 
       const artifacts: ManifestComponent['artifacts'] = {
-        schema: artifactPath(meta.id, meta.isExperimental, 'schema'),
-        variables: artifactPath(meta.id, meta.isExperimental, 'variables'),
+        schema: artifactPath(meta.id, 'schema'),
+        variables: artifactPath(meta.id, 'variables'),
       };
 
       if (hasExamplesFlag) {
-        artifacts.examples = artifactPath(meta.id, meta.isExperimental, 'examples');
+        artifacts.examples = artifactPath(meta.id, 'examples');
       }
       if (hasConstraintsFlag) {
-        artifacts.constraints = artifactPath(meta.id, meta.isExperimental, 'constraints');
+        artifacts.constraints = artifactPath(meta.id, 'constraints');
       }
-      const enhancementArtifact = enhancementArtifactPath(meta.id, meta.isExperimental);
+      const enhancementArtifact = enhancementArtifactPath(meta.id);
       if (enhancementArtifact !== undefined) {
         artifacts.enhancement = enhancementArtifact;
       }
@@ -299,10 +290,8 @@ export async function buildManifest(): Promise<Manifest> {
     }),
   );
 
-  // 4. The metadata is already sorted stable-first, experimental-last,
-  //    alphabetical within each group (matching discoverComponents).
-  //    No re-sorting needed here — extractAllComponentMetadata preserves the
-  //    discover order modulo the stable/experimental split.
+  // 4. The metadata is already sorted alphabetically (matching
+  //    discoverComponents). No re-sorting needed here.
 
   // 4a. Cross-check every `avoidWhen.alternative` resolves to a real component
   //     id. The page renders the alternative as a `/c/<id>` link, so a dangling

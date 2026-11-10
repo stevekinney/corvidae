@@ -1,6 +1,6 @@
 @layer cinder.components {
   /* ========================================
- * POPOVER (experimental)
+ * POPOVER (base layout and fallback placement)
  * Anchored interactive surface. Uses platform Popover API where available;
  * falls back to fixed positioning for older browsers.
  * ======================================== */

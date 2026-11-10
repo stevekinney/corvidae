@@ -1,0 +1,7 @@
+<div><dialog class="cinder-modal" role="dialog" aria-modal="true" aria-labelledby="id-1" aria-describedby="id-2" open=""><div class="cinder-modal__panel">
+<div class="cinder-modal__header" data-cinder-closable=""><div class="cinder-modal__heading"><h2 class="cinder-modal__title" id="id-1">Connect Anthropic</h2>
+<p class="cinder-modal__description" id="id-2">Paste an API key, then test it.</p></div>
+</div>
+<div class="cinder-modal__body cinder-_scroll-fade" tabindex="-1"><span>Body</span></div>
+<div class="cinder-modal__footer"><span></span></div>
+<button type="button" class="cinder-modal__close" aria-label="Close dialog"><svg class="cinder-modal__close-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"></path></svg></button></div></dialog></div>

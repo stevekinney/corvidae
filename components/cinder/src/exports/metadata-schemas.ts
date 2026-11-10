@@ -88,7 +88,6 @@ export { default as gridListItemSchema } from '../components/grid-list-item/grid
 export { default as gridListSchema } from '../components/grid-list/grid-list.schema.ts';
 export { default as gridSchema } from '../components/grid/grid.schema.ts';
 export { default as guidanceRegionSchema } from '../components/guidance-region/guidance-region.schema.ts';
-export { default as hostProviderSchema } from '../components/host-provider/host-provider.schema.ts';
 export { default as hoverCardSchema } from '../components/hover-card/hover-card.schema.ts';
 export { default as imageSchema } from '../components/image/image.schema.ts';
 export { default as inlineConfirmSchema } from '../components/inline-confirm/inline-confirm.schema.ts';
