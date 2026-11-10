@@ -28,6 +28,10 @@ Inline shortcut hint that renders a key combo via Kbd alongside an action label,
 
 - Displaying a full shortcut reference table — use keyboard-shortcuts instead.
 
+## In a button
+
+Prefer Button's `shortcut` prop to nesting a hint by hand. Inside a button on every variant the key caps drop their border, fill, and shadow and render as plain glyphs in the button's own text color, so the hint reads as part of the button in every theme. Touch devices hide it. Hand-written markup inside a button gets the same treatment.
+
 ## Props
 
 <!-- generated:props:start -->
