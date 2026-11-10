@@ -6,6 +6,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { Conversation, createConversationHistory } from 'conversationalist';
 import { createToolbox } from 'armorer';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 
 import {
@@ -410,6 +411,52 @@ describe('a tripwire halt (COR-2105)', () => {
       await next.result().catch(() => undefined);
       expect(seen.every((tainted) => tainted)).toBe(true);
       expect(events).toHaveLength(1);
+    } finally {
+      await bureau.dispose();
+    }
+  });
+});
+
+describe('a scheduled fire into a new session (COR-2105)', () => {
+  it('stores the taint its first fire raised with the session it creates, and publishes it once', async () => {
+    const seen: boolean[] = [];
+    const events: SessionTaintEvent[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        helper: createAgent({
+          generate,
+          toolbox: createToolbox([]) as unknown as Toolbox,
+          guardrails: { input: { detectors: [markerDetector(seen)], action: 'warn' } },
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+      maintenance: 'manual',
+      onEvent: (event) => {
+        if (event instanceof SessionTaintEvent) events.push(event);
+      },
+    });
+    try {
+      const schedule = await bureau.schedules.create({
+        agentName: 'helper',
+        input: `scheduled ${MARKER}`,
+        spec: '1h',
+        sessionId: 'scheduled-taint-session',
+      });
+      const fired = await bureau.schedules.runNow(schedule?.id ?? '');
+      const workflowId = fired !== undefined && 'workflowId' in fired ? fired.workflowId : '';
+      await waitUntil(async () => {
+        const state = await bureau.durableEngine()!.get(workflowId);
+        return state?.status === 'completed';
+      });
+
+      const session = await bureau.internals.sessionStore?.load('scheduled-taint-session');
+      expect(readSessionTaint(session?.metadata)).toMatchObject({
+        detector: 'marker-detector',
+        provenance: 'user-input',
+      });
+      expect(events).toHaveLength(1);
+      expect(events[0]).toMatchObject({ sessionId: 'scheduled-taint-session' });
     } finally {
       await bureau.dispose();
     }

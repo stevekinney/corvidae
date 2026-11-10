@@ -51,6 +51,15 @@ export interface SessionTaintSeamDependencies {
   /** Called after the write that moved the session from untainted to tainted commits, once. */
   readonly publish: ((publication: SessionTaintPublication) => void) | undefined;
   readonly diagnose: (cause: unknown) => void;
+  /**
+   * Called when the session does not exist yet (a scheduled fire's first step runs before the
+   * session is created), with the taint to store once it does. Absent: the case is diagnosed.
+   */
+  readonly holdForAbsentSession?: (
+    sessionId: string,
+    runId: string,
+    value: PersistedSessionTaint,
+  ) => void;
 }
 
 /**
@@ -70,7 +79,7 @@ export function createSessionTaintSeam(
     readonly metadata: Readonly<Record<string, JSONValue>> | undefined;
   },
 ): SessionTaintSeam {
-  const { store, now, publish, diagnose } = dependencies;
+  const { store, now, publish, diagnose, holdForAbsentSession } = dependencies;
   const { sessionId, runId } = session;
   const initial: PersistedSessionTaint | undefined = readSessionTaint(session.metadata);
   return {
@@ -80,13 +89,17 @@ export function createSessionTaintSeam(
       if (store === undefined) return;
       const value = persistedSessionTaintOf(event, now(), runId);
       let stored = false;
+      let absent = false;
       try {
         await store.update(sessionId, (current) => {
           // The updater can run again after a lost race, so it sets the flag every time.
           stored = false;
-          if (current === undefined || readSessionTaint(current.metadata) !== undefined) {
+          if (current === undefined) {
+            absent = true;
             return undefined;
           }
+          absent = false;
+          if (readSessionTaint(current.metadata) !== undefined) return undefined;
           stored = true;
           return {
             ...current,
@@ -95,6 +108,14 @@ export function createSessionTaintSeam(
         });
       } catch (error) {
         diagnose(error);
+        return;
+      }
+      if (absent) {
+        if (holdForAbsentSession === undefined) {
+          diagnose(new Error(`session "${sessionId}" does not exist, so its taint was not stored`));
+        } else {
+          holdForAbsentSession(sessionId, runId, value);
+        }
         return;
       }
       if (!stored) return;

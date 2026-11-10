@@ -96,6 +96,9 @@ import {
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
+  SESSION_TAINT_METADATA_KEY,
+  readSessionTaint,
+  type PersistedSessionTaint,
   sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
@@ -3368,6 +3371,9 @@ async function buildRuntimeComposition(
    * COR-2105 — the seed and the write-back of one run of `sessionId`: the taint the session holds
    * in `metadata`, and an `onTainted` that stores a new one and publishes `session.tainted` once.
    */
+  const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
+  const pendingTaintKey = (sessionId: string, runId: string): string =>
+    `${sessionId}\u0000${runId}`;
   function sessionTaintSeamFor(
     sessionId: string,
     runId: string,
@@ -3378,6 +3384,12 @@ async function buildRuntimeComposition(
         store: sessionStore,
         now: () => runtimeServices.clock.now(),
         publish: dependencies.onSessionTainted,
+        // A scheduled fire's first step runs before its session exists: hold the taint for the
+        // write-back hook that creates the session.
+        holdForAbsentSession: (heldSessionId, heldRunId, value) => {
+          const key = pendingTaintKey(heldSessionId, heldRunId);
+          if (!pendingScheduledTaints.has(key)) pendingScheduledTaints.set(key, value);
+        },
         diagnose: (cause) =>
           diagnose({
             level: 'warn',
@@ -4443,7 +4455,15 @@ async function buildRuntimeComposition(
           });
         }
       }
+      const heldTaintKey = pendingTaintKey(sessionId, runId);
+      const heldTaint = pendingScheduledTaints.get(heldTaintKey);
+      let taintWritten: PersistedSessionTaint | undefined;
       const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
+        // The updater can run again after a lost race, so it decides every time.
+        taintWritten =
+          heldTaint !== undefined && readSessionTaint(existing?.metadata) === undefined
+            ? heldTaint
+            : undefined;
         const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =
           existing?.metadata['lastRunStatus'] === 'running' &&
@@ -4485,6 +4505,10 @@ async function buildRuntimeComposition(
             ...(existing === undefined
               ? { [SESSION_OWNER_METADATA_KEY]: owner, [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }
               : {}),
+            // COR-2105 — a taint the fire raised before its session existed is stored with it.
+            ...(taintWritten === undefined
+              ? {}
+              : { [SESSION_TAINT_METADATA_KEY]: { ...taintWritten } }),
             ...(sessionOwnedByAnotherRunningRun || skillPolicyUnverified()
               ? {}
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
@@ -4507,6 +4531,27 @@ async function buildRuntimeComposition(
             : context.conversation.current,
         };
       });
+      if (heldTaint !== undefined) {
+        pendingScheduledTaints.delete(heldTaintKey);
+        if (taintWritten !== undefined && saved !== undefined) {
+          try {
+            dependencies.onSessionTainted?.({
+              sessionId,
+              runId: taintWritten.runId,
+              detector: taintWritten.detector,
+              provenance: taintWritten.provenance,
+              confidence: taintWritten.confidence,
+            });
+          } catch (error) {
+            diagnose({
+              level: 'warn',
+              scope: 'guardrails',
+              message: `[bureau] The taint of session "${sessionId}" could not be published: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        }
+      }
       // COR-1482: the first save of a fresh session gives it its incarnation, which the fire's
       // task is bound to once, so `bureau.tasks.list({ contextId })` finds the fire.
       if (!bound && saved !== undefined) {
