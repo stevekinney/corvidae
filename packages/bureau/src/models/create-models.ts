@@ -94,10 +94,19 @@ export interface Models {
    * The catalog row that summarizes a conversation when an agent compacts its context: the row
    * the `context.summarizerModel` setting names, as `<provider>/<model>` or an alias of one, read
    * on every call. `undefined` when the setting is unset, or when no row of the catalog as it is
-   * now matches it or the matching row is `unavailable` (a `replace` can remove or turn off the
+   * now matches it or the matching row is retired or `unavailable` (a `replace` can remove or turn off the
    * row after the setting was written).
    */
   summarizer(): BackendDescriptor | undefined;
+}
+
+/**
+ * Whether a catalog row is offered for agent resolution. Every resolver of a model name to a row
+ * (`resolveModelDescriptor`, `allowedDescriptorsOfFileAgent`, `findCatalogRow`) calls this, so a
+ * new condition is added here once.
+ */
+export function isOfferedCatalogRow(row: BackendDescriptor): boolean {
+  return row.lifecycle !== 'retired';
 }
 
 /**
@@ -114,6 +123,7 @@ export function findCatalogRow(
   const model = name.slice(slash + 1);
   return rows.find(
     (row) =>
+      isOfferedCatalogRow(row) &&
       row.provider === provider &&
       (row.model === model || row.aliases.some((alias) => alias.alias === model)),
   );

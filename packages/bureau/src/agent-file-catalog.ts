@@ -135,7 +135,7 @@ import {
 import type { AgentSnapshot } from './agent-snapshot-store';
 import type { SkillArtifactLoader, SkillCatalogRevision, SkillEventMap } from './skills';
 import { type BureauModelPolicyOptions, modelPolicyDenialOf } from './model-policy';
-import type { Models } from './models/create-models';
+import { isOfferedCatalogRow, type Models } from './models/create-models';
 import { ownerOrLocal } from './owner-of-record';
 import { createDefinitionScanner, type DefinitionScannerHealth } from './definition-scanner';
 import type { AgentSource, DefinitionEntry } from './sources/definition-source';
@@ -632,7 +632,7 @@ export function resolveModelDescriptor(
   const found = descriptors.find(
     (descriptor) =>
       descriptor.provider === provider &&
-      descriptor.lifecycle !== 'retired' &&
+      isOfferedCatalogRow(descriptor) &&
       (descriptor.model === name || descriptor.aliases.some((alias) => alias.alias === name)),
   );
   return (
@@ -652,7 +652,7 @@ export function allowedDescriptorsOfFileAgent(
   models: readonly string[] | undefined,
   descriptors: readonly BackendDescriptor[],
 ): BackendDescriptor[] {
-  if (models === undefined) return descriptors.filter((row) => row.lifecycle !== 'retired');
+  if (models === undefined) return descriptors.filter(isOfferedCatalogRow);
   const rows: BackendDescriptor[] = [];
   for (const entry of models) {
     const resolved = resolveModelDescriptor(entry, descriptors);
