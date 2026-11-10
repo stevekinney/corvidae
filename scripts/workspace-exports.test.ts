@@ -1,6 +1,10 @@
 import { expect, test } from 'bun:test';
 
-import { declaresImportSpecifier, sourceExportViolations } from './workspace-exports';
+import {
+  declaresImportSpecifier,
+  exportSourceTarget,
+  sourceExportViolations,
+} from './workspace-exports';
 
 const existing = new Set(['src/index.ts', 'src/protocol/index.ts', 'src/bun/pty.ts']);
 const exists = (path: string): boolean => existing.has(path);
@@ -66,6 +70,40 @@ test('rejects subpath targets that are conditional, outside src, not TypeScript,
       JSON.stringify(target),
     ).toEqual([`"./protocol" ${message}`]);
   }
+});
+
+const declared = {
+  types: './.types/src/index.d.ts',
+  svelte: './src/index.ts',
+  default: './src/index.ts',
+};
+
+test('accepts the declaration form only where a component library asks for it', () => {
+  expect(sourceExportViolations({ '.': declared }, exists, { declarations: true })).toEqual([]);
+  expect(sourceExportViolations({ '.': declared }, exists)).toEqual([
+    '"." must map to "./src/index.ts"',
+  ]);
+});
+
+test('rejects a declaration form whose types do not mirror its source', () => {
+  const violations = (entry: unknown) =>
+    sourceExportViolations({ '.': entry }, exists, { declarations: true });
+  expect(violations({ ...declared, types: './dist/index.d.ts' })).toEqual([
+    '"." must map to "./src/index.ts"',
+  ]);
+  expect(violations({ ...declared, svelte: './src/other.ts' })).toEqual([
+    '"." must map to "./src/index.ts"',
+  ]);
+  expect(violations({ ...declared, import: './src/index.ts' })).toEqual([
+    '"." must map to "./src/index.ts"',
+  ]);
+});
+
+test('exportSourceTarget reads the source of a string or a declaration form', () => {
+  expect(exportSourceTarget('./src/index.ts')).toBe('./src/index.ts');
+  expect(exportSourceTarget(declared)).toBe('./src/index.ts');
+  expect(exportSourceTarget({ ...declared, svelte: './src/other.ts' })).toBeNull();
+  expect(exportSourceTarget(undefined)).toBeNull();
 });
 
 test('allows importing the workspace root or a subpath its exports declare, and nothing else', () => {

@@ -262,8 +262,16 @@ describe('CinderKnowledge', () => {
     expect(isRecord(packageManifest)).toBe(true);
     if (!isRecord(packageManifest)) throw new Error('Expected package.json to be an object');
     expect(packageManifest['exports']).toEqual({
-      '.': './src/index.ts',
-      './tokens/runtime': './src/tokens/runtime/index.ts',
+      '.': {
+        types: './.types/src/index.d.ts',
+        svelte: './src/index.ts',
+        default: './src/index.ts',
+      },
+      './tokens/runtime': {
+        types: './.types/src/tokens/runtime/index.d.ts',
+        svelte: './src/tokens/runtime/index.ts',
+        default: './src/tokens/runtime/index.ts',
+      },
     });
     expect(rootEntry).toContain("import './styles/index.css';");
     expect(rootEntry).toContain(
