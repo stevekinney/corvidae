@@ -2109,6 +2109,20 @@ describe('a versioned subagent tool (COR-2298)', () => {
     }),
   };
 
+  // Armorer signs an approval only for a call that names who asked for it.
+  const requestContext = {
+    authority: {
+      principalId: 'operator',
+      tenantId: 'tenant',
+      ownerId: 'operator',
+      capabilities: [],
+      authorizationRevision: '1',
+    },
+    audience: 'tenant' as const,
+    agentId: 'supervisor',
+    runId: 'run-1',
+  };
+
   function delegate(version?: string) {
     const runs: AgentInput[] = [];
     const child: RunnableAgent = createAgent({
@@ -2146,20 +2160,6 @@ describe('a versioned subagent tool (COR-2298)', () => {
       policy: parkEveryCall,
     });
 
-    // Armorer signs an approval only for a call that names who asked for it.
-    const requestContext = {
-      authority: {
-        principalId: 'operator',
-        tenantId: 'tenant',
-        ownerId: 'operator',
-        capabilities: [],
-        authorizationRevision: '1',
-      },
-      audience: 'tenant' as const,
-      agentId: 'supervisor',
-      runId: 'run-1',
-    };
-
     const parked = await toolbox.execute(
       { id: 'call-1', name: 'delegate', arguments: { q: 'hi' } },
       { requestContext },
@@ -2181,5 +2181,21 @@ describe('a versioned subagent tool (COR-2298)', () => {
     );
     expect(resumed.outcome).toBe('success');
     expect(runs).toEqual(['hi']);
+  });
+
+  it('refuses to park an unversioned call, so the child never runs', async () => {
+    const { tool, runs } = delegate();
+    const toolbox = createToolbox([tool], {
+      approvalSecret: 'versioned-subagent-secret',
+      policy: parkEveryCall,
+    });
+
+    const result = await toolbox.execute(
+      { id: 'call-1', name: 'delegate', arguments: { q: 'hi' } },
+      { requestContext },
+    );
+    expect(result.outcome).toBe('error');
+    expect(result.errorMessage).toContain('requires a versioned tool definition');
+    expect(runs).toEqual([]);
   });
 });

@@ -1699,7 +1699,7 @@ const orchestrator = createAgent({
 });
 ```
 
-Armorer binds an approval only to a versioned tool, so pass `version` (for example `version: '1.0.0'`) when a toolbox policy may park the subagent call for approval. Without it the tool is unversioned and its calls cannot be approved.
+Armorer signs an approval only for a versioned tool, so pass `version` (for example `version: '1.0.0'`) when a toolbox with an `approvalSecret` may park the subagent call for approval. In such a toolbox, a call to an unversioned subagent tool that its policy parks fails with an error instead.
 
 `createSubagentTool` is built on `dispatchChildRun` (AB-50), the lower-level child dispatch primitive—see [Child dispatch and discovery (AB-50)](#child-dispatch-and-discovery-ab-50) below. It threads the parent tool call's `signal` and `traceContext`—plus this tool's own `agentName` and `withTraceContext` option—through to `agent.run(input, { agentName, signal, traceContext, withTraceContext })`, so a real `createAgent` child aborts when the parent's tool call does. `signal` always propagates, composed with a private per-child `AbortController` so a child-targeted abort (through `AgentRun.abortChild()`, or the `ChildRunHandle.abort()` a direct `dispatchChildRun` caller retains) never reaches a sibling. `traceContext` is read off the executing `ToolContext` (AB-233): the ordinary `createAgent`-driven agent loop populates it on every call, from the run's own `parentContext`, via `run-step.ts`'s toolbox execute call site—no special toolbox construction required. Pass `withTraceContext` directly on `createSubagentTool`'s own options when the child needs its `agent.run()` call wrapped in a trace context.
 
