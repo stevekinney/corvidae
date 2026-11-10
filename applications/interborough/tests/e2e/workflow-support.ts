@@ -120,7 +120,59 @@ export async function workflowRunStatus(
   return (answer.result as { status: string }).status;
 }
 
+/**
+ * The width below which Cinder's `Tabs` turns a horizontal tab bar into one select named Tab
+ * (`PHONE_VIEWPORT_BREAKPOINT` in Cinder's `viewport-below.svelte.ts`, the `collapseBelow` default).
+ * The workflow pages keep that default, so at the phone width a tab is chosen from the select's
+ * options and the selected tab is the select's value.
+ */
+const TABS_COLLAPSE_BELOW_PIXELS = 640;
+
+/** The accessible name Cinder gives the select a collapsed tab bar becomes (`collapseLabel`). */
+const COLLAPSED_TABS_LABEL = 'Tab';
+
+function tabsAreCollapsed(root: Locator): boolean {
+  const width = root.page().viewportSize()?.width;
+  return width !== undefined && width < TABS_COLLAPSE_BELOW_PIXELS;
+}
+
+/** The control that shows which tab is open: the select when the bar is collapsed. */
+function collapsedTabs(root: Locator): Locator {
+  return root.getByRole('combobox', { name: COLLAPSED_TABS_LABEL });
+}
+
+/** Opens the tab `name` of the tab bar in `root`, from the select at the phone width. */
+export async function openTab(root: Locator, name: string): Promise<void> {
+  if (!tabsAreCollapsed(root)) {
+    await root.getByRole('tab', { name }).click();
+    return;
+  }
+  await collapsedTabs(root).click();
+  await root.page().getByRole('option', { name, exact: true }).click();
+}
+
+/** Expects the tab `name` of the bar in `root` to be the one that is open. */
+export async function expectTabOpen(root: Locator, name: string): Promise<void> {
+  if (tabsAreCollapsed(root)) {
+    await expect(collapsedTabs(root)).toContainText(name);
+    return;
+  }
+  await expect(root.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
+}
+
+/** Expects the tabs of the bar in `root`, in order: the tab buttons, or at the phone width the select's options. */
+export async function expectTabNames(root: Locator, names: readonly string[]): Promise<void> {
+  if (!tabsAreCollapsed(root)) {
+    await expect(root.getByRole('tab')).toHaveText([...names]);
+    return;
+  }
+  const select = collapsedTabs(root);
+  await select.click();
+  await expect(root.page().getByRole('option')).toHaveText([...names]);
+  await select.press('Escape');
+}
+
 /** Opens the JSON tab of the workflow builder on `root`, whose editor holds the file's text. */
 export async function openJsonTab(root: Locator): Promise<void> {
-  await root.getByRole('tab', { name: WORKFLOW_COPY.builder.jsonTab }).click();
+  await openTab(root, WORKFLOW_COPY.builder.jsonTab);
 }

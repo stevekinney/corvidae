@@ -19,7 +19,10 @@ import { expect, loggedFailedResponse, test } from './fixtures.ts';
 import { expectEngineMissesForFileRuns } from './task-support.ts';
 import {
   createWorkflowFile,
+  expectTabNames,
+  expectTabOpen,
   listWorkflowRuns,
+  openTab,
   removeWorkflow,
   SEEDED_WORKFLOWS,
   workflowFilePath,
@@ -31,7 +34,6 @@ const TABS = WORKFLOW_COPY.page.tabs;
 
 const area = (page: Page) => page.locator('[data-view="workflows"]');
 const detail = (page: Page) => page.locator('[data-page="workflow-detail"]');
-const tab = (page: Page, name: string) => detail(page).getByRole('tab', { name });
 
 /** Identifiers this file's specs create, removed after each spec. */
 const created = new Set<string>();
@@ -68,12 +70,7 @@ test.describe('the Overview tab', () => {
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       const root = detail(page);
 
-      await expect(root.getByRole('tab')).toHaveText([
-        TABS.overview,
-        TABS.code,
-        TABS.runs,
-        TABS.history,
-      ]);
+      await expectTabNames(root, [TABS.overview, TABS.code, TABS.runs, TABS.history]);
       await expect(root.getByTestId('workflow-steps').getByRole('listitem')).toHaveCount(1);
       const input = root.getByTestId('workflow-input-schema');
       await expect(input).toContainText('Topic');
@@ -115,7 +112,7 @@ test.describe('the Code tab', () => {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}`);
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      await tab(page, TABS.code).click();
+      await openTab(detail(page), TABS.code);
       const root = detail(page);
 
       const file = await bureau(request, 'bureau.workflows.get', { id: SEEDED_WORKFLOWS.digest });
@@ -164,11 +161,11 @@ test.describe('the tab in the address', () => {
   }) => {
     await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await tab(page, TABS.runs).click();
+    await openTab(detail(page), TABS.runs);
     await expect(page).toHaveURL(/\?tab=runs$/);
     await page.reload();
-    await expect(tab(page, TABS.runs)).toHaveAttribute('aria-selected', 'true');
-    await tab(page, TABS.overview).click();
+    await expectTabOpen(detail(page), TABS.runs);
+    await openTab(detail(page), TABS.overview);
     await expect(page).not.toHaveURL(/tab=/);
   });
 });

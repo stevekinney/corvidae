@@ -301,9 +301,13 @@ for (const view of VIEW_NAMES) {
         if (outcome !== 'ready') {
           const copy = VIEW_COPY[view];
           const title = outcome === 'empty' ? copy.empty?.title : copy[outcome]?.title;
-          if (outcome === 'loading' && VIEWS[view].pageOwnsLoading === true) {
-            // The page draws its own loading: its heading and navigation are real text, and only the
-            // rows are placeholders (Settings, row 48t). Nothing here is the frame's generic words.
+          const pageOwnsState =
+            (outcome === 'loading' && VIEWS[view].pageOwnsLoading === true) ||
+            (outcome === 'error' && VIEWS[view].pageOwnsFailure === true);
+          if (pageOwnsState) {
+            // The page draws its own loading and its own failure: its heading and navigation are
+            // real text, and only the content is the state (Settings, rows 48t and 50m). Nothing
+            // here is the frame's generic words.
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
               width < 640 ? SETTINGS_COPY.general.narrowTitle : 'General',
             );
@@ -312,6 +316,12 @@ for (const view of VIEW_NAMES) {
                 ? frame.getByRole('combobox', { name: SETTINGS_COPY.sectionSelect })
                 : frame.getByRole('navigation', { name: 'Settings sections' }),
             ).toBeVisible();
+            if (outcome === 'error') {
+              // With nothing to show, the full error state replaces the section's content.
+              await expect(
+                frame.getByRole('heading', { level: 2, name: title ?? '' }),
+              ).toBeVisible();
+            }
           } else {
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
           }

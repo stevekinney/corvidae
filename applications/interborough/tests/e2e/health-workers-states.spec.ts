@@ -21,8 +21,12 @@ test.use({ baseURL: E2E_SHOWCASE_URL, timezoneId: SAMPLE_TIME_ZONE });
 const SOURCE = 'health-workers-states.spec.ts';
 const MINUTE = 60_000;
 
-/** The browser's "now": the sample world's in a capture, the real one otherwise. */
-const NOW = designReviewCaptureDirectory() ? SAMPLE_NOW_MILLISECONDS : Date.now();
+/**
+ * The browser's "now": the sample world's in a capture, the real one otherwise. It is read each time
+ * a fleet is answered, never once when the file loads: a worker that "was heard just now" is stamped
+ * with the moment the page asks, so a long run of earlier cases cannot age it.
+ */
+const now = (): number => (designReviewCaptureDirectory() ? SAMPLE_NOW_MILLISECONDS : Date.now());
 
 interface Worker {
   id: string;
@@ -114,7 +118,7 @@ const waitingTasks = (count: number): Task[] =>
     workflowType: 'release-notes',
     activityName: 'render-digest',
     attempt: 1,
-    at: NOW - (210 - index * 33) * MINUTE,
+    at: now() - (210 - index * 33) * MINUTE,
   }));
 
 /** What the page reads, and what it changes. */
@@ -155,21 +159,21 @@ function summaryOf(worker: Worker) {
     concurrency: 4,
     inFlight: worker.inFlight,
     availableCapacity: 4 - worker.inFlight,
-    connectedAt: NOW - 600 * MINUTE,
-    lastHeartbeatAt: NOW - worker.heardMinutesAgo * MINUTE,
+    connectedAt: now() - 600 * MINUTE,
+    lastHeartbeatAt: now() - worker.heardMinutesAgo * MINUTE,
     heartbeatAgeMs: worker.heardMinutesAgo * MINUTE,
-    startedAt: NOW - 600 * MINUTE,
+    startedAt: now() - 600 * MINUTE,
     capabilities: {},
     health: worker.health,
     workflows: ['release-notes'],
     buildId: '2.4.1',
-    ...(worker.disconnected === true ? { disconnectedAt: NOW - 64 * MINUTE } : {}),
+    ...(worker.disconnected === true ? { disconnectedAt: now() - 64 * MINUTE } : {}),
     ...(worker.drainFinishedTasks === undefined
       ? {}
       : { drainFinishedTasks: worker.drainFinishedTasks }),
     ...(worker.drainedMinutesAgo === undefined
       ? {}
-      : { drainedAt: NOW - worker.drainedMinutesAgo * MINUTE }),
+      : { drainedAt: now() - worker.drainedMinutesAgo * MINUTE }),
   };
 }
 
@@ -895,9 +899,11 @@ for (const width of STATE_WIDTHS) {
       'data-cinder-variant',
       'secondary',
     );
+    // 78z: "drawn as a link" is the ghost-accent button, which has no fill or border; Cinder's
+    // buttons have no variant named link (`ButtonVariant`).
     await expect(region.getByRole('link', { name: 'Open Health' })).toHaveAttribute(
       'data-cinder-variant',
-      'link',
+      'ghost-accent',
     );
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

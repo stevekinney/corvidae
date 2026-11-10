@@ -240,7 +240,9 @@ test.describe('the ? map', () => {
     page,
     checkA11y,
   }) => {
-    await page.goto('/settings');
+    // General saves each setting as it is left, so it has no key of its own; the model policy is
+    // the settings page that saves as a whole, with ⌘Enter.
+    await page.goto('/settings/allowed-models');
     await expect(page.getByRole('button', { name: /^Search everything/ })).toBeVisible();
     // The page registers its key once its form is on screen, and the map lists what is registered.
     await expect(page.getByRole('group', { name: SETTINGS_COPY.formLabel })).toBeVisible();

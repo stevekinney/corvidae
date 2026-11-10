@@ -27,7 +27,7 @@
   {:else}
     <label class="ib-model-name__title ib-model-name__title--label" for={labelFor}>{name}</label>
   {/if}
-  <code class="ib-model-name__identifier">{identifier}</code>
+  <code class="ib-model-name__identifier" title={identifier}>{identifier}</code>
 </span>
 
 <style>
@@ -37,13 +37,19 @@
     gap: var(--cinder-space-0-5) var(--cinder-space-2);
   }
 
+  /* In a table a model is at most 20rem wide, because Cinder sizes a scrolling table to its content
+   * and one long name would otherwise make it as wide as the name. */
   .ib-model-name[data-layout='stacked'] {
     flex-direction: column;
+    max-inline-size: 20rem;
   }
 
-  /* An identifier is one word; a table scrolls sideways before it breaks one in pieces. */
+  /* An identifier is one word; a table clips it with an ellipsis (the whole word is its title)
+   * before it breaks one in pieces. */
   .ib-model-name[data-layout='stacked'] .ib-model-name__identifier {
+    overflow: hidden;
     overflow-wrap: normal;
+    text-overflow: ellipsis;
     white-space: nowrap;
   }
 
@@ -54,6 +60,7 @@
 
   .ib-model-name__title {
     font-weight: var(--cinder-font-semibold);
+    overflow-wrap: anywhere;
   }
 
   .ib-model-name__title--label {

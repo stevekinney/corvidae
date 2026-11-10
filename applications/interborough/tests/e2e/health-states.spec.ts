@@ -208,18 +208,32 @@ async function answerRunsStarted(
       return;
     }
     const response = await route.fetch();
-    const body = (await response.json()) as { result?: { items: unknown[] }; items?: unknown[] };
+    const body = (await response.json()) as {
+      result?: { items: unknown[]; total?: number };
+      items?: unknown[];
+      total?: number;
+    };
+    const request = JSON.parse(text) as { params?: { limit?: number; offset?: number } };
     // The window before this one has an upper bound; the window itself has only a lower one.
     const before = /"lt"/.test(text);
     const count = before ? runs.before : runs.started;
-    const items = Array.from({ length: count }, (_, index) => ({
+    const all = Array.from({ length: count }, (_, index) => ({
       id: `all-clear-run-${before ? 'before' : 'now'}-${String(index)}`,
       status: 'completed',
       createdAt: Date.UTC(2026, 10, 2, 6, 0) + index * 60_000,
       updatedAt: Date.UTC(2026, 10, 2, 6, 0) + index * 60_000 + runs.seconds * 1000,
     }));
-    if (body.result === undefined) body.items = items;
-    else body.result.items = items;
+    // A page of the window, and how many runs it holds in all: the card for the day before reads
+    // only that total, from a page of one, as the engine answers it.
+    const offset = request.params?.offset ?? 0;
+    const items = all.slice(offset, offset + (request.params?.limit ?? count));
+    if (body.result === undefined) {
+      body.items = items;
+      body.total = count;
+    } else {
+      body.result.items = items;
+      body.result.total = count;
+    }
     await route.fulfill({ response, json: body });
   });
 }

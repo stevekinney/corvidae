@@ -341,6 +341,9 @@ test.describe('Health › Audit log on the sample world', () => {
     checkA11y,
   }) => {
     await page.setViewportSize({ width: 1280, height: 900 });
+    // The rows the board draws: the sample world also holds the settings changes its own seeding
+    // made at 10:45 AM (three `settings.changed` events), which the design's nine rows leave out.
+    await answerAuditAsDesigned(page);
     await openAudit(page);
     const main = page.locator('main');
     await rows(page).nth(1).click();
@@ -579,6 +582,8 @@ test.describe('Health › Audit log on the sample world', () => {
     checkA11y,
   }) => {
     await page.setViewportSize({ width: 375, height: 812 });
+    // The rows the board draws, as above: the sample world's own settings changes are not among them.
+    await answerAuditAsDesigned(page);
     await openAudit(page);
     const main = page.locator('main');
 
