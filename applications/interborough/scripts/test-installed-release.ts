@@ -259,7 +259,17 @@ export async function runInstalled(
       await writeFile(providerFile, JSON.stringify({ configuration: {} }));
       await writeFile(
         workflowFile,
-        JSON.stringify({ name: 'installed-cli-workflow', trigger: { kind: 'manual' }, steps: [] }),
+        JSON.stringify({
+          name: 'installed-cli-workflow',
+          trigger: { kind: 'manual' },
+          steps: [
+            {
+              kind: 'activity',
+              handler: 'agent',
+              input: { agent: 'installed-cli-agent', message: 'workflow hello' },
+            },
+          ],
+        }),
       );
       await writeFile(
         scheduleFile,
