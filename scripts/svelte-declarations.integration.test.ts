@@ -52,11 +52,15 @@ await Bun.write(
   `<script lang="ts">\n  import Widget from 'fixture-lib';\n</script>\n\n<Widget label="text" />\n`,
 );
 
-const result = await runWithHangGuard(
-  [svelteCheck, '--output', 'machine', '--workspace', workspace, '--tsconfig', './tsconfig.json'],
-  { cwd: workspace },
-);
-await rm(workspace, { force: true, recursive: true });
+let result: Awaited<ReturnType<typeof runWithHangGuard>>;
+try {
+  result = await runWithHangGuard(
+    [svelteCheck, '--output', 'machine', '--workspace', workspace, '--tsconfig', './tsconfig.json'],
+    { cwd: workspace },
+  );
+} finally {
+  await rm(workspace, { force: true, recursive: true });
+}
 
 test('svelte-check reads the declaration the types condition names, not the Svelte source', () => {
   const output = result.stdout.toString();
