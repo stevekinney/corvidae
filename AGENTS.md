@@ -51,7 +51,7 @@ This software is pre-1.0 and still being prototyped, so the goal is to move fast
 ## Release intent
 
 - Per-change publishing is paused, and this workspace carries no `.changeset/` directory. Release intent for a batch backport is written in `stevekinney/corvidae-mirror`, next to the tooling that carries it to the mirrors, when the backport is made.
-- `applications/playground/published-versions.json` (the versions the playground displays) and `scripts/published-exports.json` (each public package's `exports` map, which Weft's documentation check and Markdown's import-graph test resolve against) are updated by hand after a backport, along with `applications/playground/src/cinder-published-bases.json` when Cinder's version changes.
+- `scripts/published-exports.json` (each public package's `exports` map, which Weft's documentation check and Markdown's import-graph test resolve against) is updated by hand after a backport.
 - Interborough release automation belongs in Corvidae: build from a pinned source revision and verify the installed artifact on each supported target before publishing it. Corvidae GitHub Releases can host the compiled archives and checksums.
 
 ## Turborepo
