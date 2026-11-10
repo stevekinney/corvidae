@@ -20,6 +20,12 @@ const schema = {
         'Render the badge label in a monospace font. Useful for version strings, error codes, or other technical labels.',
       default: false,
     },
+    truncate: {
+      type: 'boolean',
+      description:
+        'Keeps the badge within the width it is given and ends a long label with an ellipsis, with the\nfull label in the `title`.',
+      default: false,
+    },
     subscriptionState: {
       enum: ['active', 'trialing', 'past-due', 'canceled', 'expired', 'refunded'],
       description:

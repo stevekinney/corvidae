@@ -27,6 +27,8 @@
   import TriangleAlert from '@lucide/svelte/icons/triangle-alert';
   import Undo2 from '@lucide/svelte/icons/undo-2';
 
+  import type { Attachment } from 'svelte/attachments';
+
   import { classNames } from '../../utilities/class-names.ts';
 
   import type { BadgeProps, BadgeSubscriptionState, BadgeVariant } from './badge.types.ts';
@@ -52,12 +54,27 @@
     variant = 'neutral',
     size = 'md',
     monospace = false,
+    truncate = false,
     subscriptionState,
     severity,
     class: customClassName,
     children,
     ...rest
   }: BadgeProps = $props();
+
+  // A truncating badge holds its whole label in the title, read from the rendered text so a snippet
+  // needs no second copy of its string; the attachment keeps it current when the label changes.
+  let labelText = $state<string | undefined>();
+  const readLabelText: Attachment<HTMLElement> = (element) => {
+    const read = (): void => {
+      const text = element.textContent?.trim();
+      labelText = text === undefined || text === '' ? undefined : text;
+    };
+    read();
+    const observer = new MutationObserver(read);
+    observer.observe(element, { childList: true, characterData: true, subtree: true });
+    return () => observer.disconnect();
+  };
 
   const subscriptionStateConfiguration = $derived(
     subscriptionState === undefined
@@ -85,6 +102,7 @@
   data-cinder-severity={subscriptionState === undefined ? severity : undefined}
   data-cinder-size={size}
   data-cinder-monospace={monospace ? '' : undefined}
+  data-cinder-truncate={truncate ? '' : undefined}
   data-cinder-subscription-state={subscriptionState}
   {...rest}
 >
@@ -107,6 +125,10 @@
     {:else}
       {subscriptionStateConfiguration.label}
     {/if}
+  {:else if truncate}
+    <span class="cinder-badge__label" title={labelText} {@attach readLabelText}
+      >{@render children?.()}</span
+    >
   {:else}
     {@render children?.()}
   {/if}

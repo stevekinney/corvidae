@@ -6,7 +6,7 @@
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { ownerRpc, serveWorkflows } from './http/management/workflows-fixtures.test-support';
 import {
   startWorkflowBureau,

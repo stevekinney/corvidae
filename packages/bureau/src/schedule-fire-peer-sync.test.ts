@@ -19,7 +19,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import {
   OWNER,
   readFrames,

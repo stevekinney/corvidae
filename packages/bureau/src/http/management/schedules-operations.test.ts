@@ -13,7 +13,7 @@ import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { AGENT_STEP } from '../../testing/workflow-file-fixtures.test-support.ts';
-import { ScheduleLocatorUnavailableError } from '../../create-bureau.ts';
+import { ScheduleLocatorUnavailableError } from '../../bureau-errors.ts';
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from '../create-bureau-handler.ts';
 import {
   answering,

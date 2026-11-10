@@ -12,7 +12,7 @@ import { type Storage } from '@lostgradient/storage';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 import { getMessages } from 'conversationalist';
 
-import type { BureauError } from './create-bureau';
+import type { BureauError } from './bureau-errors';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import {
   crashAfterSessionWrite,

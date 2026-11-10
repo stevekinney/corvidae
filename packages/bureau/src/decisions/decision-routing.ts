@@ -1,5 +1,5 @@
 import type { AgentDefinitions, AgentNames } from '../agent-catalog.ts';
-import { BureauError } from '../create-bureau.ts';
+import { BureauError } from '../bureau-errors.ts';
 import type { RoutingStrategy } from '../supervisor-contracts.ts';
 import type { DecisionSource } from './types.ts';
 

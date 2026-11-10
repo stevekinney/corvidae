@@ -17,7 +17,8 @@ import { createToolbox } from 'armorer';
 import { createConversationHistory } from 'conversationalist';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import {
   createCheckValidator,
   createDiagnostics,

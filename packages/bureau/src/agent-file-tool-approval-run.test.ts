@@ -11,7 +11,7 @@ import { createTool } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';

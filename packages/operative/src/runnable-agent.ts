@@ -17,7 +17,7 @@ import type { ChildRunRegistry } from './child-run';
 import type { ChildSignalPort } from './child-signals';
 import type { SessionInputPayload } from './durable/types';
 import type { AgentGenerationProfile } from './generation-profile';
-import type { GuardrailsOptions } from './guardrails/types';
+import type { GuardrailsOptions, SessionTaintOptions } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import type { DelegatedAuthority } from './providers/policy.ts';
 import type { RunOptions } from './types';
@@ -122,6 +122,14 @@ export interface AgentRunContext {
    * carry `OPERATIVE_RESOLVES_GUARDRAILS`.
    */
   inheritedGuardrails?: GuardrailsOptions | false | undefined;
+  /**
+   * COR-2105 — the session's persisted taint and the callback that persists a new one, handed to
+   * an agent that resolves its own guardrails so its tracker starts tainted when the session is
+   * and writes a taint it raises back. A host supplies it only for a run that has a session; a
+   * run with none (a catalog dispatch) keeps its taint per run. `createAgent` merges it into the
+   * taint options of the guardrails it resolves, with the run's {@link AgentRunContext.runId}.
+   */
+  sessionTaint?: Pick<SessionTaintOptions, 'initial' | 'onTainted'> | undefined;
 }
 
 /**

@@ -10,7 +10,7 @@ import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError, TaskRespondError } from '../../create-bureau.ts';
+import { BureauError, TaskRespondError } from '../../bureau-errors.ts';
 import {
   type CommandLedgerIdentity,
   createCommandLedger,

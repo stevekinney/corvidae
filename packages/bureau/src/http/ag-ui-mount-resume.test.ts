@@ -23,7 +23,7 @@ import {
   runAgentInput,
   startRequest,
 } from './ag-ui-fixtures.test-support.ts';
-import { ReviewRoundChangedError } from '../create-bureau.ts';
+import { ReviewRoundChangedError } from '../bureau-errors.ts';
 import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
 import { RESUME_ROUND_CHANGED_MESSAGE } from './ag-ui-resume-messages.ts';
 import { openRunStream } from './ag-ui-stream.ts';

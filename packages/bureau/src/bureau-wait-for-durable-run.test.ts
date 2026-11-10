@@ -8,7 +8,8 @@ import type { WorkflowState } from '@lostgradient/weft';
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { createBureau, resolveWaitForDurableRun } from './create-bureau';
+import { createBureau } from './create-bureau';
+import { resolveWaitForDurableRun } from './durable-run-waits';
 import { waitForCondition } from './test';
 import type { Bureau } from './types';
 import type { AgentDefinitions } from './agent-catalog';

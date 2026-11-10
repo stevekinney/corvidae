@@ -119,12 +119,13 @@ const schema = {
       default: false,
     },
     truncate: {
-      const: 'middle',
-      description: 'Cuts the text in the middle when it is too long for one line. Needs `text`.',
+      enum: ['middle', 'end'],
+      description:
+        'Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`.',
     },
     text: {
       type: 'string',
-      description: 'The plain text to cut in the middle with `truncate="middle"`.',
+      description: 'The plain text to cut with `truncate`.',
     },
     tailLength: {
       type: 'number',
