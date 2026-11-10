@@ -24,7 +24,6 @@ type ExampleValidator = ValidateFunction<ExampleArtifact>;
 export type ComponentLocation = {
   directory: string;
   id: string;
-  isExperimental: boolean;
 };
 
 function formatSchemaErrors(errors: ErrorObject[] | null | undefined): string {
@@ -39,22 +38,9 @@ async function componentLocations(): Promise<ComponentLocation[]> {
 
   for (const entry of entries) {
     if (!entry.isDirectory() || entry.name.startsWith('_') || entry.name === 'icons') continue;
-    if (entry.name === 'experimental') {
-      const experimentalRoot = join(COMPONENTS_ROOT, entry.name);
-      for (const child of await readdir(experimentalRoot, { withFileTypes: true })) {
-        if (!child.isDirectory() || child.name.startsWith('_')) continue;
-        locations.push({
-          directory: join(experimentalRoot, child.name),
-          id: child.name,
-          isExperimental: true,
-        });
-      }
-      continue;
-    }
     locations.push({
       directory: join(COMPONENTS_ROOT, entry.name),
       id: entry.name,
-      isExperimental: false,
     });
   }
 
@@ -62,8 +48,7 @@ async function componentLocations(): Promise<ComponentLocation[]> {
 }
 
 function artifactPath(location: ComponentLocation): string {
-  const directory = location.isExperimental ? `experimental/${location.id}` : location.id;
-  return `src/components/${directory}/${location.id}.examples.json`;
+  return `src/components/${location.id}/${location.id}.examples.json`;
 }
 
 function readManifest(): Promise<Manifest> {

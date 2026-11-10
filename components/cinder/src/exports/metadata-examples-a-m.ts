@@ -75,7 +75,6 @@ import formExamplesJson from '../components/form/form.examples.json' with { type
 import gridListExamplesJson from '../components/grid-list/grid-list.examples.json' with { type: 'json' };
 import gridExamplesJson from '../components/grid/grid.examples.json' with { type: 'json' };
 import guidanceRegionExamplesJson from '../components/guidance-region/guidance-region.examples.json' with { type: 'json' };
-import hostProviderExamplesJson from '../components/host-provider/host-provider.examples.json' with { type: 'json' };
 import hoverCardExamplesJson from '../components/hover-card/hover-card.examples.json' with { type: 'json' };
 import imageExamplesJson from '../components/image/image.examples.json' with { type: 'json' };
 import inlineConfirmExamplesJson from '../components/inline-confirm/inline-confirm.examples.json' with { type: 'json' };
@@ -254,8 +253,6 @@ export const gridExamples = gridExamplesJson;
 export const gridListExamples = gridListExamplesJson;
 /** Code examples for this component. */
 export const guidanceRegionExamples = guidanceRegionExamplesJson;
-/** Code examples for this component. */
-export const hostProviderExamples = hostProviderExamplesJson;
 /** Code examples for this component. */
 export const hoverCardExamples = hoverCardExamplesJson;
 /** Code examples for this component. */

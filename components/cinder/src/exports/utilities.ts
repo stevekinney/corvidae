@@ -28,13 +28,6 @@ export { useToast } from '../utilities/use-toast.ts';
 
 export { parseCommandQuery } from '../utilities/command-query.ts';
 export type { CommandQueryScope, ParsedCommandQuery } from '../utilities/command-query.ts';
-export {
-  dragRegionClass,
-  dragRegionProps,
-  noDragClass,
-  noDragProps,
-  safeHeaderDragStyle,
-} from '../utilities/drag-region.ts';
 export { createFormDirtyGuard } from '../utilities/form-dirty-guard.ts';
 export type { FormDirtyGuard } from '../utilities/form-dirty-guard.ts';
 export { IDENTIFIER_ACRONYMS, humanizeIdentifier } from '../utilities/humanize-identifier.ts';

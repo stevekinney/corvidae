@@ -78,8 +78,6 @@ export type A11yMetadata = {
 export type ComponentMetadata = {
   /** Kebab-case directory name — the canonical component identifier. */
   id: string;
-  /** True when the component lives under `src/components/experimental/`. */
-  isExperimental: boolean;
   /** Closed-vocabulary category from `manifest.meta.ts`. */
   category: CategoryId;
   /** Closed-vocabulary status level from `manifest.meta.ts`. */
@@ -256,7 +254,6 @@ export function extractFromSource(
   source: string,
   componentId: string,
   filePath: string,
-  isExperimental: boolean,
 ): ExtractResult {
   const fail = (reason: string): ExtractResult => ({
     ok: false,
@@ -442,7 +439,6 @@ export function extractFromSource(
     ok: true,
     metadata: {
       id: componentId,
-      isExperimental,
       category: categoryRaw,
       status: statusRaw,
       purpose: purposeRaw,
@@ -540,7 +536,6 @@ function parseA11yMetadata(
 export async function extractComponentMetadata(
   componentId: string,
   componentDir: string,
-  isExperimental: boolean,
 ): Promise<ExtractResult> {
   const filePath = join(componentDir, `${componentId}.svelte`);
   let source: string;
@@ -556,7 +551,7 @@ export async function extractComponentMetadata(
       },
     };
   }
-  return extractFromSource(source, componentId, filePath, isExperimental);
+  return extractFromSource(source, componentId, filePath);
 }
 
 /**
@@ -571,11 +566,8 @@ export async function extractAllComponentMetadata(): Promise<{
   const componentsRoot = new URL('../src/components', import.meta.url).pathname;
 
   const allResults = await Promise.all(
-    components.map(async ({ name, isExperimental }) => {
-      const componentDir = isExperimental
-        ? `${componentsRoot}/experimental/${name}`
-        : `${componentsRoot}/${name}`;
-      return extractComponentMetadata(name, componentDir, isExperimental);
+    components.map(async ({ name }) => {
+      return extractComponentMetadata(name, `${componentsRoot}/${name}`);
     }),
   );
 

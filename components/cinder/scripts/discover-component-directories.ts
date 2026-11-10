@@ -17,8 +17,6 @@ export type DiscoveredComponent = {
   directory: string;
   /** Kebab-case component name (the directory basename). */
   name: string;
-  /** True for `src/components/experimental/<name>/`. */
-  isExperimental: boolean;
 };
 
 const COMPONENTS_ROOT = join(import.meta.dir, '..', 'src', 'components');
@@ -31,7 +29,6 @@ const COMPONENTS_ROOT = join(import.meta.dir, '..', 'src', 'components');
  * the per-directory migration is complete; legacy flat or in-progress
  * subdirectories are skipped.
  *
- * Directories named `experimental/` are descended one level, and
  * `icons/` plus underscore-prefixed names (`_internal/`, etc.) are skipped.
  *
  * Returns the list sorted by absolute directory path.
@@ -43,25 +40,12 @@ export async function discoverComponentDirectories(): Promise<DiscoveredComponen
     if (!entry.isDirectory()) continue;
     if (entry.name.startsWith('_')) continue;
 
-    if (entry.name === 'experimental') {
-      const experimentalRoot = join(COMPONENTS_ROOT, 'experimental');
-      for (const subEntry of await readdir(experimentalRoot, { withFileTypes: true })) {
-        if (!subEntry.isDirectory()) continue;
-        if (subEntry.name.startsWith('_')) continue;
-        const directory = join(experimentalRoot, subEntry.name);
-        if (!existsSync(join(directory, `${subEntry.name}.svelte`))) continue;
-        if (!existsSync(join(directory, `${subEntry.name}.types.ts`))) continue;
-        results.push({ directory, name: subEntry.name, isExperimental: true });
-      }
-      continue;
-    }
-
     if (entry.name === 'icons') continue;
 
     const directory = join(COMPONENTS_ROOT, entry.name);
     if (!existsSync(join(directory, `${entry.name}.svelte`))) continue;
     if (!existsSync(join(directory, `${entry.name}.types.ts`))) continue;
-    results.push({ directory, name: entry.name, isExperimental: false });
+    results.push({ directory, name: entry.name });
   }
 
   return results.toSorted((a, b) => a.directory.localeCompare(b.directory));

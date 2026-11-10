@@ -113,24 +113,6 @@ describe('check-readme-usage', () => {
     );
   });
 
-  test('descends one level into experimental/', () => {
-    const root = mkdtempSync(join(tmpdir(), 'readme-usage-'));
-    try {
-      const experimental = join(root, 'experimental', 'live-component');
-      mkdirSync(experimental, { recursive: true });
-      writeFileSync(join(experimental, 'README.md'), '# LiveComponent\n\nNo usage.\n');
-      expect(findReadmeUsageFailures(root)).toEqual([
-        {
-          componentId: 'live-component',
-          reason: 'no-heading',
-          readmePath: join(experimental, 'README.md'),
-        },
-      ]);
-    } finally {
-      rmSync(root, { recursive: true, force: true });
-    }
-  });
-
   test('reports every offending component, not just the first', () => {
     withComponentRoot(
       {
