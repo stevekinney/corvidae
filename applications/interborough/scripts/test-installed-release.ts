@@ -255,15 +255,19 @@ export async function runInstalled(
         { args: ['workflows', 'list'], json: true },
         { args: ['schedules', 'list'], json: true },
         { args: ['completion', 'bash'], json: false },
-        {
-          args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
-          json: true,
-        },
-        {
-          args: ['chat', '--agent', 'installed-cli-agent', '--message', 'hello', '--no-input'],
-          json: true,
-        },
       ];
+      if (existingHome === undefined) {
+        commands.push(
+          {
+            args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
+            json: true,
+          },
+          {
+            args: ['chat', '--agent', 'installed-cli-agent', '--message', 'hello', '--no-input'],
+            json: true,
+          },
+        );
+      }
       for (const command of commands) {
         const result = await runInstalledCliCommand(
           executable,
