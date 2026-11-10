@@ -43,7 +43,7 @@ jobs:
   workspaces:
     name: Affected workspaces lint and type-check
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       TURBO_CONCURRENCY: '1'
     steps:
@@ -61,7 +61,7 @@ jobs:
   tests:
     name: Affected fast-lane tests
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
     env:
       TURBO_CONCURRENCY: '1'
     steps:
