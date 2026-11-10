@@ -490,7 +490,7 @@ describe('check-prop-conventions component-name directory scan', () => {
     expect(violation?.message).toContain('widget-group');
   });
 
-  test('enumerates directory names from a given root, including one level into experimental/', () => {
+  test('enumerates directory names from a given root', () => {
     // Hermetic: builds its own temporary component tree rather than asserting
     // on which real components exist, so it never drifts when the real
     // inventory changes. The adjacent "grandfathers tabs/tab" test below is
@@ -516,17 +516,14 @@ describe('check-prop-conventions component-name directory scan', () => {
       writeFileSync(join(root, 'incomplete-widget', 'incomplete-widget.svelte'), '');
       seedComponent(root, '_internal');
       seedComponent(join(root, 'icons'), 'widget-icon');
-      seedComponent(join(root, 'experimental'), 'gadget');
       writeFileSync(join(root, 'not-a-directory.ts'), '');
 
       const names = existingComponentDirectoryNames(root);
       expect(names.has('widget')).toBe(true);
       expect(names.has('widget-group')).toBe(true);
-      expect(names.has('gadget')).toBe(true);
       expect(names.has('incomplete-widget')).toBe(false);
       expect(names.has('_internal')).toBe(false);
       expect(names.has('widget-icon')).toBe(false);
-      expect(names.has('experimental')).toBe(false);
       expect(names.has('not-a-directory.ts')).toBe(false);
     } finally {
       rmSync(root, { recursive: true, force: true });

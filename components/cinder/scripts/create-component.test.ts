@@ -39,25 +39,14 @@ describe('buildContext', () => {
     const context = buildContext('my-widget');
     expect(context.name).toBe('my-widget');
     expect(context.pascalName).toBe('MyWidget');
-    expect(context.isExperimental).toBe(false);
     expect(context.importPath).toBe('@lostgradient/cinder');
     // The printed scaffold location and root-barrel path use relativeDirectory;
     // for a stable component it is just the bare name.
     expect(context.relativeDirectory).toBe('my-widget');
   });
 
-  it('handles the experimental/ prefix', () => {
-    const context = buildContext('experimental/json-viewer');
-    expect(context.name).toBe('json-viewer');
-    expect(context.pascalName).toBe('JsonViewer');
-    expect(context.isExperimental).toBe(true);
-    expect(context.importPath).toBe('@lostgradient/cinder');
-    // relativeDirectory MUST keep the experimental/ segment so the printed
-    // scaffold location (src/components/experimental/<name>/) and the
-    // root-barrel next-step path (./components/experimental/<name>/index.ts)
-    // point at where the files were actually written — not src/components/<name>/.
-    expect(context.relativeDirectory).toBe('experimental/json-viewer');
-    expect(context.directory.endsWith('experimental/json-viewer')).toBe(true);
+  it('rejects a nested path', () => {
+    expect(() => buildContext('nested/json-viewer')).toThrow(/kebab-case/);
   });
 
   it('rejects names that are not kebab-case', () => {
@@ -78,7 +67,7 @@ describe('renderSvelte @cinder block', () => {
   it('produces a block that the metadata extractor accepts (stable component)', () => {
     const context = buildContext('my-widget');
     const source = renderSvelte(context);
-    const result = extractFromSource(source, 'my-widget', '/virtual/my-widget.svelte', false);
+    const result = extractFromSource(source, 'my-widget', '/virtual/my-widget.svelte');
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.reason);
@@ -94,7 +83,7 @@ describe('renderSvelte @cinder block', () => {
     // scaffolded component is added to the tree. The template must therefore emit
     // a reason-only entry; an author opts into an alternative deliberately.
     const source = renderSvelte(buildContext('my-widget'));
-    const result = extractFromSource(source, 'my-widget', '/virtual/my-widget.svelte', false);
+    const result = extractFromSource(source, 'my-widget', '/virtual/my-widget.svelte');
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.reason);
@@ -108,21 +97,6 @@ describe('renderSvelte @cinder block', () => {
     const source = renderSvelte(buildContext('my-widget'));
     expect(source).toContain("import { classNames } from '../../utilities/class-names.ts';");
     expect(source).not.toContain('../../../utilities/class-names.ts');
-  });
-
-  it('marks experimental components as alpha so the metadata extractor accepts them', () => {
-    const context = buildContext('experimental/json-viewer');
-    const source = renderSvelte(context);
-    const result = extractFromSource(source, 'json-viewer', '/virtual/json-viewer.svelte', true);
-
-    expect(result.ok).toBe(true);
-    if (!result.ok) throw new Error(result.error.reason);
-    expect(result.metadata.status).toBe('alpha');
-  });
-
-  it('imports class-names three levels up for an experimental component (src/components/experimental/<name>/)', () => {
-    const source = renderSvelte(buildContext('experimental/json-viewer'));
-    expect(source).toContain("import { classNames } from '../../../utilities/class-names.ts';");
   });
 
   it('re-exports the props type from the module block', () => {
@@ -163,39 +137,24 @@ describe('renderReadme', () => {
     }
   });
 
-  it('flags experimental components in the README body', () => {
-    const readme = renderReadme(buildContext('experimental/json-viewer'));
-    expect(readme).toContain('EXPERIMENTAL');
-  });
-
   it('links to the live component-authoring checklist instead of copying it', () => {
     const readme = renderReadme(buildContext('my-widget'));
-    const experimentalReadme = renderReadme(buildContext('experimental/json-viewer'));
 
     expect(readme).toContain(
       '[component authoring pre-flight](../../../README.md#component-authoring-checklist)',
     );
-    expect(experimentalReadme).toContain(
-      '[component authoring pre-flight](../../../../README.md#component-authoring-checklist)',
-    );
     expect(readme).toContain("import { MyWidget } from '@lostgradient/cinder';");
     expect(readme).not.toContain(renderComponentAuthoringChecklist());
-    expect(experimentalReadme).not.toContain(renderComponentAuthoringChecklist());
   });
 
-  it('resolves both authoring links to the Cinder README checklist', () => {
+  it('resolves the authoring link to the Cinder README checklist', () => {
     const stable = buildContext('my-widget');
-    const experimental = buildContext('experimental/json-viewer');
     const checklistHeading = '### Component authoring checklist';
 
     expect(resolve(stable.directory, '../../../README.md')).toBe(
       resolve(import.meta.dir, '..', 'README.md'),
     );
-    expect(resolve(experimental.directory, '../../../../README.md')).toBe(
-      resolve(import.meta.dir, '..', 'README.md'),
-    );
     expect(existsSync(resolve(stable.directory, '../../../README.md'))).toBe(true);
-    expect(existsSync(resolve(experimental.directory, '../../../../README.md'))).toBe(true);
     expect(readFileSync(join(import.meta.dir, '..', 'README.md'), 'utf8')).toContain(
       checklistHeading,
     );
@@ -251,11 +210,6 @@ describe('renderTest', () => {
     const source = renderTest(buildContext('my-widget'));
     expect(source).toContain("import { setupHappyDom } from '@lostgradient/testing';");
     expect(source).not.toContain('../../../test/happy-dom.ts');
-  });
-
-  it('imports happy-dom three levels up for an experimental component', () => {
-    const source = renderTest(buildContext('experimental/json-viewer'));
-    expect(source).toContain("import { setupHappyDom } from '@lostgradient/testing';");
   });
 
   it('mounts the component and asserts on the cinder-<name> wrapper', () => {

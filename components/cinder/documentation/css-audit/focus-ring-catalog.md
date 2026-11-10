@@ -88,7 +88,7 @@ Different shape — outline draws a single stroke, no offset-color sandwich. Use
 | `copy-button/copy-button.css:32` | `.cinder-copy-button` |
 | `tabs/tabs.css:118` | `.cinder-tab-panel` |
 | `toast-region/toast-region.css:122,167` | `.cinder-toast__action`, `.cinder-toast__dismiss` |
-| `experimental/json-viewer/json-viewer.css:51` | `.cinder-json-viewer__toggle` |
+| `json-viewer/json-viewer.css:60` | `.cinder-json-viewer__toggle` |
 | `code-block/code-block.css:90` | header copy-button (overrides plain copy-button) |
 | `selection-popover/selection-popover.css:41,128` | button / cancel / submit |
 | `sortable-list/sortable-list.css:53` | `.cinder-sortable-handle` (uses `--cinder-focus-ring` shorthand var) |

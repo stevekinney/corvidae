@@ -139,8 +139,6 @@ export interface GenerateOptions {
   typesFilePath: string;
   /** Component directory name; used for the relative `schema-types` import. */
   componentName: string;
-  /** Depth from component directory up to `src/`. Top-level: 2, experimental: 3. */
-  depthToSrc: number;
 }
 
 /**
@@ -150,7 +148,7 @@ export interface GenerateOptions {
  * `ButtonProps` for `button`. Throws if no such export exists.
  */
 export function generateSchemaForComponent(options: GenerateOptions): GenerateResult {
-  const { typesFilePath, componentName, depthToSrc } = options;
+  const { typesFilePath, componentName } = options;
   activeTypesFilePath = typesFilePath;
   // Reset (or adopt an explicitly-provided) Project for this call, so every
   // `getProject()` call for the rest of this invocation — including the
@@ -292,7 +290,7 @@ export function generateSchemaForComponent(options: GenerateOptions): GenerateRe
   applyComponentSchemaRules(componentName, schema);
 
   const schemaJson = JSON.stringify(schema, null, 2) + '\n';
-  const schemaModule = renderSchemaModule(schema, depthToSrc);
+  const schemaModule = renderSchemaModule(schema);
 
   return { schema, schemaJson, schemaModule };
 }
@@ -1394,8 +1392,8 @@ function toPascalCase(kebab: string): string {
 /** Documents the generated default export, which every package export of a schema resolves to. */
 const SCHEMA_DOCUMENTATION = '/** JSON Schema describing the props of this component. */';
 
-function renderSchemaModule(schema: ComponentSchemaOutput, depthToSrc: number): string {
-  const relativePath = '../'.repeat(depthToSrc) + 'schema-types';
+function renderSchemaModule(schema: ComponentSchemaOutput): string {
+  const relativePath = '../../schema-types';
   const literal = JSON.stringify(schema, null, 2);
   if (schema.allOf) {
     // `allOf` schemas carry a JSON Schema `then` keyword. Emitting them as an
@@ -1440,9 +1438,7 @@ if (import.meta.main) {
   }
   const componentName = basename(dir);
   const typesFilePath = join(dir, `${componentName}.types.ts`);
-  const isExperimental = dir.includes('/experimental/');
-  const depthToSrc = isExperimental ? 3 : 2;
-  const result = generateSchemaForComponent({ typesFilePath, componentName, depthToSrc });
+  const result = generateSchemaForComponent({ typesFilePath, componentName });
   await Bun.write(join(dir, `${componentName}.schema.json`), result.schemaJson);
   await Bun.write(join(dir, `${componentName}.schema.ts`), result.schemaModule);
   console.log(`wrote ${componentName}.schema.{json,ts}`);

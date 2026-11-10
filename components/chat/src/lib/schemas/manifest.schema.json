@@ -123,7 +123,7 @@
     },
     "components": {
       "type": "array",
-      "description": "Ordered list of every public component. Stable components appear first, then experimental, each sub-group sorted alphabetically by id.",
+      "description": "Ordered list of every public component. Components are sorted alphabetically by id.",
       "items": {
         "type": "object",
         "required": [
@@ -157,8 +157,8 @@
           },
           "import": {
             "type": "string",
-            "description": "The import specifier consumers use to import this component. E.g. 'cinder/button' or 'cinder/experimental/json-viewer'.",
-            "examples": ["cinder/button", "cinder/experimental/json-viewer"]
+            "description": "The import specifier consumers use to import this component. E.g. 'cinder/button' or 'cinder/json-viewer'.",
+            "examples": ["cinder/button", "cinder/json-viewer"]
           },
           "exportName": {
             "type": "string",

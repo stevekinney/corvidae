@@ -145,10 +145,10 @@ describe('CinderKnowledge', () => {
     expect(constraints).toBeDefined();
   });
 
-  it('resolves export-name lookups and experimental component sidecars', async () => {
+  it('resolves export-name lookups and component sidecars', async () => {
     const temporaryRoot = await mkdtemp(join(tmpdir(), 'cinder-knowledge-'));
     try {
-      const componentRoot = join(temporaryRoot, 'src/components/experimental/fake-widget');
+      const componentRoot = join(temporaryRoot, 'src/components/fake-widget');
       await mkdir(componentRoot, { recursive: true });
       await writeFile(join(componentRoot, 'fake-widget.schema.json'), '{"type":"object"}\n');
       await writeFile(join(componentRoot, 'fake-widget.variables.json'), '[]\n');
@@ -178,7 +178,7 @@ describe('CinderKnowledge', () => {
               exportName: 'FakeWidget',
               category: 'action',
               status: 'alpha',
-              purpose: 'Exercises experimental component sidecar resolution.',
+              purpose: 'Exercises component sidecar resolution.',
               tags: ['fake'],
               useWhen: ['Testing the knowledge service with synthetic artifacts.'],
               avoidWhen: [{ reason: 'Rendering real production interfaces.' }],
@@ -186,8 +186,8 @@ describe('CinderKnowledge', () => {
               hasConstraints: false,
               hasExamples: false,
               artifacts: {
-                schema: 'src/components/experimental/fake-widget/fake-widget.schema.json',
-                variables: 'src/components/experimental/fake-widget/fake-widget.variables.json',
+                schema: 'src/components/fake-widget/fake-widget.schema.json',
+                variables: 'src/components/fake-widget/fake-widget.variables.json',
               },
             },
           ],
