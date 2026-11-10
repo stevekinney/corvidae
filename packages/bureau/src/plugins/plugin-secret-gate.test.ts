@@ -679,8 +679,10 @@ describe('a needs-setup plugin’s input and output guardrails', () => {
     });
     const response = { content: 'hi', toolCalls: [] };
 
-    expect((await inputHook(context))?.content).toContain('blocked by input guardrail');
-    expect((await outputHook(response, context))?.content).toContain('blocked by output guardrail');
+    const inputRefusal = await inputHook(context);
+    const outputRefusal = await outputHook(response, context);
+    expect(inputRefusal?.content).toContain('blocked by input guardrail');
+    expect(outputRefusal?.content).toContain('blocked by output guardrail');
 
     secrets.save(KEY, SECRET);
     await settleTo(gate, true);
