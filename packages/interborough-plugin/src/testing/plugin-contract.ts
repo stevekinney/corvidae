@@ -3,7 +3,14 @@ import type { z } from 'zod';
 
 import { definePlugin } from '../define-plugin.ts';
 import type { PluginDescriptor } from '../plugin-descriptor.ts';
-import { pluginIdentities } from './plugin-identities.ts';
+import {
+  type HookObservations,
+  type PluginHookPoint,
+  observationKey,
+  observePlugin,
+  scenarioOf,
+} from './hook-observation.ts';
+import { pluginContributions, pluginIdentities } from './plugin-identities.ts';
 
 /** One thing wrong with a plugin, as the contract found it. */
 export interface PluginContractFailure {
@@ -38,6 +45,30 @@ export interface PluginTestHostAgent {
   readonly problem?: { readonly code: string; readonly message: string } | undefined;
 }
 
+/**
+ * What a scripted run does, which decides the hook points it reaches: `answer` is one model reply
+ * with no tool call, `tool` is a reply that calls a read-only tool and then answers, and `failure`
+ * is a model that throws, which ends the run in an error.
+ */
+export type PluginScriptedScenario = 'answer' | 'tool' | 'failure';
+
+/** What {@link PluginTestHost.scriptedRun} is asked to run. */
+export interface PluginScriptedRunRequest {
+  /** What the scripted model does. */
+  readonly scenario: PluginScriptedScenario;
+  /**
+   * The names of the interceptors the plugin declares, which the run's agent chooses, so a set that
+   * does not apply to every agent runs too.
+   */
+  readonly interceptors: readonly string[];
+}
+
+/** How a scripted run ended. */
+export interface PluginScriptedRunOutcome {
+  /** The run's finish reason: `error` for a run that failed, whatever the cause. */
+  readonly finishReason: string;
+}
+
 /** A host with one plugin loaded, as far as the contract reads it; Bureau's `Bureau` satisfies it. */
 export interface PluginTestHost {
   /** The plugins the host was given. */
@@ -52,6 +83,12 @@ export interface PluginTestHost {
     /** Every agent, code-defined and file-based, ready or invalid. */
     list(): readonly PluginTestHostAgent[];
   };
+  /**
+   * Runs one agent that chooses `request.interceptors` through the scripted model, and settles when
+   * the run has ended and every hook has been awaited. A run that fails settles with an `error`
+   * finish reason rather than rejecting.
+   */
+  scriptedRun(request: PluginScriptedRunRequest): Promise<PluginScriptedRunOutcome>;
   /** Stops the host and removes whatever it created. */
   dispose(): Promise<void>;
 }
@@ -94,6 +131,8 @@ function contractRun(
   options: PluginContractOptions,
 ): { checks: readonly ContractCheck[]; dispose(): Promise<void> } {
   let host: Promise<PluginTestHost> | undefined;
+  let hookHost: Promise<PluginTestHost> | undefined;
+  const observations: HookObservations = { ran: new Set(), threw: [] };
   let listing: Promise<StartedHost | string> | undefined;
   const started = (): Promise<StartedHost | string> => {
     listing ??= (async () => {
@@ -179,16 +218,59 @@ function contractRun(
               .join(' ');
       },
     },
+    {
+      name: 'runs every declared hook point without throwing',
+      run: async () => {
+        const contributions = await pluginContributions(plugin);
+        const declared = new Map<PluginHookPoint, string[]>();
+        for (const interceptor of contributions.interceptors ?? []) {
+          for (const key of Object.keys(interceptor)) {
+            if (key === 'name' || key === 'appliesTo') continue;
+            const point = key as PluginHookPoint;
+            if (interceptor[point] === undefined) continue;
+            declared.set(point, [...(declared.get(point) ?? []), interceptor.name]);
+          }
+        }
+        const reachable = [...declared.keys()].filter((point) => scenarioOf(point) !== undefined);
+        if (reachable.length === 0) return undefined;
+        // One host that loads the plugin with its handlers observed; its runs are one at a time.
+        hookHost ??= options.createHost(observePlugin(plugin, observations));
+        const running = await hookHost;
+        await running.plugins.ready();
+        const interceptors = (contributions.interceptors ?? []).map(({ name }) => name);
+        const problems: string[] = [];
+        for (const point of reachable) {
+          const scenario = scenarioOf(point)!;
+          observations.ran.clear();
+          observations.threw.length = 0;
+          await running.scriptedRun({ scenario, interceptors });
+          for (const name of declared.get(point) ?? []) {
+            const key = observationKey(name, point);
+            const failure = observations.threw.find((thrown) => thrown.key === key);
+            if (failure !== undefined) {
+              problems.push(`The ${point} hook of "${name}" threw: ${failure.message}`);
+            } else if (!observations.ran.has(key)) {
+              problems.push(
+                `The ${point} hook of "${name}" did not run in the ${scenario} scripted run.`,
+              );
+            }
+          }
+        }
+        return problems.length === 0 ? undefined : problems.join(' ');
+      },
+    },
   ];
   return {
     checks,
     dispose: async () => {
       // A host that failed to start has nothing to dispose; the check already reported why.
-      if (host !== undefined)
-        await host.then(
-          (running) => running.dispose(),
-          () => undefined,
-        );
+      for (const loaded of [host, hookHost]) {
+        if (loaded !== undefined)
+          await loaded.then(
+            (running) => running.dispose(),
+            () => undefined,
+          );
+      }
     },
   };
 }

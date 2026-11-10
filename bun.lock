@@ -73,6 +73,8 @@
         "@shikijs/langs": "catalog:",
         "@shikijs/themes": "catalog:",
         "@tanstack/svelte-query": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
         "cron-parser": "catalog:",

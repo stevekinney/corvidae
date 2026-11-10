@@ -1428,7 +1428,7 @@ The `cacheBoundary` mark is the same conversation-level primitive `conversationa
 
 ### Provider definitions and `provider-kit`
 
-A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Each provider package ships its own definition (`@lostgradient/operative-anthropic` ships `anthropicProvider`, `@lostgradient/operative-openai` ships `openaiProvider`, and `@lostgradient/operative-gemini` ships `geminiProvider`). A definition passes the configuration object, whole, to its factories, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. The provider package's README shows a real definition registered; this is the shape any of them has:
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration, pluginConfiguration)` and `stream(configuration, pluginConfiguration)`. Each provider package ships its own definition (`@lostgradient/operative-anthropic` ships `anthropicProvider`, `@lostgradient/operative-openai` ships `openaiProvider`, and `@lostgradient/operative-gemini` ships `geminiProvider`). The second argument is the validated plugin configuration; pass `{}` when the provider has no plugin-level configuration. A definition passes both objects, whole, to its factories, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. The provider package's README shows a real definition registered; this is the shape any of them has:
 
 ```typescript
 import type {
@@ -1450,7 +1450,7 @@ const definitions: ProviderDefinition[] = [example];
 
 const selected = definitions
   .find((definition) => definition.name === 'example')
-  ?.generate?.({ provider: 'example', model: 'example-model' });
+  ?.generate?.({ provider: 'example', model: 'example-model' }, {});
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.
@@ -1698,6 +1698,8 @@ const orchestrator = createAgent({
   tools: { research: researcherTool },
 });
 ```
+
+Armorer signs an approval only for a versioned tool, so pass `version` (for example `version: '1.0.0'`) when a toolbox with an `approvalSecret` may park the subagent call for approval. In such a toolbox, a call to an unversioned subagent tool that its policy parks fails with an error instead.
 
 `createSubagentTool` is built on `dispatchChildRun` (AB-50), the lower-level child dispatch primitive—see [Child dispatch and discovery (AB-50)](#child-dispatch-and-discovery-ab-50) below. It threads the parent tool call's `signal` and `traceContext`—plus this tool's own `agentName` and `withTraceContext` option—through to `agent.run(input, { agentName, signal, traceContext, withTraceContext })`, so a real `createAgent` child aborts when the parent's tool call does. `signal` always propagates, composed with a private per-child `AbortController` so a child-targeted abort (through `AgentRun.abortChild()`, or the `ChildRunHandle.abort()` a direct `dispatchChildRun` caller retains) never reaches a sibling. `traceContext` is read off the executing `ToolContext` (AB-233): the ordinary `createAgent`-driven agent loop populates it on every call, from the run's own `parentContext`, via `run-step.ts`'s toolbox execute call site—no special toolbox construction required. Pass `withTraceContext` directly on `createSubagentTool`'s own options when the child needs its `agent.run()` call wrapped in a trace context.
 

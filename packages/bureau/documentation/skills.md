@@ -267,7 +267,7 @@ A skill-enabled run follows this sequence:
 
 `createAgent`'s `skills` option runs the sequence above for every run that agent starts, with a fresh client per run. Build its value with `createAgentSkills({ catalog })` from `@lostgradient/bureau`. That adapter lives in Bureau, not here, because this package sits below operative in the package graph and does not import it (`test/package-graph.test.ts`).
 
-`createAgentSkills({ catalog, allowedSkills })` narrows that agent's runs to the skills named, through the same admission rule as `admissionPolicy`. An agent file does the same with its `allowedSkills` key, against the catalog the host hands in as `BureauOptions.agentSkillCatalog`; see [Agent files](./agent-files.md#skills).
+`createAgentSkills({ catalog, allowedSkills })` narrows that agent's runs to the skills named, through the same admission rule as `admissionPolicy`. An agent file does the same with its `skills` key, against the catalog the host hands in as `BureauOptions.agentSkillCatalog`; see [Agent files](./agent-files.md#skills).
 
 ## Lifecycle events
 

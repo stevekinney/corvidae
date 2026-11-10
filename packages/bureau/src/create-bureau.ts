@@ -3647,7 +3647,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
-              // COR-1975: the skills a file's `allowedSkills` draws on, read through the host.
+              // COR-1975: the skills a file's `skills` draws on, read through the host.
               ...(options.agentSkillCatalog === undefined
                 ? {}
                 : {
@@ -23116,6 +23116,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (hooks === undefined) {
       throw new Error(`Schedule fire "${fire.runId}" has no hook registry to list its approvals.`);
     }
+    // COR-2298 — what the fire gives its tool calls, kept for the approved call that resumes later,
+    // as a session run's is. Stored only once the fire holds an approval, so it is released with the
+    // fire's other approval state (`endScheduledFireWhenNoApprovalRemains`).
+    const fireScope = runScopedExecutionContextOf(services.options);
     // Registered after the merge `registerTrailingOnStep` documents avoiding (COR-1265), and
     // that is sound here: a fire's registry holds the Bureau's tier alone, so the merge's tier
     // offset is zero and the raw trailing priority lands exactly where a registration before the
@@ -23130,6 +23134,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         const session = await runtime.sessionStore?.load(fire.sessionId);
         const decided = session?.metadata['resolvedReviewIds'];
         if (Array.isArray(decided) && decided.includes(reviewId)) return;
+        if (fireScope !== undefined) runScopedContexts.set(fire.runId, fireScope);
         registerScheduledFireApproval(
           scheduledFireReviewState,
           fire,

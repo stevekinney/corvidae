@@ -194,6 +194,8 @@ export type PluginSecretChange = {
 export type PluginManager = {
   /** The persisted choices as they were when the manager was created: what `createBureau` composes with. */
   settings(): Readonly<Record<string, BureauPluginSettings>>;
+  /** The current persisted configuration after the plugin descriptor schema parses it. */
+  configuration(name: string): unknown;
   /**
    * Every plugin the host did not skip for a secret it cannot honor, the built-in `bureau` plugin
    * (COR-1890) included. The built-in one is listed here for its standing and is not given to
@@ -581,6 +583,22 @@ export async function createPluginManager(options: PluginManagerOptions): Promis
 
   return {
     settings: () => loaded,
+    configuration(name) {
+      const entry = entryNamed(name);
+      if (entry === undefined) return {};
+      const given = configurationIn(persisted, name);
+      const schema = entry.descriptor.configuration;
+      if (schema === undefined) return given;
+      const parsed = schema.safeParse(given);
+      if (parsed.success) return parsed.data;
+      const issue = parsed.error.issues[0];
+      const path = issue?.path.map(String) ?? [];
+      throw new ProviderConfigurationError(
+        location,
+        ['plugins', name, 'configuration', ...path].join('.'),
+        issue?.message ?? 'the configuration is not valid.',
+      );
+    },
     loadable: () => loadable,
     secrets,
     lockReason,

@@ -937,6 +937,17 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       bungalow,
       configurationQueue,
       afterConfigurationWrite: () => pluginManager.reload(),
+      pluginConfigurations: async () => {
+        await pluginManager.reload();
+        return new Map(
+          pluginManager
+            .loadable()
+            .map((entry) => [
+              entry.descriptor.name,
+              pluginManager.configuration(entry.descriptor.name),
+            ]),
+        );
+      },
       warn: options.warn ?? ((message) => console.warn(message)),
       resolveProviderGenerate:
         options.resolveProviderGenerateFor?.(agentOfRun) ??

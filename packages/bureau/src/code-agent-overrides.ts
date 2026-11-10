@@ -8,15 +8,21 @@
  * the catalog's `overrides` member: it decides which agents those are, checks a save the way an
  * agent file's frontmatter is checked (the tools must be ones the deployment holds, each Asks
  * entry must name an allowed tool, each model must be in the model catalog and allowed by the
- * model policy, each guardrail is listed once and configured as its schema allows), and leaves the
- * versions to `agent-override-store.ts`.
+ * model policy, each guardrail is listed once and configured as its schema allows, and each
+ * interceptor is listed once and is one a plugin contributes), and leaves the versions to
+ * `agent-override-store.ts`.
  *
  * @module code-agent-overrides
  */
 
 import type { BackendDescriptor } from '@lostgradient/operative';
 
-import { type AgentContributions, refusedGuardrailConfigurations } from './agent-contributions';
+import {
+  type AgentContributions,
+  NO_AGENT_CONTRIBUTIONS,
+  refusedGuardrailConfigurations,
+  unresolvedContributions,
+} from './agent-contributions';
 import { AgentFileError, type AgentFileIssue, agentGuardrailSelectionsSchema } from './agent-file';
 import { resolveModelDescriptor } from './agent-file-catalog';
 import type { AgentFileSaveOptions } from './agent-file-writer';
@@ -54,7 +60,9 @@ export interface CodeAgentOverrides {
    * `unknown-tool` for a tool the deployment does not hold, `unknown-approval-tool` for an Asks
    * entry on a tool the agent may not use, `unknown-model` and `model-policy-denied` for a model
    * the catalog lacks or the policy forbids, `invalid-frontmatter` for a guardrail listed twice and
-   * `invalid-guardrail-configuration` for a configuration its schema refuses (COR-2118), and with
+   * `invalid-guardrail-configuration` for a configuration its schema refuses (COR-2118),
+   * `invalid-frontmatter` for an interceptor listed twice and `reference-unresolved` for one no
+   * plugin contributes (COR-2253), and with
    * `AgentFileConflictError` when the overrides changed since; each writes nothing.
    */
   save(
@@ -129,7 +137,8 @@ function refused(
     | 'unknown-model'
     | 'model-policy-denied'
     | 'invalid-frontmatter'
-    | 'invalid-guardrail-configuration',
+    | 'invalid-guardrail-configuration'
+    | 'reference-unresolved',
   message: string,
   issues: readonly AgentFileIssue[],
 ): AgentFileError {
@@ -234,6 +243,48 @@ function checkGuardrails(overrides: AgentOverrides, contributions: AgentContribu
   }
 }
 
+/**
+ * Refuses an `interceptors` override that lists an id twice, or one no plugin contributes
+ * (COR-2253), as an agent file's `interceptors` is refused: a run must not go on without a set the
+ * save chose, and an id that resolves to nothing is a typo or a plugin that is gone. A restore of a
+ * version naming a plugin since removed is refused the same way.
+ */
+function checkInterceptors(
+  overrides: AgentOverrides,
+  contributions: AgentContributions | undefined,
+) {
+  const listed = overrides.interceptors ?? [];
+  const seen = new Set<string>();
+  const repeated: AgentFileIssue[] = [];
+  listed.forEach((id, index) => {
+    if (seen.has(id)) {
+      repeated.push({
+        path: `interceptors.${index}`,
+        message: `"${id}" is listed more than once; list each interceptor once`,
+      });
+    }
+    seen.add(id);
+  });
+  if (repeated.length > 0) {
+    throw refused(
+      'invalid-frontmatter',
+      'The overrides list an interceptor more than once.',
+      repeated,
+    );
+  }
+  const unresolved = unresolvedContributions(
+    { interceptors: listed },
+    contributions ?? NO_AGENT_CONTRIBUTIONS,
+  );
+  if (unresolved.length > 0) {
+    throw refused(
+      'reference-unresolved',
+      `The overrides list ${unresolved.map((issue) => issue.message).join('; ')}. An interceptor is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
+      unresolved,
+    );
+  }
+}
+
 /** The `overrides` member of the agent catalog; see {@link CodeAgentOverrides}. */
 export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): CodeAgentOverrides {
   const { store, codeAgents } = options;
@@ -305,6 +356,7 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
     checkTools(parsed.data, agent.tools, options.toolNames());
     checkModels(parsed.data, options.descriptors(), options.modelPolicy());
     checkGuardrails(parsed.data, options.contributions);
+    checkInterceptors(parsed.data, options.contributions);
     return parsed.data;
   }
 

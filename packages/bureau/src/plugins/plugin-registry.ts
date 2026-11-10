@@ -29,6 +29,7 @@ import type {
   PluginContributionReferences,
   PluginReactionListing,
   PluginListing,
+  PluginProviderListing,
   PluginProblem,
   PluginStatus,
   PluginTriggerListing,
@@ -435,6 +436,20 @@ export function createPluginRegistry(
             : [],
         ),
       ],
+      providers: () =>
+        records.flatMap((record): PluginProviderListing[] =>
+          record.status === 'running'
+            ? (record.setup?.result.providers ?? [])
+                .filter((provider) => registered(record, 'provider', provider.name))
+                .map((provider) => ({
+                  plugin: record.entry.descriptor.name,
+                  name: provider.name,
+                  configuration: jsonSchemaOf(
+                    record.entry.descriptor.configuration ?? z.object({}),
+                  ),
+                }))
+            : [],
+        ),
       reportPanelFailure: (plugin, app, message) => {
         const record = records.find(
           (candidate) =>

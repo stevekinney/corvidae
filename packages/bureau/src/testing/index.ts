@@ -7,6 +7,8 @@
  */
 export {
   createPluginTestHost,
+  type PluginScriptedRunOutcome,
+  type PluginScriptedRunRequest,
   type PluginTestHost,
   type PluginTestHostOptions,
 } from './plugin-test-host.ts';

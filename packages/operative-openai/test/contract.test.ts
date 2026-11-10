@@ -19,11 +19,11 @@ const statefulProvider: StatefulProvider = {
   delegate: openaiProvider,
   generate(configuration) {
     if (this.delegate !== openaiProvider) throw new Error('lost provider receiver');
-    return this.delegate.generate!(configuration);
+    return this.delegate.generate!(configuration, {});
   },
   stream(configuration) {
     if (this.delegate !== openaiProvider) throw new Error('lost provider receiver');
-    return this.delegate.stream!(configuration);
+    return this.delegate.stream!(configuration, {});
   },
 };
 

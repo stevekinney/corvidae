@@ -58,6 +58,8 @@ export interface PluginProviderContribution {
   readonly plugin: string;
   /** The provider definition the host resolves a generate through. */
   readonly definition: ProviderDefinition;
+  /** The validated plugin configuration handed to every provider factory. */
+  readonly configuration: unknown;
   /** The catalog rows of its models; each row's `provider` is `definition.name`. */
   readonly rows: readonly BackendDescriptor[];
 }
@@ -157,6 +159,17 @@ export type PluginProblem =
       readonly first: PluginClashParty;
       /** Who was refused it. */
       readonly second: PluginClashParty;
+    }
+  | {
+      /**
+       * A formatter lists an event kind that is not in `BUREAU_EVENT_CATALOG`, so it would never
+       * format anything; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'formatter-unknown-kind';
+      /** The formatter's name within the plugin. */
+      readonly formatter: string;
+      /** The kind no event carries. */
+      readonly kind: string;
     }
   | {
       /**
@@ -386,6 +399,13 @@ export interface GuardrailListing {
   readonly plugin: string;
 }
 
+/** A model provider a running plugin contributes, without exposing executable code or values. */
+export interface PluginProviderListing {
+  readonly plugin: string;
+  readonly name: string;
+  readonly configuration: Readonly<Record<string, unknown>> | null;
+}
+
 /** `bureau.plugins`: the plugins the Bureau was given, in load order. */
 export interface BureauPlugins {
   /**
@@ -437,6 +457,8 @@ export interface BureauPlugins {
    * once the Bureau is built.
    */
   guardrails(): readonly GuardrailListing[];
+  /** The model providers of running plugins, with the plugin configuration schema only. */
+  providers(): readonly PluginProviderListing[];
   /** Settles once every running plugin's `start` has settled. Never rejects. */
   ready(): Promise<void>;
 }

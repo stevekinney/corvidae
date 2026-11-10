@@ -46,6 +46,8 @@ export type ContributedProvider = {
   readonly name: string;
   /** The definition Bureau's `resolveProviderGenerate` builds a generate from. */
   readonly definition: ProviderDefinition;
+  /** The validated plugin configuration to hand to every provider factory. */
+  readonly configuration: unknown;
   /** The catalog rows of its models, before the allowlist and the catalog edits. */
   readonly rows: readonly BackendDescriptor[];
   /** The Bungalow secret that holds its API key: the first the plugin declares. */
@@ -57,13 +59,14 @@ export function contributedProviders(
   contributions: PluginModelContributions,
   entries: readonly BureauPluginEntry[],
 ): readonly ContributedProvider[] {
-  return contributions.providers.map(({ plugin, definition, rows }) => {
+  return contributions.providers.map(({ plugin, definition, rows, configuration }) => {
     const first = entries.find((entry) => entry.descriptor.name === plugin)?.descriptor
       .secrets?.[0];
     return {
       plugin,
       name: definition.name,
       definition,
+      configuration,
       rows,
       secretKey: first === undefined ? undefined : typeof first === 'string' ? first : first.key,
     };
@@ -399,5 +402,6 @@ export function createCatalogGenerate(
     { provider: selection.provider, model: row.model, apiKey },
     undefined,
     undefined,
+    dependencies.providers.find((provider) => provider.name === selection.provider)?.configuration,
   );
 }

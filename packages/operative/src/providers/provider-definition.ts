@@ -34,27 +34,43 @@ export interface ProviderConfigurationBase {
  * @typeParam Configuration - The configuration the provider accepts; a refinement of
  * {@link ProviderConfigurationBase}.
  */
-interface ProviderDefinitionCapabilities<Configuration extends ProviderConfigurationBase> {
+interface ProviderDefinitionCapabilities<
+  Configuration extends ProviderConfigurationBase,
+  PluginConfiguration,
+> {
   /** Builds a generate function that returns each response whole. */
-  generate?(configuration: Configuration): GenerateFunction;
+  generate?(
+    configuration: Configuration,
+    pluginConfiguration: PluginConfiguration,
+  ): GenerateFunction;
   /** Builds a generate function that reports the response while it arrives. */
-  stream?(configuration: Configuration): StreamingGenerateFunction;
+  stream?(
+    configuration: Configuration,
+    pluginConfiguration: PluginConfiguration,
+  ): StreamingGenerateFunction;
   /** Builds a model that answers structured decisions natively. */
-  decide?(configuration: Configuration): DecisionModel;
+  decide?(configuration: Configuration, pluginConfiguration: PluginConfiguration): DecisionModel;
 }
 
 /** A provider definition with at least one callable capability. */
 export type ProviderDefinition<
   Name extends string = string,
   Configuration extends ProviderConfigurationBase = ProviderConfigurationBase,
+  PluginConfiguration = unknown,
 > = { readonly name: Name } & (
-  | (ProviderDefinitionCapabilities<Configuration> & {
-      generate(configuration: Configuration): GenerateFunction;
+  | (Omit<ProviderDefinitionCapabilities<Configuration, PluginConfiguration>, 'generate'> & {
+      generate(
+        configuration: Configuration,
+        pluginConfiguration: PluginConfiguration,
+      ): GenerateFunction;
     })
-  | (ProviderDefinitionCapabilities<Configuration> & {
-      stream(configuration: Configuration): StreamingGenerateFunction;
+  | (Omit<ProviderDefinitionCapabilities<Configuration, PluginConfiguration>, 'stream'> & {
+      stream(
+        configuration: Configuration,
+        pluginConfiguration: PluginConfiguration,
+      ): StreamingGenerateFunction;
     })
-  | (ProviderDefinitionCapabilities<Configuration> & {
-      decide(configuration: Configuration): DecisionModel;
+  | (Omit<ProviderDefinitionCapabilities<Configuration, PluginConfiguration>, 'decide'> & {
+      decide(configuration: Configuration, pluginConfiguration: PluginConfiguration): DecisionModel;
     })
 );

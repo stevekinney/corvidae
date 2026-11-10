@@ -24,8 +24,29 @@ export type OpenAIProviderConfiguration = ProviderConfigurationBase &
  * Each method hands the configuration object, whole, to `createOpenAIProvider` or
  * `createOpenAIProviderStream`.
  */
-export const openaiProvider: ProviderDefinition<'openai', OpenAIProviderConfiguration> = {
+export type OpenAIPluginConfiguration = { readonly baseURL?: string | undefined };
+
+/** The OpenAI provider definition, including optional plugin-level endpoint configuration. */
+export const openaiProvider: ProviderDefinition<
+  'openai',
+  OpenAIProviderConfiguration,
+  OpenAIPluginConfiguration
+> = {
   name: 'openai',
-  generate: (configuration) => createOpenAIProvider(configuration),
-  stream: (configuration) => createOpenAIProviderStream(configuration),
+  generate: (
+    configuration: OpenAIProviderConfiguration,
+    pluginConfiguration?: OpenAIPluginConfiguration,
+  ) =>
+    createOpenAIProvider({
+      ...configuration,
+      baseURL: pluginConfiguration?.baseURL ?? configuration.baseURL,
+    }),
+  stream: (
+    configuration: OpenAIProviderConfiguration,
+    pluginConfiguration?: OpenAIPluginConfiguration,
+  ) =>
+    createOpenAIProviderStream({
+      ...configuration,
+      baseURL: pluginConfiguration?.baseURL ?? configuration.baseURL,
+    }),
 };

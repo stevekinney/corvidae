@@ -18,7 +18,10 @@ export const OPENAI_EMBEDDING_DIMENSIONS = 1536;
  * catalog load, so a change to the allowlist applies without a restart.
  */
 export const openaiConfiguration = z
-  .object({ models: z.array(z.string().min(1)).min(1).optional() })
+  .object({
+    models: z.array(z.string().min(1)).min(1).optional(),
+    baseURL: z.url().optional(),
+  })
   .strict();
 
 /**
@@ -29,7 +32,7 @@ export const openaiConfiguration = z
 export default definePlugin({
   name: 'openai',
   title: 'OpenAI',
-  version: '0.1.0',
+  version: '0.1.1',
   description: 'OpenAI models for agents, and an embedder for memory.',
   configuration: openaiConfiguration,
   secrets: [OPENAI_API_KEY_SECRET],

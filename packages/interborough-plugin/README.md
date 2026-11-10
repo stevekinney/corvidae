@@ -149,8 +149,8 @@ export default definePlugin({
     formatters: [
       {
         name: 'completed',
-        eventKinds: ['run.completed'],
-        format: (event) => ({ title: `A run completed on ${event.bureauId}` }),
+        eventKinds: ['run.settled'],
+        format: (event) => ({ title: `A run settled on ${event.bureauId}` }),
       },
     ],
   }),
@@ -161,30 +161,44 @@ An interceptor has a member for each point of Operative's hook map (`onRunError`
 
 An interceptor that declares `appliesTo: 'every-agent'` runs for every run the host starts (file agents, code agents, dispatched agents and their children) without any agent file listing it. The host composes it in a `plugin` tier between its own hooks and the agent's, so its entries show `tier: 'plugin'` in a run's hook plan. An agent file that also lists it gets it once, in its own tier, as an interceptor it chose. While its plugin needs setup, such an interceptor refuses for an agent that lists it, as any chosen interceptor does, and is skipped for every other agent: its handlers do not run, and the run goes on as if it were absent, so a missing secret never fails an agent that did not choose it.
 
+The demo plugin's `audit` set (`plugins/demo/src/audit.ts`) is the worked example. It applies to every agent, because the demo's agents are code agents, which no agent file can list, and it has one `onStep` hook that writes what each step spent and which tool calls it made (their ids and the tools they named) to the plugin's own storage, keyed by the run and the step. The key is the point of the example: a hook declared `replay: 'effectful'` runs again when a durable run recovers a step, so an entry keyed by `run:<runId>:step:<n>` is overwritten by the replay instead of repeated. `runId` is on every `StepResult`, including a step that only called tools and committed no row, so it is the key to read, not a message id. A step with no `runId` (a run the host started with none) has no key, so the hook writes nothing for it.
+
 ```ts
-import { definePlugin } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginInterceptor } from '@lostgradient/interborough-plugin';
+import { textValueStore, type Storage } from '@lostgradient/storage';
+
+/** The key one step's entry is stored under: the same for a step and its replay. */
+function auditStepKey(runId: string, step: number): string {
+  return `run:${runId}:step:${step}`;
+}
+
+/** The `audit` set over the plugin's own storage. */
+function auditInterceptor(storage: Storage): PluginInterceptor {
+  const entries = textValueStore(storage, { disposeUnderlyingStorage: false });
+  return {
+    name: 'audit',
+    appliesTo: 'every-agent',
+    onStep: {
+      replay: 'effectful',
+      handler: async (result) => {
+        if (result.runId === undefined) return;
+        const entry = {
+          step: result.step,
+          usage: result.usage ?? null,
+          toolCallIds: result.toolCalls.map((call) => call.id),
+          toolNames: result.toolCalls.map((call) => call.name),
+        };
+        await entries.set(auditStepKey(result.runId, result.step), JSON.stringify(entry));
+      },
+    },
+  };
+}
 
 export default definePlugin({
-  name: 'watcher',
+  name: 'audit-example',
   version: '1.0.0',
-  description: 'Notes failed runs and replaces tool results that name a secret.',
-  setup: () => ({
-    interceptors: [
-      {
-        name: 'audit',
-        onRunError: async ({ error }) => {
-          console.error('A run failed', error);
-        },
-        validateToolResult: {
-          handler: async (result) =>
-            String(result.result).includes('sk-') ? { ...result, result: '[redacted]' } : undefined,
-          replay: 'safe',
-          onError: () => 'continue',
-          priority: 10,
-        },
-      },
-    ],
-  }),
+  description: 'Records what each step of every run spent and which tools it called.',
+  setup: ({ storage }) => ({ interceptors: [auditInterceptor(storage)] }),
 });
 ```
 
@@ -390,6 +404,6 @@ const plugin = definePlugin({
 pluginContract(plugin, { createHost: createPluginTestHost });
 ```
 
-The suite registers one test per check. The descriptor must be valid, the identities it holds must read without a host and never repeat, and the host must report the plugin `running` with no problems, which includes every file it ships resolving the contributions it names. `checkPluginContract` runs the same checks and returns the failures instead of registering tests.
+The suite registers one test per check. The descriptor must be valid, the identities it holds must read without a host and never repeat, and the host must report the plugin `running` with no problems, which includes every file it ships resolving the contributions it names. It also runs a scripted run for each hook point an interceptor declares and fails when the declared hook throws, even when its own `onError` would have continued: the host's scripted model answers once (the `answer` run), calls a read-only tool and then answers (`tool`), or throws (`failure`), and the agent it runs chooses every interceptor the plugin declares. The points no scripted run reaches are unchecked, and the suite never runs a hook declared at one of them: `beforeCompaction`, `beforeBackgroundCompaction` and `afterCompaction` (the scripted conversation is never long enough to compact) and `onRunAbort` (the scripted run is never aborted). `PLUGIN_CONTRACT_UNCHECKED_HOOK_POINTS` lists them. `checkPluginContract` runs the same checks and returns the failures instead of registering tests.
 
 For the host's side of all this, the routes and the Settings screen, see the Plugins section of [the Interborough README](../../applications/interborough/README.md).
