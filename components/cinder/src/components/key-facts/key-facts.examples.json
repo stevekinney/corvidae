@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "key-facts",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Facts with icons",
+      "description": "Each fact is an icon and a value, separated from the next by space. The row wraps between facts, never inside one, and draws no separator glyph.",
+      "code": "<script lang=\"ts\">\n  import { KeyFacts } from '@lostgradient/cinder';\n  import MapPin from '@lucide/svelte/icons/map-pin';\n  import Martini from '@lucide/svelte/icons/martini';\n  import DollarSign from '@lucide/svelte/icons/dollar-sign';\n</script>\n\n{#snippet venue()}<Martini size={14} />{/snippet}\n{#snippet place()}<MapPin size={14} />{/snippet}\n{#snippet price()}<DollarSign size={14} />{/snippet}\n\n<KeyFacts\n  label=\"Details\"\n  items={[\n    { icon: venue, label: 'Kind', value: 'Cocktail bar' },\n    { icon: place, label: 'Neighborhood', value: 'LoDo' },\n    { icon: price, label: 'Price', value: '$$' },\n  ]}\n/>\n"
+    },
+    {
+      "id": "links",
+      "title": "A fact that links",
+      "description": "Pass href to make a value a link. The fact still wraps as a whole.",
+      "code": "<script lang=\"ts\">\n  import { KeyFacts } from '@lostgradient/cinder';\n</script>\n\n<div style=\"max-width: 14rem;\">\n  <KeyFacts\n    items={[\n      { label: 'Kind', value: 'Cocktail bar' },\n      { label: 'Neighborhood', value: 'Lower Downtown', href: '/neighborhoods/lodo' },\n      { label: 'Price', value: '$$' },\n    ]}\n  />\n</div>\n"
+    }
+  ]
+}

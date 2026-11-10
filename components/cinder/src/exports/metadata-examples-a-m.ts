@@ -86,6 +86,7 @@ import jsonSchemaEditorExamplesJson from '../components/json-schema-editor/json-
 import jsonViewerExamplesJson from '../components/json-viewer/json-viewer.examples.json' with { type: 'json' };
 import kanbanBoardExamplesJson from '../components/kanban-board/kanban-board.examples.json' with { type: 'json' };
 import kbdExamplesJson from '../components/kbd/kbd.examples.json' with { type: 'json' };
+import keyFactsExamplesJson from '../components/key-facts/key-facts.examples.json' with { type: 'json' };
 import keyValueEditorExamplesJson from '../components/key-value-editor/key-value-editor.examples.json' with { type: 'json' };
 import keyboardShortcutsExamplesJson from '../components/keyboard-shortcuts/keyboard-shortcuts.examples.json' with { type: 'json' };
 import lineChartExamplesJson from '../components/line-chart/line-chart.examples.json' with { type: 'json' };
@@ -275,6 +276,8 @@ export const jsonViewerExamples = jsonViewerExamplesJson;
 export const kanbanBoardExamples = kanbanBoardExamplesJson;
 /** Code examples for this component. */
 export const kbdExamples = kbdExamplesJson;
+/** Code examples for this component. */
+export const keyFactsExamples = keyFactsExamplesJson;
 /** Code examples for this component. */
 export const keyValueEditorExamples = keyValueEditorExamplesJson;
 /** Code examples for this component. */
