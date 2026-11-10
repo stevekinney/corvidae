@@ -8,9 +8,9 @@
  * the catalog's `overrides` member: it decides which agents those are, checks a save the way an
  * agent file's frontmatter is checked (the tools must be ones the deployment holds, each Asks
  * entry must name an allowed tool, each model must be in the model catalog and allowed by the
- * model policy, each guardrail is listed once and configured as its schema allows, and each interceptor is listed
- * once and one a plugin contributes), and leaves the
- * versions to `agent-override-store.ts`.
+ * model policy, each guardrail is listed once and configured as its schema allows, and each
+ * interceptor is listed once and is one a plugin contributes), and leaves the versions to
+ * `agent-override-store.ts`.
  *
  * @module code-agent-overrides
  */
