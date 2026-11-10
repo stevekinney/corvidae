@@ -350,10 +350,37 @@ export async function runInstalled(
               });
             if (pathname === '/host/status')
               return Response.json({ deploymentId: `deployment-${key}` });
-            if (pathname === '/bureau/jsonrpc')
+            if (pathname === '/bureau/jsonrpc') {
+              const body = (await request.json()) as { method?: string };
+              if (body.method === 'bureau.tasks.get')
+                return Response.json({ result: { id: 'terminal', status: 'running' } });
               return Response.json({
                 error: { message: 'read-only workspace fixture', data: { httpStatus: 403 } },
               });
+            }
+            if (pathname === '/bureau/v1/subscriptions/bureau.tasks.events') {
+              const taskId = new URL(request.url).searchParams.get('taskId');
+              const stream = new TransformStream<Uint8Array, Uint8Array>();
+              const writer = stream.writable.getWriter();
+              const encoder = new TextEncoder();
+              const events =
+                taskId === 'dropped'
+                  ? [{ kind: 'task.status', status: 'running' }]
+                  : [
+                      { kind: 'task.status', status: 'running' },
+                      { kind: 'task.status', status: 'completed' },
+                    ];
+              void (async () => {
+                for (const [index, event] of events.entries())
+                  await writer.write(
+                    encoder.encode(`id: event-${index}\ndata: ${JSON.stringify(event)}\n\n`),
+                  );
+                await writer.close();
+              })();
+              return new Response(stream.readable, {
+                headers: { 'content-type': 'text/event-stream' },
+              });
+            }
             return Response.json({ ok: true });
           },
         });
@@ -415,6 +442,52 @@ export async function runInstalled(
         if (wrongWorkspace.exitCode !== 3 || !wrongWorkspace.stderr.includes('workspace'))
           throw new Error(
             `Wrong workspace was not refused: ${wrongWorkspace.exitCode} ${wrongWorkspace.stderr}`,
+          );
+        const terminalWatch = await runInstalledCliCommand(
+          executable,
+          [
+            'runs',
+            'watch',
+            '--kind',
+            'task',
+            'terminal',
+            '--output',
+            'jsonl',
+            '--connection',
+            'authority',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (terminalWatch.exitCode !== 0 || !terminalWatch.stdout.includes('completed'))
+          throw new Error(
+            `Terminal installed watch failed: ${terminalWatch.exitCode} ${terminalWatch.stderr}`,
+          );
+        const droppedWatch = await runInstalledCliCommand(
+          executable,
+          [
+            'runs',
+            'watch',
+            '--kind',
+            'task',
+            'dropped',
+            '--output',
+            'jsonl',
+            '--connection',
+            'authority',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (droppedWatch.exitCode !== 1 || !droppedWatch.stderr.includes('terminal'))
+          throw new Error(
+            `Dropped installed watch did not fail closed: ${droppedWatch.exitCode} ${droppedWatch.stderr}`,
           );
         authorityServer.stop(true);
         pass(
