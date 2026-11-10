@@ -81,6 +81,30 @@ describe('runDetectorPipeline', () => {
     expect(result?.detectorName).toBe('clean');
   });
 
+  it('fails closed on a detector error, which outranks a detection, when asked (COR-2300)', async () => {
+    const parallel = await runDetectorPipeline(
+      'text',
+      [makeDetector('clean', true, 1), makeDetector('broken', false, 0, 'throw')],
+      baseContext,
+      'parallel',
+      true,
+    );
+    expect(parallel).toMatchObject({
+      detectorName: 'broken',
+      failed: true,
+      result: { triggered: true, confidence: 1, category: 'detector-failure' },
+    });
+    expect(parallel?.result.detail).toContain('broken exploded');
+    const sequential = await runDetectorPipeline(
+      'text',
+      [makeDetector('broken', false, 0, 'throw'), makeDetector('clean', true, 1)],
+      baseContext,
+      'sequential',
+      true,
+    );
+    expect(sequential?.failed).toBe(true);
+  });
+
   it('passes provenance through to detectors', async () => {
     let seenProvenance: string | undefined;
     const detector: InputDetector = {

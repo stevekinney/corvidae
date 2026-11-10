@@ -2882,7 +2882,7 @@ An output validator reads the reply's text and thinking, never a tool call's arg
 - **`warn`**: the call runs, and a `run.guardrail` event reports it.
 - **`tripwire`**: the run halts before any call of the step runs, with `finishReason: 'tripwire'` and one `run.tripwire` event with phase `tool-call`. Every call of the step is sealed with a `GUARDRAIL_BLOCKED` result naming the validator.
 
-A validator that throws or rejects is contained, as a detector is: it finds nothing, and the call is judged by the others. A plugin's validator whose plugin needs setup refuses this way, so it finds nothing until its secret is saved.
+Guardrails fail closed (COR-2300), in every family: a validator or detector that throws or rejects is a finding of category `detector-failure`, which blocks the call, input, tool result or reply under a `warn` action too (a `tripwire` action halts the run), and taints the session as any block does. A plugin's guardrail whose plugin needs setup fails this way until its secret is saved. A refused tool call taints the session exactly as a refused tool result does, whatever its confidence.
 
 `refuse` is on every `beforeToolExecution` context, for any hook that refuses a call on a guardrail's behalf: a refused call stays out whatever a later hook returns, and its result names the guardrail in place of the fixed `Tool execution skipped by beforeToolExecution hook` message a call the hook only filtered gets. `beforeToolExecution` still returns the calls to run. `createToolCallGuardrail` is the hook on its own. Every host that registers `createGuardrails`' hooks registers `beforeToolExecution` pinned last, so it judges the calls every other hook settled on.
 

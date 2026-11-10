@@ -10,6 +10,8 @@ import type { PluginDescriptor, PluginPanel } from '@lostgradient/interborough-p
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
 
+import type { PluginProblemCode } from './plugin-problem-codes.ts';
+
 /**
  * Where a plugin was loaded from: a workspace package the host lists, Bungalow's `plugins/` folder,
  * or `built-in`, which Bureau supplies itself (COR-1890: the `bureau` plugin) and a host never gives it.
@@ -101,7 +103,7 @@ export interface PluginClashParty {
   readonly location: string;
 }
 
-/** Something wrong with a plugin, by `code`. */
+/** Something wrong with a plugin, by `code`; its codes are exactly `PLUGIN_PROBLEM_CODES`. */
 export type PluginProblem =
   | {
       /**
@@ -233,6 +235,17 @@ export type PluginProblem =
       /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
+
+/** Fails to compile when `PluginProblem` and `PLUGIN_PROBLEM_CODES` disagree on the codes. */
+export type PluginProblemCodesAgree = AssertTrue<
+  [PluginProblem['code']] extends [PluginProblemCode]
+    ? [PluginProblemCode] extends [PluginProblem['code']]
+      ? true
+      : false
+    : false
+>;
+
+type AssertTrue<T extends true> = T;
 
 /**
  * A kind of contribution, as the listing names it. A guardrail of the `input` or `output` family

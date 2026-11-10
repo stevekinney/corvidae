@@ -33,6 +33,8 @@ import { existsSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import ts from 'typescript';
 
+import { exportSourceTarget } from './workspace-exports.ts';
+
 export const ALLOWLIST_FILE = 'documentation-coverage-allowlist.json';
 export const MEMBER_ALLOWLIST_FILE = 'documentation-member-allowlist.json';
 const ALLOWLIST_DESCRIPTION =
@@ -113,10 +115,11 @@ export function parseArguments(argv: readonly string[]): Arguments | string {
 export function readEntryPoints(directory: string, exports: unknown): EntryPoint[] {
   const map: Record<string, unknown> =
     typeof exports === 'string' ? { '.': exports } : ((exports ?? {}) as Record<string, unknown>);
-  return Object.entries(map).map(([subpath, target]) => {
-    if (typeof target !== 'string' || !/\.tsx?$/.test(target)) {
+  return Object.entries(map).map(([subpath, entry]) => {
+    const target = exportSourceTarget(entry);
+    if (target === null || !/\.tsx?$/.test(target)) {
       throw new Error(
-        `${directory}: export ${subpath} must map to a TypeScript source file, got ${JSON.stringify(target)}`,
+        `${directory}: export ${subpath} must map to a TypeScript source file, got ${JSON.stringify(entry)}`,
       );
     }
     return { subpath, file: resolve(directory, target) };
