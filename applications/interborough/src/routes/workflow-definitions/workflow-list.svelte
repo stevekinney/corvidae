@@ -194,7 +194,17 @@
       onClearFilters={clearFilters}
     />
   {:else}
-    <Table caption={copy.listLabel} density="condensed" class="ib-records__table">
+    <Table caption={copy.listLabel} density="condensed" fit class="ib-records__table">
+      <colgroup>
+        <!-- The workflow's name takes what the other columns leave. -->
+        <col />
+        <!-- A kind is a badge ("Agent-authored") and a status one word ("Scheduled"), neither of
+             which wraps, so each column is the fixed width that holds it. -->
+        <col style="width: 8.5rem" />
+        <col style="width: 16%" />
+        <col style="width: 18%" />
+        <col style="width: 7.5rem" />
+      </colgroup>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>{copy.list.columns.workflow}</Table.HeaderCell>

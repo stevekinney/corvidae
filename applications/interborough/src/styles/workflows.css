@@ -100,63 +100,11 @@
   gap: var(--cinder-space-2);
 }
 
-/* Table: no page-level horizontal scroll — the table itself scrolls inside
- * its own container (`Table`'s own `scrollable` prop wraps it in Cinder's
- * generated scroll wrapper, per binding responsive rule). */
+/* The table fits its container (Cinder's `fit`), so a long value never widens it. Seven columns need
+ * room to be read: below this floor the table scrolls inside its frame, by its column count and
+ * never by a value, within two screens at a phone's width. */
 .weft-workflows-table {
-  table-layout: fixed;
-  width: 100%;
-  /* Cinder sizes a scroll box's table to its content, and the flexible Tags column has none, so
-   * the column took the table to 500,000 pixels. The columns below are the table's whole width. */
-  min-inline-size: 0;
-}
-
-.weft-workflows-table__col-select {
-  width: 36px;
-}
-
-.weft-workflows-table__col-status {
-  width: 116px;
-}
-
-.weft-workflows-table__col-id {
-  width: 220px;
-}
-
-.weft-workflows-table__col-type {
-  width: 150px;
-}
-
-.weft-workflows-table__col-revision {
-  width: 120px;
-}
-
-.weft-workflows-table__col-time {
-  width: 92px;
-}
-
-/* On a phone the table is a few swipes wide, not a screen of columns: the Tags column, which has
- * no width of its own, goes, and the others narrow. */
-@media (max-width: 39.99rem) {
-  .weft-workflows-table__col-id {
-    width: 150px;
-  }
-
-  .weft-workflows-table__col-type {
-    width: 110px;
-  }
-
-  .weft-workflows-table__col-revision {
-    width: 90px;
-  }
-
-  .weft-workflows-table__col-time {
-    width: 80px;
-  }
-
-  .weft-workflows-table__col-tags {
-    display: none;
-  }
+  min-inline-size: 41rem;
 }
 
 .weft-workflows-table__id-cell {
@@ -222,6 +170,7 @@
 
 .weft-workflows-table__revision-cell {
   display: inline-flex;
+  max-inline-size: 100%;
   flex-wrap: wrap;
   align-items: center;
   gap: 4px 6px;

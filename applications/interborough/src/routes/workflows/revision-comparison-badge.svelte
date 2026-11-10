@@ -30,7 +30,7 @@
   <Tooltip
     text="Matches the revision currently active for this workflow type. {EAGER_REVISION_HEDGE}"
   >
-    <Badge variant="success" size="xs">
+    <Badge variant="success" size="xs" truncate>
       <CircleCheck aria-hidden="true" size={10} />
       Active
     </Badge>
@@ -39,7 +39,7 @@
   <Tooltip
     text="Differs from the revision currently active for this workflow type. {EAGER_REVISION_HEDGE}"
   >
-    <Badge variant="warning" size="xs">
+    <Badge variant="warning" size="xs" truncate>
       <TriangleAlert aria-hidden="true" size={10} />
       Differs from active
     </Badge>

@@ -43,14 +43,11 @@
   overflow-wrap: anywhere;
 }
 
-/*
- * Cinder's scroll box sizes its table to the content (`min-inline-size: max-content`), and
- * `overflow-wrap: anywhere` only lowers a cell's min-content, so a 300-character address would
- * still widen the table to its own length. A table whose cells wrap carries this class and is
- * sized to what it cannot wrap instead, and fits the box unless its fixed columns do not.
- */
+/* A record table fits its container (Cinder's `fit`), so a long value never widens it (row 16c). Its
+ * columns still need room to be read: below this floor the table scrolls inside its frame, by its
+ * column count and never by a value, and stays within two screens at a phone's width (row 24b). */
 .ib-records__table {
-  min-inline-size: min-content;
+  min-inline-size: 36rem;
 }
 
 .ib-records__muted {

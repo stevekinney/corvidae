@@ -69,6 +69,33 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 </Table>
 ```
 
+### Tables that fit
+
+A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in its `title`, and every other cell wraps. Size the columns with `<col>` widths: a column whose content never wraps (a status badge, a date, a short identifier with its copy button) gets a fixed `rem` width that holds it, and the others take a percentage or what is left. When the columns need more room than a phone has, set a `min-inline-size` on the table: below that floor the table scrolls inside its frame because of its column count, never because of a value.
+
+```svelte
+<Table caption="Stored values" fit style="min-inline-size: 24rem">
+  <colgroup>
+    <col style="width: 75%" />
+    <col style="width: 25%" />
+  </colgroup>
+  <Table.Header>
+    <Table.Row>
+      <Table.HeaderCell>Key</Table.HeaderCell>
+      <Table.HeaderCell align="right">Size</Table.HeaderCell>
+    </Table.Row>
+  </Table.Header>
+  <Table.Body>
+    {#each values as value (value.key)}
+      <Table.Row>
+        <Table.Cell truncate>{value.key}</Table.Cell>
+        <Table.Cell align="right">{value.size}</Table.Cell>
+      </Table.Row>
+    {/each}
+  </Table.Body>
+</Table>
+```
+
 The leaves are also named exports of `@lostgradient/cinder`.
 
 ## Props
@@ -80,6 +107,7 @@ The leaves are also named exports of `@lostgradient/cinder`.
 | `caption` | `string` | no | — | Accessible caption rendered as a `<caption>` element. It names the table for assistive technology but is visually hidden: the heading above the table already says what it is, and the table draws no title row of its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-table`. |
 | `density` | `"comfortable"` \| `"condensed"` \| `"spacious"` | no | `"comfortable"` | Vertical padding density for header and body cells. Defaults to `'comfortable'`. |
+| `fit` | `boolean` | no | `false` | Fits the table to its container's width so a long value never makes it scroll sideways. The columns share the width (a fixed table layout: set a column's width on its header cell or a `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full text in the `title`, and any other cell wraps its text. Leave it off for a table whose columns should keep their natural widths and scroll when they do not fit. |
 | `scrollable` | `boolean` | no | `true` | Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and the clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade at the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out as a bare `<table>`. When combined with `stickyHeader`, the generated wrapper is the sticky header's scroll container. Set a bounded block size on `scrollContainerProps` when the table should scroll vertically inside that wrapper. |
 | `selectable` | `boolean` | no | `false` | Enables the leading selection column on the entire table. When true: - The single `TableRow` inside `TableHeader` renders a leading `<th>` with a select-all checkbox sourced from the header's props. - Every `TableRow` inside `TableBody` renders a leading selection cell. Selection is strictly controlled — the consumer owns all selection state. |
 | `stackBelow` | `string` \| `false` | no | `"640px"` | Width of the table's own container below which a table whose cells hold controls stacks. Each body row becomes a card: the name and its muted detail on the first line, the controls full width at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width is the container's (the scroll box, or the parent when `scrollable` is false), not the window's, so a table in a narrow column stacks in a wide window. A simple CSS length such as `'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit falls back to the viewport. `false` keeps the table layout at every width. |
