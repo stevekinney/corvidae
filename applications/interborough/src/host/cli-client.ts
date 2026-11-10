@@ -768,6 +768,11 @@ function isCliExitCode(value: unknown): value is CliExitCode {
   );
 }
 
+function targetResolutionFailure(result: CliResult): CliCommandResult {
+  if (result.exitCode === 1) throw Object.assign(new Error(result.stderr), result);
+  return { data: undefined, metadata: { error: result.stderr } };
+}
+
 async function execute(
   parsed: Parsed,
   dependencies: CliClientDependencies,
@@ -779,10 +784,7 @@ async function execute(
       (value) => loopbackUrl(value) ?? remoteUrl(value),
     );
   const resolved = await resolveTarget(parsed, dependencies);
-  if ('exitCode' in resolved) {
-    if (resolved.exitCode === 1) throw Object.assign(new Error(resolved.stderr), resolved);
-    return { data: undefined, metadata: { error: resolved.stderr } };
-  }
+  if ('exitCode' in resolved) return targetResolutionFailure(resolved);
   if (parsed.command === 'open') {
     await (
       dependencies.open ??
