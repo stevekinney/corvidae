@@ -173,8 +173,8 @@ export type ButtonProps = SharedHtmlAttributes &
     /**
      * A keyboard shortcut hint (a key such as `"N"`, or `["Ctrl", "K"]`) rendered after the label
      * through ShortcutHint. It is decorative and `aria-hidden`, so the accessible name stays the
-     * label, and it takes the variant's contrast color on a filled button. It only displays the
-     * shortcut; registering the key is the application's job.
+     * label, and it is plain glyphs in the button's own color on every variant, hidden on touch
+     * devices. It only displays the shortcut; registering the key is the application's job.
      */
     shortcut?: string | string[];
     /** Custom class merged with `.cinder-button`. */

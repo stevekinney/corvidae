@@ -20,7 +20,7 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 
 ## Shortcut hint
 
-`shortcut` takes a key (`"N"`) or an array of keys (`['Ctrl', 'K']`) and renders a ShortcutHint after the label. The hint is decorative and `aria-hidden`, so the button's accessible name stays its label, and it only displays the shortcut; registering the key is the application's job. Cinder styles the hint for the surface it sits on: on `primary` and `danger` it takes the variant's contrast color with a translucent edge and no raised fill, and on `secondary` and `ghost` it is muted text. A `Kbd` or `ShortcutHint` you nest in a button by hand gets the same treatment, so do not restyle it per page.
+`shortcut` takes a key (`"N"`) or an array of keys (`['Ctrl', 'K']`) and renders a ShortcutHint after the label. The hint is decorative and `aria-hidden`, so the button's accessible name stays its label, and it only displays the shortcut; registering the key is the application's job. The hint is plain glyphs in the button's own text color, on every variant: no border, fill, shadow, or key-cap chip, and slightly dimmed so the label stays dominant. It is hidden on touch devices (`pointer: coarse` or `hover: none`), which have no keyboard to press it with. A `Kbd` or `ShortcutHint` you nest in a button by hand gets the same treatment, so do not restyle it per page.
 
 ## Disabled
 

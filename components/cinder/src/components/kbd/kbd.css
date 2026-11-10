@@ -47,25 +47,32 @@
     font-size: var(--cinder-text-2xs);
   }
 
-  /* A key cap inside a Button (the `shortcut` prop or hand-written markup) follows the button's
- * own text color instead of painting a raised chip. On a filled button (primary, danger) that is
- * the variant's contrast color with a translucent edge and no fill; on secondary and ghost it is
- * muted text. The contrast tokens are theme-aware, so both themes stay legible. */
-  .cinder-button[data-cinder-variant='primary'] .cinder-kbd,
-  .cinder-button[data-cinder-variant='danger'] .cinder-kbd {
+  /* A shortcut hint inside a Button (the `shortcut` prop or hand-written markup) is plain glyphs in
+ * the button's own text color on every variant: no border, fill, shadow, or key-cap chip. The rule
+ * names the Button, never a variant, so a new variant gets it too. The extra attribute selector
+ * outranks the size rules above; the button's color is theme-aware, so both themes stay legible. */
+  .cinder-button .cinder-kbd,
+  .cinder-button .cinder-kbd[data-cinder-size] {
+    min-width: 0;
+    height: auto;
+    padding: 0;
+    font-family: inherit;
+    font-size: var(--cinder-text-xs);
+    font-weight: inherit;
     color: inherit;
     background: transparent;
-    border-color: color-mix(in oklch, currentColor, transparent 60%);
+    border: 0;
+    border-radius: 0;
     box-shadow: none;
+    opacity: 0.72;
   }
 
-  .cinder-button[data-cinder-variant='secondary'] .cinder-kbd,
-  .cinder-button[data-cinder-variant='ghost'] .cinder-kbd {
-    color: var(--cinder-text-muted);
-  }
-
-  .cinder-button[data-cinder-variant='primary'] .cinder-shortcut-hint__separator,
-  .cinder-button[data-cinder-variant='danger'] .cinder-shortcut-hint__separator {
+  .cinder-button .cinder-shortcut-hint__separator,
+  .cinder-button .cinder-shortcut-hint__label {
     color: inherit;
+  }
+
+  .cinder-button .cinder-shortcut-hint__separator {
+    opacity: 0.72;
   }
 }

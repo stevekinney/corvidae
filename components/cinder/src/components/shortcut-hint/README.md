@@ -30,7 +30,7 @@ Inline shortcut hint that renders a key combo via Kbd alongside an action label,
 
 ## In a button
 
-Prefer Button's `shortcut` prop to nesting a hint by hand. On a filled `primary` or `danger` button the key caps drop their raised fill and use the variant's contrast color with a translucent edge, and on `secondary` and `ghost` they use muted text, so the hint reads as part of the button on every variant and theme. Hand-written markup inside a button gets the same treatment.
+Prefer Button's `shortcut` prop to nesting a hint by hand. Inside a button on every variant the key caps drop their border, fill, and shadow and render as plain glyphs in the button's own text color, so the hint reads as part of the button in every theme. Touch devices hide it. Hand-written markup inside a button gets the same treatment.
 
 ## Props
 
