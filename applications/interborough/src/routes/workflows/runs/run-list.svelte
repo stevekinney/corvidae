@@ -291,7 +291,7 @@
       {#snippet action()}{@render startRun()}{/snippet}
     </EmptyState>
   {:else}
-    <Table caption={TASK_COPY.listHeading} density="condensed">
+    <Table caption={TASK_COPY.listHeading} density="condensed" frameless>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>{TASK_COPY.listColumns.agent}</Table.HeaderCell>
