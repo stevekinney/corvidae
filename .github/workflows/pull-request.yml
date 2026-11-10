@@ -74,4 +74,6 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
+      # A change that reaches the root workspace runs `test:browser-fixtures`, which needs Chromium.
+      - run: bunx playwright install --with-deps chromium
       - run: bun scripts/affected-tests.ts run --base "$TURBO_SCM_BASE"

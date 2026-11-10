@@ -85,17 +85,14 @@ jobs:
           - name: components
             filter: --filter=./components/* --filter=!@lostgradient/cinder
           - name: packages
-            filter: --filter=./packages/* --filter=!@lostgradient/storage-neon --filter=!@lostgradient/storage-postgres --filter=!@lostgradient/weft
+            filter: --filter=./packages/* --filter=!@lostgradient/weft
           - name: applications, plugins, testing
             filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/*
-          # Linux failures for follow-up: these tests pass, but their `test:coverage` step fails.
-          # Neon and Postgres skip their live-database tests on a runner with no database, which
-          # leaves coverage under the ratchet; Weft's coverage allowance for
-          # src/server/workflow-event-feed.ts:401 "points at a covered line" on Linux. Follow-up
-          # issue: "Make the Neon, Postgres, and Weft coverage gates pass on a Linux runner"
-          # (named in pull request 1096).
-          - name: linux coverage failures
-            filter: --filter=@lostgradient/storage-neon --filter=@lostgradient/storage-postgres --filter=@lostgradient/weft
+          # Linux failure for follow-up (the issue named in pull request 1096): Weft's tests pass,
+          # but its `test:coverage` step fails because the coverage allowance for
+          # src/server/workflow-event-feed.ts:401 "points at a covered line" on Linux.
+          - name: weft coverage
+            filter: --filter=@lostgradient/weft
             advisory: true
     continue-on-error: ${{ matrix.advisory == true }}
     env:
@@ -133,10 +130,14 @@ jobs:
       - run: bun --version
       - run: bun install --frozen-lockfile
       - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      # `//#test:self:slow` fails on `main` itself until COR-2378 lands: turbo.json's lint inputs
+      # omit scripts/workspace-exports.ts (scripts/task-cache.integration.test.ts). It is not
+      # marked advisory here.
       - run: bun run test:slow --continue --filter=!@lostgradient/bureau
-      # Linux failure for follow-up: bureau.eventHistory "run ownership survives a process restart
-      # over LMDB (AB-359)" fails on Linux with a snapshot mismatch (an extra runId and a literal
-      # emittedAtMs in the read-back events). Follow-up issue named in pull request 1096.
-      - run: bunx turbo run test:slow --filter=@lostgradient/bureau
+      # Linux failures for follow-up (the issue named in pull request 1096). Bureau:
+      # bureau.eventHistory "run ownership survives a process restart over LMDB (AB-359)" fails
+      # with a snapshot mismatch (an extra runId and a literal emittedAtMs in the read-back
+      # events).
+      - run: bunx turbo run test:slow --concurrency=1 --filter=@lostgradient/bureau
         continue-on-error: true
         if: ${{ !cancelled() }}
