@@ -25,7 +25,7 @@ function agent(name: string, kind: 'code' | 'file') {
   return { name, displayName: name, description: null, definitionRevision: 1, kind, a2a: false };
 }
 
-function detail(id: string, skills: string[] | null, skills: string[] | null = null) {
+function detail(id: string, skills: string[] | null, fileSkills: string[] | null = null) {
   return {
     id,
     source: skills === null ? 'file' : 'code',
@@ -35,7 +35,7 @@ function detail(id: string, skills: string[] | null, skills: string[] | null = n
     a2a: false,
     hash: null,
     problem: null,
-    definition: skills === null ? null : { ...readyAgent().definition, skills },
+    definition: fileSkills === null ? null : { ...readyAgent().definition, skills: fileSkills },
     codeDefinition:
       skills === null
         ? null
