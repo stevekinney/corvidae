@@ -1366,7 +1366,7 @@ const guardrails = createGuardrails({
 });
 
 // Register all three hooks on the run's hook registry. `validateToolResult` runs the same input
-// detectors over a tool result before the model is shown it (COR-2103; see "Tool Results" for the results it does not read yet); like
+// detectors over a tool result before the model is shown it (COR-2103; see "Tool Results" for which results it reads); like
 // `validateResponse` it is a waterfall, so register it last.
 const hooks = new HookRegistry<OperativeHookMap>({ source: 'direct' });
 hooks.on('prepareStep', guardrails.prepareStep, { id: 'app:guardrails-input', replay: 'safe' });
@@ -2870,7 +2870,14 @@ A tool's output (a fetched page, an API response) is how an indirect prompt inje
 - **`warn`**: the result passes through, and the session is tainted at or above the taint threshold.
 - **`tripwire`** (and the default preset): the run halts with `finishReason: 'tripwire'` and one `run.tripwire` event with phase `tool-result`. The call is sealed with a `GUARDRAIL_BLOCKED` result in place of the flagged one, and of any later result of the same step no guardrail read, so the conversation never keeps what tripped the wire.
 
-Three kinds of result are not scanned yet: the result of an approved call (one a human approved and the run then executed), a durable child-wait result, and the content of a streamed result. They are tracked in [COR-2299](https://linear.app/lost-gradient/issue/COR-2299); until it lands, do not rely on the detectors for them.
+Every tool result the model can be shown is scanned, by the run's own `validateToolResult` hooks, on four paths (COR-2299):
+
+- **In the run loop**: each result a step's tools produce. A streamed result (`executeOptions.stream: true` with `collectAsync`) is read into its content first, so the detectors see what the model will see, never the `'[stream]'` placeholder. Each string is read alone and then all of them once more, joined, so an injection split across two strings or stream chunks is still seen.
+- **An approved call**: the result of a call a human approved and Bureau ran after the run parked is scanned before it is written into the session, with the run's resolved hook plan (the agent's own guardrails plus the plugin and Bureau tiers; a run Bureau no longer holds is read with the agent's definition, else Bureau's own guardrails). A hit writes the `GUARDRAIL_BLOCKED` result in its place under `block`, `sanitize`, and `tripwire` (the parked run does not halt again; the blocked row is what the next turn shows), and passes the result through under `warn`.
+- **A durable child wait**: the child's answer appended when a parked run resumes is scanned by the same hooks, and the verdict is journaled, so a replay writes the same row.
+- **`scanToolResult(result, { hooks, conversation, step })`**: the scan a host runs for any other result it writes into a conversation itself. It collects a stream, returns the result to write, and returns the `tripwire` it hit; a scan that fails withholds the result (COR-2300).
+
+Not scanned: a call waiting on approval or input (`outcome: 'action_required'`), which has not run, and a result written into a conversation by code that does not call a `validateToolResult` hook or `scanToolResult`. A session's taint is held by the guardrails that scanned the result, so the taint an approved call's scan sets does not yet outlive that scan.
 
 `createToolResultGuardrail` is the hook on its own, for a caller composing guardrails by hand. Every host that registers `createGuardrails`' hooks (`createAgent`, Bureau's own tier, and a code agent's override guardrails) registers `validateToolResult` pinned last on its waterfall, beside `validateResponse`, so no later handler overrules it.
 
@@ -2944,7 +2951,7 @@ The three retrieval tags and `'tool-result'` mark a distinct trust boundary from
 `bureau` wires a guardrail preset automatically whenever `BureauOptions.guardrails` is left `undefined`:
 
 - `mode: 'tripwire'`—any trigger hard-halts the run.
-- **Input**: `createPromptInjectionDetector()` wrapped in `withMinimumTripwireConfidence(..., DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD)`—the threshold is `0.6`, so only medium-to-high-confidence injection matches trip the run. It reads user messages and the tool results the guardrail reads (COR-2103, with the exceptions listed under "Tool Results"; the owner decided on 2026-11-05 that the preset scans tool results in its existing tripwire mode).
+- **Input**: `createPromptInjectionDetector()` wrapped in `withMinimumTripwireConfidence(..., DEFAULT_PROMPT_INJECTION_TRIPWIRE_THRESHOLD)`—the threshold is `0.6`, so only medium-to-high-confidence injection matches trip the run. It reads user messages and the tool results the guardrail reads (COR-2103, see "Tool Results" for which; the owner decided on 2026-11-05 that the preset scans tool results in its existing tripwire mode).
 - **Output**: `createOutputPIIValidator()`—output PII trips the run rather than being redacted.
 
 Output validators run over the response's text and over the text of each `thinking` part (COR-1806), because the model's reasoning reaches the run's owner and the stored conversation. A flagged thought is handled by the same action: `block` replaces the whole response, `tripwire` throws, `warn` reports and passes the response through, and `redact` withholds the flagged thinking parts and keeps the answer, its tool calls and its other parts (a thinking part carries a provider signature, so its text is withheld, never edited). How it withholds depends on the step. A step with no tool calls has the flagged parts removed from the response, so the stored conversation never holds them. A step with tool calls keeps every part unchanged, because a provider such as Anthropic requires a tool-use turn's thinking back complete and unmodified on the request that carries the tool results (a turn missing one is refused): the flagged thinking stays in the stored conversation, where only the model reads it again, and the response names the flagged parts' indices in `GenerateResponse.withheldThinking`, which `generate.completed` carries. A host that shows a run's reasoning must leave those parts out; Bureau's AG-UI stream sends no frame for them. `redacted_thinking` parts carry no readable text and are not scanned.

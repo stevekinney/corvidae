@@ -6,6 +6,7 @@ import {
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
+  type HookRegistry,
   type RuntimeServices,
   type RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
@@ -119,6 +120,8 @@ import {
   type ToolTiming,
   bureauInvariantsField,
   runScopedExecutionContextOf,
+  scanToolResult,
+  type OperativeHookMap,
 } from '@lostgradient/operative';
 import {
   approvalDecisionMetadata,
@@ -3975,6 +3978,15 @@ async function constructBureau<const D extends AgentDefinitions>(
    * Released wherever `runToolboxesByRunId` releases the run.
    */
   const runScopedContexts = new Map<string, Record<string, unknown>>();
+  /**
+   * COR-2299 — the hook plan of each live run (Bureau, plugin and agent tiers), which an approved
+   * call's result is scanned with outside the run's step. Released with `runScopedContexts`.
+   */
+  const runHookPlans = new Map<string, HookRegistry<OperativeHookMap>>();
+  const releaseRunScope = (runId: string): void => {
+    runScopedContexts.delete(runId);
+    runHookPlans.delete(runId);
+  };
   let shutdownPromise: Promise<BureauShutdownReport> | undefined;
   // COR-690: flipped synchronously the moment `shutdown()` starts, before it
   // snapshots the runs and toolboxes it drains, so an API or scheduler run
@@ -6393,7 +6405,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
         runToolboxesByRunId.delete(removedRunId);
-        runScopedContexts.delete(removedRunId);
+        releaseRunScope(removedRunId);
         terminalReviewSessions.delete(removedRunId);
         announcedReviewRequests.delete(removedRunId);
         fireReviewSeeds.release(removedRunId);
@@ -8047,7 +8059,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (!scheduledFireApprovalRuns.has(runId) || holdsFireApproval(runId)) return;
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
-    runScopedContexts.delete(runId);
+    releaseRunScope(runId);
     if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
       detachBestEffortPromise(tasks.announceChanged(runId));
     }
@@ -8536,8 +8548,10 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? {}
               : { reason: currentRecovery.request.reason }),
           };
-          const materialized = await materializeToolResultAsync(result);
-          const admitted = await admitApprovedToolResultMedia(review, result, materialized);
+          // COR-2299: scanned as the other approved-call write is, before the row is committed.
+          const scannedResult = await scanApprovedToolResult(review, result);
+          const materialized = await materializeToolResultAsync(scannedResult);
+          const admitted = await admitApprovedToolResultMedia(review, scannedResult, materialized);
           const auditAttachment = buildReviewDecisionAuditRecord(
             review,
             'approve',
@@ -9064,7 +9078,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       terminalReviewSessions.delete(runId);
       runRequestContexts.delete(runId);
       runToolboxesByRunId.delete(runId);
-      runScopedContexts.delete(runId);
+      releaseRunScope(runId);
       releaseScheduledFireReviews(scheduledFireReviewState, runId);
       unfollowFireReviewsWhenNoneRemain(runId);
     } else if (scheduledFire) {
@@ -10042,6 +10056,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-2106 — what the run gives its tool calls, kept for the approved call that resumes later.
       const startedScope = runScopedExecutionContextOf(startedRunOptions);
       if (startedScope !== undefined) runScopedContexts.set(runId, startedScope);
+      if (startedRunOptions.hooks !== undefined) runHookPlans.set(runId, startedRunOptions.hooks);
       // AB-96 — the versioned run-lifecycle frame stream. Registered before
       // `store.register` so `run-started` is the first frame a live subscriber
       // ever sees for this run.
@@ -10689,6 +10704,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       runToolboxesByRunId.set(runId, recoveredServices.toolbox);
       const recoveredScope = runScopedExecutionContextOf(recoveredServices.options);
       if (recoveredScope !== undefined) runScopedContexts.set(runId, recoveredScope);
+      if (recoveredServices.options.hooks !== undefined) {
+        runHookPlans.set(runId, recoveredServices.options.hooks);
+      }
     }
     // AB-359 — rehydrate `runAttribution`'s `principal` from the durably
     // persisted `lastRunOwningPrincipals` map so a recovered run's REAL owner
@@ -12836,7 +12854,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     runToolboxesByRunId.delete(id);
-    runScopedContexts.delete(id);
+    releaseRunScope(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
     // A task record that cannot be removed is diagnosed, like every step after the run has left
@@ -16653,7 +16671,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       for (const runId of sessionRunIds) {
         runRequestContexts.delete(runId);
         runToolboxesByRunId.delete(runId);
-        runScopedContexts.delete(runId);
+        releaseRunScope(runId);
         terminalReviewSessions.delete(runId);
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
@@ -18916,7 +18934,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
-    runScopedContexts.delete(runId);
+    releaseRunScope(runId);
     recoveredRunIds.delete(runId);
   }
 
@@ -18985,6 +19003,77 @@ async function constructBureau<const D extends AgentDefinitions>(
       : message.trim();
   }
 
+  /**
+   * COR-2299 — the hook plan a catalog agent's run this process does not hold would run with:
+   * Bureau's tier for the agent, the plugin tier, and the agent's own hooks, as a dispatch composes
+   * them. An agent that cannot be resolved falls back to Bureau's own guardrails alone, so the
+   * result is still scanned.
+   */
+  async function catalogRunHookPlan(runId: string): Promise<HookRegistry<OperativeHookMap>> {
+    const agentName = runAttribution.get(runId)?.agentName;
+    const agent = agentName === undefined ? undefined : agentCatalog.find(agentName);
+    if (agent !== undefined && hasDefinitionResolver(agent)) {
+      try {
+        const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('', {
+          runId,
+          ...(agentName === undefined ? {} : { agentName }),
+          ...catalogRunGuardrailsContext(agent),
+        });
+        return runtime.composeRunHooks({
+          bureau: runtime.createBureauInvariantHooks(undefined, {
+            agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+          }),
+          agent: resolved.hooks,
+        });
+      } catch {
+        // Falls through to Bureau's own guardrails, which still scan the result.
+      }
+    }
+    return runtime.composeRunHooks({
+      bureau: runtime.createBureauInvariantHooks(),
+      agent: undefined,
+    });
+  }
+
+  /**
+   * COR-2299 — an approved call runs outside the run's step, so its result reaches the session
+   * without the run loop's `validateToolResult` scan. Scanned here with the run's own hook plan (a
+   * run this process does not hold has Bureau's own guardrails), a hit writes the blocked result
+   * in its place, as the loop does; a scan that fails does too (COR-2300).
+   */
+  async function scanApprovedToolResult(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    executed: ToolExecutionResult,
+  ): Promise<ToolExecutionResult> {
+    const hooks = runHookPlans.get(review.runId) ?? (await catalogRunHookPlan(review.runId));
+    let conversation = new Conversation(undefined, { runtime: runtimeServices });
+    try {
+      const stored = await runtime.sessionStore?.load(review.sessionId);
+      if (stored !== undefined) {
+        conversation = new Conversation(stored.conversationHistory, { runtime: runtimeServices });
+      }
+    } catch {
+      // The conversation only gives a detector its length; an unreadable session is scanned empty.
+    }
+    const scanned = await scanToolResult(executed, { hooks, conversation, step: 0 });
+    if (scanned.blocked) {
+      diagnose({
+        level: 'warn',
+        scope: 'guardrails',
+        message: `[bureau] A guardrail blocked the result of the approved call "${review.approval.callId}" of run "${review.runId}"${scanned.tripwire === undefined ? '' : ' (tripwire)'}; the session holds the blocked result.`,
+      });
+    }
+    return scanned.result;
+  }
+
+  /** {@link scanApprovedToolResult} for a result of unknown shape: only a tool's own is scanned. */
+  async function scannedApprovedOutcome(
+    review: Extract<PendingReview, { kind: 'tool-approval' }>,
+    result: unknown,
+  ): Promise<ToolExecutionResult> {
+    return await scanApprovedToolResult(review, result as ToolExecutionResult);
+  }
+
   async function writeApprovalOutcomeToSession(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
@@ -18999,7 +19088,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const asked = askedOf(review);
     const outcome =
       input.decision === 'approve'
-        ? (result as Parameters<typeof materializeToolResultAsync>[0])
+        ? await scannedApprovedOutcome(review, result)
         : {
             callId,
             toolCallId: callId,
@@ -19014,7 +19103,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const materialized = await materializeToolResultAsync(outcome);
       const toolResult =
         input.decision === 'approve'
-          ? await admitApprovedToolResultMedia(review, outcome as ToolExecutionResult, materialized)
+          ? await admitApprovedToolResultMedia(review, outcome, materialized)
           : materialized;
       // The run's own terminal save is in flight when its approval is resolved
       // at once; the row to replace is not stored until it lands.
