@@ -1536,6 +1536,12 @@
   ],
   "output:bureau.notifications.markread": ["$.updated"],
   "output:bureau.plugins.contributions": [
+    "$.providers",
+    "$.providers[].configuration",
+    "$.providers[].configuration|anyOf[0].*",
+    "$.providers[].configuration|anyOf[0].*.*",
+    "$.providers[].name",
+    "$.providers[].plugin",
     "$.reactions",
     "$.reactions[].configuration",
     "$.reactions[].configuration|anyOf[0].*",

@@ -1428,7 +1428,7 @@ The `cacheBoundary` mark is the same conversation-level primitive `conversationa
 
 ### Provider definitions and `provider-kit`
 
-A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration)` and `stream(configuration)`. Each provider package ships its own definition (`@lostgradient/operative-anthropic` ships `anthropicProvider`, `@lostgradient/operative-openai` ships `openaiProvider`, and `@lostgradient/operative-gemini` ships `geminiProvider`). A definition passes the configuration object, whole, to its factories, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. The provider package's README shows a real definition registered; this is the shape any of them has:
+A host that picks a model provider by name holds a `ProviderDefinition`: a `name` and two methods, `generate(configuration, pluginConfiguration)` and `stream(configuration, pluginConfiguration)`. Each provider package ships its own definition (`@lostgradient/operative-anthropic` ships `anthropicProvider`, `@lostgradient/operative-openai` ships `openaiProvider`, and `@lostgradient/operative-gemini` ships `geminiProvider`). The second argument is the validated plugin configuration; pass `{}` when the provider has no plugin-level configuration. A definition passes both objects, whole, to its factories, so a field the shared `ProviderConfigurationBase` does not name, such as an injected `client`, still reaches the factory. The provider package's README shows a real definition registered; this is the shape any of them has:
 
 ```typescript
 import type {
@@ -1450,7 +1450,7 @@ const definitions: ProviderDefinition[] = [example];
 
 const selected = definitions
   .find((definition) => definition.name === 'example')
-  ?.generate?.({ provider: 'example', model: 'example-model' });
+  ?.generate?.({ provider: 'example', model: 'example-model' }, {});
 ```
 
 `stream` returns a streaming generate function, which a host wraps with `withEnhancedStreaming` to get an ordinary one. An injected `client` has to serve both methods, because one configuration feeds both; to inject a client that serves only one, call the factory directly.

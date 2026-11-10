@@ -332,6 +332,8 @@ export type ProviderManagerOptions = {
   >;
   /** The queue every writer of `configuration.json` shares. Defaults to a new one. */
   readonly configurationQueue?: ConfigurationQueue;
+  /** Reads every loaded plugin's schema-parsed configuration from the current host snapshot. */
+  readonly pluginConfigurations?: () => Promise<ReadonlyMap<string, unknown>>;
   /**
    * Called after the manager writes a plugin's configuration, so the plugin manager reads the file
    * again and reports what is stored. Optional.
@@ -501,14 +503,24 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
   const { bungalow } = options;
   const workspaceSecrets = options.workspaceSecrets ?? createWorkspaceSecrets(bungalow);
   const location = bungalow.configurationLocation;
-  const load = (providers: readonly ContributedProvider[]): Promise<LoadedProviders> =>
-    loadProviders({
+  const load = async (providers: readonly ContributedProvider[]): Promise<LoadedProviders> => {
+    const next = await loadProviders({
       configurationLocation: location,
       readConfiguration: () => bungalow.readConfiguration(),
       readSecret: (key, snapshot) => workspaceSecrets.read(key, snapshot),
       warn: options.warn,
       providers,
     });
+    if (options.pluginConfigurations === undefined) return next;
+    const configurations = await options.pluginConfigurations();
+    return {
+      ...next,
+      providers: next.providers.map((provider) => ({
+        ...provider,
+        configuration: configurations.get(provider.plugin) ?? provider.configuration,
+      })),
+    };
+  };
 
   // Nothing is offered until the plugins have been set up and `adopt` hands over their providers.
   let loaded: LoadedProviders = {
@@ -772,6 +784,7 @@ export function createProviderManager(options: ProviderManagerOptions): Provider
           { provider: contributed.name, model: probe.model, apiKey: key },
           undefined,
           undefined,
+          contributed.configuration,
         );
         await generate({
           conversation,
