@@ -26,23 +26,6 @@ import { COMPONENT_LAYER_NAME, isSingleComponentLayer } from '../../scripts/chec
 
 const repoRoot = join(import.meta.dir, '..', '..');
 
-/**
- * CSS files that legitimately do NOT carry the wrapper, by exact path under the
- * package root. Anything else that lacks the wrapper is a leak and fails the
- * drift guard below.
- *
- * - `src/styles/components/experimental.css` is a pure `@import` aggregator;
- *   `@import` cannot live inside a block `@layer`, and its imported leaves each
- *   carry their own wrapper. It is never copied to `dist/`.
- * - `src/styles/components/experimental/_json-viewer-node.css` is an orphan: no
- *   `.css`/`.ts`/`.svelte` source imports it, so it never reaches the cascade.
- *   (The matching `_json-viewer-node.svelte` styles ship via `json-viewer.css`.)
- */
-const UNWRAPPED_ALLOWLIST = new Set([
-  'src/styles/components/experimental.css',
-  'src/styles/components/experimental/_json-viewer-node.css',
-]);
-
 async function scanGlob(pattern: string): Promise<string[]> {
   const glob = new Bun.Glob(pattern);
   const files: string[] = [];
@@ -87,15 +70,14 @@ async function directlyImportedComponentCss(): Promise<string[]> {
 /**
  * The full set of component CSS files subject to the wrapper invariant:
  * per-component sidecars under `src/components/`, the shared partials under
- * `src/styles/components/`, and any CSS imported directly by component source —
- * minus the named allowlist of files that legitimately stay unwrapped.
+ * `src/styles/components/`, and any CSS imported directly by component source.
  */
 async function wrappedCssFiles(): Promise<string[]> {
   const sidecars = await scanGlob('src/components/**/*.css');
   const partials = await scanGlob('src/styles/components/**/*.css');
   const directImports = await directlyImportedComponentCss();
   const union = new Set([...sidecars, ...partials, ...directImports]);
-  return [...union].filter((file) => !UNWRAPPED_ALLOWLIST.has(file)).toSorted();
+  return [...union].toSorted();
 }
 
 function describeShape(source: string, file: string): string {
@@ -149,18 +131,6 @@ describe('component CSS @layer invariant', () => {
     for (const file of directImports) {
       expect(await Bun.file(join(repoRoot, file)).exists()).toBe(true);
       expect(await isWrapped(file)).toBe(true);
-    }
-  });
-
-  test('the unwrapped allowlist stays minimal and accurate', async () => {
-    // Guard against drift: the allowlist must name only files that exist and
-    // are genuinely unwrapped. A stale entry (file deleted or later wrapped)
-    // would silently hide a future leak, so we assert each entry is real and
-    // still unwrapped.
-    for (const file of UNWRAPPED_ALLOWLIST) {
-      const handle = Bun.file(join(repoRoot, file));
-      expect(await handle.exists()).toBe(true);
-      expect(await isWrapped(file)).toBe(false);
     }
   });
 });

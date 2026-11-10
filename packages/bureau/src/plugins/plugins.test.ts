@@ -1,6 +1,6 @@
 /**
  * COR-1879 — `createBureau({ plugins, pluginConfiguration, pluginSecrets })`: setup in load order,
- * the configuration and clash checks, storage scoping, `afterStart`, and `plugins.list()`.
+ * the configuration and clash checks, storage scoping, `start`, and `plugins.list()`.
  */
 import { definePlugin, type PluginDescriptor } from '@lostgradient/interborough-plugin';
 import { MemoryStorage } from '@lostgradient/storage';
@@ -114,7 +114,7 @@ describe('plugin composition', () => {
 
   it('reports a disabled plugin and registers nothing of it, and a required one runs anyway', async () => {
     const setups: string[] = [];
-    const plugin = (name: string, extra: { required?: boolean; enabledByDefault?: boolean } = {}) =>
+    const plugin = (name: string, extra: { required?: boolean; enabled?: boolean } = {}) =>
       definePlugin({
         name,
         version: '1.0.0',
@@ -128,7 +128,7 @@ describe('plugin composition', () => {
     const bureau = await start({
       plugins: [
         entry(plugin('off')),
-        entry(plugin('demo', { enabledByDefault: false })),
+        entry(plugin('demo', { enabled: false })),
         entry(plugin('core', { required: true })),
       ],
       pluginConfiguration: { off: { enabled: false }, core: { enabled: false } },
@@ -315,14 +315,14 @@ describe('plugin composition', () => {
     expect(seen).toEqual([null, 'kept', 'state']);
   });
 
-  it('runs afterStart once, after construction, with the host API', async () => {
+  it('runs start once, after construction, with the host API', async () => {
     const calls: string[][] = [];
     const starting = definePlugin({
       name: 'starting',
       version: '1.0.0',
       description: 'Lists the agents once Bureau has started.',
       setup: () => ({
-        afterStart: (host) => {
+        start: (host) => {
           calls.push(host.agents.list().map(({ name }) => name));
         },
       }),
@@ -332,7 +332,7 @@ describe('plugin composition', () => {
       version: '1.0.0',
       description: 'Fails after start.',
       setup: () => ({
-        afterStart: () => Promise.reject(new Error('could not reach the service')),
+        start: () => Promise.reject(new Error('could not reach the service')),
       }),
     });
     const bureau = await start({ plugins: [entry(starting), entry(failing)] });
@@ -341,7 +341,7 @@ describe('plugin composition', () => {
     const [, failingListing] = await listedPlugins(bureau);
     expect(failingListing?.status).toBe('running');
     expect(failingListing?.problems).toEqual([
-      { code: 'after-start-failed', message: 'could not reach the service' },
+      { code: 'start-failed', message: 'could not reach the service' },
     ]);
   });
 
@@ -422,12 +422,12 @@ describe('plugin composition', () => {
     const late = definePlugin({
       name: 'late',
       version: '1.0.0',
-      description: 'Quotes its key when afterStart fails.',
+      description: 'Quotes its key when start fails.',
       secrets: ['late-api-key'],
       setup: async ({ secrets }) => {
         const key = await secrets.get('late-api-key');
         read.push(key);
-        return { afterStart: () => Promise.reject(new Error(`lost ${String(key)} after start`)) };
+        return { start: () => Promise.reject(new Error(`lost ${String(key)} after start`)) };
       },
     });
     const bureau = await start({
@@ -442,13 +442,13 @@ describe('plugin composition', () => {
     expect(read).toEqual([SECRET, SECRET, SECRET]);
     const serialized = JSON.stringify(await bureau.plugins.list());
     expect(serialized).not.toContain(SECRET);
-    // A setup or afterStart that quotes a secret in its error is reported with the value removed.
+    // A setup or start that quotes a secret in its error is reported with the value removed.
     const [, leakyListing, lateListing] = await listedPlugins(bureau);
     expect(leakyListing?.problems).toEqual([
       { code: 'setup-failed', message: 'rejected key [redacted] by the service' },
     ]);
     expect(lateListing?.problems).toEqual([
-      { code: 'after-start-failed', message: 'lost [redacted] after start' },
+      { code: 'start-failed', message: 'lost [redacted] after start' },
     ]);
     const [keyedListing] = await listedPlugins(bureau);
     expect(keyedListing?.descriptor).toEqual({

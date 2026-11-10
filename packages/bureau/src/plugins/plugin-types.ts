@@ -10,6 +10,8 @@ import type { PluginDescriptor, PluginPanel } from '@lostgradient/interborough-p
 import type { InputDetector } from 'armorer';
 import type { z } from 'zod';
 
+import type { PluginProblemCode } from './plugin-problem-codes.ts';
+
 /**
  * Where a plugin was loaded from: a workspace package the host lists, Bungalow's `plugins/` folder,
  * or `built-in`, which Bureau supplies itself (COR-1890: the `bureau` plugin) and a host never gives it.
@@ -38,7 +40,7 @@ export interface BureauPluginEntry {
 
 /** The owner's choices for one plugin, persisted under `plugins.<name>` in Bungalow's configuration. */
 export interface BureauPluginSettings {
-  /** Whether the plugin runs; absent takes the descriptor's `enabledByDefault`, itself `true` by default. */
+  /** Whether the plugin runs; absent takes the descriptor's `enabled`, itself `true` by default. */
   readonly enabled?: boolean | undefined;
   /** The value the plugin's `configuration` schema parses; absent parses `{}`. */
   readonly configuration?: unknown;
@@ -101,7 +103,7 @@ export interface PluginClashParty {
   readonly location: string;
 }
 
-/** Something wrong with a plugin, by `code`. */
+/** Something wrong with a plugin, by `code`; its codes are exactly `PLUGIN_PROBLEM_CODES`. */
 export type PluginProblem =
   | {
       /**
@@ -228,11 +230,22 @@ export type PluginProblem =
       readonly message: string;
     }
   | {
-      /** `afterStart` threw or rejected; the plugin's contributions stay registered. */
-      readonly code: 'after-start-failed';
+      /** `start` threw or rejected; the plugin's contributions stay registered. */
+      readonly code: 'start-failed';
       /** The error's message, with every secret value the plugin was handed removed. */
       readonly message: string;
     };
+
+/** Fails to compile when `PluginProblem` and `PLUGIN_PROBLEM_CODES` disagree on the codes. */
+export type PluginProblemCodesAgree = AssertTrue<
+  [PluginProblem['code']] extends [PluginProblemCode]
+    ? [PluginProblemCode] extends [PluginProblem['code']]
+      ? true
+      : false
+    : false
+>;
+
+type AssertTrue<T extends true> = T;
 
 /**
  * A kind of contribution, as the listing names it. A guardrail of the `input` or `output` family
@@ -459,6 +472,6 @@ export interface BureauPlugins {
   guardrails(): readonly GuardrailListing[];
   /** The model providers of running plugins, with the plugin configuration schema only. */
   providers(): readonly PluginProviderListing[];
-  /** Settles once every running plugin's `afterStart` has settled. Never rejects. */
+  /** Settles once every running plugin's `start` has settled. Never rejects. */
   ready(): Promise<void>;
 }

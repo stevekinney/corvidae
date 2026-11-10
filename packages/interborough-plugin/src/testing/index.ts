@@ -5,12 +5,16 @@
  *
  * @module interborough-plugin/testing
  */
+export { PLUGIN_CONTRACT_UNCHECKED_HOOK_POINTS, type PluginHookPoint } from './hook-observation.ts';
 export {
   checkPluginContract,
   pluginContract,
   type CreatePluginTestHost,
   type PluginContractFailure,
   type PluginContractOptions,
+  type PluginScriptedRunOutcome,
+  type PluginScriptedRunRequest,
+  type PluginScriptedScenario,
   type PluginTestHost,
   type PluginTestHostAgent,
   type PluginTestHostListing,

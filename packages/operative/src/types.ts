@@ -384,6 +384,14 @@ export type GenerateMiddleware = (next: GenerateFunction) => GenerateFunction;
  */
 export interface StepResult {
   step: number;
+  /**
+   * The id of the run this step belongs to; absent for a run with no run id. Every step carries it,
+   * including a step that only called tools and committed no row, whose {@link StepResult.messageId}
+   * is `undefined`. A hook that keys what it records by run and step reads it here instead of
+   * parsing a message id. It is not stored in a step record: a run read back from its checkpoint
+   * carries the id of the run it was read for.
+   */
+  runId?: string | undefined;
   conversation: Conversation;
   /** The step's answer text: the in-order concatenation of the text parts. */
   content: string;

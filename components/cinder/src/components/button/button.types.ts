@@ -170,6 +170,13 @@ export type ButtonProps = SharedHtmlAttributes &
     /** DECORATIVE icon rendered after the label/children. Always wrapped in aria-hidden.
      *  Same accessible-name guidance as `leadingIcon`. */
     trailingIcon?: Snippet;
+    /**
+     * A keyboard shortcut hint (a key such as `"N"`, or `["Ctrl", "K"]`) rendered after the label
+     * through ShortcutHint. It is decorative and `aria-hidden`, so the accessible name stays the
+     * label, and it is plain glyphs in the button's own color on every variant, hidden on touch
+     * devices. It only displays the shortcut; registering the key is the application's job.
+     */
+    shortcut?: string | string[];
     /** Custom class merged with `.cinder-button`. */
     class?: string;
   };
@@ -227,6 +234,8 @@ export interface ButtonSchemaProps {
   href?: string;
   /** Visible text label. Must be non-empty if provided. */
   label?: string;
+  /** Keyboard shortcut hint rendered after the label, `aria-hidden`; a key or an array of keys. */
+  shortcut?: string | string[];
   /** Custom class merged with `.cinder-button`. */
   class?: string;
 }

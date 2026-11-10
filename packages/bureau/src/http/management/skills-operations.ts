@@ -9,7 +9,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
  * `BureauHandlerOptions.skills`. This operation only reports that standing. An untrusted skill is
  * listed, with `available: false` and the reason, and is refused where an agent would use it: the
  * skill client answers `source-untrusted` to an activation of it, and a write that names it in a
- * file's `allowedSkills` is refused `skill-not-grantable`. A Bureau whose host passed no skills
+ * file's `skills` is refused `skill-not-grantable`. A Bureau whose host passed no skills
  * answers an empty list.
  *
  * A caller needs `bureau.agents:read`, the scope of the rest of the capabilities an agent is built

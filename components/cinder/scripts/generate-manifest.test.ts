@@ -84,41 +84,22 @@ describe('buildManifest() error formatting', () => {
 });
 
 describe('component-owned artifacts', () => {
-  it('detects an enhancement for any stable component with an enhancement source file', () => {
+  it('detects an enhancement for any component with an enhancement source file', () => {
     const componentsRoot = mkdtempSync(join(tmpdir(), 'cinder-manifest-enhancement-'));
     const enhancementPath = join(componentsRoot, 'second-editor/second-editor-enhancement.ts');
     mkdirSync(join(componentsRoot, 'second-editor'), { recursive: true });
     writeFileSync(enhancementPath, 'export function enhance() {}\n');
-    const experimentalEnhancementPath = join(
-      componentsRoot,
-      'experimental/second-editor/second-editor-enhancement.ts',
-    );
-    mkdirSync(join(componentsRoot, 'experimental/second-editor'), { recursive: true });
-    writeFileSync(experimentalEnhancementPath, 'export function enhance() {}\n');
 
     try {
-      expect(
-        discoverComponentEnhancements(
-          [{ name: 'second-editor', isExperimental: false }],
-          componentsRoot,
-        ),
-      ).toEqual([{ name: 'second-editor', isExperimental: false, sourcePath: enhancementPath }]);
-      expect(
-        discoverComponentEnhancements(
-          [{ name: 'second-editor', isExperimental: true }],
-          componentsRoot,
-        ),
-      ).toEqual([]);
-      expect(enhancementArtifactPath('second-editor', false, componentsRoot)).toBe(
+      expect(discoverComponentEnhancements([{ name: 'second-editor' }], componentsRoot)).toEqual([
+        { name: 'second-editor', sourcePath: enhancementPath },
+      ]);
+      expect(enhancementArtifactPath('second-editor', componentsRoot)).toBe(
         'src/components/second-editor/second-editor-enhancement.ts',
       );
-      expect(enhancementArtifactPath('second-editor', true, componentsRoot)).toBeUndefined();
-      expect(
-        discoverComponentEnhancements(
-          [{ name: 'missing-editor', isExperimental: false }],
-          componentsRoot,
-        ),
-      ).toEqual([]);
+      expect(discoverComponentEnhancements([{ name: 'missing-editor' }], componentsRoot)).toEqual(
+        [],
+      );
     } finally {
       rmSync(componentsRoot, { recursive: true, force: true });
     }

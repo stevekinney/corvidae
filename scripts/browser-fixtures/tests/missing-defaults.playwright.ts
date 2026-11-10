@@ -18,7 +18,6 @@ const missingComponents = [
   'find-bar',
   'form',
   'guidance-region',
-  'host-provider',
   'inline-confirm',
   'key-value-editor',
   'modal-region',
@@ -110,11 +109,6 @@ const oracles: Record<(typeof missingComponents)[number], Oracle> = {
   },
   'guidance-region': async (page) => {
     await expect(page.getByRole('button', { name: 'Show welcome guidance' })).toBeVisible();
-  },
-  'host-provider': async (page) => {
-    await expect(page.locator('.cinder-host-provider')).toContainText(
-      'Desktop-aware application surface',
-    );
   },
   'inline-confirm': async (page) => {
     await expect(page.locator('.cinder-inline-confirm')).toContainText('Remove this workspace?');

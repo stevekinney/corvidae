@@ -3,7 +3,7 @@
    * @cinder
    * @category typography
    * @status stable
-   * @purpose Run of text in one of the typography variants h1 to h5, caption, or body that inherits its color from its container.
+   * @purpose Run of text in one of the typography variants display, h1 to h5, caption, or body that inherits its color from its container.
    * @tag typography
    * @tag text
    * @useWhen Rendering a heading, paragraph, or caption in the design system's type scale.
@@ -41,6 +41,7 @@
   }: TextProps = $props();
 
   const defaultElements = {
+    display: 'h1',
     h1: 'h1',
     h2: 'h2',
     h3: 'h3',

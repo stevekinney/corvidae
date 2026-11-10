@@ -1,7 +1,7 @@
 /**
  * Which agents use each executable skill. The Bureau lists skills without their users, so they are
  * read from each agent (`bureau.agents.definitions.get`): an agent defined in code names its skills
- * in `codeDefinition.skills`, and an agent file in `definition.allowedSkills`. A file's skill cards
+ * in `codeDefinition.skills`, and an agent file in `definition.skills`. A file's skill cards
  * (`card`) are descriptive and name nothing.
  */
 import { getAgentDefinition } from './agent-definitions.ts';
@@ -22,7 +22,7 @@ export async function listSkillUsers(
   );
   const users = new Map<string, string[]>();
   for (const { agent, detail } of details) {
-    const named = detail.codeDefinition?.skills ?? detail.definition?.allowedSkills ?? [];
+    const named = detail.codeDefinition?.skills ?? detail.definition?.skills ?? [];
     for (const skill of named) {
       const using = users.get(skill);
       if (using === undefined) users.set(skill, [agent]);

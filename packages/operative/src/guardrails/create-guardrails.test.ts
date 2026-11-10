@@ -120,6 +120,44 @@ describe('createGuardrails', () => {
   });
 
   describe('session taint integration', () => {
+    it('taints the session when a detector or a validator fails closed (COR-2300)', async () => {
+      const input = createGuardrails({
+        input: {
+          detectors: [
+            {
+              name: 'broken',
+              detect: async () => {
+                throw new Error('down');
+              },
+            },
+          ],
+          action: 'warn',
+        },
+      });
+      const refused = await input.prepareStep(createTestContext());
+      expect(refused?.content).toContain('blocked');
+      expect(input.taint.isTainted()).toBe(true);
+
+      const output = createGuardrails({
+        output: {
+          validators: [
+            {
+              name: 'broken',
+              validate: async () => {
+                throw new Error('down');
+              },
+            },
+          ],
+        },
+      });
+      const blocked = await output.validateResponse(
+        { content: 'a reply', toolCalls: [] },
+        createTestContext(),
+      );
+      expect(blocked?.content).toContain('blocked');
+      expect(output.taint.isTainted()).toBe(true);
+    });
+
     it('taints session when input detection confidence exceeds threshold', async () => {
       const onTainted = mock((_event: SessionTaintedEvent) => {});
       const detector = createMockDetector('injection', {

@@ -6,7 +6,7 @@
  * consumption are correctly excluded.
  */
 
-import { basename, dirname, join } from 'node:path';
+import { basename, join } from 'node:path';
 
 import { readdir } from 'node:fs/promises';
 import { parse, type AtRule, type Declaration } from 'postcss';
@@ -17,10 +17,7 @@ type RegistryEntry = { component?: unknown; cssProperty?: unknown; public?: unkn
 const registryCache = new Map<string, Promise<RegistryEntry[]>>();
 
 export function resolveRegistryPath(componentDirectory: string): string {
-  const packageRoot =
-    basename(dirname(componentDirectory)) === 'experimental'
-      ? join(componentDirectory, '..', '..', '..', '..')
-      : join(componentDirectory, '..', '..', '..');
+  const packageRoot = join(componentDirectory, '..', '..', '..');
   return join(packageRoot, 'src', 'tokens', 'registry.generated.json');
 }
 

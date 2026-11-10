@@ -2,9 +2,10 @@
  * A `demo` plugin that ships two code agents, for the tests of code agent overrides (COR-2228):
  * `demo:echo`, which resolves its run options and records what its model was shown, and
  * `demo:scripted`, whose definition resolver is hidden, so no override can reach it. The plugin
- * contributes one tool, `demo:lookup`, and declares the secret {@link DEMO_SECRET_KEY} when asked.
+ * contributes one tool, `demo:lookup`, any interceptors it is given (`demo:<name>`, COR-2253), and
+ * declares the secret {@link DEMO_SECRET_KEY} when asked.
  */
-import { definePlugin } from '@lostgradient/interborough-plugin';
+import { definePlugin, type PluginInterceptor } from '@lostgradient/interborough-plugin';
 import { createAgent, OPERATIVE_RESOLVE_RUN_OPTIONS, stopWhen } from '@lostgradient/operative';
 import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
@@ -54,7 +55,9 @@ function withoutResolver(agent: AnyRunnableAgent): AnyRunnableAgent {
   });
 }
 
-export function demoPlugin(options: { readonly secret?: boolean } = {}) {
+export function demoPlugin(
+  options: { readonly secret?: boolean; readonly interceptors?: readonly PluginInterceptor[] } = {},
+) {
   return {
     descriptor: definePlugin({
       name: 'demo',
@@ -63,6 +66,7 @@ export function demoPlugin(options: { readonly secret?: boolean } = {}) {
       ...(options.secret === true ? { secrets: [DEMO_SECRET_KEY] } : {}),
       setup: () => ({
         tools: [lookup],
+        ...(options.interceptors === undefined ? {} : { interceptors: options.interceptors }),
         agents: [
           { name: 'echo', agent: echoAgent('echo') },
           { name: 'scripted', agent: withoutResolver(echoAgent('scripted')) },

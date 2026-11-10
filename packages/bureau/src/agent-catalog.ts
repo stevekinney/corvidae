@@ -746,7 +746,7 @@ function copyOfCodeAgent(
       !toolNames.has(tool) && toolNames.has(`${plugin}:${tool}`) ? `${plugin}:${tool}` : tool,
     ),
     card: stated.skillDescriptors,
-    ...(stated.skills.length === 0 ? {} : { allowedSkills: stated.skills }),
+    ...(stated.skills.length === 0 ? {} : { skills: stated.skills }),
     instructions: stated.instructions ?? '',
   };
 }

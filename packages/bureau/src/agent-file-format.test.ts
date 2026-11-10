@@ -76,8 +76,8 @@ describe('parseAgentFile', () => {
     expect(parseAgentFile('text', '---\nmodel: a/b\na2a: "true"\n---\n').ok).toBe(false);
   });
 
-  it('ignores the removed `published` and `skills` keys and keeps them in the file', () => {
-    const text = '---\nmodel: a/b\npublished: true\nskills:\n  - id: x\n---\nBody.\n';
+  it('ignores the removed `published` key and keeps it in the file', () => {
+    const text = '---\nmodel: a/b\npublished: true\n---\nBody.\n';
     const file = parsed('old', text);
     expect(file.definition).toMatchObject({ a2a: false, card: [] });
     expect(file.raw).toMatchObject({ published: true });
@@ -88,8 +88,14 @@ describe('parseAgentFile', () => {
     });
     const rewritten = decoder.decode(bytes);
     expect(rewritten).toContain('published: true');
-    expect(rewritten).toContain('skills:');
     expect(rewritten).toContain('a2a: true');
+  });
+
+  it('refuses the old `skills` list of descriptive skills, which `card` holds now (COR-2139)', () => {
+    const result = parseAgentFile('old', '---\nmodel: a/b\nskills:\n  - id: x\n---\nBody.\n');
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.problem.issues?.map((issue) => issue.path)).toEqual(['skills']);
   });
 
   it('keeps a body that holds fences, and Windows line endings', () => {

@@ -28,7 +28,7 @@ async function start(existingHome?: string): Promise<Host> {
   await enableDemoPlugin(home);
   const host = await startHost({ environment: { INTERBOROUGH_HOME: home }, port: 0 });
   hosts.push(host);
-  // The demo plugin seeds the schedule in `afterStart`, which the host does not wait for.
+  // The demo plugin seeds the schedule in `start`, which the host does not wait for.
   await host.bureau.plugins.ready();
   return host;
 }

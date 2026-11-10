@@ -74,9 +74,6 @@ const FIXTURE_FILES: Record<string, string> = {
     dependencies: { '@fixture/build-tool': 'workspace:*' },
   }),
   'internal/typescript/base.json': '{}\n',
-  'applications/playground/published-versions.json': json({
-    lastPublishedVersions: { '@lostgradient/cinder': '1.0.0' },
-  }),
   'scripts/outside-the-closure.ts': 'export {};\n',
 };
 
@@ -159,7 +156,6 @@ const base = await commitBase();
 
 const touchedPathCases = [
   ['applications/playground/src/page.ts', 1],
-  ['applications/playground/published-versions.json', 1],
   ['packages/direct/src/index.ts', 1],
   ['packages/transitive/src/index.ts', 1],
   ['internal/typescript/base.json', 1],
@@ -326,16 +322,6 @@ describe('decideFromChanges', () => {
       closure,
     });
     expect(decision.build).toBe(false);
-  });
-
-  // The file is new on the first deployment after a version is recorded, and edited afterwards:
-  // both are a change to a playground source file, so neither needs a rule of its own.
-  test('builds when the published versions file is added or edited', () => {
-    const decision = decideFromChanges({
-      changedFiles: ['applications/playground/published-versions.json'],
-      closure,
-    });
-    expect(decision.build).toBe(true);
   });
 });
 

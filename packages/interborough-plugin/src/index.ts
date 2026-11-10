@@ -34,7 +34,7 @@ export type { GuardrailFamily } from './guardrail-family.ts';
 export type {
   PluginAgentListing,
   PluginGoalRequest,
-  PluginHostApi,
+  PluginHost,
   PluginScheduleDefinition,
 } from './host-api.ts';
 export type {

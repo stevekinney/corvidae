@@ -563,14 +563,14 @@ describe('the skills', () => {
     await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     const [update] = updatesOf(served);
-    expect(update?.params['definition']).toMatchObject({ allowedSkills: ['summarize'] });
+    expect(update?.params['definition']).toMatchObject({ skills: ['summarize'] });
   });
 
   test('withdraws the last skill as an empty list, which grants none', async () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ allowedSkills: ['summarize'] }),
+      detailWith({ skills: ['summarize'] }),
     );
     const { findByRole } = mount();
 
@@ -581,12 +581,12 @@ describe('the skills', () => {
     await waitFor(() => expect(save).toHaveProperty('disabled', false));
     await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ allowedSkills: [] });
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ skills: [] });
   });
 
   test('lets a skill the file names be withdrawn once its source is untrusted, and not granted back', async () => {
     landAt('/agents/researcher?tab=access');
-    serve({}, detailWith({ allowedSkills: ['deploy'] }));
+    serve({}, detailWith({ skills: ['deploy'] }));
     const { findByRole } = mount();
 
     const box = await findByRole('checkbox', { name: 'deploy' });
@@ -601,7 +601,7 @@ describe('the skills', () => {
     landAt('/agents/researcher?tab=access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ allowedSkills: ['gone', 'summarize'] }),
+      detailWith({ skills: ['gone', 'summarize'] }),
       [],
     );
     const { container, findByRole, queryByText } = mount();
@@ -619,7 +619,7 @@ describe('the skills', () => {
     await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
-      allowedSkills: ['summarize'],
+      skills: ['summarize'],
     });
   });
 

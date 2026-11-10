@@ -482,7 +482,8 @@ describe('a stored snapshot whose definition is not valid', () => {
       }),
     );
     const loaded = await store.load('helper', 'aa');
-    // The old keys are dropped, and the new fields take their defaults: the run still resumes.
+    // The old keys are dropped, and the new fields take their defaults: the run still resumes. The
+    // old `skills` descriptor list is not read as the skills a run may activate (COR-2139).
     expect(loaded?.definition).toEqual({
       name: 'Helper',
       description: 'Helps',

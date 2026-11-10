@@ -5,9 +5,9 @@ const schema = {
   type: 'object',
   properties: {
     variant: {
-      enum: ['h1', 'h2', 'h3', 'h4', 'h5', 'caption', 'body'],
+      enum: ['display', 'h1', 'h2', 'h3', 'h4', 'h5', 'caption', 'body'],
       description:
-        'Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs.',
+        'Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs.',
       default: 'body',
     },
     as: {

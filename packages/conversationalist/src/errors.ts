@@ -51,9 +51,15 @@ export class ConversationalistError extends Error {
     this.cause = options?.cause;
 
     // Maintain proper stack trace in V8 environments
-    if (Error.captureStackTrace) {
-      Error.captureStackTrace(this, ConversationalistError);
-    }
+    // `captureStackTrace` is a V8 extension that the DOM and ES libraries do not declare, and
+    // the browser type-check of a consumer reads this file without Node's or Bun's types.
+    const { captureStackTrace } = Error as {
+      captureStackTrace?: (
+        target: object,
+        constructorOpt?: new (...parameters: never[]) => unknown,
+      ) => void;
+    };
+    captureStackTrace?.call(Error, this, ConversationalistError);
   }
 
   /**

@@ -7,7 +7,8 @@ Everything it contributes answers from a script, so no model is called and no pr
 - **Agents**: `demo:assistant`, `demo:tool-runner`, `demo:request-human-input`, `demo:echo`, `demo:model-switcher`, `demo:internal`, `demo:release-helper`, and `demo:changelog-writer`. `demo:tool-runner` looks an order up, then asks to refund it and stops until an operator approves.
 - **Tools**: `demo:lookup-order` (read-only) and `demo:issue-refund` (changes something, so an operator approves each call). An agent file lists them under `tools`.
 - **Validators**: `demo:accepts-any-answer` passes every answer, and `demo:never-passes` waits until its goal is cancelled.
-- **A goal and a schedule**: the `seeded-goal` goal (it names `demo:accepts-any-answer`) and the `Daily summary` schedule (it runs `demo:assistant`), both created in `afterStart`.
+- **An interceptor set**: `demo:audit` applies to every agent, and its `onStep` hook (declared `replay: 'effectful'`) writes each step's usage, tool call ids and tool names to the plugin's storage under `run:<runId>:step:<n>`, so a step a recovered run replays overwrites its entry. The worked example in the [authoring README](../../packages/interborough-plugin/README.md) is this set.
+- **A goal and a schedule**: the `seeded-goal` goal (it names `demo:accepts-any-answer`) and the `Daily summary` schedule (it runs `demo:assistant`), both created in `start`.
 
 ## The approval secret
 
@@ -18,10 +19,10 @@ The plugin declares the Bungalow secret `demo-approval-secret` as `generated`. I
 
 ## The seeded schedule and goal
 
-`afterStart` calls `seedDemo` with the plugin's scoped storage. The schedule's identifier is recorded under `plugin:demo:seeded-schedule`, and every change to that record is a conditional write, so starts that overlap, in one process or in two hosts over one database, create the schedule and the goal once. An operator who renames, edits, or deletes the schedule does not get a second one on the next start. A seeding failure marks the plugin failed and the host keeps running.
+`start` calls `seedDemo` with the plugin's scoped storage. The schedule's identifier is recorded under `plugin:demo:seeded-schedule`, and every change to that record is a conditional write, so starts that overlap, in one process or in two hosts over one database, create the schedule and the goal once. An operator who renames, edits, or deletes the schedule does not get a second one on the next start. A seeding failure marks the plugin failed and the host keeps running.
 
 `createDemoPlugin({ seedOnStart: false })` builds the plugin without that step, for a test that controls when seeding runs.
 
 ## Tests
 
-`src/plugin.test.ts` runs the plugin conformance suite and checks the plugin against a real Bureau. `src/seed-schedule.test.ts` crosses every starting state and failure of the seed with a restart. Refresh the committed identities after a schema change with `bun scripts/check-plugin-identities.ts --write plugins/demo`.
+`src/audit.test.ts` covers the audit set: one entry per step, none added by a replay. `src/plugin.test.ts` runs the plugin conformance suite and checks the plugin against a real Bureau. `src/seed-schedule.test.ts` crosses every starting state and failure of the seed with a restart. Refresh the committed identities after a schema change with `bun scripts/check-plugin-identities.ts --write plugins/demo`.
