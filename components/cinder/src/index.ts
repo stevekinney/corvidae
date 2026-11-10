@@ -610,6 +610,9 @@ export type {
   KanbanBoardProps,
 } from './components/kanban-board/index.ts';
 
+export { default as KeyFacts } from './components/key-facts/index.ts';
+export type { KeyFact, KeyFactsProps } from './components/key-facts/index.ts';
+
 export { default as Kbd } from './components/kbd/index.ts';
 export type { KbdProps } from './components/kbd/index.ts';
 
@@ -1049,6 +1052,9 @@ export type {
 
 export { default as Spinner } from './components/spinner/index.ts';
 export type { SpinnerProps, SpinnerSize, SpinnerVariant } from './components/spinner/index.ts';
+
+export { default as Spotlight } from './components/spotlight/index.ts';
+export type { SpotlightProps } from './components/spotlight/index.ts';
 
 export { default as SpeedDial } from './components/speed-dial/index.ts';
 export type {

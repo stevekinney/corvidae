@@ -50,6 +50,7 @@ import spectrogramExamplesJson from '../components/spectrogram/spectrogram.examp
 import spectrumChartExamplesJson from '../components/spectrum-chart/spectrum-chart.examples.json' with { type: 'json' };
 import speedDialExamplesJson from '../components/speed-dial/speed-dial.examples.json' with { type: 'json' };
 import spinnerExamplesJson from '../components/spinner/spinner.examples.json' with { type: 'json' };
+import spotlightExamplesJson from '../components/spotlight/spotlight.examples.json' with { type: 'json' };
 import stackExamplesJson from '../components/stack/stack.examples.json' with { type: 'json' };
 import stackedListItemExamplesJson from '../components/stacked-list-item/stacked-list-item.examples.json' with { type: 'json' };
 import staleRegionExamplesJson from '../components/stale-region/stale-region.examples.json' with { type: 'json' };
@@ -182,6 +183,8 @@ export const spectrumChartExamples = spectrumChartExamplesJson;
 export const speedDialExamples = speedDialExamplesJson;
 /** Code examples for this component. */
 export const spinnerExamples = spinnerExamplesJson;
+/** Code examples for this component. */
+export const spotlightExamples = spotlightExamplesJson;
 /** Code examples for this component. */
 export const stackExamples = stackExamplesJson;
 /** Code examples for this component. */

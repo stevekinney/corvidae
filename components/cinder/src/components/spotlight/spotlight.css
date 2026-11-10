@@ -1,0 +1,31 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SPOTLIGHT
+ *
+ * The one focal value of a screen: display size, default text colour (never the accent), with a
+ * label-size caveat directly under it. Liveness is a status dot and word above the value.
+ * ======================================== */
+
+  .cinder-spotlight {
+    display: grid;
+    gap: var(--cinder-space-1);
+    justify-items: start;
+  }
+
+  .cinder-spotlight__value {
+    margin: 0;
+    font-size: var(--cinder-text-4xl);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-default);
+    text-wrap: balance;
+  }
+
+  .cinder-spotlight__caveat {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+}
