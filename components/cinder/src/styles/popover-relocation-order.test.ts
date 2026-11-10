@@ -40,7 +40,8 @@ describe('popover surface stylesheet', () => {
         absolute: true,
       })) {
         if (file.endsWith('popover-relocation-order.test.ts')) continue;
-        if ((await Bun.file(file).text()).includes('popover-surface.css')) importers.push(file);
+        const text = await Bun.file(file).text();
+        if (text.includes('popover-surface.css')) importers.push(file);
       }
     }
     expect(importers).toEqual([componentsStylesheet]);
