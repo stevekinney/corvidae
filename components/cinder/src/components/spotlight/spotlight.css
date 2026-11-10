@@ -3,8 +3,8 @@
   /* ========================================
  * SPOTLIGHT
  *
- * The one focal value of a screen: display size, default text colour (never the accent), with a
- * label-size caveat directly under it. Liveness is a status dot and word above the value.
+ * The one focal value of a screen: 32px bold, default text colour (never the accent), with a
+ * caveat line (14px, warning text) directly under it. Liveness is a status dot and word above the value.
  * ======================================== */
 
   .cinder-spotlight {
@@ -15,9 +15,9 @@
 
   .cinder-spotlight__value {
     margin: 0;
-    font-size: var(--cinder-text-4xl);
-    font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-tight);
+    font-size: 2rem;
+    font-weight: var(--cinder-font-bold);
+    line-height: 1.1;
     font-variant-numeric: tabular-nums;
     color: var(--cinder-text-default);
     text-wrap: balance;
@@ -25,7 +25,12 @@
 
   .cinder-spotlight__caveat {
     margin: 0;
-    font-size: var(--cinder-text-xs);
-    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-base);
+    color: var(--cinder-status-warning-text);
+  }
+
+  /* The liveness word sits at label size (16px). */
+  .cinder-spotlight__status {
+    font-size: var(--cinder-text-lg);
   }
 }

@@ -10,7 +10,7 @@ export type SpotlightProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   status?: StatusDotStatus;
   /** The word beside the status dot, such as "Live" or "Paused". Left unset, a `status` draws the word its tone implies. */
   statusLabel?: string;
-  /** Staleness or a caution, such as "Updated 12 min ago", drawn at label size directly under the value. */
+  /** Staleness or a caution, such as "Updated 12 min ago", drawn in warning text directly under the value. */
   caveat?: Snippet;
   /** Custom class merged with `.cinder-spotlight`. */
   class?: string;

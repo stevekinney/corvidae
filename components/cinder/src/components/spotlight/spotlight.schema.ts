@@ -42,7 +42,7 @@ const schema = {
         name: 'caveat',
         reason: 'function-or-snippet',
         description:
-          'Staleness or a caution, such as "Updated 12 min ago", drawn at label size directly under the value.',
+          'Staleness or a caution, such as "Updated 12 min ago", drawn in warning text directly under the value.',
       },
     ],
   },

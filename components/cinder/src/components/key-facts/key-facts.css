@@ -10,7 +10,7 @@
   .cinder-key-facts {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--cinder-space-1) var(--cinder-space-4);
+    gap: var(--cinder-space-1-5) 1.125rem;
     margin: 0;
     padding: 0;
     list-style: none;

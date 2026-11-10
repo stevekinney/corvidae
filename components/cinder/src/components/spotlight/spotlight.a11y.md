@@ -8,7 +8,7 @@ Complete this record before merge. Automated checks can detect malformed APIs, m
 - Review outcome: Final review complete—approved.
 - Nearest neighbours: Statistic, StatisticGroup, StatusDot.
 - Why this component exists: A screen reads best with one focal value. Statistic is a labelled tile in a grid, so nothing on a screen is the first thing to read. Spotlight is that one value at display size, in neutral text.
-- Findings and resolutions: The value uses the default text colour, never the accent, which is reserved for actions. Liveness is a status dot with a word, never colour alone. A caveat directly under the value shows staleness at label size.
+- Findings and resolutions: The value uses the default text colour, never the accent, which is reserved for actions. Liveness is a status dot with a word, never colour alone. A caveat directly under the value shows staleness in warning text.
 
 ## Novel interaction accessibility review
 
