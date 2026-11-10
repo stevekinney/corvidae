@@ -154,6 +154,10 @@ describe('PageHeader', () => {
     expect(declared('--cinder-text-page-title-large')).toBe('1.75rem');
     expect(declared('--cinder-text-display')).toBe('var(--cinder-text-5xl)');
     expect(declared('--cinder-tracking-display')).toBe('-0.02em');
+    expect(declared('--cinder-text-heading')).toBe('var(--cinder-text-2xl)');
+    expect(declared('--cinder-text-2xl')).toBe('1.25rem');
+    expect(declared('--cinder-leading-heading')).toBe('1.2');
+    expect(declared('--cinder-font-heading')).toBe('650');
   });
 
   test('a header with other actions beside the create "+" still drops them to their own row', () => {

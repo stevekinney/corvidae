@@ -679,6 +679,19 @@
       }
     }
   },
+  "font.heading": {
+    "$type": "fontWeight",
+    "$value": 650,
+    "$description": "Heading font weight (650), between semibold and bold, for headings set at the heading type role.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-font-heading",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    }
+  },
   "font.bold": {
     "$type": "fontWeight",
     "$value": 700,
@@ -854,6 +867,19 @@
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-leading-tight",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "number"
+  },
+  "leading.heading": {
+    "$value": 1.2,
+    "$description": "Heading line height (1.2), for headings set at the heading type role.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-leading-heading",
         "public": true,
         "category": "typography",
         "cssRecipe": null
@@ -2249,6 +2275,19 @@
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-text-display",
+        "public": true,
+        "category": "typography",
+        "cssRecipe": null
+      }
+    },
+    "$type": "dimension"
+  },
+  "type-role.heading": {
+    "$value": { "value": 1.25, "unit": "rem" },
+    "$description": "Heading size (20px), for a heading below the page title; set it at --cinder-font-heading weight, --cinder-leading-heading line height and --cinder-tracking-tight.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-text-heading",
         "public": true,
         "category": "typography",
         "cssRecipe": null

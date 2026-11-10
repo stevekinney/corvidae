@@ -2518,6 +2518,53 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'font.heading',
+      cssProperty: '--cinder-font-heading',
+      category: 'typography',
+      component: null,
+      description:
+        'Heading font weight (650), between semibold and bold, for headings set at the heading type role.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'font-weight',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'font.heading' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'font.heading',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'fontWeight',
+              origin: 'local',
+              declaredAt: { document: 'sets/foundation.tokens.json', path: 'font.heading' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'font.bold',
       cssProperty: '--cinder-font-bold',
       category: 'typography',
@@ -3148,6 +3195,52 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 kind: 'set',
                 layer: 'sets.foundation',
                 path: 'leading.tight',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'number',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/foundation.tokens.json', path: 'leading' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'leading.heading',
+      cssProperty: '--cinder-leading-heading',
+      category: 'typography',
+      component: null,
+      description: 'Heading line height (1.2), for headings set at the heading type role.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'line-height',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'leading.heading' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'leading.heading',
                 via: 'declared',
               },
             ],
@@ -10455,6 +10548,53 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               declaredAt: { document: 'sets/semantic.tokens.json', path: 'type-role' },
             },
             inputs: { aliases: ['font.size.5xl'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'type-role.heading',
+      cssProperty: '--cinder-text-heading',
+      category: 'typography',
+      component: null,
+      description:
+        'Heading size (20px), for a heading below the page title; set it at --cinder-font-heading weight, --cinder-leading-heading line height and --cinder-tracking-tight.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'font-size',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'type-role.heading' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'type-role.heading',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'type-role' },
+            },
+            inputs: { aliases: ['font.size.2xl'], refs: [], extends: [], recipes: [] },
           },
         },
       ],

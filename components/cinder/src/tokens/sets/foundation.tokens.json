@@ -763,6 +763,19 @@
         }
       }
     },
+    "heading": {
+      "$type": "fontWeight",
+      "$value": 650,
+      "$description": "Heading font weight (650), between semibold and bold, for headings set at the heading type role.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-font-heading",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
     "bold": {
       "$type": "fontWeight",
       "$value": 700,
@@ -967,6 +980,18 @@
       "$extensions": {
         "com.lostgradient.cinder": {
           "cssProperty": "--cinder-leading-tight",
+          "public": true,
+          "category": "typography",
+          "cssRecipe": null
+        }
+      }
+    },
+    "heading": {
+      "$value": 1.2,
+      "$description": "Heading line height (1.2), for headings set at the heading type role.",
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssProperty": "--cinder-leading-heading",
           "public": true,
           "category": "typography",
           "cssRecipe": null
