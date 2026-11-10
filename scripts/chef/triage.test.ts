@@ -6,6 +6,7 @@ import {
   doneFindings,
   draftComment,
   GitError,
+  isBlocking,
   isExecutionReport,
   parseSections,
   pathOf,
@@ -88,9 +89,48 @@ describe('readyFindings', () => {
       .replace('Nothing.', '<!-- fill me in -->');
     const findings = readyFindings(body);
     expect(findings.map((finding) => finding.message)).toEqual([
-      'The "out of scope" section is empty.',
-      'The "constraints" section is missing.',
+      'The template\'s "out of scope" section is empty.',
+      'The template\'s "constraints" section is missing.',
     ]);
+    expect(findings.every((finding) => !isBlocking(finding))).toBe(true);
+  });
+
+  test('only the Definition of Ready blocks: a section it requires is a blocking finding', () => {
+    const body = goodBody.replace(/## Delivery boundary\n[\s\S]*$/, '');
+    const blocking = readyFindings(body).filter(isBlocking);
+    expect(blocking.map((finding) => finding.message)).toEqual([
+      'The "delivery boundary" section is missing.',
+    ]);
+  });
+
+  test('an issue written before the template, meeting the Definition of Ready, is kept', () => {
+    // The shape of COR-2102 on 2026-11-09: Brief, Files, unnumbered binary criteria, Verification
+    // and a Delivery boundary, with no Current behavior, Decisions, Out of scope or Constraints.
+    const body = [
+      '## Brief',
+      '',
+      'One taint threshold for every scan path.',
+      '',
+      '## Files',
+      '',
+      '- `scripts/chef/a.ts`',
+      '',
+      '## Acceptance criteria',
+      '',
+      '- [ ] Every scan path reads the one threshold.',
+      '',
+      '## Verification',
+      '',
+      '- `bun test scripts/chef/a.test.ts`',
+      '',
+      '## Delivery boundary',
+      '',
+      'A merged pull request.',
+    ].join('\n');
+    const findings = readyFindings(body);
+    expect(findings.filter(isBlocking)).toEqual([]);
+    expect(codes(findings)).toContain('criteria-unnumbered');
+    expect(proposeAction('ready', 'Backlog', findings)).toBe('keep');
   });
 
   test('criteria must be numbered from AC1 in order', () => {

@@ -27,7 +27,7 @@
 // (ready) and premise-stale and already-done (stale) and prints the answers as advisory; they never
 // change a finding, an action or the exit code. The default is off.
 //
-// Exit codes: 0 no findings, 1 findings (or a gh or git read failed, named in the output), 2 invalid
+// Exit codes: 0 no blocking findings (advisory template-shape notes do not count), 1 blocking findings (or a gh or git read failed, named in the output), 2 invalid
 // usage, 3 Linear unavailable.
 
 import { existsSync } from 'node:fs';
@@ -56,6 +56,17 @@ export type Action = 'keep' | 'needs-refinement' | 'propose-close' | 'propose-ba
 export interface Finding {
   code: string;
   message: string;
+  /**
+   * `advisory` marks a gap in the ticket template's shape that the Definition of Ready does not
+   * require (references/linear-policy.md). It is reported, but it never changes the proposed action
+   * or the exit code.
+   */
+  severity?: 'advisory';
+}
+
+/** Whether a finding blocks: every finding not marked advisory. */
+export function isBlocking(finding: Finding): boolean {
+  return finding.severity !== 'advisory';
 }
 
 export interface Advisory {
@@ -107,17 +118,24 @@ const TEAM = 'COR';
 
 // Markdown reading ------------------------------------------------------------------------------
 
-/** The sections the ticket template requires, by lower-case heading. */
-export const requiredSections = [
+/**
+ * The sections the Definition of Ready requires, by lower-case heading: binary acceptance criteria,
+ * exact verification commands, and a delivery boundary (references/linear-policy.md).
+ */
+export const requiredSections = ['acceptance criteria', 'verification', 'delivery boundary'];
+
+/**
+ * The ticket template's other sections. They help a worker, but the Definition of Ready does not
+ * require them, so a missing or empty one is advisory. "Decisions" can be absent when the work
+ * raised no question; an open question is caught by the marker checks wherever it is written.
+ */
+export const templateSections = [
   'brief',
   'current behavior',
-  'acceptance criteria',
   'decisions',
   'out of scope',
   'constraints',
   'files',
-  'verification',
-  'delivery boundary',
 ];
 
 /** The level-2 sections of a description by lower-case heading, with HTML comments removed. */
@@ -184,6 +202,15 @@ function sectionFindings(sections: Map<string, string>): Finding[] {
     else if (body === '')
       findings.push({ code: 'section-empty', message: `The "${name}" section is empty.` });
   }
+  for (const name of templateSections) {
+    const body = sections.get(name);
+    if (body === undefined || body === '')
+      findings.push({
+        code: body === undefined ? 'template-section-missing' : 'template-section-empty',
+        message: `The template's "${name}" section is ${body === undefined ? 'missing' : 'empty'}.`,
+        severity: 'advisory',
+      });
+  }
   return findings;
 }
 
@@ -197,6 +224,7 @@ function criteriaFindings(criteria: string | undefined): Finding[] {
       {
         code: 'criteria-unnumbered',
         message: 'Acceptance criteria are not numbered AC1, AC2, ….',
+        severity: 'advisory',
       },
     ];
   const inOrder = numbers.every((value, index) => value === index + 1);
@@ -204,6 +232,7 @@ function criteriaFindings(criteria: string | undefined): Finding[] {
     ? []
     : [
         {
+          severity: 'advisory',
           code: 'criteria-sequence',
           message: `Acceptance criteria are numbered ${numbers.map((n) => `AC${n}`).join(', ')}, not AC1.. in order.`,
         },
@@ -424,7 +453,8 @@ export function doneFindings(
 const premiseCodes = new Set(['missing-file', 'missing-symbol', 'referenced-closed']);
 
 /** The proposed action for an issue's findings; the coordinator applies it, with approval. */
-export function proposeAction(command: Command, state: string, findings: Finding[]): Action {
+export function proposeAction(command: Command, state: string, all: Finding[]): Action {
+  const findings = all.filter(isBlocking);
   if (findings.length === 0) return 'keep';
   const ready = state.trim().toLowerCase() === 'ready';
   if (command === 'stale') {
@@ -451,7 +481,7 @@ export function draftComment(
   findings: Finding[],
 ): string | undefined {
   if (action !== 'needs-refinement' && action !== 'propose-backlog') return undefined;
-  const lines = findings.map((finding) => `- ${finding.message}`);
+  const lines = findings.filter(isBlocking).map((finding) => `- ${finding.message}`);
   const ask =
     action === 'propose-backlog'
       ? 'Proposing a move back to Backlog until these are resolved.'
@@ -639,10 +669,12 @@ function summarizeIssue(
 }
 
 function renderReport(report: IssueReport): string[] {
-  const count = report.findings.length;
+  const count = report.findings.filter(isBlocking).length;
   return [
     `${report.identifier} [${report.state}] ${report.action} (${count} finding${count === 1 ? '' : 's'}) ${report.title}`,
-    ...report.findings.map((finding) => `  - ${finding.code}: ${finding.message}`),
+    ...report.findings.map(
+      (finding) => `  ${isBlocking(finding) ? '-' : '·'} ${finding.code}: ${finding.message}`,
+    ),
     ...report.advisory.map(
       (entry) =>
         `  ~ ${entry.predicate}: ${entry.decision ?? 'no answer'}${entry.confidence === null ? '' : ` (${entry.confidence.toFixed(2)})`} [advisory, ${entry.outcome}]`,
@@ -796,7 +828,7 @@ export async function run(
       return failure(`A read failed, so no triage was made: ${error.message}`, 1);
     throw error;
   }
-  const flagged = reports.filter((report) => report.findings.length > 0);
+  const flagged = reports.filter((report) => report.findings.some(isBlocking));
   const code = flagged.length === 0 ? 0 : 1;
   if (options.json)
     return {
