@@ -20,6 +20,7 @@ import {
   hashAgentOverrides,
   legacyAgentOverrideVersionKey,
 } from './agent-override-store';
+import { agentOverridesOutputSchema, overridesView } from './http/management/agent-overrides-wire';
 import type { BureauPluginSecrets } from './plugins/plugin-types';
 import { runTask } from './test';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
@@ -314,6 +315,10 @@ describe('a stored override record without interceptors (COR-2253)', () => {
       overrides,
     });
     expect(Object.hasOwn(current.overrides, 'interceptors')).toBe(false);
+    // On the wire every key is present, so a record from before the key shows it as not overridden.
+    const view = overridesView(current.overrides);
+    expect(view).toMatchObject({ instructions: 'Reply briefly.', interceptors: null });
+    expect(agentOverridesOutputSchema.parse(view)).toEqual(view);
   });
 
   it('keeps the hash of an override set that names no interceptors', () => {
