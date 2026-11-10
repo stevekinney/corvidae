@@ -21,8 +21,10 @@
    * table fits its container at every width (Cinder's `fit`, row 16c): a
    * column whose content never wraps (a status badge with its icon, a
    * shortened ID with its copy button, a time) is a fixed rem width that holds
-   * it, so the ID is never cut a second time; Type and Revision take a share;
-   * Tags take what is left, and a long tag ends with an ellipsis.
+   * it, so the ID is never cut a second time; Revision holds a shortened
+   * revision, and its comparison badge ends with an ellipsis beside its own
+   * tooltip; Type and Tags share what is left, and each ends a long value with
+   * an ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -129,13 +131,13 @@
 <Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
-    <col style="width: 8rem" />
-    <col style="width: 10.5rem" />
-    <col style="width: 10%" />
-    <col style="width: 10%" />
+    <col style="width: 7rem" />
+    <col style="width: 10.25rem" />
     <col />
-    <col style="width: 5rem" />
-    <col style="width: 5rem" />
+    <col style="width: 5.5rem" />
+    <col />
+    <col style="width: 4.75rem" />
+    <col style="width: 4.75rem" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
