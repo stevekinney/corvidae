@@ -1,8 +1,8 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @layer cinder.components {
   .cinder-page-header {
-    /* The heading answers to the room it has, not the viewport's, so a header in a narrow pane
-       wraps like one on a phone. */
+    /* The heading answers to the room it has, not the viewport's, so the title of a header in a
+       narrow pane truncates sooner. */
     container-type: inline-size;
     container-name: cinder-page-header;
     min-width: 0;
@@ -115,7 +115,6 @@
        header taller than its title, and they stay beside it at any width: the title shrinks
        and truncates instead. */
     font-size: var(--cinder-text-xl);
-    font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-tight);
     margin-block: calc((1lh - var(--cinder-control-height-xs)) / 2);
   }

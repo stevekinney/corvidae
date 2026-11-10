@@ -22,11 +22,11 @@
 
 {#snippet content()}
   {#if kind === 'card'}
-    <Card title="Title" actions={withActions ? headerButton : undefined}>
+    <Card title="Title" {...withActions ? { actions: headerButton } : {}}>
       {#snippet children()}{@render bodyButton()}{/snippet}
     </Card>
   {:else}
-    <SectionHeading title="Title" actions={withActions ? headerButton : undefined} />
+    <SectionHeading title="Title" {...withActions ? { actions: headerButton } : {}} />
     {@render bodyButton()}
   {/if}
 {/snippet}
