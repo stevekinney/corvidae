@@ -538,9 +538,6 @@ export type { GridListItemProps } from './components/grid-list-item/index.ts';
 export { default as HoverCard } from './components/hover-card/index.ts';
 export type { HoverCardPlacement, HoverCardProps } from './components/hover-card/index.ts';
 
-export { default as HostProvider } from './components/host-provider/index.ts';
-export type { HostPlatform, HostProviderProps } from './components/host-provider/index.ts';
-
 export { default as Image } from './components/image/index.ts';
 export type { ImageFit, ImageProps, ImageSize } from './components/image/index.ts';
 

@@ -264,7 +264,6 @@ const SIDEBAR_BASELINE = [
   'grid',
   'grid-list',
   'guidance-region',
-  'host-provider',
   'hover-card',
   'image',
   'inline-confirm',
@@ -465,8 +464,7 @@ describe('discoverSidebarComponents', () => {
     // Container and Collapsible layout/disclosure primitives bring it to 89;
     // the overlay variants (alert-dialog, context-menu, hover-card) plus
     // ContextMenu and inline-command additions landed the deduped sidebar at
-    // 92. Promoting Timeline out of experimental/ into the main tree — it
-    // ships playground examples, so it now surfaces in the sidebar — landed it
+    // 92. Timeline ships playground examples, so it surfaces in the sidebar, landing it
     // at 93. The Playwright-sweep stabilization (task 27cd940c) added the four
     // missing examples for standalone components that were rendering "No
     // examples found" and timing out the sweep — status-dot, message,
@@ -661,11 +659,10 @@ describe('discoverComponentFilePaths', () => {
     expect(namesFromPaths).toEqual(components);
   });
 
-  it('excludes underscore-prefixed, experimental, and icons entries', async () => {
+  it('excludes underscore-prefixed and icons entries', async () => {
     const filePaths = await discoverComponentFilePaths(COMPONENTS_DIR);
     for (const filePath of filePaths) {
       expect(basename(filePath).startsWith('_')).toBe(false);
-      expect(filePath).not.toContain('/experimental/');
       expect(filePath).not.toContain('/icons/');
     }
   });

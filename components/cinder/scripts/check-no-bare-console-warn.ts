@@ -16,7 +16,7 @@
  * (svelte-check covers them, not oxlint), so a
  * `no-restricted-syntax` rule would never see the component source where the
  * warnings live. A scanned grep with an explicit allow-list is the simplest
- * durable enforcement, matching `check-no-cycle-imports.ts`. Wired into
+ * durable enforcement. Wired into
  * `bun run lint` (and therefore CI).
  */
 

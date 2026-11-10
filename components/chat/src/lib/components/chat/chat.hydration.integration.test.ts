@@ -17,8 +17,8 @@
  *
  * This harness compiles server and client from the SAME workspace source, so it
  * structurally cannot exercise either packaged-artifact divergence. The durable
- * regression is the packed-tarball, real-SvelteKit-dev-server, real-browser
- * `/chat-layout` assertion in `components/cinder/scripts/validate-consumers.ts`.
+ * regression is a packed-tarball, real-SvelteKit-dev-server, real-browser `/chat-layout`
+ * assertion.
  */
 import { afterAll, describe, expect, test } from 'bun:test';
 

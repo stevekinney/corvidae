@@ -775,7 +775,7 @@ The configuration reaches the definition whole, so a field `ProviderConfiguratio
 
 ### Testing a plugin (`@lostgradient/bureau/testing`)
 
-`createPluginTestHost(plugin, { configuration })` starts a Bureau over memory storage that loads only `plugin`, with a value for every secret it declares, scripted models, and the agent files in the `agents/` directory of the plugin's `content` as its read-only layer. It returns `{ bureau, plugins, dispose }`; pass it to `pluginContract` from `@lostgradient/interborough-plugin/testing`. The `workflows/` and `skills/` directories of `content` are not loaded.
+`createPluginTestHost(plugin, { configuration })` starts a Bureau over memory storage that loads only `plugin`, with a value for every secret it declares, scripted models, and the agent files in the `agents/` directory of the plugin's `content` as its read-only layer. It returns `{ bureau, plugins, agents, scriptedRun, dispose }`; `scriptedRun({ scenario, interceptors })` runs one file agent that lists the named interceptors through a scripted model (`answer` replies once, `tool` calls a read-only tool and then answers, `failure` throws) and settles with the run's finish reason, which is how the conformance suite runs a plugin's hook points. Pass it to `pluginContract` from `@lostgradient/interborough-plugin/testing`. The `workflows/` and `skills/` directories of `content` are not loaded.
 
 ### Notifications
 

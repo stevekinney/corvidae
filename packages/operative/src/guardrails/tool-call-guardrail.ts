@@ -88,8 +88,9 @@ function decisive(findings: readonly Finding[]): Finding | undefined {
  * - `'tripwire'`: throws a `GuardrailTripwireError` with phase `'tool-call'`, which halts the run
  *   before any call of the step runs.
  *
- * A validator that throws or rejects is contained, as a detector is in the input pipeline: it finds
- * nothing. Each validator receives its own copy of a call, so it cannot change what runs. Throws
+ * A validator that throws or rejects fails closed (COR-2300): it is a finding of category
+ * `detector-failure`, which blocks the call (a `tripwire` validator halts the run). A plugin
+ * validator whose plugin needs setup is such a failure. Each validator receives its own copy of a call, so it cannot change what runs. Throws
  * `TypeError` for an action that is not `block`, `warn` or `tripwire`.
  */
 export function createToolCallGuardrail(
@@ -121,23 +122,33 @@ export function createToolCallGuardrail(
     };
 
     const judge = async (call: ToolCall): Promise<Finding | undefined> => {
-      const settled = await Promise.allSettled(
-        validators.map(async (validator) => {
-          const judged: ToolCallValidatorCall = {
-            id: call.id,
-            name: call.name,
-            arguments: structuredClone(call.arguments),
-          };
-          return { validator, result: await validator.validate(judged, validatorContext) };
+      const findings = await Promise.all(
+        validators.map(async (validator): Promise<Finding | undefined> => {
+          const action = validator.action ?? groupAction;
+          try {
+            const judged: ToolCallValidatorCall = {
+              id: call.id,
+              name: call.name,
+              arguments: structuredClone(call.arguments),
+            };
+            const result = await validator.validate(judged, validatorContext);
+            return result.valid ? undefined : { validator, result, action };
+          } catch (error) {
+            // Fail closed (COR-2300): nothing judged the call, so a warning would run it.
+            return {
+              validator,
+              action: action === 'warn' ? 'block' : action,
+              result: {
+                valid: false,
+                confidence: 1,
+                category: 'detector-failure',
+                detail: `Validator "${validator.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            };
+          }
         }),
       );
-      return decisive(
-        settled.flatMap((outcome) =>
-          outcome.status === 'fulfilled' && !outcome.value.result.valid
-            ? [{ ...outcome.value, action: outcome.value.validator.action ?? groupAction }]
-            : [],
-        ),
-      );
+      return decisive(findings.filter((finding) => finding !== undefined));
     };
     const verdicts = await Promise.all(
       calls.map(async (call) => ({ call, finding: await judge(call) })),

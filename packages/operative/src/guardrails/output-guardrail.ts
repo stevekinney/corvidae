@@ -4,6 +4,7 @@ import { GuardrailTripwireError } from '../errors';
 import type { GenerateResponse, StepContext, ValidateResponseHook } from '../types';
 import { inspectContent } from './inspectable-content';
 import type {
+  OutputGuardrailAction,
   OutputGuardrailOptions,
   OutputGuardrailTriggeredEvent,
   ValidationResult,
@@ -68,12 +69,17 @@ type Failure = {
   readonly target: number;
   readonly result: ValidationResult;
   readonly validatorName: string;
+  /** The validator threw: the guardrail fails closed (COR-2300). */
+  readonly failed?: true;
 };
 
 function highestConfidence(failures: readonly Failure[]): Failure | undefined {
   let top: Failure | undefined;
   for (const failure of failures) {
-    if (!top || failure.result.confidence > top.result.confidence) top = failure;
+    if (top?.failed === true) continue;
+    if (!top || failure.failed === true || failure.result.confidence > top.result.confidence) {
+      top = failure;
+    }
   }
   return top;
 }
@@ -100,14 +106,15 @@ function highestConfidence(failures: readonly Failure[]): Failure | undefined {
  * - `'tripwire'`: throws a `GuardrailTripwireError`, hard-halting the run right after
  *   post-processing flags the response (see `createGuardrails({ mode: 'tripwire' })`)
  *
- * Validator errors are caught via `Promise.allSettled` to prevent a broken validator
- * from crashing the agent loop. `redacted_thinking` parts carry no readable text and are not
+ * A validator that throws or rejects fails closed (COR-2300): it is a finding of category
+ * `detector-failure` that blocks the response whatever the action but `tripwire`, which halts the
+ * run. A plugin validator whose plugin needs setup is such a failure. `redacted_thinking` parts carry no readable text and are not
  * scanned.
  */
 export function createOutputGuardrail(options: OutputGuardrailOptions): ValidateResponseHook {
   const {
     validators,
-    action = 'block',
+    action: configuredAction = 'block',
     onTriggered,
     blockMessage = DEFAULT_BLOCK_MESSAGE,
   } = options;
@@ -128,23 +135,43 @@ export function createOutputGuardrail(options: OutputGuardrailOptions): Validate
     // Run every validator over the content and over each thinking part, in parallel.
     const thoughts = thinkingTextsOf(response);
     const targets = [{ index: -1, text: output }, ...thoughts];
-    const settled = await Promise.allSettled(
+    const settled = await Promise.all(
       targets.flatMap((target) =>
-        validators.map(async (validator) => ({
-          target: target.index,
-          result: await validator.validate(target.text, validatorContext),
-          validatorName: validator.name,
-        })),
+        validators.map(async (validator): Promise<Failure | undefined> => {
+          try {
+            const result = await validator.validate(target.text, validatorContext);
+            return result.valid
+              ? undefined
+              : { target: target.index, result, validatorName: validator.name };
+          } catch (error) {
+            return {
+              target: target.index,
+              validatorName: validator.name,
+              failed: true,
+              result: {
+                valid: false,
+                confidence: 1,
+                category: 'detector-failure',
+                detail: `Validator "${validator.name}" failed: ${error instanceof Error ? error.message : String(error)}`,
+              },
+            };
+          }
+        }),
       ),
     );
 
-    const failures = settled.flatMap((outcome) =>
-      outcome.status === 'fulfilled' && !outcome.value.result.valid ? [outcome.value] : [],
-    );
+    const failures = settled.filter((failure) => failure !== undefined);
     const contentFailure = highestConfidence(failures.filter((failure) => failure.target === -1));
     const topFailure = highestConfidence(failures);
 
     if (!topFailure) return;
+    // A validator that failed fails closed: nothing judged the response, so a warning or a
+    // redaction would let it through whole (COR-2300).
+    const failedValidator = failures.some((failure) => failure.failed === true);
+    const action: OutputGuardrailAction =
+      failedValidator && (configuredAction === 'warn' || configuredAction === 'redact')
+        ? 'block'
+        : configuredAction;
 
     const flagged =
       topFailure.target === -1

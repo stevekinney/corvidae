@@ -4,7 +4,9 @@
  * cannot import a workspace, and this script lives where Bureau and the plugin authoring package
  * resolve. The folder must be able to resolve its own imports (`check-plugin.ts` copies a plugin
  * into a scratch directory whose `node_modules` links the workspaces a plugin may use). The plugin
- * is `plugin.ts`'s default export. Prints each failed check and exits 1; exits 0 when the plugin
+ * is `plugin.ts`'s default export. It runs a scripted run for each hook point the plugin declares
+ * that the scripted host can reach (`PluginTestHost.scriptedRun`) and fails when a declared hook
+ * throws. Prints each failed check and exits 1; exits 0 when the plugin
  * conforms.
  */
 import { join, resolve } from 'node:path';

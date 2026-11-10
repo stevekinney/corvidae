@@ -207,7 +207,7 @@ describe('createInputGuardrail', () => {
       expect(onTriggered).toHaveBeenCalledTimes(1);
     });
 
-    it('continues sequential evaluation after a detector throws', async () => {
+    it('fails closed in sequential mode when a detector throws: the later detectors do not run', async () => {
       const broken: InputDetector = {
         name: 'broken',
         detect: async () => {
@@ -230,24 +230,34 @@ describe('createInputGuardrail', () => {
       const result = await hook(createMockStepContext());
 
       expect(result).toBeDefined();
-      expect(fallbackCalls).toHaveLength(1);
+      expect(fallbackCalls).toHaveLength(0);
     });
   });
 
   describe('error resilience', () => {
-    it('does not crash when a detector throws', async () => {
+    it('fails closed when a detector throws: the input is blocked, even under warn', async () => {
       const brokenDetector: InputDetector = {
         name: 'broken',
         detect: async () => {
           throw new Error('detector crash');
         },
       };
-      const hook = createInputGuardrail({ detectors: [brokenDetector] });
-
-      const context = createMockStepContext();
-      // Should not throw — detector errors are caught
-      const result = await hook(context);
-      expect(result).toBeUndefined();
+      const events: Array<{ category: string; action: string; detail?: string | undefined }> = [];
+      for (const action of ['block', 'warn', 'sanitize'] as const) {
+        const hook = createInputGuardrail({
+          detectors: [brokenDetector],
+          action,
+          onTriggered: (event) => events.push(event),
+        });
+        const result = await hook(createMockStepContext());
+        expect(result?.content).toContain('blocked by input guardrail');
+      }
+      expect(events.map((event) => [event.category, event.action])).toEqual([
+        ['detector-failure', 'block'],
+        ['detector-failure', 'block'],
+        ['detector-failure', 'sanitize'],
+      ]);
+      expect(events[0]!.detail).toContain('detector crash');
     });
 
     it('still works when some detectors throw and others trigger', async () => {

@@ -20,7 +20,6 @@
 <script lang="ts">
   import type { ModalProps } from './modal.types.ts';
   import { onDestroy } from 'svelte';
-  import { getHostContext } from '../../_internal/host-context.ts';
   import { trackKeyboardInset } from '../../_internal/keyboard-inset.ts';
   import { reducedMotionFadeIn } from '../../_internal/reduced-motion-fade.ts';
   import {
@@ -75,7 +74,6 @@
     onExitComplete,
   }: ModalProps = $props();
 
-  const host = getHostContext();
   const isChromeless = $derived(chrome === 'none');
 
   let dialogElement: HTMLDialogElement | undefined = $state();
@@ -333,10 +331,6 @@
         })}
       >
         {#if sheet}<div class="cinder-modal__grabber" aria-hidden="true"></div>{/if}
-        {#if host.isDesktop && !isChromeless && !sheet}<div
-            class="cinder-modal__drag-strip"
-            aria-hidden="true"
-          ></div>{/if}
         {#if !isChromeless}
           <div
             class="cinder-modal__header"

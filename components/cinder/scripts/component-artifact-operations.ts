@@ -92,11 +92,10 @@ export interface ComponentArtifacts {
 export async function generateArtifactsForComponent(
   component: DiscoveredComponent,
 ): Promise<ComponentArtifacts> {
-  const { directory, name, isExperimental } = component;
-  const depthToSrc = isExperimental ? 3 : 2;
+  const { directory, name } = component;
   const typesFilePath = join(directory, `${name}.types.ts`);
 
-  const schema = generateSchemaForComponent({ typesFilePath, componentName: name, depthToSrc });
+  const schema = generateSchemaForComponent({ typesFilePath, componentName: name });
   const variables = await generateVariablesForComponent({
     componentDirectory: directory,
     componentName: name,

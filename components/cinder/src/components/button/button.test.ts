@@ -5,6 +5,22 @@ const { cleanup, fireEvent, render } = await import('@testing-library/svelte');
 const { default: Button } = await import('./button.svelte');
 afterEach(cleanup);
 
+describe('Button shortcut', () => {
+  test('renders the hint inside the button, aria-hidden, keeping the label as the name', () => {
+    const { getByRole } = render(Button, { props: { label: 'Save', shortcut: ['Ctrl', 'S'] } });
+    const button = getByRole('button', { name: 'Save' });
+    const hint = button.querySelector('.cinder-button__shortcut');
+    expect(hint).not.toBeNull();
+    expect(hint?.getAttribute('aria-hidden')).toBe('true');
+    expect(hint?.querySelectorAll('kbd').length).toBe(2);
+  });
+
+  test('accepts a single key string', () => {
+    const { container } = render(Button, { props: { label: 'New', shortcut: 'N' } });
+    expect(container.querySelectorAll('.cinder-button kbd').length).toBe(1);
+  });
+});
+
 describe('Button rendering', () => {
   test('renders a <button> when no href is provided', () => {
     const { container } = render(Button, { props: { label: 'click me' } });

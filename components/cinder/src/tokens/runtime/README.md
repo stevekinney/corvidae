@@ -113,8 +113,6 @@ A saved Cinder Theme v1 envelope (`format: "com.lostgradient.cinder.theme"`) emb
 - `mergedContextDocument(sources, { theme, motion })` returns the merged source document for one context with aliases, `$extends`, descriptions and extensions intact. Portable DTCG export is built from it.
 - `renderThemeStylesheet(maps, { identity? })` writes the six evaluated maps as a complete standalone stylesheet in the `cinder-theme` layer. It uses the generator's selector and media skeleton (`stylesheet-skeleton.ts`, shared with `tokens-base.css`), restates every alias whose input changes in a block (custom properties substitute `var()` where they are declared), and throws `StylesheetError` for a property outside `--cinder-*` or a value that could end a declaration, add a rule or comment, or fetch a resource. The layer order it declares puts `cinder-theme` after every Cinder layer.
 
-`fixtures/tokens-consumer/` proves this through the public subpath only: `bun run --filter=@lostgradient/cinder validate:consumer` runs the browserless check and a Chromium computed-style comparison. The browserless half also runs in the default `test`.
-
 ## Data the runtime carries
 
 - `CINDER_BASE`: the immutable Cinder base. `resolver`, `documents` keyed by relative path, `packageVersion`, and `sourceDigest`. A saved theme embeds these so it can tell when the base it was written against has changed. The documents are the package's own source files; the digest is generated and checked by `tokens:check`.

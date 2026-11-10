@@ -348,8 +348,6 @@ These gates apply to the exports that need a checked theme:
 
 ### Example: export a theme and consume its CSS
 
-This example is checked against the consumer fixture in [`fixtures/tokens-consumer/`](../fixtures/tokens-consumer/). The fixture loads a saved Cinder Theme v1 envelope, produces the deployment CSS through the public `@lostgradient/cinder/tokens/runtime` subpath, and compares the computed styles of a clean page that loads only Cinder's token stylesheet and the exported file against the builder's preview.
-
 1. In the builder, make your edits, open Export, and download the Deployment CSS. Also download the Cinder Theme v1 source if you want to keep editing later.
 2. Load the file in your application after Cinder's styles:
 
@@ -361,7 +359,7 @@ This example is checked against the consumer fixture in [`fixtures/tokens-consum
 <link rel="stylesheet" href="/theme.css" />
 ```
 
-The `<style>` block is the fixture's stand-in for Cinder's own styles, which `@lostgradient/cinder` loads into the `cinder.tokens` layer; `/theme.css` is the exported file. In an application that imports Cinder through a bundler, import the exported `.css` file after the module that imports `@lostgradient/cinder`.
+The `<style>` block is a stand-in for Cinder's own styles, which `@lostgradient/cinder` loads into the `cinder.tokens` layer; `/theme.css` is the exported file. In an application that imports Cinder through a bundler, import the exported `.css` file after the module that imports `@lostgradient/cinder`.
 
 The exported file begins with its own layer declaration, so it does not depend on the order your tooling parses stylesheets in:
 
@@ -377,7 +375,7 @@ The exported file begins with its own layer declaration, so it does not depend o
 
 That order places `cinder-theme` after every Cinder layer, so its custom properties win over `cinder.tokens` whichever file is parsed first. Your own unlayered CSS still beats both, because unlayered rules outrank layered ones. The file sets `color-scheme: light dark` on `:root` and covers `[data-theme='light']` and `[data-theme='dark']` on the root or any descendant (including a portal container), the `prefers-reduced-motion` media query, and `data-reduced-motion="on"` for forced reduced motion. Fonts are exported as `font-family` stacks and are never fetched or bundled, so the rendered result depends on the fonts the browser has.
 
-To produce the same file without the UI, for example in a build script, run the saved envelope through the runtime, the way the fixture's `check.mjs` does:
+To produce the same file without the UI, for example in a build script, run the saved envelope through the runtime:
 
 ```ts
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -414,7 +412,7 @@ const maps = Object.fromEntries(
 writeFileSync('brand.css', renderThemeStylesheet(maps, { identity: envelope.name }));
 ```
 
-This path skips the builder's export gates. It validates and evaluates the source but runs no accessibility checks, so run them in the builder or treat the result as unchecked. `bun run --filter=@lostgradient/cinder validate:consumer` runs the fixture's browserless check and its Chromium computed-style comparison; the browserless half also runs in `bun run test`.
+This path skips the builder's export gates. It validates and evaluates the source but runs no accessibility checks, so run them in the builder or treat the result as unchecked.
 
 ### What the accessibility checks cover
 

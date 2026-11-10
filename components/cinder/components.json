@@ -2743,32 +2743,6 @@
       }
     },
     {
-      "name": "HostProvider",
-      "id": "host-provider",
-      "import": "@lostgradient/cinder",
-      "exportName": "HostProvider",
-      "category": "layout",
-      "status": "beta",
-      "purpose": "Context provider that identifies the desktop host platform while defaulting to inert web behavior.",
-      "tags": ["desktop", "provider"],
-      "useWhen": [
-        "A desktop shell needs platform-aware window chrome behavior in descendant components."
-      ],
-      "avoidWhen": [
-        {
-          "reason": "The application is web-only and does not render desktop window chrome."
-        }
-      ],
-      "related": ["modal"],
-      "hasConstraints": false,
-      "hasExamples": true,
-      "artifacts": {
-        "schema": "src/components/host-provider/host-provider.schema.json",
-        "variables": "src/components/host-provider/host-provider.variables.json",
-        "examples": "src/components/host-provider/host-provider.examples.json"
-      }
-    },
-    {
       "name": "HoverCard",
       "id": "hover-card",
       "import": "@lostgradient/cinder",

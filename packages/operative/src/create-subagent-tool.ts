@@ -122,6 +122,12 @@ interface CreateSubagentToolOptionsBase<
   name: string;
   description: string;
   /**
+   * The tool's version (COR-2298). Armorer binds an approval only to a versioned tool, so a
+   * subagent call can be put behind approval only when this is set. Omitted, the tool is
+   * unversioned, as before.
+   */
+  version?: string | undefined;
+  /**
    * The child agent (AB-19). `createAgent`'s returned agent satisfies this
    * structurally: its `run(input, context?)` is invoked with the exact
    * `agentName` this tool was constructed with, plus the parent tool call's
@@ -348,6 +354,7 @@ export function createSubagentTool<
   const {
     name,
     description,
+    version,
     agent,
     agentName,
     input,
@@ -384,6 +391,7 @@ export function createSubagentTool<
 
   return createTool({
     name,
+    ...(version === undefined ? {} : { version }),
     description,
     input,
     execute: async (params: TInput, context: ToolContext) => {

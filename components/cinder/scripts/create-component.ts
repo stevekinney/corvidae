@@ -1,12 +1,11 @@
 /**
  * Greenfield component scaffolding generator.
  *
- * Where `migrate-component.ts` moves an existing flat `.svelte` file into the
- * per-directory layout, this script creates a brand-new component skeleton
+ * This script creates a brand-new component skeleton
  * from scratch—the automated form of the manual steps in the Cinder README's
  * component authoring checklist.
  *
- * For a component name `<name>` (kebab-case, optionally `experimental/<name>`),
+ * For a component name `<name>` (kebab-case),
  * it writes:
  *
  *   1. `src/components/<name>/<name>.svelte` — instance + module script. The
@@ -40,7 +39,6 @@
  *
  * Examples:
  *   bun scripts/create-component.ts my-widget
- *   bun scripts/create-component.ts experimental/json-viewer
  */
 
 import { existsSync } from 'node:fs';
@@ -52,27 +50,21 @@ import { collectPropConventionViolations } from './check-prop-conventions.ts';
 const PACKAGE_ROOT = join(import.meta.dir, '..');
 const COMPONENTS_DIR = join(PACKAGE_ROOT, 'src', 'components');
 
-const EXPERIMENTAL_PREFIX = 'experimental/';
-
 /** A kebab-case component id: lowercase letters/digits separated by single hyphens. */
 const KEBAB_CASE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
 
 export interface CreationContext {
-  /** Logical name from the CLI: e.g. `my-widget` or `experimental/json-viewer`. */
+  /** Logical name from the CLI: e.g. `my-widget`. */
   inputName: string;
   /** The bare component name (basename): e.g. `my-widget`, `json-viewer`. */
   name: string;
   /** Pascal-case form: `MyWidget`, `JsonViewer`. */
   pascalName: string;
-  /** True if `experimental/<name>`. */
-  isExperimental: boolean;
   /** Absolute path to the new component directory. */
   directory: string;
   /**
-   * Component directory relative to `src/components/`: `<name>` for stable
-   * components, `experimental/<name>` for experimental ones. Used in the
-   * printed scaffold location and the root-barrel next-step path so the output
-   * matches where the files were actually written.
+   * Component directory relative to `src/components/`. Used in the printed
+   * scaffold location and the root-barrel next-step path.
    */
   relativeDirectory: string;
   /** Import subpath consumers use: `@lostgradient/cinder/<name>` or `@lostgradient/cinder<name>`. */
@@ -90,8 +82,7 @@ function pascalCase(kebab: string): string {
 
 /** Build the creation context from the raw CLI name, validating the kebab id. */
 export function buildContext(inputName: string): CreationContext {
-  const isExperimental = inputName.startsWith(EXPERIMENTAL_PREFIX);
-  const name = isExperimental ? inputName.slice(EXPERIMENTAL_PREFIX.length) : inputName;
+  const name = inputName;
 
   if (!KEBAB_CASE.test(name)) {
     throw new Error(
@@ -100,17 +91,14 @@ export function buildContext(inputName: string): CreationContext {
   }
 
   const pascalName = pascalCase(name);
-  const relativeDirectory = isExperimental ? `experimental/${name}` : name;
-  const directory = isExperimental
-    ? join(COMPONENTS_DIR, 'experimental', name)
-    : join(COMPONENTS_DIR, name);
+  const relativeDirectory = name;
+  const directory = join(COMPONENTS_DIR, name);
   const importPath = '@lostgradient/cinder';
 
   return {
     inputName,
     name,
     pascalName,
-    isExperimental,
     directory,
     relativeDirectory,
     importPath,
@@ -123,14 +111,9 @@ export function buildContext(inputName: string): CreationContext {
  * instance script renders a class-tagged wrapper that forwards rest props.
  */
 export function renderSvelte(context: CreationContext): string {
-  const { name, pascalName, isExperimental } = context;
-  const status = isExperimental ? 'alpha' : 'beta';
-  // Experimental components live at src/components/experimental/<name>/ — one
-  // level deeper than stable components at src/components/<name>/ — so the
-  // relative path back up to src/utilities/ needs an extra `../`.
-  const utilitiesImport = isExperimental
-    ? '../../../utilities/class-names.ts'
-    : '../../utilities/class-names.ts';
+  const { name, pascalName } = context;
+  const status = 'beta';
+  const utilitiesImport = '../../utilities/class-names.ts';
   return `<script lang="ts" module>
   /**
    * @cinder
@@ -206,18 +189,13 @@ export { ${pascalName} };
  * renderer rewrites in place (`props`, `variables`, `subcomponents`).
  */
 export function renderReadme(context: CreationContext): string {
-  const { pascalName, isExperimental, importPath } = context;
-  const experimentalNote = isExperimental
-    ? `> **EXPERIMENTAL** — this component's API may change between minor versions until promoted to stable.\n\n`
-    : '';
-  const authoringChecklistPath = isExperimental
-    ? '../../../../README.md#component-authoring-checklist'
-    : '../../../README.md#component-authoring-checklist';
+  const { pascalName, importPath } = context;
+  const authoringChecklistPath = '../../../README.md#component-authoring-checklist';
   return `# ${pascalName}
 
 <!-- generated:a11y-record:required -->
 
-${experimentalNote}TODO: one-line purpose statement for ${pascalName}.
+TODO: one-line purpose statement for ${pascalName}.
 
 ## Usage
 

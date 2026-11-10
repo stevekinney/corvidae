@@ -621,7 +621,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentContributions?: AgentContributions;
   /**
-   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `allowedSkills`
+   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `skills`
    * draws on. Discovery and the trust decision stay the host's (COR-752), so this is a read, called
    * when a file agent's run starts, each time the run uses a skill, and when a write grants a skill.
    * Bureau recovers durable runs before `createBureau` returns, so answer from the first read: a
@@ -788,7 +788,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    * plugins by folder name), with storage confined to `plugin:<name>:`, and its contributions are
    * registered through the options they belong to. A plugin whose configuration does not parse,
    * whose `setup` fails, or that claims a name already held is skipped and the Bureau still
-   * starts; `afterStart` runs once the Bureau is built. {@link Bureau.plugins} reports each.
+   * starts; `start` runs once the Bureau is built. {@link Bureau.plugins} reports each.
    */
   plugins?: readonly BureauPluginEntry[];
   /** COR-1879 — the owner's `{ enabled, configuration }` for each plugin, by plugin name. */
@@ -2952,7 +2952,7 @@ export interface Bureau<D extends AgentDefinitions = AgentDefinitions> {
    * COR-1879 — the plugins {@link BureauOptions.plugins} named, in load order: `list()` reports
    * each one's descriptor, status, problems and contributions, with what names each contribution
    * counted afresh, `registered()` names the plugins whose contributions are registered, and
-   * `ready()` settles once every running plugin's `afterStart` has. Empty without plugins.
+   * `ready()` settles once every running plugin's `start` has. Empty without plugins.
    */
   readonly plugins: BureauPlugins;
   /**

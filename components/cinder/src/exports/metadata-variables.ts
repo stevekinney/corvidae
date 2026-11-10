@@ -88,7 +88,6 @@ export { default as gridListItemVariables } from '../components/grid-list-item/g
 export { default as gridListVariables } from '../components/grid-list/grid-list.variables.ts';
 export { default as gridVariables } from '../components/grid/grid.variables.ts';
 export { default as guidanceRegionVariables } from '../components/guidance-region/guidance-region.variables.ts';
-export { default as hostProviderVariables } from '../components/host-provider/host-provider.variables.ts';
 export { default as hoverCardVariables } from '../components/hover-card/hover-card.variables.ts';
 export { default as imageVariables } from '../components/image/image.variables.ts';
 export { default as inlineConfirmVariables } from '../components/inline-confirm/inline-confirm.variables.ts';

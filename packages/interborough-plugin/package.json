@@ -1,7 +1,7 @@
 {
   "name": "@lostgradient/interborough-plugin",
   "private": true,
-  "description": "The authoring package for Interborough plugins: definePlugin, the plugin descriptor, the host API a plugin's afterStart receives, and the contribution contract types Bureau consumes.",
+  "description": "The authoring package for Interborough plugins: definePlugin, the plugin descriptor, the host API a plugin's start receives, and the contribution contract types Bureau consumes.",
   "type": "module",
   "exports": {
     ".": "./src/index.ts",

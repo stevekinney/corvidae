@@ -6,19 +6,13 @@ import { join } from 'node:path';
 import { analyzeAll, analyzeComponent, getProjectCreationCount } from './analyze.ts';
 import { validateComponentDocumentationPayload } from './component-documentation-reference.ts';
 import {
-  ComponentDocumentationError,
   buildComponentDocumentation,
   loadPackageManifestForDocumentation,
   renderReadmeDocumentation,
   rewriteComponentReadmeLinks,
 } from './component-documentation.ts';
-import {
-  CHAT_COMPONENT_SOURCE,
-  CINDER_COMPONENT_SOURCE,
-  EDITOR_COMPONENT_SOURCE,
-} from './component-sources.ts';
+import { CHAT_COMPONENT_SOURCE, CINDER_COMPONENT_SOURCE } from './component-sources.ts';
 import { discoverComponentDefinitions } from './discover.ts';
-import { PUBLISHED_VERSIONS_PATH } from './playground-paths.ts';
 import type { ComponentManifest } from './types.ts';
 
 const COMPONENTS_ROOT = CINDER_COMPONENT_SOURCE.componentsRoot;
@@ -252,68 +246,25 @@ describe('buildComponentDocumentation', () => {
     );
   });
 
-  describe('documented package version', () => {
-    // The version the playground displays is the one its public repository last
-    // published, recorded in `published-versions.json`. Corvidae
-    // packages carry no `version` of their own and `components.json` files
-    // carry a stale or absent copy, so neither is consulted.
-    async function lastPublishedVersion(packageName: string): Promise<string> {
-      const recorded: unknown = await Bun.file(PUBLISHED_VERSIONS_PATH).json();
-      const versions = (recorded as { lastPublishedVersions: Record<string, string | undefined> })
-        .lastPublishedVersions;
-      const version = versions[packageName];
-      if (version === undefined) throw new Error(`${packageName} has no lastPublishedVersion`);
-      return version;
-    }
-
-    it.each([
-      ['Cinder', CINDER_COMPONENT_SOURCE],
-      ['Chat', CHAT_COMPONENT_SOURCE],
-      ['Editor', EDITOR_COMPONENT_SOURCE],
-    ])('documents the last published %s version from the package map', async (_label, source) => {
-      const packageManifest = await loadPackageManifestForDocumentation(source);
-
-      expect(packageManifest.package.version).toBe(await lastPublishedVersion(source.packageName));
-    });
-
-    it('ignores a version carried by the package components.json', async () => {
-      const directory = await mkdtemp(join(tmpdir(), 'playground-documented-version-'));
-      try {
-        const chatManifest = (await Bun.file(CHAT_COMPONENT_SOURCE.manifestPath).json()) as {
-          package: Record<string, unknown>;
-        };
-        chatManifest.package['version'] = '9.9.9';
-        const manifestPath = join(directory, 'components.json');
-        await Bun.write(manifestPath, JSON.stringify(chatManifest));
-
-        const packageManifest = await loadPackageManifestForDocumentation({
-          ...CHAT_COMPONENT_SOURCE,
-          manifestPath,
-        });
-
-        expect(packageManifest.package.version).toBe(
-          await lastPublishedVersion('@lostgradient/chat'),
-        );
-      } finally {
-        await rm(directory, { recursive: true, force: true });
-      }
-    });
-
-    it('rejects a package the published versions file does not list', async () => {
-      const unlisted = {
-        ...CINDER_COMPONENT_SOURCE,
-        packageName: '@example/not-in-the-published-versions',
+  it('documents the workspace sentinel as the package version, ignoring components.json', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'playground-documented-version-'));
+    try {
+      const chatManifest = (await Bun.file(CHAT_COMPONENT_SOURCE.manifestPath).json()) as {
+        package: Record<string, unknown>;
       };
+      chatManifest.package['version'] = '9.9.9';
+      const manifestPath = join(directory, 'components.json');
+      await Bun.write(manifestPath, JSON.stringify(chatManifest));
 
-      const error = await loadPackageManifestForDocumentation(unlisted).then(
-        () => undefined,
-        (rejection: unknown) => rejection,
-      );
+      const packageManifest = await loadPackageManifestForDocumentation({
+        ...CHAT_COMPONENT_SOURCE,
+        manifestPath,
+      });
 
-      expect(error).toBeInstanceOf(ComponentDocumentationError);
-      expect((error as ComponentDocumentationError).code).toBe('malformed-components-manifest');
-      expect((error as ComponentDocumentationError).message).toContain('published-versions.json');
-    });
+      expect(packageManifest.package.version).toBe('workspace');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 
   it('loads Chat documentation and source links from the extracted package', async () => {
