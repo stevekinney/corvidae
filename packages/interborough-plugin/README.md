@@ -149,8 +149,8 @@ export default definePlugin({
     formatters: [
       {
         name: 'completed',
-        eventKinds: ['run.completed'],
-        format: (event) => ({ title: `A run completed on ${event.bureauId}` }),
+        eventKinds: ['run.settled'],
+        format: (event) => ({ title: `A run settled on ${event.bureauId}` }),
       },
     ],
   }),
