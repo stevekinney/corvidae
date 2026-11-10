@@ -18,6 +18,7 @@ import {
   OPERATIVE_RESOLVES_GUARDRAILS,
   resolveAgentGuardrails,
   withDelegatedToolCapabilities,
+  withSessionTaint,
 } from './agent-policy';
 import type { AgentRun } from './agent-run';
 import { createAgentRun } from './agent-run';
@@ -1048,7 +1049,10 @@ export function createAgent(options: CreateAgentOptions): StandaloneAgent<unknow
     const toolbox = withDelegatedToolCapabilities(
       hooks !== undefined && hasPolicy
         ? composeAgentRunPolicy({
-            guardrails: runGuardrails,
+            guardrails:
+              runGuardrails === undefined
+                ? undefined
+                : withSessionTaint(runGuardrails, context?.sessionTaint, context?.runId),
             skills,
             toolbox: baseToolbox,
             hooks,

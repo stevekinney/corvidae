@@ -480,6 +480,7 @@ export {
   MemoryGovernanceEvent,
   NotificationCreatedEvent,
   ScheduleMissedEvent,
+  SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   RecoveryAttemptedEvent,
   RecoveryLeaseReleasedEvent,
