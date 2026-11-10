@@ -5,14 +5,15 @@
  * @module plugin-test-host
  */
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import type { PluginDescriptor } from '@lostgradient/interborough-plugin';
 import { MemoryStorage } from '@lostgradient/storage';
-import type { z } from 'zod';
+import { createTool } from 'armorer';
+import { z } from 'zod';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
@@ -35,9 +36,47 @@ export interface PluginTestHost {
   readonly plugins: BureauPlugins;
   /** `bureau.agents`: every agent the Bureau lists, including the files the plugin ships. */
   readonly agents: Bureau<AgentDefinitions>['agents'];
+  /**
+   * Runs the scripted agent once (see {@link PluginScriptedRunRequest}): a file agent of the
+   * owner's layer that chooses the named interceptors and calls the scripted model. It runs on the
+   * same Bureau, so the plugin's every-agent sets apply to it as they do to any run.
+   */
+  scriptedRun(request: PluginScriptedRunRequest): Promise<PluginScriptedRunOutcome>;
   /** Stops the Bureau and removes the directory it kept the owner's files in. */
   dispose(): Promise<void>;
 }
+
+/** What {@link PluginTestHost.scriptedRun} runs: which scripted model, and which interceptors the agent chooses. */
+export interface PluginScriptedRunRequest {
+  /**
+   * `answer` replies once with no tool call; `tool` replies with a call to a read-only tool, then
+   * answers; `failure` throws from the model, so the run ends in an error.
+   */
+  readonly scenario: 'answer' | 'tool' | 'failure';
+  /** The names of the plugin's interceptors the agent lists, as `plugin:name`. */
+  readonly interceptors: readonly string[];
+}
+
+/** How a scripted run ended. */
+export interface PluginScriptedRunOutcome {
+  /** The run's finish reason; `error` when the run failed or could not settle. */
+  readonly finishReason: string;
+}
+
+/** The scripted agent's file name (and so its agent identifier) in the owner's layer. */
+const SCRIPTED_AGENT = 'contract-probe';
+
+/** The one tool the scripted agent may call; read-only, so a call runs without an approval. */
+const probeTool = createTool({
+  name: 'contract-probe-tool',
+  description: 'Answers the scripted run',
+  input: z.object({}),
+  metadata: { readOnly: true },
+  execute: async () => 'probed',
+});
+
+/** A model the Bureau's default catalog holds, so the scripted agent file validates. */
+const SCRIPTED_MODEL = 'anthropic/claude-opus-5-5';
 
 /** The directory of agent files `plugin.content` ships, or `undefined` when it ships none. */
 function shippedAgentDirectory(content: URL | undefined): string | undefined {
@@ -64,17 +103,26 @@ export async function createPluginTestHost(
 ): Promise<PluginTestHost> {
   const owner = await mkdtemp(join(tmpdir(), 'bureau-plugin-test-host-'));
   const shipped = shippedAgentDirectory(plugin.content);
+  // What the scripted model does now; absent outside a scripted run, when it answers its own name.
+  let scripted:
+    { readonly scenario: PluginScriptedRunRequest['scenario']; calls: number } | undefined;
   try {
     const bureau = await createBureau<AgentDefinitions>({
       agents: {},
       agentSource: layeredAgentSource([
-        agentFileDirectory(owner),
+        agentFileDirectory(owner, { tools: { [probeTool.name]: probeTool } }),
         ...(shipped === undefined ? [] : [agentFileDirectory(shipped, { plugin: plugin.name })]),
       ]),
       storage: new MemoryStorage(),
       durable: true,
       models: {
-        generate: (descriptor) => async () => ({ content: descriptor.model, toolCalls: [] }),
+        generate: (descriptor) => async () => {
+          if (scripted?.scenario === 'failure') throw new Error('The scripted model failed.');
+          if (scripted?.scenario === 'tool' && scripted.calls++ === 0) {
+            return { content: '', toolCalls: [{ name: probeTool.name, arguments: {} }] };
+          }
+          return { content: descriptor.model, toolCalls: [] };
+        },
       },
       plugins: [{ descriptor: plugin, source: 'folder', location: plugin.name }],
       pluginSecrets: {
@@ -93,6 +141,32 @@ export async function createPluginTestHost(
       bureau,
       plugins: bureau.plugins,
       agents: bureau.agents,
+      async scriptedRun({ scenario, interceptors }) {
+        const listed = interceptors.map((name) => `${plugin.name}:${name}`);
+        await writeFile(
+          join(owner, `${SCRIPTED_AGENT}.md`),
+          [
+            '---',
+            `model: ${SCRIPTED_MODEL}`,
+            `tools: [${probeTool.name}]`,
+            ...(listed.length === 0 ? [] : [`interceptors: [${listed.join(', ')}]`]),
+            '---',
+            'You are the scripted agent of the plugin contract.',
+            '',
+          ].join('\n'),
+        );
+        await bureau.agents.refresh();
+        scripted = { scenario, calls: 0 };
+        try {
+          const task = await bureau.tasks.start(SCRIPTED_AGENT, 'Run the plugin contract.');
+          const result = await task.result();
+          return { finishReason: result.finishReason };
+        } catch {
+          return { finishReason: 'error' };
+        } finally {
+          scripted = undefined;
+        }
+      },
       async dispose() {
         try {
           await bureau.dispose();
