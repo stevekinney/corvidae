@@ -199,8 +199,11 @@ export interface MemoryRecallExclusion {
 
 /** The recall detector finding behind a `content-policy` exclusion. */
 export interface MemoryRecallDetection {
+  /** The detector's name. */
   readonly detector: string;
+  /** The detector's category, `detector-failure` when it threw. */
   readonly category: string;
+  /** The detector's confidence, 1 when it threw. */
   readonly confidence: number;
 }
 
