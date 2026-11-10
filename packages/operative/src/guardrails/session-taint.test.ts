@@ -1,6 +1,11 @@
 import { describe, expect, it, mock } from 'bun:test';
 
-import { createSessionTaintTracker } from './session-taint';
+import {
+  createSessionTaintTracker,
+  persistedSessionTaintOf,
+  readSessionTaint,
+  SESSION_TAINT_METADATA_KEY,
+} from './session-taint';
 import type { InputDetector, OutputValidator, SessionTaintedEvent } from './types';
 
 function createMockDetector(name: string): InputDetector {
@@ -20,6 +25,7 @@ function createMockValidator(name: string): OutputValidator {
 const baseTaintEvent: SessionTaintedEvent = {
   reason: 'High-confidence injection detected',
   detector: 'prompt-injection',
+  category: 'prompt-injection',
   confidence: 0.95,
   step: 1,
 };
@@ -119,5 +125,73 @@ describe('createSessionTaintTracker', () => {
       // But we verify the tracker accepts threshold option
       expect(tracker.isTainted()).toBe(false);
     });
+  });
+});
+
+describe('createSessionTaintTracker with an initial taint (COR-2105)', () => {
+  const initial = {
+    category: 'prompt-injection',
+    detector: 'prompt-injection',
+    provenance: 'user-input' as const,
+    confidence: 0.95,
+    at: 1,
+    runId: 'run-1',
+  };
+
+  it('starts tainted and never calls onTainted for the taint it was given', () => {
+    const onTainted = mock(() => {});
+    const tracker = createSessionTaintTracker({ initial, onTainted });
+    expect(tracker.isTainted()).toBe(true);
+    tracker.taint(baseTaintEvent);
+    expect(onTainted).not.toHaveBeenCalled();
+  });
+
+  it('stamps the tracker run id onto an event that names none', () => {
+    const onTainted = mock((_event: SessionTaintedEvent) => {});
+    createSessionTaintTracker({ runId: 'run-9', onTainted }).taint(baseTaintEvent);
+    expect(onTainted.mock.calls[0]?.[0].runId).toBe('run-9');
+  });
+
+  it('settles after an asynchronous onTainted, and never rejects', async () => {
+    let finished = false;
+    const tracker = createSessionTaintTracker({
+      onTainted: async () => {
+        await Promise.resolve();
+        finished = true;
+        throw new Error('write failed');
+      },
+    });
+    tracker.taint(baseTaintEvent);
+    expect(finished).toBe(false);
+    await tracker.settled();
+    expect(finished).toBe(true);
+  });
+});
+
+describe('readSessionTaint', () => {
+  it('reads a session stored without the key as untainted', () => {
+    expect(readSessionTaint({ lastRunId: 'run-1' })).toBeUndefined();
+    expect(readSessionTaint({})).toBeUndefined();
+    expect(readSessionTaint(undefined)).toBeUndefined();
+    expect(readSessionTaint({ [SESSION_TAINT_METADATA_KEY]: null })).toBeUndefined();
+    expect(readSessionTaint({ [SESSION_TAINT_METADATA_KEY]: { detector: 'x' } })).toBeUndefined();
+  });
+
+  it('round-trips a persisted taint and carries no free text', () => {
+    const persisted = persistedSessionTaintOf(
+      { ...baseTaintEvent, reason: 'SECRET FLAGGED TEXT' },
+      42,
+      'run-7',
+    );
+    expect(JSON.stringify(persisted)).not.toContain('SECRET FLAGGED TEXT');
+    expect(persisted).toEqual({
+      category: 'prompt-injection',
+      detector: 'prompt-injection',
+      provenance: 'user-input',
+      confidence: 0.95,
+      at: 42,
+      runId: 'run-7',
+    });
+    expect(readSessionTaint({ [SESSION_TAINT_METADATA_KEY]: { ...persisted } })).toEqual(persisted);
   });
 });

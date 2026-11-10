@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it, mock } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
@@ -249,6 +250,26 @@ describe('createGuardrails', () => {
       expect(tripwireError.confidence).toBe(0.95);
     });
 
+    it('waits for an asynchronous taint write before it throws the tripwire (COR-2105)', async () => {
+      let written = false;
+      const { prepareStep } = createGuardrails({
+        mode: 'tripwire',
+        input: { detectors: [createMockDetector('injection-detector', triggeredDetection)] },
+        taint: {
+          runId: 'run-1',
+          onTainted: async (event) => {
+            await Promise.resolve();
+            expect(event).toMatchObject({ category: 'prompt-injection', runId: 'run-1' });
+            written = true;
+          },
+        },
+      });
+      expect(await rejectionOf(prepareStep(createTestContext()))).toBeInstanceOf(
+        GuardrailTripwireError,
+      );
+      expect(written).toBe(true);
+    });
+
     it('does not throw from prepareStep when no input detector triggers', async () => {
       const detector = createMockDetector('injection-detector', safeDetection);
       const { prepareStep } = createGuardrails({
@@ -482,7 +503,7 @@ describe('createGuardrails tool-result scanning (COR-2103)', () => {
       taint: { escalatedDetectors: [escalated] },
     });
     expect(await validateToolResult(flagged, toolResultContext())).toBeUndefined();
-    taint.taint({ reason: 'test', detector: 'test', confidence: 1, step: 1 });
+    taint.taint({ reason: 'test', detector: 'test', category: 'test', confidence: 1, step: 1 });
     const replaced = await validateToolResult(flagged, toolResultContext());
     expect(replaced?.error?.message).toContain('"escalated"');
   });

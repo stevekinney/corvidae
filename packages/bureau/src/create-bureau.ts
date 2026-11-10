@@ -333,6 +333,7 @@ import {
   RunSettledEvent,
   RunRemovedEvent,
   NotificationCreatedEvent,
+  SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   DiagnosticEvent,
 } from './events';
@@ -3140,6 +3141,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      // COR-2105 — a session's taint, once it is stored: the one `session.tainted` the session gets.
+      onSessionTainted: (publication) => emitter.dispatch(new SessionTaintEvent(publication)),
       onScheduleAuthorityDenied: (scheduleId) => {
         runtimeServices.deferred.track(
           pauseInvalidSchedule(scheduleId).catch(() => {
@@ -8862,6 +8865,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         restored.agentName,
         review.runId,
         session?.metadata ?? {},
+        review.sessionId,
       );
       if (resolved === 'unavailable') return refuse('its agent can no longer be resolved');
       policyAgent = resolved;
@@ -8879,6 +8883,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
       {
         sessionAgent: policyAgent,
+        sessionMetadata: session?.metadata,
         initialActiveSkillRecords: records,
         memoryOwner: resolveRunMemoryOwner(session?.metadata ?? {}, review.runId),
       },
@@ -8898,6 +8903,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     agentName: string,
     runId: string,
     metadata: Record<string, JSONValue>,
+    sessionId: string,
   ): Promise<SessionAgentRun | undefined | 'unavailable'> {
     if (agentName === BUREAU_AGENT_NAME) {
       // COR-323 — the implicit Bureau-wide agent no longer exists: a run stored under it is
@@ -8932,6 +8938,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         definitionRevision:
           ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
       },
+      { sessionId, metadata },
     );
     if (resolution.status === 'resolved') return resolution.run;
     diagnose({
@@ -8995,6 +9002,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       recoveredAgentName,
       runId,
       session.metadata,
+      session.id,
     );
     if (recoveredSessionAgent === 'unavailable') {
       terminalReviewSessions.delete(runId);
@@ -9025,6 +9033,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
       {
         sessionAgent: recoveredSessionAgent,
+        sessionMetadata: session.metadata,
         initialActiveSkillRecords,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
       },
@@ -9476,7 +9485,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
-    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
+    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner, undefined, {
+      sessionId,
+      metadata: session?.metadata,
+    });
     if (resolution.status === 'missing-agent') throw missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(
@@ -9636,7 +9648,12 @@ async function constructBureau<const D extends AgentDefinitions>(
           runId,
           requestContext,
         },
-        { sessionAgent, memoryOwner: owner, withoutMemory: triedRun },
+        {
+          sessionAgent,
+          memoryOwner: owner,
+          withoutMemory: triedRun,
+          sessionMetadata: session?.metadata,
+        },
       );
       runRequestContexts.set(runId, requestContext);
 
@@ -12116,6 +12133,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 recoveredAgentName,
                 handle.id,
                 fullSession.metadata,
+                ownedSessionId,
               );
               if (reattachedSessionAgent !== 'unavailable') {
                 const runRuntime = await runtime.createRunRuntime(
@@ -12131,6 +12149,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                   },
                   {
                     sessionAgent: reattachedSessionAgent,
+                    sessionMetadata: fullSession.metadata,
                     memoryOwner: resolveRunMemoryOwner(fullSession.metadata, handle.id),
                   },
                 );

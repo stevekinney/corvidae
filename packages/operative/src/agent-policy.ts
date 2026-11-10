@@ -27,9 +27,42 @@ import type {
   GuardrailsOptions,
   InputGuardrailEntry,
   OutputGuardrailEntry,
+  SessionTaintOptions,
   ToolCallValidator,
 } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
+
+/**
+ * Seeds a run's guardrails with the session's taint (COR-2105): the persisted taint it starts
+ * from, the callback that persists a new one (called after the configuration's own `onTainted`),
+ * and the run's id. Returns a copy; the shared configuration is never mutated.
+ */
+export function withSessionTaint(
+  configuration: GuardrailsOptions,
+  sessionTaint: Pick<SessionTaintOptions, 'initial' | 'onTainted'> | undefined,
+  runId: string | undefined,
+): GuardrailsOptions {
+  if (sessionTaint === undefined) return configuration;
+  const own = configuration.taint?.onTainted;
+  const inherited = sessionTaint.onTainted;
+  const onTainted: SessionTaintOptions['onTainted'] =
+    own !== undefined && inherited !== undefined
+      ? (event) => {
+          const first = own(event);
+          const second = inherited(event);
+          return Promise.all([first, second]).then(() => undefined);
+        }
+      : (own ?? inherited);
+  return {
+    ...configuration,
+    taint: {
+      ...configuration.taint,
+      ...(sessionTaint.initial === undefined ? {} : { initial: sessionTaint.initial }),
+      ...(configuration.taint?.runId === undefined && runId !== undefined ? { runId } : {}),
+      ...(onTainted === undefined ? {} : { onTainted }),
+    },
+  };
+}
 
 /**
  * A guardrail declaration: a configuration to run, or `false` for none.

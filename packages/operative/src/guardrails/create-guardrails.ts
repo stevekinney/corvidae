@@ -78,6 +78,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
         taintTracker.taint({
           reason: event.detail ?? `Detection by ${event.detector}`,
           detector: event.detector,
+          category: event.category,
           confidence: event.confidence,
           step: context.step,
           provenance: event.provenance,
@@ -185,6 +186,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
         taintTracker.taint({
           reason: event.detail ?? `Detection by ${event.detector}`,
           detector: event.detector,
+          category: event.category,
           confidence: event.confidence,
           step: context.step,
           provenance: event.provenance,
@@ -252,10 +254,23 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     return hook(context);
   };
 
+  // COR-2105 — a taint is persisted by an `onTainted` that may be asynchronous. A tripwire throws
+  // right after the taint, so each hook that can taint waits for the write before it returns or
+  // throws, and a halt cannot outrun it.
+  const settling =
+    <Arguments extends unknown[], Result>(hook: (...args: Arguments) => Promise<Result>) =>
+    async (...args: Arguments): Promise<Result> => {
+      try {
+        return await hook(...args);
+      } finally {
+        await taintTracker.settled();
+      }
+    };
+
   return {
-    prepareStep,
-    validateToolResult,
-    validateResponse,
+    prepareStep: settling(prepareStep),
+    validateToolResult: settling(validateToolResult),
+    validateResponse: settling(validateResponse),
     beforeToolExecution,
     taint: taintTracker,
   };

@@ -259,8 +259,15 @@ export interface ToolCallGuardrailOptions {
 export interface SessionTaintedEvent {
   reason: string;
   detector: string;
+  /** What the detector found, such as `prompt-injection`; the value a session persists (COR-2105). */
+  category: string;
   confidence: number;
   step: number;
+  /**
+   * The run that was tainted. A tracker stamps it from {@link SessionTaintOptions.runId} when the
+   * caller leaves it out, so a hook that builds an event needs not know it.
+   */
+  runId?: string | undefined;
   /**
    * Where the content that caused the taint originated from. Defaults to
    * `'user-input'` for taints raised by the input guardrail hook; retrieval
@@ -273,10 +280,44 @@ export interface SessionTaintedEvent {
 
 /** Options for configuring session tainting behavior. */
 export interface SessionTaintOptions {
+  /** The confidence at or above which a detection taints the session. */
   taintThreshold?: number | undefined;
+  /** Detectors added to the active set once the session is tainted. */
   escalatedDetectors?: InputDetector[] | undefined;
+  /** Validators added to the active set once the session is tainted. */
   escalatedValidators?: OutputValidator[] | undefined;
-  onTainted?: ((event: SessionTaintedEvent) => void) | undefined;
+  /**
+   * Called once, on the first taint. A promise it returns (a host persisting the taint) is awaited: the
+   * guardrail hooks wait for it before they return or throw, so a tripwire halt cannot outrun the
+   * write. A promise it returns must not reject; a rejection is ignored.
+   */
+  onTainted?: ((event: SessionTaintedEvent) => unknown) | undefined;
+  /**
+   * The taint the session already carries (COR-2105). A tracker given it starts tainted and never
+   * calls `onTainted` for it, so a later turn of a tainted session stays tainted.
+   */
+  initial?: PersistedSessionTaint | undefined;
+  /** The run this tracker belongs to, stamped onto each {@link SessionTaintedEvent} that names none. */
+  runId?: string | undefined;
+}
+
+/**
+ * What a tainted session persists under `SESSION_TAINT_METADATA_KEY` (COR-2105). It holds the
+ * facts of the first taint and never the flagged text, nor the detector's `detail`.
+ */
+export interface PersistedSessionTaint {
+  /** What the detector found, such as `prompt-injection`. */
+  category: string;
+  /** The detector that fired. */
+  detector: string;
+  /** Where the flagged content came from. */
+  provenance: GuardrailProvenance;
+  /** The detector's confidence, from 0 to 1. */
+  confidence: number;
+  /** When the session was tainted, in epoch milliseconds. */
+  at: number;
+  /** The run that tainted it. */
+  runId: string;
 }
 
 /** Combined options for the guardrails composition factory. */
@@ -339,6 +380,11 @@ export interface GuardrailHooks {
 export interface SessionTaintTracker {
   isTainted: () => boolean;
   taint: (event: SessionTaintedEvent) => void;
+  /**
+   * Resolves once every `onTainted` call this tracker made has settled. The guardrail hooks await
+   * it before they return or throw, so a persisted taint is not lost to a halt (COR-2105).
+   */
+  settled: () => Promise<void>;
   getDetectors: () => InputDetector[];
   getValidators: () => OutputValidator[];
 }
