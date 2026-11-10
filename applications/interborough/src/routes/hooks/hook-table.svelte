@@ -80,11 +80,12 @@
 
 <Table caption={HOOKS_COPY.caption} density="condensed" fit class="ib-records__table">
   <colgroup>
-    <col style="width: 42%" />
+    <!-- The hook's sentence takes what the fixed columns leave. -->
+    <col />
     <col style="width: 18%" />
     <!-- A delivery's time can be a whole date ("Mon Nov 2, 9:42 AM"), which does not wrap. -->
-    <col style="width: 28%" />
-    <col style="width: 12%" />
+    <col style="width: 10rem" />
+    <col style="width: 5.5rem" />
   </colgroup>
   <Table.Header>
     <Table.Row>

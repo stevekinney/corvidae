@@ -196,13 +196,14 @@
   {:else}
     <Table caption={copy.listLabel} density="condensed" fit class="ib-records__table">
       <colgroup>
-        <col style="width: 25%" />
-        <!-- A kind is a badge ("Agent-authored") that does not wrap, so its column fits it at the floor. -->
-        <col style="width: 19%" />
+        <!-- The workflow's name takes what the other columns leave. -->
+        <col />
+        <!-- A kind is a badge ("Agent-authored") and a status one word ("Scheduled"), neither of
+             which wraps, so each column is the fixed width that holds it. -->
+        <col style="width: 8.5rem" />
         <col style="width: 16%" />
-        <col style="width: 21%" />
-        <!-- A status is one word ("Scheduled"), so its column fits it at the table's floor. -->
-        <col style="width: 19%" />
+        <col style="width: 18%" />
+        <col style="width: 7.5rem" />
       </colgroup>
       <Table.Header>
         <Table.Row>

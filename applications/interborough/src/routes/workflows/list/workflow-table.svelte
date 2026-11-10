@@ -18,11 +18,10 @@
    * `.dc.html` markup is PROJECT-BRIEF's pixel-fidelity source of truth.
    * `<colgroup>` + `table-layout:fixed` reproduces the same fixed/flexible
    * column split for a real `<table>` (Tags is the flexible column). The
-   * widths are those columns' shares of a 1,000px row rather than pixels, so
-   * the table fits its container at every width (Cinder's `fit`, row 16c):
-   * at a phone's width seven pixel columns would add up to 826px. Status
-   * and Workflow ID take more than their pixel shares so a badge with its icon,
-   * and an ID with its copy button, fit at the table's floor (`workflows.css`).
+   * table fits its container at every width (Cinder's `fit`, row 16c): a
+   * column whose content never wraps (a status badge with its icon, a
+   * shortened ID with its copy button, a time) is a fixed rem width that holds
+   * it, so the ID is never cut a second time; Type and Revision take a share;
    * Tags take what is left, and a long tag ends with an ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
@@ -130,13 +129,13 @@
 <Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
-    <col style="width: 17%" />
-    <col style="width: 20%" />
-    <col style="width: 14%" />
-    <col style="width: 12%" />
+    <col style="width: 8rem" />
+    <col style="width: 10.5rem" />
+    <col style="width: 10%" />
+    <col style="width: 10%" />
     <col />
-    <col style="width: 9.5%" />
-    <col style="width: 9.5%" />
+    <col style="width: 5rem" />
+    <col style="width: 5rem" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
@@ -173,7 +172,7 @@
         <Table.Cell as="th">
           <span class="weft-workflows-table__id-cell">
             <span class="weft-workflows-table__id-line">
-              <Tooltip text={row.id} placement="top" class="weft-workflows-table__id-tooltip">
+              <Tooltip text={row.id} placement="top">
                 <a
                   class="weft-workflows-table__id-link"
                   href={router.href(workflowRunPath(row.type, row.id))}

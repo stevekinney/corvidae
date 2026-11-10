@@ -71,7 +71,7 @@ A table whose cells hold controls (a select, a switch, a checkbox, a button) sta
 
 ### Tables that fit
 
-A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in its `title`, and every other cell wraps. Give the columns their shares with `<col>` widths, and a `min-inline-size` on the table when its columns need more room than a phone has: below that floor the table scrolls inside its frame by its column count, never by a value.
+A records table whose values can be very long (a storage key, a URL, a model identifier) sets `fit`. The table fills its container with a fixed layout, so a value never widens it: a `truncate` cell ends its text with an ellipsis at its column's width and keeps the whole value in its `title`, and every other cell wraps. Size the columns with `<col>` widths: a column whose content never wraps (a status badge, a date, a short identifier with its copy button) gets a fixed `rem` width that holds it, and the others take a percentage or what is left. When the columns need more room than a phone has, set a `min-inline-size` on the table: below that floor the table scrolls inside its frame because of its column count, never because of a value.
 
 ```svelte
 <Table caption="Stored values" fit style="min-inline-size: 24rem">

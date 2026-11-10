@@ -123,12 +123,6 @@
   min-width: 0;
 }
 
-.weft-workflows-table__id-tooltip {
-  /* The ID gives way to its copy button: the tooltip around the link may shrink, and the link ends
-   * the ID with an ellipsis. */
-  min-inline-size: 0;
-}
-
 .weft-workflows-table__id-link {
   min-width: 0;
   overflow: hidden;
