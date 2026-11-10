@@ -214,19 +214,28 @@ describe('createOutputGuardrail', () => {
   });
 
   describe('error resilience', () => {
-    it('does not crash when a validator throws', async () => {
+    it('fails closed when a validator throws: the response is blocked, even under warn or redact', async () => {
       const brokenValidator: OutputValidator = {
         name: 'broken',
         validate: async () => {
           throw new Error('validator crash');
         },
       };
-      const hook = createOutputGuardrail({ validators: [brokenValidator] });
-
-      const response = createMockResponse();
-      const context = createMockStepContext();
-      const result = await hook(response, context);
-      expect(result).toBeUndefined();
+      const events: Array<{ category: string; action: string }> = [];
+      for (const action of ['block', 'warn', 'redact'] as const) {
+        const hook = createOutputGuardrail({
+          validators: [brokenValidator],
+          action,
+          onTriggered: (event) => events.push(event),
+        });
+        const result = await hook(createMockResponse(), createMockStepContext());
+        expect(result?.content).toContain('blocked by output guardrail');
+      }
+      expect(events.map((event) => [event.category, event.action])).toEqual([
+        ['detector-failure', 'block'],
+        ['detector-failure', 'block'],
+        ['detector-failure', 'block'],
+      ]);
     });
 
     it('still catches violations when some validators throw', async () => {
