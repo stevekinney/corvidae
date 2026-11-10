@@ -154,6 +154,7 @@ async function runInstalledCliCommand(
   home: string,
   cwd: string,
   registryUrl: string,
+  input?: string,
 ): Promise<{ exitCode: number; stdout: string; stderr: string }> {
   const child = Bun.spawn([executable, ...arguments_], {
     cwd,
@@ -166,7 +167,12 @@ async function runInstalledCliCommand(
     },
     stdout: 'pipe',
     stderr: 'pipe',
+    ...(input === undefined ? {} : { stdin: 'pipe' as const }),
   });
+  if (input !== undefined) {
+    child.stdin.write(input);
+    child.stdin.end();
+  }
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
@@ -250,7 +256,7 @@ export async function runInstalled(
       );
       await writeFile(providerFile, JSON.stringify({ configuration: {} }));
       const cliJourneyResults: Record<string, unknown> = {};
-      const commands: Array<{ args: string[]; json: boolean }> = [
+      const commands: Array<{ args: string[]; json: boolean; input?: string }> = [
         { args: ['status'], json: true },
         { args: ['doctor'], json: true },
         { args: ['providers', 'list'], json: true },
@@ -262,8 +268,16 @@ export async function runInstalled(
       if (existingHome === undefined) {
         commands.push(
           {
-            args: ['providers', 'connect', 'installed-fixture', '--input-file', providerFile],
+            args: [
+              'providers',
+              'connect',
+              'installed-fixture',
+              '--input-file',
+              providerFile,
+              '--secret-stdin',
+            ],
             json: true,
+            input: 'installed-fixture-secret\n',
           },
           {
             args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
@@ -282,6 +296,7 @@ export async function runInstalled(
           home,
           cwd,
           registryUrl,
+          command.input,
         );
         if (result.exitCode !== 0)
           throw new Error(
