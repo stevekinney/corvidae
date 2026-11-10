@@ -32,6 +32,23 @@ function unsafeScrollContainerProps(props: Record<string, unknown>): TableScroll
   return props;
 }
 
+describe('Table frameless', () => {
+  test('frameless marks the table and its scroll wrapper, and is off by default', () => {
+    const framed = render(Wrapper, { columns, rows });
+    expect(framed.container.querySelector('[data-cinder-frameless]')).toBeNull();
+    framed.unmount();
+    const bare = render(Wrapper, { columns, rows, frameless: true });
+    expect(bare.container.querySelectorAll('[data-cinder-frameless]').length).toBe(2);
+  });
+
+  test('a header cell never wraps, so a table that does not fit scrolls sideways', async () => {
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+    const block = css.match(/\.cinder-table__header-cell\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(block).toContain('white-space: nowrap');
+    expect(block).not.toContain('balance');
+  });
+});
+
 describe('Table semantics', () => {
   test('renders semantic <table>, <thead>, <tbody> elements', () => {
     const { container } = render(Wrapper, { columns, rows });

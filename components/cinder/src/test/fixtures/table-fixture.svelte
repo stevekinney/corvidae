@@ -13,6 +13,7 @@
     density?: TableDensity;
     selectable?: boolean;
     scrollable?: boolean;
+    frameless?: boolean;
     scrollContainerProps?: TableScrollContainerProps;
     stackBelow?: string | false;
     includeHeaderSelectionState?: boolean;
@@ -48,6 +49,7 @@
     density,
     selectable = false,
     scrollable = true,
+    frameless = false,
     scrollContainerProps,
     stackBelow,
     includeHeaderSelectionState = true,
@@ -94,6 +96,7 @@
   {stickyHeader}
   {selectable}
   {scrollable}
+  {frameless}
   {...scrollContainerProps !== undefined ? { scrollContainerProps } : {}}
   {...stackBelow !== undefined ? { stackBelow } : {}}
 >

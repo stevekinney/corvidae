@@ -116,7 +116,23 @@ describe('PageHeader', () => {
     expect(container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
-  test('flush marks the header so it draws no rule and no padding', () => {
+  test('draws no rule by default; divider opts in, and a flush header never draws one', () => {
+    const plain = render(PageHeader, { props: { title: 'Runs' } });
+    const header = () => plain.container.querySelector('.cinder-page-header');
+    expect(header()?.hasAttribute('data-cinder-divider')).toBe(false);
+    cleanup();
+    const ruled = render(PageHeader, { props: { title: 'Runs', divider: true } });
+    expect(
+      ruled.container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-divider'),
+    ).toBe('true');
+    cleanup();
+    const flush = render(PageHeader, { props: { title: 'Runs', divider: true, flush: true } });
+    expect(
+      flush.container.querySelector('.cinder-page-header')?.hasAttribute('data-cinder-divider'),
+    ).toBe(false);
+  });
+
+  test('flush marks the header so it draws no padding', () => {
     const { container } = render(PageHeader, { props: { title: 'Allowed models', flush: true } });
     expect(container.querySelector('.cinder-page-header')?.getAttribute('data-cinder-flush')).toBe(
       'true',

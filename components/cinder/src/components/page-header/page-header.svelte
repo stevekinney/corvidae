@@ -43,6 +43,7 @@
     createAction,
     error = false,
     flush = false,
+    divider = false,
     status,
     statusPlacement = 'below',
     titleText,
@@ -147,6 +148,7 @@
     className,
   )}
   data-cinder-flush={flush ? 'true' : undefined}
+  data-cinder-divider={divider && !flush ? 'true' : undefined}
   {...rest}
 >
   {#if breadcrumbs}

@@ -46,6 +46,7 @@
     density = 'comfortable',
     selectable = false,
     scrollable = true,
+    frameless = false,
     scrollContainerProps,
     stackBelow = PHONE_VIEWPORT_BREAKPOINT,
     class: className,
@@ -279,6 +280,7 @@
     data-cinder-density={density}
     data-cinder-selectable={selectable || undefined}
     data-cinder-stacked={stacked || undefined}
+    data-cinder-frameless={frameless || undefined}
     style:--cinder-table-caption-height={normalizedCaption ? `${captionHeight}px` : undefined}
     {@attach measureContainer}
     {@attach labelCellsWhileStacked}
@@ -299,6 +301,7 @@
     aria-label={wrapperAriaLabel}
     aria-labelledby={wrapperAriaLabelledBy}
     tabindex={wrapperTabindex}
+    data-cinder-frameless={frameless || undefined}
     {@attach overflowFadeEdges('inline')}
   >
     {@render table()}

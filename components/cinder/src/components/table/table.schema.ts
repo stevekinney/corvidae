@@ -32,6 +32,12 @@ const schema = {
         "Wraps the table in a `.cinder-table-scroll` box that owns the frame (the border, the radius and\nthe clip) and scrolls sideways when the columns do not fit, with a visible scrollbar and a fade\nat the inline end. The page never scrolls sideways. Pass `false` for a table that must lay out\nas a bare `<table>`.\n\nWhen combined with `stickyHeader`, the generated wrapper is the sticky\nheader's scroll container. Set a bounded block size on `scrollContainerProps`\nwhen the table should scroll vertically inside that wrapper.",
       default: true,
     },
+    frameless: {
+      type: 'boolean',
+      description:
+        'Draw no outline, radius or fill around the table, for a queue or list that sits on the page.\nRows keep their hairlines.',
+      default: false,
+    },
     stackBelow: {
       anyOf: [
         {

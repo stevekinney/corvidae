@@ -107,6 +107,11 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   scrollable?: boolean;
   /**
+   * Draw no outline, radius or fill around the table, for a queue or list that sits on the page.
+   * Rows keep their hairlines. @default false
+   */
+  frameless?: boolean;
+  /**
    * Attributes forwarded to the generated `.cinder-table-scroll` wrapper when
    * `scrollable` is true. The wrapper is focusable by default so keyboard users
    * can scroll read-only wide tables. When the table has a caption, or when

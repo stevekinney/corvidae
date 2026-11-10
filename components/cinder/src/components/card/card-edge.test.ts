@@ -35,6 +35,7 @@ const elevated: CardProps = { children, elevation: 'md' };
 // @ts-expect-error a separate shadow switch would let a card draw both edges
 const borderedAndShadowed: CardProps = { children, edge: 'border', shadow: true };
 const edgeValues: CardEdge[] = ['border', 'shadow'];
+const allEdges: CardEdge[] = ['none', ...edgeValues];
 
 describe('Card draws one edge', () => {
   test('a Card with both border and shadow is impossible: the only edge values are border and shadow', () => {
@@ -42,14 +43,12 @@ describe('Card draws one edge', () => {
     expect([bothEdges, elevated, borderedAndShadowed]).toHaveLength(3);
     expect(cardSchema.properties).toHaveProperty('edge');
     expect(cardSchema.properties).not.toHaveProperty('elevation');
-    expect((cardSchema.properties as { edge: { enum: string[] } }).edge.enum).toEqual(edgeValues);
+    expect((cardSchema.properties as { edge: { enum: string[] } }).edge.enum).toEqual(allEdges);
   });
 
-  test('defaults to the border edge', () => {
+  test('defaults to no edge: the surface step separates the card', () => {
     const { container } = render(Card, { props: { children: body } });
-    expect(container.querySelector('.cinder-card')?.getAttribute('data-cinder-edge')).toBe(
-      'border',
-    );
+    expect(container.querySelector('.cinder-card')?.getAttribute('data-cinder-edge')).toBe('none');
   });
 
   test.each(edgeValues)('stamps edge="%s" on a static, link, and button card', (edge) => {
@@ -98,5 +97,17 @@ describe('Card header divider is opt-in', () => {
     expect(
       divided.container.querySelector('.cinder-card__header')?.hasAttribute('data-cinder-divider'),
     ).toBe(true);
+  });
+});
+
+describe('Card plain variant', () => {
+  test('variant="plain" stamps the variant and the schema offers it', () => {
+    const { container } = render(Card, { props: { children: body, variant: 'plain' } });
+    expect(container.querySelector('.cinder-card')?.getAttribute('data-cinder-variant')).toBe(
+      'plain',
+    );
+    expect((cardSchema.properties as { variant: { enum: string[] } }).variant.enum).toContain(
+      'plain',
+    );
   });
 });

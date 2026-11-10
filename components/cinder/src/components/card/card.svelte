@@ -48,7 +48,7 @@
     headerTone = 'default',
     edgeToEdgeOnMobile = false,
     padding = 'default',
-    edge = 'border',
+    edge = 'none',
     headerDivider = false,
     href,
     onclick,

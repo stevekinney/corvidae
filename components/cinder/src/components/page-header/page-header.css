@@ -6,15 +6,16 @@
     container-type: inline-size;
     container-name: cinder-page-header;
     min-width: 0;
+  }
+
+  /* The rule under the header is opt-in (`divider`); space and the page's own rhythm separate it
+     from the content by default (COR-2311). */
+  .cinder-page-header[data-cinder-divider='true'] {
     border-bottom: 1px solid var(--cinder-border);
   }
 
   /* Flush: the page lays out its own column, so the header draws no rule and no padding, and its
      title lines up with what is under it. */
-  .cinder-page-header[data-cinder-flush='true'] {
-    border-bottom: 0;
-  }
-
   .cinder-page-header[data-cinder-flush='true'] .cinder-page-header__breadcrumbs {
     padding-inline: 0;
   }
