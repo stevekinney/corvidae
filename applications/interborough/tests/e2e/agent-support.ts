@@ -54,7 +54,7 @@ export type AgentDetailResult = {
     effort: string | null;
     tools: string[];
     card: unknown[];
-    allowedSkills: string[] | null;
+    skills: string[] | null;
     children: string[] | null;
     a2a: boolean;
     instructions: string;

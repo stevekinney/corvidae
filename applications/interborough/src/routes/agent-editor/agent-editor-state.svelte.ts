@@ -193,7 +193,7 @@ export class AgentEditorState {
    * tab edits them. They are carried through a save so a copy of an agent keeps them; an update
    * that left them out would keep the file's too, but a create would have none.
    */
-  readonly allowedSkills: readonly string[] | null;
+  readonly skills: readonly string[] | null;
   readonly children: readonly string[] | null;
   /**
    * The models a session may be switched to (COR-1559), as the file lists them, or `null` when it
@@ -286,7 +286,7 @@ export class AgentEditorState {
     const definition = seed ?? detail?.definition ?? null;
     this.#editedId = detail?.id;
     this.card = definition?.card ?? [];
-    this.allowedSkills = definition?.allowedSkills ?? null;
+    this.skills = definition?.skills ?? null;
     this.children = definition?.children ?? null;
     this.models = definition?.models ?? null;
     this.#writtenEffort = definition?.effort ?? null;
@@ -582,7 +582,7 @@ export class AgentEditorState {
       ...this.#effortInput(),
       tools: chosen,
       card: this.card,
-      ...(this.allowedSkills === null ? {} : { allowedSkills: this.allowedSkills }),
+      ...(this.skills === null ? {} : { skills: this.skills }),
       ...(this.children === null ? {} : { children: this.children }),
       a2a: this.a2a,
       ...this.#carried,

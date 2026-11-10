@@ -60,6 +60,28 @@ describe('an agent file that cannot be used', () => {
     );
   });
 
+  it('is invalid for `allowedSkills`, renamed to `skills`, and for a stale `skills` list of descriptive skills (COR-2139)', async () => {
+    const renamed = await listingWithSibling(
+      await start(),
+      'renamed.md',
+      agentFileText({ model: KNOWN_MODEL, allowedSkills: '[summarize]' }),
+    );
+    expect(renamed).toMatchObject({ state: 'invalid', problem: { code: 'invalid-frontmatter' } });
+    expect(renamed?.problem?.issues).toEqual([
+      { path: 'allowedSkills', message: expect.stringContaining('renamed to `skills`') },
+    ]);
+
+    const stale = await listingWithSibling(
+      await start(),
+      'stale.md',
+      agentFileText({ model: KNOWN_MODEL, skills: '[{ id: cite, name: Cite }]' }),
+    );
+    expect(stale).toMatchObject({ state: 'invalid', problem: { code: 'invalid-frontmatter' } });
+    expect(stale?.problem?.issues).toEqual([
+      { path: 'skills', message: expect.stringContaining('`card`') },
+    ]);
+  });
+
   it('is invalid for a model missing from the model catalog', async () => {
     const fixture = await start();
     const listing = await listingWithSibling(

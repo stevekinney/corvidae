@@ -25,7 +25,7 @@ function agent(name: string, kind: 'code' | 'file') {
   return { name, displayName: name, description: null, definitionRevision: 1, kind, a2a: false };
 }
 
-function detail(id: string, skills: string[] | null, allowedSkills: string[] | null = null) {
+function detail(id: string, skills: string[] | null, fileSkills: string[] | null = null) {
   return {
     id,
     source: skills === null ? 'file' : 'code',
@@ -35,7 +35,7 @@ function detail(id: string, skills: string[] | null, allowedSkills: string[] | n
     a2a: false,
     hash: null,
     problem: null,
-    definition: allowedSkills === null ? null : { ...readyAgent().definition, allowedSkills },
+    definition: fileSkills === null ? null : { ...readyAgent().definition, skills: fileSkills },
     codeDefinition:
       skills === null
         ? null
@@ -67,7 +67,7 @@ describe('the executable skills', () => {
 });
 
 describe('the agents that use a skill', () => {
-  test('are the agents that name it, each once, in code or in a file’s allowedSkills', async () => {
+  test('are the agents that name it, each once, in code or in a file’s skills', async () => {
     stub = installBureauStub({
       'bureau.agents.list': () => ({
         agents: [

@@ -621,7 +621,7 @@ export interface BureauOptions<D extends AgentDefinitions = AgentDefinitions> {
    */
   agentContributions?: AgentContributions;
   /**
-   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `allowedSkills`
+   * COR-1975 — the host's skill catalog as it is now, which is what an agent file's `skills`
    * draws on. Discovery and the trust decision stay the host's (COR-752), so this is a read, called
    * when a file agent's run starts, each time the run uses a skill, and when a write grants a skill.
    * Bureau recovers durable runs before `createBureau` returns, so answer from the first read: a

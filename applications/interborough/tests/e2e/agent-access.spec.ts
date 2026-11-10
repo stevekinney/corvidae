@@ -169,7 +169,7 @@ test.describe('the Access tab', () => {
     await skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name }).check();
     await save(page);
     const granted = await definitionOf(request, id);
-    expect(granted?.allowedSkills).toEqual([E2E_SKILLS.summarize.name]);
+    expect(granted?.skills).toEqual([E2E_SKILLS.summarize.name]);
 
     await page.reload();
     await expect(skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name })).toBeChecked();
@@ -188,13 +188,13 @@ test.describe('the Access tab', () => {
       definition: {
         model: definition.model,
         instructions: definition.instructions,
-        allowedSkills: [E2E_SKILLS.deploy.name],
+        skills: [E2E_SKILLS.deploy.name],
       },
     });
 
     expect(refused.fault?.code).toBe('Unprocessable');
     const unchanged = await definitionOf(request, id);
-    expect(unchanged?.allowedSkills).toBeNull();
+    expect(unchanged?.skills).toBeNull();
   });
 });
 
