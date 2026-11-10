@@ -37,7 +37,7 @@ import type { PluginScorer } from './scorer.ts';
 
 /** An event the host publishes, as a trigger, hook action, or formatter receives it. */
 export interface PluginEvent {
-  /** The event's kind, such as `run.completed`. */
+  /** The event's kind, such as `run.settled`. */
   readonly kind: string;
   /** The Bureau that published the event. */
   readonly bureauId: string;

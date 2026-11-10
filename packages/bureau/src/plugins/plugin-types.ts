@@ -160,6 +160,17 @@ export type PluginProblem =
     }
   | {
       /**
+       * A formatter lists an event kind that is not in `BUREAU_EVENT_CATALOG`, so it would never
+       * format anything; the plugin is `skipped` and the host starts.
+       */
+      readonly code: 'formatter-unknown-kind';
+      /** The formatter's name within the plugin. */
+      readonly formatter: string;
+      /** The kind no event carries. */
+      readonly kind: string;
+    }
+  | {
+      /**
        * `setup` threw or rejected, or returned a contribution that cannot be registered (a name
        * outside the plugin name grammar, a tool that cannot be rebuilt, an embedder without a
        * positive integer dimension); the plugin is `skipped` and the host starts.

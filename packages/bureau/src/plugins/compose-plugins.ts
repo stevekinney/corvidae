@@ -52,6 +52,7 @@ import {
 
 import type { AgentDefinitions, UnavailableCodeAgent } from '../agent-catalog';
 import type { AgentContributions } from '../agent-contributions';
+import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import type { AgentSource } from '../sources/definition-source';
 import {
   assertInterceptorHooks,
@@ -905,6 +906,22 @@ async function agentsOfDisabledPlugin(
   }
 }
 
+/**
+ * The `formatter-unknown-kind` problems of a plugin whose formatters list an event kind Bureau
+ * never publishes, so a formatter cannot wait on an event that never fires (COR-2101).
+ */
+function formatterUnknownKinds(contributions: PluginContributions): PluginProblem[] {
+  const problems: PluginProblem[] = [];
+  for (const formatter of contributions.formatters ?? []) {
+    for (const kind of formatter.eventKinds) {
+      if (!Object.hasOwn(BUREAU_EVENT_CATALOG, kind)) {
+        problems.push({ code: 'formatter-unknown-kind', formatter: formatter.name, kind });
+      }
+    }
+  }
+  return problems;
+}
+
 /** `given` with every caller-owned collection composition reads after an await copied now. */
 function snapshotOf<O extends ComposableOptions>(given: O): O {
   const {
@@ -977,6 +994,11 @@ export async function composePlugins<O extends ComposableOptions>(
     }
     if (outcome.status !== 'set-up') {
       record(outcome.status, outcome.problems);
+      continue;
+    }
+    const unknownKinds = formatterUnknownKinds(outcome.result);
+    if (unknownKinds.length > 0) {
+      record('skipped', unknownKinds);
       continue;
     }
     const { plan } = outcome;

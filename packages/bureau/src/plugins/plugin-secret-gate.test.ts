@@ -83,7 +83,7 @@ afterEach(async () => {
   for (const stop of stops.splice(0)) stop();
 });
 
-const event = { kind: 'kit.happened', bureauId: 'b', emittedAtMs: 0, payload: {} };
+const event = { kind: 'run.settled', bureauId: 'b', emittedAtMs: 0, payload: {} };
 
 describe('a plugin missing a declared secret', () => {
   it('loads needs-setup with secret-missing, and its contributions work once watch reports the secret, with no restart', async () => {
@@ -98,7 +98,7 @@ describe('a plugin missing a declared secret', () => {
           createTool({ name: 'lookup', description: 'Looks up', execute: async () => 'found' }),
         ],
         formatters: [
-          { name: 'fmt', eventKinds: ['kit.happened'], format: () => ({ title: 'Formatted' }) },
+          { name: 'fmt', eventKinds: ['run.settled'], format: () => ({ title: 'Formatted' }) },
         ],
       }),
     });
@@ -121,7 +121,7 @@ describe('a plugin missing a declared secret', () => {
     ]);
     expect(missing?.contributions.map(({ id }) => id)).toEqual(['kit:lookup@1.0.0', 'kit:fmt']);
     // Registered at construction, refusing until the secret is saved: the default title.
-    expect(bureau.formatEvent(event).title).toBe('kit.happened');
+    expect(bureau.formatEvent(event).title).toBe('run.settled');
 
     secrets.save(KEY, SECRET);
     await waitForCondition(
@@ -138,7 +138,7 @@ describe('a plugin missing a declared secret', () => {
       async () => (await statusOf()) === 'needs-setup',
       'the plugin kept running after its secret was removed',
     );
-    expect(bureau.formatEvent(event).title).toBe('kit.happened');
+    expect(bureau.formatEvent(event).title).toBe('run.settled');
 
     await bureau.dispose();
     bureaus.length = 0;
@@ -350,7 +350,7 @@ describe('the secret-gating outcome matrix', () => {
         formatters: [
           {
             name: 'fmt',
-            eventKinds: ['kit.happened'],
+            eventKinds: ['run.settled'],
             format: () => {
               called.push('formatter');
               return { title: 'Formatted' };
