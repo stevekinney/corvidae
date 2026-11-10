@@ -242,26 +242,45 @@ export async function runInstalled(
       sanitizedPath: '/usr/bin:/bin',
     });
     if (operations.spawn === undefined && executable.endsWith('/interborough')) {
-      for (const command of [
-        'status',
-        'doctor',
-        'providers list',
-        'agents list',
-        'workflows list',
-        'schedules list',
-      ]) {
+      const definitionFile = join(cwd, 'installed-cli-agent.json');
+      await writeFile(
+        definitionFile,
+        JSON.stringify({ model: 'installed-fixture/scripted', instructions: 'Use the fixture.' }),
+      );
+      const commands: Array<{ args: string[]; json: boolean }> = [
+        { args: ['status'], json: true },
+        { args: ['doctor'], json: true },
+        { args: ['providers', 'list'], json: true },
+        { args: ['agents', 'list'], json: true },
+        { args: ['workflows', 'list'], json: true },
+        { args: ['schedules', 'list'], json: true },
+        { args: ['completion', 'bash'], json: false },
+        {
+          args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
+          json: true,
+        },
+        {
+          args: ['chat', '--agent', 'installed-cli-agent', '--message', 'hello', '--no-input'],
+          json: true,
+        },
+      ];
+      for (const command of commands) {
         const result = await runInstalledCliCommand(
           executable,
-          [...command.split(' '), '--url', url, '--output', 'json'],
+          [...command.args, ...(command.json ? ['--url', url, '--output', 'json'] : [])],
           home,
           cwd,
           registryUrl,
         );
         if (result.exitCode !== 0)
-          throw new Error(`Installed CLI ${command} exited ${result.exitCode}: ${result.stderr}`);
-        const payload = JSON.parse(result.stdout) as { schemaVersion?: number };
-        if (payload.schemaVersion !== 1)
-          throw new Error(`Installed CLI ${command} returned an invalid envelope`);
+          throw new Error(
+            `Installed CLI ${command.args.join(' ')} exited ${result.exitCode}: ${result.stderr}`,
+          );
+        if (command.json) {
+          const payload = JSON.parse(result.stdout) as { schemaVersion?: number };
+          if (payload.schemaVersion !== 1)
+            throw new Error(`Installed CLI ${command.args.join(' ')} returned an invalid envelope`);
+        }
       }
       pass(
         'installed CLI status, diagnosis, provider, definition, workflow, and schedule journeys',
