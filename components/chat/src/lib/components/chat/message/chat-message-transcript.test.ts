@@ -116,16 +116,75 @@ describe('transcript presentation', () => {
     expect(queryByRole('button', { name: 'Quote message' })).toBeNull();
   });
 
-  test('the host actions sit in the line before Copy', () => {
+  test('the host actions sit in the line after the built-in ones', () => {
     const { container } = mount({
+      message: message({ role: 'assistant', content: 'Order 4398 is $27.25.' }),
+      onQuote: () => undefined,
+      onRegenerate: () => undefined,
       actions: createRawSnippet(() => ({ render: () => '<button type="button">Branch</button>' })),
     });
+    // Copy brings a hidden live region that says nothing until something is copied; leave it out.
     const labels = Array.from(
       container.querySelectorAll('.chat-message-line-actions > *'),
       (node) => node.textContent?.trim(),
-    );
-    expect(labels.indexOf('Branch')).toBeGreaterThan(-1);
-    expect(labels.indexOf('Branch')).toBeLessThan(labels.findIndex((text) => text === 'Copy'));
+    ).filter((text) => text);
+    expect(labels).toEqual(['Copy', 'Quote', 'Regenerate', 'Branch']);
+  });
+
+  test('the line reads time, Copy, Quote, Regenerate, each action an icon and a word', () => {
+    const { container } = mount({
+      message: message({ role: 'assistant', content: 'Order 4398 is $27.25.' }),
+      onQuote: () => undefined,
+      onRegenerate: () => undefined,
+    });
+    const line = container.querySelector('.chat-message-line')!;
+    // The time comes first, then the actions.
+    expect(line.firstElementChild?.tagName).toBe('TIME');
+    expect(line.lastElementChild?.classList.contains('chat-message-line-actions')).toBe(true);
+    const buttons = Array.from(line.querySelectorAll<HTMLElement>('.chat-message-action-button'));
+    expect(buttons.map((button) => button.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+      'Copy',
+      'Quote',
+      'Regenerate',
+    ]);
+    for (const button of buttons) {
+      // An icon before the word, drawn for the eye only.
+      expect(button.querySelector('svg')).not.toBeNull();
+      expect(button.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    }
+  });
+
+  test('Regenerate shows only for a finished assistant answer when the host supplies the callback', async () => {
+    const regenerate = mock((_id: string) => undefined);
+    const answer = message({ id: 'a1', role: 'assistant', content: 'Order 4398 is $27.25.' });
+
+    const without = mount({ message: answer });
+    expect(without.queryByRole('button', { name: 'Regenerate' })).toBeNull();
+    cleanup();
+
+    const user = mount({ onRegenerate: regenerate });
+    expect(user.queryByRole('button', { name: 'Regenerate' })).toBeNull();
+    cleanup();
+
+    const streaming = mount({ message: answer, onRegenerate: regenerate, streaming: true });
+    expect(streaming.container.querySelector('.chat-message-regenerate-button')).toBeNull();
+    cleanup();
+
+    const finished = mount({ message: answer, onRegenerate: regenerate });
+    await fireEvent.click(finished.getByRole('button', { name: 'Regenerate' }));
+    expect(regenerate).toHaveBeenCalledTimes(1);
+    expect(regenerate).toHaveBeenCalledWith('a1');
+  });
+
+  test('the bubble presentation offers Regenerate as an icon button with its own name', async () => {
+    const regenerate = mock((_id: string) => undefined);
+    const { getByRole } = mount({
+      presentation: 'default',
+      message: message({ id: 'a2', role: 'assistant', content: 'Order 4398 is $27.25.' }),
+      onRegenerate: regenerate,
+    });
+    await fireEvent.click(getByRole('button', { name: 'Regenerate response' }));
+    expect(regenerate).toHaveBeenCalledWith('a2');
   });
 
   test('a message that was not sent keeps its bubble, shows a focusable red icon, its time and Not sent, and Copy', () => {

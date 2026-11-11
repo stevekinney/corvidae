@@ -157,8 +157,9 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * - `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.
    *   Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.
    * - `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its
-   *   tinted bubble, and one muted line under each message carries its time, `messageActions`, Copy
-   *   and Quote as visible words. A message that was not sent keeps its bubble under a red icon
+   *   tinted bubble, and one muted line under each message carries its time, Copy, Quote and
+   *   Regenerate (when `onRegenerate` is set) as an icon and a word each, then `messageActions`. A
+   *   message that was not sent keeps its bubble under a red icon
    *   (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued
    *   (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).
    */
@@ -291,8 +292,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   readReceipts?: Map<string, ReadReceipt> | undefined;
   /** The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. */
   sourcesByMessageId?: ReadonlyMap<string, readonly CitationSource[]> | undefined;
-  /** How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe. Opening a list above the viewport keeps the message the reader is looking at in place. */
-  sourcePresentation?: 'compact' | 'list' | undefined;
+  /** How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe; `'inline'` draws one chip per source that flows like words and reads the source's host, or its label when it has no web address, and opens that source in Citation's panel. Opening a list above the viewport keeps the message the reader is looking at in place. */
+  sourcePresentation?: 'compact' | 'list' | 'inline' | undefined;
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over
@@ -309,6 +310,13 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   onReadReceipt?: (event: ChatReadReceiptEvent) => void;
   onSubmit?: (event: ChatSubmitEvent) => void;
   onRetry?: (messageId: string) => void;
+  /**
+   * Called with the id of the latest assistant message, once it is finished, when the reader
+   * chooses Regenerate. Chat draws a Regenerate action beside Copy and Quote on that message only
+   * when this is set, because only the host knows how to write an answer again. Regenerating rewrites the answer itself: the tool results
+   * and approvals earlier in the turn stay, and no tool runs again.
+   */
+  onRegenerate?: (messageId: string) => void | Promise<void>;
   onEdit?: (event: { messageId: string; content: string }) => void;
   /**
    * Overrides Chat's built-in artifact panel. When supplied, Chat calls this

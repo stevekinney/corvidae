@@ -157,6 +157,7 @@
     onReadReceipt,
     onSubmit,
     onRetry,
+    onRegenerate,
     onEdit,
     onArtifactOpen,
     onApprovalResolve,
@@ -524,6 +525,10 @@
   const lastMessageId = $derived(transcript.lastMessageId);
   const rollbackBoundaryIndex = $derived(transcript.rollbackBoundaryIndex);
   const messageIndexById = $derived(transcript.messageIndexById);
+  // Regenerate rewrites the latest answer, so only the last assistant message offers it.
+  const lastAssistantMessageId = $derived(
+    messages.findLast((candidate) => candidate.role === 'assistant')?.id,
+  );
   const activeTurnMessageIds = $derived(transcript.activeTurnMessageIds);
   const progressState = $derived(transcript.progressState);
   const toolCallPairsByCallId = $derived(transcript.toolCallPairsByCallId);
@@ -1888,6 +1893,7 @@
           {noteAction}
           onEdit={allowEditing && canEdit ? handleEdit : undefined}
           onQuote={allowQuote ? handleQuote : undefined}
+          onRegenerate={message.id === lastAssistantMessageId ? onRegenerate : undefined}
           quoteDisabled={quotes.isFull}
           quoteDisabledDescriptionId={quotes.isFull ? quoteLimitNoteId : undefined}
           oneditingchange={(editing) => handleEditingChange(message.id, editing)}

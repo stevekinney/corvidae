@@ -79,7 +79,7 @@
   let sourcesByMessageId = $state<ReadonlyMap<string, readonly CitationSource[]> | undefined>(
     undefined,
   );
-  let sourcePresentation = $state<'compact' | 'list'>('compact');
+  let sourcePresentation = $state<'compact' | 'list' | 'inline'>('compact');
   let directTypingParticipants = $state<TypingParticipant[] | undefined>(undefined);
   let adapterEnabled = $state(false);
   let customMessageSnippets = $state(true);
@@ -1193,6 +1193,7 @@
       >
         <Segment value="compact">Compact</Segment>
         <Segment value="list">List</Segment>
+        <Segment value="inline">Inline</Segment>
       </SegmentedControl>
     </section>
 

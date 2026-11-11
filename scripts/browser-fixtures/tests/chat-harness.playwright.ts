@@ -1644,6 +1644,63 @@ test.describe('chat harness — message sources (COR-2257)', () => {
   });
 });
 
+test.describe('chat harness — inline source chips (COR-2281 M4)', () => {
+  for (const width of [1440, 320] as const) {
+    test(`at ${width}px the chips sit in the line, read their host or label and open their source`, async ({
+      browser,
+    }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        viewport: { width, height: 900 },
+      });
+      try {
+        await harness
+          .locator('#harness-source-presentation')
+          .getByText('Inline', { exact: true })
+          .click();
+        await harness.locator('[data-testid="seed-sources"]').click();
+
+        const messageA = harness.locator('article[data-message-id="sources-assistant-a"]');
+        const chips = messageA.locator('.chat-message-source-chips .cinder-citation__marker');
+        await expect(chips).toHaveText(['example.com', 'Board minutes, March', 'Pricing memo']);
+        await expect(harness.locator('.chat-message-sources-toggle')).toHaveCount(0);
+
+        // Each chip flows like a word: it is inline-level, and the row of them wraps with the line
+        // rather than scrolling the message sideways.
+        const layout = await messageA.locator('.chat-message-source-chips').evaluate((group) => {
+          const citation = group.querySelector('.cinder-citation')!;
+          return {
+            citationDisplay: getComputedStyle(citation).display,
+            overflow: group.scrollWidth - group.clientWidth,
+          };
+        });
+        expect(layout.citationDisplay).toBe('inline');
+        expect(layout.overflow).toBeLessThanOrEqual(0);
+        await expectNoPageOverflow(page);
+
+        // A chip opens its own source and Escape returns focus to it.
+        const first = chips.first();
+        await first.focus();
+        await page.keyboard.press('Enter');
+        await expect(page.locator('.cinder-citation__panel strong')).toHaveText(
+          'Annual report 2025',
+        );
+        await page.keyboard.press('Escape');
+        await expect(first).toBeFocused();
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  async function expectNoPageOverflow(page: Page): Promise<void> {
+    await expect
+      .poll(() =>
+        page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
+      )
+      .toBeLessThanOrEqual(1);
+  }
+});
+
 test.describe('chat harness — expandable source list (COR-2259)', () => {
   const sourceTitles = ['Annual report 2025', 'Board minutes, March', 'Pricing memo'];
 

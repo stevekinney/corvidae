@@ -40,6 +40,26 @@ describe('chat message action buttons', () => {
     expect(baseRuleMatches).toHaveLength(1);
   });
 
+  test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
+    const lineRule = extractRule(source, /(?:^|\n)\s*\.chat-message-line\s*\{/);
+    expect(lineRule).toContain('gap: var(--cinder-space-1) var(--cinder-space-3)');
+    const actionsRule = extractRule(source, '.chat-message-line-actions {');
+    expect(actionsRule).toContain('gap: var(--cinder-space-1) var(--cinder-space-3)');
+    const buttonRule = extractRule(
+      source,
+      '.chat-message-line :global(.chat-message-action-button) {',
+    );
+    expect(buttonRule).toContain('padding: 0;');
+  });
+
+  test('Regenerate is an optional action that follows Quote, in both presentations', () => {
+    expect(source).toContain('onRegenerate?: ((messageId: string) => void | Promise<void>)');
+    expect(source).toContain('chat-message-action-button chat-message-regenerate-button');
+    expect(source.indexOf('chat-message-quote-button')).toBeLessThan(
+      source.indexOf('chat-message-regenerate-button'),
+    );
+  });
+
   test('base rule uses border-box sizing and a transparent reserving border', () => {
     const withoutTouchBlock = source.replace(extractTouchMediaBlock(source), '');
     const baseRule = extractRule(withoutTouchBlock, ':global(.chat-message-action-button) {');

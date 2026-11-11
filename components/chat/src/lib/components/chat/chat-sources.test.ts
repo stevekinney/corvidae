@@ -366,3 +366,100 @@ describe('Chat — sourcePresentation="list"', () => {
     expect(sourceList(container, 'assistant-a')).toBeNull();
   });
 });
+
+// COR-2281 M4: `sourcePresentation="inline"` draws one chip per source in the line, each reading
+// the source's host, or its label when it has no safe web address.
+describe('Chat — sourcePresentation="inline"', () => {
+  function chips(container: HTMLElement, id: string): HTMLButtonElement[] {
+    return Array.from(
+      messageArticle(container, id).querySelectorAll<HTMLButtonElement>(
+        '.chat-message-source-chips .cinder-citation__marker',
+      ),
+    );
+  }
+
+  test('only the assistant message with sources shows chips, and no Sources control', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-inline-only',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([
+        ['assistant-a', sourcesForA],
+        ['user-1', sourcesForA],
+      ]),
+      sourcePresentation: 'inline',
+    });
+    await tick();
+
+    expect(container.querySelectorAll('.chat-message-source-chips')).toHaveLength(1);
+    expect(container.querySelector('.chat-message-sources-toggle')).toBeNull();
+    expect(container.querySelector('.chat-message-sources-citation')).toBeNull();
+    expect(chips(container, 'assistant-a')).toHaveLength(4);
+    expect(chips(container, 'assistant-b')).toHaveLength(0);
+    expect(chips(container, 'user-1')).toHaveLength(0);
+    expect(
+      messageArticle(container, 'assistant-a')
+        .querySelector('.chat-message-source-chips')
+        ?.getAttribute('role'),
+    ).toBe('group');
+  });
+
+  test('each chip reads its host or its label, in order, with duplicates kept', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-inline-labels',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'inline',
+    });
+    await tick();
+
+    expect(chips(container, 'assistant-a').map((chip) => chip.textContent?.trim())).toEqual([
+      'example.com',
+      'Board minutes',
+      'example.com',
+      'Unsafe source',
+    ]);
+    // The text is drawn with its own direction, so a right-to-left label stays readable.
+    expect(
+      chips(container, 'assistant-a')[0]
+        ?.querySelector('.chat-message-source-chip-text')
+        ?.getAttribute('dir'),
+    ).toBe('auto');
+  });
+
+  test('a chip opens its own source in Citation’s panel, through the same link policy', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-inline-panel',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'inline',
+    });
+    await tick();
+
+    await fireEvent.click(chips(container, 'assistant-a')[0]!);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+    const panel = document.querySelector('.cinder-citation__panel')!;
+    expect(panel.querySelector('strong')?.textContent).toBe('Annual report');
+    expect(panel.querySelector('p')?.textContent).toBe('Revenue rose 12%.');
+    expect(panel.querySelector('a')?.getAttribute('href')).toBe('https://example.com/annual');
+  });
+
+  test('removing the sources while a chip has focus moves focus to the message', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inline-focus',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'inline',
+    });
+    await tick();
+    const chip = chips(container, 'assistant-a')[2]!;
+    chip.focus();
+    expect(document.activeElement).toBe(chip);
+
+    await rerender({ sourcesByMessageId: new Map() });
+
+    await waitFor(() =>
+      expect(document.activeElement).toBe(messageArticle(container, 'assistant-a')),
+    );
+    expect(chip.isConnected).toBe(false);
+  });
+});

@@ -101,12 +101,11 @@
     background: var(--cinder-border-muted);
   }
 
+  /* The day reads as a sentence-case word ("Today"), muted, with no capitals or letter spacing. */
   .chat-date-separator-text {
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
     font-weight: var(--cinder-font-medium);
-    color: var(--cinder-text-subtle);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
+    color: var(--cinder-text-muted);
     white-space: nowrap;
   }
 </style>

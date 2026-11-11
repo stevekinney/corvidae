@@ -20,8 +20,9 @@
     searchMatch?: boolean;
     /**
      * How the message is drawn. `'transcript'` is the Interborough transcript: a reply is plain
-     * text with no card or role label, and one muted line under each message carries its time, the
-     * host's `actions`, Copy and Quote as visible words. A message that was not sent keeps its
+     * text with no card or role label, and one muted line under each message carries its time, Copy,
+     * Quote and Regenerate (when `onRegenerate` is set) as an icon and a word each, then the host's
+     * `actions`. A message that was not sent keeps its
      * bubble under a red icon, its time and "Not sent", and a follow-up the run has not taken yet is
      * a dashed bubble marked "Queued". A run's notes sit outside the bubble. Default `'default'`.
      */
@@ -74,6 +75,13 @@
      * message's whole rendered text.
      */
     onQuote?: ((text: string) => void) | undefined;
+    /**
+     * Called with this message's id when the reader asks to regenerate the answer. Setting it adds
+     * a Regenerate action, beside Copy and Quote, to a finished assistant message; without it no
+     * Regenerate action is drawn, because only the host knows how to write the answer again.
+     * Regenerating rewrites the answer: the tool results and approvals that came before it stay.
+     */
+    onRegenerate?: ((messageId: string) => void | Promise<void>) | undefined;
     /** Disables the Quote action, for example when no more quotes fit. */
     quoteDisabled?: boolean;
     /** The id of an element that explains why Quote is disabled. */
@@ -143,9 +151,12 @@
     sources?: readonly CitationSource[] | undefined;
     /**
      * How the Sources control shows the sources: `'compact'` opens Cinder's Citation panel, `'list'`
-     * is a disclosure that lists them under the message. Default `'compact'`.
+     * is a disclosure that lists them under the message, and `'inline'` draws one chip per source,
+     * each reading the source's host (or its label when it has no web address) and opening that
+     * source in Citation's panel. The chips flow like words and wrap with the line. Default
+     * `'compact'`.
      */
-    sourcePresentation?: 'compact' | 'list' | undefined;
+    sourcePresentation?: 'compact' | 'list' | 'inline' | undefined;
     /**
      * With `sourcePresentation="list"`, whether the list is open. Bindable, like `toolCallExpanded`:
      * `Chat` drives it one-way through `onsourcestoggle`, and a standalone `ChatMessage` still gets
@@ -172,10 +183,12 @@
   import {
     Button,
     CircleAlert,
+    Copy,
     CopyButton,
     Pencil,
     Popover,
     Quote,
+    RefreshCw,
     RotateCcw,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
@@ -208,6 +221,7 @@
     noteAction,
     onEdit,
     onQuote,
+    onRegenerate,
     quoteDisabled = false,
     quoteDisabledDescriptionId,
     oneditingchange,
@@ -245,6 +259,19 @@
   const canQuote = $derived(
     message.role === 'assistant' && onQuote !== undefined && getMessageText(message).trim() !== '',
   );
+
+  // Regenerate. Only a finished assistant answer that the host can write again offers it.
+  const canRegenerate = $derived(
+    message.role === 'assistant' &&
+      onRegenerate !== undefined &&
+      !streaming &&
+      !isStreamingMessage(message),
+  );
+
+  function regenerateMessage(): void {
+    // The click only hands over the message id; the host reports its own failures.
+    void onRegenerate?.(message.id);
+  }
 
   function selectionInside(sources: readonly Element[]): string | undefined {
     const selection = document.getSelection();
@@ -301,11 +328,15 @@
   function focusIsInSources(active: Element | null): boolean {
     if (active === null || sourcesElement === null) return false;
     if (sourcesElement.contains(active)) return true;
-    const panelId = sourcesElement.querySelector('[aria-controls]')?.getAttribute('aria-controls');
-    if (!panelId) return false;
-    const panel = document.getElementById(panelId);
-    const surface = panel?.closest('dialog') ?? panel;
-    return surface?.contains(active) === true;
+    // Inline chips are one control each, and any of them can be the one whose panel is open.
+    for (const control of sourcesElement.querySelectorAll('[aria-controls]')) {
+      const panelId = control.getAttribute('aria-controls');
+      if (!panelId) continue;
+      const panel = document.getElementById(panelId);
+      const surface = panel?.closest('dialog') ?? panel;
+      if (surface?.contains(active) === true) return true;
+    }
+    return false;
   }
 
   // When the host takes the sources away, the control (and any panel it opened) unmounts with
@@ -626,13 +657,9 @@
       <time datetime={createdAtValue}>{formattedCreatedAt}</time>
     {/if}
     {#if !isPending && !streaming}
+      <!-- The line reads in one order: the time, then Copy, Quote and Regenerate as an icon and a
+           word each, then whatever the host adds. -->
       <span class="chat-message-line-actions">
-        {#if actions}
-          {@render actions()}
-        {/if}
-        {#if metadata}
-          {@render metadata()}
-        {/if}
         {#if showDefaultActions && copyValue}
           <CopyButton
             value={copyValue}
@@ -642,7 +669,10 @@
             copiedLabel="Copied"
             confirmDuration={2000}
             class="chat-message-action-button chat-message-copy"
-          />
+          >
+            <Copy class="cinder-icon-xs" aria-hidden="true" />
+            Copy
+          </CopyButton>
         {/if}
         {#if canQuote && !isFailed}
           <button
@@ -653,8 +683,25 @@
             aria-label="Quote message"
             aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
           >
+            <Quote class="cinder-icon-xs" aria-hidden="true" />
             Quote
           </button>
+        {/if}
+        {#if canRegenerate && !isFailed}
+          <button
+            type="button"
+            class="chat-message-action-button chat-message-regenerate-button"
+            onclick={regenerateMessage}
+          >
+            <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
+            Regenerate
+          </button>
+        {/if}
+        {#if actions}
+          {@render actions()}
+        {/if}
+        {#if metadata}
+          {@render metadata()}
         {/if}
       </span>
     {/if}
@@ -847,7 +894,7 @@
     </div>
   {/if}
 
-  {#if !transcript && !isEditing && (actions || canQuote || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
+  {#if !transcript && !isEditing && (actions || canQuote || canRegenerate || (showDefaultActions && copyValue) || canEdit || (message.role === 'user' && onRollback))}
     <footer class="chat-message-footer" role="none">
       <div class="chat-message-actions" role="group" aria-label="Message actions">
         {#if actions}
@@ -875,6 +922,16 @@
             aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
           >
             <Quote class="cinder-icon-xs" />
+          </button>
+        {/if}
+        {#if canRegenerate}
+          <button
+            type="button"
+            class="chat-message-action-button chat-message-regenerate-button"
+            onclick={regenerateMessage}
+            aria-label="Regenerate response"
+          >
+            <RefreshCw class="cinder-icon-xs" />
           </button>
         {/if}
         {#if canEdit}
@@ -1645,7 +1702,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1) var(--cinder-space-3);
     min-block-size: 1.5rem;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
@@ -1663,13 +1720,15 @@
     gap: var(--cinder-space-1) var(--cinder-space-3);
   }
 
-  /* Actions are words in this line, not icon buttons in a hover footer. */
+  /* Actions are an icon and a word in this line, not icon buttons in a hover footer. The time and
+   * each action are the same distance apart, and with no inline padding the first one starts on the
+   * same edge as the message's own text. */
   .chat-message-line :global(.chat-message-action-button) {
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-1);
     min-block-size: 1.5rem;
-    padding: 0 var(--cinder-space-1);
+    padding: 0;
     border: none;
     border-radius: var(--cinder-radius-sm);
     background: transparent;

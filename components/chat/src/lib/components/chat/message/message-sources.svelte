@@ -6,9 +6,10 @@
     sources: readonly CitationSource[];
     /**
      * `'compact'` opens the sources in Cinder's Citation panel; `'list'` is a disclosure that shows
-     * them inline under the message. Default `'compact'`.
+     * them inline under the message; `'inline'` is one chip per source, reading its host or its
+     * label, that opens that source in the same panel. Default `'compact'`.
      */
-    presentation?: 'compact' | 'list' | undefined;
+    presentation?: 'compact' | 'list' | 'inline' | undefined;
     /** With `presentation="list"`, whether the list is open. */
     expanded?: boolean | undefined;
     /** With `presentation="list"`, called when the person opens or closes the list. */
@@ -20,6 +21,7 @@
 
 <script lang="ts">
   import { ChevronRight, Citation, resolveCitationLink } from '@lostgradient/cinder';
+  import { sourceChipLabel } from './source-chip-label.ts';
 
   let {
     sources,
@@ -74,6 +76,17 @@
       {/each}
     </ol>
   {/if}
+{:else if presentation === 'inline'}
+  <!-- One chip per source, in the order given and with duplicates kept, as everywhere else. Each
+       chip is Citation's own marker, so its panel, URL policy and focus return are unchanged. -->
+  <span class="chat-message-source-chips" role="group" aria-label="Sources">
+    {#each sources as source, index (index)}
+      {@const chip = sourceChipLabel(source)}
+      <Citation sources={[source]} label={chip} class="chat-message-source-chip"
+        ><span class="chat-message-source-chip-text" dir="auto">{chip}</span></Citation
+      >
+    {/each}
+  </span>
 {:else}
   <Citation {sources} label="Sources" class="chat-message-sources-citation"
     >Sources <span class="chat-message-sources-count">{sources.length}</span></Citation
@@ -180,6 +193,54 @@
 
   .chat-message-sources-note {
     color: var(--cinder-text-muted);
+  }
+
+  /* Inline chips: each source is a small rounded marker that sits in the line like a word. The
+     chips wrap with the line and a long host is cut with an ellipsis rather than widening the
+     message. A chip is a hairline outline with no fill. */
+  .chat-message-source-chips {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    line-height: 1.8;
+    text-align: start;
+  }
+
+  .chat-message-source-chips :global(.chat-message-source-chip) {
+    display: inline;
+    margin-inline-end: var(--cinder-space-1);
+  }
+
+  .chat-message-source-chips :global(.chat-message-source-chip .cinder-citation__marker) {
+    display: inline-block;
+    vertical-align: baseline;
+    max-inline-size: min(100%, 16rem);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    padding: 0 var(--cinder-space-2);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-full);
+    color: var(--cinder-accent-text);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    font-weight: var(--cinder-font-medium);
+    line-height: inherit;
+  }
+
+  .chat-message-source-chips :global(.chat-message-source-chip .cinder-citation__marker:hover) {
+    border-color: var(--cinder-border-strong);
+  }
+
+  .chat-message-source-chips
+    :global(.chat-message-source-chip .cinder-citation__marker:focus-visible) {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  @media (pointer: coarse) {
+    .chat-message-source-chips :global(.chat-message-source-chip .cinder-citation__marker) {
+      padding-block: calc((var(--cinder-touch-target-min) - 1lh) / 2);
+    }
   }
 
   @media (pointer: coarse) {
