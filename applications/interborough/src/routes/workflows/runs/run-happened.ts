@@ -49,6 +49,8 @@ export type HappenedInput = {
   readonly over: boolean;
   /** The IANA zone the clock is written in; defaults to the viewer's. */
   readonly zone?: string | undefined;
+  /** How the run ended and when (epoch milliseconds), for a run that is over: the last entry says it. */
+  readonly ended?: { readonly outcome: 'done' | 'failed' | 'canceled'; readonly at: number };
 };
 
 const timeOf = z.string().optional();
@@ -190,6 +192,15 @@ export function happenedOfRun(input: HappenedInput): HappenedEntry[] {
     });
   } else if (!over) {
     entries.push({ key: 'replied', title: copy.replied, detail: copy.notRun, state: 'pending' });
+  }
+  // A run that is over ends on how it ended, so the sequence never stops at "Started".
+  if (over && input.ended !== undefined) {
+    entries.push({
+      key: 'ended',
+      title: copy.ended[input.ended.outcome](clockTimeWithSeconds(input.ended.at, zone)),
+      offsetMilliseconds: offsetOf(input.ended.at, startedAt),
+      state: 'done',
+    });
   }
   return entries;
 }

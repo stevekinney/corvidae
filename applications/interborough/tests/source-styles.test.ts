@@ -173,3 +173,11 @@ test('no stylesheet or Svelte source under src sets a raw px padding or font-siz
   }
   expect(violations).toEqual([]);
 });
+
+test('the parts of a workflow header line are inline, so the space that ends "Last run " is kept', async () => {
+  const css = await Bun.file(
+    fileURLToPath(new URL('../src/styles/workflow-definitions.css', import.meta.url)),
+  ).text();
+  // A flex item drops a trailing space, which ran "Last run" into the date and "File" into its name.
+  expect(css).toMatch(/\.ib-workflow__line \.ib-workflow-line__part\s*\{\s*display: inline;/);
+});

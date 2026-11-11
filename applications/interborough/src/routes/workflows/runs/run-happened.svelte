@@ -17,7 +17,7 @@
   import { getThreadMessages } from '../../../lib/bureau-client.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { threadIdForTask } from './run-activity.ts';
-  import { happenedOfRun } from './run-happened.ts';
+  import { happenedOfRun, type HappenedInput } from './run-happened.ts';
   import { durationWords } from './run-rows.ts';
 
   interface RunHappenedProps {
@@ -71,6 +71,16 @@
     return () => clearTimeout(timer);
   });
 
+  /** How the run ended and when, from the same task the header reads, or `undefined` while it goes on. */
+  function endedOf(view: TaskView): HappenedInput['ended'] {
+    const at = Date.parse(view.updatedAt);
+    if (!Number.isFinite(at)) return undefined;
+    if (view.status === 'completed') return { outcome: 'done', at };
+    if (view.status === 'failed') return { outcome: 'failed', at };
+    if (view.status === 'canceled') return { outcome: 'canceled', at };
+    return undefined;
+  }
+
   const waiting = $derived(
     task.status !== 'input-required'
       ? null
@@ -87,6 +97,7 @@
       startedAt,
       waiting,
       over: isTerminalState(task.status),
+      ended: endedOf(task),
     }),
   );
 </script>

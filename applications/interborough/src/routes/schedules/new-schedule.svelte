@@ -762,14 +762,9 @@
   {#if target === undefined}
     <PageHeader title={copy.title} headingLevel={1} description={copy.description(zone)} />
   {:else if deleted}
-    <!-- Focus lands on Workflow here, not on Repeats, so the note that says where it lands is not drawn. -->
     <PageHeader title={editCopy.heading(editedName ?? '')} headingLevel={1} />
   {:else}
-    <PageHeader
-      title={editCopy.heading(editedName ?? '')}
-      headingLevel={1}
-      description={editCopy.description}
-    />
+    <PageHeader title={editCopy.heading(editedName ?? '')} headingLevel={1} />
   {/if}
 
   <fieldset class="ib-schedule-new__fields" disabled={creating} bind:this={formRegion}>

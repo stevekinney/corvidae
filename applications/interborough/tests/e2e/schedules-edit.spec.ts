@@ -38,9 +38,7 @@ for (const width of WIDTHS) {
     const main = page.locator('main');
 
     await expect(main.getByRole('heading', { level: 1, name: 'Edit Daily summary' })).toBeVisible();
-    await expect(main).toContainText(
-      'Opened from When › Edit on the schedule page. Focus lands on Repeats, the first field in that group, and the page scrolls to it.',
-    );
+    await expect(main).not.toContainText('Opened from When');
     await expect(main.getByRole('heading', { level: 2 })).toHaveText([
       'What runs',
       'Input',

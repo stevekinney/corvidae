@@ -178,4 +178,36 @@ describe('happenedOfRun', () => {
     });
     expect(early[1]?.offsetMilliseconds).toBeUndefined();
   });
+
+  test('a run that is over ends on how it ended and when, so a canceled run does not stop at Started', () => {
+    const base = {
+      runId: 'run-1',
+      messages: [],
+      startedAt: STARTED,
+      waiting: null,
+      over: true,
+      zone: ZONE,
+    } as const;
+    const canceled = happenedOfRun({
+      ...base,
+      ended: { outcome: 'canceled', at: STARTED + 72_000 },
+    });
+    expect(canceled.map((entry) => entry.title)).toEqual([
+      'Started 10:42:11 AM',
+      'Canceled 10:43:23 AM',
+    ]);
+    expect(canceled.at(-1)).toMatchObject({ offsetMilliseconds: 72_000, state: 'done' });
+    expect(
+      happenedOfRun({ ...base, ended: { outcome: 'done', at: STARTED + 1_000 } }).at(-1)?.title,
+    ).toBe('Done 10:42:12 AM');
+    expect(
+      happenedOfRun({ ...base, ended: { outcome: 'failed', at: STARTED + 1_000 } }).at(-1)?.title,
+    ).toBe('Failed 10:42:12 AM');
+    // A run still going has no end to show.
+    expect(
+      happenedOfRun({ ...base, over: false, ended: { outcome: 'done', at: STARTED } }).map(
+        (entry) => entry.key,
+      ),
+    ).not.toContain('ended');
+  });
 });

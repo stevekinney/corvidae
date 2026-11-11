@@ -30,7 +30,12 @@
   );
 </script>
 
+{#snippet statusSlot()}
+  {#if model.statusWord !== null}<StatusDot word={model.statusWord} size="sm" />{/if}
+{/snippet}
+
 <StackedListItem
+  status={model.statusWord === null ? undefined : statusSlot}
   href={router.href(workflowTypePath(row.name))}
   tooltip={model.title ?? model.name}
   data-workflow={row.name}
@@ -38,9 +43,6 @@
   data-state={rowState}
   data-status={model.statusWord ?? undefined}
 >
-  {#snippet status()}
-    {#if model.statusWord !== null}<StatusDot word={model.statusWord} size="sm" />{/if}
-  {/snippet}
   {#snippet title()}
     {#if model.title === null}
       <code class="ib-workflow-row__id">{model.name}</code>

@@ -308,6 +308,10 @@ describe('the list of workflows', () => {
     expect(row(container, 'digest').dataset['status']).toBe('Paused');
     expect(row(container, 'digest').textContent).toContain('Paused');
     expect(row(container, 'order-processing').dataset['status']).toBeUndefined();
+    // A row with no status draws no status element, so the phone layout has no comma to place after it.
+    expect(
+      row(container, 'order-processing').querySelector('.cinder-stacked-list-item__status'),
+    ).toBeNull();
   });
 
   test('is read once for one visit: the frame’s probe and the page share one load of each service', async () => {

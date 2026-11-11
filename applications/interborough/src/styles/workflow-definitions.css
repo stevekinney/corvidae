@@ -320,6 +320,11 @@
   overflow-wrap: anywhere;
 }
 
+/* The parts of a header line are inline, not flex items: a flex item drops the space that ends "Last run ". */
+.ib-workflow__line .ib-workflow-line__part {
+  display: inline;
+}
+
 .ib-workflow__line code {
   font-family: var(--cinder-font-mono);
 }
