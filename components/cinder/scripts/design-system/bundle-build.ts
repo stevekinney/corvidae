@@ -33,7 +33,10 @@ export async function bundleBrowserScript(entry: string): Promise<string | Error
       // the caller's own fallback (render on the main thread) runs.
       'import.meta.url': '"about:blank"',
     },
-    plugins: [sveltePlugin({ generate: 'client', injectCss: true })],
+    // Compiled for production whatever NODE_ENV the build runs under: a development compile
+    // embeds a base64 source map, with the component's whole source, in every injected stylesheet,
+    // which multiplied the editors' captured styles past the static rendition cap.
+    plugins: [sveltePlugin({ generate: 'client', injectCss: true, development: false })],
     loader: { '.css': 'css' },
     throw: false,
   });
@@ -43,6 +46,9 @@ export async function bundleBrowserScript(entry: string): Promise<string | Error
   const script = await output.text();
   if (script.includes('import.meta')) {
     return new Error('the bundle still says import.meta, which a classic script cannot parse');
+  }
+  if (script.includes('sourceMappingURL=data:')) {
+    return new Error('the bundle embeds a source map, which a published script must not carry');
   }
   return script;
 }
