@@ -44,6 +44,12 @@
       "title": "Input with error",
       "description": "Error message wired via aria-invalid and aria-describedby.",
       "code": "<script lang=\"ts\">\n  import { Input } from '@lostgradient/cinder';\n  let email = $state('not-an-email');\n  const hasError = $derived(!email.includes('@'));\n</script>\n\n<Input\n  id=\"email\"\n  type=\"email\"\n  bind:value={email}\n  label=\"Email address\"\n  description=\"We'll never share your email.\"\n  {...hasError ? { error: 'Enter a valid email address.' } : {}}\n/>\n"
+    },
+    {
+      "id": "editable-title",
+      "title": "Editable title",
+      "description": "variant=\"bare\" is text that looks like a 600-weight title and is edited in place: no border at rest, a hover tint, and the control fill under the focus ring.",
+      "code": "<script lang=\"ts\">\n  import { Input } from '@lostgradient/cinder';\n\n  let name = $state('Spring menu launch');\n</script>\n\n<Input\n  id=\"project-title\"\n  bind:value={name}\n  label=\"Project title\"\n  labelVisible={false}\n  variant=\"bare\"\n/>\n"
     }
   ]
 }

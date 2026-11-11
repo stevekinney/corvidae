@@ -57,9 +57,9 @@ const schema = {
       description: 'Error message rendered below the input; also sets `aria-invalid` on the input.',
     },
     variant: {
-      enum: ['default', 'code'],
+      enum: ['default', 'code', 'bare'],
       description:
-        'Visual style. `"code"` applies a shared monospace metric set (font-family, font-size,\nline-height, tab-size) for source-like values such as regular expressions, URIs, or\nidentifiers.',
+        'Visual style. `"code"` applies a shared monospace metric set (font-family, font-size,\nline-height, tab-size) for source-like values such as regular expressions, URIs, or\nidentifiers. `"bare"` is an editable title: text that looks like a 600-weight title, with\nno border at rest, a hover tint, a focus ring over the control fill, and a width that\nfollows its content.',
       default: 'default',
     },
     size: {

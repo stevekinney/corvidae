@@ -208,6 +208,52 @@
   }
 
   /* ----------------------------------------
+ * Bare variant: an editable title
+ *
+ * Text that looks like a 600-weight title and is edited in place. It has no border at rest, a hover
+ * tint, and on focus the control fill under the ring. Where the platform supports it, the width
+ * follows the content; elsewhere the field fills its container.
+ * ---------------------------------------- */
+
+  .cinder-input[data-cinder-variant='bare'] {
+    align-self: flex-start;
+    max-inline-size: 100%;
+    min-block-size: 0;
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    font-size: var(--cinder-text-xl);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+    background: transparent;
+    border-color: transparent;
+  }
+
+  @supports (field-sizing: content) {
+    .cinder-input[data-cinder-variant='bare'] {
+      field-sizing: content;
+      inline-size: auto;
+      min-inline-size: 4ch;
+    }
+  }
+
+  @media (hover: hover) {
+    .cinder-input[data-cinder-variant='bare']:hover:not(:disabled):not(:focus-visible) {
+      background: var(--cinder-surface-hover);
+      border-color: transparent;
+    }
+  }
+
+  .cinder-input[data-cinder-variant='bare']:focus-visible {
+    background: var(--cinder-control-background);
+  }
+
+  /* A read-only title is plain text: no inset surface and no dashed edge. */
+  .cinder-input[data-cinder-variant='bare'][readonly]:not(:disabled) {
+    background: transparent;
+    border-style: solid;
+    border-color: transparent;
+  }
+
+  /* ----------------------------------------
  * Error / invalid state
  * ---------------------------------------- */
 

@@ -5,8 +5,8 @@ import type { HTMLInputAttributes } from 'svelte/elements';
 export type InputType =
   'text' | 'email' | 'password' | 'search' | 'tel' | 'time' | 'url' | 'date' | 'number';
 
-/** Visual style of the input. `"code"` applies the shared monospace metric set (font-family, font-size, line-height, tab-size) used for source-like values such as regular expressions, URIs, and identifiers. */
-export type InputVariant = 'default' | 'code';
+/** Visual style of the input. `"code"` applies the shared monospace metric set (font-family, font-size, line-height, tab-size) used for source-like values such as regular expressions, URIs, and identifiers. `"bare"` is an editable title: text that looks like a 600-weight title and is edited in place. */
+export type InputVariant = 'default' | 'code' | 'bare';
 
 type InputAddonProps = (
   | { leading?: never; leadingInteractive?: never; trailing?: never; trailingInteractive?: never }
@@ -70,7 +70,9 @@ export type InputProps = Omit<HTMLInputAttributes, 'class' | 'size'> &
     /**
      * Visual style. `"code"` applies a shared monospace metric set (font-family, font-size,
      * line-height, tab-size) for source-like values such as regular expressions, URIs, or
-     * identifiers.
+     * identifiers. `"bare"` is an editable title: text that looks like a 600-weight title, with
+     * no border at rest, a hover tint, a focus ring over the control fill, and a width that
+     * follows its content.
      * @default "default"
      */
     variant?: InputVariant;
