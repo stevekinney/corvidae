@@ -44,6 +44,8 @@ export const agentOverridesOutputSchema = z.object({
   guardrails: storedAgentGuardrailSelectionsSchema.nullable(),
   /** The plugin interceptors a run applies, each `plugin:name` (COR-2253). */
   interceptors: agentContributionIdsSchema.nullable(),
+  /** The plugin guardrails that run only once the session is tainted, each `plugin:name` (COR-2386). */
+  escalations: agentContributionIdsSchema.nullable(),
   /**
    * The limits overridden (COR-2138): `steps`, the most steps one run may take; `cost`, what a run
    * and a chat may spend in US dollars; `tools`, what one run's tools may use. A limit that is not
@@ -65,6 +67,7 @@ export const agentOverridesInputSchema = z.strictObject({
   approvals: agentToolApprovalSchema.nullable().optional(),
   guardrails: agentGuardrailSelectionsSchema.nullable().optional(),
   interceptors: agentContributionIdsSchema.nullable().optional(),
+  escalations: agentContributionIdsSchema.nullable().optional(),
   limits: z
     .strictObject({
       steps: agentStepLimitSchema.nullable().optional(),

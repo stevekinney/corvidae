@@ -106,6 +106,13 @@ export const agentOverridesSchema = z.strictObject({
    */
   interceptors: agentContributionIdsSchema.optional(),
   /**
+   * The plugin guardrails (`plugin:name`, ids only) that run only once the session is tainted
+   * (COR-2386), the key an agent file calls `escalations` (COR-2109). A record written before it has
+   * no such key and reads as it is; the key is left out of a record's JSON, and so of its hash, when
+   * it is not set.
+   */
+  escalations: agentContributionIdsSchema.optional(),
+  /**
    * What a run may take, a run and a chat may spend (in US dollars), and a run's tools may use
    * (COR-2138): `steps`, `cost` and `tools`. Each limit named replaces the agent's own; one left out
    * keeps it.

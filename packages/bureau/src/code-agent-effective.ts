@@ -26,6 +26,9 @@
  *   may take.
  * - `guardrails` are plugin guardrails added to the agent's own. An override cannot remove a
  *   guardrail the code agent declares itself.
+ * - `escalations` are plugin guardrails (`plugin:name`, COR-2386) that run only once the session is
+ *   tainted, built as an agent file's `escalations` are (COR-2109) and held beside the guardrails
+ *   above in the same tracker.
  * - `interceptors` are plugin interceptors (`plugin:name`, COR-2253) added to the agent's own hook
  *   tier for the run, as an agent file's `interceptors` are, so the plugin's needs-setup refusal
  *   applies to a run that chose them, and an every-agent set the override also lists registers
@@ -356,9 +359,18 @@ export function effectiveCodeAgent(
     // save checks it against the guardrail's schema; one a plugin's later schema no longer accepts
     // throws here, so the run fails to start rather than run without a guardrail it chose.
     const additions =
-      overrides.guardrails === undefined || deployment.contributions === undefined
+      (overrides.guardrails === undefined && overrides.escalations === undefined) ||
+      deployment.contributions === undefined
         ? undefined
-        : guardrailAdditionsOf({ guardrails: overrides.guardrails }, deployment.contributions);
+        : guardrailAdditionsOf(
+            {
+              ...(overrides.guardrails === undefined ? {} : { guardrails: overrides.guardrails }),
+              ...(overrides.escalations === undefined
+                ? {}
+                : { escalations: overrides.escalations }),
+            },
+            deployment.contributions,
+          );
     if (additions === undefined) return own;
     // The additions alone, as a tripwire beside the agent's own guardrails, which already run.
     const configuration = resolveAgentGuardrails(false, undefined, additions);
