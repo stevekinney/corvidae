@@ -82,8 +82,9 @@ export type DescriptionListProps = Omit<HTMLAttributes<HTMLDListElement>, 'class
    *   collapses to stacked at narrow widths.
    * - `narrow`: `<dt>` is visually hidden via `.cinder-sr-only`. Only appropriate when
    *   surrounding context already labels the value. NOT a general compact mode.
-   * - `fields`: a record read as a list: a regular-weight muted term at the start, its value
-   *   beside it, and a quiet rule under each row; stacks below 28rem.
+   * - `fields`: a record read as a list: a regular-weight muted term in a fixed 140px column, its value
+   *   beside it, each row at least 44px tall on one tinted group with a quiet rule that starts at the text;
+   *   stacks below 28rem.
    * - `facts`: one row of equal columns, each a muted term above its value, between two quiet
    *   rules (the queues, tasks, workflow and version of a worker); wraps to more rows as the
    *   container narrows.

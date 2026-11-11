@@ -11,11 +11,15 @@
  * (row 50i) the control stacks under the label and the row reads as one column.
  * ======================================== */
 
+  /* Every row is at least 44px tall, the height of a record-details row (InspectorRow), so a
+     settings page and a details page share one rhythm. */
   .cinder-setting-row {
     container-type: inline-size;
     display: flex;
     flex-direction: column;
+    justify-content: center;
     gap: var(--cinder-space-2);
+    min-block-size: 2.75rem;
   }
 
   /* Doubled with the form field's own class, so the grid wins over `.cinder-form-field`'s flex

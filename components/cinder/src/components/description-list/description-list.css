@@ -118,22 +118,34 @@
     gap: var(--cinder-space-2);
   }
 
-  /* Fields variant: a record read as a list. The term is regular weight and muted at the start, the
-   * value beside it in the default color, and a quiet rule ends each row. It stacks below 28rem. */
+  /* Fields variant: a record read as a list, the record-details anatomy shared with InspectorRow. The
+   * term is a regular-weight muted label in a fixed 140px column, the value beside it in the default
+   * color, and each row is at least 44px tall. The rows sit in one tinted group, and a quiet rule
+   * under each row starts at the text. It stacks below 28rem. */
   .cinder-description-list[data-cinder-variant='fields'] {
     container-type: inline-size;
     display: grid;
-    grid-template-columns: minmax(7rem, 8rem) minmax(0, 1fr);
+    grid-template-columns: 8.75rem minmax(0, 1fr);
+    padding-inline-start: var(--cinder-space-4);
+    overflow: hidden;
+    border-radius: var(--cinder-radius-surface);
+    background: var(--cinder-surface-inset);
   }
 
   .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row {
     display: grid;
     grid-template-columns: subgrid;
     grid-column: 1 / -1;
-    align-items: baseline;
+    align-items: center;
     gap: var(--cinder-space-3);
-    padding-inline: 0;
-    border-block-end: 1px solid var(--cinder-border-muted);
+    min-block-size: 2.75rem;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline: 0 var(--cinder-space-3);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-description-list[data-cinder-variant='fields'] .cinder-description-list__row:last-child {
+    border-block-end-color: transparent;
   }
 
   .cinder-description-list[data-cinder-variant='fields'] dt {
