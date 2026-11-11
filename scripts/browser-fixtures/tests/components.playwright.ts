@@ -91,9 +91,11 @@ const filterSlugs = parseComponentFilter(
   knownSlugs,
 );
 // The terminal's baselines belong to `terminal-visual.playwright.ts`, so that `test:browser:terminal`
-// owns them; sweeping the entry here as well would write each image from two tests.
+// owns them; sweeping the entry here as well would write each image from two tests. The Chat stress
+// fixture is served by case (`?case=NN`) and captured by `capture-chat-stress.ts`, which owns its
+// images, so this sweep leaves it out too.
 const entries = applyComponentFilter(allEntries, filterSlugs).filter(
-  (entry) => entry.slug !== 'terminal',
+  (entry) => entry.slug !== 'terminal' && entry.slug !== 'chat-stress',
 );
 
 test('visual baselines belong to the application, browser project, and platform', () => {

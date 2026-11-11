@@ -1,0 +1,2176 @@
+[
+  {
+    "id": 1,
+    "slug": "first-use",
+    "title": "A conversation with no message shows its first-use state and suggested prompts.",
+    "provenance": "derived",
+    "source": "Derived from design row V1; the original definition of this number was lost.",
+    "rows": ["V1"],
+    "scenario": "empty-first-use",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Start a conversation"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Summarize this week"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 2,
+    "slug": "loading",
+    "title": "A conversation being read shows skeleton turns, the seconds so far, and a composer whose Send waits.",
+    "provenance": "derived",
+    "source": "Derived from design row V2; the original definition of this number was lost.",
+    "rows": ["V2"],
+    "scenario": "availability",
+    "params": {
+      "kind": "loading"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Loading conversation"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 3,
+    "slug": "loading-slow",
+    "title": "A slow read says so with the elapsed time and offers Cancel.",
+    "provenance": "derived",
+    "source": "Derived from design row V2; the original definition of this number was lost.",
+    "rows": ["V2"],
+    "scenario": "availability",
+    "params": {
+      "kind": "loading",
+      "slowAfterSeconds": 0
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Cancel"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 4,
+    "slug": "loading-canceled",
+    "title": "Canceling a slow read leaves a state with Retry, reached by pressing Cancel.",
+    "provenance": "derived",
+    "source": "Derived from design row V2; the original definition of this number was lost.",
+    "rows": ["V2"],
+    "scenario": "availability",
+    "params": {
+      "kind": "loading",
+      "slowAfterSeconds": 0
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Cancel"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Retry"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 5,
+    "slug": "history-error",
+    "title": "A history error replaces transcript and composer with a cause, Try again and All conversations.",
+    "provenance": "derived",
+    "source": "Derived from design row V3; the original definition of this number was lost.",
+    "rows": ["V3"],
+    "scenario": "availability",
+    "params": {
+      "kind": "error"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Try again"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "All conversations"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 6,
+    "slug": "conversation-deleted",
+    "title": "A deleted conversation says so with All conversations as its primary action and no composer.",
+    "provenance": "derived",
+    "source": "Derived from design row V3; the original definition of this number was lost.",
+    "rows": ["V3"],
+    "scenario": "availability",
+    "params": {
+      "kind": "deleted"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "This conversation was deleted"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "All conversations"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 7,
+    "slug": "connect-provider",
+    "title": "With no model provider the composer is one row with a primary Connect provider.",
+    "provenance": "derived",
+    "source": "Derived from design row V4; the original definition of this number was lost.",
+    "rows": ["V4"],
+    "scenario": "composer-status",
+    "params": {
+      "kind": "blocked"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Connect provider"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 8,
+    "slug": "archived",
+    "title": "An archived chat shows the neutral bar with Archived date, New chat and Unarchive.",
+    "provenance": "derived",
+    "source": "Derived from design row V5; the original definition of this number was lost.",
+    "rows": ["V5"],
+    "scenario": "composer-status",
+    "params": {
+      "kind": "archived"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Archived Nov 3"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "New chat"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Unarchive"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 9,
+    "slug": "run-toolbar",
+    "title": "A running chat shows Running, an outlined Stop and the follow-up placeholder; its composer edge is the reference for case 10.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance and the shared gates name the stable composer edge for cases 09 and 10.",
+    "rows": ["C4"],
+    "scenario": "run",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Stop generating"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "composerEdgeWith": 10
+  },
+  {
+    "id": 10,
+    "slug": "queued-drawer",
+    "title": "Typing a follow-up and pressing Enter during a run opens the Up next drawer without moving the composer edge.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance and the shared gates name the stable composer edge for cases 09 and 10.",
+    "rows": ["C3"],
+    "scenario": "run",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "After that, email the owner"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "expect-text",
+        "text": "Up next"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "composerEdgeWith": 9
+  },
+  {
+    "id": 11,
+    "slug": "streaming-open-sql-fence",
+    "title": "A reply streaming an unclosed SQL fence shows its first characters inside a code block.",
+    "provenance": "issue-named",
+    "source": "COR-2276: case 11 at 1440 px showed the SELECT prefix clipped; the repaired case streams an unclosed SQL fence through beginStreaming and pushToken.",
+    "rows": ["X2"],
+    "scenario": "stream-code",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "startStream"
+      },
+      {
+        "action": "hook",
+        "name": "pushToken",
+        "argument": "Run this query:\n\n```sql\nSELECT id, total\nFROM orders\nWHERE total > 4000"
+      },
+      {
+        "action": "expect-text",
+        "text": "SELECT id, total"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 12,
+    "slug": "code-block",
+    "title": "A bounded code block with a floating Copy and an overflow fade.",
+    "provenance": "derived",
+    "source": "Derived from design row X1; the original definition of this number was lost.",
+    "rows": ["X1"],
+    "scenario": "code-blocks",
+    "params": {
+      "wide": false
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "SELECT id, total"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 13,
+    "slug": "date-separator",
+    "title": "The date separator reads Today in sentence case.",
+    "provenance": "derived",
+    "source": "Derived from design row M1; the original definition of this number was lost.",
+    "rows": ["M1"],
+    "scenario": "date-and-actions",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Today"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 14,
+    "slug": "composer-ready",
+    "title": "A composer holding a draft shows the ready border and ring and a filled Send; its edge is the reference for case 15.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance and the shared gates name the stable composer edge for cases 14 and 15.",
+    "rows": ["C2"],
+    "scenario": "idle",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Add the rollback owner to the plan"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Send message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "composerEdgeWith": 15
+  },
+  {
+    "id": 15,
+    "slug": "composer-offline",
+    "title": "Going offline with a draft shows the warning drawer, and Send points at it; the composer edge does not move from case 14.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 15 is one of the existing cases to wire to an actual named condition (offline), and 14 and 15 share a composer edge.",
+    "rows": ["C5"],
+    "scenario": "idle",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Add the rollback owner to the plan"
+      },
+      {
+        "action": "hook",
+        "name": "setOnline",
+        "argument": false
+      },
+      {
+        "action": "expect-text",
+        "text": "You're offline"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "composerEdgeWith": 14
+  },
+  {
+    "id": 16,
+    "slug": "draft-restored",
+    "title": "A restored draft shows the neutral drawer with when and Discard draft.",
+    "provenance": "derived",
+    "source": "Derived from design row C7; the original definition of this number was lost.",
+    "rows": ["C7"],
+    "scenario": "idle",
+    "params": {
+      "status": "draft-restored"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Restored your unsent draft"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Discard draft"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 17,
+    "slug": "turn-reconnecting",
+    "title": "A dropped stream mutes the partial reply and shows the attempt, the next try and Retry now.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 17 is one of the existing cases to wire to an actual named condition (a lost connection).",
+    "rows": ["R3"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "connection-lost",
+          "attempt": 2,
+          "attempts": 5,
+          "nextTryIn": 8,
+          "wait": 8
+        }
+      },
+      {
+        "action": "expect-text",
+        "text": "Connection lost"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 18,
+    "slug": "turn-stopped",
+    "title": "Pressing Stop leaves a neutral Stopped pill with Continue and Discard.",
+    "provenance": "derived",
+    "source": "Derived from design row R4; the original definition of this number was lost.",
+    "rows": ["R4"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Stop generating"
+      },
+      {
+        "action": "expect-text",
+        "text": "Stopped"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 19,
+    "slug": "repeated-calls-group",
+    "title": "Twenty identical consecutive calls collapse into one group.",
+    "provenance": "issue-named",
+    "source": "COR-2281: M3 names one group in state 19.",
+    "rows": ["M3"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "repeat"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "lookup_order"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 20,
+    "slug": "turn-failed",
+    "title": "A failed partial turn shows the danger alert, its cause, what Retry keeps and Retry.",
+    "provenance": "derived",
+    "source": "Derived from design row R5; the original definition of this number was lost.",
+    "rows": ["R5"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "fail",
+          "cause": "The model provider dropped the connection.",
+          "keeps": "Retry keeps the text above and the step that finished."
+        }
+      },
+      {
+        "action": "expect-text",
+        "text": "incomplete"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 21,
+    "slug": "steps-pending-approval",
+    "title": "Two finished steps and an approval waiting read as one group with one waiting count.",
+    "provenance": "issue-named",
+    "source": "COR-2289 checkpoint: state 21 is the two completed steps and a pending approval, once split into separate groups.",
+    "rows": ["M2"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "approval"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Approve"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 22,
+    "slug": "turn-empty",
+    "title": "A run that finished without an answer shows the dashed row, its time and Try again.",
+    "provenance": "derived",
+    "source": "Derived from design row R6; the original definition of this number was lost.",
+    "rows": ["R6"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "finish",
+          "answered": false
+        }
+      },
+      {
+        "action": "expect-text",
+        "text": "finished without writing an answer"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 23,
+    "slug": "approval-expired",
+    "title": "An approval whose deadline has passed shows Expired with Ask again, and the summary no longer says waiting.",
+    "provenance": "issue-named",
+    "source": "COR-2280: case 23 showed Expired on the card while the summary said 1 waiting for approval.",
+    "rows": ["A7"],
+    "scenario": "approval",
+    "params": {
+      "shape": "expired"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Expired"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 24,
+    "slug": "long-identifier-approval",
+    "title": "A long tool identifier and an approval status share a narrow summary without clipping.",
+    "provenance": "issue-named",
+    "source": "COR-2262: case 24 made the approval status segment 40 px tall at 320 px; the board wires 24 to the long-identifier condition.",
+    "rows": ["M2", "P1"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "identifier"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Approve"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 25,
+    "slug": "question-in-row",
+    "title": "A question with choices drawn in its row has the question as its heading and no duplicated prompt.",
+    "provenance": "issue-named",
+    "source": "COR-2278: in cases 25 and 52 a fixture duplicated the prompt as an assistant turn.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "single",
+      "placement": "inline"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Which environment?"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 26,
+    "slug": "failed-step",
+    "title": "A failed step is counted in the header with a visible Failed and a wrapping diagnostic.",
+    "provenance": "derived",
+    "source": "COR-2289 checkpoint mentions state 26 without saying what it shows; this definition is derived from row R7.",
+    "rows": ["R7"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "failed"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "failed"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 27,
+    "slug": "read-only",
+    "title": "A revoked chat shows Read only with the grantor tooltip and Request access.",
+    "provenance": "derived",
+    "source": "Derived from design row V6; the original definition of this number was lost.",
+    "rows": ["V6"],
+    "scenario": "composer-status",
+    "params": {
+      "kind": "read-only"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Read only"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Request access"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 28,
+    "slug": "composer-empty",
+    "title": "An empty composer shows an outlined muted Send with no grey fill.",
+    "provenance": "derived",
+    "source": "Derived from design row C1; the original definition of this number was lost.",
+    "rows": ["C1"],
+    "scenario": "idle",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Send message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 29,
+    "slug": "discard-drawer",
+    "title": "Stopping a run with two follow-ups queued opens the discard drawer with Restore.",
+    "provenance": "derived",
+    "source": "Derived from design row C3; the original definition of this number was lost.",
+    "rows": ["C3"],
+    "scenario": "run",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "First follow-up"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Second follow-up"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Stop generating"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Restore"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 30,
+    "slug": "queue-edit-remove",
+    "title": "A queued follow-up shows an index, Edit and a named Remove, and Edit puts it back in the composer.",
+    "provenance": "derived",
+    "source": "Derived from design row C3; the original definition of this number was lost.",
+    "rows": ["C3"],
+    "scenario": "run",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "After that, email the owner"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Remove queued follow-up 1"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Edit queued follow-up 1"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 31,
+    "slug": "wide-code",
+    "title": "A genuinely wide code block scrolls inside the message and shows its continuation.",
+    "provenance": "issue-named",
+    "source": "COR-2276: case 31 shows a visible continuation hint for wide code, and the harness verified ArrowRight scrolling.",
+    "rows": ["X1"],
+    "scenario": "code-blocks",
+    "params": {
+      "wide": true
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "SELECT order_identifier"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 32,
+    "slug": "wide-table",
+    "title": "A wide table keeps its header band, no wrapping, an overflow fade and a column cue.",
+    "provenance": "issue-named",
+    "source": "COR-2261: at 320 px case 32 shows a 254 px table holding 460 px of content.",
+    "rows": ["X3"],
+    "scenario": "wide-table",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Enterprise"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 33,
+    "slug": "steps-group",
+    "title": "Contiguous steps share one bordered group that expands to show each step.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 33 collapsed and expanded; the required variant is 33-expanded.",
+    "rows": ["M2"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "steps"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "3 steps"
+      }
+    ],
+    "variants": [
+      {
+        "name": "expanded",
+        "steps": [
+          {
+            "action": "click",
+            "role": "button",
+            "name": "3 steps"
+          },
+          {
+            "action": "expect-text",
+            "text": "read_policy"
+          }
+        ]
+      }
+    ],
+    "focusSweep": false
+  },
+  {
+    "id": 34,
+    "slug": "broken-image",
+    "title": "An image that fails to load shows the dashed placeholder with its name and Retry, and no zoom.",
+    "provenance": "issue-named",
+    "source": "COR-2279: case 34 loads an invalid same-origin image in a user message at 320 px.",
+    "rows": ["X5"],
+    "scenario": "images",
+    "params": {
+      "mode": "broken"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "receipt.png"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 35,
+    "slug": "image-only-message",
+    "title": "A message that is only a broken image has no Copy.",
+    "provenance": "derived",
+    "source": "Derived from design row X5; the original definition of this number was lost.",
+    "rows": ["X5"],
+    "scenario": "images",
+    "params": {
+      "mode": "image-only"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "receipt.png"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 36,
+    "slug": "inline-citations",
+    "title": "Inline citation chips sit in the text flow and show a host or a label.",
+    "provenance": "derived",
+    "source": "Derived from design row M4; the original definition of this number was lost.",
+    "rows": ["M4"],
+    "scenario": "citations",
+    "params": {
+      "presentation": "inline"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "docs.example.com"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 37,
+    "slug": "compact-citations",
+    "title": "A Sources control opens Cinder's Citation panel.",
+    "provenance": "derived",
+    "source": "Derived from design row M4; the original definition of this number was lost.",
+    "rows": ["M4"],
+    "scenario": "citations",
+    "params": {
+      "presentation": "compact"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Sources"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 38,
+    "slug": "rtl-message",
+    "title": "Arabic text and its citation resolve direction from the text, aligned to the start.",
+    "provenance": "derived",
+    "source": "Derived from design row X4; the original definition of this number was lost.",
+    "rows": ["X4"],
+    "scenario": "rtl",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "استرداد"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "direction": "rtl"
+  },
+  {
+    "id": 39,
+    "slug": "rtl-approval",
+    "title": "An approval question in Arabic resolves its direction from the text.",
+    "provenance": "derived",
+    "source": "Derived from design row X4, A1; the original definition of this number was lost.",
+    "rows": ["X4", "A1"],
+    "scenario": "approval",
+    "params": {
+      "shape": "rtl"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "هل توافق"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "direction": "rtl"
+  },
+  {
+    "id": 40,
+    "slug": "message-actions",
+    "title": "The line under a reply carries its time, Copy, Quote and Regenerate as an icon and a word each.",
+    "provenance": "derived",
+    "source": "Derived from design row M5; the original definition of this number was lost.",
+    "rows": ["M5"],
+    "scenario": "date-and-actions",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Copy"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Regenerate"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 41,
+    "slug": "sources-list",
+    "title": "At 768 dark the Sources count reads as distinct from the shared chat surface.",
+    "provenance": "derived",
+    "source": "Derived from design row T2; the original definition of this number was lost.",
+    "rows": ["T2"],
+    "scenario": "citations",
+    "params": {
+      "presentation": "list"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Sources"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 42,
+    "slug": "dark-surfaces",
+    "title": "At 768 dark the shared chat surface differs from the inset surface that code and tables use.",
+    "provenance": "derived",
+    "source": "Derived from design row T2; the original definition of this number was lost.",
+    "rows": ["T2"],
+    "scenario": "code-blocks",
+    "params": {
+      "wide": false
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "SELECT id, total"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 43,
+    "slug": "danger-contrast",
+    "title": "Dark danger text and border on a failed turn pass their contrast tokens.",
+    "provenance": "derived",
+    "source": "Derived from design row T1, R5; the original definition of this number was lost.",
+    "rows": ["T1", "R5"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "fail",
+          "cause": "The model provider dropped the connection."
+        }
+      },
+      {
+        "action": "expect-text",
+        "text": "incomplete"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 44,
+    "slug": "missing-source-notice",
+    "title": "A message whose sources are missing shows the notice in its action row, not the composer footer.",
+    "provenance": "issue-named",
+    "source": "COR-2278: in the missing-source audit fixture (case 44) the source notice sits in the affected message's action row.",
+    "rows": ["M4"],
+    "scenario": "missing-source",
+    "params": {},
+    "steps": [],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 45,
+    "slug": "citation-withdrawal",
+    "title": "Withdrawing the source of an open inline citation announces once and leaves focus on a visible action.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus.",
+    "rows": ["M4"],
+    "scenario": "citations",
+    "params": {
+      "presentation": "inline",
+      "withdrawable": true
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "docs.example.com"
+      },
+      {
+        "action": "hook",
+        "name": "withdrawSource",
+        "argument": [0, 0]
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 46,
+    "slug": "approval-reversible",
+    "title": "A reversible approval shows its facts and the host's Why the agent wants to do this disclosure.",
+    "provenance": "derived",
+    "source": "Derived from design row A2; the original definition of this number was lost.",
+    "rows": ["A2"],
+    "scenario": "approval",
+    "params": {
+      "shape": "reversible"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Why the agent wants to do this"
+      },
+      {
+        "action": "expect-text",
+        "text": "charged twice"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 47,
+    "slug": "approval-irreversible",
+    "title": "The first press of an irreversible primary arms it as Press again; the hint says it reverts.",
+    "provenance": "derived",
+    "source": "Derived from design row A1, M6; the original definition of this number was lost.",
+    "rows": ["A1", "M6"],
+    "scenario": "approval",
+    "params": {
+      "shape": "irreversible"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Refund $42.00"
+      },
+      {
+        "action": "expect-text",
+        "text": "Press again"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 48,
+    "slug": "failed-step-dark",
+    "title": "A failed step in the dark theme uses the danger tokens for its summary.",
+    "provenance": "derived",
+    "source": "COR-2287 T1 names dark 48 and 49 as red states; this definition is derived from T1 and R7.",
+    "rows": ["T1", "R7"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "failed"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "failed"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 49,
+    "slug": "denied-receipt",
+    "title": "Denying an approval leaves a receipt that names the denial.",
+    "provenance": "derived",
+    "source": "COR-2287 T1 names dark 48 and 49 as red states; this definition is derived from T1 and A6.",
+    "rows": ["A6", "T1"],
+    "scenario": "approval",
+    "params": {
+      "shape": "reversible"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Deny"
+      },
+      {
+        "action": "expect-text",
+        "text": "Denied"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 50,
+    "slug": "attachments-ready-shelf",
+    "title": "Ready files sit in one horizontal row above the draft and Send stays visible.",
+    "provenance": "issue-named",
+    "source": "COR-2277: case 50 verifies the ready-only horizontal shelf and keyboard reachability.",
+    "rows": ["C6"],
+    "scenario": "attachments",
+    "params": {
+      "mode": "ready"
+    },
+    "steps": [
+      {
+        "action": "upload",
+        "files": [
+          {
+            "name": "plan.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "ledger.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 4096
+          },
+          {
+            "name": "receipts.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 8192
+          }
+        ]
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Remove receipts.pdf"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 51,
+    "slug": "attachments-mixed",
+    "title": "A mixed upload shows the attention count and the first failed files with their reasons and Remove controls.",
+    "provenance": "issue-named",
+    "source": "COR-2277: in a mixed upload the error count and the first two failed files, reasons and Remove controls are visible before scrolling.",
+    "rows": ["C6", "P2"],
+    "scenario": "attachments",
+    "params": {
+      "mode": "mixed"
+    },
+    "steps": [
+      {
+        "action": "upload",
+        "files": [
+          {
+            "name": "ready-a.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "upload-fail-1.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "unsupported-1.exe",
+            "mimeType": "application/x-msdownload",
+            "bytes": 1024
+          },
+          {
+            "name": "uploading-1.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 4096
+          },
+          {
+            "name": "ready-b.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          }
+        ]
+      },
+      {
+        "action": "expect-text",
+        "text": "need attention"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 52,
+    "slug": "question-identifier",
+    "title": "A docked question with a long tool identifier keeps the question as its only heading.",
+    "provenance": "issue-named",
+    "source": "COR-2278: in cases 25 and 52 a fixture duplicated the prompt; COR-2262 verifies case 52 at 320 px.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "identifier",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Which ledger should"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 53,
+    "slug": "multi-approval",
+    "title": "Two approvals waiting group under N approvals waiting, each with named actions and an irreversible marker.",
+    "provenance": "derived",
+    "source": "Derived from design row A3; the original definition of this number was lost.",
+    "rows": ["A3"],
+    "scenario": "approval",
+    "params": {
+      "shape": "two"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "2 approvals"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 54,
+    "slug": "approval-receipt",
+    "title": "Approving leaves a receipt in the transcript with who, when and a check badge.",
+    "provenance": "derived",
+    "source": "Derived from design row A4; the original definition of this number was lost.",
+    "rows": ["A4"],
+    "scenario": "approval",
+    "params": {
+      "shape": "reversible"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Approve"
+      },
+      {
+        "action": "expect-text",
+        "text": "Approved"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 55,
+    "slug": "approval-elsewhere",
+    "title": "An approval decided in another surface names the actor and links the surface.",
+    "provenance": "derived",
+    "source": "Derived from design row A5; the original definition of this number was lost.",
+    "rows": ["A5"],
+    "scenario": "approval",
+    "params": {
+      "shape": "reversible"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Approve"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false,
+    "deferred": "A5 is drawn from a receipt the host supplies (who, which surface, when); Chat's tool approval part knows only a decision made here, so this fixture cannot decide an approval elsewhere. The case is captured as the pending approval and reported as deferred."
+  },
+  {
+    "id": 56,
+    "slug": "approval-note",
+    "title": "Add a note opens the approval's note field before a decision.",
+    "provenance": "derived",
+    "source": "Derived from design row M6; the original definition of this number was lost.",
+    "rows": ["M6"],
+    "scenario": "approval",
+    "params": {
+      "shape": "reversible"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Add a note"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 57,
+    "slug": "approval-waiting-drawer",
+    "title": "A pending approval puts an info drawer over the composer, and a draft turns Send into Queue.",
+    "provenance": "derived",
+    "source": "Derived from design row M7; the original definition of this number was lost.",
+    "rows": ["M7"],
+    "scenario": "approval",
+    "params": {
+      "shape": "reversible"
+    },
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Also notify finance"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Review approval"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Queue message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 58,
+    "slug": "approval-long-command",
+    "title": "A long command wraps inside the approval and stays fully visible.",
+    "provenance": "derived",
+    "source": "Derived from design row M6, P1; the original definition of this number was lost.",
+    "rows": ["M6", "P1"],
+    "scenario": "approval",
+    "params": {
+      "shape": "command"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "customer@example.com"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 59,
+    "slug": "repeated-calls-rolled",
+    "title": "The rolled group of twenty calls is expanded in the primary image and collapsed in its variant.",
+    "provenance": "issue-named",
+    "source": "COR-2281 and COR-2289 comments: state 59 collapsed and expanded; the required variant is 59-collapsed with the primary expanded.",
+    "rows": ["M3"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "repeat"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Compared 20"
+      }
+    ],
+    "variants": [
+      {
+        "name": "collapsed",
+        "steps": [
+          {
+            "action": "expect-text",
+            "text": "Compared 20"
+          }
+        ]
+      }
+    ],
+    "focusSweep": false
+  },
+  {
+    "id": 60,
+    "slug": "phone-composer",
+    "title": "On a phone the composer keeps Attach and Send at 44 px with safe-area bottom padding.",
+    "provenance": "derived",
+    "source": "Derived from design row P1; the original definition of this number was lost.",
+    "rows": ["P1"],
+    "scenario": "composer-sweep",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Add the rollback owner to the plan"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Send message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 61,
+    "slug": "attachments-bounded",
+    "title": "Fourteen ready files stay in a bounded list with N more below and a blocking reason under the composer.",
+    "provenance": "derived",
+    "source": "Derived from design row P2; the original definition of this number was lost.",
+    "rows": ["P2"],
+    "scenario": "attachments",
+    "params": {
+      "mode": "ready"
+    },
+    "steps": [
+      {
+        "action": "upload",
+        "files": [
+          {
+            "name": "receipt-01.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-02.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-03.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-04.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-05.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-06.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-07.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-08.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-09.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-10.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-11.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-12.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-13.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          },
+          {
+            "name": "receipt-14.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          }
+        ]
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Remove receipt-14.pdf"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 62,
+    "slug": "attachments-unsupported",
+    "title": "An unsupported file offers only its remove control, and a retryable failure also offers Retry.",
+    "provenance": "derived",
+    "source": "Derived from design row C6; the original definition of this number was lost.",
+    "rows": ["C6"],
+    "scenario": "attachments",
+    "params": {
+      "mode": "mixed"
+    },
+    "steps": [
+      {
+        "action": "upload",
+        "files": [
+          {
+            "name": "unsupported-1.exe",
+            "mimeType": "application/x-msdownload",
+            "bytes": 1024
+          },
+          {
+            "name": "upload-fail-2.pdf",
+            "mimeType": "application/pdf",
+            "bytes": 2048
+          }
+        ]
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Retry upload-fail-2.pdf"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 63,
+    "slug": "two-composers",
+    "title": "Two chats on one page each keep their own composer and draft.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 63 two composers.",
+    "rows": ["C2"],
+    "scenario": "two-composers",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "First chat note",
+        "nth": 0
+      },
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Second chat note",
+        "nth": 1
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 64,
+    "slug": "docked-select",
+    "title": "A docked question selects a choice without sending it; Answer sends.",
+    "provenance": "derived",
+    "source": "Derived from design row P3; the original definition of this number was lost.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "single",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "radio",
+        "name": "Staging"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Answer"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 65,
+    "slug": "docked-reply-in-chat",
+    "title": "Reply in chat instead gives the composer back.",
+    "provenance": "derived",
+    "source": "Derived from design row P3; the original definition of this number was lost.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "single",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Reply in chat instead"
+      },
+      {
+        "action": "expect",
+        "role": "textbox",
+        "name": "Message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 66,
+    "slug": "docked-keys",
+    "title": "The keys 1, 2 and 3 choose the docked radios.",
+    "provenance": "derived",
+    "source": "Derived from design row P3; the original definition of this number was lost.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "single",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "focus",
+        "role": "radio",
+        "name": "Staging"
+      },
+      {
+        "action": "press",
+        "key": "2"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 67,
+    "slug": "docked-answered",
+    "title": "Answering a docked question leaves an answer receipt in the transcript.",
+    "provenance": "derived",
+    "source": "Derived from design row P3; the original definition of this number was lost.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "single",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "radio",
+        "name": "Staging"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Answer"
+      },
+      {
+        "action": "expect-text",
+        "text": "Staging"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 68,
+    "slug": "question-other",
+    "title": "Choosing option 2, and choosing Something else with its text field, are reached through the real radios.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: required variants 68-option2 and 68-something-else.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "other",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Answer"
+      }
+    ],
+    "variants": [
+      {
+        "name": "option2",
+        "steps": [
+          {
+            "action": "click",
+            "role": "radio",
+            "name": "Production"
+          }
+        ]
+      },
+      {
+        "name": "something-else",
+        "steps": [
+          {
+            "action": "click",
+            "role": "radio",
+            "name": "Something else"
+          },
+          {
+            "action": "expect",
+            "role": "textbox",
+            "name": "Something else"
+          }
+        ]
+      }
+    ],
+    "focusSweep": false
+  },
+  {
+    "id": 69,
+    "slug": "question-progression",
+    "title": "Three questions ask one at a time; answering the first moves to Question 2 of 3.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 69 progression; required variant 69-question-2-of-3.",
+    "rows": ["P3"],
+    "scenario": "question",
+    "params": {
+      "shape": "three",
+      "placement": "docked"
+    },
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Question 1 of 3"
+      }
+    ],
+    "variants": [
+      {
+        "name": "question-2-of-3",
+        "steps": [
+          {
+            "action": "click",
+            "role": "radio",
+            "name": "Staging"
+          },
+          {
+            "action": "click",
+            "role": "button",
+            "name": "Answer"
+          },
+          {
+            "action": "expect-text",
+            "text": "Question 2 of 3"
+          }
+        ]
+      }
+    ],
+    "focusSweep": false
+  },
+  {
+    "id": 70,
+    "slug": "queue-send-now",
+    "title": "Send now instead hands the oldest follow-up to the live run.",
+    "provenance": "derived",
+    "source": "Derived from design row C3; the original definition of this number was lost.",
+    "rows": ["C3"],
+    "scenario": "run",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "After that, email the owner"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Send now instead"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Stop generating"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 71,
+    "slug": "reasoning",
+    "title": "A reasoning disclosure is open while the reply streams and folds once it finishes.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: required variants 71-live and 71-folded; the comments also name a live reasoning capture.",
+    "rows": ["M2"],
+    "scenario": "reasoning",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Two captures"
+      }
+    ],
+    "variants": [
+      {
+        "name": "live",
+        "steps": [
+          {
+            "action": "expect-text",
+            "text": "Two captures"
+          }
+        ]
+      },
+      {
+        "name": "folded",
+        "steps": [
+          {
+            "action": "hook",
+            "name": "finishRun"
+          }
+        ]
+      }
+    ],
+    "focusSweep": false
+  },
+  {
+    "id": 72,
+    "slug": "scrolled-transcript",
+    "title": "A long transcript scrolled away from the end shows the jump-to-latest control.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: required variant 72-scrolled.",
+    "rows": ["M1"],
+    "scenario": "long-transcript",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect-text",
+        "text": "Release 30"
+      }
+    ],
+    "variants": [
+      {
+        "name": "scrolled",
+        "steps": [
+          {
+            "action": "scroll",
+            "to": "top"
+          }
+        ]
+      }
+    ],
+    "focusSweep": false
+  },
+  {
+    "id": 73,
+    "slug": "composer-focus",
+    "title": "Every visible enabled composer and message control takes keyboard focus with a visible ring.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 73 per-control focus variants, 73-focus-<control-index>.",
+    "rows": ["C1", "C2", "M5"],
+    "scenario": "composer-sweep",
+    "params": {},
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Send message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": true
+  },
+  {
+    "id": 74,
+    "slug": "turn-continue",
+    "title": "Continue on a stopped turn resumes the run.",
+    "provenance": "derived",
+    "source": "Derived from design row R4; the original definition of this number was lost.",
+    "rows": ["R4"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Stop generating"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Continue"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Stop generating"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 75,
+    "slug": "turn-retry-now",
+    "title": "Retry now on a reconnecting turn resumes the stream.",
+    "provenance": "derived",
+    "source": "Derived from design row R3; the original definition of this number was lost.",
+    "rows": ["R3"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "connection-lost",
+          "attempt": 2,
+          "attempts": 5,
+          "nextTryIn": 8,
+          "wait": 8
+        }
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Retry now"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Stop generating"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 76,
+    "slug": "turn-failed-retry",
+    "title": "Retry on a failed turn starts the run again.",
+    "provenance": "derived",
+    "source": "Derived from design row R5; the original definition of this number was lost.",
+    "rows": ["R5"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "fail",
+          "cause": "The model provider dropped the connection."
+        }
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Retry"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Stop generating"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 77,
+    "slug": "turn-empty-retry",
+    "title": "Try again on an empty turn starts the run again.",
+    "provenance": "derived",
+    "source": "Derived from design row R6; the original definition of this number was lost.",
+    "rows": ["R6"],
+    "scenario": "turn-state",
+    "params": {},
+    "steps": [
+      {
+        "action": "hook",
+        "name": "turnEvent",
+        "argument": {
+          "type": "finish",
+          "answered": false
+        }
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Try again"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Stop generating"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 78,
+    "slug": "step-retry",
+    "title": "A failed step offers Retry this step and Copy error beneath its diagnostic.",
+    "provenance": "derived",
+    "source": "Derived from design row R7; the original definition of this number was lost.",
+    "rows": ["R7"],
+    "scenario": "tool-group",
+    "params": {
+      "shape": "failed"
+    },
+    "steps": [
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Retry this step"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Copy error"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 79,
+    "slug": "two-queued-offline",
+    "title": "Two follow-ups queued during a run stay queued when the connection drops, under the offline drawer.",
+    "provenance": "issue-named",
+    "source": "COR-2289 acceptance: 79 two queued followed by offline.",
+    "rows": ["C3", "C5"],
+    "scenario": "run",
+    "params": {},
+    "steps": [
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "First follow-up"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "fill",
+        "role": "textbox",
+        "name": "Message",
+        "text": "Second follow-up"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
+      },
+      {
+        "action": "hook",
+        "name": "setOnline",
+        "argument": false
+      },
+      {
+        "action": "expect-text",
+        "text": "You're offline"
+      },
+      {
+        "action": "expect-text",
+        "text": "Up next"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  },
+  {
+    "id": 80,
+    "slug": "draft-discard",
+    "title": "Discard draft empties the composer and removes the drawer.",
+    "provenance": "derived",
+    "source": "Derived from design row C7; the original definition of this number was lost.",
+    "rows": ["C7"],
+    "scenario": "idle",
+    "params": {
+      "status": "draft-restored"
+    },
+    "steps": [
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Discard draft"
+      },
+      {
+        "action": "expect",
+        "role": "textbox",
+        "name": "Message"
+      }
+    ],
+    "variants": [],
+    "focusSweep": false
+  }
+]

@@ -6,6 +6,7 @@ export const appFixtureDeclarations = {
   chat: ['assertion'],
   'chat-mcp-app': ['assertion'],
   'chat-navigation-rail': ['assertion'],
+  'chat-stress': ['assertion'],
   'chat-sub-session': ['assertion'],
   'json-schema-editor': ['assertion'],
   citation: ['assertion'],
