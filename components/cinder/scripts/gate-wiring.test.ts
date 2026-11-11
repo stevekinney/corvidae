@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { classifyCheckScripts, findGateInvocations, findUninvokedChecks } from './gate-wiring.ts';
+import {
+  classifyCheckScripts,
+  findGateInvocations,
+  findReportOnlyInvocations,
+  findUninvokedChecks,
+} from './gate-wiring.ts';
 
 const PACKAGE_ROOT = join(import.meta.dirname, '..');
 const SCRIPTS_DIRECTORY = import.meta.dirname;
@@ -45,7 +50,7 @@ describe("Cinder's own gates", () => {
       'scripts/check-prop-conventions.ts src/components ../chat/src/lib/components ../editor/src/lib/components',
       'scripts/check-test-cleanup.ts',
       'scripts/check-aggregator-completeness.ts',
-      'scripts/check-component-css-raw-colors.ts',
+      'scripts/check-component-css-raw-colors.ts --strict',
       'scripts/check-component-examples.ts',
       'scripts/check-component-inventory.ts',
       'scripts/check-component-variable-registry.ts',
@@ -65,13 +70,17 @@ describe("Cinder's own gates", () => {
       'scripts/check-virtual-list-dependency-free.ts',
       'scripts/tokens/validate-corpus.ts',
       'scripts/tokens/generate-artifacts.ts --check',
-      'scripts/check-component-css-token-usage.ts',
+      'scripts/check-component-css-token-usage.ts --strict',
       '../../scripts/check-inherited-key-reads.ts',
     ]);
   });
 
   test('every check command is run by a gate', () => {
     expect(findUninvokedChecks(SCRIPTS_DIRECTORY, readPackageScripts())).toEqual([]);
+  });
+
+  test('no gate runs a check in its report-only mode', () => {
+    expect(findReportOnlyInvocations(SCRIPTS_DIRECTORY, readPackageScripts())).toEqual([]);
   });
 
   test('no check runs on import without an entry-point guard', () => {
@@ -129,6 +138,40 @@ describe('findUninvokedChecks', () => {
       };
 
       expect(findUninvokedChecks(scriptsDirectory, scripts)).toEqual(['check-wired.ts']);
+    });
+  });
+});
+
+describe('findReportOnlyInvocations', () => {
+  const REPORTING_CHECK =
+    "if (import.meta.main) process.exitCode = process.argv.includes('--strict') ? 1 : 0;\n";
+
+  // The gap the first review of COR-2075 found: two checks were wired in the mode that prints a
+  // report and exits 0, so `lint` ran them and could not fail on them.
+  test('reports a check with a strict mode that a gate runs without it', () => {
+    withScriptsDirectory(
+      { 'check-report.ts': REPORTING_CHECK, 'check-plain.ts': ENTRY_POINT },
+      (scriptsDirectory) => {
+        const scripts = {
+          lint: 'bun scripts/check-report.ts && bun scripts/check-plain.ts',
+          test: 'bun ../../scripts/bun-test.ts src',
+        };
+
+        expect(findReportOnlyInvocations(scriptsDirectory, scripts)).toEqual([
+          'scripts/check-report.ts',
+        ]);
+      },
+    );
+  });
+
+  test('accepts the same check run with --strict, and a report no gate runs', () => {
+    withScriptsDirectory({ 'check-report.ts': REPORTING_CHECK }, (scriptsDirectory) => {
+      const scripts = {
+        lint: 'bun scripts/check-report.ts --strict',
+        audit: 'bun scripts/check-report.ts',
+      };
+
+      expect(findReportOnlyInvocations(scriptsDirectory, scripts)).toEqual([]);
     });
   });
 });

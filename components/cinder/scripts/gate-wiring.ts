@@ -2,16 +2,18 @@
  * Which `scripts/check-*.ts` commands the package's gates run.
  *
  * A check nothing runs is worse than no check: it reads as enforcement while the tree drifts
- * past it. COR-2075 found twenty of them, five already failing. This module answers the two
- * questions that keep it from recurring, as pure functions over a scripts directory and a
+ * past it. COR-2075 found twenty of them, five already failing. This module answers the
+ * questions that keep it from recurring, as functions of a scripts directory and a
  * `package.json` `scripts` map, so `gate-wiring.test.ts` can ask them of a fixture tree:
  *
  *   - Which commands does a gate script run, following `bun run <name>` into the scripts it
  *     names? ({@link findGateInvocations})
  *   - Which `check-*.ts` files are commands (they guard an entry point with `import.meta.main`),
  *     and which run on import without that guard? ({@link classifyCheckScripts})
+ *   - Which checks does a gate run in a mode that cannot fail? ({@link findReportOnlyInvocations})
  *
- * A `check-*.ts` with neither is a library module other scripts import, and is not a command.
+ * A `check-*.ts` that neither guards an entry point nor runs on import is a library module other
+ * scripts import, and is not a command.
  */
 
 import { readdirSync, readFileSync } from 'node:fs';
@@ -101,6 +103,24 @@ export function classifyCheckScripts(scriptsDirectory: string): CheckScripts {
     if (sourceFile.statements.some(runsOnImport)) unguarded.push(name);
   }
   return { entryPoints, unguarded };
+}
+
+/**
+ * The gate invocations of a check that has a `--strict` mode and is run without it. Such a check
+ * prints its report and exits 0 whatever it finds, so wiring it that way gates nothing.
+ */
+export function findReportOnlyInvocations(
+  scriptsDirectory: string,
+  scripts: Readonly<Record<string, string>>,
+): string[] {
+  return findGateInvocations(scripts).filter((invocation) => {
+    const [target = '', ...flags] = invocation.split(' ');
+    const name = target.replace(/^scripts\//, '');
+    if (name === target || !/^check-[^/]+\.ts$/.test(name) || flags.includes('--strict')) {
+      return false;
+    }
+    return readFileSync(join(scriptsDirectory, name), 'utf8').includes("'--strict'");
+  });
 }
 
 /**
