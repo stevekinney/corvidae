@@ -12,6 +12,7 @@ import {
   isRefusedPageToken,
   isRunning,
   isTerminalState,
+  listAllTasks,
   listChildRuns,
   listRunningTasks,
   listTasks,
@@ -445,6 +446,24 @@ describe('listRunningTasks', () => {
 
   test('is zero when nothing is going', async () => {
     expect(await listRunningTasks({ fetch: holding([]).fetch })).toEqual([]);
+  });
+
+  test('listAllTasks reads every page of what a filter matches, a hundred at a time', async () => {
+    const world = holding(
+      Array.from({ length: 5 }, (_, index) => ({
+        ...TASK,
+        id: `f${String(index)}`,
+        status: 'failed',
+      })),
+    );
+    const failed = await listAllTasks({ status: 'failed' }, { fetch: world.fetch });
+    expect(failed.map((task) => task.id)).toEqual(['f0', 'f1', 'f2', 'f3', 'f4']);
+    // The Bureau pages these two at a time, so three pages are read, each asking for a hundred.
+    expect(world.calls).toEqual([
+      { status: 'failed', limit: 100 },
+      { status: 'failed', limit: 100, pageToken: '2' },
+      { status: 'failed', limit: 100, pageToken: '4' },
+    ]);
   });
 });
 

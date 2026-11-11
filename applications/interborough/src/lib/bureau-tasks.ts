@@ -158,6 +158,36 @@ export async function listTasks(
   return taskPageSchema.parse(await callBureau('bureau.tasks.list', input, options));
 }
 
+/** How many tasks one request of {@link listAllTasks} asks for: the most the Bureau answers. */
+const TASKS_PAGE_SIZE = 100;
+
+/**
+ * Every task a filter matches (`bureau.tasks.list`), read page by page to the end. The listing has
+ * no total, so a count of tasks is the length of this read: Home's Running now and the status
+ * counts on Runs both count this way. The first page's token names the listing as it stood then, so
+ * a task that changes mid-read appears once.
+ */
+export async function listAllTasks(
+  filter: TaskFilter = {},
+  options?: Options,
+): Promise<TaskView[]> {
+  const tasks: TaskView[] = [];
+  let pageToken: string | undefined;
+  do {
+    const page = await listTasks(
+      {
+        ...filter,
+        limit: TASKS_PAGE_SIZE,
+        ...(pageToken === undefined ? {} : { pageToken }),
+      },
+      options,
+    );
+    tasks.push(...page.tasks);
+    pageToken = page.nextPageToken ?? undefined;
+  } while (pageToken !== undefined);
+  return tasks;
+}
+
 /** The states of a task that is going: it has started, or it is about to. A waiting task is neither. */
 const RUNNING_STATES = ['working', 'submitted'] as const satisfies readonly TaskState[];
 
@@ -174,21 +204,13 @@ export function isRunning(task: Pick<TaskView, 'status'>): boolean {
 /**
  * The runs that are running now (`bureau.tasks.list`): the tasks that are working or have not yet
  * started, as {@link isRunning} says. A run parked on a review or a question is not among them.
- * Every page is read, because the listing has no total, so the count of the result is the count of
- * runs running.
+ * Every page is read ({@link listAllTasks}), because the listing has no total, so the count of the
+ * result is the count of runs running.
  */
 export async function listRunningTasks(options?: Options): Promise<TaskView[]> {
   const running: TaskView[] = [];
   for (const status of RUNNING_STATES) {
-    let pageToken: string | undefined;
-    do {
-      const page = await listTasks(
-        { status, limit: 100, ...(pageToken === undefined ? {} : { pageToken }) },
-        options,
-      );
-      running.push(...page.tasks.filter(isRunning));
-      pageToken = page.nextPageToken ?? undefined;
-    } while (pageToken !== undefined);
+    running.push(...(await listAllTasks({ status }, options)).filter(isRunning));
   }
   return running;
 }
@@ -199,17 +221,7 @@ export async function listRunningTasks(options?: Options): Promise<TaskView[]> {
  * only the run it reattached to. A child a tool or a peer started has no task and is not listed.
  */
 export async function listChildRuns(contextId: string, options?: Options): Promise<TaskView[]> {
-  const children: TaskView[] = [];
-  let pageToken: string | undefined;
-  do {
-    const page = await listTasks(
-      { parentContextId: contextId, limit: 100, ...(pageToken === undefined ? {} : { pageToken }) },
-      options,
-    );
-    children.push(...page.tasks);
-    pageToken = page.nextPageToken ?? undefined;
-  } while (pageToken !== undefined);
-  return children;
+  return listAllTasks({ parentContextId: contextId }, options);
 }
 
 /** The origins of a task that a person's chat did not start: a run's own child, a goal's attempt, a workflow's step. */

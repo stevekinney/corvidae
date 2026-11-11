@@ -4699,6 +4699,68 @@ export const MEMORY_COPY = {
 /** The words the Tasks view uses outside its states. */
 export const TASK_COPY = {
   listHeading: 'Runs',
+  /**
+   * The Runs list (`/runs`): the header's description, the status segments, the facets, the day
+   * bands and the words of each row's line two. Parts of a line are joined by a comma, never a
+   * middle dot (owner decision, Nov 10).
+   */
+  list: {
+    description: 'What your agents have done, newest first.',
+    /** The accessible name of the list of runs. */
+    rowsLabel: 'Runs, newest first',
+    /** The status segments, in the order the bar draws them. */
+    segments: {
+      all: 'All',
+      waiting: 'Waiting on you',
+      running: 'Running',
+      done: 'Done',
+      failed: 'Failed',
+      canceled: 'Canceled',
+    },
+    searchLabel: 'Search runs',
+    searchPlaceholder: 'Search runs',
+    /** The day bands: today's and yesterday's say so before the date. */
+    today: 'Today',
+    yesterday: 'Yesterday',
+    /** What joins the parts of a day band and of a row's line two. */
+    separator: ', ',
+    /** The first word of line two: what kind of run it is, by what started it. */
+    kinds: {
+      chat: 'Chat',
+      person: 'Started by hand',
+      schedule: 'Schedule',
+      api: 'API',
+      agent: 'Agent',
+      'agent-run': 'Workflow',
+      goal: 'Goal',
+      parent: 'Workflow',
+      system: 'Internal',
+      none: 'Run',
+    },
+    /** Line two's agent for a run Interborough started for its own bookkeeping. */
+    interboroughStarted: 'Interborough started',
+    /** The title of one instance of a workflow file, which only its steps are tasks of. */
+    workflowRunTitle: 'Workflow run',
+    /** How long a run has waited on a person, at the end of line two. */
+    waitingFor: (duration: string): string => `waiting ${duration}`,
+    /** How long a run has been going, at the end of line two. */
+    runningFor: (duration: string): string => `running ${duration}`,
+    /** Which attempt of a goal a run is. */
+    attempt: (number: number, of: number): string => `attempt ${String(number)} of ${String(of)}`,
+    /** When a canceled run stopped, and how long it had run. The event names no one who canceled it. */
+    canceledAt: (time: string, duration: string): string => `canceled at ${time} after ${duration}`,
+    /** The collapsed row of the runs a schedule missed. */
+    missed: {
+      /** The title of a schedule with no name of its own. */
+      untitled: 'A schedule',
+      /** Line two's last part: how many runs were missed, and since when. */
+      since: (count: number, day: string): string =>
+        `missed ${String(count)} ${count === 1 ? 'time' : 'times'} since ${day}`,
+      /** The accessible name of the list of missed occurrences under the expanded row. */
+      occurrencesLabel: 'Missed occurrences',
+      viewSchedule: 'View schedule',
+    },
+  },
   filtersLabel: 'Filter runs',
   agentLabel: 'Agent',
   statusLabel: 'Status',
