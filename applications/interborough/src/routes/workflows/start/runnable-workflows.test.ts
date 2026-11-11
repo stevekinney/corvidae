@@ -3,7 +3,7 @@ import { describe, expect, test } from 'bun:test';
 
 import type { CatalogRow } from '../../../lib/workflow-catalog.ts';
 import { invalidFile, readyFile } from '../../../lib/workflow-world.test-support.ts';
-import { runnableWorkflows } from './runnable-workflows.ts';
+import { runnableWorkflows, startChoices } from './runnable-workflows.ts';
 
 function row(name: string, overrides: Partial<CatalogRow>): CatalogRow {
   return {
