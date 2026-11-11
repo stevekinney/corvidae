@@ -12,6 +12,12 @@ const schema = z.object({
   baselineSourceSha: z.string().optional().meta({ env: 'BASELINE_SOURCE_SHA' }),
   browserFixtureManifest: z.string().optional().meta({ env: 'BROWSER_FIXTURE_MANIFEST' }),
   browserFixtureUrl: z.string().optional().meta({ env: 'BROWSER_FIXTURE_URL' }),
+  // `1` adds the supplemental profiles to the chat stress capture.
+  chatStressSupplemental: z
+    .string()
+    .optional()
+    .transform((value) => value === '1')
+    .meta({ env: 'CHAT_STRESS_SUPPLEMENTAL' }),
   cinderTestComponents: z.string().optional().meta({ env: 'CINDER_TEST_COMPONENTS' }),
   cinderUpdateSeamAudit: z
     .string()
@@ -37,6 +43,7 @@ function selectedEnvironment(): Record<string, string> {
     'BASELINE_SOURCE_SHA',
     'BROWSER_FIXTURE_MANIFEST',
     'BROWSER_FIXTURE_URL',
+    'CHAT_STRESS_SUPPLEMENTAL',
     'CINDER_TEST_COMPONENTS',
     'CINDER_UPDATE_SEAM_AUDIT',
     'CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY',

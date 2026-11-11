@@ -32,6 +32,7 @@ import { parseArgs } from 'node:util';
 import { THEME_STORAGE_KEY, buildBrowser } from '@lostgradient/testing';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 
+import { environmentConfiguration } from '../environment-configuration.ts';
 import casesData from '../src/fixtures/chat-stress.json';
 import {
   STRESS_NOW,
@@ -554,7 +555,7 @@ async function main(): Promise<number> {
     },
     strict: true,
   });
-  const supplemental = process.env['CHAT_STRESS_SUPPLEMENTAL'] === '1';
+  const supplemental = environmentConfiguration().chatStressSupplemental;
   const allCases = parseStressCases(casesData);
   let cases: StressCase[];
   try {

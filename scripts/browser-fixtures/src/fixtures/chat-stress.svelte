@@ -406,7 +406,7 @@
     block-size: 100dvh;
     min-inline-size: 0;
     overflow: hidden;
-    background: var(--cinder-surface-default);
+    background: var(--cinder-surface);
   }
 
   .stress-page[data-two-chats='true'] {
@@ -428,6 +428,6 @@
 
   [data-chat-stress-error] {
     margin: var(--cinder-space-4);
-    color: var(--cinder-danger-text);
+    color: var(--cinder-status-danger-text);
   }
 </style>
