@@ -87,7 +87,7 @@
         <p class="ib-review-pane__note" role="alert">{outcome.message}</p>
       {/if}
       {#if pickable}
-        <p class="ib-review-pane__note">{REVIEWS_COPY.pickHint}</p>
+        <p class="ib-review-pane__note ib-review-pane__hint">{REVIEWS_COPY.pickHint}</p>
       {/if}
     {:else}
       <ReviewResolution {review} />

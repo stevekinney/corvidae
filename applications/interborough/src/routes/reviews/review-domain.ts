@@ -118,22 +118,6 @@ export function formatReviewCountdown(deadline: ReviewDeadline): string {
 
 export type ReviewInboxState = 'pending' | 'completed' | 'timeout';
 
-/** Splits the raw `status: 'pending'` list into the two client-visible buckets the Inbox tri-state needs — `'pending'` never includes an already-timed-out entry. */
-export function partitionPendingReviews(
-  entries: readonly PendingReviewEntry[],
-  now: number,
-): {
-  readonly pending: readonly PendingReviewEntry[];
-  readonly timedOut: readonly PendingReviewEntry[];
-} {
-  const pending: PendingReviewEntry[] = [];
-  const timedOut: PendingReviewEntry[] = [];
-  for (const entry of entries) {
-    (isReviewTimedOut(entry, now) ? timedOut : pending).push(entry);
-  }
-  return { pending, timedOut };
-}
-
 // ---------------------------------------------------------------------------
 // Sectioned artifacts and partial decisions
 // ---------------------------------------------------------------------------

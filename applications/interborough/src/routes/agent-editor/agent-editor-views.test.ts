@@ -72,7 +72,7 @@ describe('the editor’s routes', () => {
     expect(
       await findByRole('heading', { level: 1, name: AGENT_EDITOR_COPY.createHeading }),
     ).not.toBeNull();
-    expect(frameOf(container).dataset['state']).toBe('ready');
+    await waitFor(() => expect(frameOf(container).dataset['state']).toBe('ready'));
   });
 
   test('/agents/:agent/edit is the editor for that agent, ready once the agent loads', async () => {

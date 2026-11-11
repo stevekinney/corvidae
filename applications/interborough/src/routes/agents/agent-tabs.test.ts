@@ -488,18 +488,25 @@ describe('the Settings tab', () => {
         definition: { ...agent.definition, effort: 'high' },
       },
     );
-    const { findByRole } = mount();
-    const high = await findByRole('radio', { name: 'High' });
-    expect(high.getAttribute('aria-checked')).toBe('true');
+    const { findByLabelText } = mount();
+    const effort = (await findByLabelText('Effort')) as HTMLSelectElement;
+    await waitFor(() => expect(effort.value).toBe('high'));
+    expect(effort.selectedOptions[0]?.textContent?.trim()).toBe('High');
   });
 
   test('marks no effort for an agent whose file sets none', async () => {
     landAt('/agents/researcher/settings');
     serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
-    const { findAllByRole } = mount();
-    const efforts = await findAllByRole('radio');
-    expect(efforts.map((effort) => effort.textContent?.trim())).toEqual(['Low', 'Medium', 'High']);
-    expect(efforts.some((effort) => effort.getAttribute('aria-checked') === 'true')).toBe(false);
+    const { findByLabelText } = mount();
+    const effort = (await findByLabelText('Effort')) as HTMLSelectElement;
+    expect(effort.value).toBe('');
+    expect(effort.selectedOptions[0]?.textContent?.trim()).toBe('None');
+    expect([...effort.options].map((option) => option.textContent?.trim())).toEqual([
+      'None',
+      'Low',
+      'Medium',
+      'High',
+    ]);
   });
 
   test('restores an older version over the hash of the file as read, once confirmed, and lists the result', async () => {

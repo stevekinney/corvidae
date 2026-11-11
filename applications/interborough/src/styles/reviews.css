@@ -161,6 +161,13 @@
   overflow-wrap: anywhere;
 }
 
+/* The pick hint names number keys; a touch-only device has none at hand, so it is not drawn. */
+@media (hover: none) and (pointer: coarse) {
+  .ib-review-pane__hint {
+    display: none;
+  }
+}
+
 .ib-review-pane__input,
 .ib-review-pane__decision,
 .ib-review-pane__answer {

@@ -3,7 +3,7 @@
 </script>
 
 <div>
-  <PageHeader title="Approvals" description="3 pending · 12 resolved" />
+  <PageHeader title="Approvals" description="3 pending, 12 resolved" />
 </div>
 
 <div style="margin-top: var(--cinder-space-4);">

@@ -12,7 +12,6 @@ import {
   humanizeKeys,
   isReviewFleetEventKind,
   isReviewTimedOut,
-  partitionPendingReviews,
   pendingEntriesOnly,
   reviewDeadline,
   suggestOverallDecision,
@@ -103,26 +102,6 @@ describe('formatReviewCountdown', () => {
     expect(
       formatReviewCountdown(reviewDeadline({ createdAt: NOW, timeout: 18 * 60_000 }, NOW)),
     ).toBe('18m left');
-  });
-});
-
-describe('partitionPendingReviews', () => {
-  test('splits pending vs. already-timed-out entries', () => {
-    const fresh = pendingEntry();
-    const stale = pendingEntry({ createdAt: NOW - 700_000, timeout: 600_000 });
-    const { pending, timedOut } = partitionPendingReviews(
-      [
-        { ...fresh, reviewId: 'fresh' },
-        { ...stale, reviewId: 'stale' },
-      ],
-      NOW,
-    );
-    expect(pending.map((entry) => entry.reviewId)).toEqual(['fresh']);
-    expect(timedOut.map((entry) => entry.reviewId)).toEqual(['stale']);
-  });
-
-  test('returns empty buckets for an empty list', () => {
-    expect(partitionPendingReviews([], NOW)).toEqual({ pending: [], timedOut: [] });
   });
 });
 
