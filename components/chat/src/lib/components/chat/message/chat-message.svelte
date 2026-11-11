@@ -4,7 +4,13 @@
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
   import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
-  import type { ChatNotSent, MessageNoteInfo, StepInfo } from '../utilities/types.ts';
+  import type {
+    ChatNotSent,
+    MessageNoteInfo,
+    MessagePartDerivationContext,
+    StepInfo,
+    ToolApprovalReceiptRecord,
+  } from '../utilities/types.ts';
 
   export type ChatMessageProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
     /** The message to render */
@@ -96,6 +102,10 @@
     approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
     /** Tool-call ids currently submitting a resolution. */
     approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
+    /** UI-only approvals decided in this chat, keyed by tool-call id, kept as receipts. */
+    approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
+    /** Describes a tool approval beyond its action; `undefined` draws the shared approval row. */
+    describeApproval?: MessagePartDerivationContext['describeApproval'];
     /** Called when the user resolves an action-required approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
@@ -229,6 +239,8 @@
     rollbackDiscarded = false,
     approvalStates,
     approvalResolutionInFlightIds,
+    approvalReceipts,
+    describeApproval,
     onApprovalResolve,
     onInputSubmit,
     toolCallPresentation,
@@ -501,6 +513,8 @@
       expanded,
       approvalStates,
       approvalResolutionInFlightIds,
+      approvalReceipts,
+      describeApproval,
       questionAnswers: questionStore?.answers,
       toolCallPresentation,
       // C4: reasoning and steps are UI-only overlays derived from metadata or

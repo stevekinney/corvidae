@@ -50,6 +50,8 @@
   import { useChatKeyboardNav } from './use-chat-keyboard-nav.svelte.ts';
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
+  import ChatApprovalDrawer from './chat-approval-drawer.svelte';
+  import { findPendingApprovalMessageId, focusPendingApproval } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
@@ -1307,6 +1309,19 @@
   const handleStopGenerating = commandActions.handleStopGenerating;
   const handleEditingChange = commandActions.handleEditingChange;
   const canResolveToolApproval = $derived(commandActions.canResolveToolApproval);
+  // An approval is waiting on the person: the composer says so in a drawer, and what is sent now
+  // reads Queue.
+  const approvalWaiting = $derived(commandActions.hasPendingApproval());
+
+  /** Takes the person to the approval that waits: scrolls to it, then focuses its card. */
+  async function reviewPendingApproval(): Promise<void> {
+    const messageId = findPendingApprovalMessageId(messages, commandActions.approvalStates);
+    if (messageId !== undefined) scrollToMessage(messageId);
+    await tick();
+    if (focusPendingApproval(containerRef)) return;
+    // A virtualized row mounts once the scroll has landed, so look again on the next frame.
+    requestAnimationFrame(() => focusPendingApproval(containerRef));
+  }
 
   async function handleLoadHistory(): Promise<void> {
     await historyLifecycle.loadHistory();
@@ -1912,6 +1927,12 @@
           approvalResolutionInFlightIds={commandActions.approvalResolutionInFlightIds.size > 0
             ? commandActions.approvalResolutionInFlightIds
             : undefined}
+          approvalReceipts={commandActions.approvalReceipts.size > 0
+            ? commandActions.approvalReceipts
+            : undefined}
+          describeApproval={adapter?.describeApproval
+            ? (call, action) => adapter?.describeApproval?.(call, action)
+            : undefined}
           {toolCallPresentation}
           onApprovalResolve={canResolveToolApproval ? handleApprovalResolve : undefined}
           {onInputSubmit}
@@ -2126,6 +2147,9 @@
             {@render composerLead()}
           </div>
         {/if}
+        {#if approvalWaiting}
+          <ChatApprovalDrawer onreview={reviewPendingApproval} />
+        {/if}
         <ChatInput
           id={inputId}
           bind:this={inputRef}
@@ -2142,6 +2166,7 @@
           starting={composerStarting}
           clearOnSubmit={clearComposerOnSubmit}
           allowFollowUp={followUpsEnabled && !composerCompact}
+          queueing={approvalWaiting}
           compact={composerCompact}
           actions={composerActions}
           toolbar={composerToolbar}

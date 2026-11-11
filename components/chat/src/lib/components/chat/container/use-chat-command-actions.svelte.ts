@@ -6,6 +6,7 @@ import type {
 } from '../adapter/chat-adapter.ts';
 import type { Message, MessageInput, ToolAction } from '../conversation-model.ts';
 import type { ChatAttachment } from '../input/chat-attachment.ts';
+import type { ToolApprovalReceiptRecord } from '../utilities/types.ts';
 
 type CommandCallback<T extends unknown[]> = (...args: T) => void | Promise<void>;
 type ApprovalResolveCallback = (
@@ -70,6 +71,14 @@ function isTerminalApprovalState(state: ApprovalState | undefined): boolean {
   return state !== undefined && state !== 'pending';
 }
 
+/** The name the call that asked for an approval went by, or the call id when no call row says. */
+function findToolName(messages: readonly Message[], toolCallId: string): string {
+  for (const message of messages) {
+    if (message.toolCall?.id === toolCallId) return message.toolCall.name;
+  }
+  return toolCallId;
+}
+
 function findApprovalAction(
   messages: readonly Message[],
   toolCallId: string,
@@ -125,6 +134,8 @@ export function useChatCommandActions(options: CommandActionsOptions) {
   let approvalResolutionInFlightIds = $state(new Set<string>());
   let approvalResolutionFlightTokens = $state(new Map<string, symbol>());
   let approvalOwners = $state(new Map<string, ApprovalOwner>());
+  // Approvals decided in this chat, kept after their results stop asking so each stays a receipt.
+  let approvalReceipts = $state(new Map<string, ToolApprovalReceiptRecord>());
   let editingMessageIds = $state(new Set<string>());
   let pendingRetryMessageTokens = $state(new Map<string, symbol>());
   let removingMessageIds = $state(new Set<string>());
@@ -137,6 +148,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     approvalResolutionInFlightIds = new Set();
     approvalResolutionFlightTokens = new Map();
     approvalOwners = new Map();
+    approvalReceipts = new Map();
     pendingRetryMessageTokens = new Map();
     editingMessageIds = new Set();
     // Follow-ups queued for the old conversation must not hold up the new one.
@@ -202,6 +214,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     let nextStates = approvalStates;
     let nextInFlightIds = approvalResolutionInFlightIds;
     let nextFlightTokens = approvalResolutionFlightTokens;
+    let nextReceipts = approvalReceipts;
     let changed = false;
 
     for (const [toolCallId, owner] of approvalOwners) {
@@ -215,6 +228,12 @@ export function useChatCommandActions(options: CommandActionsOptions) {
       nextStates.delete(toolCallId);
       nextInFlightIds.delete(toolCallId);
       nextFlightTokens.delete(toolCallId);
+      // A result that stopped asking leaves the receipt of what was decided. A different action
+      // asked under the same call id is a new question, and the old decision is not its answer.
+      if (nextOwners.has(toolCallId) && nextReceipts.has(toolCallId)) {
+        if (nextReceipts === approvalReceipts) nextReceipts = new Map(approvalReceipts);
+        nextReceipts.delete(toolCallId);
+      }
     }
 
     if (!approvalOwnerMapsEqual(approvalOwners, nextOwners)) {
@@ -225,6 +244,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
       approvalResolutionInFlightIds = nextInFlightIds;
       approvalResolutionFlightTokens = nextFlightTokens;
     }
+    if (nextReceipts !== approvalReceipts) approvalReceipts = nextReceipts;
   });
 
   /** Whether a tool approval is waiting on the user, which parks the run without ending it. */
@@ -422,7 +442,18 @@ export function useChatCommandActions(options: CommandActionsOptions) {
         rollback();
         return;
       }
-      approvalStates = setApprovalState(approvalStates, toolCallId, stateForResolution(resolution));
+      const decidedState = stateForResolution(resolution);
+      approvalStates = setApprovalState(approvalStates, toolCallId, decidedState);
+      if (action?.type === 'approval') {
+        const receipt: ToolApprovalReceiptRecord['receipt'] = { decidedAt: Date.now() };
+        if (resolution.reason !== undefined) receipt.reason = resolution.reason;
+        approvalReceipts = new Map(approvalReceipts).set(toolCallId, {
+          toolName: findToolName(options.getMessages(), toolCallId),
+          action,
+          state: decidedState,
+          receipt,
+        });
+      }
       clearFlight();
     };
 
@@ -511,6 +542,10 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     },
     get approvalResolutionInFlightIds() {
       return approvalResolutionInFlightIds;
+    },
+    /** Approvals decided in this chat, keyed by tool-call id, kept as receipts. */
+    get approvalReceipts() {
+      return approvalReceipts;
     },
   };
 }

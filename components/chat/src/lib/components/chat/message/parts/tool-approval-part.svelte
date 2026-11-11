@@ -25,15 +25,31 @@
       tool: {
         name: part.toolName,
         risk: part.action.risk,
+        // The host's word on whether it can be undone; the wire action does not carry it.
+        ...(part.details?.irreversible === undefined
+          ? {}
+          : { irreversible: part.details.irreversible }),
       },
       operation: part.action.operation,
       policyVersion: part.action.policyVersion,
       idempotencyKey: part.action.idempotencyKey,
       state: part.state,
       headingLevel: 4,
-      // One row: the reply above the approval already explains the request.
-      layout: 'row',
+      // An approval the adapter describes is the explicit decision, which stays as a receipt once
+      // decided. Any other is one row: the reply above it already explains the request.
+      layout: part.details === undefined ? 'row' : 'decision',
     };
+
+    if (part.details?.approveLabel !== undefined) props.approveLabel = part.details.approveLabel;
+    if (part.details?.pauseSentence !== undefined) props.pauseSentence = part.details.pauseSentence;
+    if (part.details?.facts !== undefined) props.facts = part.details.facts;
+    if (part.details?.why !== undefined) props.why = part.details.why;
+    // A decision made here: who, when, and the note that went with it.
+    if (part.receipt !== undefined) {
+      props.decidedBy = 'you';
+      props.decidedAt = part.receipt.decidedAt;
+      if (part.receipt.reason !== undefined) props.decisionNote = part.receipt.reason;
+    }
 
     if (part.action.message !== undefined) props.question = part.action.message;
     if (part.action.sandbox !== undefined) props.sandbox = part.action.sandbox;
@@ -51,7 +67,9 @@
   }
 
   function handleKeydown(event: KeyboardEvent): void {
-    if (event.key !== 'Escape' || !canResolve) return;
+    // An armed irreversible press owns Escape: it reverts the arm and marks the key handled, so the
+    // approval itself is not cancelled by the same keystroke.
+    if (event.key !== 'Escape' || !canResolve || event.defaultPrevented) return;
     event.preventDefault();
     resolveApproval({ decision: 'cancel', remember: false });
   }

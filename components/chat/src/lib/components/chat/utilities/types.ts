@@ -7,6 +7,7 @@
  */
 
 import type { ApprovalState } from '@lostgradient/cinder';
+import type { ChatApprovalDetails } from '../adapter/chat-adapter.ts';
 import type {
   Message,
   MultiModalContent,
@@ -128,6 +129,29 @@ export type ToolApprovalMessagePart = {
   action: ToolApprovalAction;
   state: ApprovalState;
   resolutionInFlight: boolean;
+  /** What the adapter knows about the approval beyond its action. Present, the part draws the explicit decision surface. */
+  details?: ChatApprovalDetails;
+  /** The decision made here, kept so the part reads as a receipt: when, and the note that went with it. */
+  receipt?: ToolApprovalReceipt;
+};
+
+/** The decision a person made in this chat on a tool approval. */
+export type ToolApprovalReceipt = {
+  /** When it was decided, in epoch milliseconds. */
+  decidedAt: number;
+  /** The note that went with the decision, when the person left one. */
+  reason?: string;
+};
+
+/**
+ * A tool approval decided in this chat, kept by tool-call id so it stays in the transcript as a
+ * receipt after the run resumes and its result stops asking.
+ */
+export type ToolApprovalReceiptRecord = {
+  toolName: string;
+  action: ToolApprovalAction;
+  state: ApprovalState;
+  receipt: ToolApprovalReceipt;
 };
 
 /**
@@ -373,6 +397,14 @@ export type MessagePartDerivationContext = {
   approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
   /** Tool-call ids currently submitting a resolution. Used to disable duplicate submits. */
   approvalResolutionInFlightIds?: ReadonlySet<string> | undefined;
+  /**
+   * UI-only approvals decided in this chat, keyed by tool-call id. An approval in this map keeps a
+   * `tool-approval` part (its receipt) after its result stops asking for approval.
+   */
+  approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
+  /** Describes an approval beyond its action; `undefined` draws the shared approval row. */
+  describeApproval?:
+    ((toolCall: { id: string; name: string }, action: ToolApprovalAction) => ChatApprovalDetails | undefined) | undefined;
   /**
    * UI-only answers to questions, keyed by tool-call id. A question in this map keeps its
    * `tool-input` part (and so its "You answered" row) after its result stops asking for input.

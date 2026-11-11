@@ -59,6 +59,11 @@
      * provided, Stop is shown beside it instead of replacing it. Default `false`.
      */
     allowFollowUp?: boolean;
+    /**
+     * Whether anything sent now waits behind a decision, such as a tool approval. While a draft is
+     * present, Send reads Queue with the queue icon. Default `false`.
+     */
+    queueing?: boolean;
     /** Error message to display */
     error?: string;
     /** Additional CSS class */
@@ -210,6 +215,7 @@
     LinkIcon,
     List,
     Paperclip,
+    ListOrdered,
     SendHorizontal,
     Square,
     Tooltip,
@@ -265,6 +271,7 @@
     pausedReason,
     sending = false,
     allowFollowUp = false,
+    queueing = false,
     error,
     class: className,
     action,
@@ -471,12 +478,17 @@
       !sendBlocked &&
       !hasPendingAttachments,
   );
+  // With a draft in the box and a decision ahead of it, Send says what will happen to the draft.
+  const queued = $derived(queueing && !answering && canSubmit);
   const sendTooltipText = $derived.by(() => {
     if (starting !== undefined) return starting;
     if (hasPendingAttachments) return 'Wait for attachments';
     if (showStopButton) return 'Stop generating';
     if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
       return answering ? 'Type an answer' : 'Add a message or attachment';
+    }
+    if (queued) {
+      return submitOn === 'modifier-enter' ? 'Queue (Command or Control + Enter)' : 'Queue (Enter)';
     }
     if (submitOn === 'modifier-enter') return 'Send (Command or Control + Enter)';
     if (submitOn === 'enter-if-single-line' && value.includes('\n')) return 'Send message';
@@ -510,7 +522,7 @@
     }
   });
 
-  const sendLabel = $derived(starting ?? (answering ? 'Answer' : 'Send'));
+  const sendLabel = $derived(starting ?? (answering ? 'Answer' : queued ? 'Queue' : 'Send'));
   const sendAccessibleName = $derived(
     showStopButton
       ? 'Stop generating'
@@ -520,7 +532,9 @@
           ? 'Sending message'
           : answering
             ? 'Answer'
-            : 'Send message',
+            : queued
+              ? 'Queue message'
+              : 'Send message',
   );
   const hintText = $derived.by(() => {
     if (hint === false) return undefined;
@@ -1539,6 +1553,8 @@
                     d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
                   ></path>
                 </svg>
+              {:else if queued}
+                <ListOrdered class="cinder-icon-sm" data-chat-queue-icon="" />
               {:else}
                 <SendHorizontal class="cinder-icon-sm" />
               {/if}

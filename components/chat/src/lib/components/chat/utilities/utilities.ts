@@ -455,15 +455,62 @@ function deriveToolApprovalPart(
   action: ToolApprovalMessagePart['action'],
   context: MessagePartDerivationContext,
 ): ToolApprovalMessagePart {
-  return {
+  const toolName = context.toolCallPair?.call.name ?? result.callId;
+  const part: ToolApprovalMessagePart = {
     type: 'tool-approval',
     key: `${messageId}:tool-approval:${result.callId}`,
     toolCallId: result.callId,
-    toolName: context.toolCallPair?.call.name ?? result.callId,
+    toolName,
     action,
     state: context.approvalStates?.get(result.callId) ?? 'pending',
     resolutionInFlight: context.approvalResolutionInFlightIds?.has(result.callId) ?? false,
   };
+  const details = describeApprovalSafely(context, result.callId, toolName, action);
+  if (details !== undefined) part.details = details;
+  const held = context.approvalReceipts?.get(result.callId);
+  if (held !== undefined) part.receipt = held.receipt;
+  return part;
+}
+
+/** What the adapter says about an approval; a throw from the adapter reads as nothing said. */
+function describeApprovalSafely(
+  context: MessagePartDerivationContext,
+  toolCallId: string,
+  toolName: string,
+  action: ToolApprovalMessagePart['action'],
+): ToolApprovalMessagePart['details'] {
+  try {
+    return context.describeApproval?.({ id: toolCallId, name: toolName }, action);
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * Builds the receipt part for an approval decided in this chat whose result has since stopped
+ * asking for approval (the run resumed), so the decision stays in the transcript. The key matches
+ * the part it replaces, so the row keeps its identity across the change.
+ */
+function deriveToolApprovalReceiptPart(
+  messageId: string,
+  callId: string,
+  context: MessagePartDerivationContext,
+): ToolApprovalMessagePart | undefined {
+  const held = context.approvalReceipts?.get(callId);
+  if (held === undefined) return undefined;
+  const part: ToolApprovalMessagePart = {
+    type: 'tool-approval',
+    key: `${messageId}:tool-approval:${callId}`,
+    toolCallId: callId,
+    toolName: held.toolName,
+    action: held.action,
+    state: held.state,
+    resolutionInFlight: false,
+    receipt: held.receipt,
+  };
+  const details = describeApprovalSafely(context, callId, held.toolName, held.action);
+  if (details !== undefined) part.details = details;
+  return part;
 }
 
 /**
@@ -590,7 +637,10 @@ export function deriveMessageParts(
   // result. The card shows what is being called; the approval gates consent.
   if (message.role === 'tool-call' && message.toolCall && context.toolCallPair) {
     const result = context.toolCallPair.result;
-    const actionPart = result ? deriveToolActionPart(message.id, result, context) : undefined;
+    const actionPart = result
+      ? (deriveToolActionPart(message.id, result, context) ??
+        deriveToolApprovalReceiptPart(message.id, result.callId, context))
+      : undefined;
     const toolCallPart: ToolCallMessagePart = {
       type: 'tool-call',
       key: `${message.id}:tool-call:${message.toolCall.id}`,

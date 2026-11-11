@@ -42,6 +42,7 @@ export { Chat, CURRENT_SCHEMA_VERSION };
 export type {
   ChatAdapter,
   ChatAdapterErrorEvent,
+  ChatApprovalDetails,
   ChatCommand,
   ChatPushHandlers,
   ChatReadReceiptEvent,

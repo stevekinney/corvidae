@@ -9,6 +9,7 @@
 export type {
   ChatAdapter,
   ChatAdapterErrorEvent,
+  ChatApprovalDetails,
   ChatCommand,
   ChatPushHandlers,
   ChatReadReceiptEvent,

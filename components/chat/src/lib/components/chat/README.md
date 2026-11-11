@@ -130,6 +130,31 @@ The helpers immutably set or clear the transient `_deliveryStatus` metadata used
 
 ### Follow-ups during a run
 
+## Approval decisions
+
+A tool approval draws as the shared approval row. An adapter that knows more about it opts into the explicit decision surface with `describeApproval(toolCall, action)`, which returns a `ChatApprovalDetails` or `undefined` (a throw reads as `undefined`):
+
+```ts
+import type { ChatAdapter } from '@lostgradient/chat';
+
+const adapter: Pick<ChatAdapter, 'sendMessage' | 'describeApproval'> = {
+  sendMessage: async () => undefined,
+  describeApproval: ({ name }, action) =>
+    name === 'issue-refund'
+      ? {
+          irreversible: true,
+          approveLabel: 'Refund',
+          pauseSentence: 'The agent is paused until you decide.',
+          facts: [{ label: 'Amount', value: '$42.00' }],
+        }
+      : undefined,
+};
+```
+
+- The decision surface is Cinder's `ApprovalCard` with `layout="decision"`: the action as the title, a danger badge when `irreversible`, the pause sentence, Tool, your `facts`, whether it can be undone, and the command always open and monospaced. Deny sits left and the named primary right. An irreversible primary arms on its first press ("Press again to refund"), reverts after three seconds or on Escape, and commits on the second press. Escape on an armed press never cancels the approval.
+- A decision made in this chat stays in the transcript as a receipt: a check badge, "by you" and the time, with a denial's note quoted inline. The receipt outlives the result that asked, so it is still there once the run resumes. A decision made on another surface is not known to Chat; the wire action carries no actor or surface.
+- While an approval waits, a drawer above the composer says "Waiting for your approval. Anything you send now queues until you decide." Its Review approval button scrolls to the approval (through the virtualized rows) and focuses its card without answering it. A draft in the box makes Send read Queue with the queue icon.
+
 By default the composer is disabled while `streaming` is `true`, and the session controller refuses a second turn while a run is working or a tool approval is pending. A host that owns the run on the server, and can deliver input to it in flight, opts in with `sendRunInput`. Follow-ups are supported only for server-owned runs (`executionOwner: 'server'`): with a browser-owned run the controller does not expose the hook, the composer does not offer follow-ups, and submitting during the run behaves as it did before. There are two hooks, and they are different types:
 
 - `ChatAdapter.sendRunInput(conversationId, message, attachments)` is the component-facing hook. It takes the same message and attachments as `sendMessage`, preceded by the conversation id. A raw adapter used without the controller gets no row id, and correlating its follow-ups is the host's problem.

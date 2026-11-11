@@ -19,11 +19,11 @@
  * @module
  */
 
-import type { ApprovalResolution } from '@lostgradient/cinder';
+import type { ApprovalFact, ApprovalResolution } from '@lostgradient/cinder';
 import type { TypingParticipant } from '../chat.types.ts';
 import type { Message, MessageInput, ToolCall, ToolResult } from '../conversation-model.ts';
 import type { ChatAttachment } from '../input/chat-attachment.ts';
-import type { ToolCallPresentation } from '../utilities/types.ts';
+import type { ToolApprovalAction, ToolCallPresentation } from '../utilities/types.ts';
 
 /**
  * A read-receipt push event: a message was read at a point in time. The payload
@@ -95,6 +95,27 @@ export type ChatPushHandlers = {
   onStreamEnd: () => void;
 };
 
+/**
+ * What a host knows about a tool approval that the approval action does not carry. Chat draws the
+ * explicit decision surface for an approval the adapter describes: the action as the title, a
+ * danger badge when it cannot be undone, a sentence about the pause, Tool, Target, Amount and
+ * Command facts, a named primary action that arms on its first press when it is irreversible, and
+ * a retained receipt once it is decided. An approval the adapter does not describe keeps the
+ * shared approval row.
+ */
+export type ChatApprovalDetails = {
+  /** Whether the operation cannot be undone: an irreversible primary arms on its first press. */
+  irreversible?: boolean | undefined;
+  /** The primary action's own words, such as `Refund $42.00`. Default `Approve`. */
+  approveLabel?: string | undefined;
+  /** One sentence about the pause, such as `The agent is paused until you decide.`. */
+  pauseSentence?: string | undefined;
+  /** Facts written after the tool, such as Target and Amount. The command comes from the action. */
+  facts?: ApprovalFact[] | undefined;
+  /** Why the agent wants to do this, offered as a disclosure. */
+  why?: string | undefined;
+};
+
 /** Result of an adapter-owned tool approval command. */
 export type ChatToolApprovalResolution = 'resolved' | 'pending';
 
@@ -114,6 +135,16 @@ export type ChatToolApprovalResolution = 'resolved' | 'pending';
 export type ChatAdapter = {
   /** Supplies connector-neutral activity prose and an icon category for tool calls. */
   describeToolCall?: (toolCall: ToolCall, result?: ToolResult) => ToolCallPresentation | undefined;
+  /**
+   * Describes a tool approval beyond what its action carries (see {@link ChatApprovalDetails}).
+   * Called while the transcript derives the approval's part, with the call's id and name and the
+   * approval action. Return `undefined` for the shared approval row. A throw is treated as
+   * `undefined`.
+   */
+  describeApproval?: (
+    toolCall: { id: string; name: string },
+    action: ToolApprovalAction,
+  ) => ChatApprovalDetails | undefined;
   /** Send a composed message with its attachments. */
   sendMessage: (message: MessageInput, attachments: ChatAttachment[]) => Promise<void>;
   /**
