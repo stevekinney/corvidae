@@ -148,8 +148,8 @@ test.describe('one agent', () => {
     // Its tools are named, each as code.
     const tools = page.getByRole('list', { name: 'Tools' });
     await expect(tools.locator('li')).toHaveText(['lookup-order', 'issue-refund']);
-    const chats = page.getByRole('navigation', { name: 'Chats with this agent' });
-    await expect(chats.getByRole('button', { name: new RegExp(label) })).toHaveCount(1);
+    const chats = page.getByTestId('agent-chats');
+    await expect(chats.getByRole('link', { name: new RegExp(label) })).toHaveCount(1);
     await expect(chats).toContainText('refund for the runner');
     await expect(chats).not.toContainText('hello for the assistant');
     await page.getByRole('link', { name: 'New chat' }).first().click();
@@ -162,8 +162,8 @@ test.describe('one agent', () => {
     await page.goto('/agents/demo:tool-runner');
 
     await page
-      .getByRole('navigation', { name: 'Chats with this agent' })
-      .getByRole('button', { name: /Open this one from the agent page/ })
+      .getByTestId('agent-chats')
+      .getByRole('link', { name: /Open this one from the agent page/ })
       .click();
 
     await expect(page).toHaveURL(new RegExp(`/chats/${threadId}$`));

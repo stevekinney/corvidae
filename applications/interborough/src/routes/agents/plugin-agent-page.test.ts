@@ -104,6 +104,37 @@ describe('the page of a plugin’s agent', () => {
     expect(note.textContent).toBe(copy.note('linear'));
   });
 
+  test('links nowhere into the editor from the Instructions tab, with no references or some', async () => {
+    landAt('/agents/linear%3Atriager/instructions');
+    serve();
+    const empty = mount();
+
+    const line = await empty.findByTestId('agent-no-references');
+    expect(line.textContent?.trim()).toBe(AGENT_PAGE_COPY.instructions.noReferencesReadOnly);
+    const editorLinks = (container: HTMLElement) =>
+      [...container.querySelectorAll('[data-testid="agent-instructions"] a')].filter((anchor) =>
+        anchor.getAttribute('href')?.endsWith('/edit'),
+      );
+    expect(editorLinks(empty.container)).toHaveLength(0);
+    cleanup();
+    restore?.();
+
+    const base = readyAgent({ id: 'linear:triager', name: 'Triager', hash: 'hash-1' });
+    if (base.definition === null) throw new Error('expected a definition');
+    serve({
+      'bureau.agents.definitions.get': () => ({
+        ...base,
+        definition: { ...base.definition, references: ['references/style.md'] },
+        referenceSizes: [{ path: 'references/style.md', size: 4096 }],
+      }),
+    });
+    const listed = mount();
+
+    await listed.findByTestId('agent-references');
+    expect(listed.queryByTestId('agent-references-note')).toBeNull();
+    expect(editorLinks(listed.container)).toHaveLength(0);
+  });
+
   test('offers no Delete and no saved versions on the Settings tab', async () => {
     landAt('/agents/linear%3Atriager/settings');
     serve();

@@ -3800,6 +3800,8 @@ export const AGENT_PAGE_COPY = {
     noReferencesBefore: 'None added. Add one in ',
     noReferencesEditor: 'the editor',
     noReferencesAfter: '.',
+    /** The same line for a plugin's agent, whose file the page cannot change, so it links nowhere. */
+    noReferencesReadOnly: 'None added.',
   },
   access: {
     heading: 'Access',

@@ -137,7 +137,9 @@
           title={copy.referencesHeading}
           description={copy.referencesDescription}
         />
-        {#if references.length === 0}
+        {#if references.length === 0 && !editable}
+          <p class="ib-agent-note" data-testid="agent-no-references">{copy.noReferencesReadOnly}</p>
+        {:else if references.length === 0}
           <p class="ib-agent-note" data-testid="agent-no-references">
             {copy.noReferencesBefore}{@render editorLink(
               copy.noReferencesEditor,
@@ -153,10 +155,12 @@
               </li>
             {/each}
           </ul>
-          <p class="ib-agent-note" data-testid="agent-references-note">
-            {copy.referencesNote}
-            {@render editorLink(copy.editAgent)}
-          </p>
+          {#if editable}
+            <p class="ib-agent-note" data-testid="agent-references-note">
+              {copy.referencesNote}
+              {@render editorLink(copy.editAgent)}
+            </p>
+          {/if}
         {/if}
       </section>
     {/if}
