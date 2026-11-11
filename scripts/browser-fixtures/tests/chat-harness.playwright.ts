@@ -2310,6 +2310,11 @@ test.describe('chat harness — tool calls', () => {
         await page.keyboard.press('Enter');
         await expect(toggle).toHaveAttribute('aria-expanded', 'true');
         await expect(activity.locator('.chat-tool-call-name')).toHaveText(['issue_refund']);
+        // The name is shown whole, not cut with an ellipsis, at every width.
+        const clipped = await activity
+          .locator('.chat-tool-call-name')
+          .evaluateAll((names) => names.map((name) => name.scrollWidth - name.clientWidth));
+        for (const overflow of clipped) expect(overflow).toBeLessThanOrEqual(0);
         await expectNoPageOverflow(page);
       } finally {
         await dispose();

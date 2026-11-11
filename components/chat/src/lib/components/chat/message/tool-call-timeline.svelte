@@ -492,8 +492,17 @@
     min-inline-size: 0;
   }
 
-  .chat-tool-call-summary > * {
+  /* The running call's sentence is the host's own words and wraps like any sentence; only these
+   * phrases are held to one line. */
+  .chat-tool-call-summary-count,
+  .chat-tool-call-summary-segment,
+  .chat-tool-call-summary-duration {
     white-space: nowrap;
+  }
+
+  .chat-tool-call-running {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
   }
 
   .chat-tool-call-summary-count {
@@ -526,6 +535,16 @@
   @container (max-width: 21.99rem) {
     .chat-tool-call-summary-tools {
       display: none;
+    }
+
+    /* A row wraps between its parts, so the tool's full name always has the line it needs. */
+    .chat-tool-call-row {
+      flex-wrap: wrap;
+      row-gap: var(--cinder-space-1);
+    }
+
+    .chat-tool-call-name {
+      max-inline-size: 100%;
     }
   }
 
@@ -570,8 +589,10 @@
     color: var(--cinder-text-default);
   }
 
+  /* A zero basis: the result takes only the room the title, the tool and the time leave, so a long
+   * result line is cut first and never squeezes them. */
   .chat-tool-call-result {
-    flex: 1 1 auto;
+    flex: 1 1 0;
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;

@@ -942,7 +942,17 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).toMatch(
         /@container \(max-width: 21\.99rem\)\s*\{\s*\.chat-tool-call-summary-tools\s*\{\s*display:\s*none;/,
       );
-      expect(source).toMatch(/\.chat-tool-call-summary > \*\s*\{\s*white-space:\s*nowrap;/);
+      expect(source).toMatch(
+        /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
+      );
+      // The running call's sentence is not held to one line, so a long one wraps inside the group.
+      expect(source).toMatch(/\.chat-tool-call-running\s*\{[^}]*overflow-wrap:\s*anywhere/s);
+      // A row wraps between its parts in a narrow chat, so a tool's name is never clipped there.
+      expect(source).toMatch(
+        /@container \(max-width: 21\.99rem\)\s*\{[^@]*\.chat-tool-call-row\s*\{\s*flex-wrap:\s*wrap;/s,
+      );
+      // A long result line takes only what is left, so it never squeezes the title.
+      expect(source).toMatch(/\.chat-tool-call-result\s*\{\s*flex:\s*1 1 0;/);
       expect(source).toMatch(/\.chat-tool-call-summary\s*\{[^}]*flex-wrap:\s*wrap/s);
       // The row's status words never wrap either.
       expect(source).toMatch(

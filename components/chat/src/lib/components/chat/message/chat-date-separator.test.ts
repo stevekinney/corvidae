@@ -4,7 +4,7 @@
  */
 
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, setSystemTime, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -30,8 +30,18 @@ function textRule(): string {
 
 describe('ChatDateSeparator', () => {
   test('names today in sentence case', () => {
-    const { container } = render(ChatDateSeparator, { props: { date: new Date() } });
-    expect(container.querySelector('.chat-date-separator-text')?.textContent?.trim()).toBe('Today');
+    // A pinned clock, so a test run across midnight still asks about the day it was given.
+    setSystemTime(new Date(2026, 10, 2, 12, 0, 0));
+    try {
+      const { container } = render(ChatDateSeparator, {
+        props: { date: new Date(2026, 10, 2, 9, 30, 0) },
+      });
+      expect(container.querySelector('.chat-date-separator-text')?.textContent?.trim()).toBe(
+        'Today',
+      );
+    } finally {
+      setSystemTime();
+    }
   });
 
   test('names a past day with the formatter it was given, unchanged', () => {
