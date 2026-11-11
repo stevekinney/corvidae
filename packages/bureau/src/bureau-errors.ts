@@ -209,7 +209,6 @@ export class TaskRespondError extends BureauError {
  * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
  * end in the session, so no record of it is coming from here.
  */
-
 export class TerminalSessionRecordAbandonedError extends Error {
   constructor(runId: string) {
     super(`Run "${runId}" ended without its end being recorded in its session by this process.`);

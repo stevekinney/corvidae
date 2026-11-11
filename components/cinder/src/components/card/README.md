@@ -24,6 +24,10 @@ Use `tone="danger"` when a settings section or action group has destructive, irr
 
 A card draws one edge, never two. `edge="none"` (the default) draws neither, and the surface step separates the card from the page; `edge="border"` is a hairline outline for a real panel; `edge="shadow"` is a soft shadow with no visible border. There is no prop that asks for both, so a card cannot end up with a border and a shadow together. The choice applies across every `variant` and `tone`, including `variant="well"` and `tone="danger"`.
 
+## Header actions
+
+Pass an `actions` snippet to a card with a `title` to put controls at the end of the title row, aligned to the title's baseline. Buttons inside draw at the `xs` control height (24px) whatever size they ask for, and a custom `header` snippet gets the same treatment, so a header is never taller than its title because of a button. On coarse pointers a button keeps a 44px hit area through invisible padding, not visual height. `actions` is ignored on an interactive card (`href` or `onclick`), because a control cannot nest inside the whole-card link or button.
+
 ## Header divider
 
 The header is separated from the body by its surface alone. Pass `headerDivider` to draw a rule under it; the divider is opt-in, so a card that already has an edge is not ruled a second time.
@@ -52,6 +56,7 @@ A card becomes interactive when it receives `href` (the whole card renders as an
 | `title` | `string` | no | — | Primary heading text rendered inside the card's header region. |
 | `tone` | `"default"` \| `"danger"` | no | — | Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. |
 | `variant` | `"card"` \| `"well"` \| `"plain"` | no | — | Visual container style. `card` is raised; `well` is flatter and inset; `plain` is a heading on the page with no box. |
+| `actions` | `(opaque)` | no | — | Actions rendered at the end of the title row, aligned to the title's baseline. Buttons inside draw at the `xs` control height, so they never make the header taller. Ignored when the card is interactive (`href` or `onclick`), because a control cannot nest inside the whole-card link or button. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | yes | — | Basic card with no generated header. Not expressible in JSON Schema; see the component types for the signature. |
 | `footer` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `header` | `(opaque)` | no | — | Card with a custom header snippet — full control over header content. Not expressible in JSON Schema; see the component types for the signature. |

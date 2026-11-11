@@ -27,6 +27,7 @@
   import { setActionEmphasisContext } from '../../_internal/action-emphasis-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { useResizeObserver } from '../../utilities/use-resize-observer.svelte.ts';
+  import CompactActions from '../../_internal/compact-actions.svelte';
   import Button from '../button/button.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import type { PageHeaderProps } from './page-header.types.ts';
@@ -142,11 +143,7 @@
 {/snippet}
 
 <div
-  class={classNames(
-    'cinder-page-header',
-    createAction && !actions && 'cinder-page-header--create-only',
-    className,
-  )}
+  class={classNames('cinder-page-header', className)}
   data-cinder-flush={flush ? 'true' : undefined}
   data-cinder-divider={divider && !flush ? 'true' : undefined}
   {...rest}
@@ -196,8 +193,10 @@
 
     {#if actions || createAction}
       <div class="cinder-page-header__actions">
-        {#if actions}{@render actions()}{/if}
-        {@render createActionButton()}
+        <CompactActions>
+          {#if actions}{@render actions()}{/if}
+          {@render createActionButton()}
+        </CompactActions>
       </div>
     {/if}
   </div>

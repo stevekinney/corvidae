@@ -202,7 +202,7 @@ async function admitOne(
   if (scan.flagged) {
     const { flagged: _flagged, ...diagnostic } = scan;
     await withholdPoisoned(run, candidate, diagnostic);
-    run.exclusions.push(recallExclusion(candidate, 'admission', 'content-policy'));
+    run.exclusions.push(recallExclusion(candidate, 'admission', 'content-policy', diagnostic));
     return undefined;
   }
   // The scan awaited: a cancellation or the latency budget may have ended the recall meanwhile.

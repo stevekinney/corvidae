@@ -11,7 +11,7 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
-import { EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from '../create-bureau.ts';
+import { EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from '../bureau-construction-support.ts';
 import { DEFAULT_AG_UI_LEASE_MS } from './ag-ui-lease.ts';
 import {
   attachRunRequest,

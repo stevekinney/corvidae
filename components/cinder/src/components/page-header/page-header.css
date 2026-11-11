@@ -1,8 +1,8 @@
 @layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
 @layer cinder.components {
   .cinder-page-header {
-    /* The heading answers to the room it has, not the viewport's, so a header in a narrow pane
-       wraps like one on a phone. */
+    /* The heading answers to the room it has, not the viewport's, so the title of a header in a
+       narrow pane truncates sooner. */
     container-type: inline-size;
     container-name: cinder-page-header;
     min-width: 0;
@@ -113,41 +113,11 @@
     flex-shrink: 0;
     align-items: center;
     gap: var(--cinder-space-2);
-    padding-block: var(--cinder-space-1);
-  }
-
-  /* In a narrow container the title takes the full row, wrapping to two lines before it ends in
-     an ellipsis, and the actions drop to their own row beneath the heading group. */
-  @container cinder-page-header (max-width: 32rem) {
-    .cinder-page-header__row {
-      flex-wrap: wrap;
-    }
-
-    .cinder-page-header__heading-group {
-      flex-basis: 100%;
-    }
-
-    .cinder-page-header__actions {
-      flex-basis: 100%;
-      flex-wrap: wrap;
-      margin-inline-start: 0;
-    }
-  }
-
-  /* A header whose only action is the icon-only create "+" keeps it at the right of the title on a
-     phone: it is one small square, so it needs no row of its own. */
-  @container cinder-page-header (max-width: 32rem) {
-    .cinder-page-header--create-only .cinder-page-header__row {
-      flex-wrap: nowrap;
-    }
-
-    .cinder-page-header--create-only .cinder-page-header__heading-group {
-      flex-basis: auto;
-    }
-
-    .cinder-page-header--create-only .cinder-page-header__actions {
-      flex-basis: auto;
-      margin-inline-start: auto;
-    }
+    /* Actions are xs controls centered on the title's first line box, so they never make the
+       header taller than its title, and they stay beside it at any width: the title shrinks
+       and truncates instead. */
+    font-size: var(--cinder-text-xl);
+    line-height: var(--cinder-leading-tight);
+    margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 }

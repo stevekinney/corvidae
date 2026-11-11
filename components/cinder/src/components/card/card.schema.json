@@ -63,6 +63,11 @@
   "metadata": {
     "unsupportedProps": [
       {
+        "name": "actions",
+        "reason": "function-or-snippet",
+        "description": "Actions rendered at the end of the title row, aligned to the title's baseline. Buttons\ninside draw at the `xs` control height, so they never make the header taller. Ignored\nwhen the card is interactive (`href` or `onclick`), because a control cannot nest inside\nthe whole-card link or button."
+      },
+      {
         "name": "children",
         "reason": "function-or-snippet",
         "required": true,

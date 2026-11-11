@@ -20,6 +20,7 @@
 
   import {
     getActionEmphasisContext,
+    resolveActionSize,
     resolveActionVariant,
   } from '../../_internal/action-emphasis-context.ts';
   import { getButtonGroupContext } from '../../_internal/button-group-context.ts';
@@ -84,9 +85,12 @@
   // error's own "Try again" is the only primary on the page.
   const actionEmphasis = getActionEmphasisContext();
   const resolvedVariant = $derived(resolveActionVariant(actionEmphasis, variant));
+  // Inside a header's actions every button draws at `xs`, so the header keeps its title's height.
+  const resolvedSize = $derived(resolveActionSize(actionEmphasis, size));
   const dataAttributes = $derived({
     'data-cinder-variant': resolvedVariant,
-    'data-cinder-size': size,
+    'data-cinder-size': resolvedSize,
+    'data-cinder-compact': actionEmphasis?.compact === true ? '' : undefined,
     'data-cinder-full-width': fullWidth ? '' : undefined,
     'data-cinder-loading': loading ? '' : undefined,
     'data-cinder-icon-only': iconOnly ? '' : undefined,

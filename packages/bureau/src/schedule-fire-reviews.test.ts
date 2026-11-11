@@ -16,7 +16,7 @@ import { Conversation } from 'conversationalist';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 
 import { BureauError } from './bureau-errors';
-import { createScheduledFireApprovalHook } from './create-bureau';
+import { createScheduledFireApprovalHook } from './approval-state-records';
 import { OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
 import { isScheduledFireAuthority, scheduledFireApprovalMetadata } from './runtime-composition';
 import {

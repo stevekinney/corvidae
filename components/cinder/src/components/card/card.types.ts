@@ -46,6 +46,7 @@ type CardDiscriminant = (
       children: Snippet;
       footer?: Snippet;
       header?: never;
+      actions?: never;
       title?: never;
       headingLevel?: never;
       description?: never;
@@ -55,6 +56,7 @@ type CardDiscriminant = (
       header: Snippet;
       children: Snippet;
       footer?: Snippet;
+      actions?: never;
       title?: never;
       headingLevel?: never;
       description?: never;
@@ -71,6 +73,13 @@ type CardDiscriminant = (
       description?: string;
       children: Snippet;
       footer?: Snippet;
+      /**
+       * Actions rendered at the end of the title row, aligned to the title's baseline. Buttons
+       * inside draw at the `xs` control height, so they never make the header taller. Ignored
+       * when the card is interactive (`href` or `onclick`), because a control cannot nest inside
+       * the whole-card link or button.
+       */
+      actions?: Snippet;
       header?: never;
     }
 ) &

@@ -790,19 +790,20 @@ describe('a reservation held across stages', () => {
 describe('withTurborepoDefaults', () => {
   const gibibyte = 1024 ** 3;
 
-  test('shares one Turborepo cache inside the Git common directory', () => {
-    const environment = withTurborepoDefaults({}, '/repository/.git', {
-      totalMemoryBytes: 64 * gibibyte,
-      processors: 10,
-    });
-    expect(environment['TURBO_CACHE_DIR']).toBe('/repository/.git/turbo-cache');
+  test("sets no cache directory, so Turborepo's own worktree-shared cache serves every run", () => {
+    const environment = withTurborepoDefaults(
+      {},
+      {
+        totalMemoryBytes: 64 * gibibyte,
+        processors: 10,
+      },
+    );
+    expect(Object.keys(environment)).not.toContain('TURBO_CACHE_DIR');
   });
 
   test('runs one task per 8 GiB of memory and per three processors, whichever is fewer, and at least one', () => {
     const concurrencyFor = (totalMemoryBytes: number, processors: number) =>
-      withTurborepoDefaults({}, '/repository/.git', { totalMemoryBytes, processors })[
-        'TURBO_CONCURRENCY'
-      ];
+      withTurborepoDefaults({}, { totalMemoryBytes, processors })['TURBO_CONCURRENCY'];
     expect(concurrencyFor(32 * gibibyte, 12)).toBe('4');
     expect(concurrencyFor(64 * gibibyte, 10)).toBe('3');
     expect(concurrencyFor(16 * gibibyte, 12)).toBe('2');
@@ -812,9 +813,7 @@ describe('withTurborepoDefaults', () => {
 
   test('gives a shared run half the concurrency, and at least one task', () => {
     const sharedConcurrencyFor = (totalMemoryBytes: number, processors: number) =>
-      withTurborepoDefaults({}, '/repository/.git', { totalMemoryBytes, processors }, true)[
-        'TURBO_CONCURRENCY'
-      ];
+      withTurborepoDefaults({}, { totalMemoryBytes, processors }, true)['TURBO_CONCURRENCY'];
     expect(sharedConcurrencyFor(32 * gibibyte, 12)).toBe('2');
     expect(sharedConcurrencyFor(64 * gibibyte, 24)).toBe('4');
     expect(sharedConcurrencyFor(16 * gibibyte, 12)).toBe('1');
@@ -824,7 +823,6 @@ describe('withTurborepoDefaults', () => {
   test("keeps the caller's own cache directory and concurrency", () => {
     const environment = withTurborepoDefaults(
       { TURBO_CACHE_DIR: '/elsewhere', TURBO_CONCURRENCY: '1', PATH: '/bin' },
-      '/repository/.git',
       { totalMemoryBytes: 64 * gibibyte, processors: 10 },
     );
     expect(environment).toEqual({
@@ -837,21 +835,16 @@ describe('withTurborepoDefaults', () => {
 
   test("pins Turborepo's --affected base to origin/main when the caller sets none", () => {
     const host = { totalMemoryBytes: 64 * gibibyte, processors: 10 };
-    expect(withTurborepoDefaults({}, '/repository/.git', host)['TURBO_SCM_BASE']).toBe(
+    expect(withTurborepoDefaults({}, host)['TURBO_SCM_BASE']).toBe('origin/main');
+    expect(withTurborepoDefaults({}, host, true)['TURBO_SCM_BASE']).toBe('origin/main');
+    expect(withTurborepoDefaults({ TURBO_SCM_BASE: '' }, host)['TURBO_SCM_BASE']).toBe(
       'origin/main',
     );
-    expect(withTurborepoDefaults({}, '/repository/.git', host, true)['TURBO_SCM_BASE']).toBe(
-      'origin/main',
-    );
-    expect(
-      withTurborepoDefaults({ TURBO_SCM_BASE: '' }, '/repository/.git', host)['TURBO_SCM_BASE'],
-    ).toBe('origin/main');
   });
 
   test("keeps the caller's own --affected base", () => {
     const environment = withTurborepoDefaults(
       { TURBO_SCM_BASE: 'release/1.0' },
-      '/repository/.git',
       { totalMemoryBytes: 64 * gibibyte, processors: 10 },
     );
     expect(environment['TURBO_SCM_BASE']).toBe('release/1.0');
