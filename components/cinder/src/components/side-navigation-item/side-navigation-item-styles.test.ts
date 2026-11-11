@@ -75,7 +75,7 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
     expect(declaration(hover[0], 'background-color')).toBe('var(--cinder-surface-hover)');
   });
 
-  test('a sidebar row hovers to a neutral ink tint, never the accent wash of --cinder-surface-hover', () => {
+  test('a sidebar row hovers to a neutral ink tint lighter than the active row, never the accent wash of --cinder-surface-hover', () => {
     const strip = (selector: string) => selector.replaceAll(/\s+/g, '');
     const wanted = strip(`${VERTICAL}:hover:not([aria-disabled='true'],[data-active='true'])`);
     let tint: string | undefined;
@@ -84,28 +84,40 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
         tint = declaration(rule, 'background-color');
       }
     });
-    expect(tint).toBe('color-mix(in oklch, var(--cinder-border-ink), transparent 94%)');
+    expect(tint).toBe('color-mix(in oklch, var(--cinder-border-ink), transparent 96%)');
     expect(tint).not.toContain('accent');
     expect(tint).not.toContain('surface-hover');
   });
 });
 
-describe('vertical navigation item: active (rows 02n, 02p)', () => {
-  test('is an accent tint with accent text and semibold weight', () => {
+describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
+  const ACTIVE_TINT = 'color-mix(in oklch, var(--cinder-border-ink), transparent 93%)';
+
+  test('is a neutral tint of the ink at about 7% with default text and semibold weight', () => {
     const rule = rulesFor(navigationItemCss, ACTIVE).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
-    expect(declaration(rule, 'background-color')).toBe('var(--cinder-accent-background)');
-    expect(declaration(rule, 'color')).toBe('var(--cinder-accent-text)');
+    expect(declaration(rule, 'background-color')).toBe(ACTIVE_TINT);
+    expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
     expect(declaration(rule, 'font-weight')).toBe('var(--cinder-font-semibold)');
+  });
+
+  test('never paints the accent: the accent is for actions and links', () => {
+    for (const rule of rulesFor(navigationItemCss, ACTIVE).concat(
+      rulesFor(navigationItemCss, `${ACTIVE}:hover`),
+    )) {
+      if (isUnderForcedColors(rule)) continue;
+      expect(declaration(rule, 'background-color')).not.toContain('accent');
+      expect(declaration(rule, 'color')).not.toContain('accent');
+    }
   });
 
   test('takes no hover change', () => {
     const rule = rulesFor(navigationItemCss, `${ACTIVE}:hover`).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
-    expect(declaration(rule, 'background-color')).toBe('var(--cinder-accent-background)');
-    expect(declaration(rule, 'color')).toBe('var(--cinder-accent-text)');
+    expect(declaration(rule, 'background-color')).toBe(ACTIVE_TINT);
+    expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
   });
 
   test('keeps the system selected-item pair under forced colors, hovered or not', () => {
@@ -136,11 +148,14 @@ describe('vertical navigation item: keyboard focus (row 02o)', () => {
 describe('side navigation item: indicators and the collapsed rail (rows 02q, 03b)', () => {
   const COLLAPSED = '.cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]';
 
-  test('the count is a pill at the trailing edge, the dot sits against the label', () => {
+  test('the count is plain muted 13px text at the trailing edge, never a pill; the dot sits against the label', () => {
     const [count] = rulesFor(sideNavigationItemCss, '.cinder-side-navigation-item__count');
     expect(declaration(count, 'margin-inline-start')).toBe('auto');
-    expect(declaration(count, 'border-radius')).toBe('9999px');
-    expect(declaration(count, 'min-inline-size')).toBe('1.125rem');
+    expect(declaration(count, 'color')).toBe('var(--cinder-text-subtle)');
+    expect(declaration(count, 'font-size')).toBe('var(--cinder-text-sm)');
+    expect(declaration(count, 'text-align')).toBe('end');
+    expect(declaration(count, 'background')).toBeUndefined();
+    expect(declaration(count, 'border-radius')).toBeUndefined();
   });
 
   test('a collapsed row is a 40px target centred in the rail with its label clipped, not removed', () => {
@@ -156,21 +171,23 @@ describe('side navigation item: indicators and the collapsed rail (rows 02q, 03b
     expect(declaration(label, 'visibility')).toBeUndefined();
   });
 
-  test('the collapsed count and dot ride the icon corner', () => {
+  test('the collapsed count and dot ride the icon corner, the count as a small warning dot', () => {
     const [count] = rulesFor(
       sideNavigationItemCss,
       `${COLLAPSED} .cinder-side-navigation-item__count`,
     );
     expect(declaration(count, 'position')).toBe('absolute');
     expect(declaration(count, 'background')).toBe('var(--cinder-status-warning-solid)');
-    expect(declaration(count, 'color')).toBe('var(--cinder-status-warning-contrast)');
+    expect(declaration(count, 'font-size')).toBe('0');
+    expect(declaration(count, 'inline-size')).toBe(declaration(count, 'block-size'));
     const [dot] = rulesFor(sideNavigationItemCss, `${COLLAPSED} .cinder-side-navigation-item__dot`);
     expect(declaration(dot, 'position')).toBe('absolute');
   });
 
-  test('carries the Badge, StatusDot and Tooltip styles it renders', () => {
-    for (const sheet of ['badge/badge', 'status-dot/status-dot', 'tooltip/tooltip']) {
+  test('carries the StatusDot and Tooltip styles it renders, and no Badge', () => {
+    for (const sheet of ['status-dot/status-dot', 'tooltip/tooltip']) {
       expect(sideNavigationItemCss).toContain(`@import '../${sheet}.css';`);
     }
+    expect(sideNavigationItemCss).not.toContain('badge/badge.css');
   });
 });

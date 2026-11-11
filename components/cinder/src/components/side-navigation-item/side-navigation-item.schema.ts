@@ -36,22 +36,17 @@ const schema = {
     count: {
       type: 'number',
       description:
-        'A count of things that want attention. Zero, a negative number and `undefined` show nothing.\nShown as a pill beside the label (or on the icon when collapsed) unless `dot` is set, and\nalways part of the accessible name when `label` is given.',
+        'A count of things that want attention. Zero, a negative number and `undefined` show nothing.\nShown as plain, muted, right-aligned text at the trailing edge of the row (never a badge), or\nas a small dot on the icon when collapsed, unless `dot` is set; always part of the\naccessible name when `label` is given.',
     },
     countLabel: {
       type: 'string',
       description:
-        'The words that follow the count in the accessible name and tooltip: "need you" gives\n"Reviews, 2 need you". The pill\'s own name is the count plus these words.',
+        'The words that follow the count in the accessible name and tooltip: "need you" gives\n"Reviews, 2 need you". The count\'s own name is the number plus these words.',
     },
     emptyLabel: {
       type: 'string',
       description:
         'The words that follow the label in the accessible name and tooltip when `count` is zero or\nabsent: "nothing needs attention" gives "Health, nothing needs attention". Without it a row\nwith no count is named by its label alone.',
-    },
-    countTone: {
-      enum: ['neutral', 'success', 'warning', 'danger', 'info', 'accent'],
-      description:
-        "Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention.",
     },
     dot: {
       enum: [
@@ -66,7 +61,7 @@ const schema = {
         'pending',
       ],
       description:
-        'A status dot shown beside the label (or on the icon when collapsed) in place of the numeric\npill, for a row whose state is a signal and not a figure. The dot is hidden from assistive\ntechnology, so a row that sets it should also set `count` and `countLabel`, which carry\nthe meaning in the accessible name.',
+        'A status dot shown beside the label (or on the icon when collapsed) in place of the numeric\ncount, for a row whose state is a signal and not a figure. The dot is hidden from assistive\ntechnology, so a row that sets it should also set `count` and `countLabel`, which carry\nthe meaning in the accessible name.',
     },
     collapsed: {
       type: 'boolean',

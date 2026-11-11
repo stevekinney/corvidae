@@ -1,6 +1,5 @@
 import type { Snippet } from 'svelte';
 import type { DataAttributes, PadUnion } from '../../_internal/union-props.ts';
-import type { BadgeVariant } from '../badge/badge.types.ts';
 import type {
   NavigationItemButtonExtra,
   NavigationItemLinkExtra,
@@ -62,13 +61,14 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
     label?: string;
     /**
      * A count of things that want attention. Zero, a negative number and `undefined` show nothing.
-     * Shown as a pill beside the label (or on the icon when collapsed) unless `dot` is set, and
-     * always part of the accessible name when `label` is given.
+     * Shown as plain, muted, right-aligned text at the trailing edge of the row (never a badge), or
+     * as a small dot on the icon when collapsed, unless `dot` is set; always part of the
+     * accessible name when `label` is given.
      */
     count?: number;
     /**
      * The words that follow the count in the accessible name and tooltip: "need you" gives
-     * "Reviews, 2 need you". The pill's own name is the count plus these words.
+     * "Reviews, 2 need you". The count's own name is the number plus these words.
      */
     countLabel?: string;
     /**
@@ -77,11 +77,9 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
      * with no count is named by its label alone.
      */
     emptyLabel?: string;
-    /** Tone of the count pill. Defaults to `'warning'`, the amber of a count that needs attention. */
-    countTone?: BadgeVariant;
     /**
      * A status dot shown beside the label (or on the icon when collapsed) in place of the numeric
-     * pill, for a row whose state is a signal and not a figure. The dot is hidden from assistive
+     * count, for a row whose state is a signal and not a figure. The dot is hidden from assistive
      * technology, so a row that sets it should also set `count` and `countLabel`, which carry
      * the meaning in the accessible name.
      */

@@ -24,7 +24,7 @@
     },
     "variant": {
       "enum": ["horizontal", "mobile", "vertical"],
-      "description": "Controls item geometry. Emitted as `data-variant`. Default `'horizontal'`.\n\n- `'horizontal'`: top-rounded radius, accent bottom-border active indicator.\n  Used inside `NavigationBar` and similar horizontal tab-bar contexts.\n- `'mobile'`: stacked full-width layout when an owning navigation surface\n  enters its narrow container mode.\n- `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and an accent tint with accent text and semibold weight as the active indicator.\n  Used inside `SideNavigation` (set automatically by `SideNavigationItem`) or\n  standalone sidebar footers where flush sidebar edges are required."
+      "description": "Controls item geometry. Emitted as `data-variant`. Default `'horizontal'`.\n\n- `'horizontal'`: top-rounded radius, accent bottom-border active indicator.\n  Used inside `NavigationBar` and similar horizontal tab-bar contexts.\n- `'mobile'`: stacked full-width layout when an owning navigation surface\n  enters its narrow container mode.\n- `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and a neutral tint (the ink at about 7%) with default text and semibold weight as the active indicator.\n  Used inside `SideNavigation` (set automatically by `SideNavigationItem`) or\n  standalone sidebar footers where flush sidebar edges are required."
     }
   },
   "additionalProperties": false,
@@ -34,6 +34,11 @@
         "name": "children",
         "reason": "function-or-snippet",
         "required": true
+      },
+      {
+        "name": "icon",
+        "reason": "function-or-snippet",
+        "description": "The item's icon, drawn before the label in every placement: beside it in a horizontal tab\nor a vertical row, above it in a bottom `NavigationBar` tab. The wrapper is `aria-hidden`,\nso the icon is decoration and the label names the item. The label is wrapped in a\n`[data-cinder-navigation-label]` element, so a bottom bar's `labelsVisible` can hide it\nvisually and keep it in the accessibility tree. Without an icon the children render as they\nare."
       },
       {
         "name": "onclick",

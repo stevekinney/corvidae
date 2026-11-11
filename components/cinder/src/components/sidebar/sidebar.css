@@ -18,8 +18,10 @@
      fill its parent's cross-axis size. An explicit `block-size` here would
      opt out of stretch behavior, so we deliberately leave it off. */
     align-self: stretch;
-    background: var(--cinder-surface);
-    border-inline-end: 1px solid var(--cinder-border);
+    /* A tonal surface sets the sidebar apart from the page, so it needs no rule beside it
+     * (COR-2315): the inset tier is a step off the page in light and in dark. */
+    background: var(--cinder-surface-inset);
+    border-inline-end: none;
     overflow: hidden;
   }
 
@@ -168,6 +170,22 @@
     clip-path: inset(50%);
     white-space: nowrap;
     border: 0;
+  }
+
+  /* The primary action collapses to its accent "+" on the rail, and the shortcut glyph steps
+ * aside. `font-size: 0` hides the bare label text, which stays in the accessible name. */
+  .cinder-sidebar[data-cinder-collapsed] .cinder-side-navigation__primary-action > :is(a, button) {
+    justify-content: center;
+    padding-inline: 0;
+    gap: 0;
+    font-size: 0;
+  }
+
+  .cinder-sidebar[data-cinder-collapsed]
+    .cinder-side-navigation__primary-action
+    > :is(a, button)
+    [data-cinder-shortcut] {
+    display: none;
   }
 
   /* Leaf items in collapsed mode collapse to icon-only width. `font-size: 0`

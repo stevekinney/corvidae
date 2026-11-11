@@ -77,10 +77,19 @@ export type NavigationItemProps = NavigationItemSharedHtmlAttributes &
      *   Used inside `NavigationBar` and similar horizontal tab-bar contexts.
      * - `'mobile'`: stacked full-width layout when an owning navigation surface
      *   enters its narrow container mode.
-     * - `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and an accent tint with accent text and semibold weight as the active indicator.
+     * - `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and a neutral tint (the ink at about 7%) with default text and semibold weight as the active indicator.
      *   Used inside `SideNavigation` (set automatically by `SideNavigationItem`) or
      *   standalone sidebar footers where flush sidebar edges are required.
      */
     variant?: 'horizontal' | 'mobile' | 'vertical';
+    /**
+     * The item's icon, drawn before the label in every placement: beside it in a horizontal tab
+     * or a vertical row, above it in a bottom `NavigationBar` tab. The wrapper is `aria-hidden`,
+     * so the icon is decoration and the label names the item. The label is wrapped in a
+     * `[data-cinder-navigation-label]` element, so a bottom bar's `labelsVisible` can hide it
+     * visually and keep it in the accessibility tree. Without an icon the children render as they
+     * are.
+     */
+    icon?: Snippet;
     children: Snippet;
   };

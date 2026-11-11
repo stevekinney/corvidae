@@ -38,6 +38,7 @@
     // `'page'` specifically signals the current page in the browsing context.
     current = 'page',
     class: customClassName,
+    icon,
     children,
     onclick,
     href,
@@ -77,6 +78,23 @@
   }
 </script>
 
+<!-- With an `icon` the item is a glyph above or beside a label, in every placement: the glyph sits
+     in an aria-hidden wrapper, and the label is the item's name. `data-cinder-navigation-label`
+     lets a bottom NavigationBar hide the label (`labelsVisible`) while keeping it in the
+     accessibility tree. Without an icon the children are the item's content, as they always were. -->
+{#snippet content()}
+  {#if icon}
+    <span class="cinder-navigation-item__icon" aria-hidden="true">
+      {@render icon()}
+    </span>
+    <span class="cinder-navigation-item__label" data-cinder-navigation-label>
+      {@render children()}
+    </span>
+  {:else}
+    {@render children()}
+  {/if}
+{/snippet}
+
 {#if isLink}
   <!--
     Disabled anchor: href is stripped (not just aria-disabled) so the element
@@ -102,7 +120,7 @@
     onclick={handleClick}
     class={resolvedClass}
   >
-    {@render children()}
+    {@render content()}
   </a>
 {:else}
   <button
@@ -119,6 +137,6 @@
     onclick={handleClick}
     class={resolvedClass}
   >
-    {@render children()}
+    {@render content()}
   </button>
 {/if}

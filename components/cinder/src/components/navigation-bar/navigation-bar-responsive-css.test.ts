@@ -2,6 +2,8 @@
 import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { existsSync, readFileSync } from 'node:fs';
+
+import { declarationsFor } from '../../test/css.ts';
 setupHappyDom();
 const { cleanup } = await import('@testing-library/svelte');
 const { resetEscapeStack } = await import('../../_internal/overlay.ts');
@@ -158,5 +160,30 @@ describe('NavigationBar responsive CSS', () => {
     expect(navigationBarCss).not.toMatch(
       /\.cinder-navigation-bar__items\[data-cinder-mobile-panel\]\[data-cinder-visible\][\s\S]*?\.cinder-navigation-item\[data-variant='mobile'\][\s\S]*?border-radius:\s*var\(--cinder-radius-sm\);/,
     );
+  });
+
+  test('the current bottom tab is an accent icon and label with no fill and no top border (COR-2315)', () => {
+    const tab = declarationsFor(
+      navigationBarCss,
+      ".cinder-navigation-bar[data-cinder-placement='bottom'] .cinder-navigation-item[data-variant='mobile']",
+    );
+    expect(tab.get('border-top')).toBe('none');
+    const active = declarationsFor(
+      navigationBarCss,
+      ".cinder-navigation-bar[data-cinder-placement='bottom'] .cinder-navigation-item[data-variant='mobile'][data-active='true']",
+    );
+    expect(active.get('color')).toBe('var(--cinder-accent-text)');
+    expect(active.get('background-color')).toBe('transparent');
+    expect(active.has('border-top-color')).toBe(false);
+    expect(active.get('background-color')).not.toContain('surface-inset');
+  });
+
+  test('a bottom tab draws its icon at 20px above the label', () => {
+    const icon = declarationsFor(
+      navigationBarCss,
+      ".cinder-navigation-bar[data-cinder-placement='bottom'] .cinder-navigation-item[data-variant='mobile'] .cinder-navigation-item__icon > svg",
+    );
+    expect(icon.get('inline-size')).toBe('1.25rem');
+    expect(icon.get('block-size')).toBe('1.25rem');
   });
 });

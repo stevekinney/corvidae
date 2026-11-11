@@ -27,6 +27,91 @@
   }
 
   /* ----------------------------------------
+ * Brand and primary action (COR-2315)
+ *
+ * Two slots above the list. The brand is the product's name or mark, padded to line up with the
+ * rows. The primary action is the one thing the product leads with, drawn as a neutral control
+ * the width of the sidebar: a leading accent "+", the label, and the shortcut glyph at the
+ * trailing edge as plain text with no key cap. It is deliberately not an accent slab: the accent
+ * is for the "+" alone.
+ * ---------------------------------------- */
+
+  .cinder-side-navigation__brand {
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+    padding-inline: var(--cinder-space-2);
+    padding-block-end: var(--cinder-space-2);
+  }
+
+  .cinder-side-navigation__primary-action {
+    padding-block-end: var(--cinder-space-3);
+  }
+
+  .cinder-side-navigation__primary-action > :is(a, button) {
+    display: flex;
+    align-items: center;
+    inline-size: 100%;
+    box-sizing: border-box;
+    gap: var(--cinder-space-2);
+    min-block-size: max(2rem, var(--cinder-list-row-min-height));
+    padding-block: 0;
+    padding-inline: var(--cinder-space-2);
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    line-height: 1.25rem;
+    text-align: start;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .cinder-side-navigation__primary-action > :is(a, button)::before {
+    flex: none;
+    /* The alternative text after the slash keeps the glyph out of the accessible name where the
+     * browser supports it; the line above is the fallback where it does not. */
+    content: '+';
+    content: '+' / '';
+    color: var(--cinder-accent-text);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: 1;
+  }
+
+  .cinder-side-navigation__primary-action > :is(a, button) [data-cinder-shortcut] {
+    margin-inline-start: auto;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-normal);
+    /* Plain text: no key cap, border or fill. */
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  @media (hover: hover) {
+    .cinder-side-navigation__primary-action > :is(a, button):hover {
+      background: var(--cinder-surface-raised-hover);
+    }
+  }
+
+  .cinder-side-navigation__primary-action > :is(a, button):focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-side-navigation__primary-action > :is(a, button):focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
+  /* ----------------------------------------
  * Item wrapper <li> — reset list styles
  *
  * Vertical geometry (square rows, inline-start active border) now lives

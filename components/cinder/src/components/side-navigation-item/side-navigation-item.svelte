@@ -19,7 +19,6 @@
   import type { SideNavigationItemProps } from './side-navigation-item.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { getSidebarContext } from '../../_internal/sidebar-context.ts';
-  import Badge from '../badge/badge.svelte';
   import NavigationItem from '../navigation-item/navigation-item.svelte';
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
@@ -39,7 +38,6 @@
       count: _count,
       countLabel: _countLabel,
       emptyLabel: _emptyLabel,
-      countTone: _countTone,
       dot: _dot,
       collapsed: _collapsed,
       children: _children,
@@ -136,15 +134,15 @@
       <StatusDot status={props.dot} size="sm" labelVisible={false} />
     </span>
   {:else if countValue !== undefined}
-    <Badge
-      variant={props.countTone ?? 'warning'}
-      size="sm"
+    <!-- Plain text, never a badge: the row's name carries the meaning, so the number is a quiet
+         figure at the trailing edge. -->
+    <span
       class="cinder-side-navigation-item__count"
       role={countWords === undefined ? undefined : 'img'}
       aria-label={countWords === undefined ? undefined : countPhrase}
     >
       {countValue}
-    </Badge>
+    </span>
   {/if}
 {/snippet}
 

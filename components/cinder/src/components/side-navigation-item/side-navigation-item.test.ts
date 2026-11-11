@@ -233,7 +233,6 @@ describe('SideNavigationItem accessible name (rows 02q and 03b)', () => {
         label: 'Reviews',
         count: 2,
         countLabel: 'need you',
-        countTone: 'danger',
         dot: 'warning',
         collapsed: true,
         icon: iconSnippet(),
@@ -241,7 +240,7 @@ describe('SideNavigationItem accessible name (rows 02q and 03b)', () => {
       },
     });
     const anchor = container.querySelector('a');
-    for (const name of ['label', 'count', 'countlabel', 'counttone', 'dot', 'collapsed']) {
+    for (const name of ['label', 'count', 'countlabel', 'dot', 'collapsed']) {
       expect(anchor?.hasAttribute(name), name).toBe(false);
     }
   });
@@ -266,7 +265,7 @@ describe('SideNavigationItem indicators', () => {
     expect(container.querySelector('.cinder-side-navigation-item__count')).toBeNull();
   });
 
-  test('a count draws a warning pill by default whose own name is the count and its words', () => {
+  test('a count is plain text, never a badge, whose own name is the count and its words', () => {
     const { container } = render(SideNavigationItem, {
       props: {
         href: '/reviews',
@@ -276,27 +275,22 @@ describe('SideNavigationItem indicators', () => {
         children: labelSnippet('Reviews'),
       },
     });
-    const pill = container.querySelector('.cinder-side-navigation-item__count');
-    expect(pill?.textContent?.trim()).toBe('2');
-    expect(pill?.getAttribute('data-cinder-variant')).toBe('warning');
-    expect(pill?.getAttribute('role')).toBe('img');
-    expect(pill?.getAttribute('aria-label')).toBe('2 need you');
+    const count = container.querySelector('.cinder-side-navigation-item__count');
+    expect(count?.tagName).toBe('SPAN');
+    expect(count?.textContent?.trim()).toBe('2');
+    expect(count?.getAttribute('role')).toBe('img');
+    expect(count?.getAttribute('aria-label')).toBe('2 need you');
+    expect(container.querySelector('.cinder-badge')).toBeNull();
+    expect(count?.hasAttribute('data-cinder-variant')).toBe(false);
   });
 
-  test('countTone changes the pill tone', () => {
+  test('a count without words has no role or name of its own', () => {
     const { container } = render(SideNavigationItem, {
-      props: {
-        href: '/health',
-        count: 1,
-        countTone: 'danger',
-        children: labelSnippet('Health'),
-      },
+      props: { href: '/runs', label: 'Runs', count: 5, children: labelSnippet('Runs') },
     });
-    expect(
-      container
-        .querySelector('.cinder-side-navigation-item__count')
-        ?.getAttribute('data-cinder-variant'),
-    ).toBe('danger');
+    const count = container.querySelector('.cinder-side-navigation-item__count');
+    expect(count?.hasAttribute('role')).toBe(false);
+    expect(count?.hasAttribute('aria-label')).toBe(false);
   });
 
   test('a row with neither a count nor a dot draws no indicator', () => {

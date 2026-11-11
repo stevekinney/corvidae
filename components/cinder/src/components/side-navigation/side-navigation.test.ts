@@ -130,3 +130,73 @@ describe('SideNavigation', () => {
     expect(css).toContain('gap: var(--cinder-side-navigation-list-gap,');
   });
 });
+
+describe('SideNavigation brand and primaryAction slots (COR-2315)', () => {
+  function slot(markup: string) {
+    return createRawSnippet(() => ({ render: () => markup, setup: () => {} }));
+  }
+
+  test('draw neither slot unless they are passed', () => {
+    const { container } = render(SideNavigation, {
+      props: { ariaLabel: 'Sections', children: emptySnippet() },
+    });
+    expect(container.querySelector('.cinder-side-navigation__brand')).toBeNull();
+    expect(container.querySelector('.cinder-side-navigation__primary-action')).toBeNull();
+  });
+
+  test('draw the brand, then the primary action, then the list, inside the nav landmark', () => {
+    const { container } = render(SideNavigation, {
+      props: {
+        ariaLabel: 'Sections',
+        brand: slot('<span data-testid="brand">Corvidae</span>'),
+        primaryAction: slot('<button type="button">New chat</button>'),
+        children: emptySnippet(),
+      },
+    });
+    const nav = container.querySelector('nav');
+    expect([...(nav?.children ?? [])].map((child) => child.className)).toEqual([
+      'cinder-side-navigation__brand',
+      'cinder-side-navigation__primary-action',
+      'cinder-side-navigation__list',
+    ]);
+    expect(nav?.querySelector('[data-testid="brand"]')?.textContent).toBe('Corvidae');
+    expect(nav?.querySelector('.cinder-side-navigation__primary-action button')).not.toBeNull();
+  });
+
+  test('the primary action is a neutral, sidebar-wide control with a leading accent plus and a plain shortcut', async () => {
+    const css = await Bun.file(new URL('./side-navigation.css', import.meta.url)).text();
+    const control = css.match(
+      /\.cinder-side-navigation__primary-action > :is\(a, button\)\s*\{[^}]*\}/,
+    )?.[0];
+    expect(control).toContain('inline-size: 100%;');
+    expect(control).toContain('background: var(--cinder-surface-raised);');
+    expect(control).not.toContain('accent');
+    const plus = css.match(
+      /\.cinder-side-navigation__primary-action > :is\(a, button\)::before\s*\{[^}]*\}/,
+    )?.[0];
+    expect(plus).toContain("content: '+';");
+    expect(plus).toContain('color: var(--cinder-accent-text);');
+    const shortcut = css.match(
+      /\.cinder-side-navigation__primary-action > :is\(a, button\) \[data-cinder-shortcut\]\s*\{[^}]*\}/,
+    )?.[0];
+    expect(shortcut).toContain('margin-inline-start: auto;');
+    expect(shortcut).toContain('color: var(--cinder-text-subtle);');
+    // A key cap would draw a border and a fill around the glyph.
+    expect(shortcut).toContain('background: none;');
+    expect(shortcut).toContain('border: none;');
+  });
+
+  test('the slots never reach the nav as attributes', () => {
+    const { container } = render(SideNavigation, {
+      props: {
+        ariaLabel: 'Sections',
+        brand: slot('<span>Corvidae</span>'),
+        primaryAction: slot('<button type="button">New chat</button>'),
+        children: emptySnippet(),
+      },
+    });
+    const nav = container.querySelector('nav');
+    expect(nav?.hasAttribute('brand')).toBe(false);
+    expect(nav?.hasAttribute('primaryaction')).toBe(false);
+  });
+});

@@ -179,15 +179,29 @@
     padding-block: var(--cinder-space-1);
     padding-inline: var(--cinder-space-2);
     border-bottom: none;
-    border-top: 2px solid transparent;
+    border-top: none;
     border-radius: 0;
     text-align: center;
   }
 
+  /* The icon stacks above the label at 20px, and the label is the small caption of a tab. */
+  .cinder-navigation-bar[data-cinder-placement='bottom']
+    .cinder-navigation-item[data-variant='mobile']
+    .cinder-navigation-item__icon
+    > svg {
+    inline-size: 1.25rem;
+    block-size: 1.25rem;
+  }
+
+  /* The current tab is an accent-coloured icon and label, with no fill and no top border: the
+   * bar is where the accent marks the one place a thumb is, and the icon and the label carry it
+   * together, so colour is never the only cue (`aria-current` names the tab). The hover wash of
+   * a non-touch pointer is dropped on the current tab, so it never reads as a filled tab. */
   .cinder-navigation-bar[data-cinder-placement='bottom']
     .cinder-navigation-item[data-variant='mobile'][data-active='true'] {
-    border-top-color: var(--cinder-accent-solid);
-    background-color: var(--cinder-surface-inset);
+    color: var(--cinder-accent-text);
+    background-color: transparent;
+    font-weight: var(--cinder-font-semibold);
   }
 
   .cinder-navigation-bar[data-cinder-placement='bottom']

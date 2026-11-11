@@ -31,6 +31,8 @@
   let {
     ariaLabel,
     class: className,
+    brand,
+    primaryAction,
     children,
     'aria-label': _ariaLabelAttribute,
     'aria-labelledby': _ariaLabelledbyAttribute,
@@ -47,6 +49,16 @@
 </script>
 
 <nav class={classNames('cinder-side-navigation', className)} {...rest} aria-label={validatedLabel}>
+  {#if brand}
+    <div class="cinder-side-navigation__brand">
+      {@render brand()}
+    </div>
+  {/if}
+  {#if primaryAction}
+    <div class="cinder-side-navigation__primary-action">
+      {@render primaryAction()}
+    </div>
+  {/if}
   <ul class="cinder-side-navigation__list">
     {@render children()}
   </ul>

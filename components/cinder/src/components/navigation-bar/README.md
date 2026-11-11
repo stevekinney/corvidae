@@ -25,17 +25,19 @@ Bottom placement keeps the same link semantics and leaves viewport pinning to th
   <NavigationBar placement="bottom" labelsVisible="active">
     {#snippet items({ variant })}
       <NavigationItem {variant} href="/home" active>
-        <span aria-hidden="true">⌂</span>
-        <span data-cinder-navigation-label>Home</span>
+        {#snippet icon()}<House class="cinder-icon-md" />{/snippet}
+        Home
       </NavigationItem>
       <NavigationItem {variant} href="/settings">
-        <span aria-hidden="true">⚙</span>
-        <span data-cinder-navigation-label>Settings</span>
+        {#snippet icon()}<Settings class="cinder-icon-md" />{/snippet}
+        Settings
       </NavigationItem>
     {/snippet}
   </NavigationBar>
 </div>
 ```
+
+Each tab takes an `icon` snippet (import the glyphs from `@lostgradient/cinder`, for example `House` and `Settings`), which `NavigationItem` draws above the label and wraps, with the label, in the `[data-cinder-navigation-label]` element that `labelsVisible` hides. The current tab is an accent-coloured icon and label with no fill and no top border.
 
 When a top navigation bar collapses behind a `menuToggle`, activating an enabled navigation item closes the mobile menu and returns focus to the toggle. Item or bar-level click handlers can call `event.preventDefault()` to keep the menu open for guarded navigation, local state changes, or custom routing.
 

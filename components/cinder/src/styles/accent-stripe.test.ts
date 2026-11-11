@@ -52,10 +52,10 @@ describe('no accent stripe remains on the listed components', () => {
     expect(stripeRules(callout)).toEqual([]);
   });
 
-  test('a vertical NavigationItem marks the active row with a tint, never a stripe', () => {
+  test('a vertical NavigationItem marks the active row with a neutral tint, never a stripe', () => {
     expect(stripeRules(navigationItem)).toEqual([]);
     expect(navigationItem).toMatch(
-      /\[data-variant='vertical'\]\[data-active='true'\]\s*\{[^}]*background-color:\s*var\(--cinder-accent-background\)/s,
+      /\[data-variant='vertical'\]\[data-active='true'\]\s*\{[^}]*background-color:\s*color-mix\(in oklch, var\(--cinder-border-ink\), transparent 93%\)/s,
     );
   });
 
