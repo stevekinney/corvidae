@@ -317,6 +317,10 @@ export const RUN_DETAIL_COPY = {
   },
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',
+  /** The header's links to the goal or the schedule a run belongs to, and to set up another run. */
+  openGoal: 'Open goal',
+  openSchedule: 'Open schedule',
+  runAgain: 'Run again',
   /** The Input and output section: what each card is called, and the sentence under the heading. */
   io: {
     /** Under the heading of a run that answered a chat message. */

@@ -29,12 +29,14 @@
   import { renderMarkdown } from '@lostgradient/markdown';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { usePageLabel } from '../../../app/breadcrumbs.svelte.ts';
+  import { RETRY_LABEL, RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
   import { answerUndoMilliseconds } from '../../../lib/answer-undo.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import NotFoundState from '../../../app/not-found-state.svelte';
   import { getContext } from '../../../lib/bureau-client.ts';
   import { listAllGoals } from '../../../lib/bureau-goals.ts';
+  import { listBureauSchedules } from '../../../lib/bureau-schedules.ts';
   import {
     getTask,
     isTerminalState,
@@ -44,6 +46,7 @@
   import { classifyFault } from '../../../lib/faults.ts';
   import { chatSessionPath } from '../../../lib/identifier-paths.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import { router } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../../lib/scopes.svelte.ts';
   import {
     attemptStatusWord,
@@ -52,6 +55,8 @@
     type StatusWord,
   } from '../../../lib/status.ts';
   import { getWorkflowFileRun } from '../../../lib/workflow-files.ts';
+  import { builtInWorkflowName } from '../../../lib/workflow-type-name.ts';
+  import { workflowRunSetupPath } from '../../../lib/workflow-type-paths.ts';
   import '../detail/workflow-detail.css';
   import { isTerminalStatus } from '../detail/workflow-status.ts';
   import RestartDialog from '../detail/restart-dialog.svelte';
@@ -63,6 +68,7 @@
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunPanels from './run-panels.svelte';
+  import { buildRunRows } from './run-rows.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
@@ -362,6 +368,86 @@
                 (engine.notFound && fileRun.isPending)))))),
   );
 
+  // The schedule a run's fire belongs to, when the Bureau recorded it: its name titles the run.
+  const originScheduleId = $derived.by((): string | undefined => {
+    const recorded = task.data?.origin;
+    if (recorded === null || recorded === undefined || recorded.kind !== 'schedule') {
+      return undefined;
+    }
+    const id: unknown = Reflect.get(recorded, 'scheduleId');
+    return typeof id === 'string' && id !== '' ? id : undefined;
+  });
+  const schedules = createQuery(
+    () => ({
+      queryKey: ['bureau-schedules', 'run-page'] as const,
+      queryFn: ({ signal }: { signal: AbortSignal }) => listBureauSchedules({ signal }),
+      enabled: originScheduleId !== undefined,
+      retry: false,
+    }),
+    undefined,
+  );
+
+  // The run as the Runs list reads it: what started it, and what it is called.
+  const runRow = $derived.by(() => {
+    const read = task.data;
+    const session = chat.data ?? attemptSession.data;
+    const scheduleNames = new Map<string, string>();
+    for (const schedule of schedules.data ?? []) {
+      if (schedule.description !== null) scheduleNames.set(schedule.id, schedule.description);
+    }
+    return buildRunRows({
+      tasks: read === undefined ? [] : [read],
+      goals: attempt === undefined ? [] : [attempt.goal],
+      chats: session === undefined ? [] : [session],
+      scheduleNames,
+    }).find((row) => row.id === initialRunId);
+  });
+
+  // What the run is called, when something names it: the goal, the schedule, or the chat. A run
+  // none of them names is shown by what ran (the agent or the workflow), as an identifier.
+  const runTitle = $derived.by((): string | undefined => {
+    const row = runRow;
+    if (row === undefined) return undefined;
+    const chatTitle = (chat.data ?? attemptSession.data)?.title ?? '';
+    if (row.origin.kind === 'goal') return row.title;
+    if (row.origin.kind === 'schedule') {
+      const named = row.origin.scheduleId === null ? undefined : row.title;
+      return named !== undefined && named !== TASK_COPY.untitledChat
+        ? named
+        : chatTitle === ''
+          ? undefined
+          : chatTitle;
+    }
+    if (row.origin.kind === 'chat') return chatTitle === '' ? undefined : chatTitle;
+    return undefined;
+  });
+  const builtInName = $derived(
+    summary === undefined || task.data !== undefined || attempt !== undefined
+      ? undefined
+      : builtInWorkflowName(summary.title ?? ''),
+  );
+  const displayTitle = $derived(runTitle ?? builtInName);
+  usePageLabel(() => ({ path: router.pathname, label: displayTitle }));
+
+  // The page the header's second link opens: the goal an attempt belongs to, or the schedule.
+  const ownerLink = $derived.by(() => {
+    const origin = runRow?.origin;
+    if (origin?.kind === 'goal') return { href: origin.href, label: RUN_DETAIL_COPY.openGoal };
+    if (origin?.kind === 'schedule' && origin.schedulePath !== null) {
+      return { href: origin.schedulePath, label: RUN_DETAIL_COPY.openSchedule };
+    }
+    return undefined;
+  });
+  // Run again sets up another run of a workflow somebody built; the Bureau's own workflows (a chat,
+  // a goal's attempt, the heartbeat) start themselves, and no page re-runs a chat or a fire.
+  const runAgainPath = $derived.by((): string | undefined => {
+    if (task.data !== undefined || attempt !== undefined) return undefined;
+    const type = workflow?.type ?? record?.workflow;
+    return type === undefined || builtInWorkflowName(type) !== undefined
+      ? undefined
+      : workflowRunSetupPath(type);
+  });
+
   let restartOpen = $state(false);
   /** Whether an answer to the run's question is in its Undo window, which the status line says. */
   let answerHeld = $state(false);
@@ -400,15 +486,21 @@
     {#if summary !== undefined}
       <RunHeader
         runId={initialRunId}
-        title={summary.title ?? (task.data === undefined ? undefined : TASK_COPY.unknownAgent)}
+        title={displayTitle ??
+          summary.title ??
+          (task.data === undefined ? undefined : TASK_COPY.unknownAgent)}
+        titleIsIdentifier={displayTitle === undefined}
         fallbackTitle={TASK_COPY.runTitle}
         status={summary.status}
         startedAt={summary.startedAt}
         tookMilliseconds={summary.over
           ? Math.max(0, summary.updatedAt - summary.startedAt)
           : undefined}
+        tookWord={summary.status === 'Canceled' ? 'ran' : 'took'}
         task={task.data}
         chat={chatLink}
+        owner={ownerLink}
+        runAgain={runAgainPath}
         note={answerHeld ? TASK_COPY.answerSentStatus(answerUndoSeconds) : undefined}
         engineStatus={workflow?.status}
         pendingAction={engine.pendingAction}

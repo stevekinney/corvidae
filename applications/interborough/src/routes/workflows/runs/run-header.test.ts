@@ -8,9 +8,11 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import ToastHost from '../../../app/toast-host.svelte';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
+import { dayStamp } from '../../../lib/format/clock.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import type { WorkflowContextualAction } from '../detail/workflow-status.ts';
 import RunHeaderHarness from './run-header.test-harness.svelte';
+import { durationWords } from './run-rows.ts';
 
 afterEach(() => cleanup());
 
@@ -32,7 +34,56 @@ describe('the run page header', () => {
     expect(heading.querySelector('code.ib-identifier')?.textContent).toBe('echo');
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
     expect(view.container.querySelector('[data-status-word]')?.textContent).toContain('Running');
-    expect(view.container.textContent).toContain('2m');
+    expect(view.container.textContent).toContain(`took ${durationWords(125_000)}`);
+  });
+
+  test('says when the run started as a day and a time, and how long a canceled run ran', () => {
+    const startedAt = Date.parse('2026-10-30T10:07:00-05:00');
+    const view = renderHeader({
+      status: 'Canceled',
+      startedAt,
+      tookMilliseconds: 72_000,
+      tookWord: 'ran',
+    });
+
+    const line = view.container.querySelector('time');
+    expect(line?.textContent).toBe(dayStamp(startedAt));
+    expect(line?.getAttribute('datetime')).toBe(new Date(startedAt).toISOString());
+    expect(view.container.textContent).toContain('ran 1 min 12 s');
+    expect(view.container.textContent).not.toContain('took');
+  });
+
+  test('sets a title a person gave as text, not as an identifier', () => {
+    const view = renderHeader({ title: 'Look up order 4468', titleIsIdentifier: false });
+
+    const heading = view.getByRole('heading', { level: 1 });
+    expect(heading.textContent?.trim()).toBe('Look up order 4468');
+    expect(heading.querySelector('code')).toBeNull();
+  });
+
+  test('offers the chat, the goal or the schedule, and Run again, each opening in place', async () => {
+    const view = renderHeader({
+      chat: { href: '/chats/session-1', label: 'Open chat' },
+      owner: { href: '/goals/goal-1', label: 'Open goal' },
+      runAgain: '/workflows/release-notes/run',
+    });
+
+    expect(view.getByRole('link', { name: 'Open goal' }).getAttribute('href')).toBe(
+      '/goals/goal-1',
+    );
+    const again = view.getByRole('link', { name: 'Run again' });
+    expect(again.getAttribute('href')).toBe('/workflows/release-notes/run');
+    expect(await fireEvent.click(again, { button: 0, metaKey: true })).toBe(true);
+    expect(await fireEvent.click(again, { button: 0 })).toBe(false);
+    expect(router.pathname).toContain('/workflows/release-notes/run');
+  });
+
+  test('offers neither Run again nor a second link to a run that has none', () => {
+    const view = renderHeader();
+
+    expect(view.queryByRole('link', { name: 'Run again' })).toBeNull();
+    expect(view.queryByRole('link', { name: 'Open goal' })).toBeNull();
+    expect(view.queryByRole('link', { name: 'Open schedule' })).toBeNull();
   });
 
   test('says "Run" when nothing names what ran, and shows no status', () => {

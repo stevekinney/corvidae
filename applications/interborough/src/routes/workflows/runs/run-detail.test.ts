@@ -29,6 +29,7 @@ import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type AuthorizationScope } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
 import RunDetailEngineHarness from './run-detail-engine.test-harness.svelte';
+import { durationWords, goalTitle } from './run-rows.ts';
 
 let stub: BureauWorldStub | undefined;
 
@@ -206,7 +207,9 @@ describe('where a run came from', () => {
       ],
     });
 
-    await waitFor(() => expect(header(view.container)?.textContent).toContain('2m'));
+    await waitFor(() =>
+      expect(header(view.container)?.textContent).toContain(`took ${durationWords(125_000)}`),
+    );
   });
 });
 
@@ -341,7 +344,7 @@ describe('a goal’s attempt', () => {
   ] as const)('an attempt that %s is shown as %s', async (status, state) => {
     const view = open('/runs/goal-1-a0', { goals: [attempt(status)], scopes: BUREAU_ONLY });
 
-    await view.findByRole('heading', { level: 1, name: 'planner' });
+    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
     expect(header(view.container)?.textContent).toContain(WORD[state]);
     expect(view.getByText(TASK_COPY.goalAttemptNoteBureauOnly)).not.toBeNull();
   });
@@ -369,7 +372,7 @@ describe('a goal’s attempt', () => {
       throw new Error('No such session');
     });
 
-    await view.findByRole('heading', { level: 1, name: 'planner' });
+    await view.findByRole('heading', { level: 1, name: goalTitle('goal-1') });
     await waitFor(() => expect(stub?.callsTo('bureau.contexts.get').length).toBeGreaterThan(0));
     expect(view.queryByRole('link', { name: TASK_COPY.openSession })).toBeNull();
   });

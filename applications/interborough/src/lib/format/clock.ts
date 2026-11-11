@@ -85,6 +85,21 @@ export function clockTime(at: number, zone: string = viewerTimeZone()): string {
 }
 
 /**
+ * The day and the clock of an instant in a zone, whatever day it is: "Mon, Nov 2, 10:30 AM". A run's
+ * page says when the run started this way, because the run is read long after it happened and a
+ * word like "today" would stop being true.
+ */
+export function dayStamp(at: number, zone: string = viewerTimeZone()): string {
+  const day = new Intl.DateTimeFormat(LOCALE, {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    timeZone: zone,
+  }).format(at);
+  return `${day}, ${clockTime(at, zone)}`;
+}
+
+/**
  * How long something has waited, for the end of a line that says when it began: "just now" under a
  * minute, "4 min ago" to the nearest minute under an hour, "1 h ago" in whole hours through the
  * day, then the day and clock it began ("Sun Nov 1, 4:12 PM"). The minute rounds as the

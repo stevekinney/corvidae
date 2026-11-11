@@ -41,6 +41,13 @@ describe('dateLine and timesShowIn', () => {
   });
 });
 
+describe('dayStamp', () => {
+  test('says the weekday, the day and the clock, for today and for any other day', () => {
+    expect(dayStamp(Date.parse('2026-11-02T10:30:00-06:00'), ZONE)).toBe('Mon, Nov 2, 10:30 AM');
+    expect(dayStamp(Date.parse('2026-10-30T10:07:00-05:00'), ZONE)).toBe('Fri, Oct 30, 10:07 AM');
+  });
+});
+
 describe('clockTime and rowTime', () => {
   test('say the clock for a time today', () => {
     expect(clockTime(Date.parse('2026-11-02T10:42:00-06:00'), ZONE)).toBe('10:42 AM');

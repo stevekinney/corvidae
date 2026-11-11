@@ -1,9 +1,11 @@
 <script lang="ts">
   /**
-   * The one header of a run's page: what ran (the agent, or the workflow's type), the run's one
-   * status with when it started and how long it took, Open chat and Cancel run as buttons of one
-   * size, and a More menu for everything else a person does to a run: copy its ID, and, for a run
-   * the workflow engine holds, suspend, resume, force a timeout, cancel, or restart it.
+   * The one header of a run's page: what ran (the run's title, or the agent or workflow's
+   * identifier when the run has none), the run's one status with the day and time it started and how
+   * long it took, a link to the chat, the goal or the schedule it belongs to, Run again where a run
+   * of the workflow can be set up again, Cancel run as buttons of one size, and a More menu for
+   * everything else a person does to a run: copy its ID, and, for a run the workflow engine holds,
+   * suspend, resume, force a timeout, cancel, or restart it.
    *
    * It draws what it is given and owns nothing but the confirmation of the two actions that cannot
    * be undone. The page owns the queries and the mutations (`run-engine.svelte.ts`), and passes
@@ -17,12 +19,12 @@
     VisuallyHidden,
   } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
-  import { Copy, Ellipsis, RotateCcw } from '@lucide/svelte';
+  import { Copy, Ellipsis, MessageSquare, Play, RotateCcw } from '@lucide/svelte';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy.ts';
   import { showFault, showToast } from '../../../app/toast-host.svelte';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
-  import { formatDuration, formatRelativeTime } from '../../../lib/format/index.ts';
+  import { dayStamp } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import StatusLabel from '../../../lib/status-label.svelte';
@@ -35,11 +37,17 @@
     type WorkflowContextualAction,
   } from '../detail/workflow-status.ts';
   import RunCancel from './run-cancel.svelte';
+  import { durationWords } from './run-rows.ts';
 
   interface RunHeaderProps {
     runId: string;
-    /** The agent's name or the workflow's type, set as an identifier; `undefined` names the run only. */
+    /** What the run is called, or the agent's name or the workflow's type; `undefined` names the run only. */
     title: string | undefined;
+    /**
+     * Whether `title` is an identifier (an agent's name, a workflow's type), which is set in code.
+     * A title a person gave (a chat's, a schedule's) is set as text.
+     */
+    titleIsIdentifier?: boolean;
     /** Said in place of the title when there is none. */
     fallbackTitle: string;
     /** The run's one status word; `undefined` while nothing has said. */
@@ -47,12 +55,18 @@
     /** When the run started, in milliseconds, and how long it took once it is over. */
     startedAt?: number | undefined;
     tookMilliseconds?: number | undefined;
+    /** What the duration is called: "took" for a run that finished, "ran" for one that was canceled. */
+    tookWord?: 'took' | 'ran';
     /** The Bureau's task, when the run is one: it owns Cancel run. */
     task?: TaskView | undefined;
     /** A short phrase after the status, such as "answer sent, undo for 5 s" while an answer can be undone. */
     note?: string | undefined;
     /** Where Open chat goes, and what it says. */
     chat?: { readonly href: string; readonly label: string } | undefined;
+    /** Where Open goal or Open schedule goes, for a run that belongs to one, and what it says. */
+    owner?: { readonly href: string; readonly label: string } | undefined;
+    /** The page that sets up another run of this run's workflow: Run again goes there. */
+    runAgain?: string | undefined;
     /** The engine's status of the run, when the engine holds it: it sets the actions in More. */
     engineStatus?: WorkflowState['status'] | undefined;
     /** The action being carried out, which disables the others. */
@@ -66,13 +80,17 @@
   let {
     runId,
     title,
+    titleIsIdentifier = true,
     fallbackTitle,
     status,
     startedAt,
     tookMilliseconds,
+    tookWord = 'took',
     task,
     note,
     chat,
+    owner,
+    runAgain,
     engineStatus,
     pendingAction = null,
     actionGate = { disabled: false, title: undefined },
@@ -132,13 +150,15 @@
 </script>
 
 {#snippet heading()}
-  {#if title === undefined}{fallbackTitle}{:else}<code class="ib-identifier">{title}</code>{/if}
+  {#if title === undefined}{fallbackTitle}{:else if titleIsIdentifier}<code class="ib-identifier"
+      >{title}</code
+    >{:else}{title}{/if}
 {/snippet}
 
 {#snippet summary()}
-  {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <span
-      title={new Date(startedAt).toISOString()}>{formatRelativeTime(startedAt, Date.now())}</span
-    >{/if}{#if tookMilliseconds !== undefined}, {formatDuration(
+  {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
+      datetime={new Date(startedAt).toISOString()}>{dayStamp(startedAt)}</time
+    >{/if}{#if tookMilliseconds !== undefined}, {tookWord} {durationWords(
       tookMilliseconds,
     )}{/if}{#if note !== undefined}, {note}{/if}
 {/snippet}
@@ -151,7 +171,27 @@
         href={router.href(chat.href)}
         label={chat.label}
         onclick={(event) => openLink(event, chat.href)}
+      >
+        {#snippet leadingIcon()}<MessageSquare aria-hidden="true" size={16} />{/snippet}
+      </Button>
+    {/if}
+    {#if owner !== undefined}
+      <Button
+        variant="secondary"
+        href={router.href(owner.href)}
+        label={owner.label}
+        onclick={(event) => openLink(event, owner.href)}
       />
+    {/if}
+    {#if runAgain !== undefined}
+      <Button
+        variant="secondary"
+        href={router.href(runAgain)}
+        label={RUN_DETAIL_COPY.runAgain}
+        onclick={(event) => openLink(event, runAgain)}
+      >
+        {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
+      </Button>
     {/if}
     {#if task !== undefined}<RunCancel {task} />{/if}
     <Dropdown id="ib-run-actions" placement="bottom-end">
