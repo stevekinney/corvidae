@@ -15,13 +15,19 @@
   import { Ban } from '@lucide/svelte';
   import { untrack } from 'svelte';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { resolveWorkflow } from '../../lib/workflow-catalog.ts';
-  import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
-  import { runSetupTarget, type RunSetupTarget } from './run-setup-model.ts';
+  import { workflowRunSetupPath, workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import {
+    runSetupIdentity,
+    runSetupTarget,
+    runSetupTrigger,
+    type RunSetupTarget,
+  } from './run-setup-model.ts';
   import RunSetupForm from './run-setup-form.svelte';
 
   const copy = WORKFLOW_COPY.runSetup;
@@ -54,6 +60,22 @@
   });
   const current = $derived(shown ?? target);
 
+  /** What the heading calls the workflow, which the route supplies at once and the file's title replaces. */
+  const identity = $derived(runSetupIdentity(type, resolution.data ?? undefined));
+  const trigger = $derived(runSetupTrigger(resolution.data ?? undefined));
+  /** The When choice, which the form holds and the heading and the breadcrumb follow. */
+  let whenChoice = $state('now');
+  const scheduling = $derived(current?.status === 'ready' && whenChoice === 'schedule');
+  // The trail reads "Workflows › Release notes › Run", and "› Schedule" while On a schedule is chosen.
+  usePageLabel(() => ({
+    path: workflowPath,
+    label: resolution.data === undefined || resolution.data === null ? undefined : identity.name,
+  }));
+  usePageLabel(() => ({
+    path: workflowRunSetupPath(type),
+    label: scheduling ? copy.scheduleCrumb : undefined,
+  }));
+
   const blocked = $derived(
     current === undefined || current.status === 'ready'
       ? undefined
@@ -84,8 +106,22 @@
   }
 </script>
 
+{#snippet headingText()}
+  {scheduling
+    ? copy.scheduleVerb
+    : copy.runVerb}{' '}{#if identity.titled}{identity.name}{' '}{/if}<code
+    class="ib-identifier"
+    data-testid="run-setup-identifier">{type}</code
+  >
+{/snippet}
+
 <article class="ib-run-setup" data-page="run-setup">
-  <PageHeader headingLevel={1} title={copy.title(type)} />
+  <PageHeader
+    headingLevel={1}
+    title={headingText}
+    titleText={`${scheduling ? copy.scheduleVerb : copy.runVerb} ${identity.name}`}
+    {...identity.description === null ? {} : { description: identity.description }}
+  />
 
   {#if resolution.isError && current === undefined}
     <Alert variant="danger">
@@ -114,7 +150,14 @@
       {/snippet}
     </EmptyState>
   {:else if current.status === 'ready'}
-    <RunSetupForm {type} kind={current.kind} schema={current.schema} />
+    <RunSetupForm
+      {type}
+      kind={current.kind}
+      schema={current.schema}
+      {identity}
+      {trigger}
+      bind:whenChoice
+    />
   {/if}
 </article>
 

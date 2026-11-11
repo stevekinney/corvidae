@@ -92,7 +92,7 @@ test.describe('the run setup page', () => {
         COPY.whenHeading,
       ]);
       await expect(setup(page).getByLabel('Topic')).toBeVisible();
-      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(COPY.summaryNow(id));
+      await expect(footer(page).getByTestId('run-setup-summary')).toHaveText(COPY.summaryNow());
       await expect(footer(page).getByRole('button', { name: COPY.startAction })).toBeVisible();
       await checkA11y(`run setup at ${width}px`);
     }
@@ -196,13 +196,12 @@ test.describe('on a schedule', () => {
     await setup(page).getByRole('combobox', { name: 'Time zone' }).fill('America/Los_Angeles');
     await page.getByRole('option', { name: 'America/Los Angeles', exact: true }).click();
     await expect(footer(page).getByTestId('run-setup-summary')).toContainText(
-      'in America/Los_Angeles',
+      'every day at 3:00 AM Pacific time',
     );
     await footer(page).getByRole('button', { name: COPY.scheduleAction }).click();
     await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Schedule for order-processing' }),
-    ).toBeVisible();
+    // The schedule is named by the Name field, which starts as the workflow's name in words.
+    await expect(page.getByRole('heading', { level: 1, name: 'Order processing' })).toBeVisible();
     const id = decodeURIComponent(new URL(page.url()).pathname.split('/').pop() ?? '');
     schedules.add(id);
     // The schedule the engine holds reads 3:00 in the zone that was chosen.
@@ -216,14 +215,15 @@ test.describe('on a schedule', () => {
     });
   });
 
-  test('is not offered for a file, whose schedule is its trigger', async ({ page, request }) => {
+  test('is offered for a file too, and says so in the heading', async ({ page, request }) => {
     const id = 'e2e-setup-file-schedule';
     await createWaiting(request, id);
     await page.goto(`/workflows/${id}/run`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    await expect(setup(page).getByRole('radio', { name: new RegExp(COPY.schedule) })).toHaveCount(
-      0,
-    );
-    await expect(setup(page).getByText(COPY.scheduleInFile)).toBeVisible();
+    await setup(page)
+      .getByRole('radio', { name: new RegExp(COPY.schedule) })
+      .click();
+    await expect(page.getByRole('heading', { level: 1 })).toContainText(COPY.scheduleVerb);
+    await expect(setup(page).getByLabel('Name', { exact: true })).toBeVisible();
   });
 });

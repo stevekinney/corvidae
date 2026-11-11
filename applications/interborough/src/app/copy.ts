@@ -1316,29 +1316,83 @@ export const WORKFLOW_COPY = {
   runSetup: {
     /** The page's entry in the breadcrumb trail. */
     crumb: 'Run',
+    /** The crumb while On a schedule is chosen (board PageRunSetup, "On a schedule"). */
+    scheduleCrumb: 'Schedule',
     title: (name: string): string => `Run ${name}`,
+    /** The first word of the heading, which the workflow's name and identifier follow. */
+    runVerb: 'Run',
+    /** The first word of the heading while On a schedule is chosen. */
+    scheduleVerb: 'Schedule',
     inputHeading: 'Input',
-    inputDescription: 'What the run starts with.',
+    inputDescription: 'The form is drawn from the workflow’s input schema.',
+    /** Above the Input section while On a schedule is chosen, because the schedule keeps its input. */
+    scheduleInputLead: 'These values are used on every run.',
+    /** The link at the right of the Input description that swaps the drawn form for a JSON editor. */
+    editAsJson: 'Edit as JSON',
+    /** The Input description while the JSON editor shows and its text parses. */
+    jsonEditing: 'Editing the input as JSON. Back to form returns to the drawn form.',
+    /** The Input description while the JSON does not parse: the way back is off. */
+    jsonEditingInvalid: 'Editing the input as JSON.',
+    backToForm: 'Back to form',
+    /** The way back while the JSON does not parse: off, with the reason in its label. */
+    backToFormBlocked: (line: number): string => `Back to form (fix line ${String(line)} first)`,
+    /** The JSON editor's own label. */
+    jsonEditorLabel: 'Input as JSON',
     /** A workflow that declares no schema takes its input as JSON. */
     jsonLabel: 'Input (JSON)',
     jsonDescription: 'JSON. Leave empty to start with no input.',
     invalidJson: 'The input must be valid JSON, or left empty.',
+    /** Said under the JSON editor when the text is empty: input that the form draws is never left empty. */
+    jsonRequired: 'The input can’t be left empty. Enter it as JSON, or go back to the form.',
     whenHeading: 'When',
     whenLabel: 'When to run',
     now: 'Now',
-    nowDescription: 'Starts a run as soon as you confirm.',
+    /** The line under Now. */
+    nowDescription: 'Starts as soon as you press Start run.',
     schedule: 'On a schedule',
     scheduleDescription: 'Starts a run each time the schedule fires, with this input.',
-    /** The schedule choice for a workflow whose schedule is the trigger in its file. */
-    scheduleInFile:
-      'This workflow is agent-authored, so its schedule is the trigger in its file. Change it in the workflow.',
     scheduleLabel: 'Schedule',
-    summaryNow: (name: string): string => `Starts ${name} now with this input.`,
-    /** An interval counts elapsed time, so it names no zone. */
-    summarySchedule: (name: string, cadence: string, timeZone: string | undefined): string =>
-      timeZone === undefined
-        ? `Runs ${name}: ${cadence}.`
-        : `Runs ${name}: ${cadence}, in ${timeZone}.`,
+    /** The label of the second policy select, which the builder draws beside the first. */
+    catchUpLabel: 'If Interborough was off',
+    nameLabel: 'Name',
+    nameDescription:
+      'Starts as the workflow’s name; change it if you like. Shown in Schedules and on every run it starts.',
+    nameRequired: 'Give the schedule a name.',
+    nameTooLong: (most: number): string =>
+      `The name is too long: it can be at most ${String(most)} characters.`,
+    /**
+     * The line under When that says what else starts the workflow: the schedule is named by a link,
+     * then its cadence in parentheses, or that it is paused.
+     */
+    alsoStartedBy: {
+      before: 'Also started by the ',
+      after: ' schedule',
+      cadence: (words: string): string => ` (${words}).`,
+      paused: ' (paused).',
+      bare: '.',
+    },
+    /** What starts a file on its own, by its trigger (sweep S67): a signal names itself, a schedule is changed in the file. */
+    triggerSignal: { before: 'Also starts on its own when ', after: ' arrives.' },
+    triggerSchedule: (cadence: string): string =>
+      `Runs on its own schedule (${cadence}). Change it in the workflow.`,
+    /** The footer's one line when the choice is Now: the input in plain words, when it says anything. */
+    summaryNow: (inputWords = ''): string => `Runs once, right away${inputWords}.`,
+    /** The footer's line while the JSON editor holds an input that parses. */
+    summaryJson: 'Runs once, right away, with the JSON above.',
+    /** The footer's line while the JSON does not parse. */
+    summaryJsonInvalid: 'Fix the JSON above to run.',
+    /** The footer's line when the choice is On a schedule. */
+    summarySchedule: (name: string, inputWords: string, cadence: string): string =>
+      `Creates a schedule that runs ${name}${inputWords}, ${cadence}.`,
+    /** The same, while the JSON editor holds the input. */
+    summaryScheduleJson: (name: string, cadence: string): string =>
+      `Creates a schedule that runs ${name} with the JSON above, ${cadence}.`,
+    /** What the footer says of the input from the fields it reads: ", on main" then ", since Oct 23" or ", from the last release". */
+    inputWords: {
+      on: (branch: string): string => `on ${branch}`,
+      since: (date: string): string => `since ${date}`,
+      sinceLastRelease: 'from the last release',
+    },
     startAction: 'Start run',
     scheduleAction: 'Create schedule',
     cancel: 'Cancel',

@@ -56,6 +56,29 @@ const TOPIC_SCHEMA = {
 /** A schema the form cannot draw, so its input is typed as JSON. */
 const LIST_SCHEMA = { type: 'array', items: { type: 'integer' } };
 
+/** The input of the sample world's Release notes: a required branch and an optional date. */
+const RELEASE_SCHEMA = {
+  type: 'object',
+  properties: {
+    branch: { type: 'string', title: 'Branch', description: 'The branch to release from.' },
+    since: { type: 'string', title: 'Since', format: 'date' },
+  },
+  required: ['branch'],
+};
+
+/** A schema with a secret in it, which the JSON editor must never print. */
+const SECRET_SCHEMA = {
+  type: 'object',
+  properties: {
+    name: { type: 'string', title: 'Name' },
+    nested: {
+      type: 'object',
+      title: 'Nested',
+      properties: { token: { type: 'string', title: 'Token', writeOnly: true } },
+    },
+  },
+};
+
 function open(
   path: string,
   overrides: Partial<World> = {},
@@ -81,6 +104,14 @@ function open(
       files: [
         readyFile('digest', { inputSchema: TOPIC_SCHEMA }),
         readyFile('plain'),
+        readyFile('release-notes', {
+          title: 'Release notes',
+          description: 'Collects merged changes into a draft.',
+          inputSchema: RELEASE_SCHEMA,
+          trigger: { kind: 'schedule', spec: '0 11 * * 5' },
+        }),
+        readyFile('inbox-triage', { trigger: { kind: 'signal', name: 'message-received' } }),
+        readyFile('secret-input', { inputSchema: SECRET_SCHEMA }),
         readyFile('paused-one', { paused: true }),
         invalidFile('broken'),
       ],
@@ -188,9 +219,13 @@ describe('starting now', () => {
     const { container, getByRole } = open('/workflows/order-processing/run');
     const root = await ready(container);
     const summary = () => root.querySelector('[data-testid="run-setup-summary"]')?.textContent;
-    expect(summary()).toBe(COPY.summaryNow('order-processing'));
+    expect(summary()).toBe(COPY.summaryNow());
     await fireEvent.click(getByRole('radio', { name: new RegExp(COPY.schedule) }));
-    await waitFor(() => expect(summary()).toContain('in '));
+    await waitFor(() =>
+      expect(summary()).toMatch(
+        /^Creates a schedule that runs order-processing, every day at 9:00 AM /,
+      ),
+    );
     expect(primary(root).textContent?.trim()).toBe(COPY.scheduleAction);
   });
 
@@ -598,12 +633,12 @@ describe('on a schedule', () => {
     expect(stub?.callsTo('POST /schedules')).toEqual([]);
   });
 
-  test('is not offered for a file, whose schedule is the trigger in its file, and says so', async () => {
+  test('is offered for a file too, beside Now, which is the choice it opens on', async () => {
     const { container } = open('/workflows/digest/run');
     const root = await ready(container);
     const choices = [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')];
-    expect(choices.map((radio) => radio.value)).toEqual(['now']);
-    expect(root.textContent).toContain(COPY.scheduleInFile);
+    expect(choices.map((radio) => radio.value)).toEqual(['now', 'schedule']);
+    expect(choices.find((radio) => radio.checked)?.value).toBe('now');
   });
 
   test('disables the action, with the scope it needs, for a principal that may not schedule', async () => {
@@ -616,5 +651,323 @@ describe('on a schedule', () => {
     await chooseSchedule(root);
     await waitFor(() => expect(primary(root).disabled).toBe(true));
     expect(primary(root).title).toBe('Requires schedules:write');
+  });
+});
+
+const summaryText = (root: ParentNode) =>
+  root.querySelector('[data-testid="run-setup-summary"]')?.textContent?.trim();
+
+/** A line's words with the white space around its link collapsed to one space. */
+const words = (element: Element | null | undefined) =>
+  element?.textContent?.replace(/\s+/g, ' ').trim();
+
+/** Whether a control is off, natively or by `aria-disabled`. */
+const isOff = (control: HTMLElement) =>
+  (control as HTMLButtonElement).disabled || control.getAttribute('aria-disabled') === 'true';
+
+describe('the design of the page', () => {
+  test('names a titled workflow with its identifier beside it once, and says what it is for', async () => {
+    const view = open('/workflows/release-notes/run');
+    const root = await ready(view.container);
+    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes release-notes');
+    expect(root.querySelector('[data-testid="run-setup-identifier"]')?.textContent).toBe(
+      'release-notes',
+    );
+    expect(root.textContent).toContain('Collects merged changes into a draft.');
+  });
+
+  test('names a file with no title by its identifier alone', async () => {
+    const view = open('/workflows/digest/run');
+    await ready(view.container);
+    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run digest');
+  });
+
+  test('says where the form comes from, offers Edit as JSON, and marks the required Branch', async () => {
+    const view = open('/workflows/release-notes/run');
+    const root = await ready(view.container);
+    expect(root.textContent).toContain(COPY.inputDescription);
+    expect(view.getByRole('button', { name: COPY.editAsJson })).toBeTruthy();
+    expect(field(root, 'Branch').required).toBe(true);
+    expect(root.textContent).toContain('The branch to release from.');
+    expect(summaryText(root)).toBe(COPY.summaryNow());
+  });
+
+  test('reads the input back in the footer as it is typed', async () => {
+    const view = open('/workflows/release-notes/run');
+    const root = await ready(view.container);
+    await type(field(root, 'Branch'), 'main');
+    await waitFor(() =>
+      expect(summaryText(root)).toBe('Runs once, right away, on main from the last release.'),
+    );
+  });
+
+  test('names the schedules that also start the workflow, with their names as links', async () => {
+    const view = open('/workflows/release-notes/run', {
+      schedules: [
+        scheduleFixture('digest-schedule', 'release-notes', {
+          description: 'Release notes digest',
+          cronExpression: '0 11 * * 5',
+          timeZone: 'America/Chicago',
+        }),
+        scheduleFixture('later-schedule', 'release-notes', {
+          description: 'Weekly later',
+          status: 'paused',
+        }),
+      ],
+    });
+    const root = await ready(view.container);
+    const lines = await waitFor(() => {
+      const found = [...root.querySelectorAll('[data-testid="run-setup-started-by"]')];
+      expect(found).toHaveLength(2);
+      return found;
+    });
+    expect(words(lines[0])).toMatch(
+      /^Also started by the Release notes digest schedule \(every \w+ at \d+:\d\d [AP]M\)\.$/,
+    );
+    expect(lines[0]?.querySelector('a')?.getAttribute('href')).toContain(
+      '/schedules/digest-schedule',
+    );
+    expect(words(lines[1])).toBe('Also started by the Weekly later schedule (paused).');
+    // The file's own schedule is one of these, so its trigger is not said twice.
+    expect(root.querySelector('[data-testid="run-setup-trigger"]')).toBeNull();
+    // Now's own line stays above them.
+    expect(root.textContent).toContain(COPY.nowDescription);
+  });
+
+  test('says by its trigger kind what else starts a file: a signal by name', async () => {
+    const view = open('/workflows/inbox-triage/run');
+    const root = await ready(view.container);
+    const note = await waitFor(() => {
+      const found = root.querySelector('[data-testid="run-setup-trigger"]');
+      expect(found).toBeTruthy();
+      return found as Element;
+    });
+    expect(words(note)).toBe('Also starts on its own when message-received arrives.');
+    expect(note.querySelector('code')?.textContent).toBe('message-received');
+  });
+
+  test('says a schedule trigger runs on its own schedule, once no schedule says it', async () => {
+    const view = open('/workflows/release-notes/run');
+    const root = await ready(view.container);
+    const note = await waitFor(() => {
+      const found = root.querySelector('[data-testid="run-setup-trigger"]');
+      expect(found).toBeTruthy();
+      return found as Element;
+    });
+    expect(words(note)).toMatch(
+      /^Runs on its own schedule \(every \w+ at \d+:\d\d [AP]M\)\. Change it in the workflow\.$/,
+    );
+  });
+
+  test('says nothing of a trigger for a type that code registered', async () => {
+    const view = open('/workflows/order-processing/run');
+    const root = await ready(view.container);
+    await quietFor(50);
+    expect(root.querySelector('[data-testid="run-setup-trigger"]')).toBeNull();
+  });
+});
+
+describe('Edit as JSON', () => {
+  async function editAsJson(path = '/workflows/release-notes/run') {
+    const view = open(path);
+    const root = await ready(view.container);
+    await type(field(root, 'Branch'), 'main');
+    await fireEvent.click(view.getByRole('button', { name: COPY.editAsJson }));
+    const editor = await waitFor(() => {
+      const found = root.querySelector('textarea');
+      expect(found).toBeTruthy();
+      return found as HTMLTextAreaElement;
+    });
+    return { ...view, root, editor };
+  }
+
+  const lead = (root: ParentNode) => words(root.querySelector('.ib-workflow-input__description'));
+
+  test('replaces the drawn form with an editor that holds what the form held', async () => {
+    const { root, editor } = await editAsJson();
+    expect(JSON.parse(editor.value)).toMatchObject({ branch: 'main' });
+    expect(root.querySelector('form')).toBeNull();
+    expect(lead(root)).toBe(COPY.jsonEditing);
+    expect(summaryText(root)).toBe(COPY.summaryJson);
+  });
+
+  test('takes what is typed in the JSON back to the form, and starts with it', async () => {
+    const view = await editAsJson();
+    await fireEvent.input(view.editor, { target: { value: '{ "branch": "dev" }' } });
+    await fireEvent.click(view.getByRole('button', { name: COPY.backToForm }));
+    await waitFor(() => expect(field(view.root, 'Branch').value).toBe('dev'));
+
+    await fireEvent.click(view.getByRole('button', { name: COPY.editAsJson }));
+    await fireEvent.click(primary(view.root));
+    await waitFor(() =>
+      expect(stub?.world.startedRuns).toEqual([{ id: 'release-notes', input: { branch: 'dev' } }]),
+    );
+  });
+
+  test('turns the way back off while the JSON does not parse, with the line to fix in its label', async () => {
+    const view = await editAsJson();
+    await fireEvent.input(view.editor, {
+      target: { value: '{\n  "branch": "main"\n  "since": "2026-10-23"\n}' },
+    });
+    const back = await view.findByRole('button', { name: COPY.backToFormBlocked(2) });
+    expect(isOff(back)).toBe(true);
+    expect(lead(view.root)).toBe(COPY.jsonEditingInvalid);
+    expect(summaryText(view.root)).toBe(COPY.summaryJsonInvalid);
+  });
+
+  test('keeps Start run on while the JSON does not parse, and starts nothing', async () => {
+    const view = await editAsJson();
+    await fireEvent.input(view.editor, { target: { value: '{ "branch": ' } });
+    expect(isOff(primary(view.root))).toBe(false);
+    await fireEvent.click(primary(view.root));
+    // A start can only be delayed by load, never advanced, so a quiet window proves none came.
+    await quietFor(50);
+    expect(stub?.world.startedRuns).toEqual([]);
+    expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
+  });
+
+  test('never leaves the input empty, and holds the JSON to the schema', async () => {
+    const view = await editAsJson();
+    await fireEvent.input(view.editor, { target: { value: '' } });
+    await fireEvent.click(primary(view.root));
+    await waitFor(() => expect(view.root.textContent).toContain(COPY.jsonRequired));
+
+    // Valid JSON that the schema refuses (no branch) marks the editor and starts nothing.
+    await fireEvent.input(view.editor, { target: { value: '{ "since": "2026-10-23" }' } });
+    await waitFor(() => expect(view.root.textContent).not.toContain(COPY.jsonRequired));
+    await fireEvent.click(primary(view.root));
+    await waitFor(() => expect(view.editor.getAttribute('aria-invalid')).toBe('true'));
+    expect(stub?.world.startedRuns).toEqual([]);
+  });
+
+  test('is not offered for a schema that holds a concealed field, however deeply nested', async () => {
+    const view = open('/workflows/secret-input/run');
+    const root = await ready(view.container);
+    expect(view.queryByRole('button', { name: COPY.editAsJson })).toBeNull();
+    expect(root.querySelector('form')).toBeTruthy();
+  });
+
+  test('is not offered for a schema the form cannot draw, which is already JSON', async () => {
+    const view = open('/workflows/list-input/run');
+    const root = await ready(view.container);
+    expect(view.queryByRole('button', { name: COPY.editAsJson })).toBeNull();
+    expect(root.querySelector('textarea')).toBeTruthy();
+  });
+});
+
+describe('On a schedule, for a file', () => {
+  async function schedule(path = '/workflows/release-notes/run') {
+    const view = open(path);
+    const root = await ready(view.container);
+    await type(field(root, 'Branch'), 'main');
+    await fireEvent.click(
+      [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+        (radio) => radio.value === 'schedule',
+      ) as HTMLElement,
+    );
+    return { ...view, root };
+  }
+
+  test('says it is a schedule in the heading, the breadcrumb, the input lead and the button', async () => {
+    const view = await schedule();
+    await waitFor(() =>
+      expect(words(view.getByRole('heading', { level: 1 }))).toBe(
+        'Schedule Release notes release-notes',
+      ),
+    );
+    expect(view.root.textContent).toContain(COPY.scheduleInputLead);
+    expect(primary(view.root).textContent?.trim()).toBe(COPY.scheduleAction);
+    await waitFor(() =>
+      expect(breadcrumbTrail('/workflows/release-notes/run').map((crumb) => crumb.label)).toEqual(
+        expect.arrayContaining(['Release notes', COPY.scheduleCrumb]),
+      ),
+    );
+  });
+
+  test('asks for the name last, starting as the workflow’s title', async () => {
+    const view = await schedule();
+    const name = field(view.root, 'Name');
+    expect(name.value).toBe('Release notes');
+    expect(name.required).toBe(true);
+    expect(view.root.textContent).toContain(COPY.nameDescription);
+    // The When block comes first, then the two policies, and the Name follows them.
+    const order = [
+      view.getByLabelText('Repeats'),
+      view.getByLabelText('If a run is still going'),
+      name,
+    ];
+    for (const [index, control] of order.entries()) {
+      const next = order[index + 1];
+      if (next === undefined) continue;
+      // 4 is DOCUMENT_POSITION_FOLLOWING: the next control comes later in the document.
+      expect(control.compareDocumentPosition(next) & 4).toBeTruthy();
+    }
+  });
+
+  test('reads the input and the schedule back in plain words', async () => {
+    const view = await schedule();
+    await waitFor(() =>
+      expect(summaryText(view.root)).toMatch(
+        /^Creates a schedule that runs Release notes on main, from the last release, every day at 9:00 AM /,
+      ),
+    );
+  });
+
+  test('sends the name the person typed in its place', async () => {
+    const view = await schedule();
+    await fireEvent.input(field(view.root, 'Name'), { target: { value: 'My notes' } });
+    await fireEvent.click(primary(view.root));
+    await waitFor(() => expect(stub?.callsTo('POST /schedules')).toHaveLength(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({ description: 'My notes' });
+  });
+
+  test('creates the schedule with the input, the name and both policies, and opens it', async () => {
+    const view = await schedule();
+    await fireEvent.change(view.getByLabelText('If a run is still going'), {
+      target: { value: 'allow' },
+    });
+    await fireEvent.change(view.getByLabelText(COPY.catchUpLabel), { target: { value: 'on' } });
+    await fireEvent.click(primary(view.root));
+
+    await waitFor(() => expect(stub?.callsTo('POST /schedules')).toHaveLength(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({
+      type: 'release-notes',
+      input: { branch: 'main' },
+      description: 'Release notes',
+      overlap: 'allow',
+      backfill: true,
+    });
+    await waitFor(() => expect(router.pathname).toMatch(/^\/schedules\//));
+  });
+
+  test('skips an overlap and catches up on nothing by default', async () => {
+    const view = await schedule();
+    await fireEvent.click(primary(view.root));
+    await waitFor(() => expect(stub?.callsTo('POST /schedules')).toHaveLength(1));
+    expect(stub?.callsTo('POST /schedules')[0]?.params).toMatchObject({
+      overlap: 'skip',
+      backfill: false,
+    });
+  });
+
+  test('refuses an empty name at the field, and creates nothing', async () => {
+    const view = await schedule();
+    await fireEvent.input(field(view.root, 'Name'), { target: { value: '   ' } });
+    await fireEvent.click(primary(view.root));
+    expect(await view.findByText(COPY.nameRequired)).not.toBeNull();
+    await waitFor(() => expect(document.activeElement?.id).toBe('run-setup-name'));
+    expect(stub?.callsTo('POST /schedules')).toEqual([]);
+  });
+
+  test('goes back to Now with the same input', async () => {
+    const view = await schedule();
+    await fireEvent.click(
+      [...view.root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+        (radio) => radio.value === 'now',
+      ) as HTMLElement,
+    );
+    await waitFor(() => expect(primary(view.root).textContent?.trim()).toBe(COPY.startAction));
+    expect(field(view.root, 'Branch').value).toBe('main');
+    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes release-notes');
   });
 });
