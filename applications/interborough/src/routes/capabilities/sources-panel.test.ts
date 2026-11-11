@@ -46,6 +46,22 @@ function buttonLabelled(container: ParentNode, label: string): HTMLElement {
   return found;
 }
 
+/** Opens the open source's ⋯ menu and chooses Remove source…, which asks to confirm. */
+async function chooseRemove(): Promise<void> {
+  await fireEvent.click(buttonLabelled(document.body, copy.source.menu.label));
+  await waitFor(() =>
+    expect(
+      [...document.body.querySelectorAll('[role="menuitem"]')].some(
+        (item) => item.textContent?.trim() === copy.source.menu.remove,
+      ),
+    ).toBe(true),
+  );
+  const item = [...document.body.querySelectorAll<HTMLElement>('[role="menuitem"]')].find(
+    (entry) => entry.textContent?.trim() === copy.source.menu.remove,
+  );
+  await fireEvent.click(item!);
+}
+
 function serve(initial: Parameters<typeof fakeToolSources>[0]): FakeToolSources {
   const { host, other } = fakeToolSources(initial);
   restore = bureau({ 'bureau.agents.catalog': () => ({ models: [], tools: [] }) }, other).restore;
@@ -83,13 +99,19 @@ describe('the Sources tab', () => {
     expect(detail.querySelector('[data-testid="source-credentials"]')?.textContent).toContain(
       'notes-token',
     );
-    const standing = (tool: string) =>
-      detail.querySelector(`[data-source-tool="notes__${tool}"] [data-testid="tool-standing"]`)
-        ?.textContent;
-    expect(standing('lookup')).toContain(copy.source.tools.standing.runs);
-    expect(standing('wipe')).toContain(copy.source.tools.standing['asks-first']);
+    // Risk and Default asks are columns of the table (rows 32l, 32r).
+    const rowOf = (tool: string) =>
+      detail.querySelector<HTMLElement>(`[data-source-tool="notes__${tool}"]`)!;
+    const riskOf = (tool: string) =>
+      rowOf(tool).querySelector('[data-testid="tool-risk"]')?.textContent;
+    const asksOf = (tool: string) => rowOf(tool).querySelector('select')?.value;
+    expect(riskOf('lookup')).toBe('Reads');
+    expect(asksOf('lookup')).toBe('never');
+    expect(riskOf('wipe')).toBe('Dangerous');
+    expect(asksOf('wipe')).toBe('always');
     // A tool that declares nothing is never read as read-only.
-    expect(standing('guess')).toContain(copy.source.tools.standing['asks-first']);
+    expect(riskOf('guess')).toBe('Not classified');
+    expect(asksOf('guess')).toBe('on-changes');
   });
 
   test('says why a source failed, and what a source waiting for a restart does', async () => {
@@ -223,16 +245,19 @@ describe('the Sources tab', () => {
   test('holds every switch, Sign in and Remove still when the host keeps its configuration in its deployment', async () => {
     serve({ sources: [NOTES], lockReason: 'deployment' });
     landAt('/capabilities?tab=sources&source=notes');
-    const { container, findByText } = mount();
+    const view = mount();
+    const { container, findByText } = view;
 
     await findByText(copy.source.tools.locked);
-    for (const control of container.querySelectorAll('[data-source-tool] [role="switch"]')) {
+    for (const control of container.querySelectorAll(
+      '[data-source-tool] [role="switch"], [data-source-tool] input[type="checkbox"], [data-source-tool] select',
+    )) {
       expect(control.hasAttribute('disabled')).toBe(true);
     }
-    const remove = [...container.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === copy.source.remove.action,
-    );
-    expect(remove?.hasAttribute('disabled')).toBe(true);
+    // Remove source… is a menu item, which is inert (aria-disabled) rather than natively disabled.
+    await fireEvent.click(view.getByRole('button', { name: copy.source.menu.label }));
+    const remove = await view.findByRole('menuitem', { name: copy.source.menu.remove });
+    expect(remove.getAttribute('aria-disabled')).toBe('true');
   });
 
   test('holds Sign in still and says why when a locked source has no tools to list', async () => {
@@ -296,7 +321,7 @@ describe('the Sources tab', () => {
       // The browser blocked the tab, so the address is offered as a link instead of being lost.
       const link = await findByTestId('sign-in-link');
       expect(link.getAttribute('href')).toBe('http://127.0.0.1:9/authorize?state=x');
-      expect(container.querySelector('[data-testid="source-state"]')?.textContent).toBe(
+      expect(container.querySelector('[data-testid="source-state"]')?.textContent).toContain(
         copy.source.states['needs-authorization'],
       );
     } finally {
@@ -358,7 +383,7 @@ describe('the Sources tab', () => {
     const { container, findByTestId, findByText, queryByTestId } = mount();
     await findByTestId('source-detail');
 
-    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await chooseRemove();
     const dialog = await findByTestId('source-removal');
     await findByText('Writer');
     expect(dialog.querySelector('[data-affected-agent="writer"]')?.textContent).toContain(
@@ -395,9 +420,9 @@ describe('the Sources tab', () => {
       },
     });
     landAt('/capabilities?tab=sources&source=notes');
-    const { container, findByTestId, findByText, queryByText } = mount();
+    const { findByTestId, findByText, queryByText } = mount();
     await findByTestId('source-detail');
-    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await chooseRemove();
     await findByText('Writer');
     await fireEvent.click(buttonLabelled(document.body, copy.source.remove.cancel));
 
@@ -405,7 +430,7 @@ describe('the Sources tab', () => {
     host.agents['notes'] = [
       { id: 'editor', name: 'Editor', tools: ['notes__wipe'], approvals: [] },
     ];
-    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await chooseRemove();
     await findByText('Editor');
     expect(queryByText('Writer')).toBeNull();
 
@@ -418,7 +443,7 @@ describe('the Sources tab', () => {
     landAt('/capabilities?tab=sources&source=notes');
     const { container, findByTestId, findByText, queryByTestId } = mount();
     await findByTestId('source-detail');
-    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await chooseRemove();
     await findByTestId('source-removal-none');
 
     host.removeThenAnswer = Response.json(
@@ -444,9 +469,9 @@ describe('the Sources tab', () => {
   test('says no agent names the tools when none does, and changes nothing on Keep it', async () => {
     const host = serve({ sources: [NOTES] });
     landAt('/capabilities?tab=sources&source=notes');
-    const { container, findByTestId, queryByTestId } = mount();
+    const { findByTestId, queryByTestId } = mount();
     await findByTestId('source-detail');
-    await fireEvent.click(buttonLabelled(container, copy.source.remove.action));
+    await chooseRemove();
     await findByTestId('source-removal-none');
     await fireEvent.click(buttonLabelled(document.body, copy.source.remove.cancel));
     await waitFor(() => expect(queryByTestId('source-removal') === null).toBe(true));

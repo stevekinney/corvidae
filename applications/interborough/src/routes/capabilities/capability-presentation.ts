@@ -176,7 +176,9 @@ export function matchesSkillFilter(skill: Skill, typed: string): boolean {
 export function skillMeta(skill: Pick<Skill, 'tools' | 'source'>): string[] {
   const meta = SKILL.meta;
   return [
-    skill.tools.length === 0 ? meta.instructionsOnly : meta.instructionsAndTools(skill.tools.length),
+    skill.tools.length === 0
+      ? meta.instructionsOnly
+      : meta.instructionsAndTools(skill.tools.length),
     SKILL.sourceKinds[skill.source.kind],
     meta.loadedWhenRelevant,
   ];
@@ -304,5 +306,83 @@ export function sourceWaitsForRestart(source: ToolSourceStanding): boolean {
     (source.state === 'needs-authorization' &&
       source.authorized === true &&
       source.tokensRejected !== true)
+  );
+}
+
+/** What a person calls a source (rows 31o, 32k): the name the host saved, or its identifier when it saved none. */
+export function sourceHeading(source: Pick<ToolSourceStanding, 'id' | 'name'>): string {
+  const name = source.name?.trim() ?? '';
+  return name === '' ? source.id : name;
+}
+
+/** Whether a source matches what was typed: by its name for a person or its identifier. */
+export function matchesSourceFilter(
+  source: Pick<ToolSourceStanding, 'id' | 'name'>,
+  typed: string,
+): boolean {
+  return matchesFilter(sourceHeading(source), typed) || matchesFilter(source.id, typed);
+}
+
+/** The tone of the dot beside a source's state word. A source waiting for a restart is hollow: it is not running yet. */
+export function sourceStatusTone(
+  state: ToolSourceStanding['state'],
+): 'success' | 'danger' | 'warning' | 'pending' {
+  if (state === 'loaded') return 'success';
+  if (state === 'failed') return 'danger';
+  if (state === 'needs-authorization') return 'warning';
+  return 'pending';
+}
+
+/**
+ * The muted facts after a source's state word, in order (row 32k): how it signs in, when it was
+ * last tested, and what kind of source it is ("OAuth sign-in", "last tested 1 h ago", "OpenAPI
+ * spec"). The host does not say whether a stored credential is a key or a token, so a source that
+ * holds one reads "Credential stored". `now` is the page's clock, in epoch milliseconds.
+ */
+export function sourceStatusFacts(
+  source: Pick<ToolSourceStanding, 'authorized' | 'credentials' | 'kind' | 'lastTested'>,
+  now: number,
+): string[] {
+  const facts: string[] = [];
+  if (source.authorized !== undefined) facts.push(SOURCE.status.auth.oauth);
+  else if (source.credentials.length > 0) facts.push(SOURCE.status.auth.credentials);
+  const tested = source.lastTested === undefined ? Number.NaN : Date.parse(source.lastTested);
+  if (!Number.isNaN(tested)) facts.push(SOURCE.status.lastTested(waitedFor(tested, now)));
+  facts.push(SOURCE.kinds[source.kind]);
+  return facts;
+}
+
+/** The name a source's tool has for a person: its own name read as words ("list_invoices" is "List invoices"). */
+export function sourceToolHeading(tool: Pick<ToolSourceTool, 'tool'>): string {
+  return humanizeName(tool.tool);
+}
+
+/**
+ * The Default asks level a source's tool has (rows 32l, 32r): the one the host reports, which is
+ * the owner's pick or the level the tier gives, and for a host that reports none the tier's own:
+ * a tool that only reads never asks, a dangerous one always asks, and one that changes something or
+ * declares nothing asks on changes. Blocked is never a default.
+ */
+export function sourceToolApproval(
+  tool: Pick<ToolSourceTool, 'approval' | 'tier'>,
+): SourceToolApproval {
+  if (tool.approval !== undefined) return tool.approval;
+  const tier = sourceToolTier(tool);
+  if (tier === 'read-only') return 'never';
+  if (tier === 'dangerous') return 'always';
+  return 'on-changes';
+}
+
+/**
+ * Whether a source's tool has a setting saved that the running host has not loaded yet: its Accepts
+ * secrets switch or its On checkbox differs from what is running. The host loads either at its next
+ * start.
+ */
+export function sourceToolWaitsForRestart(
+  tool: Pick<ToolSourceTool, 'acceptsSecrets' | 'savedAcceptsSecrets' | 'enabled' | 'savedEnabled'>,
+): boolean {
+  return (
+    tool.savedAcceptsSecrets !== tool.acceptsSecrets ||
+    (tool.savedEnabled ?? tool.enabled ?? true) !== (tool.enabled ?? true)
   );
 }

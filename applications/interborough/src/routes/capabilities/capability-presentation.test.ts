@@ -11,6 +11,7 @@ import {
   isUntrusted,
   matchesFilter,
   matchesSkillFilter,
+  matchesSourceFilter,
   matchesToolFilter,
   riskLabel,
   riskTooltip,
@@ -18,12 +19,18 @@ import {
   skillKey,
   skillMeta,
   skillSourceLabel,
+  sourceHeading,
   sourceKindLabel,
   sourceStateDescription,
   sourceStateLabel,
   sourceStateVariant,
+  sourceStatusFacts,
+  sourceStatusTone,
+  sourceToolApproval,
+  sourceToolHeading,
   sourceToolStanding,
   sourceToolTier,
+  sourceToolWaitsForRestart,
   tierLabel,
   tierOf,
   tierVariant,
@@ -313,7 +320,68 @@ describe('a tool source', () => {
       expect(sourceStateDescription(state)).not.toBe('');
     }
     const source = { kind: 'openapi' } as ToolSourceStanding;
-    expect(sourceKindLabel(source)).toBe('OpenAPI service');
+    expect(sourceKindLabel(source)).toBe('OpenAPI spec');
     expect(sourceKindLabel({ ...source, kind: 'mcp' })).toBe('MCP server');
+  });
+
+  test('is named by what the host saved, and by its identifier when it saved nothing (rows 31o, 32k)', () => {
+    expect(sourceHeading({ id: 'github', name: 'GitHub' })).toBe('GitHub');
+    expect(sourceHeading({ id: 'github', name: null })).toBe('github');
+    expect(sourceHeading({ id: 'github', name: '  ' })).toBe('github');
+    expect(sourceHeading({ id: 'github' })).toBe('github');
+    expect(matchesSourceFilter({ id: 'gh', name: 'GitHub' }, 'hub')).toBe(true);
+    expect(matchesSourceFilter({ id: 'gh', name: 'GitHub' }, 'gh')).toBe(true);
+    expect(matchesSourceFilter({ id: 'gh', name: 'GitHub' }, 'jira')).toBe(false);
+  });
+
+  test('draws the dot of each state, a source waiting for a restart as the hollow one', () => {
+    expect(sourceStatusTone('loaded')).toBe('success');
+    expect(sourceStatusTone('failed')).toBe('danger');
+    expect(sourceStatusTone('needs-authorization')).toBe('warning');
+    expect(sourceStatusTone('pending-restart')).toBe('pending');
+  });
+
+  test('lists how it signs in, when it was last tested and what it is, in that order (row 32k)', () => {
+    const now = Date.parse('2026-11-11T10:00:00.000Z');
+    const tested = '2026-11-11T09:00:00.000Z';
+    expect(
+      sourceStatusFacts({ kind: 'openapi', credentials: ['key'], lastTested: tested }, now),
+    ).toEqual(['Credential stored', 'last tested 1 h ago', 'OpenAPI spec']);
+    // An OAuth source says so, whether or not it holds tokens; one with nothing stored and no test says only what it is.
+    expect(sourceStatusFacts({ kind: 'mcp', credentials: [], authorized: false }, now)).toEqual([
+      'OAuth sign-in',
+      'MCP server',
+    ]);
+    expect(sourceStatusFacts({ kind: 'mcp', credentials: [] }, now)).toEqual(['MCP server']);
+    // A time that is not a time is left out.
+    expect(
+      sourceStatusFacts({ kind: 'mcp', credentials: [], lastTested: 'yesterday' }, now),
+    ).toEqual(['MCP server']);
+  });
+
+  test('names a tool for a person and gives it the Default asks level its tier gives (rows 32l, 32r)', () => {
+    expect(sourceToolHeading({ tool: 'list_invoices' })).toBe('List invoices');
+    expect(sourceToolApproval(SOURCE_TOOL)).toBe('never');
+    expect(sourceToolApproval({ ...SOURCE_TOOL, tier: 'mutating' })).toBe('on-changes');
+    expect(sourceToolApproval({ ...SOURCE_TOOL, tier: 'dangerous' })).toBe('always');
+    // A tool that declares nothing asks on changes, never Never.
+    expect(sourceToolApproval({ ...SOURCE_TOOL, tier: null })).toBe('on-changes');
+    // The level the host reports is the one shown, the owner's pick included.
+    expect(sourceToolApproval({ ...SOURCE_TOOL, tier: 'dangerous', approval: 'never' })).toBe(
+      'never',
+    );
+  });
+
+  test('has a setting waiting for a restart when the saved switch or checkbox differs from the running one', () => {
+    expect(sourceToolWaitsForRestart(SOURCE_TOOL)).toBe(false);
+    expect(sourceToolWaitsForRestart({ ...SOURCE_TOOL, savedAcceptsSecrets: true })).toBe(true);
+    expect(sourceToolWaitsForRestart({ ...SOURCE_TOOL, enabled: true, savedEnabled: false })).toBe(
+      true,
+    );
+    expect(sourceToolWaitsForRestart({ ...SOURCE_TOOL, enabled: false, savedEnabled: false })).toBe(
+      false,
+    );
+    // A host that reports nothing about it reads the tool as on, and nothing waits.
+    expect(sourceToolWaitsForRestart({ ...SOURCE_TOOL, savedEnabled: true })).toBe(false);
   });
 });

@@ -67,9 +67,10 @@ async function choose(id: string): Promise<void> {
   await fireEvent.click(field(id));
 }
 
+/** The button named `label` by its text or, for the header's icon-only "+", by its accessible name. */
 function buttonLabelled(label: string): HTMLElement {
   const found = [...document.body.querySelectorAll<HTMLElement>('button')].find(
-    (button) => button.textContent?.trim() === label,
+    (button) => button.textContent?.trim() === label || button.getAttribute('aria-label') === label,
   );
   if (found === undefined) throw new Error(`no button labelled ${label}`);
   return found;

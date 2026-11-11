@@ -1,7 +1,7 @@
 /**
  * A stand-in for the host's tool-source routes, for the Sources tab tests: it answers
  * `GET /host/tool-sources`, `PUT /host/tool-sources/<id>/tools`, `POST …/authorize`,
- * `GET …/affected-agents`, `DELETE /host/tool-sources/<id>`, and (COR-1991) `POST …/probe`,
+ * `GET …/affected-agents`, `DELETE /host/tool-sources/<id>`, `POST …/test` (COR-2022), and (COR-1991) `POST …/probe`,
  * `PUT /host/tool-sources/<id>` and `POST /host/restart` from state a test holds, and records
  * what it was sent. The real routes are exercised against a real host in
  * `src/host/host-tool-sources.test.ts` and the Playwright suite (`connect-tools.spec.ts`).
@@ -12,6 +12,7 @@ import type {
   ToolSourceProbe,
   ToolSourceStanding,
   ToolSourceTool,
+  ToolSourceToolSettings,
 } from '../../lib/host-tool-sources.ts';
 
 /** One request the stand-in answered. */
@@ -29,6 +30,15 @@ export type FakeToolSources = {
   probe: ToolSourceProbe;
   /** Makes the next probe answer with this response instead of `probe`. */
   refuseProbeNext?: Response | undefined;
+  /**
+   * What `POST …/test` answers for a saved source (COR-2022). Left out, it lists the source's own
+   * tools, as a source that answers does.
+   */
+  testAnswer?: ToolSourceProbe | undefined;
+  /** When a test that lists the tools reached the source, as an ISO 8601 time. Left out, `lastTested` is not moved. */
+  testedAt?: string | undefined;
+  /** Makes the next test answer with this response instead of `testAnswer`. */
+  refuseTestNext?: Response | undefined;
   /** What `POST /host/restart` answers. */
   restart: Response;
   /** Whether a `202` really restarts the host, so the sources waiting for it load. Off: nothing supervises it. */
@@ -171,14 +181,45 @@ export function fakeToolSources(initial: {
       });
     }
     if (found === undefined) return Response.json({ error: 'not-found' }, { status: 404 });
+    if (method === 'POST' && rest === 'test') {
+      const refusal = host.refuseTestNext;
+      host.refuseTestNext = undefined;
+      if (refusal !== undefined) return refusal;
+      const answer: ToolSourceProbe = host.testAnswer ?? {
+        outcome: 'listed',
+        tools: found.tools.map((tool) => ({ name: tool.name, tool: tool.tool, tier: tool.tier })),
+        skipped: [],
+      };
+      if (answer.outcome === 'listed' && host.testedAt !== undefined) {
+        found.lastTested = host.testedAt;
+      }
+      return Response.json(answer);
+    }
     if (method === 'PUT' && rest === 'tools') {
-      const settings = (body as { tools: Record<string, { acceptsSecrets: boolean }> }).tools;
-      found.tools = found.tools.map((tool) =>
-        settings[tool.tool] === undefined
-          ? tool
-          : { ...tool, savedAcceptsSecrets: settings[tool.tool]!.acceptsSecrets },
-      );
-      if (found.tools.some((tool) => tool.savedAcceptsSecrets !== tool.acceptsSecrets)) {
+      // A field left out keeps its saved value, as the host merges them (COR-2022).
+      const settings = (body as { tools: Record<string, ToolSourceToolSettings> }).tools;
+      found.tools = found.tools.map((tool) => {
+        const change = settings[tool.tool];
+        if (change === undefined) return tool;
+        const next = { ...tool };
+        if (change.acceptsSecrets !== undefined) next.savedAcceptsSecrets = change.acceptsSecrets;
+        if (change.enabled !== undefined) next.savedEnabled = change.enabled;
+        if (change.approval === null) {
+          delete next.approval;
+          delete next.approvalSaved;
+        } else if (change.approval !== undefined) {
+          next.approval = change.approval;
+          next.approvalSaved = true;
+        }
+        return next;
+      });
+      if (
+        found.tools.some(
+          (tool) =>
+            tool.savedAcceptsSecrets !== tool.acceptsSecrets ||
+            (tool.savedEnabled ?? tool.enabled ?? true) !== (tool.enabled ?? true),
+        )
+      ) {
         found.settingsPending = true;
       }
       return Response.json({ id, changed: true, restartRequired: true });

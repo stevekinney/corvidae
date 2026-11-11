@@ -23,6 +23,8 @@
   interface Props {
     /** The source the question is about. */
     id: string;
+    /** What a person calls the source, which the question names. Defaults to the identifier. */
+    name?: string;
     /** Whether the question is showing. */
     open: boolean;
     onClose: () => void;
@@ -30,7 +32,7 @@
     onRemoved: () => void;
   }
 
-  let { id, open, onClose, onRemoved }: Props = $props();
+  let { id, name, open, onClose, onRemoved }: Props = $props();
 
   const copy = CAPABILITIES_COPY.source.remove;
   const queryClient = useQueryClient();
@@ -80,7 +82,7 @@
 </script>
 
 {#if open}
-  <Modal open title={copy.title(id)} onDismiss={onClose}>
+  <Modal open title={copy.title(name ?? id)} onDismiss={onClose}>
     {#snippet children()}
       <div class="ib-source-removal" data-testid="source-removal">
         <p class="ib-source-removal__lead">{copy.intro}</p>

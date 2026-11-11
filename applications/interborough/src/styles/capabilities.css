@@ -13,13 +13,6 @@
   padding-block-start: var(--cinder-space-3);
 }
 
-/* Where Sources keeps the action that adds one, above the list it adds to. */
-.ib-capabilities__toolbar {
-  display: flex;
-  justify-content: flex-end;
-  padding-block-end: var(--cinder-space-3);
-}
-
 /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
 .ib-capabilities__frame {
   block-size: max(28rem, calc(100dvh - 18rem));
@@ -262,31 +255,67 @@
   overflow-wrap: anywhere;
 }
 
-.ib-source__tools {
+/* The name and its address on the left, the actions on the right; on a narrow pane the actions wrap under. */
+.ib-source__top {
   display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--cinder-space-2) var(--cinder-space-4);
   min-width: 0;
 }
 
+.ib-source__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+/* Where the source stands: a dot and a word, then muted facts told apart by a rule. */
+.ib-source__status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  min-width: 0;
+}
+
+/* A source that needs a sign-in keeps its rows, paused: the words go muted, never dimmed with opacity. */
+.ib-source__table[data-paused] td,
+.ib-source__table[data-paused] a {
+  color: var(--cinder-text-muted);
+}
+
+/* A tool's cell: its name with the identifier beside it, then its Accepts secrets switch. */
 .ib-source__tool {
   display: flex;
   flex-direction: column;
   gap: var(--cinder-space-1);
   min-width: 0;
-  padding: var(--cinder-space-3) 0;
-  border-top: 1px solid var(--cinder-border-muted);
 }
 
-.ib-source__tool-heading,
 .ib-source__switch {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--cinder-space-1) var(--cinder-space-3);
   min-width: 0;
+}
+
+/* Under the table: the inline "Saved", what is paused, and the note about what a source offers. */
+.ib-source__after {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-source__saved {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
 }
 
 .ib-source__notes {

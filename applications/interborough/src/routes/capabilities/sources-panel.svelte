@@ -5,8 +5,12 @@
    * stands; its details list the tools it offers and let the owner set which of them accept
    * secrets. A source's tools join the Tools tab once the host has loaded them, which it does when
    * it starts, so a saved source that is not running yet comes with Restart Interborough
-   * (`restart-banner.svelte`). Connect a source opens the dialog that saves one
-   * (`connect-dialog.svelte`).
+   * (`restart-banner.svelte`).
+   *
+   * Connecting a source belongs to the page header: its "+" and the empty state's primary
+   * "Connect tools" both call `onConnect`, and the page opens the dialog that saves one
+   * (`connect-dialog.svelte`). With no source saved, the empty state's button is the only primary
+   * on the page (rows 31z, 32a).
    */
   import {
     Alert,
@@ -18,25 +22,38 @@
     SelectableRow,
     Skeleton,
   } from '@lostgradient/cinder';
+  import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
   import { onDestroy } from 'svelte';
 
   import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import {
-    matchesFilter,
+    matchesSourceFilter,
+    sourceHeading,
     sourceKindLabel,
     sourceStateLabel,
     sourceStateVariant,
     sourceWaitsForRestart,
   } from './capability-presentation.ts';
-  import ConnectDialog from './connect-dialog.svelte';
   import RestartBanner from './restart-banner.svelte';
   import { SourcesRestartFlow } from './restart-flow.svelte.ts';
   import SourceDetail from './source-detail.svelte';
+
+  interface Props {
+    /** Opens the dialog that connects a source. */
+    onConnect: () => void;
+    /**
+     * Counts up each time the page connects a source: the list reads the open source from the
+     * address once, when it is built, so a source just connected is opened by building the list
+     * again over the new address.
+     */
+    listVersion: number;
+  }
+
+  let { onConnect, listVersion }: Props = $props();
 
   const copy = CAPABILITIES_COPY;
   const selectionLocation = routerSelectionLocationFor('/capabilities');
@@ -53,14 +70,10 @@
 
   let filter = $state('');
   const all = $derived(sources.data?.sources ?? []);
-  const shown = $derived(all.filter((source) => matchesFilter(source.id, filter)));
+  const shown = $derived(all.filter((source) => matchesSourceFilter(source, filter)));
   const locked = $derived(sources.data?.lockReason !== undefined);
   const waiting = $derived(all.filter(sourceWaitsForRestart).length);
 
-  let connecting = $state(false);
-  // The list reads the open source from the address once, when it is built. A source just connected
-  // is opened by building the list again over the new address.
-  let listVersion = $state(0);
   // The restart outlives the sources that were waiting for it: it says how it ended.
   const restart = new SourcesRestartFlow();
   onDestroy(() => restart.dispose());
@@ -89,18 +102,14 @@
       description={copy.source.empty.description}
     >
       {#snippet action()}
-        <Button data-changes variant="primary" disabled={locked} onclick={() => (connecting = true)}
-          >{copy.source.connect.action}</Button
-        >
+        <Button data-changes variant="primary" disabled={locked} onclick={onConnect}>
+          {#snippet leadingIcon()}<Plus aria-hidden="true" size={16} />{/snippet}
+          {copy.source.connect.action}
+        </Button>
       {/snippet}
     </EmptyState>
   {:else}
     <RestartBanner flow={restart} {waiting} {locked} />
-    <div class="ib-capabilities__toolbar">
-      <Button data-changes variant="primary" disabled={locked} onclick={() => (connecting = true)}
-        >{copy.source.connect.action}</Button
-      >
-    </div>
     {#key listVersion}
       <div class="ib-capabilities__frame" data-shortcut-region="list-detail">
         <ListDetail
@@ -133,7 +142,7 @@
               data-source-row={source.id}
               data-state={source.state}
             >
-              {#snippet title()}<span class="ib-capability__identifier">{source.id}</span>{/snippet}
+              {#snippet title()}{sourceHeading(source)}{/snippet}
               {#snippet description()}{sourceKindLabel(source)}{/snippet}
               {#snippet meta()}
                 <Badge variant={sourceStateVariant(source.state)} size="sm"
@@ -164,16 +173,3 @@
     {/key}
   {/if}
 </div>
-
-<!-- Mounted only while it is open, so each time starts with an empty form. -->
-{#if connecting}
-  <ConnectDialog
-    existing={all.map((source) => source.id)}
-    onClose={() => (connecting = false)}
-    onConnected={(id) => {
-      connecting = false;
-      router.navigate(`/capabilities?tab=sources&source=${encodeURIComponent(id)}`);
-      listVersion += 1;
-    }}
-  />
-{/if}

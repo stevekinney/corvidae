@@ -109,12 +109,13 @@ test.describe('the Sources tab', () => {
 
       await expect(detail(page)).toHaveAttribute('data-source', E2E_TOOL_SOURCES.notes);
       await expect(page).toHaveURL(new RegExp(`source=${E2E_TOOL_SOURCES.notes}`));
-      await expect(
-        toolOf(page, E2E_TOOL_SOURCES.notes, 'lookup').getByTestId('tool-standing'),
-      ).toContainText(copy.source.tools.standing.runs);
-      await expect(
-        toolOf(page, E2E_TOOL_SOURCES.notes, 'wipe').getByTestId('tool-standing'),
-      ).toContainText(copy.source.tools.standing['asks-first']);
+      // Risk and Default asks are columns of the always-editable table (rows 32l, 32r).
+      const lookup = toolOf(page, E2E_TOOL_SOURCES.notes, 'lookup');
+      await expect(lookup.getByTestId('tool-risk')).toHaveText('Reads');
+      await expect(lookup.locator('select')).toHaveValue('never');
+      const wipe = toolOf(page, E2E_TOOL_SOURCES.notes, 'wipe');
+      await expect(wipe.getByTestId('tool-risk')).toHaveText('Dangerous');
+      await expect(wipe.locator('select')).toHaveValue('always');
       // Accepts secrets is off until the owner turns it on.
       await expect(switchOf(page, E2E_TOOL_SOURCES.notes, 'lookup')).not.toBeChecked();
       await checkA11y(`a source open at ${width}px`);

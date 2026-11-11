@@ -70,7 +70,8 @@ test('starts empty, and offers to connect a source', async ({ page, checkA11y })
   await page.goto(SOURCES);
 
   await expect(page.getByText(copy.empty.title)).toBeVisible();
-  await expect(page.getByRole('button', { name: copy.connect.action })).toBeVisible();
+  // The header's "+" and the empty state's primary button both connect tools (rows 31z, 32a).
+  await expect(page.getByRole('button', { name: copy.connect.action })).toHaveCount(2);
   await checkA11y('the empty Sources tab');
 });
 

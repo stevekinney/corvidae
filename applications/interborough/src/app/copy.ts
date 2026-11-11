@@ -5819,10 +5819,11 @@ export const CAPABILITIES_COPY = {
   },
   source: {
     loading: 'Loading tool sources',
+    /** First use (rows 31z, 32a): the one primary button on the page, which opens Connect tools. */
     empty: {
-      title: 'No tool sources yet',
+      title: 'No sources connected',
       description:
-        'A tool source is an MCP server or an OpenAPI service whose tools agents can call. The ones this host saved are listed here.',
+        'Connect an MCP server or an OpenAPI spec, and its tools join Capabilities straight away.',
     },
     filtered: {
       title: 'No sources match',
@@ -5833,7 +5834,7 @@ export const CAPABILITIES_COPY = {
       title: 'The tool sources could not be read',
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
-    kinds: { mcp: 'MCP server', openapi: 'OpenAPI service' },
+    kinds: { mcp: 'MCP server', openapi: 'OpenAPI spec' },
     states: {
       loaded: 'Connected',
       failed: 'Failed',
@@ -5875,6 +5876,20 @@ export const CAPABILITIES_COPY = {
       open: (name: string): string => `Open ${name} in Tools`,
       standing: { 'asks-first': 'Asks you first', runs: 'Runs without asking', blocked: 'Blocked' },
       standingLabel: 'By default',
+      /** The always-editable tool table (rows 32l, 32r): its caption and column heads. */
+      caption: (source: string): string => `Tools of ${source}`,
+      columns: { on: 'On', tool: 'Tool', risk: 'Risk', asks: 'Default asks' },
+      /** The name of a tool's On checkbox, which has no visible label of its own. */
+      onLabel: (tool: string): string => `On: ${tool}`,
+      /** The name of a tool's Default asks select, which has no visible label of its own. */
+      asksLabel: (tool: string): string => `Default asks: ${tool}`,
+      /** The line under the table that says a change was kept (row 32r); empty until one is. */
+      saved: 'Saved',
+      /** The note under the table (row 31r): how many are on, then what a source offers. */
+      note: (on: number, total: number): string =>
+        `${String(on)} of ${String(total)} ${total === 1 ? 'tool is' : 'tools are'} on. A source offers On or Off and a default Asks level; Blocked is a per-agent override. Agents get tools on each agent’s Access tab.`,
+      /** Under the table of a source that needs a sign-in (row 31u): its rows stay, muted. */
+      paused: 'Tools are paused until you sign in again.',
       acceptsSecrets: 'Accepts secrets',
       acceptsSecretsLabel: (tool: string): string => `Accepts secrets: ${tool}`,
       acceptsSecretsHelp:
@@ -5904,7 +5919,7 @@ export const CAPABILITIES_COPY = {
     },
     /** The dialog that connects a source (`connect-dialog.svelte`). */
     connect: {
-      action: 'Connect a source',
+      action: 'Connect tools',
       title: 'Connect a tool source',
       intro:
         'An MCP server or an OpenAPI service whose tools your agents can call. Its tools join Capabilities when Interborough starts again.',
@@ -6002,6 +6017,43 @@ export const CAPABILITIES_COPY = {
         headerRequired: 'Enter the header the key is sent in.',
       },
     },
+    /** The line under the heading that says where the source stands (rows 31o, 32k): a dot and a word, then muted facts. */
+    status: {
+      label: 'Source status',
+      /** How the source signs in, when the host says: an OAuth source, or one that holds a stored credential. */
+      auth: { oauth: 'OAuth sign-in', credentials: 'Credential stored' },
+      lastTested: (ago: string): string => `last tested ${ago}`,
+    },
+    /** The ⋯ menu beside Test connection (row 32m): its button's name, and its entries in order. */
+    menu: {
+      label: 'More about this source',
+      edit: 'Edit connection',
+      /** Editing a saved connection happens on the Connect tools page, which does not read a saved source yet. */
+      editUnavailable: 'Editing a saved connection is not available yet.',
+      test: 'Test connection',
+      remove: 'Remove source…',
+    },
+    /** Test connection on a saved source (rows 32i, 32q): in flight, passed, asked to sign in, and failed. */
+    test: {
+      action: 'Test connection',
+      again: 'Test again',
+      testing: (name: string): string => `Testing ${name}…`,
+      /** Added after 15 seconds, as Connect tools says it. */
+      slow: 'Taking longer than usual',
+      passed: (name: string, count: number): string =>
+        count === 0
+          ? `Reached ${name}. It lists no tools.`
+          : count === 1
+            ? `Reached ${name}. It lists 1 tool.`
+            : `Reached ${name}. It lists ${String(count)} tools.`,
+      needsAuthorization: 'It answered and asks you to sign in. Sign in, then test again.',
+      failedTitle: (name: string): string => `Couldn’t reach ${name}`,
+      /** `where` is the source’s address, or its name when it has none. */
+      failedBody: (where: string): string => `${where} didn’t answer.`,
+      failedSlow: 'The test showed “Taking longer than usual” after 15 s, then stopped.',
+      toolsKept: 'Its tools stay as they were.',
+      refused: 'The connection could not be tested',
+    },
     /** The restart that lists the tools of the sources saved since the host started (`restart-banner.svelte`). */
     restart: {
       title: (count: number): string =>
@@ -6027,7 +6079,7 @@ export const CAPABILITIES_COPY = {
       },
     },
     remove: {
-      action: 'Remove source',
+      action: 'Remove source…',
       title: (id: string): string => `Remove ${id}?`,
       intro:
         'Its credentials are cleared and it leaves the list at once. Its tools stop running now, and leave Capabilities when Interborough starts again.',

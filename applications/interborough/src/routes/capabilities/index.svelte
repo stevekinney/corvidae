@@ -22,6 +22,7 @@
   import { getToolSources } from '../../lib/host-tool-sources.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import ConnectDialog from './connect-dialog.svelte';
   import SkillsPanel from './skills-panel.svelte';
   import SourcesPanel from './sources-panel.svelte';
   import ToolsPanel from './tools-panel.svelte';
@@ -70,6 +71,15 @@
   const skillCount = $derived(countOf(skills.data?.skills.length));
   const sourceCount = $derived(countOf(sources.data?.sources.length));
 
+  // Connecting a source is the page's one create action, a secondary "+" in the header on every tab
+  // (rows 31z, 32a). It opens the dialog that saves one; the Sources tab's empty state asks for the
+  // same dialog with its primary button.
+  let connecting = $state(false);
+  // The Sources list reads the open source from the address once, when it is built. A source just
+  // connected is opened by building the list again over the new address.
+  let listVersion = $state(0);
+  const locked = $derived(sources.data?.lockReason !== undefined);
+
   /** Puts a tab the person picked in the address; the open item belongs to a tab, so it is left behind. */
   function writeTab(next: string): void {
     if (tabOf(router.search) === next) return;
@@ -88,7 +98,15 @@
 {/snippet}
 
 <section class="ib-capabilities" data-page="capabilities">
-  <PageHeader title={copy.title} description={copy.description} />
+  <PageHeader
+    title={copy.title}
+    description={copy.description}
+    createAction={{
+      label: copy.source.connect.action,
+      disabled: locked,
+      onclick: () => (connecting = true),
+    }}
+  />
   <Tabs bind:value={activeTab} onValueChange={writeTab}>
     <Tabs.List label={copy.tabsLabel}>
       <Tabs.Trigger value="tools" label={copy.tabs.tools}
@@ -103,6 +121,21 @@
     </Tabs.List>
     <Tabs.Panel value="tools"><ToolsPanel /></Tabs.Panel>
     <Tabs.Panel value="skills"><SkillsPanel /></Tabs.Panel>
-    <Tabs.Panel value="sources"><SourcesPanel /></Tabs.Panel>
+    <Tabs.Panel value="sources"
+      ><SourcesPanel onConnect={() => (connecting = true)} {listVersion} /></Tabs.Panel
+    >
   </Tabs>
 </section>
+
+<!-- Mounted only while it is open, so each time starts with an empty form. -->
+{#if connecting}
+  <ConnectDialog
+    existing={(sources.data?.sources ?? []).map((source) => source.id)}
+    onClose={() => (connecting = false)}
+    onConnected={(id) => {
+      connecting = false;
+      router.navigate(`/capabilities?tab=sources&source=${encodeURIComponent(id)}`);
+      listVersion += 1;
+    }}
+  />
+{/if}
