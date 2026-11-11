@@ -605,6 +605,17 @@ Set `sourcePresentation="inline"` for one chip per source instead of a single So
 <Chat id="assistant-chat" {conversation} {sourcesByMessageId} sourcePresentation="inline" />
 ```
 
+## Availability
+
+Set `availability` while the conversation cannot be shown as it is. It replaces the transcript, and for two of its kinds the composer too:
+
+- `{ kind: 'loading', slowAfterSeconds?, onCancel?, labels? }` draws skeleton turns with a status line that reads `Loading conversation…` and the seconds so far. The editor stays, and Send reads `Loading…` and waits for the history; the typed text is kept. Once the read has run for `slowAfterSeconds` (default 10) the line says it is slow, with a spinner, the elapsed time and Cancel, which is drawn only when `onCancel` is set. The ticking number is never in a live region: a screen reader hears the status once, and again when the read turns slow.
+- `{ kind: 'canceled', onRetry, allConversations?, labels? }` is what the host sets after Cancel: a neutral state with a primary Retry and, when given, a secondary `allConversations` button. The composer still waits.
+- `{ kind: 'error', cause, detail?, onRetry, allConversations?, labels? }` replaces the transcript and the composer with Cinder's `ErrorState`: the title, the `cause` in plain words, an optional `detail` behind a disclosure, a primary Try again and a secondary `allConversations`.
+- `{ kind: 'deleted', allConversations, labels? }` replaces them with a neutral `ErrorState` that says `This conversation was deleted`, with `allConversations` (for example All conversations) as its primary button.
+
+`labels` replaces any of the words (`ChatAvailabilityLabels`), and `allConversations` is a `ChatAvailabilityAction`, a label and an `onclick`. The transcript and the composer stay mounted but out of sight while a state shows, so a draft and the scroll position survive, and both come back when `availability` is cleared. For an archived or read-only conversation, whose transcript stays readable, use the neutral `composerStatus` bars above instead.
+
 ## Guidance
 
 ### Use When
@@ -651,6 +662,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `atBottom` | `boolean` | no | — | Whether the message viewport is scrolled to the bottom. Bindable; updated automatically as the user scrolls. Default `true`. |
+| `availability` | `ChatAvailability` | no | — | Set while the conversation cannot be shown as it is: a `loading` read with skeleton turns, a status line that counts the seconds and Cancel once it is slow; a `canceled` read with Retry; an `error` or a `deleted` conversation drawn with Cinder's `ErrorState` in place of the transcript and the composer. See Availability. |
 | `bottomThreshold` | `number` | no | — | Distance in pixels from the bottom of the scroll viewport within which the chat is considered "at bottom" and will auto-scroll on new messages. Default `150`. |
 | `class` | `string` | no | — | Additional class name merged onto the outer Chat layout element. |
 | `composerAriaActiveDescendant` | `string` | no | — | `aria-activedescendant` passed to the composer textarea for overlays such as slash-command menus. |

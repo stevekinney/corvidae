@@ -242,6 +242,12 @@ export type {
   ScrollState,
 } from './container/index.ts';
 
+export type {
+  ChatAvailability,
+  ChatAvailabilityAction,
+  ChatAvailabilityLabels,
+} from './container/chat-availability.ts';
+
 // Export
 export { ConversationExportActions } from './export/index.ts';
 

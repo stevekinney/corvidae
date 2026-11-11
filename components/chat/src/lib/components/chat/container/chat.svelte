@@ -51,6 +51,8 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatApprovalDrawer from './chat-approval-drawer.svelte';
+  import ChatAvailabilityState from './chat-availability-state.svelte';
+  import { availabilityLabels, availabilityReplacesComposer } from './chat-availability.ts';
   import ChatFollowUpDiscardDrawer from './chat-follow-up-discard-drawer.svelte';
   import ChatFollowUpDrawer from './chat-follow-up-drawer.svelte';
   import { appendToDraft, followUpText, type QueuedFollowUp } from './chat-follow-up-queue.ts';
@@ -150,6 +152,7 @@
     composerFormattingToolbar = false,
     composerMarkdownStyling = true,
     composerStatus,
+    availability,
     empty,
     trailing,
     emptyTitle = 'No messages yet',
@@ -1311,6 +1314,17 @@
   // The line under the composer is the host's. A pending approval is shown in the transcript, so
   // the composer keeps its hint and stays live (a message sent now steers the run).
   const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
+  // A conversation that is not available (loading, canceled, failed or deleted) stands in the
+  // transcript's place; a failed or deleted one has nothing to send to, so it takes the composer's
+  // place too, while a loading or canceled one keeps the editor and Send waits for the history.
+  // Both stay mounted but out of sight, so a draft and the scroll state survive.
+  const transcriptHidden = $derived(availability !== undefined);
+  const composerHidden = $derived(availabilityReplacesComposer(availability));
+  const composerWaitsForHistory = $derived(
+    availability?.kind === 'loading' || availability?.kind === 'canceled'
+      ? availabilityLabels(availability).sendWaits
+      : undefined,
+  );
   // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
   // question just reads Answer; a choice says the choices are above and an answer of your own is
   // welcome. A host that draws its own question (`composerAnswering`) words the placeholder itself.
@@ -2114,6 +2128,7 @@
         aria-relevant={isVirtualized ? undefined : 'additions'}
         data-cinder-virtualized={isVirtualized ? '' : undefined}
         data-cinder-history-restoring={isRestoringNonVirtualHistory ? '' : undefined}
+        style:display={transcriptHidden ? 'none' : undefined}
         tabindex="0"
         onwheel={getHistoryRestoration().handleUserInput}
         ontouchstart={getHistoryRestoration().handleUserInput}
@@ -2199,8 +2214,12 @@
       </div>
     {/key}
 
+    {#if availability !== undefined}
+      <ChatAvailabilityState {availability} />
+    {/if}
+
     <!-- Input Area with Jump Buttons -->
-    <div class="chat-input-wrapper">
+    <div class="chat-input-wrapper" style:display={composerHidden ? 'none' : undefined}>
       <ChatJumpControls
         showJumpButton={scrollState.showJumpButton}
         hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
@@ -2259,7 +2278,7 @@
           paused={disabled}
           {pausedReason}
           sending={composerSending}
-          starting={composerStarting}
+          starting={composerStarting ?? composerWaitsForHistory}
           clearOnSubmit={clearComposerOnSubmit}
           allowFollowUp={followUpsEnabled && !composerCompact}
           queueing={approvalWaiting || followUps.holding}

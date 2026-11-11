@@ -10,6 +10,7 @@ import type {
   ChatToolApprovalResolution,
 } from './adapter/chat-adapter.ts';
 import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
+import type { ChatAvailability } from './container/chat-availability.ts';
 import type {
   ChatScrollStateChangeEvent,
   ChatStopGeneratingEvent,
@@ -241,6 +242,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerMarkdownStyling?: boolean;
   /** The line under the composer, such as a reconnect, queued follow-ups or the host's own note; or, with `kind: 'blocked'`, the whole composer: one compact row that says why sending is off, in place of the text box and the controls. When omitted, the composer shows its hint. */
   composerStatus?: ChatComposerStatus | undefined;
+  /** Set while the conversation cannot be shown as it is: `{ kind: 'loading' }` draws skeleton turns and a status line that counts the seconds, keeps the editor and has Send wait for the history, and once the read is slow adds Cancel (`onCancel`); `{ kind: 'canceled', onRetry }` offers Retry; `{ kind: 'error', cause, onRetry }` replaces the transcript and the composer with Cinder's `ErrorState`, with Try again and `allConversations`; `{ kind: 'deleted', allConversations }` does the same for a conversation that no longer exists. Left out, the conversation shows as usual. */
+  availability?: ChatAvailability | undefined;
   empty?: Snippet;
   /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
   trailing?: Snippet;

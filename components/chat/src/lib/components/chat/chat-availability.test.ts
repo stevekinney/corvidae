@@ -1,0 +1,264 @@
+/**
+ * A conversation that is not available stands in the transcript's place (COR-2285, rows V2 and V3):
+ * skeleton turns with `Loading conversation…` and the seconds so far, the editor kept and Send
+ * waiting for the history, a slow read with its indicator, elapsed time and Cancel, Retry after
+ * Cancel, Cinder's `ErrorState` with Try again and All conversations for a history that failed, and
+ * a deleted conversation with All conversations as the primary action and no composer.
+ */
+
+/// <reference lib="dom" />
+import { afterAll, afterEach, describe, expect, test } from 'bun:test';
+import { tick } from 'svelte';
+
+import { setupHappyDom } from '@lostgradient/testing';
+import {
+  appendAssistantMessage,
+  appendUserMessage,
+  createConversationHistory,
+} from './builders.ts';
+import type { ChatAvailability } from './container/chat-availability.ts';
+
+setupHappyDom();
+
+class TestResizeObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+}
+const originalResizeObserver = globalThis.ResizeObserver;
+globalThis.ResizeObserver = TestResizeObserver;
+
+class TestIntersectionObserver {
+  observe(): void {}
+  unobserve(): void {}
+  disconnect(): void {}
+  takeRecords(): IntersectionObserverEntry[] {
+    return [];
+  }
+}
+const originalIntersectionObserver = globalThis.IntersectionObserver;
+globalThis.IntersectionObserver =
+  TestIntersectionObserver as unknown as typeof IntersectionObserver;
+afterAll(() => {
+  globalThis.ResizeObserver = originalResizeObserver;
+  globalThis.IntersectionObserver = originalIntersectionObserver;
+});
+
+const { render, fireEvent, cleanup } = await import('@testing-library/svelte');
+const { default: Chat } = await import('./chat.svelte');
+
+afterEach(() => {
+  cleanup();
+  document.body.replaceChildren();
+});
+
+function conversation(id: string) {
+  return appendAssistantMessage(
+    appendUserMessage(createConversationHistory({ id }), 'hi'),
+    'hello',
+  );
+}
+
+function mountWith(id: string, availability: ChatAvailability | undefined) {
+  return render(Chat, {
+    props: { id, conversation: conversation(`${id}-conversation`), availability },
+  });
+}
+
+function buttonNamed(container: HTMLElement, name: string): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => (button.getAttribute('aria-label') ?? button.textContent?.trim()) === name,
+  );
+}
+
+function timelineOf(container: HTMLElement): HTMLElement {
+  return container.querySelector<HTMLElement>('.chat-timeline')!;
+}
+
+function composerWrapperOf(container: HTMLElement): HTMLElement {
+  return container.querySelector<HTMLElement>('.chat-input-wrapper')!;
+}
+
+describe('a conversation that is loading', () => {
+  test('draws skeleton turns and a status line with the seconds so far, in the transcript place', () => {
+    const { container } = mountWith('availability-loading', { kind: 'loading' });
+
+    const region = container.querySelector('[data-chat-availability="loading"]')!;
+    expect(region.getAttribute('aria-busy')).toBe('true');
+    expect(region.querySelectorAll('.cinder-skeleton').length).toBeGreaterThan(2);
+    expect(region.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
+      'Loading conversation…',
+    );
+    expect(region.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toBe(
+      '0 s',
+    );
+    // The transcript that was there is out of sight, not discarded.
+    expect(timelineOf(container).style.display).toBe('none');
+    // One status for a screen reader, with no ticking number in it.
+    const status = region.querySelector('[role="status"]')!;
+    expect(status.textContent?.trim()).toBe('Loading conversation…');
+    expect(status.textContent).not.toMatch(/\d/u);
+  });
+
+  test('keeps the editor, and Send waits for the history to load', () => {
+    const { container } = mountWith('availability-send', { kind: 'loading' });
+
+    expect(composerWrapperOf(container).style.display).not.toBe('none');
+    const editor = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    expect(editor.disabled).toBe(false);
+    expect(editor.readOnly).toBe(false);
+    const send = buttonNamed(container, 'Loading…')!;
+    expect(send.disabled).toBe(true);
+  });
+
+  test('once the read is slow, adds an indicator, the elapsed time and Cancel', async () => {
+    let canceled = 0;
+    const { container } = mountWith('availability-slow', {
+      kind: 'loading',
+      slowAfterSeconds: 0,
+      onCancel: () => (canceled += 1),
+    });
+    await tick();
+
+    const region = container.querySelector('[data-chat-availability="loading"]')!;
+    expect(region.getAttribute('data-slow')).toBe('');
+    expect(region.querySelector('.cinder-spinner')).not.toBeNull();
+    expect(region.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
+      'Still loading. This is taking longer than usual.',
+    );
+    expect(region.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toMatch(
+      /^\d+ s$/u,
+    );
+
+    const cancel = buttonNamed(container, 'Cancel')!;
+    await fireEvent.click(cancel);
+    expect(canceled).toBe(1);
+  });
+
+  test('draws no Cancel when the host gives no way to cancel', async () => {
+    const { container } = mountWith('availability-no-cancel', {
+      kind: 'loading',
+      slowAfterSeconds: 0,
+    });
+    await tick();
+
+    expect(buttonNamed(container, 'Cancel')).toBeUndefined();
+  });
+
+  test('says the host words instead of the defaults', () => {
+    const { container } = mountWith('availability-labels', {
+      kind: 'loading',
+      labels: { loading: 'جارٍ تحميل المحادثة…', secondsUnit: 'ث', sendWaits: 'انتظر' },
+    });
+
+    expect(container.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
+      'جارٍ تحميل المحادثة…',
+    );
+    expect(container.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toBe(
+      '0 ث',
+    );
+    expect(buttonNamed(container, 'انتظر')).not.toBeUndefined();
+  });
+
+  test('gives the transcript back when the availability clears', async () => {
+    const view = mountWith('availability-clears', { kind: 'loading' });
+    expect(timelineOf(view.container).style.display).toBe('none');
+
+    await view.rerender({ availability: undefined });
+    expect(view.container.querySelector('[data-chat-availability]')).toBeNull();
+    expect(timelineOf(view.container).style.display).not.toBe('none');
+    expect(buttonNamed(view.container, 'Loading…')).toBeUndefined();
+  });
+});
+
+describe('a canceled read', () => {
+  test('offers Retry as the primary action and All conversations beside it', async () => {
+    const calls: string[] = [];
+    const { container } = mountWith('availability-canceled', {
+      kind: 'canceled',
+      onRetry: () => calls.push('retry'),
+      allConversations: { label: 'All conversations', onclick: () => calls.push('list') },
+    });
+
+    const state = container.querySelector('[data-chat-availability="canceled"]')!;
+    expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
+      'Loading was canceled',
+    );
+    const retry = buttonNamed(container, 'Retry')!;
+    const list = buttonNamed(container, 'All conversations')!;
+    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
+    // The editor still waits for the history.
+    expect(buttonNamed(container, 'Loading…')!.disabled).toBe(true);
+
+    await fireEvent.click(retry);
+    await fireEvent.click(list);
+    expect(calls).toEqual(['retry', 'list']);
+  });
+});
+
+describe('a history that could not be loaded', () => {
+  test('is an ErrorState with the cause, a primary Try again and a secondary All conversations, and no composer', async () => {
+    const calls: string[] = [];
+    const { container } = mountWith('availability-error', {
+      kind: 'error',
+      cause: 'Interborough didn’t send it back. Nothing was lost.',
+      detail: 'HTTP 500',
+      onRetry: () => calls.push('retry'),
+      allConversations: { label: 'All conversations', onclick: () => calls.push('list') },
+    });
+
+    const state = container.querySelector('[data-chat-availability="error"]')!;
+    expect(state.classList.contains('cinder-error-state')).toBe(true);
+    expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
+      'This conversation couldn’t be loaded',
+    );
+    expect(state.querySelector('.cinder-error-state-description')?.textContent?.trim()).toBe(
+      'Interborough didn’t send it back. Nothing was lost.',
+    );
+    expect(state.textContent).toContain('HTTP 500');
+    const retry = buttonNamed(container, 'Try again')!;
+    const list = buttonNamed(container, 'All conversations')!;
+    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(composerWrapperOf(container).style.display).toBe('none');
+    expect(timelineOf(container).style.display).toBe('none');
+
+    await fireEvent.click(retry);
+    await fireEvent.click(list);
+    expect(calls).toEqual(['retry', 'list']);
+  });
+
+  test('draws no All conversations when the host gives no way back', () => {
+    const { container } = mountWith('availability-error-alone', {
+      kind: 'error',
+      cause: 'It did not answer.',
+      onRetry: () => undefined,
+    });
+
+    expect(buttonNamed(container, 'Try again')).not.toBeUndefined();
+    expect(buttonNamed(container, 'All conversations')).toBeUndefined();
+  });
+});
+
+describe('a deleted conversation', () => {
+  test('says it was deleted, with All conversations as its primary action and no composer', async () => {
+    let went = 0;
+    const { container } = mountWith('availability-deleted', {
+      kind: 'deleted',
+      allConversations: { label: 'All conversations', onclick: () => (went += 1) },
+    });
+
+    const state = container.querySelector('[data-chat-availability="deleted"]')!;
+    expect(state.getAttribute('data-cinder-tone')).toBe('neutral');
+    expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
+      'This conversation was deleted',
+    );
+    const list = buttonNamed(container, 'All conversations')!;
+    expect(list.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(composerWrapperOf(container).style.display).toBe('none');
+
+    await fireEvent.click(list);
+    expect(went).toBe(1);
+  });
+});
