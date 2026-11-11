@@ -2578,6 +2578,16 @@
     padding-block-end: var(--cinder-chat-message-gap);
   }
 
+  /* The spacer's size and each row's offset are written inline and never transition. Under reduced
+   * motion Cinder's `foundation.css` gives every element a 0.01ms `transition-duration` and leaves
+   * `transition-property` at `all`, so a row whose offset changed still reported its old position
+   * until the next frame; the anchoring after a source list opens above the viewport read no drift
+   * and the visible message jumped (COR-2259). Cinder's VirtualList does the same (COR-1535). */
+  .chat-virtual-spacer,
+  .chat-virtual-row {
+    transition-property: none;
+  }
+
   /* The shared transcript ground separates assistant bubbles (--cinder-surface)
    * from the page-level background. Light mode keeps the inset well. Dark mode
    * drops to the canvas (COR-2287): code headers, table headers and the Sources
