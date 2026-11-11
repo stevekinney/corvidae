@@ -8,7 +8,8 @@
    * that waits on the person, and says "Unavailable" in neutral for one its plugin holds back. No
    * avatar is drawn.
    *
-   * The whole row is the link to the agent's page. At the right a fixed slot holds three icon
+   * The whole row is the link to the agent's page (a held-back agent has no page to open yet, so
+   * its row is not a link). At the right a fixed slot holds three icon
    * buttons, Memory, New chat and Edit, so the time column lines up whether or not an agent has an
    * editor. An agent a disabled plugin holds back has no buttons: the slot says why, in muted text.
    * New chat stays focusable but inert, with its reason, for an agent that answers with a model
@@ -174,16 +175,31 @@
   </span>
 {/snippet}
 
-<StackedListItem
-  href={router.href(agentPath(row.id))}
-  tooltip={row.title}
-  data-agent={row.id}
-  data-state={row.state}
-  {...status === undefined ? {} : { status: statusWord }}
-  {...activity === undefined ? {} : { time: timeText }}
-  {...phone ? {} : { trailing: actionSlot }}
-  {...phone && row.state === 'unavailable' ? { detail: heldLine } : {}}
->
-  {#snippet title()}{@render titleLine()}{/snippet}
-  {#snippet meta()}{@render lineTwo()}{/snippet}
-</StackedListItem>
+<!-- A held-back agent has no page to open yet: its address is not an agent the Bureau lists, so the
+     row is not a link, and the only way on is Enable and restart. -->
+{#if row.state === 'unavailable'}
+  <StackedListItem
+    tooltip={row.title}
+    data-agent={row.id}
+    data-state={row.state}
+    {...status === undefined ? {} : { status: statusWord }}
+    {...activity === undefined ? {} : { time: timeText }}
+    {...phone ? { detail: heldLine } : { trailing: actionSlot }}
+  >
+    {#snippet title()}{@render titleLine()}{/snippet}
+    {#snippet meta()}{@render lineTwo()}{/snippet}
+  </StackedListItem>
+{:else}
+  <StackedListItem
+    href={router.href(agentPath(row.id))}
+    tooltip={row.title}
+    data-agent={row.id}
+    data-state={row.state}
+    {...status === undefined ? {} : { status: statusWord }}
+    {...activity === undefined ? {} : { time: timeText }}
+    {...phone ? {} : { trailing: actionSlot }}
+  >
+    {#snippet title()}{@render titleLine()}{/snippet}
+    {#snippet meta()}{@render lineTwo()}{/snippet}
+  </StackedListItem>
+{/if}

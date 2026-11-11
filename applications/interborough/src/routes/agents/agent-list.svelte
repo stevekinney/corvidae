@@ -32,6 +32,7 @@
     ErrorState,
     FilterBar,
     PageHeader,
+    RelativeTime,
     Skeleton,
     StackedListItem,
     type FilterSegment,
@@ -39,11 +40,13 @@
   import { Plug, Plus } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+  import { getConnection } from '../../app/connection.svelte.ts';
   import {
     AGENT_EDITOR_COPY,
     AGENTS_COPY,
     CHAT_COPY,
     RETRY_LABEL,
+    STALE_DATA_LABEL,
     VIEW_COPY,
   } from '../../app/copy.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
@@ -180,7 +183,13 @@
   // What the page is: placeholders, the failed state (also after Cancel), the first-use state, the
   // state where only held-back agents exist, or the cards under the segments.
   let canceled = $state(false);
+  const connection = getConnection();
   const failed = $derived((agents.isError && agents.data === undefined) || canceled);
+  // A refresh that failed over a list already read leaves the list in place under the failure and
+  // the age of what is shown. A server that does not answer is the shell's banner instead.
+  const refreshFailed = $derived(
+    agents.isRefetchError && agents.data !== undefined && !connection.unreachable,
+  );
   const loading = $derived(!failed && agents.data === undefined);
   const nothing = $derived(
     agents.isSuccess && availableRows.length === 0 && heldRows.length === 0 && invalid.length === 0,
@@ -276,6 +285,20 @@
       plugins={heldPlugins}
       agents={heldRows.map((row) => row.title)}
     />
+
+    {#if refreshFailed}
+      <div data-testid="agents-refresh-failed">
+        <ErrorState
+          variant="flat"
+          title={VIEW_COPY.agents.error.title}
+          description={VIEW_COPY.agents.error.description}
+          headingLevel={2}
+          retryLabel={RETRY_LABEL}
+          onRetry={tryAgain}
+        />
+        <p>{STALE_DATA_LABEL} <RelativeTime date={agents.dataUpdatedAt} /></p>
+      </div>
+    {/if}
 
     {#if failed}
       <ErrorState

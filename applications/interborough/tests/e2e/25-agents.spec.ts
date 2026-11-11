@@ -43,7 +43,9 @@ test.describe('the list of agents', () => {
     await expect(
       row(page, 'demo:assistant').getByRole('link', { name: /^New chat with/ }),
     ).toBeVisible();
-    await expect(row(page, 'demo:assistant').getByRole('link', { name: /^Memory of/ })).toBeVisible();
+    await expect(
+      row(page, 'demo:assistant').getByRole('link', { name: /^Memory of/ }),
+    ).toBeVisible();
     // The seeded agent the host once kept private takes a chat as the others do.
     await expect(
       row(page, 'demo:internal').getByRole('link', { name: /^New chat with/ }),
@@ -78,7 +80,9 @@ test.describe('the list of agents', () => {
   test('opens an agent’s memory from its row', async ({ page }) => {
     await page.goto('/agents');
 
-    await row(page, 'demo:tool-runner').getByRole('link', { name: /^Memory of/ }).click();
+    await row(page, 'demo:tool-runner')
+      .getByRole('link', { name: /^Memory of/ })
+      .click();
 
     await expect(page).toHaveURL(/\/agents\/demo%3Atool-runner\/memories$/);
   });
@@ -86,7 +90,9 @@ test.describe('the list of agents', () => {
   test('New chat opens a working new chat with that agent', async ({ page }) => {
     await page.goto('/agents');
 
-    await row(page, 'demo:tool-runner').getByRole('link', { name: /^New chat with/ }).click();
+    await row(page, 'demo:tool-runner')
+      .getByRole('link', { name: /^New chat with/ })
+      .click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Atool-runner$/);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText(/tool-runner/i);

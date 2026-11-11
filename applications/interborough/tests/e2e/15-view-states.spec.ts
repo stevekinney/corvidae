@@ -14,7 +14,7 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import { NOT_FOUND_ROUTE_COPY, SETTINGS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { AGENTS_COPY, NOT_FOUND_ROUTE_COPY, SETTINGS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { HEALTH_ATTENTION_COPY, HEALTH_COUNTS_COPY } from '../../src/routes/health/health-copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
@@ -304,7 +304,27 @@ for (const view of VIEW_NAMES) {
           const pageOwnsState =
             (outcome === 'loading' && VIEWS[view].pageOwnsLoading === true) ||
             (outcome === 'error' && VIEWS[view].pageOwnsFailure === true);
-          if (pageOwnsState) {
+          // The Agents list owns its states on its own address (`ownsStatesOnPatterns`): the page
+          // keeps its heading and says the state beneath it, in its own words, never the frame's.
+          const ownsOnRoute =
+            outcome !== 'forbidden' &&
+            VIEWS[view].ownsStatesOnPatterns?.includes(PATHS[view]) === true;
+          if (ownsOnRoute) {
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
+              VIEW_COPY.agents.label,
+            );
+            const stateTitle =
+              outcome === 'error'
+                ? VIEW_COPY.agents.error.title
+                : outcome === 'empty'
+                  ? AGENTS_COPY.empty.title
+                  : undefined;
+            if (stateTitle !== undefined) {
+              await expect(
+                frame.getByRole('heading', { level: 2, name: stateTitle }),
+              ).toBeVisible();
+            }
+          } else if (pageOwnsState) {
             // The page draws its own loading and its own failure: its heading and navigation are
             // real text, and only the content is the state (Settings, rows 48t and 50m). Nothing
             // here is the frame's generic words.

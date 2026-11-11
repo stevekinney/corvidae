@@ -13,6 +13,7 @@ import { flushSync } from 'svelte';
 import { AGENTS_COPY, VIEW_COPY } from '../../app/copy.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import { createQueryClient, queryKeys } from '../../lib/query.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import AgentList from './agent-list.svelte';
@@ -117,6 +118,38 @@ describe('the Agents list when the read fails with nothing to show', () => {
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
     await findByRole('link', { name: /^Assistant/ });
     expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull();
+  });
+});
+
+describe('the Agents list when a refresh fails over a list already read', () => {
+  test('keeps the rows on screen under the failure, with Try again and the age of what is shown', async () => {
+    let failing = false;
+    restore = bureau({
+      'bureau.agents.list': () => {
+        if (failing) throw new StubFault('Unavailable', 503, 'The Bureau is down.');
+        return { agents: [AGENT] };
+      },
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    }).restore;
+    landAt('/agents');
+    const client = createQueryClient();
+    const { container, findByRole, findByTestId } = render(QueryPage, {
+      props: { page: AgentList, client },
+    } as never);
+    await findByRole('link', { name: /^Assistant/ });
+
+    failing = true;
+    await client.refetchQueries({ queryKey: queryKeys.agents.list() });
+    const failure = await findByTestId('agents-refresh-failed');
+    expect(failure.textContent).toContain(VIEW_COPY.agents.error.title);
+    expect(failure.textContent).toContain('Showing data from');
+    expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull();
+
+    failing = false;
+    await fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="agents-refresh-failed"]')).toBeNull(),
+    );
   });
 });
 

@@ -74,10 +74,10 @@
   const titles = $derived(plugins.map((plugin) => plugin.title));
   // What the restart was for, kept from the confirmation: once the host is back the held-back agents
   // are available, so the page no longer names them or the plugin.
-  let applied = $state<{ readonly plugins: readonly string[]; readonly agents: readonly string[] }>({
-    plugins: [],
-    agents: [],
-  });
+  let applied = $state<{
+    readonly plugins: readonly string[];
+    readonly agents: readonly string[];
+  }>({ plugins: [], agents: [] });
   const PLUGINS_PATH = '/settings/plugins';
 
   /** Why the plugin could not be enabled, or `undefined` while nothing has refused. */

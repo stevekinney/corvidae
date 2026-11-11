@@ -112,7 +112,9 @@ describe('the list of agents', () => {
     // The row is one link to the agent's page, and a modified click is left to the browser.
     const link = rows('assistant')?.querySelector<HTMLAnchorElement>('a[href="/agents/assistant"]');
     expect(link).not.toBeNull();
-    link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
+    link?.dispatchEvent(
+      new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
+    );
     expect(router.pathname).toBe('/agents');
     link?.click();
     expect(router.pathname).toBe('/agents/assistant');
