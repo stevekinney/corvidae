@@ -34,6 +34,7 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type PermissionMode,
   readGenerationProfile,
+  declaredTaintThreshold,
   resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
   RunRemovedEvent as StoreRunRemovedEvent,
@@ -2994,6 +2995,9 @@ async function constructBureau<const D extends AgentDefinitions>(
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
+        ...(declaredTaintThreshold(agent) === undefined
+          ? {}
+          : { agentTaintThreshold: declaredTaintThreshold(agent) }),
         generationMode: readGenerationProfile(agent).mode,
         recoveredChild: childContext !== undefined,
         ...(agentBinding === undefined ? {} : { agentBinding }),

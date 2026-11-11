@@ -1186,6 +1186,8 @@ export type CatalogAgentRunOptionsResolution =
        * the run's fresh dispatch did not.
        */
       agentResolvesGuardrails?: boolean;
+      /** COR-2385 — the `taintThreshold` the agent declares in its own guardrails, when it does. */
+      agentTaintThreshold?: number;
       /**
        * COR-1996 — the agent's generation mode (`readGenerationProfile`), which the model policy
        * reads to tell a fixed agent, whose provider ignores a steered model, from a selectable
@@ -1250,6 +1252,8 @@ export interface SessionAgentRun {
   /** COR-1524 — the file definition the run is built from, when the agent is file-based. */
   readonly agentBinding?: FileAgentBinding;
   readonly agentResolvesGuardrails: boolean;
+  /** COR-2385 — the `taintThreshold` the agent declares in its own guardrails, when it does. */
+  readonly agentTaintThreshold?: number;
   /** COR-1996 — the agent's generation mode, which the model policy judges its steps by. */
   readonly generationMode: GenerationMode;
   /** The agent's own system prompt, or `undefined` when its definition declares none. */
@@ -3779,48 +3783,42 @@ async function buildRuntimeComposition(
       : undefined;
     // COR-2107 — the tracker a flagged recall taints. It is the Bureau's own tracker, seeded from
     // the session and writing back through the same seam every other tracker of the run uses
-    // (COR-2105), so the taint it raises is stored whichever tier resolved the run's guardrails,
-    // an agent's own included. When the Bureau runs no guardrails but the agent resolves its own,
-    // a tracker over the same seam stands in, so the agent's declaration is not left unable to
-    // taint its session.
+    // (COR-2105), so the taint it raises is stored whichever tier resolved the run's guardrails.
+    // Taint is a session fact (COR-2385): when the Bureau runs no guardrails, a tracker over the
+    // same seam stands in, for every kind of agent and for a run with none, so an opt-out of
+    // guardrails never decides whether a flagged recall taints the session.
     const recallTaint =
       guardrails?.taint ??
-      (sessionAgent?.agentResolvesGuardrails === true
-        ? createSessionTaintTracker({
-            ...(taintSeam.initial === undefined ? {} : { initial: taintSeam.initial }),
-            onTainted: taintSeam.onTainted,
-            runId: runIdOfTaint,
-          })
-        : undefined);
+      createSessionTaintTracker({
+        ...(taintSeam.initial === undefined ? {} : { initial: taintSeam.initial }),
+        onTainted: taintSeam.onTainted,
+        runId: runIdOfTaint,
+      });
 
     if (memory && memoryAuthority) {
       // COR-2107 — a recall a detector flagged at or above the run's taint threshold taints the
       // session, as any other scan path does (COR-2102).
+      // The agent's own declared threshold judges its recall first (COR-2385), then the Bureau's.
       const recallTaintThreshold =
-        guardrailsConfig?.taint?.taintThreshold ?? DEFAULT_TAINT_THRESHOLD;
+        sessionAgent?.agentTaintThreshold ??
+        guardrailsConfig?.taint?.taintThreshold ??
+        DEFAULT_TAINT_THRESHOLD;
       hooks.on(
         'prepareStep',
-        createMemoryRecallHook(
-          memory,
-          memoryAuthority,
-          memoryTarget,
-          recallTaint === undefined
-            ? undefined
-            : (detection, step) => {
-                if (detection.confidence < recallTaintThreshold) return;
-                recallTaint.taint({
-                  reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
-                  detector: detection.detector,
-                  category: detection.category,
-                  confidence: detection.confidence,
-                  step,
-                  provenance: 'recalled-memory',
-                });
-                // The write that stores the taint completes before the recall hook returns, as
-                // the guardrail hooks' own does (COR-2105).
-                return recallTaint.settled();
-              },
-        ),
+        createMemoryRecallHook(memory, memoryAuthority, memoryTarget, (detection, step) => {
+          if (detection.confidence < recallTaintThreshold) return;
+          recallTaint.taint({
+            reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
+            detector: detection.detector,
+            category: detection.category,
+            confidence: detection.confidence,
+            step,
+            provenance: 'recalled-memory',
+          });
+          // The write that stores the taint completes before the recall hook returns, as
+          // the guardrail hooks' own does (COR-2105).
+          return recallTaint.settled();
+        }),
         {
           id: 'bureau:memory-recall',
           // Recall admission records the read and can quarantine a poisoned
@@ -4178,6 +4176,9 @@ async function buildRuntimeComposition(
         definitionRevision: resolution.definitionRevision,
         ...(resolution.agentBinding === undefined ? {} : { agentBinding: resolution.agentBinding }),
         agentResolvesGuardrails: resolution.agentResolvesGuardrails === true,
+        ...(resolution.agentTaintThreshold === undefined
+          ? {}
+          : { agentTaintThreshold: resolution.agentTaintThreshold }),
         generationMode: resolution.generationMode,
         instructions: agentInstructionsFromRunOptions(resolution.options),
       },

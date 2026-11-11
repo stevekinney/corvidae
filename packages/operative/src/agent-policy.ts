@@ -437,6 +437,18 @@ export const OPERATIVE_RESOLVES_GUARDRAILS: unique symbol = Symbol.for(
   '@lostgradient/operative.resolvesGuardrails',
 );
 
+/**
+ * The `taintThreshold` an agent declares in its own `guardrails` (COR-2385), or `undefined` when it
+ * declares none, declares `false`, or is not a `createAgent` agent. A host judging a taint
+ * detection on the agent's behalf reads it before its own configuration.
+ */
+export function declaredTaintThreshold(agent: object): number | undefined {
+  const declared: unknown = Reflect.get(agent, 'guardrails');
+  if (typeof declared !== 'object' || declared === null) return undefined;
+  const threshold = (declared as GuardrailsOptions).taint?.taintThreshold;
+  return typeof threshold === 'number' ? threshold : undefined;
+}
+
 /** Whether `agent` resolves its own guardrails. See {@link OPERATIVE_RESOLVES_GUARDRAILS}. */
 export function resolvesOwnGuardrails(agent: object): boolean {
   return Reflect.get(agent, OPERATIVE_RESOLVES_GUARDRAILS) === true;
