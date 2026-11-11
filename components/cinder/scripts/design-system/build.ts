@@ -27,7 +27,8 @@ import {
 import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
-import { captureStaticSnapshots, checkRenders } from './browser.ts';
+import { readArchetypePreviews } from './archetypes.ts';
+import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
 import {
   componentReadme,
@@ -39,6 +40,7 @@ import {
 import { buildBundleCss, componentStylesheets } from './css.ts';
 import { type ManifestSource, mergeManifests } from './manifest.ts';
 import {
+  archetypesRoot,
   assetsRoot,
   cinderRoot,
   defaultOutputRoot,
