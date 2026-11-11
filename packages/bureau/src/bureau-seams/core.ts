@@ -16,6 +16,7 @@ import type {
   OperativeHookMap,
   PeerCallJournal,
   CleanupAcknowledgement as RunCleanupAcknowledgement,
+  SessionInputAdmissionOutcome,
   SessionInputGate,
   SteeringRequestedValue,
   Store,
@@ -34,7 +35,12 @@ import type {
   ServerFrame,
 } from '../types';
 import type { BureauEventMap } from '../events';
-import type { BureauSteeringGate, SteeringRefusal, createSteeringCommandLedger } from '../steering';
+import type {
+  BureauSteeringGate,
+  SteeringCommandAdmissionOutcome,
+  SteeringRefusal,
+  createSteeringCommandLedger,
+} from '../steering';
 import type {
   BureauToolbox,
   RuntimeComposition,
@@ -416,6 +422,12 @@ export interface BureauCore<D extends AgentDefinitions> {
   readonly steeringQueues: Map<string, Promise<unknown>>;
   /** The steering poller of each session. */
   readonly steeringPollers: Map<string, SteeringPoller>;
+  /** Polls already running, which shutdown awaits before storage closes. */
+  readonly inFlightSteeringPolls: Set<Promise<void>>;
+  /** Durable steering submissions in progress, which shutdown awaits. */
+  readonly inFlightSteeringSubmissions: Set<Promise<SteeringCommandAdmissionOutcome>>;
+  /** Session input admissions in flight, one per retry identity, which shutdown awaits. */
+  readonly inFlightSessionInputAdmissions: Map<string, Promise<SessionInputAdmissionOutcome>>;
   /** Steering commands by command id. */
   readonly steeringCommandLedger: ReturnType<typeof createSteeringCommandLedger>;
   /** The steering values each gate has submitted. */
