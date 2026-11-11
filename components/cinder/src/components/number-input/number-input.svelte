@@ -456,7 +456,8 @@
   {@render steppers()}
 {/snippet}
 
-<div class={classNames('cinder-input-field', className)} data-cinder-full-width>
+<div class={classNames('cinder-input-field cinder-number-input-field', className)}
+  data-cinder-full-width>
   <Input
     {id}
     value={displayValue}

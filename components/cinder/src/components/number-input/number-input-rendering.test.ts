@@ -45,6 +45,18 @@ describe('NumberInput basics', () => {
     expect(componentSource).not.toContain("from '../input/input.svelte'");
   });
 
+  test('caps the field width by default with a zero-specificity rule', async () => {
+    const [css, { container }] = await Promise.all([
+      Bun.file(new URL('./number-input.css', import.meta.url)).text(),
+      Promise.resolve(render(NumberInput, { props: { id: 'n', value: 2 } })),
+    ]);
+
+    expect(container.firstElementChild?.classList.contains('cinder-number-input-field')).toBe(true);
+    expect(css).toMatch(
+      /:where\(\.cinder-number-input-field\)\s*\{[^}]*max-inline-size:\s*10rem;/,
+    );
+  });
+
   test('composes the editable control through Input', () => {
     const { container } = render(NumberInput, { props: { id: 'n', value: 2 } });
 

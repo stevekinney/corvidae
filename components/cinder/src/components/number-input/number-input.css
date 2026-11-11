@@ -6,6 +6,13 @@
  * NUMBER INPUT
  * ======================================== */
 
+  /* A number is short: cap the field at about ten characters wide instead of the
+   * full form width. :where() keeps the specificity at zero so a consumer class
+   * can widen it. */
+  :where(.cinder-number-input-field) {
+    max-inline-size: 10rem;
+  }
+
   .cinder-input-group:has(> .cinder-number-input__input) > .cinder-number-input__input {
     padding-inline-end: var(--cinder-space-2);
   }
