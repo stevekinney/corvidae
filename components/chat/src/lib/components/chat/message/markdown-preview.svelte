@@ -95,6 +95,7 @@
   import { classNames } from '../../../utilities/class-names.ts';
   import { CodeBlock } from '@lostgradient/cinder';
   import { preloadMarkdownPipeline } from './markdown-pipeline.ts';
+  import MarkdownTableScroller from './markdown-table-scroller.svelte';
 
   let {
     content,
@@ -252,6 +253,8 @@
       {:else}
         <CodeBlock code={node.text} />
       {/if}
+    {:else if node.kind === 'table'}
+      <MarkdownTableScroller html={node.html} />
     {:else}
       {@html node.html}
     {/if}

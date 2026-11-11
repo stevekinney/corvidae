@@ -1335,6 +1335,104 @@ test.describe('chat harness — streamed Markdown appends (COR-2256)', () => {
   });
 });
 
+test.describe('chat harness — wide Markdown tables (COR-2261)', () => {
+  const tableMarkdown = [
+    '| Service | Owner | Region | Status | Reference |',
+    '| --- | --- | --- | --- | --- |',
+    '| Billing gateway | Avery Chen | us-east-1 | Healthy | REF-20481 |',
+    '| Search indexer | Blake Ortiz | eu-west-2 | Degraded | REF-20482 |',
+  ].join('\n');
+
+  async function replyWithTable(harness: Locator): Promise<Locator> {
+    await harness.locator('#harness-reply-text').fill(tableMarkdown);
+    await harness.locator('#harness-reply-mode').getByText('Instant', { exact: true }).click();
+    await harness.locator('[data-testid="send-reply"]').click();
+    const assistant = harness.locator('[data-role="assistant"]').last();
+    await expect(assistant.locator('.message-content-preview')).toHaveAttribute(
+      'data-state',
+      'rendered',
+    );
+    return assistant.locator('.message-markdown-table-scroller');
+  }
+
+  test('at 320px the scroller is a named region with a cue and scrolls from the keyboard', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      viewport: { width: 320, height: 900 },
+    });
+    try {
+      const scroller = await replyWithTable(harness);
+      await expect(scroller).toHaveAttribute('role', 'region');
+      await expect(scroller).toHaveAccessibleName('Scrollable table');
+      await expect(scroller).toHaveAttribute('tabindex', '0');
+      const cue = harness.locator('.message-markdown-table-cue').last();
+      await expect(cue).toBeVisible();
+      await expect(cue).toContainText(/\+\d+ columns?/);
+      // The table keeps its own semantics inside the region.
+      await expect(scroller.locator('table')).not.toHaveAttribute('role', /.+/);
+
+      await scroller.focus();
+      const before = await scroller.evaluate((element) => element.scrollLeft);
+      await page.keyboard.press('ArrowRight');
+      await expect
+        .poll(() => scroller.evaluate((element) => element.scrollLeft))
+        .toBeGreaterThan(before);
+      // The cue stays for as long as the table overflows, including after scrolling.
+      await expect(cue).toBeVisible();
+
+      await scroller.evaluate((element) => {
+        element.scrollLeft = element.scrollWidth;
+      });
+      await expect
+        .poll(() =>
+          scroller.evaluate((element) => {
+            const lastCell = element.querySelector('thead th:last-child');
+            if (lastCell === null) return false;
+            const cell = lastCell.getBoundingClientRect();
+            const box = element.getBoundingClientRect();
+            return cell.right <= box.right + 1 && cell.left >= box.left - 1;
+          }),
+        )
+        .toBe(true);
+      await expect(cue).toBeVisible();
+      await expect
+        .poll(() =>
+          page.evaluate(() => Math.ceil(document.documentElement.scrollWidth - window.innerWidth)),
+        )
+        .toBeLessThanOrEqual(1);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('at 1440px a fitting table adds no cue or tab stop, and the stop tracks overflow on resize', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      const scroller = await replyWithTable(harness);
+      await expect(scroller.locator('table')).toBeVisible();
+      await expect(scroller).not.toHaveAttribute('tabindex', /.*/);
+      await expect(scroller).not.toHaveAttribute('role', /.*/);
+      await expect(harness.locator('.message-markdown-table-cue')).toHaveCount(0);
+
+      await page.setViewportSize({ width: 320, height: 900 });
+      await expect(scroller).toHaveAttribute('tabindex', '0');
+      await expect(scroller).toHaveAttribute('role', 'region');
+      await expect(harness.locator('.message-markdown-table-cue')).toHaveCount(1);
+
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await expect(scroller).not.toHaveAttribute('tabindex', /.*/);
+      await expect(harness.locator('.message-markdown-table-cue')).toHaveCount(0);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat harness — tool calls', () => {
   async function appendToolScenario(page: Page, scenario: string): Promise<void> {
     await page.evaluate((name) => {
