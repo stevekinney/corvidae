@@ -376,6 +376,9 @@
 
   const NO_SCHEMA: BuilderSchema = { kind: 'none' };
 
+  // hidden-label-allowed: the Starts section heading above the trigger kind control is its visible label
+  const hiddenLabel = { labelVisible: false } as const;
+
   /** The file's Input or Output schema as the builder shows it. */
   function schemaFor(key: SchemaKey): BuilderSchema {
     return view?.[key] ?? NO_SCHEMA;
@@ -555,7 +558,7 @@
             <SegmentedControl
               id="workflow-builder-trigger-kind"
               label={copy.triggerKindLabel}
-              labelVisible={false}
+              {...hiddenLabel}
               value={triggerValue}
               disabled={view.trigger?.kind === 'other' ||
                 (view.trigger?.kind === 'contributed' && contributedTrigger === undefined)}

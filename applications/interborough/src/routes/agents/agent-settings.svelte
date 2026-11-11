@@ -407,6 +407,9 @@
 
   /** The version open read-only in the form's place, or `null` while the form shows. */
   let viewing = $state<number | null>(null);
+
+  // hidden-label-allowed: the Model section heading and the fallback models label above each select are their visible labels
+  const hiddenLabel = { labelVisible: false } as const;
 </script>
 
 <div class="ib-agent-settings" data-testid="agent-settings">
@@ -500,7 +503,7 @@
             <Select
               id="agent-settings-model"
               label={copy.modelLabel}
-              labelVisible={false}
+              {...hiddenLabel}
               presentation="listbox"
               options={modelOptions}
               value={model}
@@ -529,7 +532,7 @@
               <Select
                 id="agent-settings-add-model"
                 label={copy.addModel}
-                labelVisible={false}
+                {...hiddenLabel}
                 size="sm"
                 options={addOptions}
                 value=""
