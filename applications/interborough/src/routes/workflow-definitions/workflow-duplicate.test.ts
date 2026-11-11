@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
@@ -81,9 +82,9 @@ describe('writing a copy', () => {
       tried.push(id);
       throw taken();
     };
-    await expect(duplicateWorkflowFile('release-notes', TEXT, null, write)).rejects.toBeInstanceOf(
-      DuplicateRefused,
-    );
+    expect(
+      await rejectionOf(duplicateWorkflowFile('release-notes', TEXT, null, write)),
+    ).toBeInstanceOf(DuplicateRefused);
     expect(tried).toHaveLength(DUPLICATE_ATTEMPTS);
   });
 
@@ -94,7 +95,9 @@ describe('writing a copy', () => {
       tried.push(id);
       throw refusal;
     };
-    await expect(duplicateWorkflowFile('release-notes', TEXT, null, write)).rejects.toBe(refusal);
+    expect(await rejectionOf(duplicateWorkflowFile('release-notes', TEXT, null, write))).toBe(
+      refusal,
+    );
     expect(tried).toEqual(['release-notes-copy']);
   });
 });

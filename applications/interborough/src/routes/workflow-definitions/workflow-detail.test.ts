@@ -133,7 +133,9 @@ async function openDeleteDialog(view: Queries, name: string): Promise<HTMLElemen
 /** The page once a file is running again: the header has no Resume. */
 async function running(view: Pick<ReturnType<typeof open>, 'queryByRole'>): Promise<void> {
   await waitFor(() =>
-    expect(view.queryByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeNull(),
+    expect(
+      view.queryByRole('button', { name: WORKFLOW_COPY.resumeAction })?.outerHTML ?? null,
+    ).toBeNull(),
   );
 }
 
