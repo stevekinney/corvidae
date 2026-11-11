@@ -81,6 +81,12 @@ describe('cancelling a run', () => {
         TASK_COPY.cancel['cancel-requested'],
       ),
     );
+    // The words are the page's status line, under the title, never among the header's actions.
+    expect(
+      view.container
+        .querySelector('[data-cleanup="cancel-requested"]')
+        ?.closest('.ib-run__actions'),
+    ).toBeNull();
     expect(stub?.callsTo('bureau.tasks.cancel').map((call) => call.params)).toEqual([
       { taskId: 'run-1' },
     ]);

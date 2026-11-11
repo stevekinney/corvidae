@@ -22,7 +22,7 @@
 </script>
 
 <div class="ib-run__section" data-section="how-it-ran">
-  <Collapsible bind:open animated={false} trigger={RUN_DETAIL_COPY.howItRan.heading}>
+  <Collapsible bind:open animated={false} variant="flat" trigger={RUN_DETAIL_COPY.howItRan.heading}>
     <p class="ib-run__note">{RUN_DETAIL_COPY.howItRan.caption}</p>
     {@render children()}
   </Collapsible>

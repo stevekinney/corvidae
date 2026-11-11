@@ -245,6 +245,17 @@ describe('the History tab', () => {
     await waitFor(() => expect(root.querySelectorAll('[data-version]').length).toBe(2));
 
     const rows = [...root.querySelectorAll<HTMLElement>('[data-version]')];
+    // A version is named by the day it first ran and a short hash, with the full one in a copy control.
+    expect(rows[0]?.querySelector('[data-testid="workflow-revision-title"]')?.textContent).toMatch(
+      /^\s*(Mon, )?Oct 19, .*, version version-, (current|older) version/,
+    );
+    expect(rows[0]?.querySelector('button')?.getAttribute('aria-label')).toBe(
+      WORKFLOW_COPY.revisions.copyVersion('version-'),
+    );
+    // The verdict and the last run read as one sentence: the comma keeps its space.
+    expect(
+      rows[0]?.querySelector('[data-testid="workflow-revision-verdict"]')?.textContent,
+    ).toMatch(/, last run /);
     expect(rows[0]?.textContent).toContain(WORKFLOW_COPY.revisions.compatible);
     expect(rows[0]?.querySelector('[data-testid="workflow-revision-reasons"]')).toBeNull();
     expect(rows[1]?.textContent).toContain(WORKFLOW_COPY.revisions.incompatible);

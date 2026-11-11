@@ -232,7 +232,7 @@ describe('WorkflowList', () => {
     expect(requestUrl.searchParams.get('status')).toBe('failed');
     expect(requestUrl.searchParams.get('type')).toBeNull();
 
-    await fireEvent.click(getByRole('button', { name: 'Completed' }));
+    await fireEvent.click(getByRole('button', { name: 'Done' }));
     await waitFor(() =>
       expect(router.search.getAll('status').sort()).toEqual(['completed', 'failed']),
     );

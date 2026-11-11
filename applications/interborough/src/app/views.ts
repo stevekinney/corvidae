@@ -118,6 +118,11 @@ export type ViewDefinition = {
    */
   readonly pageOwnsFailure?: boolean;
   /**
+   * The route patterns of this view whose page words its own failure, as `pageOwnsFailure` does for
+   * the whole view: the Workflows list keeps its header and "+" over its own error panel.
+   */
+  readonly pageOwnsFailureOn?: readonly string[];
+  /**
    * Whether the page draws its own loading, empty, failed and refresh-failed states under its own
    * header, which a list page needs (its heading, its filter bar and its "+" stay in every state).
    * The frame still probes and still says what it learned in `data-state`, and it still refuses
@@ -155,7 +160,9 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     // The list keeps its header and its "+" over its first-use state; a type's runs say theirs in the frame.
     pageOwnsEmptyOn: ['/workflows'],
     // A workflow's page has its header and tabs from the route, so only its body waits (row 63a).
-    pageOwnsLoadingOn: ['/workflows/:workflow'],
+    pageOwnsLoadingOn: ['/workflows', '/workflows/:workflow'],
+    // The list keeps its header over its own loading skeleton and its own error panel.
+    pageOwnsFailureOn: ['/workflows'],
   },
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
   // the workflow sections of a run, the start picker, and the aggregate view read the engine, and they say

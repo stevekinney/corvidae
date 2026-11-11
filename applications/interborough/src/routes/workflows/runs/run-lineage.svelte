@@ -3,8 +3,9 @@
    * What started a run, and what started that: a list that opens with this run's origin (the chat,
    * the schedule, the goal, the person, the API) and, when the origin is another run (an agent's
    * child, or a step of a workflow), goes on to that run's own origin, up to three levels. A step
-   * links to the workflow instance it is part of, which is the run it names (row 14c). The list ends
-   * with a row for the run itself ("Run", "This run"), one level in from the last origin.
+   * links to the workflow instance it is part of, which is the run it names (row 14c). When the chain holds
+   * another run, the list ends with a row for the run itself ("Run", "This run"), one level in from
+   * the last origin; a run that is the whole chain has no such row.
    *
    * The page has already read this run, its goal and its chat. The runs above it are read here, one
    * after another, because each names the next; a run that cannot be read ends the list there: the
@@ -105,7 +106,10 @@
     <RunOrigin origin={ancestor.origin} />
   </li>
 {/each}
-<li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
-  <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
-  {RUN_DETAIL_COPY.lineage.thisRun}
-</li>
+<!-- The run's own row says where it sits in a chain, so it is drawn only when another run is in it. -->
+{#if (ancestors.data?.length ?? 0) > 0}
+  <li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
+    <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
+    {RUN_DETAIL_COPY.lineage.thisRun}
+  </li>
+{/if}

@@ -61,7 +61,7 @@
   color: var(--cinder-text-muted);
 }
 
-/* The header's actions in one column: the buttons, and under them a muted line about Run now. */
+/* The header's actions in one column: the buttons. */
 .ib-schedule__actions {
   display: flex;
   flex-direction: column;
@@ -80,8 +80,6 @@
 
 .ib-schedule__action-note {
   margin: 0;
-  max-inline-size: 22rem;
-  text-align: end;
 }
 
 /* In a narrow header the actions take their own row beneath the title, so they start at the left. */
@@ -93,10 +91,6 @@
 
   .ib-schedule__action-row {
     justify-content: flex-start;
-  }
-
-  .ib-schedule__action-note {
-    text-align: start;
   }
 }
 

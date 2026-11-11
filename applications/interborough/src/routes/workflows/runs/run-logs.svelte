@@ -53,7 +53,7 @@
     data-section="logs"
     data-state={logs.status}
   >
-    <Collapsible bind:open {trigger}>
+    <Collapsible bind:open variant="flat" {trigger}>
       {#if phase === 'pending'}
         <Skeleton height="4rem" />
       {:else if phase === 'error'}

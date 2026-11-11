@@ -43,7 +43,7 @@ describe('FinalizerStrip', () => {
       props: { baseStatus: 'cancelled', status },
     });
 
-    expect(getByText('Cancelled — cleanup failed')).not.toBeNull();
+    expect(getByText('Canceled — cleanup failed')).not.toBeNull();
     expect(getByText('Failed')).not.toBeNull();
     expect(getByText(/Teardown failed/)).not.toBeNull();
     expect(getByText(/3 attempts/)).not.toBeNull();

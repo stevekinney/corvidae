@@ -37,15 +37,15 @@
   <h2 id="ib-run-change" class="ib-run__heading-2">{RUN_PAGE_COPY.changeHeading}</h2>
   <p class="ib-run__note">{RUN_PAGE_COPY.changeIntro}</p>
   <div class="ib-run__disclosures ib-run__change">
-    <Collapsible bind:open={signalOpen} trigger={RUN_PAGE_COPY.signal.label}>
+    <Collapsible bind:open={signalOpen} variant="flat" trigger={RUN_PAGE_COPY.signal.label}>
       <p class="ib-run__note">{RUN_PAGE_COPY.signal.hint}</p>
       <SignalsTab client={engine.client} {workflow} sendGate={signalGate} />
     </Collapsible>
-    <Collapsible bind:open={updateOpen} trigger={RUN_PAGE_COPY.update.label}>
+    <Collapsible bind:open={updateOpen} variant="flat" trigger={RUN_PAGE_COPY.update.label}>
       <p class="ib-run__note">{RUN_PAGE_COPY.update.hint}</p>
       <UpdatesTab client={engine.client} {workflow} canSend={canSendUpdates} />
     </Collapsible>
-    <Collapsible bind:open={queryOpen} trigger={RUN_PAGE_COPY.query.label}>
+    <Collapsible bind:open={queryOpen} variant="flat" trigger={RUN_PAGE_COPY.query.label}>
       <p class="ib-run__note">{RUN_PAGE_COPY.query.hint}</p>
       <RunQuery onRunQuery={(name, input) => engine.runQuery(name, input)} gate={queryGate} />
     </Collapsible>

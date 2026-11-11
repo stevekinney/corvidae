@@ -189,7 +189,7 @@ describe('the heading of a schedule', () => {
 
     const toggle = await findByRole('switch', { name: 'Active, Inbox triage schedule' });
     expect(toggle.getAttribute('aria-checked')).toBe('false');
-    await waitFor(() => expect(headerStatus()).toBe('Paused'));
+    await waitFor(() => expect(headerStatus()).toBeUndefined());
     const summary = await findByTestId('schedule-summary');
     expect(summary.textContent).toContain('No next run while paused');
   });
@@ -317,7 +317,7 @@ describe('a schedule while one of its runs is going (rows 73c, 73d and 73e)', ()
     const { findByRole, queryByTestId } = open(`/schedules/${DIGEST}`, { runs: [finished] });
 
     await findByRole('button', { name: 'Run now' });
-    await waitFor(() => expect(headerStatus()).toBe('Active'));
+    await waitFor(() => expect(headerStatus()).toBeUndefined());
     expect(queryByTestId('schedule-running-now')).toBeNull();
     expect(queryByTestId('schedule-run-now-second')).toBeNull();
   });

@@ -15,8 +15,8 @@ describe('workflowStatusBadge', () => {
     suspended: { tone: 'warning', label: 'Suspended' },
     failed: { tone: 'danger', label: 'Failed' },
     'timed-out': { tone: 'danger', label: 'Timed out' },
-    completed: { tone: 'neutral', label: 'Completed' },
-    cancelled: { tone: 'neutral', label: 'Cancelled' },
+    completed: { tone: 'neutral', label: 'Done' },
+    cancelled: { tone: 'neutral', label: 'Canceled' },
   };
   const statuses = [
     'running',

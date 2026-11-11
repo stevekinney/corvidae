@@ -71,7 +71,7 @@
     <RunTimeline {engine} {workflow} />
 
     <div class="ib-run__disclosures">
-      <Collapsible bind:open={eventsOpen} trigger={RUN_PAGE_COPY.eventsHeading}>
+      <Collapsible bind:open={eventsOpen} variant="flat" trigger={RUN_PAGE_COPY.eventsHeading}>
         {#if canReadEvents}
           <EventsTab client={engine.client} {workflow} />
         {:else}
@@ -86,7 +86,11 @@
           </EmptyState>
         {/if}
       </Collapsible>
-      <Collapsible bind:open={checkpointsOpen} trigger={RUN_PAGE_COPY.checkpointsHeading}>
+      <Collapsible
+        bind:open={checkpointsOpen}
+        variant="flat"
+        trigger={RUN_PAGE_COPY.checkpointsHeading}
+      >
         <CheckpointsTab
           client={engine.client}
           workflowId={workflow.id}

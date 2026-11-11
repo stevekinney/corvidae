@@ -6,7 +6,7 @@
    * receipt until then. The page reads the task again while the cancellation is still being carried
    * out (`run-detail.svelte`). The button is the header's own, so it sits beside Open chat.
    */
-  import { Alert, Button, ConfirmDialog } from '@lostgradient/cinder';
+  import { Button, ConfirmDialog } from '@lostgradient/cinder';
   import { useQueryClient } from '@tanstack/svelte-query';
 
   import { TASK_COPY } from '../../../app/copy.ts';
@@ -20,6 +20,7 @@
   } from '../../../lib/bureau-tasks.ts';
   import { faultTreatment } from '../../../lib/faults.ts';
   import { queryKeys } from '../../../lib/query.ts';
+  import RunCancelNote from './run-cancel-note.svelte';
 
   interface RunCancelProps {
     task: TaskView;
@@ -28,17 +29,28 @@
      * second Cancel run elsewhere on the page leaves it there.
      */
     showStatus?: boolean;
+    /**
+     * Where the cancellation stands, for a page that says it elsewhere (the header says it under
+     * the title, not among its actions): what the last cancel answered, why it was refused, and
+     * why it failed. Bind them to a `RunCancelNote`.
+     */
+    receipt?: TaskCancelReceipt | undefined;
+    rejection?: TaskCancelAnswer['reason'];
+    failure?: string | undefined;
   }
 
-  let { task, showStatus = true }: RunCancelProps = $props();
+  let {
+    task,
+    showStatus = true,
+    receipt = $bindable(undefined),
+    rejection = $bindable(undefined),
+    failure = $bindable(undefined),
+  }: RunCancelProps = $props();
 
   const queryClient = useQueryClient();
 
-  let receipt = $state<TaskCancelReceipt | undefined>(undefined);
-  let rejection = $state<TaskCancelAnswer['reason']>(undefined);
   let cancelling = $state(false);
   let confirming = $state(false);
-  let failure = $state<string | undefined>(undefined);
 
   // An attempt of a goal is stopped by its goal, and a step of a workflow is not canceled on its own
   // (the Bureau refuses it), so there is nothing to ask of the run itself.
@@ -68,13 +80,6 @@
       cancelling = false;
     }
   }
-  const words = $derived(task.cleanup ?? receipt);
-  // A refusal that names its owner says so, instead of claiming the run had finished.
-  const refusal = $derived(
-    task.cleanup === null && receipt === 'rejected' && rejection !== undefined
-      ? rejection
-      : undefined,
-  );
 </script>
 
 {#if canCancel}
@@ -97,17 +102,6 @@
     onCancel={() => (confirming = false)}
   />
 {/if}
-{#if showStatus && (words !== undefined || failure !== undefined)}
-  <div class="ib-run__cancel-note">
-    {#if words !== undefined}
-      <p role="status" data-cleanup={words}>
-        {refusal === 'owned-by-goal' || refusal === 'owned-by-workflow'
-          ? TASK_COPY.cancelOwned[refusal]
-          : TASK_COPY.cancel[words]}
-      </p>
-    {/if}
-    {#if failure !== undefined}
-      <Alert variant="danger"><p>{TASK_COPY.cancelFailed}: {failure}</p></Alert>
-    {/if}
-  </div>
+{#if showStatus}
+  <RunCancelNote {task} {receipt} {rejection} {failure} />
 {/if}

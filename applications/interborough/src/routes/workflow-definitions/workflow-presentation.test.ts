@@ -418,9 +418,14 @@ describe('a schedule trigger’s spec in words', () => {
       kind: 'schedule',
       words: 'Every day',
     });
-    expect(triggerSummary({ kind: 'schedule', spec: '0 6 * * *' })).toEqual({
+    // A cron is said as the schedules say it, with a clock time, and never as "Cron, 0 9 * * 1-5".
+    expect(triggerSummary({ kind: 'schedule', spec: '0 6 * * *' })).toMatchObject({
       kind: 'schedule',
-      words: 'Every day at 06:00',
+      words: expect.stringMatching(/^Every day at 6:00 AM/),
+    });
+    expect(triggerSummary({ kind: 'schedule', spec: '0 9 * * 1-5' })).toMatchObject({
+      kind: 'schedule',
+      words: expect.stringMatching(/^Weekdays at 9:00 AM/),
     });
   });
 

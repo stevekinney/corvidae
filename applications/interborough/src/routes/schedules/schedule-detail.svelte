@@ -338,9 +338,14 @@
             }}
           />
         </span>
-        <Divider orientation="vertical" decorative class="ib-schedule__status-divider" />
       {/if}
-      <StatusDot word={statusWord} data-status-word={statusWord} />
+      {#if !(switchable && (statusWord === 'Active' || statusWord === 'Paused'))}
+        {#if switchable}
+          <Divider orientation="vertical" decorative class="ib-schedule__status-divider" />
+        {/if}
+        <!-- The switch already says Active or Paused, so only what it does not say is a status word. -->
+        <StatusDot word={statusWord} data-status-word={statusWord} />
+      {/if}
     {/snippet}
     {#snippet headerActions()}
       <div class="ib-schedule__actions">
@@ -423,14 +428,6 @@
             </Dropdown>
           {/if}
         </div>
-        {#if going !== undefined && allowed.runNow}
-          <p
-            class="ib-records__muted ib-schedule__action-note"
-            data-testid="schedule-run-now-second"
-          >
-            {copy.runNowSecond}
-          </p>
-        {/if}
       </div>
     {/snippet}
 
@@ -464,6 +461,12 @@
         identifiers={cadenceIdentifiers(schedule)}
       />.
     </p>
+    <!-- A note on Run now is a line of the status, under the sentence, and not among the actions. -->
+    {#if going !== undefined && allowed.runNow}
+      <p class="ib-records__muted ib-schedule__action-note" data-testid="schedule-run-now-second">
+        {copy.runNowSecond}
+      </p>
+    {/if}
     {#if fileDefined && kind.kind === 'workflow-file'}
       <ScheduleFileChip id={kind.file.id} />
     {/if}

@@ -645,14 +645,12 @@ for (const width of WIDTHS) {
     await openSchedule(page, 'Release notes digest');
     const main = page.locator('main');
 
-    // The switch only shows its state, beside the one green status word.
+    // The switch only shows its state, and is the one word of it.
     const toggle = main.getByRole('switch', { name: 'Active, Release notes digest schedule' });
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
     await expect(toggle).toHaveAttribute('aria-readonly', 'true');
-    await expect(main.locator('.cinder-page-header [data-status-word]')).toHaveAttribute(
-      'data-status-word',
-      'Active',
-    );
+    // The switch says Active, so the heading row draws no second status word.
+    await expect(main.locator('.cinder-page-header [data-status-word]')).toHaveCount(0);
     // The file's trigger says America/Chicago, the viewer's own zone, so no second time follows.
     await expect(main.getByTestId('schedule-status-line')).toHaveText(
       'Runs Release notes every Friday at 11:00 AM.',

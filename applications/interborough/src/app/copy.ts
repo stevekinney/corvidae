@@ -1750,9 +1750,11 @@ export const WORKFLOW_COPY = {
     description:
       'The versions of this workflow that have run, most recently run first, each with whether it is compatible with the current one.',
     caption: 'Versions of this workflow that have run',
-    /** One row's title: "Version 1.3.0, current version". */
-    versionTitle: (version: string, current: boolean): string =>
-      `Version ${version}, ${current ? 'current version' : 'older version'}`,
+    /** One row's title: the day the version first ran and its short hash, "Oct 19, 8:00 AM, version 1.3.0, current version". */
+    versionTitle: (when: string, shortVersion: string, current: boolean): string =>
+      `${when}, version ${shortVersion}, ${current ? 'current version' : 'older version'}`,
+    /** The accessible name of the control that copies a version's full hash. */
+    copyVersion: (shortVersion: string): string => `Copy version ${shortVersion}`,
     /** When the version last ran, after its verdict: "last run Thu, Oct 29, 9:15 AM". */
     lastRun: (when: string): string => `last run ${when}`,
     /** The footnote under the list. */

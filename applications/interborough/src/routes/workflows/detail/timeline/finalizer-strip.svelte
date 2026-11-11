@@ -2,7 +2,7 @@
   /**
    * Finalizer strip (plan T3.2, design `Weft New Surfaces.dc.html` §F: "Weft
    * concept, not a RunStepTimeline primitive") + the run-level Finalizing /
-   * Cancelled — cleanup failed badges.
+   * Canceled — cleanup failed badges.
    *
    * ## Durable, as of weft 0.15.0 — not a live-feed-only observation anymore
    *

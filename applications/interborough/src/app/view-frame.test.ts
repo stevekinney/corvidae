@@ -913,7 +913,8 @@ describe('the Workflows area', () => {
   });
 
   test('a type’s page draws its own loading, so its header and tabs show while the probe is pending (row 63a)', async () => {
-    expect(VIEWS.workflows.pageOwnsLoadingOn).toEqual(['/workflows/:workflow']);
+    expect(VIEWS.workflows.pageOwnsLoadingOn).toEqual(['/workflows', '/workflows/:workflow']);
+    expect(VIEWS.workflows.pageOwnsFailureOn).toEqual(['/workflows']);
     restore = installFetchImplementation(() => new Promise<Response>(() => {}));
     const { container, findByTestId, queryByRole } = mount('workflows', {
       parameters: { workflow: 'digest' },
@@ -946,7 +947,7 @@ describe('the Workflows area', () => {
         // The list draws its first-use state under its own header (`pageOwnsEmptyOn`), so the frame
         // shows the page and none of its own words, and still says the view is empty.
         expect(await findByTestId('content')).not.toBeNull();
-        expect(frame(container).dataset['state']).toBe('empty');
+        await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
         expect(
           queryByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' }),
         ).toBeNull();
@@ -966,7 +967,14 @@ describe('the Workflows area', () => {
       stub.on('bureau.workflows.list', () => {
         throw workflowFaults.unavailable();
       });
-      const { container, findByRole } = mount('workflows', { parameters, pattern });
+      const { container, findByRole, findByTestId } = mount('workflows', { parameters, pattern });
+      if (pattern === '/workflows') {
+        // The list words its own failure under its own header (`pageOwnsFailureOn`), so the frame
+        // shows the page, and still says the view is in error.
+        expect(await findByTestId('content')).not.toBeNull();
+        await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+        return;
+      }
       expect(
         await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.error.title }),
       ).not.toBeNull();
@@ -985,6 +993,11 @@ describe('the Workflows area', () => {
       if (pattern === '/workflows/:workflow/edit') {
         // The editor reads only the Bureau's file, so the engine's failure is not its failure.
         expect(await findByTestId('content')).not.toBeNull();
+        return;
+      }
+      if (pattern === '/workflows') {
+        expect(await findByTestId('content')).not.toBeNull();
+        await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
         return;
       }
       expect(
@@ -1015,7 +1028,7 @@ describe('the Workflows area', () => {
     world({ definitions: [], files: [readyFile('digest')] });
     const ready = mount('workflows', { pattern: '/workflows' });
     expect(await ready.findByTestId('content')).not.toBeNull();
-    expect(frame(ready.container).dataset['state']).toBe('ready');
+    await waitFor(() => expect(frame(ready.container).dataset['state']).toBe('ready'));
     ready.unmount();
     restore?.();
 
@@ -1025,7 +1038,7 @@ describe('the Workflows area', () => {
     // The list draws its first-use state under its own header (`pageOwnsEmptyOn`), so the frame
     // shows the page and none of its own words, and still says the view is empty.
     expect(await findByTestId('content')).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('empty');
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
     expect(
       queryByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' }),
     ).toBeNull();

@@ -15,6 +15,7 @@ import type {
 } from '../../lib/workflow-catalog.ts';
 import type { WorkflowRunCounts } from '../../lib/workflow-files.ts';
 import { describeCadence } from '../schedules/cadence.ts';
+import { cadenceText } from '../schedules/schedule-cadence-text.ts';
 
 /** The segments above the list: every workflow, the paused ones, and the ones that cannot load. */
 export type ListSegment = 'all' | 'paused' | 'problems';
@@ -332,7 +333,7 @@ export function triggerSummary(
 ): TriggerSummary | null {
   if (trigger === null) return null;
   if (trigger['kind'] === 'schedule' && typeof trigger['spec'] === 'string') {
-    return { kind: 'schedule', words: describeCadence(specCadence(trigger['spec'])) };
+    return { kind: 'schedule', words: cadenceText(specCadence(trigger['spec'])).full };
   }
   if (trigger['kind'] === 'signal' && typeof trigger['name'] === 'string') {
     return { kind: 'signal', name: trigger['name'] };
@@ -347,7 +348,7 @@ export function schedulesSummary(
   if (schedules === null || schedules.length === 0) return null;
   const [only] = schedules;
   if (schedules.length === 1 && only !== undefined) {
-    return { kind: 'schedule', words: describeCadence(only) };
+    return { kind: 'schedule', words: cadenceText(only).full };
   }
   return {
     kind: 'schedule',

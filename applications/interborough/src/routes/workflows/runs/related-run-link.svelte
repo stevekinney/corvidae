@@ -3,14 +3,12 @@
    * One related run as a link: what it is, how it stands, and a shortened ID that shows in full on
    * hover. A parent the engine no longer holds is named by its ID alone and links nowhere.
    */
-  import { Badge } from '@lostgradient/cinder';
-
   import { RUN_RELATED_COPY } from '../../../app/copy.ts';
   import { truncateId } from '../../../lib/format/index.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
+  import { workflowRunStatusWord } from '../../../lib/status.ts';
+  import StatusLabel from '../../../lib/status-label.svelte';
   import type { RevisionActiveComparison } from '../../../lib/workflow-revision.ts';
-  import { workflowStatusBadge } from '../list/workflow-status-badge.ts';
-  import WorkflowStatusIcon from '../list/workflow-status-icon.svelte';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
   import type { RelatedRun } from './run-related-data.ts';
 
@@ -22,7 +20,7 @@
 
   let { run, comparison = 'unknown' }: RelatedRunLinkProps = $props();
 
-  const badge = $derived(run.status === undefined ? undefined : workflowStatusBadge(run.status));
+  const word = $derived(run.status === undefined ? undefined : workflowRunStatusWord(run.status));
   const path = $derived(workflowDetailPath(run.id));
 
   /** Opens the run in place, leaving a modified click to the browser. */
@@ -46,12 +44,7 @@
       onclick={open}>{run.type}</a
     >
   {/if}
-  {#if badge !== undefined}
-    <Badge variant={badge.tone} size="sm">
-      <WorkflowStatusIcon icon={badge.icon} />
-      {badge.label}
-    </Badge>
-  {/if}
+  {#if word !== undefined}<StatusLabel {word} />{/if}
   <RevisionComparisonBadge {comparison} />
   <code class="ib-related-run__id" title={run.id}>{truncateId(run.id)}</code>
   {#if run.revision !== undefined}

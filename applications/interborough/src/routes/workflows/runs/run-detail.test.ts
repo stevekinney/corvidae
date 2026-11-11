@@ -89,7 +89,7 @@ describe('where a run came from', () => {
     expect(router.pathname).toContain('session-1');
   });
 
-  test('the chain names what started the run, then the run itself one level in', async () => {
+  test('a run that is the whole chain names what started it and draws no row for itself', async () => {
     const view = open('/runs/run-1', {
       tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', agentName: 'echo' })],
     });
@@ -98,10 +98,8 @@ describe('where a run came from', () => {
     const items = origin(view.container)?.querySelectorAll('li.ib-run-lineage__item') ?? [];
     expect(items).toHaveLength(1);
     expect(items[0]?.textContent).toContain(TASK_COPY.list.kinds.chat);
-    const self = origin(view.container)?.querySelector('li.ib-run-lineage__self');
-    expect(self?.getAttribute('data-depth')).toBe('2');
-    expect(self?.textContent).toContain(RUN_DETAIL_COPY.lineage.run);
-    expect(self?.textContent).toContain(RUN_DETAIL_COPY.lineage.thisRun);
+    expect(origin(view.container)?.querySelector('li.ib-run-lineage__self')).toBeNull();
+    expect(origin(view.container)?.textContent).not.toContain(RUN_DETAIL_COPY.lineage.thisRun);
   });
 
   test('a goal’s attempt says which attempt it is, after the goal', async () => {
@@ -291,6 +289,10 @@ describe('what started the run, and what started that', () => {
       link.getAttribute('href'),
     );
     expect(links).toEqual(['/runs/parent-1', '/runs/workflow-1', '/runs/workflow-2']);
+    // The run's own row, one level in from the last origin, is there once another run is in the chain.
+    const self = origin(view.container)?.querySelector('li.ib-run-lineage__self');
+    expect(self?.getAttribute('data-depth')).toBe('4');
+    expect(self?.textContent).toContain(RUN_DETAIL_COPY.lineage.thisRun);
   });
 });
 

@@ -54,8 +54,8 @@
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import RevisionComparisonBadge from '../revision-comparison-badge.svelte';
   import { STARTED_BY_LABELS } from '../runs/started-by.ts';
-  import { workflowStatusBadge } from './workflow-status-badge.ts';
-  import WorkflowStatusIcon from './workflow-status-icon.svelte';
+  import { workflowRunStatusWord } from '../../../lib/status.ts';
+  import StatusLabel from '../../../lib/status-label.svelte';
 
   interface WorkflowTableProps {
     rows: readonly WorkflowSummary[];
@@ -152,7 +152,6 @@
   </Table.Header>
   <Table.Body>
     {#each rows as row (row.id)}
-      {@const badge = workflowStatusBadge(row.status)}
       {@const selected = selectedIds?.has(row.id) ?? false}
       {@const workflowOrigin = workflowOrigins?.get(row.id)}
       <Table.Row
@@ -166,10 +165,7 @@
           : {}}
       >
         <Table.Cell>
-          <Badge variant={badge.tone}>
-            <WorkflowStatusIcon icon={badge.icon} />
-            {badge.label}
-          </Badge>
+          <StatusLabel word={workflowRunStatusWord(row.status)} />
         </Table.Cell>
         <Table.Cell as="th">
           <span class="weft-workflows-table__id-cell">

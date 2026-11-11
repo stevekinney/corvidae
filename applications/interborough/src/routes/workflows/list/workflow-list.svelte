@@ -262,7 +262,7 @@
     {/if}
   {/snippet}
   {#snippet snapshot()}
-    Snapshot at page load{total > 0 ? `, ${total.toLocaleString()} matching` : ''}
+    Snapshot at page load
   {/snippet}
   {#snippet headerActions()}
     {#if scopedType === undefined}
@@ -332,9 +332,11 @@
           +{liveController.newCount} new
         </button>
       {/if}
-      <span class="weft-workflow-list__showing">
-        Showing <strong>{rows.length}</strong> of {total.toLocaleString()}
-      </span>
+      {#if rows.length !== total}
+        <span class="weft-workflow-list__showing">
+          Showing <strong>{rows.length}</strong> of {total.toLocaleString()}
+        </span>
+      {/if}
     </div>
 
     {#if listQuery.isPending}

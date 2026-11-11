@@ -80,10 +80,13 @@ export function nextSummary(
   const at = schedule.nextFireAt;
   const day = formatDateTime(at, { dayWords: false, now });
   const relative = formatRelativeTime(at, { now, units: 'spelled' });
+  // Beyond the range of relative time the formatter answers with the date, which the line already
+  // says: the parenthetical is left out then, as it is when the page cannot keep a claim of "in 4 hours".
+  const saysRelative = !stale && /^in /.test(relative);
   if (row.blockers.length === 0) {
     return [
       {
-        text: stale
+        text: !saysRelative
           ? SCHEDULE_COPY.detail.summary.nextStale(day)
           : SCHEDULE_COPY.detail.summary.next(day, relative),
       },
@@ -93,7 +96,7 @@ export function nextSummary(
   const due = today ? `today, ${formatTimeOfDay(at)}` : day;
   return [
     {
-      text: stale
+      text: !saysRelative
         ? SCHEDULE_COPY.detail.summary.dueStale(due)
         : SCHEDULE_COPY.detail.summary.due(due, relative),
       tone: 'warning',

@@ -222,7 +222,7 @@
         <p class="weft-overview-tab__failure-explanation">{workflow.error}</p>
       {/if}
       {#if errorStack.length > 0}
-        <Collapsible trigger="Show full stack trace">
+        <Collapsible variant="flat" trigger="Show full stack trace">
           <pre class="weft-send-tab__result">{errorStack}</pre>
         </Collapsible>
       {/if}

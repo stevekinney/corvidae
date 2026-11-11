@@ -11,7 +11,7 @@
 import { z } from 'zod';
 
 import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
-import { clockTime, clockTimeWithSeconds } from '../../../lib/format/clock.ts';
+import { clockTime } from '../../../lib/format/clock.ts';
 import {
   formatCallDuration,
   keyInput,
@@ -132,7 +132,7 @@ export function happenedOfRun(input: HappenedInput): HappenedEntry[] {
   const entries: HappenedEntry[] = [
     {
       key: 'started',
-      title: copy.started(clockTimeWithSeconds(startedAt, zone)),
+      title: copy.started(clockTime(startedAt, zone)),
       detail:
         times.messageInAt === undefined
           ? undefined
@@ -197,7 +197,7 @@ export function happenedOfRun(input: HappenedInput): HappenedEntry[] {
   if (over && input.ended !== undefined) {
     entries.push({
       key: 'ended',
-      title: copy.ended[input.ended.outcome](clockTimeWithSeconds(input.ended.at, zone)),
+      title: copy.ended[input.ended.outcome](clockTime(input.ended.at, zone)),
       offsetMilliseconds: offsetOf(input.ended.at, startedAt),
       state: 'done',
     });

@@ -41,8 +41,8 @@ const WORKFLOW_STATUS_BADGE: Readonly<Record<WorkflowStatus, WorkflowStatusBadge
   suspended: { tone: 'warning', icon: 'pause', label: 'Suspended' },
   failed: { tone: 'danger', icon: 'circle-x', label: 'Failed' },
   'timed-out': { tone: 'danger', icon: 'timer-off', label: 'Timed out' },
-  completed: { tone: 'neutral', icon: 'circle-check', label: 'Completed' },
-  cancelled: { tone: 'neutral', icon: 'ban', label: 'Cancelled' },
+  completed: { tone: 'neutral', icon: 'circle-check', label: 'Done' },
+  cancelled: { tone: 'neutral', icon: 'ban', label: 'Canceled' },
 };
 
 /** Badge tone/icon/label for a workflow's status (plan §10.1). Status is never color alone — callers must render `label` alongside `tone`. */

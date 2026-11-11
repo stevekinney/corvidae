@@ -189,6 +189,14 @@ describe('a schedule a file defines', () => {
   });
 });
 
+describe('nextSummary beyond the range of relative time', () => {
+  test('says the date once, never again in parentheses', () => {
+    const far = schedule({ nextFireAt: NOW + 10 * 86_400_000 });
+    const [part] = nextSummary(far, { status: 'active', blockers: [] }, NOW);
+    expect(part?.text).toMatch(/^Next [A-Z][a-z]{2} Nov 1\d, [^()]*$/);
+  });
+});
+
 describe('nextSummary while the page shows old data', () => {
   test('drops the relative time, which it could not keep, and the rest stays', () => {
     const parts = nextSummary(schedule(), { status: 'active', blockers: [] }, NOW, true);

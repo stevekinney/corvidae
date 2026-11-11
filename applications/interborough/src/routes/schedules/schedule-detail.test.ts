@@ -106,12 +106,8 @@ describe('ScheduleDetail', () => {
       expect(sentence.querySelector('a')?.getAttribute('href')).toBe(
         '/workflows/inventory-sync-sweep',
       );
-      // The one status word is beside the name, in the heading row.
-      expect(
-        document
-          .querySelector('.cinder-page-header [data-status-word]')
-          ?.getAttribute('data-status-word'),
-      ).toBe('Active');
+      // The switch says Active; the heading row does not repeat it as a status word.
+      expect(document.querySelector('.cinder-page-header [data-status-word]')).toBeNull();
       // The details card: what runs, when (in the form's words), and how it behaves; no callout.
       const card = within(getByTestId('schedule-details'));
       expect(card.getByText('What runs')).not.toBeNull();
@@ -699,11 +695,8 @@ describe('ScheduleDetail', () => {
         ).toBe('false'),
       );
       await waitFor(() => {
-        expect(
-          document
-            .querySelector('.cinder-page-header [data-status-word]')
-            ?.getAttribute('data-status-word'),
-        ).toBe('Paused');
+        // The switch says Paused, so the heading row has no status word of its own.
+        expect(document.querySelector('.cinder-page-header [data-status-word]')).toBeNull();
       });
 
       // The switch is held while the write settles, so it is pressed again once it is free.

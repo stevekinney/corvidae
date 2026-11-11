@@ -2,7 +2,7 @@
  * Workflow status → presentation mapping (plan T2.4, §10.1 status badge
  * system) + contextual-action availability for the detail header.
  *
- * ## "Finalizing" / "Cancelled — cleanup failed" — real, as of weft 0.15.0
+ * ## "Finalizing" / "Canceled — cleanup failed" — real, as of weft 0.15.0
  *
  * Plan §9.2 and Appendix B call for a `finalizing` (amber, post-cancellation
  * cleanup) and a `cancelled — cleanup failed` (red) sub-status on the header
@@ -51,9 +51,9 @@ const STATUS_PRESENTATION: Readonly<Record<WorkflowStatus, WorkflowStatusPresent
   pending: { label: 'Pending', variant: 'info', icon: 'clock' },
   running: { label: 'Running', variant: 'success', icon: 'play' },
   suspended: { label: 'Suspended', variant: 'warning', icon: 'pause' },
-  completed: { label: 'Completed', variant: 'neutral', icon: 'circle-check' },
+  completed: { label: 'Done', variant: 'neutral', icon: 'circle-check' },
   failed: { label: 'Failed', variant: 'danger', icon: 'circle-x' },
-  cancelled: { label: 'Cancelled', variant: 'neutral', icon: 'ban' },
+  cancelled: { label: 'Canceled', variant: 'neutral', icon: 'ban' },
   'timed-out': { label: 'Timed out', variant: 'danger', icon: 'timer-off' },
 };
 
@@ -69,7 +69,7 @@ export function statusMayHaveFinalizer(
 }
 
 const FINALIZER_BASE_LABEL: Readonly<Record<'cancelled' | 'timed-out', string>> = {
-  cancelled: 'Cancelled',
+  cancelled: 'Canceled',
   'timed-out': 'Timed out',
 };
 

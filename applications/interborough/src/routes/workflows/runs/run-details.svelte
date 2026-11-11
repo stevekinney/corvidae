@@ -15,7 +15,7 @@
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
-  import { formatDuration } from '../../../lib/format/index.ts';
+  import { viewerTimeZone } from '../../../lib/format/clock.ts';
   import { goalPath } from '../../../lib/identifier-paths.ts';
   import { agentLabel } from '../../../lib/agent-label.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
@@ -28,7 +28,7 @@
   import RunLineage from './run-lineage.svelte';
   import RunLogs from './run-logs.svelte';
   import RunRelated from './run-related.svelte';
-  import { goalTitle } from './run-rows.ts';
+  import { durationWords, goalTitle } from './run-rows.ts';
   import RunTags from './run-tags.svelte';
   import type { RunEngine } from './run-engine.svelte.ts';
 
@@ -154,21 +154,21 @@
       list.push({
         id: 'started',
         term: RUN_PAGE_COPY.facts.started,
-        definition: { type: 'timestamp', value: startedAt },
+        definition: { type: 'timestamp', value: startedAt, timeZone: viewerTimeZone() },
       });
     }
     if (updatedAt !== undefined && over) {
       list.push({
         id: 'updated',
         term: RUN_PAGE_COPY.facts.updated,
-        definition: { type: 'timestamp', value: updatedAt },
+        definition: { type: 'timestamp', value: updatedAt, timeZone: viewerTimeZone() },
       });
     }
     if (startedAt !== undefined && updatedAt !== undefined && over) {
       list.push({
         id: 'took',
         term: RUN_PAGE_COPY.facts.took,
-        definition: formatDuration(Math.max(0, updatedAt - startedAt)),
+        definition: durationWords(Math.max(0, updatedAt - startedAt)),
       });
     }
     if (showDeadline && deadlineRemaining !== null) {
@@ -177,7 +177,7 @@
         term: RUN_PAGE_COPY.facts.deadline,
         definition:
           deadlineRemaining > 0
-            ? RUN_PAGE_COPY.deadline(formatDuration(deadlineRemaining))
+            ? RUN_PAGE_COPY.deadline(durationWords(deadlineRemaining))
             : RUN_PAGE_COPY.deadlinePassed,
       });
     }

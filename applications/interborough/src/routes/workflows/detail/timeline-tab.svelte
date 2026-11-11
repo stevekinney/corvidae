@@ -566,12 +566,10 @@
     font-weight: 600;
   }
 
-  /* The list owns its height and scrolls each pane, so the frame gives it one. */
+  /* The list owns its height and scrolls each pane, so the frame gives it one; it has no border of its own, since the page around it is already a section. */
   .ib-steps-frame {
     block-size: max(24rem, 60dvh);
     min-inline-size: 0;
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
     overflow: hidden;
   }
 

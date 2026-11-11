@@ -91,7 +91,7 @@ describe('finalizerStatusPresentation', () => {
     }
   });
 
-  test('failed finalizer after a cancellation renders "Cancelled — cleanup failed" (danger, triangle-alert icon)', () => {
+  test('failed finalizer after a cancellation renders "Canceled — cleanup failed" (danger, triangle-alert icon)', () => {
     const finalizer: WorkflowFinalizerStatus = {
       status: 'failed',
       attempts: 3,
@@ -99,7 +99,7 @@ describe('finalizerStatusPresentation', () => {
       error: 'destroySandbox threw',
     };
     const presentation = finalizerStatusPresentation('cancelled', finalizer);
-    expect(presentation.label).toBe('Cancelled — cleanup failed');
+    expect(presentation.label).toBe('Canceled — cleanup failed');
     expect(presentation.variant).toBe('danger');
     expect(presentation.icon).toBe('triangle-alert');
     expect(presentation.tooltip).toContain('destroySandbox threw');

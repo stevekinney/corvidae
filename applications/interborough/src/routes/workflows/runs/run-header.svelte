@@ -24,8 +24,8 @@
 
   import { RUN_DETAIL_COPY, RUN_PAGE_COPY, TASK_COPY } from '../../../app/copy.ts';
   import { showFault, showToast } from '../../../app/toast-host.svelte';
-  import type { TaskView } from '../../../lib/bureau-tasks.ts';
-  import { dayStamp } from '../../../lib/format/clock.ts';
+  import type { TaskCancelAnswer, TaskCancelReceipt, TaskView } from '../../../lib/bureau-tasks.ts';
+  import { dayStamp, utcStamp } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import StatusLabel from '../../../lib/status-label.svelte';
@@ -37,6 +37,7 @@
     type WorkflowContextualAction,
   } from '../detail/workflow-status.ts';
   import RunCancel from './run-cancel.svelte';
+  import RunCancelNote from './run-cancel-note.svelte';
   import { durationWords } from './run-rows.ts';
 
   interface RunHeaderProps {
@@ -137,6 +138,10 @@
   const signalWords = RUN_DETAIL_COPY.status.waitingForSignal;
 
   let confirming = $state<WorkflowContextualAction | null>(null);
+  // Where a cancel stands is said under the title, in the status line, not among the actions.
+  let cancelReceipt = $state<TaskCancelReceipt | undefined>(undefined);
+  let cancelRejection = $state<TaskCancelAnswer['reason']>(undefined);
+  let cancelFailure = $state<string | undefined>(undefined);
 
   function choose(action: WorkflowContextualAction): void {
     if (actionConfirmTier(action) === 'tier-2') {
@@ -182,7 +187,8 @@
 
 {#snippet summary()}
   {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
-      datetime={new Date(startedAt).toISOString()}>{dayStamp(startedAt)}</time
+      datetime={new Date(startedAt).toISOString()}
+      title={utcStamp(startedAt)}>{dayStamp(startedAt)}</time
     >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${phrase}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
       class="ib-identifier">{signal}</code
     >{/each}{#if note !== undefined}{`, ${note}`}{/if}
@@ -218,7 +224,13 @@
         {#snippet leadingIcon()}<Play aria-hidden="true" size={16} />{/snippet}
       </Button>
     {/if}
-    {#if task !== undefined}<RunCancel {task} />{/if}
+    {#if task !== undefined}<RunCancel
+        {task}
+        showStatus={false}
+        bind:receipt={cancelReceipt}
+        bind:rejection={cancelRejection}
+        bind:failure={cancelFailure}
+      />{/if}
     {#if engineCancel}
       <Button
         variant="secondary"
@@ -265,6 +277,14 @@
 {/snippet}
 
 <PageHeader data-run-header headingLevel={1} title={heading} description={summary} {actions} />
+{#if task !== undefined}
+  <RunCancelNote
+    {task}
+    receipt={cancelReceipt}
+    rejection={cancelRejection}
+    failure={cancelFailure}
+  />
+{/if}
 
 {#if confirming !== null}
   <ConfirmDialog

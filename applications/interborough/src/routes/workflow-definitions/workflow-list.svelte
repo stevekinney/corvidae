@@ -175,11 +175,7 @@
         onRetry={() => void catalog.refetch()}
       />
     {:else if catalog.isPending}
-      <div role="status" aria-busy="true" aria-label={VIEW_COPY.workflows.loading.title}>
-        <Skeleton height="3.5rem" />
-        <Skeleton height="3.5rem" />
-        <Skeleton height="3.5rem" />
-      </div>
+      <Skeleton variant="list" rows={5} label={VIEW_COPY.workflows.loading.title} />
     {:else if workflows.length === 0}
       <EmptyState
         bordered

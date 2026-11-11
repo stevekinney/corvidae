@@ -103,6 +103,10 @@
       definition.ownsStatesOnPatterns?.includes(initial.pattern) === true);
   /** Whether this route's page draws its own empty state under its own header (`pageOwnsEmptyOn` in `views.ts`). */
   const pageOwnsEmpty = definition.pageOwnsEmptyOn?.includes(initial.pattern ?? '') === true;
+  /** Whether this route's page words its own failure (`pageOwnsFailure`, `pageOwnsFailureOn` in `views.ts`). */
+  const pageOwnsFailure =
+    definition.pageOwnsFailure === true ||
+    definition.pageOwnsFailureOn?.includes(initial.pattern ?? '') === true;
   /** Whether this route's page draws its own loading state (`pageOwnsLoadingOn` in `views.ts`). */
   const pageOwnsLoading =
     definition.pageOwnsLoading === true ||
@@ -212,7 +216,7 @@
    */
   const refreshFailed = $derived(
     state !== 'unreachable' &&
-      definition.pageOwnsFailure !== true &&
+      !pageOwnsFailure &&
       probeQuery.isRefetchError &&
       probeQuery.data !== undefined,
   );
@@ -281,7 +285,7 @@
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >
-  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && pageOwnsLoading) || (state === 'error' && definition.pageOwnsFailure === true) || (state === 'empty' && pageOwnsEmpty)}
+  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && pageOwnsLoading) || (state === 'error' && pageOwnsFailure) || (state === 'empty' && pageOwnsEmpty)}
     {#if refreshFailed && !connection.unreachable && !ownsStates}
       {@render refreshError()}
     {/if}

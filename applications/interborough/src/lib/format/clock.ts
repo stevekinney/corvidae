@@ -109,6 +109,15 @@ export function dayStamp(at: number, zone: string = viewerTimeZone()): string {
   return `${day}, ${clockTime(at, zone)}`;
 }
 
+/** An instant written in UTC, for the tooltip of a time shown in the viewer's zone: "Nov 11, 2026, 7:42 PM UTC". */
+export function utcStamp(at: number): string {
+  return `${new Intl.DateTimeFormat(LOCALE, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+    timeZone: 'UTC',
+  }).format(at)} UTC`;
+}
+
 /**
  * How long something has waited, for the end of a line that says when it began: "just now" under a
  * minute, "4 min ago" to the nearest minute under an hour, "1 h ago" in whole hours through the

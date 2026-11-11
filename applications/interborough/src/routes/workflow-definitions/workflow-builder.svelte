@@ -1049,7 +1049,11 @@
     align-items: center;
   }
 
+  /* One group under the steps at full width: its lines stack at the top, never stretched across a taller parent. */
   .weft-workflow-builder__add {
+    align-content: flex-start;
+    align-self: start;
+    inline-size: 100%;
     margin-top: var(--cinder-space-2);
   }
 

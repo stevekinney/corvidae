@@ -68,7 +68,7 @@ describe('happenedOfRun', () => {
     });
 
     expect(entries.map((entry) => entry.title)).toEqual([
-      'Started 10:42:11 AM',
+      'Started 10:42 AM',
       'Lookup order 4471',
       'Asked for approval',
       'Next steps',
@@ -101,7 +101,7 @@ describe('happenedOfRun', () => {
     });
 
     expect(entries.map((entry) => entry.title)).toEqual([
-      'Started 10:42:11 AM',
+      'Started 10:42 AM',
       'Lookup order 4471',
       'Replied',
     ]);
@@ -118,10 +118,7 @@ describe('happenedOfRun', () => {
       zone: ZONE,
     });
 
-    expect(entries.map((entry) => entry.title)).toEqual([
-      'Started 10:42:11 AM',
-      'Lookup order 4471',
-    ]);
+    expect(entries.map((entry) => entry.title)).toEqual(['Started 10:42 AM', 'Lookup order 4471']);
   });
 
   test('a question the thread does not hold is asked all the same, and says what answering does', () => {
@@ -135,7 +132,7 @@ describe('happenedOfRun', () => {
     });
 
     expect(entries.map((entry) => entry.title)).toEqual([
-      'Started 10:42:11 AM',
+      'Started 10:42 AM',
       'Asked a question',
       'Next steps',
     ]);
@@ -166,7 +163,7 @@ describe('happenedOfRun', () => {
       over: true,
       zone: ZONE,
     });
-    expect(entries.map((entry) => entry.title)).toEqual(['Started 10:42:11 AM']);
+    expect(entries.map((entry) => entry.title)).toEqual(['Started 10:42 AM']);
 
     const early = happenedOfRun({
       runId: 'run-1',
@@ -192,17 +189,14 @@ describe('happenedOfRun', () => {
       ...base,
       ended: { outcome: 'canceled', at: STARTED + 72_000 },
     });
-    expect(canceled.map((entry) => entry.title)).toEqual([
-      'Started 10:42:11 AM',
-      'Canceled 10:43:23 AM',
-    ]);
+    expect(canceled.map((entry) => entry.title)).toEqual(['Started 10:42 AM', 'Canceled 10:43 AM']);
     expect(canceled.at(-1)).toMatchObject({ offsetMilliseconds: 72_000, state: 'done' });
     expect(
       happenedOfRun({ ...base, ended: { outcome: 'done', at: STARTED + 1_000 } }).at(-1)?.title,
-    ).toBe('Done 10:42:12 AM');
+    ).toBe('Done 10:42 AM');
     expect(
       happenedOfRun({ ...base, ended: { outcome: 'failed', at: STARTED + 1_000 } }).at(-1)?.title,
-    ).toBe('Failed 10:42:12 AM');
+    ).toBe('Failed 10:42 AM');
     // A run still going has no end to show.
     expect(
       happenedOfRun({ ...base, over: false, ended: { outcome: 'done', at: STARTED } }).map(

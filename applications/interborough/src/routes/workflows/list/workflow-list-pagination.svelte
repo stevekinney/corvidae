@@ -53,6 +53,7 @@
     bind:currentPage={() => currentPage, onCurrentPageChange}
     {totalPages}
     totalCount={total}
+    countLabel={(count) => `${count.toLocaleString('en-US')} ${count === 1 ? 'result' : 'results'}`}
   />
   <Select
     id="weft-workflow-page-size"

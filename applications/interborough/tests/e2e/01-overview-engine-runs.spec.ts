@@ -41,7 +41,7 @@ for (const viewport of VIEWPORTS) {
     // Across types: a count spans every workflow type the engine holds.
     await expect(page.getByRole('row', { name: /payment-failing/ }).first()).toBeVisible();
     // The list is the set the count named.
-    await expect(page.getByText(new RegExp(`^Showing \\d+ of ${String(counted)}$`))).toBeVisible();
+    await expect(page.getByText(new RegExp(`^${String(counted)} results?$`))).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
     );

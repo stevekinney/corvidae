@@ -8,7 +8,8 @@
    * because amber is for what waits on you) and the reasons when it is breaking. A footnote under
    * the list says what compatibility means.
    */
-  import { Alert, Button, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
+  import { Alert, Button, CopyButton, EmptyState, Skeleton, StatusDot } from '@lostgradient/cinder';
+  import { Copy } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
@@ -27,6 +28,12 @@
   let { id, currentVersion }: Props = $props();
 
   const copy = WORKFLOW_COPY.revisions;
+
+  /** The hash a person can tell versions apart by: a `sha256:` prefix is dropped and the rest cut short. */
+  function shortVersionOf(version: string): string {
+    const bare = version.replace(/^sha256:/, '');
+    return bare.length > 12 ? bare.slice(0, 8) : bare;
+  }
 
   const revisions = createQuery(
     () => ({
@@ -63,12 +70,23 @@
   {:else}
     <ul class="weft-workflow-revisions__list" aria-label={copy.caption}>
       {#each revisions.data as revision (revision.workflowVersion)}
+        {@const shortVersion = shortVersionOf(revision.workflowVersion)}
         <li class="weft-workflow-revisions__row" data-version={revision.workflowVersion}>
           <p class="weft-workflow-revisions__version" data-testid="workflow-revision-title">
-            {copy.versionTitle(
-              revision.workflowVersion,
-              revision.workflowVersion === currentVersion,
-            )}
+            <span title={revision.workflowVersion}
+              >{copy.versionTitle(
+                dayAndTime(Date.parse(revision.firstRunAt), Date.now()),
+                shortVersion,
+                revision.workflowVersion === currentVersion,
+              )}</span
+            >
+            <CopyButton
+              value={revision.workflowVersion}
+              iconOnly
+              label={copy.copyVersion(shortVersion)}
+            >
+              <Copy aria-hidden="true" size={13} />
+            </CopyButton>
           </p>
           <p class="weft-workflow-revisions__line" data-testid="workflow-revision-verdict">
             {#if revision.compatibility === null}
@@ -77,9 +95,7 @@
               <StatusDot status="neutral" label={copy.compatible} />
             {:else}
               <StatusDot status="neutral" label={copy.incompatible} />
-            {/if}
-            {', '}
-            <time datetime={revision.lastRunAt}
+            {/if}{', '}<time datetime={revision.lastRunAt}
               >{copy.lastRun(dayAndTime(Date.parse(revision.lastRunAt), Date.now()))}</time
             >
           </p>
@@ -138,10 +154,8 @@
     overflow-wrap: anywhere;
   }
 
+  /* Prose, not a flex row: a flex item drops the space that follows the comma after the verdict. */
   .weft-workflow-revisions__line {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
     margin: 0;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
