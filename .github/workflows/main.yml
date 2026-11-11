@@ -53,8 +53,10 @@ jobs:
         if: ${{ !cancelled() }}
       - run: bun run audit
         if: ${{ !cancelled() }}
+      # A failed report upload must not fail the tests' job.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
+        continue-on-error: true
         with:
           name: junit-root
           path: |
@@ -125,8 +127,10 @@ jobs:
       - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
       # The `test` task `bun run validate` runs for every workspace, not a coverage run.
       - run: bunx turbo run test --continue ${{ matrix.filter }}
+      # A failed report upload must not fail the tests' job.
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: ${{ !cancelled() }}
+        continue-on-error: true
         with:
           name: junit-tests-${{ strategy.job-index }}
           path: |
