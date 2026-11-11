@@ -1,9 +1,9 @@
 /// <reference lib="dom" />
 /**
  * The composer as one bordered surface: a header row for the host's agent select, the formatting
- * toolbar and the words of its shortcuts while the box has focus, attachments as chips (a failed
- * one with its reason beside it and Remove), and a footer that folds the host's controls into one
- * when the composer is narrow and never wraps.
+ * toolbar and the words of its shortcuts while the box has focus, attachments as tiles under a
+ * count (a failed one with its reason beside it and the same cross to remove it), and a footer that
+ * folds the host's controls into one when the composer is narrow and never wraps.
  */
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { createRawSnippet, mount, tick, unmount } from 'svelte';
@@ -268,13 +268,14 @@ describe('attachments', () => {
     return { target, instance };
   }
 
-  test('an attached file is a removable chip with its name and size', async () => {
+  test('an attached file is a removable tile with its type badge, name and size', async () => {
     const { target, instance } = mountInput();
     instance.addFiles([png('refund-photo.png')]);
     await tick();
 
     const chip = target.querySelector('.chat-attachment-preview')!;
-    expect(chip.textContent?.replace(/\s+/g, ' ').trim()).toBe('refund-photo.png 240 KB');
+    expect(chip.textContent?.replace(/\s+/g, ' ').trim()).toBe('PNG refund-photo.png 240 KB');
+    expect(chip.querySelector('.chat-attachment-preview-extension')?.textContent).toBe('.png');
     expect(chip.querySelector('button[aria-label="Remove refund-photo.png"]')).not.toBeNull();
     expect(target.querySelector('[data-attachment-error]')).toBeNull();
     unmount(instance);
@@ -297,7 +298,7 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('a failed file keeps its chip, with the reason beside it and a Remove link', async () => {
+  test('a refused file keeps its tile, with the reason beside it and only the cross to remove it', async () => {
     const { target, instance } = mountInput({
       maxFileSize: 100,
       formatAttachmentError: () => 'Can’t attach: 240 KB is over the 100 B limit.',
@@ -310,52 +311,86 @@ describe('attachments', () => {
     expect(item.querySelector('[data-attachment-error]')?.textContent).toBe(
       'Can’t attach: 240 KB is over the 100 B limit.',
     );
-    const remove = item.querySelector<HTMLButtonElement>('button')!;
-    expect(remove.textContent?.trim()).toBe('Remove');
-    expect(remove.getAttribute('aria-label')).toBe('Remove photo.png');
+    // A file the composer refused cannot be retried; it is removed with the same cross as any tile.
+    expect(item.querySelector('button[aria-label="Retry photo.png"]')).toBeNull();
+    const remove = item.querySelector<HTMLButtonElement>('button[aria-label="Remove photo.png"]')!;
+    expect(remove.classList.contains('chat-input-attachment-remove')).toBe(true);
 
     await fireEvent.click(remove);
     expect(target.querySelector('[aria-label="Attached files"]')).toBeNull();
     unmount(instance);
   });
 
-  test('typed text keeps Send enabled beside a failed file, and the failed file is left out', async () => {
-    const submissions: Array<{ content: unknown; attachments: number }> = [];
+  test('a failed file turns Send off, says why under the composer, and Send names the reason', async () => {
+    const submissions: unknown[] = [];
     const { target, instance } = mountInput({
       maxFileSize: 100,
-      onsubmit: (message: { content: unknown }, attachments: unknown[]) =>
-        submissions.push({ content: message.content, attachments: attachments.length }),
+      onsubmit: (message: { content: unknown }) => submissions.push(message.content),
     });
     instance.addFiles([png('photo.png')]);
     await tick();
     const editor = target.querySelector<HTMLTextAreaElement>('textarea')!;
     await fireEvent.input(editor, { target: { value: 'Please refund order 4471.' } });
-
-    const send = target.querySelector<HTMLButtonElement>('[data-chat-send]')!;
-    expect(send.disabled).toBe(false);
-    await fireEvent.keyDown(editor, { key: 'Enter' });
     await tick();
 
-    expect(submissions).toEqual([{ content: 'Please refund order 4471.', attachments: 0 }]);
+    const send = target.querySelector<HTMLButtonElement>('[data-chat-send]')!;
+    expect(send.disabled).toBe(true);
+    const reason = target.querySelector<HTMLElement>('.chat-input-attachment-reason')!;
+    expect(reason.textContent?.trim()).toBe('Retry or remove 1 file to send');
+    expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(reason.id);
+    expect(target.querySelector('form.chat-input')?.contains(reason)).toBe(false);
+
+    await fireEvent.keyDown(editor, { key: 'Enter' });
+    await tick();
+    expect(submissions).toEqual([]);
+
+    // Removing the file clears the reason, and the message sends.
+    await fireEvent.click(
+      target.querySelector<HTMLButtonElement>('[aria-label="Remove photo.png"]')!,
+    );
+    await tick();
+    expect(target.querySelector('.chat-input-attachment-reason')).toBeNull();
+    expect(send.disabled).toBe(false);
     unmount(instance);
   });
 
-  test('the announcement of a message sent beside a failed file names the file', async () => {
-    const { target, instance } = mountInput({ maxFileSize: 100 });
-    instance.addFiles([png('scan.tiff'), png('photo.png')]);
-    await tick();
-    const editor = target.querySelector<HTMLTextAreaElement>('textarea')!;
-    await fireEvent.input(editor, { target: { value: 'hello' } });
-    await fireEvent.keyDown(editor, { key: 'Enter' });
+  test('the count over the tiles says how many files need attention', async () => {
+    const { target, instance } = mountInput({ maxFileSize: 1024 });
+    instance.addFiles([png('small.png', 10), png('big.png'), png('bigger.png')]);
     await tick();
 
-    const live = (): string =>
-      [...target.querySelectorAll('[aria-live="polite"]')]
-        .map((node) => node.textContent)
-        .join(' ');
-    await waitUntil(() => live().includes('Message sent without scan.tiff, photo.png'), {
-      message: 'the announcement names the files that were left out',
-    });
+    const summary = target.querySelector('[data-chat-attachment-summary]')!;
+    expect(summary.querySelector('.chat-input-attachment-count')?.textContent).toBe('3 files');
+    expect(summary.querySelector('.chat-input-attachment-attention')?.textContent).toBe(
+      '2 need attention before you can send',
+    );
+    expect(summary.textContent).not.toContain(String.fromCodePoint(0xb7));
+    unmount(instance);
+  });
+
+  test('a long list is capped, with a count of the rest under it that opens the whole list', async () => {
+    const { target, instance } = mountInput();
+    instance.addFiles(
+      Array.from({ length: 14 }, (_, index) => png(`page-${String(index + 1)}.png`, 10)),
+    );
+    await tick();
+
+    const list = target.querySelector<HTMLElement>('[aria-label="Attached files"]')!;
+    expect(list.hasAttribute('data-capped')).toBe(true);
+    expect(list.querySelectorAll('li')).toHaveLength(4);
+    const more = target.querySelector<HTMLButtonElement>('.chat-input-attachment-more')!;
+    expect(more.textContent?.trim()).toBe('10 more');
+    expect(more.getAttribute('aria-controls')).toBe(list.id);
+
+    await fireEvent.click(more);
+    await tick();
+
+    expect(list.querySelectorAll('li')).toHaveLength(14);
+    expect(list.hasAttribute('data-capped')).toBe(false);
+    expect(target.querySelector('.chat-input-attachment-more')).toBeNull();
+    // Every file can still be removed, and Send stays a control of the composer.
+    expect(target.querySelector('[aria-label="Remove page-14.png"]')).not.toBeNull();
+    expect(target.querySelector('[data-chat-send]')).not.toBeNull();
     unmount(instance);
   });
 });

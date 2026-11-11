@@ -13,15 +13,22 @@
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
   import { formatBytes } from '../../../utilities/format-bytes.ts';
-  import { Paperclip } from '@lostgradient/cinder';
+  import { fileTypeBadge, splitFileName, uploadPercent } from './attachment-tile.ts';
 
   let { attachment, class: className, action }: ChatAttachmentPreviewProps = $props();
+
+  const badge = $derived(fileTypeBadge(attachment.file.name, attachment.kind));
+  const name = $derived(splitFileName(attachment.file.name));
+  const percent = $derived(
+    attachment.status === 'uploading' ? uploadPercent(attachment.progress) : undefined,
+  );
 </script>
 
 <!--
-  An attached file is a chip: a paperclip, the file's name and its size, and an optional control
-  at its end. A file that failed keeps its chip, in the danger colour; its reason is drawn beside
-  it by the composer.
+  An attached file is a tile: a type badge, the file's name (truncated in the middle, so the
+  extension always shows), its size and, while it uploads, how far along it is, then an optional
+  control at its end. A file that failed keeps its tile, in the danger colour; its reason is drawn
+  beside it by the composer.
 -->
 <span
   class={classNames('chat-attachment-preview', className)}
@@ -30,13 +37,29 @@
   data-error={attachment.status === 'error' || undefined}
   data-pending={attachment.status === 'pending' || attachment.status === 'uploading' || undefined}
 >
-  <Paperclip class="chat-attachment-preview-icon cinder-icon-xs" aria-hidden="true" />
-  <span class="chat-attachment-preview-name" title={attachment.file.name}
-    >{attachment.file.name}</span
+  <span class="chat-attachment-preview-badge" aria-hidden="true">{badge}</span>
+  <span class="chat-attachment-preview-name" title={attachment.file.name} dir="auto"
+    ><span class="chat-attachment-preview-stem">{name.stem}</span><span
+      class="chat-attachment-preview-extension">{name.extension}</span
+    ></span
   >
   <span class="chat-attachment-preview-size">{formatBytes(attachment.file.size)}</span>
+  {#if percent !== undefined}
+    <span class="chat-attachment-preview-state">{percent}%</span>
+  {/if}
 
-  {#if attachment.status === 'pending' || attachment.status === 'uploading'}
+  {#if percent !== undefined}
+    <span
+      class="chat-attachment-preview-loading"
+      role="progressbar"
+      aria-label="Uploading file"
+      aria-valuemin={0}
+      aria-valuemax={100}
+      aria-valuenow={percent}
+    >
+      <span class="chat-attachment-preview-progress-bar" style:inline-size={`${percent}%`}></span>
+    </span>
+  {:else if attachment.status === 'pending' || attachment.status === 'uploading'}
     <span
       class="chat-attachment-preview-loading"
       role="status"
@@ -69,17 +92,42 @@
     line-height: var(--cinder-leading-normal);
   }
 
-  .chat-attachment-preview :global(.chat-attachment-preview-icon) {
+  /* The type badge: the extension in capitals, in a quiet box. */
+  .chat-attachment-preview-badge {
     flex: none;
+    padding-inline: var(--cinder-space-1);
+    border-radius: var(--cinder-radius-sm);
+    background: var(--cinder-surface-inset);
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+    letter-spacing: 0.02em;
   }
 
+  /* The name truncates in the middle: the stem ellipsizes and the extension never shrinks. */
   .chat-attachment-preview-name {
+    display: inline-flex;
     min-inline-size: 0;
     overflow: hidden;
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-medium);
+    white-space: nowrap;
+  }
+
+  .chat-attachment-preview-stem {
+    min-inline-size: 0;
+    overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  .chat-attachment-preview-extension {
+    flex: none;
+  }
+
+  .chat-attachment-preview-state {
+    flex: none;
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
     white-space: nowrap;
   }
 
@@ -94,13 +142,9 @@
     border-color: var(--cinder-status-danger-border);
   }
 
-  .chat-attachment-preview[data-error] :global(.chat-attachment-preview-icon) {
+  .chat-attachment-preview[data-error] .chat-attachment-preview-badge {
+    background: var(--cinder-status-danger-background);
     color: var(--cinder-status-danger-text);
-  }
-
-  /* Pending: dim non-text elements only to preserve text contrast. */
-  .chat-attachment-preview[data-pending] :global(.chat-attachment-preview-icon) {
-    opacity: 0.6;
   }
 
   .chat-attachment-preview-loading {
@@ -110,6 +154,12 @@
     block-size: 2px;
     overflow: hidden;
     background: var(--cinder-surface-inset);
+  }
+
+  .chat-attachment-preview-progress-bar {
+    display: block;
+    block-size: 100%;
+    background: var(--cinder-accent-solid);
   }
 
   .chat-attachment-preview-loading-bar {

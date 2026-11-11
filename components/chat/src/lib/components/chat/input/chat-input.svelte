@@ -248,6 +248,14 @@
     formatRunElapsed,
   } from './composer-run-clock.ts';
   import { deriveAttachmentKind } from './attachment-kind.ts';
+  import {
+    ATTACHMENT_LIST_CAP,
+    attachmentAttentionText,
+    attachmentBlockingReason,
+    attachmentCountText,
+    canRetry,
+    needsAttention,
+  } from './attachment-tile.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 
   // Per-instance fallback factory for attachments whose file metadata is unavailable
@@ -502,12 +510,26 @@
   const shortcutDescriptionId = $derived(`${id}-shortcut-description`);
   const pausedReasonId = $derived(`${id}-paused-reason`);
   const drawerId = $derived(`${id}-drawer`);
+  const attachmentReasonId = $derived(`${id}-attachment-reason`);
+  const attachmentListId = $derived(`${id}-attachments`);
   /** The reason Send is off, while the host has paused the composer and said why. */
   const shownPausedReason = $derived(paused && pausedReason ? pausedReason : undefined);
   const isWhitespaceOnly = $derived(value.trim().length === 0);
   const hasPendingAttachments = $derived(
     attachments.some((a) => a.status === 'pending' || a.status === 'uploading'),
   );
+  /** The files that block Send until each is retried or removed. */
+  const attentionCount = $derived(attachments.filter(needsAttention).length);
+  // A long list is capped: the first tiles show, the last of them fades, and a count under the list
+  // shows the rest. The list itself scrolls once it is open, so Send stays in the pane.
+  let attachmentsExpanded = $state(false);
+  $effect(() => {
+    if (attachments.length <= ATTACHMENT_LIST_CAP) attachmentsExpanded = false;
+  });
+  const shownAttachments = $derived(
+    attachmentsExpanded ? attachments : attachments.slice(0, ATTACHMENT_LIST_CAP),
+  );
+  const hiddenAttachmentCount = $derived(attachments.length - shownAttachments.length);
   const hasReadyPromotedPaste = $derived(
     attachments.some(
       (attachment) =>
@@ -519,15 +541,16 @@
   const hasReadyAttachments = $derived(
     attachments.some((attachment) => attachment.status === 'ready' && !attachment.restoreText),
   );
-  // Allow submit when text is present, even if some attachments errored.
-  // Only block on pending/uploading attachments (they're not yet ready to send).
+  // Allow submit when text or a ready attachment is present. Block while an attachment is still
+  // pending or uploading, and while one has failed: it is retried or removed before anything sends.
   const canSubmit = $derived(
     (!isWhitespaceOnly || hasReadyAttachments || hasReadyPromotedPaste) &&
       !disabled &&
       !paused &&
       !offline &&
       !sendBlocked &&
-      !hasPendingAttachments,
+      !hasPendingAttachments &&
+      attentionCount === 0,
   );
   // With a draft in the box and a decision ahead of it, Send says what will happen to the draft.
   const queued = $derived(queueing && !answering && canSubmit);
@@ -535,6 +558,7 @@
     if (starting !== undefined) return starting;
     if (offline) return 'Send comes back when you reconnect';
     if (hasPendingAttachments) return 'Wait for attachments';
+    if (attentionCount > 0) return attachmentBlockingReason(attentionCount);
     if (showStopButton) return 'Stop generating';
     if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
       return answering ? 'Type an answer' : 'Add a message or attachment';
@@ -605,6 +629,7 @@
   /** What Send's `aria-describedby` names besides the shortcut description: each visible reason. */
   const sendReasonIds = $derived([
     ...(offline ? [drawerId] : []),
+    ...(attentionCount > 0 ? [attachmentReasonId] : []),
     ...(shownPausedReason === undefined ? [] : [pausedReasonId]),
   ]);
 
@@ -685,7 +710,7 @@
 
   /** `attachment` as an `error` row: its upload reference is dropped, so it can never be sent. */
   function refused(attachment: ChatAttachment, message: string): ChatAttachment {
-    const { reference: _reference, ...others } = attachment;
+    const { reference: _reference, progress: _progress, ...others } = attachment;
     return { ...others, status: 'error', error: message };
   }
 
@@ -806,7 +831,13 @@
     };
     void (async () => {
       try {
-        const reference = await upload(attachment.file, { signal: controller.signal });
+        const reference = await upload(attachment.file, {
+          signal: controller.signal,
+          onProgress: (fraction) => {
+            if (controller.signal.aborted || !Number.isFinite(fraction)) return;
+            settle({ progress: Math.min(1, Math.max(0, fraction)) });
+          },
+        });
         settle({ status: 'ready', reference });
         if (!controller.signal.aborted) announcer.announce(`${attachment.file.name} is ready`);
       } catch (failure) {
@@ -817,12 +848,30 @@
           file: attachment.file,
           error: failure,
         });
-        settle({ status: 'error', error: message });
+        settle({ status: 'error', error: message, retryable: true });
         announcer.announce(`${attachment.file.name} could not be uploaded: ${message}`);
       } finally {
         uploadControllers.delete(attachment.id);
       }
     })();
+  }
+
+  /** Uploads a failed attachment again, as it was first uploaded. */
+  function retryAttachment(attachmentId: string): void {
+    const upload = uploadAttachment;
+    const attachment = attachments.find((entry) => entry.id === attachmentId);
+    if (upload === undefined || attachment === undefined || !canRetry(attachment)) return;
+    const {
+      error: _error,
+      progress: _progress,
+      retryable: _retryable,
+      reference: _reference,
+      ...others
+    } = attachment;
+    const retrying: ChatAttachment = { ...others, status: 'uploading' };
+    attachments = attachments.map((entry) => (entry.id === attachmentId ? retrying : entry));
+    announcer.announce(`Retrying ${attachment.file.name}`);
+    startUpload(retrying, upload);
   }
 
   function abortUploads(ids?: readonly string[]): void {
@@ -1023,11 +1072,7 @@
       content: submittedContent,
     };
 
-    // Call onsubmit callback
-    // A file that failed is left out of the message, and the announcement names each one.
-    const leftOut = attachments
-      .filter((attachment) => attachment.status === 'error')
-      .map((attachment) => attachment.file.name);
+    // Call onsubmit callback. A failed file blocks Send, so every attachment here is ready.
     onsubmit?.(
       message,
       readyAttachments.filter((attachment) => attachment.restoreText === undefined),
@@ -1048,9 +1093,7 @@
 
       // Restore focus to editor
       editorElement?.focus();
-      announcer.announce(
-        leftOut.length === 0 ? 'Message sent' : `Message sent without ${leftOut.join(', ')}`,
-      );
+      announcer.announce('Message sent');
     } else {
       // In form action mode, sync the bound value with trimmed content
       // so the hidden input sends the same content as the callback.
@@ -1483,29 +1526,42 @@
           rows="1"></textarea>
       </div>
 
-      <!-- Attachments: a chip each, with the reason beside one that failed -->
+      <!-- Attachments: a count over a tile each. A failed file says why beside its tile, with Retry
+           when its upload can be tried again, and every tile is removed with the same cross. -->
       {#if attachments.length > 0}
-        <ul class="chat-input-attachments" aria-label="Attached files">
-          {#each attachments as attachment (attachment.id)}
-            <li
-              class="chat-input-attachment-wrapper"
-              data-attachment-state={attachment.status}
-              data-attachment-id={attachment.id}
+        <div class="chat-input-attachment-shelf">
+          <p class="chat-input-attachment-summary" data-chat-attachment-summary="">
+            <span class="chat-input-attachment-count"
+              >{attachmentCountText(attachments.length)}</span
             >
-              {#if attachment.status === 'error'}
-                <ChatAttachmentPreview {attachment} />
-                <span class="chat-input-attachment-error" data-attachment-error={attachment.id}
-                  >{attachment.error ?? 'Upload failed. Try again, or remove it.'}</span
-                >
-                <button
-                  type="button"
-                  class="chat-input-attachment-remove chat-input-attachment-remove-text"
-                  onclick={() => removeAttachment(attachment.id)}
-                  aria-label={`Remove ${attachment.file.name}`}>Remove</button
-                >
-              {:else}
+            {#if attentionCount > 0}
+              <span class="chat-input-attachment-attention"
+                >{attachmentAttentionText(attentionCount)}</span
+              >
+            {/if}
+          </p>
+          <ul
+            id={attachmentListId}
+            class="chat-input-attachments"
+            aria-label="Attached files"
+            data-capped={hiddenAttachmentCount > 0 || undefined}
+          >
+            {#each shownAttachments as attachment (attachment.id)}
+              <li
+                class="chat-input-attachment-wrapper"
+                data-attachment-state={attachment.status}
+                data-attachment-id={attachment.id}
+              >
                 <ChatAttachmentPreview {attachment}>
                   {#snippet action()}
+                    {#if canRetry(attachment) && uploadAttachment !== undefined}
+                      <button
+                        type="button"
+                        class="chat-input-attachment-retry"
+                        onclick={() => retryAttachment(attachment.id)}
+                        aria-label={`Retry ${attachment.file.name}`}>Retry</button
+                      >
+                    {/if}
                     <button
                       type="button"
                       class="chat-input-attachment-remove"
@@ -1516,10 +1572,26 @@
                     </button>
                   {/snippet}
                 </ChatAttachmentPreview>
-              {/if}
-            </li>
-          {/each}
-        </ul>
+                {#if attachment.status === 'error'}
+                  <span
+                    class="chat-input-attachment-error"
+                    data-attachment-error={attachment.id}
+                    dir="auto">{attachment.error ?? 'Upload failed. Try again, or remove it.'}</span
+                  >
+                {/if}
+              </li>
+            {/each}
+          </ul>
+          {#if hiddenAttachmentCount > 0}
+            <button
+              type="button"
+              class="chat-input-attachment-more"
+              aria-controls={attachmentListId}
+              aria-expanded="false"
+              onclick={() => (attachmentsExpanded = true)}>{hiddenAttachmentCount} more</button
+            >
+          {/if}
+        </div>
       {/if}
 
       <!-- Footer with actions -->
@@ -1683,6 +1755,12 @@
     </form>
   {/if}
   {#if blocked === undefined}
+    {#if attentionCount > 0}
+      <!-- Why Send is off while files need attention: under the composer, and named by Send. -->
+      <p id={attachmentReasonId} class="chat-input-attachment-reason">
+        {attachmentBlockingReason(attentionCount)}
+      </p>
+    {/if}
     {#if statusText && drawerStatus === undefined}
       <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
     {:else if hintText !== undefined}
@@ -1815,16 +1893,85 @@
     pointer-events: none;
   }
 
-  /* Attachments: a chip each. A file that failed shows its reason beside the chip, then Remove. */
+  /* Attachments: a count, then a tile a row. A file that failed shows its reason beside its tile. */
+  .chat-input-attachment-shelf {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1-5);
+    padding-inline: var(--cinder-space-3);
+  }
+
+  .chat-input-attachment-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0 var(--cinder-space-2);
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    text-align: start;
+  }
+
+  .chat-input-attachment-attention {
+    color: var(--cinder-status-danger-text);
+  }
+
+  /* The list is bounded, so a pile of files scrolls inside it and Send stays in the pane. */
   .chat-input-attachments {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--cinder-space-2);
+    max-block-size: 12rem;
     margin: 0;
     padding: 0;
-    padding-inline: var(--cinder-space-3);
+    overflow-y: auto;
     list-style: none;
+  }
+
+  /* A capped list fades its last tile into the count under it. */
+  .chat-input-attachments[data-capped] > :last-child {
+    mask-image: linear-gradient(to bottom, black 45%, transparent);
+  }
+
+  .chat-input-attachment-more {
+    align-self: flex-start;
+    padding: 0;
+    border: none;
+    background: transparent;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-size: var(--cinder-text-xs);
+    cursor: pointer;
+  }
+
+  /* Retry sits before the cross on a tile whose upload failed. */
+  .chat-input-attachment-retry {
+    flex: none;
+    min-block-size: 1.5rem;
+    padding: 0 var(--cinder-space-1);
+    border: none;
+    border-radius: var(--cinder-radius-sm);
+    background: transparent;
+    color: var(--cinder-accent-text);
+    font: inherit;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    cursor: pointer;
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-input-attachment-retry,
+    .chat-input-attachment-more {
+      min-block-size: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  /* Why Send is off while files need attention, under the composer. */
+  .chat-input-attachment-reason {
+    margin: 0;
+    padding-inline: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-status-danger-text);
   }
 
   .chat-input-attachment-wrapper {
@@ -1861,27 +2008,12 @@
     }
   }
 
-  /* Remove beside a failed file is a quiet link, not a cross inside a chip. */
-  .chat-input-attachment-remove-text {
-    min-block-size: 0;
-    margin-inline-end: 0;
-    padding: 0;
-    color: var(--cinder-accent-text);
-    font: inherit;
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-  }
-
-  @media (any-pointer: coarse) {
-    .chat-input-attachment-remove-text {
-      min-block-size: var(--cinder-touch-target-min);
-    }
-  }
-
   @media (hover: hover) {
     .chat-input-attachment-remove:hover {
       color: var(--cinder-text-default);
     }
-    .chat-input-attachment-remove-text:hover {
+    .chat-input-attachment-retry:hover,
+    .chat-input-attachment-more:hover {
       text-decoration: underline;
     }
   }

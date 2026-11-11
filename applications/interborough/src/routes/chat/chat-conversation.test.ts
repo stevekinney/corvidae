@@ -1429,6 +1429,8 @@ describe('attachments', () => {
 
     await waitFor(() => expect(states(container)).toEqual(['error']));
     expect(await findByText('Can’t attach: this agent does not take files.')).not.toBeNull();
+    // A file that needs attention holds Send until it is retried or removed (COR-2277).
+    await fireEvent.click(await findByRole('button', { name: 'Remove photo.png' }));
     await sendMessage(container, 'Hello');
     await waitFor(() => expect(state.runs).toHaveLength(1));
     expect(state.runs[0]?.messages[0]?.content).toBe('Hello');

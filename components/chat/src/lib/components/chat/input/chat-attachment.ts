@@ -14,11 +14,16 @@ export interface ChatAttachmentReference {
 
 /**
  * Uploads one file when it is attached. The signal aborts when the person removes the attachment
- * or the composer goes away. A rejection puts the attachment in the `error` state.
+ * or the composer goes away. A rejection puts the attachment in the `error` state, with Retry.
+ * `onProgress`, when the hook calls it with the fraction sent so far (0 to 1), turns the tile's
+ * moving bar into a percentage.
  */
 export type ChatAttachmentUpload = (
   file: File,
-  context: { readonly signal: AbortSignal },
+  context: {
+    readonly signal: AbortSignal;
+    readonly onProgress?: ((fraction: number) => void) | undefined;
+  },
 ) => Promise<ChatAttachmentReference>;
 
 /** Why an attachment is in the `error` state. A host's formatter turns it into the words shown. */
@@ -49,4 +54,11 @@ export interface ChatAttachment {
   error?: string;
   /** What the host's `uploadAttachment` hook answered, once the attachment is `ready`. */
   reference?: ChatAttachmentReference;
+  /** How much of an `uploading` attachment has been sent, from 0 to 1, when the hook reports it. */
+  progress?: number;
+  /**
+   * Whether an `error` attachment offers Retry: its upload failed. A file the composer refused
+   * (too large, or a type it does not accept) can only be removed.
+   */
+  retryable?: boolean;
 }

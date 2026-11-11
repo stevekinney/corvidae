@@ -105,7 +105,7 @@ describe('an attachment with an upload hook', () => {
     unmount(instance);
   });
 
-  test('shows error with the formatted message when the hook rejects, and still lets text send', async () => {
+  test('shows error with the formatted message when the hook rejects', async () => {
     const { upload, calls } = heldUpload();
     const failures: ChatAttachmentFailure[] = [];
     const { target, instance } = mountInput({
@@ -126,6 +126,64 @@ describe('an attachment with an upload hook', () => {
     expect(failures).toHaveLength(1);
     expect(failures[0]).toMatchObject({ kind: 'upload-failed' });
     expect(target.textContent).toContain('Could not upload that.');
+    unmount(instance);
+  });
+
+  test('Retry, before the cross, uploads a failed file again, and the message sends once it is ready', async () => {
+    const { upload, calls } = heldUpload();
+    const { target, instance } = mountInput({ uploadAttachment: upload });
+    instance.addFiles([png()]);
+    await tick();
+    calls[0]!.reject(new Error('boom'));
+    await tick();
+    await tick();
+
+    expect(stateOf(target)).toEqual(['error']);
+    const send = target.querySelector<HTMLButtonElement>('.chat-input-send')!;
+    expect(send.disabled).toBe(true);
+    const retry = target.querySelector<HTMLButtonElement>('button[aria-label="Retry photo.png"]')!;
+    expect(retry.textContent?.trim()).toBe('Retry');
+    expect(retry.nextElementSibling?.getAttribute('aria-label')).toBe('Remove photo.png');
+
+    await fireEvent.click(retry);
+
+    expect(calls).toHaveLength(2);
+    expect(stateOf(target)).toEqual(['uploading']);
+    expect(target.querySelector('[data-attachment-error]')).toBeNull();
+    calls[1]!.resolve({ id: 'asset-2' });
+    await tick();
+    await tick();
+
+    expect(stateOf(target)).toEqual(['ready']);
+    expect(send.disabled).toBe(false);
+    unmount(instance);
+  });
+
+  test('shows the percentage the hook reports, and a moving bar until it reports', async () => {
+    let report: (fraction: number) => void = () => undefined;
+    const upload = (
+      _file: File,
+      context: {
+        signal: AbortSignal;
+        onProgress?: ((fraction: number) => void) | undefined;
+      },
+    ): Promise<ChatAttachmentReference> => {
+      report = context.onProgress ?? report;
+      return new Promise<ChatAttachmentReference>(() => undefined);
+    };
+    const { target, instance } = mountInput({ uploadAttachment: upload });
+    instance.addFiles([png()]);
+    await tick();
+
+    expect(target.querySelector('.chat-attachment-preview [role="status"]')).not.toBeNull();
+    expect(target.querySelector('[role="progressbar"]')).toBeNull();
+
+    report(0.42);
+    await tick();
+
+    const bar = target.querySelector('[role="progressbar"]')!;
+    expect(bar.getAttribute('aria-valuenow')).toBe('42');
+    expect(target.querySelector('.chat-attachment-preview-state')?.textContent).toBe('42%');
     unmount(instance);
   });
 
