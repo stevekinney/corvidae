@@ -360,7 +360,7 @@
 
 {#if placement === 'beside'}
   <aside class="weft-agent-try-panel" aria-labelledby={headingId} data-testid="agent-try-panel">
-    <header class="weft-agent-try-panel__header">
+    <header class="weft-agent-try-panel__title-row">
       {@render heading()}
     </header>
     {@render body()}
@@ -375,7 +375,7 @@
     closeLabel={copy.closeSheet}
   >
     {#snippet header()}
-      <div class="weft-agent-try-sheet__header">
+      <div class="weft-agent-try-sheet__title-row">
         {@render heading()}
       </div>
     {/snippet}
@@ -391,8 +391,8 @@
     min-inline-size: 0;
   }
 
-  .weft-agent-try-panel__header,
-  .weft-agent-try-sheet__header {
+  .weft-agent-try-panel__title-row,
+  .weft-agent-try-sheet__title-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -400,7 +400,7 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
   }
 
-  .weft-agent-try-sheet__header {
+  .weft-agent-try-sheet__title-row {
     flex: 1;
     min-inline-size: 0;
   }

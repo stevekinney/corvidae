@@ -78,7 +78,7 @@
   data-skill={skill.name}
   data-trust={skill.trust}
 >
-  <header class="ib-capability__header">
+  <header class="ib-capability__name-line">
     <h3 class="ib-capability__name">{heading}</h3>
     <code class="ib-capability__code ib-capability__identifier" data-testid="skill-identifier"
       >{skill.name}</code
@@ -113,7 +113,7 @@
           {#each brought as entry (entry.name)}
             <Table.Row data-brought-tool={entry.name}>
               <Table.Cell>
-                <span class="ib-capability__header">
+                <span class="ib-capability__name-line">
                   <a
                     href={router.href(toolPath(entry.name))}
                     onclick={(event) => openTool(event, entry.name)}>{entry.heading}</a

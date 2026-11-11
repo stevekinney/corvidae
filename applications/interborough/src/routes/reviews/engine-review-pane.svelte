@@ -89,7 +89,7 @@
     </div>
   {:else}
     <div class="ib-review-draft">
-      <div class="ib-review-draft__header">
+      <div class="ib-review-draft__title-row">
         <h3 class="ib-review-draft__title">{REVIEWS_COPY.workflow.draftLabel}</h3>
         {#if draftText !== ''}
           <CopyButton

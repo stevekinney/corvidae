@@ -598,7 +598,7 @@ describe('the Skills tab', () => {
       served.restore();
     };
     landAt('/capabilities?tab=skills&skill=home%2Fsummarize');
-    const { container, findByText, findByRole } = mount();
+    const { container, findByRole } = mount();
     await waitFor(() =>
       expect(container.querySelector('[data-testid="skill-detail"]')).not.toBeNull(),
     );

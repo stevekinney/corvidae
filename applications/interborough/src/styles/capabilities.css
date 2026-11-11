@@ -139,7 +139,7 @@
 }
 
 /* A tool's name for a person, with its identifier small and monospaced beside it; they wrap apart on a narrow pane. */
-.ib-capability__header {
+.ib-capability__name-line {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;

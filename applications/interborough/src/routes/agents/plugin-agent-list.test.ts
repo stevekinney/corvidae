@@ -204,12 +204,12 @@ describe('the agents a disabled plugin holds back', () => {
   });
 });
 
-describe('Enable and restart, from the list', () => {
-  const confirmButton = (dialog: HTMLElement) =>
-    [...dialog.querySelectorAll('button')].find(
-      (button) => button.textContent?.trim() === 'Enable and restart',
-    );
+const confirmButton = (dialog: HTMLElement) =>
+  [...dialog.querySelectorAll('button')].find(
+    (button) => button.textContent?.trim() === 'Enable and restart',
+  );
 
+describe('Enable and restart, from the list', () => {
   test('asks Enable Demo and restart?, names what comes back, and says what a restart does to work in flight', async () => {
     landAt('/agents');
     serve({

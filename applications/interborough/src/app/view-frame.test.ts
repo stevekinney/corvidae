@@ -531,7 +531,9 @@ describe('a view that owns its states on some routes only', () => {
     const { container, findByTestId, queryByRole } = mount('agents', { pattern: '/agents' });
     expect(await findByTestId('content')).not.toBeNull();
     await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
-    expect(queryByRole('heading', { level: 1, name: VIEW_COPY.agents.empty.title })).toBeNull();
+    expect(
+      queryByRole('heading', { level: 1, name: VIEW_COPY.agents.empty?.title ?? '' }),
+    ).toBeNull();
   });
 
   test('leaves an agent’s page its failure from the frame', async () => {

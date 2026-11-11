@@ -1111,11 +1111,11 @@ export const WORKFLOW_COPY = {
         description: 'Records what the scheduler did each time a schedule came due.',
       },
     },
-    /** There is nothing to list because the engine has registered none: said as the environment, not as a promise. */
+    /** There is nothing to list because none have been registered: said as the environment, not as a promise. */
     empty: {
       title: 'No internal workflows registered',
       description:
-        'The engine this host talks to has not registered the workflows Interborough runs for chats, goals and schedules. They are listed here once it does, which happens when Interborough is started against its own engine.',
+        'Nothing has registered the workflows Interborough runs for chats, goals and schedules on this host yet. They are listed here once they are, which happens when Interborough is started on its own.',
     },
     loadFailed: {
       title: 'The internal workflows could not be loaded',

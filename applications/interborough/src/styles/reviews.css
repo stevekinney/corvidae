@@ -109,7 +109,7 @@
   min-inline-size: 0;
 }
 
-.ib-review-draft__header {
+.ib-review-draft__title-row {
   display: flex;
   align-items: center;
   justify-content: space-between;

@@ -10,6 +10,7 @@ import {
   effectiveAuthentication,
   EMPTY_TOOL_SOURCE_FORM,
   fieldOfHostField,
+  openApiToolName,
   splitCommandLine,
   startingApproval,
   startingToolChoices,

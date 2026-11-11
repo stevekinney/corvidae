@@ -133,7 +133,7 @@
   {#if task !== undefined}
     <div class="ib-run__payloads">
       <section class="ib-run__payload-card" aria-label={scheduled ? copy.prompt : copy.messageIn}>
-        <header class="ib-run__payload-header">
+        <header class="ib-run__payload-title-row">
           <h3 class="ib-run__heading-3">{scheduled ? copy.prompt : copy.messageIn}</h3>
           <span class="ib-run__note">{scheduled ? copy.fromSchedule : copy.fromYou}</span>
         </header>
@@ -150,7 +150,7 @@
       </section>
 
       <section class="ib-run__payload-card" aria-label={scheduled ? copy.result : copy.replyOut}>
-        <header class="ib-run__payload-header">
+        <header class="ib-run__payload-title-row">
           <h3 class="ib-run__heading-3">{scheduled ? copy.result : copy.replyOut}</h3>
           <span class="ib-run__note">{copy.fromAgent(agent)}</span>
         </header>

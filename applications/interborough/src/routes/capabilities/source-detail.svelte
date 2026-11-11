@@ -229,7 +229,7 @@
   data-state={source.state}
 >
   <div class="ib-source__top">
-    <div class="ib-capability__header">
+    <div class="ib-capability__name-line">
       <h3 class="ib-capability__name" data-testid="source-name">{heading}</h3>
       {#if source.address !== undefined && source.address !== null}
         <code class="ib-capability__code ib-capability__identifier" data-testid="source-address"
@@ -410,7 +410,7 @@
                 </Table.Cell>
                 <Table.Cell>
                   <div class="ib-source__tool">
-                    <span class="ib-capability__header">
+                    <span class="ib-capability__name-line">
                       <a
                         href={router.href(`/capabilities?tool=${encodeURIComponent(tool.name)}`)}
                         aria-label={copy.tools.open(tool.name)}

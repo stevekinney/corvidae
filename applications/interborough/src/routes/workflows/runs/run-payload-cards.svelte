@@ -36,7 +36,7 @@
         <RunPayload value={workflow.result} label={copy.output} />
       {:else}
         <section class="ib-run__payload-card" aria-label={copy.output}>
-          <header class="ib-run__payload-header">
+          <header class="ib-run__payload-title-row">
             <h3 class="ib-run__heading-3">{copy.output}</h3>
           </header>
           {#if workflow.status === 'failed'}

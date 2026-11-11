@@ -79,7 +79,6 @@ test.describe('the list', () => {
   for (const width of WIDTHS) {
     test(`has a row for a code-defined type, a file with an agent, and an invalid file, at ${width} pixels`, async ({
       page,
-      request,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });

@@ -238,7 +238,7 @@
                   />
                 </Table.Cell>
                 <Table.Cell>
-                  <span class="ib-capability__header">
+                  <span class="ib-capability__name-line">
                     <span class="ib-connect-choose__name">{headingOf(row)}</span>
                     <code class="ib-capability__code ib-capability__identifier"
                       >{row.operation === undefined

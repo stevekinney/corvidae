@@ -42,7 +42,7 @@
 </script>
 
 <article class="ib-capability" data-testid="tool-detail" data-tool={tool.name} data-tier={tier}>
-  <header class="ib-capability__header">
+  <header class="ib-capability__name-line">
     <h3 class="ib-capability__name">{heading}</h3>
     <code class="ib-capability__code ib-capability__identifier" data-testid="tool-identifier"
       >{tool.name}</code

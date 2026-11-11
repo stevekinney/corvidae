@@ -180,7 +180,7 @@
           {copy.view.back}
         </Button>
       </div>
-      <header class="ib-agent-version-view__header">
+      <header class="ib-agent-version-view__title-row">
         <div class="ib-agent-version-view__title">
           <h2>{copy.revision(shown.revision)}</h2>
           <p class="ib-agent-note">{copy.view.readOnly(savedLine(shown))}</p>

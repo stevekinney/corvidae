@@ -380,7 +380,7 @@
   min-inline-size: 0;
 }
 
-.ib-agent-version-view__header {
+.ib-agent-version-view__title-row {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-2) var(--cinder-space-3);

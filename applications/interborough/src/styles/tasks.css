@@ -344,7 +344,7 @@
   background: var(--cinder-surface);
 }
 
-.ib-run__payload-header {
+.ib-run__payload-title-row {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
