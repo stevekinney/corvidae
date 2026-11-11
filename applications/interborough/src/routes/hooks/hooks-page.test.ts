@@ -382,14 +382,21 @@ describe('the hooks list', () => {
 
     await waitFor(() => expect(rowIds(view.container).length).toBe(4));
     const sentence = 'When a review is waiting, send a webhook to example.com';
-    // A hook for everything says no limit; a workflow reads inside the sentence; any other subject
-    // after it. Each row is the link to its hook.
-    expect(lineTwo(view.container, 'everyone')).toBe(sentence);
-    expect(lineTwo(view.container, 'nightly')).toBe(
-      'When a review is waiting in Nightly, send a webhook to example.com',
-    );
-    expect(lineTwo(view.container, 'scoped')).toBe(`${sentence}, only for Researcher`);
-    expect(lineTwo(view.container, 'future')).toBe(`${sentence}, only for Blue`);
+    // These hooks have no name, so each is titled by its sentence and line two says only what else
+    // limits it: a hook for everything has no line two, a workflow reads inside the sentence (the
+    // title), and any other subject follows as line two. Each row is the link to its hook.
+    expect(lineTwo(view.container, 'everyone')).toBeUndefined();
+    expect(
+      within(row(view.container, 'everyone')!).getByRole('link', { name: sentence }),
+    ).not.toBeNull();
+    expect(lineTwo(view.container, 'nightly')).toBeUndefined();
+    expect(
+      within(row(view.container, 'nightly')!).getByRole('link', {
+        name: 'When a review is waiting in Nightly, send a webhook to example.com',
+      }),
+    ).not.toBeNull();
+    expect(lineTwo(view.container, 'scoped')).toBe('Only for Researcher');
+    expect(lineTwo(view.container, 'future')).toBe('Only for Blue');
     expect(
       within(row(view.container, 'scoped')!)
         .getByRole('link', { name: sentence })
