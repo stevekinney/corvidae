@@ -67,7 +67,9 @@
   import { RunEngine } from './run-engine.svelte.ts';
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
+  import RunHowItRan from './run-how-it-ran.svelte';
   import RunPanels from './run-panels.svelte';
+  import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
@@ -448,6 +450,17 @@
       : workflowRunSetupPath(type);
   });
 
+  // How it ran is closed for a finished run of the Bureau's, which a person reads for what happened,
+  // and open for any other: a run still going shows its approvals there, and a run only the engine
+  // holds has nothing else. The default is settled once, when the run is first known, so a run that
+  // finishes while it is watched does not fold up under the person watching it.
+  let howDefault = $state<boolean | undefined>(undefined);
+  let howOverride = $state<boolean | undefined>(undefined);
+  $effect.pre(() => {
+    if (howDefault !== undefined || summary === undefined) return;
+    howDefault = !(task.data !== undefined && summary.over);
+  });
+  const howOpen = $derived(howOverride ?? howDefault ?? true);
   let restartOpen = $state(false);
   /** Whether an answer to the run's question is in its Undo window, which the status line says. */
   let answerHeld = $state(false);
@@ -535,35 +548,53 @@
             followState={follower.state}
             {workflow}
             {record}
+            showRaw={false}
+            onShowRaw={task.data !== undefined && (workflow !== undefined || record !== undefined)
+              ? () => (howOverride = true)
+              : undefined}
           />
-          <RunActivity
-            task={task.data}
-            threadId={goalTask ? attemptThreadId : undefined}
-            {taskEvents}
-            note={activityNote}
-            engine={workflow === undefined ? undefined : engine}
-            {workflow}
-          />
-          {#if task.data !== undefined}
-            <RunPanels taskId={task.data.id} />
-          {/if}
-          {#if workflow !== undefined}
-            <RunChange {engine} {workflow} />
-            <RunEnginePanels {engine} {workflow} />
-          {:else if engine.fault !== null}
-            <!-- The Bureau's side is shown; the engine's could not be read, and that is said. -->
-            <ErrorState
-              variant="flat"
-              title={TASK_COPY.engineReadFailed}
-              description={engine.fault.message}
-              headingLevel={2}
-              retryLabel={RETRY_LABEL}
-              onRetry={() =>
-                void queryClient.invalidateQueries({
-                  queryKey: queryKeys.workflows.detail(initialRunId),
-                })}
+          <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
+            {#if task.data !== undefined && (workflow !== undefined || record !== undefined)}
+              <section
+                class="ib-run__section"
+                aria-labelledby="ib-run-raw"
+                data-section="raw-payloads"
+              >
+                <h3 id="ib-run-raw" class="ib-run__heading-3">
+                  {RUN_DETAIL_COPY.howItRan.rawPayloads}
+                </h3>
+                <RunPayloadCards {workflow} {record} />
+              </section>
+            {/if}
+            <RunActivity
+              task={task.data}
+              threadId={goalTask ? attemptThreadId : undefined}
+              {taskEvents}
+              note={activityNote}
+              engine={workflow === undefined ? undefined : engine}
+              {workflow}
             />
-          {/if}
+            {#if task.data !== undefined}
+              <RunPanels taskId={task.data.id} />
+            {/if}
+            {#if workflow !== undefined}
+              <RunChange {engine} {workflow} />
+              <RunEnginePanels {engine} {workflow} />
+            {:else if engine.fault !== null}
+              <!-- The Bureau's side is shown; the engine's could not be read, and that is said. -->
+              <ErrorState
+                variant="flat"
+                title={TASK_COPY.engineReadFailed}
+                description={engine.fault.message}
+                headingLevel={2}
+                retryLabel={RETRY_LABEL}
+                onRetry={() =>
+                  void queryClient.invalidateQueries({
+                    queryKey: queryKeys.workflows.detail(initialRunId),
+                  })}
+              />
+            {/if}
+          </RunHowItRan>
         {/if}
       </div>
       {#if summary !== undefined}

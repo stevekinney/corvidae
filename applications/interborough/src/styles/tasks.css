@@ -40,9 +40,12 @@
   min-width: 0;
 }
 
+/* Beside the sections, the rail holds its place while the page scrolls past it. */
 @media (min-width: 1024px) {
   .ib-run__rail {
     inline-size: 320px;
+    position: sticky;
+    inset-block-start: var(--cinder-space-4);
   }
 }
 

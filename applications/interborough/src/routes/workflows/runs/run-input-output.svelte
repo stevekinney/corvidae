@@ -23,7 +23,7 @@
   import { failureCategoryExplanation, failureCategoryLabel } from '../detail/failure-category.ts';
   import { threadIdForTask } from './run-activity.ts';
   import { messageInOfRun } from './run-message-in.ts';
-  import RunPayload from './run-payload.svelte';
+  import RunPayloadCards from './run-payload-cards.svelte';
   import { payloadViewPreference } from './run-payload-view.svelte.ts';
 
   interface RunInputOutputProps {
@@ -113,7 +113,7 @@
   );
   let replyOpen = $state(false);
 
-  const endedWords = $derived(workflow?.status === 'cancelled' ? 'was cancelled' : 'timed out');
+
 </script>
 
 <section class="ib-run__section" aria-labelledby="ib-run-io" data-section="input-output">
@@ -188,39 +188,7 @@
   {/if}
 
   {#if task === undefined || showRaw}
-    {#if workflow !== undefined || record !== undefined}
-      <div class="ib-run__payloads">
-        <RunPayload
-          value={workflow !== undefined ? workflow.input : record?.trigger}
-          label={copy.input}
-        />
-        {#if workflow !== undefined}
-          {#if workflow.status === 'completed'}
-            <RunPayload value={workflow.result} label={copy.output} />
-          {:else}
-            <section class="ib-run__payload-card" aria-label={copy.output}>
-              <header class="ib-run__payload-header">
-                <h3 class="ib-run__heading-3">{copy.output}</h3>
-              </header>
-              {#if workflow.status === 'failed'}
-                <p class="ib-run__note">{copy.noOutputFailed}</p>
-              {:else if workflow.status === 'cancelled' || workflow.status === 'timed-out'}
-                <p class="ib-run__note">{copy.noOutputEnded(endedWords)}</p>
-              {:else}
-                <p class="ib-run__note">
-                  <span class="ib-run__spinner" aria-hidden="true"></span>
-                  {copy.outputPending(workflow.status)}
-                </p>
-              {/if}
-            </section>
-          {/if}
-        {:else if record !== undefined}
-          {#if record.result !== undefined && record.result !== null}
-            <RunPayload value={record.result} label={copy.output} />
-          {/if}
-        {/if}
-      </div>
-    {/if}
+    <RunPayloadCards {workflow} {record} />
   {/if}
 
   {#if workflow !== undefined && workflow.status === 'failed'}

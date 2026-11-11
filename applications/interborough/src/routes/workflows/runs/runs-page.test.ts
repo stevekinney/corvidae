@@ -9,7 +9,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+import { RETRY_LABEL, RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import {
@@ -243,7 +243,10 @@ describe('a run’s page', () => {
       expect(without.queryByRole('heading', { level: 1 })?.textContent).toContain('echo'),
     );
     expect(without.queryAllByRole('tab').length).toBe(0);
-    for (const name of ['Input and output', 'Activity', 'Details']) {
+    expect(
+      without.queryByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading }),
+    ).not.toBeNull();
+    for (const name of ['Input and output', 'Details']) {
       expect(without.queryByRole('heading', { level: 2, name })).not.toBeNull();
     }
   });

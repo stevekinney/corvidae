@@ -349,6 +349,31 @@ describe('a run that cannot be followed live', () => {
   });
 });
 
+describe('how it ran', () => {
+  test('is folded up for a finished run and opens for the activity, and stays open while a run goes', async () => {
+    const done = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', status: 'completed' })],
+      scopes: BUREAU_ONLY,
+    });
+    const trigger = await done.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+    expect(done.queryByRole('heading', { level: 2, name: 'Activity' })).toBeNull();
+
+    await fireEvent.click(trigger);
+
+    await waitFor(() =>
+      expect(done.queryByRole('heading', { level: 2, name: 'Activity' })).not.toBeNull(),
+    );
+    cleanup();
+    stub?.restore();
+
+    const going = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', status: 'working' })],
+      scopes: BUREAU_ONLY,
+    });
+    expect(await going.findByRole('heading', { level: 2, name: 'Activity' })).not.toBeNull();
+  });
+});
+
 describe('the page', () => {
   test('is one header with one status, a Details rail and no tabs, even for a caller with no engine scope', async () => {
     const view = open('/runs/run-1', {
@@ -361,7 +386,10 @@ describe('the page', () => {
     expect(view.container.querySelectorAll('[data-status-word]').length).toBe(1);
     expect(header(view.container)?.textContent).toContain('Done');
     expect(view.queryAllByRole('tab').length).toBe(0);
-    for (const name of ['Input and output', 'Activity', 'Details']) {
+    // A finished run's how it ran is folded up; a person opens it for the activity.
+    expect(view.getByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading })).not.toBeNull();
+    expect(view.queryByRole('heading', { level: 2, name: 'Activity' })).toBeNull();
+    for (const name of ['Input and output', 'Details']) {
       expect(view.getByRole('heading', { level: 2, name })).not.toBeNull();
     }
     // What only the workflow's reader may do is not drawn, and the page is whole without it.
