@@ -141,6 +141,8 @@ describe('Drawer', () => {
     );
     const css = readFileSync(new URL('./drawer.css', import.meta.url), 'utf8');
     expect(css).toMatch(/data-cinder-size='xs'\]\s*\{\s*width:\s*min\(17\.5rem,\s*100vw\)/);
+    // `sm` is the 360px side sheet (the Try it panel, row 44a).
+    expect(css).toMatch(/data-cinder-size='sm'\]\s*\{\s*width:\s*min\(22\.5rem,\s*100vw\)/);
   });
 
   // ---- Initial focus on open: host-managed body focus (the Modal policy) ----

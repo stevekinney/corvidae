@@ -130,7 +130,7 @@
     width: min(17.5rem, 100vw);
   }
   .cinder-drawer__panel[data-cinder-size='sm'] {
-    width: min(20rem, 100vw);
+    width: min(22.5rem, 100vw);
   }
   .cinder-drawer__panel[data-cinder-size='md'] {
     width: min(28rem, 100vw);

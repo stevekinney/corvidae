@@ -14,7 +14,7 @@ export type DrawerProps = {
    * Drawer width token for `left`/`right` placements.
    * Ignored for `placement="bottom"`, which always spans the full viewport
    * width and caps its height at 90dvh.
-   * `xs` is 280px, the width of a navigation drawer; `sm` is 320px, `md` 448px, `lg` 576px and `xl`
+   * `xs` is 280px, the width of a navigation drawer; `sm` is 360px, `md` 448px, `lg` 576px and `xl`
    * 768px.
    * @default 'md'
    */
