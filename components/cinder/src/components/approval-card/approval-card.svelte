@@ -62,9 +62,10 @@
     STATE_DOT_STATUS,
     STATE_LABELS,
     dedupeFilePaths,
+    describeCountdown,
     describeDecisionTime,
     describeExpiry,
-    formatRemainingTime,
+    inputRepeatsShownFacts,
     isApprovalActionable,
     normalizeArgumentsPreviewValue,
     parseExpirationTimestamp,
@@ -296,7 +297,7 @@
     ) {
       return undefined;
     }
-    return `Expires in ${formatRemainingTime(expirationTimestamp - currentTime)}`;
+    return describeCountdown(expirationTimestamp, currentTime);
   });
 
   const payloadLabel = $derived(
@@ -328,10 +329,21 @@
   const decisionCommand = $derived(
     operation.kind === 'command' && operation.command ? operation.command : undefined,
   );
+  // Arguments that only repeat what the facts already show in the open (the command, the target,
+  // the tool) get no Input disclosure of their own.
+  const argumentsRepeatFacts = $derived(
+    inputRepeatsShownFacts(inputPairs, [
+      decisionCommand,
+      tool.name,
+      tool.label,
+      ...facts.map((fact) => fact.value),
+    ]),
+  );
+  const hasDecisionArguments = $derived(hasArgumentsPreview && !argumentsRepeatFacts);
   const hasDecisionInput = $derived(
     (operation.kind === 'patch' && Boolean(operation.diff)) ||
       filesTouched.length > 0 ||
-      hasArgumentsPreview,
+      hasDecisionArguments,
   );
 
   $effect(() => {
@@ -469,7 +481,7 @@
     </div>
   {/if}
   {@render filesTouchedSection()}
-  {#if hasArgumentsPreview}
+  {#if hasDecisionArguments}
     <div class="cinder-approval-card__section">
       <PayloadInspector
         value={argumentsPreview.value}
@@ -588,7 +600,7 @@
       {context}
       requestKey={idempotencyKey}
       inputBody={hasDecisionInput ? decisionInputBody : undefined}
-      {inputPairs}
+      inputPairs={hasDecisionArguments ? inputPairs : []}
       inputLabel={payloadLabel}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />

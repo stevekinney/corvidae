@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
+  describeCountdown,
   describeDecisionTime,
   describeExpiry,
+  formatRemainingTime,
   RISK_WORDS,
   STATE_DOT_STATUS,
   STATE_LABELS,
@@ -96,5 +98,36 @@ describe('describeDecisionTime', () => {
     expect(describeDecisionTime(new Date('2026-10-28T09:05:00.000Z'), now)).toBe(
       '9:05 AM on Wed Oct 28',
     );
+  });
+});
+
+// C#12 (chat stress sweep): the hour count had no upper bound, so a far deadline read
+// "Expires in 8521807h 14m".
+describe('the approval countdown', () => {
+  const now = Date.parse('2026-11-11T15:00:00.000Z');
+  const MINUTE = 60_000;
+  const HOUR = 60 * MINUTE;
+
+  test('counts minutes and seconds under an hour, and seconds under a minute', () => {
+    expect(formatRemainingTime(4 * MINUTE + 10_000)).toBe('4m 10s');
+    expect(formatRemainingTime(45_000)).toBe('45s');
+    expect(describeCountdown(now + 4 * MINUTE + 10_000, now)).toBe('Expires in 4m 10s');
+  });
+
+  test('counts whole hours, rounded down, from an hour up to a day', () => {
+    expect(describeCountdown(now + 3 * HOUR + 59 * MINUTE, now)).toBe('Expires in 3 h');
+    expect(describeCountdown(now + 24 * HOUR, now)).toBe('Expires in 24 h');
+  });
+
+  test('names the deadline when it is more than a day out', () => {
+    expect(describeCountdown(Date.parse('2026-11-12T18:30:00.000Z'), now)).toBe(
+      'Expires tomorrow, 6:30 PM',
+    );
+    expect(describeCountdown(Date.parse('2026-11-20T09:30:00.000Z'), now)).toMatch(
+      /^Expires \w{3} Nov 20, 9:30 AM$/,
+    );
+    const far = describeCountdown(now + 8_521_807 * HOUR, now);
+    expect(far).not.toContain(' h');
+    expect(far).toMatch(/^Expires /);
   });
 });

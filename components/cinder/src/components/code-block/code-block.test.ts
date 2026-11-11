@@ -218,6 +218,40 @@ describe('CodeBlock — static structure', () => {
     );
   });
 
+  // C#5 (chat stress sweep): the floating button sat on the characters and the overflow fade of a
+  // one-line block, because nothing reserved its space.
+  test('copyFloating reserves the button width at the inline end, so code and fade stop before it', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    const reserve =
+      /\.cinder-code-block--floating-meta:has\(> \.cinder-code-block__meta\) \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(reserve).toContain('padding-inline-end: var(--_cinder-code-block-float-reserve);');
+    expect(reserve).toContain('min-block-size: var(--_cinder-code-block-float-reserve);');
+    expect(css).toContain(
+      '--_cinder-code-block-float-reserve: calc( var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1) );',
+    );
+    const button =
+      /\.cinder-code-block--floating-meta \.cinder-code-block__meta \.cinder-copy-button \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(button).toContain('inline-size: var(--_cinder-code-block-float-size);');
+  });
+
+  // C#3 (chat stress sweep): the copy button was 28px on a phone.
+  test('on a coarse pointer the copy button is a 44px target and the floating reserve grows with it', async () => {
+    const source = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    const css = source.replace(/\s+/g, ' ');
+    const coarse = css.slice(css.indexOf('@media (pointer: coarse)'));
+    expect(coarse).toContain(
+      '.cinder-code-block--floating-meta { --_cinder-code-block-float-size: var(--cinder-touch-target-min); }',
+    );
+    expect(coarse).toMatch(
+      /\.cinder-code-block \.cinder-code-block__meta \.cinder-copy-button \{ min-inline-size: var\(--cinder-touch-target-min\); min-block-size: var\(--cinder-touch-target-min\); \}/,
+    );
+  });
+
   test('streaming withholds copy, shows its status, and puts the caret after the last character', () => {
     const { container } = render(CodeBlock, {
       code: 'SELECT id',

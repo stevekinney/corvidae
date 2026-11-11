@@ -94,7 +94,7 @@
   import Link from '../link/link.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
-  import { STATE_LABELS } from './approval-card-state.ts';
+  import { describeDecidedAction, STATE_LABELS, UNDECIDED_PREFIX } from './approval-card-state.ts';
   import type { InputSummaryPair } from './approval-card-state.ts';
 
   let {
@@ -213,6 +213,11 @@
     return rows;
   });
 
+  // A decided card says what was decided, in the action's own words, instead of repeating the
+  // question it asked: "Refund $42.00, order 4471" beside the Approved badge.
+  const decidedAction = $derived(describeDecidedAction(approveLabel, tool, facts));
+  const undecidedPrefix = $derived(UNDECIDED_PREFIX[approvalState]);
+
   const hasWho = $derived(decidedBy !== undefined || decidedIn !== undefined);
   // The receipt reads "by Priya Raman in Reviews, 10:46 AM": the place is the only link, and the
   // comma stays with the time. A middle dot never separates them.
@@ -269,7 +274,12 @@
 {#if isReceipt}
   <div class="cinder-approval-card__receipt" data-cinder-tone={outcomeTone}>
     <div class="cinder-approval-card__receipt-head">
-      <Badge variant={outcomeTone === 'success' ? 'success' : 'neutral'} size="sm">
+      <!-- The title says the outcome to assistive technology, so the badge is the visual mark. -->
+      <Badge
+        variant={outcomeTone === 'success' ? 'success' : 'neutral'}
+        size="sm"
+        aria-hidden="true"
+      >
         {#if outcomeTone === 'success'}
           <Check size={12} strokeWidth={2} aria-hidden="true" />
         {:else}
@@ -283,7 +293,8 @@
         class="cinder-approval-card__decision-title"
         dir="auto"
       >
-        {question}
+        <span class="cinder-sr-only">{`${outcomeWord ?? STATE_LABELS[approvalState]}: `}</span
+        >{decidedAction}
       </svelte:element>
     </div>
     {#if hasWho || outcomeTime !== undefined}
@@ -362,14 +373,14 @@
       class="cinder-approval-card__decision-title"
       dir="auto"
     >
-      {question}
+      {#if undecidedPrefix !== undefined}{undecidedPrefix}: {decidedAction}{:else}{question}{/if}
     </svelte:element>
-    {#if irreversible}
+    {#if irreversible && undecidedPrefix === undefined}
       <Badge variant="danger" size="sm" class="cinder-approval-card__irreversible"
         >Irreversible</Badge
       >
     {/if}
-    {#if !isPending}
+    {#if !isPending && undecidedPrefix === undefined}
       <span class="cinder-approval-card__state-word" data-cinder-state-word>
         {STATE_LABELS[approvalState]}
       </span>

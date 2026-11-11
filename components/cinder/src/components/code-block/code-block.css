@@ -523,7 +523,21 @@
    * The meta row takes no row of its own: it floats over the top inline-end corner of the code,
    * so a block without a visible language label has no header at all. */
   .cinder-code-block--floating-meta {
+    /* The width of the floating button and the inset around it. The block reserves it at its
+     * inline end, so the viewport, its code and its overflow fade all stop before the button
+     * instead of running under it (C#5: on a one-line block the icon sat on the characters). */
+    --_cinder-code-block-float-size: 1.75rem;
+    --_cinder-code-block-float-reserve: calc(
+      var(--_cinder-code-block-float-size) + 2 * var(--cinder-space-1)
+    );
+
     position: relative;
+  }
+
+  /* The block is at least as tall as the button, so the clipped root never cuts it off. */
+  .cinder-code-block--floating-meta:has(> .cinder-code-block__meta) {
+    min-block-size: var(--_cinder-code-block-float-reserve);
+    padding-inline-end: var(--_cinder-code-block-float-reserve);
   }
 
   .cinder-code-block--floating-meta .cinder-code-block__meta {
@@ -535,7 +549,21 @@
   }
 
   .cinder-code-block--floating-meta .cinder-code-block__meta .cinder-copy-button {
+    inline-size: var(--_cinder-code-block-float-size);
+    min-block-size: var(--_cinder-code-block-float-size);
     background: var(--cinder-code-block-background);
+  }
+
+  /* A touch screen gets a 44px copy target, and the reserve grows with it (C#3). */
+  @media (pointer: coarse) {
+    .cinder-code-block--floating-meta {
+      --_cinder-code-block-float-size: var(--cinder-touch-target-min);
+    }
+
+    .cinder-code-block .cinder-code-block__meta .cinder-copy-button {
+      min-inline-size: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   /* ── Streaming (`streaming`) ─────────────────────────────────────────────

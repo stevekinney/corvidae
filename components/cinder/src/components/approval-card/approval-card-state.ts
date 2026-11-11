@@ -94,16 +94,81 @@ export function parseExpirationTimestamp(value: string | undefined): number | un
   return Number.isFinite(timestamp) ? timestamp : undefined;
 }
 
-/** Formats a millisecond duration as a compact countdown such as `2h 5m` or `45s`. */
+/**
+ * What a decided approval was about, in the words of its action: the primary button's own label
+ * (or the tool's label, or its humanized name) and the Target fact when there is one, such as
+ * "Refund $42.00, order 4471". A decided card titles itself with this instead of repeating the
+ * question it asked, which no longer reads as a question once it is answered.
+ */
+export function describeDecidedAction(
+  approveLabel: string | undefined,
+  tool: { name: string; label?: string | undefined },
+  facts: readonly { label: string; value: string }[],
+): string {
+  const action =
+    approveLabel ?? tool.label ?? humanizeIdentifier(tool.name, { casing: 'sentence' });
+  const target = facts.find((fact) => fact.label.trim().toLowerCase() === 'target')?.value.trim();
+  return target === undefined || target === '' ? action : `${action}, ${target}`;
+}
+
+/**
+ * True when every field of the input summary is already shown in the open as a fact (a Command,
+ * a Target, the tool), so an Input disclosure would only repeat it: "Input: Command refund order
+ * 4471" under the Command fact that already reads "refund order 4471".
+ */
+export function inputRepeatsShownFacts(
+  pairs: readonly InputSummaryPair[],
+  shownValues: readonly (string | undefined)[],
+): boolean {
+  const squash = (text: string) => text.replace(/\s+/g, ' ').trim();
+  const shown = new Set(
+    shownValues.filter((value): value is string => value !== undefined).map(squash),
+  );
+  return pairs.length > 0 && pairs.every((pair) => !pair.muted && shown.has(squash(pair.text)));
+}
+
+/** The title of a decided approval that never got a decision: "Expired before a decision: …". */
+export const UNDECIDED_PREFIX: Partial<Record<ApprovalState, string>> = {
+  expired: 'Expired before a decision',
+  cancelled: 'Cancelled before a decision',
+};
+
+const HOUR_SECONDS = 3_600;
+const DAY_SECONDS = 24 * HOUR_SECONDS;
+
+/**
+ * Formats a millisecond duration as a compact countdown: `3 h` from an hour up, `4m 10s` under
+ * an hour, `45s` under a minute. Whole hours, rounded down, so it never promises more time than
+ * is left.
+ */
 export function formatRemainingTime(milliseconds: number): string {
   const totalSeconds = Math.max(0, Math.ceil(milliseconds / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const hours = Math.floor(totalSeconds / HOUR_SECONDS);
+  const minutes = Math.floor((totalSeconds % HOUR_SECONDS) / 60);
   const seconds = totalSeconds % 60;
 
-  if (hours > 0) return `${hours}h ${minutes}m`;
+  if (hours > 0) return `${hours} h`;
   if (minutes > 0) return `${minutes}m ${seconds}s`;
   return `${seconds}s`;
+}
+
+/**
+ * The countdown line of a pending approval. More than a day out it names the deadline ("Expires
+ * Nov 12, 9:30 AM" or "Expires Tomorrow, 9:30 AM"), because an hour count with no upper bound
+ * read "Expires in 8521807 h"; closer than that it counts down ("Expires in 3 h", "Expires in
+ * 4m 10s").
+ */
+export function describeCountdown(expirationTimestamp: number, now: number): string {
+  const remaining = expirationTimestamp - now;
+  if (remaining > DAY_SECONDS * 1_000) {
+    const when = formatDateTime(expirationTimestamp, { now });
+    // "Tomorrow, 9:30 AM" starts a label; inside the sentence the day word is lower case.
+    const inSentence = /^(Today|Tomorrow)\b/.test(when)
+      ? `${when.charAt(0).toLowerCase()}${when.slice(1)}`
+      : when;
+    return `Expires ${inSentence}`;
+  }
+  return `Expires in ${formatRemainingTime(remaining)}`;
 }
 
 /**

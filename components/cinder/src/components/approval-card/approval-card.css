@@ -1214,6 +1214,22 @@
     .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
       min-height: var(--cinder-touch-target-min);
     }
+
+    /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) and
+     * "Add a note" are text-sized on a desktop; on a touch screen each is a 44px target (C#3). */
+    .cinder-approval-card__input-toggle,
+    .cinder-approval-card__said-toggle,
+    .cinder-approval-card__note-toggle {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  /* Below about 20rem the label column squeezed the value to a few characters a line (a long tool
+   * identifier broke over five lines), so each fact stacks its label above its value (C#14). */
+  @container (inline-size < 20rem) {
+    .cinder-approval-card__fact {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 
   /* ----------------------------------------

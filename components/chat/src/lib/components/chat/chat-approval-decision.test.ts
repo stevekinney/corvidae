@@ -59,6 +59,8 @@ afterEach(() => {
 
 const DRAWER_COPY = 'Waiting for your approval. Anything you send now queues until you decide.';
 const QUESTION = 'Refund order 4471 for $42.00?';
+/** A decided card is named for what was decided, not for the question it asked. */
+const APPROVED_REFUND = 'Approved: Refund $42.00, order 4471';
 
 function approvalConversation(id: string): ConversationHistory {
   return appendToolResult(
@@ -405,7 +407,7 @@ describe('Chat approval receipt', () => {
     await fireEvent.click(getByRole(card, 'button', { name: 'Refund' }));
     await tick();
 
-    const receipt = getByRole(container, 'article', { name: QUESTION });
+    const receipt = getByRole(container, 'article', { name: 'Approved: Refund' });
     expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
     expect(receipt.querySelector('.cinder-approval-card__receipt-by')?.textContent?.trim()).toMatch(
       /^by you, \d{1,2}:\d{2} [AP]M$/,
@@ -433,7 +435,7 @@ describe('Chat approval receipt', () => {
     await view.rerender({ conversation: resumedConversation('receipt-kept') });
     await tick();
 
-    const receipt = getByRole(view.container, 'article', { name: QUESTION });
+    const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
     expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
     expect(drawerOf(view.container)).toBeNull();
@@ -463,7 +465,7 @@ describe('Chat approval receipt', () => {
     await tick();
     await tick();
 
-    const receipt = getByRole(view.container, 'article', { name: QUESTION });
+    const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
     expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
   });
@@ -516,7 +518,7 @@ describe('Chat approval receipt', () => {
     await view.rerender({ conversation: withNeighbour('receipt-neighbour', false) });
     await tick();
 
-    const receipt = getByRole(view.container, 'article', { name: QUESTION });
+    const receipt = getByRole(view.container, 'article', { name: APPROVED_REFUND });
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
   });
 
@@ -531,5 +533,6 @@ describe('Chat approval receipt', () => {
     await tick();
 
     expect(queryByRole(view.container, 'article', { name: QUESTION })).toBeNull();
+    expect(view.container.querySelector('[data-cinder-tool-approval]')).toBeNull();
   });
 });
