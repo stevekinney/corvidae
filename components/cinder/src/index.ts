@@ -42,6 +42,7 @@ export type {
   ApprovalCardLayout,
   ApprovalCardProps,
   ApprovalCardSchemaProps,
+  ApprovalFact,
   ApprovalFailure,
   ApprovalOperation,
   ApprovalOperationKind,

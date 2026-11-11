@@ -75,6 +75,15 @@ Presentational human-in-the-loop approval surface for reviewing a tool operation
 
 A decided approval stays in the transcript as a decision in neutral text: `state="denied"` with `decidedBy="you"` and `decidedAt` reads "Denied by you, 10:40 AM", with no decision buttons and no error colour. The row reads the question, the tool line, the Input summary, then the decision, so the decision is the last thing under what was asked. An approval decided on another page while this one was open adds `decidedIn`, and the row collapses to what became of it: a check (or, for a denial, the neutral prohibition glyph) in place of the risk shield, the question, and "Approved by you in Reviews, 10:46 AM" under it, with no tool line, no Input summary and no dot.
 
+## The explicit decision
+
+`layout="decision"` is the approval a transcript asks the person to decide, and the receipt it leaves behind. It has no icon gutter. The action is the title (`question`), with a danger "Irreversible" badge beside it when `tool.irreversible` is true. `pauseSentence` is one sentence about the pause ("The agent is paused until you decide."). A definition list follows: Tool (the label, or the name monospaced), the host's `facts` (Target, Amount, anything else with an optional `monospace`), Reversible when `tool.irreversible` is explicitly `false`, and Command, which is always visible, monospaced and wrapped for a command operation. The rest of the input (touched files, a patch diff, the arguments) sits behind an Input disclosure, and `why` adds a "Why the agent wants to do this" disclosure.
+
+- The live countdown ("Expires in 4m 10s") shows while `expiresAt` is ahead. Add a note, `rememberScope`, `failure`, `disabledReason` and `footnote` behave as they do in the row.
+- Actions are Deny as the secondary button on the left and the primary on the right. `approveLabel` names the primary ("Refund $42.00"); it reads "Approve" by default.
+- An irreversible primary arms first. The first press turns it into a danger button that reads "Press again to refund $42.00" and writes "Reverts in 3 seconds. Escape cancels." under the actions. The second press commits. Three seconds, Escape, a new request, a `disabledReason` or unmounting all revert it without committing. Escape is handled (the event is default-prevented) only while armed, so a host that closes the surrounding surface on Escape can check `defaultPrevented`. Deny never arms.
+- A decided approval stays as a receipt: a check badge (a neutral prohibition glyph for a denial) and the action, then "by Priya Raman in Reviews, 10:46 AM" with `decidedBy`, `decidedIn` (a link when `decidedInHref` is set) and `decidedAt`. A denial quotes its `decisionNote` inline; an approval keeps the note, the `result` and the command behind a Details disclosure. A comma, never a middle dot, separates the parts.
+
 ## The approval's own page
 
 `layout="detail"` is the approval on its own page, such as a review. It reads top to bottom as an eyebrow with the risk glyph (`eyebrow`, "Tool approval" by default), the question, who asked and how long it has waited ("Asked by Tool runner in a chat, waiting 4 min"; `sourcePrefix` replaces "Asked by"; `sourceHref` and `sourceInHref` write the source and the place as links, and `sourceIn` names the place), what the source said as a collapsed line (`said`: "Tool runner said Order 4471 is $42.00…", one line cut with an ellipsis that opens in place), the `context` snippet, the tool ("It wants to run Issue refund `issue-refund`, Dangerous"; `toolPrefix` replaces the opening words), the Input block with its Fields and JSON switch, and one line with the risk glyph that carries "Can't be undone." and `consequence`. A `failure` sits under that line, then the note, the optional `rememberScope` checkbox, Deny and Approve, and the `footnote`. It has no Details disclosure.
@@ -122,26 +131,30 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `approveLabel` | `string` | no | — | The `decision` layout's own words for the primary action, such as `Refund $42.00`. Default `Approve`. An irreversible primary reads "Press again to refund $42.00" once armed. |
 | `class` | `string` | no | — | Additional CSS classes applied to the root element. |
 | `consequence` | `string` | no | — | What approving does, in one line, such as `Sends $42.00 back to the original card`. |
 | `decidedAt` | `string` | no | — | When the approval was decided, as an ISO timestamp, written as a time of day after the outcome. |
 | `decidedBy` | `string` | no | — | Who decided, once the approval is decided: `you`. Written as "Denied by you". |
 | `decidedIn` | `string` | no | — | Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". |
+| `decidedInHref` | `string` | no | — | Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". |
 | `decisionNote` | `string` | no | — | The note the approver left with the decision, written under the outcome as "Your note", the note, and a caption saying where it went. |
 | `disabledReason` | `string` | no | — | Why Deny and Approve are off while the approval is still pending. Written above the actions and named by both buttons. |
 | `editableArgs` | `boolean` | no | `false` | Whether approving with edited JSON arguments is available. Default `false`. |
 | `env` | `string`[] | no | — | Environment variable names only. Values are ignored if accidentally supplied as `NAME=value`. |
 | `expiresAt` | `string` | no | — | Optional ISO timestamp after which a pending approval is treated as expired. |
 | `eyebrow` | `string` | no | — | The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. |
+| `facts` | { label: `string`; monospace?: `boolean`; value: `string` }[] | no | — | Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself. |
 | `failure` | { detail?: `string`; summary: `string` } | no | — | Why the last answer did not go through, written as a red-toned inline message below the consequence. Nothing was decided, so Deny and Approve stay live; Approve is the retry. |
 | `footnote` | `string` | no | — | A line of text written under the buttons while the approval is pending, such as what happens once you decide. |
 | `headingLevel` | `2` \| `3` \| `4` \| `5` \| `6` | no | `3` | Heading level for the card title; section headings render one level deeper. Default `3`. |
 | `idempotencyKey` | `string` | yes | — | Idempotency key that makes repeated decisions durable. |
 | `inputLabel` | `string` | no | — | What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. |
-| `layout` | `"card"` \| `"row"` \| `"detail"` | no | `"card"` | Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`. |
+| `layout` | `"card"` \| `"row"` \| `"detail"` \| `"decision"` | no | `"card"` | Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), the approval's own `detail` page, or the explicit `decision` surface with its retained receipt. Default `'card'`. |
 | `notice` | `string` | no | — | A notice written beneath a read-only approval, such as why it expired or what happened elsewhere. Without one, an approval that passed its `expiresAt` says when it expired. |
 | `operation` | { argsPreview?: `unknown`; command: `string`; filesTouched?: `string`[]; kind: `"command"` } \| { argsPreview?: `unknown`; filesTouched: `string`[]; kind: `"file-write"` } \| { argsPreview?: `unknown`; diff: `string`; filesTouched?: `string`[]; kind: `"patch"` } \| { argsPreview?: `unknown`; filesTouched?: `string`[]; kind: `"other"` } | yes | — | Operation details shown to the approver. |
 | `outcomeLabel` | `string` | no | — | Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. |
+| `pauseSentence` | `string` | no | — | One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`. |
 | `policyVersion` | `string` | yes | — | Policy version that produced the approval request. |
 | `question` | `string` | no | — | The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. |
 | `rememberScope` | `string` | no | — | Offers "Allow <tool> for <scope>" as a checkbox on its own line before Deny and Approve, with the scope written after "for", such as `the rest of this chat`. Leave it out for a tool set to Always. |
@@ -161,6 +174,7 @@ The card title defaults to an `h3` with section headings one level deeper. Pass 
 | `toolPrefix` | `string` | no | — | The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund`, Dangerous". Default `It wants to run`. |
 | `unavailableReason` | `string` | no | — | Why an `unavailable` approval cannot be answered now, written beneath it. |
 | `view` | `"fields"` \| `"json"` | no | `"fields"` | Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch can govern every payload on a page. Default `fields`. |
+| `why` | `string` | no | — | Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". |
 | `context` | `(opaque)` | no | — | A line of context written above the question, such as "Test chat, this runs for real". Not expressible in JSON Schema; see the component types for the signature. |
 | `onResolve` | `(opaque)` | no | — | Called for approve, approve-with-edits, and deny with the complete resolution payload. Not expressible in JSON Schema; see the component types for the signature. |
 

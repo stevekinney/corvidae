@@ -190,8 +190,8 @@
       "default": 3
     },
     "layout": {
-      "enum": ["card", "row", "detail"],
-      "description": "Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`.",
+      "enum": ["card", "row", "detail", "decision"],
+      "description": "Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), the approval's own `detail` page, or the explicit `decision` surface with its retained receipt. Default `'card'`.",
       "default": "card"
     },
     "question": {
@@ -293,6 +293,45 @@
     "decidedIn": {
       "type": "string",
       "description": "Where it was decided when that was not here, such as `Reviews`: \"Approved by you in Reviews at 10:44 AM\"."
+    },
+    "decidedInHref": {
+      "type": "string",
+      "description": "Where `decidedIn` leads, written as a link in the `decision` layout's receipt: \"by Priya Raman in Reviews, 10:46 AM\"."
+    },
+    "facts": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "label": {
+            "type": "string",
+            "description": "What the fact is, such as `Target` or `Amount`."
+          },
+          "value": {
+            "type": "string",
+            "description": "The fact's value, such as `order 4471`."
+          },
+          "monospace": {
+            "type": "boolean",
+            "description": "Writes the value monospaced, for an identifier, a path or a command."
+          }
+        },
+        "additionalProperties": false,
+        "required": ["label", "value"]
+      },
+      "description": "Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself."
+    },
+    "approveLabel": {
+      "type": "string",
+      "description": "The `decision` layout's own words for the primary action, such as `Refund $42.00`. Default `Approve`. An irreversible primary reads \"Press again to refund $42.00\" once armed."
+    },
+    "pauseSentence": {
+      "type": "string",
+      "description": "One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`."
+    },
+    "why": {
+      "type": "string",
+      "description": "Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named \"Why the agent wants to do this\"."
     },
     "outcomeLabel": {
       "type": "string",

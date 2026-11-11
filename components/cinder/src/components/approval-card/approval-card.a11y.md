@@ -36,6 +36,10 @@ When `expiresAt` passes, the effective state becomes `expired` and the action bu
 
 While an answer is in flight (`resolving`), the button being answered carries `aria-busy` and `aria-disabled` (it stays focusable), shows a spinner, and a polite status announces "Approving…" or "Denying…"; the other button is natively disabled. A failed answer (`failure`) is written in a `role="alert"` region so it is announced when it appears, and its meaning never rests on colour: the summary is bold, a glyph leads it, and the sentence says what failed and what is still true.
 
+## Decision layout
+
+The `decision` layout names its article by the action title. An irreversible primary is armed by its first press: the button's name changes to "Press again to ...", it is described by a polite status that reads "Reverts in 3 seconds. Escape cancels.", and focus stays on the button. The arm reverts after three seconds, on Escape, when a new request replaces the approval, or when a `disabledReason` appears; the Escape handler runs only while armed and prevents the event's default so a host can tell it was handled. While `disabledReason` is set, every commit path (Deny, the primary, an armed press, Confirm edited approval) stays inert with `aria-disabled` and names the reason with `aria-describedby`. The receipt's outcome is written as a text badge beside a decorative check or prohibition glyph, so colour and the glyph never carry it alone. The "Details", "Input" and "Why the agent wants to do this" disclosures are native buttons with `aria-expanded` and `aria-controls`.
+
 ## Security boundary
 
 `env` accepts environment variable names only. If a caller accidentally passes a `NAME=value` string, the component renders only the name before `=` and never renders the value. Names render as plain text chips — no masked placeholders that would imply secret material is present in the DOM. The list carries an `aria-label` stating that values are never shown, for anyone using a screen reader.

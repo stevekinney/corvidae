@@ -139,9 +139,15 @@ export type ApprovalResolution = {
  * Add a note, Deny and Approve) for an approval inside a transcript or beneath a tool call.
  * `detail` is the approval's own page: an eyebrow, the question, who asked and how long it has
  * waited, the tool, the Input block, then a line carrying the risk glyph and what approving does,
- * and the decision below. It has no Details disclosure.
+ * and the decision below. It has no Details disclosure. `decision` is the explicit decision
+ * surface for a transcript: no glyph gutter, the action as the title with a danger badge when it
+ * cannot be undone, a sentence about the pause, Tool, Target, Amount and Command facts with the
+ * command always visible and monospaced, the countdown, Add a note, then Deny and a named primary
+ * action. An irreversible primary arms on its first press. Once decided it stays as a receipt:
+ * the action, who decided where and when beside a check, the reason a denial gave quoted, and
+ * the note, the result and the command one disclosure away.
  */
-export type ApprovalCardLayout = 'card' | 'row' | 'detail';
+export type ApprovalCardLayout = 'card' | 'row' | 'detail' | 'decision';
 
 /** Which answer is on its way to the host: the approver pressed Approve or Deny and the answer has not landed. */
 export type ApprovalResolving = 'approve' | 'deny';
@@ -157,6 +163,21 @@ export type ApprovalFailure = {
   summary: string;
   /** The reason and what is still true, such as `Interborough couldn't reach the agent. Nothing was refunded.`. */
   detail?: string;
+};
+
+/**
+ * One labelled fact the `decision` layout writes under the action, such as Target `order 4471`
+ * or Amount `$42.00`.
+ *
+ * @schemaObject
+ */
+export type ApprovalFact = {
+  /** What the fact is, such as `Target` or `Amount`. */
+  label: string;
+  /** The fact's value, such as `order 4471`. */
+  value: string;
+  /** Writes the value monospaced, for an identifier, a path or a command. */
+  monospace?: boolean;
 };
 
 export type ApprovalCardCallbacks = {
@@ -189,7 +210,7 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     editableArgs?: boolean;
     /** Heading level for the card title; section headings render one level deeper. Default `3`. */
     headingLevel?: ApprovalCardHeadingLevel;
-    /** Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`. */
+    /** Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), the approval's own `detail` page, or the explicit `decision` surface with its retained receipt. Default `'card'`. */
     layout?: ApprovalCardLayout;
     /** The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. */
     question?: string;
@@ -252,6 +273,16 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     result?: string;
     /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
     decidedIn?: string;
+    /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". */
+    decidedInHref?: string;
+    /** Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself. */
+    facts?: ApprovalFact[];
+    /** The `decision` layout's own words for the primary action, such as `Refund $42.00`. Default `Approve`. An irreversible primary reads "Press again to refund $42.00" once armed. */
+    approveLabel?: string;
+    /** One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`. */
+    pauseSentence?: string;
+    /** Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". */
+    why?: string;
     /** Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. */
     outcomeLabel?: string;
     /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */
@@ -300,7 +331,7 @@ export type ApprovalCardSchemaProps = {
   editableArgs?: boolean;
   /** Heading level for the card title; section headings render one level deeper. Default `3`. @default 3 */
   headingLevel?: ApprovalCardHeadingLevel;
-  /** Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), or the approval's own `detail` page. Default `'card'`. @default 'card' */
+  /** Layout: the full `card`, the shared `row` (one approval inside a transcript or beneath a tool call), the approval's own `detail` page, or the explicit `decision` surface with its retained receipt. Default `'card'`. @default 'card' */
   layout?: ApprovalCardLayout;
   /** The question the approval asks, such as `Refund order 4471 for $42.00?`. Default `Run <tool>?`. */
   question?: string;
@@ -346,6 +377,16 @@ export type ApprovalCardSchemaProps = {
   result?: string;
   /** Where it was decided when that was not here, such as `Reviews`: "Approved by you in Reviews at 10:44 AM". */
   decidedIn?: string;
+  /** Where `decidedIn` leads, written as a link in the `decision` layout's receipt: "by Priya Raman in Reviews, 10:46 AM". */
+  decidedInHref?: string;
+  /** Extra facts the `decision` layout writes after the tool, such as Target and Amount. Tool, whether it can be undone, and the Command come from the approval itself. */
+  facts?: ApprovalFact[];
+  /** The `decision` layout's own words for the primary action, such as `Refund $42.00`. Default `Approve`. An irreversible primary reads "Press again to refund $42.00" once armed. */
+  approveLabel?: string;
+  /** One sentence in the `decision` layout about the pause, such as `The agent is paused until you decide.`. */
+  pauseSentence?: string;
+  /** Why the agent wants to do this, written by the host and offered in the `decision` layout as a disclosure named "Why the agent wants to do this". */
+  why?: string;
   /** Names the decision for a request that is not a tool approval, in place of Approved or Denied, such as `Answered` for a question: "Answered by you in Reviews at 10:44 AM". The request's question is then the sentence beneath, with no tool named. */
   outcomeLabel?: string;
   /** A line of text written under the buttons while the approval is pending, such as what happens once you decide. */

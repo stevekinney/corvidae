@@ -756,6 +756,173 @@
   }
 
   /* ----------------------------------------
+   * Decision layout: the explicit decision and its retained receipt
+   * ---------------------------------------- */
+
+  .cinder-approval-card--decision {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    box-sizing: border-box;
+    border: 1px solid var(--cinder-border);
+    border-radius: var(--cinder-radius-lg);
+    padding: var(--cinder-space-3) 14px;
+    background: var(--cinder-surface-raised);
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
+     cannot be undone. The title may wrap, so a long action never truncates. */
+  .cinder-approval-card__decision-head,
+  .cinder-approval-card__receipt-head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__decision-title {
+    flex: 1 1 12rem;
+    min-inline-size: 0;
+    margin: 0;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+    text-align: start;
+  }
+
+  .cinder-approval-card__receipt-head .cinder-approval-card__decision-title {
+    flex: 1 1 8rem;
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__receipt-head .cinder-badge,
+  .cinder-approval-card__irreversible {
+    flex: none;
+    white-space: nowrap;
+  }
+
+  .cinder-approval-card__receipt-head .cinder-badge svg {
+    flex: none;
+  }
+
+  .cinder-approval-card__pause {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+  }
+
+  /* Tool, Target, Amount and Command read as a definition list: the word, then its value. */
+  .cinder-approval-card__facts {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+  }
+
+  .cinder-approval-card__fact {
+    display: grid;
+    grid-template-columns: minmax(4.5rem, max-content) minmax(0, 1fr);
+    align-items: baseline;
+    column-gap: var(--cinder-space-3);
+  }
+
+  .cinder-approval-card__fact > dt {
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-approval-card__fact > dd {
+    margin: 0;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    color: var(--cinder-text-default);
+    text-align: start;
+  }
+
+  .cinder-approval-card__fact > dd[data-cinder-monospace] {
+    font-family: var(--cinder-font-mono);
+  }
+
+  /* The command is always open and always monospaced; it wraps so none of it hides behind a
+     sideways scroll. It is flat text, not a box inside the card. */
+  .cinder-approval-card__command {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+    text-align: start;
+  }
+
+  .cinder-approval-card__command > code {
+    font: inherit;
+  }
+
+  .cinder-approval-card__countdown,
+  .cinder-approval-card__arm-hint {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    font-size: var(--cinder-text-xs);
+    text-align: start;
+  }
+
+  .cinder-approval-card__why-body {
+    margin: 0;
+    padding-block-start: var(--cinder-space-1);
+    color: var(--cinder-text-muted);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+  }
+
+  .cinder-approval-card__why-body[hidden] {
+    display: none;
+  }
+
+  /* The retained receipt: what was approved, who decided where and when, and the details a
+     disclosure away. */
+  .cinder-approval-card__receipt {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-approval-card--decision:has(> .cinder-approval-card__receipt) {
+    gap: 0;
+    padding-block: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__receipt-by,
+  .cinder-approval-card__receipt-quote {
+    margin: 0;
+    color: var(--cinder-text-subtle);
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+  }
+
+  .cinder-approval-card__receipt-quote-text {
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-approval-card__receipt-details {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    padding-block-start: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__receipt-details[hidden] {
+    display: none;
+  }
+
+  /* ----------------------------------------
    * Detail layout: an approval's own page
    * ---------------------------------------- */
 

@@ -21,6 +21,7 @@
     ApprovalCardLayout,
     ApprovalCardProps,
     ApprovalCardSchemaProps,
+    ApprovalFact,
     ApprovalFailure,
     ApprovalOperation,
     ApprovalOperationKind,
@@ -51,6 +52,7 @@
   import StatusDot from '../status-dot/status-dot.svelte';
   import Tooltip from '../tooltip/tooltip.svelte';
   import ApprovalCardActions from './approval-card-actions.svelte';
+  import ApprovalCardDecision from './approval-card-decision.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import ApprovalCardOutcome from './approval-card-outcome.svelte';
   import ApprovalCardRow from './approval-card-row.svelte';
@@ -114,6 +116,11 @@
     notice,
     result,
     decidedIn,
+    decidedInHref,
+    facts = [],
+    approveLabel,
+    pauseSentence,
+    why,
     outcomeLabel,
     footnote,
     inputLabel,
@@ -317,6 +324,16 @@
       hasArgumentsPreview,
   );
 
+  // The decision layout shows the command in the open, so its Input holds only what is left.
+  const decisionCommand = $derived(
+    operation.kind === 'command' && operation.command ? operation.command : undefined,
+  );
+  const hasDecisionInput = $derived(
+    (operation.kind === 'patch' && Boolean(operation.diff)) ||
+      filesTouched.length > 0 ||
+      hasArgumentsPreview,
+  );
+
   $effect(() => {
     clearExpirationTimer();
 
@@ -445,6 +462,25 @@
   {/if}
 {/snippet}
 
+{#snippet decisionInputBody()}
+  {#if operation.kind === 'patch' && operation.diff}
+    <div class="cinder-approval-card__section">
+      <CodeBlock code={operation.diff} language="diff" languageLabelVisible={false} />
+    </div>
+  {/if}
+  {@render filesTouchedSection()}
+  {#if hasArgumentsPreview}
+    <div class="cinder-approval-card__section">
+      <PayloadInspector
+        value={argumentsPreview.value}
+        truncated={argumentsPreview.truncated}
+        label={payloadLabel}
+        bind:view
+      />
+    </div>
+  {/if}
+{/snippet}
+
 {#if answeredElsewhere}
   <article
     {...rest}
@@ -508,6 +544,52 @@
       requestKey={idempotencyKey}
       {inputPairs}
       inputBody={hasRowInput ? rowInputBody : undefined}
+      resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
+    />
+  </article>
+{:else if layout === 'decision'}
+  <article
+    {...rest}
+    id={rootId}
+    class={classNames('cinder-approval-card', 'cinder-approval-card--decision', customClassName)}
+    aria-labelledby={titleId}
+    data-cinder-state={effectiveState}
+    data-cinder-risk={tool.risk}
+    data-cinder-layout="decision"
+  >
+    <ApprovalCardDecision
+      {rootId}
+      {titleTag}
+      {titleId}
+      {tool}
+      approvalState={effectiveState}
+      question={rowQuestion}
+      {pauseSentence}
+      {facts}
+      command={decisionCommand}
+      {why}
+      countdown={expirationText}
+      {rememberScope}
+      {approveLabel}
+      {disabledReason}
+      {unavailableReason}
+      {resolving}
+      {failure}
+      notice={resolvedNotice}
+      {result}
+      {footnote}
+      outcomeWord={outcomeLabel ?? STATE_LABELS[effectiveState]}
+      {outcomeTone}
+      {decidedBy}
+      {decidedIn}
+      {decidedInHref}
+      {outcomeTime}
+      {decisionNote}
+      {context}
+      requestKey={idempotencyKey}
+      inputBody={hasDecisionInput ? decisionInputBody : undefined}
+      {inputPairs}
+      inputLabel={payloadLabel}
       resolve={isActionable && hasResolutionCallback ? resolveIfActionable : undefined}
     />
   </article>
