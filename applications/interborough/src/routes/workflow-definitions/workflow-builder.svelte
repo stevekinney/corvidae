@@ -866,8 +866,9 @@
     <Alert variant="danger">
       <p class="weft-workflow-builder__alert-title">{failure.title}</p>
       <p class="weft-workflow-builder__alert-body">
-        {#if failure.message !== failure.title}{failure.message}
-        {/if}<span>{WORKFLOW_COPY.creator.nothingSaved}</span>
+        {#if failure.message !== failure.title}{failure.message}{' '}{/if}<span
+          >{WORKFLOW_COPY.creator.nothingSaved}</span
+        >
       </p>
     </Alert>
   {/if}
@@ -886,7 +887,9 @@
     <p
       id={READ_BACK_ID}
       class="weft-workflow-builder__read-back"
-      data-truncated={summary !== undefined ? '' : undefined}
+      data-truncated={summary !== undefined || (mode === 'create' && tab === 'json' && !blocked)
+        ? ''
+        : undefined}
       data-testid="workflow-builder-summary"
     >
       {#if blocked}

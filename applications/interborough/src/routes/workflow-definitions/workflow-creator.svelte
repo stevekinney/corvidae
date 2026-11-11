@@ -17,7 +17,7 @@
    */
   import { Button, ConfirmDialog, PageHeader } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
-  import { onMount } from 'svelte';
+  import { onMount, untrack } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
@@ -59,6 +59,11 @@
   /** The builder, which takes the person to the first problem. */
   let builder = $state<{ focusProblem: () => Promise<void> }>();
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
+  /**
+   * The Bureau found a problem the page can point at (a taken ID). The form is read-only while the
+   * save is in flight, and a read-only form cannot take focus, so the focus waits for the answer.
+   */
+  let focusAfterSave = $state(false);
 
   // Leaving with what was typed asks first; an untouched form leaves at once.
   const leaveGuard = new LeaveGuard(() => text !== TEMPLATE);
@@ -86,7 +91,7 @@
       if (isIdentifierTaken(error)) {
         takenId = id;
         checked = true;
-        void builder?.focusProblem();
+        focusAfterSave = true;
         return;
       }
       const fault = agentFaultOf(error);
@@ -108,6 +113,12 @@
       }
     },
   }));
+
+  $effect(() => {
+    if (save.isPending || !focusAfterSave) return;
+    focusAfterSave = false;
+    untrack(() => void builder?.focusProblem());
+  });
 
   function submit(): void {
     if (save.isPending) return;

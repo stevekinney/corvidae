@@ -1395,7 +1395,7 @@ export const WORKFLOW_COPY = {
     textLabel: 'Workflow file',
     /** The note under the JSON tab's editor (board PageWorkflowBuilder, "JSON tab"). */
     textDescription:
-      'The file the builder writes; while it is valid JSON it is the same as the builder. Every field the builder writes is here, including the schedule trigger, each title and the Input and Output schemas. Keys the builder doesn’t show are saved exactly as written.',
+      'The file the builder writes; while it is valid JSON it is the same as the builder. It uses the extended workflow file format: timezone and catchUp on a schedule trigger, a manual trigger kind, and a title on the workflow and on each step. The titles are removed before the workflow runs. Every field the builder writes is here, including the schedule trigger, each title and the Input and Output schemas. Keys the builder doesn’t show are saved exactly as written.',
     saveAction: 'Create workflow',
     /** The primary button while the file is being written; the whole form is read-only meanwhile. */
     creatingAction: 'Creating…',
