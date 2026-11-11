@@ -103,6 +103,17 @@ describe('the not-found page', () => {
     await waitFor(() => expect(getByTestId('trail').textContent).toBe('Runs › Not found'));
   });
 
+  test('leaves out Search everything for a page whose only way out is back to its list (a workflow’s page, row 63h)', () => {
+    landAt('/workflows/gone');
+    const { container, queryByRole } = render(Harness, {
+      props: { title: 'Workflow not found', view: 'workflows', search: false },
+    });
+
+    const buttons = [...container.querySelectorAll('.cinder-empty-state-action > *')];
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['Back to Workflows']);
+    expect(queryByRole('button', { name: NOT_FOUND_COPY.search })).toBeNull();
+  });
+
   describe('a page whose missing thing can be started again (the chat page, row 19u)', () => {
     const create = { label: 'New chat', href: '/chats/new' };
     const back = { label: 'Back to chats', href: '/chats' };

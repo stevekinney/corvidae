@@ -314,10 +314,14 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await row.getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }).click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}$`));
   const detail = page.locator('[data-page="workflow-detail"]');
-  await expect(detail.getByTestId('workflow-trigger')).toHaveText(
-    describeCadence({ intervalMs: 5_000 }),
+  // The header's first line says what starts it, and the agent it runs as.
+  await expect(detail.getByTestId('workflow-line-starts')).toContainText(
+    new RegExp(describeCadence({ intervalMs: 5_000 }), 'i'),
   );
-  await expect(detail.getByTestId('workflow-agent')).toContainText(AUTHOR_ID);
+  await expect(detail.getByTestId('workflow-line-starts')).toContainText(
+    WORKFLOW_COPY.page.header.runsAs(''),
+    { ignoreCase: true },
+  );
 
   // The schedule fires every few seconds. This page may open before the first fire, says there are
   // no runs, and asks again until there is one, so the wait is for its first row.

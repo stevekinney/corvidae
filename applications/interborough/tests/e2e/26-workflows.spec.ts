@@ -369,7 +369,6 @@ test.describe('a code-defined type', () => {
       await expect(
         detail(page).getByRole('heading', { level: 1, name: 'inventory-sync-sweep' }),
       ).toBeVisible();
-      await expect(detail(page)).toContainText(WORKFLOW_COPY.codeBadge);
       await expect(detail(page)).not.toContainText(WORKFLOW_COPY.agentAuthoredBadge);
 
       // The active and the paused schedule, each once, with what starts it said in words.
@@ -381,8 +380,8 @@ test.describe('a code-defined type', () => {
       await expect(
         detail(page).locator('[data-schedule="nightly-inventory-audit"]'),
       ).toHaveAttribute('data-status', 'paused');
-      await expect(detail(page).getByTestId('workflow-trigger')).toHaveText(
-        WORKFLOW_COPY.list.schedules(2),
+      await expect(detail(page).getByTestId('workflow-line-starts')).toContainText(
+        WORKFLOW_COPY.page.header.startsFromMany(2),
       );
 
       // Nothing the type lacks is a row, and no form to install a revision is on the page.
@@ -436,13 +435,17 @@ test.describe('an agent-authored type', () => {
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       const root = detail(page);
       await expect(root.getByRole('heading', { level: 1 })).toHaveText(SEEDED_WORKFLOWS.digest);
-      await expect(root).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(root.getByTestId('workflow-agent')).toHaveText('demo:assistant');
+      await expect(root).not.toContainText(WORKFLOW_COPY.agentAuthoredBadge);
       await expect(root.getByTestId('workflow-description')).toHaveText('Writes the daily digest.');
-      await expect(root.getByTestId('workflow-trigger')).toHaveText(
-        describeCadence({ intervalMs: 86_400_000 }),
+      // The header's first line: what starts it, that a person can too, and the agent it runs as.
+      const starts = root.getByTestId('workflow-line-starts');
+      await expect(starts).toContainText(
+        new RegExp(describeCadence({ intervalMs: 86_400_000 }), 'i'),
       );
-      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
+      await expect(starts).toContainText(WORKFLOW_COPY.page.header.startYourself);
+      await expect(starts).toContainText(/runs as .*assistant/i);
+      // Active is shown by absence: no word beside the title.
+      await expect(root.getByTestId('workflow-state')).toHaveCount(0);
       await expect(root.getByTestId('workflow-steps').getByRole('listitem')).toHaveCount(2);
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
       await expect(root.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveAttribute(
@@ -451,11 +454,15 @@ test.describe('an agent-authored type', () => {
       );
       await expect(root).not.toContainText(/\bNone\b/);
 
-      // The Overview says where the file is, and the trigger as written.
+      // The header names the file, and the Code tab says where it is.
+      await expect(root.getByTestId('workflow-line-last-run')).toContainText(
+        `${SEEDED_WORKFLOWS.digest}.json`,
+      );
+      await openTab(root, WORKFLOW_COPY.page.tabs.code);
       await expect(root.getByTestId('workflow-file-path')).toHaveText(
         await workflowFilePath(request, SEEDED_WORKFLOWS.digest),
       );
-      await expect(root.getByTestId('workflow-trigger-source')).toContainText('24h');
+      await openTab(root, WORKFLOW_COPY.page.tabs.overview);
 
       // Nothing has run it, and the Runs tab says so with an action that starts one.
       await openTab(root, WORKFLOW_COPY.page.tabs.runs);
@@ -525,17 +532,33 @@ test.describe('an invalid file', () => {
       await page.goto(`/workflows/${SEEDED_WORKFLOWS.broken}`);
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       const root = detail(page);
-      await expect(root.getByTestId('workflow-problem')).toContainText('invalid-document');
-      await expect(root.getByTestId('workflow-issues')).toContainText('steps');
-      await expect(root.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.broken),
+      // A banner under the tabs names the file and why Start run is off, beside a red "Can't load".
+      await expect(root.getByTestId('workflow-problem')).toContainText(
+        `${SEEDED_WORKFLOWS.broken}.json`,
       );
+      await expect(root.getByTestId('workflow-problem')).toContainText(
+        WORKFLOW_COPY.page.problem.startOff,
+      );
+      await expect(root.getByTestId('workflow-issues')).toContainText('steps');
+      await expect(root.getByTestId('workflow-state')).toContainText("Can't load");
+      await expect(
+        root.getByRole('button', { name: WORKFLOW_COPY.page.startAction }),
+      ).toHaveAttribute('aria-disabled', 'true');
       await expect(root.getByTestId('workflow-definition')).toHaveCount(0);
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.deleteAction })).toBeVisible();
       await expect(root.getByRole('link', { name: WORKFLOW_COPY.editAction })).toBeVisible();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toHaveCount(0);
       await expect(root.getByTestId('workflow-signal')).toHaveCount(0);
       await checkA11y(`an invalid file at ${width}px`);
+
+      // Open Code leads to the file, read-only, with the banner and a way into the JSON editor.
+      await root.getByRole('button', { name: WORKFLOW_COPY.page.problem.openCode }).click();
+      await expect(root.getByTestId('workflow-file-path')).toHaveText(
+        await workflowFilePath(request, SEEDED_WORKFLOWS.broken),
+      );
+      await expect(
+        root.getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }),
+      ).toBeVisible();
     });
   }
 
@@ -569,18 +592,19 @@ test.describe('pause, resume, and delete', () => {
       await page.goto('/workflows/e2e-pausable');
       const root = detail(page);
       await expect(root).toHaveAttribute('data-condition', 'ready');
-      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
+      // Active is shown by absence; Paused is a neutral dot and the word beside the title.
+      await expect(root.getByTestId('workflow-state')).toHaveCount(0);
 
       await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
-      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusPaused);
+      await expect(root.getByTestId('workflow-state')).toContainText(WORKFLOW_COPY.page.statusPaused);
       const paused = await readWorkflow(request, 'e2e-pausable');
       expect(paused.paused).toBe(true);
       await checkA11y(`a paused workflow at ${width}px`);
 
       await root.getByRole('button', { name: WORKFLOW_COPY.resumeAction }).click();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
-      await expect(root.getByTestId('workflow-state')).toHaveText(WORKFLOW_COPY.page.statusActive);
+      await expect(root.getByTestId('workflow-state')).toHaveCount(0);
       const resumed = await readWorkflow(request, 'e2e-pausable');
       expect(resumed.paused).toBe(false);
 
@@ -644,8 +668,8 @@ test.describe('pause, resume, and delete', () => {
     // Reload shows what is on disk, and then pause works.
     await root.getByRole('button', { name: WORKFLOW_COPY.stale.action }).click();
     await expect(root).toHaveAttribute('data-condition', 'ready');
-    await expect(root.getByTestId('workflow-trigger')).toHaveText(
-      describeCadence({ intervalMs: 12 * 3_600_000 }),
+    await expect(root.getByTestId('workflow-line-starts')).toContainText(
+      new RegExp(describeCadence({ intervalMs: 12 * 3_600_000 }), 'i'),
     );
     await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
     await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
@@ -653,6 +677,15 @@ test.describe('pause, resume, and delete', () => {
     expect(paused.paused).toBe(true);
   });
 });
+
+/** Opens the "⋯" menu, chooses Send a signal, and returns the dialog that holds the form. */
+async function openSignalDialog(page: Page) {
+  await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.menu.label }).click();
+  await page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.sendSignal }).click();
+  const dialog = page.getByRole('dialog', { name: WORKFLOW_COPY.signal.heading });
+  await expect(dialog).toBeVisible();
+  return dialog;
+}
 
 test.describe('send signal', () => {
   test('starts an instance, then moves it from running to completed', async ({
@@ -662,11 +695,13 @@ test.describe('send signal', () => {
   }) => {
     const id = SEEDED_WORKFLOWS.approval;
     await page.goto(`/workflows/${id}`);
-    const form = detail(page).getByTestId('workflow-signal');
-    const name = form.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel });
+    // The form is a dialog the "⋯" menu opens, and it is not on the Overview.
+    await expect(detail(page).getByTestId('workflow-signal')).toHaveCount(0);
+    let form = await openSignalDialog(page);
+    let name = form.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel });
     // The trigger is a signal, so its name is where the form starts.
     await expect(name).toHaveValue(APPROVAL_START_SIGNAL);
-    await checkA11y('the send-signal form');
+    await checkA11y('the send-signal dialog');
 
     const before = await listWorkflowRuns(request, id);
     const waiting = before.filter((run) => run.status === 'running');
@@ -675,6 +710,7 @@ test.describe('send signal', () => {
     await expect(
       form.getByRole('status', { name: WORKFLOW_COPY.signal.resultLabel }),
     ).toContainText(WORKFLOW_COPY.signal.result(1, 0));
+    await form.getByRole('button', { name: WORKFLOW_COPY.page.menu.closeSignal }).click();
     // The page's runs take the new instance without a reload.
     await openTab(detail(page), WORKFLOW_COPY.page.tabs.runs);
     await expect(detail(page).locator('[data-run]').first()).toBeVisible();
@@ -687,6 +723,8 @@ test.describe('send signal', () => {
     if (instance === undefined) return;
 
     // The instance waits for the other signal. Send it with a payload; the instance takes it and finishes.
+    form = await openSignalDialog(page);
+    name = form.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel });
     await name.fill(APPROVAL_SIGNAL);
     await form
       .getByRole('textbox', { name: WORKFLOW_COPY.signal.payloadLabel })
@@ -704,7 +742,7 @@ test.describe('send signal', () => {
     page,
   }) => {
     await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}`);
-    const form = detail(page).getByTestId('workflow-signal');
+    const form = await openSignalDialog(page);
     // No step of the digest waits for a signal, so the form starts empty.
     const name = form.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel });
     await expect(name).toHaveValue('');
@@ -789,8 +827,8 @@ test.describe('the editor', () => {
       await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
 
       await expect(page).toHaveURL(/\/workflows\/e2e-editable$/);
-      await expect(detail(page).getByTestId('workflow-trigger')).toHaveText(
-        describeCadence({ intervalMs: 6 * 3_600_000 }),
+      await expect(detail(page).getByTestId('workflow-line-starts')).toContainText(
+        new RegExp(describeCadence({ intervalMs: 6 * 3_600_000 }), 'i'),
       );
       const saved = JSON.parse(
         await readFile(await workflowFilePath(request, 'e2e-editable'), 'utf8'),

@@ -68,6 +68,7 @@
     deleteWorkflowFile,
     getLatestSavedSteps,
     isApplyFailure,
+    listWorkflowFileRuns,
     listWorkflowRevisions,
     parseWorkflowText,
     pauseWorkflowFile,
@@ -106,6 +107,8 @@
   const client = getClient();
   const queryClient = useQueryClient();
   const connection = getConnection();
+  /** How many of a file's newest runs the header reads: as many as the Runs tab lists. */
+  const HEADLINE_LIMIT = 20;
 
   // The page draws the connection banner under its own header, so the shell leaves it to the page.
   $effect(() => connection.claimBanner());
@@ -140,11 +143,29 @@
   );
 
   // How many runs the type has and its newest, for the header's last-run line and the Runs tab's
-  // count. The engine counts every instance of a type, a file's included, by the type's name.
+  // count. A file's runs are the Bureau's (the console's engine may not hold them), and it counts
+  // the newest twenty, as the Runs tab lists them; a code type's are the engine's, with its total.
   const headline = createQuery(
     () => ({
       queryKey: queryKeys.workflowCatalog.headline(type),
-      queryFn: async (): Promise<{ readonly total: number; readonly newest: LastRun | null }> => {
+      queryFn: async ({
+        signal,
+      }): Promise<{ readonly total: number; readonly newest: LastRun | null }> => {
+        if (resolution.data?.kind === 'agent-authored') {
+          const runs = await listWorkflowFileRuns(type, HEADLINE_LIMIT, { signal });
+          const [newest] = runs;
+          return {
+            total: runs.length,
+            newest:
+              newest === undefined
+                ? null
+                : {
+                    id: newest.id,
+                    status: newest.status,
+                    createdAt: Date.parse(newest.createdAt),
+                  },
+          };
+        }
         const page = await client.list({ type, limit: 1 });
         const [newest] = page.items;
         return {
@@ -155,6 +176,7 @@
               : { id: newest.id, status: newest.status, createdAt: newest.createdAt },
         };
       },
+      enabled: resolution.data !== undefined && resolution.data !== null,
       retry: false,
     }),
     undefined,

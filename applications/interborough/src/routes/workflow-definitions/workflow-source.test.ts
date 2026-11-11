@@ -1,7 +1,13 @@
 /** Where a workflow file's JSON stops being JSON, and where its parts start, found by reading the text. */
 import { describe, expect, test } from 'bun:test';
 
-import { locateJsonProblem, sourceLineId, sourceOutline } from './workflow-source.ts';
+import {
+  locateJsonProblem,
+  problemNote,
+  problemSentence,
+  sourceLineId,
+  sourceOutline,
+} from './workflow-source.ts';
 
 const lines = (...rows: string[]): string => rows.join('\n');
 
@@ -97,5 +103,37 @@ describe('the outline of a file', () => {
 
   test('gives each line an id the outline can link to', () => {
     expect(sourceLineId(11)).toBe('workflow-source-line-11');
+  });
+});
+
+describe('the words of a file problem', () => {
+  const comma = { line: 11, stoppedAt: 12, kind: 'comma' } as const;
+  const other = { line: 4, stoppedAt: 5, kind: 'other' } as const;
+  const problem = { message: 'The file is not valid JSON: unexpected token.' };
+
+  test('names the line the parser stopped at, and says a comma was left out', () => {
+    expect(problemSentence('order-refund.json', problem, comma)).toBe(
+      'order-refund.json, line 12: expected a comma.',
+    );
+  });
+
+  test('says the Bureau’s own words for a problem that is not a missing comma, and names the file alone when it cannot place one', () => {
+    expect(problemSentence('order-refund.json', problem, other)).toBe(
+      'order-refund.json, line 5: The file is not valid JSON: unexpected token.',
+    );
+    expect(problemSentence('order-refund.json', problem, null)).toBe(
+      'order-refund.json: The file is not valid JSON: unexpected token.',
+    );
+  });
+
+  test('marks the line before the stop, with a note that names the line the parser stopped at', () => {
+    expect(problemNote(comma)).toEqual({
+      line: 11,
+      message: 'Missing comma at the end of this line. The parser stopped at line 12.',
+    });
+    expect(problemNote(other)).toEqual({
+      line: 4,
+      message: 'The parser stopped at line 5.',
+    });
   });
 });

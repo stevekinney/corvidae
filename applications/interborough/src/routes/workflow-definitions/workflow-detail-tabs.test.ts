@@ -87,9 +87,12 @@ async function ready(container: HTMLElement): Promise<HTMLElement> {
   return container.querySelector<HTMLElement>('[data-page="workflow-detail"]') as HTMLElement;
 }
 
+/** A tab's name without the count that follows its label once the count is known ("Runs 2"). */
+const withoutCount = (label: string | undefined) => label?.trim().replace(/\s+\d+$/, '');
+
 async function openTab(root: HTMLElement, name: string): Promise<void> {
   const tab = [...root.querySelectorAll<HTMLElement>('[role="tab"]')].find(
-    (candidate) => candidate.textContent?.trim() === name,
+    (candidate) => withoutCount(candidate.textContent) === name,
   );
   if (tab === undefined) throw new Error(`No tab called ${name}.`);
   await fireEvent.click(tab);
@@ -105,11 +108,21 @@ describe('the Code tab of an agent-authored workflow', () => {
     const source = testId(root, 'workflow-file-source');
     expect(source?.textContent).toContain('"kind": "await-signal"');
     expect(source?.textContent).toContain('"name": "digest"');
-    const outline = [...(testId(root, 'workflow-outline')?.querySelectorAll('li') ?? [])];
-    expect(outline.map((step) => step.textContent)).toEqual([
-      expect.stringContaining('writer'),
-      expect.stringContaining('approve'),
-    ]);
+    // The file is read-only, numbered, and has a Copy button, under a line that says where it is.
+    expect(testId(root, 'workflow-code')?.textContent).toContain(
+      WORKFLOW_COPY.page.code.caption.after.trim(),
+    );
+    expect(source?.querySelector('.cinder-code-block--numbered')).not.toBeNull();
+    // The outline names the parts the file has, with the steps under steps.
+    const labels = [...(testId(root, 'workflow-outline')?.querySelectorAll('a') ?? [])].map(
+      (link) => link.textContent?.trim(),
+    );
+    expect(labels).toEqual(['name', 'trigger', 'steps', '1 Step 1', '2 Step 2']);
+    // Each entry points at a line of the file that carries the id it links to.
+    for (const link of testId(root, 'workflow-outline')?.querySelectorAll('a') ?? []) {
+      const id = link.getAttribute('href')?.replace(/^#/, '') ?? '';
+      expect(root.querySelector(`[id="${id}"]`)).not.toBeNull();
+    }
     // A file is read with `get`; the code-defined read is for a type with no file.
     expect(stub?.callsTo('bureau.workflows.internal.get')).toEqual([]);
   });
@@ -121,6 +134,7 @@ describe('the Code tab of an agent-authored workflow', () => {
     const root = await ready(container);
     await openTab(root, TABS.code);
     expect(testId(root, 'workflow-file-source')?.textContent).toContain('"name": "broken"');
+    expect(testId(root, 'workflow-outline')).toBeNull();
   });
 
   test('says there is nothing to show for a file the Bureau could not read', async () => {
@@ -135,7 +149,7 @@ describe('the Code tab of an agent-authored workflow', () => {
 });
 
 describe('the Code tab of a file with no steps', () => {
-  test('shows the file and an empty outline', async () => {
+  test('shows the file, and no outline for a file written on one line', async () => {
     const text = JSON.stringify({
       name: 'empty',
       trigger: { kind: 'signal', name: 'go' },
@@ -149,7 +163,6 @@ describe('the Code tab of a file with no steps', () => {
     await openTab(root, TABS.code);
     expect(testId(root, 'workflow-file-source')?.textContent).toContain('"steps":[]');
     expect(testId(root, 'workflow-outline')).toBeNull();
-    expect(testId(root, 'workflow-code')?.textContent).toContain(WORKFLOW_COPY.page.code.noOutline);
   });
 });
 
@@ -437,7 +450,9 @@ describe('a part of the tabs that fails', () => {
     let reads = 0;
     stub?.on('bureau.workflows.runs.list', () => {
       reads += 1;
-      if (reads === 1) throw workflowFaults.unavailable();
+      // The page's header reads the newest runs when it loads (for the Runs count and the last-run
+      // line), then the tab reads them: both fail, and the retry is the third read.
+      if (reads <= 2) throw workflowFaults.unavailable();
       return { runs: [], nextOffset: null };
     });
     const root = await ready(container);
@@ -456,7 +471,9 @@ describe('a part of the tabs that fails', () => {
     let reads = 0;
     stub?.on('bureau.workflows.revisions', () => {
       reads += 1;
-      if (reads === 1) throw workflowFaults.unavailable();
+      // The page reads the versions when it loads, for the History count, and the tab, which asks
+      // for the same list, reads again as it opens: both fail, and the retry is the third read.
+      if (reads <= 2) throw workflowFaults.unavailable();
       return { revisions: [] };
     });
     const root = await ready(container);

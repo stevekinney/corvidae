@@ -160,8 +160,15 @@ export async function expectTabOpen(root: Locator, name: string): Promise<void> 
   await expect(root.getByRole('tab', { name })).toHaveAttribute('aria-selected', 'true');
 }
 
-/** Expects the tabs of the bar in `root`, in order: the tab buttons, or at the phone width the select's options. */
-export async function expectTabNames(root: Locator, names: readonly string[]): Promise<void> {
+/**
+ * Expects the tabs of the bar in `root`, in order: the tab buttons, or at the phone width the
+ * select's options. A tab that carries a count after its label ("Runs 2") is expected with a
+ * pattern, such as `/^Runs( \d+)?$/`.
+ */
+export async function expectTabNames(
+  root: Locator,
+  names: readonly (string | RegExp)[],
+): Promise<void> {
   if (!tabsAreCollapsed(root)) {
     await expect(root.getByRole('tab')).toHaveText([...names]);
     return;

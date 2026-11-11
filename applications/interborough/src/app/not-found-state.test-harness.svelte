@@ -18,11 +18,13 @@
     create?: ViewLink;
     /** The way back in the view's own words. */
     back?: ViewLink;
+    /** Whether the page offers "Search everything". Defaults to true. */
+    search?: boolean;
     /** Called when the page asks to open search. When omitted, the page is mounted without a shell. */
     onSearch?: () => void;
   }
 
-  let { title, view, create, back, onSearch }: NotFoundHarnessProps = $props();
+  let { title, view, create, back, search, onSearch }: NotFoundHarnessProps = $props();
 
   // `$props` are read once: the shell's opener does not change.
   // svelte-ignore state_referenced_locally
@@ -37,4 +39,5 @@
   {...view === undefined ? {} : { view }}
   {...create === undefined ? {} : { create }}
   {...back === undefined ? {} : { back }}
+  {...search === undefined ? {} : { search }}
 />

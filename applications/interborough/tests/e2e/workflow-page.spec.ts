@@ -10,7 +10,7 @@
  * shows the description and the contract it registered.
  */
 import type { Page } from '@playwright/test';
-import { rm } from 'node:fs/promises';
+import { rm, writeFile } from 'node:fs/promises';
 
 import { WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { bureau } from './agent-support.ts';
@@ -70,7 +70,12 @@ test.describe('the Overview tab', () => {
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       const root = detail(page);
 
-      await expectTabNames(root, [TABS.overview, TABS.code, TABS.runs, TABS.history]);
+      await expectTabNames(root, [
+        new RegExp(`^${TABS.overview}$`),
+        new RegExp(`^${TABS.code}$`),
+        new RegExp(`^${TABS.runs}( \\d+)?$`),
+        new RegExp(`^${TABS.history}( \\d+)?$`),
+      ]);
       await expect(root.getByTestId('workflow-steps').getByRole('listitem')).toHaveCount(1);
       const input = root.getByTestId('workflow-input-schema');
       await expect(input).toContainText('Topic');
@@ -120,7 +125,18 @@ test.describe('the Code tab', () => {
       await expect(root.getByTestId('workflow-file-source')).toContainText(
         text.split('\n')[1]?.trim() ?? '"name"',
       );
-      await expect(root.getByTestId('workflow-outline').getByRole('listitem')).toHaveCount(2);
+      // The outline is beside the file where there is room, and a select above it on a phone.
+      if (width < 640) {
+        await expect(
+          root.getByRole('combobox', { name: WORKFLOW_COPY.page.code.outlineSelect }),
+        ).toBeVisible();
+        await expect(root.getByTestId('workflow-outline')).toHaveCount(0);
+      } else {
+        await expect(root.getByTestId('workflow-outline').getByRole('link').first()).toBeVisible();
+      }
+      await expect(root.getByTestId('workflow-code')).toContainText(
+        WORKFLOW_COPY.page.code.caption.after.trim(),
+      );
       await checkA11y(`the Code tab of a file at ${width}px`);
     });
   }
@@ -322,5 +338,107 @@ test.describe('the History tab', () => {
         return runs[0]?.status;
       })
       .toBe('completed');
+  });
+});
+
+test.describe('the header', () => {
+  test('says what starts the workflow, the agent it runs as, and its file on the lines under the title', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-page-header';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      description: 'Says hello.',
+      trigger: { kind: 'signal', name: 'e2e-page-header-go' },
+      steps: [{ kind: 'await-signal', signal: 'e2e-page-header-wait' }],
+    });
+    await page.goto(`/workflows/${id}`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = detail(page);
+
+    await expect(root.getByTestId('workflow-description')).toHaveText('Says hello.');
+    const starts = root.getByTestId('workflow-line-starts');
+    await expect(starts).toContainText(WORKFLOW_COPY.page.header.startsOnSignal.before);
+    await expect(starts.locator('code')).toHaveText('e2e-page-header-go');
+    await expect(starts).toContainText(WORKFLOW_COPY.page.header.startYourself);
+    // Nothing has run it, and the file is named once, on the second line.
+    const last = root.getByTestId('workflow-line-last-run');
+    await expect(last).toContainText(WORKFLOW_COPY.page.header.neverRun);
+    await expect(last.locator('code')).toHaveText(`${id}.json`);
+    // The Runs tab carries its count after the label once it is known.
+    await expect(root.getByRole('tab', { name: /^Runs( 0)?$/ })).toBeVisible();
+  });
+});
+
+test.describe('a file that cannot load', () => {
+  test('is a banner that names the line, a marked line on the Code tab, and a way into the JSON editor', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    const id = 'e2e-page-comma';
+    created.add(id);
+    await createWorkflowFile(request, id);
+    // A comma is left out at the end of line 2, so the parser stops at line 3.
+    await writeFile(
+      await workflowFilePath(request, id),
+      ['{', `  "name": "${id}"`, '  "steps": []', '}'].join('\n'),
+    );
+    await expect
+      .poll(async () => {
+        const read = await bureau(request, 'bureau.workflows.get', { id });
+        return (read.result as { state?: string } | undefined)?.state;
+      })
+      .toBe('invalid');
+
+    await page.goto(`/workflows/${id}`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = detail(page);
+    await expect(root.getByRole('heading', { level: 1 })).toHaveText(id);
+    await expect(root.getByTestId('workflow-state')).toContainText("Can't load");
+    await expect(root.getByTestId('workflow-problem')).toContainText(
+      WORKFLOW_COPY.page.problem.located(`${id}.json`, 3, WORKFLOW_COPY.page.problem.expectedComma),
+    );
+    await expect(
+      root.getByRole('button', { name: WORKFLOW_COPY.page.startAction }),
+    ).toHaveAttribute('aria-disabled', 'true');
+    await checkA11y('the Overview of a file that cannot load');
+
+    await root.getByRole('button', { name: WORKFLOW_COPY.page.problem.openCode }).click();
+    await expect(root.getByRole('note')).toContainText(WORKFLOW_COPY.page.problem.missingComma(3));
+    await expect(
+      root.getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }),
+    ).toBeVisible();
+    await checkA11y('the Code tab of a file that cannot load');
+
+    await root.getByRole('button', { name: WORKFLOW_COPY.page.problem.editAsJson }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}/edit\\?tab=json$`));
+  });
+});
+
+test.describe('the signal dialog', () => {
+  test('is opened from the "⋯" menu, and the Overview holds no signal form', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-page-signal';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      trigger: { kind: 'signal', name: 'e2e-page-signal-go' },
+      steps: [{ kind: 'await-signal', signal: 'e2e-page-signal-wait' }],
+    });
+    await page.goto(`/workflows/${id}`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await expect(detail(page).getByTestId('workflow-signal')).toHaveCount(0);
+
+    await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.menu.label }).click();
+    await page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.sendSignal }).click();
+    const dialog = page.getByRole('dialog', { name: WORKFLOW_COPY.signal.heading });
+    await expect(dialog.getByRole('textbox', { name: WORKFLOW_COPY.signal.nameLabel })).toHaveValue(
+      'e2e-page-signal-go',
+    );
+    await dialog.getByRole('button', { name: WORKFLOW_COPY.page.menu.closeSignal }).click();
+    await expect(dialog).toHaveCount(0);
   });
 });
