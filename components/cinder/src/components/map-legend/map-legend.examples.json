@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "map-legend",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Key with the default attribution",
+      "description": "Each state is drawn in its marker's shape. The OpenStreetMap and ODbL credit is always rendered under the key.",
+      "code": "<script lang=\"ts\">\n  import { MapLegend } from '@lostgradient/cinder';\n</script>\n\n<MapLegend\n  label=\"Map key\"\n  items={[\n    { state: 'live', label: 'Happy hour now' },\n    { state: 'idle', label: 'Starts later' },\n    { state: 'selected', label: 'Selected' },\n    { state: 'cluster', label: 'Several places' },\n  ]}\n/>\n"
+    }
+  ]
+}

@@ -3351,6 +3351,63 @@
       }
     },
     {
+      "name": "MapLegend",
+      "id": "map-legend",
+      "import": "@lostgradient/cinder",
+      "exportName": "MapLegend",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Key to the marker states of a map, drawn with the same shapes as the markers, and a map attribution that is always rendered, defaulting to the OpenStreetMap and ODbL credit.",
+      "tags": ["map", "legend", "attribution"],
+      "useWhen": [
+        "Explaining what live, idle, selected and cluster markers mean on a map.",
+        "Rendering the basemap credit that every map surface must show."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing a chart key — use the chart's own legend."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/map-legend/map-legend.schema.json",
+        "variables": "src/components/map-legend/map-legend.variables.json",
+        "examples": "src/components/map-legend/map-legend.examples.json"
+      }
+    },
+    {
+      "name": "MapMarker",
+      "id": "map-marker",
+      "import": "@lostgradient/cinder",
+      "exportName": "MapMarker",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Anchored map pin button with live, idle, selected and cluster states, a visible label so state is never colour alone, and a target of at least 44px.",
+      "tags": ["map", "marker", "pin"],
+      "useWhen": [
+        "Placing a place or a group of places on a map you render yourself, with the map library of your choice.",
+        "Showing which pin is selected with a raised pill and a ring."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing a status next to text outside a map — use status-dot."
+        },
+        {
+          "reason": "Explaining the marker states — use map-legend."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/map-marker/map-marker.schema.json",
+        "variables": "src/components/map-marker/map-marker.variables.json",
+        "examples": "src/components/map-marker/map-marker.examples.json"
+      }
+    },
+    {
       "name": "Marquee",
       "id": "marquee",
       "import": "@lostgradient/cinder",
@@ -6630,6 +6687,36 @@
         "schema": "src/components/waveform/waveform.schema.json",
         "variables": "src/components/waveform/waveform.variables.json",
         "examples": "src/components/waveform/waveform.examples.json"
+      }
+    },
+    {
+      "name": "WeekSchedule",
+      "id": "week-schedule",
+      "import": "@lostgradient/cinder",
+      "exportName": "WeekSchedule",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Display of a recurring weekly schedule as one row per day with a day, an unbroken time range and a description, today highlighted and a live window marked with a pill.",
+      "tags": ["schedule", "week", "recurring"],
+      "useWhen": [
+        "Showing the days and hours a place or event recurs, such as happy-hour windows, on a detail page.",
+        "Showing a window that crosses midnight without breaking its time range across lines."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Letting the user edit a schedule or a cron expression — use schedule-builder."
+        },
+        {
+          "reason": "Showing dated events on a calendar grid — use calendar."
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/week-schedule/week-schedule.schema.json",
+        "variables": "src/components/week-schedule/week-schedule.variables.json",
+        "examples": "src/components/week-schedule/week-schedule.examples.json"
       }
     },
     {

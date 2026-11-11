@@ -1,0 +1,128 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * MAP MARKER
+ *
+ * An anchored pin: a pill over a 10px rotated square whose point marks the place. The button is
+ * at least 44px in both directions. Live is a filled pill with a dot, idle an outlined pill that
+ * shows its start time, selected is raised with a ring, and a cluster is a round count.
+ * ======================================== */
+
+  .cinder-map-marker {
+    --cinder-map-marker-fill: var(--cinder-surface-raised);
+    --cinder-map-marker-ink: var(--cinder-text-default);
+
+    position: relative;
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-end;
+    min-block-size: 44px;
+    min-inline-size: 44px;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--cinder-map-marker-ink);
+    font: inherit;
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    cursor: pointer;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-map-marker__body {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-1-5);
+    min-block-size: 2rem;
+    min-inline-size: 2rem;
+    padding-inline: var(--cinder-space-3);
+    border: 1px solid var(--cinder-border-control);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-map-marker-fill);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* The anchor is a 10px square turned 45 degrees; its lower corner is the point on the map. */
+  .cinder-map-marker__anchor {
+    inline-size: 10px;
+    block-size: 10px;
+    margin-block-start: -6px;
+    border-block-end: 1px solid var(--cinder-border-control);
+    border-inline-end: 1px solid var(--cinder-border-control);
+    background: var(--cinder-map-marker-fill);
+    transform: translateY(-1px) rotate(45deg);
+  }
+
+  .cinder-map-marker__icon {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .cinder-map-marker__dot {
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
+    border-radius: var(--cinder-radius-full);
+    background: currentColor;
+  }
+
+  .cinder-map-marker[data-state='live'] {
+    --cinder-map-marker-fill: var(--cinder-surface-inverse);
+    --cinder-map-marker-ink: var(--cinder-text-inverse);
+  }
+
+  .cinder-map-marker[data-state='live']
+    > :is(.cinder-map-marker__body, .cinder-map-marker__anchor) {
+    border-color: var(--cinder-surface-inverse);
+  }
+
+  .cinder-map-marker[data-state='selected'] {
+    z-index: 1;
+    transform: translateY(-4px) scale(1.08);
+  }
+
+  .cinder-map-marker[data-state='selected']
+    > :is(.cinder-map-marker__body, .cinder-map-marker__anchor) {
+    border-color: var(--cinder-border-strong);
+  }
+
+  .cinder-map-marker[data-state='selected'] > .cinder-map-marker__body {
+    box-shadow:
+      var(--cinder-shadow-md),
+      0 0 0 3px var(--cinder-ring-color);
+  }
+
+  .cinder-map-marker[data-state='cluster'] > .cinder-map-marker__body {
+    min-inline-size: 2.75rem;
+    min-block-size: 2.75rem;
+    padding-inline: var(--cinder-space-2);
+  }
+
+  .cinder-map-marker:focus-visible {
+    outline: none;
+  }
+
+  .cinder-map-marker:focus-visible > .cinder-map-marker__body {
+    box-shadow: 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-map-marker__body,
+    .cinder-map-marker__anchor {
+      border-color: CanvasText;
+    }
+
+    .cinder-map-marker[data-state='selected'] > .cinder-map-marker__body {
+      outline: 3px solid Highlight;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .cinder-map-marker {
+      transition: none;
+    }
+  }
+}

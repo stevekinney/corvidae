@@ -1,0 +1,37 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description:
+        'Accessible name of the legend, such as "Map key". Left unset, the legend is unnamed.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-map-legend`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'attribution',
+        reason: 'function-or-snippet',
+        description:
+          'Replaces the attribution text. It is always rendered; leave it unset for the OpenStreetMap and ODbL credit.',
+      },
+      {
+        name: 'items',
+        reason: 'unknown-shape',
+        required: true,
+        description: 'The marker states the map uses, in reading order.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "map-marker",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "states",
+      "title": "Live, idle, selected and cluster",
+      "description": "Idle shows its start time, live is a filled pill with a dot, selected is raised with a ring, and a cluster is a round count. Each is at least 44px.",
+      "code": "<script lang=\"ts\">\n  import { MapMarker } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: flex; gap: 1rem; align-items: flex-end;\">\n  <MapMarker state=\"live\" label=\"Live\" name=\"Union Station Bar, happy hour live\" />\n  <MapMarker state=\"idle\" label=\"8 pm\" name=\"Larimer Taproom, happy hour starts 8 pm\" />\n  <MapMarker state=\"selected\" label=\"6 pm\" name=\"Ginger Bar, happy hour starts 6 pm\" />\n  <MapMarker state=\"cluster\" label=\"12\" name=\"12 places\" />\n</div>\n"
+    }
+  ]
+}

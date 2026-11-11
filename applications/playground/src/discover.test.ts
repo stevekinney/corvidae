@@ -282,6 +282,8 @@ const SIDEBAR_BASELINE = [
   'link',
   'list-detail',
   'load-more',
+  'map-legend',
+  'map-marker',
   'markdown-editor',
   'marquee',
   'masonry',
@@ -377,6 +379,7 @@ const SIDEBAR_BASELINE = [
   'virtual-list',
   'visually-hidden',
   'waveform',
+  'week-schedule',
   'zoom-pan-viewer',
 ] as const;
 
