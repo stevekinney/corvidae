@@ -14,6 +14,7 @@ import type { Page } from '@playwright/test';
 import { readFile, rm, writeFile } from 'node:fs/promises';
 
 import { VIEW_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { newChatFromWorkflowsPath } from '../../src/lib/new-chat-address.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
@@ -260,7 +261,7 @@ test.describe('the list', () => {
         ).toBeVisible();
         await expect(
           empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
-        ).toHaveAttribute('href', '/chats/new?from=workflows');
+        ).toHaveAttribute('href', newChatFromWorkflowsPath());
         await expect(area(page).getByTestId('workflow-directory')).toHaveText(
           await workflowDirectory(request),
         );

@@ -987,14 +987,20 @@ describe('the Workflows area', () => {
     world({ definitions: [], files: [readyFile('digest')] });
     const ready = mount('workflows', { pattern: '/workflows' });
     expect(await ready.findByTestId('content')).not.toBeNull();
+    expect(frame(ready.container).dataset['state']).toBe('ready');
     ready.unmount();
     restore?.();
 
     world({ definitions: [sourceDefinition('deleted-yesterday')], files: [] });
-    const { container, findByRole } = mount('workflows', { pattern: '/workflows' });
+    const { container, findByTestId, queryByRole } = mount('workflows', { pattern: '/workflows' });
     // A source with no file is left out, so the list is empty and reads as it will after a restart.
-    await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' });
+    // The list draws its first-use state under its own header (`pageOwnsEmptyOn`), so the frame
+    // shows the page and none of its own words, and still says the view is empty.
+    expect(await findByTestId('content')).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('empty');
+    expect(
+      queryByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' }),
+    ).toBeNull();
   });
 
   test('a type’s page is not found when the file is gone and the engine holds only its source', async () => {

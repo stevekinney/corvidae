@@ -62,7 +62,8 @@ describe('the executable skills', () => {
         trustLocked: null,
       }),
     });
-    expect(await listSkills()).toEqual([SKILL as never]);
+    // A host that sends no `tools` brings none (COR-2022).
+    expect(await listSkills()).toEqual([{ ...SKILL, tools: [] } as never]);
   });
 });
 

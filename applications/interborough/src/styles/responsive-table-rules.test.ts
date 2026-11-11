@@ -19,12 +19,9 @@ describe('the tables that hold long values', () => {
     expect(ruleOf(await read('./records.css'), '.ib-records__table')).toMatch(
       /min-inline-size:\s*36rem/,
     );
-    for (const path of [
-      '../routes/workflows/runs/run-list.svelte',
-      '../routes/settings/models/models-section.svelte',
-    ]) {
-      expect(await read(path), path).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="ib-records__table"/);
-    }
+    // The runs list is a list of rows (COR-2017), not a table, so it is not here.
+    const path = '../routes/settings/models/models-section.svelte';
+    expect(await read(path), path).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="ib-records__table"/);
   });
 
   test('the workflow table fits its box, above a floor, and keeps its Tags column', async () => {
