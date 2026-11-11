@@ -63,6 +63,13 @@ export type ToolSourceForm = {
   readonly secret: string;
   /** The header an API key is sent in. */
   readonly header: string;
+  /**
+   * What a person calls the source ("GitHub"), shown in Capabilities and on each tool (COR-2022).
+   * Empty, the request names none and the host keeps the one saved, or shows the `id`.
+   */
+  readonly name: string;
+  /** One sentence about the source (COR-2022). Empty, the request names none. */
+  readonly description: string;
 };
 
 /** The dialog before anything is filled in. */
@@ -80,6 +87,8 @@ export const EMPTY_TOOL_SOURCE_FORM: ToolSourceForm = {
   authentication: 'none',
   secret: '',
   header: '',
+  name: '',
+  description: '',
 };
 
 /** The fields a missing value can be named for. */
@@ -239,5 +248,112 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
     };
   }
   if (Object.keys(errors).length > 0) return { errors };
-  return { request: { source, credentials }, id };
+  const name = form.name.trim();
+  const description = form.description.trim();
+  return {
+    request: {
+      source,
+      credentials,
+      ...(name === '' ? {} : { name }),
+      ...(description === '' ? {} : { description }),
+    },
+    id,
+  };
+}
+
+/** What a person chose for one tool under Choose tools (COR-2022): whether it is on, and when it asks. */
+export type ToolChoice = {
+  /** Whether agents may be given the tool: the row's checkbox. */
+  readonly on: boolean;
+  /** Its Default asks level: the row's select. */
+  readonly approval: SourceToolApproval;
+};
+
+/** A tool a probe listed, as Choose tools reads it. */
+type ListedTool = Extract<ToolSourceProbe, { outcome: 'listed' }>['tools'][number];
+
+/**
+ * The level a tool of capability `tier` starts on (row 33i: "The server's own hints set the starting
+ * values; a Dangerous tool starts on Always"): Never for a tool that only reads, Always for a
+ * dangerous one, and On changes for one that changes something or declares nothing. The host gives
+ * a tool the same level when the source saves none (`tierApproval`).
+ */
+export function startingApproval(tier: string | null): SourceToolApproval {
+  if (tier === 'read-only') return 'never';
+  if (tier === 'dangerous') return 'always';
+  return 'on-changes';
+}
+
+/**
+ * Each listed tool's starting choice, keyed by its own name (the probe's `tool`, never the
+ * `<id>__<tool>` name). An MCP server's tools all start on; an OpenAPI spec's reads start on and
+ * its changes start off (row 33w), because a spec can list many operations nobody asked for.
+ */
+export function startingToolChoices(
+  kind: ToolSourceFormKind,
+  tools: readonly Pick<ListedTool, 'tool' | 'tier'>[],
+): Record<string, ToolChoice> {
+  return Object.fromEntries(
+    tools.map(({ tool, tier }) => [
+      tool,
+      { on: kind === 'mcp' || tier === 'read-only', approval: startingApproval(tier) },
+    ]),
+  );
+}
+
+/**
+ * The `tools` a connect sends for `choices` (rows 33i, 34c): `enabled: false` for a tool left
+ * off, and the level for a tool whose level differs from the one its tier gives, which the host
+ * would give it anyway. A tool on at its tier's level sends nothing. `tiers` is each listed tool's
+ * tier by its own name. With no tools, it is empty, and the source joins with none (row 34x).
+ */
+export function toolSettingsOf(
+  choices: Readonly<Record<string, ToolChoice>>,
+  tiers: Readonly<Record<string, string | null>>,
+): Record<string, ToolSourceToolSettings> {
+  const settings: Record<string, ToolSourceToolSettings> = {};
+  for (const [tool, choice] of Object.entries(choices)) {
+    const tier = Object.hasOwn(tiers, tool) ? (tiers[tool] ?? null) : null;
+    const setting: ToolSourceToolSettings = {
+      ...(choice.on ? {} : { enabled: false }),
+      ...(choice.approval === startingApproval(tier) ? {} : { approval: choice.approval }),
+    };
+    if (Object.keys(setting).length > 0) settings[tool] = setting;
+  }
+  return settings;
+}
+
+/** How many tools `choices` turns on: the count the footer and "Connect 2 tools" read (row 34c). */
+export function chosenToolCount(choices: Readonly<Record<string, ToolChoice>>): number {
+  return Object.values(choices).filter((choice) => choice.on).length;
+}
+
+/** One row of what a person connected (row 34g): the tool, and its level, or `off` for a tool left off. */
+export type ConnectedTool = {
+  /** The tool's own name at the source. */
+  readonly tool: string;
+  /** Its name for a person, or `null` when the source gives none. */
+  readonly title: string | null;
+  /** The level it asks at, or `off`. */
+  readonly approval: SourceToolApproval | 'off';
+};
+
+/**
+ * What the success state lists (row 34g: "List issues Never, Create issue On changes, Delete branch
+ * Off"), in the order the probe listed the tools: each one's level when it is on, and `off` when it
+ * is not. A tool with no choice is on at its starting level.
+ */
+export function connectedTools(
+  tools: readonly Pick<ListedTool, 'tool' | 'tier' | 'title'>[],
+  choices: Readonly<Record<string, ToolChoice>>,
+): ConnectedTool[] {
+  return tools.map(({ tool, tier, title }) => {
+    const choice = Object.hasOwn(choices, tool) ? choices[tool] : undefined;
+    const on = choice?.on ?? true;
+    return {
+      tool,
+      title: title ?? null,
+      approval: on ? (choice?.approval ?? startingApproval(tier)) : 'off',
+    };
+  });
 }

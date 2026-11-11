@@ -186,6 +186,148 @@ describe('setAcceptsSecrets', () => {
   });
 });
 
+describe('setToolSettings (COR-2022)', () => {
+  test('puts only the fields a control changed, so the host keeps the rest', async () => {
+    const { seen, fetch } = recording(() =>
+      Response.json({ id: 'notes', changed: true, restartRequired: true }),
+    );
+    const tools = { wipe: { enabled: false }, lookup: { approval: null } };
+
+    await setToolSettings('notes', tools, { mutation: MUTATION, fetch });
+
+    expect(seen).toEqual([
+      {
+        path: `${HOST_TOOL_SOURCES_ROUTE}/notes/tools`,
+        method: 'PUT',
+        body: JSON.stringify({
+          tools: { wipe: { enabled: false }, lookup: { approval: null } },
+          ...MUTATION,
+        }),
+      },
+    ]);
+  });
+
+  test('names the field the host refused, Blocked among them', async () => {
+    const { fetch } = recording(() =>
+      Response.json(
+        {
+          error: 'invalid',
+          field: 'tools.wipe.approval',
+          message: 'Invalid tools.wipe.approval: blocked is set for one agent, on its Access tab.',
+        },
+        { status: 400 },
+      ),
+    );
+
+    expect(
+      await failureOf(
+        setToolSettings('notes', { wipe: { approval: 'always' } }, { mutation: MUTATION, fetch }),
+      ),
+    ).toMatchObject({ kind: 'invalid', field: 'tools.wipe.approval' });
+  });
+});
+
+describe('testToolSource (COR-2022)', () => {
+  test('posts to the saved source’s test route and reads the answer as a probe’s', async () => {
+    const { seen, fetch } = recording(() =>
+      Response.json({
+        outcome: 'listed',
+        tools: [{ name: 'notes__wipe', tool: 'wipe', tier: 'dangerous' }],
+        skipped: [],
+      }),
+    );
+
+    const answer = await testToolSource('notes', { fetch });
+
+    expect(seen).toEqual([
+      { path: `${HOST_TOOL_SOURCES_ROUTE}/notes/test`, method: 'POST', body: '{}' },
+    ]);
+    expect(answer).toMatchObject({ outcome: 'listed', tools: [{ tool: 'wipe' }] });
+  });
+
+  test('reports a failed test as an answer, and a missing source as a refusal', async () => {
+    const failed = recording(() =>
+      Response.json({ outcome: 'failed', message: 'The source did not answer in time.' }),
+    );
+    expect(await testToolSource('notes', { fetch: failed.fetch })).toEqual({
+      outcome: 'failed',
+      message: 'The source did not answer in time.',
+    });
+    const missing = recording(() =>
+      Response.json(
+        { error: 'not-found', field: 'source', message: 'Not a source.' },
+        { status: 404 },
+      ),
+    );
+    expect(await failureOf(testToolSource('nope', { fetch: missing.fetch }))).toMatchObject({
+      kind: 'not-found',
+    });
+  });
+});
+
+describe('a source’s standing fields (COR-2022)', () => {
+  test('reads its name, description, address, lastTested and each tool’s level', async () => {
+    const source = {
+      ...SNAPSHOT.sources[0],
+      name: 'Notes',
+      description: 'Notes you keep.',
+      address: 'https://mcp.notes.example/mcp',
+      lastTested: '2026-11-11T09:00:00.000Z',
+      tools: [
+        {
+          name: 'notes__lookup',
+          tool: 'lookup',
+          acceptsSecrets: false,
+          savedAcceptsSecrets: false,
+          enabled: true,
+          savedEnabled: true,
+          tier: 'read-only',
+          approval: 'never',
+          approvalSaved: false,
+        },
+        {
+          name: 'notes__wipe',
+          tool: 'wipe',
+          acceptsSecrets: false,
+          savedAcceptsSecrets: false,
+          enabled: true,
+          savedEnabled: false,
+          tier: 'dangerous',
+          approval: 'always',
+          approvalSaved: false,
+        },
+      ],
+    };
+    const { fetch } = recording(() => Response.json({ ...SNAPSHOT, sources: [source] }));
+
+    const [read] = (await getToolSources({ fetch })).sources;
+
+    expect(read).toMatchObject({
+      name: 'Notes',
+      description: 'Notes you keep.',
+      address: 'https://mcp.notes.example/mcp',
+      lastTested: '2026-11-11T09:00:00.000Z',
+    });
+    expect(read?.tools.map((tool) => tool.approval)).toEqual(['never', 'always']);
+    // Saved off counts as off, whatever the running host still offers (row 31r).
+    expect(read === undefined ? undefined : toolsOnCount(read)).toEqual({ on: 1, total: 2 });
+    // A source from a host that sends none of them still reads, its tools all on.
+    expect(toolsOnCount(SNAPSHOT.sources[0] as Parameters<typeof toolsOnCount>[0])).toEqual({
+      on: 1,
+      total: 1,
+    });
+  });
+
+  test('refuses Blocked as a tool’s level in the answer', async () => {
+    const source = {
+      ...SNAPSHOT.sources[0],
+      tools: [{ ...SNAPSHOT.sources[0]?.tools[0], approval: 'blocked' }],
+    };
+    const { fetch } = recording(() => Response.json({ ...SNAPSHOT, sources: [source] }));
+    expect(await failureOf(getToolSources({ fetch }))).toBeDefined();
+  });
+});
+
 describe('authorizeToolSource', () => {
   test('a new sign-in fetches the committed revision before allocating its request identity', async () => {
     const { seen, fetch } = recording((entry) =>
@@ -377,6 +519,84 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
       message: 'The source did not answer in time.',
     });
     expect(await failureOf(answer({ outcome: 'maybe' }))).toBeInstanceOf(HostToolSourceError);
+  });
+
+  test('send the name, description and choice of tools a connect carries, and read what is available now (COR-2022)', async () => {
+    const connect = recording(() =>
+      Response.json({
+        id: 'notes',
+        changed: true,
+        restartRequired: false,
+        available: ['notes__lookup'],
+      }),
+    );
+    const chosen = {
+      ...request,
+      create: true as const,
+      name: 'Notes',
+      description: 'Notes you keep.',
+      tools: { wipe: { enabled: false }, lookup: { approval: 'always' as const } },
+    };
+
+    const change = await connectToolSource('notes', chosen, {
+      mutation: MUTATION,
+      fetch: connect.fetch,
+    });
+
+    expect(JSON.parse(connect.seen[0]?.body ?? '{}')).toEqual({
+      ...MUTATION,
+      ...chosen,
+    });
+    expect(change).toEqual({
+      id: 'notes',
+      changed: true,
+      restartRequired: false,
+      available: ['notes__lookup'],
+    });
+    // With no tools chosen the request still carries the empty choice: the source joins with none.
+    const none = recording(() =>
+      Response.json({ id: 'notes', changed: true, restartRequired: false, available: [] }),
+    );
+    await connectToolSource(
+      'notes',
+      { ...request, tools: {} },
+      { mutation: MUTATION, fetch: none.fetch },
+    );
+    expect(JSON.parse(none.seen[0]?.body ?? '{}')).toMatchObject({ tools: {} });
+  });
+
+  test('read a probe’s titles, descriptions and the OpenAPI test call', async () => {
+    const { fetch } = recording(() =>
+      Response.json({
+        outcome: 'listed',
+        tools: [
+          {
+            name: 'notes__lookup',
+            tool: 'lookup',
+            tier: 'read-only',
+            title: 'Look up',
+            description: 'Finds a note.',
+          },
+        ],
+        skipped: [],
+        test: { tool: 'lookup', title: 'Look up', passed: true },
+      }),
+    );
+
+    expect(await probeToolSource('notes', request, { fetch })).toEqual({
+      outcome: 'listed',
+      tools: [
+        {
+          name: 'notes__lookup',
+          tool: 'lookup',
+          tier: 'read-only',
+          title: 'Look up',
+          description: 'Finds a note.',
+        },
+      ],
+      skipped: [],
+      test: { tool: 'lookup', title: 'Look up', passed: true },
+    });
   });
 
   test('turn a refusal into the host’s words and the field it names, and never repeat the body', async () => {

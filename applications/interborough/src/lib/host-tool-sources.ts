@@ -1,7 +1,8 @@
 /**
  * The host's saved tool sources, as Capabilities › Sources reads and changes them
  * (`/host/tool-sources`; `src/host/tool-source-routes.ts`). The host never answers with a
- * credential or a URL, only the names of the credentials it holds. A source is connected, or
+ * credential, only the names of the credentials it holds; the one address it answers with is a
+ * source's own, cut to its origin and path (COR-2022). A source is connected, or
  * probed before it is saved, from a description and the credentials it names
  * (`tool-source-form.ts` builds both); those values go out in one request body and are never kept
  * here, logged, or put in an error. A failure is described by the host's message, which names a
@@ -28,17 +29,44 @@ export const TOOL_SOURCE_STATES = [
   'pending-restart',
 ] as const;
 
+/**
+ * The Default asks levels a source gives one of its tools (COR-2022), in the words an agent file's
+ * `approvals` uses. `blocked` is not one: it is a per-agent override, set on an agent's Access tab.
+ */
+export const SOURCE_TOOL_APPROVALS = ['never', 'on-changes', 'always'] as const;
+
+/** One of {@link SOURCE_TOOL_APPROVALS}. */
+export type SourceToolApproval = (typeof SOURCE_TOOL_APPROVALS)[number];
+
 const toolSchema = z.object({
   name: z.string(),
   tool: z.string(),
   acceptsSecrets: z.boolean(),
   savedAcceptsSecrets: z.boolean(),
   tier: z.string().nullable(),
+  /**
+   * Whether the running host offers the tool, and whether the saved settings turn it on (COR-2009).
+   * The host sends both; absent, as from a page's own fixture, the tool reads as on.
+   */
+  enabled: z.boolean().optional(),
+  savedEnabled: z.boolean().optional(),
+  /** The tool's Default asks level, saved as it is now, or the one its tier gives (COR-2022). */
+  approval: z.enum(SOURCE_TOOL_APPROVALS).optional(),
+  /** Whether `approval` is the owner's own pick rather than the tier's. */
+  approvalSaved: z.boolean().optional(),
 });
 
 const sourceSchema = z.object({
   id: z.string(),
   kind: z.enum(TOOL_SOURCE_KINDS),
+  /** What a person calls the source ("GitHub"), or `null`: show its `id` (COR-2022). */
+  name: z.string().nullable().optional(),
+  /** One sentence about the source, or `null` (COR-2022). */
+  description: z.string().nullable().optional(),
+  /** The server URL or spec address, cut to its origin and path; `null` for a local command (COR-2022). */
+  address: z.string().nullable().optional(),
+  /** When the running host last reached the source, as an ISO 8601 time (COR-2022). */
+  lastTested: z.string().optional(),
   localCommand: z.boolean(),
   state: z.enum(TOOL_SOURCE_STATES),
   message: z.string().optional(),
@@ -62,6 +90,8 @@ const changeSchema = z.object({
   id: z.string(),
   changed: z.boolean(),
   restartRequired: z.boolean(),
+  /** For a source a connect added at once: the names of its tools that are on and available now (COR-2009). */
+  available: z.array(z.string()).optional(),
 });
 
 const affectedAgentSchema = z.object({
@@ -82,8 +112,27 @@ const removedSchema = changeSchema.extend({ affectedAgents: z.array(affectedAgen
 const probeSchema = z.discriminatedUnion('outcome', [
   z.object({
     outcome: z.literal('listed'),
-    tools: z.array(z.object({ name: z.string(), tool: z.string(), tier: z.string().nullable() })),
+    tools: z.array(
+      z.object({
+        name: z.string(),
+        tool: z.string(),
+        tier: z.string().nullable(),
+        /** Its name for a person ("List issues"), or `null` when the source gives none. */
+        title: z.string().nullable().optional(),
+        /** What it does, as the source describes it. */
+        description: z.string().optional(),
+      }),
+    ),
     skipped: z.array(z.object({ tool: z.string(), reason: z.string() })),
+    /** For an OpenAPI source: the read the test made with the key, and whether it passed. */
+    test: z
+      .object({
+        tool: z.string(),
+        title: z.string().nullable(),
+        passed: z.boolean(),
+        message: z.string().optional(),
+      })
+      .optional(),
   }),
   z.object({ outcome: z.literal('needs-authorization') }),
   z.object({ outcome: z.literal('failed'), message: z.string() }),
@@ -123,9 +172,36 @@ export type ToolSourceRequest = {
   readonly credentials: Readonly<Record<string, string>>;
   /** For a connect: refuse, instead of replacing, a source already saved under the same name. */
   readonly create?: true;
+  /** For a connect: what a person calls the source ("GitHub"). Left out, the saved name is kept (COR-2022). */
+  readonly name?: string;
+  /** For a connect: one sentence about the source. Empty clears it; left out, the saved one is kept (COR-2022). */
+  readonly description?: string;
+  /**
+   * For a connect: the person's choice of tools (COR-2022, Choose tools), by each tool's own name
+   * (a probe's `tool`, never the `<id>__<tool>` name). It replaces the settings saved for the
+   * source; left out, a new source's tools are all on at the level their tier gives.
+   */
+  readonly tools?: Readonly<Record<string, ToolSourceToolSettings>>;
 };
 
-/** What a connect reports: the source is saved, and its tools are listed when the host starts again. */
+/**
+ * The host's settings for one tool of a source, as a change names them (COR-2022): a field left out
+ * keeps its saved value, and `approval: null` returns the tool to the level its tier gives.
+ */
+export type ToolSourceToolSettings = {
+  /** Whether the tool may receive the plaintext of a secret answer. */
+  readonly acceptsSecrets?: boolean;
+  /** Whether the host offers the tool to agents: the On checkbox. */
+  readonly enabled?: boolean;
+  /** The tool's Default asks level, or `null` for the one its tier gives. */
+  readonly approval?: SourceToolApproval | null;
+};
+
+/**
+ * What a connect reports. A source a connect adds is loaded at once, with `restartRequired: false`
+ * and the tools now available in `available`; a change to a saved source is listed when the host
+ * starts again.
+ */
 export type ToolSourceChange = z.infer<typeof changeSchema>;
 
 /** What starting a sign-in reports: the address to open, or that the stored tokens already work. */
@@ -252,8 +328,27 @@ export async function probeToolSource(
 }
 
 /**
- * Saves a source, or replaces the one with the same `id`. It is listed, with its tools, when the
- * host starts again.
+ * Contacts a saved source with the credentials and sign-in the host holds for it, and reports the
+ * tools it lists, that it asks for a sign-in, or why it did not answer, as {@link probeToolSource}
+ * does (COR-2022, Test connection on a saved source). Nothing is saved; a source that lists its
+ * tools moves its `lastTested`.
+ *
+ * @throws {HostToolSourceError} When the host refuses the request: no such source (`not-found`),
+ * or a local command asked for by anyone but the owner.
+ */
+export async function testToolSource(id: string, options: Options = {}): Promise<ToolSourceProbe> {
+  const response = await send(
+    sourcePath(id, '/test'),
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' },
+    options,
+  );
+  return readJson(response, probeSchema);
+}
+
+/**
+ * Saves a source, or replaces the one with the same `id`, with its name, description and the
+ * person's choice of tools when `request` carries them. A source this adds is loaded at once and
+ * its tools are available with no restart (`restartRequired: false`, `available`).
  *
  * @throws {HostToolSourceError} When the host refuses it, with the field it names.
  */
@@ -262,12 +357,16 @@ export async function connectToolSource(
   request: ToolSourceRequest,
   options: MutationOptions = {},
 ): Promise<ToolSourceChange> {
+  // Copied before the first `await`: the caller owns the request and may change it meanwhile.
   const captured = z.record(z.string(), z.unknown()).parse(
     JSON.parse(
       JSON.stringify({
         source: request.source,
         credentials: request.credentials,
         ...(request.create === true ? { create: true } : {}),
+        ...(request.name === undefined ? {} : { name: request.name }),
+        ...(request.description === undefined ? {} : { description: request.description }),
+        ...(request.tools === undefined ? {} : { tools: request.tools }),
       }),
     ),
   );
@@ -302,19 +401,22 @@ function jsonRequest(
 }
 
 /**
- * Sets whether each named tool of `id` may receive the plaintext of a secret answer. `tools` maps a
- * tool's own name (not `<id>__<tool>`) to the choice; `false` removes the setting, which is the
- * default. The host loads the change at its next start.
+ * Saves the named settings of each named tool of `id` at once (COR-2022: the On checkbox and the
+ * Default asks select save as they change). `tools` maps a tool's own name (not `<id>__<tool>`) to
+ * the fields to set; a field left out keeps its saved value, so one control never resets another.
+ * The host loads the change at its next start.
  *
- * @throws {HostToolSourceError} When the host refuses the change.
+ * @throws {HostToolSourceError} When the host refuses the change, naming the field (`blocked` is
+ * refused for a source: it belongs to one agent).
  */
-export async function setAcceptsSecrets(
+export async function setToolSettings(
   id: string,
-  tools: Readonly<Record<string, boolean>>,
+  tools: Readonly<Record<string, ToolSourceToolSettings>>,
   options: MutationOptions = {},
 ): Promise<void> {
+  // Copied before the first `await`: the caller owns the record.
   const settings = Object.fromEntries(
-    Object.entries(tools).map(([tool, acceptsSecrets]) => [tool, { acceptsSecrets }]),
+    Object.entries(tools).map(([tool, change]) => [tool, { ...change }]),
   );
   const mutation = await mutationInput(options);
   const response = await send(
@@ -327,6 +429,40 @@ export async function setAcceptsSecrets(
     options,
   );
   await readJson(response, changeSchema);
+}
+
+/**
+ * Sets whether each named tool of `id` may receive the plaintext of a secret answer. `tools` maps a
+ * tool's own name (not `<id>__<tool>`) to the choice; `false` removes the setting, which is the
+ * default. The tool's other settings are kept. The host loads the change at its next start.
+ *
+ * @throws {HostToolSourceError} When the host refuses the change.
+ */
+export async function setAcceptsSecrets(
+  id: string,
+  tools: Readonly<Record<string, boolean>>,
+  options: MutationOptions = {},
+): Promise<void> {
+  await setToolSettings(
+    id,
+    Object.fromEntries(
+      Object.entries(tools).map(([tool, acceptsSecrets]) => [tool, { acceptsSecrets }]),
+    ),
+    options,
+  );
+}
+
+/** Whether a tool is on as saved: what the On checkbox shows. A tool the host reports nothing about is on. */
+export function isToolOn(tool: Pick<ToolSourceTool, 'enabled' | 'savedEnabled'>): boolean {
+  return (tool.savedEnabled ?? tool.enabled) !== false;
+}
+
+/** How many of a source's tools are on as saved, and how many it lists (row 31r: "2 of 3 tools are on"). */
+export function toolsOnCount(source: Pick<ToolSourceStanding, 'tools'>): {
+  readonly on: number;
+  readonly total: number;
+} {
+  return { on: source.tools.filter((tool) => isToolOn(tool)).length, total: source.tools.length };
 }
 
 /**

@@ -5,9 +5,14 @@ import { CAPABILITIES_COPY } from '../app/copy.ts';
 import {
   authenticationChoices,
   buildToolSourceRequest,
+  chosenToolCount,
+  connectedTools,
   effectiveAuthentication,
   EMPTY_TOOL_SOURCE_FORM,
   fieldOfHostField,
+  startingApproval,
+  startingToolChoices,
+  toolSettingsOf,
   type ToolSourceForm,
 } from './tool-source-form.ts';
 
@@ -222,5 +227,78 @@ describe('fieldOfHostField', () => {
     expect(fieldOfHostField('source.baseUrl', mcp)).toBeUndefined();
     expect(fieldOfHostField('source.specification.url', mcp)).toBeUndefined();
     expect(fieldOfHostField('source', mcp)).toBeUndefined();
+  });
+});
+
+describe('the name and description a connect carries (COR-2022)', () => {
+  test('are sent trimmed, and left out when empty so the host keeps what it saved', () => {
+    const url = 'https://mcp.github.example/mcp';
+
+    expect(
+      buildToolSourceRequest(form({ url, name: ' GitHub ', description: ' Issues and files. ' })),
+    ).toMatchObject({
+      request: { name: 'GitHub', description: 'Issues and files.' },
+    });
+    const plain = buildToolSourceRequest(form({ url, name: '  ' }));
+    expect(plain).not.toHaveProperty('request.name');
+    expect(plain).not.toHaveProperty('request.description');
+  });
+});
+
+describe('Choose tools (COR-2022)', () => {
+  const listed = [
+    { tool: 'list_issues', tier: 'read-only', title: 'List issues' },
+    { tool: 'create_issue', tier: 'mutating', title: 'Create issue' },
+    { tool: 'delete_branch', tier: 'dangerous', title: 'Delete branch' },
+  ];
+  const tiers = Object.fromEntries(listed.map(({ tool, tier }) => [tool, tier]));
+
+  test('start from the server’s hints: a read on Never, a change on On changes, a dangerous tool on Always', () => {
+    expect(startingApproval('read-only')).toBe('never');
+    expect(startingApproval('mutating')).toBe('on-changes');
+    expect(startingApproval('dangerous')).toBe('always');
+    expect(startingApproval(null)).toBe('on-changes');
+    expect(startingToolChoices('mcp', listed)).toEqual({
+      list_issues: { on: true, approval: 'never' },
+      create_issue: { on: true, approval: 'on-changes' },
+      delete_branch: { on: true, approval: 'always' },
+    });
+    // An OpenAPI spec's reads start on and its changes start off.
+    expect(startingToolChoices('openapi', listed)).toMatchObject({
+      list_issues: { on: true },
+      create_issue: { on: false },
+      delete_branch: { on: false },
+    });
+  });
+
+  test('send a tool left off as off, and a level only when it is not the tier’s', () => {
+    const choices = {
+      list_issues: { on: true, approval: 'never' as const },
+      create_issue: { on: true, approval: 'always' as const },
+      delete_branch: { on: false, approval: 'always' as const },
+    };
+
+    expect(toolSettingsOf(choices, tiers)).toEqual({
+      create_issue: { approval: 'always' },
+      delete_branch: { enabled: false },
+    });
+    expect(chosenToolCount(choices)).toBe(2);
+    // A server that offers no tools still connects, with an empty choice.
+    expect(toolSettingsOf({}, {})).toEqual({});
+    expect(chosenToolCount({})).toBe(0);
+  });
+
+  test('list what was connected: each tool’s level, or off', () => {
+    const choices = {
+      list_issues: { on: true, approval: 'never' as const },
+      create_issue: { on: true, approval: 'on-changes' as const },
+      delete_branch: { on: false, approval: 'always' as const },
+    };
+
+    expect(connectedTools(listed, choices)).toEqual([
+      { tool: 'list_issues', title: 'List issues', approval: 'never' },
+      { tool: 'create_issue', title: 'Create issue', approval: 'on-changes' },
+      { tool: 'delete_branch', title: 'Delete branch', approval: 'off' },
+    ]);
   });
 });
