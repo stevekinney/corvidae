@@ -17,16 +17,26 @@ import { callBureau, type Fetcher } from './bureau-client.ts';
 /** Where a call is sent from: an abort signal, and a `fetch` for a caller that is not a page. */
 type Options = { readonly signal?: AbortSignal; readonly fetch?: Fetcher };
 
+/** The two kinds a person tells memories apart by: a fact, or a how-to (`bureau.memory.remember`'s `kind`). */
+export const memoryKindSchema = z.enum(['fact', 'how-to']);
+
+/** A memory's kind: a fact is something true, a how-to is a way of doing something. */
+export type MemoryKind = z.infer<typeof memoryKindSchema>;
+
 /**
- * One memory, as the Bureau shows it. The class, source and trust stay strings here: the page
- * words the ones it knows (`MEMORY_COPY`) and shows any other as the Bureau wrote it, so a value
- * the Bureau adds is never a parse failure.
+ * One memory, as the Bureau shows it. The class, source and trust stay strings here, as the
+ * Bureau's engine names them. The page words a memory by its `kind` (Fact or How-to) and its
+ * `writer` (you, the agent, or the system), which the Bureau derives, and never by those.
  */
 export const memorySchema = z.object({
   id: z.string(),
   content: z.string(),
   memoryClass: z.string(),
+  /** Fact or How-to: what the memory is. */
+  kind: memoryKindSchema,
   source: z.string(),
+  /** Who wrote it: a `person` (you), the `agent` whose memory it is, or the `system`. */
+  writer: z.enum(['person', 'agent', 'system']),
   trust: z.string(),
   createdAt: z.string(),
   /** The chat that produced it, or `null` for a memory no chat wrote. */
@@ -34,8 +44,8 @@ export const memorySchema = z.object({
 });
 
 /**
- * One memory as the Bureau shows it: its content, class, source, trust, creation time, and the
- * chat that produced it.
+ * One memory as the Bureau shows it: its content, kind, class, source, writer, trust, creation
+ * time, and the chat that produced it.
  */
 export type Memory = z.infer<typeof memorySchema>;
 
@@ -98,9 +108,29 @@ const lineageSchema = z.object({
  */
 export type MemoryLineage = z.infer<typeof lineageSchema>;
 
-const memoryDetailSchema = z.object({ memory: memorySchema, lineage: lineageSchema });
+/** One earlier version of a memory: what it said before a correction replaced it. */
+const historyEntrySchema = z.object({
+  /** The identifier of the earlier version, which `bureau.memory.get` still reads. */
+  id: z.string(),
+  content: z.string(),
+  kind: memoryKindSchema,
+  writer: z.enum(['person', 'agent', 'system']),
+  trust: z.string(),
+  writtenAt: z.string(),
+  correctedAt: z.string(),
+});
 
-/** One memory together with its lineage. */
+/** One earlier version of a memory, the most recent first in a memory's history. */
+export type MemoryHistoryEntry = z.infer<typeof historyEntrySchema>;
+
+const memoryDetailSchema = z.object({
+  memory: memorySchema,
+  lineage: lineageSchema,
+  /** Each version a correction replaced, the most recent first; empty for a memory never corrected. */
+  history: z.array(historyEntrySchema),
+});
+
+/** One memory together with its lineage and the versions a correction replaced. */
 export type MemoryDetail = z.infer<typeof memoryDetailSchema>;
 
 /** One memory with its lineage. A corrected memory is read here though it is no longer listed. */
@@ -181,14 +211,18 @@ const rememberSchema = z.discriminatedUnion('outcome', [
  */
 export type RememberResult = z.infer<typeof rememberSchema>;
 
-/** Adds a memory in the caller's own words. Asking twice adds it twice: the call has no key. */
+/**
+ * Adds a memory in the caller's own words, as a fact or a how-to. Asking twice adds it twice: the
+ * call has no key.
+ */
 export async function rememberMemory(
   agentId: string,
   content: string,
+  kind: MemoryKind,
   options?: Options,
 ): Promise<RememberResult> {
   return rememberSchema.parse(
-    await callBureau('bureau.memory.remember', { agentId, content }, options),
+    await callBureau('bureau.memory.remember', { agentId, content, kind }, options),
   );
 }
 
@@ -259,10 +293,15 @@ export async function quarantineMemory(
 
 const exportSchema = z.object({
   exportId: z.string().nullable(),
-  memories: z.array(memorySchema),
+  /** The name to save the export under, such as `tool-runner-memories.json`. */
+  fileName: z.string(),
+  memories: z.array(memorySchema.extend({ history: z.array(historyEntrySchema) })),
 });
 
-/** What exporting an agent's memories answers: the manifest's identifier, and every memory. */
+/**
+ * What exporting an agent's memories answers: the manifest's identifier, the name to save the
+ * file under, and every memory with its history.
+ */
 export type MemoryExport = z.infer<typeof exportSchema>;
 
 /** Exports every memory the caller has of the agent, which records the export in the ledger. */
@@ -282,7 +321,8 @@ export type MemoryFault =
   | { readonly kind: 'not-admitted' }
   /** A memory was shared with its own owner, or with no one. */
   | { readonly kind: 'invalid-grantee' }
-  | { readonly kind: 'other'; readonly message: string };
+  /** Any other failure, with the status the server answered it with when it answered. */
+  | { readonly kind: 'other'; readonly message: string; readonly status?: number };
 
 /** Sorts a thrown fault into the {@link MemoryFault} the Memory page shows. */
 export function memoryFaultOf(error: unknown): MemoryFault {
@@ -301,7 +341,7 @@ export function memoryFaultOf(error: unknown): MemoryFault {
     case 'Conflict':
       return data['reason'] === 'memory-superseded'
         ? { kind: 'superseded' }
-        : { kind: 'other', message: error.message };
+        : { kind: 'other', message: error.message, status: error.status };
     case 'Unprocessable':
       if (data['reason'] === 'memory-successor-not-admitted') {
         return { kind: 'successor-not-admitted' };
@@ -309,8 +349,8 @@ export function memoryFaultOf(error: unknown): MemoryFault {
       if (data['reason'] === 'memory-not-admitted') return { kind: 'not-admitted' };
       return data['reason'] === 'memory-invalid-grantee'
         ? { kind: 'invalid-grantee' }
-        : { kind: 'other', message: error.message };
+        : { kind: 'other', message: error.message, status: error.status };
     default:
-      return { kind: 'other', message: error.message };
+      return { kind: 'other', message: error.message, status: error.status };
   }
 }

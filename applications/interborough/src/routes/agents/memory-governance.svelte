@@ -4,7 +4,10 @@
    * Memory page: share it with another owner (and stop), place or release a legal hold, quarantine
    * it, and export every memory of the agent. The details panel starts the first four
    * (`askToShare`, `changeHold`, `askToQuarantine`) and the list's Export starts the last
-   * (`exportAll`), so each question, refusal and result exists once.
+   * (`exportAll`), so each question, refusal and result exists once. An export saves one JSON
+   * file under the name the server gives it (`tool-runner-memories.json`), with each memory's text,
+   * kind, writer, trust and history, and says so in a toast that dismisses itself; `exporting` is
+   * true while it runs, for the button that starts it to say "Exporting…".
    *
    * Each change goes through the memory API (`lib/memory-client.ts`), never raw storage, and the
    * server records it in the memory ledger under the caller's owner. This page says so after each.
@@ -27,6 +30,7 @@
     type MemoryFault,
   } from '../../lib/memory-client.ts';
   import { memoryListingsFilter, queryKeys } from '../../lib/query.ts';
+  import { hasToastHost, showToast } from '../../app/toast-host.svelte';
   import { downloadJson } from '../workflows/detail/export-events.ts';
   import { excerpt, refusalWords } from './memory-presentation.ts';
 
@@ -36,14 +40,24 @@
     holds: SvelteMap<string, 'held' | 'free'>;
     /** True while a governance change is being saved, for the page to hold the others until it settles. */
     pending?: boolean;
+    /** True while an export is being made, for the Export button to say so. */
+    exporting?: boolean;
     /** Called once a memory is quarantined, so the page can close its details. */
     onQuarantined: (id: string) => void;
   };
 
-  let { agentId, holds, pending = $bindable(false), onQuarantined }: Props = $props();
+  let {
+    agentId,
+    holds,
+    pending = $bindable(false),
+    exporting = $bindable(false),
+    onQuarantined,
+  }: Props = $props();
 
   const words = MEMORY_COPY.govern;
   const queryClient = useQueryClient();
+  /** Whether a toast has somewhere to be shown: the shell mounts the host, a view on its own may not. */
+  const toasts = hasToastHost();
 
   /** What the last change came to, in the words for it. */
   type Notice =
@@ -135,25 +149,26 @@
     onError: failed,
   }));
 
-  const exporting = createMutation(() => ({
+  const exportation = createMutation(() => ({
     mutationFn: () => exportMemories(agentId),
     onSuccess: (result) => {
-      downloadJson(result.memories, words.export.fileName(agentId));
-      done(
-        words.export.outcome.title,
-        words.export.outcome.description(result.memories.length, result.exportId),
-        true,
-      );
+      downloadJson(result.memories, result.fileName);
+      if (toasts) {
+        showToast(words.export.done(result.memories.length, result.fileName), {
+          variant: 'success',
+        });
+      }
     },
     onError: failed,
   }));
 
   /** Whether a change is being saved, read from the mutations themselves so a second press in the same tick is refused too. */
   const busy = (): boolean =>
-    share.isPending || hold.isPending || quarantine.isPending || exporting.isPending;
+    share.isPending || hold.isPending || quarantine.isPending || exportation.isPending;
 
   $effect(() => {
     pending = busy();
+    exporting = exportation.isPending;
   });
 
   /** Opens the question of who to share `memory` with. */
@@ -185,7 +200,7 @@
   export function exportAll(): void {
     if (busy()) return;
     notice = undefined;
-    exporting.mutate();
+    exportation.mutate();
   }
 
   function submitShare(change: 'granted' | 'revoked'): void {

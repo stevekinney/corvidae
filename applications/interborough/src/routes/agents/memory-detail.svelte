@@ -1,38 +1,30 @@
 <script lang="ts">
   /**
-   * One memory of an agent, in the detail pane: its text at reading size, a context line (its kind,
-   * when it was learned, and the two icon buttons that change it: Correct and Forget), the facts
-   * below in three columns, and the governance actions.
+   * One memory of an agent, in the detail pane (board PageMemory): a muted context line ("Fact,
+   * remembered yesterday") with the two icon buttons that change it, Correct (a pencil) and Forget
+   * (a trash can), the memory's text as a bold heading, and label/value rows: Came from (only for a
+   * memory someone other than you wrote), Written by, and History. Trust is not drawn: it follows
+   * from who wrote the memory. The legal hold is a row only once it is known. Sharing, the legal
+   * hold and quarantine are under "More options", out of the way of the rows the design draws.
    *
    * Correct edits the text in place and saves a correction, which is a new memory that replaces this
-   * one; the original is kept, and is reached from the correction's history. The facts read only
-   * what `bureau.memory.get` returns. From the memory itself: its source, trust, class, creation
-   * time, and the chat that produced it. From the governance ledger: the run that wrote it, the
-   * memory it corrects, and the memory that corrected it. The legal hold has no read of its own,
-   * so it is shown only once `hold` knows it: from a hold or a release made here, or from a forget
-   * that ran into one.
+   * one; the original is kept, and is reached from the correction's History. A correction the
+   * server refuses is said at the form, with what was typed still in the field; only when the
+   * person moved to another memory meanwhile does the page report it (`onCorrectionFailed`). The
+   * legal hold has no read of its own, so it is shown only once `hold` knows it: from a hold or a
+   * release made here, or from a forget that ran into one.
    *
    * The page mounts one of these per memory (`{#key}`), so what was said about one is never shown
    * for another. Forgetting and the governance actions belong to the page, which asks the same way
    * wherever it is asked from.
    */
-  import { untrack } from 'svelte';
+  import { onDestroy, untrack } from 'svelte';
 
-  import {
-    Alert,
-    Badge,
-    Button,
-    DescriptionList,
-    RelativeTime,
-    Skeleton,
-    Textarea,
-    type DescriptionListItem,
-  } from '@lostgradient/cinder';
+  import { Alert, Button, DescriptionList, Skeleton, Textarea } from '@lostgradient/cinder';
   import { Pencil, Trash2 } from '@lucide/svelte';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
-  import { chatSessionPath } from '../../lib/identifier-paths.ts';
   import {
     correctMemory,
     getMemory,
@@ -41,17 +33,18 @@
     type MemoryFault,
   } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import MemoryCameFrom from './memory-came-from.svelte';
   import {
-    formatMemoryTime,
-    kindOf,
-    lineageGroups,
-    plainKindOf,
-    type LineageField,
+    contextLine,
+    correctionRefusalWords,
+    historySummary,
+    writerName,
   } from './memory-presentation.ts';
 
   type Props = {
     agentId: string;
+    /** What the agent is called, for the memories it wrote ("Written by Tool runner"). */
+    agentName: string;
     id: string;
     /** What is known of this memory's legal hold, or `undefined` while nothing has said. */
     hold: 'held' | 'free' | undefined;
@@ -65,8 +58,9 @@
     /** Called once a correction landed: the memory it replaced, and the correction. */
     onCorrected: (replaced: string, correction: Memory) => void;
     /**
-     * Called when a correction was refused: the memory it was for, the fault, and the text that was
-     * sent. The page reports it, because this panel is gone if the person moves to another memory.
+     * Called when a correction was refused after this panel was gone (the person moved to another
+     * memory): the memory it was for, the fault, and the text that was sent. While the panel is
+     * here the refusal is said in its form, where the text stays.
      */
     onCorrectionFailed: (replaced: string, fault: MemoryFault, content: string) => void;
     /** The text of a refused correction to edit again, which opens this memory in its form. */
@@ -78,6 +72,7 @@
 
   let {
     agentId,
+    agentName,
     id,
     hold,
     forgetPending,
@@ -107,6 +102,14 @@
   let editing = $state(untrack(() => resume !== undefined));
   let draft = $state(untrack(() => resume ?? ''));
 
+  /** The refusal of the correction in this form, which keeps what was typed; cleared by the next try. */
+  let failure = $state<MemoryFault | undefined>(undefined);
+  /** Whether this panel is still on the page, which says where a refused correction is reported. */
+  let present = true;
+  onDestroy(() => {
+    present = false;
+  });
+
   // The memory a correction is for travels with it, because the panel may be gone by the time it
   // lands (the page mounts one per memory) and its `id` prop then answers for the memory now open.
   const correct = createMutation(() => ({
@@ -114,11 +117,14 @@
       correctMemory(agentId, change.id, change.content),
     onSuccess: (result, change) => {
       editing = false;
+      failure = undefined;
       void queryClient.invalidateQueries({ queryKey: queryKeys.memory.all(agentId) });
       onCorrected(change.id, result.memory);
     },
     onError: (error, change) => {
-      onCorrectionFailed(change.id, memoryFaultOf(error), change.content);
+      const fault = memoryFaultOf(error);
+      if (present) failure = fault;
+      else onCorrectionFailed(change.id, fault, change.content);
     },
   }));
 
@@ -126,20 +132,20 @@
 
   function startCorrecting(memory: Memory): void {
     draft = memory.content;
+    failure = undefined;
     editing = true;
+  }
+
+  function stopCorrecting(): void {
+    failure = undefined;
+    editing = false;
   }
 
   function submitCorrection(event: SubmitEvent): void {
     event.preventDefault();
-    if (draft.trim() !== '' && !correct.isPending) correct.mutate({ id, content: draft });
-  }
-
-  function goTo(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
+    if (draft.trim() === '' || correct.isPending) return;
+    failure = undefined;
+    correct.mutate({ id, content: draft });
   }
 </script>
 
@@ -164,46 +170,62 @@
   {:else if detail.data}
     {@const memory = detail.data.memory}
     {@const lineage = detail.data.lineage}
-    {@const groups = lineageGroups(memory, lineage, hold)}
-    {#snippet runCode()}
-      <code class="ib-memory-detail__code">{lineage.runId}</code>
+    {@const summary = historySummary(lineage, detail.data.history)}
+    {#snippet cameFromValue()}
+      <MemoryCameFrom sessionId={memory.sessionId} />
     {/snippet}
-    {#snippet chatLink()}
-      {@const chatPath = chatSessionPath(memory.sessionId ?? '')}
-      <a href={router.href(chatPath)} onclick={(event) => goTo(event, chatPath)}
-        >{MEMORY_COPY.detail.openChat}</a
-      >
+    {#snippet historyValue()}
+      {@const corrects = summary.corrects}
+      {@const correctedBy = summary.correctedBy}
+      {#if corrects === undefined && correctedBy === undefined}
+        {MEMORY_COPY.detail.history.none}
+      {/if}
+      {#if corrects !== undefined}
+        <span class="ib-memory-detail__history" data-history="corrects">
+          <span>{corrects.text}</span>
+          <button type="button" class="ib-memory-detail__link" onclick={() => onOpen(corrects.id)}>
+            {MEMORY_COPY.detail.history.original}
+          </button>
+        </span>
+      {/if}
+      {#if correctedBy !== undefined}
+        <span class="ib-memory-detail__history" data-history="corrected-by">
+          <span>{MEMORY_COPY.detail.history.correctedBy}</span>
+          <button
+            type="button"
+            class="ib-memory-detail__link"
+            onclick={() => onOpen(correctedBy.id)}
+          >
+            {MEMORY_COPY.detail.history.correction}
+          </button>
+        </span>
+      {/if}
     {/snippet}
-    {#snippet correctsLink()}
-      {@render memoryLink(lineage.corrects ?? '')}
-    {/snippet}
-    {#snippet correctedByLink()}
-      {@render memoryLink(lineage.correctedBy ?? '')}
-    {/snippet}
-    {#snippet memoryLink(target: string)}
-      <button type="button" class="ib-memory-detail__link" onclick={() => onOpen(target)}>
-        {MEMORY_COPY.detail.openMemory}
-      </button>
-    {/snippet}
-    {@const itemsOf = (fields: LineageField[]): DescriptionListItem[] =>
-      fields.map((field) => ({
-        id: field.id,
-        term: field.term,
-        definition:
-          field.link === undefined
-            ? field.id === 'run' && lineage.runId !== null
-              ? runCode
-              : field.value
-            : field.link.kind === 'chat'
-              ? chatLink
-              : field.id === 'corrects'
-                ? correctsLink
-                : correctedByLink,
-      }))}
+    <!-- Came from is a row only for a memory someone other than you wrote; the legal hold, once it is known. -->
+    {@const fields = MEMORY_COPY.detail.fields}
+    {@const rows = [
+      ...(memory.writer === 'person'
+        ? []
+        : [{ id: 'came-from', term: fields.cameFrom, definition: cameFromValue }]),
+      {
+        id: 'written-by',
+        term: fields.writtenBy,
+        definition: writerName(memory, agentName, 'detail'),
+      },
+      { id: 'history', term: fields.history, definition: historyValue },
+      ...(hold === undefined
+        ? []
+        : [
+            {
+              id: 'legal-hold',
+              term: fields.legalHold,
+              definition: MEMORY_COPY.detail.legalHold[hold],
+            },
+          ]),
+    ]}
 
     <div class="ib-memory-detail__context">
-      <Badge variant="neutral" size="sm">{plainKindOf(memory)}</Badge>
-      <RelativeTime date={memory.createdAt} title={formatMemoryTime(memory.createdAt)} />
+      <p class="ib-memory-detail__kind" data-memory-context>{contextLine(memory, Date.now())}</p>
       <span class="ib-memory-detail__tools">
         <Button
           data-changes
@@ -235,76 +257,73 @@
 
     {#if editing}
       <form class="ib-memory-detail__edit" onsubmit={submitCorrection}>
-        <p class="ib-memory-detail__alert-body">{MEMORY_COPY.correct.edit.description}</p>
         <Textarea
           id="ib-memory-correction"
           label={MEMORY_COPY.correct.edit.label}
+          description={MEMORY_COPY.correct.edit.description}
           rows={6}
           bind:value={draft}
         />
+        {#if failure !== undefined}
+          {@const words = correctionRefusalWords(failure)}
+          <Alert variant="danger">
+            <p class="ib-memory-detail__alert-title" data-correction-refusal={failure.kind}>
+              {words.title}
+            </p>
+            {#if words.description !== ''}
+              <p class="ib-memory-detail__alert-body">{words.description}</p>
+            {/if}
+          </Alert>
+        {/if}
         <div class="ib-memory-detail__actions">
-          <Button
-            type="submit"
-            variant="primary"
-            disabled={correct.isPending || draft.trim() === ''}
-            >{MEMORY_COPY.correct.edit.submit}</Button
+          <Button type="submit" variant="primary" disabled={correct.isPending || draft.trim() === ''}
+            >{failure === undefined
+              ? MEMORY_COPY.correct.edit.submit
+              : MEMORY_COPY.correct.edit.retry}</Button
           >
-          <Button variant="secondary" onclick={() => (editing = false)}
+          <Button variant="secondary" onclick={stopCorrecting}
             >{MEMORY_COPY.correct.edit.cancel}</Button
           >
         </div>
       </form>
     {:else}
-      <blockquote class="ib-memory-detail__text" aria-label={MEMORY_COPY.detail.content}>
-        {memory.content}
-      </blockquote>
+      <h2 class="ib-memory-detail__text" data-memory-text>{memory.content}</h2>
     {/if}
 
-    <div class="ib-memory-detail__facts">
-      <section class="ib-memory-detail__group" aria-label={MEMORY_COPY.detail.groups.origin}>
-        <h3 class="ib-memory-detail__subheading">{MEMORY_COPY.detail.groups.origin}</h3>
-        <DescriptionList items={itemsOf(groups.origin)} />
-      </section>
-      <section class="ib-memory-detail__group" aria-label={MEMORY_COPY.detail.groups.standing}>
-        <h3 class="ib-memory-detail__subheading">{MEMORY_COPY.detail.groups.standing}</h3>
-        <DescriptionList items={itemsOf(groups.standing)} />
-        <p class="ib-memory-detail__hint">{kindOf(memory).description}</p>
-      </section>
-      <section class="ib-memory-detail__group" aria-label={MEMORY_COPY.detail.groups.history}>
-        <h3 class="ib-memory-detail__subheading">{MEMORY_COPY.detail.groups.history}</h3>
-        <DescriptionList items={itemsOf(groups.history)} />
-      </section>
-    </div>
+    <DescriptionList variant="two-column" items={rows} />
 
-    <section class="ib-memory-detail__govern" aria-label={MEMORY_COPY.govern.heading}>
-      <h3 class="ib-memory-detail__subheading">{MEMORY_COPY.govern.heading}</h3>
-      <div class="ib-memory-detail__actions">
-        <Button
-          data-changes
-          variant="secondary"
-          size="sm"
-          disabled={governancePending}
-          onclick={() => onShare(memory)}>{MEMORY_COPY.govern.share.action}</Button
-        >
-        <Button
-          data-changes
-          variant="secondary"
-          size="sm"
-          disabled={governancePending}
-          onclick={() => onHold(memory.id, hold === 'held' ? 'release' : 'place')}
-          >{hold === 'held'
-            ? MEMORY_COPY.govern.hold.release
-            : MEMORY_COPY.govern.hold.place}</Button
-        >
-        <Button
-          data-changes
-          variant="danger"
-          size="sm"
-          disabled={governancePending}
-          onclick={() => onQuarantine(memory)}>{MEMORY_COPY.govern.quarantine.action}</Button
-        >
-      </div>
-    </section>
+    <details class="ib-memory-detail__more">
+      <summary>{MEMORY_COPY.detail.more}</summary>
+      <section class="ib-memory-detail__govern" aria-label={MEMORY_COPY.govern.heading}>
+        <h3 class="ib-memory-detail__subheading">{MEMORY_COPY.govern.heading}</h3>
+        <div class="ib-memory-detail__actions">
+          <Button
+            data-changes
+            variant="secondary"
+            size="sm"
+            disabled={governancePending}
+            onclick={() => onShare(memory)}>{MEMORY_COPY.govern.share.action}</Button
+          >
+          <Button
+            data-changes
+            variant="secondary"
+            size="sm"
+            disabled={governancePending}
+            onclick={() => onHold(memory.id, hold === 'held' ? 'release' : 'place')}
+            >{hold === 'held'
+              ? MEMORY_COPY.govern.hold.release
+              : MEMORY_COPY.govern.hold.place}</Button
+          >
+          <Button
+            data-changes
+            variant="danger"
+            size="sm"
+            disabled={governancePending}
+            onclick={() => onQuarantine(memory)}>{MEMORY_COPY.govern.quarantine.action}</Button
+          >
+        </div>
+      </section>
+    </details>
   {/if}
 </article>
 
@@ -323,17 +342,25 @@
     gap: var(--cinder-space-2) var(--cinder-space-3);
   }
 
+  /* The kind and when it was written: muted, because the memory itself is what the pane is about. */
+  .ib-memory-detail__kind {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
   .ib-memory-detail__tools {
     display: inline-flex;
     gap: var(--cinder-space-1);
     margin-inline-start: auto;
   }
 
-  /* The memory leads at reading size: it is what the page is about. */
+  /* The memory leads as a bold heading, wrapping anywhere so a long one never scrolls sideways. */
   .ib-memory-detail__text {
     margin: 0;
     font-size: var(--cinder-text-lg);
-    line-height: 1.6;
+    font-weight: 600;
+    line-height: 1.5;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
   }
@@ -344,20 +371,24 @@
     gap: var(--cinder-space-3);
   }
 
-  /* Three columns of facts where there is room, one under another where there is not. */
-  .ib-memory-detail__facts {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-    gap: var(--cinder-space-4);
+  .ib-memory-detail__history {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1) var(--cinder-space-2);
+    overflow-wrap: anywhere;
   }
 
-  .ib-memory-detail__group,
+  .ib-memory-detail__more > summary {
+    color: var(--cinder-text-muted);
+    cursor: pointer;
+  }
+
   .ib-memory-detail__govern {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
     min-width: 0;
-    overflow-wrap: anywhere;
+    margin-block-start: var(--cinder-space-2);
   }
 
   .ib-memory-detail__subheading {
@@ -365,12 +396,6 @@
     font-size: var(--cinder-text-sm);
     font-weight: 600;
     color: var(--cinder-text-muted);
-  }
-
-  .ib-memory-detail__hint {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
   }
 
   .ib-memory-detail__actions {
@@ -386,10 +411,6 @@
 
   .ib-memory-detail__alert-body {
     margin: var(--cinder-space-1) 0;
-  }
-
-  .ib-memory-detail__code {
-    font-family: var(--cinder-font-mono);
   }
 
   .ib-memory-detail__link {

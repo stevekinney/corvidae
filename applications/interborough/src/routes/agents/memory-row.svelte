@@ -1,21 +1,24 @@
 <script lang="ts">
   /**
-   * One memory in the list: its text, how long ago it was learned, and what kind of memory it is,
-   * in plain words (Facts, From chats, How-to, From you). The whole row opens the memory's
+   * One memory in the list, in two lines: its text, clamped to two lines, and a muted line that
+   * says what kind of memory it is, who wrote it and when ("Fact, From Tool runner, 10:42 AM"),
+   * with no status dot or pill, because a dot means status. The whole row opens the memory's
    * details, and Correct and Forget live there. A memory that is open but not on the pages read so
    * far (one a correction replaced, or one an address names) has no `memory` yet, so the row reads
    * it the way the details do and shares the answer.
    */
-  import { Badge, RelativeTime, SelectableRow, Skeleton } from '@lostgradient/cinder';
+  import { SelectableRow, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { MEMORY_COPY } from '../../app/copy.ts';
   import { getMemory, type Memory } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { formatMemoryTime, highlightSegments, plainKindOf } from './memory-presentation.ts';
+  import { highlightSegments, rowLine } from './memory-presentation.ts';
 
   type Props = {
     agentId: string;
+    /** What the agent is called, for the memories it wrote ("From Tool runner"). */
+    agentName: string;
     id: string;
     /** The memory, when the pages read so far hold it; otherwise the row reads it. */
     memory: Memory | undefined;
@@ -29,7 +32,17 @@
     onOpen: () => void;
   };
 
-  let { agentId, id, memory, query, score, pinned = false, selected, onOpen }: Props = $props();
+  let {
+    agentId,
+    agentName,
+    id,
+    memory,
+    query,
+    score,
+    pinned = false,
+    selected,
+    onOpen,
+  }: Props = $props();
 
   const read = createQuery(
     () => ({
@@ -62,18 +75,13 @@
   {#snippet meta()}
     {#if shown !== undefined}
       <span class="ib-memory__facts">
+        <span data-memory-line>{rowLine(shown, agentName, Date.now())}</span>
         {#if pinned}
           <span data-pinned>{MEMORY_COPY.pinnedNote}</span>
         {/if}
         {#if score !== null}
           <span>{MEMORY_COPY.relevance}: {score.toFixed(2)}</span>
         {/if}
-        <RelativeTime
-          class="ib-memory__time"
-          date={shown.createdAt}
-          title={formatMemoryTime(shown.createdAt)}
-        />
-        <Badge variant="neutral" size="sm">{plainKindOf(shown)}</Badge>
       </span>
     {/if}
   {/snippet}

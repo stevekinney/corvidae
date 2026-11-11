@@ -1,128 +1,134 @@
 /** How the Memory page words a memory's facts. */
 
 import { MEMORY_COPY } from '../../app/copy.ts';
-import type { Memory, MemoryFault, MemoryLineage } from '../../lib/memory-client.ts';
+import { calendarDay, clockTime, viewerTimeZone } from '../../lib/format/clock.ts';
+import type {
+  Memory,
+  MemoryFault,
+  MemoryHistoryEntry,
+  MemoryLineage,
+} from '../../lib/memory-client.ts';
 
 /** The words for `value` from `words`, or the value itself when the Bureau names one the page does not know. */
 export function labelFor(words: Readonly<Record<string, string>>, value: string): string {
   return words[value] ?? value;
 }
 
-/** A memory's creation time in the reader's own locale, or the Bureau's text when it is not a date. */
-export function formatMemoryTime(iso: string): string {
-  const time = new Date(iso);
-  return Number.isNaN(time.getTime()) ? iso : time.toLocaleString();
+/** How recent a memory is to be "Just now": under a minute, and any time ahead of the clock. */
+const JUST_NOW_MILLISECONDS = 60_000;
+
+/**
+ * When a memory was written, from the clock's day: how line two of a row says it (`row`), and how
+ * the detail's line says it after "remembered" (`remembered`). Under a minute is "Just now" (and
+ * "just now"), the clock for today ("10:42 AM", and "today at 10:42 AM"), "Yesterday" ("yesterday")
+ * for the day before, and the day for anything older ("Oct 21"). A time that is not a date is
+ * given back as the Bureau wrote it. `now` and `zone` are the clock's, so a test pins both.
+ */
+export function memoryTimes(
+  createdAt: string,
+  now: number,
+  zone: string = viewerTimeZone(),
+): { readonly row: string; readonly remembered: string } {
+  const at = Date.parse(createdAt);
+  if (Number.isNaN(at)) return { row: createdAt, remembered: createdAt };
+  const words = MEMORY_COPY.when;
+  if (now - at < JUST_NOW_MILLISECONDS) {
+    return { row: words.justNow, remembered: words.justNow.toLowerCase() };
+  }
+  const days = calendarDay(now, zone) - calendarDay(at, zone);
+  if (days <= 0) {
+    const clock = clockTime(at, zone);
+    return { row: clock, remembered: words.today(clock) };
+  }
+  if (days === 1) return { row: words.yesterday, remembered: words.yesterday.toLowerCase() };
+  const day = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: zone,
+  }).format(at);
+  return { row: day, remembered: day };
 }
 
-/** What a lineage field's value can lead to. */
-export type LineageLink =
-  | { readonly kind: 'chat'; readonly sessionId: string }
-  | { readonly kind: 'memory'; readonly id: string };
+/** The word for a memory's kind: Fact or How-to. */
+export function kindName(memory: Pick<Memory, 'kind'>): string {
+  return MEMORY_COPY.kind[memory.kind];
+}
 
-/** One row of a memory's facts: its label, and either plain text or a link to follow. */
-export type LineageField = {
-  readonly id: string;
-  readonly term: string;
-  readonly value: string;
-  readonly link?: LineageLink;
-};
+/**
+ * Who wrote a memory, as a person reads it: "you" or "You" for the person, the agent's own name
+ * for a memory the agent wrote, and "the system" for the system. `form` is `row` for line two of a
+ * row ("From you") and `detail` for the Written by row ("You").
+ */
+export function writerName(
+  memory: Pick<Memory, 'writer'>,
+  agentName: string,
+  form: 'row' | 'detail',
+): string {
+  return memory.writer === 'agent' ? agentName : MEMORY_COPY.writer[memory.writer][form];
+}
 
-/** The facts below a memory's text, in the three columns the page shows. */
-export type LineageGroups = {
-  /** Where it came from: its source, the chat that produced it, and the run that wrote it. */
-  readonly origin: LineageField[];
-  /** Trust and time: how far to trust it, what kind it is in the engine's terms, when, and a known legal hold. */
-  readonly standing: LineageField[];
-  /** What it corrects, and what corrected it. */
-  readonly history: LineageField[];
+/**
+ * Line two of a row: its kind, who wrote it and when, joined by commas ("Fact, From Tool runner,
+ * 10:42 AM"), never a middle dot.
+ */
+export function rowLine(
+  memory: Pick<Memory, 'kind' | 'writer' | 'createdAt'>,
+  agentName: string,
+  now: number,
+  zone: string = viewerTimeZone(),
+): string {
+  return [
+    kindName(memory),
+    MEMORY_COPY.from(writerName(memory, agentName, 'row')),
+    memoryTimes(memory.createdAt, now, zone).row,
+  ].join(', ');
+}
+
+/** The detail's context line: "Fact, remembered yesterday". */
+export function contextLine(
+  memory: Pick<Memory, 'kind' | 'createdAt'>,
+  now: number,
+  zone: string = viewerTimeZone(),
+): string {
+  return MEMORY_COPY.remembered(
+    kindName(memory),
+    memoryTimes(memory.createdAt, now, zone).remembered,
+  );
+}
+
+/** What a memory's History row says: the memory a correction replaced, and the one that replaced this. */
+export type HistorySummary = {
+  /** The earlier memory this one corrects: what it said (when it can be read), and its identifier. */
+  readonly corrects?: { readonly id: string; readonly text: string };
+  /** The identifier of the memory that corrected this one. */
+  readonly correctedBy?: { readonly id: string };
 };
 
 /**
- * The facts of a memory, grouped for the page. From the memory itself: its source, trust, class,
- * creation time, and the chat that produced it. From the governance ledger: the run that wrote it,
- * the memory it corrects, and the memory that corrected it. An origin the server recorded nothing
- * for says so. The legal hold is `legalHold`, shown only once it is known (`undefined` leaves it
- * out): a hold has no read of its own, so it is learned from a hold, a release, or a refused forget.
+ * The History row of a memory. `history` is the versions a correction replaced, the most recent
+ * first, so its first entry is what this memory replaced; the ledger's `lineage` names the same
+ * memory, and is the only source for one whose text can no longer be read.
  */
-export function lineageGroups(
-  memory: Memory,
-  lineage: MemoryLineage,
-  legalHold: 'held' | 'free' | undefined,
-): LineageGroups {
-  const { fields, notRecorded, noHistory } = MEMORY_COPY.detail;
-  const link = (
-    id: string,
-    term: string,
-    shown: string,
-    target: LineageLink | undefined,
-    absent: string,
-  ): LineageField =>
-    target === undefined ? { id, term, value: absent } : { id, term, value: shown, link: target };
+export function historySummary(
+  lineage: Pick<MemoryLineage, 'corrects' | 'correctedBy'>,
+  history: readonly Pick<MemoryHistoryEntry, 'id' | 'content'>[],
+): HistorySummary {
+  const earlier = history[0];
+  const correctsId = lineage.corrects ?? earlier?.id ?? null;
   return {
-    origin: [
-      { id: 'source', term: fields.source, value: labelFor(MEMORY_COPY.source, memory.source) },
-      link(
-        'session',
-        fields.session,
-        MEMORY_COPY.detail.openChat,
-        memory.sessionId === null ? undefined : { kind: 'chat', sessionId: memory.sessionId },
-        notRecorded,
-      ),
-      { id: 'run', term: fields.run, value: lineage.runId ?? notRecorded },
-    ],
-    standing: [
-      { id: 'trust', term: fields.trust, value: labelFor(MEMORY_COPY.trust, memory.trust) },
-      { id: 'kind', term: fields.kind, value: kindOf(memory).label },
-      { id: 'created', term: fields.created, value: formatMemoryTime(memory.createdAt) },
-      ...(legalHold === undefined
-        ? []
-        : [
-            {
-              id: 'legal-hold',
-              term: fields.legalHold,
-              value: MEMORY_COPY.detail.legalHold[legalHold],
-            },
-          ]),
-    ],
-    history: [
-      link(
-        'corrects',
-        fields.corrects,
-        MEMORY_COPY.detail.openMemory,
-        lineage.corrects === null ? undefined : { kind: 'memory', id: lineage.corrects },
-        noHistory,
-      ),
-      link(
-        'corrected-by',
-        fields.correctedBy,
-        MEMORY_COPY.detail.openMemory,
-        lineage.correctedBy === null ? undefined : { kind: 'memory', id: lineage.correctedBy },
-        noHistory,
-      ),
-    ],
+    ...(correctsId === null
+      ? {}
+      : {
+          corrects: {
+            id: correctsId,
+            text:
+              earlier === undefined
+                ? MEMORY_COPY.detail.history.correctsUnread
+                : MEMORY_COPY.detail.history.corrects(earlier.content),
+          },
+        }),
+    ...(lineage.correctedBy === null ? {} : { correctedBy: { id: lineage.correctedBy } }),
   };
-}
-
-/** What a row's chip says about a memory, and the sentence that explains it. */
-export type MemoryKind = { readonly label: string; readonly description: string };
-
-/**
- * The kind a row shows. A memory a person wrote is an operator memory whatever its class, because
- * that is the fact the person can act on; every other memory shows the class it was stored under.
- */
-export function kindOf(memory: Pick<Memory, 'memoryClass' | 'source'>): MemoryKind {
-  const words: Readonly<Record<string, MemoryKind | undefined>> = {
-    operator: MEMORY_COPY.kind.operator,
-    working: MEMORY_COPY.kind.working,
-    episodic: MEMORY_COPY.kind.episodic,
-    semantic: MEMORY_COPY.kind.semantic,
-    procedural: MEMORY_COPY.kind.procedural,
-    identity: MEMORY_COPY.kind.identity,
-    resource: MEMORY_COPY.kind.resource,
-  };
-  const key = memory.source === 'operator' ? 'operator' : memory.memoryClass;
-  const known = Object.hasOwn(words, key) ? words[key] : undefined;
-  return known ?? { label: key, description: MEMORY_COPY.kind.unknown(key) };
 }
 
 /** A run of a memory's text, and whether it is one of the words searched for. */
@@ -166,44 +172,21 @@ export function excerpt(content: string): string {
   return text.length > 48 ? `${text.slice(0, 48)}…` : text;
 }
 
-/** The kinds the list can be narrowed to, in plain names. `all` shows every memory. */
-export type KindFilter = 'all' | 'facts' | 'chats' | 'howTo' | 'you';
+/** The kinds the list can be narrowed to. `all` shows every memory. */
+export type KindFilter = 'all' | Memory['kind'];
 
-/** The plain-named group a memory belongs to, or `undefined` for a class this page has no group for. */
-export function groupOf(
-  memory: Pick<Memory, 'memoryClass' | 'source'>,
-): Exclude<KindFilter, 'all'> | undefined {
-  if (memory.source === 'operator') return 'you';
-  switch (memory.memoryClass) {
-    case 'episodic':
-    case 'working':
-      return 'chats';
-    case 'procedural':
-      return 'howTo';
-    case 'semantic':
-    case 'identity':
-    case 'resource':
-      return 'facts';
-    default:
-      return undefined;
-  }
+/** Who wrote what the list is narrowed to: anyone, you, or the agent whose memory this is. */
+export type WriterFilter = 'all' | 'you' | 'agent';
+
+/** Whether `memory` is shown under `filter`: every memory under `all`, and a kind's own under its name. */
+export function matchesKind(memory: Pick<Memory, 'kind'>, filter: KindFilter): boolean {
+  return filter === 'all' || memory.kind === filter;
 }
 
-/** Whether `memory` is shown under `filter`: every memory under `all`, and a group's own under its name. */
-export function matchesKind(
-  memory: Pick<Memory, 'memoryClass' | 'source'>,
-  filter: KindFilter,
-): boolean {
-  return filter === 'all' || groupOf(memory) === filter;
-}
-
-/**
- * The plain name a row shows for a memory: Facts, From chats, How-to or From you. A class the page
- * has no group for shows as the server wrote it.
- */
-export function plainKindOf(memory: Pick<Memory, 'memoryClass' | 'source'>): string {
-  const group = groupOf(memory);
-  return group === undefined ? memory.memoryClass : MEMORY_COPY.plainKind[group];
+/** Whether `memory` is shown under `filter`: a person's under `you`, and the agent's under `agent`. */
+export function matchesWriter(memory: Pick<Memory, 'writer'>, filter: WriterFilter): boolean {
+  if (filter === 'all') return true;
+  return memory.writer === (filter === 'you' ? 'person' : 'agent');
 }
 
 /** The words for a fault a change was answered with: a title, and what to do about it. */
@@ -224,9 +207,28 @@ export function refusalWords(fault: MemoryFault): { title: string; description: 
   }
 }
 
+/**
+ * What a failed save the person typed into says about the failure it has no name for: the status
+ * the server answered with, or that it did not answer, and that what was typed is still there.
+ */
+function stillHere(fault: MemoryFault): string {
+  const words = MEMORY_COPY.add.stillHere;
+  return fault.kind === 'other' && fault.status !== undefined
+    ? words.server(fault.status)
+    : words.unreached;
+}
+
 /** {@link refusalWords} for adding a memory, where what can be missing is the agent. */
 export function addRefusalWords(fault: MemoryFault): { title: string; description: string } {
   if (fault.kind === 'not-found') return MEMORY_COPY.add.refusal['not-found'];
+  if (fault.kind === 'other') {
+    return { title: MEMORY_COPY.add.notSaved, description: stillHere(fault) };
+  }
+  return refusalWords(fault);
+}
+
+/** {@link refusalWords} for a correction shown in its own form, where what was typed is kept. */
+export function correctionRefusalWords(fault: MemoryFault): { title: string; description: string } {
   const words = refusalWords(fault);
-  return fault.kind === 'other' ? { ...words, title: MEMORY_COPY.add.notSaved } : words;
+  return fault.kind === 'other' ? { title: words.title, description: stillHere(fault) } : words;
 }

@@ -5,18 +5,20 @@
    * as Chats and Reviews), under the agent's header and tab bar. The open memory is in the address
    * (`?selected=`), so it can be linked and reloaded; choosing one replaces the address in place
    * (the tab stays mounted, with what was typed). The list's header holds Add a memory
-   * (`memory-add.svelte`), Export, a search that runs as you type, and a kind filter in plain names;
-   * the tab's name is the tab bar's, so the list repeats no heading of its own. A memory opens beside
-   * the list with Correct and Forget on its context line and the governance actions below it
-   * (`memory-detail.svelte`).
+   * (`memory-add.svelte`) as a "+", a search that runs as you type, the two filters ("Kind: All" and
+   * "Written by: Anyone") and Export, which is hidden until there is something to export; the tab's
+   * name is the tab bar's, so the list repeats no heading of its own. A memory opens beside the
+   * list with Correct and Forget on its context line, its label/value rows and the governance
+   * actions under "More options" (`memory-detail.svelte`). Forgetting a memory opens the one after
+   * it, or the one before when it was the last.
    *
    * While the first page of the list is read, or when that read fails, the tab says so in its body
    * (`agent-tab-state.svelte`), and the header and the tabs stay. An agent with no memory is not one
    * of those: the tab says so itself, because it is where the first memory is added. A blank search
    * lists, newest first; a search ranks every memory the agent has, because ranking has no score
    * floor, so a search never answers "nothing matched" from the server: the page counts the
-   * memories that hold a word of the query. The kind filter works over the pages read so far, and
-   * says so while there are more.
+   * memories that hold a word of the query. The filters work over the pages read so far, and say so
+   * while there are more.
    */
   import { untrack } from 'svelte';
   import { SvelteMap } from 'svelte/reactivity';
@@ -35,6 +37,8 @@
 
   import { AGENT_PAGE_COPY, MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { agentMemoryPath } from '../../lib/agent-paths.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { agentsListQuery } from '../../lib/agent-queries.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import {
     listMemories,
@@ -52,8 +56,10 @@
   import {
     matchesKind,
     matchesQuery,
+    matchesWriter,
     refusalWords,
     type KindFilter,
+    type WriterFilter,
   } from './memory-presentation.ts';
   import AgentTabState from './agent-tab-state.svelte';
   import MemoryRow from './memory-row.svelte';
@@ -66,9 +72,11 @@
   let typed = $state('');
   const applied = $derived(typed.trim());
   let kindFilter = $state<KindFilter>('all');
+  let writerFilter = $state<WriterFilter>('all');
   /** The open memory: the one the address names, so a link and a reload open it. */
   const selectedId = $derived(router.search.get('selected'));
-  let notice = $state<'corrected' | 'added' | undefined>(undefined);
+  /** What the last change said above the list: only a correction that landed. */
+  let notice = $state<'corrected' | undefined>(undefined);
   /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
   let refused = $state<
     { readonly id: string; readonly fault: MemoryFault; readonly content: string } | undefined
@@ -83,6 +91,11 @@
   let changes = $state<ReturnType<typeof MemoryChanges> | undefined>(undefined);
   let governance = $state<ReturnType<typeof MemoryGovernance> | undefined>(undefined);
   let adding = $state<ReturnType<typeof MemoryAdd> | undefined>(undefined);
+  let exporting = $state(false);
+
+  // What the agent is called where the page names it: "From Tool runner", "Tool runner reads this".
+  const agents = createQuery(agentsListQuery);
+  const agentName = $derived(agentLabel(agentId, agents.data));
 
   const listing = createInfiniteQuery(
     () => ({
@@ -144,10 +157,17 @@
         pinned: false,
       }));
   });
+  /** Whether a filter narrows the list, which works over the pages read so far. */
+  const filtered = $derived(kindFilter !== 'all' || writerFilter !== 'all');
   const shown = $derived(
-    kindFilter === 'all'
-      ? base
-      : base.filter((row) => row.memory !== undefined && matchesKind(row.memory, kindFilter)),
+    filtered
+      ? base.filter(
+          (row) =>
+            row.memory !== undefined &&
+            matchesKind(row.memory, kindFilter) &&
+            matchesWriter(row.memory, writerFilter),
+        )
+      : base,
   );
   /**
    * The open memory when the list does not hold it: one a correction replaced, one the address
@@ -179,28 +199,50 @@
   /** Whether the search ranked as many memories as it can, so more may match than are shown. */
   const searchFilled = $derived((search.data?.length ?? 0) >= SEARCH_LIMIT);
 
-  const kindOptions = [
-    { value: 'all', label: MEMORY_COPY.filter.all },
-    { value: 'facts', label: MEMORY_COPY.filter.facts },
-    { value: 'chats', label: MEMORY_COPY.filter.chats },
-    { value: 'howTo', label: MEMORY_COPY.filter.howTo },
-    { value: 'you', label: MEMORY_COPY.filter.you },
-  ] satisfies { value: KindFilter; label: string }[];
+  /**
+   * Whether the agent has no memory at all, which the tab says itself: its Add a memory is then the
+   * one place to add, and there is nothing to export.
+   */
+  const firstUse = $derived(listing.data !== undefined && loaded === 0 && !listing.hasNextPage);
 
-  /** The filter a select value names; anything else shows every kind. */
-  function filterNamed(value: string): KindFilter {
+  const kindOptions = [
+    { value: 'all', label: MEMORY_COPY.filter.kind.all },
+    { value: 'fact', label: MEMORY_COPY.filter.kind.fact },
+    { value: 'how-to', label: MEMORY_COPY.filter.kind.howTo },
+  ] satisfies { value: KindFilter; label: string }[];
+  const writerOptions = $derived<{ value: WriterFilter; label: string }[]>([
+    { value: 'all', label: MEMORY_COPY.filter.writer.all },
+    { value: 'you', label: MEMORY_COPY.filter.writer.you },
+    { value: 'agent', label: MEMORY_COPY.filter.writer.agent(agentName) },
+  ]);
+
+  /** The kind a select value names; anything else shows every kind. */
+  function kindNamed(value: string): KindFilter {
     return kindOptions.find((option) => option.value === value)?.value ?? 'all';
+  }
+
+  /** The writer a select value names; anything else shows every writer. */
+  function writerNamed(value: string): WriterFilter {
+    return writerOptions.find((option) => option.value === value)?.value ?? 'all';
   }
 
   function clearAll(): void {
     typed = '';
     kindFilter = 'all';
+    writerFilter = 'all';
   }
 
-  /** A memory is gone from the list: close its details, and drop the note about the last change. */
+  /**
+   * A memory is gone from the list: drop the note about the last change, and when it was the open
+   * one, open the memory after it (the one before when it was the last), or close the details when
+   * the list has no other.
+   */
   function gone(id: string): void {
     notice = undefined;
-    if (selectedId === id) select(null);
+    if (selectedId !== id) return;
+    const at = shown.findIndex((row) => row.id === id);
+    const next = at === -1 ? undefined : (shown[at + 1] ?? shown[at - 1]);
+    select(next?.id ?? null);
   }
 
   /** A correction landed: say so, and follow the person to it unless they moved on meanwhile. */
@@ -211,9 +253,12 @@
     if (selectedId === replaced) select(correction.id);
   }
 
-  /** A memory was added: say so, and open it, which keeps it in view whatever the list is narrowed to. */
+  /**
+   * A memory was added: open it, which keeps it in view whatever the list is narrowed to. The
+   * toast that says so, with its Undo, is the dialog's (`memory-add.svelte`).
+   */
   function added(memory: Memory): void {
-    notice = 'added';
+    notice = undefined;
     resume = undefined;
     select(memory.id);
   }
@@ -260,10 +305,9 @@
 >
   <div class="ib-memory" data-agent={agentId}>
     {#if notice !== undefined}
-      {@const saved = notice === 'added' ? MEMORY_COPY.add.saved : MEMORY_COPY.correct.saved}
       <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
-        <p class="ib-memory__alert-title">{saved.title}</p>
-        <p class="ib-memory__alert-body">{saved.description}</p>
+        <p class="ib-memory__alert-title">{MEMORY_COPY.correct.saved.title}</p>
+        <p class="ib-memory__alert-body">{MEMORY_COPY.correct.saved.description}</p>
       </Alert>
     {/if}
 
@@ -310,11 +354,12 @@
       {agentId}
       {holds}
       bind:pending={governancePending}
+      bind:exporting
       onQuarantined={gone}
     />
-    <MemoryAdd bind:this={adding} {agentId} onAdded={added} />
+    <MemoryAdd bind:this={adding} {agentId} {agentName} onAdded={added} onUndone={gone} />
 
-    <!-- A kind that hides the search hits is not "no match": the hits are there. -->
+    <!-- A filter that hides the search hits is not "no match": the hits are there. -->
     {#snippet emptiness()}
       {#if active.isPending}
         <div role="status" aria-busy="true" aria-label={MEMORY_COPY.loading}>
@@ -323,13 +368,13 @@
         </div>
       {:else if active.isError}
         <!-- The fault is reported above the list, so this is not read as an empty agent. -->
-      {:else if kindFilter !== 'all' && (applied === '' || base.length > 0)}
+      {:else if filtered && (applied === '' || base.length > 0)}
         <EmptyState
           kind="filtered"
           size="compact"
           headingLevel={2}
-          title={MEMORY_COPY.noKind.title}
-          description={MEMORY_COPY.noKind.description}
+          title={MEMORY_COPY.noFiltered.title}
+          description={MEMORY_COPY.noFiltered.description}
           clearFiltersLabel={MEMORY_COPY.clearMatch}
           onClearFilters={clearAll}
         />
@@ -375,54 +420,71 @@
         storageKey="interborough-memory"
       >
         {#snippet header()}
-          <div class="ib-memory__title-row">
-            <div class="ib-memory__title-actions">
-              <Button data-changes variant="secondary" size="sm" onclick={() => adding?.ask()}>
-                {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
-                {MEMORY_COPY.add.action}
-              </Button>
+          <div class="ib-memory__search-row">
+            <div class="ib-memory__search">
+              <SearchField
+                id="ib-memory-search"
+                aria-label={MEMORY_COPY.searchLabel}
+                placeholder={MEMORY_COPY.searchPlaceholder}
+                bind:value={typed}
+                onClear={() => (typed = '')}
+              />
+            </div>
+            {#if !firstUse}
               <Button
                 data-changes
                 variant="secondary"
+                size="sm"
+                iconOnly
+                title={MEMORY_COPY.add.action}
+                aria-label={MEMORY_COPY.add.action}
+                onclick={() => adding?.ask()}
+              >
+                <Plus aria-hidden="true" size={16} />
+              </Button>
+            {/if}
+          </div>
+          <div class="ib-memory__filters">
+            <Select
+              id="ib-memory-kind"
+              aria-label={MEMORY_COPY.filter.kindLabel}
+              size="sm"
+              options={kindOptions}
+              value={kindFilter}
+              onchange={(event) => (kindFilter = kindNamed(event.currentTarget.value))}
+            />
+            <Select
+              id="ib-memory-writer"
+              aria-label={MEMORY_COPY.filter.writerLabel}
+              size="sm"
+              options={writerOptions}
+              value={writerFilter}
+              onchange={(event) => (writerFilter = writerNamed(event.currentTarget.value))}
+            />
+          </div>
+          {#if loaded > 0}
+            <div>
+              <Button
+                data-changes
+                variant="ghost"
                 size="sm"
                 disabled={governancePending}
                 onclick={() => governance?.exportAll()}
               >
                 {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
-                {MEMORY_COPY.govern.export.action}
+                {exporting ? MEMORY_COPY.govern.export.exporting : MEMORY_COPY.govern.export.action}
               </Button>
             </div>
-          </div>
-          <SearchField
-            id="ib-memory-search"
-            aria-label={MEMORY_COPY.searchLabel}
-            placeholder={MEMORY_COPY.searchPlaceholder}
-            bind:value={typed}
-            onClear={() => (typed = '')}
-          />
-          <Select
-            id="ib-memory-kind"
-            label={MEMORY_COPY.filter.label}
-            labelVisible={false}
-            size="sm"
-            options={kindOptions}
-            value={kindFilter}
-            onchange={(event) => (kindFilter = filterNamed(event.currentTarget.value))}
-          />
+          {/if}
           {#if pinned.length > 0 && shown.length === 0}
             <div data-testid="memory-pinned-status">{@render emptiness()}</div>
-          {/if}
-          {#if loaded > 0}
-            <p class="ib-memory__count" data-testid="memory-count">
-              {MEMORY_COPY.count(loaded, listing.hasNextPage)}
-            </p>
           {/if}
           {#if applied !== '' && base.length > 0}
             <p class="ib-memory__count" role="status" data-testid="memory-match-count">
               {MEMORY_COPY.matchCount(base.length, total, searchFilled)}
             </p>
           {/if}
-          {#if kindFilter !== 'all' && base.length > 0}
+          {#if filtered && base.length > 0}
             <p class="ib-memory__count" data-testid="memory-kind-note">
               {MEMORY_COPY.filter.note(
                 shown.length,
@@ -445,6 +507,7 @@
           {:else}
             <MemoryRow
               {agentId}
+              {agentName}
               id={row.id}
               memory={row.memory}
               query={applied}
@@ -462,6 +525,7 @@
           {#key row.id}
             <MemoryDetail
               {agentId}
+              {agentName}
               id={row.id}
               hold={holds.get(row.id)}
               {forgetPending}
@@ -500,18 +564,28 @@
     overflow: hidden;
   }
 
-  .ib-memory__title-row {
+  /* The search takes the row, with the "+" that adds a memory at its end. */
+  .ib-memory__search-row {
     display: flex;
-    flex-wrap: wrap;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-2);
     align-items: center;
-    justify-content: flex-end;
   }
 
-  .ib-memory__title-actions {
+  .ib-memory__search {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  /* The two selects share the row where they fit, and stack where the list pane is narrow. */
+  .ib-memory__filters {
     display: flex;
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
+  }
+
+  .ib-memory__filters > :global(*) {
+    flex: 1 1 8rem;
+    min-inline-size: 0;
   }
 
   .ib-memory__count {

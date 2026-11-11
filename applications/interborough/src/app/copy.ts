@@ -5123,8 +5123,8 @@ export const MEMORY_COPY = {
   link: 'Memory',
   heading: 'Memories',
   listLabel: 'What this agent remembers',
-  searchLabel: 'Search this agent’s memory',
-  searchPlaceholder: 'Search memory…',
+  searchLabel: 'Search memories',
+  searchPlaceholder: 'Search memories',
   clearSearch: 'Clear search',
   loadMore: 'Load more',
   loading: 'Loading memories',
@@ -5133,9 +5133,6 @@ export const MEMORY_COPY = {
   pinnedNote: 'Open now, not in this list',
   noContent: 'This memory has no text.',
   relevance: 'Relevance',
-  /** How many memories the agent has; `more` is true when the list has pages left to load. */
-  count: (shown: number, more: boolean): string =>
-    `${shown}${more ? '+' : ''} ${shown === 1 && !more ? 'memory' : 'memories'}`,
   /**
    * What a search found. The server ranks every memory the agent has and has no score floor, so a
    * memory matches when it holds a word of the query, and its relevance only orders the matches.
@@ -5148,7 +5145,10 @@ export const MEMORY_COPY = {
       ? `${matched}${plus} of ${total} ${total === 1 ? 'memory matches' : 'memories match'}`
       : `${matched}${plus} ${matched === 1 && plus === '' ? 'memory matches' : 'memories match'}`;
   },
-  /** The list is empty because the agent forgot its last memory while the page was open. */
+  /**
+   * The list is empty because the agent has no memory (board PageMemory, "First use"). Its Add a
+   * memory is the page's one primary button, so the header's Add and Export are hidden meanwhile.
+   */
   nothing: {
     title: 'This agent remembers nothing',
     description:
@@ -5159,10 +5159,10 @@ export const MEMORY_COPY = {
     title: (query: string): string => `No memory matches “${query}”`,
     description: 'Try other words, or show every memory.',
   },
-  /** The list is empty because no loaded memory is of the kind chosen. */
-  noKind: {
-    title: 'No loaded memory is of this kind',
-    description: 'Show every kind to see the memories again.',
+  /** The list is empty because no loaded memory is of the kind, or by the writer, chosen. */
+  noFiltered: {
+    title: 'No loaded memory matches these filters',
+    description: 'Show every memory to see them again.',
   },
   /** The action under an empty search that lists everything again. */
   clearMatch: 'Show all memories',
@@ -5174,53 +5174,50 @@ export const MEMORY_COPY = {
     description: 'Choose a memory to read it, correct it, forget it or see where it came from.',
   },
   /**
-   * The kind filter, in plain names. It filters the memories loaded so far, not every memory the
-   * agent has, and says so.
+   * The two filters over the list, each a single-choice select that reads "Kind: All" and
+   * "Written by: Anyone" (board PageMemory). They filter the memories loaded so far, not every
+   * memory the agent has, and say so.
    */
   filter: {
-    label: 'Kind',
-    all: 'All kinds',
-    facts: 'Facts',
-    chats: 'From chats',
-    howTo: 'How-to',
-    you: 'From you',
-    /** The line under the count while a kind is chosen: it works over the loaded pages only. */
+    kindLabel: 'Kind',
+    writerLabel: 'Written by',
+    kind: { all: 'Kind: All', fact: 'Kind: Fact', howTo: 'Kind: How-to' },
+    writer: {
+      all: 'Written by: Anyone',
+      you: 'Written by: You',
+      agent: (agent: string): string => `Written by: ${agent}`,
+    },
+    /** The line under the filters while one is on: it works over the loaded pages only. */
     note: (shown: number, loaded: number, more: boolean): string =>
-      `${shown} of the ${loaded}${more ? ' loaded so far' : ''} ${loaded === 1 ? 'memory is' : 'memories are'} of this kind.${
+      `${shown} of the ${loaded}${more ? ' loaded so far' : ''} ${loaded === 1 ? 'memory matches' : 'memories match'} these filters.${
         more ? ' Load more to look further.' : ''
       }`,
   },
-  /** The kind chip on a row, in plain words; the detail names the engine's own term. */
-  plainKind: {
-    facts: 'Facts',
-    chats: 'From chats',
-    howTo: 'How-to',
-    you: 'From you',
+  /** What a memory is: a person tells a fact from a how-to, and nothing finer. */
+  kind: { fact: 'Fact', 'how-to': 'How-to' },
+  /**
+   * Who wrote a memory, as line two of a row says it ("From you") and as the detail says it
+   * ("Written by You"). An agent's memory is written by the agent, named where it is shown.
+   */
+  writer: {
+    person: { row: 'you', detail: 'You' },
+    system: { row: 'the system', detail: 'The system' },
   },
-  /** The kind in the engine's own terms, with a sentence for the person who did not choose it. */
-  kind: {
-    operator: { label: 'Operator', description: 'Operator: words you wrote' },
-    working: {
-      label: 'Working',
-      description: 'Working: a note the agent keeps while it works on something',
-    },
-    episodic: {
-      label: 'Episodic',
-      description: 'Episodic: something the agent learned from a chat',
-    },
-    semantic: { label: 'Semantic', description: 'Semantic: a fact the agent knows' },
-    procedural: {
-      label: 'Procedural',
-      description: 'Procedural: a way of doing something that the agent has learned',
-    },
-    identity: { label: 'Identity', description: 'Identity: what the agent knows about itself' },
-    resource: {
-      label: 'Resource',
-      description: 'Resource: reference material the agent can look up',
-    },
-    /** For a kind the server added that this page has no words for. */
-    unknown: (kind: string): string => `${kind}: a kind of memory this page has no description for`,
+  /** `From <writer>` on line two of a row. */
+  from: (writer: string): string => `From ${writer}`,
+  /**
+   * When a memory was written, from the clock's day: a row says "Just now", the time for today
+   * ("10:42 AM"), "Yesterday" or the day ("Oct 21"); the detail's line says the same after
+   * "remembered".
+   */
+  when: {
+    justNow: 'Just now',
+    yesterday: 'Yesterday',
+    /** The detail's line, after "remembered": `today at 10:42 AM`. */
+    today: (clock: string): string => `today at ${clock}`,
   },
+  /** The detail's context line: `Fact, remembered yesterday`. Parts are joined by commas, never a middle dot. */
+  remembered: (kind: string, when: string): string => `${kind}, remembered ${when}`,
   detail: {
     heading: 'Memory details',
     loading: 'Loading this memory',
@@ -5230,56 +5227,38 @@ export const MEMORY_COPY = {
       description: 'It may have been forgotten, or it may not be yours.',
     },
     content: 'Memory',
-    /** The three columns of facts below the text. */
-    groups: {
-      origin: 'Where it came from',
-      standing: 'Trust and time',
-      history: 'Correction history',
-    },
+    /** The label/value rows below the text. Trust is not drawn: it follows from who wrote the memory. */
     fields: {
-      source: 'Source',
-      session: 'Chat',
-      run: 'Run',
-      trust: 'Trust',
-      kind: 'Kind',
-      created: 'Created',
+      cameFrom: 'Came from',
+      writtenBy: 'Written by',
+      history: 'History',
       legalHold: 'Legal hold',
-      corrects: 'Corrects',
-      correctedBy: 'Corrected by',
     },
-    /** What an origin field says when nothing recorded it. */
-    notRecorded: 'Not recorded',
-    /** What a history field says when the memory was never part of a correction. */
-    noHistory: 'None',
+    /** The value of Came from, shown only for a memory someone other than you wrote. */
+    cameFrom: {
+      chat: (title: string): string => `Chat “${title}”`,
+      untitled: 'Untitled chat',
+      deleted: 'A chat that was deleted',
+      notRecorded: 'Not recorded',
+      /** When the chat could not be read for a reason other than being deleted. */
+      openChat: 'Open chat',
+    },
+    /** The value of History: what a correction replaced, and what replaced this memory. */
+    history: {
+      none: 'Not corrected.',
+      corrects: (content: string): string => `Corrects an earlier memory: “${content}”`,
+      correctsUnread: 'Corrects an earlier memory.',
+      original: 'View the original',
+      correctedBy: 'A later memory corrects this one.',
+      correction: 'View the correction',
+    },
     /** The legal hold is shown only once it is known: from a hold, a release, or a refused forget. */
     legalHold: {
       held: 'Held: this memory stays stored',
       free: 'Not held',
     },
-    openChat: 'Open chat',
-    openMemory: 'Open that memory',
-  },
-  source: {
-    conversation: 'An agent’s answer in a chat',
-    'model-tool': 'A tool the model called',
-    'tool-result': 'A tool’s result',
-    'ingested-document': 'An ingested document',
-    derived: 'Derived from other memories',
-    operator: 'Written by a person',
-    system: 'Written by the system',
-  },
-  trust: {
-    untrusted: 'Untrusted',
-    verified: 'Verified',
-    system: 'System',
-  },
-  memoryClass: {
-    working: 'Working',
-    episodic: 'Episodic',
-    semantic: 'Semantic',
-    procedural: 'Procedural',
-    identity: 'Identity',
-    resource: 'Resource',
+    /** The disclosure under the facts that holds sharing, the legal hold and quarantine. */
+    more: 'More options',
   },
   forget: {
     action: 'Forget',
@@ -5343,20 +5322,36 @@ export const MEMORY_COPY = {
   },
   add: {
     action: 'Add a memory',
+    /** The dialog over a scrim (board PageMemory, "Add a memory"): the agent is named by its own name. */
     dialog: {
       title: 'Add a memory',
-      description:
-        'Your words are kept until you correct or forget them, and the agent recalls them in its chats with you. Text the content rules flag is held back instead, and you can remove it here.',
-      label: 'What the agent should remember',
-      submit: 'Save memory',
+      description: (agent: string): string =>
+        `${agent} reads this in every chat. You can correct or forget it later.`,
+      label: (agent: string): string => `What should ${agent} remember?`,
+      hint: 'Saved as From you.',
+      kind: { label: 'Kind', fact: 'Fact', howTo: 'How-to' },
+      /** At the field when Add memory is pressed with nothing written: nothing is saved. */
+      empty: (agent: string): string => `Write what ${agent} should remember.`,
+      submit: 'Add memory',
+      /** The primary button once a save failed. */
+      retry: 'Try again',
       cancel: 'Cancel',
     },
-    saved: {
-      title: 'Memory added',
-      description: 'The agent recalls it in its chats with you.',
-    },
+    /** The toast after a save, with Undo, which forgets the memory just added. */
+    saved: (agent: string): string => `Memory added. ${agent} uses it from its next chat.`,
+    /** What the page says when Undo does not go through. */
+    undoFailed: 'Couldn’t undo. The memory stays.',
     /** The title of a refusal the Bureau gave its own words for. */
-    notSaved: 'The memory was not saved',
+    notSaved: 'Couldn’t save the memory',
+    /**
+     * The reason under a failed save, in the dialog or in the correction's form: the status the
+     * server answered with, and that what was typed is kept.
+     */
+    stillHere: {
+      server: (status: number): string =>
+        `The server answered with an error (${String(status)}). What you typed is still here.`,
+      unreached: 'The server did not answer. What you typed is still here.',
+    },
     /** Text the content rules flagged: stored for inspection, in no list, and the agent never recalls it. */
     held: {
       title: 'The text was held back',
@@ -5387,15 +5382,16 @@ export const MEMORY_COPY = {
     /** The name of the icon button that edits the open memory in place. */
     iconLabel: 'Correct this memory',
     edit: {
-      description:
-        'Your words become a new memory that replaces this one. The agent recalls only the correction; this one is kept in its history.',
-      label: 'Corrected memory',
+      description: 'The original stays in History.',
+      label: 'Memory',
       submit: 'Save correction',
+      /** The primary button once a save failed. */
+      retry: 'Try again',
       cancel: 'Cancel',
     },
     /** The page-level report of a correction that was refused: its title leads, then the words the person wrote. */
     notSaved: {
-      title: 'The correction was not saved',
+      title: 'Couldn’t save the correction',
       draftLabel: 'What you wrote',
       editAgain: 'Edit it again',
     },
@@ -5423,7 +5419,7 @@ export const MEMORY_COPY = {
         title: 'This memory was not found',
         description: 'It may have been forgotten, or it may not be yours.',
       },
-      other: { title: 'The correction was not saved', description: '' },
+      other: { title: 'Couldn’t save the correction', description: '' },
     },
   },
   /** Sharing, holding, quarantining and exporting: each is recorded in the memory ledger. */
@@ -5507,15 +5503,14 @@ export const MEMORY_COPY = {
     },
     export: {
       action: 'Export',
-      /** The name of the file the export saves. */
-      fileName: (agent: string): string => `${agent}-memories.json`,
-      outcome: {
-        title: 'Memories exported',
-        description: (count: number, exportId: string | null): string =>
-          `${count} ${count === 1 ? 'memory was' : 'memories were'} saved to a file${
-            exportId === null ? '' : ` (export ${exportId})`
-          }. A memory forgotten later is scrubbed from the export’s record.`,
-      },
+      /** The button while the export runs. */
+      exporting: 'Exporting…',
+      /**
+       * The self-dismissing toast once the file is saved, under the name the server gave it
+       * (`<agent>-memories.json`). Parts are joined by a comma, never a middle dot.
+       */
+      done: (count: number, fileName: string): string =>
+        `Exported ${String(count)} ${count === 1 ? 'memory' : 'memories'}, ${fileName}`,
     },
     failed: 'That change was not made',
     refusal: {

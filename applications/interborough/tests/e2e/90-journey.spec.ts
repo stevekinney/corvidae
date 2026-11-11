@@ -417,7 +417,7 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
   await stored.click();
   const detail = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
   await detail.getByRole('button', { name: MEMORY_COPY.correct.iconLabel }).click();
-  await detail.getByLabel(MEMORY_COPY.correct.edit.label).fill(correction);
+  await detail.getByLabel(MEMORY_COPY.correct.edit.label, { exact: true }).fill(correction);
   await detail.getByRole('button', { name: MEMORY_COPY.correct.edit.submit }).click();
   await expect(page.getByText(MEMORY_COPY.correct.saved.title, { exact: true })).toBeVisible();
   await expect(page.locator('.ib-memory__content', { hasText: correction })).toHaveText(correction);

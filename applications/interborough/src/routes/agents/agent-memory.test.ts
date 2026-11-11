@@ -1,11 +1,13 @@
 /**
  * The Memory tab of an agent's page (`/agents/:agent/memory`) against a stand-in for the server's
  * memory operations: the list with the open memory beside it (`?selected=`), the search that runs as
- * you type, the kind filter, one memory's facts, adding a memory, what forgetting answers in each of
- * the deletion's states, correcting in place (the original is kept in the history), and the
- * governance actions (share, hold, quarantine, export). The tab words its own first load and its
- * failure in its body (`agent-tab-state.svelte`); the Agents view's frame owns not-found
- * (`app/view-frame.test.ts`). The real server is exercised in the Playwright suite.
+ * you type, the kind and writer filters, one memory's rows (Came from, Written by, History), adding
+ * a memory (with its Undo toast), what forgetting answers in each of the deletion's states,
+ * correcting in place (the original is kept in the history), and the governance actions (share,
+ * hold, quarantine, export). The tab words its own first load and its failure in its body
+ * (`agent-tab-state.svelte`); the Agents view's frame owns not-found (`app/view-frame.test.ts`).
+ * The real server is exercised in the Playwright suite. Row 45r (forget at once, with an Undo that
+ * restores it) waits for a Bureau operation that restores a forgotten memory, which does not exist.
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
@@ -18,10 +20,10 @@ import {
   type BureauStub,
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
-import { AGENT, landAt } from '../chat/pages.test-support.ts';
-import QueryPage from '../chat/query-page.test-harness.svelte';
+import { AGENT, CONTEXT, landAt } from '../chat/pages.test-support.ts';
 import AgentDetail from './agent-detail.svelte';
 import FramedMemory from './agent-memory-frame.test-harness.svelte';
+import MemoryToasts from './agent-memory-toasts.test-harness.svelte';
 import AgentMemory from './agent-memory.svelte';
 
 let stub: BureauStub | undefined;
@@ -31,31 +33,50 @@ afterEach(() => {
   stub = undefined;
 });
 
-const mount = (page: unknown) => render(QueryPage, { props: { page } } as never);
+const mount = (page: unknown) => render(MemoryToasts, { props: { page } } as never);
 
+/** What the agent is called where the page names it (`AGENT` in the shared support). */
+const AGENT_NAME = 'Assistant';
+/** The words of the add dialog, which name the agent. */
+const ADD_LABEL = MEMORY_COPY.add.dialog.label(AGENT_NAME);
+/** What the toast says after a memory was added. */
+const ADDED_TOAST = MEMORY_COPY.add.saved(AGENT_NAME);
+/** The title of the chat the first memory came from, and the link that names it. */
+const CHAT_TITLE = 'Where is order 4398?';
+const CHAT_LINK = MEMORY_COPY.detail.cameFrom.chat(CHAT_TITLE);
+
+/** A fact the agent wrote from a chat. */
 const AISLE = {
   id: 'memory-aisle',
   content: 'The user prefers aisle seats.',
   memoryClass: 'episodic',
+  kind: 'fact',
   source: 'conversation',
+  writer: 'agent',
   trust: 'untrusted',
   createdAt: '2026-10-19T08:00:00.000Z',
   sessionId: 'session-1',
 };
+/** A fact the person wrote. */
 const WINDOW = {
   ...AISLE,
   id: 'memory-window',
   content: 'The user prefers window seats.',
+  memoryClass: 'semantic',
   source: 'operator',
+  writer: 'person',
   trust: 'verified',
   sessionId: null,
 };
+/** A how-to the agent wrote. */
 const RECIPE = {
   ...AISLE,
   id: 'memory-recipe',
   content: 'To book a flight, ask for the date first.',
   memoryClass: 'procedural',
+  kind: 'how-to',
 };
+/** A fact the agent wrote, and a second one, so the writer filter has a person's memory to hide. */
 const FACT = {
   ...AISLE,
   id: 'memory-fact',
@@ -63,6 +84,16 @@ const FACT = {
   memoryClass: 'semantic',
 };
 const NO_LINEAGE = { runId: null, corrects: null, correctedBy: null };
+/** What `bureau.memory.get` answers for a memory: the lineage and the versions a correction replaced. */
+const detailOf_ = (
+  memory: unknown,
+  lineage = NO_LINEAGE,
+  history: unknown[] = [],
+): { memory: unknown; lineage: typeof NO_LINEAGE; history: unknown[] } => ({
+  memory,
+  lineage,
+  history,
+});
 
 const RECEIPT = {
   deletionId: 'deletion-1',
@@ -86,10 +117,8 @@ function bureau(answers: Answers = {}): BureauStub {
     'bureau.agents.list': () => ({ agents: [AGENT] }),
     'bureau.memory.list': () => ({ memories: [AISLE, WINDOW], nextOffset: null }),
     'bureau.memory.search': () => ({ hits: [] }),
-    'bureau.memory.get': (params) => ({
-      memory: params['id'] === WINDOW.id ? WINDOW : AISLE,
-      lineage: NO_LINEAGE,
-    }),
+    'bureau.memory.get': (params) => detailOf_(params['id'] === WINDOW.id ? WINDOW : AISLE),
+    'bureau.contexts.get': () => ({ ...CONTEXT, title: CHAT_TITLE }),
     ...answers,
   });
   return stub;
@@ -120,6 +149,9 @@ async function openDetails(
   // The details read the memory again: wait for its text to be the details' own.
   await waitFor(() => expect(region.querySelector('[data-memory-detail]')).not.toBeNull());
   await waitFor(() => expect(within(region).queryByRole('status')?.outerHTML ?? null).toBeNull());
+  // The governance actions sit under "More options": open it, as a person does to reach them.
+  const more = region.querySelector<HTMLDetailsElement>('details');
+  if (more !== null) more.open = true;
   return region;
 }
 
@@ -129,7 +161,7 @@ const factOf = (detail: HTMLElement, term: string): HTMLElement | null =>
     HTMLElement | undefined) ?? null;
 
 describe('the list', () => {
-  test('lists what the agent remembers, newest first, with a plain kind and the time', async () => {
+  test('lists what the agent remembers, newest first, in two lines: the text, then its kind, writer and time', async () => {
     const served = bureau();
     const view = open();
 
@@ -145,17 +177,19 @@ describe('the list', () => {
       'memory-aisle',
       'memory-window',
     ]);
-    // The engine's own term is for the details: a row says where the memory came from.
-    expect(rows[0]?.textContent).toContain(MEMORY_COPY.plainKind.chats);
-    expect(rows[0]?.textContent).not.toContain(MEMORY_COPY.kind.episodic.label);
-    expect(rows[1]?.textContent).toContain(MEMORY_COPY.plainKind.you);
-    expect(rows[0]?.querySelector('time')?.getAttribute('datetime')).toBe(AISLE.createdAt);
-    expect(rows[0]?.querySelector('time')?.getAttribute('title')).toBe(
-      new Date(AISLE.createdAt).toLocaleString(),
-    );
+    // Line two says what it is, who wrote it and when, joined by commas and with no status dot.
+    const line = (row: Element | undefined) => textOf(row?.querySelector('[data-memory-line]'));
+    expect(line(rows[0])).toMatch(new RegExp(`^${MEMORY_COPY.kind.fact}, From ${AGENT_NAME}, `));
+    expect(line(rows[1])).toMatch(new RegExp(`^${MEMORY_COPY.kind.fact}, From you, `));
+    expect(line(rows[0])).not.toContain(String.fromCodePoint(0xb7));
+    // The engine's own terms are nowhere in the list.
+    for (const engine of ['Semantic', 'Episodic', 'Procedural', 'Operator']) {
+      expect(rows[0]?.textContent).not.toContain(engine);
+    }
+    expect(rows[0]?.querySelector('[data-cinder-status], .cinder-badge')).toBeNull();
   });
 
-  test('is a list with the open memory beside it: Add, Export and the filters sit in its own header', async () => {
+  test('is a list with the open memory beside it: search, the two filters, a plus and Export sit in its own header', async () => {
     bureau();
     const view = open();
     await view.findByText(AISLE.content);
@@ -168,20 +202,43 @@ describe('the list', () => {
       within(list).getByRole('button', { name: MEMORY_COPY.govern.export.action }),
     ).not.toBeNull();
     expect(within(list).getByRole('searchbox', { name: MEMORY_COPY.searchLabel })).not.toBeNull();
-    expect(within(list).getByLabelText(MEMORY_COPY.filter.label)).not.toBeNull();
+    expect(within(list).getByLabelText(MEMORY_COPY.filter.kindLabel)).not.toBeNull();
+    expect(within(list).getByLabelText(MEMORY_COPY.filter.writerLabel)).not.toBeNull();
     // Nothing is open, and a row has no actions of its own.
     expect(view.getByText(MEMORY_COPY.nothingOpen.title)).not.toBeNull();
     expect(within(rowOf(view, AISLE.id).closest('li')!).queryAllByRole('button')).toHaveLength(1);
     expect(view.queryByRole('button', { name: /^Back to/ })).toBeNull();
   });
 
-  test('says how many memories the agent has, and that there are more when a page is left', async () => {
-    bureau({ 'bureau.memory.list': () => ({ memories: [AISLE, WINDOW], nextOffset: 2 }) });
-    const { findByTestId } = open();
+  test('shows the two filters as selects that read Kind: All and Written by: Anyone', async () => {
+    bureau();
+    const view = open();
+    await view.findByText(AISLE.content);
 
-    expect(textOf(await findByTestId('memory-count'))).toBe(MEMORY_COPY.count(2, true));
-    expect(MEMORY_COPY.count(1, false)).toBe('1 memory');
-    expect(MEMORY_COPY.count(2, false)).toBe('2 memories');
+    const kind = view.getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.kindLabel);
+    const writer = view.getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.writerLabel);
+
+    // Each starts on its first choice, which reads "Kind: All" and "Written by: Anyone".
+    expect(kind.value).toBe('all');
+    expect(writer.value).toBe('all');
+    expect(kind.querySelector('option')?.textContent).toBe(MEMORY_COPY.filter.kind.all);
+    expect([...writer.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
+      MEMORY_COPY.filter.writer.all,
+      MEMORY_COPY.filter.writer.you,
+      MEMORY_COPY.filter.writer.agent(AGENT_NAME),
+    ]);
+  });
+
+  test('hides Export and the header’s plus for an agent with no memory, whose empty state holds the one Add a memory', async () => {
+    bureau({ 'bureau.memory.list': () => ({ memories: [], nextOffset: null }) });
+    const view = open();
+
+    const heading = await view.findByText(MEMORY_COPY.nothing.title, { selector: 'h2' });
+
+    expect(view.queryByRole('button', { name: MEMORY_COPY.govern.export.action })).toBeNull();
+    const adds = view.getAllByRole('button', { name: MEMORY_COPY.add.action });
+    expect(adds).toHaveLength(1);
+    expect(heading.closest('[data-cinder-kind]')?.contains(adds[0] ?? null)).toBe(true);
   });
 
   test('loads the next page of a long list from its last row', async () => {
@@ -284,8 +341,8 @@ describe('the search', () => {
         ],
       }),
     });
-    const { container, findByTestId, getByLabelText } = open();
-    await findByTestId('memory-count');
+    const { container, findByTestId, findByText, getByLabelText } = open();
+    await findByText(AISLE.content);
 
     await fireEvent.input(getByLabelText(MEMORY_COPY.searchLabel), { target: { value: 'window' } });
 
@@ -320,8 +377,8 @@ describe('the search', () => {
       'bureau.memory.list': () => ({ memories: [AISLE, WINDOW], nextOffset: 2 }),
       'bureau.memory.search': () => ({ hits: [{ memory: WINDOW, score: 0.8 }] }),
     });
-    const { findByTestId, getByLabelText } = open();
-    await findByTestId('memory-count');
+    const { findByTestId, findByText, getByLabelText } = open();
+    await findByText(AISLE.content);
 
     await fireEvent.input(getByLabelText(MEMORY_COPY.searchLabel), { target: { value: 'window' } });
 
@@ -347,7 +404,7 @@ describe('the search', () => {
   });
 });
 
-describe('the kind filter', () => {
+describe('the kind and writer filters', () => {
   const MIXED = [AISLE, WINDOW, RECIPE, FACT];
 
   async function mixed() {
@@ -357,24 +414,25 @@ describe('the kind filter', () => {
     return { served, view };
   }
 
-  const choose = (view: ReturnType<typeof open>, value: string) =>
-    fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.label), { target: { value } });
+  const chooseKind = (view: ReturnType<typeof open>, value: string) =>
+    fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.kindLabel), { target: { value } });
+
+  const chooseWriter = (view: ReturnType<typeof open>, value: string) =>
+    fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.writerLabel), { target: { value } });
 
   const shownIds = (view: ReturnType<typeof open>) =>
     [...view.container.querySelectorAll('[data-memory]')].map((row) =>
       row.getAttribute('data-memory'),
     );
 
-  test('names the kinds in plain words and keeps the engine’s terms for the details', async () => {
+  test('names the kinds Fact and How-to, and keeps the engine’s terms out of the list', async () => {
     const { view } = await mixed();
-    const select = view.getByLabelText(MEMORY_COPY.filter.label);
+    const select = view.getByLabelText(MEMORY_COPY.filter.kindLabel);
 
     expect([...select.querySelectorAll('option')].map((option) => option.textContent)).toEqual([
-      MEMORY_COPY.filter.all,
-      MEMORY_COPY.filter.facts,
-      MEMORY_COPY.filter.chats,
-      MEMORY_COPY.filter.howTo,
-      MEMORY_COPY.filter.you,
+      MEMORY_COPY.filter.kind.all,
+      MEMORY_COPY.filter.kind.fact,
+      MEMORY_COPY.filter.kind.howTo,
     ]);
     const list = view.getByRole('region', { name: MEMORY_COPY.listLabel });
     for (const engine of ['Semantic', 'Episodic', 'Procedural', 'Operator']) {
@@ -383,27 +441,48 @@ describe('the kind filter', () => {
   });
 
   for (const [value, expected] of [
-    ['facts', ['memory-fact']],
-    ['chats', ['memory-aisle']],
-    ['howTo', ['memory-recipe']],
-    ['you', ['memory-window']],
+    ['fact', ['memory-aisle', 'memory-window', 'memory-fact']],
+    ['how-to', ['memory-recipe']],
     ['all', ['memory-aisle', 'memory-window', 'memory-recipe', 'memory-fact']],
   ] as const) {
-    test(`narrows the list to ${value}`, async () => {
+    test(`narrows the list to the kind ${value}`, async () => {
       const { view } = await mixed();
 
-      await choose(view, value);
+      await chooseKind(view, value);
 
       await waitFor(() => expect(shownIds(view)).toEqual([...expected]));
     });
   }
+
+  for (const [value, expected] of [
+    ['you', ['memory-window']],
+    ['agent', ['memory-aisle', 'memory-recipe', 'memory-fact']],
+    ['all', ['memory-aisle', 'memory-window', 'memory-recipe', 'memory-fact']],
+  ] as const) {
+    test(`narrows the list to what ${value} wrote`, async () => {
+      const { view } = await mixed();
+
+      await chooseWriter(view, value);
+
+      await waitFor(() => expect(shownIds(view)).toEqual([...expected]));
+    });
+  }
+
+  test('works together: a kind and a writer both narrow the list', async () => {
+    const { view } = await mixed();
+
+    await chooseKind(view, 'fact');
+    await chooseWriter(view, 'agent');
+
+    await waitFor(() => expect(shownIds(view)).toEqual(['memory-aisle', 'memory-fact']));
+  });
 
   test('says it works over the memories loaded so far while pages are left', async () => {
     bureau({ 'bureau.memory.list': () => ({ memories: MIXED, nextOffset: 4 }) });
     const view = open();
     await view.findByText(FACT.content);
 
-    await choose(view, 'facts');
+    await chooseKind(view, 'how-to');
 
     expect(textOf(await view.findByTestId('memory-kind-note'))).toBe(
       MEMORY_COPY.filter.note(1, 4, true),
@@ -411,17 +490,22 @@ describe('the kind filter', () => {
     expect(MEMORY_COPY.filter.note(1, 4, true)).toContain('loaded so far');
   });
 
-  test('says no loaded memory is of the kind chosen, with a way back to every kind', async () => {
+  test('says no loaded memory matches the filters, with a way back to every memory', async () => {
     bureau({ 'bureau.memory.list': () => ({ memories: [AISLE], nextOffset: null }) });
     const view = open();
     await view.findByText(AISLE.content);
 
-    await choose(view, 'howTo');
+    await chooseKind(view, 'how-to');
 
-    await view.findByText(MEMORY_COPY.noKind.title, { selector: 'h2' });
+    await view.findByText(MEMORY_COPY.noFiltered.title, { selector: 'h2' });
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.clearMatch }));
     await view.findByText(AISLE.content);
-    expect((view.getByLabelText(MEMORY_COPY.filter.label) as HTMLSelectElement).value).toBe('all');
+    expect(
+      (view.getByLabelText(MEMORY_COPY.filter.kindLabel) as HTMLSelectElement).value,
+    ).toBe('all');
+    expect(
+      (view.getByLabelText(MEMORY_COPY.filter.writerLabel) as HTMLSelectElement).value,
+    ).toBe('all');
   });
 
   test('works together with a search', async () => {
@@ -440,73 +524,143 @@ describe('the kind filter', () => {
     await fireEvent.input(view.getByLabelText(MEMORY_COPY.searchLabel), {
       target: { value: 'seats' },
     });
-    await choose(view, 'you');
+    await chooseWriter(view, 'you');
 
     await waitFor(() => expect(shownIds(view)).toEqual(['memory-window']));
   });
 });
 
 describe('one memory', () => {
-  test('leads with its text, then its kind, time and the two icon buttons, and the facts in three columns', async () => {
-    bureau({
-      'bureau.memory.get': () => ({
-        memory: AISLE,
-        lineage: { runId: 'run-7', corrects: null, correctedBy: null },
-      }),
-    });
+  test('leads with its kind and when and the two icon buttons, then its text as a heading, then Came from, Written by and History', async () => {
+    bureau();
     const view = open();
     const detail = await openDetails(view, AISLE.content);
 
-    expect(detail.querySelector('blockquote')?.textContent?.trim()).toBe(AISLE.content);
+    expect(textOf(detail.querySelector('h2'))).toBe(AISLE.content);
+    // "Fact, remembered <when>", muted, with the commas the page uses in place of a middle dot.
+    const context = textOf(detail.querySelector('[data-memory-context]'));
+    expect(context).toMatch(new RegExp(`^${MEMORY_COPY.kind.fact}, remembered `));
+    expect(detail.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(
       within(detail).getByRole('button', { name: MEMORY_COPY.correct.iconLabel }),
     ).not.toBeNull();
     expect(
       within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
     ).not.toBeNull();
-    // The engine's term for the kind appears here, and nowhere in the list.
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.kind))).toBe(
-      MEMORY_COPY.kind.episodic.label,
-    );
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.source))).toBe(
-      MEMORY_COPY.source.conversation,
-    );
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.trust))).toBe(
-      MEMORY_COPY.trust.untrusted,
-    );
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.created))).toBe(
-      new Date(AISLE.createdAt).toLocaleString(),
-    );
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.run))).toBe('run-7');
-    const groups = [...detail.querySelectorAll('.ib-memory-detail__group')].map((group) =>
-      textOf(group.querySelector('h3')),
-    );
-    expect(groups).toEqual([
-      MEMORY_COPY.detail.groups.origin,
-      MEMORY_COPY.detail.groups.standing,
-      MEMORY_COPY.detail.groups.history,
+    // The agent wrote it from a chat, so the rows say which chat, who wrote it, and its history.
+    expect([...detail.querySelectorAll('dt')].map((term) => textOf(term))).toEqual([
+      MEMORY_COPY.detail.fields.cameFrom,
+      MEMORY_COPY.detail.fields.writtenBy,
+      MEMORY_COPY.detail.fields.history,
     ]);
-    // The chat is a link inside the app.
-    const chat = within(factOf(detail, MEMORY_COPY.detail.fields.session)!).getByRole('link');
+    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.writtenBy))).toBe(AGENT_NAME);
+    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.history))).toBe(
+      MEMORY_COPY.detail.history.none,
+    );
+    // The chat is a link inside the app, named by the chat's title.
+    const chat = await waitFor(() =>
+      within(factOf(detail, MEMORY_COPY.detail.fields.cameFrom)!).getByRole('link'),
+    );
     expect(chat.getAttribute('href')).toBe('/chats/session-1');
+    expect(textOf(chat)).toBe(CHAT_LINK);
+    // Trust follows from the writer, and the engine's terms, the run and the time are not rows.
+    for (const term of ['Trust', 'Source', 'Kind', 'Run', 'Created']) {
+      expect(factOf(detail, term)).toBeNull();
+    }
+    expect(detail.textContent).not.toContain('Untrusted');
+    expect(detail.textContent).not.toContain('Episodic');
   });
 
-  test('says a field was not recorded when the server has nothing for it, and shows no legal hold yet', async () => {
+  test('shows a memory you wrote as Written by You, with no Came from row and no legal hold yet', async () => {
     bureau();
     const view = open();
     const detail = await openDetails(view, WINDOW.content);
 
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.session))).toBe(
-      MEMORY_COPY.detail.notRecorded,
+    expect(factOf(detail, MEMORY_COPY.detail.fields.cameFrom)).toBeNull();
+    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.writtenBy))).toBe(
+      MEMORY_COPY.writer.person.detail,
     );
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.run))).toBe(
-      MEMORY_COPY.detail.notRecorded,
-    );
-    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.corrects))).toBe(
-      MEMORY_COPY.detail.noHistory,
+    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.history))).toBe(
+      MEMORY_COPY.detail.history.none,
     );
     // Nothing has said whether it is held, so the page does not guess.
     expect(factOf(detail, MEMORY_COPY.detail.fields.legalHold)).toBeNull();
+  });
+
+  test('says no chat is on record for a memory an agent wrote with none, in muted text', async () => {
+    const orphan = { ...AISLE, sessionId: null };
+    bureau({
+      'bureau.memory.list': () => ({ memories: [orphan], nextOffset: null }),
+      'bureau.memory.get': () => detailOf_(orphan),
+    });
+    const view = open();
+    const detail = await openDetails(view, orphan.content);
+
+    const value = factOf(detail, MEMORY_COPY.detail.fields.cameFrom);
+    expect(textOf(value)).toBe(MEMORY_COPY.detail.cameFrom.notRecorded);
+    expect(value?.querySelector('a')).toBeNull();
+  });
+
+  test('says the chat a memory came from was deleted, as muted text rather than a link, and keeps the memory listed', async () => {
+    const served = bureau({
+      'bureau.contexts.get': () => {
+        throw new StubFault('NotFound', 404, 'No chat.', { resource: 'session' });
+      },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+
+    const value = factOf(detail, MEMORY_COPY.detail.fields.cameFrom);
+    await waitFor(() => expect(textOf(value)).toBe(MEMORY_COPY.detail.cameFrom.deleted));
+    expect(value?.querySelector('a')).toBeNull();
+    expect(value?.querySelector('[data-came-from="deleted"]')).not.toBeNull();
+    // The same pencil and trash as every other memory, and the memory is still in the list.
+    expect(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.iconLabel }),
+    ).not.toBeNull();
+    expect(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    ).not.toBeNull();
+    expect(rowOf(view, AISLE.id)).not.toBeNull();
+    expect(served.callsTo('bureau.contexts.get')[0]?.params).toEqual({ contextId: 'session-1' });
+  });
+
+  test('keeps the chat link, named plainly, when the chat could not be read for another reason', async () => {
+    bureau({
+      'bureau.contexts.get': () => {
+        throw new StubFault('EngineFailure', 500, 'The server broke.');
+      },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+
+    const link = await waitFor(() =>
+      within(factOf(detail, MEMORY_COPY.detail.fields.cameFrom)!).getByRole('link'),
+    );
+    expect(textOf(link)).toBe(MEMORY_COPY.detail.cameFrom.openChat);
+  });
+
+  test('wraps a long memory in the detail and clamps its row to two lines', async () => {
+    const long = {
+      ...WINDOW,
+      id: 'memory-long',
+      content:
+        'Customers in the EU must be told the refund can take up to 14 days to reach their account, even when the order was paid for by card.',
+      kind: 'how-to',
+      memoryClass: 'procedural',
+    };
+    bureau({
+      'bureau.memory.list': () => ({ memories: [long], nextOffset: null }),
+      'bureau.memory.get': () => detailOf_(long),
+    });
+    const view = open();
+    const detail = await openDetails(view, long.content);
+
+    // The detail shows the whole text; the row's own text carries the two-line clamp.
+    expect(textOf(detail.querySelector('h2'))).toBe(long.content);
+    expect(rowOf(view, long.id).querySelector('.ib-memory__content')).not.toBeNull();
+    const line = textOf(rowOf(view, long.id).querySelector('[data-memory-line]'));
+    expect(line).toMatch(new RegExp(`^${MEMORY_COPY.kind['how-to']}, From you, `));
   });
 
   test('keeps the open memory in the address, and opens the one the address names', async () => {
@@ -515,7 +669,7 @@ describe('one memory', () => {
 
     const detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
     await waitFor(() =>
-      expect(detail.querySelector('blockquote')?.textContent).toContain(WINDOW.content),
+      expect(detail.querySelector('[data-memory-text]')?.textContent).toContain(WINDOW.content),
     );
     await fireEvent.click(rowOf(view, AISLE.id));
     await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
@@ -565,7 +719,7 @@ describe('one memory', () => {
     expect(view.container.querySelector('[data-memory-detail]')).toBeNull();
   });
 
-  test('opens the memory a correction replaced from its “corrects” link, though no list holds it', async () => {
+  test('opens the memory a correction replaced from its History row, though no list holds it', async () => {
     const ORIGINAL = {
       ...AISLE,
       id: 'memory-original',
@@ -575,20 +729,35 @@ describe('one memory', () => {
       'bureau.memory.list': () => ({ memories: [WINDOW], nextOffset: null }),
       'bureau.memory.get': (params) =>
         params['id'] === ORIGINAL.id
-          ? { memory: ORIGINAL, lineage: { runId: null, corrects: null, correctedBy: WINDOW.id } }
-          : { memory: WINDOW, lineage: { runId: null, corrects: ORIGINAL.id, correctedBy: null } },
+          ? detailOf_(ORIGINAL, { runId: null, corrects: null, correctedBy: WINDOW.id })
+          : detailOf_(
+              WINDOW,
+              { runId: null, corrects: ORIGINAL.id, correctedBy: null },
+              [
+                {
+                  id: ORIGINAL.id,
+                  content: ORIGINAL.content,
+                  kind: 'fact',
+                  writer: 'agent',
+                  trust: 'untrusted',
+                  writtenAt: ORIGINAL.createdAt,
+                  correctedAt: WINDOW.createdAt,
+                },
+              ],
+            ),
     });
     const view = open();
     const detail = await openDetails(view, WINDOW.content);
 
+    // The row says what was corrected, in the original's own words, and leads to it.
+    const history = factOf(detail, MEMORY_COPY.detail.fields.history)!;
+    expect(textOf(history)).toContain(MEMORY_COPY.detail.history.corrects(ORIGINAL.content));
     await fireEvent.click(
-      within(factOf(detail, MEMORY_COPY.detail.fields.corrects)!).getByRole('button', {
-        name: MEMORY_COPY.detail.openMemory,
-      }),
+      within(history).getByRole('button', { name: MEMORY_COPY.detail.history.original }),
     );
 
     await waitFor(() =>
-      expect(detail.querySelector('blockquote')?.textContent).toContain(ORIGINAL.content),
+      expect(detail.querySelector('[data-memory-text]')?.textContent).toContain(ORIGINAL.content),
     );
     expect(served.callsTo('bureau.memory.get').map((call) => call.params['id'])).toContain(
       ORIGINAL.id,
@@ -596,12 +765,12 @@ describe('one memory', () => {
     // It leads the list while it is open, and the link back reaches the correction.
     expect(rowOf(view, ORIGINAL.id).textContent).toContain(ORIGINAL.content);
     await fireEvent.click(
-      within(factOf(detail, MEMORY_COPY.detail.fields.correctedBy)!).getByRole('button', {
-        name: MEMORY_COPY.detail.openMemory,
+      within(factOf(detail, MEMORY_COPY.detail.fields.history)!).getByRole('button', {
+        name: MEMORY_COPY.detail.history.correction,
       }),
     );
     await waitFor(() =>
-      expect(detail.querySelector('blockquote')?.textContent).toContain(WINDOW.content),
+      expect(detail.querySelector('[data-memory-text]')?.textContent).toContain(WINDOW.content),
     );
   });
 
@@ -609,7 +778,7 @@ describe('one memory', () => {
     bureau();
     const view = open();
     const detail = await openDetails(view, AISLE.content);
-    const link = within(detail).getByRole('link', { name: MEMORY_COPY.detail.openChat });
+    const link = await within(detail).findByRole('link', { name: CHAT_LINK });
 
     link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
     expect(router.pathname).toBe('/agents/assistant/memory');
@@ -658,7 +827,7 @@ describe('one memory', () => {
         if (failing === 'missing')
           throw new StubFault('NotFound', 404, 'No memory.', { resource: 'memory' });
         if (failing === 'broken') throw new StubFault('EngineFailure', 500, 'The server broke.');
-        return { memory: AISLE, lineage: NO_LINEAGE };
+        return detailOf_(AISLE);
       },
     });
     const view = open();
@@ -668,7 +837,7 @@ describe('one memory', () => {
     await view.findByText(MEMORY_COPY.detail.failed);
     failing = undefined;
     await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
-    await waitFor(() => expect(view.container.querySelector('blockquote')).not.toBeNull());
+    await waitFor(() => expect(view.container.querySelector('[data-memory-text]')).not.toBeNull());
     expect(served.callsTo('bureau.memory.get').length).toBeGreaterThan(1);
 
     failing = 'missing';
@@ -684,7 +853,7 @@ describe('forgetting a memory', () => {
     const served = bureau({
       'bureau.memory.get': () => {
         if (gone) throw new StubFault('NotFound', 404, 'No memory.', { resource: 'memory' });
-        return { memory: AISLE, lineage: NO_LINEAGE };
+        return detailOf_(AISLE);
       },
       'bureau.memory.forget': () => {
         gone = deletion === 'completed';
@@ -776,16 +945,43 @@ describe('forgetting a memory', () => {
     );
   });
 
-  test('closes the details of a memory that is gone, and reads the list again', async () => {
+  test('opens the next memory when the open one is forgotten, and reads the list again', async () => {
     const { served, view } = await forgetWith('completed');
 
     await view.findByText(MEMORY_COPY.forget.outcome.completed.title);
 
+    // The memory after it in the list opens in its place.
+    await waitFor(() => expect(router.search.get('selected')).toBe(WINDOW.id));
     await waitFor(() =>
-      expect(view.container.querySelector('[data-memory-detail]')?.outerHTML ?? null).toBeNull(),
+      expect(
+        view.container.querySelector(`[data-memory-detail="${WINDOW.id}"]`)?.outerHTML ?? null,
+      ).not.toBeNull(),
     );
-    expect(view.getByText(MEMORY_COPY.nothingOpen.title)).not.toBeNull();
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
+  });
+
+  test('opens the memory before it when the last one in the list is forgotten', async () => {
+    let remaining = [AISLE, WINDOW];
+    bureau({
+      'bureau.memory.list': () => ({ memories: remaining, nextOffset: null }),
+      'bureau.memory.forget': (params) => {
+        remaining = remaining.filter((memory) => memory.id !== params['id']);
+        return { id: params['id'], deletion: 'completed', receipt: RECEIPT };
+      },
+    });
+    const view = open(`/agents/assistant/memory?selected=${WINDOW.id}`);
+    const detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
+    await waitFor(() => expect(detail.querySelector('[data-memory-detail]')).not.toBeNull());
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.forget.iconLabel }),
+    );
+    const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.forget.dialog.title });
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.forget.dialog.confirm }),
+    );
+
+    await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
   });
 
   test('keeps the receipt and says nothing is left when the last memory is forgotten', async () => {
@@ -879,8 +1075,18 @@ describe('correcting a memory', () => {
       'bureau.memory.correct': answer,
       'bureau.memory.get': (params) =>
         params['id'] === corrected.id
-          ? { memory: corrected, lineage: { runId: null, corrects: AISLE.id, correctedBy: null } }
-          : { memory: AISLE, lineage: NO_LINEAGE },
+          ? detailOf_(corrected, { runId: null, corrects: AISLE.id, correctedBy: null }, [
+              {
+                id: AISLE.id,
+                content: AISLE.content,
+                kind: 'fact',
+                writer: 'agent',
+                trust: 'untrusted',
+                writtenAt: AISLE.createdAt,
+                correctedAt: corrected.createdAt,
+              },
+            ])
+          : detailOf_(AISLE),
     });
     const view = open();
     const detail = await openDetails(view, AISLE.content);
@@ -891,7 +1097,9 @@ describe('correcting a memory', () => {
     // The text is edited in place, starting from the memory's own words: there is no dialog.
     expect((field as HTMLTextAreaElement).value).toBe(AISLE.content);
     expect(view.queryByRole('dialog')).toBeNull();
-    expect(detail.querySelector('blockquote')).toBeNull();
+    expect(detail.querySelector('[data-memory-text]')).toBeNull();
+    // The original stays in History, as the form says.
+    expect(within(detail).getByText(MEMORY_COPY.correct.edit.description)).not.toBeNull();
     await fireEvent.input(field, { target: { value: content } });
     return { served, view, detail };
   }
@@ -913,14 +1121,18 @@ describe('correcting a memory', () => {
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
     // The correction is open, its text is the new words, and its history leads back to the original.
     await waitFor(() =>
-      expect(detail.querySelector('blockquote')?.textContent).toContain(CORRECTION),
+      expect(detail.querySelector('[data-memory-text]')?.textContent).toContain(CORRECTION),
     );
     await waitFor(() =>
       expect(
-        within(factOf(detail, MEMORY_COPY.detail.fields.corrects)!).queryByRole('button', {
-          name: MEMORY_COPY.detail.openMemory,
+        within(factOf(detail, MEMORY_COPY.detail.fields.history)!).queryByRole('button', {
+          name: MEMORY_COPY.detail.history.original,
         }),
       ).not.toBeNull(),
+    );
+    // A person has now vouched for it: the corrected memory reads Written by You.
+    expect(textOf(factOf(detail, MEMORY_COPY.detail.fields.writtenBy))).toBe(
+      MEMORY_COPY.writer.person.detail,
     );
     expect(MEMORY_COPY.correct.saved.description).toContain('kept in its history');
   });
@@ -996,7 +1208,7 @@ describe('correcting a memory', () => {
     );
 
     expect(served.callsTo('bureau.memory.correct')).toEqual([]);
-    expect(detail.querySelector('blockquote')?.textContent).toContain(AISLE.content);
+    expect(detail.querySelector('[data-memory-text]')?.textContent).toContain(AISLE.content);
   });
 
   test('does not send a blank correction', async () => {
@@ -1051,9 +1263,12 @@ describe('adding a memory', () => {
     id: 'memory-added',
     content: TEXT,
     source: 'operator',
+    writer: 'person',
     trust: 'verified',
     memoryClass: 'semantic',
+    kind: 'fact',
     sessionId: null,
+    createdAt: new Date().toISOString(),
   };
 
   const refusing = (reason: string) => () => {
@@ -1069,54 +1284,166 @@ describe('adding a memory', () => {
     const served = bureau({
       'bureau.memory.remember': answer,
       ...extra,
-      'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
+      'bureau.memory.get': () => detailOf_(ADDED),
     });
     const view = open();
     await view.findByText(AISLE.content);
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.add.action }));
     const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
-    const field = within(dialog).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label);
-    await fireEvent.input(field, { target: { value: content } });
+    const field = within(dialog).getByLabelText<HTMLTextAreaElement>(ADD_LABEL);
+    if (content !== '') await fireEvent.input(field, { target: { value: content } });
     const submit = within(dialog).getByRole<HTMLButtonElement>('button', {
       name: MEMORY_COPY.add.dialog.submit,
     });
     return { served, view, dialog, field, submit };
   }
 
-  test('saves what was typed, says so, closes, and opens the new memory', async () => {
+  test('names the agent in the dialog, hints how it is saved, and offers Fact and How-to with Fact chosen', async () => {
+    const { dialog, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }), '');
+
+    expect(textOf(dialog)).toContain(MEMORY_COPY.add.dialog.description(AGENT_NAME));
+    expect(textOf(dialog)).toContain(MEMORY_COPY.add.dialog.hint);
+    expect(
+      within(dialog).getByRole<HTMLInputElement>('radio', {
+        name: MEMORY_COPY.add.dialog.kind.fact,
+      }).checked,
+    ).toBe(true);
+    expect(
+      within(dialog).getByRole<HTMLInputElement>('radio', {
+        name: MEMORY_COPY.add.dialog.kind.howTo,
+      }).checked,
+    ).toBe(false);
+    // Add memory is the primary button and Cancel the secondary one, and it is enabled while empty.
+    expect(submit.disabled).toBe(false);
+    expect(
+      within(dialog).getByRole('button', { name: MEMORY_COPY.add.dialog.cancel }),
+    ).not.toBeNull();
+  });
+
+  test('saves what was typed as a fact, says so in a toast with Undo, closes, and opens the new memory', async () => {
     const { served, view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }));
 
     await fireEvent.click(submit);
 
-    expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+    expect(await view.findByText(ADDED_TOAST)).not.toBeNull();
+    expect(view.getByRole('button', { name: 'Undo' })).not.toBeNull();
     expect(served.callsTo('bureau.memory.remember')[0]?.params).toEqual({
       agentId: 'assistant',
       content: TEXT,
+      kind: 'fact',
     });
     await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
     await waitFor(() => expect(router.search.get('selected')).toBe(ADDED.id));
+    // The toast has no middle dot, and the page repeats nothing of it above the list.
+    expect(ADDED_TOAST).not.toContain(String.fromCodePoint(0xb7));
+  });
+
+  test('saves a how-to when the person chooses How-to', async () => {
+    const { served, view, dialog, submit } = await formWith(() => ({
+      outcome: 'added',
+      memory: { ...ADDED, kind: 'how-to', memoryClass: 'procedural' },
+    }));
+
+    await fireEvent.click(
+      within(dialog).getByRole('radio', { name: MEMORY_COPY.add.dialog.kind.howTo }),
+    );
+    await fireEvent.click(submit);
+
+    await view.findByText(ADDED_TOAST);
+    expect(served.callsTo('bureau.memory.remember')[0]?.params).toEqual({
+      agentId: 'assistant',
+      content: TEXT,
+      kind: 'how-to',
+    });
+  });
+
+  test('forgets the memory just added when Undo is pressed, and closes its details', async () => {
+    const { served, view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }), TEXT, {
+      'bureau.memory.forget': (params) => ({
+        id: params['id'],
+        deletion: 'completed',
+        receipt: RECEIPT,
+      }),
+    });
+    await fireEvent.click(submit);
+    await view.findByText(ADDED_TOAST);
+    await waitFor(() => expect(router.search.get('selected')).toBe(ADDED.id));
+
+    await fireEvent.click(view.getByRole('button', { name: 'Undo' }));
+
+    await waitFor(() => expect(served.callsTo('bureau.memory.forget')).toHaveLength(1));
+    expect(served.callsTo('bureau.memory.forget')[0]?.params).toEqual({
+      agentId: 'assistant',
+      id: ADDED.id,
+    });
+    await waitFor(() => expect(view.queryByText(ADDED_TOAST)?.outerHTML ?? null).toBeNull());
+    await waitFor(() => expect(router.search.get('selected') ?? 'none').toBe('none'));
+  });
+
+  test('says Undo did not go through, and keeps the memory, when the server will not forget it', async () => {
+    const { view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }), TEXT, {
+      'bureau.memory.forget': () => {
+        throw new StubFault('EngineFailure', 500, 'The server broke.');
+      },
+    });
+    await fireEvent.click(submit);
+    await view.findByText(ADDED_TOAST);
+
+    await fireEvent.click(view.getByRole('button', { name: 'Undo' }));
+
+    expect(await view.findByText(MEMORY_COPY.add.undoFailed)).not.toBeNull();
+    expect(router.search.get('selected')).toBe(ADDED.id);
   });
 
   test('starts empty the next time, once a memory was saved', async () => {
     const { view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }));
     await fireEvent.click(submit);
-    await view.findByText(MEMORY_COPY.add.saved.title);
+    await view.findByText(ADDED_TOAST);
 
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.add.action }));
 
     const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
+    expect(within(dialog).getByLabelText<HTMLTextAreaElement>(ADD_LABEL).value).toBe('');
     expect(
-      within(dialog).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label).value,
-    ).toBe('');
+      within(dialog).getByRole<HTMLInputElement>('radio', {
+        name: MEMORY_COPY.add.dialog.kind.fact,
+      }).checked,
+    ).toBe(true);
   });
 
-  test('keeps the text and stays open when the add fails, and saves it on the next try', async () => {
+  test('keeps the text and stays open when the add fails, with the reason above the buttons, and saves it on the next try', async () => {
     let refuse = true;
     const { served, view, dialog, field, submit } = await formWith(() => {
-      if (refuse) refusing('memory-not-admitted')();
+      if (refuse) throw new StubFault('EngineFailure', 500, 'The server broke.');
       return { outcome: 'added', memory: ADDED };
     });
+
+    await fireEvent.click(submit);
+
+    expect(await within(dialog).findByText(MEMORY_COPY.add.notSaved)).not.toBeNull();
+    expect(within(dialog).getByText(MEMORY_COPY.add.stillHere.server(500))).not.toBeNull();
+    expect(field.value).toBe(TEXT);
+    // The error panel sits between the field and the buttons, and the primary button now says Try again.
+    const reason = dialog.querySelector('[data-add-refusal]')!;
+    expect(Boolean(field.compareDocumentPosition(reason) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
+    expect(Boolean(reason.compareDocumentPosition(submit) & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(
+      true,
+    );
+    expect(textOf(submit)).toBe(MEMORY_COPY.add.dialog.retry);
+    expect(view.queryByText(ADDED_TOAST)).toBeNull();
+
+    refuse = false;
+    await fireEvent.click(submit);
+
+    expect(await view.findByText(ADDED_TOAST)).not.toBeNull();
+    expect(served.callsTo('bureau.memory.remember')).toHaveLength(2);
+  });
+
+  test('words the refusal of text the memory rules do not admit, and keeps what was typed', async () => {
+    const { dialog, field, submit } = await formWith(refusing('memory-not-admitted'));
 
     await fireEvent.click(submit);
 
@@ -1124,13 +1451,41 @@ describe('adding a memory', () => {
     expect(await within(dialog).findByText(words.title)).not.toBeNull();
     expect(within(dialog).getByText(words.description)).not.toBeNull();
     expect(field.value).toBe(TEXT);
-    expect(view.queryByText(MEMORY_COPY.add.saved.title)).toBeNull();
+  });
 
-    refuse = false;
+  test('saves nothing when Add memory is pressed with nothing written, and says what to write at the field', async () => {
+    const { served, dialog, field, submit } = await formWith(
+      () => ({ outcome: 'added', memory: ADDED }),
+      '',
+    );
+
+    expect(submit.disabled).toBe(false);
     await fireEvent.click(submit);
 
-    expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
-    expect(served.callsTo('bureau.memory.remember')).toHaveLength(2);
+    expect(await within(dialog).findByText(MEMORY_COPY.add.dialog.empty(AGENT_NAME))).not.toBeNull();
+    expect(served.callsTo('bureau.memory.remember')).toEqual([]);
+    // The field is marked and takes focus; the dialog stays open and Add memory stays enabled.
+    await waitFor(() => expect(field.getAttribute('aria-invalid')).toBe('true'));
+    await waitFor(() => expect(document.activeElement === field).toBe(true));
+    expect(within(dialog).queryByRole('button', { name: MEMORY_COPY.add.dialog.retry })).toBeNull();
+    expect(submit.disabled).toBe(false);
+  });
+
+  test('stops saying what to write once something is written', async () => {
+    const { dialog, field, submit } = await formWith(
+      () => ({ outcome: 'added', memory: ADDED }),
+      '',
+    );
+    await fireEvent.click(submit);
+    await within(dialog).findByText(MEMORY_COPY.add.dialog.empty(AGENT_NAME));
+
+    await fireEvent.input(field, { target: { value: TEXT } });
+
+    await waitFor(() =>
+      expect(
+        within(dialog).queryByText(MEMORY_COPY.add.dialog.empty(AGENT_NAME))?.outerHTML ?? null,
+      ).toBeNull(),
+    );
   });
 
   describe('text the content rules hold back', () => {
@@ -1153,7 +1508,7 @@ describe('adding a memory', () => {
         within(dialog).getByRole('button', { name: MEMORY_COPY.add.held.remove }),
       ).not.toBeNull();
       expect(field.value).toBe(TEXT);
-      expect(view.queryByText(MEMORY_COPY.add.saved.title)).toBeNull();
+      expect(view.queryByText(ADDED_TOAST)).toBeNull();
     });
 
     test('forgets the held record by its identifier when the person removes it', async () => {
@@ -1217,7 +1572,7 @@ describe('adding a memory', () => {
 
       await fireEvent.click(submit);
 
-      expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+      expect(await view.findByText(ADDED_TOAST)).not.toBeNull();
       expect(served.callsTo('bureau.memory.forget')).toHaveLength(1);
       expect(served.callsTo('bureau.memory.remember')).toHaveLength(2);
     });
@@ -1268,14 +1623,14 @@ describe('adding a memory', () => {
     ).not.toBeNull();
   });
 
-  test('shows the server’s own words for a failure it has no name for', async () => {
+  test('says the server answered with an error, by its status, for a failure it has no name for', async () => {
     const { dialog, submit } = await formWith(() => {
       throw new StubFault('EngineFailure', 500, 'The disk is full.');
     });
 
     await fireEvent.click(submit);
 
-    expect(await within(dialog).findByText('The disk is full.')).not.toBeNull();
+    expect(await within(dialog).findByText(MEMORY_COPY.add.stillHere.server(500))).not.toBeNull();
     expect(within(dialog).getByText(MEMORY_COPY.add.notSaved)).not.toBeNull();
   });
 
@@ -1292,9 +1647,7 @@ describe('adding a memory', () => {
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.add.action }));
 
     const again = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
-    expect(
-      within(again).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label).value,
-    ).toBe(TEXT);
+    expect(within(again).getByLabelText<HTMLTextAreaElement>(ADD_LABEL).value).toBe(TEXT);
     expect(within(again).queryByText(words.title)).toBeNull();
   });
 
@@ -1319,9 +1672,7 @@ describe('adding a memory', () => {
     expect(
       await within(again).findByText(MEMORY_COPY.add.refusal['not-admitted'].title),
     ).not.toBeNull();
-    expect(
-      within(again).getByLabelText<HTMLTextAreaElement>(MEMORY_COPY.add.dialog.label).value,
-    ).toBe(TEXT);
+    expect(within(again).getByLabelText<HTMLTextAreaElement>(ADD_LABEL).value).toBe(TEXT);
   });
 
   test('sends one add while one is being saved', async () => {
@@ -1334,10 +1685,10 @@ describe('adding a memory', () => {
     expect(served.callsTo('bureau.memory.remember')).toHaveLength(1);
   });
 
-  test('has nothing to save while the text is blank', async () => {
+  test('has nothing to save while the text is blank, however many times Add memory is pressed', async () => {
     const { served, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }), '   ');
 
-    expect(submit.disabled).toBe(true);
+    await fireEvent.submit(submit.closest('form')!);
     await fireEvent.submit(submit.closest('form')!);
 
     expect(served.callsTo('bureau.memory.remember')).toEqual([]);
@@ -1351,7 +1702,7 @@ describe('adding a memory', () => {
         memories = [ADDED];
         return { outcome: 'added', memory: ADDED };
       },
-      'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
+      'bureau.memory.get': () => detailOf_(ADDED),
     });
     landAt('/agents/assistant/memory');
     const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
@@ -1363,18 +1714,17 @@ describe('adding a memory', () => {
       within(empty as HTMLElement).getByRole('button', { name: MEMORY_COPY.add.action }),
     );
     const dialog = await view.findByRole('dialog', { name: MEMORY_COPY.add.dialog.title });
-    await fireEvent.input(within(dialog).getByLabelText(MEMORY_COPY.add.dialog.label), {
+    await fireEvent.input(within(dialog).getByLabelText(ADD_LABEL), {
       target: { value: TEXT },
     });
     await fireEvent.click(
       within(dialog).getByRole('button', { name: MEMORY_COPY.add.dialog.submit }),
     );
 
-    expect(await view.findByText(MEMORY_COPY.add.saved.title)).not.toBeNull();
+    await waitFor(() => expect(served.callsTo('bureau.memory.remember')).toHaveLength(1));
     await waitFor(() =>
       expect(view.queryByText(MEMORY_COPY.nothing.title)?.outerHTML ?? null).toBeNull(),
     );
-    expect(served.callsTo('bureau.memory.remember')).toHaveLength(1);
   });
 });
 
@@ -1701,10 +2051,24 @@ describe('quarantining a memory', () => {
 });
 
 describe('exporting the memories', () => {
-  test('exports every memory of the agent to a file, and says the ledger records it', async () => {
-    const served = bureau({
-      'bureau.memory.export': () => ({ exportId: 'export-1', memories: [AISLE, WINDOW] }),
-    });
+  const HISTORY = [
+    {
+      id: 'memory-original',
+      content: 'The user prefers the middle seat.',
+      kind: 'fact',
+      writer: 'agent',
+      trust: 'untrusted',
+      writtenAt: '2026-10-18T08:00:00.000Z',
+      correctedAt: '2026-10-19T08:00:00.000Z',
+    },
+  ];
+  const EXPORTED = [
+    { ...AISLE, history: [] },
+    { ...WINDOW, history: HISTORY },
+  ];
+
+  /** Runs `body` with the blob URLs a download makes held, so the saved file can be read. */
+  async function downloading(body: (created: Blob[]) => Promise<void>) {
     const originalCreate = URL.createObjectURL;
     const originalRevoke = URL.revokeObjectURL;
     const created: Blob[] = [];
@@ -1714,23 +2078,64 @@ describe('exporting the memories', () => {
     });
     URL.revokeObjectURL = mock(() => {});
     try {
+      await body(created);
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  }
+
+  test('saves one JSON file named by the server with each memory’s text, kind, writer, trust and history, and says so in a toast', async () => {
+    const served = bureau({
+      'bureau.memory.export': () => ({
+        exportId: 'export-1',
+        fileName: 'assistant-memories.json',
+        memories: EXPORTED,
+      }),
+    });
+    await downloading(async (created) => {
       const view = open();
       await view.findByText(AISLE.content);
 
       await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.govern.export.action }));
 
-      await view.findByText(MEMORY_COPY.govern.export.outcome.title);
-      expect(view.container.textContent).toContain(
-        MEMORY_COPY.govern.export.outcome.description(2, 'export-1'),
+      expect(
+        await view.findByText(MEMORY_COPY.govern.export.done(2, 'assistant-memories.json')),
+      ).not.toBeNull();
+      expect(MEMORY_COPY.govern.export.done(2, 'assistant-memories.json')).not.toContain(
+        String.fromCodePoint(0xb7),
       );
-      expect(view.container.textContent).toContain(MEMORY_COPY.govern.recorded);
       expect(served.callsTo('bureau.memory.export')[0]?.params).toEqual({ agentId: 'assistant' });
       expect(created).toHaveLength(1);
-      expect(JSON.parse(await created[0]!.text())).toEqual([AISLE, WINDOW]);
-    } finally {
-      URL.createObjectURL = originalCreate;
-      URL.revokeObjectURL = originalRevoke;
-    }
+      const saved = JSON.parse(await created[0]!.text()) as Record<string, unknown>[];
+      expect(saved).toEqual(EXPORTED);
+      for (const memory of saved) {
+        for (const key of ['content', 'kind', 'writer', 'trust', 'history']) {
+          expect(Object.hasOwn(memory, key)).toBe(true);
+        }
+      }
+    });
+  });
+
+  test('says the button is exporting while the export runs, and goes back once it is saved', async () => {
+    let finish: (answer: unknown) => void = () => {};
+    bureau({
+      'bureau.memory.export': () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    });
+    await downloading(async () => {
+      const view = open();
+      await view.findByText(AISLE.content);
+
+      await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.govern.export.action }));
+
+      const busy = await view.findByRole('button', { name: MEMORY_COPY.govern.export.exporting });
+      expect(busy.hasAttribute('disabled')).toBe(true);
+      finish({ exportId: null, fileName: 'assistant-memories.json', memories: EXPORTED });
+      await view.findByRole('button', { name: MEMORY_COPY.govern.export.action });
+    });
   });
 
   test('says when an export could not be made', async () => {
@@ -1849,7 +2254,7 @@ describe('a fault the list or search met', () => {
     expect(view.queryByTestId('memory-match-count')).toBeNull();
   });
 
-  test('says no loaded memory is of the kind chosen, not that nothing matches, when the kind hides the search hits', async () => {
+  test('says no loaded memory matches the filters, not that nothing matches, when a filter hides the search hits', async () => {
     bureau({
       'bureau.memory.search': () => ({
         hits: [
@@ -1865,11 +2270,11 @@ describe('a fault the list or search met', () => {
       target: { value: 'seats' },
     });
     await view.findByTestId('memory-match-count');
-    await fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.label), {
-      target: { value: 'howTo' },
+    await fireEvent.change(view.getByLabelText(MEMORY_COPY.filter.kindLabel), {
+      target: { value: 'how-to' },
     });
 
-    await view.findByText(MEMORY_COPY.noKind.title, { selector: 'h2' });
+    await view.findByText(MEMORY_COPY.noFiltered.title, { selector: 'h2' });
     expect(view.queryByText(MEMORY_COPY.noMatch.title('seats'))).toBeNull();
     expect(textOf(view.getByTestId('memory-match-count'))).toContain('2');
   });
@@ -1929,7 +2334,43 @@ describe('a correction that was refused', () => {
     expect(view.queryByText(MEMORY_COPY.correct.notSaved.title)).toBeNull();
   });
 
-  test('is reported once on the page when the person stayed, and can be dismissed', async () => {
+  test('is said at the form, with the typed text kept, when the person stayed: not as a banner', async () => {
+    bureau({
+      'bureau.memory.correct': () => {
+        throw new StubFault('EngineFailure', 500, 'The server broke.');
+      },
+    });
+    const view = open();
+    const detail = await openDetails(view, AISLE.content);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.iconLabel }),
+    );
+    const field = within(detail).getByLabelText<HTMLTextAreaElement>(
+      MEMORY_COPY.correct.edit.label,
+    );
+    await fireEvent.input(field, { target: { value: CORRECTION } });
+
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.submit }),
+    );
+
+    // The reason is in the form, above its buttons, and nothing is reported over the list.
+    const reason = await within(detail).findByText(MEMORY_COPY.add.stillHere.server(500));
+    expect(textOf(detail)).toContain(MEMORY_COPY.correct.refusal.other.title);
+    expect(field.value).toBe(CORRECTION);
+    expect(detail.querySelector('form')?.contains(reason)).toBe(true);
+    expect(view.container.querySelector('[data-correction-draft]')).toBeNull();
+    expect(view.queryByRole('button', { name: MEMORY_COPY.correct.notSaved.editAgain })).toBeNull();
+    // Cancel and a primary Try again, which sends the same text again.
+    expect(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.cancel }),
+    ).not.toBeNull();
+    expect(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.retry }),
+    ).not.toBeNull();
+  });
+
+  test('is worded for a refusal the server named, in the form, and goes when the person cancels', async () => {
     bureau({
       'bureau.memory.correct': () => {
         throw new StubFault('Conflict', 409, 'Superseded.', { reason: 'memory-superseded' });
@@ -1943,19 +2384,17 @@ describe('a correction that was refused', () => {
     await fireEvent.input(within(detail).getByLabelText(MEMORY_COPY.correct.edit.label), {
       target: { value: CORRECTION },
     });
-
     await fireEvent.click(
       within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.submit }),
     );
 
-    await view.findByText(MEMORY_COPY.correct.notSaved.title);
-    // The panel keeps what was typed, so there is nothing to edit again.
-    expect(view.queryByRole('button', { name: MEMORY_COPY.correct.notSaved.editAgain })).toBeNull();
-    expect(
-      (within(detail).getByLabelText(MEMORY_COPY.correct.edit.label) as HTMLTextAreaElement).value,
-    ).toBe(CORRECTION);
-    await fireEvent.click(view.getByRole('button', { name: /dismiss/i }));
-    expect(view.queryByText(MEMORY_COPY.correct.notSaved.title)).toBeNull();
+    await within(detail).findByText(MEMORY_COPY.correct.refusal.superseded.title);
+    await fireEvent.click(
+      within(detail).getByRole('button', { name: MEMORY_COPY.correct.edit.cancel }),
+    );
+
+    expect(within(detail).queryByText(MEMORY_COPY.correct.refusal.superseded.title)).toBeNull();
+    expect(textOf(detail.querySelector('[data-memory-text]'))).toBe(AISLE.content);
   });
 });
 
