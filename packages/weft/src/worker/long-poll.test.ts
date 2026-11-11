@@ -1838,6 +1838,88 @@ describe('LongPollWorker', () => {
     expect(attempt2Result.cancelled).toBe(true);
   });
 
+  // Regression (COR-2295): a heartbeat answered `cancelled: true` used to abort the attempt's
+  // controller and leave its automatic heartbeat interval armed until the activity settled. The
+  // aborted-signal guard kept that interval from sending, but an activity that ignores its signal
+  // kept the real timer firing. The spies prove the exact interval is cleared at cancel time.
+  it("clears a cancelled attempt's automatic heartbeat interval while its activity ignores the signal", async () => {
+    using setIntervalSpy = spyOn(globalThis, 'setInterval');
+    using clearIntervalSpy = spyOn(globalThis, 'clearInterval');
+    // A delay no other worker or helper timer uses, so it picks out the automatic heartbeats.
+    const heartbeatIntervalMs = 23;
+    const release = createDeferred();
+    const signals = new Map<string, AbortSignal>();
+    const completedTasks: any[] = [];
+    const task = (operationId: string) => ({
+      operationId,
+      workerId: 'longpoll-worker-stubborn',
+      activityName: 'test.stubbornActivity',
+      input: operationId,
+      attemptToken: `attempt-${operationId}`,
+      visibilityTimeout: 30_000,
+    });
+
+    const scripted = startScriptedSessionServerForTesting({
+      tasks: [task('op-canceled'), task('op-live')],
+      // Only op-canceled's own attempt is told to cancel, and only once both attempts run.
+      isCancelled: (heartbeat) =>
+        signals.size === 2 &&
+        heartbeat.operationId === 'op-canceled' &&
+        heartbeat.attemptToken === 'attempt-op-canceled',
+      onResult: (result) => completedTasks.push(result),
+    });
+    server = scripted.server;
+
+    const worker = createLongPollWorkerForTesting({
+      serverUrl: scripted.serverUrl,
+      deploymentName: scripted.deploymentName,
+      concurrency: 2,
+      heartbeatIntervalMs,
+      activities: {
+        // Non-cooperative: never looks at its signal, and settles only when the test releases it.
+        stubbornActivity: async (input, context) => {
+          if (context !== undefined) signals.set(String(input), context.signal);
+          await release.promise;
+          throw new Error('settled late');
+        },
+      },
+    });
+
+    worker.start();
+    await waitForCondition(() => signals.get('op-canceled')?.aborted === true, {
+      label: 'cancelled attempt aborted',
+    });
+
+    const intervalCalls = setIntervalSpy.mock.calls as unknown as Array<readonly unknown[]>;
+    const heartbeatTimers = intervalCalls.flatMap((call, index) =>
+      call[1] === heartbeatIntervalMs
+        ? [(setIntervalSpy.mock.results[index] as { value: unknown } | undefined)?.value]
+        : [],
+    );
+    expect(heartbeatTimers).toHaveLength(2);
+    const [canceledTimer, liveTimer] = heartbeatTimers;
+    expect(signals.get('op-canceled')?.reason).toBe('Task cancelled');
+    expect(signals.get('op-live')?.aborted).toBe(false);
+    expect(clearIntervalSpy).toHaveBeenCalledWith(canceledTimer);
+    expect(clearIntervalSpy).not.toHaveBeenCalledWith(liveTimer);
+    // Both attempts are still unsettled; the cancelled one keeps its controller for the late result.
+    expect(worker.inFlight).toBe(2);
+
+    release.resolve();
+    await waitForCondition(() => completedTasks.length === 2, { label: 'late settlements' });
+    await worker.stop();
+
+    expect(completedTasks.find((t) => t.operationId === 'op-canceled')).toMatchObject({
+      status: 'cancelled',
+      error: 'Task cancelled',
+    });
+    expect(completedTasks.find((t) => t.operationId === 'op-live')).toMatchObject({
+      status: 'failed',
+      error: 'settled late',
+    });
+    expect(clearIntervalSpy).toHaveBeenCalledWith(liveTimer);
+  });
+
   describe('the scripted session server fixture', () => {
     it('serves its tasks only to the worker it was built for, even when another worker polls it first', async () => {
       const resultReceived = createDeferred<{ operationId: string; status: string }>();

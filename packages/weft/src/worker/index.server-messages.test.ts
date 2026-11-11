@@ -58,7 +58,7 @@ function scriptedServer(
 function createWorker(
   scripted: ScriptedServer,
   extra: Partial<ConstructorParameters<typeof RemoteWorker>[0]> = {},
-  activities: Record<string, (input: unknown) => Promise<unknown>> = {
+  activities: Record<string, (input: unknown, context?: ActivityContext) => Promise<unknown>> = {
     echo: async (input) => input,
   },
 ): RemoteWorker {
@@ -239,5 +239,97 @@ describe('RemoteWorker server frames', () => {
     } finally {
       sendSpy.mockRestore();
     }
+  });
+
+  // Regression (COR-2295): a matching `cancel` control used to abort the attempt's controller and
+  // leave its automatic heartbeat interval armed until the activity settled, so an activity that
+  // ignores its signal kept heartbeating a canceled attempt. The spies prove the exact interval is
+  // cleared at cancel time, without waiting out a real tick.
+  it("clears a canceled attempt's automatic heartbeat while its activity ignores the signal", async () => {
+    using setIntervalSpy = spyOn(globalThis, 'setInterval');
+    using clearIntervalSpy = spyOn(globalThis, 'clearInterval');
+    const release = createDeferred();
+    const signals = new Map<string, AbortSignal>();
+    // A 60-second lease derives a 20-second automatic heartbeat, a delay no other worker timer uses.
+    const leaseMilliseconds = 60_000;
+    const activityHeartbeatMilliseconds = 20_000;
+    const taskFrame = (operationId: string, activityName: string, visibilityTimeout?: number) =>
+      JSON.stringify({
+        type: 'task',
+        operationId,
+        attemptToken: `attempt-${operationId}`,
+        activityName,
+        input: operationId,
+        ...(visibilityTimeout === undefined ? {} : { visibilityTimeout }),
+      });
+    const cancelFrame = (attemptToken: string, reason: string) =>
+      JSON.stringify({ type: 'cancel', operationId: 'op-canceled', attemptToken, reason });
+    const server = scriptedServer((ws) => {
+      // Frames on one connection are handled in send order, and each task registers its attempt
+      // and arms its heartbeat before its first await, so the barrier's result proves every
+      // cancellation before it already ran.
+      ws.send(taskFrame('op-canceled', 'orders.stubborn', leaseMilliseconds));
+      ws.send(taskFrame('op-live', 'orders.stubborn', leaseMilliseconds));
+      ws.send(cancelFrame('attempt-stale', 'stale'));
+      ws.send(cancelFrame('attempt-op-canceled', 'operator stop'));
+      ws.send(cancelFrame('attempt-op-canceled', 'repeated'));
+      ws.send(taskFrame('op-barrier', 'orders.echo'));
+    });
+    scripted = server;
+    const taskResults = () => server.received.filter((message) => message['type'] === 'taskResult');
+    worker = createWorker(
+      server,
+      {},
+      {
+        echo: async (input) => input,
+        // Non-cooperative: never looks at its signal, and settles only when the test releases it.
+        stubborn: async (input, context) => {
+          if (context !== undefined) signals.set(String(input), context.signal);
+          await release.promise;
+          throw new Error('settled late');
+        },
+      },
+    );
+
+    await worker.connect();
+    await waitForCondition(
+      () =>
+        signals.size === 2 &&
+        taskResults().some((message) => message['operationId'] === 'op-barrier'),
+      { label: 'barrier result after the cancellations' },
+    );
+
+    const intervalCalls = setIntervalSpy.mock.calls as unknown as Array<readonly unknown[]>;
+    const heartbeatTimers = intervalCalls.flatMap((call, index) =>
+      call[1] === activityHeartbeatMilliseconds
+        ? [(setIntervalSpy.mock.results[index] as { value: unknown } | undefined)?.value]
+        : [],
+    );
+    expect(heartbeatTimers).toHaveLength(2);
+    const [canceledTimer, liveTimer] = heartbeatTimers;
+    expect(signals.get('op-canceled')?.reason).toBe('operator stop');
+    expect(signals.get('op-live')?.aborted).toBe(false);
+    expect(clearIntervalSpy).toHaveBeenCalledWith(canceledTimer);
+    expect(clearIntervalSpy).not.toHaveBeenCalledWith(liveTimer);
+    // Both stubborn attempts are still unsettled; only the barrier finished.
+    expect(worker.inFlight).toBe(2);
+
+    release.resolve();
+    await waitForCondition(() => worker!.inFlight === 0, { label: 'late settlements' });
+
+    expect(taskResults().find((message) => message['operationId'] === 'op-canceled')).toMatchObject(
+      { status: 'cancelled', error: 'operator stop' },
+    );
+    expect(taskResults().find((message) => message['operationId'] === 'op-live')).toMatchObject({
+      status: 'failed',
+      error: 'settled late',
+    });
+    expect(clearIntervalSpy).toHaveBeenCalledWith(liveTimer);
+    expect(
+      server.received.filter(
+        (message) =>
+          message['type'] === 'activityHeartbeat' && message['operationId'] === 'op-canceled',
+      ),
+    ).toEqual([]);
   });
 });

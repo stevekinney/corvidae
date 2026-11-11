@@ -384,7 +384,13 @@ export class LongPollWorker implements Disposable {
         reason?: string;
       };
       if (body.cancelled === true) {
-        controller.abort(body.reason ?? DEFAULT_CANCELLED_TASK_ERROR);
+        // Clears this attempt's automatic heartbeat interval too (COR-2295),
+        // so an activity that ignores its signal stops heartbeating.
+        this.#taskAbortControllers.cancel(
+          task.operationId,
+          task.attemptToken,
+          body.reason ?? DEFAULT_CANCELLED_TASK_ERROR,
+        );
       }
     } catch {}
   }
