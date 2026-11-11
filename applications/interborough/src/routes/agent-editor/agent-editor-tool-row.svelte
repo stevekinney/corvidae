@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * One tool in the editor: what names it (the caller's `lead`: plain text in the chosen list, a
-   * checkbox in the picker), a marker when it asks first or is refused, the line a person is shown
+   * checkbox in the picker), a marker in muted words when it asks first or is refused (never a
+   * coloured pill, S32), the line a person is shown
    * for it, and, when the model is told more than the line says, a disclosure with the full text.
    * The line is at most 120 characters (`lib/tool-line.ts`), so a tool whose description is a long
    * prompt does not turn the list into a wall of text. A caller's `trailing` control (Remove) sits
@@ -10,7 +11,7 @@
    * The disclosure is Cinder's flat `Collapsible`, shrunk below to a quiet text control that sits
    * on the line's row: a list of one-line rows cannot afford a full-width trigger.
    */
-  import { Badge, Collapsible } from '@lostgradient/cinder';
+  import { Collapsible } from '@lostgradient/cinder';
   import type { Snippet } from 'svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
@@ -39,11 +40,10 @@
   <div class="weft-tool-row__name">
     {@render lead()}
     {#if standing !== 'runs'}
-      <Badge
-        size="sm"
-        variant={standing === 'blocked' ? 'danger' : 'warning'}
+      <span
+        class="weft-tool-row__standing"
         data-testid="agent-tool-standing"
-        data-standing={standing}>{copy.toolStanding[standing]}</Badge
+        data-standing={standing}>{copy.toolStanding[standing]}</span
       >
     {/if}
   </div>
@@ -97,6 +97,12 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
+  }
+
+  /* Whether the tool asks first, in muted words in the body face beside its monospaced name. */
+  .weft-tool-row__standing {
+    font-family: var(--cinder-font-sans);
+    color: var(--cinder-text-muted);
   }
 
   /* The line, and the disclosure that follows it on the same row while there is room. */

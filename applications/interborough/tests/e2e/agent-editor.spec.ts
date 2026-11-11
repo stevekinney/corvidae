@@ -362,7 +362,7 @@ test.describe('Duplicate', () => {
     await page.goto('/agents/new?from=single-model');
     await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
     await page.getByRole('button', { name: words.createAction }).click();
-    await expect(page.getByText(words.identifierTaken['agent-file-exists'])).toBeVisible();
+    await expect(page.getByText(words.identifierTaken('single-model-copy'))).toBeVisible();
     expect(new URL(page.url()).pathname).toBe('/agents/new');
   });
 

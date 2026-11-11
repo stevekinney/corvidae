@@ -380,6 +380,85 @@ export const EFFORT_LABELS = {
 /** The words the agent editor uses outside its view states (`/agents/new`, `/agents/:agent/edit`). */
 export const AGENT_EDITOR_COPY = {
   createHeading: 'New agent',
+  /**
+   * The New agent form (`/agents/new`, board PageAgentEditor): the line under the heading, the
+   * identifier the name sets and the field that changes it, what a submit says at a field, the
+   * tools table and its Asks selects, the question before leaving with unsaved changes, and what
+   * the form says while a save is in flight, when it fails, and when it is not answered.
+   */
+  newAgent: {
+    /** The line under the heading (row 41a). */
+    subtitle:
+      'An agent is a model with instructions and tools. Try it beside the form before you save.',
+    /** The icon button beside the file path (row 41c), and what it says once it has copied. */
+    copyFilePath: 'Copy the file path',
+    copiedFilePath: 'File path copied',
+    /** What follows the identifier while it follows the name (row 41e). */
+    setFromName: ', set from the name',
+    /** The link that turns the identifier into a field (rows 41e, 42x), and its accessible name. */
+    changeIdentifier: 'Change',
+    changeIdentifierLabel: 'Change the ID',
+    /** The hint under the identifier field once it can be changed (row 42x). */
+    identifierHint:
+      'Lowercase letters, numbers and hyphens. It appears in URLs and wherever you type the agent’s name.',
+    /** The action that puts the identifier back to the one the name sets (row 42x). */
+    resetIdentifier: (identifier: string): string => `Reset to ${identifier}`,
+    /** The message at Name after a submit with no name (row 42m). */
+    nameRequired: 'Enter a name. It becomes the agent’s ID.',
+    /** The message at Name when it holds no letter or digit an identifier could be made of. */
+    nameNeedsLetters: 'Use letters or numbers in the name. It becomes the agent’s ID.',
+    /** The message at Name when the identifier it sets is taken (rows 42n, 14u). */
+    nameTaken: (name: string): string =>
+      `An agent named ${name} already exists. Pick another name.`,
+    /** The message at Model after a submit with no model, or one that cannot be saved (row 42m). */
+    modelRequired: 'Choose a model so the agent can answer.',
+    /** What leads the link to Settings › Models under the abilities (row 41h). */
+    notListed: 'Not listed? Connect a provider in',
+    /** The model field when the catalog did not load (row 42v): a failure, so a danger callout. */
+    modelsFailed: {
+      placeholder: 'No models to show',
+      title: 'Couldn’t load models',
+      description: 'The provider list didn’t load. You can keep editing.',
+      retry: 'Try again',
+    },
+    /** The Tools section while the catalog has not loaded: its tools come with its models. */
+    toolsWaitOnModels: 'The tools load with the models.',
+    /** The counter at the right of the Instructions label (row 41i), as two words. */
+    instructionsFormat: 'Markdown',
+    wordCount: (count: number): string => (count === 1 ? '1 word' : `${String(count)} words`),
+    /** The count beside the Tools title (row 41k), such as `3 of 9`. */
+    toolCount: (chosen: number, offered: number): string =>
+      `${String(chosen)} of ${String(offered)}`,
+    /** The tools table (rows 41k, 41l): its caption and columns. */
+    toolsCaption: 'The tools this agent may call',
+    columns: { tool: 'Tool', risk: 'Risk', asks: 'Asks' },
+    /** The accessible name of a row's Asks select. */
+    asksLabel: (tool: string): string => `When ${tool} asks first`,
+    /** An Asks option; the tool's own default says so (row 41l). */
+    asksOption: (level: string, isDefault: boolean): string =>
+      isDefault ? `${level} (default)` : level,
+    /** The note under the tools table (row 41m). */
+    asksNote:
+      'Each Asks level starts at the tool’s default and is set here with one select per row while the agent is new; once it is saved, the Access tab owns the levels and every change there saves a version.',
+    /** The sticky bar's status while a save is in flight (rows 43j, 14w). */
+    saving: 'Saving…',
+    /** The banner's text when the server failed a save (row 42w), or did not answer at all. */
+    serverError: (status: number | undefined): string =>
+      status === undefined
+        ? 'Interborough didn’t answer. Nothing was changed. What you typed is still here.'
+        : `The server answered with an error (${String(status)}). Nothing was changed. What you typed is still here.`,
+    /** What the form says when a save has had no answer for 15 seconds (row 14x). */
+    timedOut: 'Couldn’t confirm the save. Your changes are still here.',
+    tryAgain: 'Try again',
+    /** The question before leaving a form that differs from what was saved (rows 42o, 42p). */
+    leave: {
+      title: 'Leave without saving?',
+      description: (changed: readonly string[]): string =>
+        `This agent has changes that aren’t saved: ${nameList(changed)}. Leaving discards them.`,
+      keep: 'Keep editing',
+      discard: 'Discard and leave',
+    },
+  },
   /** The name a copy of an agent starts with. */
   copyName: (name: string): string => `${name} copy`,
   /** Duplicate (`/agents/new?from=`): what the page says about the agent it copies. */
@@ -447,6 +526,8 @@ export const AGENT_EDITOR_COPY = {
   remote: {
     fileLabel: 'Stored in',
     noProvider: {
+      description:
+        'An agent needs a model to answer. This installation keeps its provider keys in its deployment, so connect one there, then check again.',
       configurationStep:
         'Put this in configuration.json in the bucket. If it exists, add the provider’s plugin to its plugins.',
       secretStep:
@@ -495,21 +576,25 @@ export const AGENT_EDITOR_COPY = {
   /** The keyboard shortcut's group in the `?` map. */
   shortcutGroup: 'Agent editor',
   nameLabel: 'Name',
-  nameDescription: 'What people see. It need not be unique.',
+  nameDescription: 'What people see.',
   identifierLabel: 'Identifier',
   identifierCreateDescription: 'The file name, without .md. Fixed once saved.',
   identifierEditDescription: 'The file name, without .md. It cannot change.',
-  identifierInvalid:
-    'Use lowercase letters, digits, and hyphens, starting and ending with a letter or digit, in at most 64 characters.',
+  /** What an identifier that is not a file name gets at its field on submit (row 42y). */
+  identifierInvalid: 'Use lowercase letters, numbers and hyphens, for example order-helper.',
   /** `new` is the address of the page that creates an agent, so an agent called `new` could never be opened. */
   identifierReserved:
     'This identifier is reserved: /agents/new is the page that creates an agent, so an agent called new could never be opened. Choose another.',
-  identifierTaken: {
-    'agent-file-exists': 'This identifier is taken. Another agent’s file already uses it.',
-    'shadows-code-agent': 'This identifier is taken. An agent defined in code already uses it.',
-  },
+  /**
+   * What a typed identifier the Bureau refused gets at its field (row 42y), whether a file or an
+   * agent defined in code holds it. An identifier the name set says so at the name instead
+   * (`newAgent.nameTaken`).
+   */
+  identifierTaken: (identifier: string): string =>
+    `An agent with the ID ${identifier} already exists. Pick another ID.`,
   descriptionLabel: 'Description',
-  descriptionDescription: 'What the agent does. Optional.',
+  /** The helper under Description (row 41f). */
+  descriptionDescription: 'Shown in the agent list and when picking an agent.',
   modelLabel: 'Model',
   modelDescription: 'The models this installation offers.',
   modelPlaceholder: 'Choose a model',
@@ -594,8 +679,11 @@ export const AGENT_EDITOR_COPY = {
    */
   noProvider: {
     title: 'No model provider yet',
+    /** What the card says under its title (row 42b). */
     description:
-      'Agents run on a model, and this installation has none connected. Connect a provider, then come back: this page shows the form as soon as the installation offers a model.',
+      'An agent needs a model to answer. Connect a provider in Settings › Models; you return to this form afterwards.',
+    /** The line under Connect a provider (row 42b). */
+    blocked: 'Nothing else on this form works until then.',
     configurationStep:
       'Put this in the configuration file. If the file exists, add the provider’s plugin to its plugins.',
     secretStep: 'Save the provider’s API key in its own file, readable only by you (chmod 600).',
@@ -656,7 +744,8 @@ export const AGENT_EDITOR_COPY = {
   /** The badge on an agent file the Bureau cannot use, in the agent list. */
   invalidBadge: 'Invalid file',
   forbidden: 'This installation does not let you change agents.',
-  createAction: 'Create agent',
+  /** Save on the New agent form (row 42n): the sticky bar reads Cancel, then Save. */
+  createAction: 'Save',
   saveAction: 'Save changes',
   cancelAction: 'Cancel',
   deleteAction: 'Delete agent',
@@ -666,7 +755,8 @@ export const AGENT_EDITOR_COPY = {
       `This removes the file for ${name}. Runs that already happened keep the version they used.`,
     confirm: 'Delete agent',
   },
-  saveFailed: 'The agent was not saved',
+  /** The title of the banner above the form when a save failed (row 42w). */
+  saveFailed: 'Couldn’t save the agent',
   deleteFailed: 'The agent was not deleted',
   stale: {
     title: 'This agent changed outside Interborough',

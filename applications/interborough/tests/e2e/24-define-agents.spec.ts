@@ -136,10 +136,10 @@ test.describe('a new agent', () => {
       // The chosen model's abilities show under the field.
       await expect(page.getByTestId('agent-model-abilities')).toBeVisible();
       await page.keyboard.press('Escape');
-      // A new agent has no tool; the picker offers each tool the catalog lists, once.
-      await expect(page.getByTestId('agent-tool-count')).toHaveText(
-        copy.toolCount(0, catalog.tools.length),
-      );
+      // A new agent has no tool; the picker offers each tool the catalog lists, once. The count
+      // sits beside the Tools title (row 41k).
+      const toolsSection = page.getByRole('group', { name: /^Tools/ });
+      await expect(toolsSection).toContainText(copy.newAgent.toolCount(0, catalog.tools.length));
       await expect(page.getByRole('checkbox')).toHaveCount(0);
       await openToolPicker(page);
       await expect(page.getByRole('checkbox')).toHaveCount(catalog.tools.length);
@@ -149,14 +149,13 @@ test.describe('a new agent', () => {
       await closeToolPicker(page);
 
       await page.getByRole('textbox', { name: /^Name/ }).fill('E2E New Agent');
-      await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue('e2e-new-agent');
+      // The identifier follows the name, shown once (row 41e).
+      await expect(page.getByTestId('agent-identifier')).toContainText('e2e-new-agent');
       await page
         .getByRole('textbox', { name: /^Instructions/ })
         .fill('Answer in one short sentence.');
       await addTools(page, ['demo:lookup-order']);
-      await expect(page.getByTestId('agent-tool-count')).toHaveText(
-        copy.toolCount(1, catalog.tools.length),
-      );
+      await expect(toolsSection).toContainText(copy.newAgent.toolCount(1, catalog.tools.length));
       await checkA11y(`new agent at ${width}px`);
 
       await page.getByRole('button', { name: copy.createAction }).click();
@@ -195,7 +194,7 @@ test.describe('a new agent', () => {
     await expect(editor(page)).toHaveAttribute('data-state', 'ready');
     for (const field of [
       page.getByRole('textbox', { name: /^Name/ }),
-      page.getByRole('textbox', { name: /^Identifier/ }),
+      page.getByTestId('agent-identifier'),
       page.getByRole('textbox', { name: /^Description/ }),
       page.getByRole('combobox', { name: 'Model' }),
       page.getByRole('textbox', { name: /^Instructions/ }),
@@ -203,13 +202,13 @@ test.describe('a new agent', () => {
     ]) {
       await expect(field).toBeInViewport({ ratio: 1 });
     }
-    // Five titled sections, in the order a person fills them in. The tools are a group of
-    // checkboxes, so its title is the group's legend rather than a heading.
+    // Four titled sections, in the order a person fills them in: a new agent has no Guardrails and
+    // limits, which the Access tab sets once it is saved (S31). The tools are a group, so its title
+    // is the group's legend rather than a heading.
     await expect(editor(page).getByRole('heading', { level: 2 })).toHaveText([
       copy.sections.identity,
       copy.sections.model,
       copy.sections.instructions,
-      copy.sections.limits,
     ]);
     await expect(page.getByRole('group', { name: copy.sections.tools })).toBeVisible();
   });
@@ -291,24 +290,25 @@ test.describe('a new agent', () => {
     await search.fill('');
     await expect(picker.locator('fieldset [data-tool]')).toHaveCount(catalog.tools.length);
 
-    // Choosing from the picker puts the tools in the form's list, the asks-first marker with them.
+    // Choosing from the picker puts the tools in the form's table, each with its risk and an Asks
+    // select at the tool's default (rows 41k, 41l).
     await closeToolPicker(page);
     const asks = asking[0]?.name ?? '';
     await addTools(page, [reading?.name ?? '', asks]);
-    await expect(page.getByTestId('agent-tool-count')).toHaveText(
-      copy.toolCount(2, catalog.tools.length),
+    const toolsSection = page.getByRole('group', { name: /^Tools/ });
+    await expect(toolsSection).toContainText(copy.newAgent.toolCount(2, catalog.tools.length));
+    const chosen = page.getByTestId('agent-tools-table');
+    await expect(chosen.locator('tbody [data-tool]')).toHaveCount(2);
+    await expect(chosen.locator(`[data-tool="${asks}"] select`)).not.toHaveValue('never');
+    await expect(chosen.locator(`[data-tool="${reading?.name ?? ''}"] select`)).toHaveValue(
+      'never',
     );
-    const chosen = page.getByRole('list', { name: copy.chosenToolsLabel });
-    await expect(chosen.locator('[data-tool]')).toHaveCount(2);
-    await expect(
-      chosen.locator(`[data-tool="${asks}"]`).getByTestId('agent-tool-standing'),
-    ).toHaveText(copy.toolStanding['asks-first']);
 
-    // Removing one leaves the other, and the save writes only that one.
-    await chosen.getByRole('button', { name: copy.removeToolLabel(reading?.name ?? '') }).click();
-    await expect(page.getByTestId('agent-tool-count')).toHaveText(
-      copy.toolCount(1, catalog.tools.length),
-    );
+    // Clearing one in the picker leaves the other, and the save writes only that one.
+    await openToolPicker(page);
+    await page.getByRole('checkbox', { name: reading?.name ?? '', exact: true }).uncheck();
+    await closeToolPicker(page);
+    await expect(toolsSection).toContainText(copy.newAgent.toolCount(1, catalog.tools.length));
     await page.getByRole('textbox', { name: /^Name/ }).fill('E2E Tool Picker');
     await page.getByRole('textbox', { name: /^Instructions/ }).fill('Use the one tool.');
     await page.getByRole('button', { name: copy.createAction }).click();
@@ -325,8 +325,13 @@ test.describe('a new agent', () => {
     await page.goto('/agents/new');
     await page.getByRole('textbox', { name: /^Name/ }).fill('New');
 
+    // Save stays enabled; the submit says why at the name, and focuses it (W35, row 14u).
+    const save = page.getByRole('button', { name: copy.createAction, exact: true });
+    await expect(save).toBeEnabled();
+    await save.click();
     await expect(page.getByText(copy.identifierReserved)).toBeVisible();
-    await expect(page.getByRole('button', { name: copy.createAction })).toBeDisabled();
+    await expect(page.getByRole('textbox', { name: /^Name/ })).toBeFocused();
+    await expect(page).toHaveURL(/\/agents\/new$/);
   });
 
   test('reports a taken identifier on its field, for a file and for a code-defined agent, and writes nothing', async ({
@@ -336,18 +341,23 @@ test.describe('a new agent', () => {
     await makeAgent(request, 'e2e-taken');
     await page.goto('/agents/new');
     await page.getByRole('textbox', { name: /^Name/ }).fill('E2E Taken');
-    await page.getByRole('button', { name: copy.createAction }).click();
+    await page.getByRole('button', { name: copy.createAction, exact: true }).click();
 
-    const identifier = page.getByRole('textbox', { name: /^Identifier/ });
-    await expect(page.getByText(copy.identifierTaken['agent-file-exists'])).toBeVisible();
-    await expect(identifier).toHaveAttribute('aria-invalid', 'true');
+    // The name set the identifier, so the name says it is taken (rows 42n, 14u).
+    const name = page.getByRole('textbox', { name: /^Name/ });
+    await expect(page.getByText(copy.newAgent.nameTaken('E2E Taken'))).toBeVisible();
+    await expect(name).toHaveAttribute('aria-invalid', 'true');
     await expect(page).toHaveURL(/\/agents\/new$/);
     const untouched = await readAgent(request, 'e2e-taken');
     expect(untouched.definition?.name).toBe(BASE_DEFINITION.name);
 
+    // A typed identifier a code-defined agent holds is refused at the identifier (row 42y).
+    await page.getByRole('button', { name: copy.newAgent.changeIdentifierLabel }).click();
+    const identifier = page.getByRole('textbox', { name: /^Identifier/ });
     await identifier.fill('echo-image');
-    await page.getByRole('button', { name: copy.createAction }).click();
-    await expect(page.getByText(copy.identifierTaken['shadows-code-agent'])).toBeVisible();
+    await page.getByRole('button', { name: copy.createAction, exact: true }).click();
+    await expect(page.getByText(copy.identifierTaken('echo-image'))).toBeVisible();
+    await expect(identifier).toHaveAttribute('aria-invalid', 'true');
     await expect(page).toHaveURL(/\/agents\/new$/);
   });
 });

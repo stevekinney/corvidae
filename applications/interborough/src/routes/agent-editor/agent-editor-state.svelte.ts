@@ -177,6 +177,81 @@ export type ModelContext = {
 /** The fields of an agent definition a form is filled from: a file agent's, or a copy's. */
 export type DefinitionSeed = NonNullable<AgentDetail['definition']>;
 
+/**
+ * The catalog of a form built before the catalog could be read (row 42v): nothing to offer yet. The
+ * form keeps what is typed, and adopts the catalog when a retry reads it
+ * ({@link AgentEditorState.withCatalog}).
+ */
+const NO_CATALOG: AgentCatalog = { models: [], tools: [] };
+
+/** Why a model the agent names cannot be saved as it is: the Bureau refuses each of these. */
+const REFUSED_MODEL_REASONS: ReadonlySet<string> = new Set([
+  'provider-denied',
+  'model-denied',
+  'retired',
+  'not-in-catalog',
+]);
+
+/**
+ * The id of the element a submit focuses for each field that can stop a save, in the order the form
+ * shows them, so the first problem is the first one a person reads.
+ */
+export const FIELD_IDS = {
+  name: 'agent-name',
+  identifier: 'agent-identifier',
+  model: 'agent-model',
+  effort: 'agent-default-effort',
+  guardrails: 'agent-guardrails',
+  stepLimit: 'agent-step-limit',
+  spendPerRun: 'agent-spend-per-run',
+  spendPerChat: 'agent-spend-per-chat',
+  toolCalls: 'agent-tool-calls',
+  toolSeconds: 'agent-tool-seconds',
+} as const;
+
+/** The parts of the form the leave question names, in the form's order (row 42o). */
+type FormPart =
+  'name' | 'identifier' | 'description' | 'model' | 'instructions' | 'tools' | 'limits' | 'a2a';
+
+/** The words the leave question uses for each part of the form. */
+const PART_LABELS: Readonly<Record<FormPart, string>> = {
+  name: AGENT_EDITOR_COPY.nameLabel,
+  identifier: AGENT_EDITOR_COPY.identifierLabel,
+  description: AGENT_EDITOR_COPY.descriptionLabel,
+  model: AGENT_EDITOR_COPY.sections.model,
+  instructions: AGENT_EDITOR_COPY.sections.instructions,
+  tools: AGENT_EDITOR_COPY.sections.tools,
+  limits: AGENT_EDITOR_COPY.sections.limits,
+  a2a: AGENT_EDITOR_COPY.a2aLabel,
+};
+
+/** The parts in the form's order. */
+const FORM_PARTS: readonly FormPart[] = [
+  'name',
+  'identifier',
+  'description',
+  'model',
+  'instructions',
+  'tools',
+  'limits',
+  'a2a',
+];
+
+/** The limit fields in the form's order, for the first problem a submit focuses. */
+const LIMIT_FIELDS: readonly LimitField[] = [
+  'guardrails',
+  'stepLimit',
+  'spendPerRun',
+  'spendPerChat',
+  'toolCalls',
+  'toolSeconds',
+];
+
+/** The number of words in `text`, as the Instructions counter shows it (row 41i). */
+export function wordCount(text: string): number {
+  return text.split(/\s+/).filter((word) => word !== '').length;
+}
+
 export class AgentEditorState {
   readonly mode: 'create' | 'edit';
   /** The identifier of the agent being edited. A new agent has none until it is named. */
@@ -243,11 +318,20 @@ export class AgentEditorState {
    */
   #keptGuardrails: readonly AgentGuardrailEntry[] | null = null;
   /**
-   * When each tool asks first, as the file wrote it (the Access tab edits it): carried through a
-   * save, pruned to the tools still chosen, because the Bureau refuses a file whose `approvals`
-   * names a tool that `tools` does not.
+   * When each tool asks first, as the file wrote it (the Access tab edits it, and a new agent's form
+   * sets it per row, row 41l): carried through a save, pruned to the tools still chosen, because
+   * the Bureau refuses a file whose `approvals` names a tool that `tools` does not.
    */
-  readonly #approvals: Readonly<Record<string, ToolApproval>> | null;
+  #approvals = $state<Readonly<Record<string, ToolApproval>> | null>(null);
+
+  /** Whether the form was built before the catalog could be read, so it offers nothing yet (row 42v). */
+  readonly catalogMissing: boolean;
+
+  /** Set by the first submit: from then on each field that stops a save says why (rows 42m, 42y). */
+  #attempted = $state(false);
+
+  /** What each part of the form held when it was built, so the leave question names what changed. */
+  #baseline: Readonly<Record<FormPart, string>> | undefined;
 
   /**
    * The documents the file's `references` name, beside it. A save of an existing agent leaves them
@@ -282,6 +366,7 @@ export class AgentEditorState {
     seed?: DefinitionSeed,
   ) {
     this.mode = mode;
+    this.catalogMissing = catalog === NO_CATALOG;
     this.toolChoices = catalog.tools;
     const definition = seed ?? detail?.definition ?? null;
     this.#editedId = detail?.id;
@@ -341,7 +426,39 @@ export class AgentEditorState {
 
   /** A form for a new agent, with the first model that can be chosen. */
   static create(catalog: AgentCatalog, context: ModelContext = {}): AgentEditorState {
-    return new AgentEditorState('create', catalog, undefined, context);
+    return new AgentEditorState('create', catalog, undefined, context).#settled();
+  }
+
+  /**
+   * A form for a new agent built while the catalog could not be read (row 42v): it offers no model
+   * and no tool, says so at the Model field, and keeps what is typed until {@link withCatalog}.
+   */
+  static withoutCatalog(context: ModelContext = {}): AgentEditorState {
+    return new AgentEditorState('create', NO_CATALOG, undefined, context).#settled();
+  }
+
+  /**
+   * This new agent's form again, built from a catalog that has now been read, with what was typed
+   * carried over: the name, the identifier if it was typed, the description, the instructions and
+   * the A2A switch. The model is the first one offered, and what counts as changed is still
+   * measured from the form as it was first built.
+   */
+  withCatalog(catalog: AgentCatalog, context: ModelContext = {}): AgentEditorState {
+    const next = new AgentEditorState('create', catalog, undefined, context);
+    next.name = this.name;
+    next.#typedIdentifier = this.#typedIdentifier;
+    next.description = this.description;
+    next.instructions = this.instructions;
+    next.a2a = this.a2a;
+    next.#attempted = this.#attempted;
+    next.#baseline = this.#baseline;
+    return next;
+  }
+
+  /** Records what the form holds now as what it was built with: nothing has changed yet. */
+  #settled(): AgentEditorState {
+    this.#baseline = this.#parts();
+    return this;
   }
 
   /**
@@ -359,7 +476,7 @@ export class AgentEditorState {
   ): AgentEditorState {
     const state = new AgentEditorState('create', catalog, undefined, context, seed);
     if (identifier !== '') state.#typedIdentifier = identifier;
-    return state;
+    return state.#settled();
   }
 
   /** A form filled from an agent file that loaded. */
@@ -371,7 +488,7 @@ export class AgentEditorState {
     if (detail.definition === null || detail.hash === null) {
       throw new TypeError(`The agent "${detail.id}" has no definition to edit.`);
     }
-    return new AgentEditorState('edit', catalog, detail, context);
+    return new AgentEditorState('edit', catalog, detail, context).#settled();
   }
 
   /** The agent's identifier: fixed once it exists, otherwise what the person typed or the name suggests. */
@@ -387,10 +504,7 @@ export class AgentEditorState {
   /** Why the identifier cannot be used, in words, or `''` when nothing is wrong with it yet. */
   get identifierError(): string {
     if (this.mode === 'edit') return '';
-    const taken = this.#taken;
-    if (taken !== null && taken.identifier === this.identifier) {
-      return AGENT_EDITOR_COPY.identifierTaken[taken.reason];
-    }
+    if (this.#takenNow()) return AGENT_EDITOR_COPY.identifierTaken(this.identifier);
     if (this.identifier === RESERVED_IDENTIFIER) return AGENT_EDITOR_COPY.identifierReserved;
     return this.identifier !== '' && !this.#identifierIsValid()
       ? AGENT_EDITOR_COPY.identifierInvalid
@@ -400,6 +514,159 @@ export class AgentEditorState {
   /** Records that the Bureau refused the identifier as it is now. */
   markIdentifierTaken(reason: IdentifierConflictReason): void {
     this.#taken = { identifier: this.identifier, reason };
+  }
+
+  /** Whether the Bureau refused the identifier as it is now. */
+  #takenNow(): boolean {
+    const taken = this.#taken;
+    return taken !== null && taken.identifier === this.identifier;
+  }
+
+  /**
+   * Whether the identifier still follows the name (rows 41e, 42x): a new agent's does until Change
+   * is pressed, and a copy's starts as a field that holds the identifier the copy suggests.
+   */
+  get identifierFollowsName(): boolean {
+    return this.mode === 'create' && this.#typedIdentifier === null;
+  }
+
+  /** The identifier the name sets, which Reset puts back (row 42x). */
+  get suggestedIdentifier(): string {
+    return slugify(this.name);
+  }
+
+  /** Change (rows 41e, 42x): the identifier becomes a field, holding the one the name set. */
+  changeIdentifier(): void {
+    if (this.mode === 'create' && this.#typedIdentifier === null) {
+      this.#typedIdentifier = this.identifier;
+    }
+  }
+
+  /** Reset (row 42x): the identifier follows the name again. */
+  resetIdentifier(): void {
+    if (this.mode === 'create') this.#typedIdentifier = null;
+  }
+
+  /** Whether a submit has been tried, so each field that stops a save says why. */
+  get attempted(): boolean {
+    return this.#attempted;
+  }
+
+  /** Records a submit: from now on each field that stops a save says why at the field. */
+  attempt(): void {
+    this.#attempted = true;
+  }
+
+  /**
+   * Why the name cannot be saved, in words, or `''`. A new agent's identifier comes from its name
+   * while it follows it, so what is wrong with that identifier is said at the name (rows 42m, 42n).
+   */
+  get nameError(): string {
+    if (!this.identifierFollowsName) return '';
+    const copy = AGENT_EDITOR_COPY.newAgent;
+    if (this.name.trim() === '') return copy.nameRequired;
+    if (this.#takenNow()) return copy.nameTaken(this.name.trim());
+    if (this.identifier === RESERVED_IDENTIFIER) return AGENT_EDITOR_COPY.identifierReserved;
+    return this.identifier === '' ? copy.nameNeedsLetters : '';
+  }
+
+  /** Why the model cannot be saved, in words, or `''`: a form with no model cannot (row 42m). */
+  get modelError(): string {
+    return this.model === '' ? AGENT_EDITOR_COPY.newAgent.modelRequired : '';
+  }
+
+  /**
+   * Whether the chosen model is one the Bureau refuses at a save (one the policy forbids, or one
+   * retired or gone from the catalog): a submit still sends it, so the Bureau's reason shows, and
+   * focuses the field whose notice says so (row 43s).
+   */
+  get modelRefused(): boolean {
+    const unavailable = this.chosenModel?.unavailable;
+    return unavailable !== undefined && REFUSED_MODEL_REASONS.has(unavailable);
+  }
+
+  /**
+   * The messages the name, identifier and model fields show: none until a submit, then why each
+   * stops a save (rows 42m, 42y). A refusal from the Bureau answers a submit, so it shows as soon as
+   * it comes. The effort and limit fields say what is wrong as it is typed, and are not here.
+   */
+  get shownErrors(): {
+    readonly name: string;
+    readonly identifier: string;
+    readonly model: string;
+  } {
+    const follows = this.identifierFollowsName;
+    if (!this.#attempted && !this.#takenNow()) return { name: '', identifier: '', model: '' };
+    return {
+      name: follows ? this.nameError : '',
+      identifier: follows ? '' : this.identifierError,
+      model: this.#attempted ? this.modelError : '',
+    };
+  }
+
+  /**
+   * The id of the field a submit focuses: the first one, in the form's order, that stops a save, or
+   * the Model field when the Bureau will refuse its model; `undefined` when there is none (rows 14u,
+   * 43s, W35).
+   */
+  get firstProblem(): string | undefined {
+    if (this.mode === 'create') {
+      const follows = this.identifierFollowsName;
+      if (follows && this.nameError !== '') return FIELD_IDS.name;
+      if (!follows && (this.identifierError !== '' || this.identifier === '')) {
+        return FIELD_IDS.identifier;
+      }
+    }
+    if (!this.hasModels || this.modelError !== '' || this.modelRefused) return FIELD_IDS.model;
+    if (this.effortError !== '') return FIELD_IDS.effort;
+    const limits = this.limitErrors;
+    const field = LIMIT_FIELDS.find((candidate) => limits[candidate] !== undefined);
+    return field === undefined ? undefined : FIELD_IDS[field];
+  }
+
+  /** What each part of the form holds now, as text the leave question compares. */
+  #parts(): Record<FormPart, string> {
+    return {
+      name: this.name,
+      identifier: this.#typedIdentifier ?? '',
+      description: this.description,
+      model: `${this.model}\n${this.effort}`,
+      instructions: this.instructions,
+      tools: JSON.stringify([[...this.tools].sort(), this.#approvals]),
+      limits: [
+        this.guardrails,
+        this.stepLimit,
+        this.spendPerRun,
+        this.spendPerChat,
+        this.toolCalls,
+        this.toolSeconds,
+      ].join('\n'),
+      a2a: String(this.a2a),
+    };
+  }
+
+  /**
+   * The parts of the form that differ from what it was built with, in its order, in the words the
+   * leave question names them (row 42o). Empty while nothing has changed, so a new agent with
+   * nothing typed is left without asking (row 42p).
+   */
+  get changedParts(): readonly string[] {
+    const baseline = this.#baseline;
+    if (baseline === undefined) return [];
+    const now = this.#parts();
+    return FORM_PARTS.filter((part) => now[part] !== baseline[part]).map(
+      (part) => PART_LABELS[part],
+    );
+  }
+
+  /** Whether anything in the form differs from what it was built with. */
+  get changed(): boolean {
+    return this.changedParts.length > 0;
+  }
+
+  /** How many words the instructions hold, for the counter beside their label (row 41i). */
+  get instructionWords(): number {
+    return wordCount(this.instructions);
   }
 
   #identifierIsValid(): boolean {
@@ -528,6 +795,17 @@ export class AgentEditorState {
     return written !== null && Object.hasOwn(written, name) ? written[name] : undefined;
   }
 
+  /**
+   * Sets when the tool asks first, on a new agent's form (row 41l). `fallback` is the level the
+   * tool has when the file says nothing about it (`defaultAsks`), so choosing it writes nothing.
+   */
+  setApproval(name: string, approval: ToolApproval, fallback: ToolApproval): void {
+    const kept = Object.entries(this.#approvals ?? {}).filter(([tool]) => tool !== name);
+    if (approval !== fallback) kept.push([name, approval]);
+    this.#approvals =
+      kept.length === 0 && this.#approvals === null ? null : Object.fromEntries(kept);
+  }
+
   /** Whether the tool asks first, runs, or is refused for this agent. */
   standingOf(tool: AgentCatalog['tools'][number]): ToolStanding {
     return standingOf(tool, this.approvalOf(tool.name));
@@ -542,7 +820,9 @@ export class AgentEditorState {
   #approvalsFor(chosen: readonly string[]): AgentDefinitionInput['approvals'] {
     if (this.#approvals === null) return undefined;
     const kept = Object.entries(this.#approvals).filter(([tool]) => chosen.includes(tool));
-    return kept.length === 0 ? null : Object.fromEntries(kept);
+    if (kept.length > 0) return Object.fromEntries(kept);
+    // A new agent has no file to remove approvals from, so an empty set is left out.
+    return this.mode === 'create' ? undefined : null;
   }
 
   /**

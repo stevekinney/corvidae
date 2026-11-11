@@ -9,13 +9,28 @@
    * the view frame owns, so the page asks the frame to look again. A write that succeeds lands on
    * the agent's page, and a delete lands on the list.
    *
-   * One Save sits in the header and submits the form by its id; ⌘Enter does the same from anywhere
-   * on the page. There is no draft and nothing to publish: under the heading, an agent that exists
-   * says when it was last saved and links to its versions, on the Settings tab of its page.
+   * One Save sits in the form's sticky bar, after Cancel; ⌘Enter submits from anywhere on the page.
+   * Save stays enabled (W35): a submit marks the fields that stop a save and focuses the first one,
+   * and sends nothing until they are fixed. While a save is in flight the bar says "Saving…" and
+   * Save is in its loading state; a save with no answer after {@link SAVE_TIMEOUT_MS} is stopped,
+   * and the page says it could not confirm the save, keeps what was typed, and offers Try again and
+   * Cancel (row 14x). It never says saved without the server's answer. A save the server fails
+   * says so above the form, with what was typed still in it (row 42w). There is no draft and
+   * nothing to publish: under the heading, a new agent's form says what an agent is (row 41a), and
+   * an agent that exists says when it was last saved and links to its versions, on the Settings
+   * tab of its page.
+   *
+   * Leaving a form that differs from what was saved asks first (rows 42o, 42p), through the
+   * router's {@link LeaveGuard}: Cancel, the breadcrumb, a link in the shell, back and forward, and
+   * closing the tab. A save that lands, and a delete, go on without asking.
    *
    * What the form offers comes from `bureau.agents.catalog` and nothing else, and the A2A
    * switch is saved with the rest of the definition. A catalog with no model offers
-   * nothing a save could use, so the page shows where to configure a provider instead of the form.
+   * nothing a save could use, so the page shows where to configure a provider instead of the form,
+   * with Cancel in the header and no Save (row 42a). A new agent's catalog that fails to load
+   * builds the form anyway, with the model field saying so and a Try again that keeps what was
+   * typed (row 42v); the view frame's probe has already read the catalog once, so this is a read
+   * that failed after it.
    *
    * Try it, beside Save, opens a drawer that chats with the form as it stands, saved or not
    * (`agent-try-drawer.svelte`): nothing is written, and closing it ends the chat.
@@ -24,17 +39,19 @@
    * file agent's definition whole, a built-in agent's own statement of itself, `agent-copy.ts`). It
    * is named and created like any new agent, and a taken identifier is refused the same way.
    */
-  import { onMount, untrack } from 'svelte';
+  import { onMount, tick, untrack } from 'svelte';
 
   import {
     Alert,
     Button,
     CodeLocation,
     ConfirmDialog,
+    CopyButton,
     PageHeader,
     RelativeTime,
     Skeleton,
   } from '@lostgradient/cinder';
+  import { HttpClientError } from '@lostgradient/weft';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { AGENT_EDITOR_COPY, RETRY_LABEL } from '../../app/copy.ts';
@@ -56,16 +73,16 @@
   import { getProviders } from '../../lib/host-providers.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { restrictionsOf } from './agent-editor-models.ts';
   import { MODEL_POLICY_KEY } from '../settings/settings-controls.ts';
   import { AgentEditorState, type ModelContext } from './agent-editor-state.svelte.ts';
   import { copyIdentifierOf, copySeedOf } from './agent-copy.ts';
   import AgentEditorForm from './agent-editor-form.svelte';
-  import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
   import AgentRevisionHistory from './agent-revision-history.svelte';
   import AgentTryDrawer from './agent-try-drawer.svelte';
+  import { SAVE_TIMEOUT_MS } from './agent-editor-save.ts';
 
   interface Props {
     /** The identifier of the agent to edit; absent on `/agents/new`. */
@@ -169,20 +186,43 @@
   let stale = $state(false);
   /** A write failed for a reason the person can act on, in the Bureau's words. */
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
+  /** A save had no answer within {@link SAVE_TIMEOUT_MS}, so the page stopped waiting (row 14x). */
+  let timedOut = $state(false);
   let confirmingDelete = $state(false);
   let trying = $state(false);
 
+  /** A new agent with no copy to fill it: the form that can be built before the catalog has loaded. */
+  const freshAgent = agentId === undefined && copiedFrom === null;
+
+  // Leaving a form that differs from what it was built with asks first (rows 42o, 42p).
+  const leaveGuard = new LeaveGuard(() => editor?.changed === true);
+  $effect(() => leaveGuard.attach());
+
   // Builds the form once, when everything it is filled from has arrived. A reload builds it again.
   // A catalog with no model builds none, and a provider added since is picked up when the catalog is
-  // read again: the form's choices are fixed when it is built.
+  // read again: the form's choices are fixed when it is built. A new agent's form is built without
+  // the catalog when it fails to load, and adopts the catalog, keeping what was typed, once a retry
+  // reads it (row 42v).
   $effect(() => {
     const catalogData = catalog.data;
+    const catalogFailed = catalog.isError;
     const detailData = detail.data;
     const sourceData = source.data;
     const settled = modelContextSettled;
     const context = modelContext(providers.data, policy.data);
     untrack(() => {
-      if (editor !== undefined || catalogData === undefined || !settled) return;
+      if (!settled) return;
+      if (editor?.catalogMissing === true && catalogData !== undefined) {
+        // A catalog with no model has nothing to fill the form from: the no-provider state shows.
+        editor =
+          catalogData.models.length > 0 ? editor.withCatalog(catalogData, context) : undefined;
+        return;
+      }
+      if (editor === undefined && catalogData === undefined && catalogFailed && freshAgent) {
+        editor = AgentEditorState.withoutCatalog(context);
+        return;
+      }
+      if (editor !== undefined || catalogData === undefined) return;
       if (catalogData.models.length === 0) return;
       if (agentId === undefined && copiedFrom !== null) {
         const seed = sourceData === undefined ? null : copySeedOf(sourceData);
@@ -225,7 +265,15 @@
     });
   }
 
-  function failWith(fault: AgentFault, title: string): void {
+  /**
+   * Says why a write failed. `serverWords`, given for a save, is what a fault the Bureau did not sort
+   * says instead of its own message: the status and that what was typed is still here (row 42w).
+   */
+  function failWith(fault: AgentFault, title: string, serverWords?: string): void {
+    if (fault.kind === 'other' && serverWords !== undefined) {
+      failure = { title, message: serverWords };
+      return;
+    }
     switch (fault.kind) {
       case 'stale':
         stale = true;
@@ -251,20 +299,59 @@
     void queryClient.invalidateQueries({ queryKey: ['agents'] });
   }
 
+  /** The status a failed save answered with, or `undefined` when the server did not answer. */
+  function statusOf(error: unknown): number | undefined {
+    return error instanceof HttpClientError ? error.status : undefined;
+  }
+
+  // The save in flight: its request, so a save that times out can be stopped, and its clock.
+  let saveRequest: AbortController | undefined;
+  let saveClock: ReturnType<typeof setTimeout> | undefined;
+
+  function stopSaveClock(): void {
+    if (saveClock !== undefined) clearTimeout(saveClock);
+    saveClock = undefined;
+  }
+
+  /** No answer in time: stop waiting, and say the save could not be confirmed (row 14x). */
+  function saveTimedOut(): void {
+    saveClock = undefined;
+    timedOut = true;
+    saveRequest?.abort();
+  }
+
   const save = createMutation(() => ({
-    mutationFn: (form: AgentEditorState) =>
-      form.mode === 'create'
-        ? createAgent(form.identifier, form.toDefinition())
-        : updateAgent(form.identifier, form.hash ?? '', form.toDefinition()),
+    mutationFn: (form: AgentEditorState) => {
+      const request = new AbortController();
+      saveRequest = request;
+      const options = { signal: request.signal };
+      return form.mode === 'create'
+        ? createAgent(form.identifier, form.toDefinition(), options)
+        : updateAgent(form.identifier, form.hash ?? '', form.toDefinition(), options);
+    },
     onMutate: () => {
       failure = null;
+      timedOut = false;
+      stopSaveClock();
+      saveClock = setTimeout(saveTimedOut, SAVE_TIMEOUT_MS);
     },
+    onSettled: () => stopSaveClock(),
     onSuccess: (result) => {
+      // The server answered, so the save is confirmed, even when it answered after the page stopped waiting.
+      timedOut = false;
       wasWritten();
+      leaveGuard.release();
       router.navigate(agentPath(result.id));
     },
-    onError: (error) => failWith(agentFaultOf(error), copy.saveFailed),
+    onError: (error) => {
+      // A save the page stopped waiting for already says so; the abort is not a second failure.
+      if (timedOut) return;
+      failWith(agentFaultOf(error), copy.saveFailed, copy.newAgent.serverError(statusOf(error)));
+    },
   }));
+
+  // A page that is left stops waiting for its save.
+  onMount(() => () => stopSaveClock());
 
   const removal = createMutation(() => ({
     mutationFn: (hash: string) => deleteAgent(agentId ?? '', hash),
@@ -273,18 +360,37 @@
     },
     onSuccess: () => {
       wasWritten();
+      leaveGuard.release();
       router.navigate('/agents');
     },
     onError: (error) => failWith(agentFaultOf(error), copy.deleteFailed),
   }));
 
-  const busy = $derived(save.isPending || removal.isPending);
+  /** A save is in flight and the page is still waiting for it: Save shows its loading state. */
+  const saving = $derived(save.isPending && !timedOut);
+  const busy = $derived(saving || removal.isPending);
 
-  function submit(): void {
-    if (editor !== undefined) save.mutate(editor);
+  /** Moves focus to the field with `id`, once the messages a submit shows are on the page. */
+  async function focusField(id: string): Promise<void> {
+    await tick();
+    document.getElementById(id)?.focus();
   }
 
-  // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
+  /**
+   * Save and ⌘Enter (W35): a submit while a save is in flight is ignored. Otherwise the fields that
+   * stop a save say why, focus goes to the first of them, and nothing is sent until they are fixed;
+   * a model the Bureau will refuse is sent all the same, so its reason shows, and its field is
+   * focused (row 43s).
+   */
+  function submit(): void {
+    if (editor === undefined || saving || removal.isPending) return;
+    editor.attempt();
+    const problem = editor.firstProblem;
+    if (editor.canSave) save.mutate(editor);
+    if (problem !== undefined) void focusField(problem);
+  }
+
+  // ⌘Enter submits from anywhere on the page, a field included (`lib/shortcuts.ts`).
   onMount(() =>
     shortcuts.register({
       keys: ['Enter'],
@@ -292,9 +398,7 @@
       label: copy.saveAction,
       group: copy.shortcutGroup,
       scope: { route: agentId === undefined ? '/agents/new' : '/agents/:agent/edit' },
-      handler: () => {
-        if (editor?.canSave === true && !busy) submit();
-      },
+      handler: () => submit(),
     }),
   );
 
@@ -354,7 +458,11 @@
     return 'ready';
   });
 
-  const loadFailed = $derived(catalog.isError || (agentId !== undefined && detail.isError));
+  // A new agent's form is built without its catalog when that fails (row 42v), so only the other
+  // pages count a failed catalog as a page that could not be loaded.
+  const loadFailed = $derived(
+    (catalog.isError && !freshAgent) || (agentId !== undefined && detail.isError),
+  );
   /** The agent to copy could not be read, or is a file with nothing to copy. */
   const copyFailed = $derived(
     copiedFrom !== null &&
@@ -395,7 +503,9 @@
 <div class="weft-agent-editor" data-editor={condition}>
   <PageHeader title={heading} headingLevel={1}>
     {#snippet description()}
-      {#if latestVersion !== undefined}
+      {#if agentId === undefined}
+        <span data-testid="agent-new-subtitle">{copy.newAgent.subtitle}</span>
+      {:else if latestVersion !== undefined}
         <span data-testid="agent-saved">
           {copy.saved}
           <RelativeTime date={latestVersion.savedAt} />,
@@ -416,15 +526,9 @@
         >
           {copy.try.action}
         </Button>
-        <Button
-          data-changes
-          type="submit"
-          form={AGENT_EDITOR_FORM_ID}
-          variant="primary"
-          disabled={!editor.canSave || busy}
-        >
-          {editor.mode === 'create' ? copy.createAction : copy.saveAction}
-        </Button>
+      {:else if noProvider}
+        <!-- Nothing to save without a model, so Save is not here; Cancel stays (row 42a). -->
+        <Button variant="secondary" onclick={cancel}>{copy.cancelAction}</Button>
       {/if}
       <!-- With the form on screen, its footer holds the delete; a file the form cannot show keeps it here. -->
       {#if deleteInHeader}
@@ -444,6 +548,12 @@
     <p class="weft-agent-editor__path">
       <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
       <CodeLocation class="weft-code-location" file={filePath} data-testid="agent-file-path" />
+      <CopyButton
+        value={filePath}
+        label={copy.newAgent.copyFilePath}
+        copiedLabel={copy.newAgent.copiedFilePath}
+        iconOnly
+      />
     </p>
   {/if}
 
@@ -455,10 +565,22 @@
     </Alert>
   {/if}
 
+  <!-- Above the form, so above the Name field: what typed is still in the form below (row 42w). -->
   {#if failure !== null}
     <Alert variant="danger" dismissible onDismiss={() => (failure = null)}>
       <p class="weft-agent-editor__alert-title">{failure.title}</p>
       <p class="weft-agent-editor__alert-body">{failure.message}</p>
+    </Alert>
+  {/if}
+
+  <!-- No answer in time: never "saved", and nothing typed is lost (row 14x). -->
+  {#if timedOut}
+    <Alert variant="warning" data-testid="agent-save-timed-out">
+      <p class="weft-agent-editor__alert-body">{copy.newAgent.timedOut}</p>
+      {#snippet actions()}
+        <Button variant="secondary" onclick={submit}>{copy.newAgent.tryAgain}</Button>
+        <Button variant="ghost" onclick={cancel}>{copy.cancelAction}</Button>
+      {/snippet}
     </Alert>
   {/if}
 
@@ -526,9 +648,12 @@
       <AgentEditorForm
         {editor}
         {busy}
+        {saving}
         onSave={submit}
         onCancel={cancel}
         onDelete={() => (confirmingDelete = true)}
+        retryingModels={catalog.isFetching}
+        onRetryModels={() => void catalog.refetch()}
       />
     {/key}
   {/if}
@@ -551,6 +676,17 @@
   confirmLabel={copy.deleteDialog.confirm}
   destructive
   onConfirm={confirmDelete}
+/>
+
+<!-- Asked before a form that differs from what was saved is left (rows 42o, 42p). -->
+<ConfirmDialog
+  bind:open={leaveGuard.asking}
+  title={copy.newAgent.leave.title}
+  description={copy.newAgent.leave.description(editor?.changedParts ?? [])}
+  confirmLabel={copy.newAgent.leave.discard}
+  cancelLabel={copy.newAgent.leave.keep}
+  destructive
+  onConfirm={() => leaveGuard.leave()}
 />
 
 <style>

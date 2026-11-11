@@ -5,8 +5,16 @@
    * nothing the form could ask for would save. The application cannot add a provider (that is the
    * host's configuration file and a secret, both read once at start), so the state says exactly
    * where each lives, on this installation, from `/host/paths`, and what to do after.
+   *
+   * Where a key can be saved from Settings › Models, the state is the card the New agent board
+   * draws (rows 42a, 42b): a plug in an accent disc, "No model provider yet", what to do, a primary
+   * Connect a provider that returns to this form once a provider is connected (row 42c), and the
+   * line saying nothing else on the form works until then. The steps to set one up by hand follow,
+   * for a person who would rather edit the files; a host that keeps its keys in its deployment has
+   * no Connect a provider, so the steps are all it shows.
    */
   import { Button, CodeBlock, CodeLocation, EmptyState } from '@lostgradient/cinder';
+  import { Plug } from '@lucide/svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import type { HostPaths } from '../../lib/host-paths.ts';
@@ -64,6 +72,9 @@
   class="weft-no-provider"
   data-testid="agent-no-provider"
 >
+  {#snippet icon()}
+    <Plug size={20} aria-hidden="true" />
+  {/snippet}
   {#snippet action()}
     {#if canConnect}
       <div class="weft-no-provider__connect">
@@ -73,45 +84,52 @@
           onclick={connect}
           data-testid="agent-connect-provider">{copy.connectAction}</Button
         >
+        <p class="weft-no-provider__text" data-testid="agent-no-provider-blocked">
+          {copy.blocked}
+        </p>
         <p class="weft-no-provider__text">{copy.byHand}</p>
       </div>
     {/if}
-    <ol class="weft-no-provider__steps">
-      <li>
-        <p class="weft-no-provider__text">{copy.configurationStep}</p>
-        {#if paths !== undefined}
-          <p class="weft-no-provider__path">
-            <CodeLocation
-              class="weft-code-location"
-              file={paths.configurationFile}
-              data-testid="provider-configuration-file"
-            />
-          </p>
-        {/if}
-        {#if snippet !== undefined}
-          <CodeBlock code={snippet} language="json" copyable highlight={false} />
-        {/if}
-      </li>
-      <li>
-        <p class="weft-no-provider__text">{copy.secretStep}</p>
-        {#if paths !== undefined}
-          <ul class="weft-no-provider__secrets">
-            {#each paths.providers as provider (provider.name)}
-              <li data-provider={provider.name}>
-                <code class="weft-no-provider__provider">{provider.name}</code>
-                <CodeLocation class="weft-code-location" file={provider.secretFile} />
-              </li>
-            {/each}
-          </ul>
-        {/if}
-      </li>
-      <li>
-        <p class="weft-no-provider__text">{copy.restartStep}</p>
-        <Button variant="secondary" disabled={reloading} onclick={onReload}>{copy.reload}</Button>
-      </li>
-    </ol>
+    {@render steps()}
   {/snippet}
 </EmptyState>
+
+{#snippet steps()}
+  <ol class="weft-no-provider__steps">
+    <li>
+      <p class="weft-no-provider__text">{copy.configurationStep}</p>
+      {#if paths !== undefined}
+        <p class="weft-no-provider__path">
+          <CodeLocation
+            class="weft-code-location"
+            file={paths.configurationFile}
+            data-testid="provider-configuration-file"
+          />
+        </p>
+      {/if}
+      {#if snippet !== undefined}
+        <CodeBlock code={snippet} language="json" copyable highlight={false} />
+      {/if}
+    </li>
+    <li>
+      <p class="weft-no-provider__text">{copy.secretStep}</p>
+      {#if paths !== undefined}
+        <ul class="weft-no-provider__secrets">
+          {#each paths.providers as provider (provider.name)}
+            <li data-provider={provider.name}>
+              <code class="weft-no-provider__provider">{provider.name}</code>
+              <CodeLocation class="weft-code-location" file={provider.secretFile} />
+            </li>
+          {/each}
+        </ul>
+      {/if}
+    </li>
+    <li>
+      <p class="weft-no-provider__text">{copy.restartStep}</p>
+      <Button variant="secondary" disabled={reloading} onclick={onReload}>{copy.reload}</Button>
+    </li>
+  </ol>
+{/snippet}
 
 <style>
   /* The outlet already pads the page; the state adds only a little air above its steps, and its steps fill the width. */

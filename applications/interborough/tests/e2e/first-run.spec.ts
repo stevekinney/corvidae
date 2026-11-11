@@ -232,7 +232,7 @@ test('each step completes from its own signal, from connecting a provider to say
   // Creating the agent completes the second step.
   await page.getByRole('link', { name: 'New agent' }).click();
   await page.getByRole('textbox', { name: /^Name/ }).fill(AGENT_NAME);
-  await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue(AGENT_IDENTIFIER);
+  await expect(page.getByTestId('agent-identifier')).toContainText(AGENT_IDENTIFIER);
   await page.getByRole('textbox', { name: /^Instructions/ }).fill('Answer in one short sentence.');
   await page.getByRole('button', { name: AGENT_EDITOR_COPY.createAction }).click();
   await expect(page).toHaveURL(new RegExp(`/agents/${AGENT_IDENTIFIER}$`));

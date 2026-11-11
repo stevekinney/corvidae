@@ -266,10 +266,15 @@ describe('a model the model policy forbids', () => {
     bureau({
       modelPolicy: { deployment: { deniedProviders: ['anthropic', 'openai'] }, policyRevision: 1 },
     });
-    const { findByRole } = mountEditor();
+    const { findByRole, findByText } = mountEditor();
     const field = await findByRole('combobox', { name: 'Model' });
     expect(field).toHaveValue('');
-    expect(await findByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeDisabled();
+    // Save stays enabled (W35); a submit says the field needs a model and sends nothing.
+    const save = await findByRole('button', { name: AGENT_EDITOR_COPY.createAction });
+    expect(save).not.toBeDisabled();
+    await fireEvent.click(save);
+    expect(await findByText(AGENT_EDITOR_COPY.newAgent.modelRequired)).not.toBeNull();
+    expect(field).toBeInvalid();
   });
 
   test('is not forbidden by the user’s own preferences, which bind no agent', async () => {

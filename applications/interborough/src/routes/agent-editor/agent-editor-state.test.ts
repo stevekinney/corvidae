@@ -10,7 +10,7 @@ import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
 import type { Effort } from '../../lib/agent-definitions.ts';
 import { catalogFixture, readyAgent } from '../../lib/bureau-stub.test-support.ts';
 import { restrictionsOf } from './agent-editor-models.ts';
-import { AgentEditorState, slugify } from './agent-editor-state.svelte.ts';
+import { AgentEditorState, FIELD_IDS, slugify, wordCount } from './agent-editor-state.svelte.ts';
 
 describe('slugify', () => {
   test('lowercases, joins words with single hyphens, and trims the ends', () => {
@@ -95,14 +95,161 @@ describe('a new agent', () => {
     const form = AgentEditorState.create(catalogFixture());
     form.identifier = 'assistant';
     form.markIdentifierTaken('shadows-code-agent');
-    expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierTaken['shadows-code-agent']);
+    expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierTaken('assistant'));
     form.identifier = 'assistant-2';
     expect(form.identifierError).toBe('');
     form.identifier = 'assistant';
     form.markIdentifierTaken('agent-file-exists');
-    expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierTaken['agent-file-exists']);
+    expect(form.identifierError).toBe(AGENT_EDITOR_COPY.identifierTaken('assistant'));
   });
 
+  test('says a taken identifier the name set at the name, in the name’s words (rows 42n, 14u)', () => {
+    const form = AgentEditorState.create(catalogFixture());
+    form.name = 'Tool runner';
+    form.markIdentifierTaken('shadows-code-agent');
+    expect(form.identifierFollowsName).toBe(true);
+    expect(form.nameError).toBe(AGENT_EDITOR_COPY.newAgent.nameTaken('Tool runner'));
+    // The refusal answers a submit, so it shows before any other message does.
+    expect(form.shownErrors).toEqual({
+      name: AGENT_EDITOR_COPY.newAgent.nameTaken('Tool runner'),
+      identifier: '',
+      model: '',
+    });
+    form.name = 'Tool runner 2';
+    expect(form.nameError).toBe('');
+  });
+});
+
+describe('a new agent’s submit', () => {
+  test('shows nothing at the fields until a submit, then why each stops a save (rows 42m, W35)', () => {
+    const form = AgentEditorState.create(catalogFixture({ models: [] }));
+    expect(form.shownErrors).toEqual({ name: '', identifier: '', model: '' });
+    form.attempt();
+    expect(form.shownErrors).toEqual({
+      name: AGENT_EDITOR_COPY.newAgent.nameRequired,
+      identifier: '',
+      model: AGENT_EDITOR_COPY.newAgent.modelRequired,
+    });
+    expect(form.firstProblem).toBe(FIELD_IDS.name);
+    form.name = 'Researcher';
+    expect(form.firstProblem).toBe(FIELD_IDS.model);
+  });
+
+  test('says at the name when it holds nothing an identifier can be made of', () => {
+    const form = AgentEditorState.create(catalogFixture());
+    form.name = '日本語';
+    expect(form.nameError).toBe(AGENT_EDITOR_COPY.newAgent.nameNeedsLetters);
+    expect(form.canSave).toBe(false);
+  });
+
+  test('turns the identifier into a field on Change and back on Reset (row 42x)', () => {
+    const form = AgentEditorState.create(catalogFixture());
+    form.name = 'Order Helper';
+    expect(form.identifierFollowsName).toBe(true);
+    form.changeIdentifier();
+    expect(form.identifierFollowsName).toBe(false);
+    expect(form.identifier).toBe('order-helper');
+    form.identifier = 'Order Helper!';
+    form.attempt();
+    expect(form.shownErrors.identifier).toBe(AGENT_EDITOR_COPY.identifierInvalid);
+    expect(form.shownErrors.name).toBe('');
+    expect(form.firstProblem).toBe(FIELD_IDS.identifier);
+    expect(form.suggestedIdentifier).toBe('order-helper');
+    form.resetIdentifier();
+    expect(form.identifierFollowsName).toBe(true);
+    expect(form.identifier).toBe('order-helper');
+    expect(form.firstProblem).toBeUndefined();
+  });
+
+  test('focuses the Model field for a model the Bureau will refuse, and still lets the save go (row 43s)', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const form = AgentEditorState.edit(
+      { ...detail, definition: { ...detail.definition, model: 'anthropic/claude-haiku-5' } },
+      catalogFixture(),
+      {
+        restrictions: restrictionsOf({
+          deployment: { deniedModels: ['claude-haiku-5'] },
+          policyRevision: 1,
+        }),
+      },
+    );
+    expect(form.modelRefused).toBe(true);
+    expect(form.canSave).toBe(true);
+    expect(form.firstProblem).toBe(FIELD_IDS.model);
+  });
+});
+
+describe('what the leave question names (rows 42o, 42p)', () => {
+  test('names nothing for a form as it was built, and each part that changed, in the form’s order', () => {
+    const form = AgentEditorState.create(catalogFixture());
+    expect(form.changed).toBe(false);
+    form.setTool('lookup-order', true);
+    form.instructions = 'Answer order questions.';
+    expect(form.changedParts).toEqual([
+      AGENT_EDITOR_COPY.sections.instructions,
+      AGENT_EDITOR_COPY.sections.tools,
+    ]);
+    form.instructions = '';
+    form.setTool('lookup-order', false);
+    expect(form.changed).toBe(false);
+  });
+
+  test('measures a copy from the copy as it was filled, not from an empty form', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const form = AgentEditorState.copy(detail.definition, 'researcher-copy', catalogFixture());
+    expect(form.changed).toBe(false);
+    form.identifier = 'researcher-2';
+    expect(form.changedParts).toEqual([AGENT_EDITOR_COPY.identifierLabel]);
+  });
+});
+
+describe('a new agent built before its catalog loaded (row 42v)', () => {
+  test('offers nothing, and keeps what was typed when the catalog arrives', () => {
+    const form = AgentEditorState.withoutCatalog();
+    expect(form.catalogMissing).toBe(true);
+    expect(form.hasModels).toBe(false);
+    expect(form.toolChoices).toEqual([]);
+    form.name = 'Order helper';
+    form.description = 'Answers order questions';
+    form.instructions = 'Be brief.';
+
+    const next = form.withCatalog(catalogFixture());
+    expect(next.catalogMissing).toBe(false);
+    expect(next.name).toBe('Order helper');
+    expect(next.description).toBe('Answers order questions');
+    expect(next.instructions).toBe('Be brief.');
+    expect(next.model).toBe('anthropic/claude-sonnet-5');
+    // What changed is still measured from the empty form.
+    expect(next.changedParts).toContain(AGENT_EDITOR_COPY.nameLabel);
+  });
+});
+
+describe('the Asks level a new agent sets (row 41l)', () => {
+  test('writes only a level that differs from the tool’s default', () => {
+    const form = AgentEditorState.create(catalogFixture());
+    form.name = 'Order helper';
+    form.setTool('lookup-order', true);
+    form.setApproval('lookup-order', 'never', 'never');
+    expect('approvals' in form.toDefinition()).toBe(false);
+    form.setApproval('lookup-order', 'always', 'never');
+    expect(form.approvalOf('lookup-order')).toBe('always');
+    expect(form.toDefinition().approvals).toEqual({ 'lookup-order': 'always' });
+    form.setApproval('lookup-order', 'never', 'never');
+    expect(form.approvalOf('lookup-order')).toBeUndefined();
+    expect('approvals' in form.toDefinition()).toBe(false);
+  });
+});
+
+describe('wordCount', () => {
+  test('counts the words of Markdown, headings and backticks included (row 41i)', () => {
+    expect(wordCount('')).toBe(0);
+    expect(wordCount('## Role\n\nLook up orders with `lookup-order`.')).toBe(7);
+  });
+});
+
+describe('a new agent’s definition', () => {
   test('cannot save when the catalog offers no model, and chooses none', () => {
     const form = AgentEditorState.create(catalogFixture({ models: [] }));
     form.name = 'Researcher';

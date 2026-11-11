@@ -264,7 +264,7 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await page.goto('/agents/new');
   await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
   await page.getByRole('textbox', { name: /^Name/ }).fill(AUTHOR_NAME);
-  await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue(AUTHOR_ID);
+  await expect(page.getByTestId('agent-identifier')).toContainText(AUTHOR_ID);
   await page
     .getByRole('textbox', { name: /^Instructions/ })
     .fill('Write the workflows a person asks for, with the workflow tools.');

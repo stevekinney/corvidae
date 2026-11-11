@@ -321,3 +321,79 @@ class DashboardRouter {
  * exposes the current route reactively.
  */
 export const router = new DashboardRouter();
+
+/**
+ * The question a form asks before its page is left with work the person has not saved: one
+ * primitive every form reuses (the agent editor, and a Settings tab with unsaved changes). It
+ * registers with {@link DashboardRouter.guardLeaving}, so Cancel, the breadcrumb, a link in the
+ * shell, and back or forward are all asked, and with the window's `beforeunload`, so closing the tab
+ * or reloading is asked by the browser. A navigation it refuses is kept, and the page's dialog,
+ * open while {@link LeaveGuard.asking} is true, answers with {@link LeaveGuard.leave} (go there,
+ * discarding the work) or {@link LeaveGuard.stay}. A form with nothing to lose is never asked about.
+ *
+ * ```ts
+ * const guard = new LeaveGuard(() => form.changed);
+ * $effect(() => guard.attach());
+ * ```
+ */
+export class LeaveGuard {
+  /** A navigation was refused, so the page shows its question until it is answered. */
+  asking = $state(false);
+  /** Whether the page holds work a navigation would discard, asked at each navigation. */
+  readonly #holdsWork: () => boolean;
+  /** Where the refused navigation was going. */
+  #destination: string | undefined;
+  /** Set once the page may go without asking: its work was saved, or the person chose to discard it. */
+  #released = false;
+
+  /** `holdsWork` answers whether leaving now would discard something; it is read at each navigation. */
+  constructor(holdsWork: () => boolean) {
+    this.#holdsWork = holdsWork;
+  }
+
+  /** Whether leaving now would be asked about. */
+  get guarding(): boolean {
+    return !this.#released && this.#holdsWork();
+  }
+
+  /**
+   * Starts asking: registers the router's guard and the window's `beforeunload`. Returns the
+   * function that stops, which an `$effect` that calls this runs when the page unmounts.
+   */
+  attach(): () => void {
+    const stop = router.guardLeaving((destination) => {
+      if (!this.guarding) return true;
+      this.#destination = destination;
+      this.asking = true;
+      return false;
+    });
+    const warn = (event: BeforeUnloadEvent): void => {
+      if (this.guarding) event.preventDefault();
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => {
+      stop();
+      window.removeEventListener('beforeunload', warn);
+    };
+  }
+
+  /** Lets the page go without asking from now on, such as when a save has landed and it moves on. */
+  release(): void {
+    this.#released = true;
+  }
+
+  /** The person chose to discard their work: goes where the refused navigation was going. */
+  leave(): void {
+    const destination = this.#destination;
+    this.#released = true;
+    this.asking = false;
+    this.#destination = undefined;
+    if (destination !== undefined) router.navigate(destination, { force: true });
+  }
+
+  /** The person chose to keep editing: the page stays, and the next navigation is asked again. */
+  stay(): void {
+    this.asking = false;
+    this.#destination = undefined;
+  }
+}

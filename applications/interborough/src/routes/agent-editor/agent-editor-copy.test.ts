@@ -316,7 +316,7 @@ describe('Duplicate, on the new agent page', () => {
     const { findByRole, getByRole, findByText } = copyOf('assistant');
     await findByRole('textbox', { name: /^Name/ });
     await fireEvent.click(getByRole('button', { name: copy.createAction }));
-    await findByText(copy.identifierTaken['agent-file-exists']);
+    await findByText(copy.identifierTaken('assistant-copy'));
     expect(router.pathname).toBe('/agents/new');
     expect(calls.callsTo('bureau.agents.definitions.create')).toHaveLength(1);
     // The form is kept, and a new identifier is tried the way a new agent's is.

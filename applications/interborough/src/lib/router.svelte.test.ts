@@ -15,6 +15,7 @@ import { Window, type DetachedWindowAPI } from 'happy-dom';
 import { routes } from '../app/routes.ts';
 import { chatSessionPath } from './identifier-paths.ts';
 import {
+  LeaveGuard,
   matchRoute,
   router,
   scheduleDetailPath,
@@ -426,5 +427,94 @@ describe('guardLeaving', () => {
     } finally {
       stop();
     }
+  });
+});
+
+describe('LeaveGuard', () => {
+  beforeEach(() => resetLocation('/agents/new'));
+
+  test('lets a page with nothing to lose go without asking', () => {
+    const guard = new LeaveGuard(() => false);
+    const stop = guard.attach();
+    try {
+      router.navigate('/agents');
+      expect(router.pathname).toBe('/agents');
+      expect(guard.asking).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  test('asks before a page with unsaved work is left, and stays when told to', () => {
+    const guard = new LeaveGuard(() => true);
+    const stop = guard.attach();
+    try {
+      router.navigate('/agents');
+      expect(guard.asking).toBe(true);
+      expect(router.pathname).toBe('/agents/new');
+
+      guard.stay();
+      expect(guard.asking).toBe(false);
+      expect(router.pathname).toBe('/agents/new');
+
+      // The next navigation is asked about again.
+      router.navigate('/chats');
+      expect(guard.asking).toBe(true);
+    } finally {
+      stop();
+    }
+  });
+
+  test('goes where the refused navigation was going once the person discards their work', () => {
+    const guard = new LeaveGuard(() => true);
+    const stop = guard.attach();
+    try {
+      router.navigate('/agents?view=all');
+      guard.leave();
+      expect(guard.asking).toBe(false);
+      expect(router.pathname).toBe('/agents');
+      expect(router.search.get('view')).toBe('all');
+      // Discarded once, the page is not asked about again.
+      router.navigate('/chats');
+      expect(router.pathname).toBe('/chats');
+    } finally {
+      stop();
+    }
+  });
+
+  test('stops asking once released, as after a save that moves on', () => {
+    const guard = new LeaveGuard(() => true);
+    const stop = guard.attach();
+    try {
+      guard.release();
+      expect(guard.guarding).toBe(false);
+      router.navigate('/agents/order-helper');
+      expect(router.pathname).toBe('/agents/order-helper');
+      expect(guard.asking).toBe(false);
+    } finally {
+      stop();
+    }
+  });
+
+  test('asks the browser to confirm closing the tab only while there is work to lose', () => {
+    let holds = false;
+    const guard = new LeaveGuard(() => holds);
+    const stop = guard.attach();
+    try {
+      const untouched = new window.Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(untouched);
+      expect(untouched.defaultPrevented).toBe(false);
+
+      holds = true;
+      const typed = new window.Event('beforeunload', { cancelable: true });
+      window.dispatchEvent(typed);
+      expect(typed.defaultPrevented).toBe(true);
+    } finally {
+      stop();
+    }
+    // Detached, it asks nothing.
+    const after = new window.Event('beforeunload', { cancelable: true });
+    window.dispatchEvent(after);
+    expect(after.defaultPrevented).toBe(false);
   });
 });

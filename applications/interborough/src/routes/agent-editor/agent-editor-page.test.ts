@@ -148,8 +148,12 @@ describe('a new agent', () => {
 
     const listed = await openModelOptions(select);
     expect(listed.map(optionLabel)).toEqual(['openai/gpt-4.1', 'anthropic/claude-haiku-5']);
-    // A new agent has no tool yet, and the picker offers every tool the catalog lists.
-    expect(getByTestId('agent-tool-count').textContent?.trim()).toBe('0 of 2 chosen');
+    // A new agent has no tool yet, and the picker offers every tool the catalog lists. The count
+    // sits beside the Tools title (row 41k).
+    expect(getByRole('group', { name: /^Tools/ }).textContent).toContain(
+      AGENT_EDITOR_COPY.newAgent.toolCount(0, 2),
+    );
+    expect(getByTestId('agent-tools-none')).not.toBeNull();
     expect(queryAllByRole('checkbox')).toEqual([]);
     await openPicker(view);
     expect(getAllByRole('checkbox').map((box) => box.getAttribute('id'))).toEqual([
@@ -181,11 +185,26 @@ describe('a new agent', () => {
     expect(container.textContent).toContain('"enabled": true');
     expect(container.textContent).toContain('chmod 600');
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.noProvider.reload })).not.toBeNull();
-    // Nothing to fill in: no field, no model choice, no save.
+    // The card says nothing else works until a provider is connected (row 42b).
+    expect(getByTestId('agent-no-provider-blocked').textContent?.trim()).toBe(
+      AGENT_EDITOR_COPY.noProvider.blocked,
+    );
+    // Nothing to fill in: no field, no model choice, no save; Cancel stays (row 42a).
     expect(queryAllByRole('textbox')).toEqual([]);
     expect(queryByRole('combobox')).toBeNull();
     expect(queryByRole('form')).toBeNull();
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeNull();
+    expect(getByRole('button', { name: AGENT_EDITOR_COPY.cancelAction })).not.toBeNull();
+  });
+
+  test('leaves the no-provider state for the list with its Cancel', async () => {
+    router.navigate('/agents/new', { replace: true });
+    bureau({ catalog: catalogFixture({ models: [] }) });
+    const { findByRole } = mountEditor();
+
+    await findByRole('heading', { level: 2, name: AGENT_EDITOR_COPY.noProvider.title });
+    await fireEvent.click(await findByRole('button', { name: AGENT_EDITOR_COPY.cancelAction }));
+    expect(router.pathname).toBe('/agents');
   });
 
   test('offers Connect a provider, which opens Settings › Models with a way back to this form', async () => {
@@ -314,11 +333,19 @@ describe('a new agent', () => {
   test('fills the identifier from the name until it is edited, and creates the agent', async () => {
     const calls = bureau();
     const view = mountEditor();
-    const { findByRole, getByRole } = view;
+    const { findByRole, getByRole, getByTestId, queryByRole } = view;
     const name = await findByRole('textbox', { name: /^Name/ });
-    const identifier = getByRole('textbox', { name: /^Identifier/ }) as HTMLInputElement;
 
+    // The identifier follows the name, shown once, with Change beside it (row 41e).
     await type(name, 'Research Assistant');
+    expect(getByTestId('agent-identifier').textContent).toContain(
+      `research-assistant${AGENT_EDITOR_COPY.newAgent.setFromName}`,
+    );
+    expect(queryByRole('textbox', { name: /^Identifier/ })).toBeNull();
+    await fireEvent.click(
+      getByRole('button', { name: AGENT_EDITOR_COPY.newAgent.changeIdentifierLabel }),
+    );
+    const identifier = getByRole('textbox', { name: /^Identifier/ }) as HTMLInputElement;
     expect(identifier.value).toBe('research-assistant');
     await type(identifier, 'helper');
     await type(name, 'Something Else');
@@ -352,13 +379,70 @@ describe('a new agent', () => {
     ]);
   });
 
-  test('refuses a name that makes the identifier new, and says why', async () => {
-    bureau();
-    const { findByRole, getByRole, findByText } = mountEditor();
-    await type(await findByRole('textbox', { name: /^Name/ }), 'New');
+  test('refuses a name that makes the identifier new, and says why at the name on submit', async () => {
+    const calls = bureau();
+    const { findByRole, getByRole, findByText, queryByText } = mountEditor();
+    const name = await findByRole('textbox', { name: /^Name/ });
+    await type(name, 'New');
+    expect(queryByText(AGENT_EDITOR_COPY.identifierReserved)).toBeNull();
 
+    const save = getByRole('button', { name: AGENT_EDITOR_COPY.createAction });
+    expect(save).not.toBeDisabled();
+    await fireEvent.click(save);
     expect(await findByText(AGENT_EDITOR_COPY.identifierReserved)).not.toBeNull();
-    expect(getByRole('button', { name: AGENT_EDITOR_COPY.createAction })).toBeDisabled();
+    expect(name).toBeInvalid();
+    await waitFor(() => expect(document.activeElement).toBe(name));
+    expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
+  });
+
+  test('marks the name and the model after a submit with neither, and sends nothing (row 42m)', async () => {
+    const calls = bureau({
+      modelPolicy: { deployment: { deniedProviders: ['anthropic'] }, policyRevision: 1 },
+    });
+    const { findByRole, getByRole, findByText } = mountEditor();
+    const name = await findByRole('textbox', { name: /^Name/ });
+    const model = getByRole('combobox', { name: 'Model' });
+    expect(name).toBeRequired();
+    expect(model).toHaveValue('');
+
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
+    expect(await findByText(AGENT_EDITOR_COPY.newAgent.nameRequired)).not.toBeNull();
+    expect(await findByText(AGENT_EDITOR_COPY.newAgent.modelRequired)).not.toBeNull();
+    expect(name).toBeInvalid();
+    expect(model).toBeInvalid();
+    // The first problem in the form's order is the one that gets focus (row 14u).
+    await waitFor(() => expect(document.activeElement).toBe(name));
+    expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
+  });
+
+  test('changes the identifier only after Change, says what a bad one needs on submit, and resets to the name’s (rows 42x, 42y)', async () => {
+    const calls = bureau();
+    const { findByRole, getByRole, findByText, getByTestId, queryByRole } = mountEditor();
+    await type(await findByRole('textbox', { name: /^Name/ }), 'Order Helper');
+    expect(getByTestId('agent-identifier').textContent).toContain('order-helper');
+
+    await fireEvent.click(
+      getByRole('button', { name: AGENT_EDITOR_COPY.newAgent.changeIdentifierLabel }),
+    );
+    const identifier = getByRole('textbox', { name: /^Identifier/ });
+    expect(identifier).toHaveAccessibleDescription(
+      expect.stringContaining(AGENT_EDITOR_COPY.newAgent.identifierHint),
+    );
+    await type(identifier, 'Order Helper!');
+    // Nothing is said until a submit.
+    expect(identifier).not.toBeInvalid();
+
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
+    expect(await findByText(AGENT_EDITOR_COPY.identifierInvalid)).not.toBeNull();
+    expect(identifier).toBeInvalid();
+    await waitFor(() => expect(document.activeElement).toBe(identifier));
+    expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
+
+    await fireEvent.click(
+      getByRole('button', { name: AGENT_EDITOR_COPY.newAgent.resetIdentifier('order-helper') }),
+    );
+    expect(queryByRole('textbox', { name: /^Identifier/ })).toBeNull();
+    expect(getByTestId('agent-identifier').textContent).toContain('order-helper');
   });
 
   test('shows the file an identifier makes, and has no delete or history', async () => {
@@ -374,28 +458,54 @@ describe('a new agent', () => {
   });
 
   for (const reason of ['agent-file-exists', 'shadows-code-agent'] as const) {
-    test(`reports a taken identifier (${reason}) on the identifier field and writes nothing else`, async () => {
+    test(`reports a taken identifier (${reason}) at the name that set it, and writes nothing else`, async () => {
       const calls = bureau();
       calls.on('bureau.agents.definitions.create', () => {
         throw faults.taken(reason);
       });
       const { findByRole, findByText, getByRole } = mountEditor();
-      await type(await findByRole('textbox', { name: /^Name/ }), 'Assistant');
-      await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
+      const name = await findByRole('textbox', { name: /^Name/ });
+      await type(name, 'Tool runner');
+      const save = getByRole('button', { name: AGENT_EDITOR_COPY.createAction });
+      await fireEvent.click(save);
 
-      const message = AGENT_EDITOR_COPY.identifierTaken[reason];
+      // The failed save shows at the field, and Save stays enabled beside Cancel (rows 42n, 14u).
+      const message = AGENT_EDITOR_COPY.newAgent.nameTaken('Tool runner');
       await findByText(message);
-      expect(getByRole('textbox', { name: /^Identifier/ })).toBeInvalid();
-      expect(getByRole('textbox', { name: /^Identifier/ })).toHaveAccessibleDescription(
-        expect.stringContaining(message),
-      );
+      expect(name).toBeInvalid();
+      expect(name).toHaveAccessibleDescription(expect.stringContaining(message));
+      expect(save).not.toBeDisabled();
       expect(calls.callsTo('bureau.agents.definitions.create')).toHaveLength(1);
       expect(calls.calls.filter((call) => call.method.includes('update'))).toEqual([]);
       expect(router.pathname).toBe('/');
 
-      // Changing the identifier clears the answer, and the new one is sent.
-      await type(getByRole('textbox', { name: /^Identifier/ }), 'assistant-2');
-      expect(getByRole('textbox', { name: /^Identifier/ })).not.toBeInvalid();
+      // Another name sets another identifier, and the answer goes.
+      await type(name, 'Tool runner 2');
+      expect(name).not.toBeInvalid();
+    });
+
+    test(`reports a taken identifier (${reason}) that was typed at the identifier field`, async () => {
+      const calls = bureau();
+      calls.on('bureau.agents.definitions.create', () => {
+        throw faults.taken(reason);
+      });
+      const { findByRole, findByText, getByRole } = mountEditor();
+      await type(await findByRole('textbox', { name: /^Name/ }), 'Runner');
+      await fireEvent.click(
+        getByRole('button', { name: AGENT_EDITOR_COPY.newAgent.changeIdentifierLabel }),
+      );
+      const identifier = getByRole('textbox', { name: /^Identifier/ });
+      await type(identifier, 'tool-runner');
+      await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
+
+      const message = AGENT_EDITOR_COPY.identifierTaken('tool-runner');
+      await findByText(message);
+      expect(identifier).toBeInvalid();
+      expect(getByRole('textbox', { name: /^Name/ })).not.toBeInvalid();
+
+      // Changing the identifier clears the answer.
+      await type(identifier, 'tool-runner-2');
+      expect(identifier).not.toBeInvalid();
     });
   }
 
@@ -659,7 +769,11 @@ describe('the default effort', () => {
     expect(
       await findByText(AGENT_EDITOR_COPY.effort.unsupported('High', 'anthropic/claude-haiku-5')),
     ).not.toBeNull();
-    expect(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).toBeDisabled();
+    // Save stays enabled (W35); a submit focuses the effort and sends nothing.
+    const save = getByRole('button', { name: AGENT_EDITOR_COPY.saveAction });
+    expect(save).not.toBeDisabled();
+    await fireEvent.click(save);
+    await waitFor(() => expect(document.activeElement?.id).toBe('agent-default-effort'));
     expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(0);
   });
 
@@ -971,7 +1085,7 @@ describe.each(['local', 'remote'] as const)('the agent editor on a %s host', (mo
   });
 });
 
-describe('the header Save', () => {
+describe('the Save in the sticky bar', () => {
   /** Reads ⌘Enter against the shortcut registry as the shell does (`shell.svelte`). */
   function pressCommandEnter(routePattern: string): boolean {
     return shortcuts.handleKey(
@@ -981,7 +1095,7 @@ describe('the header Save', () => {
     );
   }
 
-  test('is the only Save, sits in the header, and submits the form', async () => {
+  test('is the only Save, sits in the form’s sticky bar after Cancel, and submits the form', async () => {
     const calls = bureau();
     const { findByRole, getByRole, getAllByRole } = mountEditor('researcher');
     await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
@@ -989,8 +1103,16 @@ describe('the header Save', () => {
     const form = getByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
 
     expect(getAllByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).toHaveLength(1);
-    expect(form.contains(save)).toBe(false);
-    expect(save.getAttribute('form')).toBe(form.id);
+    expect(form.contains(save)).toBe(true);
+    expect(save.getAttribute('type')).toBe('submit');
+    // Cancel, then Save, at the end of the bar (row 42n).
+    const labels = within(form)
+      .getAllByRole('button')
+      .map((button) => button.textContent?.trim());
+    expect(labels.slice(-2)).toEqual([
+      AGENT_EDITOR_COPY.cancelAction,
+      AGENT_EDITOR_COPY.saveAction,
+    ]);
     expect(save.hasAttribute('data-changes')).toBe(true);
     await fireEvent.click(save);
     await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));
@@ -1069,7 +1191,9 @@ describe('the header Save', () => {
     await findByText(AGENT_EDITOR_COPY.limits.errors.stepLimit(1000));
 
     expect(pressCommandEnter('/agents/:agent/edit')).toBe(true);
-    expect(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).toBeDisabled();
+    // Save stays enabled (W35), and the submit focuses the field that stops it.
+    expect(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).not.toBeDisabled();
+    await waitFor(() => expect(document.activeElement?.id).toBe('agent-step-limit'));
     expect(calls.callsTo('bureau.agents.definitions.update')).toEqual([]);
   });
 
