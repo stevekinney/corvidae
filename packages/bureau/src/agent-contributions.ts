@@ -204,10 +204,20 @@ export function createAgentContributions(
  * is an id or `{ id, configuration }`; either names its guardrail by `id`.
  */
 export function unresolvedContributions(
-  definition: Pick<AgentFileDefinition, 'guardrails' | 'interceptors'>,
+  definition: Pick<AgentFileDefinition, 'guardrails' | 'escalations' | 'interceptors'>,
   contributions: AgentContributions,
 ): AgentFileIssue[] {
   const issues: AgentFileIssue[] = [];
+  // `escalations` names guardrails as `guardrails` does (COR-2109), so each must be contributed.
+  (definition.escalations ?? []).forEach((id, index) => {
+    if (!contributions.guardrails.has(id)) {
+      issues.push({
+        path: `escalations.${index}`,
+        message: `"${id}" is not a contributed guardrail`,
+        reference: id,
+      });
+    }
+  });
   (definition.guardrails ?? []).forEach((selection, index) => {
     const id = guardrailIdOf(selection);
     if (!contributions.guardrails.has(id)) {
@@ -262,16 +272,26 @@ function parsedConfiguration(
  * {@link unresolvedContributions}.
  */
 export function refusedGuardrailConfigurations(
-  definition: { readonly guardrails?: readonly AgentGuardrailSelection[] | undefined },
+  definition: {
+    readonly guardrails?: readonly AgentGuardrailSelection[] | undefined;
+    readonly escalations?: readonly string[] | undefined;
+  },
   contributions: AgentContributions,
 ): AgentFileIssue[] {
   const issues: AgentFileIssue[] = [];
-  (definition.guardrails ?? []).forEach((selection, index) => {
+  // An escalation is an id alone (COR-2109), so it is configured with `{}` like a bare guardrail.
+  const listed: (readonly [string, number, AgentGuardrailSelection])[] = [
+    ...(definition.guardrails ?? []).map(
+      (selection, index) => ['guardrails', index, selection] as const,
+    ),
+    ...(definition.escalations ?? []).map((id, index) => ['escalations', index, id] as const),
+  ];
+  listed.forEach(([key, index, selection]) => {
     const id = guardrailIdOf(selection);
     const contributed = contributions.guardrails.get(id);
     if (contributed === undefined) return;
     const factories = familiesOf(contributed).filter((guardrail) => isGuardrailFactory(guardrail));
-    const at = `guardrails.${index}.configuration`;
+    const at = `${key}.${index}.configuration`;
     if (factories.length === 0) {
       if (typeof selection !== 'string') {
         issues.push({ path: at, message: `"${id}" takes no configuration`, reference: id });
@@ -360,7 +380,7 @@ function namedToolValidator(
  * for a configuration the factory's schema refuses (see {@link refusedGuardrailConfigurations}).
  */
 export function guardrailAdditionsOf(
-  definition: Pick<AgentFileDefinition, 'guardrails'>,
+  definition: Pick<AgentFileDefinition, 'guardrails' | 'escalations'>,
   contributions: AgentContributions,
 ): GuardrailAdditions | undefined {
   const inputDetectors: InputGuardrailEntry[] = [];
@@ -385,26 +405,67 @@ export function guardrailAdditionsOf(
       );
     }
     if (contributed.toolValidator !== undefined) {
-      const validator = contributed.toolValidator;
-      toolValidators.push(
-        isGuardrailFactory(validator)
-          ? namedToolValidator(
-              created(id, validator, configuration),
-              validator.name,
-              validator.description,
-            )
-          : validator,
-      );
+      toolValidators.push(toolValidatorOf(id, contributed.toolValidator, configuration));
     }
   }
-  if (inputDetectors.length === 0 && outputValidators.length === 0 && toolValidators.length === 0) {
+  // The escalations (COR-2109) are built the same way, and run only once the session is tainted
+  // under the group's action, so an entry's own action is dropped.
+  const escalatedInputDetectors: InputDetector[] = [];
+  const escalatedOutputValidators: OutputValidator[] = [];
+  const escalatedToolValidators: ToolCallValidator[] = [];
+  const escalated = new Set<string>();
+  for (const id of definition.escalations ?? []) {
+    if (escalated.has(id)) continue;
+    escalated.add(id);
+    const contributed = contributions.guardrails.get(id);
+    if (contributed === undefined) continue;
+    if (contributed.inputDetector !== undefined) {
+      escalatedInputDetectors.push(
+        guardrailOf(resolvedEntry(id, contributed.inputDetector, {}, namedDetector)),
+      );
+    }
+    if (contributed.outputValidator !== undefined) {
+      escalatedOutputValidators.push(
+        guardrailOf(resolvedEntry(id, contributed.outputValidator, {}, namedValidator)),
+      );
+    }
+    if (contributed.toolValidator !== undefined) {
+      escalatedToolValidators.push(toolValidatorOf(id, contributed.toolValidator, {}));
+    }
+  }
+  if (
+    inputDetectors.length === 0 &&
+    outputValidators.length === 0 &&
+    toolValidators.length === 0 &&
+    escalatedInputDetectors.length === 0 &&
+    escalatedOutputValidators.length === 0 &&
+    escalatedToolValidators.length === 0
+  ) {
     return undefined;
   }
   return {
     inputDetectors,
     outputValidators,
     ...(toolValidators.length === 0 ? {} : { toolValidators }),
+    ...(escalatedInputDetectors.length === 0 ? {} : { escalatedInputDetectors }),
+    ...(escalatedOutputValidators.length === 0 ? {} : { escalatedOutputValidators }),
+    ...(escalatedToolValidators.length === 0 ? {} : { escalatedToolValidators }),
   };
+}
+
+/** The tool-call validator a contributed entry stands for: itself, or what its factory builds. */
+function toolValidatorOf(
+  id: string,
+  validator: PluginToolGuardrailEntry,
+  configuration: unknown,
+): ToolCallValidator {
+  return isGuardrailFactory(validator)
+    ? namedToolValidator(
+        created(id, validator, configuration),
+        validator.name,
+        validator.description,
+      )
+    : validator;
 }
 
 /**

@@ -70,7 +70,8 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
 
   // Build the prepareStep hook
   const prepareStep = async (context: StepContext): Promise<void | GenerateResponse> => {
-    if (!input) return;
+    // Escalated detectors run even when the group lists none (COR-2109).
+    if (!input && taintTracker.getDetectors().length === 0) return;
 
     const onTriggered: InputGuardrailOptions['onTriggered'] = (event) => {
       // Wire taint: if confidence exceeds threshold, taint the session
@@ -98,15 +99,15 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
       }
 
       // Forward to user's onTriggered if provided
-      input.onTriggered?.(event);
+      input?.onTriggered?.(event);
     };
 
     // One guardrail per action (COR-2104), the furthest-reaching first, each with a fresh detector
     // set: the group's own action also runs the escalated detectors from taint, and answers for
     // media no detector reads. The first that answers decides the step.
     const partitions = guardrailPartitions(
-      input.detectors,
-      inputActionOf(input.action),
+      input?.detectors ?? [],
+      inputActionOf(input?.action),
       INPUT_ACTIONS,
       taintTracker.getDetectors(),
     );
@@ -188,7 +189,8 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     result,
     context: ToolExecutionResultContext,
   ) => {
-    if (!input) return;
+    // Escalated detectors run even when the group lists none (COR-2109).
+    if (!input && taintTracker.getDetectors().length === 0) return;
     const onTriggered: InputGuardrailOptions['onTriggered'] = (event) => {
       // A result the guardrail refuses taints the session whatever its confidence: the tool
       // reached content a detector would not let through. A tripwire refuses the result too, and
@@ -215,15 +217,15 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
           action: event.action,
         });
       }
-      input.onTriggered?.(event);
+      input?.onTriggered?.(event);
     };
 
     // One guardrail per action (COR-2104), the furthest-reaching first; the first that replaces
     // the result decides. The group's own action answers for a body no detector can decode,
     // wherever some detector reads the result.
     const partitions = guardrailPartitions(
-      input.detectors,
-      inputActionOf(input.action),
+      input?.detectors ?? [],
+      inputActionOf(input?.action),
       INPUT_ACTIONS,
       taintTracker.getDetectors(),
     );
@@ -233,7 +235,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
         {
           detectors: partition.members,
           action: partition.action,
-          mode: input.mode,
+          mode: input?.mode,
           getSessionTainted: () => taintTracker.isTainted(),
           onTriggered,
         },
@@ -247,10 +249,14 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
 
   // Build the beforeToolExecution hook: the tool-call validators, over each call before it runs.
   const beforeToolExecution: BeforeToolExecutionHook = async (context) => {
-    if (!tools || tools.validators.length === 0) return context.toolCalls;
+    // The escalated validators of a tainted session join the group's own (COR-2109), and run
+    // even when the group lists none.
+    const validators = [...(tools?.validators ?? []), ...taintTracker.getToolValidators()];
+    if (validators.length === 0) return context.toolCalls;
     const hook = createToolCallGuardrail({
       ...tools,
-      action: mode === 'tripwire' ? 'tripwire' : tools.action,
+      validators,
+      action: mode === 'tripwire' ? 'tripwire' : tools?.action,
       getSessionTainted: () => taintTracker.isTainted(),
       onTriggered: (event) => {
         // A call the guardrail refuses taints the session, as a refused tool result does (COR-2300).
@@ -272,7 +278,7 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
             action: event.action,
           });
         }
-        tools.onTriggered?.(event);
+        tools?.onTriggered?.(event);
       },
     });
     return hook(context);

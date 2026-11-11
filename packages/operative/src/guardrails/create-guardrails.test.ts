@@ -238,6 +238,26 @@ describe('createGuardrails', () => {
       expect(escalatedDetectSpy).toHaveBeenCalled();
     });
 
+    it('runs escalated input detectors of a tainted session when the host has no input group', async () => {
+      const detect = mock(async () => safeDetection);
+      const { prepareStep, taint } = createGuardrails({
+        taint: {
+          escalatedDetectors: [{ name: 'escalated', detect }],
+          initial: {
+            category: 'prompt-injection',
+            detector: 'earlier',
+            provenance: 'user-input' as const,
+            confidence: 0.95,
+            at: 1,
+            runId: 'run-1',
+          },
+        },
+      });
+      expect(taint.isTainted()).toBe(true);
+      await prepareStep(createTestContext('a message'));
+      expect(detect).toHaveBeenCalled();
+    });
+
     it('adds escalated validators after tainting', async () => {
       const escalatedValidateSpy = mock(async () => validValidation);
       const escalatedValidator: OutputValidator = {

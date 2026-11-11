@@ -51,6 +51,17 @@ async function finishReasonFor(
 }
 
 describe('resolveAgentGuardrails', () => {
+  it('adds escalated additions to the preset’s own escalation, never replacing it (COR-2109)', () => {
+    const resolved = resolveAgentGuardrails(undefined, undefined, {
+      escalatedInputDetectors: [sentinelDetector],
+    });
+    const preset = createDefaultGuardrailsPreset();
+    expect(resolved?.taint?.escalatedDetectors).toHaveLength(
+      (preset.taint?.escalatedDetectors?.length ?? 0) + 1,
+    );
+    expect(resolved?.taint?.escalatedDetectors?.at(-1)).toBe(sentinelDetector);
+  });
+
   const inherited: GuardrailsOptions = { input: { detectors: [sentinelDetector] } };
   const declared: GuardrailsOptions = { output: { validators: [] } };
 

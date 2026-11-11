@@ -8,6 +8,7 @@ import type {
   SessionTaintedEvent,
   SessionTaintOptions,
   SessionTaintTracker,
+  ToolCallValidator,
 } from './types';
 
 /**
@@ -81,7 +82,7 @@ export function persistedSessionTaintOf(
  *
  * When a high-confidence detection occurs (>= `taintThreshold`, default 0.9), the
  * caller marks the session as tainted. Once tainted, the tracker adds `escalatedDetectors`
- * and `escalatedValidators` to the active set, enabling stricter inspection for the
+ * `escalatedValidators` and `escalatedToolValidators` to the active set, enabling stricter inspection for the
  * remainder of the session.
  *
  * Taint is sticky: once set, it cannot be unset. The `onTainted` callback fires only
@@ -91,6 +92,7 @@ export function createSessionTaintTracker(options: SessionTaintOptions = {}): Se
   const {
     escalatedDetectors = [],
     escalatedValidators = [],
+    escalatedToolValidators = [],
     onTainted,
     initial,
     runId: trackerRunId,
@@ -135,6 +137,12 @@ export function createSessionTaintTracker(options: SessionTaintOptions = {}): Se
     getValidators(): OutputValidator[] {
       if (!tainted) return [];
       return [...escalatedValidators];
+    },
+
+    /** Returns escalated tool-call validators when tainted, empty array otherwise. */
+    getToolValidators(): ToolCallValidator[] {
+      if (!tainted) return [];
+      return [...escalatedToolValidators];
     },
   };
 }
