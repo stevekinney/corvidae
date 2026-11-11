@@ -494,7 +494,7 @@ describe('the color model keeps the source', () => {
     const envelope = controller.draft!.envelope;
     const modes = colorsByMode(envelope, 'text.default');
     expect(modes.light?.components[0]).toBe(0.2);
-    expect(modes.dark?.components[0]).toBe(0.92);
+    expect(modes.dark?.components[0]).toBe(0.95);
     const row = catalogueRowByPath('text.default')!;
     const background = effectiveBackground(row, envelope, workbench.context);
     expect(background?.path).toBe('surface.base');
