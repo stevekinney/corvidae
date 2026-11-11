@@ -9,7 +9,13 @@ import { HttpClientError } from '@lostgradient/weft';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
 import { isEngineType, type WorkflowResolution } from '../../lib/workflow-catalog.ts';
-import { schemaOf, triggerSummary, type TriggerSummary } from './workflow-presentation.ts';
+import { cadenceText } from '../schedules/schedule-cadence-text.ts';
+import {
+  schemaOf,
+  specCadence,
+  triggerSummary,
+  type TriggerSummary,
+} from './workflow-presentation.ts';
 
 /** Where a refused input goes: the field its path names, or the form itself when the path is empty. */
 export type InputIssue = {
