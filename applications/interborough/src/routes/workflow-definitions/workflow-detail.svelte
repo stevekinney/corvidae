@@ -56,6 +56,7 @@
   import {
     availableActions,
     awaitedSignals,
+    CATALOG_STALE_TIME_MS,
     isEngineType,
     resolveWorkflow,
     startingSchedules,
@@ -192,12 +193,13 @@
     undefined,
   );
 
-  // The versions that have run, for the History tab's count. The tab reads the same key, so the
-  // list is asked for once.
+  // The versions that have run, for the History tab's count. The tab reads the same key, and a
+  // fresh read is not asked for again when the tab mounts, so the list is asked for once.
   const revisions = createQuery(
     () => ({
       queryKey: queryKeys.workflowCatalog.revisions(type),
       queryFn: ({ signal }) => listWorkflowRevisions(type, { signal }),
+      staleTime: CATALOG_STALE_TIME_MS,
       enabled: resolution.data?.kind === 'agent-authored',
       retry: false,
     }),

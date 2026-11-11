@@ -156,7 +156,8 @@ describe('the new-workflow editor', () => {
   });
 
   test('refuses the untouched form, which has no ID, and creates nothing', async () => {
-    const { container, getByRole, findByText } = open();
+    const { container, getByRole, findByRole, findByText } = open();
+    await findByRole('heading', { level: 1, name: WORKFLOW_COPY.creator.heading });
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
     await findByText(WORKFLOW_COPY.creator.invalidName);
     expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);

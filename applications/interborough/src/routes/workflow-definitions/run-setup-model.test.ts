@@ -11,6 +11,7 @@ import {
   actionOffReason,
   agentNames,
   cadenceSentence,
+  firstMissingField,
   formSchemaOf,
   inputIssuesOf,
   inputWordsOf,
@@ -130,6 +131,12 @@ describe('missingRequiredField', () => {
     expect(missingRequiredField(RELEASE, { branch: '  ' })).toBe('Branch');
     expect(missingRequiredField(RELEASE, undefined)).toBe('Branch');
     expect(missingRequiredField(RELEASE, { branch: 'main' })).toBe('Since');
+  });
+
+  test('gives the key a form marks as well as the name a person reads', () => {
+    expect(firstMissingField(RELEASE, { branch: '' })).toEqual({ key: 'branch', name: 'Branch' });
+    expect(firstMissingField(RELEASE, { branch: 'main' })).toEqual({ key: 'since', name: 'Since' });
+    expect(firstMissingField(RELEASE, { branch: 'main', since: 'today' })).toBeUndefined();
   });
 
   test('says nothing when every required field holds something, or nothing is required', () => {

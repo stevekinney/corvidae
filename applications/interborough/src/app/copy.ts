@@ -1424,6 +1424,8 @@ export const WORKFLOW_COPY = {
       'The workflow is paused or was removed. Resume it in the workflow, and it can run.',
     /** The alert line above the footer that repeats the first missing field (board PageRunSetup, "Validation"). */
     requiredBeforeRun: (field: string): string => `${field} is required before this can run.`,
+    /** The message on a required input field that was left empty, as the form words its own (board PageRunSetup, "Validation"). */
+    fieldRequired: (field: string): string => `${field} is required.`,
     /** The Input section of a file that declares no input schema (board PageRunSetup, "No input"). */
     takesNoInput: (name: string): string => `${name} takes no input.`,
     /** The Input section of a file the Bureau cannot read (board PageRunSetup, "Order refund, can’t load"). */

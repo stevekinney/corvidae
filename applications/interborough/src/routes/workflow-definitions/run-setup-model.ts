@@ -96,12 +96,23 @@ export function actionOffReason(block: StartBlock | undefined, action: string): 
   return WORKFLOW_COPY.runSetup.actionOff[block](action);
 }
 
+/** A required field a form draft leaves empty: its key in the input, and the name a person reads. */
+export type MissingField = { readonly key: string; readonly name: string };
+
 /**
- * The first required field of an object schema that a form draft leaves empty, by the name a
- * person reads (its `title`, or its key in words), or `undefined` when every required field holds
- * something. Only the top level is read: it is where a run's required fields are.
+ * The name a person reads of the first required field a form draft leaves empty (its `title`, or
+ * its key in words), or `undefined` when every required field holds something.
  */
 export function missingRequiredField(schema: unknown, value: unknown): string | undefined {
+  return firstMissingField(schema, value)?.name;
+}
+
+/**
+ * The first required field of an object schema that a form draft leaves empty, or `undefined` when
+ * every required field holds something. Only the top level is read: it is where a run's required
+ * fields are. A required string that holds only spaces counts as empty.
+ */
+export function firstMissingField(schema: unknown, value: unknown): MissingField | undefined {
   if (!isRecord(schema)) return undefined;
   const required = schema['required'];
   const properties = schema['properties'];
@@ -116,9 +127,11 @@ export function missingRequiredField(schema: unknown, value: unknown): string | 
     if (!empty) continue;
     const property = properties[key];
     const title = isRecord(property) ? property['title'] : undefined;
-    return typeof title === 'string' && title.trim() !== ''
-      ? title.trim()
-      : humanizeIdentifier(key, { casing: 'sentence' });
+    const name =
+      typeof title === 'string' && title.trim() !== ''
+        ? title.trim()
+        : humanizeIdentifier(key, { casing: 'sentence' });
+    return { key, name };
   }
   return undefined;
 }

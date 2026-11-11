@@ -1046,8 +1046,9 @@ describe('a part of the page that fails', () => {
     const original = stub?.world.files[0];
     stub?.on('bureau.workflows.get', () => {
       reads += 1;
-      // The frame's probe reads first and finds the file; the page's read is refused.
-      if (reads === 1 || reads > 2) return original;
+      // The page mounts with its frame, so its own read goes first and is refused; the frame's
+      // probe reads second and finds the file, and the retry's read finds it too.
+      if (reads > 1) return original;
       throw workflowFaults.unprocessable('Refused.');
     });
     await waitFor(() =>

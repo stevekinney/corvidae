@@ -14,6 +14,7 @@
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { dayAndTime } from '../../lib/format/clock.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { CATALOG_STALE_TIME_MS } from '../../lib/workflow-catalog.ts';
   import { listWorkflowRevisions } from '../../lib/workflow-files.ts';
 
   interface Props {
@@ -31,6 +32,8 @@
     () => ({
       queryKey: queryKeys.workflowCatalog.revisions(id),
       queryFn: ({ signal }) => listWorkflowRevisions(id, { signal }),
+      // The page already read this list for the tab's count, so mounting the tab does not ask again.
+      staleTime: CATALOG_STALE_TIME_MS,
       retry: false,
     }),
     undefined,

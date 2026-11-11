@@ -514,7 +514,12 @@ describe('an invalid file', () => {
     const { container } = open('/workflows/broken/edit');
     const root = await ready(container);
     expect(root.dataset['condition']).toBe('invalid');
-    expect(root.querySelector('[data-testid="workflow-problem"]')?.textContent?.trim()).toBe(
+    expect(
+      root
+        .querySelector('[data-testid="workflow-problem"]')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe(
       `${EDITOR.invalid.sentence('broken.json', 'The document is not a workflow')} ${EDITOR.invalid.fix}`,
     );
     expect(root.querySelector('[data-testid="workflow-issues"]')?.textContent).toContain(
@@ -561,7 +566,12 @@ describe('an invalid file', () => {
 
     // The file has no title, so the identifier shows.
     expect(root.querySelector('h1')?.textContent).toContain('Edit order-refund');
-    expect(root.querySelector('[data-testid="workflow-problem"]')?.textContent?.trim()).toBe(
+    expect(
+      root
+        .querySelector('[data-testid="workflow-problem"]')
+        ?.textContent?.replace(/\s+/g, ' ')
+        .trim(),
+    ).toBe(
       'order-refund.json can’t be read as a workflow: line 4 expected a comma. Fix it here, or Cancel and open the file in your editor.',
     );
     await waitFor(() =>
