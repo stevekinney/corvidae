@@ -117,6 +117,7 @@ import type { Models, ModelsOptions } from './models/create-models';
 import type { BureauNotifications } from './notifications/notification-types';
 import type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 import type { ForkSessionRequest, ForkSessionResult } from './session-fork';
+import type { RegenerateSessionRequest, RegenerateSessionResult } from './session-regenerate';
 import type {
   SessionSteeringState,
   SteeringCommandAdmissionOutcome,
@@ -2729,6 +2730,36 @@ export interface BureauContexts {
    * shutting down.
    */
   fork(contextId: string, request: ForkSessionRequest): Promise<ForkSessionResult>;
+
+  /**
+   * Regenerates a context's latest answer without running a tool (COR-2296): the model is asked
+   * once, over the history before `request.messageId`, with a toolbox that holds no tool, and its
+   * answer replaces that row under the same id. Every other row (the user's message, earlier
+   * replies, tool calls, tool results, approvals) is kept as it was. `messageId` must be the last
+   * row of the context and the last assistant reply of its newest run, which has ended, with no
+   * tool approval pending and no tool call left without a result; anything else throws a
+   * {@link SessionRegenerateRefusedError} naming why before the model is asked. The model is the
+   * one the context's steering names now (or the agent's default), judged by the policy as it is
+   * now, never the one the old answer recorded. An answer that asks for a tool, a model that
+   * fails, an abort through `request.signal`, and a context that changed after it was read (a new
+   * turn, a steering change, a deletion, a deletion and a new context under the id) each throw a
+   * refusal and leave the history as it was: the replacement is one compare-and-swap fenced on
+   * the incarnation and revision the attempt read, and it commits the regeneration's receipt to
+   * the session outbox beside the new answer.
+   *
+   * `commandId` is recorded in the durable command ledger: only the attempt that claims it asks
+   * the model. An exact retry, even after a restart, returns the original result; a duplicate
+   * whose first attempt is still pending is answered from that attempt's committed receipt, or
+   * refused `command-in-doubt` when there is none; the same `commandId` with another `messageId`
+   * is refused `command-conflict`. A refusal before the commit releases the command, so an exact
+   * retry tries again. It does not authorize the caller: that is the caller's to do, as for
+   * `contexts.get`. Throws a `BureauError` `NOT_FOUND` for a context this Bureau does not hold,
+   * and a `BureauShuttingDownError` when Bureau is shutting down.
+   */
+  regenerate(
+    contextId: string,
+    request: RegenerateSessionRequest,
+  ): Promise<RegenerateSessionResult>;
 
   /**
    * One page of the context's durable event history, from the exclusive `options.since` cursor. It

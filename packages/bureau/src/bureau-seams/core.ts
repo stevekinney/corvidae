@@ -93,6 +93,7 @@ import type { createChildTopologyStore } from '../child-topology-store';
 import type { createDiagnosticDispatcher, subscribeEventFeed } from '../bureau-event-forwarders.ts';
 import type { createFireReviewSeeds } from '../fire-review-seeds';
 import type { createForkLedger } from '../session-fork';
+import type { createRegenerateLedger } from '../session-regenerate';
 import type { createGoalAttemptFenceHost } from '../goal-attempt-fence';
 import type { createGoalValidatorCatalog } from '../goal-validator-catalog';
 import type { createGoalWorkflowHost } from '../goal-ports';
@@ -605,6 +606,8 @@ export interface BureauCore<D extends AgentDefinitions> {
   readonly assetClaimReconciler: ReturnType<typeof createAssetClaimReconciler>;
   /** The session fork ledger. */
   readonly forkLedger: ReturnType<typeof createForkLedger>;
+  /** The answer regeneration ledger (COR-2296). */
+  readonly regenerateLedger: ReturnType<typeof createRegenerateLedger>;
   /** The durable storage, when it persists. */
   readonly persistentDurableStorage:
     NonNullable<RuntimeComposition['durable']>['engine']['storage'] | undefined;

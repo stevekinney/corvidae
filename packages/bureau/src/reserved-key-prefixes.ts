@@ -197,6 +197,10 @@ export const BUREAU_RESERVED_KEY_FAMILIES: readonly ReservedKeyFamily[] = [
     'command-ledger:fork:v1',
     'a fork’s receipt: the new context id, a model override and an effort',
   ),
+  contentFree(
+    'command-ledger:regenerate:v1',
+    'a regeneration’s receipt: the context and message ids and the revisions it was fenced on; never the answer’s text',
+  ),
   purged('command-ledger:tasks-respond:v1'),
   purged('command-ledger:v1'),
   purged('outbox-dedupe:'),
