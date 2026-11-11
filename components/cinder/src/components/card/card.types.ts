@@ -87,7 +87,9 @@ type CardDiscriminant = (
 ) &
   (
     | { href?: never; onclick?: never; type?: never }
-    | (Omit<HTMLAnchorAttributes, keyof HTMLAttributes<HTMLAnchorElement> | 'type'> & {
+    // `media` is also an anchor attribute (a media query for the link target). The card's `media`
+    // is its image slot, so the attribute is left out; kept, the two intersect to a prop no caller can pass.
+    | (Omit<HTMLAnchorAttributes, keyof HTMLAttributes<HTMLAnchorElement> | 'type' | 'media'> & {
         /** Destination URL that makes the entire card an anchor. */
         href: string;
         onclick?: (event: MouseEvent) => void;

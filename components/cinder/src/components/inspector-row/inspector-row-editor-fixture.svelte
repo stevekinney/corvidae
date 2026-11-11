@@ -2,9 +2,11 @@
   import type { InspectorRowValue } from './inspector-row.types.ts';
   import InspectorRow from './inspector-row.svelte';
 
+  // The defaults keep `undefined` out of the two bindings, which `exactOptionalPropertyTypes`
+  // refuses to pass to an optional prop.
   let {
-    onCommit,
-    onCancel,
+    onCommit = () => undefined,
+    onCancel = () => undefined,
   }: {
     onCommit?: (next: InspectorRowValue | undefined) => void;
     onCancel?: () => void;
