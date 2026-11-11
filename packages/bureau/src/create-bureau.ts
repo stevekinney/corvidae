@@ -4429,6 +4429,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    * prefix of its own.
    */
   const regenerateLedger = createRegenerateLedger(runtime.kv, runtimeServices);
+
   /**
    * COR-2299 — the hook plan a catalog agent's run this process does not hold would run with:
    * Bureau's tier for the agent, the plugin tier, and the agent's own hooks, as a dispatch composes
