@@ -294,6 +294,8 @@ function taskTitle(
   }
   if (origin.kind === 'chat') return origin.title === '' ? TASK_COPY.untitledChat : origin.title;
   if (origin.kind === 'parent') return TASK_COPY.list.workflowRunTitle;
+  // A goal's attempt is titled by its goal, whether or not the goal itself was read.
+  if (origin.kind === 'goal') return goalTitle(origin.name);
   return chats.get(task.contextId)?.title ?? TASK_COPY.runTitle;
 }
 

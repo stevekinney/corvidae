@@ -24,6 +24,7 @@ import {
 } from '../../../lib/bureau-world.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
 import { landAt } from '../../chat/pages.test-support.ts';
+import { goalTitle } from './run-rows.ts';
 import RunWaitingHarness from './run-waiting.test-harness.svelte';
 
 let stub: BureauWorldStub | undefined;
@@ -122,15 +123,23 @@ describe('cancelling a run', () => {
     expect(view.getByRole('button', { name: TASK_COPY.cancelAction })).not.toBeNull();
   });
 
+  // A goal's attempt is titled by its goal; a step of a workflow is titled by the agent that ran.
   test.each([
-    ['an attempt of a goal', { kind: 'goal', goalRunId: 'goal-1', attemptId: 'a' }],
-    ['a step of a workflow', { kind: 'parent', parentRunId: 'wf-1' }],
-  ])('%s offers no cancel, because the goal or the workflow stops it', async (_name, origin) => {
-    const view = open(taskFixture({ id: 'run-1', agentName: 'echo', status: 'working', origin }));
+    [
+      'an attempt of a goal',
+      { kind: 'goal', goalRunId: 'goal-1', attemptId: 'a' },
+      goalTitle('goal-1'),
+    ],
+    ['a step of a workflow', { kind: 'parent', parentRunId: 'wf-1' }, 'echo'],
+  ])(
+    '%s offers no cancel, because the goal or the workflow stops it',
+    async (_name, origin, title) => {
+      const view = open(taskFixture({ id: 'run-1', agentName: 'echo', status: 'working', origin }));
 
-    await view.findByRole('heading', { level: 1, name: 'echo' });
-    expect(view.queryByRole('button', { name: TASK_COPY.cancelAction })).toBeNull();
-  });
+      await view.findByRole('heading', { level: 1, name: title });
+      expect(view.queryByRole('button', { name: TASK_COPY.cancelAction })).toBeNull();
+    },
+  );
 
   test.each([
     ['owned-by-goal', TASK_COPY.cancelOwned['owned-by-goal']],

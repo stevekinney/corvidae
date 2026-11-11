@@ -7,7 +7,7 @@
  */
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { HttpClient } from '@lostgradient/weft';
-import { cleanup, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import {
   afterAll,
   afterEach,
@@ -19,7 +19,7 @@ import {
   test,
 } from 'bun:test';
 
-import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import { taskFixture } from '../../../lib/bureau-fixtures.test-support.ts';
 import {
@@ -189,7 +189,18 @@ async function initialize(source: object): Promise<void> {
 const responseTo = (id: number) =>
   framePayloads.find((message) => message.id === id && !('method' in message));
 
+/**
+ * The panels sit under How it ran, which a finished run's page gives closed, so a person opens it
+ * to reach them.
+ */
+async function openHowItRan(view: ReturnType<typeof openRun>): Promise<void> {
+  const trigger = await view.findByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading });
+  if (trigger.getAttribute('aria-expanded') !== 'true') await fireEvent.click(trigger);
+  await waitFor(() => expect(trigger.getAttribute('aria-expanded')).toBe('true'));
+}
+
 async function panelFrame(view: ReturnType<typeof openRun>): Promise<HTMLIFrameElement> {
+  await openHowItRan(view);
   await waitFor(() =>
     expect(view.container.querySelector('[data-section="plugin-panel"] iframe')).not.toBeNull(),
   );
@@ -254,6 +265,7 @@ describe('a run on a host with no panels', () => {
   test('shows no panel when the host cannot list them', async () => {
     panelsListed = false;
     const view = openRun();
+    await openHowItRan(view);
     await waitUntil(() => hostRequests.includes('/host/panels'));
     await waitFor(() => expect(view.container.querySelector('article')).not.toBeNull());
     // Nothing is going to appear, so the check is that the page stays as it was.

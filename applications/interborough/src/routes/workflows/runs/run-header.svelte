@@ -183,10 +183,9 @@
 {#snippet summary()}
   {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
       datetime={new Date(startedAt).toISOString()}>{dayStamp(startedAt)}</time
-    >{/if}{#if tookMilliseconds !== undefined}, {tookWord}
-    {durationWords(tookMilliseconds)}{/if}{#each phrases as phrase (phrase)}, {phrase}{/each}{#each waitingForSignals as signal (signal)},
-    {signalWords}
-    <code class="ib-identifier">{signal}</code>{/each}{#if note !== undefined}, {note}{/if}
+    >{/if}{#if tookMilliseconds !== undefined}{`, ${tookWord} ${durationWords(tookMilliseconds)}`}{/if}{#each phrases as phrase (phrase)}{`, ${phrase}`}{/each}{#each waitingForSignals as signal (signal)}{`, ${signalWords} `}<code
+      class="ib-identifier">{signal}</code
+    >{/each}{#if note !== undefined}{`, ${note}`}{/if}
 {/snippet}
 
 {#snippet actions()}

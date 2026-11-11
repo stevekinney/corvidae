@@ -496,7 +496,9 @@ describe('a goal’s attempt', () => {
     const link = (await view.findByRole('link', {
       name: TASK_COPY.openSession,
     })) as HTMLAnchorElement;
-    await waitFor(() => expect(origin(view.container)?.textContent).toContain(TASK_COPY.goal));
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal),
+    );
     expect(stub?.callsTo('bureau.contexts.get').map((call) => call.params)).toEqual([
       { contextId: 'goal-session-goal-1-a0' },
     ]);
@@ -551,7 +553,9 @@ describe('a goal’s attempt', () => {
   test('names the goal, which opens in place', async () => {
     const view = open('/runs/goal-1-a0', { goals: [attempt('passed')], scopes: BUREAU_ONLY });
 
-    const link = (await view.findByRole('link', { name: /^goal-1 / })) as HTMLAnchorElement;
+    // The origin line and the rail both name the goal as a link; each opens it in place.
+    const links = await view.findAllByRole('link', { name: goalTitle('goal-1') });
+    const link = links[0] as HTMLAnchorElement;
     expect(await fireEvent.click(link, { button: 0 })).toBe(false);
     expect(router.pathname).toBe('/goals/goal-1');
   });

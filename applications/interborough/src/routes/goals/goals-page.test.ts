@@ -60,9 +60,14 @@ function goal(id: string, overrides: Record<string, unknown> = {}) {
   };
 }
 
+const AGENT_DISPLAY_NAMES: Record<string, string> = {
+  assistant: 'Assistant',
+  'tool-runner': 'Tool runner',
+};
+
 const AGENTS = ['assistant', 'tool-runner'].map((name) => ({
   name,
-  displayName: name,
+  displayName: AGENT_DISPLAY_NAMES[name] ?? name,
   description: null,
   definitionRevision: 1,
   kind: 'code',
