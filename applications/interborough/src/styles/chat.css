@@ -162,9 +162,15 @@
   grid-column: 1 / -1;
 }
 
+/* The conversation is one reading column, centred in the pane with no frame around it (COR-2327):
+ * the transcript and the composer docked under it share the column's 760px measure, and on a
+ * narrower pane the column is the pane. */
 .weft-chat-surface {
   flex: 1;
   min-height: 0;
+  inline-size: 100%;
+  max-inline-size: 47.5rem;
+  margin-inline: auto;
 }
 
 .weft-chat-approval__title,
@@ -288,14 +294,14 @@
 
 /* ── Chat list: the chats beside the open one, newest first under their days ─────── */
 
-/* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+/* ListDetail fills the height it is given and scrolls each pane, so the page gives it one. It draws
+ * no frame of its own (COR-2327): the list and the open chat sit on the page, and ListDetail's
+ * divider is the one line between them. */
 .ib-chats {
   /* The outlet is the flexed, padded viewport region. Filling it keeps the Chat surface—and its
    * blocked composer dock—inside the visible page even when the connection banner is present. */
   block-size: max(28rem, 100%);
   min-inline-size: 0;
-  border: 1px solid var(--cinder-border-muted);
-  border-radius: var(--cinder-radius-md);
   overflow: hidden;
 }
 
