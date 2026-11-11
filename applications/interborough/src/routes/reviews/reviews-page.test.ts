@@ -621,6 +621,7 @@ describe('a decision on a review that changed while it was read (COR-1714)', () 
     expect(stub?.callsTo('bureau.reviews.resolve')[0]?.params).toEqual({
       id: approval.id,
       decision: 'approve',
+      decisionSurface: 'reviews',
       round: 2,
     });
   });

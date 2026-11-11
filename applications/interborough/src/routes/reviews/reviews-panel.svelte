@@ -231,7 +231,8 @@
     await tick();
     const rows = frameElement?.querySelectorAll<HTMLElement>('[data-review-row]') ?? [];
     const row = [...rows].find((element) => element.getAttribute('data-review-row') === key);
-    row?.querySelector<HTMLElement>('.cinder-selectable-row__primary')?.focus();
+    // `data-review-row` lands on the row's primary button itself, so the row is what takes focus.
+    (row?.querySelector<HTMLElement>('.cinder-selectable-row__primary') ?? row)?.focus();
   }
 
   /**

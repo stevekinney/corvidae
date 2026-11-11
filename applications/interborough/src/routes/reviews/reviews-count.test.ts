@@ -77,7 +77,9 @@ function navigationLabel(container: HTMLElement): string {
 
 /** What the Waiting segment says, with its count ("Waiting, 1": the comma is how a reader hears it). */
 function tabLabel(container: HTMLElement): string {
-  return container.querySelector('[role="radio"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  // Cinder draws the comma and the count as separate spans, so the text has no space after the comma.
+  const text = container.querySelector('[role="radio"]')?.textContent ?? '';
+  return text.replace(/\s+/g, ' ').replace(/,\s*/g, ', ').trim();
 }
 
 /** Opens the first review in the list, as a click on its row does. */

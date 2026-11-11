@@ -64,6 +64,7 @@ const QUESTION = humanWaitFixture({ sessionId: 'session-2', requestedAt: Date.no
 const APPROVAL_KEY = `bureau:${APPROVAL.id}`;
 const QUESTION_KEY = `bureau:${QUESTION.id}`;
 
+/** The rows of the list. `data-review-row` lands on each row's primary button, so a row is what a click opens. */
 function rows(container: HTMLElement): HTMLElement[] {
   return [...container.querySelectorAll<HTMLElement>('[data-review-row]')];
 }
@@ -133,7 +134,7 @@ describe('the segments', () => {
     await findByRole('radio', { name: /^Waiting\s*,\s*2$/ });
     await findByRole('radio', { name: /^Done\s*,\s*1$/ });
 
-    await fireEvent.click(rows(container)[0]!.querySelector('.cinder-selectable-row__primary')!);
+    await fireEvent.click(rows(container)[0]!);
     await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await findByRole('radio', { name: /^Waiting\s*,\s*1$/ });
     await findByRole('radio', { name: /^Done\s*,\s*2$/ });
@@ -184,9 +185,7 @@ describe('Enter on a row', () => {
   test('takes focus into the note field of an approval and decides nothing', async () => {
     const { container, findByLabelText } = open({ reviews: [APPROVAL, QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(2));
-    const primary = rows(container)[0]!.querySelector<HTMLElement>(
-      '.cinder-selectable-row__primary',
-    )!;
+    const primary = rows(container)[0]!;
     // The keydown's default is cancelled, so the keypress that follows it in a browser reaches
     // nothing: it would otherwise press whatever holds focus by then.
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
@@ -207,9 +206,7 @@ describe('Enter on a row', () => {
     });
     const { container, findByRole } = open({ reviews: [choices] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    const primary = rows(container)[0]!.querySelector<HTMLElement>(
-      '.cinder-selectable-row__primary',
-    )!;
+    const primary = rows(container)[0]!;
     const notCancelled = await fireEvent.keyDown(primary, { key: 'Enter' });
     expect(notCancelled).toBe(false);
     const staging = await findByRole('button', { name: 'staging' });
@@ -222,7 +219,7 @@ describe('an approval', () => {
   test('says what it wants to run and how risky that is, and offers the note as Add a note', async () => {
     const { container, findByTestId, getByLabelText, getByText } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click(rows(container)[0]!.querySelector('.cinder-selectable-row__primary')!);
+    await fireEvent.click(rows(container)[0]!);
     const wants = await findByTestId('review-wants');
     expect(wants.textContent).toContain(REVIEWS_COPY.wantsToRun);
     expect(wants.textContent).toContain('Issue refund');
@@ -239,7 +236,7 @@ describe('an approval', () => {
   test('offers Allow for the rest of the chat', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click(rows(container)[0]!.querySelector('.cinder-selectable-row__primary')!);
+    await fireEvent.click(rows(container)[0]!);
     expect(await findByRole('button', { name: REVIEWS_COPY.allowForChat })).not.toBeNull();
   });
 
@@ -253,7 +250,7 @@ describe('an approval', () => {
     });
     const { container, findByRole, queryByRole } = open({ reviews: [always] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click(rows(container)[0]!.querySelector('.cinder-selectable-row__primary')!);
+    await fireEvent.click(rows(container)[0]!);
     await findByRole('button', { name: 'Approve' });
     expect(queryByRole('button', { name: REVIEWS_COPY.allowForChat })).toBeNull();
   });
@@ -263,7 +260,7 @@ describe('a question', () => {
   test('is introduced as a question from an agent', async () => {
     const { container, findByText } = open({ reviews: [QUESTION] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click(rows(container)[0]!.querySelector('.cinder-selectable-row__primary')!);
+    await fireEvent.click(rows(container)[0]!);
     await findByText(REVIEWS_COPY.questionEyebrow);
   });
 });
