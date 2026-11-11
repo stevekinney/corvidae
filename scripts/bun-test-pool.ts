@@ -20,7 +20,7 @@
  * Waiters take slots in arrival order through the host lock's ticket queue (`queue/`), so a large
  * request is never overtaken by later small ones, and a small one behind it waits its turn. Only
  * the waiter at the front claims. Waiting is on state, not on time: the front waiter looks again
- * every half second and prints a line whenever what it waits for changes. Waiting has no deadline,
+ * every quarter second and prints a line whenever what it waits for changes. Waiting has no deadline,
  * because running past it would break the cap; it is bounded by the holders, whose tests the hang
  * guard bounds.
  *
@@ -53,6 +53,7 @@ import {
   gitCommonDirectory,
   liveFront,
   pidStartedAtField,
+  processTableEnvironment,
   readOwner,
   readTicket,
   reclaimAbandoned,
@@ -151,6 +152,7 @@ export type ProcessTable = ReadonlyMap<number, ProcessEntry>;
  */
 export function readProcessTable(): ProcessTable | undefined {
   const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,pgid=,lstart='], {
+    env: processTableEnvironment(),
     stdout: 'pipe',
     stderr: 'ignore',
   });
@@ -302,7 +304,7 @@ async function waitForSlots(
   count: number,
   ticket: string,
 ): Promise<HeldTestSlots> {
-  const { poolDirectory, size, pollIntervalMs = 500 } = options;
+  const { poolDirectory, size, pollIntervalMs = 250 } = options;
   const read = options.readProcessTable ?? readProcessTable;
   const sleep = options.sleep ?? ((milliseconds: number) => Bun.sleep(milliseconds));
   const queue = queueDirectory(poolDirectory);

@@ -166,9 +166,22 @@ function isProcessAlive(pid: number): boolean {
   }
 }
 
+/**
+ * The environment `ps` runs under: the host's own time zone and the C locale. `lstart` prints in
+ * the caller's zone, and stages run with and without `TZ=UTC`, so without this a holder recorded
+ * by one would look recycled to a reader in the other and lose its lock.
+ */
+export function processTableEnvironment(): Record<string, string | undefined> {
+  const environment = Object.fromEntries(
+    Object.entries(process.env).filter(([name]) => name !== 'TZ'),
+  );
+  return { ...environment, LC_ALL: 'C' };
+}
+
 /** The process's start time as `ps` reports it, or undefined when there is no such process. */
 export function processStartTime(pid: number): string | undefined {
   const result = Bun.spawnSync(['ps', '-o', 'lstart=', '-p', String(pid)], {
+    env: processTableEnvironment(),
     stdout: 'pipe',
     stderr: 'ignore',
   });

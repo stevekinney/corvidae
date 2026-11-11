@@ -119,6 +119,7 @@ async function exitedPid(): Promise<number> {
 /** Starts a real pooled run of `sleep 30` with a pool of one, and resolves once its group is recorded. */
 async function startPooledRun(
   poolDirectory: string,
+  environment: Record<string, string | undefined> = process.env,
 ): Promise<{ wrapper: Subprocess; processGroup: number }> {
   const fixture = join(poolDirectory, '..', 'pooled-run.ts');
   await writeFile(
@@ -135,6 +136,7 @@ process.exitCode = await runPooledBunTest({
 `,
   );
   const wrapper = spawnWithHangGuard([process.execPath, fixture, poolDirectory], {
+    env: environment,
     stdio: ['ignore', 'ignore', 'inherit'],
   });
   let processGroup: number | undefined;
@@ -312,6 +314,27 @@ describe('reclaiming slots', () => {
     killGroup(processGroup);
     const lease = await acquireTestSlots(options(pool, 1, 1, { readProcessTable }));
     await lease.release();
+  });
+
+  test('a holder recorded under another time zone is still alive', async () => {
+    const pool = join(await scratch(), 'pool');
+    // `ps` prints start times in the caller's zone; the lanes run with and without `TZ=UTC`.
+    const zone =
+      process.env['TZ'] === 'Pacific/Kiritimati' ? 'Pacific/Pago_Pago' : 'Pacific/Kiritimati';
+    const { processGroup } = await startPooledRun(pool, { ...process.env, TZ: zone });
+    const controller = new AbortController();
+    const blocked = rejectionOf(
+      acquireTestSlots(
+        options(pool, 1, 1, {
+          readProcessTable,
+          signal: controller.signal,
+          onWait: () => controller.abort(),
+        }),
+      ),
+    );
+    expect(await blocked).toBeInstanceOf(Error);
+    expect(await heldSlots(pool)).toBe(1);
+    killGroup(processGroup);
   });
 
   test('creates a missing pool directory', async () => {
