@@ -9,7 +9,8 @@
  *
  * - {@link withHostSlots} holds `count` slots while an in-process `run` resolves, with this process
  *   as the holder: a holder killed outright leaves slots that the next waiter reclaims, judged by
- *   pid and start time.
+ *   pid and start time, and, when the holder leads its own process group, by that group too, so the
+ *   slots stay held while the children it started in it live.
  * - {@link runWithHostSlots}, and the command line below, runs a command in a process group of its
  *   own while holding the slots, and records the group in them, as a pooled `bun test` does: a
  *   wrapper killed outright keeps its slots exactly as long as anything in the group lives.
@@ -129,6 +130,15 @@ export async function withHostSlots<T>(
         environment: { ...environment, [heldSlotsTokenVariable]: held.token },
         recordProcessGroup: held.recordProcessGroup,
       };
+      // A holder that leads a process group records it, as a wrapper records its command's: killed
+      // outright, it leaves its slots held while its browsers and shards, in that group, live. A
+      // holder that only belongs to a group (a shell's, a parent's) records nothing, since the
+      // group may outlive its work for ever, and its slots are reclaimed with the holder's pid.
+      if (read()?.get(process.pid)?.processGroup === process.pid) {
+        await held.recordProcessGroup(process.pid).catch((error: unknown) => {
+          report(`host-slots: could not record the holder's process group: ${String(error)}`);
+        });
+      }
     } else {
       slots = { ...slots, count: Math.min(wanted, parentSlots), admission: 'nested' };
     }

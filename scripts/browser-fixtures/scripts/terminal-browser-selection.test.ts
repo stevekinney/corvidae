@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   flattenReport,
+  narrowingArguments,
   resultProblems,
   selectionProblems,
   TERMINAL_BEHAVIORAL_SPECS,
@@ -215,6 +216,33 @@ describe('the terminal run', () => {
     );
     expect(resultProblems(selected, broken)[0]).toContain('ended as timedOut');
     expect(resultProblems(selected, selected.slice(1))[0]).toContain('were selected but');
+  });
+});
+
+describe('the arguments that narrow a terminal run', () => {
+  test('a worker count alone does not narrow, so a plain run keeps its completeness check', () => {
+    for (const argumentsList of [
+      ['--workers=4'],
+      ['--workers', '4'],
+      ['-j', '4'],
+      ['-j4'],
+      ['--workers=2', '-j', '3'],
+    ]) {
+      expect(narrowingArguments(argumentsList)).toEqual([]);
+    }
+    // Narrowing is judged by the same rule the runner uses: nothing narrowed means the full check.
+    const selected = full();
+    expect(resultProblems(selected, selected.slice(1), { subset: false })[0]).toContain(
+      'were selected but',
+    );
+  });
+
+  test('a real filter still narrows, with or without a worker count beside it', () => {
+    expect(narrowingArguments(['--grep=resize'])).toEqual(['--grep=resize']);
+    expect(narrowingArguments(['--workers=4', '--grep', 'resize'])).toEqual(['--grep', 'resize']);
+    expect(narrowingArguments(['-j', '4', 'terminal-a.playwright.ts'])).toEqual([
+      'terminal-a.playwright.ts',
+    ]);
   });
 });
 

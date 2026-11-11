@@ -6,7 +6,12 @@ import { join } from 'node:path';
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
 import { CONTAINER_CPUS } from './browser-fixtures/scripts/docker-baseline-runner.ts';
-import { slotDirectory, type SlotOwner } from './bun-test-pool.ts';
+import {
+  isHolderAlive,
+  slotDirectory,
+  type ProcessTable,
+  type SlotOwner,
+} from './bun-test-pool.ts';
 import {
   parseHostSlotsArguments,
   withHostSlots,
@@ -240,7 +245,50 @@ const killedWrapperKeepsSlotsWhileItsGroupLives = await inScratchPool(async (poo
   expect(afterwards.count).toBe(2);
 });
 
+/** A process table that holds this process, as the leader of `group` or as a member of it. */
+function tableWith(group: number, extra: ReadonlyArray<readonly [number, number]> = []) {
+  const entry = (processGroup: number) => ({ processGroup, startedAt: 'a start' });
+  const table: ProcessTable = new Map([
+    [process.pid, entry(group)],
+    ...extra.map(([pid, processGroup]) => [pid, entry(processGroup)] as const),
+  ]);
+  return table;
+}
+
+const inProcessHolderRecordsItsOwnGroup = await inScratchPool(async (pool) => {
+  // A leader: its group is recorded, so its children keep the slots after it is killed.
+  const childPid = process.pid + 1_000_000;
+  await withHostSlots(
+    2,
+    async () => {
+      const owner = await slotOwner(pool, 0);
+      expect(owner?.processGroup).toBe(process.pid);
+      const killed = {
+        ...owner!,
+        pid: process.pid + 2_000_000,
+        processGroupStartedAt: 'a start',
+      };
+      // The holder is gone and one child of its group lives: the slots stay held.
+      const afterwards = tableWith(process.pid + 3_000_000, [[childPid, process.pid]]);
+      expect(isHolderAlive(killed, afterwards)).toBe(true);
+      // Nothing of the group lives: the slots are reclaimable.
+      expect(isHolderAlive(killed, tableWith(process.pid + 3_000_000))).toBe(false);
+    },
+    poolOptions(pool, 2, { readProcessTable: () => tableWith(process.pid) }),
+  );
+  // A member of some other group records none: the pid alone judges it.
+  await withHostSlots(
+    2,
+    async () => {
+      expect((await slotOwner(pool, 0))?.processGroup).toBeUndefined();
+    },
+    poolOptions(pool, 2, { readProcessTable: () => tableWith(process.pid + 4_000_000) }),
+  );
+});
+
 describe('host slots', () => {
+  test('an in-process holder that leads a process group records it; one that does not records none', () =>
+    rethrow(inProcessHolderRecordsItsOwnGroup));
   test('a second concurrent holder waits, and proceeds once the first releases', () =>
     rethrow(secondHolderWaitsForTheFirst));
   test('a run nested in a holder runs inside its slots instead of acquiring more', () =>
