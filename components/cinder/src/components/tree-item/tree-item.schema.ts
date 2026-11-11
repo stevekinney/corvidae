@@ -34,6 +34,18 @@ const schema = {
       description:
         'Explicit selectable ids controlled by this item in cascade checkbox-selection mode.',
     },
+    count: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'number',
+        },
+      ],
+      description:
+        'Count drawn right-aligned after the label in the default row, on the same grid as the icon and label. It is read after the label.',
+    },
     class: {
       type: 'string',
       description: 'Additional CSS class merged with `.cinder-tree-item`.',
@@ -47,6 +59,12 @@ const schema = {
         name: 'children',
         reason: 'function-or-snippet',
         description: 'Nested TreeItem children for branch nodes.',
+      },
+      {
+        name: 'icon',
+        reason: 'function-or-snippet',
+        description:
+          'Decorative swatch or icon drawn before the label in the default row. It is hidden from assistive technology.',
       },
       {
         name: 'loadChildren',

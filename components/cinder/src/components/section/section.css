@@ -1,0 +1,75 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * SECTION
+ *
+ * A heading, an optional action and the content, with no box. Space, not a surface or a border,
+ * separates one section from the next. Parts are styled by class, so a span the consumer
+ * interpolates into the content is never restyled.
+ * ======================================== */
+
+  .cinder-section {
+    display: block;
+    /* A section is as tall as its content, whatever its parent does. A flex or scroll parent
+       scrolls or grows; it never squeezes a section. */
+    flex: none;
+    min-block-size: min-content;
+    min-inline-size: 0;
+  }
+
+  .cinder-section + .cinder-section {
+    margin-block-start: var(--cinder-space-8);
+  }
+
+  .cinder-section__header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: var(--cinder-space-4);
+    margin-block-end: var(--cinder-space-3);
+  }
+
+  .cinder-section__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .cinder-section__title {
+    margin: 0;
+    font-size: var(--cinder-text-lg);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-section__description {
+    margin: 0;
+    max-inline-size: 60ch;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-section__actions {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    /* Actions are centered on the title's first line, so they never make the header taller. */
+    font-size: var(--cinder-text-lg);
+    line-height: var(--cinder-leading-tight);
+    margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
+  }
+
+  /* Content is a block, so its children keep their own height: a child that clips its overflow is
+     never collapsed to nothing the way a flex item with overflow hidden is. */
+  .cinder-section__content {
+    display: block;
+    min-inline-size: 0;
+  }
+
+  .cinder-section__content > :where(*) {
+    flex-shrink: 0;
+  }
+}

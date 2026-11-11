@@ -47,6 +47,8 @@
     onRename,
     selectionScopeIds,
     row,
+    icon,
+    count,
     children,
     class: className,
   }: TreeItemProps = $props();
@@ -468,6 +470,20 @@
   {/each}
 {/snippet}
 
+{#snippet defaultLabel()}
+  {#if icon}
+    <span class="cinder-tree-item__icon" aria-hidden="true">{@render icon()}</span>
+  {/if}
+  <span
+    aria-hidden="true"
+    class="cinder-tree-item__label cinder-_truncate"
+    ondblclick={handleLabelDoubleClick}>{@render visibleLabel()}</span
+  >
+  {#if count !== undefined}
+    <span class="cinder-tree-item__count" aria-hidden="true">{count}</span>
+  {/if}
+{/snippet}
+
 <div
   bind:this={outerElement}
   {@attach registerWithTree}
@@ -506,7 +522,9 @@
   onkeydown={handleKeydown}
   onclick={handleClick}
 >
-  <span id={`${treeItemElementId}-label`} class="cinder-sr-only">{label}</span>
+  <span id={`${treeItemElementId}-label`} class="cinder-sr-only"
+    >{label}{#if count !== undefined}{`, ${count}`}{/if}</span
+  >
   <div class="cinder-tree-item__row">
     {#if isBranch && !filterForcedOpen}
       <button
@@ -604,22 +622,14 @@
         separately since the parent treeitem is labelled by the visually-hidden
         label span above.
       -->
-      <span
-        aria-hidden="true"
-        class="cinder-tree-item__label cinder-_truncate"
-        ondblclick={handleLabelDoubleClick}>{@render visibleLabel()}</span
-      >
+      {@render defaultLabel()}
     {:else}
       <!--
         aria-hidden prevents the visible default text from being announced
         separately since the parent treeitem is labelled by the visually-hidden
         label span above.
       -->
-      <span
-        aria-hidden="true"
-        class="cinder-tree-item__label cinder-_truncate"
-        ondblclick={handleLabelDoubleClick}>{@render visibleLabel()}</span
-      >
+      {@render defaultLabel()}
     {/if}
   </div>
   {#if renameController.renameError}

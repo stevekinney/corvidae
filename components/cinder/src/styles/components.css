@@ -87,6 +87,8 @@
 @import '../components/form-section/form-section.css';
 @import '../components/form/form.css';
 @import '../components/grid-list/grid-list.css';
+@import '../components/grouped-list/grouped-list.css';
+@import '../components/grouped-list-item/grouped-list-item.css';
 @import '../components/grid/grid.css';
 @import '../components/hover-card/hover-card.css';
 @import '../components/image/image.css';
@@ -151,6 +153,7 @@
 @import '../components/scroll-area/scroll-area.css';
 @import '../components/search-field/search-field.css';
 @import '../components/secret-value-field/secret-value-field.css';
+@import '../components/section/section.css';
 @import '../components/section-heading/section-heading.css';
 @import '../components/segmented-control/segmented-control.css';
 @import '../components/select/select.css';
