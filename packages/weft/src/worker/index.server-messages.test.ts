@@ -12,6 +12,7 @@ import {
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import { RemoteWorker } from './index.ts';
+import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.ts';
 
 type ScriptedServer = {
   readonly server: ReturnType<typeof Bun.serve>;
@@ -58,7 +59,7 @@ function scriptedServer(
 function createWorker(
   scripted: ScriptedServer,
   extra: Partial<ConstructorParameters<typeof RemoteWorker>[0]> = {},
-  activities: Record<string, (input: unknown, context?: ActivityContext) => Promise<unknown>> = {
+  activities: Record<string, RemoteWorkerActivityFunction> = {
     echo: async (input) => input,
   },
 ): RemoteWorker {
@@ -253,30 +254,34 @@ describe('RemoteWorker server frames', () => {
     // A 60-second lease derives a 20-second automatic heartbeat, a delay no other worker timer uses.
     const leaseMilliseconds = 60_000;
     const activityHeartbeatMilliseconds = 20_000;
-    const taskFrame = (operationId: string, activityName: string, visibilityTimeout?: number) =>
+    // Two attempts of ONE operation, as a lease-expiry redispatch leaves them: only the older one
+    // is canceled, so the newer attempt's heartbeat proves the cancellation is fenced by token.
+    const taskFrame = (attemptToken: string, activityName: string, visibilityTimeout?: number) =>
       JSON.stringify({
         type: 'task',
-        operationId,
-        attemptToken: `attempt-${operationId}`,
+        operationId: attemptToken === 'attempt-barrier' ? 'op-barrier' : 'op-shared',
+        attemptToken,
         activityName,
-        input: operationId,
+        input: attemptToken,
         ...(visibilityTimeout === undefined ? {} : { visibilityTimeout }),
       });
     const cancelFrame = (attemptToken: string, reason: string) =>
-      JSON.stringify({ type: 'cancel', operationId: 'op-canceled', attemptToken, reason });
+      JSON.stringify({ type: 'cancel', operationId: 'op-shared', attemptToken, reason });
     const server = scriptedServer((ws) => {
       // Frames on one connection are handled in send order, and each task registers its attempt
       // and arms its heartbeat before its first await, so the barrier's result proves every
       // cancellation before it already ran.
-      ws.send(taskFrame('op-canceled', 'orders.stubborn', leaseMilliseconds));
-      ws.send(taskFrame('op-live', 'orders.stubborn', leaseMilliseconds));
+      ws.send(taskFrame('attempt-old', 'orders.stubborn', leaseMilliseconds));
+      ws.send(taskFrame('attempt-new', 'orders.stubborn', leaseMilliseconds));
       ws.send(cancelFrame('attempt-stale', 'stale'));
-      ws.send(cancelFrame('attempt-op-canceled', 'operator stop'));
-      ws.send(cancelFrame('attempt-op-canceled', 'repeated'));
-      ws.send(taskFrame('op-barrier', 'orders.echo'));
+      ws.send(cancelFrame('attempt-old', 'operator stop'));
+      ws.send(cancelFrame('attempt-old', 'repeated'));
+      ws.send(taskFrame('attempt-barrier', 'orders.echo'));
     });
     scripted = server;
     const taskResults = () => server.received.filter((message) => message['type'] === 'taskResult');
+    const resultFor = (attemptToken: string) =>
+      taskResults().find((message) => message['attemptToken'] === attemptToken);
     worker = createWorker(
       server,
       {},
@@ -292,12 +297,9 @@ describe('RemoteWorker server frames', () => {
     );
 
     await worker.connect();
-    await waitForCondition(
-      () =>
-        signals.size === 2 &&
-        taskResults().some((message) => message['operationId'] === 'op-barrier'),
-      { label: 'barrier result after the cancellations' },
-    );
+    await waitForCondition(() => signals.size === 2 && resultFor('attempt-barrier') !== undefined, {
+      label: 'barrier result after the cancellations',
+    });
 
     const intervalCalls = setIntervalSpy.mock.calls as unknown as Array<readonly unknown[]>;
     const heartbeatTimers = intervalCalls.flatMap((call, index) =>
@@ -307,28 +309,26 @@ describe('RemoteWorker server frames', () => {
     );
     expect(heartbeatTimers).toHaveLength(2);
     const [canceledTimer, liveTimer] = heartbeatTimers;
-    expect(signals.get('op-canceled')?.reason).toBe('operator stop');
-    expect(signals.get('op-live')?.aborted).toBe(false);
+    expect(signals.get('attempt-old')?.reason).toBe('operator stop');
+    expect(signals.get('attempt-new')?.aborted).toBe(false);
     expect(clearIntervalSpy).toHaveBeenCalledWith(canceledTimer);
     expect(clearIntervalSpy).not.toHaveBeenCalledWith(liveTimer);
     // Both stubborn attempts are still unsettled; only the barrier finished.
     expect(worker.inFlight).toBe(2);
 
     release.resolve();
-    await waitForCondition(() => worker!.inFlight === 0, { label: 'late settlements' });
-
-    expect(taskResults().find((message) => message['operationId'] === 'op-canceled')).toMatchObject(
-      { status: 'cancelled', error: 'operator stop' },
+    await waitForCondition(
+      () => resultFor('attempt-old') !== undefined && resultFor('attempt-new') !== undefined,
+      { label: 'late settlements received' },
     );
-    expect(taskResults().find((message) => message['operationId'] === 'op-live')).toMatchObject({
-      status: 'failed',
-      error: 'settled late',
-    });
+
+    expect(resultFor('attempt-old')).toMatchObject({ status: 'cancelled', error: 'operator stop' });
+    expect(resultFor('attempt-new')).toMatchObject({ status: 'failed', error: 'settled late' });
     expect(clearIntervalSpy).toHaveBeenCalledWith(liveTimer);
     expect(
       server.received.filter(
         (message) =>
-          message['type'] === 'activityHeartbeat' && message['operationId'] === 'op-canceled',
+          message['type'] === 'activityHeartbeat' && message['attemptToken'] === 'attempt-old',
       ),
     ).toEqual([]);
   });
