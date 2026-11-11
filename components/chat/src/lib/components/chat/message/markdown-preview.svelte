@@ -105,23 +105,89 @@
     ...rest
   }: ChatMarkdownPreviewProps = $props();
 
-  let renderedHtml = $state('');
-  let segments = $state<MarkdownSegment[]>([]);
+  /** One committed render: the source it was made from, the policy it obeyed, and its output. */
+  type RenderedMarkdown = {
+    source: string;
+    images: boolean;
+    links: boolean;
+    html: string;
+    segments: MarkdownSegment[];
+  };
+
+  let rendered = $state<RenderedMarkdown | undefined>(undefined);
+
+  // Plain bookkeeping, never read by the template or tracked by an effect. Each effect run takes
+  // the next generation before its render awaits; a result commits only when no newer generation
+  // has committed already, so a slower earlier render can never replace a newer snapshot. The
+  // epoch moves whenever the content stops being an append of the previous snapshot or the
+  // link/image policy changes, and a render from an earlier epoch never commits.
+  let latestGeneration = 0;
+  let committedGeneration = 0;
+  let epoch = 0;
+  let previousSnapshot: { content: string; images: boolean; links: boolean } | undefined;
+
+  /**
+   * Whether `next` only appends to `source`. Trailing whitespace on the source is ignored, because
+   * a streamed message can drop the blank line at its end when a code fence closes, and Markdown
+   * renders the same either way.
+   */
+  function extendsSource(next: string, source: string): boolean {
+    return next.startsWith(source.trimEnd());
+  }
+
+  // A committed render stays on screen while the content only grows, so streamed appends never
+  // flash the raw Markdown. Replacement content, or a change to the link or image policy, shows
+  // the escaped plain text until the new render lands.
+  const visibleRender = $derived.by(() => {
+    if (rendered === undefined || rendered.html === '') return undefined;
+    if (rendered.images !== images || rendered.links !== links) return undefined;
+    return extendsSource(content, rendered.source) ? rendered : undefined;
+  });
+  const renderCurrent = $derived(visibleRender !== undefined && visibleRender.source === content);
+
+  function commitRender(
+    generation: number,
+    renderEpoch: number,
+    source: string,
+    imagesPolicy: boolean,
+    linksPolicy: boolean,
+    html: string,
+  ): void {
+    if (renderEpoch !== epoch || generation <= committedGeneration) return;
+    if (imagesPolicy !== images || linksPolicy !== links || !extendsSource(content, source)) return;
+    committedGeneration = generation;
+    rendered = {
+      source,
+      images: imagesPolicy,
+      links: linksPolicy,
+      html,
+      segments: html
+        ? segmentRenderedMarkdown(html, document, { images: imagesPolicy, links: linksPolicy })
+        : [],
+    };
+  }
 
   $effect(() => {
-    // Capture the content snapshot for this run. If `content` updates
-    // mid-render (streaming chat), the next $effect run cancels this one
-    // via the cleanup function; we still don't want stale HTML written
-    // back if a microtask from this run lands after cancellation.
+    // Capture the snapshot and the policy for this run synchronously, so a change to any of the
+    // three runs the effect again.
     const snapshot = content;
+    const snapshotImages = images;
+    const snapshotLinks = links;
 
-    // Clear the previously rendered HTML synchronously so the fallback
-    // `<p>{content}</p>` below renders the new raw text immediately
-    // while the async pipeline produces the formatted version. Without
-    // this reset, a streaming or reused message briefly shows the
-    // previous content's rendered HTML during the re-render gap.
-    renderedHtml = '';
-    segments = [];
+    const appended =
+      previousSnapshot !== undefined &&
+      previousSnapshot.images === snapshotImages &&
+      previousSnapshot.links === snapshotLinks &&
+      extendsSource(snapshot, previousSnapshot.content);
+    previousSnapshot = { content: snapshot, images: snapshotImages, links: snapshotLinks };
+    if (!appended) {
+      // Replacement content or a new policy: the previous presentation is never shown again, and
+      // no render already in flight for it may land.
+      epoch += 1;
+      rendered = undefined;
+    }
+    const generation = ++latestGeneration;
+    const renderEpoch = epoch;
 
     let cancelled = false;
 
@@ -136,38 +202,38 @@
     // Cancelling the rAF on cleanup also collapses rapid streaming
     // updates: each new content arrival cancels the pending frame and
     // schedules its own, so the renderer runs at most once per frame
-    // even under per-token streaming.
+    // even under per-token streaming. A render that has already started
+    // is not cancelled: it may still commit, through the generation fence
+    // in `commitRender`, so a stream whose renders outlast its token
+    // interval still shows progress.
     const handle = requestAnimationFrame(() => {
       if (cancelled) return;
       const pipelinePromise = preloadMarkdownPipeline();
       if (!pipelinePromise) return;
       void pipelinePromise
         .then(async (pipeline) => {
-          if (!pipeline || cancelled) return undefined;
-          const { renderMarkdownWithMath } = pipeline;
+          if (!pipeline) return undefined;
           try {
-            const result = await renderMarkdownWithMath(snapshot, {
+            const result = await pipeline.renderMarkdownWithMath(snapshot, {
               nodePlaceholders: true,
-              stripLinks: !links,
+              stripLinks: !snapshotLinks,
             });
-            // Re-check cancelled and verify the snapshot still matches
-            // the live content. The latter handles a subtle race: if
-            // content updates AFTER cancelled was set but BEFORE this
-            // microtask runs, cancelled would already be true. The
-            // snapshot equality check is defense in depth — if the
-            // cleanup function ever fails to fire, we still avoid
-            // committing HTML that doesn't match the current props.
-            if (!cancelled && snapshot === content) {
-              renderedHtml = result.html;
-              segments = segmentRenderedMarkdown(result.html, document, { images, links });
-            }
+            commitRender(
+              generation,
+              renderEpoch,
+              snapshot,
+              snapshotImages,
+              snapshotLinks,
+              result.html,
+            );
           } catch {
-            if (!cancelled && snapshot === content) renderedHtml = '';
+            // A failed render keeps whatever is on screen: the previous render while the content
+            // only appends, the escaped plain text otherwise.
           }
           return undefined;
         })
         .catch(() => {
-          if (!cancelled && snapshot === content) renderedHtml = '';
+          // The loader settles to `undefined` on failure; nothing else here can reject.
         });
     });
 
@@ -211,17 +277,18 @@
 {/snippet}
 
 <!--
-  `data-state` is `rendered` once the async pipeline has swapped its formatted HTML in, and
-  `pending` while the raw-text fallback shows. The swap replaces the DOM nodes, which collapses
-  a selection made in the fallback, so a caller that selects text waits for `rendered` first.
+  `data-state` is `rendered` once the async pipeline has swapped in the formatted HTML for the
+  current content, and `pending` while the raw-text fallback shows or while an earlier render
+  stands in for an append that is still rendering. The swap replaces the DOM nodes, which
+  collapses a selection made meanwhile, so a caller that selects text waits for `rendered` first.
 -->
 <div
   class={classNames('cinder-markdown-content message-content-preview', className)}
-  data-state={renderedHtml ? 'rendered' : 'pending'}
+  data-state={renderCurrent ? 'rendered' : 'pending'}
   {...rest}
 >
-  {#if renderedHtml}
-    {#each segments as segment, index (`${segment.kind}:${index}`)}
+  {#if visibleRender}
+    {#each visibleRender.segments as segment, index (`${segment.kind}:${index}`)}
       {@render renderSegment(segment)}
     {/each}
   {:else}

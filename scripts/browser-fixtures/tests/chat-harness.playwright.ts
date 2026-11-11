@@ -1273,6 +1273,68 @@ test.describe('chat harness — streaming presentation', () => {
   }
 });
 
+test.describe('chat harness — streamed Markdown appends (COR-2256)', () => {
+  const streamedMarkdown = [
+    'First paragraph with **bold** words.',
+    'Second paragraph with **more** words.',
+    'Third paragraph with **final** words.',
+    'Closing paragraph.',
+  ].join('\n\n');
+
+  test('keeps the formatted reply on screen while appended paragraphs render', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      await harness.locator('#harness-reply-text').fill(streamedMarkdown);
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness
+        .locator('#harness-stream-mechanism')
+        .getByText('Content', { exact: true })
+        .click();
+
+      // Record every mutation of the assistant's rendered Markdown: once a formatted render has
+      // shown, the preview must never fall back to the raw delimiters of the content before it.
+      await page.evaluate(() => {
+        const state = { formatted: false, rawAfterFormatted: [] as string[] };
+        (window as typeof window & { corvidaeAppendProbe?: typeof state }).corvidaeAppendProbe =
+          state;
+        const observer = new MutationObserver(() => {
+          const previews = document.querySelectorAll<HTMLElement>(
+            '#harness-chat [data-role="assistant"] .message-content-preview',
+          );
+          for (const preview of previews) {
+            if (preview.querySelector('strong') !== null) state.formatted = true;
+            const text = preview.textContent ?? '';
+            if (state.formatted && text.includes('**')) state.rawAfterFormatted.push(text);
+          }
+        });
+        observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+      });
+
+      await harness.locator('[data-testid="send-reply"]').click();
+      const assistant = harness.locator('[data-role="assistant"]').last();
+      await expect(harness.locator('.chat-input-send[data-stop]')).toHaveCount(0);
+      const preview = assistant.locator('.message-content-preview');
+      await expect(preview).toHaveAttribute('data-state', 'rendered');
+      await expect(preview.locator('strong')).toHaveText(['bold', 'more', 'final']);
+
+      const probe = await page.evaluate(
+        () =>
+          (
+            window as typeof window & {
+              corvidaeAppendProbe?: { formatted: boolean; rawAfterFormatted: string[] };
+            }
+          ).corvidaeAppendProbe,
+      );
+      expect(probe?.formatted).toBe(true);
+      expect(probe?.rawAfterFormatted, 'formatted Markdown fell back to raw text').toEqual([]);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat harness — tool calls', () => {
   async function appendToolScenario(page: Page, scenario: string): Promise<void> {
     await page.evaluate((name) => {
