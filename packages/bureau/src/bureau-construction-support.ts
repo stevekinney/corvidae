@@ -150,7 +150,7 @@ export function detachBestEffortPromise(promise: Promise<unknown>): void {
 }
 
 /** {@link BureauOptions} once each definition-source option is one source (COR-1873). */
-type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
+export type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
   BureauOptions<D>,
   'agentSource' | 'workflowSource'
 > & {

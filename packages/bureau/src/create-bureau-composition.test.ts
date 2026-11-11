@@ -9,6 +9,7 @@
  * `receipt: (query) => locateRunCreationReceipt(...)`, only points at an implementation and is not
  * a definition.
  */
+import { readdir } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
@@ -141,10 +142,33 @@ describe('namespaceMethodDefinitions', () => {
   });
 });
 
-describe('create-bureau.ts', () => {
-  it('defines no namespace method', async () => {
-    const text = await Bun.file(join(import.meta.dir, 'create-bureau.ts')).text();
+/**
+ * `create-bureau.ts` and every seam its closure moved into `bureau-seams/` (COR-2376), so code
+ * that leaves the file for a seam stays under this guard.
+ */
+async function compositionFiles(): Promise<string[]> {
+  const seams = await readdir(join(import.meta.dir, 'bureau-seams'));
+  return [
+    'create-bureau.ts',
+    ...seams
+      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+      .toSorted()
+      .map((name) => join('bureau-seams', name)),
+  ];
+}
 
-    expect(namespaceMethodDefinitions(text)).toEqual([]);
+describe('create-bureau.ts and its seams', () => {
+  it('scans the seams directory', async () => {
+    expect(await compositionFiles()).toContain(join('bureau-seams', 'core.ts'));
+  });
+
+  it('defines no namespace method', async () => {
+    const found: string[] = [];
+    for (const file of await compositionFiles()) {
+      const text = await Bun.file(join(import.meta.dir, file)).text();
+      found.push(...namespaceMethodDefinitions(text).map((definition) => `${file}: ${definition}`));
+    }
+
+    expect(found).toEqual([]);
   });
 });
