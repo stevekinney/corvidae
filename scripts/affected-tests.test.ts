@@ -401,9 +401,30 @@ describe('fallbacks that widen the selection', () => {
   });
 
   test('an unattributed file outside every workspace selects the repository', () => {
-    const files = { ...baseFiles, '.github/something.yml': 'a: 1\n' };
-    const { selection } = select(files, ['.github/something.yml']);
-    expect(selection.repositoryRule).toContain('.github/something.yml');
+    const files = { ...baseFiles, 'infrastructure/something.yml': 'a: 1\n' };
+    const { selection } = select(files, ['infrastructure/something.yml']);
+    expect(selection.repositoryRule).toContain('infrastructure/something.yml');
+  });
+
+  test('a changed file under .github/ that no test names selects nothing', () => {
+    const files = { ...baseFiles, '.github/workflows/pr.yml': 'a: 1\n' };
+    const { selection } = select(files, ['.github/workflows/pr.yml']);
+    expect(selection.repositoryRule).toBeNull();
+    expect(selection.workspaces.every((workspace) => workspace.mode === 'none')).toBe(true);
+    expect(selection.affectedWorkspaces).toEqual([]);
+  });
+
+  test('a changed file under .github/ that a test names still selects that test', () => {
+    const files = {
+      ...baseFiles,
+      '.github/workflows/pr.yml': 'a: 1\n',
+      'packages/gamma/src/workflow.test.ts':
+        "import { readFileSync } from 'node:fs';\nreadFileSync('.github/workflows/pr.yml');\n",
+    };
+    const { selection } = select(files, ['.github/workflows/pr.yml']);
+    expect(selection.repositoryRule).toBeNull();
+    const selected = selection.workspaces.flatMap((workspace) => [...workspace.tests.keys()]);
+    expect(selected).toContain('packages/gamma/src/workflow.test.ts');
   });
 
   test('unattributed documentation reaches tests that scan the tree, not every test', () => {

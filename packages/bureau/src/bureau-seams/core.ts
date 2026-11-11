@@ -13,6 +13,7 @@ import type {
   AgentSession,
   DurableRunDeps,
   FlowController,
+  OperativeHookMap,
   PeerCallJournal,
   CleanupAcknowledgement as RunCleanupAcknowledgement,
   SessionInputGate,
@@ -42,6 +43,7 @@ import type {
 import type { ChildTopology } from '../child-topology';
 import type {
   CompletableEventTarget,
+  HookRegistry,
   RuntimeServices,
   RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
@@ -315,6 +317,10 @@ export interface BureauCore<D extends AgentDefinitions> {
   readonly runToolboxesByRunId: Map<string, BureauToolbox>;
   /** The run-scoped context of each run. */
   readonly runScopedContexts: Map<string, Record<string, unknown>>;
+  /** The hook plan of each live run, which scans an approved call's result. */
+  readonly runHookPlans: Map<string, HookRegistry<OperativeHookMap>>;
+  /** Forgets a run's scoped context and hook plan. */
+  readonly releaseRunScope: (runId: string) => void;
   /** Aborts background work at shutdown. */
   readonly backgroundShutdownController: AbortController;
   /** Runs whose owner is gone. */

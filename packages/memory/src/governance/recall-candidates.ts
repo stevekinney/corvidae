@@ -2,6 +2,7 @@ import type { MemoryAuthority } from './authority';
 import type { MemoryEvidenceKind } from './evidence';
 import { resourceOf, type GovernanceContext, type ResolvedRecord } from './governance-context';
 import type {
+  MemoryRecallDetection,
   MemoryRecallExclusion,
   MemoryRecallExclusionReason,
   MemoryRecallFilterReport,
@@ -196,8 +197,15 @@ export function recallExclusion(
   candidate: RecallCandidate,
   stage: MemoryRecallExclusion['stage'],
   reason: MemoryRecallExclusionReason,
+  detection?: MemoryRecallDetection,
 ): MemoryRecallExclusion {
-  return { recordId: candidate.record.id, revision: candidate.revision, reason, stage };
+  return {
+    recordId: candidate.record.id,
+    revision: candidate.revision,
+    reason,
+    stage,
+    ...(detection === undefined ? {} : { detection }),
+  };
 }
 
 /** Which constraint stages had anything to apply under this plan. */
