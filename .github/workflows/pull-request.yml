@@ -57,7 +57,7 @@ jobs:
       # No Bun test worker starts here, so the test pool does not bound these tasks; the standard
       # runner has 4 vCPUs and 16 GB (public repositories). The root `turbo.json` caps at 34%, one
       # task here, for the shared 12-core development host.
-      - run: bunx turbo run lint typecheck --continue --concurrency=4 # MEASUREMENT: drop --affected is reverted next push
+      - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
 
   tests:
     name: Affected fast-lane tests
