@@ -17,13 +17,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import {
-  AGENT_EDITOR_COPY,
-  MEMORY_COPY,
-  SCHEDULE_COPY,
-  TASK_COPY,
-  WORKFLOW_COPY,
-} from '../../src/app/copy.ts';
+import { AGENT_EDITOR_COPY, MEMORY_COPY, TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { addTools, bureau, readAgent, removeAgent } from './agent-support.ts';
 import { conversation } from './chat-support.ts';
@@ -297,11 +291,15 @@ test('defines an agent in the editor with the workflow tool, and chats with it u
   await send(page, `${JOURNEY_MARKER} Write me a digest that runs on a schedule.`);
 
   await expect(conversation(page).getByText(JOURNEY_AUTHOR_REPLY)).toBeVisible();
-  // The call is a row of the tool rail, named for a person; its identifier is the row's tooltip.
+  // The call is a row of the tool rail, named for a person; its identifier is the tooltip drawn
+  // beside the row, which shows only on hover or focus.
   await expect(
     conversation(page)
-      .locator('[data-cinder-tool-call-row]')
+      .getByRole('tooltip', { includeHidden: true })
       .filter({ hasText: /workflows-create/ })
+      .first()
+      .locator('xpath=..')
+      .locator('[data-cinder-tool-call-row]')
       .first(),
   ).toBeVisible();
   // The agent wrote the file, which the Bureau reports as an agent-authored workflow of its own.
@@ -344,11 +342,12 @@ test('opens the workflow from /workflows, waits for the schedule’s fire to be 
   await runs.first().getByRole('link').first().click();
   await expect(page).toHaveURL(/\/runs\/[^/]+$/);
   // The run's page also links its schedule, `bureau-workflow-schedule:journey-digest:1`, and its
-  // breadcrumb names the workflow, so the type's link is the one named exactly inside the Details rail.
+  // breadcrumb names the workflow, so the type's link is the one inside the Details rail, which names
+  // the workflow in words, by the name the author gave it.
   await expect(
     page
       .getByRole('complementary', { name: 'Details' })
-      .getByRole('link', { name: JOURNEY_WORKFLOW_ID, exact: true }),
+      .getByRole('link', { name: 'Journey digest', exact: true }),
   ).toHaveAttribute('href', `/workflows/${JOURNEY_WORKFLOW_ID}`);
 });
 
@@ -363,9 +362,12 @@ test('follows the schedule’s link to the workflow editor, changes its cadence 
   // A workflow file's schedule has no Edit of its own: its cadence is the trigger in the file, so
   // its page links to the workflow's editor instead.
   await file.getByRole('link', { name: JOURNEY_WORKFLOW_ID }).click();
+  // The heading's Edit is that link (COR-2018): no Edit button opens a schedule form.
   await expect(page.getByRole('button', { name: 'Edit', exact: true })).toHaveCount(0);
-  const workflowEditor = page.getByRole('link', { name: SCHEDULE_COPY.editWorkflowAction });
-  await expect(workflowEditor).toBeVisible();
+  const workflowEditor = page
+    .locator('.cinder-page-header')
+    .getByRole('link', { name: 'Edit', exact: true });
+  await expect(workflowEditor).toHaveAttribute('href', `/workflows/${JOURNEY_WORKFLOW_ID}/edit`);
   await workflowEditor.click();
   await expect(page).toHaveURL(new RegExp(`/workflows/${JOURNEY_WORKFLOW_ID}/edit$`));
 
@@ -476,10 +478,8 @@ test('opens the workers screen from Health, which the sidebar opens', async ({ p
     .getByRole('link', { name: /^Health/ })
     .click();
   await expect(page).toHaveURL(/\/health$/);
-  await page
-    .getByRole('navigation', { name: 'Health sections' })
-    .getByRole('link', { name: 'Workers' })
-    .click();
+  // Health's sections are the tab bar under its heading (COR-2018).
+  await page.locator('main').getByRole('tab', { name: 'Workers', exact: true }).click();
 
   await expect(page).toHaveURL(/\/health\/workers$/);
   await expect(page.locator('[data-view="workers"]')).toHaveAttribute('data-state', 'ready');
