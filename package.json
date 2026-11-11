@@ -176,8 +176,9 @@
     "dev:browser-fixtures": "bun --watch scripts/browser-fixtures/scripts/serve.ts",
     "test:browser:visual": "CINDER_VISUAL_DIFF=block bun run test:browser",
     "test:browser:update": "bun scripts/browser-fixtures/scripts/update-snapshots.ts",
-    "test:browser:update:docker": "bun scripts/browser-fixtures/scripts/update-snapshots-docker.ts",
-    "test:browser:visual:docker": "bun scripts/browser-fixtures/scripts/run-browser-docker.ts"
+    "test:browser:update:docker": "bun scripts/host-slots.ts --slots=4 -- bun scripts/browser-fixtures/scripts/update-snapshots-docker.ts",
+    "test:browser:visual:docker": "bun scripts/host-slots.ts --slots=4 -- bun scripts/browser-fixtures/scripts/run-browser-docker.ts",
+    "capture:chat-stress": "bun scripts/host-slots.ts --slots=1 -- bun scripts/browser-fixtures/scripts/capture-chat-stress.ts"
   },
   "devDependencies": {
     "@arethetypeswrong/cli": "catalog:",

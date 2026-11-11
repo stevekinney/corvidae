@@ -22,7 +22,6 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
-import { withHostSlots } from '../../host-slots.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import {
   buildBaselineDiffReport,
@@ -79,24 +78,14 @@ import {
 } from './suite-results.ts';
 import { provenanceComponentScope } from './update-snapshots.ts';
 
-/** Build the renderer image and start an archived container run, recording host load. Shared with the visual run. */
 /**
- * Builds the renderer image and runs the suite in it, holding one host slot per processor the
- * container may use (`scripts/host-slots.ts`): {@link CONTAINER_CPUS}, or the Docker VM's count
- * when that is smaller. The container is limited to the slots it was granted.
+ * Build the renderer image and start an archived container run, recording host load. Shared with
+ * the visual run. The container may use {@link CONTAINER_CPUS} processors, or the Docker VM's count
+ * when that is smaller, the host slots its `package.json` script holds (`scripts/host-slots.ts`).
  */
-export function startRendererRun(
+export async function startRendererRun(
   mode: 'update' | 'visual',
   dockerArguments: readonly string[],
-): ReturnType<typeof rendererRun> {
-  const containerCpus = Math.min(CONTAINER_CPUS, readDockerCpuCount() ?? CONTAINER_CPUS);
-  return withHostSlots(containerCpus, (slots) => rendererRun(mode, dockerArguments, slots.count));
-}
-
-async function rendererRun(
-  mode: 'update' | 'visual',
-  dockerArguments: readonly string[],
-  cpus: number,
 ): Promise<{
   exitCode: number;
   sha: string;
@@ -140,7 +129,7 @@ async function rendererRun(
     docker,
     dockerRunArguments({
       containerName,
-      cpus,
+      cpus: Math.min(CONTAINER_CPUS, readDockerCpuCount() ?? CONTAINER_CPUS),
       imageTag,
       outputDirectory,
       command: containerCommand(mode, options.forwarded),

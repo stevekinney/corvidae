@@ -32,7 +32,6 @@ import { parseArgs } from 'node:util';
 import { THEME_STORAGE_KEY, buildBrowser } from '@lostgradient/testing';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 
-import { withHostSlots } from '../../host-slots.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import casesData from '../src/fixtures/chat-stress.json';
 import {
@@ -670,5 +669,4 @@ async function main(): Promise<number> {
   return finalSummary.passed ? 0 : 1;
 }
 
-// One headless Chromium takes every image in turn: one host slot.
-if (import.meta.main) process.exitCode = await withHostSlots(1, () => main());
+if (import.meta.main) process.exitCode = await main();

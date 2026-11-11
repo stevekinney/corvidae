@@ -42,9 +42,9 @@ How each was invoked, how many processes it runs at once and what bounds that, a
 
 What each entry point holds now:
 
-- **Covered now.** `update-snapshots-docker.ts` and `run-browser-docker.ts` hold 4 slots (`CONTAINER_CPUS`), or the Docker VM's processor count when that is smaller. They hold them from `docker build` until the container exits, and `docker run` gets `--cpus` equal to the slots granted.
+- **Covered now.** `test:browser:update:docker` and `test:browser:visual:docker` hold 4 slots (`CONTAINER_CPUS`) through `scripts/host-slots.ts`, from `docker build` until the container exits. `docker run` gets `--cpus` of 4, or of the Docker VM's processor count when that is smaller. The slots are taken in `package.json`, not in the scripts themselves, because the browser-fixtures test task's cache inputs list every root file its scripts import, and that list lives in `turbo.json`, which this change leaves alone.
 - **Covered now.** The Cinder design-system build holds 4 slots (`SHARD_COUNT`) while its preview shards run, and runs no more shards than it was granted. It then holds 1 slot for each of its three Chromium phases.
-- **Covered now.** `capture-chat-stress.ts`, `design-review-capture.ts`, `design-review-render-boards.ts` and `test:terminal-browser` each hold 1 slot for the run, since each runs one browser at a time.
+- **Covered now.** `bun run capture:chat-stress`, `design-review-capture.ts`, `design-review-render-boards.ts` and `test:terminal-browser` each hold 1 slot for the run, since each runs one browser at a time.
 - **Covered now.** Root `test:browser` (and so `test:browser:visual`), `test:browser:preview` and `test:browser:terminal` hold 4 slots, and pin Playwright to `--workers=4`. In the renderer container they run without a slot, inside its `--cpus` limit.
 - **Covered now.** The `test:browser` scripts of Interborough, the playground and the terminal example hold 1 slot each, matching their `workers: 1`.
 - **Already covered.** The locked root stages hold the host lock, and Interborough's UI shards hold test slots. So do the lifecycle tests that drive `run-linux-lifecycle.ts` and `check-static-playground.ts`.
@@ -64,6 +64,7 @@ What each entry point holds now:
 
 ## Still outside admission
 
+- The browser-fixtures entry points run directly rather than through their `package.json` scripts: `update-snapshots-docker.ts`, `run-browser-docker.ts`, `capture-chat-stress.ts` and `run-terminal-browser.ts`. Each takes no slot that way. Moving the slots into the scripts means adding `scripts/host-slots.ts` to the inputs of the `//#test:browser-fixtures` task in `turbo.json`, which `scripts/task-cache.integration.test.ts` requires of any root file they import.
 - Work started by hand without the scripts: a bare `bunx playwright test`, `docker run` or `chromium` invocation takes no slot. Neither does any tool outside this repository: another repository's tests, a browser the developer uses, Spotlight and `fseventsd` indexing the worktrees.
 - Work inside a container belongs to the Docker VM, which the slots bound only through `--cpus` on the renderer's `docker run`. A wrapper killed outright frees its slots once its own process is gone, while the container keeps running until `docker run --rm` ends or someone runs `docker kill`. A capture killed outright likewise frees its slot, while a browser it launched exits only when its pipe to the capture closes.
 - A slot stands for one busy process, not one processor. The design-system build peaked at 657% while holding at most four slots, so a phase of it uses more processors than it holds; the sampler did not say which phase. The pool's size, left at processors minus two, absorbs part of that.

@@ -5,6 +5,7 @@ import { join } from 'node:path';
 
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { waitUntil } from '../testing/testing/src/wait-until.ts';
+import { CONTAINER_CPUS } from './browser-fixtures/scripts/docker-baseline-runner.ts';
 import { slotDirectory, type SlotOwner } from './bun-test-pool.ts';
 import {
   parseHostSlotsArguments,
@@ -14,6 +15,10 @@ import {
 } from './host-slots.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import { ownerFileName } from './run-exclusively.ts';
+
+const rendererScript = /(?:update-snapshots-docker|run-browser-docker)\.ts/;
+const heavyScript =
+  /playwright test|run-terminal-browser\.ts|capture-chat-stress\.ts|browser-failure-regression\.ts|update-snapshots-docker\.ts|run-browser-docker\.ts/;
 
 /**
  * The host-slot helper's scenarios. Each owns a scratch pool, never the real Git common directory,
@@ -262,7 +267,7 @@ describe('host slots', () => {
     }
   });
 
-  test('every Playwright script outside the host lock takes host slots', async () => {
+  test('every browser, capture and renderer script outside the host lock takes host slots', async () => {
     const root = join(import.meta.dir, '..');
     const manifests = ['package.json'];
     for await (const path of new Bun.Glob(
@@ -277,10 +282,12 @@ describe('host slots', () => {
         join(root, manifest),
       ).json();
       for (const [name, command] of Object.entries(parsed.scripts ?? {})) {
-        if (!/playwright test|run-terminal-browser\.ts/.test(command)) continue;
+        if (!heavyScript.test(command)) continue;
         checked += 1;
         const locked = /run-exclusively\.ts '/.test(command);
-        if (!locked && !/host-slots\.ts --slots=\d+ -- /.test(command)) {
+        // The renderer holds one slot per processor its container may use.
+        const slots = rendererScript.test(command) ? String(CONTAINER_CPUS) : '\\d+';
+        if (!locked && !new RegExp(`host-slots\\.ts --slots=${slots} -- `).test(command)) {
           uncovered.push(`${manifest} ${name}`);
         }
       }

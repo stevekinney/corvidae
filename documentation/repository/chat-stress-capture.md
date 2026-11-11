@@ -15,10 +15,10 @@ The Cinder Chat board (COR-2289) is proved against the real `@lostgradient/chat`
 ## The capture
 
 ```bash
-bun scripts/browser-fixtures/scripts/capture-chat-stress.ts [--out <dir>] [--cases 9,10,14-15] [--profiles 320-dark]
+bun run capture:chat-stress -- [--out <dir>] [--cases 9,10,14-15] [--profiles 320-dark]
 ```
 
-Set `CHAT_STRESS_SUPPLEMENTAL=1` to add the 390 dark phone profile. The tool builds the host into the run's own directory, writes `source-identity.json`, serves that build on a port the system chooses, and only then draws the cases at 1440 light, 768 dark, 390 light and 320 dark (touch and a coarse pointer below 500 px). Each run gets a fresh `real-chat-captures-` directory, so no run overwrites another. One deadline, the awake-time hang guard, bounds every wait, and the tool never sleeps.
+The script holds one host slot while it runs ([host admission](host-admission.md)); running `scripts/browser-fixtures/scripts/capture-chat-stress.ts` directly takes none. Set `CHAT_STRESS_SUPPLEMENTAL=1` to add the 390 dark phone profile. The tool builds the host into the run's own directory, writes `source-identity.json`, serves that build on a port the system chooses, and only then draws the cases at 1440 light, 768 dark, 390 light and 320 dark (touch and a coarse pointer below 500 px). Each run gets a fresh `real-chat-captures-` directory, so no run overwrites another. One deadline, the awake-time hang guard, bounds every wait, and the tool never sleeps.
 
 Images are named `<width>-<theme>-<case>.png` for a primary and `<width>-<theme>-<case>-<variant>.png` for a variant: `33-expanded`, `59-collapsed`, `68-option2`, `68-something-else`, `69-question-2-of-3`, `71-live`, `71-folded`, `72-scrolled`, and `73-focus-<index>` for each stop of case 73's tab sweep. A complete run holds 320 primaries and 32 fixed variants plus the focus stops. `manifest.jsonl`, the files on disk and `gallery.html` must agree, and `summary.json` names every failure by case, profile and measurement. A failed gallery says Failed at its top and never reads as a pass.
 
