@@ -293,7 +293,8 @@ describe('a file the composer refuses', () => {
     unmount(instance);
   });
 
-  test('says why in the default words when no formatter is given, and does not block Send', async () => {
+  // COR-2277: a refused file blocks Send until it is removed, as any failed file does.
+  test('says why in the default words when no formatter is given, and blocks Send until it is removed', async () => {
     const { target, instance } = mountInput({ maxFileSize: 4, value: 'hello' });
 
     instance.addFiles([png()]);
@@ -301,6 +302,12 @@ describe('a file the composer refuses', () => {
 
     expect(stateOf(target)).toEqual(['error']);
     expect(target.textContent).toContain('exceeds');
+    expect(target.querySelector<HTMLButtonElement>('.chat-input-send')?.disabled).toBe(true);
+
+    await fireEvent.click(
+      target.querySelector<HTMLButtonElement>('[aria-label="Remove photo.png"]')!,
+    );
+    await tick();
     expect(target.querySelector<HTMLButtonElement>('.chat-input-send')?.disabled).toBe(false);
     unmount(instance);
   });
@@ -343,8 +350,15 @@ describe('attachments already in the composer when its limits change', () => {
     expect(stateOf(target)).toEqual(['error']);
     expect(target.textContent).toContain('refused type-not-accepted');
     expect(failed.map((entry) => entry.error)).toEqual(['refused type-not-accepted']);
+    // COR-2277: the refused file blocks Send until it is removed, and then the text sends alone.
     await fireEvent.submit(target.querySelector('form')!);
-    expect(submitted[0]).toEqual([]);
+    expect(submitted).toEqual([]);
+    await fireEvent.click(
+      target.querySelector<HTMLButtonElement>('[aria-label="Remove photo.png"]')!,
+    );
+    await tick();
+    await fireEvent.submit(target.querySelector('form')!);
+    expect(submitted).toEqual([[]]);
   });
 
   test('an upload still going is aborted when the new limits refuse its file', async () => {

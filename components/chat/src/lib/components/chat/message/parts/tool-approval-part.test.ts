@@ -76,7 +76,7 @@ describe('ToolApprovalPart', () => {
       (button) => button.textContent?.replace(/\s+/g, ' ').trim(),
     );
     expect(buttons).toEqual([
-      'Input Environment production · Replicas 3',
+      'Input Environment production, Replicas 3',
       'Add a note',
       'Deny',
       'Approve',
