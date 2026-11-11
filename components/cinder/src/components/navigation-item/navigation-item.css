@@ -178,18 +178,20 @@
   .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
     border-bottom-color: transparent;
     background-color: var(--cinder-surface-raised);
-    box-shadow: var(--cinder-shadow-sm);
+    box-shadow: var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm));
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-semibold);
   }
 
   /* The pill's shadow shares the `box-shadow` channel with the inset focus ring, and this rule is
-   * the more specific one, so an active row that holds keyboard focus keeps both. */
+   * the more specific one, so an active row that holds keyboard focus keeps both. A surface that
+   * drops the pill (the phone drawer, `sidebar.css`) sets `--_cinder-navigation-item-pill-shadow`
+   * and never `box-shadow` itself, so it cannot take the ring away with the pill. */
   .cinder-navigation-item[data-variant='vertical'][data-active='true']:focus-visible {
     box-shadow:
       inset 0 0 0 var(--cinder-ring-width)
         var(--_cinder-navigation-item-ring, var(--cinder-ring-color)),
-      var(--cinder-shadow-sm);
+      var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm));
   }
 
   /* Hover on a sidebar row is a lighter neutral tint than the active row, the ink at 4% (row 02n),

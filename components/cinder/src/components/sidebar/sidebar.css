@@ -39,9 +39,11 @@
   /* The drawer paints the raised surface behind a modal sidebar, so a raised pill would not read
    * there: the selected row is the ink at about 7% instead, over whatever the drawer paints. */
   .cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical'][data-active='true'],
-  .cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
+  .cinder-sidebar--mobile
+    .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
     background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 93%);
-    box-shadow: none;
+    /* Not `box-shadow: none`: a vertical row draws its focus ring in that channel. */
+    --_cinder-navigation-item-pill-shadow: 0 0 transparent;
   }
 
   /* The drawer is the phone's navigation, so its rows are touch targets (44px) whatever the

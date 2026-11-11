@@ -27,7 +27,27 @@ describe('Sidebar surface', () => {
     expect(selected.get('background-color')).toBe(
       'color-mix(in oklch, var(--cinder-border-ink), transparent 93%)',
     );
-    expect(selected.get('box-shadow')).toBe('none');
+    expect(selected.get('--_cinder-navigation-item-pill-shadow')).toBe('0 0 transparent');
+  });
+
+  test('a modal drawer keeps the focus ring on its selected row', async () => {
+    // A vertical row draws its ring with `box-shadow`, so the drawer drops the pill through the
+    // custom property the row reads and never sets `box-shadow` itself.
+    const selected = declarationsFor(
+      sidebarCss,
+      ".cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical'][data-active='true']",
+    );
+    expect(selected.has('box-shadow')).toBe(false);
+
+    const navigationItemCss = await Bun.file(
+      new URL('../navigation-item/navigation-item.css', import.meta.url),
+    ).text();
+    const focused = declarationsFor(
+      navigationItemCss,
+      ".cinder-navigation-item[data-variant='vertical'][data-active='true']:focus-visible",
+    );
+    expect(focused.get('box-shadow')).toContain('inset 0 0 0 var(--cinder-ring-width)');
+    expect(focused.get('box-shadow')).toContain('var(--_cinder-navigation-item-pill-shadow');
   });
 
   test('draws no inline-end border', () => {
