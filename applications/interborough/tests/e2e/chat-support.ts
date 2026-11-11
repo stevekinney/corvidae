@@ -61,17 +61,22 @@ export async function revealSettings(
 /**
  * Expects the composer's selects named by `names` on the page: in the row, or, when the composer
  * folded them into Settings because their values in full do not fit, in the Settings popover, which
- * this opens to look and closes again.
+ * this opens to look and closes again. Focus goes back where it was, so typing carries on in the box.
  */
 export async function expectComposerSelects(
   page: Page,
   names: readonly (string | RegExp)[],
 ): Promise<void> {
+  const focused = await page.evaluateHandle(() => document.activeElement);
   await revealSettings(
     page,
     names.map((name) => ({ name })),
   );
   await hideModelPicker(page);
+  await focused.evaluate((element) => {
+    if (element instanceof HTMLElement) element.focus();
+  });
+  await focused.dispose();
 }
 
 /** A thread identifier no other case uses. */
