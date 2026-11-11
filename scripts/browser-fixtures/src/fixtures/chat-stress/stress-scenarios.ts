@@ -1,7 +1,7 @@
 /**
  * The scenario builders behind the Chat stress cases (COR-2289). Each builder turns a case's `params`
  * into the conversation and the plain-data props the fixture hands to the real `Chat`; the fixture
- * (`../chat-stress.svelte`) adds the callbacks. A scenario seeds only what a person would find on
+ * (`../chat-stress.svelte`) adds the callbacks. A scenario seeds only what a person finds on
  * the page before acting: an approval waiting, a run in progress, a question open. What the person
  * does next (typing, pressing Send now instead, choosing an option, answering) is a step of the
  * case that the capture tool drives through the real controls, never a seeded end state.
@@ -18,6 +18,8 @@ import {
   type ConversationHistory,
   type Message,
   type ReasoningInfo,
+  type ToolCallKind,
+  type ToolCallPresentation,
 } from '@lostgradient/chat';
 import type { CitationSource } from '@lostgradient/cinder';
 
@@ -93,6 +95,43 @@ function baseSetup(conversation: ConversationHistory): StressSetup {
     secondChat: false,
     emptyPrompts: [],
     withdrawable: false,
+  };
+}
+
+const CALL_WORDS: Record<
+  string,
+  { present: string; past: string; detail: string; kind: ToolCallKind }
+> = {
+  lookup_order: { present: 'Comparing', past: 'Compared', detail: 'recent orders', kind: 'search' },
+  read_policy: { present: 'Reading', past: 'Read', detail: 'the refund policy', kind: 'fetch' },
+  list_orders: { present: 'Listing', past: 'Listed', detail: 'recent orders', kind: 'search' },
+  read_audit_log: { present: 'Reading', past: 'Read', detail: 'the audit log', kind: 'fetch' },
+  read_ledger: { present: 'Reading', past: 'Read', detail: 'the October ledger', kind: 'fetch' },
+  fetch_source: { present: 'Fetching', past: 'Fetched', detail: 'a source', kind: 'fetch' },
+};
+
+/**
+ * How a host words a tool call in its step row, for the adapter's `describeToolCall`: a present
+ * tense verb until the call has a result, a past tense one after. A tool the cases do not use has
+ * no wording, so Chat draws it as it would without a host.
+ */
+export function describeStressCall(
+  name: string,
+  outcome: string | undefined,
+): ToolCallPresentation | undefined {
+  const words = Object.hasOwn(CALL_WORDS, name) ? CALL_WORDS[name] : undefined;
+  if (words === undefined) return undefined;
+  const tense =
+    outcome === undefined || outcome === 'action_required'
+      ? 'present'
+      : outcome === 'error'
+        ? 'failed'
+        : 'past';
+  return {
+    verb: tense === 'present' ? words.present : words.past,
+    tense,
+    detail: words.detail,
+    kind: words.kind,
   };
 }
 
@@ -473,6 +512,7 @@ const scenarios: Record<StressScenarioName, Scenario> = {
     }
     setup.conversation = conversation;
     if (shape === 'approval') {
+      setup.runInput = true;
       setup.approvalDetails['issue_refund'] = { irreversible: true, approveLabel: 'Refund $42.00' };
     }
     return setup;
@@ -536,9 +576,13 @@ const scenarios: Record<StressScenarioName, Scenario> = {
       );
     }
     setup.conversation = conversation;
+    // The follow-up path stays open while the approval waits, so a draft sent now queues.
+    setup.runInput = true;
+    const irreversible = shape === 'irreversible' || shape === 'two' || shape === 'command';
     setup.approvalDetails['issue_refund'] = {
-      irreversible: shape === 'irreversible' || shape === 'two' || shape === 'command',
-      approveLabel: 'Refund $42.00',
+      irreversible,
+      // A reversible approval keeps the default Approve; an irreversible one names its action.
+      ...(irreversible ? { approveLabel: 'Refund $42.00' } : {}),
       pauseSentence: 'The agent is paused until you decide.',
       facts: [
         { label: 'Target', value: 'order 4471' },

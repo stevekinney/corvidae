@@ -53,8 +53,8 @@ describe('the committed Chat stress cases', () => {
 
   it('marks the cases the board issues name, with the sentence that names them', () => {
     const named = [
-      9, 10, 11, 14, 15, 17, 19, 21, 23, 24, 25, 31, 32, 33, 34, 44, 45, 50, 51, 52, 59, 63, 68, 69,
-      71, 72, 73, 79,
+      9, 10, 11, 14, 15, 17, 19, 21, 23, 24, 25, 27, 31, 32, 33, 34, 41, 44, 45, 50, 51, 52, 59, 63,
+      68, 69, 71, 72, 73, 79,
     ];
     for (const id of named) {
       expect(findStressCase(cases, id)?.provenance).toBe('issue-named');

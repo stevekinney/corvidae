@@ -454,7 +454,7 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "lookup_order"
+        "text": "20 steps"
       }
     ],
     "variants": [],
@@ -500,9 +500,13 @@
     },
     "steps": [
       {
+        "action": "expect-text",
+        "text": "1 waiting for approval"
+      },
+      {
         "action": "expect",
         "role": "button",
-        "name": "Approve"
+        "name": "Refund"
       }
     ],
     "variants": [],
@@ -567,6 +571,10 @@
     },
     "steps": [
       {
+        "action": "expect-text",
+        "text": "waiting for approval"
+      },
+      {
         "action": "expect",
         "role": "button",
         "name": "Approve"
@@ -610,7 +618,7 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "read_ledger"
+        "text": "Reading the October ledger"
       }
     ],
     "variants": [],
@@ -618,24 +626,24 @@
   },
   {
     "id": 27,
-    "slug": "read-only",
-    "title": "A revoked chat shows Read only with the grantor tooltip and Request access.",
-    "provenance": "derived",
-    "source": "Derived from design row V6; the original definition of this number was lost.",
-    "rows": ["V6"],
-    "scenario": "composer-status",
+    "slug": "citation-panel",
+    "title": "A source with a long title and excerpt opens Citation's panel with the title and excerpt on separate rows.",
+    "provenance": "issue-named",
+    "source": "COR-2263: case 27 at desktop and 320 px shows the strong title and excerpt as adjacent lines with no designed gap.",
+    "rows": ["M4"],
+    "scenario": "citations",
     "params": {
-      "kind": "read-only"
+      "presentation": "compact"
     },
     "steps": [
       {
-        "action": "expect-text",
-        "text": "Read only"
+        "action": "click",
+        "role": "button",
+        "name": "Sources"
       },
       {
-        "action": "expect",
-        "role": "button",
-        "name": "Request access"
+        "action": "expect-text",
+        "text": "Refunds over $40 need review"
       }
     ],
     "variants": [],
@@ -805,7 +813,7 @@
           },
           {
             "action": "expect-text",
-            "text": "read_policy"
+            "text": "Read the refund policy"
           }
         ]
       }
@@ -875,14 +883,14 @@
   },
   {
     "id": 37,
-    "slug": "compact-citations",
-    "title": "A Sources control opens Cinder's Citation panel.",
+    "slug": "sources-list",
+    "title": "A message's Sources open as a list with each excerpt and link; at 768 dark the Sources count reads as distinct from the chat surface.",
     "provenance": "derived",
-    "source": "Derived from design row M4; the original definition of this number was lost.",
-    "rows": ["M4"],
+    "source": "Derived from design row M4, T2; the original definition of this number was lost.",
+    "rows": ["M4", "T2"],
     "scenario": "citations",
     "params": {
-      "presentation": "compact"
+      "presentation": "list"
     },
     "steps": [
       {
@@ -960,20 +968,29 @@
   },
   {
     "id": 41,
-    "slug": "sources-list",
-    "title": "At 768 dark the Sources count reads as distinct from the shared chat surface.",
-    "provenance": "derived",
-    "source": "Derived from design row T2; the original definition of this number was lost.",
-    "rows": ["T2"],
+    "slug": "citation-pagination",
+    "title": "Next source in Citation's panel moves to the next source of the message.",
+    "provenance": "issue-named",
+    "source": "COR-2263: in 320 px Chromium case 41, tapping Next source changed one source's copy to the next.",
+    "rows": ["M4"],
     "scenario": "citations",
     "params": {
-      "presentation": "list"
+      "presentation": "compact"
     },
     "steps": [
       {
-        "action": "expect",
+        "action": "click",
         "role": "button",
         "name": "Sources"
+      },
+      {
+        "action": "click",
+        "role": "button",
+        "name": "Next source"
+      },
+      {
+        "action": "expect-text",
+        "text": "Order 4471 audit log"
       }
     ],
     "variants": [],
@@ -1043,7 +1060,7 @@
     "slug": "citation-withdrawal",
     "title": "Withdrawing the source of an open inline citation announces once and leaves focus on a visible action.",
     "provenance": "issue-named",
-    "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus.",
+    "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus. It depends on the withdrawal behaviour of the integration candidate, which is not on main.",
     "rows": ["M4"],
     "scenario": "citations",
     "params": {
@@ -1052,9 +1069,13 @@
     },
     "steps": [
       {
-        "action": "click",
+        "action": "focus",
         "role": "button",
         "name": "docs.example.com"
+      },
+      {
+        "action": "press",
+        "key": "Enter"
       },
       {
         "action": "hook",
@@ -1129,7 +1150,7 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "failed"
+        "text": "1 failed"
       }
     ],
     "variants": [],
@@ -1341,20 +1362,24 @@
   },
   {
     "id": 56,
-    "slug": "approval-note",
-    "title": "Add a note opens the approval's note field before a decision.",
+    "slug": "read-only",
+    "title": "A revoked chat shows Read only with the grantor tooltip and Request access.",
     "provenance": "derived",
-    "source": "Derived from design row M6; the original definition of this number was lost.",
-    "rows": ["M6"],
-    "scenario": "approval",
+    "source": "Derived from design row V6; the original definition of this number was lost.",
+    "rows": ["V6"],
+    "scenario": "composer-status",
     "params": {
-      "shape": "reversible"
+      "kind": "read-only"
     },
     "steps": [
       {
-        "action": "click",
+        "action": "expect-text",
+        "text": "Read only"
+      },
+      {
+        "action": "expect",
         "role": "button",
-        "name": "Add a note"
+        "name": "Request access"
       }
     ],
     "variants": [],
@@ -1427,7 +1452,12 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Compared 20"
+        "name": "20 steps"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "20 steps"
       }
     ],
     "variants": [
@@ -1435,8 +1465,9 @@
         "name": "collapsed",
         "steps": [
           {
-            "action": "expect-text",
-            "text": "Compared 20"
+            "action": "expect",
+            "role": "button",
+            "name": "20 steps"
           }
         ]
       }
@@ -2086,6 +2117,10 @@
       "shape": "failed"
     },
     "steps": [
+      {
+        "action": "expect-text",
+        "text": "1 failed"
+      },
       {
         "action": "expect",
         "role": "button",

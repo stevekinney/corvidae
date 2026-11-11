@@ -20,11 +20,13 @@
     type ReasoningInfo,
   } from '@lostgradient/chat';
   import type { ApprovalResolution, CitationSource } from '@lostgradient/cinder';
+  import { untrack } from 'svelte';
 
   import casesData from './chat-stress.json';
   import { findStressCase, parseStressCases } from './chat-stress/stress-cases.ts';
   import {
     buildStressSetup,
+    describeStressCall,
     failedStressSetup,
     type StressSetup,
   } from './chat-stress/stress-scenarios.ts';
@@ -51,7 +53,7 @@
 
   const ACCEPTED_TYPES = ['image/*', 'application/pdf', 'text/plain'];
 
-  let chat: ReturnType<typeof Chat> | undefined;
+  let chat = $state<ReturnType<typeof Chat> | undefined>();
   let conversation = $state.raw<ConversationHistory>(setup.conversation);
   let secondConversation = $state.raw<ConversationHistory>(
     appendAssistantMessage(
@@ -132,6 +134,7 @@
       streaming = false;
     },
     describeApproval: (toolCall) => setup.approvalDetails[toolCall.name],
+    describeToolCall: (toolCall, result) => describeStressCall(toolCall.name, result?.outcome),
     resolveToolApproval: async (toolCallId, resolution: ApprovalResolution) => {
       approvals = [...approvals, { toolCallId, decision: resolution.decision }];
       return 'resolved';
@@ -290,8 +293,12 @@
 
   // The host puts a saved draft back once, after the composer exists, as it does after a reload.
   $effect(() => {
-    if (setup.restoredDraft !== undefined)
-      chat?.insertAtRange({ start: 0, end: 0 }, setup.restoredDraft);
+    const draft = setup.restoredDraft;
+    const composer = chat;
+    if (draft === undefined || composer === undefined) return;
+    // Putting the text back reads and writes the composer's own state; this effect watches only
+    // the chat binding, so it runs once, when the chat appears.
+    untrack(() => composer.insertAtRange({ start: 0, end: 0 }, draft));
   });
 
   // Ready when the case's chat has mounted and drawn; a failure never marks the page ready.
