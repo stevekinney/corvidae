@@ -279,6 +279,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     },
     snippets: {
       icon: s0(true),
+      illustration: s0(true),
       action: s0(true),
     },
   },
@@ -500,7 +501,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       class: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       variant: { optional: true, type_kind: 'TSUnionType', default: L('horizontal') },
     },
-    snippets: { children: s0(false) },
+    snippets: { children: s0(false), icon: s0(true) },
   },
 
   pagination: {

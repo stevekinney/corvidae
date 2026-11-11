@@ -32,7 +32,7 @@
     href?: string | undefined;
     onclick?: ((event: MouseEvent) => void) | undefined;
     disabled?: boolean | undefined;
-    icon?: Snippet | undefined;
+    icon?: Snippet;
   };
 </script>
 
