@@ -300,7 +300,13 @@
         {/if}
       </div>
     {/snippet}
-    {#snippet amberDot()}<StatusDot status="warning" size="sm" aria-hidden="true" />{/snippet}
+    <!-- The note's own words say what waits; the dot is its amber mark, so it carries no word. -->
+    {#snippet amberDot()}<StatusDot
+        status="warning"
+        size="sm"
+        label=""
+        aria-hidden="true"
+      />{/snippet}
     <StaleRegion
       stale={connection.unreachable}
       describedBy={connection.unreachable ? offlineReasonId : undefined}
