@@ -37,13 +37,11 @@ import {
   RunRemovedEvent as StoreRunRemovedEvent,
   ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
-  type RunOptions,
   ScheduleFailedEvent,
   ScheduleSkippedEvent,
   type SessionInputAdmissionOutcome,
   type SessionInputGate,
   SessionOutboxAppendedEvent,
-  type SessionStore,
   type SessionSummary,
   type SteeringRequestedValue,
   type PeerCallJournal,
@@ -94,7 +92,6 @@ import {
 } from 'armorer';
 import {
   Conversation,
-  type ConversationHistory,
   materializeToolResultAsync,
   resolveToolResult,
   getOwn,
@@ -232,7 +229,6 @@ import type {
   ScheduledFireServicesNotice,
   ScheduledFireSettlement,
   ScheduledSessionNotice,
-  SessionAgentRun,
 } from './runtime-composition';
 import {
   createMaintenanceMemoryAuthority,
@@ -243,7 +239,6 @@ import {
   findRunAgentName,
   resolveDiagnosticSink,
   type RunAttribution,
-  serializeActionDetail,
   serializeRunState,
   serializeUnknownError,
 } from './serialization';
@@ -300,7 +295,6 @@ import {
 import { createBureauInteractiveSurfaces } from './interactive-surface/bureau-wiring';
 import {
   committedFireApprovalIds,
-  committedFireReviewIds,
   committedFireReviews,
   endContinuingScheduledFire,
   releaseScheduledFireReviews,
@@ -341,12 +335,7 @@ import {
 } from './run-human-waits';
 import { createWorkflowReviewWaits } from './workflow-review-waits';
 import { countCheckpointParks } from './park-ordinals';
-import {
-  REVIEW_CLOSING_EVENT_KINDS,
-  reviewCanceledDedupeKey,
-  REPLAY_SUPERSEDING_PRINCIPAL,
-  REVIEW_SUPERSEDED_EVENT_KIND,
-} from './review-closing-events';
+import { reviewCanceledDedupeKey } from './review-closing-events';
 import { createChatSpendLedger } from './chat-spend-ledger';
 import {
   isSessionInputSessionIdAddressable,
@@ -426,7 +415,6 @@ import {
   ReviewRoundChangedError,
   ReviewAnswerInvalidError,
   TaskRespondError,
-  TerminalSessionRecordAbandonedError,
   toBadRequest,
 } from './bureau-errors';
 import {
@@ -460,8 +448,6 @@ import {
   SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS,
   createSessionPersistenceSleep,
   createShutdownTimeoutSleep,
-  needsAutomaticMaintenance,
-  EXPIRY_SWEEP_INTERVAL_MILLISECONDS,
   SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS,
   taskRetentionOf,
   resumeRefusedBeforeExecution,
@@ -500,7 +486,6 @@ import {
   type SteeringPoller,
   type SessionDeletionRecord,
   type ReviewAuditAttachment,
-  type ChatRunSpend,
   type ScheduledFireApprovalEnding,
 } from './bureau-seams/core';
 import { createEventHistoryReads, type EventHistoryPeers } from './bureau-seams/event-history';
@@ -529,6 +514,14 @@ import { createSessionRestore, type SessionRestorePeers } from './bureau-seams/s
 import { createMaintenance, type MaintenancePeers } from './bureau-seams/maintenance';
 import { createRunOwnership, type RunOwnershipPeers } from './bureau-seams/run-ownership';
 import { createRunOperations, type RunOperationsPeers } from './bureau-seams/run-operations';
+import {
+  createTerminalSessions,
+  type TerminalSessionsPeers,
+} from './bureau-seams/terminal-sessions';
+import {
+  createReviewAnnouncements,
+  type ReviewAnnouncementsPeers,
+} from './bureau-seams/review-announcements';
 
 /**
  * The callables the seams of `constructBureau` read from one another and from the parent: the
@@ -551,7 +544,9 @@ type BureauPeers = EventHistoryPeers &
   SessionRestorePeers &
   MaintenancePeers &
   RunOwnershipPeers &
-  RunOperationsPeers;
+  RunOperationsPeers &
+  TerminalSessionsPeers &
+  ReviewAnnouncementsPeers;
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -1212,6 +1207,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   // run first, so a session id legitimately reused later is never blocked
   // by a stale entry.
   const orphanedRunIds = new Set<string>();
+  // COR-1622: the pass of the expiry sweep that is under way. The sweep's own timer and its armed
+  // flag are local to `createReviewAnnouncements`, which the id sets below reach only through
+  // `stopLazyExpirySweepWhenNoneHeld`, when an id is added, after the seam block has run.
+  let lazyExpirySweepPass: Promise<void> | undefined;
   // Ids of PendingReview items already resolved via resolveReview() (AB-20).
   // Neither resolution path (resumeApproval, signalSession) mutates the live
   // store in a way listPendingReviews() can detect on its own — resumeApproval
@@ -1219,12 +1218,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // run may take a moment to produce its next action. This set is the
   // authoritative "already handled" marker so a resolved review disappears
   // from the queue immediately, and is never accidentally resolved twice.
-  // COR-1622: the expiry sweep's own timer. Declared ahead of the id sets whose additions check
-  // whether it is still needed, so no order of construction can read it before it exists.
-  // `RuntimeTimeoutHandle` is opaque, so a flag tracks whether the timer is armed.
-  let lazyExpirySweepTimer: RuntimeTimeoutHandle;
-  let lazyExpirySweepArmed = false;
-  let lazyExpirySweepPass: Promise<void> | undefined;
   const resolvedReviewIds = new NotifyingReviewIdSet(() => stopLazyExpirySweepWhenNoneHeld());
   const resolvingReviewIds = new Set<string>();
   const reviewResolutionCleanupPending = new Map<
@@ -2249,6 +2242,18 @@ async function constructBureau<const D extends AgentDefinitions>(
     get durableInputSessionId() {
       return durableInputSessionId;
     },
+    get persistSessionUpdate() {
+      return persistSessionUpdate;
+    },
+    get holdsFireApproval() {
+      return holdsFireApproval;
+    },
+    get humanWaitParkOrdinal() {
+      return humanWaitParkOrdinal;
+    },
+    get nextRunSeq() {
+      return nextRunSeq;
+    },
   };
   // The seam block: synchronous, side-effect-free factories, called before anything can reach them.
   const { readEventHistory, subscribeToEventHistory } = createEventHistoryReads<D>(core, peers);
@@ -2385,6 +2390,30 @@ async function constructBureau<const D extends AgentDefinitions>(
     restoreRunOwnershipAfterEvent,
     pruneStaleRunOwnership,
   } = createRunOperations<D>(core, peers);
+  const {
+    requireSessionStore,
+    chatCostBudgetOf,
+    persistTerminalSession,
+    expectTerminalSessionRecord,
+    abandonTerminalSessionRecord,
+    whenRunRecorded,
+    sessionInputsDeliveredBy,
+    drainSessionInputSettlements,
+    saveRunTerminalSession,
+  } = createTerminalSessions<D>(core, peers);
+  const {
+    readFireReviewHistory,
+    followFireReviews,
+    unfollowFireReviewsWhenNoneRemain,
+    announceFireReview,
+    closeAbandonedFireRequests,
+    automaticMaintenanceRuns,
+    stopLazyExpirySweepWhenNoneHeld,
+    stopLazyExpirySweep,
+    ensureLazyExpirySweep,
+    announceReviewRequests,
+    emitActionFrame,
+  } = createReviewAnnouncements<D>(core, peers);
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -4689,97 +4718,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   }
 
   /**
-   * Announces one review once (`review.requested`), however many times its run reports it.
-   * COR-1596: a schedule fire is not on the store, so its reviews are announced from where they
-   * are registered, not from the store's action stream.
-   */
-  /**
-   * COR-1613 — what a fire's durable history already says of its reviews, read once per run per
-   * process: the ids requested, and the ids since closed. A process that replays a step finds the
-   * dead one's requests here, which its own memory cannot hold.
-   */
-  async function readFireReviewHistory(runId: string): Promise<{
-    requested: Set<string>;
-    closed: Set<string>;
-    /**
-     * COR-1622 — the requests whose current round no decision has ended, by review id: the
-     * candidates a canceled fire's boot repairs. A review's round advances only on a
-     * `review.superseded` paired with that round's decision (a re-gate records the supersession,
-     * then the decision of the round it leaves). A supersession with no decision after it ends the
-     * request, as `closeAbandonedFireRequests` writes for a request a crashed attempt abandoned. A
-     * request whose current round has a terminal event other than `review.canceled` is closed. A
-     * lone `review.canceled` stays a candidate, flagged, because its audit half may be missing.
-     */
-    open: Map<string, { readonly round: number; readonly canceled: boolean }>;
-  }> {
-    const requested = new Set<string>();
-    const closed = new Set<string>();
-    const rounds = new Map<
-      string,
-      {
-        round: number;
-        decided: boolean;
-        awaitingDecision: boolean;
-        ended: boolean;
-        canceled: boolean;
-      }
-    >();
-    const open = new Map<string, { readonly round: number; readonly canceled: boolean }>();
-    if (eventHistoryInstance === undefined) return { requested, closed, open };
-    // The events this process dispatched are written asynchronously: wait for them first.
-    await durableEventProducerInstance?.waitForActiveWrites({ kind: 'run', id: runId });
-    let since: string | undefined;
-    for (;;) {
-      const page = await eventHistoryInstance.page(
-        { kind: 'run', id: runId },
-        { limit: 500, ...(since === undefined ? {} : { since }) },
-      );
-      if (!('events' in page)) break;
-      for (const event of page.events) {
-        const reviewId = (event.payload as { reviewId?: unknown } | null)?.reviewId;
-        if (typeof reviewId !== 'string') continue;
-        const state = rounds.get(reviewId) ?? {
-          round: 0,
-          decided: false,
-          awaitingDecision: false,
-          ended: false,
-          canceled: false,
-        };
-        rounds.set(reviewId, state);
-        if (event.kind === 'review.requested') requested.add(reviewId);
-        else if (event.kind === 'review.canceled') {
-          closed.add(reviewId);
-          state.canceled = true;
-        } else if (REVIEW_CLOSING_EVENT_KINDS.has(event.kind)) {
-          closed.add(reviewId);
-          if (state.awaitingDecision) {
-            // The decision of the round a re-gate left: the next round is now the current one.
-            state.round += 1;
-            state.awaitingDecision = false;
-            state.decided = false;
-            state.canceled = false;
-          } else {
-            state.decided = true;
-          }
-        } else if (event.kind === REVIEW_SUPERSEDED_EVENT_KIND) {
-          closed.add(reviewId);
-          // A second supersession with no decision between them leaves the first one lone.
-          if (state.awaitingDecision) state.ended = true;
-          state.awaitingDecision = true;
-        }
-      }
-      if (!page.hasMore || page.nextCursor === undefined) break;
-      since = page.nextCursor;
-    }
-    for (const reviewId of requested) {
-      const state = rounds.get(reviewId);
-      if (state === undefined || state.ended || state.awaitingDecision || state.decided) continue;
-      open.set(reviewId, { round: state.round, canceled: state.canceled });
-    }
-    return { requested, closed, open };
-  }
-
-  /**
    * COR-1622 — each fire's seed read of its review history, kept as a promise so a close writer
    * can wait for a read that is still under way, and dropped with the fire.
    */
@@ -4799,227 +4737,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * persistent durable history, which has no peer to follow.
    */
   let fireReviewFollower: FireReviewFollower | undefined;
-
-  /** A review of the fire is held here, announced or restored: follow its history. */
-  function followFireReviews(runId: string): void {
-    fireReviewFollower?.follow(runId);
-  }
-
-  /** The fire's last review here was released: stop following its history. */
-  function unfollowFireReviewsWhenNoneRemain(runId: string): void {
-    if (holdsFireApproval(runId) || runHumanWaits.holds(runId)) return;
-    fireReviewFollower?.unfollow(runId);
-  }
-
-  /**
-   * COR-1613 — announces a fire's review once across processes. A replay that makes the same call
-   * under the same id finds the dead process's request in the history and does not announce it
-   * again; the in-memory set alone is lost with the process.
-   */
-  async function announceFireReview(
-    runId: string,
-    reviewId: string,
-    kind: 'human-wait' | 'tool-approval',
-    target: { signalName?: string; callId?: string },
-  ): Promise<void> {
-    followFireReviews(runId);
-    // The request is announced after the read of what the history already says, and a close
-    // written meanwhile waits for the same read (`fireReviewSeeds.pending`), so it follows the request.
-    await fireReviewSeeds.ensure(runId);
-    announceReview(runId, reviewId, kind, target);
-  }
-
-  /**
-   * COR-1613 — closes, with `review.superseded`, each request a fire's history holds that its
-   * checkpoint never committed and nothing closed: the request of an attempt that died between
-   * announcing it and committing its step, whose replay made the call under another id. A review
-   * the run still owns, or already closed, is left alone.
-   */
-  async function closeAbandonedFireRequests(runId: string): Promise<void> {
-    const durable = runtime.durable;
-    if (durable === undefined || eventHistoryInstance === undefined) return;
-    await fireReviewSeeds.pending(runId);
-    const history = await readFireReviewHistory(runId);
-    const committed = committedFireReviewIds(
-      runId,
-      await durable.checkpointStore.loadSteps(runId, { strict: true }),
-    );
-    for (const reviewId of history.requested) {
-      if (history.closed.has(reviewId) || committed.has(reviewId)) continue;
-      const kind = reviewId.startsWith('human-wait:') ? 'human-wait' : 'tool-approval';
-      emitter.dispatch(
-        new ReviewSupersededEvent(reviewId, runId, REPLAY_SUPERSEDING_PRINCIPAL, kind),
-      );
-    }
-  }
-
-  function announceReview(
-    runId: string,
-    reviewId: string,
-    kind: 'human-wait' | 'tool-approval',
-    target: { signalName?: string; callId?: string },
-  ): void {
-    const announced = announcedReviewRequests.get(runId) ?? new Set<string>();
-    announcedReviewRequests.set(runId, announced);
-    if (announced.has(reviewId)) return;
-    announced.add(reviewId);
-    if (kind === 'tool-approval') ensureLazyExpirySweep();
-    const owner = runAttribution.get(runId)?.principal ?? ANONYMOUS_LOCAL_OWNER;
-    emitter.dispatch(new ReviewRequestedEvent(reviewId, runId, owner, kind, target));
-    // COR-1754 — a park changes the task's view (it now waits on its requester) without writing
-    // its record, so whoever waits on the task is told here, the one place a park is noticed.
-    detachBestEffortPromise(tasks.announceChanged(runId));
-  }
-
-  /**
-   * COR-1622 — whether the Bureau's own maintenance timer runs, and so sweeps expired reviews: the
-   * same rule that starts it below. A Bureau without one (no durable engine, memory or audit
-   * retention to drive) would never expire an approval it holds, so it keeps a timer of its own
-   * for as long as it holds one. A `'manual'` host drives the sweep with `maintain`.
-   */
-  function automaticMaintenanceRuns(): boolean {
-    const auditRetention = currentSettings()['retention.audit'];
-    return (
-      needsAutomaticMaintenance({
-        durableEngine: Boolean(runtime.durable),
-        memory: runtime.memory !== undefined,
-        keyValueStore: Boolean(runtime.kv),
-        activeAuditRetention: auditRetention !== undefined && auditRetention !== 'forever',
-        activeNotificationRetention: currentSettings()['retention.notifications'] !== undefined,
-        activeHookDeliveryRetention: currentSettings()['retention.hookDeliveries'] !== undefined,
-      }) && options.maintenance !== 'manual'
-    );
-  }
-
-  /**
-   * Whether this process holds a tool approval, of a live run or a restored one, counting an
-   * approval whose binding has run out and that no sweep has yet released (which
-   * `listPendingReviews` leaves out) and one whose resolution is in flight (not yet recorded as
-   * resolved). The sweep's timer stops when this is false and not before.
-   */
-  function holdsToolApproval(): boolean {
-    const leftOrInvalid = (id: string): boolean =>
-      resolvedReviewIds.has(id) || invalidApprovalReviewIds.has(id);
-    for (const [runId, runState] of store.getState().runs) {
-      if (catalogRunIds.has(runId)) continue;
-      for (const step of runState.steps) {
-        for (const result of step.results) {
-          if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
-          if (!leftOrInvalid(`approval:${runId}:${result.pendingApproval.callId}`)) return true;
-        }
-      }
-    }
-    for (const id of pendingApprovalOverrides.keys()) if (!leftOrInvalid(id)) return true;
-    return false;
-  }
-
-  /** The check every approval's leaving makes: with none held, the sweep's timer is not needed. */
-  function stopLazyExpirySweepWhenNoneHeld(): void {
-    if (lazyExpirySweepArmed && !holdsToolApproval()) stopLazyExpirySweep();
-  }
-
-  function stopLazyExpirySweep(): void {
-    if (!lazyExpirySweepArmed) return;
-    runtimeServices.timers.clearInterval(lazyExpirySweepTimer);
-    lazyExpirySweepArmed = false;
-  }
-
-  /**
-   * COR-1622 — arms the expiry sweep's own timer when this Bureau holds a tool approval and no
-   * other timer sweeps for it. It stops itself on the first tick that finds none held, so an idle
-   * process is never kept alive by it, and `shutdown` clears it.
-   */
-  function ensureLazyExpirySweep(): void {
-    if (
-      lazyExpirySweepArmed ||
-      automaticRunOwnershipPruneTimerStarted ||
-      automaticMaintenanceRuns()
-    )
-      return;
-    if (options.maintenance === 'manual' || maintenanceAdmissionClosed) return;
-    lazyExpirySweepArmed = true;
-    lazyExpirySweepTimer = runtimeServices.timers.setInterval(() => {
-      if (lazyExpirySweepPass !== undefined) return;
-      const pass = (async () => {
-        try {
-          await sweepExpiredReviews();
-        } catch (error: unknown) {
-          diagnose({
-            level: 'error',
-            scope: 'durable-maintenance',
-            message: `[bureau] Expired-review sweep failed: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        }
-        stopLazyExpirySweepWhenNoneHeld();
-      })().finally(() => {
-        lazyExpirySweepPass = undefined;
-      });
-      lazyExpirySweepPass = pass;
-      detachBestEffortPromise(pass);
-    }, EXPIRY_SWEEP_INTERVAL_MILLISECONDS);
-  }
-
-  /**
-   * Announces a review becoming pending (`review.requested`), from the action that
-   * created it: a human-wait park, or a step that ended with a tool call awaiting
-   * approval. Reviews are derived from run state on read and have no event of their
-   * own; this is the one place that notices the moment one appears. The id is the
-   * id `listPendingReviews` mints for the same review. A park that recovery
-   * reconstructs (it carries a seeded `parkOrdinal`) happened in an earlier
-   * process, which announced it, so it is not announced again.
-   */
-  function announceReviewRequests(action: {
-    readonly runId: string;
-    readonly type: string;
-    readonly detail: unknown;
-  }): void {
-    const detail =
-      action.detail !== null && typeof action.detail === 'object'
-        ? (action.detail as Record<string, unknown>)
-        : undefined;
-    const announce = (
-      reviewId: string,
-      kind: 'human-wait' | 'tool-approval',
-      target: { signalName?: string; callId?: string },
-    ): void => announceReview(action.runId, reviewId, kind, target);
-    if (action.type === HumanWaitParkedEvent.type) {
-      const signalName = detail?.['signalName'];
-      const runState = store.getRun(action.runId);
-      if (typeof signalName !== 'string' || signalName.length === 0 || runState === undefined) {
-        return;
-      }
-      if (typeof detail?.['parkOrdinal'] === 'number') return;
-      const ordinal = humanWaitParkOrdinal(action.runId, runState.actions);
-      announce(`human-wait:${action.runId}:${signalName}:${ordinal}`, 'human-wait', { signalName });
-      return;
-    }
-    if (action.type === 'step.completed' && Array.isArray(detail?.['results'])) {
-      for (const result of detail['results'] as readonly unknown[]) {
-        if (result === null || typeof result !== 'object') continue;
-        const { outcome, pendingApproval } = result as {
-          outcome?: unknown;
-          pendingApproval?: { callId?: unknown };
-        };
-        const callId = pendingApproval?.callId;
-        if (outcome !== 'action_required' || typeof callId !== 'string') continue;
-        announce(`approval:${action.runId}:${callId}`, 'tool-approval', { callId });
-      }
-    }
-  }
-
-  /** A store action as the live `event` frame streams read. */
-  function emitActionFrame(action: StoreActionEvent['action']): void {
-    emitLiveFrame({
-      type: 'event',
-      runId: action.runId,
-      event: action.type,
-      detail: serializeActionDetail(action.type, action.detail),
-      sequence: action.sequence,
-      runSeq: nextRunSeq(action.runId),
-      timestamp: action.timestamp,
-    });
-  }
 
   const storeSubscription = store.toObservable().subscribe((event) => {
     switch (event.type) {
@@ -5134,17 +4851,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   });
 
-  function requireSessionStore(): SessionStore {
-    if (!runtime.sessionStore) {
-      throw new BureauError(
-        'No SessionStore configured (set options.storage)',
-        'NOT_CONFIGURED',
-        'persistence',
-      );
-    }
-    return runtime.sessionStore;
-  }
-
   const sessionPersistence = createSessionPersistence({
     sessionStore: runtime.sessionStore,
     orphanedRunIds,
@@ -5156,256 +4862,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     runtime: runtimeServices,
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
-
-  /**
-   * The run's `costBudget` with the chat's spend so far (COR-1915), or `undefined` when the agent
-   * limits no chat. A chat with no session yet has spent nothing.
-   */
-  async function chatCostBudgetOf(
-    sessionAgent: SessionAgentRun,
-    sessionId: string,
-    session: { readonly incarnation?: string | undefined } | undefined,
-  ): Promise<NonNullable<RunOptions['costBudget']> | undefined> {
-    const budget = sessionAgent?.options.costBudget;
-    if (budget?.perChatUsd === undefined) return undefined;
-    let spent = 0;
-    if (session?.incarnation !== undefined) {
-      try {
-        spent = await chatSpendLedger.totalOf(sessionId, session.incarnation);
-      } catch (error) {
-        // COR-1933 — a typed refusal, not the store's own error: the caller branches on the code.
-        diagnose({
-          level: 'error',
-          scope: 'chat-spend',
-          message: `[bureau] Could not read the spend of chat "${sessionId}": ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-        throw new BureauError(
-          `The spend of chat "${sessionId}" could not be read, so its run was not started: ${serializeUnknownError(error)}`,
-          'STORAGE_UNAVAILABLE',
-        );
-      }
-    }
-    return { ...budget, priorChatSpendUsd: spent };
-  }
-
-  /**
-   * Writes a chat run's spend to the chat's ledger (COR-1915), before the session records how the
-   * run ended (COR-1933): a crash in between then leaves a session that still says `running`, which
-   * recovery reattaches and replays into a ledger that already holds the record. A run with no
-   * price on its requests spent nothing the ledger can count. The ledger writes a run's record
-   * once, so a terminal event a recovery replays records nothing more, and a write that fails is
-   * diagnosed by the ledger and never fails the run's settlement.
-   */
-  async function recordChatRunSpend(
-    runId: string,
-    sessionId: string,
-    incarnation: string | undefined,
-    spend: ChatRunSpend | undefined,
-  ): Promise<void> {
-    const usd = spend?.costEstimate?.totalCost;
-    if (spend === undefined || usd === undefined || !Number.isFinite(usd) || usd <= 0) return;
-    if (incarnation === undefined) return;
-    try {
-      const written = await chatSpendLedger.record({
-        sessionId,
-        incarnation,
-        runId,
-        agentName: spend.agentName,
-        owner: spend.owner,
-        usd,
-        recordedAt: runtimeServices.clock.nowISO(),
-      });
-      // COR-1933 — a chat deleted while this run ran has had its records forgotten already, so
-      // the one just written would stay behind. Checked AFTER the write: either the deletion
-      // committed before this read and the record is removed here, or after it, and the
-      // deletion's own `forget` runs after the write and removes it.
-      if (written && runtime.sessionStore) {
-        const session = await runtime.sessionStore.load(sessionId);
-        if (session?.incarnation !== incarnation) {
-          await chatSpendLedger.forget(sessionId, incarnation);
-        }
-      }
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'chat-spend',
-        message: `[bureau] Could not record the spend of run "${runId}" in chat "${sessionId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * Persists a run's terminal session state, then settles the session's input
-   * (COR-1476): the settlement reads the session as the run left it.
-   */
-  function persistTerminalSession(
-    saveSessionUpdate: () => Promise<unknown>,
-    context: {
-      runId: string;
-      sessionId: string;
-      status: 'completed' | 'error' | 'aborted';
-      /** What the run spent, for the chat's ledger (COR-1915); written before the session's save. */
-      spend?: ChatRunSpend;
-    },
-  ): void {
-    // The incarnation is read now, with the terminal event, and not after the save: the map that
-    // holds it is dropped when the run's records are, which can be before the save finishes.
-    const spentIn = runSessionIncarnations.get(context.runId);
-    // The spend is recorded BEFORE the session's end record (COR-1933), inside the tracked save,
-    // so `drain()` waits for both and a crash between them is repaired by recovery's replay.
-    // `recordChatRunSpend` never rejects, and a save retry finds the record already written.
-    const spendRecorded = recordChatRunSpend(
-      context.runId,
-      context.sessionId,
-      spentIn,
-      context.spend,
-    );
-    const recorded = persistSessionUpdate(async () => {
-      await spendRecorded;
-      return saveSessionUpdate();
-    }, context).then(() => settleSessionInputsAfterRunEnd(context.sessionId, context.runId));
-    const settler = terminalSessionRecordSettlers.get(context.runId);
-    terminalSessionRecordSettlers.delete(context.runId);
-    if (settler !== undefined) {
-      recorded.then(settler.resolve, settler.reject);
-    } else {
-      // A run nobody told us to expect: its record is this save.
-      terminalSessionRecords.set(context.runId, recorded);
-      void recorded
-        .then(
-          () => undefined,
-          () => undefined,
-        )
-        .finally(() => {
-          if (terminalSessionRecords.get(context.runId) === recorded) {
-            terminalSessionRecords.delete(context.runId);
-          }
-        });
-    }
-    trackSessionInputSettlement(recorded);
-  }
-
-  /**
-   * Makes `whenRunRecorded(runId)` wait from now on, until the run's terminal save has finished,
-   * even when it is asked before the run has reached its end. A durable terminal event can reach a
-   * reader before this process's own run listener has started the save.
-   */
-  function expectTerminalSessionRecord(runId: string): void {
-    if (terminalSessionRecords.has(runId)) return;
-    const record = Promise.withResolvers<void>();
-    terminalSessionRecords.set(runId, record.promise);
-    terminalSessionRecordSettlers.set(runId, { resolve: record.resolve, reject: record.reject });
-    void record.promise
-      .then(
-        () => undefined,
-        () => undefined,
-      )
-      .finally(() => {
-        if (terminalSessionRecords.get(runId) === record.promise) {
-          terminalSessionRecords.delete(runId);
-        }
-      });
-  }
-
-  /**
-   * A run that is over without its terminal save ever starting: the engine lost a checkpoint
-   * compare-and-swap, or was disposed, and abandoned the run to whoever owns it
-   * (`driveDurableRun`), so no terminal listener ran. Whoever waits on its record is told it will
-   * not come. Rejecting writes nothing, which the abandoned path requires: another engine over the
-   * same store may own the run's outcome and records it itself. A run whose save did start has no
-   * settler left, so this does nothing for it.
-   */
-  function abandonTerminalSessionRecord(runId: string): void {
-    const settler = terminalSessionRecordSettlers.get(runId);
-    if (settler === undefined) return;
-    terminalSessionRecordSettlers.delete(runId);
-    settler.reject(new TerminalSessionRecordAbandonedError(runId));
-  }
-
-  /**
-   * Resolves once the session has recorded the end of `runId`, however long its save takes, and
-   * at once for a run whose end is already recorded or is not this process's.
-   *
-   * Rejects with `TerminalSessionRecordAbandonedError` when the run ended without this process
-   * saving its end: the engine lost a checkpoint compare-and-swap, or was disposed, and abandoned
-   * the run to whoever owns it, or the Bureau shut down before the save began. It settles with the
-   * run's result in those cases, never with a deadline. A save that starts and keeps failing does
-   * not reject: it is diagnosed after its last attempt and resolves, so a reader should check that
-   * the session holds what it needs. A reader in another process can read a session that does not
-   * yet hold the run's final rows, because this resolves at once for a run it does not hold.
-   */
-  async function whenRunRecorded(runId: string): Promise<void> {
-    await terminalSessionRecords.get(runId);
-  }
-
-  /**
-   * The identifiers of the rows (conversation messages) `runId` itself took session input into, in
-   * delivery order. Read from the durable delivery record, which commits with the transcript the
-   * run saved, so it is the same answer before and after the session records the run's end. A
-   * Bureau with no session mailbox delivered none.
-   */
-  async function sessionInputsDeliveredBy(
-    runId: string,
-    sessionId: string,
-  ): Promise<readonly string[]> {
-    if (sessionInputDeliveryStore === undefined) return [];
-    const records = await sessionInputDeliveryStore.read(sessionId);
-    return Object.values(records)
-      .filter((record) => record.runId === runId && record.promotion !== undefined)
-      .toSorted(
-        (left, right) => (left.promotion?.providerTurn ?? 0) - (right.promotion?.providerTurn ?? 0),
-      )
-      .flatMap((record) =>
-        record.promotion === undefined ? [] : [record.promotion.conversationMessageId],
-      );
-  }
-
-  /** Resolves once every run-end session-input settlement already started has finished. */
-  async function drainSessionInputSettlements(): Promise<void> {
-    while (inFlightSessionInputSettlements.size > 0) {
-      await Promise.allSettled(inFlightSessionInputSettlements);
-    }
-  }
-
-  /**
-   * COR-718 — a run's terminal save, pinned to the session incarnation the run
-   * started in (`runSessionIncarnations`, recorded by its first save and restored
-   * on recovery), whether or not durable steering is composed. The session may
-   * have expired and been recreated under another owner while the run ran, and a
-   * save that is not pinned would write the run's prompt and reply into that
-   * owner's session. A run with no recorded incarnation never started in any
-   * session this Bureau still knows, so its save goes nowhere.
-   */
-  function saveRunTerminalSession(
-    runId: string,
-    sessionId: string,
-    conversation: Conversation,
-    metadata: Record<string, JSONValue>,
-    agentName?: string,
-    baseConversationHistory?: ConversationHistory,
-  ): Promise<AgentSession | undefined> {
-    if (!runtime.sessionStore) return Promise.resolve(undefined);
-    const incarnation = runSessionIncarnations.get(runId);
-    if (incarnation === undefined) {
-      diagnose({
-        level: 'warn',
-        scope: 'session',
-        message: `[bureau] Run "${runId}" has no recorded session incarnation; its terminal save into session "${sessionId}" was skipped rather than written into a session it did not start in.`,
-      });
-      return Promise.resolve(undefined);
-    }
-    return saveSession(
-      sessionId,
-      conversation,
-      metadata,
-      agentName,
-      baseConversationHistory,
-      incarnation,
-      runId,
-    );
-  }
 
   function reviewAuditOutboxAttachment(
     attachment: ReviewAuditAttachment | undefined,
