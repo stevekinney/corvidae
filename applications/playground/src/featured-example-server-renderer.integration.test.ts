@@ -86,7 +86,7 @@ for (const [componentName, scenario] of DETERMINISM_SCENARIOS) {
 describe('featured example server renderer', () => {
   test('removes every Svelte hydration marker form without touching authored comments', () => {
     const html =
-      '<!----><!--$--><!--/$--><!--[--><!--[!--><!--[0--><!--[-1--><!--[?{"message":"nope"}--><!--]--><!-- keep -->';
+      '<!----><!--$--><!--/$--><!--$s1--><!--[--><!--[!--><!--[0--><!--[-1--><!--[?{"message":"nope"}--><!--]--><!-- keep -->';
 
     expect(removeHydrationMarkers(html)).toBe('<!-- keep -->');
   });
@@ -125,7 +125,8 @@ describe('featured example server renderer', () => {
     const chat = rendered('chat', 'with-tool-approval');
 
     expect(chat.body).toContain('Deploying version 2.4.1 to production');
-    expect(chat.body).toContain('data-cinder-layout="row"');
+    // Chat draws a waiting approval as Cinder's decision layout (COR-2282).
+    expect(chat.body).toContain('data-cinder-layout="decision"');
     expect(chat.body).toContain('cinder-approval-card__input-word');
     expect(chat.body).toContain('cinder-payload-inspector');
     expect(chat.body).toContain('Environment');

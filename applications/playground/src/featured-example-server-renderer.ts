@@ -32,7 +32,7 @@ export function setFeaturedExampleRenderer(renderer: FeaturedExampleRenderer | n
   substituteRenderer = renderer;
 }
 
-const SVELTE_HYDRATION_MARKER = /<!--(?:\[(?:!|\?[\s\S]*?|-?\d+)?|\]|\/?\$)?-->/g;
+const SVELTE_HYDRATION_MARKER = /<!--(?:\[(?:!|\?[\s\S]*?|-?\d+)?|\]|\/?\$|\$[a-z]\d+)?-->/g;
 const SELF_CLOSING_HTML_VOID_ELEMENT =
   /<(area|base|br|col|embed|hr|img|input|link|meta|source|track|wbr)(\s[^<>]*?)?\/>/gi;
 
