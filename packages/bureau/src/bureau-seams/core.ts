@@ -28,6 +28,7 @@ import type { AgentDefinitions, createAgentCatalog } from '../agent-catalog';
 import type { AssetService } from '../assets/types';
 import type { AuditTrail } from '../audit-trail';
 import type {
+  ApprovalDecisionSurface,
   Bureau,
   BureauShutdownReport,
   ContextDeletionReport,
@@ -374,6 +375,11 @@ export interface BureauCore<D extends AgentDefinitions> {
       rememberTool?: string | undefined;
       /** COR-1828: the owner of record of the run, for the resolved-review record. */
       owner?: string | undefined;
+      /**
+       * COR-2292: where the first attempt was decided, which its retry records whatever surface
+       * the retry came from.
+       */
+      decisionSurface?: ApprovalDecisionSurface | undefined;
     }
   >;
   /** Pending tool approvals overridden in this process. */
