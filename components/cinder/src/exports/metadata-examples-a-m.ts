@@ -82,6 +82,8 @@ import imageExamplesJson from '../components/image/image.examples.json' with { t
 import inlineConfirmExamplesJson from '../components/inline-confirm/inline-confirm.examples.json' with { type: 'json' };
 import inlineLoadingExamplesJson from '../components/inline-loading/inline-loading.examples.json' with { type: 'json' };
 import inputExamplesJson from '../components/input/input.examples.json' with { type: 'json' };
+import inspectorRowExamplesJson from '../components/inspector-row/inspector-row.examples.json' with { type: 'json' };
+import inspectorExamplesJson from '../components/inspector/inspector.examples.json' with { type: 'json' };
 import invocationRuleBuilderExamplesJson from '../components/invocation-rule-builder/invocation-rule-builder.examples.json' with { type: 'json' };
 import jsonEditorExamplesJson from '../components/json-editor/json-editor.examples.json' with { type: 'json' };
 import jsonSchemaEditorExamplesJson from '../components/json-schema-editor/json-schema-editor.examples.json' with { type: 'json' };
@@ -272,6 +274,10 @@ export const inlineConfirmExamples = inlineConfirmExamplesJson;
 export const inlineLoadingExamples = inlineLoadingExamplesJson;
 /** Code examples for this component. */
 export const inputExamples = inputExamplesJson;
+/** Code examples for this component. */
+export const inspectorExamples = inspectorExamplesJson;
+/** Code examples for this component. */
+export const inspectorRowExamples = inspectorRowExamplesJson;
 /** Code examples for this component. */
 export const invocationRuleBuilderExamples = invocationRuleBuilderExamplesJson;
 /** Code examples for this component. */

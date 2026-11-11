@@ -2949,6 +2949,66 @@
       }
     },
     {
+      "name": "Inspector",
+      "id": "inspector",
+      "import": "@lostgradient/cinder",
+      "exportName": "Inspector",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Group of quiet property rows for a detail page: a label, a value and an affordance, with each editable row becoming an editor on activation.",
+      "tags": ["properties", "detail", "inspector"],
+      "useWhen": [
+        "Showing the properties of one record on a detail page as a right rail on a desktop and a grouped section on a phone.",
+        "Letting a person change a property in place instead of through a stack of always-editable fields."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing read-only facts with no editing at all — use description-list."
+        },
+        {
+          "reason": "Editing many fields at once and saving them together — use a form with form-field."
+        }
+      ],
+      "related": ["inspector-row", "description-list", "grouped-list", "setting-row"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/inspector/inspector.schema.json",
+        "variables": "src/components/inspector/inspector.variables.json",
+        "examples": "src/components/inspector/inspector.examples.json"
+      }
+    },
+    {
+      "name": "InspectorRow",
+      "id": "inspector-row",
+      "import": "@lostgradient/cinder",
+      "exportName": "InspectorRow",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "One property row of an inspector: a muted label, a value and a trailing affordance; an editable row opens an inline editor or a popover on activation and commits or cancels from the keyboard.",
+      "tags": ["properties", "editable", "row"],
+      "useWhen": [
+        "Showing one property of a record as a quiet row that becomes a text, select, date or toggle editor on activation.",
+        "Opening a custom editor, such as a picker, in a popover anchored to the row's value."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The value is read-only and needs no affordance at all — use description-list."
+        },
+        {
+          "reason": "The control belongs beside a setting's description and save status — use setting-row."
+        }
+      ],
+      "related": ["inspector", "description-list", "setting-row", "popover"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/inspector-row/inspector-row.schema.json",
+        "variables": "src/components/inspector-row/inspector-row.variables.json",
+        "examples": "src/components/inspector-row/inspector-row.examples.json"
+      }
+    },
+    {
       "name": "InvocationRuleBuilder",
       "id": "invocation-rule-builder",
       "import": "@lostgradient/cinder",

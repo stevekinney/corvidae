@@ -95,6 +95,8 @@ export { default as imageSchema } from '../components/image/image.schema.ts';
 export { default as inlineConfirmSchema } from '../components/inline-confirm/inline-confirm.schema.ts';
 export { default as inlineLoadingSchema } from '../components/inline-loading/inline-loading.schema.ts';
 export { default as inputSchema } from '../components/input/input.schema.ts';
+export { default as inspectorRowSchema } from '../components/inspector-row/inspector-row.schema.ts';
+export { default as inspectorSchema } from '../components/inspector/inspector.schema.ts';
 export { default as invocationRuleBuilderSchema } from '../components/invocation-rule-builder/invocation-rule-builder.schema.ts';
 export { default as jsonEditorSchema } from '../components/json-editor/json-editor.schema.ts';
 export { default as jsonSchemaEditorSchema } from '../components/json-schema-editor/json-schema-editor.schema.ts';

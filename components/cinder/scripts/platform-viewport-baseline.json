@@ -15,6 +15,16 @@
     "allowedCount": 1
   },
   {
+    "filePath": "src/components/inspector-row/inspector-row.css",
+    "query": "@media (width < 700px)",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/inspector/inspector.css",
+    "query": "@media (width < 700px)",
+    "allowedCount": 1
+  },
+  {
     "filePath": "src/components/sidebar/sidebar.css",
     "query": "@media (max-width: 639.98px)",
     "allowedCount": 1

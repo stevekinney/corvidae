@@ -1,0 +1,30 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    header: {
+      type: 'string',
+      description:
+        'A header drawn above the group, outside its surface, in small muted text. It also names the group.',
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-inspector`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        description: 'The rows: InspectorRow elements.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

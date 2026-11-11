@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "inspector",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Editable and read-only rows",
+      "description": "Each editable row shows a trailing affordance and becomes a text, select, date or toggle editor when activated; the read-only row has none.",
+      "code": "<script lang=\"ts\">\n  import { Inspector, InspectorRow } from '@lostgradient/cinder';\n\n  let title = $state('Spring menu launch');\n  let status = $state('open');\n  let due = $state('2026-11-30');\n  let notify = $state(true);\n</script>\n\n<div style=\"max-inline-size: 22rem;\">\n  <Inspector header=\"Details\">\n    <InspectorRow\n      label=\"Title\"\n      kind=\"text\"\n      current={title}\n      onCommit={(next) => (title = String(next))}\n    >\n      {#snippet value()}{title}{/snippet}\n    </InspectorRow>\n    <InspectorRow\n      label=\"Status\"\n      kind=\"select\"\n      current={status}\n      options={[\n        { value: 'open', label: 'Open' },\n        { value: 'closed', label: 'Closed' },\n      ]}\n      onCommit={(next) => (status = String(next))}\n    >\n      {#snippet value()}{status === 'open' ? 'Open' : 'Closed'}{/snippet}\n    </InspectorRow>\n    <InspectorRow label=\"Due\" kind=\"date\" current={due} onCommit={(next) => (due = String(next))}>\n      {#snippet value()}{due}{/snippet}\n    </InspectorRow>\n    <InspectorRow\n      label=\"Notify\"\n      kind=\"toggle\"\n      current={notify}\n      onCommit={(next) => (notify = next === true)}\n    >\n      {#snippet value()}{notify ? 'On' : 'Off'}{/snippet}\n    </InspectorRow>\n    <InspectorRow label=\"Created\">\n      {#snippet value()}Nov 10, 2026{/snippet}\n    </InspectorRow>\n  </Inspector>\n</div>\n"
+    }
+  ]
+}

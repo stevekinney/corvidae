@@ -1,0 +1,241 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * INSPECTOR ROW
+ *
+ * The record-details row: a muted label in a fixed 140px column, the value in the default text
+ * colour, then a trailing affordance. Each row is at least 44px tall, and its separator is inset
+ * to the text. An editable row draws a trailing chevron (a switch for a toggle) and a hover tint,
+ * and becomes an editor on activation; a read-only row draws neither, so the two never look the
+ * same. Parts are styled by class, so nothing a consumer interpolates into a value is restyled.
+ * ======================================== */
+
+  .cinder-inspector-row {
+    position: relative;
+    display: grid;
+    grid-template-columns: 8.75rem minmax(0, 1fr);
+    align-items: stretch;
+    min-block-size: 2.75rem;
+    margin: 0;
+    padding-inline-start: var(--cinder-space-4);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+  }
+
+  /* The separator is inset to the text, past the row's start padding. */
+  .cinder-inspector-row:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    inset-block-end: 0;
+    inset-inline: var(--cinder-space-4) 0;
+    border-block-end: 1px solid var(--cinder-border-faint);
+    pointer-events: none;
+  }
+
+  /* ----------------------------------------
+ * Label
+ * ---------------------------------------- */
+
+  .cinder-inspector-row__label {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    margin: 0;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline-end: var(--cinder-space-3);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-inspector-row__icon {
+    display: inline-flex;
+    flex: none;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-inspector-row__label-text {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+  }
+
+  /* ----------------------------------------
+ * Value
+ * ---------------------------------------- */
+
+  .cinder-inspector-row__value {
+    display: flex;
+    align-items: center;
+    min-inline-size: 0;
+    margin: 0;
+  }
+
+  .cinder-inspector-row__text {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline-end: var(--cinder-space-3);
+    overflow-wrap: anywhere;
+    text-align: start;
+  }
+
+  /* A read-only value is plain text: no affordance, no hover tint, no pointer. */
+  .cinder-inspector-row[data-cinder-readonly] .cinder-inspector-row__text {
+    cursor: default;
+  }
+
+  /* ----------------------------------------
+ * Trigger: the affordance of an editable row
+ * ---------------------------------------- */
+
+  .cinder-inspector-row__trigger {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-inline-size: 0;
+    min-block-size: 2.75rem;
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+
+  .cinder-inspector-row__trigger > .cinder-inspector-row__text {
+    padding-inline-end: 0;
+  }
+
+  .cinder-inspector-row__chevron {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    padding-inline-end: var(--cinder-space-2);
+    color: var(--cinder-text-subtle);
+  }
+
+  @media (hover: hover) {
+    .cinder-inspector-row__trigger:hover {
+      background: var(--cinder-surface-hover);
+    }
+
+    .cinder-inspector-row__trigger:hover > .cinder-inspector-row__chevron {
+      color: var(--cinder-text-default);
+    }
+  }
+
+  .cinder-inspector-row__trigger:focus-visible > .cinder-inspector-row__chevron {
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-inspector-row__trigger:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    /* The ring is drawn inside the row, because the group clips its rows. */
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  /* A toggle's affordance is a small switch, so an editable toggle row never reads as plain text. */
+  .cinder-inspector-row__switch {
+    position: relative;
+    flex: none;
+    inline-size: 2rem;
+    block-size: 1.125rem;
+    margin-inline-end: var(--cinder-space-3);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-control-border);
+  }
+
+  .cinder-inspector-row__switch::after {
+    content: '';
+    position: absolute;
+    inset-block-start: 0.125rem;
+    inset-inline-start: 0.125rem;
+    inline-size: 0.875rem;
+    block-size: 0.875rem;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-inspector-row__switch[data-cinder-checked] {
+    background: var(--cinder-accent-solid);
+  }
+
+  .cinder-inspector-row__switch[data-cinder-checked]::after {
+    inset-inline-start: 1.125rem;
+  }
+
+  /* ----------------------------------------
+ * Inline editor
+ * ---------------------------------------- */
+
+  .cinder-inspector-row__field {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    min-block-size: 2rem;
+    margin-block: var(--cinder-space-1);
+    margin-inline-end: var(--cinder-space-2);
+    padding: var(--cinder-space-1) var(--cinder-space-2);
+    font: inherit;
+    color: var(--cinder-text-default);
+    background: var(--cinder-control-background);
+    border: 1px solid var(--cinder-control-border);
+    border-radius: var(--cinder-control-radius);
+  }
+
+  .cinder-inspector-row__field:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  /* ----------------------------------------
+ * Phones: the label stacks above the value
+ * ---------------------------------------- */
+
+  @media (width < 700px) {
+    .cinder-inspector-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cinder-inspector-row__label {
+      padding-block: var(--cinder-space-2) 0;
+      padding-inline-end: var(--cinder-space-4);
+      font-size: var(--cinder-text-sm);
+    }
+
+    .cinder-inspector-row__text {
+      padding-block: var(--cinder-space-1) var(--cinder-space-2-5);
+      padding-inline-end: var(--cinder-space-4);
+    }
+
+    .cinder-inspector-row__trigger > .cinder-inspector-row__text {
+      padding-inline-end: 0;
+    }
+
+    .cinder-inspector-row__trigger {
+      min-block-size: 2rem;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-inspector-row__trigger:focus-visible,
+    .cinder-inspector-row__field:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+
+    .cinder-inspector-row__switch {
+      border: 1px solid ButtonText;
+    }
+
+    .cinder-inspector-row__switch[data-cinder-checked] {
+      background: Highlight;
+    }
+
+    .cinder-inspector-row:not(:last-child)::after {
+      border-block-end-color: GrayText;
+    }
+  }
+}

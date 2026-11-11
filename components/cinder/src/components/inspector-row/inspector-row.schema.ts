@@ -1,0 +1,85 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    label: {
+      type: 'string',
+      description: "The row's label, drawn muted in a fixed-width column.",
+    },
+    kind: {
+      enum: ['text', 'select', 'date', 'toggle'],
+      description:
+        'The built-in editor an activation opens. Leave it unset, with no `editor`, for a read-only row. A `toggle` row has no editor: activating it commits the opposite of `current`.',
+    },
+    current: {
+      anyOf: [
+        {
+          type: 'string',
+        },
+        {
+          type: 'boolean',
+        },
+      ],
+      description:
+        'The value an editor starts from: the text of a `text`, `select` or `date` row, or the state of a `toggle`.',
+    },
+    editLabel: {
+      type: 'string',
+      description: 'The accessible name of the editor. Left unset, it reads "Edit" and the label.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Draws the row as read-only, even when it has an editor.',
+      default: false,
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-inspector-row`.',
+    },
+  },
+  additionalProperties: false,
+  required: ['label'],
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'editor',
+        reason: 'function-or-snippet',
+        description:
+          "A custom editor, shown in a popover anchored to the row's value. It wins over `kind`.",
+      },
+      {
+        name: 'icon',
+        reason: 'function-or-snippet',
+        description: 'An optional icon drawn before the label.',
+      },
+      {
+        name: 'onCancel',
+        reason: 'function-or-snippet',
+        description:
+          'Called when an edit is cancelled: with Escape, by activating the row again, or by dismissing the popover.',
+      },
+      {
+        name: 'onCommit',
+        reason: 'function-or-snippet',
+        description:
+          "Called when an edit is committed: with Enter, by leaving a field, by picking an option, by activating a toggle, or by a custom editor's `commit`.",
+      },
+      {
+        name: 'options',
+        reason: 'unknown-shape',
+        description: 'The choices of a `select` row.',
+      },
+      {
+        name: 'value',
+        reason: 'function-or-snippet',
+        required: true,
+        description: "The row's value, as it reads at rest.",
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

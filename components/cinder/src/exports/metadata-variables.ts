@@ -95,6 +95,8 @@ export { default as imageVariables } from '../components/image/image.variables.t
 export { default as inlineConfirmVariables } from '../components/inline-confirm/inline-confirm.variables.ts';
 export { default as inlineLoadingVariables } from '../components/inline-loading/inline-loading.variables.ts';
 export { default as inputVariables } from '../components/input/input.variables.ts';
+export { default as inspectorRowVariables } from '../components/inspector-row/inspector-row.variables.ts';
+export { default as inspectorVariables } from '../components/inspector/inspector.variables.ts';
 export { default as invocationRuleBuilderVariables } from '../components/invocation-rule-builder/invocation-rule-builder.variables.ts';
 export { default as jsonEditorVariables } from '../components/json-editor/json-editor.variables.ts';
 export { default as jsonSchemaEditorVariables } from '../components/json-schema-editor/json-schema-editor.variables.ts';

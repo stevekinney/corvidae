@@ -95,6 +95,8 @@
 @import '../components/inline-confirm/inline-confirm.css';
 @import '../components/inline-loading/inline-loading.css';
 @import '../components/input/input.css';
+@import '../components/inspector/inspector.css';
+@import '../components/inspector-row/inspector-row.css';
 @import '../components/invocation-rule-builder/invocation-rule-builder.css';
 @import './components/json-highlight.css';
 @import '../components/json-editor/json-editor.css';

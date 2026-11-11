@@ -562,6 +562,18 @@ export type { ImageFit, ImageProps, ImageSize } from './components/image/index.t
 export { default as Input } from './components/input/index.ts';
 export type { InputProps, InputType, InputVariant } from './components/input/index.ts';
 
+export { default as Inspector } from './components/inspector/index.ts';
+export type { InspectorProps } from './components/inspector/index.ts';
+
+export { default as InspectorRow } from './components/inspector-row/index.ts';
+export type {
+  InspectorRowEditorContext,
+  InspectorRowKind,
+  InspectorRowOption,
+  InspectorRowProps,
+  InspectorRowValue,
+} from './components/inspector-row/index.ts';
+
 export { default as InlineLoading } from './components/inline-loading/index.ts';
 export type { InlineLoadingProps, InlineLoadingStatus } from './components/inline-loading/index.ts';
 

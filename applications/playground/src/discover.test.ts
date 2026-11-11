@@ -271,6 +271,8 @@ const SIDEBAR_BASELINE = [
   'inline-confirm',
   'inline-loading',
   'input',
+  'inspector',
+  'inspector-row',
   'invocation-rule-builder',
   'json-editor',
   'json-schema-editor',

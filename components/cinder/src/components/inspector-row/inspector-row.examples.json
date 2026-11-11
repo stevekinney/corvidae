@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "inspector-row",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "popover-editor",
+      "title": "A custom editor in a popover",
+      "description": "An editor snippet opens in a popover anchored to the value and ends the edit with commit or cancel. A disabled row is read-only.",
+      "code": "<script lang=\"ts\">\n  import { Button, Inspector, InspectorRow } from '@lostgradient/cinder';\n\n  let owner = $state('Ada Lovelace');\n</script>\n\n<div style=\"max-inline-size: 22rem;\">\n  <Inspector header=\"Details\">\n    <InspectorRow\n      label=\"Owner\"\n      editLabel=\"Choose an owner\"\n      onCommit={(next) => {\n        if (typeof next === 'string') owner = next;\n      }}\n    >\n      {#snippet value()}{owner}{/snippet}\n      {#snippet editor({ commit, cancel })}\n        <div style=\"display: flex; gap: 0.5rem; padding: 0.5rem;\">\n          <Button size=\"sm\" onclick={() => commit('Ada Lovelace')}>Ada</Button>\n          <Button size=\"sm\" onclick={() => commit('Grace Hopper')}>Grace</Button>\n          <Button size=\"sm\" variant=\"ghost\" onclick={() => cancel()}>Cancel</Button>\n        </div>\n      {/snippet}\n    </InspectorRow>\n    <InspectorRow label=\"Created\" disabled>\n      {#snippet value()}Nov 10, 2026{/snippet}\n    </InspectorRow>\n  </Inspector>\n</div>\n"
+    }
+  ]
+}
