@@ -147,7 +147,9 @@
     if (inputMode === 'loading') return 'loading';
     if (inputMode === 'failed') return 'unloaded';
     if (target?.status === 'invalid') return 'invalid';
-    if (target?.status === 'paused') return 'paused';
+    // A paused file refuses a start, but a schedule of its own is the owner's choice
+    // (`scheduleTargetOf`), so Create schedule stays on.
+    if (target?.status === 'paused' && !scheduling) return 'paused';
     if (blockedAgents.length > 0) return 'provider';
     return undefined;
   });

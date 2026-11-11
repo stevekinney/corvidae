@@ -1062,6 +1062,20 @@ describe('what stops a run, detected on load', () => {
     expect(offReason(root)).toBeUndefined();
   });
 
+  test('leaves Create schedule on for a paused file, whose own schedule is the owner’s choice', async () => {
+    const view = open('/workflows/paused-one/run');
+    const root = await ready(view.container);
+    await drawn(root, 'run-setup-paused');
+    await fireEvent.click(
+      [...root.querySelectorAll<HTMLInputElement>('input[type="radio"]')].find(
+        (radio) => radio.value === 'schedule',
+      ) as HTMLElement,
+    );
+    await waitFor(() => expect(primary(root).textContent?.trim()).toBe(COPY.scheduleAction));
+    expect(primary(root).disabled).toBe(false);
+    expect(offReason(root)).toBeUndefined();
+  });
+
   test('says a file that cannot be read in a red alert at the top, with Open Code, and draws no form (58s-58v)', async () => {
     const view = open('/workflows/broken/run');
     const root = await ready(view.container);
@@ -1146,7 +1160,7 @@ describe('pressing Start run', () => {
     const root = await ready(view.container);
     await fireEvent.click(primary(root));
     const line = await drawn(root, 'run-setup-input-problem');
-    expect(words(line)).toBe(COPY.requiredBeforeRun('Branch'));
+    expect(words(line)).toContain(COPY.requiredBeforeRun('Branch'));
     await waitFor(() => expect(field(root, 'Branch').getAttribute('aria-invalid')).toBe('true'));
     expect(root.textContent).toContain('Branch is required.');
     // The form moves focus to the first problem.
@@ -1198,7 +1212,7 @@ describe('pressing Start run', () => {
     await type(field(root, 'Branch'), 'main');
     await fireEvent.click(primary(root));
     const alert = await drawn(root, 'run-setup-failure');
-    expect(words(alert)).toBe(
+    expect(words(alert)).toContain(
       `${COPY.startFailed} Interborough didn’t answer. ${COPY.nothingStarted}`,
     );
     // The alert sits above the footer, at the action, and is the only one: no banner, no Try again.

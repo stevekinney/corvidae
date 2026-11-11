@@ -141,15 +141,21 @@
     /** Where to look when the answer was lost and the work may have been done. */
     readonly check?: { readonly label: string; readonly path: string };
   } | null>(null);
-  /** The first field the last ask found empty, repeated above the footer until the input changes. */
-  let inputProblem = $state<string | null>(null);
+  /** Whether Start run was pressed since the last start began, so a missing field is repeated above the footer. */
+  let asked = $state(false);
 
   /** What the input holds, for the footer's summary. */
   let input = $state<InputState>({ mode: 'form', value: undefined });
   function trackInput(next: InputState): void {
     input = next;
-    inputProblem = null;
   }
+
+  /** The first required field the form still leaves empty once Start run was pressed, until it is filled. */
+  const inputProblem = $derived.by(() => {
+    if (!asked || input.mode !== 'form') return null;
+    const missing = missingRequiredField(schema, input.value);
+    return missing === undefined ? null : copy.requiredBeforeRun(missing);
+  });
 
   /** Whether the workflow takes no input whatever starts it, so the Input section says so in one line. */
   const noInput = $derived(
@@ -204,7 +210,7 @@
     },
     onMutate: () => {
       failure = null;
-      inputProblem = null;
+      asked = false;
       inputField?.clear();
     },
     onSuccess: (outcome) => {
@@ -417,9 +423,8 @@
       begin(undefined, choice);
       return;
     }
-    // The form marks the field and moves focus to it; the line above the footer repeats it there.
-    const missing = input.mode === 'form' ? missingRequiredField(schema, input.value) : undefined;
-    inputProblem = missing === undefined ? null : copy.requiredBeforeRun(missing);
+    // The form marks a missing field and moves focus to it; the line above the footer repeats it.
+    asked = true;
     inputField?.request(choice);
   }
 
@@ -576,13 +581,9 @@
   {#if failure !== null}
     <Alert variant="danger" data-testid="run-setup-failure">
       <p class="ib-run-setup__alert-message">
-        <span class="ib-run-setup__alert-title">{failure.title}</span>
-        {#if failure.message !== null}
-          <span>{failure.message}</span>
-        {/if}
-        {#if failure.closing !== null}
-          <span>{failure.closing}</span>
-        {/if}
+        <span class="ib-run-setup__alert-title">{failure.title}</span
+        >{#if failure.message !== null}{' '}<span>{failure.message}</span
+          >{/if}{#if failure.closing !== null}{' '}<span>{failure.closing}</span>{/if}
       </p>
       {#if failure.check !== undefined}
         {@const check = failure.check}
