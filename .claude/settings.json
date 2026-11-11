@@ -89,6 +89,15 @@
         ]
       },
       {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bun \"$CLAUDE_PROJECT_DIR\"/scripts/chef/context-guard.ts",
+            "timeout": 10
+          }
+        ]
+      },
+      {
         "matcher": "Write",
         "hooks": [
           {
