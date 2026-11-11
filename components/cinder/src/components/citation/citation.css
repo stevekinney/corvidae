@@ -12,10 +12,39 @@
     font: inherit;
     padding: 0 var(--cinder-space-0-5);
   }
+  /* The panel is a column, so the title, the optional excerpt, the optional link and the pager
+     are separate boxes with one token gap between them. An absent excerpt is an absent box and
+     leaves no gap. `overflow-wrap: anywhere` keeps a long unbroken string inside the panel. */
+  .cinder-citation__panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-width: 0;
+    text-align: start;
+    overflow-wrap: anywhere;
+    line-height: var(--cinder-leading-normal);
+  }
+  .cinder-citation__title {
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-default);
+  }
+  .cinder-citation__detail {
+    margin: 0;
+    font-weight: var(--cinder-font-normal);
+    color: var(--cinder-text-muted);
+  }
   .cinder-citation__pagination {
     display: flex;
+    flex-wrap: wrap;
     gap: var(--cinder-space-2);
     align-items: center;
-    margin-block-start: var(--cinder-space-2);
+  }
+  @media (pointer: coarse) {
+    .cinder-citation__pagination button,
+    .cinder-citation__link {
+      display: inline-flex;
+      align-items: center;
+      min-height: var(--cinder-touch-target-min);
+    }
   }
 }

@@ -128,6 +128,43 @@ describe('Citation', () => {
     expect(document.activeElement).toBe(marker);
   });
 
+  test('renders the title, excerpt and link as separate rows in source order', async () => {
+    const { container } = render(Citation, {
+      sources: [{ label: 'Title', detail: 'Excerpt', url: '/sources/one' }],
+    });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() => expect(document.querySelector('section')).not.toBeNull());
+    const panel = document.querySelector('section')!;
+    expect(panel.classList.contains('cinder-citation__panel')).toBe(true);
+    expect(
+      Array.from(panel.children).map((child) => [child.tagName, child.textContent?.trim()]),
+    ).toEqual([
+      ['STRONG', 'Title'],
+      ['P', 'Excerpt'],
+      ['A', 'Open source'],
+    ]);
+    expect(panel.querySelector('strong')?.getAttribute('dir')).toBe('auto');
+    expect(panel.querySelector('p')?.getAttribute('dir')).toBe('auto');
+  });
+
+  test('renders no excerpt element when the source has no detail', async () => {
+    const { container } = render(Citation, { sources: [{ label: 'Refund policy' }] });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() => expect(document.querySelector('section')).not.toBeNull());
+    expect(document.querySelector('section p')).toBeNull();
+    expect(document.querySelector('section')?.children).toHaveLength(1);
+  });
+
+  test('spaces the panel rows with a space token and wraps long strings', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const panel = /\.cinder-citation__panel \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+
+    expect(panel).toContain('flex-direction: column;');
+    expect(panel).toContain('gap: var(--cinder-space-2);');
+    expect(panel).toContain('overflow-wrap: anywhere;');
+    expect(panel).toContain('text-align: start;');
+  });
+
   test('composes Popover styles through the citation entry point', () => {
     const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
 

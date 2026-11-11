@@ -93,10 +93,13 @@
         aria-label={sources.length > 0 ? `${label} (${sources.length})` : `${label} (no sources)`}
         >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
       >{/snippet}
-    <section aria-label={label}>
-      <strong>{source?.label}</strong>{#if source?.detail}<p>
+    <section class="cinder-citation__panel" aria-label={label}>
+      <strong class="cinder-citation__title" dir="auto">{source?.label}</strong
+      >{#if source?.detail}<p class="cinder-citation__detail" dir="auto">
           {source.detail}
-        </p>{/if}{#if safeSourceUrl}<a href={safeSourceUrl}>Open source</a>{/if}
+        </p>{/if}{#if safeSourceUrl}<a class="cinder-citation__link" href={safeSourceUrl}
+          >Open source</a
+        >{/if}
       {#if sources.length > 1}<div class="cinder-citation__pagination">
           <button
             type="button"
