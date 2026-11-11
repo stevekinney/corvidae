@@ -173,11 +173,9 @@ test.describe('reaching the page', () => {
     await createWaiting(request, id);
     await page.goto('/runs');
     await page.getByRole('link', { name: 'Start run' }).click();
-    await expect(page).toHaveURL(/\/runs\?view=start$/);
-    await page
-      .getByRole('list', { name: WORKFLOW_COPY.runPicker.listLabel })
-      .getByRole('link', { name: id })
-      .click();
+    await expect(page).toHaveURL(/\/runs\/new$/);
+    await page.getByRole('combobox', { name: WORKFLOW_COPY.runPicker.fieldLabel }).selectOption(id);
+    await page.getByRole('button', { name: WORKFLOW_COPY.runPicker.continue }).click();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
     await expect(page.getByRole('heading', { level: 1, name: COPY.title(id) })).toBeVisible();
   });

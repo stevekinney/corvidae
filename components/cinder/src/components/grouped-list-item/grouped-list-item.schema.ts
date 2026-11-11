@@ -1,0 +1,87 @@
+import type { ComponentSchema } from '../../schema-types';
+
+const schema = {
+  $schema: 'https://json-schema.org/draft/2020-12/schema',
+  type: 'object',
+  properties: {
+    leadingKind: {
+      enum: ['icon', 'avatar', 'media', 'control'],
+      description: 'What the leading slot holds.',
+      default: 'icon',
+    },
+    chevron: {
+      type: 'boolean',
+      description: 'Draws a trailing chevron. Left unset, a row with `href` draws one.',
+    },
+    selected: {
+      type: 'boolean',
+      description: 'Marks the row as the current one with a tint.',
+      default: false,
+    },
+    href: {
+      type: 'string',
+      description: 'Makes the whole row a link to this address.',
+    },
+    target: {
+      type: 'string',
+      description: 'Where to open the link.',
+    },
+    rel: {
+      type: 'string',
+      description: "The link's relationship; `noopener noreferrer` is added for `_blank`.",
+    },
+    class: {
+      type: 'string',
+      description: 'Custom class merged with `.cinder-grouped-list-item`.',
+    },
+  },
+  additionalProperties: false,
+  metadata: {
+    unsupportedProps: [
+      {
+        name: 'action',
+        reason: 'function-or-snippet',
+        description:
+          'A trailing action such as a menu button. It sits in a fixed-width column, so a changing value never moves its click target.',
+      },
+      {
+        name: 'lead',
+        reason: 'function-or-snippet',
+        description:
+          'A fixed-width column for a time or number, such as "45 min left", drawn before the title. Rows in one list line up.',
+      },
+      {
+        name: 'leading',
+        reason: 'function-or-snippet',
+        description: 'A leading icon, thumbnail, avatar or control, drawn before the text.',
+      },
+      {
+        name: 'photo',
+        reason: 'function-or-snippet',
+        description: 'A trailing photo. It reserves no space when absent.',
+      },
+      {
+        name: 'subtitle',
+        reason: 'function-or-snippet',
+        description:
+          'A secondary line under the title, in muted text. A status is a small dot plus a word here, never a badge.',
+      },
+      {
+        name: 'title',
+        reason: 'function-or-snippet',
+        required: true,
+        description:
+          "The row's main text. With `href`, it becomes the link and the whole row is its target.",
+      },
+      {
+        name: 'trailing',
+        reason: 'function-or-snippet',
+        description:
+          'A trailing value, such as a count or a short status. It is right-aligned and never moves the action column.',
+      },
+    ],
+  },
+} satisfies ComponentSchema;
+
+/** JSON Schema describing the props of this component. */
+export default schema as ComponentSchema;

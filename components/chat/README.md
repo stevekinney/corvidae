@@ -102,6 +102,58 @@ The Mermaid snippet has type `Snippet<[content: string, type: 'mermaid']>`. `Art
 
 This is a deliberate difference from `@lostgradient/editor`'s `DiffViewer`, whose `toolbar` override is total replacement with no `renderDefault`—the [Editor README](../editor/README.md#diffviewer-toolbar-override) explains why. Message-part and row rendering carry built-in behavior (streaming state, tool-call presentation, artifact resolution) that most wrappers want to keep and only augment. That is what `renderDefault` is for.
 
+### Showing a typed tool result
+
+A consumer can present one tool's result its own way through the same `messagePart` seam, with no registry and no model SDK. The override receives the paired `tool-call` part, whose `pair.result` is the typed `ToolResult`. It reads the result with ordinary code it trusts, and delegates to `renderDefault` for everything it does not recognise, so a malformed result, a failure, an approval or input request, and every other tool keep Chat's built-in card. The recipe never runs a tool, never resolves an approval, and never registers a component.
+
+This guard accepts a `lookup_inventory` result only when its outcome is `success`, it carries no structured `parts`, and its `content` is `{ item, available }` with a nonempty string `item` and a nonnegative integer `available`:
+
+```ts
+import type { ToolResult } from '@lostgradient/chat';
+
+export type Inventory = { item: string; available: number };
+
+export function readInventory(result: ToolResult | undefined): Inventory | undefined {
+  if (result === undefined || result.outcome !== 'success') return undefined;
+  if (result.parts !== undefined && result.parts.length > 0) return undefined;
+  const value = result.content;
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
+  const item: unknown = Object.hasOwn(value, 'item') ? Reflect.get(value, 'item') : undefined;
+  const available: unknown = Object.hasOwn(value, 'available')
+    ? Reflect.get(value, 'available')
+    : undefined;
+  if (typeof item !== 'string' || item === '') return undefined;
+  if (typeof available !== 'number' || !Number.isInteger(available) || available < 0) {
+    return undefined;
+  }
+  return { item, available };
+}
+```
+
+```svelte
+<script lang="ts">
+  import { Chat } from '@lostgradient/chat';
+  import { Badge } from '@lostgradient/cinder';
+  import { readInventory } from './inventory';
+</script>
+
+<Chat {conversation}>
+  {#snippet messagePart(part, renderDefault)}
+    {@const inventory =
+      part.type === 'tool-call' && part.pair.call.name === 'lookup_inventory'
+        ? readInventory(part.pair.result)
+        : undefined}
+    {#if inventory}
+      <Badge>{inventory.item}: {inventory.available} available</Badge>
+    {:else}
+      {@render renderDefault(part)}
+    {/if}
+  {/snippet}
+</Chat>
+```
+
+`{ item: 'Notebook', available: 3 }` renders a Badge reading "Notebook: 3 available". `{ item: 'Notebook', available: '3' }` is not valid, so the default card renders. The result only exists once the tool has answered: while the call is pending, `pair.result` is `undefined` and the default card renders, then the Badge replaces it when a valid success arrives.
+
 ## MCP Apps
 
 `McpApp` hosts an [MCP App](https://github.com/modelcontextprotocol/ext-apps) (`@modelcontextprotocol/ext-apps` 2.0) inline: a `ui://` page that a tool links to through `_meta.ui.resourceUri`. The component owns no MCP client and no credentials. The application supplies two callbacks, and everything the app can reach goes through them.

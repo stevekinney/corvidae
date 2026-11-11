@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "section",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "A heading, an action and content",
+      "description": "A section is a heading with an optional description and action, then its content. Space separates it from the next section; nothing is boxed.",
+      "code": "<script lang=\"ts\">\n  import { Button, Section } from '@lostgradient/cinder';\n</script>\n\n{#snippet actions()}\n  <Button size=\"sm\" variant=\"secondary\">See all</Button>\n{/snippet}\n\n<Section title=\"Upcoming\" description=\"The next seven days\" {actions}>\n  <p>Two bars and a rooftop are open late on Friday.</p>\n</Section>\n\n<Section title=\"Saved\">\n  <p>Nothing saved yet.</p>\n</Section>\n"
+    },
+    {
+      "id": "tall",
+      "title": "A tall section keeps every child",
+      "description": "The content is a block, so children that clip their overflow are never squeezed inside a flex or scroll parent.",
+      "code": "<script lang=\"ts\">\n  import { Section } from '@lostgradient/cinder';\n</script>\n\n<div style=\"display: flex; flex-direction: column; block-size: 12rem; overflow: auto;\">\n  <Section title=\"Tonight\">\n    {#each [1, 2, 3, 4, 5, 6] as number (number)}\n      <p style=\"margin: 0; padding: 0.5rem 0; overflow: hidden;\">Stop {number}</p>\n    {/each}\n  </Section>\n</div>\n"
+    }
+  ]
+}

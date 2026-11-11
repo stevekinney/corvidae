@@ -888,13 +888,17 @@ export const WORKFLOW_COPY = {
   /** Choosing the workflow to run, from the runs list. */
   runPicker: {
     title: 'Start a run',
-    description: 'Choose the workflow to run. The next page sets up its input and when it runs.',
-    listLabel: 'Workflows you can run',
-    /** The filter is offered once there are more workflows than fit at a glance. */
-    filterLabel: 'Find a workflow',
-    noMatchTitle: 'No workflow matches that search',
-    noMatchDescription: 'Change the search to see more workflows.',
+    description: 'Choose what to run. Next you’ll set its input and when it starts.',
+    /** The field's label. The required dot after it is Cinder's, never the word. */
+    fieldLabel: 'Workflow',
+    fieldPlaceholder: 'Choose a workflow',
+    /** Why a listed workflow cannot be picked: said beside its name, which stays in the list. */
+    pausedReason: 'paused',
+    invalidReason: 'can’t load',
+    /** Said under the field when Continue is pressed with nothing picked. */
+    pickError: 'Pick a workflow to continue.',
     cancel: 'Cancel',
+    continue: 'Continue',
     loadFailedTitle: 'The workflows could not be loaded',
     loadFailedDescription: 'Try again, or check that you may read workflows.',
     emptyTitle: 'No workflow can run yet',

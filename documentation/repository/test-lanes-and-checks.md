@@ -30,7 +30,7 @@ Flaky tests: a test that fails in the full tier or in `harden` is never rerun un
 
 The mechanics behind AGENTS.md "Gate on local checks".
 
-`bun run check` is the quick tier, the on-demand local reading of what a change can reach: format, the root lint and type-check, lint and type-check of the affected workspaces, and the fast-lane tests the change reaches, with no coverage run and no isolated lane (AGENTS.md "Test tiers"). It runs `--shared`, outside the host lock, and nothing requires it before a merge.
+`bun run check` is the quick tier, the on-demand local reading of what a change can reach: format, the root lint and type-check, lint and type-check of the affected workspaces, and the fast-lane tests the change reaches, with no coverage run and no isolated lane (AGENTS.md "Test tiers"). It runs `--shared`, outside the host lock that serializes the heavy stages, at half concurrency, and nothing requires it before a merge. Its Bun test workers, like every lane's, locked or not, take slots of the host-wide test slot pool ([mechanics](turborepo-stage-mechanics.md#the-test-slot-pool-the-host-lock-and-the-install-check)).
 
 Delivery runs no gate and never merges `main` into the branch. `scripts/chef/deliver.ts` merges an accepted pull request when GitHub reports no conflict with its base, every review thread is resolved (read with the paginated `review-threads.ts` read), and its head is the head pinned at acceptance, with the merge itself pinned to that head. A real conflict is reported, and the worker resolves it and returns a new head. Review threads are all answered within the three-round cap, and no review thread names a serious defect. Do not wait for bots to go quiet.
 

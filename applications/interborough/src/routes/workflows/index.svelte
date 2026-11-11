@@ -3,8 +3,8 @@
    * Runs dispatcher. `src/app/routes.ts` maps `/runs`, `/runs/:run` and
    * `/workflows/:workflow/runs/:run` to this one component (a run reached by its ID alone, and the
    * same page under the workflow it belongs to):
-   * this file is the only place that can tell those apart, plus the `?view=` sub-navigation the
-   * start picker and aggregate view live under. `/runs` is the human list of what the
+   * this file is the only place that can tell those apart, plus the `/runs/new` start picker and the
+   * `?view=aggregate` view. `/runs` is the human list of what the
    * agents have done (`runs/run-list.svelte`), and `/runs/:run` is one run's page
    * (`runs/run-detail.svelte`), whose sections for the workflow engine's side of a run are there for a caller who may read it.
    *
@@ -16,6 +16,7 @@
   import ForbiddenState from '../../app/forbidden-state.svelte';
   import { router } from '../../lib/router.svelte.ts';
   import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import { runStartPath } from '../../lib/workflow-type-paths.ts';
   import AggregateView from './aggregate/aggregate-view.svelte';
   import RunDetail from './runs/run-detail.svelte';
   import RunList from './runs/run-list.svelte';
@@ -23,15 +24,16 @@
 
   const runId = $derived(router.current.params['run']);
   const view = $derived(router.current.search.get('view'));
+  const starting = $derived(router.pathname === runStartPath());
   const principal = getPrincipalStore();
   const engineAllowed = $derived(principal.hasScope('workflows:read'));
 </script>
 
 {#if runId}
   {#key runId}<RunDetail {runId} />{/key}
-{:else if (view === 'start' || view === 'aggregate') && !engineAllowed}
+{:else if (starting || view === 'aggregate') && !engineAllowed}
   <ForbiddenState title={VIEW_COPY.runs.forbidden.title} requirement="workflows:read" />
-{:else if view === 'start'}
+{:else if starting}
   <StartPicker />
 {:else if view === 'aggregate'}
   <AggregateView />

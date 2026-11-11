@@ -136,7 +136,7 @@ describe('the records page', () => {
     await waitFor(() => expect(rowIds(view.container).length).toBe(3));
     expect(view.getByTestId('records-count').textContent).toBe(TASK_COPY.count(3));
     const start = view.getByRole('link', { name: TASK_COPY.startRun });
-    expect(start.getAttribute('href')).toBe('/runs?view=start');
+    expect(start.getAttribute('href')).toBe('/runs/new');
 
     const words = [...view.container.querySelectorAll('[data-run]')].map((row) =>
       row.getAttribute('data-status'),

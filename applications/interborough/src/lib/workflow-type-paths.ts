@@ -6,6 +6,11 @@
  * path that begins `/workflows/`.
  */
 
+/** Step one of starting a run: the page that chooses the workflow, before its run setup page. */
+export function runStartPath(): string {
+  return '/runs/new';
+}
+
 /** A workflow type's page. */
 export function workflowTypePath(type: string): string {
   return `/workflows/${encodeURIComponent(type)}`;

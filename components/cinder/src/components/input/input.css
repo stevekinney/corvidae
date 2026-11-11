@@ -152,6 +152,24 @@
   }
 
   /* ----------------------------------------
+ * Read-only state
+ * ---------------------------------------- */
+
+  /* A read-only value can be focused and copied but not changed, so it sits on the inset surface
+     with a dashed edge, a default cursor and no caret, and keeps the full text colour for contrast. */
+  .cinder-input[readonly]:not(:disabled) {
+    background: var(--cinder-surface-inset);
+    border-style: dashed;
+    cursor: default;
+    caret-color: transparent;
+  }
+
+  .cinder-input-group:has(> .cinder-input[readonly]:not(:disabled)) {
+    background: var(--cinder-surface-inset);
+    border-style: dashed;
+  }
+
+  /* ----------------------------------------
  * Code variant
  * ---------------------------------------- */
 

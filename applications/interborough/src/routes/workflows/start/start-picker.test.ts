@@ -1,6 +1,7 @@
 /**
- * `/runs?view=start`: the picker lists the workflows a person can run, goes to the chosen one's
- * run setup page, starts nothing itself, and says so when there is nothing to run.
+ * `/runs/new`: the picker offers the workflows a person built in one required field, goes to the
+ * chosen one's run setup page, starts nothing itself, focuses the field when Continue is pressed
+ * with nothing picked, and says so when there is nothing to run.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -44,59 +45,72 @@ function open(overrides: Partial<World> = {}, before?: (installed: WorkflowStub)
     }),
   );
   before?.(stub);
-  router.navigate('/runs?view=start', { replace: true });
+  router.navigate('/runs/new', { replace: true });
   return render(Harness, {
     props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
   } as never);
 }
 
 describe('the start picker', () => {
-  test('offers the workflows that can run, each a link to its run setup page', async () => {
-    const { findByRole } = open();
-    const list = await findByRole('list', { name: COPY.listLabel });
-    const links = [...list.querySelectorAll('a')];
-    expect(links.map((link) => link.textContent?.trim())).toEqual(['digest', 'order-processing']);
-    expect(links.map((link) => link.getAttribute('href'))).toEqual([
-      '/workflows/digest/run',
-      '/workflows/order-processing/run',
-    ]);
+  test('is headed Start a run, with its sentence and a required Workflow field', async () => {
+    const { findByRole, getByText } = open();
+    expect(await findByRole('heading', { level: 1, name: COPY.title })).not.toBeNull();
+    expect(getByText(COPY.description)).not.toBeNull();
+    const field = (await findByRole('combobox', { name: COPY.fieldLabel })) as HTMLSelectElement;
+    expect(field.required).toBe(true);
+    expect(field.value).toBe('');
   });
 
-  test('goes to the chosen workflow’s run setup page, and starts nothing', async () => {
+  test('offers the workflows you built, paused and unloadable ones off with their reason', async () => {
     const { findByRole } = open();
-    await fireEvent.click(await findByRole('link', { name: 'order-processing' }));
+    const field = (await findByRole('combobox', { name: COPY.fieldLabel })) as HTMLSelectElement;
+    const options = [...field.querySelectorAll('option')].map((option) => ({
+      label: option.textContent?.trim(),
+      disabled: option.disabled,
+    }));
+    expect(options).toEqual([
+      { label: COPY.fieldPlaceholder, disabled: false },
+      { label: 'digest', disabled: false },
+      { label: `later (${COPY.pausedReason})`, disabled: true },
+      { label: `broken (${COPY.invalidReason})`, disabled: true },
+      { label: 'order-processing', disabled: false },
+    ]);
+    expect(options.some((option) => option.label?.includes('agentRun'))).toBe(false);
+  });
+
+  test('Continue goes to the chosen workflow’s run setup page, and starts nothing', async () => {
+    const { findByRole } = open();
+    const field = await findByRole('combobox', { name: COPY.fieldLabel });
+    await fireEvent.change(field, { target: { value: 'order-processing' } });
+    await fireEvent.click(await findByRole('button', { name: COPY.continue }));
     await waitFor(() => expect(router.pathname).toBe('/workflows/order-processing/run'));
     expect(stub?.world.engineStarts).toEqual([]);
     expect(stub?.world.startedRuns).toEqual([]);
   });
 
-  test('offers no filter for a short list', async () => {
-    const { findByRole, queryByRole } = open();
-    await findByRole('list', { name: COPY.listLabel });
-    expect(queryByRole('searchbox', { name: COPY.filterLabel })).toBeNull();
+  test('Continue with nothing picked stays enabled, focuses the field and says what is missing', async () => {
+    const { findByRole, findByText } = open();
+    const field = await findByRole('combobox', { name: COPY.fieldLabel });
+    const button = (await findByRole('button', { name: COPY.continue })) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    await fireEvent.click(button);
+    expect(await findByText(COPY.pickError)).not.toBeNull();
+    expect(document.activeElement).toBe(field);
+    expect(field.getAttribute('aria-invalid')).toBe('true');
+    expect(router.pathname).toBe('/runs/new');
   });
 
-  test('filters a long list by name and description, and says when nothing matches', async () => {
-    const many = Array.from({ length: 9 }, (_, index) => codeDefinition(`flow-${String(index)}`));
-    const { findByRole, getByRole, getByText } = open({ definitions: many, files: [] });
-    const filter = await findByRole('searchbox', { name: COPY.filterLabel });
-    await fireEvent.input(filter, { target: { value: 'flow-4' } });
-    await waitFor(() =>
-      expect(
-        [...getByRole('list', { name: COPY.listLabel }).querySelectorAll('a')].map((link) =>
-          link.textContent?.trim(),
-        ),
-      ).toEqual(['flow-4']),
-    );
-    await fireEvent.input(filter, { target: { value: 'nothing like it' } });
-    expect(await findByRole('heading', { level: 2, name: COPY.noMatchTitle })).not.toBeNull();
-    await fireEvent.click(getByText('Clear filters'));
-    expect(await findByRole('list', { name: COPY.listLabel })).not.toBeNull();
+  test('picking a workflow clears the message', async () => {
+    const { findByRole, findByText, queryByText } = open();
+    const field = await findByRole('combobox', { name: COPY.fieldLabel });
+    await fireEvent.click(await findByRole('button', { name: COPY.continue }));
+    await findByText(COPY.pickError);
+    await fireEvent.change(field, { target: { value: 'digest' } });
+    await waitFor(() => expect(queryByText(COPY.pickError)).toBeNull());
   });
 
   test('goes back to the runs with Cancel', async () => {
     const { findByRole } = open();
-    await findByRole('list', { name: COPY.listLabel });
     await fireEvent.click(await findByRole('link', { name: COPY.cancel }));
     await waitFor(() => expect(router.pathname).toBe('/runs'));
   });
@@ -121,6 +135,6 @@ describe('the start picker', () => {
     });
     expect(await findByText(COPY.loadFailedTitle)).not.toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Try again' }));
-    expect(await findByRole('list', { name: COPY.listLabel })).not.toBeNull();
+    expect(await findByRole('combobox', { name: COPY.fieldLabel })).not.toBeNull();
   });
 });

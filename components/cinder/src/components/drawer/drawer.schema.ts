@@ -16,7 +16,7 @@ const schema = {
     size: {
       enum: ['xs', 'sm', 'md', 'lg', 'xl'],
       description:
-        'Drawer width token for `left`/`right` placements.\nIgnored for `placement="bottom"`, which always spans the full viewport\nwidth and caps its height at 90dvh.\n`xs` is 280px, the width of a navigation drawer; `sm` is 320px, `md` 448px, `lg` 576px and `xl`\n768px.',
+        'Drawer width token for `left`/`right` placements.\nIgnored for `placement="bottom"`, which always spans the full viewport\nwidth and caps its height at 90dvh.\n`xs` is 280px, the width of a navigation drawer; `sm` is 360px, `md` 448px, `lg` 576px and `xl`\n768px.',
       default: 'md',
     },
     closeIconLabel: {

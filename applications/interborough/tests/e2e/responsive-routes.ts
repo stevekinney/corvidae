@@ -139,7 +139,7 @@ export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string
     // The run setup page for a code-defined type, whose When opens on a schedule (the Schedule
     // builder's Repeats, At and Time zone), and the picker that leads to it from Runs.
     '/workflows/:workflow/run (code, on a schedule)': `/workflows/${encodeURIComponent(seed.workflow)}/run`,
-    '/runs (start picker)': '/runs?view=start',
+    '/runs/new (start picker)': '/runs/new',
     // The agent filter holding a 64-character agent name, as the address names one (COR-1862): the
     // filter's select, its applied chip and the page header are measured with it.
     '/runs (long agent filter)': `/runs?agent=${LONG_AGENT_FILTER}`,

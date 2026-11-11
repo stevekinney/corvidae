@@ -199,6 +199,14 @@ export const routes: readonly RouteDefinition[] = [
     view: 'runs',
     load: runArea,
   },
+  // `new` is a path segment, not a run: step one of starting a run, before `/runs/:run`.
+  {
+    pattern: '/runs/new',
+    kind: 'form',
+    crumb: 'Start a run',
+    view: 'runs',
+    load: runArea,
+  },
   {
     pattern: '/runs/:run',
     kind: 'table',

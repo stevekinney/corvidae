@@ -173,6 +173,15 @@
     border-color: var(--cinder-control-border-disabled);
   }
 
+  /* Read-only: the inset surface, a dashed edge, a default cursor and no caret; the text keeps its
+     full colour so it stays readable. */
+  .cinder-textarea[readonly]:not(:disabled) {
+    background: var(--cinder-surface-inset);
+    border-style: dashed;
+    cursor: default;
+    caret-color: transparent;
+  }
+
   /* ----------------------------------------
  * Description and error messages
  * ---------------------------------------- */

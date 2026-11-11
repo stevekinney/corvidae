@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "grouped-list-item",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Leading slots",
+      "description": "The leading slot holds an icon, an avatar, a 56px thumbnail or a control, each sized for its kind.",
+      "code": "<script lang=\"ts\">\n  import { Avatar, GroupedList, GroupedListItem } from '@lostgradient/cinder';\n</script>\n\n<GroupedList header=\"People\">\n  <GroupedListItem href=\"/people/ada\">\n    {#snippet leading()}<Avatar name=\"Ada Lovelace\" />{/snippet}\n    {#snippet title()}Ada Lovelace{/snippet}\n    {#snippet subtitle()}Engineer{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/people/grace\">\n    {#snippet leading()}<Avatar name=\"Grace Hopper\" />{/snippet}\n    {#snippet title()}Grace Hopper{/snippet}\n    {#snippet subtitle()}Admiral{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
+    }
+  ]
+}

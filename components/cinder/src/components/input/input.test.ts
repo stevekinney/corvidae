@@ -85,6 +85,16 @@ describe('Input rendering', () => {
     );
   });
 
+  test('a read-only input is told apart from an editable one', async () => {
+    const css = await Bun.file(new URL('./input.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-input\[readonly\]:not\(:disabled\)\s*\{[^}]*background:\s*var\(--cinder-surface-inset\);[^}]*border-style:\s*dashed;[^}]*cursor:\s*default;[^}]*caret-color:\s*transparent;/,
+    );
+    expect(css).toMatch(
+      /\.cinder-input-group:has\(> \.cinder-input\[readonly\]:not\(:disabled\)\)\s*\{[^}]*border-style:\s*dashed;/,
+    );
+  });
+
   test('code variant applies shared monospace metrics via the token set', async () => {
     const css = await Bun.file(new URL('./input.css', import.meta.url)).text();
 

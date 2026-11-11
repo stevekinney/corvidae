@@ -572,3 +572,24 @@ describe('Select label height (row 74d)', () => {
     expect(rule).not.toContain('line-height');
   });
 });
+
+describe('Select read-only presentation', () => {
+  test('draws the value as plain text with no border, fill or chevron', () => {
+    const styles = readSelectStyles();
+    const rule = styles.match(
+      /\.cinder-select\[aria-readonly='true'\]:not\(:disabled\):not\(\[aria-disabled='true'\]\)\s*\{([^}]*)\}/,
+    );
+    expect(rule).not.toBeNull();
+    expect(rule![1]).toContain('background-color: transparent');
+    expect(rule![1]).toContain('border-color: transparent');
+    expect(styles).toMatch(
+      /\[aria-readonly='true'\]:not\(:disabled\):not\(\[aria-disabled='true'\]\)\s*\+ \.cinder-select-field__chevron\s*\{\s*display: none;/,
+    );
+  });
+
+  test('keeps the label at normal weight', () => {
+    expect(readSelectStyles()).toMatch(
+      /\.cinder-select-field__label\s*\{\s*font-weight: var\(--cinder-font-normal\);/,
+    );
+  });
+});

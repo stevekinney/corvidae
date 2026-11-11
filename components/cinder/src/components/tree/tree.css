@@ -253,6 +253,23 @@
     min-inline-size: 0;
   }
 
+  /* An icon or swatch, then the name with an ellipsis, then a right-aligned count in tabular figures. */
+  .cinder-tree-item__icon {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+  }
+
+  .cinder-tree-item__count {
+    flex: none;
+    margin-inline-start: auto;
+    padding-inline-start: var(--cinder-space-2);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
   .cinder-tree-item[data-cinder-selected] > .cinder-tree-item__row {
     background-color: color-mix(in srgb, var(--cinder-accent-solid) 15%, transparent);
     color: var(--cinder-accent-text);

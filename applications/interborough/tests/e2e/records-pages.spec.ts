@@ -64,7 +64,7 @@ test.describe('the records pages', () => {
     await expect(rows.first().locator('[data-cinder-status]')).toHaveCount(1);
     await expect(page.getByRole('link', { name: 'Start run' })).toHaveAttribute(
       'href',
-      '/runs?view=start',
+      '/runs/new',
     );
     await checkA11y('records — runs');
   });

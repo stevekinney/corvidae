@@ -14,12 +14,14 @@ Expandable or leaf node within a tree view for hierarchical data navigation.
 | --- | --- | --- | --- | --- |
 | `branch` | `boolean` | no | — | Marks the node as an expandable branch. A node is a leaf unless it sets `branch` or `loadChildren`; supplying a `children` snippet alone is not enough. Marking the node as a branch lets the tree render the correct expand affordance and `aria-expanded` state before any children exist (for example, before an async `loadChildren` resolves). |
 | `class` | `string` | no | — | Additional CSS class merged with `.cinder-tree-item`. |
+| `count` | `string` \| `number` | no | — | Count drawn right-aligned after the label in the default row, on the same grid as the icon and label. It is read after the label. |
 | `disabled` | `boolean` | no | — | When true, the item cannot be selected or actioned. Still keyboard-reachable. |
 | `id` | `string` | yes | — | Stable unique id within the tree. |
 | `label` | `string` | yes | — | Accessible name for the item. Also used as the typeahead key. |
 | `reorderHandleVisible` | `boolean` | no | `false` | Render a reorder handle when the parent Tree provides onReorder. |
 | `selectionScopeIds` | `string`[] | no | — | Explicit selectable ids controlled by this item in cascade checkbox-selection mode. |
 | `children` | `(opaque)` | no | — | Nested TreeItem children for branch nodes. Not expressible in JSON Schema; see the component types for the signature. |
+| `icon` | `(opaque)` | no | — | Decorative swatch or icon drawn before the label in the default row. It is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
 | `loadChildren` | `(opaque)` | no | — | Async loader called the first time the item is expanded. Implies `branch=true`. The loader mutates consumer-owned reactive state; it returns no data. Errors are forwarded to `onLoadError` if provided, otherwise logged via `console.error` with a `[cinder-tree]` prefix. Not expressible in JSON Schema; see the component types for the signature. |
 | `onLoadError` | `(opaque)` | no | — | Called when `loadChildren` rejects with a non-abort error. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRename` | `(opaque)` | no | — | Called when inline label editing commits a new label. Not expressible in JSON Schema; see the component types for the signature. |

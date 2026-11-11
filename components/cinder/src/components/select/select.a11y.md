@@ -28,7 +28,7 @@ A group `message` and the `footer` are outside the options: they are plain conte
 | Escape | Closes without changing the value; focus stays on the trigger. |
 | Tab | To the first panel stop (footer or message link) if there is one; otherwise closes and moves on. |
 
-`readonly` shows the value and keeps the control focusable (`aria-readonly="true"`) but never opens it. On the native presentation it also blocks the picker. `required` sets `aria-required` on the listbox trigger; unlike a native `<select>`, a button takes no native constraint validation, so validate the value yourself and report it through `error`.
+`readonly` shows the value and keeps the control focusable (`aria-readonly="true"`) but never opens it. On the native presentation it also blocks the picker. It is drawn as plain text, without a border or chevron, and keeps the focus ring. `required` sets `aria-required` on the listbox trigger; unlike a native `<select>`, a button takes no native constraint validation, so validate the value yourself and report it through `error`.
 
 Below `sheetBelow` (640px by default) the panel docks to the bottom edge as a sheet, with focus still on the trigger.
 

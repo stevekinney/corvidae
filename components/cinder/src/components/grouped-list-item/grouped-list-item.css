@@ -1,0 +1,209 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * GROUPED LIST ITEM
+ *
+ * One row of a grouped list. The row draws no border: its separator is the bottom edge of the
+ * content part, which starts at the text, so it is inset past the leading slot. Every part is
+ * styled by class, never by element, so nothing a consumer interpolates is restyled.
+ * ======================================== */
+
+  .cinder-grouped-list-item {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    min-block-size: 2.75rem;
+    padding-inline-start: var(--cinder-space-4);
+    margin: 0;
+    list-style: none;
+    background: transparent;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+  }
+
+  /* ----------------------------------------
+ * Leading slot
+ * ---------------------------------------- */
+
+  .cinder-grouped-list-item__leading {
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    padding-block: var(--cinder-space-2);
+    padding-inline-end: var(--cinder-space-3);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-grouped-list-item__leading[data-cinder-leading='icon'] {
+    min-inline-size: 1.75rem;
+  }
+
+  .cinder-grouped-list-item__leading[data-cinder-leading='avatar'] {
+    min-inline-size: 2.5rem;
+  }
+
+  /* A thumbnail is 56px square, inside the 40 to 72px range, and crops its image to fill. */
+  .cinder-grouped-list-item__leading[data-cinder-leading='media'] {
+    min-inline-size: 3.5rem;
+  }
+
+  .cinder-grouped-list-item__leading[data-cinder-leading='media'] > :where(img, picture, svg) {
+    inline-size: 3.5rem;
+    block-size: 3.5rem;
+    object-fit: cover;
+    border-radius: var(--cinder-radius-md);
+  }
+
+  /* A checkbox or radio aligns to the first line of a wrapping title, not to the middle of the row. */
+  .cinder-grouped-list-item__leading[data-cinder-leading='control'] {
+    align-items: flex-start;
+    padding-block-start: calc(var(--cinder-space-2-5) + (1lh - 1.25rem) / 2);
+  }
+
+  /* ----------------------------------------
+ * Content: lead column, text, photo, value, chevron, action
+ * ---------------------------------------- */
+
+  .cinder-grouped-list-item__content {
+    display: flex;
+    flex: 1 1 0;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+    padding-block: var(--cinder-space-2-5);
+    padding-inline-end: var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-faint);
+  }
+
+  .cinder-grouped-list-item:last-child > .cinder-grouped-list-item__content {
+    border-block-end-color: transparent;
+  }
+
+  /* A fixed column, so a time or number lines up from one row to the next. */
+  .cinder-grouped-list-item__lead {
+    flex: none;
+    inline-size: 5rem;
+    font-size: var(--cinder-text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-grouped-list-item__text {
+    display: flex;
+    flex: 1 1 0;
+    flex-direction: column;
+    gap: var(--cinder-space-0-5);
+    min-inline-size: 0;
+  }
+
+  .cinder-grouped-list-item__title {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    line-height: var(--cinder-leading-snug, 1.35);
+  }
+
+  .cinder-grouped-list-item__subtitle {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  /* A trailing photo takes no space when the row has none, since the slot is not rendered. */
+  .cinder-grouped-list-item__photo {
+    display: flex;
+    flex: none;
+    align-items: center;
+    overflow: hidden;
+    border-radius: var(--cinder-radius-md);
+  }
+
+  .cinder-grouped-list-item__trailing {
+    position: relative;
+    z-index: 1;
+    flex: none;
+    max-inline-size: 40%;
+    font-size: var(--cinder-text-sm);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-muted);
+    text-align: end;
+  }
+
+  .cinder-grouped-list-item__chevron {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    color: var(--cinder-text-subtle);
+  }
+
+  /* The action column has a fixed width, the size of a touch target, so a badge or a longer value
+     in the row never moves the click target. */
+  .cinder-grouped-list-item__action {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex: none;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2.75rem;
+    margin-block: calc(var(--cinder-space-2-5) * -1);
+  }
+
+  /* ----------------------------------------
+ * The row is the link
+ * ---------------------------------------- */
+
+  .cinder-grouped-list-item__link {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .cinder-grouped-list-item__link::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+  }
+
+  .cinder-grouped-list-item__link:focus-visible {
+    outline: none;
+  }
+
+  /* The ring is drawn inside the row, because the group clips its rows. */
+  .cinder-grouped-list-item__link:focus-visible::after {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (hover: hover) {
+    .cinder-grouped-list-item--linked:hover {
+      background: var(--cinder-surface-hover);
+    }
+  }
+
+  .cinder-grouped-list-item.cinder-grouped-list-item--selected {
+    background: color-mix(in oklch, var(--cinder-accent-solid), transparent 92%);
+  }
+
+  @media (hover: hover) {
+    .cinder-grouped-list-item--linked.cinder-grouped-list-item--selected:hover {
+      background: color-mix(in oklch, var(--cinder-accent-solid), transparent 88%);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-grouped-list-item__link:focus-visible::after {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+
+    .cinder-grouped-list-item--selected {
+      outline: 1px solid Highlight;
+      outline-offset: -1px;
+    }
+
+    .cinder-grouped-list-item__content {
+      border-block-end-color: GrayText;
+    }
+  }
+}

@@ -37,9 +37,9 @@ import ts from 'typescript';
 
 import { repositoryRoot, selectedFilesFor } from '../../../scripts/affected-tests-manifest.ts';
 import { finishRun } from '../../../scripts/bun-test-junit.ts';
+import { runPooledBunTest } from '../../../scripts/bun-test-pool.ts';
 import { readAllowlist } from '../../../scripts/check-test-durations.ts';
 import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
-import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import { bunCrashReportsSince, workerCrashMessage } from '../../../scripts/worker-crash-report.ts';
 
 const TEST_ENV = {
@@ -243,16 +243,12 @@ async function runBunTest(
 ): Promise<number> {
   const reporter =
     reportPath === null ? [] : ['--reporter=junit', `--reporter-outfile=${reportPath}`];
-  const child = Bun.spawn(
-    ['bun', 'test', TEST_TIMEOUT_ARGUMENT, ...bunTestFlags(lane), ...reporter, ...args],
-    {
-      cwd: PLAYGROUND_ROOT,
-      env: TEST_ENV,
-      stdout: 'inherit',
-      stderr: 'inherit',
-    },
-  );
-  return child.exited;
+  // Holds a slot of the host-wide test slot pool per worker, like every wrapped lane.
+  return runPooledBunTest({
+    bunTestArguments: [...bunTestFlags(lane), ...reporter, ...args],
+    cwd: PLAYGROUND_ROOT,
+    environment: TEST_ENV,
+  });
 }
 
 /** Run every test process in sequence; exit non-zero if any process fails. */

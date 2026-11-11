@@ -1,14 +1,15 @@
 <script lang="ts">
   /**
-   * `/runs?view=start`: choose the workflow to run, then go to its run setup page
-   * (`/workflows/:workflow/run`), where its input and the time are set. The picker starts nothing
-   * itself. It lists the workflows a person can run (`runnable-workflows.ts`), each a link to its
-   * page, with a filter once the list is long, and says so when there are none, with a way to make
-   * one.
+   * `/runs/new`, step one of starting a run: choose the workflow to run, then go to its run setup
+   * page (`/workflows/:workflow/run`), where its input and the time are set. The picker starts
+   * nothing itself. Its one field lists the workflows a person built (`runnable-workflows.ts`),
+   * those that are paused or cannot load shown off with their reason, and says so when there are
+   * none, with a way to make one. Continue with nothing picked stays enabled: it focuses the field
+   * and says what is missing under it.
    */
-  import { Alert, Button, EmptyState, Input, PageHeader, Skeleton } from '@lostgradient/cinder';
+  import { Alert, Button, EmptyState, PageHeader, Select, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
-  import { GitBranch, SearchX } from '@lucide/svelte';
+  import { GitBranch } from '@lucide/svelte';
 
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../../app/copy.ts';
   import { getClient } from '../../../lib/client.ts';
@@ -16,10 +17,9 @@
   import { router } from '../../../lib/router.svelte.ts';
   import { CATALOG_STALE_TIME_MS, loadCatalog } from '../../../lib/workflow-catalog.ts';
   import { workflowNewPath, workflowRunSetupPath } from '../../../lib/workflow-type-paths.ts';
-  import { runnableWorkflows } from './runnable-workflows.ts';
+  import { startChoices } from './runnable-workflows.ts';
 
-  /** More workflows than this get a filter. */
-  const FILTER_FROM = 8;
+  const FIELD_ID = 'run-picker-workflow';
 
   const copy = WORKFLOW_COPY.runPicker;
   const client = getClient();
@@ -32,15 +32,20 @@
     retry: false,
   }));
 
-  let filter = $state('');
-  const choices = $derived(catalog.data === undefined ? [] : runnableWorkflows(catalog.data));
-  const shown = $derived.by(() => {
-    const words = filter.trim().toLowerCase();
-    if (words === '') return choices;
-    return choices.filter((row) =>
-      `${row.name} ${row.description ?? ''}`.toLowerCase().includes(words),
-    );
-  });
+  let chosen = $state('');
+  let error = $state<string | undefined>(undefined);
+  const choices = $derived(catalog.data === undefined ? [] : startChoices(catalog.data));
+  const options = $derived([
+    { value: '', label: copy.fieldPlaceholder },
+    ...choices.map((choice) => ({
+      value: choice.name,
+      label:
+        choice.reason === null
+          ? choice.name
+          : `${choice.name} (${choice.reason === 'paused' ? copy.pausedReason : copy.invalidReason})`,
+      disabled: choice.reason !== null,
+    })),
+  ]);
 
   function go(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -48,6 +53,16 @@
     }
     event.preventDefault();
     router.navigate(path);
+  }
+
+  /** Goes to the chosen workflow's setup page, or focuses the field and says what is missing. */
+  function proceed(): void {
+    if (chosen === '') {
+      error = copy.pickError;
+      document.getElementById(FIELD_ID)?.focus();
+      return;
+    }
+    router.navigate(workflowRunSetupPath(chosen));
   }
 </script>
 
@@ -83,41 +98,24 @@
       {/snippet}
     </EmptyState>
   {:else}
-    {#if choices.length > FILTER_FROM}
-      <div class="ib-run-picker__filter">
-        <Input id="run-picker-filter" type="search" label={copy.filterLabel} bind:value={filter} />
-      </div>
-    {/if}
-    {#if shown.length === 0}
-      <EmptyState
-        kind="filtered"
-        title={copy.noMatchTitle}
-        description={copy.noMatchDescription}
-        headingLevel={2}
-        onClearFilters={() => (filter = '')}
-      >
-        {#snippet icon()}<SearchX size={24} aria-hidden="true" />{/snippet}
-      </EmptyState>
-    {:else}
-      <ul class="ib-run-picker__list" aria-label={copy.listLabel}>
-        {#each shown as row (row.name)}
-          <li>
-            <a
-              class="ib-run-picker__link"
-              href={router.href(workflowRunSetupPath(row.name))}
-              onclick={(event) => go(event, workflowRunSetupPath(row.name))}>{row.name}</a
-            >
-            {#if row.description !== null}
-              <span class="ib-run-picker__description">{row.description}</span>
-            {/if}
-          </li>
-        {/each}
-      </ul>
-    {/if}
+    <div class="ib-run-picker__field">
+      <Select
+        id={FIELD_ID}
+        label={copy.fieldLabel}
+        required
+        {options}
+        {error}
+        bind:value={chosen}
+        onValueChange={() => (error = undefined)}
+      />
+    </div>
     <div class="ib-run-picker__actions">
-      <Button variant="ghost" href={router.href('/runs')} onclick={(event) => go(event, '/runs')}
-        >{copy.cancel}</Button
+      <Button
+        variant="secondary"
+        href={router.href('/runs')}
+        onclick={(event) => go(event, '/runs')}>{copy.cancel}</Button
       >
+      <Button variant="primary" onclick={proceed}>{copy.continue}</Button>
     </div>
   {/if}
 </article>
@@ -130,37 +128,8 @@
     min-width: 0;
   }
 
-  .ib-run-picker__filter {
-    max-width: 24rem;
-  }
-
-  .ib-run-picker__list {
-    display: flex;
-    flex-direction: column;
-    margin: 0;
-    padding: 0;
-    list-style: none;
-    min-width: 0;
-  }
-
-  .ib-run-picker__list > li {
-    display: flex;
-    flex-direction: column;
-    gap: var(--cinder-space-1);
-    padding-block: var(--cinder-space-3);
-    border-block-end: 1px solid var(--cinder-border);
-    min-width: 0;
-  }
-
-  .ib-run-picker__link {
-    font-weight: 600;
-    overflow-wrap: anywhere;
-  }
-
-  .ib-run-picker__description {
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-    overflow-wrap: anywhere;
+  .ib-run-picker__field {
+    max-inline-size: 24rem;
   }
 
   .ib-run-picker__actions {

@@ -1,29 +1,23 @@
-<script lang="ts" module>
-  /**
-   * Wrap SVG content in a minimal HTML document for sandboxed iframe rendering.
-   * This is the safe approach: the SVG runs in a sandboxed origin rather than
-   * the page's origin, so JavaScript (even if injected) cannot access the DOM
-   * or credentials of the parent page.
-   */
-  function wrapSvgInHtml(svg: string): string {
-    return `<!DOCTYPE html><html><body style="margin:0;display:flex;align-items:center;justify-content:center;min-height:100vh;">${svg}</body></html>`;
-  }
-</script>
-
 <script lang="ts">
   import type { ArtifactViewerProps } from './artifact-viewer.types.ts';
   import { CodeBlock } from '@lostgradient/cinder';
+  import { staticArtifactDocument, wrapSvgInHtml } from './artifact-static-document.ts';
 
   let { type, content, language, title, mermaidRenderer, codeRenderer }: ArtifactViewerProps =
     $props();
 
-  const svgDocument = $derived(type === 'svg' ? wrapSvgInHtml(content) : '');
+  // Static previews: the document carries its own Content-Security-Policy and has its links and
+  // refresh directives removed, so it makes no request and cannot navigate.
+  const htmlDocument = $derived(type === 'html' ? staticArtifactDocument(content) : '');
+  const svgDocument = $derived(
+    type === 'svg' ? staticArtifactDocument(wrapSvgInHtml(content)) : '',
+  );
 </script>
 
 {#if type === 'html'}
   <iframe
     class="artifact-viewer artifact-viewer-html"
-    srcdoc={content}
+    srcdoc={htmlDocument}
     sandbox=""
     title={title ?? 'HTML artifact'}
     aria-label={title ?? 'HTML artifact'}

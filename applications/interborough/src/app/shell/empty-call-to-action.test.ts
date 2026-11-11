@@ -67,7 +67,7 @@ const FLOWS = [
   {
     view: 'runs',
     path: '/runs',
-    creating: '/runs?view=start',
+    creating: '/runs/new',
     // The empty runs view points to a chat, which a caller without `workflows:read` can start; the
     // engine's start flow is reached by its address.
     label: null,

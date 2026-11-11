@@ -1,4 +1,5 @@
 {
+  "components/chat/src/lib/components/chat/chat-tool-result-override-fixture.svelte": "The README recipe's test fixture (COR-2258): it presents a result only when its outcome is success and it carries no parts, and delegates a result with parts to Chat's default card.",
   "components/chat/src/lib/session/stream-event-codec-encoding-projection.ts": "Projects a settled tool result onto chat's versioned stream wire with its parts beside content, finite-JSON checked and shape-checked by the same guard the decoder applies (COR-1634).",
   "components/chat/src/lib/utilities/tool-result-text.ts": "toolResultText shows a result's ordered parts (text, and a label for each media part, never its URL or bytes) when it has them, and its content otherwise.",
   "packages/armorer/src/adapters/anthropic/index.ts": "formatAnthropicToolResults sends parts as text, image, and PDF blocks through toolResultParts; any other part is refused.",

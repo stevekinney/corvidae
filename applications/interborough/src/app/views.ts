@@ -84,10 +84,10 @@ export type ViewDefinition = {
   readonly canBeEmpty: boolean;
   /**
    * Whether the location is the view's way of creating its first item, such as the start picker
-   * on `/runs?view=start`. An empty view offers a link there, so the frame shows the view's own
+   * on `/runs/new`. An empty view offers a link there, so the frame shows the view's own
    * content for that location instead of the empty state it just came from.
    */
-  readonly creating?: (search: URLSearchParams) => boolean;
+  readonly creating?: (search: URLSearchParams, pathname: string) => boolean;
   /**
    * Whether the page draws its own loading state. The frame then shows the page while its probe is
    * still pending, instead of the generic loading heading, so the page's navigation and heading are
@@ -136,7 +136,7 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   runs: {
     scopes: [],
     canBeEmpty: true,
-    creating: (search) => search.get('view') === 'start',
+    creating: (_search, pathname) => pathname === '/runs/new',
   },
   schedules: {
     scopes: ['schedules:read'],

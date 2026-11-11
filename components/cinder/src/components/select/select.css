@@ -289,9 +289,30 @@
     cursor: default;
   }
 
+  /* A value that cannot change reads as plain text: no fill, no border and no chevron, so it is
+     not mistaken for a greyed-out control. It keeps the full text colour for contrast and the
+     focus ring, and its label drops to normal weight (sweep S24). */
+  .cinder-select[aria-readonly='true']:not(:disabled):not([aria-disabled='true']) {
+    background-color: transparent;
+    border-color: transparent;
+    padding-inline: 0;
+  }
+
+  .cinder-select[aria-readonly='true']:not(:disabled):not([aria-disabled='true'])
+    + .cinder-select-field__chevron {
+    display: none;
+  }
+
+  .cinder-select-field:has(
+      .cinder-select[aria-readonly='true']:not(:disabled):not([aria-disabled='true'])
+    )
+    .cinder-select-field__label {
+    font-weight: var(--cinder-font-normal);
+  }
+
   @media (hover: hover) {
     .cinder-select[aria-readonly='true']:hover:not(:disabled) {
-      border-color: var(--cinder-control-border);
+      border-color: transparent;
     }
 
     .cinder-select[data-cinder-variant='ghost'][aria-readonly='true']:hover:not(:disabled):not(

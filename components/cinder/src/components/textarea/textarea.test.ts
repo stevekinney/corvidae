@@ -137,6 +137,13 @@ describe('Textarea', () => {
     expect(textarea?.getAttribute('data-cinder-variant')).toBe('code');
   });
 
+  test('a read-only textarea is told apart from an editable one', async () => {
+    const css = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-textarea\[readonly\]:not\(:disabled\)\s*\{[^}]*background:\s*var\(--cinder-surface-inset\);[^}]*border-style:\s*dashed;[^}]*cursor:\s*default;[^}]*caret-color:\s*transparent;/,
+    );
+  });
+
   test('code variant applies shared monospace metrics via the token set', async () => {
     const css = await Bun.file(new URL('./textarea.css', import.meta.url)).text();
 
