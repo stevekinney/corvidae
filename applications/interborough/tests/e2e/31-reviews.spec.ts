@@ -11,7 +11,6 @@ import type { APIRequestContext, Page } from '@playwright/test';
 
 import { HUMAN_INPUT_PROMPT } from '@lostgradient/plugin-demo';
 import { conversation, newThreadId, runToEnd } from './chat-support.ts';
-import { E2E_BASE_URL } from './e2e-constants.ts';
 import { expect, holdBureauFeed, loggedFailedResponse, test } from './fixtures.ts';
 import {
   bureauCall,
@@ -117,7 +116,7 @@ test.describe('a tool approval', () => {
     await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
     const source = paneOf(page).getByTestId('review-source');
     await expect(source).toContainText('Asked by');
-    await expect(source.getByRole('link', { name: 'demo:tool-runner' })).toBeVisible();
+    await expect(source.getByRole('link', { name: /tool runner/i })).toBeVisible();
     await expect(source).toContainText('waiting since');
     await expect(paneOf(page)).toContainText('order-1001');
     // No raw policy string, no Live toggle, and no separate section for the engine's reviews.
@@ -471,11 +470,12 @@ test.describe('a Bureau that fails', () => {
   }) => {
     pageErrors.expect({
       pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
-      // The redesigned page and the shell read the list four times on arrival (the view's probe
-      // and the review queries, which do not retry); the feed is held, so the count is exact.
+      // The view's probe, the merged-list query the page, the count and Home share, and the
+      // notification feed's reads of the list each fail once on arrival (the queries do not
+      // retry); the feed's catch-up is held, so the count is exact.
       reason:
-        'the test answers each of the page’s four reads of the Bureau’s review list with a 500',
-      count: 4,
+        'the test answers each of the page’s six reads of the Bureau’s review list with a 500',
+      count: 6,
     });
     // The feed's catch-up would ask the lists again while the page is open, so it is held.
     await holdBureauFeed(page);
@@ -498,13 +498,11 @@ test.describe('a Bureau that fails', () => {
 
 /** What is waiting, as the two services say it: the Bureau's reviews and the engine's pending ones. */
 async function waitingCount(request: APIRequestContext): Promise<number> {
-  const bureau = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+  // The merged list already holds the engine's workflow reviews, which is what the count reads.
+  const merged = (await bureauCall(request, 'bureau.reviews.list', {})) as {
     reviews: unknown[];
   };
-  const engine = await request.get(`${E2E_BASE_URL}/v1/reviews`, {
-    params: { status: 'pending' },
-  });
-  return bureau.reviews.length + ((await engine.json()) as { items: unknown[] }).items.length;
+  return merged.reviews.length;
 }
 
 /** The navigation's Reviews entry says exactly `count`, which is no number at all for none. */
