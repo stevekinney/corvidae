@@ -223,7 +223,7 @@
       return;
     }
     event.preventDefault();
-    router.navigate('/runs?view=start');
+    router.navigate('/runs/new');
   }
 
   function onTypeLinkClick(event: MouseEvent, type: string): void {
@@ -281,7 +281,7 @@
           variant="primary"
           size="sm"
           class="weft-workflow-list__header-action"
-          href={router.href('/runs?view=start')}
+          href={router.href('/runs/new')}
           onclick={onStartWorkflowClick}
         >
           <Plus aria-hidden="true" size={14} />
@@ -362,7 +362,7 @@
           <Button
             variant="primary"
             size="md"
-            href={router.href('/runs?view=start')}
+            href={router.href('/runs/new')}
             onclick={onStartWorkflowClick}
           >
             <Plus aria-hidden="true" size={15} />

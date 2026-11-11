@@ -100,7 +100,7 @@
   );
 
   // The location can be the view's way of creating its first item (`views.ts`, `creating`).
-  const creating = $derived(definition.creating?.(router.current.search) ?? false);
+  const creating = $derived(definition.creating?.(router.current.search, router.pathname) ?? false);
 
   const connection = getConnection();
 

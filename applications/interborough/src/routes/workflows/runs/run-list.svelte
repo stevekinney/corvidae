@@ -46,7 +46,7 @@
 
   const PAGE_SIZE = 100;
   /** The form that starts a run. */
-  const START_RUN_PATH = '/runs?view=start';
+  const START_RUN_PATH = '/runs/new';
   const filter = $derived(parseRunFilter(router.current.search));
 
   // The status, the agent and what started a run are asked of the Bureau, so a page holds the runs

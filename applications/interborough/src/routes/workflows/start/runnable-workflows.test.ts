@@ -39,3 +39,21 @@ describe('runnableWorkflows', () => {
     expect(runnableWorkflows(rows)).toEqual([]);
   });
 });
+
+describe('startChoices', () => {
+  test('lists paused and invalid files off, with their reason, and never an engine type', () => {
+    const rows = [
+      row('agentRun', { engine: true }),
+      row('a-code', {}),
+      row('later', { kind: 'agent-authored', file: readyFile('later', { paused: true }) }),
+      row('broken', { kind: 'agent-authored', file: invalidFile('broken') }),
+      row('b-file', { kind: 'agent-authored', file: readyFile('b-file') }),
+    ];
+    expect(startChoices(rows)).toEqual([
+      { name: 'a-code', reason: null },
+      { name: 'later', reason: 'paused' },
+      { name: 'broken', reason: 'invalid' },
+      { name: 'b-file', reason: null },
+    ]);
+  });
+});

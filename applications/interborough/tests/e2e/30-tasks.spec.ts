@@ -233,7 +233,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
     await expect(page.getByRole('tab')).toHaveCount(0);
     await expect(page.getByRole('button', { name: 'Send a signal' })).toHaveCount(0);
 
-    await page.goto('/runs?view=start');
+    await page.goto('/runs/new');
     await expect(
       page.getByRole('heading', { level: 1, name: 'Your sign-in can’t open Runs' }),
     ).toBeVisible();

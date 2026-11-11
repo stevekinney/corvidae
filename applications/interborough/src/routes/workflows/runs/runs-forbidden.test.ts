@@ -35,8 +35,8 @@ function open(path: string) {
 }
 
 describe('the start picker for a caller who may not read the engine', () => {
-  test('?view=start says the engine’s scope is needed', async () => {
-    const view = open('/runs?view=start');
+  test('/runs/new says the engine’s scope is needed', async () => {
+    const view = open('/runs/new');
 
     await view.findByRole('heading', { level: 1, name: VIEW_COPY.runs.forbidden.title });
     expect(view.getByText('requires workflows:read')).not.toBeNull();

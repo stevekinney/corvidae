@@ -135,6 +135,12 @@ describe('the route table', () => {
     }
   });
 
+  test('puts step one of starting a run at /runs/new, ahead of /runs/:run', () => {
+    expect(matchRoute('/runs/new')).toEqual({ pattern: '/runs/new', params: {} });
+    expect(componentPathOf('/runs/new')).toBe(sourcePath('../routes/workflows/index.svelte'));
+    expect(routes.find((candidate) => candidate.pattern === '/runs/new')?.view).toBe('runs');
+  });
+
   test('serves the Workflows area at /workflows and under /workflows/:workflow, apart from the runs list', () => {
     const runsComponent = sourcePath('../routes/workflows/index.svelte');
     const area = sourcePath('../routes/workflow-definitions/index.svelte');
