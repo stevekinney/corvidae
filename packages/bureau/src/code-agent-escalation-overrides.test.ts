@@ -6,6 +6,7 @@
  */
 import { afterEach, describe, expect, it } from 'bun:test';
 
+import type { PluginInputGuardrail } from '@lostgradient/interborough-plugin';
 import { createAgent, type InputDetector } from '@lostgradient/operative';
 
 import { createAgentContributions } from './agent-contributions';
@@ -33,7 +34,7 @@ const tainting: InputDetector = {
 };
 
 /** The escalation: trips on the sentinel, and so only where it runs. */
-const sentinel: InputDetector = {
+const sentinel: PluginInputGuardrail = {
   name: 'sentinel',
   description: 'Trips on the sentinel.',
   detect: async (input) => ({
@@ -113,11 +114,11 @@ describe('a built-in agent’s escalations override (COR-2386)', () => {
 
     const repeated = await refusalOf(harness, { escalations: ['x:sentinel', 'x:sentinel'] });
     expect(repeated.code).toBe('invalid-frontmatter');
-    expect(repeated.problem?.issues[0]?.path).toBe('escalations.1');
+    expect(repeated.problem?.issues?.[0]?.path).toBe('escalations.1');
 
     const unknown = await refusalOf(harness, { escalations: ['y:gone'] });
     expect(unknown.code).toBe('reference-unresolved');
-    expect(unknown.problem?.issues[0]?.path).toBe('escalations.0');
+    expect(unknown.problem?.issues?.[0]?.path).toBe('escalations.0');
 
     expect(await harness.bureau.agents.overrides.get('replier')).toEqual(before);
   });
