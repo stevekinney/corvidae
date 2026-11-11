@@ -26,6 +26,7 @@
 </script>
 
 <script lang="ts">
+  import Check from '@lucide/svelte/icons/check';
   import type { ChipProps, ChipRemovableProps, ChipToggleProps } from './chip.types.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
@@ -150,6 +151,13 @@
       }
     }}
   >
+    {#if pressed}
+      <!-- A selected toggle chip shows a check before its label, so selection is not carried by
+           colour alone; `aria-pressed` is what assistive technology reads. -->
+      <span class="cinder-chip__check" aria-hidden="true"
+        ><Check class="cinder-icon-xs" aria-hidden="true" /></span
+      >
+    {/if}
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}

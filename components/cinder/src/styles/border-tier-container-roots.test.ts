@@ -33,7 +33,6 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
     badge: 'a small label chip, not a container',
     callout: 'a status role; the border carries the tone',
     'capability-gate': 'a status panel',
-    chip: 'a small control chip',
     collapsible: 'a real panel with a disclosure',
     'data-grid': 'a framed data surface with its own scroll box',
     'hover-card': 'floats; the border keeps it legible over content',

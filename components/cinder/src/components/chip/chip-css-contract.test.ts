@@ -56,13 +56,46 @@ describe('Chip surface and CSS contracts', () => {
     }
   });
 
-  test('neutral pressed toggle stays on the shared selected-surface recipe', () => {
-    const body = cssRuleBody(".cinder-chip[aria-pressed='true'][data-cinder-variant='neutral']");
-    expect(body).toContain('background: var(--cinder-surface-pressed)');
-    expect(body).toContain('color: var(--cinder-text-default)');
-    expect(body).toContain('border-color: var(--cinder-border-control)');
-    expect(body).not.toContain('background: var(--cinder-text-default)');
-    expect(body).not.toContain('color: var(--cinder-surface-inset)');
+  test('an unselected chip is filled with no edge (COR-2312)', () => {
+    expect(cssRuleBody('.cinder-chip')).toContain('border: 1px solid transparent');
+    expect(cssRuleBody('.cinder-chip')).toContain('background: var(--cinder-surface-inset)');
+    const neutral = cssRuleBody(".cinder-chip[data-cinder-variant='neutral']");
+    expect(neutral).toContain('background: var(--cinder-status-neutral-background)');
+    expect(neutral).toContain('border-color: transparent');
+    expect(chipCss).not.toContain('var(--cinder-border-strong);\n');
+  });
+
+  test.each(['neutral', 'accent'])(
+    'a selected %s chip is the accent tint with an accent ring, never a solid accent fill',
+    (variant) => {
+      const body = cssRuleBody(
+        `.cinder-chip[aria-pressed='true'][data-cinder-variant='${variant}']`,
+      );
+      expect(body).toContain('background: var(--cinder-accent-background)');
+      expect(body).toContain('color: var(--cinder-accent-text)');
+      expect(body).toContain('box-shadow: inset 0 0 0 1.5px var(--cinder-accent-solid)');
+      expect(body).not.toContain('background: var(--cinder-accent-solid)');
+      expect(body).not.toContain('var(--cinder-surface-pressed)');
+    },
+  );
+
+  test('a selected toggle chip shows a hidden check glyph and keeps its name', () => {
+    const pressed = render(Chip, { mode: 'toggle', label: 'Open', pressed: true });
+    const chip = requiredInstance(pressed.container.querySelector('button.cinder-chip'), Element);
+    const check = chip.querySelector('.cinder-chip__check');
+    expect(check).not.toBeNull();
+    expect(check?.getAttribute('aria-hidden')).toBe('true');
+    expect(check?.querySelector('svg')).not.toBeNull();
+    expect(chip.textContent?.trim()).toBe('Open');
+
+    const unpressed = render(Chip, { mode: 'toggle', label: 'Closed', pressed: false });
+    expect(unpressed.container.querySelector('.cinder-chip__check')).toBeNull();
+  });
+
+  test('a toggle chip is a control and takes a control-height step', () => {
+    const body = cssRuleBody('button.cinder-chip');
+    expect(body).toContain('min-block-size: var(--cinder-control-height-xs)');
+    expect(body).toContain('box-sizing: border-box');
   });
 
   test('remove button hover uses a circular hover surface without overriding variant color', () => {

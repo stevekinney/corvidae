@@ -14,6 +14,10 @@ Use `Chip mode="display"` for issue labels and short tags only. Use Badge for at
 <Chip label="frontend" mode="display" variant="info" />
 ```
 
+## Filled, and a selection that reads louder
+
+A chip is filled and never outlined: an unselected chip is a tone step on its surface with no edge. A selected toggle chip (`pressed`) is louder than an unselected one and never a solid accent fill: it takes the accent tint, the accent label, a 1.5px accent ring inside its edge and a check glyph before its label, so the selection is not carried by colour alone. A toggle chip is a control, so it is at least `--cinder-control-height-xs` tall and a coarse pointer lifts it to the 44px touch target; a display chip is a label and keeps its compact height.
+
 ## Props
 
 <!-- generated:props:start -->

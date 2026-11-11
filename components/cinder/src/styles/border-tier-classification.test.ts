@@ -188,12 +188,6 @@ describe('COR-1552: bordered button resting edges keep the 3:1 control tier', ()
       expected: 'control',
     },
     {
-      file: join(COMPONENTS_ROOT, 'chip', 'chip.css'),
-      selector: "button.cinder-chip[data-cinder-variant='neutral']",
-      property: 'border-color',
-      expected: 'control',
-    },
-    {
       file: join(EDITOR_ROOT, 'review-editor', 'comment-list.svelte'),
       selector: '.comment-action',
       property: 'border',
@@ -255,18 +249,23 @@ describe('COR-1552: bordered button resting edges keep the 3:1 control tier', ()
     expect(values).toEqual(['var(--cinder-border-control)']);
   });
 
-  test('a disabled toggle chip keeps the muted edge, because the control rule sits above it', () => {
+  test('a chip is filled with no edge, resting or disabled (COR-2312)', () => {
     const chipRules = rules(join(COMPONENTS_ROOT, 'chip', 'chip.css'));
-    const control = chipRules.find(
-      (rule) => rule.selector === "button.cinder-chip[data-cinder-variant='neutral']",
+    expect(
+      chipRules.some(
+        (rule) => rule.selector === "button.cinder-chip[data-cinder-variant='neutral']",
+      ),
+    ).toBe(false);
+    const neutral = chipRules.find(
+      (rule) => rule.selector === ".cinder-chip[data-cinder-variant='neutral']",
     );
     const disabled = chipRules.find((rule) =>
       rule.selector.startsWith('button.cinder-chip:disabled, .cinder-chip[data-cinder-disabled]'),
     );
-    expect(control).toBeDefined();
+    expect(neutral).toBeDefined();
     expect(disabled).toBeDefined();
-    expect(declaration(disabled!.body, 'border-color')).toBe('var(--cinder-border-muted)');
-    expect(control!.index).toBeLessThan(disabled!.index);
+    expect(declaration(neutral!.body, 'border-color')).toBe('transparent');
+    expect(declaration(disabled!.body, 'border-color')).toBe('transparent');
   });
 
   test('the secondary Button edge reads the control tier through --cinder-button-border', () => {

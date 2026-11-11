@@ -13,7 +13,9 @@
     font-weight: var(--cinder-font-medium);
     line-height: 1.25;
     border-radius: var(--cinder-radius-full);
-    border: 1px solid var(--cinder-border-strong);
+    /* Filled, never outlined (COR-2312): the chip is a tone step on the surface, and the 1px
+       transparent edge only keeps the box the same size in every state. */
+    border: 1px solid transparent;
     white-space: nowrap;
     background: var(--cinder-surface-inset);
     color: var(--cinder-text-default);
@@ -47,10 +49,15 @@
  * chip-root surface. Display, resting toggle, and removable roots share this
  * same surface contract. */
 
+  /* A toggle chip is a control, so its height is a control-height step and a coarse pointer
+   * lifts it to the 44px touch target with every other control (COR-2312). A display chip is a
+   * label, not a control, and keeps its compact text height. */
   button.cinder-chip {
     font: inherit;
     cursor: pointer;
     appearance: none;
+    box-sizing: border-box;
+    min-block-size: var(--cinder-control-height-xs);
   }
 
   /* ----------------------------------------
@@ -83,18 +90,12 @@
  * Color variants
  * ---------------------------------------- */
 
+  /* The neutral chip, display and toggle alike, is filled with no edge: its label names it, so the
+   * fill does not have to carry a 3:1 boundary. */
   .cinder-chip[data-cinder-variant='neutral'] {
     background: var(--cinder-status-neutral-background);
     color: var(--cinder-status-neutral-text);
-    border-color: var(--cinder-status-neutral-border);
-  }
-
-  /* A toggle chip is a <button>, so its resting edge is a control boundary and keeps the 3:1 the
-   * control tier clears; a display chip keeps the faint status-neutral edge above. Equal
-   * specificity with the disabled block below, so this stays ABOVE it: a disabled toggle chip
-   * keeps its muted edge. */
-  button.cinder-chip[data-cinder-variant='neutral'] {
-    border-color: var(--cinder-border-control);
+    border-color: transparent;
   }
 
   .cinder-chip[data-cinder-variant='success'] {
@@ -178,15 +179,19 @@
  * Pressed state (toggle chips)
  * ---------------------------------------- */
 
+  /* A selected chip reads louder than an unselected one, never quieter, and is never a solid
+   * accent fill (COR-2312): the accent tint, the accent label, a 1.5px accent ring drawn inside
+   * the edge, and the check glyph the component renders before the label. The ring is an inset
+   * shadow so the chip keeps its size; a focus ring replaces it while the chip is focused. */
   .cinder-chip[aria-pressed='true'][data-cinder-variant='neutral'] {
-    background: var(--cinder-surface-pressed);
-    color: var(--cinder-text-default);
-    border-color: var(--cinder-border-control);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
+    border-color: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--cinder-accent-solid);
   }
 
-  /* Neutral pressed state is a restrained selection shift on the shared chip
- * surface, not a full inversion. Status pressed recipes remain intentionally
- * separate until their readable-foreground cleanup lands. */
+  /* Status pressed recipes remain solid status fills until their readable-foreground cleanup
+   * lands; they carry the check glyph too. */
   .cinder-chip[aria-pressed='true'][data-cinder-variant='success'] {
     background: var(--cinder-status-success-solid);
     color: var(--cinder-status-success-contrast);
@@ -212,9 +217,23 @@
   }
 
   .cinder-chip[aria-pressed='true'][data-cinder-variant='accent'] {
-    background: var(--cinder-accent-solid);
-    color: var(--cinder-accent-contrast);
+    background: var(--cinder-accent-background);
+    color: var(--cinder-accent-text);
     border-color: transparent;
+    box-shadow: inset 0 0 0 1.5px var(--cinder-accent-solid);
+  }
+
+  .cinder-chip__check {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+    line-height: 0;
+  }
+
+  @media (forced-colors: active) {
+    button.cinder-chip[aria-pressed='true'] {
+      border-color: Highlight;
+    }
   }
 
   /* ----------------------------------------
@@ -230,11 +249,18 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* Pressed accent, danger, success, warning and info chips are solid fills, so
-   * the ring gets a page-coloured gap (COR-1498). Neutral pressed is a surface
-   * shift, not a fill, and keeps the tight ring. */
+  /* Pressed danger, success, warning and info chips are solid fills, so the ring
+   * gets a page-coloured gap (COR-1498); a pressed accent chip is a tint and shares
+   * the gap so the focus ring never sits on its inset accent ring. Neutral pressed
+   * keeps the tight ring. */
   button.cinder-chip[aria-pressed='true']:not([data-cinder-variant='neutral']):focus-visible {
     box-shadow: var(--_cinder-focus-ring-filled-shadow);
+  }
+
+  /* The pressed neutral recipe paints its inset accent ring at a higher specificity than the base
+   * focus rule, so the tight focus ring is restated here to replace it while focused. */
+  button.cinder-chip[aria-pressed='true'][data-cinder-variant='neutral']:focus-visible {
+    box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
   @media (forced-colors: active) {
@@ -268,7 +294,8 @@
   .cinder-chip[data-cinder-disabled] {
     cursor: not-allowed;
     background: var(--cinder-surface-inset);
-    border-color: var(--cinder-border-muted);
+    border-color: transparent;
+    box-shadow: none;
   }
 
   .cinder-chip__remove:disabled {
@@ -330,8 +357,8 @@
     position: absolute;
     top: 50%;
     right: 0;
-    width: 44px;
-    height: 44px;
+    width: var(--cinder-touch-target-min);
+    height: var(--cinder-touch-target-min);
     transform: translateY(-50%);
   }
 
