@@ -31,7 +31,7 @@ const HISTORY = {
   correctedAt: '2026-11-01T16:12:00.000Z',
 };
 
-/** A fetch that answers every call with `result` in the JSON-RPC envelope, and records each request body. */
+/** A fetch that answers every call with `result` in the JSON-RPC envelope, recording each request body. */
 function answering(result: unknown, bodies: unknown[] = []): Fetcher {
   return async (_input, init) => {
     bodies.push(JSON.parse(typeof init?.body === 'string' ? init.body : '{}'));

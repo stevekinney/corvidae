@@ -87,9 +87,13 @@ const NO_LINEAGE = { runId: null, corrects: null, correctedBy: null };
 /** What `bureau.memory.get` answers for a memory: the lineage and the versions a correction replaced. */
 const detailOf_ = (
   memory: unknown,
-  lineage = NO_LINEAGE,
+  lineage: {
+    runId: string | null;
+    corrects: string | null;
+    correctedBy: string | null;
+  } = NO_LINEAGE,
   history: unknown[] = [],
-): { memory: unknown; lineage: typeof NO_LINEAGE; history: unknown[] } => ({
+): { memory: unknown; lineage: typeof lineage; history: unknown[] } => ({
   memory,
   lineage,
   history,
@@ -500,12 +504,12 @@ describe('the kind and writer filters', () => {
     await view.findByText(MEMORY_COPY.noFiltered.title, { selector: 'h2' });
     await fireEvent.click(view.getByRole('button', { name: MEMORY_COPY.clearMatch }));
     await view.findByText(AISLE.content);
-    expect(
-      (view.getByLabelText(MEMORY_COPY.filter.kindLabel) as HTMLSelectElement).value,
-    ).toBe('all');
-    expect(
-      (view.getByLabelText(MEMORY_COPY.filter.writerLabel) as HTMLSelectElement).value,
-    ).toBe('all');
+    expect((view.getByLabelText(MEMORY_COPY.filter.kindLabel) as HTMLSelectElement).value).toBe(
+      'all',
+    );
+    expect((view.getByLabelText(MEMORY_COPY.filter.writerLabel) as HTMLSelectElement).value).toBe(
+      'all',
+    );
   });
 
   test('works together with a search', async () => {
@@ -611,7 +615,8 @@ describe('one memory', () => {
     const detail = await openDetails(view, AISLE.content);
 
     const value = factOf(detail, MEMORY_COPY.detail.fields.cameFrom);
-    await waitFor(() => expect(textOf(value)).toBe(MEMORY_COPY.detail.cameFrom.deleted));
+    await within(detail).findByText(MEMORY_COPY.detail.cameFrom.deleted);
+    expect(textOf(value)).toBe(MEMORY_COPY.detail.cameFrom.deleted);
     expect(value?.querySelector('a')).toBeNull();
     expect(value?.querySelector('[data-came-from="deleted"]')).not.toBeNull();
     // The same pencil and trash as every other memory, and the memory is still in the list.
@@ -730,21 +735,17 @@ describe('one memory', () => {
       'bureau.memory.get': (params) =>
         params['id'] === ORIGINAL.id
           ? detailOf_(ORIGINAL, { runId: null, corrects: null, correctedBy: WINDOW.id })
-          : detailOf_(
-              WINDOW,
-              { runId: null, corrects: ORIGINAL.id, correctedBy: null },
-              [
-                {
-                  id: ORIGINAL.id,
-                  content: ORIGINAL.content,
-                  kind: 'fact',
-                  writer: 'agent',
-                  trust: 'untrusted',
-                  writtenAt: ORIGINAL.createdAt,
-                  correctedAt: WINDOW.createdAt,
-                },
-              ],
-            ),
+          : detailOf_(WINDOW, { runId: null, corrects: ORIGINAL.id, correctedBy: null }, [
+              {
+                id: ORIGINAL.id,
+                content: ORIGINAL.content,
+                kind: 'fact',
+                writer: 'agent',
+                trust: 'untrusted',
+                writtenAt: ORIGINAL.createdAt,
+                correctedAt: WINDOW.createdAt,
+              },
+            ]),
     });
     const view = open();
     const detail = await openDetails(view, WINDOW.content);
@@ -1359,13 +1360,17 @@ describe('adding a memory', () => {
   });
 
   test('forgets the memory just added when Undo is pressed, and closes its details', async () => {
-    const { served, view, submit } = await formWith(() => ({ outcome: 'added', memory: ADDED }), TEXT, {
-      'bureau.memory.forget': (params) => ({
-        id: params['id'],
-        deletion: 'completed',
-        receipt: RECEIPT,
-      }),
-    });
+    const { served, view, submit } = await formWith(
+      () => ({ outcome: 'added', memory: ADDED }),
+      TEXT,
+      {
+        'bureau.memory.forget': (params) => ({
+          id: params['id'],
+          deletion: 'completed',
+          receipt: RECEIPT,
+        }),
+      },
+    );
     await fireEvent.click(submit);
     await view.findByText(ADDED_TOAST);
     await waitFor(() => expect(router.search.get('selected')).toBe(ADDED.id));
@@ -1462,7 +1467,9 @@ describe('adding a memory', () => {
     expect(submit.disabled).toBe(false);
     await fireEvent.click(submit);
 
-    expect(await within(dialog).findByText(MEMORY_COPY.add.dialog.empty(AGENT_NAME))).not.toBeNull();
+    expect(
+      await within(dialog).findByText(MEMORY_COPY.add.dialog.empty(AGENT_NAME)),
+    ).not.toBeNull();
     expect(served.callsTo('bureau.memory.remember')).toEqual([]);
     // The field is marked and takes focus; the dialog stays open and Add memory stays enabled.
     await waitFor(() => expect(field.getAttribute('aria-invalid')).toBe('true'));

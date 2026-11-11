@@ -40,7 +40,7 @@
     holds: SvelteMap<string, 'held' | 'free'>;
     /** True while a governance change is being saved, for the page to hold the others until it settles. */
     pending?: boolean;
-    /** True while an export is being made, for the Export button to say so. */
+    /** True while an export is being made, for the Export button to say "Exporting…". */
     exporting?: boolean;
     /** Called once a memory is quarantined, so the page can close its details. */
     onQuarantined: (id: string) => void;

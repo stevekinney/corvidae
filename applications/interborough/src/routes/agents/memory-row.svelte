@@ -17,7 +17,7 @@
 
   type Props = {
     agentId: string;
-    /** What the agent is called, for the memories it wrote ("From Tool runner"). */
+    /** What the agent is called, for the memories it wrote ("From Tool runner" on line two). */
     agentName: string;
     id: string;
     /** The memory, when the pages read so far hold it; otherwise the row reads it. */

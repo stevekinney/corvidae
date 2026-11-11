@@ -177,9 +177,13 @@ test.describe('the memory page', () => {
     await expect(dialog).toBeHidden();
     const details = page.getByRole('region', { name: MEMORY_COPY.detail.heading });
     await expect(details.getByText(label)).toBeVisible();
-    await expect(details.getByText(MEMORY_COPY.writer.person.detail, { exact: true })).toBeVisible();
+    await expect(
+      details.getByText(MEMORY_COPY.writer.person.detail, { exact: true }),
+    ).toBeVisible();
     // Nothing says where it came from: a person wrote it.
-    await expect(details.locator('dt', { hasText: MEMORY_COPY.detail.fields.cameFrom })).toHaveCount(0);
+    await expect(
+      details.locator('dt', { hasText: MEMORY_COPY.detail.fields.cameFrom }),
+    ).toHaveCount(0);
 
     // It is on the server, not only on the page.
     await page.goto(MEMORY_PATH);

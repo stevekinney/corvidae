@@ -5339,7 +5339,7 @@ export const MEMORY_COPY = {
     },
     /** The toast after a save, with Undo, which forgets the memory just added. */
     saved: (agent: string): string => `Memory added. ${agent} uses it from its next chat.`,
-    /** What the page says when Undo does not go through. */
+    /** What the page says when the Undo does not go through. */
     undoFailed: 'Couldn’t undo. The memory stays.',
     /** The title of a refusal the Bureau gave its own words for. */
     notSaved: 'Couldn’t save the memory',

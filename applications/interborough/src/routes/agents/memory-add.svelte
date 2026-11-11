@@ -202,13 +202,17 @@
       id="ib-memory-add"
       label={words.dialog.label(agentName)}
       description={words.dialog.hint}
-      error={missing ? words.dialog.empty(agentName) : undefined}
+      error={missing ? words.dialog.empty(agentName) : ''}
       rows={6}
       bind:value={draft}
     />
     <RadioGroup name="ib-memory-kind" label={words.dialog.kind.label} bind:value={kindChoice}>
       <RadioGroup.Option id="ib-memory-kind-fact" value="fact" label={words.dialog.kind.fact} />
-      <RadioGroup.Option id="ib-memory-kind-how-to" value="how-to" label={words.dialog.kind.howTo} />
+      <RadioGroup.Option
+        id="ib-memory-kind-how-to"
+        value="how-to"
+        label={words.dialog.kind.howTo}
+      />
     </RadioGroup>
     {#if refusal !== undefined && failure !== undefined}
       <Alert variant="danger">

@@ -232,12 +232,18 @@
     writerFilter = 'all';
   }
 
+  /** A memory is gone from the list: close its details if it was the open one, and drop the note about the last change. */
+  function closed(id: string): void {
+    notice = undefined;
+    if (selectedId === id) select(null);
+  }
+
   /**
-   * A memory is gone from the list: drop the note about the last change, and when it was the open
+   * A memory was forgotten (row 45s): drop the note about the last change, and when it was the open
    * one, open the memory after it (the one before when it was the last), or close the details when
    * the list has no other.
    */
-  function gone(id: string): void {
+  function forgotten(id: string): void {
     notice = undefined;
     if (selectedId !== id) return;
     const at = shown.findIndex((row) => row.id === id);
@@ -347,7 +353,7 @@
       bind:outcome
       {holds}
       bind:forgetPending
-      onForgotten={gone}
+      onForgotten={forgotten}
     />
     <MemoryGovernance
       bind:this={governance}
@@ -355,9 +361,9 @@
       {holds}
       bind:pending={governancePending}
       bind:exporting
-      onQuarantined={gone}
+      onQuarantined={closed}
     />
-    <MemoryAdd bind:this={adding} {agentId} {agentName} onAdded={added} onUndone={gone} />
+    <MemoryAdd bind:this={adding} {agentId} {agentName} onAdded={added} onUndone={closed} />
 
     <!-- A filter that hides the search hits is not "no match": the hits are there. -->
     {#snippet emptiness()}

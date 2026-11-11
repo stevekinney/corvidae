@@ -43,7 +43,7 @@
 
   type Props = {
     agentId: string;
-    /** What the agent is called, for the memories it wrote ("Written by Tool runner"). */
+    /** What the agent is called, for the memories it wrote ("Written by Tool runner" in the rows). */
     agentName: string;
     id: string;
     /** What is known of this memory's legal hold, or `undefined` while nothing has said. */
@@ -276,7 +276,10 @@
           </Alert>
         {/if}
         <div class="ib-memory-detail__actions">
-          <Button type="submit" variant="primary" disabled={correct.isPending || draft.trim() === ''}
+          <Button
+            type="submit"
+            variant="primary"
+            disabled={correct.isPending || draft.trim() === ''}
             >{failure === undefined
               ? MEMORY_COPY.correct.edit.submit
               : MEMORY_COPY.correct.edit.retry}</Button

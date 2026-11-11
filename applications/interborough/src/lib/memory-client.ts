@@ -108,7 +108,7 @@ const lineageSchema = z.object({
  */
 export type MemoryLineage = z.infer<typeof lineageSchema>;
 
-/** One earlier version of a memory: what it said before a correction replaced it. */
+/** One earlier version of a memory: what it said before a correction replaced it, and when. */
 const historyEntrySchema = z.object({
   /** The identifier of the earlier version, which `bureau.memory.get` still reads. */
   id: z.string(),
