@@ -349,7 +349,7 @@ describe('the Details rail of a run the engine holds', () => {
     const view = mount(id);
 
     await waitFor(() => expect(fact(view, 'Version')).toBe('wf 2, agent 3, tools 2'));
-    expect(fact(view, 'Workflow')).toBe('order-fulfillment');
+    expect(fact(view, 'Workflow')).toBe('Order fulfillment');
     expect(fact(view, 'Revision')).toBe('Unpinned (pre-revision record)');
     expect(view.container.querySelector('dd code.ib-identifier')).not.toBeNull();
   });

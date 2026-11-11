@@ -10,7 +10,7 @@
   import { DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
 
-  import { RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy.ts';
   import type { ChatContext } from '../../../lib/bureau-client.ts';
   import type { WorkflowFileRun } from '../../../lib/workflow-files.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
@@ -19,6 +19,7 @@
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
+  import { builtInWorkflowName, workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import { finalizerStatusPresentation } from '../detail/workflow-status.ts';
   import RunLineage from './run-lineage.svelte';
@@ -207,8 +208,13 @@
   {#if workflowType !== undefined}
     {@const path = workflowTypePath(workflowType)}
     <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
-      ><code class="ib-identifier">{workflowType}</code></a
+      >{workflowTypeName(workflowType)}</a
     >
+    {#if builtInWorkflowName(workflowType) !== undefined}
+      <small class="ib-run-value"
+        ><code class="ib-identifier">{workflowType}</code> {RUN_DETAIL_COPY.builtIn}</small
+      >
+    {/if}
   {/if}
 {/snippet}
 

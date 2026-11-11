@@ -299,6 +299,27 @@ export const RUN_PAGE_COPY = {
 } as const;
 
 /**
+ * The words a run's page uses for what the redesign of its layout added (COR-2017): the names of
+ * the workflows Interborough runs itself, and the lines of the finished, failed, canceled and
+ * schedule-started runs. Kept apart from `RUN_PAGE_COPY` so that the slices that change the page's
+ * other states do not edit the same block.
+ */
+export const RUN_DETAIL_COPY = {
+  /**
+   * What a person calls each workflow type Interborough registers (the names the design records),
+   * set in the interface font; the type's identifier follows it, small, with `builtIn`. A type this
+   * table does not name is shown by its identifier in words.
+   */
+  workflowNames: {
+    agentRun: 'Chat with an agent',
+    goalRun: 'Work on a goal',
+    durableHeartbeatTick: 'Agent heartbeat',
+  },
+  /** Said after the identifier of a workflow Interborough runs itself. */
+  builtIn: '(built in)',
+} as const;
+
+/**
  * What the application says when the server does not answer: the title a turned-off control shows,
  * and the page that replaces a view with nothing to show. The banner's own words come from Cinder's
  * `offline`, `unreachable` and `stopped` presets, so no page words them differently.
