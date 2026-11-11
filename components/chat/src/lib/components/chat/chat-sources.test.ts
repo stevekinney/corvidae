@@ -231,6 +231,36 @@ describe('Chat — sourcesByMessageId', () => {
     expect(control.isConnected).toBe(false);
   });
 
+  test('removing the sources while the message is inert behind their sheet still moves focus to the message', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inert',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+    });
+    await tick();
+    const control = sourcesControl(container, 'assistant-a')!;
+    control.focus();
+    const article = messageArticle(container, 'assistant-a');
+    const timeline = container.querySelector<HTMLElement>('.chat-timeline')!;
+    // A narrow screen's sheet is a modal dialog, which makes the message inert: the first focus
+    // call does nothing, and Chat's timeline backstop takes the focus the removal orphans.
+    const focus = article.focus.bind(article);
+    let calls = 0;
+    article.focus = (options?: FocusOptions) => {
+      calls += 1;
+      if (calls === 1) {
+        timeline.focus();
+        return;
+      }
+      focus(options);
+    };
+
+    await rerender({ sourcesByMessageId: new Map() });
+
+    await waitFor(() => expect(document.activeElement === article).toBe(true));
+    expect(calls).toBeGreaterThan(1);
+  });
+
   test('never changes the conversation it is given', async () => {
     const conversation = sourcedConversation();
     const snapshot = JSON.stringify(conversation);

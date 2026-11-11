@@ -408,8 +408,10 @@
   // focus inside it, which would leave focus on the page body. This pre-effect runs before that
   // removal, while focus can still be read, and hands focus to this message at once, so focus never
   // falls to the body: a container that reclaims focus orphaned by a removal (Chat moves it to its
-  // timeline) would otherwise take it first. If something in the removal still drops focus, the
-  // check after the update hands it to this message again.
+  // timeline) would otherwise take it first. That first call does nothing while a narrow screen's
+  // sources sheet is open, because a modal `<dialog>` makes this message inert, and the container's
+  // backstop then takes focus when the sheet unmounts. So once the update has removed the sources,
+  // the message takes focus from wherever it went, unless it already holds it.
   $effect.pre(() => {
     const shown = shownSources !== undefined;
     if (sourcesWereShown && !shown && focusIsInSources(document.activeElement)) {
@@ -417,9 +419,9 @@
       article?.focus({ preventScroll: true });
       void (async () => {
         await tick();
-        const active = document.activeElement;
-        if (active !== null && active !== document.body && active.isConnected) return;
-        article?.focus({ preventScroll: true });
+        if (!article?.isConnected) return;
+        if (article.contains(document.activeElement)) return;
+        article.focus({ preventScroll: true });
       })();
     }
     sourcesWereShown = shown;
