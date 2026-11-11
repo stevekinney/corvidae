@@ -8,6 +8,7 @@
   import { type QueryClient, QueryClientProvider } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
+  import { provideConnection, type ConnectionMonitor } from '../../app/connection.svelte.ts';
   import { provideFleetEventSource } from '../../app/engine-status.svelte.ts';
   import RouteOutlet from '../../app/shell/route-outlet.svelte';
   import { provideClient } from '../../lib/client.ts';
@@ -20,9 +21,14 @@
     scopes: readonly AuthorizationScope[];
     /** Hands the page's query client to a test that must see when a query has settled. */
     onQueryClient?: ((queryClient: QueryClient) => void) | undefined;
+    /** The shell's connection monitor, provided to the pages as the shell does. */
+    connection?: ConnectionMonitor | undefined;
   }
 
-  let { client, scopes, onQueryClient }: AreaHarnessProps = $props();
+  let { client, scopes, onQueryClient, connection }: AreaHarnessProps = $props();
+
+  const monitor = untrack(() => connection);
+  if (monitor !== undefined) provideConnection(monitor);
 
   provideClient(untrack(() => client));
   providePrincipalStore().setPrincipal({

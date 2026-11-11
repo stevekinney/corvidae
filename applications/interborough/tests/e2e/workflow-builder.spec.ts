@@ -266,9 +266,10 @@ test.describe('the editor’s builder', () => {
     await page.goto(`/workflows/${id}/edit`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = editor(page);
-    const name = root.getByLabel(BUILDER.idLabel, { exact: true });
-    await expect(name).toHaveValue(id);
-    await expect(name).toHaveJSProperty('readOnly', true);
+    // An existing workflow's ID is a read-only line, not a field.
+    const idLine = root.getByTestId('workflow-builder-id-line');
+    await expect(idLine.locator('code')).toHaveText(id);
+    await expect(idLine.locator('input')).toHaveCount(0);
 
     const before = await readWorkflow(request, id);
     await bureau(request, 'bureau.workflows.update', {
@@ -282,7 +283,7 @@ test.describe('the editor’s builder', () => {
 
     await root.getByLabel(BUILDER.durationLabel(1)).fill('5');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
-    await expect(root.getByText(WORKFLOW_COPY.stale.title)).toBeVisible();
+    await expect(root.getByText(WORKFLOW_COPY.editor.changedOnDisk.title)).toBeVisible();
     await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('5');
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/edit$`));
   });

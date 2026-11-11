@@ -884,19 +884,21 @@ test.describe('the editor', () => {
 
     await editor.fill('{ "trigger": ');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
-    await expect(root).toContainText(WORKFLOW_COPY.editor.notJson);
+    await expect(root.getByTestId('workflow-builder-summary')).toHaveText(
+      WORKFLOW_COPY.builder.json.fixLine(1),
+    );
 
     await editor.fill(
       JSON.stringify({ trigger: { kind: 'schedule', spec: 'never ever' }, steps: [] }),
     );
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
-    await expect(root).toContainText(WORKFLOW_COPY.editor.saveFailed);
+    await expect(root).toContainText(/Couldn’t save /);
     await expect(page).toHaveURL(/\/workflows\/e2e-refused\/edit$/);
     const unchanged = await readWorkflow(request, 'e2e-refused');
     expect(unchanged.hash).toBe(before.hash);
   });
 
-  test('is the changed-outside state when the file changed, and reloading discards the edits', async ({
+  test('says the file changed on disk, and Reload discards the edits', async ({
     page,
     request,
   }) => {
@@ -920,9 +922,9 @@ test.describe('the editor', () => {
     await editor.fill(JSON.stringify({ trigger: { kind: 'schedule', spec: '2h' }, steps: STEPS }));
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root).toHaveAttribute('data-condition', 'stale');
-    await expect(root).toContainText(WORKFLOW_COPY.stale.title);
+    await expect(root).toContainText(WORKFLOW_COPY.editor.changedOnDisk.title);
 
-    await root.getByRole('button', { name: WORKFLOW_COPY.stale.action }).click();
+    await root.getByRole('button', { name: WORKFLOW_COPY.editor.changedOnDisk.reload }).click();
     await expect(root).toHaveAttribute('data-condition', 'ready');
     await expect(editor).toHaveText(/8h/);
     await expect(editor).not.toHaveText(/2h/);
@@ -949,7 +951,9 @@ test.describe('the editor', () => {
     await page.goto('/workflows/e2e-fixable/edit');
     const root = page.locator('[data-page="workflow-editor"]');
     await expect(root).toHaveAttribute('data-condition', 'invalid');
-    await expect(root.getByTestId('workflow-problem')).toContainText('invalid-document');
+    await expect(root.getByTestId('workflow-problem')).toContainText(
+      'e2e-fixable.json can’t be read as a workflow:',
+    );
     await expect(root.getByTestId('workflow-file-path')).toHaveText(path);
     await checkA11y('an invalid file in the editor');
 

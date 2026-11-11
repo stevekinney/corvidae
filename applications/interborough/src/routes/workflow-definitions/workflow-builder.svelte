@@ -15,6 +15,11 @@
    * footer, and `focusProblem()` takes the person to the first. Text that is not a JSON object is
    * the JSON tab's to fix: the Builder tab is off with the reason, and the footer says which line
    * to fix in place of the read-back.
+   *
+   * An existing workflow's ID is a read-only line. The edit page puts its notices in the builder's
+   * slots (a file that changed on disk under the tabs, the version a save makes above the footer),
+   * says the version in the footer through `status`, and opens a file that cannot load on the JSON
+   * tab through `initialTab`.
    */
   import {
     Alert,
@@ -109,6 +114,20 @@
      * Bureau said, and "Nothing was saved." closes it.
      */
     failure?: { readonly title: string; readonly message: string } | null;
+    /**
+     * The tab the builder opens on. Text the builder cannot draw opens on the JSON tab whatever
+     * this says; the edit page opens a file the Bureau cannot load there too.
+     */
+    initialTab?: 'builder' | 'json';
+    /**
+     * What the footer says in place of the read-back, such as the version a save makes ("Save as
+     * version 1.4.0."). Text the builder cannot draw still says which line to fix.
+     */
+    status?: string;
+    /** Drawn under the tabs, above both panels: a notice that holds for either view of the file. */
+    notice?: Snippet;
+    /** Drawn above the footer, before a failure: a notice about what saving does. */
+    aboveFooter?: Snippet;
   }
 
   let {
@@ -125,6 +144,10 @@
     takenId,
     saving = false,
     failure = null,
+    initialTab = 'builder',
+    status,
+    notice,
+    aboveFooter,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.builder;
@@ -135,7 +158,7 @@
 
   // Text the builder cannot read opens on the JSON tab, where it is fixed.
   let tab = $state<'builder' | 'json'>(
-    untrack(() => (readBuilder(text) === undefined ? 'json' : 'builder')),
+    untrack(() => (readBuilder(text) === undefined ? 'json' : initialTab)),
   );
 
   /** Below 640 pixels the Builder tab can be read but not changed; so is the whole form while it saves. */
@@ -465,6 +488,10 @@
       <Tabs.Trigger value="json">{copy.jsonTab}</Tabs.Trigger>
     </Tabs.List>
 
+    {#if notice !== undefined}
+      <div class="weft-workflow-builder__notice">{@render notice()}</div>
+    {/if}
+
     <Tabs.Panel value="builder">
       {#if view !== undefined}
         {#if error !== ''}
@@ -481,14 +508,13 @@
               onValueChange={changeTitle}
             />
             {#if mode === 'edit'}
-              <Input
-                id="workflow-builder-name"
-                label={copy.idLabel}
-                description={copy.idFixed}
-                variant="code"
-                readonly
-                value={view.name}
-              />
+              <!-- An existing workflow's ID is its file's name, so it is read, never changed (row 65p). -->
+              <p class="weft-workflow-builder__id-line" data-testid="workflow-builder-id-line">
+                <span class="weft-workflow-builder__id-label">{copy.idLabel}</span>
+                <code id="workflow-builder-name" class="weft-workflow-builder__id">{view.name}</code
+                >
+                <span class="weft-workflow-builder__note">{copy.idFixed}</span>
+              </p>
             {:else if idCollapsed}
               <p class="weft-workflow-builder__id-line" data-testid="workflow-builder-id-line">
                 <span class="weft-workflow-builder__id-label">{copy.idLabel}</span>
@@ -865,6 +891,10 @@
     </Tabs.Panel>
   </Tabs>
 
+  {#if aboveFooter !== undefined}
+    {@render aboveFooter()}
+  {/if}
+
   {#if failure !== null}
     <Alert variant="danger">
       <p class="weft-workflow-builder__alert-title">{failure.title}</p>
@@ -897,6 +927,8 @@
     >
       {#if blocked}
         {fixLine}
+      {:else if status !== undefined}
+        {status}
       {:else}
         <span class="cinder-sr-only">{copy.readBack.label}: </span>{view?.readBack ?? ''}
       {/if}
@@ -928,6 +960,10 @@
     gap: var(--cinder-space-2);
     align-items: center;
     margin: var(--cinder-space-3) 0 0;
+  }
+
+  .weft-workflow-builder__notice {
+    padding-top: var(--cinder-space-3);
   }
 
   .weft-workflow-builder__id-line {
