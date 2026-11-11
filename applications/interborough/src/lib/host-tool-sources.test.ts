@@ -11,6 +11,9 @@ import {
   probeToolSource,
   removeToolSource,
   setAcceptsSecrets,
+  setToolSettings,
+  testToolSource,
+  toolsOnCount,
 } from './host-tool-sources.ts';
 
 const MUTATION = { operationId: 'sign-in-test', expectedRevision: null };

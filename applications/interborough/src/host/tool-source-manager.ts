@@ -146,14 +146,21 @@ import {
   type ToolSourceVault,
 } from './tool-source-vault.ts';
 import {
+  isSourceToolApproval,
+  MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH,
+  MAXIMUM_TOOL_SOURCE_NAME_LENGTH,
   parseToolSourcesConfiguration,
   qualifyToolNames,
   readToolSourcesConfiguration,
   RESERVED_TOOL_SOURCE_IDENTIFIERS,
   serializeToolSources,
+  sourceLabelProblem,
+  sourceToolApprovalProblem,
+  tierApproval,
   TOOL_SOURCE_IDENTIFIER,
   type ConfiguredToolSettings,
   type ConfiguredToolSource,
+  type SourceToolApproval,
 } from './tool-sources-configuration.ts';
 
 /** The route the authorization server sends a person's browser back to, for the source `sourceId`. */

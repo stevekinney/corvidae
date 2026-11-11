@@ -9,7 +9,12 @@
  * put in a message, a key, or a description.
  */
 import { CAPABILITIES_COPY } from '../app/copy.ts';
-import type { ToolSourceRequest } from './host-tool-sources.ts';
+import type {
+  SourceToolApproval,
+  ToolSourceProbe,
+  ToolSourceRequest,
+  ToolSourceToolSettings,
+} from './host-tool-sources.ts';
 
 /** The pattern an identifier follows: the host refuses any other (`TOOL_SOURCE_IDENTIFIER`). */
 export const TOOL_SOURCE_IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]{0,19}$/;
