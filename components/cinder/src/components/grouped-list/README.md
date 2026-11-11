@@ -47,7 +47,8 @@
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-grouped-list-background`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

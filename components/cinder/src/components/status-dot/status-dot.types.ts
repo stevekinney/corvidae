@@ -29,7 +29,7 @@ export type StatusDotStatus =
   | 'success'
   | 'accent';
 
-export type StatusDotSize = 'sm' | 'md';
+export type StatusDotSize = 'xs' | 'sm' | 'md';
 
 /**
  * How the visible word is coloured. `muted` (the default) leaves a success, neutral or pending word

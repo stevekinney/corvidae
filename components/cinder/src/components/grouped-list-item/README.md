@@ -2,7 +2,7 @@
 
 <!-- generated:a11y-record:required -->
 
-`GroupedListItem` is one row of a `GroupedList`. It has a leading slot (an icon, a 40 to 72px thumbnail, an avatar or a checkbox), a fixed `lead` column for a time or number, a title, a subtitle, a trailing photo, a trailing value, a chevron and an action. With `href` the whole row is the link, and rows have hover and selected fills. The action sits in a fixed-width column, so a badge or value never moves the click target. A status is a small dot plus a word in the subtitle.
+`GroupedListItem` is one row of a `GroupedList`. It has a leading slot (an icon, a 40 to 72px thumbnail, an avatar or a checkbox), a fixed `lead` column for a time or number, a title, a subtitle, a trailing photo, a trailing value, a chevron and an action. With `href` the whole row is the link, and rows have hover and selected fills. The action sits in a 44px column built for one icon-only button, so a badge or value never moves the click target. A status is a 6px dot plus a word in the subtitle (a `StatusDot` with `size="xs"`).
 
 ## Usage
 

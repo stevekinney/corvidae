@@ -40,7 +40,7 @@ const schema = {
         'Use role="status" with polite live-region attributes. Defaults true when connectionState is provided.',
     },
     size: {
-      enum: ['sm', 'md'],
+      enum: ['xs', 'sm', 'md'],
       description: 'Dot size.',
       default: 'md',
     },

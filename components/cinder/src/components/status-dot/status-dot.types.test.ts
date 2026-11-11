@@ -32,7 +32,7 @@ type SnapshotStatusDotStatus =
   | 'success'
   | 'accent';
 
-type SnapshotStatusDotSize = 'sm' | 'md';
+type SnapshotStatusDotSize = 'xs' | 'sm' | 'md';
 
 type SnapshotStatusDotConnectionState = 'connected' | 'connecting' | 'disconnected' | 'error';
 

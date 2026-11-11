@@ -44,6 +44,12 @@
       "title": "Virtualized tree",
       "description": "A data-driven tree renders a small window from a 10,000-item collection while preserving full aria-posinset and aria-setsize metadata.",
       "code": "<script lang=\"ts\">\n  import { Tree, type TreeDataItem } from '@lostgradient/cinder';\n\n  const items: TreeDataItem[] = Array.from({ length: 10_000 }, (_, index) => ({\n    id: `virtual-file-${index}`,\n    label: `Virtual file ${index}`,\n  }));\n</script>\n\n<Tree\n  aria-label=\"Virtualized files\"\n  {items}\n  virtualized\n  virtualizationEstimatedRowHeight={36}\n  virtualizationHeight={320}\n  style=\"border: 1px solid var(--cinder-border); border-radius: var(--cinder-radius-md);\"\n/>\n"
+    },
+    {
+      "id": "icon-and-count",
+      "title": "An icon or swatch and a count",
+      "description": "A row can carry a decorative swatch or icon and a right-aligned count. The name ellipsizes before it pushes the count out, and the counts align down the column.",
+      "code": "<script lang=\"ts\">\n  import { Tree } from '@lostgradient/cinder';\n\n  let expandedIds = $state<string[]>(['labels']);\n</script>\n\n{#snippet swatch(color: string)}\n  <span\n    style=\"display: inline-block; inline-size: 0.75rem; block-size: 0.75rem; border-radius: 9999px; background: {color};\"\n  ></span>\n{/snippet}\n\n<div style=\"max-inline-size: 20rem;\">\n  <Tree aria-label=\"Labels\" bind:expandedIds>\n    <Tree.Item id=\"labels\" label=\"Labels\" branch count={42}>\n      {#snippet icon()}{@render swatch('var(--cinder-accent-solid)')}{/snippet}\n      <Tree.Item id=\"design\" label=\"Design\" count={12}>\n        {#snippet icon()}{@render swatch('var(--cinder-status-info-solid)')}{/snippet}\n      </Tree.Item>\n      <Tree.Item\n        id=\"long\"\n        label=\"A label with a very long name that has to ellipsize before the count\"\n        count={1280}\n      >\n        {#snippet icon()}{@render swatch('var(--cinder-status-success-solid)')}{/snippet}\n      </Tree.Item>\n      <Tree.Item id=\"bugs\" label=\"Bugs\" count={3}>\n        {#snippet icon()}{@render swatch('var(--cinder-status-danger-solid)')}{/snippet}\n      </Tree.Item>\n    </Tree.Item>\n  </Tree>\n</div>\n"
     }
   ]
 }

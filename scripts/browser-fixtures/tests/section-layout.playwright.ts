@@ -61,6 +61,46 @@ test.describe('GroupedList layout', () => {
     expect(one?.x).toBeCloseTo(two?.x ?? 0, 0);
   });
 
+  test('the action button fits inside the fixed column', async ({ page }) => {
+    const actions = page.locator('.cinder-grouped-list-item__action');
+    const count = await actions.count();
+    expect(count).toBeGreaterThan(0);
+    for (let index = 0; index < count; index += 1) {
+      const column = await actions.nth(index).boundingBox();
+      const button = await actions.nth(index).locator('button').first().boundingBox();
+      expect(button?.width, `button ${index} fits the 44px column`).toBeLessThanOrEqual(
+        (column?.width ?? 0) + 0.5,
+      );
+      expect(button?.x).toBeGreaterThanOrEqual((column?.x ?? 0) - 0.5);
+    }
+  });
+
+  test('in light, the group is a visible surface against its page', async ({ page }) => {
+    await page.emulateMedia({ colorScheme: 'light' });
+    const [group, pageBackground] = await Promise.all([
+      page
+        .locator('.cinder-grouped-list__group')
+        .first()
+        .evaluate((element) => {
+          return getComputedStyle(element).backgroundColor;
+        }),
+      page.evaluate(() => getComputedStyle(document.body).backgroundColor),
+    ]);
+    expect(group).not.toBe(pageBackground);
+    expect(group).not.toBe('rgb(255, 255, 255)');
+    expect(group).not.toBe('rgba(0, 0, 0, 0)');
+  });
+
+  test('a status is a 6px dot', async ({ page }) => {
+    const indicator = page
+      .locator('.cinder-status-dot[data-cinder-size="xs"] .cinder-status-dot__indicator')
+      .first();
+    await expect(indicator).toBeVisible();
+    const box = await indicator.boundingBox();
+    expect(box?.width).toBeCloseTo(6, 0);
+    expect(box?.height).toBeCloseTo(6, 0);
+  });
+
   test('the whole row is the link', async ({ page }) => {
     const row = page.locator('.cinder-grouped-list-item').first();
     const link = row.locator('.cinder-grouped-list-item__link');

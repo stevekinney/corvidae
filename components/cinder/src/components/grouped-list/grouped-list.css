@@ -37,7 +37,11 @@
     list-style: none;
     overflow: hidden;
     border-radius: var(--cinder-radius-surface);
-    background: var(--cinder-surface-raised);
+    /* Pure white in light would vanish on a white page, so light takes the inset tone; dark keeps the raised surface. */
+    background: var(
+      --cinder-grouped-list-background,
+      light-dark(var(--cinder-surface-inset), var(--cinder-surface-raised))
+    );
   }
 
   @media (forced-colors: active) {
