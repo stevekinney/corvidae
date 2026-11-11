@@ -30,6 +30,7 @@ import scrollAreaExamplesJson from '../components/scroll-area/scroll-area.exampl
 import searchFieldExamplesJson from '../components/search-field/search-field.examples.json' with { type: 'json' };
 import secretValueFieldExamplesJson from '../components/secret-value-field/secret-value-field.examples.json' with { type: 'json' };
 import sectionHeadingExamplesJson from '../components/section-heading/section-heading.examples.json' with { type: 'json' };
+import sectionExamplesJson from '../components/section/section.examples.json' with { type: 'json' };
 import segmentedControlExamplesJson from '../components/segmented-control/segmented-control.examples.json' with { type: 'json' };
 import selectExamplesJson from '../components/select/select.examples.json' with { type: 'json' };
 import selectableRowExamplesJson from '../components/selectable-row/selectable-row.examples.json' with { type: 'json' };
@@ -142,6 +143,8 @@ export const scrollAreaExamples = scrollAreaExamplesJson;
 export const searchFieldExamples = searchFieldExamplesJson;
 /** Code examples for this component. */
 export const secretValueFieldExamples = secretValueFieldExamplesJson;
+/** Code examples for this component. */
+export const sectionExamples = sectionExamplesJson;
 /** Code examples for this component. */
 export const sectionHeadingExamples = sectionHeadingExamplesJson;
 /** Code examples for this component. */

@@ -49,6 +49,10 @@ export type TreeItemProps = {
   selectionScopeIds?: string[];
   /** Optional row content snippet override. Default renders `label`. */
   row?: Snippet<[TreeItemRowContext]>;
+  /** Decorative swatch or icon drawn before the label in the default row. It is hidden from assistive technology. */
+  icon?: Snippet;
+  /** Count drawn right-aligned after the label in the default row, on the same grid as the icon and label. It is read after the label. */
+  count?: number | string;
   /** Nested TreeItem children for branch nodes. */
   children?: Snippet;
   /** Additional CSS class merged with `.cinder-tree-item`. */

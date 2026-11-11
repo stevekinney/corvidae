@@ -529,6 +529,15 @@ export type { GridColumns, GridProps } from './components/grid/index.ts';
 export { default as GridItem } from './components/grid-item/index.ts';
 export type { GridItemProps } from './components/grid-item/index.ts';
 
+export { default as GroupedList } from './components/grouped-list/index.ts';
+export type { GroupedListProps } from './components/grouped-list/index.ts';
+
+export { default as GroupedListItem } from './components/grouped-list-item/index.ts';
+export type {
+  GroupedListItemLeadingKind,
+  GroupedListItemProps,
+} from './components/grouped-list-item/index.ts';
+
 export { default as GridList } from './components/grid-list/index.ts';
 export type { GridListProps } from './components/grid-list/index.ts';
 
@@ -905,6 +914,9 @@ export type { SearchFieldProps } from './components/search-field/index.ts';
 
 export { default as SecretValueField } from './components/secret-value-field/index.ts';
 export type { SecretValueFieldProps } from './components/secret-value-field/index.ts';
+
+export { default as Section } from './components/section/index.ts';
+export type { SectionLevel, SectionProps } from './components/section/index.ts';
 
 export { default as SectionHeading } from './components/section-heading/index.ts';
 export type {

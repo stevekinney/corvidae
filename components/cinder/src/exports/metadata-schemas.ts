@@ -87,6 +87,8 @@ export { default as gridItemSchema } from '../components/grid-item/grid-item.sch
 export { default as gridListItemSchema } from '../components/grid-list-item/grid-list-item.schema.ts';
 export { default as gridListSchema } from '../components/grid-list/grid-list.schema.ts';
 export { default as gridSchema } from '../components/grid/grid.schema.ts';
+export { default as groupedListItemSchema } from '../components/grouped-list-item/grouped-list-item.schema.ts';
+export { default as groupedListSchema } from '../components/grouped-list/grouped-list.schema.ts';
 export { default as guidanceRegionSchema } from '../components/guidance-region/guidance-region.schema.ts';
 export { default as hoverCardSchema } from '../components/hover-card/hover-card.schema.ts';
 export { default as imageSchema } from '../components/image/image.schema.ts';
@@ -152,6 +154,7 @@ export { default as scrollAreaSchema } from '../components/scroll-area/scroll-ar
 export { default as searchFieldSchema } from '../components/search-field/search-field.schema.ts';
 export { default as secretValueFieldSchema } from '../components/secret-value-field/secret-value-field.schema.ts';
 export { default as sectionHeadingSchema } from '../components/section-heading/section-heading.schema.ts';
+export { default as sectionSchema } from '../components/section/section.schema.ts';
 export { default as segmentSchema } from '../components/segment/segment.schema.ts';
 export { default as segmentedControlSchema } from '../components/segmented-control/segmented-control.schema.ts';
 export { default as selectSchema } from '../components/select/select.schema.ts';
