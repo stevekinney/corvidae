@@ -273,7 +273,7 @@ describe('the reference documents of a saved agent (row 41t)', () => {
   });
 });
 
-describe('the guardrails of a saved agent’s read-only line (row 41w)', () => {
+describe('the guardrails line of a saved agent’s form (row 41w)', () => {
   test('are the ids the file lists, a configured one by its id', () => {
     const detail = readyAgent();
     if (detail.definition === null) throw new Error('expected a definition');

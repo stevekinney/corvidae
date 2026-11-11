@@ -487,7 +487,7 @@ test.describe('an agent that exists', () => {
 
     // The model is text that points to the Settings tab, and there is no field for the effort.
     await expect(page.getByTestId('agent-saved-model-value')).toContainText('Claude Sonnet 5');
-    await expect(page.getByRole('combobox')).toHaveCount(0);
+    await expect(editor(page).getByRole('combobox')).toHaveCount(0);
     await expect(page.getByLabel(copy.effort.label)).toHaveCount(0);
     await page.getByRole('link', { name: copy.edit.model.settingsTab }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-effort\/settings$/);

@@ -409,7 +409,7 @@ export type AgentDefinitionInput = {
   /**
    * Documents beside the agent's file that its instructions are read with. A create sends it (a
    * copy of an agent that has them), and an update sends it to take documents off the list (the
-   * Edit form, row 41t); left out, an update keeps the file's. `null` removes the list.
+   * Edit form, row 41t); left out, an update keeps the file's, and `null` removes the list.
    */
   readonly references?: readonly string[] | null;
   readonly instructions: string;

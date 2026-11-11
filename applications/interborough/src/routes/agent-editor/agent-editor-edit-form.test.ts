@@ -160,7 +160,8 @@ describe('what a saved agent’s form owns (rows 41s, 41u, 41v, 41w)', () => {
     const model = await findByTestId('agent-saved-model-value');
     expect(model.textContent?.trim()).toBe(editCopy.model.value('Claude Sonnet 5', 'Anthropic'));
     expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
-    expect(queryByRole('combobox')).toBeNull();
+    // No select on the form at all: the model is text and the effort has no field.
+    expect(within(getByRole('form', { name: copy.formLabel })).queryByRole('combobox')).toBeNull();
     const note = (await findByTestId('agent-saved-model')).textContent ?? '';
     expect(note).toContain(`${editCopy.model.changeLead}${editCopy.model.settingsTab}`);
     expect(note).toContain(editCopy.model.changeTail);

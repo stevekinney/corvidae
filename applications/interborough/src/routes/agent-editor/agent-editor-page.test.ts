@@ -618,7 +618,7 @@ describe('an agent that exists', () => {
     const calls = bureau();
     const { findByRole, getByRole, queryByRole } = mountEditor('researcher');
     await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
-    expect(queryByRole('combobox')).toBeNull();
+    expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
@@ -1089,9 +1089,7 @@ describe('the Save in the sticky bar', () => {
     });
     const { findByTestId } = mountEditor('researcher');
     const status = await findByTestId('agent-save-status');
-    await waitFor(() =>
-      expect(status.textContent?.trim()).toBe(AGENT_EDITOR_COPY.edit.saved(4)),
-    );
+    await waitFor(() => expect(status.textContent?.trim()).toBe(AGENT_EDITOR_COPY.edit.saved(4)));
   });
 
   test('registers ⌘Enter, which saves from a field, and removes it when the page goes', async () => {

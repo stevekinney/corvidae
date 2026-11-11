@@ -5,7 +5,7 @@
    * retired, and a provider with no API key are listed and disabled, each with its reason, and a
    * line under the field points to Settings › Models to connect a provider. The abilities of the
    * chosen model show under the field as one muted line (row 41h), and the form follows it with
-   * "Not listed? Connect a provider in Settings › Models". The field belongs to a new agent's form: a
+   * "Not listed? Connect a provider in Settings › Models". The field is a new agent's form's: a
    * saved agent shows its model as read-only text (`agent-editor-saved-model.svelte`).
    *
    * The field is required: after a submit with no model it says so (`error`, row 42m). When the

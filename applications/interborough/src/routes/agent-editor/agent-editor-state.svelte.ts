@@ -814,7 +814,11 @@ export class AgentEditorState {
     );
   }
 
-  /** Whether the form holds what a save needs. A save also waits for any request in flight. */
+  /**
+   * Whether the form holds what a save needs. A save also waits for any request in flight. A saved
+   * agent's form needs only a name; a new agent's needs a model, a valid identifier and limits that
+   * parse.
+   */
   get canSave(): boolean {
     // See `firstProblem`: a saved agent's form cannot fix its model, effort or limits, so it does
     // not hold the save back for them. The Bureau refuses what it cannot use and says why.

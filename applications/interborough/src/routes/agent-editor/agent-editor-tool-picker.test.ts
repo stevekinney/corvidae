@@ -2,7 +2,8 @@
  * A new agent's tools: the Add tools picker that searches and groups by source and marks a tool that
  * asks first, the table of the chosen tools, and a create that carries exactly what was picked. A
  * saved agent's form has no picker: it reads its tools as a line that points to the Access tab
- * (`agent-editor-edit-form.test.ts`).
+ * (`agent-editor-edit-form.test.ts`). An approval a new agent sets is covered with the form
+ * (`agent-editor-new-form.test.ts`).
  */
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';

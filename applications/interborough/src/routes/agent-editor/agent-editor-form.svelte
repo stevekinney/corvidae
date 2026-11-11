@@ -34,8 +34,8 @@
    * (`agent-editor-no-provider.svelte`). The model is chosen in `agent-editor-model-field.svelte`,
    * and its default effort in `agent-editor-effort-field.svelte`.
    */
-  import { Check, X } from '@lucide/svelte';
   import { Button, EmptyState, FormSection, Input, Textarea, Toggle } from '@lostgradient/cinder';
+  import { Check, X } from '@lucide/svelte';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import { agentTabPath } from '../../lib/agent-paths.ts';

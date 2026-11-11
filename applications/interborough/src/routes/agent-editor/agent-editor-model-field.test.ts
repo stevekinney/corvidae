@@ -341,7 +341,7 @@ describe('a saved agent whose model is no longer offered', () => {
 
     // The model is text, not a field: the Settings tab is where it is changed.
     expect((await findByTestId('agent-saved-model-value')).textContent).toContain('OpenAI');
-    expect(queryByRole('combobox')).toBeNull();
+    expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
     const notice = getByTestId('agent-model-notice').textContent ?? '';
     expect(notice).toContain(
       notices.refusedNotice('openai/gpt-4.1', copy.reasons['provider-denied']),

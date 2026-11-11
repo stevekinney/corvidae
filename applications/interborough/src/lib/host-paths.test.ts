@@ -120,7 +120,7 @@ describe('agentFilePath', () => {
 });
 
 describe('agentRelativePath', () => {
-  test('is the identifier, with .md, under agents, whichever machine holds the home', () => {
+  test('is the identifier, with .md, under agents, on whichever machine holds the home', () => {
     expect(agentRelativePath('tool-runner')).toBe('agents/tool-runner.md');
   });
 });

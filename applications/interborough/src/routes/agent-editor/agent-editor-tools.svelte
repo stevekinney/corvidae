@@ -10,7 +10,8 @@
    * section's title (`toolCount`, from the form).
    *
    * Only a new agent's form has this body. A saved agent's form reads its tools as one line that
-   * points to the Access tab (`agent-editor-form.svelte`, row 41v).
+   * points to the Access tab, so it has no Remove and no picker (`agent-editor-form.svelte`, row
+   * 41v).
    */
   import { Button, Select, Table } from '@lostgradient/cinder';
 
