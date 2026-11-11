@@ -1,9 +1,9 @@
 /**
  * `/runs` and `/runs/:run` through the route outlet, over a Bureau that answers from a table
  * (`bureau-world.test-support.ts`): the list and a run's page are the Bureau's, so a caller without
- * the engine's scope still sees them; every page of the goals is read; a status or an agent is
- * asked of the Bureau and Load more stays reachable when what the pages hold does not match; and a
- * run the Bureau cannot read is told apart from one it does not know, or has removed.
+ * the engine's scope still sees them; every page of the goals and of the runs is read, so the
+ * status counts are of every run and a status or an agent narrows what was read; and a run the
+ * Bureau cannot read is told apart from one it does not know, or has removed.
  */
 import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -80,6 +80,7 @@ function open(
     };
   });
   stub.on('bureau.agents.list', () => ({ agents: [] }));
+  stub.on('bureau.schedules.list', () => ({ schedules: [], nextOffset: null }));
   landAt(path);
   return render(RouteOutletHarness, {
     props: {
@@ -135,8 +136,8 @@ describe('the runs list', () => {
     expect(rowIds(container)).toContain('goal-5-a0');
   });
 
-  test('asks the Bureau for the status and the agent, and keeps every agent to choose from', async () => {
-    const { container, findAllByRole, findByRole } = open('/runs?status=failed&agent=echo', {
+  test('reads every run and narrows by the status and the agent here, keeping every agent to choose from', async () => {
+    const { container, getByRole } = open('/runs?status=failed&agent=echo', {
       world: {
         tasks: [
           taskFixture({ id: 'run-1', agentName: 'echo', status: 'failed' }),
@@ -156,16 +157,14 @@ describe('the runs list', () => {
     }));
 
     await waitFor(() => expect(rowIds(container)).toEqual(['run-1']));
+    // The segments count every status, so the Bureau is asked for every run, not for one status.
     const asked = stub?.callsTo('bureau.tasks.list').filter((call) => call.params['limit'] === 100);
-    expect(asked?.[0]?.params).toMatchObject({ status: 'failed', agentName: 'echo' });
+    expect(asked?.[0]?.params).toEqual({ limit: 100 });
     // The list is narrowed to one agent, and the others are still there to choose.
-    await fireEvent.click(await findByRole('combobox', { name: TASK_COPY.agentLabel }));
-    const options = await findAllByRole('option');
-    expect(options.map((option) => option.textContent?.trim())).toEqual([
-      TASK_COPY.anyAgent,
-      'assistant',
-      'echo',
-    ]);
+    await fireEvent.click(
+      getByRole('button', { name: `Remove filter: ${TASK_COPY.agentLabel}: Echo` }),
+    );
+    await waitFor(() => expect(rowIds(container)).toEqual(['run-1', 'run-2']));
   });
 
   test('is an error with a retry, and not a list of runs that lost their chats, when the sessions could not be read', async () => {
@@ -209,25 +208,18 @@ describe('the runs list', () => {
     await waitFor(() => expect(container.textContent).toContain('Title of chat-4'));
   });
 
-  test('keeps Load more when what the pages hold is all narrowed out and the Bureau has more', async () => {
-    // 101 tasks, all started long ago: the first page of 100 has no row in the last hour.
+  test('reads every page of the runs before it counts them, and shows ten of them', async () => {
+    // 101 tasks: the Bureau answers a hundred at a time, so the second page holds the last one.
     const tasks = Array.from({ length: 101 }, (_, index) =>
       taskFixture({ id: `run-${String(index)}`, status: 'completed' }),
     );
-    const { container, findByRole } = open('/runs?since=1h', { world: { tasks } });
+    const { container, findByRole } = open('/runs', { world: { tasks } });
 
-    const more = await findByRole('button', { name: TASK_COPY.loadMore });
-    expect(rowIds(container)).toEqual([]);
-    expect(container.textContent).toContain(TASK_COPY.noMatch.title);
-
-    await fireEvent.click(more);
-    await waitFor(() =>
-      expect(
-        stub
-          ?.callsTo('bureau.tasks.list')
-          .some((call) => typeof call.params['pageToken'] === 'string'),
-      ).toBe(true),
-    );
+    await findByRole('button', { name: TASK_COPY.loadMore });
+    expect(rowIds(container)).toHaveLength(10);
+    expect(container.textContent).toContain('Showing 10 of 101');
+    const reads = stub?.callsTo('bureau.tasks.list') ?? [];
+    expect(reads.some((call) => typeof call.params['pageToken'] === 'string')).toBe(true);
   });
 });
 

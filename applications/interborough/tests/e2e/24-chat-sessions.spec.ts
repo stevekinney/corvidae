@@ -183,20 +183,23 @@ test.describe.serial('a fresh Interborough, and the sessions a goal and a schedu
   });
 
   for (const width of WIDTHS) {
-    test(`lists the goal’s run and the fire’s run on /runs, each with a link to its session, at ${width} pixels`, async ({
+    test(`lists the goal’s run and the fire’s run on /runs, each a link to its run’s page, at ${width} pixels`, async ({
       page,
       checkA11y,
     }) => {
       await page.setViewportSize({ width, height: 900 });
-      await page.goto('/runs');
-
-      const goalRow = page.locator(`tr[data-run="${SEEDED_GOAL_RUN}"]`);
-      const fireRow = page.locator(`tr[data-run="${fireRunId}"]`);
+      // Each run's page links its session (the next test); the row is one link, to the run.
+      await page.goto('/runs?startedBy=goal');
+      const goalRow = page.locator(`li[data-run="${SEEDED_GOAL_RUN}"]`);
       await expect(goalRow).toHaveCount(1);
+      await expect(goalRow.locator(`a[href="/runs/${SEEDED_GOAL_RUN}"]`)).toHaveCount(1);
+      await expect(goalRow).toContainText(TASK_COPY.list.kinds.goal);
+
+      await page.goto('/runs?startedBy=schedule');
+      const fireRow = page.locator(`li[data-run="${fireRunId}"]`);
       await expect(fireRow).toHaveCount(1);
-      await expect(goalRow.locator(`a[href="/chats/${SEEDED_GOAL_SESSION}"]`)).toHaveCount(1);
-      await expect(fireRow.locator(`a[href="/chats/${fireContextId}"]`)).toHaveCount(1);
-      await expect(fireRow).toContainText(TASK_COPY.schedule);
+      await expect(fireRow.locator(`a[href="/runs/${fireRunId}"]`)).toHaveCount(1);
+      await expect(fireRow).toContainText(TASK_COPY.list.kinds.schedule);
       await checkA11y(`runs — a goal's and a schedule's runs at ${width}px`);
     });
   }

@@ -4765,10 +4765,6 @@ export const TASK_COPY = {
   agentLabel: 'Agent',
   statusLabel: 'Status',
   startedByLabel: 'Started by',
-  sinceLabel: 'When',
-  anyAgent: 'Any agent',
-  anyOrigin: 'Anything',
-  anyTime: 'Any time',
   loading: 'Loading runs',
   loadFailed: {
     title: 'The runs could not be loaded',
@@ -4795,7 +4791,6 @@ export const TASK_COPY = {
   /** After "A schedule", when a person fired it by hand instead of its cadence. */
   firedByHand: 'fired by hand',
   sessionLabel: 'Session',
-  anyStatus: 'Any status',
   filterAction: 'Filter',
   clearAction: 'Clear filters',
   noMatch: {
@@ -4803,16 +4798,6 @@ export const TASK_COPY = {
     description: 'Change the filters to see more runs.',
   },
   loadMore: 'Load more',
-  /** The runs table's column headings: one per filter, then how long a run took. */
-  listColumns: {
-    agent: 'Agent',
-    startedBy: 'Started by',
-    status: 'Status',
-    when: 'When',
-    took: 'Took',
-  },
-  /** How many runs the page lists, as a sentence. */
-  count: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'}`,
   /** The primary action of the runs page, which opens the form that starts one. */
   startRun: 'Start run',
   columns: {

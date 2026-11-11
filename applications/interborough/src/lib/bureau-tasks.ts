@@ -259,21 +259,6 @@ export function isRefusedPageToken(error: unknown): boolean {
   );
 }
 
-/** The part of an infinite query Load more drives. */
-type PagedTasks = {
-  fetchNextPage(): Promise<{ readonly error: unknown }>;
-  refetch(): Promise<unknown>;
-};
-
-/**
- * Reads the next page. When the Bureau refuses the page token, the listing is read again from
- * its first page, which issues fresh tokens, so Load more works again instead of failing for good.
- */
-export async function loadMoreTasks(tasks: PagedTasks): Promise<void> {
-  const next = await tasks.fetchNextPage();
-  if (isRefusedPageToken(next.error)) await tasks.refetch();
-}
-
 /** One task. A task the caller may not see is answered as a missing one: a not-found fault. */
 export async function getTask(taskId: string, options?: Options): Promise<TaskView> {
   return taskViewSchema.parse(await callBureau('bureau.tasks.get', { taskId }, options));

@@ -1,7 +1,8 @@
 /**
  * The records pages (COR-1843): Runs, Workflows, Internal workflows, Agents and Goals. Each has a
- * heading and one toolbar (the count, the filters, the primary action); Runs, Workflows, Internal
- * workflows and Goals list their records in a table, Agents in compact rows; and every status on
+ * heading and one toolbar (the count, the filters, the primary action), except Runs, whose header
+ * carries Start run and whose filter bar carries the status segments (COR-2017); Workflows,
+ * Internal workflows and Goals list their records in a table, Runs and Agents in rows; and every status on
  * them is one of seven words drawn as a StatusDot of that word's tone. A filter that matches
  * nothing says which filter and offers Clear filters. An agent with a chat that waits on the person
  * says Needs you, and its chat count opens the agent's page.
@@ -27,6 +28,12 @@ const AGREED_TONES = {
   Paused: 'neutral',
 } as const;
 
+/** The words only Runs says besides the seven, and their tones (COR-2017, rows 09q and 09t). */
+const RUNS_ONLY_TONES = {
+  'Check not met': 'neutral',
+  'Missed runs': 'warning',
+} as const;
+
 const WAITING_THREAD = newThreadId('records-waiting');
 
 test.afterAll(async () => {
@@ -45,7 +52,7 @@ async function statusWords(page: Page): Promise<string[]> {
 }
 
 test.describe('the records pages', () => {
-  test('Runs is a table with a column for each filter, a StatusDot per row, and Start run', async ({
+  test('Runs is a status-first list under day bands, with the status segments and Start run as its "+"', async ({
     page,
     checkA11y,
   }) => {
@@ -53,14 +60,11 @@ test.describe('the records pages', () => {
 
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1, name: 'Runs' })).toBeVisible();
-    const headings = page.getByRole('columnheader');
-    await expect(headings).toHaveText(['Agent', 'Started by', 'Status', 'When', 'Took']);
-    const rows = page.locator('tr[data-run]');
+    await expect(page.getByText(TASK_COPY.list.description)).toBeVisible();
+    const rows = page.locator('li[data-run]');
     await expect(rows.first()).toBeVisible();
-    const count = await rows.count();
-    await expect(page.getByTestId('records-count')).toHaveText(
-      `${count} ${count === 1 ? 'run' : 'runs'}`,
-    );
+    await expect(page.locator('.cinder-data-list-group__header').first()).toBeVisible();
+    await expect(page.getByRole('radio', { name: /^All\s*,\s*\d+$/ })).toBeVisible();
     await expect(rows.first().locator('[data-cinder-status]')).toHaveCount(1);
     await expect(page.getByRole('link', { name: 'Start run' })).toHaveAttribute(
       'href',
@@ -74,20 +78,23 @@ test.describe('the records pages', () => {
   }) => {
     await page.goto('/runs');
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
-    // The filter is a Cinder select in the filter bar: its options are in the open list, and they
-    // are the origins a run can be filtered by (an agent's tool call is read from the run itself).
-    const startedBy = page.getByRole('combobox', { name: TASK_COPY.startedByLabel });
-    await startedBy.click();
-    await expect(page.getByRole('option')).toHaveText([
-      TASK_COPY.anyOrigin,
-      ...STARTED_BY_KINDS.map((kind) => STARTED_BY_LABELS[kind]),
-    ]);
+    // The filter is an add-facet chip in the filter bar: its popover lists the origins a run can be
+    // filtered by (an agent's tool call is read from the run itself).
+    await page.getByRole('button', { name: TASK_COPY.startedByLabel, exact: true }).click();
+    await expect(page.locator('.cinder-filter-bar__options input[type="radio"]')).toHaveCount(
+      STARTED_BY_KINDS.length,
+    );
 
-    await page.getByRole('option', { name: STARTED_BY_LABELS.schedule, exact: true }).click();
+    await page
+      .locator('.cinder-filter-bar__options')
+      .getByText(STARTED_BY_LABELS.schedule, { exact: true })
+      .click();
     await expect(page).toHaveURL(/startedBy=schedule/);
-    for (const row of await page.locator('tr[data-run] .ib-run-origin').all()) {
-      await expect(row).toHaveAttribute('data-origin', 'schedule');
-    }
+    await expect(
+      page.getByRole('button', {
+        name: `Remove filter: ${TASK_COPY.startedByLabel}: ${STARTED_BY_LABELS.schedule}`,
+      }),
+    ).toBeVisible();
   });
 
   test('Runs says which filter matched nothing and clears it', async ({ page }) => {
@@ -97,7 +104,7 @@ test.describe('the records pages', () => {
     await expect(empty).toBeVisible();
     await empty.getByRole('button', { name: 'Clear filters' }).click();
     await expect(page).toHaveURL(/\/runs$/);
-    await expect(page.locator('tr[data-run]').first()).toBeVisible();
+    await expect(page.locator('li[data-run]').first()).toBeVisible();
   });
 
   test('Workflows is a list of status-first rows under segments, with a secondary New workflow in its header', async ({
@@ -204,7 +211,10 @@ test.describe('the records pages', () => {
       await expect(page.locator('main [data-cinder-status]').first()).toBeVisible();
       const words = await statusWords(page);
       expect(words.length, path).toBeGreaterThan(0);
-      for (const word of words) expect(STATUS_WORDS as readonly string[], path).toContain(word);
+      // Runs also says "Check not met" for a goal's attempt and "Missed runs" for a schedule's misses.
+      const allowed: readonly string[] =
+        path === '/runs' ? [...STATUS_WORDS, ...Object.keys(RUNS_ONLY_TONES)] : STATUS_WORDS;
+      for (const word of words) expect(allowed, path).toContain(word);
       const tones = await page
         .locator('main [data-cinder-status][data-status-word]')
         .evaluateAll((dots) =>
@@ -214,7 +224,9 @@ test.describe('the records pages', () => {
           ]),
         );
       for (const [word, tone] of tones) {
-        expect(tone, `${path}: ${word}`).toBe(AGREED_TONES[word as keyof typeof AGREED_TONES]);
+        expect(tone, `${path}: ${word}`).toBe(
+          { ...AGREED_TONES, ...RUNS_ONLY_TONES }[word as keyof typeof AGREED_TONES],
+        );
       }
     }
   });

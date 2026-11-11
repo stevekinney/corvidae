@@ -137,12 +137,13 @@ test.describe('the runs of a chat', () => {
     const row = page.locator(`[data-run="${task.id}"]`);
     await expect(row).toBeVisible();
     await expect(row).toHaveAttribute('data-status', 'Done');
+    // The row is one link, titled by its chat, to the run's own page.
     await expect(row.getByRole('link', { name: 'Say hello' })).toHaveAttribute(
       'href',
-      `/chats/${threadId}`,
+      `/runs/${task.id}`,
     );
     await checkA11y('the runs list');
-    await row.getByRole('link', { name: 'assistant' }).click();
+    await row.getByRole('link', { name: 'Say hello' }).click();
 
     await expect(page).toHaveURL(new RegExp(`/runs/${task.id}$`));
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
@@ -224,7 +225,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
     const row = page.locator(`[data-run="${task.id}"]`);
     await expect(row).toBeVisible();
-    await row.getByRole('link', { name: 'assistant' }).click();
+    await row.getByRole('link').first().click();
 
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('demo:assistant');
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();

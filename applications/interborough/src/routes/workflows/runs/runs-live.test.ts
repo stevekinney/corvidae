@@ -60,6 +60,7 @@ function open(path: string, tasks: TaskView[]): void {
   }));
   stub.on('bureau.agents.list', () => ({ agents: [] }));
   stub.on('bureau.deployment.get', () => ({ id: 'bureau-1' }));
+  stub.on('bureau.schedules.list', () => ({ schedules: [], nextOffset: null }));
   feeds = createLiveFeeds();
   landAt(path);
   render(RouteOutletHarness, {
@@ -76,7 +77,7 @@ function reads(operation: string, only: (call: BureauCall) => boolean = () => tr
   return stub?.callsTo(operation).filter(only).length ?? 0;
 }
 
-/** The runs list reads the first page of runs a hundred at a time; the page's probe reads one. */
+/** The runs list reads every page of runs a hundred at a time; the page's probe reads one. */
 const hundredAtATime = (call: BureauCall): boolean => call.params['limit'] === 100;
 /** The probe behind the view's states reads a single goal; the page reads them all. */
 const moreThanOne = (call: BureauCall): boolean => call.params['limit'] !== 1;

@@ -31,6 +31,7 @@ const chat = {
 const goal = {
   goalRunId: 'seeded-goal',
   agentName: 'assistant',
+  bounds: { maximumAttempts: 1 },
   attempts: [
     {
       attemptId: 'a',
@@ -183,12 +184,10 @@ describe('the session a run ran in', () => {
       href: '/chats/chat-1',
     });
     expect(rows.find((row) => row.id === 'run-person')?.origin).toMatchObject({ kind: 'chat' });
-    expect(filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id)).toEqual(
-      ['run-fire'],
-    );
-    expect(filterRunRows(rows, { startedBy: 'chat' }, Date.now()).map((row) => row.id)).toEqual([
-      'run-person',
+    expect(filterRunRows(rows, { startedBy: 'schedule' }).map((row) => row.id)).toEqual([
+      'run-fire',
     ]);
+    expect(filterRunRows(rows, { startedBy: 'chat' }).map((row) => row.id)).toEqual(['run-person']);
   });
 
   test('is not a schedule’s because the session says so: the task decides', () => {
@@ -290,9 +289,9 @@ describe('the session a run ran in', () => {
       chats: [fire, chat],
     });
 
-    expect(filterRunRows(rows, { startedBy: 'schedule' }, Date.now()).map((row) => row.id)).toEqual(
-      ['run-fire'],
-    );
+    expect(filterRunRows(rows, { startedBy: 'schedule' }).map((row) => row.id)).toEqual([
+      'run-fire',
+    ]);
     expect(parseRunFilter(new URLSearchParams('startedBy=schedule'))).toEqual({
       startedBy: 'schedule',
     });
@@ -327,21 +326,40 @@ describe('filterRunRows', () => {
     chats: [chat],
   });
 
-  test('narrows by status, agent, and what started the run', () => {
-    const now = Date.now();
-    expect(filterRunRows(rows, { status: 'working' }, now).map((row) => row.id)).toEqual(['run-1']);
-    expect(filterRunRows(rows, { startedBy: 'goal' }, now).map((row) => row.id)).toEqual([
+  test('narrows by status segment, agent, and what started the run', () => {
+    // A task that has not started yet is Running, as a working one is.
+    expect(filterRunRows(rows, { status: 'running' }).map((row) => row.id)).toEqual(['run-1']);
+    expect(filterRunRows(rows, { startedBy: 'goal' }).map((row) => row.id)).toEqual([
       'goal-seeded-goal-a0',
     ]);
-    expect(filterRunRows(rows, { agent: 'nobody' }, now)).toEqual([]);
+    expect(filterRunRows(rows, { agent: 'nobody' })).toEqual([]);
+  });
+
+  test('searches the title, and the agent by both of its names, whatever their case', () => {
+    expect(filterRunRows(rows, { search: 'SEEDED' }).map((row) => row.id)).toEqual([
+      'goal-seeded-goal-a0',
+    ]);
+    expect(filterRunRows(rows, { search: 'refund order' }).map((row) => row.id)).toEqual(['run-1']);
+    expect(
+      filterRunRows(rows, { search: 'helper' }, (name) => `${name} helper`).map((row) => row.id),
+    ).toEqual(['goal-seeded-goal-a0', 'run-1']);
+    expect(filterRunRows(rows, { search: 'nothing like it' })).toEqual([]);
   });
 });
 
 describe('the filter in the address', () => {
   test('round-trips, and ignores what it does not know', () => {
-    const filter = { status: 'failed', agent: 'echo', startedBy: 'chat', since: '24h' } as const;
+    const filter = {
+      status: 'failed',
+      agent: 'echo',
+      startedBy: 'chat',
+      search: 'refund',
+    } as const;
     expect(parseRunFilter(new URLSearchParams(serializeRunFilter(filter)))).toEqual(filter);
-    expect(parseRunFilter(new URLSearchParams('status=bogus&since=1y&startedBy=x'))).toEqual({});
+    // A Bureau state is not a segment: the address names the segment ("running"), not "working".
+    expect(
+      parseRunFilter(new URLSearchParams('status=working&since=1y&startedBy=x&q=%20')),
+    ).toEqual({});
   });
 });
 
@@ -470,7 +488,7 @@ describe('Started by, read from the origin the Bureau recorded', () => {
       chats: [],
     });
     for (const kind of Object.keys(ORIGINS) as TaskOriginKind[]) {
-      expect(filterRunRows(rows, { startedBy: kind }, 0).map((row) => row.id)).toEqual([
+      expect(filterRunRows(rows, { startedBy: kind }).map((row) => row.id)).toEqual([
         `run-${kind}`,
       ]);
     }
