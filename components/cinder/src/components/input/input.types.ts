@@ -83,7 +83,7 @@ export type InputProps = Omit<HTMLInputAttributes, 'class' | 'size'> &
      * the 2px focus ring. Left unset, the field follows its density: `filled` under
      * `data-density="comfortable"`, `outlined` otherwise.
      */
-    appearance?: 'outlined' | 'filled';
+    appearance?: 'outlined' | 'filled' | undefined;
     /**
      * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
      * `lg` 40px, the same heights as a Button of that size. Replaces the native character-width

@@ -49,7 +49,7 @@ export type TextareaProps = Omit<HTMLTextareaAttributes, 'class'> & {
    * the fill alone would lose, with a 12px radius and the 2px focus ring. Left unset, the field
    * follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise.
    */
-  appearance?: 'outlined' | 'filled';
+  appearance?: 'outlined' | 'filled' | undefined;
   /**
    * When `true` AND `maxlength` is set, renders a live character counter
    * (`{value.length}/{maxlength}`) below the textarea. The counter element

@@ -26,7 +26,7 @@ export type SearchFieldProps = Omit<
    * which keeps the 3:1 boundary the fill alone would lose. Left unset, the field follows its
    * density: `filled` under `data-density="comfortable"`, `outlined` otherwise.
    */
-  appearance?: 'outlined' | 'filled';
+  appearance?: 'outlined' | 'filled' | undefined;
   /**
    * Height step from the shared `--cinder-control-height-*` scale, forwarded to the inner
    * Input: `sm` 28px, `md` 32px, `lg` 40px.

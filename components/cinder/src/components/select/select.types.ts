@@ -125,7 +125,7 @@ export type SelectProps<T extends string = string> = Omit<
    * variant has no fill and ignores it; `inline` is outlined unless `"filled"` is set. The
    * native caret never shows: the Cinder chevron is the only one.
    */
-  appearance?: 'outlined' | 'filled';
+  appearance?: 'outlined' | 'filled' | undefined;
   /**
    * Colour of the value. `accent` draws it in the accent colour and weight, for the one select that
    * names what the container it sits in is about to do (the agent a new chat is with), beside
