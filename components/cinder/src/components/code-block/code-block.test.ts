@@ -186,6 +186,91 @@ describe('CodeBlock — static structure', () => {
     expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
   });
 
+  test('the copy button is named for the language it copies', () => {
+    const { container } = render(CodeBlock, {
+      code: 'SELECT 1;',
+      language: 'sql',
+      highlight: false,
+      copyable: true,
+    });
+    expect(container.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy sql code',
+    );
+  });
+
+  test('copyFloating floats the copy button with no header row of its own', async () => {
+    const { container } = render(CodeBlock, {
+      code: 'SELECT 1;',
+      language: 'sql',
+      highlight: false,
+      copyable: true,
+      copyFloating: true,
+      languageLabelVisible: false,
+    });
+    const block = container.querySelector('.cinder-code-block');
+    expect(block?.classList.contains('cinder-code-block--floating-meta')).toBe(true);
+    expect(container.querySelector('.cinder-code-block__language')).toBeNull();
+    expect(container.querySelector('.cinder-copy-button')).not.toBeNull();
+
+    const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \.cinder-code-block__meta\s*\{[^}]*position:\s*absolute/s,
+    );
+  });
+
+  test('streaming withholds copy, shows its status, and puts the caret after the last character', () => {
+    const { container } = render(CodeBlock, {
+      code: 'SELECT id',
+      language: 'sql',
+      copyable: true,
+      streaming: true,
+      languageLabelVisible: false,
+    });
+    const block = container.querySelector('.cinder-code-block');
+    expect(block?.classList.contains('cinder-code-block--streaming')).toBe(true);
+    expect(block?.getAttribute('aria-busy')).toBe('true');
+    expect(container.querySelector('.cinder-copy-button')).toBeNull();
+    expect(container.querySelector('.cinder-code-block__status')?.textContent).toBe('Writing…');
+
+    const code = container.querySelector('pre code');
+    const caret = code?.lastElementChild;
+    expect(caret?.classList.contains('cinder-code-block__caret')).toBe(true);
+    expect(caret?.getAttribute('aria-hidden')).toBe('true');
+    // The caret is drawn, not text: the code reads and copies exactly as written.
+    expect(code?.textContent).toBe('SELECT id');
+  });
+
+  test('streaming does not highlight until the last token, then copy returns', async () => {
+    const highlighter = mock(contextHighlighter);
+    const view = renderWithContext(highlighter, {
+      code: 'SELECT id',
+      language: 'sql',
+      copyable: true,
+      streaming: true,
+    });
+    await Promise.resolve();
+    expect(highlighter).not.toHaveBeenCalled();
+
+    await view.rerender({
+      highlighter,
+      component: CodeBlock,
+      childProps: { code: 'SELECT id FROM users;', language: 'sql', copyable: true },
+    });
+    await waitFor(() => expect(highlighter).toHaveBeenCalled());
+    expect(view.container.querySelector('.cinder-copy-button')).not.toBeNull();
+    expect(view.container.querySelector('.cinder-code-block__caret')).toBeNull();
+    expect(view.container.querySelector('.cinder-code-block__status')).toBeNull();
+  });
+
+  test('streamingLabel replaces the default status', () => {
+    const { container } = render(CodeBlock, {
+      code: 'x',
+      streaming: true,
+      streamingLabel: 'Receiving',
+    });
+    expect(container.querySelector('.cinder-code-block__status')?.textContent).toBe('Receiving');
+  });
+
   test('copyable=true renders the copy button in iconOnly mode (no text label)', () => {
     const { container } = render(CodeBlock, { code: 'x', copyable: true });
     const button = container.querySelector('.cinder-copy-button');

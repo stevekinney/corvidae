@@ -177,6 +177,27 @@ describe('markdown preview streamed appends', () => {
     expect(preview?.querySelector('p')?.textContent).toBe(replacement);
   });
 
+  test('a fenced code block is always copyable from a floating Copy named for its language', async () => {
+    const pending = await installDeferredRenderer();
+    const content = '```sql\nSELECT 1;\n```';
+    const view = render(MarkdownPreview, { props: { content } });
+    const preview = view.container.querySelector('.message-content-preview');
+
+    await waitFor(() => expect(pending.some((entry) => entry.content === content)).toBe(true));
+    renderFor(pending, content).resolve(
+      '<cinder-markdown-node data-cinder-markdown-kind="code-block" data-language="sql" data-cinder-markdown-index="0"><pre><code>SELECT 1;</code></pre></cinder-markdown-node>',
+    );
+    await waitFor(() => expect(preview?.querySelector('.cinder-code-block')).not.toBeNull());
+
+    const block = preview?.querySelector('.cinder-code-block');
+    expect(block?.closest('[data-cinder-markdown-node="code-block"]')).not.toBeNull();
+    expect(block?.classList.contains('cinder-code-block--floating-meta')).toBe(true);
+    expect(block?.querySelector('.cinder-code-block__language')).toBeNull();
+    expect(block?.querySelector('.cinder-copy-button')?.getAttribute('aria-label')).toBe(
+      'Copy sql code',
+    );
+  });
+
   test('turning links or images off drops the old presentation for plain text', async () => {
     const pending = await installDeferredRenderer();
     const content = 'See [docs](https://example.test/) and ![pixel](https://example.test/p.png)';

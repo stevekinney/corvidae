@@ -71,11 +71,26 @@ export type CodeBlockProps = {
   /** When true, render an icon-only copy button above the code. The block has no header bar or frame. */
   copyable?: boolean;
   /**
+   * Float the copy button (and the language label, when shown) over the top inline-end corner of
+   * the code instead of giving them a row above it. The copy button is named for the language it
+   * copies, such as "Copy sql code". Defaults to `false`. @default false
+   */
+  copyFloating?: boolean;
+  /**
    * Whether to render the language label above the code. Default `true`.
    * Pass `false` to keep `language`-driven highlighting without the visible
    * label; with `copyable` also unset, nothing renders above the code.
    */
   languageLabelVisible?: boolean;
+  /**
+   * The code is still arriving, as in a streamed reply with an open fence. A caret follows the
+   * final character, `streamingLabel` shows where the copy button will be, the copy button is
+   * withheld, and the bottom edge is dashed. Highlighting waits until it is `false`. Defaults to
+   * `false`. @default false
+   */
+  streaming?: boolean;
+  /** The status shown while `streaming`. Defaults to `'Writing…'`. @default 'Writing…' */
+  streamingLabel?: string;
   /**
    * Show a scroll-driven fade on the horizontal (inline) edges of the code
    * viewport as a long line overflows — signals "this line continues" rather

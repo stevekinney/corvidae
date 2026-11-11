@@ -21,6 +21,7 @@
 </script>
 
 <script lang="ts">
+  import { CodeBlock } from '@lostgradient/cinder';
   import { classNames } from '../../../utilities/class-names.ts';
   import MarkdownPreview from './markdown-preview.svelte';
 
@@ -95,6 +96,19 @@
 
   // The raw tail text during streaming (displayed with pre-wrap + cursor)
   const streamingTail = $derived(streaming ? (streamingSplit?.tail ?? '') : '');
+
+  /**
+   * An unclosed code fence at the end of a streaming message, read as the code typed so far. The
+   * info string on the fence line is not code; the code starts on the next line.
+   */
+  function readOpenFence(tail: string): { code: string } | undefined {
+    if (!tail.startsWith('```')) return undefined;
+    const firstLineBreak = tail.indexOf('\n');
+    return { code: firstLineBreak === -1 ? '' : tail.slice(firstLineBreak + 1) };
+  }
+
+  // While a fence is open, its code streams inside a code block rather than as raw text.
+  const openFence = $derived(streaming ? readOpenFence(streamingTail) : undefined);
   const hasStreamingProgress = $derived(streaming && effectiveContent.trim().length > 0);
 
   // Whether truncation is active (used by parent to show ellipsis indicator)
@@ -109,7 +123,20 @@
   {#if displayContent}
     <MarkdownPreview content={displayContent} {markdownNode} />
   {/if}
-  {#if streaming && streamingTail}
+  {#if openFence}
+    <!-- The open fence's code renders as it arrives: a caret after its final character, a
+         Writing… status where Copy will be, and no Copy until the fence closes. -->
+    <div class="message-content-wide" data-cinder-markdown-node="code-block">
+      <CodeBlock
+        code={openFence.code}
+        copyable
+        copyFloating
+        languageLabelVisible={false}
+        scrollFadeVisible
+        streaming
+      />
+    </div>
+  {:else if streaming && streamingTail}
     <span class="message-content-tail">{streamingTail}</span>
   {/if}
   {#if hasStreamingProgress}

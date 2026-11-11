@@ -1335,6 +1335,101 @@ test.describe('chat harness — streamed Markdown appends (COR-2256)', () => {
   });
 });
 
+test.describe('chat harness — code blocks (COR-2276)', () => {
+  const wideSelect =
+    'SELECT id, name, created_at, email_address, account_status, last_seen_at, billing_plan, feature_flags FROM users WHERE active = true';
+
+  async function horizontalBounds(locator: Locator): Promise<{ left: number; right: number }> {
+    return locator.evaluate((element) => {
+      const box = element.getBoundingClientRect();
+      return { left: box.left, right: box.right };
+    });
+  }
+
+  test('keeps a wide assistant code block inside its timeline with a named floating Copy', async ({
+    browser,
+  }) => {
+    const { harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      await harness
+        .locator('#harness-reply-text')
+        .fill(['Here is the query:', '```sql', wideSelect, '```'].join('\n'));
+      await harness.locator('#harness-reply-mode').getByText('Instant', { exact: true }).click();
+      await harness.locator('[data-testid="send-reply"]').click();
+
+      const assistant = harness.locator('[data-role="assistant"]').last();
+      const block = assistant.locator(
+        '[data-cinder-markdown-node="code-block"] .cinder-code-block',
+      );
+      await expect(block).toBeVisible();
+      await expect(block.getByRole('button', { name: 'Copy sql code' })).toBeVisible();
+      await expect(block.locator('.cinder-code-block__language')).toHaveCount(0);
+
+      const timeline = harness.locator('.chat-timeline').first();
+      const timelineBounds = await horizontalBounds(timeline);
+      const blockBounds = await horizontalBounds(block);
+      expect(blockBounds.left).toBeGreaterThanOrEqual(timelineBounds.left - 1);
+      expect(blockBounds.right).toBeLessThanOrEqual(timelineBounds.right + 1);
+
+      // The long line scrolls inside the block, and its first characters are not clipped.
+      const viewport = block.locator('.cinder-code-block__viewport');
+      expect(await viewport.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(
+        true,
+      );
+      const codeBounds = await horizontalBounds(block.locator('pre code'));
+      expect(codeBounds.left).toBeGreaterThanOrEqual(blockBounds.left);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('streams an open SQL fence in a code block with a caret and Writing status', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      await holdStreamOpen(page);
+      await harness
+        .locator('#harness-reply-text')
+        .fill(['Here is the query:', '', '```sql', wideSelect].join('\n'));
+      await harness.locator('#harness-reply-mode').getByText('Streaming', { exact: true }).click();
+      await harness
+        .locator('#harness-stream-mechanism')
+        .getByText('Imperative', { exact: true })
+        .click();
+      await harness.locator('[data-testid="send-reply"]').click();
+
+      const assistant = harness.locator('[data-role="assistant"]').last();
+      const block = assistant.locator('.cinder-code-block--streaming');
+      await expect(block).toBeVisible();
+      await expect(block.locator('pre code')).toContainText('SELECT');
+      await expect(block.locator('.cinder-code-block__status')).toHaveText('Writing…');
+      await expect(block.locator('.cinder-copy-button')).toHaveCount(0);
+      await expect(block.locator('pre code .cinder-code-block__caret')).toHaveCount(1);
+      await expect(assistant.locator('.message-content-tail')).toHaveCount(0);
+
+      // The SELECT prefix is visible: the code starts inside both the block and the timeline.
+      const timelineBounds = await horizontalBounds(harness.locator('.chat-timeline').first());
+      const blockBounds = await horizontalBounds(block);
+      const codeBounds = await horizontalBounds(block.locator('pre code'));
+      expect(blockBounds.left).toBeGreaterThanOrEqual(timelineBounds.left - 1);
+      expect(codeBounds.left).toBeGreaterThanOrEqual(blockBounds.left);
+      const bottomStyle = await block.evaluate(
+        (element) => getComputedStyle(element).borderBottomStyle,
+      );
+      expect(bottomStyle).toBe('dashed');
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat harness — wide Markdown tables (COR-2261)', () => {
   const tableMarkdown = [
     '| Service | Owner | Region | Status | Reference |',

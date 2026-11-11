@@ -38,7 +38,10 @@
     highlight,
     highlighter,
     copyable = false,
+    copyFloating = false,
     languageLabelVisible = true,
+    streaming = false,
+    streamingLabel = 'Writing…',
     scrollFadeVisible = false,
     lineNumbers = false,
     annotations,
@@ -56,6 +59,14 @@
   const contextHighlighter = getCodeHighlighterContext();
 
   let highlighted = $state<string | null>(null);
+
+  // Code that is still arriving cannot be copied yet: the copy action returns with the last token.
+  const copyVisible = $derived(copyable && !streaming);
+  // The copy action names what it copies, so a reader of several blocks hears which one.
+  const copyLabel = $derived(language ? `Copy ${language} code` : 'Copy code');
+  const metaVisible = $derived(
+    Boolean(language && languageLabelVisible) || copyVisible || streaming,
+  );
 
   // Numbered lines and notes need one element per line. Plain code is split here; highlighted
   // code is decorated after it renders (see `code-block-lines.ts`). A highlighter that draws no
@@ -88,7 +99,9 @@
     // highlighter. The block stays the escaped plain fallback. (Default when
     // unset: highlight whenever `language` is set and a highlighter resolves.)
     const resolvedHighlighter = highlighter ?? contextHighlighter;
-    if (highlight === false || !language || resolvedHighlighter === undefined) {
+    // Streaming code stays plain, so its caret can sit after the final character; it highlights
+    // once the last token has arrived.
+    if (highlight === false || streaming || !language || resolvedHighlighter === undefined) {
       highlighted = null;
       return;
     }
@@ -156,32 +169,43 @@
             )}>{text}</span
           >{#each notes as annotation, noteIndex (noteIndex)}{@render note(
               annotation,
-            )}{/each}{/each}</code
+            )}{/each}{/each}{#if streaming}{@render caret()}{/if}</code
       ></pre>
   {:else}
-    <pre class="cinder-code-block__pre"><code class="cinder-code-block__code">{code}</code></pre>
+    <pre class="cinder-code-block__pre"><code class="cinder-code-block__code"
+        >{code}{#if streaming}{@render caret()}{/if}</code
+      ></pre>
   {/if}
 {/snippet}
+
+<!-- While streaming, a caret follows the final character inside the code itself. It is drawn, not
+     text, so it is never copied or read out. -->
+{#snippet caret()}<span class="cinder-code-block__caret" aria-hidden="true"></span>{/snippet}
 
 <div
   class={classNames(
     'cinder-code-block',
     lineNumbers && 'cinder-code-block--numbered',
     wrap && 'cinder-code-block--wrap',
+    copyFloating && 'cinder-code-block--floating-meta',
+    streaming && 'cinder-code-block--streaming',
     className,
   )}
   style:--_cinder-code-block-digits={hasLineFeatures ? gutterDigits : undefined}
+  aria-busy={streaming ? 'true' : undefined}
 >
-  {#if (language && languageLabelVisible) || copyable}
+  {#if metaVisible}
     <div class="cinder-code-block__meta">
       {#if language && languageLabelVisible}
         <span class="cinder-code-block__language">{language}</span>
       {/if}
-      {#if copyable}
+      {#if streaming}
+        <span class="cinder-code-block__status">{streamingLabel}</span>
+      {:else if copyVisible}
         <CopyButton
           value={code}
           class="cinder-code-block__copy"
-          label="Copy code"
+          label={copyLabel}
           copiedLabel="Code copied"
           iconOnly={true}
         />

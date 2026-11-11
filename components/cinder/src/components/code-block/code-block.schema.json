@@ -18,9 +18,24 @@
       "type": "boolean",
       "description": "When true, render an icon-only copy button above the code. The block has no header bar or frame."
     },
+    "copyFloating": {
+      "type": "boolean",
+      "description": "Float the copy button (and the language label, when shown) over the top inline-end corner of\nthe code instead of giving them a row above it. The copy button is named for the language it\ncopies, such as \"Copy sql code\". Defaults to `false`.",
+      "default": false
+    },
     "languageLabelVisible": {
       "type": "boolean",
       "description": "Whether to render the language label above the code. Default `true`.\nPass `false` to keep `language`-driven highlighting without the visible\nlabel; with `copyable` also unset, nothing renders above the code."
+    },
+    "streaming": {
+      "type": "boolean",
+      "description": "The code is still arriving, as in a streamed reply with an open fence. A caret follows the\nfinal character, `streamingLabel` shows where the copy button will be, the copy button is\nwithheld, and the bottom edge is dashed. Highlighting waits until it is `false`. Defaults to\n`false`.",
+      "default": false
+    },
+    "streamingLabel": {
+      "type": "string",
+      "description": "The status shown while `streaming`. Defaults to `'Writing…'`.",
+      "default": "Writing…"
     },
     "scrollFadeVisible": {
       "type": "boolean",

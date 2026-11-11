@@ -55,6 +55,29 @@
     }
   }
 
+  /* Code is bounded by the message it belongs to, not centred past it: a wide block centred on a
+   * narrower message started beyond the timeline's leading clipping edge, which cut off its first
+   * characters. A long line scrolls inside the block instead. Tables and Mermaid keep the wide
+   * layout above. */
+  .cinder-chat .message-content-wide[data-cinder-markdown-node='code-block'] {
+    inline-size: 100%;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    margin-inline: 0;
+    overflow-x: visible;
+  }
+
+  /* One hairline frames Chat's code; an open fence keeps its dashed bottom edge. */
+  .cinder-chat .message-content-wide[data-cinder-markdown-node='code-block'] .cinder-code-block {
+    border: 1px solid var(--cinder-border-muted);
+  }
+
+  .cinder-chat
+    .message-content-wide[data-cinder-markdown-node='code-block']
+    .cinder-code-block--streaming {
+    border-block-end: 1px dashed var(--cinder-border-strong);
+  }
+
   .cinder-chat.chat-container {
     /* One host-facing control drives the complete chat type ramp. The lower
      * clamps keep labels and metadata legible when Chat is embedded in a

@@ -518,4 +518,53 @@
       box-shadow: none;
     }
   }
+
+  /* ── Floating copy (`copyFloating`) ──────────────────────────────────────
+   * The meta row takes no row of its own: it floats over the top inline-end corner of the code,
+   * so a block without a visible language label has no header at all. */
+  .cinder-code-block--floating-meta {
+    position: relative;
+  }
+
+  .cinder-code-block--floating-meta .cinder-code-block__meta {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline-end: 0;
+    z-index: 1;
+    padding: var(--cinder-space-1);
+  }
+
+  .cinder-code-block--floating-meta .cinder-code-block__meta .cinder-copy-button {
+    background: var(--cinder-code-block-background);
+  }
+
+  /* ── Streaming (`streaming`) ─────────────────────────────────────────────
+   * Code that is still arriving: a status where the copy action will be, a caret after the final
+   * character, and a dashed bottom edge that says the block is open. */
+  .cinder-code-block--streaming {
+    border-block-end: 1px dashed var(--cinder-border-strong);
+    border-end-start-radius: 0;
+    border-end-end-radius: 0;
+  }
+
+  .cinder-code-block__status {
+    margin-inline-start: auto;
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-code-block__caret {
+    display: inline-block;
+    inline-size: 0.5ch;
+    block-size: 1lh;
+    margin-inline-start: 1px;
+    vertical-align: top;
+    background: currentColor;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-code-block__caret {
+      background: CanvasText;
+    }
+  }
 }

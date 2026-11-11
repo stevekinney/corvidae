@@ -247,12 +247,29 @@
 
 {#snippet renderDefaultNode(node: ChatMarkdownNode)}
   <div class="message-content-wide" data-cinder-markdown-node={node.kind}>
-    {#if node.kind === 'code-block' || node.kind === 'mermaid'}
-      {#if node.language || node.kind === 'mermaid'}
-        <CodeBlock code={node.text} language={node.language ?? 'mermaid'} />
+    {#if node.kind === 'code-block'}
+      <!-- Chat code is always copyable: a floating Copy named for its language, no header row,
+           and a fade at the inline end while a long line continues. -->
+      {#if node.language}
+        <CodeBlock
+          code={node.text}
+          language={node.language}
+          copyable
+          copyFloating
+          languageLabelVisible={false}
+          scrollFadeVisible
+        />
       {:else}
-        <CodeBlock code={node.text} />
+        <CodeBlock
+          code={node.text}
+          copyable
+          copyFloating
+          languageLabelVisible={false}
+          scrollFadeVisible
+        />
       {/if}
+    {:else if node.kind === 'mermaid'}
+      <CodeBlock code={node.text} language={node.language ?? 'mermaid'} />
     {:else if node.kind === 'table'}
       <MarkdownTableScroller html={node.html} />
     {:else}
