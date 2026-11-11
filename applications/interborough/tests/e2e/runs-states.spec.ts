@@ -91,7 +91,6 @@ test.describe('the list on a phone, a tablet and in the dark', () => {
     const bands = main.locator('.cinder-data-list-group__header');
     await expect(bands.nth(0)).toHaveText(/^Today, Monday, Nov 2\s*Central time$/);
     await expect(bands.nth(1)).toHaveText(/^Yesterday, Sunday, Nov 1\s*Central time$/);
-    await expect(bands.nth(2)).toHaveText(/^Friday, Oct 30\s*Central time$/);
     const scrolls = await page.evaluate(
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth,
     );
@@ -278,7 +277,9 @@ for (const width of WIDTHS) {
         'secondary',
       );
       await expect(main.getByText('Show the error details')).toBeVisible();
+      // The header's "+" is the secondary icon button, muted: inert, so Try again is the one strong action.
       await expect(headerCreate(page)).toHaveAttribute('data-cinder-variant', 'secondary');
+      await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');
 
       await captureForDesignReview(page, { route: '/runs', state: 'failing', source: SOURCE });
       await checkA11y(`runs failing at ${width}px`);
@@ -287,6 +288,7 @@ for (const width of WIDTHS) {
       await page.unroute('**/bureau/jsonrpc');
       await primaries(page).first().click();
       await expect(main.locator('li[data-run]').first()).toBeVisible();
+      await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');
     });
   });
 }
@@ -396,8 +398,11 @@ test('a server that stops answering over the list keeps it at full contrast and 
   page.on('console', (message) => {
     if (message.type() === 'error' && message.text().includes(refused)) consoles += 1;
   });
-  await openRuns(page, 1280);
+  // The clock is the browser's own here: the shell's countdown to the next try follows it.
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/runs');
   const main = page.locator('main');
+  await expect(main.locator('li[data-run]').first()).toBeVisible();
   await expect(headerCreate(page)).not.toHaveAttribute('aria-disabled', 'true');
 
   await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));

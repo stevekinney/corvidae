@@ -341,8 +341,9 @@
   <!-- While the server gives no answer the shell draws its banner above the page; this region is
        how the header's "+" and the first-use state's Start run join the controls it holds. -->
   <StaleRegion stale={connection.unreachable} reason={CONNECTION_COPY.changesOff}>
-    <!-- Starting a run needs no list, so the "+" stays live while the list loads or fails. Under a
-         full error state the header draws it muted, so Try again is the one strong action. -->
+    <!-- Starting a run needs no list, so the "+" stays live while the list loads (row 14m). Under a
+         full error state it is drawn muted (inert, with its reason as its description), so Try again
+         is the one strong action (row 53b). -->
     <PageHeader
       title={TASK_COPY.listHeading}
       description={TASK_COPY.list.description}
@@ -352,6 +353,7 @@
         label: TASK_COPY.startRun,
         href: router.href(START_RUN_PATH),
         onclick: (event: MouseEvent) => open(event, START_RUN_PATH),
+        ...(failed ? { inertReason: TASK_COPY.list.loadFailed.startOffReason } : {}),
       }}
     />
 

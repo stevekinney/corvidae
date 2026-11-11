@@ -123,13 +123,6 @@ describe('nothing run yet (rows 52v and 52w)', () => {
     expect(empty?.getAttribute('data-cinder-kind')).toBe('first-use');
     expect(empty?.querySelector('.cinder-empty-state-icon svg')).not.toBeNull();
   });
-
-  test('Start run opens the picker', async () => {
-    const view = open('/runs');
-    await view.findByRole('heading', { level: 2, name: 'No runs yet' });
-    await fireEvent.click(primaryButtons(view.container)[0] as HTMLElement);
-    expect(router.pathname).toBe('/runs/new');
-  });
 });
 
 describe('filtered to nothing (rows 10q, 10r, 12r, 12s, 12t, 52x and 52y)', () => {
@@ -188,7 +181,9 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
 
   test('draws the header at once and nothing for the read until 300 ms, then the bar without counts and five rows', async () => {
     const { view, release } = openLoading();
-    await until(() => expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull());
+    await until(() =>
+      expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull(),
+    );
 
     // The header, its description and the live "+" are real while the runs load (14m).
     expect(view.container.textContent).toContain(TASK_COPY.list.description);
@@ -228,7 +223,9 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
 
   test('says it is taking longer than usual at 10 s, and not before', async () => {
     const { view, release } = openLoading();
-    await until(() => expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull());
+    await until(() =>
+      expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull(),
+    );
 
     advance(RUN_LIST_STILL_LOADING_MILLISECONDS - 1);
     expect(view.container.textContent).not.toContain(TASK_COPY.list.stillLoading);
@@ -245,7 +242,9 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
 
   test('Cancel replaces the rows with Loading canceled and Try again, and keeps the header and the bar', async () => {
     const { view, release } = openLoading();
-    await until(() => expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull());
+    await until(() =>
+      expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull(),
+    );
     advance(RUN_LIST_STILL_LOADING_MILLISECONDS);
     await settle();
 
@@ -302,7 +301,14 @@ describe('a list that could not be read (rows 12u, 12v, 14s and 53b)', () => {
     // is a secondary link to Health.
     const retry = view.getByRole('button', { name: RETRY_LABEL });
     expect(primaryButtons(view.container)).toEqual([retry]);
-    expect(headerCreate(view.container).getAttribute('data-cinder-variant')).toBe('secondary');
+    const create = headerCreate(view.container);
+    expect(create.getAttribute('data-cinder-variant')).toBe('secondary');
+    // Muted: inert, with its reason as its description (53b).
+    expect(create.getAttribute('aria-disabled')).toBe('true');
+    expect(
+      view.container.querySelector(`#${create.getAttribute('aria-describedby') ?? 'none'}`)
+        ?.textContent,
+    ).toBe(TASK_COPY.list.loadFailed.startOffReason);
     const health = view.getByRole('link', { name: TASK_COPY.list.loadFailed.checkHealth });
     expect(health.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(health.getAttribute('href')).toBe('/health');

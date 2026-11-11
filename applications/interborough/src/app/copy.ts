@@ -4848,6 +4848,8 @@ export const TASK_COPY = {
           : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
       /** The server did not answer at all. */
       unreachable: 'The server did not answer. Check that Interborough is running, then try again.',
+      /** Why the header's "+" is drawn muted and does nothing while this state shows (row 53b). */
+      startOffReason: 'Start run is off until the runs load.',
       /** The second action: Health says whether the host is up. */
       checkHealth: 'Check Health',
       healthPath: '/health',
@@ -5412,8 +5414,7 @@ export const CAPABILITIES_COPY = {
    */
   filteredCount: {
     tools: (shown: number, total: number): string => `${String(shown)} of ${String(total)} tools`,
-    skills: (shown: number, total: number): string =>
-      `${String(shown)} of ${String(total)} skills`,
+    skills: (shown: number, total: number): string => `${String(shown)} of ${String(total)} skills`,
   },
   /** What a tab's count reads while its list has not arrived (rows 32f, 32t): a dash, never a zero. */
   tabCountPending: '–',
