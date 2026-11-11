@@ -251,7 +251,7 @@ export function explain(selection: Selection, changed: readonly string[]): strin
 
 // --- Running -----------------------------------------------------------------------------------
 
-function turbo(
+export function turbo(
   args: string[],
   environment: Record<string, string | undefined>,
   root: string,

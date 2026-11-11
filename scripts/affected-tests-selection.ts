@@ -216,7 +216,6 @@ export function selectTests(input: SelectionInput): Selection {
   const { workspaces, tree } = input;
   const paths = new Set(tree.paths);
   for (const path of input.changed) paths.add(path);
-  const changed = [...new Set(input.changed)];
   const { edges, importers, analyses, typeImported } = buildGraph(tree, paths, workspaces);
 
   const seeds = new Map<string, Reason>();
@@ -274,6 +273,12 @@ export function selectTests(input: SelectionInput): Selection {
     (literalsByName.get(posix.basename(path)) ?? [])
       .filter(({ literal }) => path === literal || path.endsWith(`/${literal}`))
       .map(({ file }) => file);
+  // GitHub's own files (workflows, templates) run only on GitHub, so a local test can observe one
+  // only by naming it. Unnamed, a `.github/` file selects nothing, instead of the whole repository
+  // through the rule for data the graph cannot attribute.
+  const changed = [...new Set(input.changed)].filter(
+    (path) => !path.startsWith('.github/') || filesNaming(path).length > 0,
+  );
   for (const path of changed) {
     const workspace = owningWorkspace(path, workspaces);
     const rootLevel = workspace.directory === '';

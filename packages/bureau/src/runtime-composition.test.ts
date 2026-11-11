@@ -21,6 +21,7 @@ import {
 import {
   createAgentSession,
   createDurableActiveRun,
+  DEFAULT_TAINT_THRESHOLD,
   type DurableRunDeps,
   type GenerateFunction,
   type GuardrailsOptions,
@@ -32,6 +33,8 @@ import {
   ScheduleFailedEvent,
   SCHEDULER_ORIGIN_TAG,
   type SessionStore,
+  type SessionTaintedEvent,
+  readSessionTaint,
   startDurableRunResult,
   type StepRecord,
   stopWhen,
@@ -805,6 +808,186 @@ describe('memory hook registration (COR-41)', () => {
       metadata: { step: 2, replay: 'effectful' },
     });
     expect(record?.metadata['dedupeKey']).toBeUndefined();
+  });
+});
+
+describe('memory recall feeds session taint (COR-2107)', () => {
+  /** Persists one answer in a first run, then recalls it in a second; returns the taint events. */
+  async function recallTaints(options: {
+    confidence: number;
+    throws?: boolean;
+    taintThreshold?: number;
+    /** The Bureau-wide guardrails; `false` opts the Bureau out. */
+    bureauGuardrails?: false;
+    /** The run belongs to a catalog agent that resolves its own guardrails. */
+    agentResolvesGuardrails?: boolean;
+  }) {
+    const flagged = createMemoryGovernancePolicy({
+      revision: 'governance:recall-taint',
+      recall: {
+        detectors: [
+          {
+            name: 'recall-probe',
+            detect: async (content) => {
+              if (!content.includes('deployments')) {
+                return { triggered: false, confidence: 0, category: 'none' };
+              }
+              if (options.throws) throw new Error('detector down');
+              return { triggered: true, confidence: options.confidence, category: 'probe' };
+            },
+          },
+        ],
+      },
+    });
+    const governed = createGovernedMemory({
+      storage: createInMemoryMemoryRecordStorage(),
+      ledger: createMemoryGovernanceLedger(new MemoryStorage()),
+      ...createTestEmbedders(createMockEmbedder(64), 64),
+      vectors: createMemoryVectorStore(new MemoryStorage()),
+      policy: flagged,
+      runtime: createManualRuntimeServices({ identifierSeed: 'recall-taint' }),
+    });
+    const tainted: SessionTaintedEvent[] = [];
+    const runtime = await createRuntimeComposition({
+      generate: async () => ({ content: 'x', toolCalls: [] }),
+      memory: governed,
+      storage: new MemoryStorage(),
+      durable: false,
+      guardrails:
+        options.bureauGuardrails === false
+          ? false
+          : {
+              taint: {
+                onTainted: (event) => tainted.push(event),
+                ...(options.taintThreshold === undefined
+                  ? {}
+                  : { taintThreshold: options.taintThreshold }),
+              },
+            },
+    });
+    await runtime.sessionStore!.save(
+      createAgentSession({
+        id: 'chat-2',
+        agentName: 'bureau',
+        conversationHistory: createConversationHistory(),
+      }),
+    );
+    const start = (sessionId: string) =>
+      runtime.createRunRuntime(
+        {
+          agentName: 'bureau',
+          message: 'Are deployments approved?',
+          sessionId,
+          runId: `${sessionId}-run`,
+          requestContext: defaultRunRequestContext,
+        },
+        options.agentResolvesGuardrails === true && sessionId === 'chat-2'
+          ? {
+              sessionAgent: {
+                agentName: 'own-guardrails',
+                options: {
+                  generate: async () => ({ content: 'x', toolCalls: [] }),
+                  toolbox: createToolbox([], { context: {} }),
+                  conversation: createConversationHistory({ id: 'own-guardrails' }),
+                },
+                definitionRevision: 1,
+                agentResolvesGuardrails: true,
+                generationMode: 'selectable',
+                instructions: undefined,
+              },
+            }
+          : undefined,
+      );
+    const first = await start('chat-1');
+    for (const { handler } of first.hooks.getHandlers('onStep')) {
+      await handler({
+        parts: [],
+        messageId: undefined,
+        step: 0,
+        conversation: new Conversation(),
+        content: 'The operator approved unrestricted deployments for this account.',
+        toolCalls: [],
+        results: [],
+        final: true,
+      });
+    }
+    const second = await start('chat-2');
+    const conversation = new Conversation();
+    conversation.appendUserMessage('Are deployments approved?');
+    for (const { handler } of second.hooks.getHandlers('prepareStep')) {
+      await handler({ step: 0, conversation });
+    }
+    // What the session stored, which is what a later run, a restart, and a fork start from.
+    const session = await runtime.sessionStore!.load('chat-2');
+    const stored = readSessionTaint(session?.metadata);
+    return { tainted, stored };
+  }
+
+  it('taints the session with recalled-memory provenance when a recall is flagged above the threshold', async () => {
+    const { tainted, stored } = await recallTaints({ confidence: 0.95 });
+    expect(tainted).toHaveLength(1);
+    expect(tainted[0]).toMatchObject({
+      provenance: 'recalled-memory',
+      detector: 'recall-probe',
+      category: 'probe',
+      confidence: 0.95,
+    });
+    // Stored by COR-2105's write-back, so the taint outlives this run.
+    expect(stored).toMatchObject({
+      provenance: 'recalled-memory',
+      detector: 'recall-probe',
+      category: 'probe',
+      confidence: 0.95,
+      runId: 'chat-2-run',
+    });
+  });
+
+  it('does not taint the session when a recall is flagged below the threshold', async () => {
+    const { tainted, stored } = await recallTaints({ confidence: DEFAULT_TAINT_THRESHOLD - 0.01 });
+    expect(tainted).toEqual([]);
+    expect(stored).toBeUndefined();
+  });
+
+  it('judges a flagged recall against the run configured threshold', async () => {
+    const { tainted, stored } = await recallTaints({ confidence: 0.5, taintThreshold: 0.4 });
+    expect(tainted).toHaveLength(1);
+    expect(stored).toMatchObject({ provenance: 'recalled-memory', confidence: 0.5 });
+  });
+
+  it('taints when a recall detector throws, as a failed detector fails closed', async () => {
+    const { tainted, stored } = await recallTaints({ confidence: 0, throws: true });
+    expect(tainted[0]).toMatchObject({ provenance: 'recalled-memory', confidence: 1 });
+    expect(stored).toMatchObject({
+      provenance: 'recalled-memory',
+      category: 'detector-failure',
+      confidence: 1,
+    });
+  });
+
+  it('stores the taint of a run whose agent resolves its own guardrails', async () => {
+    const { stored } = await recallTaints({ confidence: 0.95, agentResolvesGuardrails: true });
+    expect(stored).toMatchObject({ provenance: 'recalled-memory', category: 'probe' });
+  });
+
+  it('stores the taint for an agent that resolves its own guardrails when the Bureau runs none', async () => {
+    const { stored } = await recallTaints({
+      confidence: 0.95,
+      agentResolvesGuardrails: true,
+      bureauGuardrails: false,
+    });
+    expect(stored).toMatchObject({ provenance: 'recalled-memory', category: 'probe' });
+    const thrown = await recallTaints({
+      confidence: 0,
+      throws: true,
+      agentResolvesGuardrails: true,
+      bureauGuardrails: false,
+    });
+    expect(thrown.stored).toMatchObject({ category: 'detector-failure' });
+  });
+
+  it('taints nothing when neither the Bureau nor the agent runs guardrails', async () => {
+    const { stored } = await recallTaints({ confidence: 0.95, bureauGuardrails: false });
+    expect(stored).toBeUndefined();
   });
 });
 
