@@ -750,6 +750,8 @@ export function createRunCreation<D extends AgentDefinitions>(
           stopWhen: sessionAgent?.options.stopWhen,
           // AB-260: the bureau's single composed RuntimeServices instance,
           // snapshotted into every run it starts.
+          // COR-2387 — a detector failure on this run's tool results taints its session.
+          onToolResultTaint: runRuntime.onToolResultTaint,
           runtime: runtimeServices,
           ...(runSteeringGate ? { steering: runSteeringGate } : {}),
           // COR-1269 — stamped onto this run's hook-plan observations.

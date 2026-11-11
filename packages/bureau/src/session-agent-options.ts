@@ -78,6 +78,8 @@ export const SESSION_AGENT_OPTION_DISPOSITIONS = {
   parentSignals: 'run',
 
   runtime: 'bureau',
+  // COR-2387: the session's taint store, wired where Bureau composes the run.
+  onToolResultTaint: 'bureau',
   sessionId: 'bureau',
   sessionInput: 'bureau',
   steering: 'bureau',

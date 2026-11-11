@@ -8,7 +8,7 @@ import { ToolSettledBubbleEvent } from '../events';
 import { isFailureFinishReason } from '../finish-reason';
 import { scanToolResult } from '../guardrails/scan-tool-result';
 import { signalMessageIdentifier } from '../message-identifiers';
-import type { FinishReason } from '../types';
+import type { FinishReason, GuardrailFiring } from '../types';
 import {
   buildSignalContinuationInput,
   buildWakeupContinuationInput,
@@ -112,12 +112,41 @@ export function* runWorkflowPark(
     // COR-2299: the child's answer reaches the model without the run loop's scan, so the run's
     // own `validateToolResult` hooks read it here, as they would an in-loop result. Journaled, so
     // a replay writes the verdict the first pass reached.
-    const scanHooks = runDepsFrom(ctx.services).options.hooks;
+    const scanOptions = runDepsFrom(ctx.services).options;
+    const scanHooks = scanOptions.hooks;
     const step = state.pendingChildStepRecord?.step ?? state.cursor.step;
     const result: ToolExecutionResult = yield* ctx.memo(
       `child-wait-scan-${step}-${request.toolCallId}`,
       async () => {
-        const scanned = await scanToolResult(answered, { hooks: scanHooks, conversation, step });
+        const firings: GuardrailFiring[] = [];
+        const scanned = await scanToolResult(answered, {
+          hooks: scanHooks,
+          conversation,
+          step,
+          reportGuardrail: (firing) => firings.push(firing),
+        });
+        if (scanned.blocked) {
+          // COR-2387: a block taints the session (COR-2300). The tracker that refused the result
+          // stores its own taint; a handler that is no guardrail, and threw, leaves this one. A
+          // session that already holds a taint keeps it, so this never publishes twice.
+          const firing = firings[0];
+          try {
+            await scanOptions.onToolResultTaint?.({
+              reason: 'A guardrail refused the answer of a durable child wait',
+              detector:
+                scanned.tripwire?.guardrailName ?? firing?.guardrailName ?? 'tool-result-scan',
+              category:
+                scanned.tripwire?.category ??
+                firing?.category ??
+                (scanned.failed === true ? 'detector-failure' : 'blocked-tool-result'),
+              confidence: scanned.tripwire?.confidence ?? firing?.confidence ?? 1,
+              step,
+              provenance: 'tool-result',
+            });
+          } catch {
+            // The sink never rejects by contract; a stray failure must not fail the wait.
+          }
+        }
         return scanned.result;
       },
     );

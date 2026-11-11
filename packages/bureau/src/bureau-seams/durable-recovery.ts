@@ -865,6 +865,7 @@ export function createDurableRecovery<D extends AgentDefinitions>(
                     // AB-260: the bureau's single composed RuntimeServices
                     // instance, snapshotted into every run it starts — including
                     // a mocked/custom-engine reattach.
+                    onToolResultTaint: runRuntime.onToolResultTaint,
                     runtime: runtimeServices,
                     sessionId: ownedSessionId,
                     // COR-1265 — the Bureau tier, snapshotted.

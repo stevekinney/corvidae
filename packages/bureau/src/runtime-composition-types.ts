@@ -792,6 +792,8 @@ export interface RuntimeComposition {
      * production run instead of a capability nothing reaches.
      */
     hooks: HookRegistry<OperativeHookMap>;
+    /** COR-2387 — stores the taint a scan outside the run loop raises; never rejects. */
+    onToolResultTaint: SessionTaintSeam['onTainted'];
     getActiveSkillRecords: () => readonly SkillActivationRecord[];
     /**
      * Settles once the active skills the run was given have been re-validated against the live

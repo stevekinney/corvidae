@@ -74,8 +74,8 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     if (!input && taintTracker.getDetectors().length === 0) return;
 
     const onTriggered: InputGuardrailOptions['onTriggered'] = (event) => {
-      // Wire taint: if confidence exceeds threshold, taint the session
-      if (event.confidence >= taintThreshold) {
+      // Wire taint: a tripwire taints whatever its confidence (COR-2300), else the threshold applies
+      if (event.action === 'tripwire' || event.confidence >= taintThreshold) {
         taintTracker.taint({
           reason: event.detail ?? `Detection by ${event.detector}`,
           detector: event.detector,
@@ -260,7 +260,11 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
       getSessionTainted: () => taintTracker.isTainted(),
       onTriggered: (event) => {
         // A call the guardrail refuses taints the session, as a refused tool result does (COR-2300).
-        if (event.action === 'block' || event.confidence >= taintThreshold) {
+        if (
+          event.action === 'block' ||
+          event.action === 'tripwire' ||
+          event.confidence >= taintThreshold
+        ) {
           taintTracker.taint({
             reason: event.detail ?? `Detection by ${event.validator}`,
             detector: event.validator,

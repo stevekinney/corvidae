@@ -1437,6 +1437,8 @@ async function buildRuntimeComposition(
       generate,
       toolbox: runToolbox,
       hooks,
+      // COR-2387: where a scan outside the loop (a durable child wait's answer) stores its taint.
+      onToolResultTaint: taintSeam.onTainted,
       getActiveSkillRecords,
       // Records the run was given but no skill client is configured to enforce: all are refused.
       skillPolicyUnverified: () => skillPolicyUnverified,
@@ -1745,6 +1747,7 @@ async function buildRuntimeComposition(
         // reach the run that already holds the copy. COR-1577 — a named agent's own tier
         // follows it, as on a catalog dispatch.
         hooks: composeHooks({ bureau: runRuntime.hooks, agent: sessionAgent?.options.hooks }),
+        onToolResultTaint: runRuntime.onToolResultTaint,
         // AB-260: the bureau's single composed RuntimeServices instance,
         // snapshotted into every run it starts — including a recovered run
         // rebuilt here from a persisted session.
@@ -2782,6 +2785,7 @@ async function buildRuntimeComposition(
           ),
           agent: fireAgent?.options.hooks,
         }),
+        onToolResultTaint: runRuntime.onToolResultTaint,
         agentName,
         runId,
       },

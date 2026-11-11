@@ -28,7 +28,7 @@ import type { SessionInputGate, SteeringDesiredState } from './durable/types';
 import type { EffectiveContextRecord } from './effective-context-record';
 import type { AgentRunErrorCode, AgentRunErrorKind, GuardrailPhase } from './errors';
 import type { GeneratedMediaAdmitter, StepGeneratedMediaAdmitter } from './generated-media';
-import type { AssetSafetyPolicy } from './guardrails/types';
+import type { AssetSafetyPolicy, SessionTaintedEvent } from './guardrails/types';
 import type { OperativeHookMap } from './hooks';
 import type { PlanReason } from './providers/plan-reason';
 import type { DelegatedAuthority } from './providers/policy.ts';
@@ -766,6 +766,13 @@ export interface RunOptionsBase {
    * dispatched.
    */
   hooks?: HookRegistry<OperativeHookMap> | undefined;
+  /**
+   * COR-2387 — where a result scanned outside the run loop stores the taint its block raises. A
+   * durable child wait's answer reaches the model without the loop's `validateToolResult` hooks,
+   * so the park scans it, and a result a guardrail refused, or a handler that threw, taints the
+   * session through this sink. Bureau wires it to the session's taint store; it must not reject.
+   */
+  onToolResultTaint?: ((event: SessionTaintedEvent) => unknown) | undefined;
   contextManagement?: ContextManagementOptions | undefined;
   /**
    * Projects media parts to a source form the provider accepts. Without one, a

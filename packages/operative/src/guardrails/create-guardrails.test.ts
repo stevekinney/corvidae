@@ -829,3 +829,43 @@ describe('createGuardrails with an action per guardrail', () => {
     ).toBeInstanceOf(TypeError);
   });
 });
+
+describe('a tripwire taints below the taint threshold, in every family (COR-2387)', () => {
+  const lowConfidence: DetectionResult = { ...triggeredDetection, confidence: 0.5 };
+
+  it('taints on an input tripwire', async () => {
+    const taints: SessionTaintedEvent[] = [];
+    const { prepareStep, taint } = createGuardrails({
+      mode: 'tripwire',
+      input: { detectors: [createMockDetector('sentinel', lowConfidence)] },
+      taint: { taintThreshold: 0.9, onTainted: (event) => taints.push(event) },
+    });
+    expect(await rejectionOf(prepareStep(createTestContext()))).toBeInstanceOf(
+      GuardrailTripwireError,
+    );
+    expect(taint.isTainted()).toBe(true);
+    expect(taints).toEqual([expect.objectContaining({ detector: 'sentinel', confidence: 0.5 })]);
+  });
+
+  it('taints on a tool-call tripwire', async () => {
+    const taints: SessionTaintedEvent[] = [];
+    const { beforeToolExecution, taint } = createGuardrails({
+      mode: 'tripwire',
+      tools: {
+        validators: [
+          {
+            name: 'order-cap',
+            validate: async () => ({ valid: false, category: 'order-limit', confidence: 0.5 }),
+          },
+        ],
+      },
+      taint: { taintThreshold: 0.9, onTainted: (event) => taints.push(event) },
+    });
+    const call = { id: 'call-1', name: 'refund', arguments: {} };
+    const context = { ...createTestContext(), toolCalls: [call] };
+    const thrown = await rejectionOf(beforeToolExecution(context));
+    expect(thrown).toBeInstanceOf(GuardrailTripwireError);
+    expect(taint.isTainted()).toBe(true);
+    expect(taints).toEqual([expect.objectContaining({ detector: 'order-cap', confidence: 0.5 })]);
+  });
+});

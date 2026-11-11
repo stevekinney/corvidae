@@ -4292,7 +4292,29 @@ async function constructBureau<const D extends AgentDefinitions>(
   ): Promise<HookRegistry<OperativeHookMap>> {
     // A run this process restarted into has no attribution; its review still names the agent.
     const agentName = runAttribution.get(runId)?.agentName ?? reviewedAgentName;
-    const agent = agentName === undefined ? undefined : agentCatalog.find(agentName);
+    let agent = agentName === undefined ? undefined : agentCatalog.find(agentName);
+    // COR-2387: a file agent is scanned with the definition its run recorded, never the catalog's
+    // current one, which an operator may have edited while the run was parked. A snapshot that
+    // cannot be rebuilt leaves the result to Bureau's own guardrails alone.
+    const recordedReference =
+      agentName === undefined ? undefined : await fileAgents?.snapshots.reference(runId);
+    if (
+      fileAgents !== undefined &&
+      agentName !== undefined &&
+      recordedReference !== undefined &&
+      recordedReference.id === agentName
+    ) {
+      try {
+        const rebuilt = await fileAgents.agentForRecordedRun(
+          agentName,
+          recordedReference.hash,
+          recordedReference.definitionRevision,
+        );
+        agent = rebuilt.agent;
+      } catch {
+        agent = undefined;
+      }
+    }
     if (agent !== undefined && hasDefinitionResolver(agent)) {
       try {
         const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('', {
