@@ -216,6 +216,8 @@
           mutating
           onclick={handleConfirmEditedApproval}
           disabled={!editParseResult.ok || isBusy}
+          aria-disabled={disabledReason === undefined ? undefined : 'true'}
+          aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
         >
           Confirm edited approval
         </Button>

@@ -352,6 +352,9 @@
     const comparisonTime = expirationTimestamp === undefined ? currentTime : Date.now();
     // An answer already on its way is the only one: a second press would answer twice.
     if (resolving !== undefined) return;
+    // Every commit path ends here (Deny, Approve, Confirm edited approval and an armed press), so
+    // a reason given after the approver edited or armed still holds the answer back.
+    if (disabledReason !== undefined) return;
     if (!isApprovalActionable(approvalState, expirationTimestamp, comparisonTime)) {
       if (approvalState === 'pending' && expirationTimestamp !== undefined) {
         currentTime = comparisonTime;
