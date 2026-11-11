@@ -162,6 +162,52 @@ describe('the lines', () => {
     expect(finished?.at).toBe(Date.parse('2026-11-02T16:33:00Z'));
   });
 
+  test('the run that continues a chat after its approval is decided adds no line of its own (COR-2016)', () => {
+    // The decision on run-5 at 16:33 starts the run that answers it, which finishes a moment later.
+    const continued = [
+      ...sampleRecords.slice(0, 3),
+      record('2026-11-02T16:33:00.050Z', 'run.completed', 'run-continue', {
+        finishReason: 'stop-condition',
+      }),
+      record(
+        '2026-11-02T16:33:00.019Z',
+        'run.started',
+        'run-continue',
+        { agentName: 'tool-runner', sessionId: 'chat-refunds' },
+        'anonymous:local',
+      ),
+      ...sampleRecords.slice(3),
+    ];
+    expect(texts(activityLines(sources({ records: continued })))).toEqual(
+      texts(activityLines(sources())),
+    );
+    const finished = activityLines(sources({ records: continued })).find(
+      (line) => line.id === 'run:run-5',
+    );
+    expect(finished?.text).toBe('Run finished, Refund order 4472');
+    expect(finished?.at).toBe(Date.parse('2026-11-02T16:33:00Z'));
+  });
+
+  test('a message sent long after a decision is a run of its own, not the decision’s continuation', () => {
+    const later = [
+      ...sampleRecords.slice(0, 3),
+      record('2026-11-02T16:41:10Z', 'run.completed', 'run-later', {
+        finishReason: 'stop-condition',
+      }),
+      record(
+        '2026-11-02T16:41:00Z',
+        'run.started',
+        'run-later',
+        { agentName: 'tool-runner', sessionId: 'chat-refunds' },
+        'anonymous:local',
+      ),
+      ...sampleRecords.slice(3),
+    ];
+    expect(texts(activityLines(sources({ records: later })))).toContain(
+      'Run finished, tool-runner',
+    );
+  });
+
   test('a run that waits on a question is for Reviews, not for this list', () => {
     expect(texts(activityLines(sources()))).not.toContain(
       'Run started, Ship the release notes fix, waiting on you',

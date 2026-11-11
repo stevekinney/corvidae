@@ -657,6 +657,12 @@ test.describe('a file that changed outside Interborough', () => {
   test('is the same state for a delete, which removes nothing', async ({ page, request }) => {
     await makeAgent(request, 'e2e-stale-delete');
     await page.goto('/agents/e2e-stale-delete/edit');
+    // The form is filled from the file as it was, and only then does the file change on disk:
+    // a form built after the edit would hold the new file's hash, and its delete would be current.
+    await expect(editor(page).locator('[data-editor="ready"]')).toBeVisible();
+    await expect(page.getByRole('textbox', { name: /^Instructions/ })).toHaveValue(
+      BASE_DEFINITION.instructions,
+    );
     const path = await agentFilePath(request, 'e2e-stale-delete');
     const original = await readFile(path, 'utf8');
     const onDisk = original.replace('end-to-end agent.', 'edited agent.');

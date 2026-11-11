@@ -323,7 +323,7 @@ for (const width of WIDTHS) {
       for (const name of [identifier, `named-${identifier.slice(6)}`, withChips, withSkills]) {
         await page.goto(`/agents/${name}`);
         await expect(page.getByRole('heading', { level: 1 })).toBeVisible();
-        expect(await fits()).toBe(true);
+        expect(await fits(), `the page of ${name}`).toBe(true);
       }
       // The same tool listed twice shows twice, without the page failing on a repeated key, and so
       // do two skills that share a name.

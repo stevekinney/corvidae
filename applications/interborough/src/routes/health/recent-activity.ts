@@ -9,7 +9,9 @@
  * waiting on you" at the time it started; once it is over it reads "Run finished" at the time
  * its last review was decided or the run ended, whichever is later, because a run that paused for
  * an approval ended its first turn long before the person said yes. A run a schedule started is
- * told by the schedule's own line, "Schedule ran".
+ * told by the schedule's own line, "Schedule ran". The run the Bureau starts to continue a chat once
+ * an approval is decided (COR-2016) is the same request going on, so its finish is the decided run's
+ * "Run finished" line, and it adds none of its own.
  *
  * The audit trail does not record that an alert fired, so the one that is firing now comes from
  * what needs attention, at the time it started.
@@ -24,6 +26,13 @@ import { activityTime, clockTime } from './health-times.ts';
 
 /** How many lines the section shows. */
 export const ACTIVITY_LINE_LIMIT = 9;
+
+/**
+ * How soon after a decision a run of the same chat must start to be the run that continues it. The
+ * Bureau starts that run as the decision commits, so it is milliseconds; a person's next message
+ * comes later.
+ */
+const CONTINUATION_START_WINDOW_MILLISECONDS = 60_000;
 
 /** One line of Recent activity. */
 export interface ActivityLine {
@@ -87,6 +96,44 @@ export function olderRunsOf(records: readonly AuditRecord[]): ReadonlySet<string
   );
 }
 
+/**
+ * The runs that continue a chat after a decision on an earlier run of it (COR-2016), each mapped to
+ * the run it continues: the first run of the chat to start after the run's last review was decided,
+ * and within {@link CONTINUATION_START_WINDOW_MILLISECONDS} of it.
+ */
+export function continuationsOf(records: readonly AuditRecord[]): ReadonlyMap<string, string> {
+  const starts = records
+    .filter(
+      (record) => record.type === 'run.started' && stringOf(record, 'sessionId') !== undefined,
+    )
+    .toSorted((left, right) => Date.parse(left.timestamp) - Date.parse(right.timestamp));
+  const decided = new Map<string, number>();
+  for (const record of records) {
+    if (!record.type.startsWith('review.')) continue;
+    const when = Date.parse(record.timestamp);
+    decided.set(record.resource, Math.max(decided.get(record.resource) ?? 0, when));
+  }
+  const continuations = new Map<string, string>();
+  for (const start of starts) {
+    const decidedAt = decided.get(start.resource);
+    if (decidedAt === undefined) continue;
+    const sessionId = stringOf(start, 'sessionId');
+    const next = starts.find(
+      (candidate) =>
+        candidate.resource !== start.resource &&
+        stringOf(candidate, 'sessionId') === sessionId &&
+        Date.parse(candidate.timestamp) >= decidedAt,
+    );
+    if (
+      next !== undefined &&
+      Date.parse(next.timestamp) - decidedAt <= CONTINUATION_START_WINDOW_MILLISECONDS
+    ) {
+      continuations.set(next.resource, start.resource);
+    }
+  }
+  return continuations;
+}
+
 /** The records that name a chat or a schedule the lines need to look up, so the loader can ask for exactly those. */
 export function lookupsFor(records: readonly AuditRecord[]): {
   readonly sessionIds: readonly string[];
@@ -142,7 +189,10 @@ export function activityLines(
     }
   }
 
-  const titleOf = (run: string): string => {
+  const continuations = continuationsOf(records);
+  const titleOf = (asked: string): string => {
+    // A continuation is named as the run it continues.
+    const run = continuations.get(asked) ?? asked;
     const begin = started.get(run);
     const sessionId = begin === undefined ? undefined : stringOf(begin, 'sessionId');
     const agent = begin === undefined ? undefined : stringOf(begin, 'agentName');
@@ -230,6 +280,8 @@ export function activityLines(
       default:
         if (RUN_ENDS.has(record.type) && ended.get(run) === record) {
           if (fired.has(run) || waitingRuns.has(run)) break;
+          // The decided run's "Run finished" stands for the continuation that finished it.
+          if (record.type === 'run.completed' && continuations.has(run)) break;
           const finished = Math.max(when, decided.get(run) ?? 0);
           const title = titleOf(run);
           push(

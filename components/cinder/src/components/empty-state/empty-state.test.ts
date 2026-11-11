@@ -185,6 +185,15 @@ test('spaces the stack with the container gap and logical margins only', async (
   expect(css).not.toContain('margin-top:');
 });
 
+test('breaks a long unbroken name inside the title and the sentence instead of overflowing', () => {
+  expect(declarationsFor(emptyStateCss, '.cinder-empty-state-title').get('overflow-wrap')).toBe(
+    'anywhere',
+  );
+  expect(
+    declarationsFor(emptyStateCss, '.cinder-empty-state-description').get('overflow-wrap'),
+  ).toBe('anywhere');
+});
+
 describe('EmptyState align', () => {
   test('centres by default and marks no alignment attribute', () => {
     const { container } = render(EmptyState, { props: { title: 'Empty' } });

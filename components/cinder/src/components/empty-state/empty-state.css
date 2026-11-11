@@ -93,12 +93,15 @@
   }
 
   /* The title is 16px semibold: it says what is missing or what happened. */
+  /* A title or sentence that names a record carries its name, and a name can be one unbroken
+   * identifier longer than the region is wide: it breaks inside rather than overflowing. */
   .cinder-empty-state-title {
     font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
     color: var(--cinder-text-default);
     margin: 0;
+    overflow-wrap: anywhere;
   }
 
   /* The sentence holds a 380px measure however wide the region is. */
@@ -108,6 +111,7 @@
     line-height: var(--cinder-leading-normal);
     color: var(--cinder-text-muted);
     margin: 0;
+    overflow-wrap: anywhere;
   }
 
   .cinder-empty-state-action {
