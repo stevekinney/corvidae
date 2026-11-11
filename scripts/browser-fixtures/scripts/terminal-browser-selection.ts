@@ -201,6 +201,25 @@ export function manifestProblems(
   return problems;
 }
 
+/**
+ * The Playwright arguments that narrow a run, which are all of them except a worker count
+ * (`--workers=<n>`, `--workers <n>`, `-j <n>`, `-j<n>`): a worker count changes how the same tests
+ * run, not which, so a run given only one still owes the completeness check.
+ */
+export function narrowingArguments(argumentsList: readonly string[]): string[] {
+  const narrowing: string[] = [];
+  for (let index = 0; index < argumentsList.length; index += 1) {
+    const argument = argumentsList[index]!;
+    if (/^(?:--workers=|-j)\S+$/.test(argument)) continue;
+    if (argument === '--workers' || argument === '-j') {
+      index += 1;
+      continue;
+    }
+    narrowing.push(argument);
+  }
+  return narrowing;
+}
+
 /** The problems with a finished run, given what was selected: every selected test must have passed. */
 export function resultProblems(
   selected: readonly SelectedTest[],

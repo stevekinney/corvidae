@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { TERMINAL_FIXTURE_NAMES } from '../src/fixtures/terminal/scenarios.ts';
 import {
   flattenReport,
+  narrowingArguments,
   resultProblems,
   selectionProblems,
   TERMINAL_FILE_FILTER,
@@ -101,8 +102,11 @@ async function main(): Promise<number> {
     const status = await run.exited;
     if (status !== 0) return status;
     const ran = flattenReport(JSON.parse(await readFile(reportPath, 'utf8')) as PlaywrightReport);
-    // Extra arguments narrow the run; what ran must still be part of the selection and pass.
-    const problems = resultProblems(selected, ran, { subset: extra.length > 0 });
+    // Extra arguments, but a worker count, narrow the run; what ran must still be part of the
+    // selection and pass.
+    const problems = resultProblems(selected, ran, {
+      subset: narrowingArguments(extra).length > 0,
+    });
     if (problems.length > 0) {
       process.stderr.write(
         `The terminal browser run did not match its selection:\n- ${problems.join('\n- ')}\n`,
