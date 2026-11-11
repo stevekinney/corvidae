@@ -3126,7 +3126,7 @@
     }
   },
   "button.radius": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Default button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3140,7 +3140,7 @@
     "$type": "dimension"
   },
   "button.radius.xs": {
-    "$value": { "value": 0.375, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Extra-small button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3154,7 +3154,7 @@
     "$type": "dimension"
   },
   "button.radius.sm": {
-    "$value": { "value": 0.375, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Small button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3168,7 +3168,7 @@
     "$type": "dimension"
   },
   "button.radius.md": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Medium button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3182,7 +3182,7 @@
     "$type": "dimension"
   },
   "button.radius.lg": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Large button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3420,10 +3420,10 @@
     "$type": "dimension"
   },
   "toggle.track.off-resting": {
-    "$value": { "colorSpace": "oklch", "components": [0.45, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.58, 0.02, 245] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(45% 0.02 245)",
+        "cssRecipe": "oklch(58% 0.02 245)",
         "cssProperty": "--cinder-toggle-track-off-resting",
         "public": true,
         "category": "color",
@@ -3434,10 +3434,10 @@
     "$type": "color"
   },
   "toggle.track.off-hover-resting": {
-    "$value": { "colorSpace": "oklch", "components": [0.52, 0.02, 245] },
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.02, 245] },
     "$extensions": {
       "com.lostgradient.cinder": {
-        "cssRecipe": "oklch(52% 0.02 245)",
+        "cssRecipe": "oklch(64% 0.02 245)",
         "cssProperty": "--cinder-toggle-track-off-hover-resting",
         "public": true,
         "category": "color",

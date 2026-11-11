@@ -51,7 +51,7 @@
     "radius": {
       "$type": "dimension",
       "$root": {
-        "$value": "{radius.medium}",
+        "$value": "{radius.full}",
         "$description": "Default button corner radius.",
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -64,7 +64,7 @@
         }
       },
       "xs": {
-        "$value": "{radius.small}",
+        "$value": "{radius.full}",
         "$description": "Extra-small button corner radius.",
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -77,7 +77,7 @@
         }
       },
       "sm": {
-        "$value": "{radius.small}",
+        "$value": "{radius.full}",
         "$description": "Small button corner radius.",
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -90,7 +90,7 @@
         }
       },
       "md": {
-        "$value": "{radius.medium}",
+        "$value": "{radius.full}",
         "$description": "Medium button corner radius.",
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -103,7 +103,7 @@
         }
       },
       "lg": {
-        "$value": "{radius.medium}",
+        "$value": "{radius.full}",
         "$description": "Large button corner radius.",
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -358,7 +358,7 @@
             "public": true,
             "category": "color",
             "component": "toggle",
-            "cssRecipe": "light-dark(var(--cinder-border-control), oklch(45% 0.02 245))"
+            "cssRecipe": "light-dark(var(--cinder-border-control), oklch(58% 0.02 245))"
           }
         }
       },
@@ -375,7 +375,7 @@
             "public": true,
             "category": "color",
             "component": "toggle",
-            "cssRecipe": "light-dark(var(--cinder-border-control-hover), oklch(52% 0.02 245))"
+            "cssRecipe": "light-dark(var(--cinder-border-control-hover), oklch(64% 0.02 245))"
           }
         }
       }

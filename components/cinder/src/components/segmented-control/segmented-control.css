@@ -16,6 +16,28 @@
        content so it only goes full-width when explicitly requested via
        data-cinder-full-width below. */
     inline-size: fit-content;
+
+    /* COR-2312: the control never stretches and never wraps. When it is wider
+       than the room it has, this box scrolls sideways, with no scrollbar: the
+       options stay reachable by scrolling and by arrow keys. Overflow on one
+       axis clips the other too, so the box keeps room for an option's focus
+       ring (box-shadow, or the forced-colors outline at a 1px offset) and hands
+       it straight back with a matching negative margin, as NavigationBar does;
+       the cap adds the room on both sides so the control itself can still
+       reach the full width of its container. */
+    --_cinder-segmented-control-ring-room: calc(
+      var(--cinder-ring-width) + max(var(--cinder-ring-offset), 1px)
+    );
+    max-inline-size: calc(100% + 2 * var(--_cinder-segmented-control-ring-room));
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: none;
+    padding: var(--_cinder-segmented-control-ring-room);
+    margin: calc(-1 * var(--_cinder-segmented-control-ring-room));
+  }
+
+  .cinder-segmented-control-container::-webkit-scrollbar {
+    display: none;
   }
 
   .cinder-segmented-control-container:has([data-cinder-full-width]) {
@@ -23,8 +45,9 @@
     /* Logical, not physical `width` — mixing the two for the same axis on one
        element is ambiguous. Using inline-size throughout means this cleanly
        overrides the base rule's inline-size:fit-content via normal cascade
-       (higher specificity), with no physical/logical conflict. */
-    inline-size: 100%;
+       (higher specificity), with no physical/logical conflict. The ring room
+       is added back so the track spans the container exactly. */
+    inline-size: calc(100% + 2 * var(--_cinder-segmented-control-ring-room));
   }
 
   .cinder-segmented-control-label {
@@ -44,13 +67,20 @@
     border: 0;
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-inset);
+    /* As wide as its options and no wider (COR-2312): a column container or a
+       stretching grid cell never widens the track, and the options never wrap.
+       The container scrolls when this is wider than the room it has. */
+    flex-wrap: nowrap;
+    inline-size: max-content;
+    align-self: flex-start;
   }
 
   /* ── Full width ─────────────────────────────────────────────────────────── */
 
   .cinder-segmented-control[data-cinder-full-width] {
     display: flex;
-    width: 100%;
+    inline-size: 100%;
+    align-self: stretch;
   }
 
   .cinder-segmented-control[data-cinder-full-width] .cinder-segmented-control-option {
@@ -158,9 +188,11 @@
 
   /* The control's outer box is the shared `--cinder-control-height-*` step for
  * its size, so a SegmentedControl lines up with a Button, Input, or Select of
- * the same size. An attached control wraps its options in a 1px border and
- * 1px padding, so each attached option is 4px shorter than the step; a
- * detached option carries its own 1px border and takes the full step.
+ * the same size, and a coarse pointer lifts it to the 44px touch target. An
+ * attached control wraps its options in 1px of padding and no border (the
+ * track is a tone step, COR-2311), so each attached option is 2px shorter than
+ * the step; a detached option carries its own 1px border and takes the full
+ * step.
  * density="toolbar" resolves to data-cinder-size="sm" in the component, so a
  * toolbar SegmentedControl is the same height as a toolbar Chip and a
  * size="sm" Button. At `sm` an attached option is 24px, the WCAG 2.5.8
@@ -171,7 +203,7 @@
   }
 
   .cinder-segmented-control .cinder-segmented-control-option {
-    min-block-size: calc(var(--_cinder-segmented-control-height) - 4px);
+    min-block-size: calc(var(--_cinder-segmented-control-height) - 2px);
   }
 
   .cinder-segmented-control[data-cinder-detached] .cinder-segmented-control-option {
@@ -281,11 +313,17 @@
      (rows 02y and the Hooks "Then" control, decisions "Coordinator calls for B07 piece 2"), not an
      accent fill: the track recedes, the choice lifts out of it, and the text keeps the default
      colour. The weight stays the same as the other segments, so choosing one never moves the rest. */
+  /* The raised pill alone sits about 1.1:1 on the track in light and dark, so the selected segment
+     also draws a 1px ring in the control tier inside its edge (COR-2312): `--cinder-border-control`
+     clears 3:1 against the inset track and the raised pill in both themes, which the
+     `segmented-control:selected-indicator:*` contrast pairings hold. */
   .cinder-segmented-control-option[data-cinder-selected],
   .cinder-segmented-control-option[data-cinder-current] {
     background: var(--cinder-surface-raised);
     color: var(--cinder-text-default);
-    box-shadow: var(--cinder-shadow-sm);
+    box-shadow:
+      var(--cinder-shadow-sm),
+      inset 0 0 0 1px var(--cinder-border-control);
   }
 
   .cinder-segmented-control-option-icon {
@@ -315,7 +353,9 @@
   .cinder-segmented-control-option[data-cinder-pressed] {
     background: var(--cinder-surface-raised);
     color: var(--cinder-text-default);
-    box-shadow: var(--cinder-shadow-sm);
+    box-shadow:
+      var(--cinder-shadow-sm),
+      inset 0 0 0 1px var(--cinder-border-control);
   }
 
   /* For the default pill variant: the `[data-cinder-selected]` rule (specificity

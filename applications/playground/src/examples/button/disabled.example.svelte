@@ -9,5 +9,10 @@
 </script>
 
 <div class="example-preview-row">
-  <Button disabled={true} label="Disabled" data-testid="button-secondary-disabled" />
+  <Button
+    variant="secondary"
+    disabled={true}
+    label="Disabled"
+    data-testid="button-secondary-disabled"
+  />
 </div>

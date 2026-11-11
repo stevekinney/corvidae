@@ -591,8 +591,11 @@
 {#snippet swatch()}
   <Popover bind:open={pickerOpen} label="Choose a color" focusManagement="panel">
     {#snippet trigger()}
+      <!-- The swatch is a field's colour well, so it keeps the neutral outlined face: an accent
+           tint behind it would change how the chosen colour reads. -->
       <Button
         type="button"
+        variant="secondary"
         class="cinder-color-field__swatch-button"
         aria-label={swatchButtonLabel}
         disabled={disabled || readonly}

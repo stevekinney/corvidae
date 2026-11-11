@@ -18,6 +18,12 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 
 `md` is the default and the size for inline actions: the buttons in a row, a card, a dialog footer, or a toolbar. Use `sm` or `xs` where space is tight. Reserve `lg` for a page-level primary action, such as the one call to action that a page is organized around. A screen with several `lg` buttons has no primary action.
 
+## Filled by default
+
+A Button is a pill, and with no `variant` it draws the filled `soft` face: a tinted fill with no outline, so a row of actions reads as filled controls rather than a row of boxes. `primary` is unchanged and marks the one action a region is organized around. Ask for `secondary` by name only where an outlined face is the point, such as a field's colour well.
+
+Keep one labelled primary in a group of actions. The secondary options are icon-only Buttons (`iconOnly`) with an accessible name (`aria-label` or `label`) and a `Tooltip` that shows the same words, so the row is one labelled action and a few glyphs.
+
 ## Content
 
 A label is a short verb phrase, about four words: "Save draft", "Run now", "Add a memory". It names the action, not what the action will produce. A proposal, a preview or a sentence the person should read before acting belongs beside the button, in the row or card it acts on, with the button keeping a short verb ("Apply", "Use this").
@@ -49,7 +55,7 @@ A disabled button looks the same in every variant: a neutral surface (or none, f
 | `quiet` | `boolean` | no | `false` | Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`. |
 | `shortcut` | `string` \| `string`[] | no | — | Keyboard shortcut hint rendered after the label, `aria-hidden`; a key or an array of keys. |
 | `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. `lg` is for page-level primary actions only; inline actions use `md`. |
-| `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` \| `"ghost-accent"` | no | `"secondary"` | Visual style. |
+| `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` \| `"ghost-accent"` | no | `"soft"` | Visual style. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `leadingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden. If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. Not expressible in JSON Schema; see the component types for the signature. |
 | `trailingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered after the label/children. Always wrapped in aria-hidden. Same accessible-name guidance as `leadingIcon`. Not expressible in JSON Schema; see the component types for the signature. |

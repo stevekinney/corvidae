@@ -62,3 +62,58 @@ describe('control heights keyed to the pointer', () => {
     expect(coarseBlock()).toMatch(/:root\s*\{/);
   });
 });
+
+/**
+ * COR-2312: Button, the toggle Chip, SegmentedControl and the toolbar controls take every height
+ * from a `--cinder-control-height-*` step, never a pixel literal, so the coarse-pointer block
+ * above lifts each of them to the 44px touch target.
+ */
+describe('filled controls size from the control-height steps', () => {
+  const component = (name: string) =>
+    Bun.file(new URL(`../components/${name}/${name}.css`, import.meta.url)).text();
+  // A control's height, not a rule's thickness: the tablist underline is a 2px `block-size`.
+  const HEIGHT_LITERAL = /(?:^|[;{\s])(?:min-height|height|min-block-size):\s*[\d.]+px\b/m;
+
+  test('no pixel literal sets a height in Button, Chip or SegmentedControl', async () => {
+    for (const name of ['button', 'chip', 'segmented-control']) {
+      expect(HEIGHT_LITERAL.test(await component(name)), name).toBe(false);
+    }
+  });
+
+  test('a coarse pointer makes each of them 44px through the step it reads', async () => {
+    const block = coarseBlock();
+    const button = await component('button');
+    for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
+      expect(button).toContain(`min-height: var(--cinder-button-height-${size});`);
+      expect(tokens).toContain(
+        `--cinder-button-height-${size}: var(--cinder-control-height-${size});`,
+      );
+      expect(block).toContain(`--cinder-control-height-${size}: var(--cinder-touch-target-min);`);
+    }
+
+    const chip = await component('chip');
+    expect(chip).toMatch(
+      /button\.cinder-chip \{[^}]*min-block-size: var\(--cinder-control-height-xs\);/,
+    );
+    expect(chip).toMatch(
+      /\.cinder-chip\[data-cinder-density='toolbar'\] \{[^}]*min-block-size: var\(--cinder-control-height-sm\);/,
+    );
+
+    const segmented = await component('segmented-control');
+    expect(segmented).toContain(
+      '--_cinder-segmented-control-height: var(--cinder-control-height-md);',
+    );
+    expect(segmented).toContain(
+      '--_cinder-segmented-control-height: var(--cinder-control-height-sm);',
+    );
+    expect(segmented).toContain(
+      '--_cinder-segmented-control-height: var(--cinder-control-height-lg);',
+    );
+    // The track is the 1px padding around its options and no border, so a coarse step of 44px
+    // gives a 44px track.
+    expect(segmented).toContain(
+      'min-block-size: calc(var(--_cinder-segmented-control-height) - 2px);',
+    );
+    expect(tokens).toContain('--cinder-touch-target-min: 44px;');
+  });
+});

@@ -124,18 +124,13 @@ describe('COR-2310: the comfortable density', () => {
     }
   });
 
-  test('surfaces round to 16px and controls to 10px', () => {
+  test('surfaces round to 16px and fields to 10px, while a Button stays a pill', () => {
     const block = comfortableBlock();
     expect(declaration(block, '--cinder-radius-surface')).toBe('1rem');
     expect(declaration(block, '--cinder-radius-control')).toBe('0.625rem');
-    for (const alias of [
-      '--cinder-control-radius',
-      '--cinder-button-radius',
-      '--cinder-button-radius-md',
-      '--cinder-button-radius-lg',
-    ]) {
-      expect(declaration(block, alias)).toBe('var(--cinder-radius-control)');
-    }
+    expect(declaration(block, '--cinder-control-radius')).toBe('var(--cinder-radius-control)');
+    // COR-2312: a Button is a pill at every density, so comfortable never redeclares its radii.
+    expect(block).not.toContain('--cinder-button-radius');
     expect(cardCss).toContain('border-radius: var(--cinder-radius-surface);');
   });
 

@@ -10,19 +10,20 @@ import type {
 /**
  * Visual style of the button.
  *
- * `secondary` is an outline-style button (filled surface + border). It is kept as `secondary`
- * rather than `outline` because: (a) today's `secondary` is already outline-flavored, (b) `ghost`
- * covers the transparent-background case, and (c) 27+ call sites depend on `secondary` today.
+ * `soft` is the default (COR-2312): a filled pill with a tinted accent fill and no border, so a
+ * row of actions reads as filled controls rather than a row of boxes. `soft-danger` is its danger
+ * twin. Background is `color-mix(in oklch, accent, transparent 88%)` so it resolves against the
+ * current theme's accent/danger color in both light and dark modes.
  *
- * `soft` / `soft-danger` use a tinted fill with no border — mid-emphasis between `ghost` and
- * `primary`/`danger`. Background is `color-mix(in oklch, accent, transparent 88%)` so it
- * resolves against the current theme's accent/danger color in both light and dark modes.
+ * `secondary` is the outline-style button (filled surface + border), kept for the places that
+ * ask for it by name. It is kept as `secondary` rather than `outline` because `ghost` covers the
+ * transparent-background case and many call sites name `secondary` explicitly.
  *
  * `link` reads as an inline text link: the accent text with no fill or border, underlined on
  * hover, for an action that sits beside a row's state as a word, such as Undo beside "Skipped".
  * It is still a button, so it acts and is announced as one.
  *
- * @default `"secondary"`
+ * @default `"soft"`
  */
 export type ButtonVariant =
   | 'primary'
@@ -189,7 +190,7 @@ export type ButtonProps = SharedHtmlAttributes &
 export interface ButtonSchemaProps {
   /**
    * Visual style.
-   * @default "secondary"
+   * @default "soft"
    */
   variant?: ButtonVariant;
   /**

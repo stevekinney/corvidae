@@ -620,22 +620,22 @@
       "off-resting": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.45, 0.02, 245]
+          "components": [0.58, 0.02, 245]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(45% 0.02 245)"
+            "cssRecipe": "oklch(58% 0.02 245)"
           }
         }
       },
       "off-hover-resting": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.52, 0.02, 245]
+          "components": [0.64, 0.02, 245]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "oklch(52% 0.02 245)"
+            "cssRecipe": "oklch(64% 0.02 245)"
           }
         }
       }

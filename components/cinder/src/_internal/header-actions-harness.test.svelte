@@ -13,7 +13,7 @@
 </script>
 
 {#snippet headerButton()}
-  <Button data-testid="header-button">Edit</Button>
+  <Button variant="primary" data-testid="header-button">Edit</Button>
 {/snippet}
 
 {#snippet bodyButton()}

@@ -3134,7 +3134,7 @@
     }
   },
   "button.radius": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Default button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3148,7 +3148,7 @@
     "$type": "dimension"
   },
   "button.radius.xs": {
-    "$value": { "value": 0.375, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Extra-small button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3162,7 +3162,7 @@
     "$type": "dimension"
   },
   "button.radius.sm": {
-    "$value": { "value": 0.375, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Small button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3176,7 +3176,7 @@
     "$type": "dimension"
   },
   "button.radius.md": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Medium button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {
@@ -3190,7 +3190,7 @@
     "$type": "dimension"
   },
   "button.radius.lg": {
-    "$value": { "value": 0.5, "unit": "rem" },
+    "$value": { "value": 9999, "unit": "px" },
     "$description": "Large button corner radius.",
     "$extensions": {
       "com.lostgradient.cinder": {

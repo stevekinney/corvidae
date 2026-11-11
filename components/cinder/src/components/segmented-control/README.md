@@ -16,6 +16,12 @@ Compact segmented selector for a small fixed set of options, including bindable 
 </SegmentedControl>
 ```
 
+## Width and selection
+
+A SegmentedControl is as wide as its options and no wider: it never stretches to fill a grid cell or a column, and its options never wrap onto a second line. When it is wider than the room it has, it scrolls sideways with no visible scrollbar, and the arrow keys still reach every option. `fullWidth` is the one explicit opt-in that spans the container.
+
+The selected (or pressed) segment is a raised pill with a 1px ring in the control tier (`--cinder-border-control`), so the selection clears 3:1 against the track in both themes; the `segmented-control:selected-indicator:*` contrast pairings hold it there. The control's height is the `--cinder-control-height-*` step for its size, which a coarse pointer raises to the 44px touch target.
+
 ## Counts
 
 A `Segment` takes a `count`, drawn after its label in a muted, tabular figure ("Waiting on you 2"). The count is part of the segment's accessible name ("Waiting on you, 2"), and zero still shows ("Running 0"). Only `undefined` hides it.

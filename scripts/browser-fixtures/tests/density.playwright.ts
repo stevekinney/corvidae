@@ -66,9 +66,10 @@ async function probe(
 }
 
 const BUTTON_EXPECTED: Record<Density, Record<string, string>> = {
-  default: { 'min-height': '32px', 'border-top-left-radius': '8px' },
-  compact: { 'min-height': '32px', 'border-top-left-radius': '8px' },
-  comfortable: { 'min-height': '40px', 'border-top-left-radius': '10px' },
+  // COR-2312: a Button is a pill at every density.
+  default: { 'min-height': '32px', 'border-top-left-radius': '9999px' },
+  compact: { 'min-height': '32px', 'border-top-left-radius': '9999px' },
+  comfortable: { 'min-height': '40px', 'border-top-left-radius': '9999px' },
 };
 
 const CARD_EXPECTED: Record<Density, { radius: string; padding: string }> = {

@@ -148,9 +148,9 @@
  * product page, read rather than scanned, declares `data-density="comfortable"`
  * on an ancestor and gets roomier type (15px body, 14px secondary, an 18px
  * section title and a 28px page title), taller controls (32, 40 and 48px),
- * rounder corners (16px surfaces, 10px controls) and more room (20px card
- * padding, a 16px stack gap). Interborough's operator pages keep the default
- * or compact density.
+ * rounder corners (16px surfaces, 10px fields; a Button stays a pill) and more
+ * room (20px card padding, a 16px stack gap). Interborough's operator pages keep
+ * the default or compact density.
  *
  * Comfortable also switches the light arm of the surface ladder to the
  * consumer ladder (COR-2308, owner decision 2026-11-10): a grey canvas under
@@ -162,10 +162,11 @@
  * A custom property resolves where it is declared, so an alias that `:root`
  * builds from a token retuned here would keep the default inside a comfortable
  * subtree. The aliases Button and the control frame read (the Button heights
- * and radii, `--cinder-control-radius`) are redeclared beside the value they
- * follow. Tokens `:root` derives from the surfaces (the hover and pressed
- * washes, the soft accent and status grounds) follow the consumer ladder only
- * when the attribute is on the root element.
+ * and `--cinder-control-radius`) are redeclared beside the value they follow.
+ * The Button radii are not: a Button is a pill at every density (COR-2312).
+ * Tokens `:root` derives from the surfaces (the hover and pressed washes, the
+ * soft accent and status grounds) follow the consumer ladder only when the
+ * attribute is on the root element.
  *
  * `:where()` keeps specificity at 0. The rule sits in the foundation layer,
  * after the token layer, so on an element that also carries `data-theme` the
@@ -187,9 +188,6 @@
   --cinder-radius-surface: 1rem;
   --cinder-radius-control: 0.625rem;
   --cinder-control-radius: var(--cinder-radius-control);
-  --cinder-button-radius: var(--cinder-radius-control);
-  --cinder-button-radius-md: var(--cinder-radius-control);
-  --cinder-button-radius-lg: var(--cinder-radius-control);
   --cinder-pad-card: var(--cinder-space-5);
   --cinder-density-pad-card: var(--cinder-space-5);
   --cinder-gap-stack: var(--cinder-space-4);

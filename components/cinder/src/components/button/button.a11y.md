@@ -69,8 +69,8 @@ A button that is a toggle carries `aria-pressed="true"` or `"false"` and keeps t
 ## Variant guidance
 
 - `primary`: high-emphasis action. One per region.
-- `secondary`: medium-emphasis, outline-flavored (surface fill + border).
-- `soft`: medium-emphasis, tinted fill, no border. Good for secondary actions in colored contexts.
+- `soft`: the default. Medium-emphasis, tinted fill, no border: the filled face every action that is not the one primary takes.
+- `secondary`: medium-emphasis, outline-flavored (surface fill + border), for a place that asks for the outline by name.
 - `soft-danger`: same as soft but uses danger tint. For destructive secondary actions.
 - `danger`: high-emphasis destructive action.
 - `ghost`: low-emphasis, transparent background.

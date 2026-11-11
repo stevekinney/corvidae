@@ -494,6 +494,17 @@
     border-color: oklch(100% 0 0 / 0.5);
   }
 
+  /* The default filled face (soft) on the band: the same translucent white fill and white label as
+     the secondary, with no edge, so a default Button never draws accent text on an accent band. */
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button[data-cinder-variant='soft']:not(:disabled, [aria-disabled='true']) {
+    /* cinder-allow-raw-color: structural-pattern — the hero's translucent default fill */
+    background: oklch(100% 0 0 / 0.12);
+    /* cinder-allow-raw-color: structural-pattern — white label, 4.5:1 on every default state */
+    color: oklch(100% 0 0);
+    border-color: transparent;
+  }
+
   @media (hover: hover) {
     :is(
         .cinder-page-header[data-cinder-tone='accent'],
@@ -516,6 +527,15 @@
       /* cinder-allow-raw-color: structural-pattern — the translucent secondary's hover */
       background: oklch(100% 0 0 / 0.2);
     }
+
+    :is(
+        .cinder-page-header[data-cinder-tone='accent'],
+        .cinder-page-header[data-cinder-tone='night']
+      )
+      .cinder-button[data-cinder-variant='soft']:hover:not(:disabled):not([aria-disabled='true']) {
+      /* cinder-allow-raw-color: structural-pattern — the translucent default's hover */
+      background: oklch(100% 0 0 / 0.2);
+    }
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
@@ -531,6 +551,12 @@
       [aria-disabled='true']
     ) {
     /* cinder-allow-raw-color: structural-pattern — the translucent secondary's press */
+    background: oklch(100% 0 0 / 0.26);
+  }
+
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button[data-cinder-variant='soft']:active:not(:disabled):not([aria-disabled='true']) {
+    /* cinder-allow-raw-color: structural-pattern — the translucent default's press */
     background: oklch(100% 0 0 / 0.26);
   }
 

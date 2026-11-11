@@ -542,15 +542,15 @@
   /* Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint. */
   --cinder-button-border: var(--cinder-border-control);
   /* Default button corner radius. */
-  --cinder-button-radius: var(--cinder-radius-md);
+  --cinder-button-radius: var(--cinder-radius-full);
   /* Extra-small button corner radius. */
-  --cinder-button-radius-xs: var(--cinder-radius-sm);
+  --cinder-button-radius-xs: var(--cinder-radius-full);
   /* Small button corner radius. */
-  --cinder-button-radius-sm: var(--cinder-radius-sm);
+  --cinder-button-radius-sm: var(--cinder-radius-full);
   /* Medium button corner radius. */
-  --cinder-button-radius-md: var(--cinder-radius-md);
+  --cinder-button-radius-md: var(--cinder-radius-full);
   /* Large button corner radius. */
-  --cinder-button-radius-lg: var(--cinder-radius-md);
+  --cinder-button-radius-lg: var(--cinder-radius-full);
   /* Extra-small button height: `control.height.xs` (24px). */
   --cinder-button-height-xs: var(--cinder-control-height-xs);
   /* Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. */
@@ -584,11 +584,11 @@
   /* Large button label font size. */
   --cinder-button-font-size-lg: var(--cinder-text-md);
   /* Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface. */
-  --cinder-toggle-track-off-resting: light-dark(var(--cinder-border-control), oklch(45% 0.02 245));
+  --cinder-toggle-track-off-resting: light-dark(var(--cinder-border-control), oklch(58% 0.02 245));
   /* Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`. */
   --cinder-toggle-track-off-hover-resting: light-dark(
     var(--cinder-border-control-hover),
-    oklch(52% 0.02 245)
+    oklch(64% 0.02 245)
   );
   /* Gap between the trigger's disclosure icon and label. */
   --cinder-accordion-item-trigger-gap: var(--cinder-space-4);
@@ -827,8 +827,8 @@
   --cinder-button-background: var(--cinder-surface-raised);
   --cinder-button-foreground: var(--cinder-text-default);
   --cinder-button-border: var(--cinder-border-control);
-  --cinder-toggle-track-off-resting: oklch(45% 0.02 245);
-  --cinder-toggle-track-off-hover-resting: oklch(52% 0.02 245);
+  --cinder-toggle-track-off-resting: oklch(58% 0.02 245);
+  --cinder-toggle-track-off-hover-resting: oklch(64% 0.02 245);
   --cinder-chart-series-1: oklch(58% 0.089 205);
   --cinder-chart-series-2: oklch(67% 0.275 330);
   --cinder-chart-series-3: oklch(69% 0.182 44);

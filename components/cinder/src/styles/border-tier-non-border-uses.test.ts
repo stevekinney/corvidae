@@ -307,6 +307,15 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
       audit: 'connection-indicator',
     },
   ],
+  // COR-2312: the selected and pressed segment's 1px ring, drawn as an inset shadow so the
+  // segment keeps its size. It sits directly on the raised pill, so it composites once.
+  'components/cinder/src/components/segmented-control/segmented-control.css': [
+    {
+      declaration: 'inset 0 0 0 1px var(--cinder-border-control);',
+      category: 'hairline',
+      occurrences: 2,
+    },
+  ],
   'components/cinder/src/components/slider/slider.css': [
     {
       declaration: 'background: var(--cinder-border-control, currentColor);',

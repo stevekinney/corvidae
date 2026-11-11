@@ -118,7 +118,7 @@ export const A2UI_ENUM_MAPPINGS = {
   },
   Button: {
     variant: {
-      values: { default: 'secondary', primary: 'primary', borderless: 'ghost' },
+      values: { default: 'soft', primary: 'primary', borderless: 'ghost' },
       default: 'default',
     },
   },

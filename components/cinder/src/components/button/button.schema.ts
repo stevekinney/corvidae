@@ -16,7 +16,7 @@ const schema = {
         'ghost-accent',
       ],
       description: 'Visual style.',
-      default: 'secondary',
+      default: 'soft',
     },
     size: {
       enum: ['xs', 'sm', 'md', 'lg'],

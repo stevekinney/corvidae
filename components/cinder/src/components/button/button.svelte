@@ -44,7 +44,7 @@
   //  - `onclick` must be wrapped during `loading` so the consumer handler doesn't fire — just
   //    stripping `href` blocks navigation but the click event still bubbles.
   const {
-    variant = 'secondary',
+    variant = 'soft',
     size = 'md',
     fullWidth = false,
     loading = false,

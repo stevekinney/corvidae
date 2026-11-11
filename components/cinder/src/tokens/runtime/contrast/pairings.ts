@@ -310,6 +310,44 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
     },
     'Hovered control border',
   ),
+  // COR-2312: an off switch is its track and nothing else, so the track clears 3:1 on every
+  // surface in both themes.
+  ...onSurfaces(
+    'toggle:track-off',
+    '--cinder-toggle-track-off-resting',
+    {
+      group: 'control-border',
+      classification: 'non-text-indicator',
+      scope: 'wcag',
+      criterion: '1.4.11',
+    },
+    'Off Toggle track',
+  ),
+  // COR-2312: a selected SegmentedControl segment is a raised pill on the inset track, about
+  // 1.1:1 on its own, so its 1px control-tier ring is the indicator: it clears 3:1 against the
+  // track it sits on and the pill it outlines.
+  ...(['--cinder-surface-inset', '--cinder-surface-raised'] as const).map(
+    (background): ContrastPairing => ({
+      id: `segmented-control:selected-indicator:${SURFACE_LABELS[background]}`,
+      group: 'control-border',
+      classification: 'non-text-indicator',
+      scope: 'wcag',
+      criterion: '1.4.11',
+      foreground: '--cinder-border-control',
+      background,
+      description: `Selected SegmentedControl ring against ${SURFACE_LABELS[background]}`,
+    }),
+  ),
+  {
+    id: 'chip:selected-ring',
+    group: 'accent',
+    classification: 'non-text-indicator',
+    scope: 'wcag',
+    criterion: '1.4.11',
+    foreground: '--cinder-accent-solid',
+    background: '--cinder-accent-background',
+    description: 'Selected Chip accent ring on its accent tint',
+  },
   ...Array.from({ length: CHART_SERIES_COUNT }, (_, index): ContrastPairing[] =>
     (['--cinder-surface-canvas', '--cinder-surface'] as const).map((background) => ({
       id: `chart:series-${index + 1}:${SURFACE_LABELS[background]}`,

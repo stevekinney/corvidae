@@ -297,8 +297,8 @@ Foreground colors keyed to readability against the surface tokens. `--cinder-tex
 | `--cinder-border-control` | `light-dark(color-mix(in oklch, var(--cinder-border-ink), transparent 52%), oklch(56% 0.05 248))` | Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248), which reads 4.03:1 on the surface and 3.60:1 on raised. The design draws 52% here, which clears `surface.raised` (the ground of a popover or dialog) by only 3.04:1 on the neutral dark ladder, so the edge keeps the 56% step as margin over WCAG 1.4.11's 3:1 floor, which the contrast pairs `surface.base` and `surface.raised` hold it to. Both arms clear 3:1 against the surfaces a control sits on. |
 | `--cinder-border-control-hover` | `color-mix(in oklch, var(--cinder-border-ink), transparent 42%)` | Hovered control boundary, one step heavier than `border.control`. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface. |
 | `--cinder-border-faint` | `light-dark(oklch(92% 0.003 255), oklch(33% 0.03 245))` | Decorative-only hairline. Never use as a control boundary: it is intentionally below the WCAG 1.4.11 3:1 non-text threshold. |
-| `--cinder-toggle-track-off-resting` | `light-dark(var(--cinder-border-control), oklch(45% 0.02 245))` | Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface. |
-| `--cinder-toggle-track-off-hover-resting` | `light-dark(var(--cinder-border-control-hover), oklch(52% 0.02 245))` | Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`. |
+| `--cinder-toggle-track-off-resting` | `light-dark(var(--cinder-border-control), oklch(58% 0.02 245))` | Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface. |
+| `--cinder-toggle-track-off-hover-resting` | `light-dark(var(--cinder-border-control-hover), oklch(64% 0.02 245))` | Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -612,7 +612,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | `--cinder-button-background` | `var(--cinder-surface-raised)` | Secondary (default) button fill. |
 | `--cinder-button-foreground` | `var(--cinder-text-default)` | Secondary (default) button label color. |
 | `--cinder-button-border` | `var(--cinder-border-control)` | Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint. |
-| `--cinder-button-radius` | `var(--cinder-radius-md)` | Default button corner radius. |
+| `--cinder-button-radius` | `var(--cinder-radius-full)` | Default button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -626,7 +626,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | `--cinder-button-padding-y-xs` | `var(--cinder-space-0-5)` | Extra-small button vertical padding. |
 | `--cinder-button-height-xs` | `var(--cinder-control-height-xs)` | Extra-small button height: `control.height.xs` (24px). |
 | `--cinder-button-font-size-xs` | `var(--cinder-text-xs)` | Extra-small button label font size. |
-| `--cinder-button-radius-xs` | `var(--cinder-radius-sm)` | Extra-small button corner radius. |
+| `--cinder-button-radius-xs` | `var(--cinder-radius-full)` | Extra-small button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -640,7 +640,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | `--cinder-button-padding-y-sm` | `var(--cinder-space-1)` | Small button vertical padding (4px), so a 16px icon, the padding and the border fit inside the 28px `control.height.sm`. |
 | `--cinder-button-height-sm` | `var(--cinder-control-height-sm)` | Small button height: `control.height.sm` (28px), so a small Button lines up with a toolbar SegmentedControl and a toolbar Chip. |
 | `--cinder-button-font-size-sm` | `var(--cinder-text-sm)` | Small button label font size. |
-| `--cinder-button-radius-sm` | `var(--cinder-radius-sm)` | Small button corner radius. |
+| `--cinder-button-radius-sm` | `var(--cinder-radius-full)` | Small button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -654,7 +654,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | `--cinder-button-padding-y-md` | `var(--cinder-space-1-5)` | Medium button vertical padding. |
 | `--cinder-button-height-md` | `var(--cinder-control-height-md)` | Medium button height: `control.height.md` (32px). |
 | `--cinder-button-font-size-md` | `var(--cinder-text-sm)` | Medium button label font size. |
-| `--cinder-button-radius-md` | `var(--cinder-radius-md)` | Medium button corner radius. |
+| `--cinder-button-radius-md` | `var(--cinder-radius-full)` | Medium button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 
@@ -668,7 +668,7 @@ Component-specific tokens for [`Button`](../src/components/button/button.svelte)
 | `--cinder-button-padding-y-lg` | `var(--cinder-space-2)` | Large button vertical padding. |
 | `--cinder-button-height-lg` | `var(--cinder-control-height-lg)` | Large button height: `control.height.lg` (40px). |
 | `--cinder-button-font-size-lg` | `var(--cinder-text-md)` | Large button label font size. |
-| `--cinder-button-radius-lg` | `var(--cinder-radius-md)` | Large button corner radius. |
+| `--cinder-button-radius-lg` | `var(--cinder-radius-full)` | Large button corner radius. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

@@ -39,8 +39,8 @@ const reviewEditorEntry = fixtureEntry('review-editor');
 // Match Playwright's bounding box / padding numerics within a sub-pixel
 // tolerance. Browsers can return fractional pixel values for box metrics.
 const PIXEL_TOLERANCE = 0.5;
-/** An attached control frames its options with a 1px border and 1px padding on each side. */
-const ATTACHED_FRAME_PX = 4;
+/** An attached control frames its options with 1px of padding on each side and no border (COR-2311). */
+const ATTACHED_FRAME_PX = 2;
 
 async function resolvedRootTokenPx(page: Page, token: string): Promise<number> {
   const raw = await page.evaluate(
@@ -391,7 +391,7 @@ test.describe('SegmentedControl — sizing and density', () => {
         1,
       );
       // The control's outer box is the --cinder-control-height-sm step; its attached option is the
-      // step less the 4px of border and padding around it. Use precision 1 (±0.05px) to match the
+      // step less the 2px of padding around it. Use precision 1 (±0.05px) to match the
       // rest of the block.
       const controlBox = await page.locator(`#${id}`).boundingBox();
       expect(controlBox, `${id}: control is laid out`).not.toBeNull();

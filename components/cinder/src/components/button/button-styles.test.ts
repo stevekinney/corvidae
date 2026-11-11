@@ -198,6 +198,39 @@ describe('Button icon-only ghost CSS contract', () => {
   });
 });
 
+describe('Button is a filled pill by default (COR-2312)', () => {
+  test('a Button with no variant draws the filled soft face', () => {
+    const { getByRole } = render(Button, { props: { label: 'Save draft' } });
+    expect(getByRole('button', { name: 'Save draft' }).getAttribute('data-cinder-variant')).toBe(
+      'soft',
+    );
+  });
+
+  test('the soft face is a tinted fill with no outline, and primary is unchanged', () => {
+    const source = readButtonSource();
+    const soft = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='soft']");
+    expectDeclaration(soft, 'border-color', 'transparent');
+    expectDeclaration(soft, 'color', 'var(--cinder-accent-text)');
+    expect(soft).toContain('background: color-mix(in oklch, var(--cinder-accent-solid)');
+
+    const primary = readCssRuleBlock(source, ".cinder-button[data-cinder-variant='primary']");
+    expectDeclaration(primary, 'background', 'var(--cinder-accent-solid)');
+    expectDeclaration(primary, 'color', 'var(--cinder-accent-contrast)');
+  });
+
+  test('every size is a pill', () => {
+    const tokens = readTokenSource();
+    for (const name of ['', '-xs', '-sm', '-md', '-lg']) {
+      expect(tokens).toContain(`--cinder-button-radius${name}: var(--cinder-radius-full);`);
+    }
+    for (const size of ['xs', 'sm', 'md', 'lg'] as const) {
+      expect(
+        readCssRuleBlock(readButtonSource(), `.cinder-button[data-cinder-size='${size}']`),
+      ).toContain(`border-radius: var(--cinder-button-radius-${size});`);
+    }
+  });
+});
+
 describe('Button secondary surface states', () => {
   test('uses the public component variables for its resting surface', () => {
     const block = readCssRuleBlock(
