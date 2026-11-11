@@ -49,6 +49,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -69,6 +71,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
@@ -123,6 +127,8 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/scripts/module-scope-scenario.test-support.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
@@ -173,6 +179,8 @@
         "$TURBO_ROOT$/documentation/runtime-contracts.md",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -188,6 +196,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -234,7 +244,9 @@
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
     },
     "@lostgradient/weft#test:coverage": {
@@ -258,7 +270,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage#test": {
@@ -272,6 +287,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -286,7 +303,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-bun-sqlite#test": {
@@ -300,6 +320,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -316,7 +338,9 @@
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
     },
     "@lostgradient/storage-bun-sqlite#test:coverage": {
@@ -327,7 +351,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-indexeddb#test": {
@@ -341,6 +368,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -355,7 +384,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-neon#test": {
@@ -369,6 +401,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -385,7 +419,9 @@
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
     },
     "@lostgradient/storage-neon#test:coverage": {
@@ -396,7 +432,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-node-sqlite#test": {
@@ -410,6 +449,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -426,7 +467,9 @@
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
     },
     "@lostgradient/storage-node-sqlite#test:coverage": {
@@ -437,7 +480,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-postgres#test": {
@@ -451,6 +497,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -467,7 +515,9 @@
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
     },
     "@lostgradient/storage-postgres#test:coverage": {
@@ -478,7 +528,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-turso#test": {
@@ -492,6 +545,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -508,7 +563,9 @@
         "$TURBO_ROOT$/scripts/bun-test-selected.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts"
       ]
     },
     "@lostgradient/storage-turso#test:coverage": {
@@ -519,7 +576,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-web-extension#test": {
@@ -533,6 +593,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -547,7 +609,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-cloudflare#test": {
@@ -561,6 +626,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -575,7 +642,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/storage-lmdb#test": {
@@ -589,6 +659,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -603,7 +675,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/evaluation#test:coverage": {
@@ -613,7 +688,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/chat#test:coverage": {
@@ -624,7 +702,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/interborough#test:coverage": {
@@ -640,7 +721,10 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/ventriloquist#lint": {
@@ -679,6 +763,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -695,7 +781,10 @@
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/cinder#test:coverage": {
@@ -709,7 +798,10 @@
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts"
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
+        "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
     "@lostgradient/cinder#test": {
@@ -726,6 +818,8 @@
         "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/scripts/worker-crash-report.ts",
         "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
@@ -743,11 +837,14 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts",
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/scripts/bun-test-pool.ts",
+        "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
       ]
     }
   },
-  "globalDependencies": [".oxlintrc.json", ".prettierrc.json", ".prettierignore", "tsconfig.json"]
+  "globalDependencies": [".oxlintrc.json", ".prettierrc.json", ".prettierignore", "tsconfig.json"],
+  "globalPassThroughEnv": ["CORVIDAE_TEST_SLOTS", "CORVIDAE_TEST_SLOTS_TOKEN"]
 }
