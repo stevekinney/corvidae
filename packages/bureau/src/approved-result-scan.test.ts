@@ -7,9 +7,11 @@ import {
   GUARDRAIL_BLOCKED_CODE,
   type GuardrailsOptions,
   hasDefinitionResolver,
+  type DefinitionResolvingAgent,
   type InputDetector,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type PersistedSessionTaint,
+  type RunnableAgent,
   readSessionTaint,
   SESSION_TAINT_METADATA_KEY,
   stopWhen,
@@ -267,7 +269,7 @@ describe('an approved call’s result and the session’s taint (COR-2299)', () 
 });
 
 describe('an approved call under Bureau’s own guardrails (COR-2299)', () => {
-  it('stores the taint of a result Bureau’s tier blocked, for an agent that holds no guardrails of its own', async () => {
+  it('stores the taint of a result Bureau’s preset blocked, for an agent that holds no guardrails of its own', async () => {
     let step = 0;
     const inner = createAgent({
       name: 'supervisor',
@@ -280,17 +282,15 @@ describe('an approved call under Bureau’s own guardrails (COR-2299)', () => {
       guardrails: false,
     });
     if (!hasDefinitionResolver(inner)) throw new Error('expected an agent with a resolver');
+    const supervisor: RunnableAgent & DefinitionResolvingAgent = {
+      name: 'supervisor',
+      hasOutput: false,
+      run: (input, context) => inner.run(input, context),
+      [OPERATIVE_RESOLVE_RUN_OPTIONS]: (input, context) =>
+        inner[OPERATIVE_RESOLVE_RUN_OPTIONS](input, context),
+    };
     const bureau = await createBureau<AgentDefinitions>({
-      agents: {
-        supervisor: {
-          name: 'supervisor',
-          hasOutput: false,
-          run: (input, context) => inner.run(input, context),
-          [OPERATIVE_RESOLVE_RUN_OPTIONS]: (input, context) =>
-            inner[OPERATIVE_RESOLVE_RUN_OPTIONS](input, context),
-        },
-      },
-      guardrails: { mode: 'validate', input: { detectors: [sentinel], action: 'block' } },
+      agents: { supervisor },
       storage: new MemoryStorage(),
       durable: false,
     });
@@ -302,7 +302,6 @@ describe('an approved call under Bureau’s own guardrails (COR-2299)', () => {
       expect(row).toMatchObject({ outcome: 'error', error: { code: GUARDRAIL_BLOCKED_CODE } });
       expect(taint).toMatchObject({
         category: 'prompt-injection',
-        detector: 'sentinel',
         provenance: 'tool-result',
       });
     } finally {
@@ -346,7 +345,9 @@ describe('a session tainted before an approved call resumes (COR-2299)', () => {
     const task = await first.tasks.start('supervisor', 'fetch the page');
     await task.result();
     const [review] = first.reviews.list();
-    await first.internals.sessionStore?.update(review!.sessionId, (session) =>
+    if (review?.sessionId === undefined)
+      throw new Error('expected the parked call to name its session');
+    await first.internals.sessionStore?.update(review.sessionId, (session) =>
       session === undefined
         ? undefined
         : {
@@ -376,7 +377,9 @@ describe('a session tainted before an approved call resumes (COR-2299)', () => {
     const task = await first.tasks.start('supervisor', 'fetch the page');
     await task.result();
     const [review] = first.reviews.list();
-    await first.internals.sessionStore?.update(review!.sessionId, (session) =>
+    if (review?.sessionId === undefined)
+      throw new Error('expected the parked call to name its session');
+    await first.internals.sessionStore?.update(review.sessionId, (session) =>
       session === undefined
         ? undefined
         : {
