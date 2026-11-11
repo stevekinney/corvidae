@@ -5,6 +5,7 @@ import {
 import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInThisContext } from 'node:vm';
 
 import {
   escapePreviewScript,
@@ -86,6 +87,18 @@ describe('escapePreviewScript', () => {
   test('escapes markup terminators and refuses a mixed-case </script', () => {
     expect(escapePreviewScript('a="</script><!--"')).toBe('a="<\\/script><\\!--"');
     expect(() => escapePreviewScript('a="</SCRIPT>"')).toThrow('</script');
+  });
+
+  test('writes every literal U+FFFD as an escape that evaluates to the same character', () => {
+    const replacement = String.fromCodePoint(0xff_fd);
+    // A string literal, an identity escape, an escaped backslash, and a regular-expression class.
+    const code = `[${JSON.stringify(replacement)}, "\\${replacement}", "\\\\${replacement}", /[a-${replacement}]/.test(${JSON.stringify(replacement)})]`;
+    const escaped = escapePreviewScript(code);
+    expect(escaped).not.toContain(replacement);
+    expect(escaped).toBe(String.raw`["\uFFFD", "\uFFFD", "\\\uFFFD", /[a-\uFFFD]/.test("\uFFFD")]`);
+    // The escaped script means what the original did.
+    expect(runInThisContext(escaped)).toEqual(runInThisContext(code));
+    expect(runInThisContext(escaped)).toEqual([replacement, replacement, `\\${replacement}`, true]);
   });
 });
 

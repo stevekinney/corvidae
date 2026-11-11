@@ -109,6 +109,22 @@ export function designSystemIndex(facts: IndexFacts): Record<string, unknown> {
   };
 }
 
+/**
+ * Where a published text file holds U+FFFD, the replacement character, which the artifact service
+ * refuses: one `line:column` (both from 1) per occurrence. Decoding bytes that are not UTF-8 also
+ * yields it, so this catches those too.
+ */
+export function replacementCharacterPositions(text: string): string[] {
+  const positions: string[] = [];
+  text.split('\n').forEach((line, index) => {
+    for (let column = line.indexOf('\uFFFD'); column !== -1;) {
+      positions.push(`${index + 1}:${column + 1}`);
+      column = line.indexOf('\uFFFD', column + 1);
+    }
+  });
+  return positions;
+}
+
 /** The most files one publish sends. */
 export const BATCH_FILE_LIMIT = 240;
 /** The most bytes one publish sends, kept under the 64 MB a publish may carry. */

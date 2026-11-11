@@ -11,8 +11,23 @@ import {
   fillBrandBook,
   INDEX_PATH,
   planPublishBatches,
+  replacementCharacterPositions,
   sentenceNumber,
 } from './publish.ts';
+
+describe('replacementCharacterPositions', () => {
+  test('names the line and column of every U+FFFD, and nothing for clean text', () => {
+    const replacement = String.fromCodePoint(0xff_fd);
+    expect(replacementCharacterPositions('a\nb "\\uFFFD"\n')).toEqual([]);
+    expect(
+      replacementCharacterPositions(`a${replacement}\nb\n${replacement}c${replacement}`),
+    ).toEqual(['1:2', '3:1', '3:3']);
+    // Bytes that are not UTF-8 decode to U+FFFD, so the check catches them as well.
+    expect(replacementCharacterPositions(Buffer.from([0x61, 0xff]).toString('utf8'))).toEqual([
+      '1:2',
+    ]);
+  });
+});
 
 describe('brand book', () => {
   test('spells counts and lists names', () => {

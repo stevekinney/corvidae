@@ -103,11 +103,32 @@ export function partition<T>(items: T[], count: number): T[][] {
 }
 
 /**
- * Escapes the sequences that would end or open markup if the script were inlined in HTML, then
- * fails if any `</script`, in any case, survives.
+ * A literal replacement character, U+FFFD, with the backslashes before it. The artifact service
+ * refuses a published text file holding one, and bundled libraries (a Markdown parser's decoder,
+ * a grammar's character class) carry it in string and regular-expression literals.
+ */
+const REPLACEMENT_CHARACTER = /(\\*)\uFFFD/g;
+
+/**
+ * Writes every literal U+FFFD as the escape `\uFFFD`, which means the same character in a string,
+ * template or regular-expression literal. An odd run of backslashes before it already escaped it
+ * (`\` then U+FFFD is the character itself), so the last of them becomes the escape's own.
+ */
+export function escapeReplacementCharacters(code: string): string {
+  return code.replace(REPLACEMENT_CHARACTER, (_match, backslashes: string) => {
+    const kept = backslashes.length % 2 === 1 ? backslashes.slice(0, -1) : backslashes;
+    return `${kept}\\uFFFD`;
+  });
+}
+
+/**
+ * Escapes the sequences that would end or open markup if the script were inlined in HTML, and
+ * every literal U+FFFD, then fails if any `</script`, in any case, survives.
  */
 export function escapePreviewScript(code: string): string {
-  const escaped = code.replaceAll('</script', '<\\/script').replaceAll('<!--', '<\\!--');
+  const escaped = escapeReplacementCharacters(
+    code.replaceAll('</script', '<\\/script').replaceAll('<!--', '<\\!--'),
+  );
   if (/<\/script/i.test(escaped)) throw new Error('preview script still holds a </script');
   return escaped;
 }

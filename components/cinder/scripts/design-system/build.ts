@@ -55,7 +55,12 @@ import {
   SHARD_COUNT,
   type ShardReport,
 } from './previews.ts';
-import { designSystemIndex, fillBrandBook, planPublishBatches } from './publish.ts';
+import {
+  designSystemIndex,
+  fillBrandBook,
+  planPublishBatches,
+  replacementCharacterPositions,
+} from './publish.ts';
 import { bundleSources, readManifestSources } from './sources.ts';
 import { buildTokens, type ResolvedContext } from './tokens.ts';
 
@@ -318,7 +323,17 @@ async function main(): Promise<number> {
       1,
     ),
   );
-  const batches = planPublishBatches(listFiles(projectDirectory, outputRoot));
+  const files = listFiles(projectDirectory, outputRoot);
+  // The artifact service refuses a text file holding U+FFFD; every published file is text.
+  for (const file of files) {
+    const positions = replacementCharacterPositions(
+      readFileSync(join(outputRoot, file.path), 'utf8'),
+    );
+    if (positions.length > 0) {
+      problems.push(`output ${file.path} holds U+FFFD at ${positions.slice(0, 5).join(', ')}`);
+    }
+  }
+  const batches = planPublishBatches(files);
   writeFileSync(join(outputRoot, 'publish-batches.json'), JSON.stringify(batches, null, 2));
 
   console.log(
