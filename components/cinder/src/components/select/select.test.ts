@@ -397,6 +397,14 @@ describe('Select context inheritance from FormField', () => {
   });
 });
 
+describe('Select clipped value (s2#4)', () => {
+  test('a native select too narrow for its value ends it in an ellipsis', () => {
+    expect(readSelectStyles()).toMatch(
+      /\.cinder-select:not\(\[data-cinder-presentation='listbox'\]\) \{\s*overflow: hidden;\s*white-space: nowrap;\s*text-overflow: ellipsis;\s*\}/,
+    );
+  });
+});
+
 describe('Select chevron indicator', () => {
   test('renders exactly one aria-hidden chevron element after the <select> for non-empty options', () => {
     const { container } = render(Select, {

@@ -74,6 +74,14 @@ export type ToggleProps = {
    */
   labelVisible?: boolean;
   /**
+   * Words beside the switch that follow `checked`, such as `{ on: 'On', off: 'Off' }`: the `on`
+   * word while checked, the `off` word otherwise. They sit next to the switch, so with
+   * `labelVisible={false}` they are the only words drawn. They are decorative (`aria-hidden`): the
+   * label stays the accessible name and `aria-checked` carries the state. A press on them flips the
+   * switch, as a press on the label does.
+   */
+  stateText?: { on: string; off: string };
+  /**
    * Makes the switch its own field: it is named and labelled by its own `label` even inside a
    * `<FormField>` or `<SettingRow>`, whose label would otherwise name it. Use it for one switch
    * among several in a field, such as a list of agents in a setting.

@@ -5,11 +5,12 @@
    * FILTER BAR
    * ======================================== */
 
-  /* One row that never wraps. Width is handled by the layout, not by flowing: `wide` draws the
+  /* One row. Width is handled by the layout, not by flowing: `wide` draws the
    * segments, the facet chips and the search field; `medium` folds the segments into a select and
    * the search field into an icon button; `narrow` keeps the select and a Filter menu. The layout
    * is chosen in script (data-cinder-layout), because the controls that disappear move into a
-   * menu, which CSS alone cannot do. */
+   * menu, which CSS alone cannot do. Only the narrow form, the last step, wraps its Filter button
+   * under the select when the two cannot share a line. */
   .cinder-filter-bar {
     container-type: inline-size;
     container-name: cinder-filter-bar;
@@ -65,12 +66,36 @@
     min-inline-size: 11rem;
   }
 
-  /* In the narrow form the select shares the row with the Filter button and takes the rest. */
+  /* In the narrow form the select shares the row with the Filter button and takes the rest. It is
+   * never narrower than its value (or its prefix, when that is wider): when the two do not fit
+   * side by side, as at 200% text on a phone, the Filter button moves under the select instead of
+   * the value being cut (WCAG 1.4.4). */
+  .cinder-filter-bar[data-cinder-layout='narrow'] .cinder-filter-bar__row {
+    flex-wrap: wrap;
+  }
+
   .cinder-filter-bar[data-cinder-layout='narrow']
     .cinder-filter-bar__row
     > .cinder-form-field.cinder-filter-bar__segments-select {
     flex: 1 1 auto;
-    min-inline-size: 0;
+    min-inline-size: min-content;
+  }
+
+  /* The folded select's prefix ("Status:") gives way before its value. The prefix, value and the
+   * gap between them share one line that wraps in the order value, prefix (`order`), drawn
+   * reversed so the prefix still reads first, and only the first line shows: a trigger too narrow
+   * for both drops the prefix whole, and the value is truncated last. The prefix is decorative;
+   * the label names the control, so nothing is lost to assistive technology. */
+  .cinder-filter-bar .cinder-select__text:has(> .cinder-select__prefix) {
+    flex-flow: row-reverse wrap;
+    justify-content: flex-end;
+    align-content: flex-start;
+    max-block-size: 1lh;
+    overflow: hidden;
+  }
+
+  .cinder-filter-bar .cinder-select__text > .cinder-select__prefix {
+    order: 1;
   }
 
   .cinder-filter-bar__facet {

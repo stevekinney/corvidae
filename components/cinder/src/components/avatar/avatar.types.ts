@@ -20,8 +20,10 @@ export type AvatarProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   /** Alternative text for the image. Defaults to `name` when present. */
   alt?: string;
   /**
-   * Display name used to compute initials when no image is available.
-   * Also used as the default `alt` for the image.
+   * Display name used to compute initials when no image is available: the first letters of its
+   * first two words, split on whitespace, hyphens, underscores, dots and colons, after a leading
+   * `namespace:` part is dropped (`demo:tool-runner` reads "TR"). Also used as the default `alt`
+   * for the image.
    */
   name?: string;
   /** Size token. Default `md`. */

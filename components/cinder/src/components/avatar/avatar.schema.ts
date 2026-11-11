@@ -15,7 +15,7 @@ const schema = {
     name: {
       type: 'string',
       description:
-        'Display name used to compute initials when no image is available.\nAlso used as the default `alt` for the image.',
+        'Display name used to compute initials when no image is available: the first letters of its\nfirst two words, split on whitespace, hyphens, underscores, dots and colons, after a leading\n`namespace:` part is dropped (`demo:tool-runner` reads "TR"). Also used as the default `alt`\nfor the image.',
     },
     size: {
       enum: ['xs', 'sm', 'md', 'lg', 'xl'],

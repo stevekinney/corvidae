@@ -95,16 +95,15 @@ describe('Modal', () => {
     await fireEvent.click(scrim);
     expect(openValue).toBe(true);
   });
-  test('modal.css clears the reserved scrollbar gutter for the chromeless body', async () => {
-    // Regression: the base body rule's `scrollbar-gutter: stable` reserves
-    // an inline-end band on classic-scrollbar platforms even when the body
-    // does not overflow. On a full-bleed chromeless surface that band
-    // visibly shifts centered content (e.g. an image lightbox's photo) away
-    // from true viewport center.
+  test('modal.css reserves no scrollbar gutter, so a chromeless body stays centred', async () => {
+    // Regression: `scrollbar-gutter: stable` reserves an inline-end band on classic-scrollbar
+    // platforms even when the body does not overflow. On a full-bleed chromeless surface that band
+    // visibly shifts centered content (e.g. an image lightbox's photo) away from true viewport
+    // center, and in the default chrome it made the body's end inset wider than its start (s4#8).
+    // No body rule reserves one now, chromeless or not.
     const css = await Bun.file(new URL('./modal.css', import.meta.url)).text();
-    expect(css).toMatch(
-      /\.cinder-modal__body\[data-cinder-chrome='none'\]\s*\{[^}]*scrollbar-gutter:\s*auto;/s,
-    );
+    expect(css).toMatch(/\.cinder-modal__body\s*\{[^}]*scrollbar-gutter:\s*auto;/s);
+    expect(css).not.toMatch(/scrollbar-gutter:\s*stable/);
   });
   test('marks the footer with data-cinder-chrome="none" and modal.css resets its background/border/padding', async () => {
     // Regression: chromeless mode fills the dialog's entire content box with

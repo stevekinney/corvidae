@@ -214,8 +214,12 @@
                     class="cinder-icon-sm"
                     aria-hidden="true"
                   />{:else}<ChevronRight class="cinder-icon-sm" aria-hidden="true" />{/if}
-                {labelFor(entry.key)}<span class="cinder-payload-inspector__count"
-                  >, {describeContents(entry.value)}</span
+                <!-- One flex item, so the toggle's gap sits after the chevron and never between
+                     the label and its ", 2 fields" count. -->
+                <span class="cinder-payload-inspector__toggle-label"
+                  >{labelFor(entry.key)}<span class="cinder-payload-inspector__count"
+                    >, {describeContents(entry.value)}</span
+                  ></span
                 >
               </button>
             {:else}

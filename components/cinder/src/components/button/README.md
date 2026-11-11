@@ -57,7 +57,7 @@ A disabled button looks the same in every variant: a neutral surface (or none, f
 | `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. `lg` is for page-level primary actions only; inline actions use `md`. |
 | `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` \| `"ghost-accent"` | no | `"soft"` | Visual style. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
-| `leadingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden. If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. Not expressible in JSON Schema; see the component types for the signature. |
+| `leadingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden. If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. The button sizes an SVG icon at 1em of its text, so it follows `size`; pass no size. Not expressible in JSON Schema; see the component types for the signature. |
 | `trailingIcon` | `(opaque)` | no | — | DECORATIVE icon rendered after the label/children. Always wrapped in aria-hidden. Same accessible-name guidance as `leadingIcon`. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

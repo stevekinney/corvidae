@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 import { tick } from 'svelte';
 import { SvelteSet } from 'svelte/reactivity';
 
@@ -191,6 +192,18 @@ describe('SegmentedControl — single mode', () => {
     expect(group.getAttribute('aria-disabled')).toBe('true');
     await fireEvent.click(screen.getByRole('radio', { name: 'Rendered' }));
     expect(selected).toBe('source');
+  });
+
+  // s2#15: a disabled control looked the same as an enabled one. Its track loses the fill and its
+  // chosen segment drops the raised pill for the disabled fill and edge.
+  test('group-level disabled: the track and the chosen segment take the disabled look', () => {
+    const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
+    expect(css).toMatch(
+      /\.cinder-segmented-control\[aria-disabled='true'\]:not\(\[data-cinder-variant='tablist'\]\):not\(\s*\[data-cinder-detached\]\s*\) \{\s*background: transparent;\s*box-shadow: inset 0 0 0 1px var\(--cinder-control-border-disabled\);/,
+    );
+    expect(css).toMatch(
+      /\[data-cinder-pressed\]\s*\) \{\s*background: var\(--cinder-control-background-disabled\);\s*box-shadow: inset 0 0 0 1px var\(--cinder-control-border-disabled\);/,
+    );
   });
 
   test('value set to string not in options: no option renders aria-checked="true"', () => {

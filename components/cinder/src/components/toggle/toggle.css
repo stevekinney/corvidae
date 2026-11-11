@@ -36,7 +36,8 @@
     justify-content: space-between;
   }
 
-  .cinder-toggle-field__label {
+  .cinder-toggle-field__label,
+  .cinder-toggle-field__state {
     font-size: var(--cinder-text-xs);
     font-weight: var(--cinder-font-medium);
     line-height: 1;
@@ -44,12 +45,24 @@
     cursor: pointer;
   }
 
-  .cinder-toggle-field__label[data-disabled] {
+  .cinder-toggle-field__label[data-disabled],
+  .cinder-toggle-field__state[data-disabled] {
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }
 
+  /* `stateText`: the word beside the switch that follows it ("On", "Off"), in the label's type. */
+  .cinder-toggle-field__state {
+    white-space: nowrap;
+  }
+
+  /* With the label first, the word stays beside the switch at the end of the row. */
+  .cinder-toggle-field[data-label-position='start'] > .cinder-toggle-field__state {
+    margin-inline-start: auto;
+  }
+
   /* The label's line is 1 times its font size, and the description's is its leading-snug. */
+  .cinder-toggle-field > .cinder-toggle-field__state,
   .cinder-toggle-field > .cinder-toggle-field__label {
     padding-block-start: calc((var(--_cinder-toggle-box) - var(--cinder-text-xs)) / 2);
   }
@@ -242,7 +255,8 @@
     background-color: var(--_cinder-toggle-track-readonly);
   }
 
-  .cinder-toggle[data-cinder-readonly] ~ .cinder-toggle-field__label {
+  .cinder-toggle[data-cinder-readonly] ~ .cinder-toggle-field__label,
+  .cinder-toggle[data-cinder-readonly] ~ .cinder-toggle-field__state {
     cursor: default;
   }
 

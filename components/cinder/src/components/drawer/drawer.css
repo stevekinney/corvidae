@@ -297,9 +297,13 @@
     flex: 1;
     min-block-size: 0;
     overflow-y: auto;
-    padding: var(--cinder-space-6);
+    /* The header, body and footer share one inline inset (space-5), so the title, the body text
+       and the footer actions start on one edge (s4#8). No gutter is reserved: a reserved gutter
+       made the body's inline-end inset wider than its start whenever the scrollbar is classic,
+       even when nothing scrolls. */
+    padding: var(--cinder-space-6) var(--cinder-space-5);
     overscroll-behavior: contain;
-    scrollbar-gutter: stable;
+    scrollbar-gutter: auto;
     background: var(--cinder-surface);
   }
 

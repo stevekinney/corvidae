@@ -1,6 +1,7 @@
 import { setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
+import { createRawSnippet } from 'svelte';
 setupHappyDom();
 const { cleanup, render } = await import('@testing-library/svelte');
 const { default: Button } = await import('./button.svelte');
@@ -91,6 +92,27 @@ describe('Button sizes', () => {
 
   test('text scale defines the md step at 15px', () => {
     expect(readTokenSource()).toContain('--cinder-text-md: 0.9375rem;');
+  });
+});
+
+// s2#11: a bare Lucide icon in a Button drew at its own 24px. The button sizes it at 1em, which
+// follows the size step's font size; a sizing class on the icon (a utility) still wins.
+describe('Button icon size', () => {
+  test('an icon is 1em of the button text, so it follows the size step', () => {
+    const block = readCssRuleBlock(readButtonSource(), '.cinder-button__icon > svg');
+    expect(block).toMatch(/inline-size:\s*1em;/);
+    expect(block).toMatch(/block-size:\s*1em;/);
+  });
+
+  test('a leading icon and a trailing icon are both drawn in the sized slot', () => {
+    const icon = createRawSnippet(() => ({ render: () => '<svg width="24" height="24"></svg>' }));
+    const { container } = render(Button, {
+      props: { label: 'Send', leadingIcon: icon, trailingIcon: icon },
+    });
+    const slotted = [...container.querySelectorAll('svg')].map((svg) =>
+      svg.parentElement?.classList.contains('cinder-button__icon'),
+    );
+    expect(slotted).toEqual([true, true]);
   });
 });
 

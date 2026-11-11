@@ -38,9 +38,17 @@
 
   const initials = $derived(computeInitials(name));
 
+  // Words are split on whitespace, hyphens, underscores, dots and colons, so an identifier such as
+  // `tool-runner` reads "TR". A leading `namespace:` part is dropped (`demo:echo` reads "E"), or
+  // every agent in one namespace would share its letter.
   function computeInitials(value: string | undefined): string {
     if (!value) return '';
-    const parts = value.trim().split(/\s+/).slice(0, 2);
+    const trimmed = value.trim();
+    const local = trimmed.replace(/^[^\s:]+:(?=[^\s:])/, '');
+    const parts = local
+      .split(/[\s\-_.:]+/)
+      .filter((part) => part !== '')
+      .slice(0, 2);
     return parts.map((part) => part.charAt(0).toUpperCase()).join('');
   }
 </script>

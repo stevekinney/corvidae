@@ -470,13 +470,15 @@
     padding-inline-end: 0;
   }
 
-  /* On a phone the status moves to line two beside the kind and agent: "Waiting on you, Chat". */
+  /* On a phone the status moves to line two beside the kind and agent: "Waiting on you, Chat". The
+     comma follows only a status that drew something (`:has(*)`), so a row whose status snippet
+     drew nothing has no stray comma at the start of line two. */
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
-    .cinder-stacked-list-item__status::after,
+    .cinder-stacked-list-item__status:has(*)::after,
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
-    .cinder-stacked-list-item__status::after {
+    .cinder-stacked-list-item__status:has(*)::after {
     content: ',' / '';
     margin-inline-end: var(--cinder-space-1-5);
     color: var(--cinder-text-subtle);

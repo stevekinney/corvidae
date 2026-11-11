@@ -25,8 +25,17 @@ describe('StackedListItem status on a phone (COR-2018)', () => {
   test('puts a comma after the status only when line two follows it', () => {
     const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
     expect(stylesheet).toMatch(
-      /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status::after/,
+      /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status:has\(\*\)::after/,
     );
+    // s3#3: a status snippet that draws nothing (a workflow row with no status word) leaves no
+    // comma at the start of line two. Every selector that draws the comma requires an element.
+    const commaSelectors = [...stylesheet.matchAll(/([^{}]+)\{\s*content:\s*','/g)].flatMap(
+      (rule) => (rule[1] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').split(','),
+    );
+    expect(commaSelectors.length).toBeGreaterThan(0);
+    for (const selector of commaSelectors) {
+      expect(selector.trim()).toMatch(/__status:has\(\*\)::after$/);
+    }
     const status = textSnippet('Done');
     const title = textSnippet('Thu Oct 29');
     const bare = render(StackedListItem, { props: { status, title } });

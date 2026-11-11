@@ -1037,8 +1037,27 @@ describe('FilterBar search', () => {
 });
 
 describe('FilterBar styles', () => {
-  test('the row never wraps and the search is the one control that gives way', () => {
-    expect(filterBarCss).not.toContain('flex-wrap: wrap');
+  test('only the narrow row wraps, and the search is the one control that gives way', () => {
+    expect(filterBarCss).toMatch(/\.cinder-filter-bar__row \{[^}]*flex-wrap: nowrap;/);
+    const wrapping = [...filterBarCss.matchAll(/([^{}]+)\{[^}]*flex-wrap: wrap;/g)].map((rule) =>
+      (rule[1] ?? '').replace(/\/\*[\s\S]*?\*\//g, '').trim(),
+    );
+    expect(wrapping).toEqual([
+      ".cinder-filter-bar[data-cinder-layout='narrow'] .cinder-filter-bar__row",
+    ]);
     expect(filterBarCss).toContain('.cinder-filter-bar__row > .cinder-filter-bar__search');
+  });
+
+  // WCAG 1.4.4: at 200% text the folded select keeps its value. It is never narrower than its
+  // content, and its prefix wraps away (and is clipped) before the value is truncated. The layout
+  // itself is proven in scripts/browser-fixtures/tests/filter-bar-fit.playwright.ts.
+  test('the folded select keeps its value: a content floor, and a prefix that drops first', () => {
+    expect(filterBarCss).toMatch(
+      /data-cinder-layout='narrow'\]\s+\.cinder-filter-bar__row\s+> \.cinder-form-field\.cinder-filter-bar__segments-select \{[^}]*min-inline-size: min-content;/,
+    );
+    expect(filterBarCss).toMatch(
+      /\.cinder-select__text:has\(> \.cinder-select__prefix\) \{[^}]*flex-flow: row-reverse wrap;[^}]*max-block-size: 1lh;[^}]*overflow: hidden;/,
+    );
+    expect(filterBarCss).toMatch(/> \.cinder-select__prefix \{\s*order: 1;/);
   });
 });

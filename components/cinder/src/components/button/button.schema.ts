@@ -96,7 +96,7 @@ const schema = {
         name: 'leadingIcon',
         reason: 'function-or-snippet',
         description:
-          'DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.\n If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead.',
+          'DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.\n If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead.\n The button sizes an SVG icon at 1em of its text, so it follows `size`; pass no size.',
       },
       {
         name: 'trailingIcon',

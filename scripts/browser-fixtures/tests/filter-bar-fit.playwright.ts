@@ -107,3 +107,101 @@ test.describe('FilterBar folds by its measured width', () => {
     expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
   });
 });
+
+/** Whether the folded Status select shows its prefix and its value, and cuts the value short. */
+async function statusTrigger(bar: Locator): Promise<{
+  valueText: string;
+  valueClipped: boolean;
+  valueShown: boolean;
+  prefixShown: boolean;
+  besideFilter: boolean;
+}> {
+  return bar.evaluate((element) => {
+    const text = element.querySelector<HTMLElement>(
+      '.cinder-filter-bar__segments-select .cinder-select__text',
+    );
+    const value = text?.querySelector<HTMLElement>('.cinder-select__value');
+    const prefix = text?.querySelector<HTMLElement>('.cinder-select__prefix');
+    const select = element.querySelector<HTMLElement>('.cinder-filter-bar__segments-select');
+    const filter = element.querySelector<HTMLElement>('.cinder-filter-bar__menu-button');
+    if (!text || !value || !prefix || !select || !filter) {
+      throw new Error('The folded bar drew no prefixed Status select and Filter button');
+    }
+    const shown = text.getBoundingClientRect();
+    const inView = (part: HTMLElement): boolean => {
+      const box = part.getBoundingClientRect();
+      return box.width > 0 && box.top >= shown.top - 1 && box.bottom <= shown.bottom + 1;
+    };
+    return {
+      valueText: value.textContent ?? '',
+      valueClipped: value.scrollWidth > value.clientWidth,
+      valueShown: inView(value),
+      prefixShown: inView(prefix),
+      besideFilter:
+        Math.abs(select.getBoundingClientRect().top - filter.getBoundingClientRect().top) < 1,
+    };
+  });
+}
+
+test.describe('FilterBar folded Status select at 200% text (WCAG 1.4.4)', () => {
+  test.beforeEach(async ({ page }) => {
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.goto(FILTER_BAR_ROUTE, { waitUntil: 'load' });
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+    });
+  });
+
+  test('keeps the whole value in view, moving the Filter button under it, named Status', async ({
+    page,
+  }) => {
+    const bar = page.getByRole('search', { name: 'Workflow filters' });
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'narrow');
+    const trigger = bar.getByRole('combobox', { name: 'Status', exact: true });
+    await expect(trigger).toBeVisible();
+
+    // At the default size the select, its prefix and its whole value share a line with Filter,
+    // at a phone's width and at the narrowest one.
+    for (const width of [375, 320]) {
+      await page.setViewportSize({ width, height: 812 });
+      await expect.poll(() => statusTrigger(bar).then((state) => state.besideFilter)).toBe(true);
+      expect(await statusTrigger(bar)).toMatchObject({
+        prefixShown: true,
+        valueShown: true,
+        valueClipped: false,
+      });
+    }
+
+    // At 200% text the Filter button moves under the select, and the whole value stays in view.
+    await page.setViewportSize({ width: 375, height: 812 });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    await expect.poll(() => statusTrigger(bar).then((state) => state.besideFilter)).toBe(false);
+    expect(await statusTrigger(bar)).toMatchObject({
+      valueText: 'All 19',
+      valueShown: true,
+      valueClipped: false,
+    });
+    expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
+    // The prefix is not part of the name; the label names the control.
+    await expect(trigger).toHaveAccessibleName('Status');
+  });
+
+  test('drops the visible "Status:" prefix before it truncates the value', async ({ page }) => {
+    const bar = page.getByRole('search', { name: 'Workflow filters' });
+    await page.evaluate(() => {
+      document.documentElement.style.fontSize = '200%';
+    });
+    // A bar about as wide as the select needs for its value alone, not for "Status:" as well.
+    await setBarWidth(bar, 220);
+    await expect(bar).toHaveAttribute('data-cinder-layout', 'narrow');
+    await expect.poll(() => statusTrigger(bar).then((state) => state.prefixShown)).toBe(false);
+    expect(await statusTrigger(bar)).toMatchObject({
+      valueText: 'All 19',
+      valueShown: true,
+      valueClipped: false,
+    });
+    expect(await rowOverflow(bar)).toBeLessThanOrEqual(0);
+  });
+});

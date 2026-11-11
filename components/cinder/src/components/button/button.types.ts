@@ -166,7 +166,8 @@ export type ButtonProps = SharedHtmlAttributes &
      */
     quiet?: boolean;
     /** DECORATIVE icon rendered before the label/children. Always wrapped in aria-hidden.
-     *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead. */
+     *  If the icon conveys meaning, supply accessible text via `label`/`aria-label` instead.
+     *  The button sizes an SVG icon at 1em of its text, so it follows `size`; pass no size. */
     leadingIcon?: Snippet;
     /** DECORATIVE icon rendered after the label/children. Always wrapped in aria-hidden.
      *  Same accessible-name guidance as `leadingIcon`. */

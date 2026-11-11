@@ -153,6 +153,22 @@
     z-index: 1;
   }
 
+  /* A stuck banner sits below its scroll container's top padding, and rows scrolled under it
+     showed through that gap (s4#17). The banner covers the band above it with the page canvas, a
+     page's top padding deep (space-4), so nothing reads between the banner and the edge. Before
+     it sticks the band falls on that same padding, so it draws nothing a reader sees. */
+  .cinder-banner[data-cinder-sticky='true']::before {
+    content: '';
+    position: absolute;
+    inset-inline: 0;
+    /* Above the 1px top border, which the inset alone would cover (it measures from the padding
+       box). */
+    inset-block-end: calc(100% + 1px);
+    block-size: var(--cinder-space-4);
+    background: var(--cinder-surface-canvas);
+    pointer-events: none;
+  }
+
   /* ----------------------------------------
  * Dismiss button
  * Mirrors .cinder-alert__dismiss rule-for-rule.

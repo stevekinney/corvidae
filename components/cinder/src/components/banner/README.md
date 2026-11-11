@@ -55,7 +55,7 @@ Passing `children` replaces the generated words and keeps everything else; with 
 
 ### Title, glyph, neutral tone and sticky
 
-`title` sets a bold lead. With a preset it runs inline as the first words of the sentence; on a plain banner it sits on its own line above the message, and `titleLayout` moves it either way. `icon` draws a decorative glyph at the start; a `success` banner leads with a check-circle unless `icon` draws another. `variant="neutral"` is a notice that is not a status, such as a setting the person chose. `sticky` keeps the banner at the top of its scroll container.
+`title` sets a bold lead. With a preset it runs inline as the first words of the sentence; on a plain banner it sits on its own line above the message, and `titleLayout` moves it either way. `icon` draws a decorative glyph at the start; a `success` banner leads with a check-circle unless `icon` draws another. `variant="neutral"` is a notice that is not a status, such as a setting the person chose. `sticky` keeps the banner at the top of its scroll container, and paints the page canvas over the 16px band above it, so rows scrolled under it do not show through the container's top padding.
 
 ```svelte
 <script lang="ts">

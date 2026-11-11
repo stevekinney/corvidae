@@ -65,6 +65,14 @@
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
+  /* A native select too narrow for its value ends it in an ellipsis instead of cutting it off
+     mid-letter (s2#4). The listbox trigger truncates its value span itself. */
+  .cinder-select:not([data-cinder-presentation='listbox']) {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+  }
+
   /* Size: the shared control height for the step, with block padding that
      keeps the 14px line box inside it. */
   .cinder-select[data-cinder-size='sm'] {
@@ -398,10 +406,17 @@
   .cinder-select[data-cinder-presentation='listbox'] {
     display: flex;
     align-items: center;
-    gap: var(--cinder-space-1-5);
     font-family: inherit;
     text-align: start;
     white-space: nowrap;
+  }
+
+  .cinder-select__text {
+    display: flex;
+    flex: 1 1 auto;
+    align-items: center;
+    column-gap: var(--cinder-space-1-5);
+    min-inline-size: 0;
   }
 
   .cinder-select__prefix {

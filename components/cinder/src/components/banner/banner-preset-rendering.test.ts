@@ -277,4 +277,16 @@ describe('Banner glyph, neutral tone and sticky', () => {
       'true',
     );
   });
+
+  // s4#17: rows scrolled under a stuck banner showed through the scroll container's top padding.
+  test('a sticky banner covers the band above it with the page canvas, clear of its border', async () => {
+    const css = await Bun.file(new URL('./banner.css', import.meta.url)).text();
+    const cover = /\.cinder-banner\[data-cinder-sticky='true'\]::before \{([^}]*)\}/.exec(css)?.[1];
+    expect(cover).toBeDefined();
+    expect(cover).toContain('position: absolute;');
+    expect(cover).toContain('inset-block-end: calc(100% + 1px);');
+    expect(cover).toContain('block-size: var(--cinder-space-4);');
+    expect(cover).toContain('background: var(--cinder-surface-canvas);');
+    expect(cover).toContain('pointer-events: none;');
+  });
 });

@@ -76,6 +76,10 @@ describe('Select listbox presentation: trigger', () => {
     expect(prefix.getAttribute('aria-hidden')).toBe('true');
     expect(prefix.textContent).toBe('Agent');
     expect(prefix.nextElementSibling?.textContent).toBe('Assistant');
+    // The prefix and value share one line box, so a container (FilterBar) can drop the prefix
+    // before it truncates the value.
+    expect(prefix.parentElement?.classList.contains('cinder-select__text')).toBe(true);
+    expect(prefix.parentElement?.parentElement?.getAttribute('role')).toBe('combobox');
   });
 
   test('keeps the label of a selected option that is disabled (no longer offered)', () => {

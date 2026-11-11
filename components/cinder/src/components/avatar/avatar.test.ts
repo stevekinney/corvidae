@@ -41,6 +41,28 @@ describe('Avatar', () => {
     expect(initials?.textContent).toBe('AM');
   });
 
+  // s2#12: agents named by identifier all showed their namespace's letter.
+  test.each([
+    ['tool-runner', 'TR'],
+    ['release_helper', 'RH'],
+    ['request.human.input', 'RH'],
+    ['demo:echo', 'E'],
+    ['demo:tool-runner', 'TR'],
+    ['demo:request-human-input', 'RH'],
+    ['Tool runner', 'TR'],
+    ['  Ada  Lovelace ', 'AL'],
+    ['a:b:c', 'BC'],
+    ['ready:', 'R'],
+  ])('initials of %p are %p', (name, expected) => {
+    const { container } = render(Avatar, { name });
+    expect(container.querySelector('.cinder-avatar__initials')?.textContent).toBe(expected);
+  });
+
+  test('a namespaced name keeps its whole text as the accessible name', () => {
+    const { container } = render(Avatar, { name: 'demo:echo' });
+    expect(container.textContent).toContain('demo:echo');
+  });
+
   test('size prop sets data-cinder-size', () => {
     const { container } = render(Avatar, { name: 'A', size: 'lg' });
     expect(container.querySelector('.cinder-avatar')?.getAttribute('data-cinder-size')).toBe('lg');

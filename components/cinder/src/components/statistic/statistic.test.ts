@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { afterEach, describe, expect, test } from 'bun:test';
+import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
@@ -30,6 +31,28 @@ describe('Statistic loading', () => {
     expect(container.querySelector('.cinder-statistic__label')?.textContent).toContain(
       'Running now',
     );
+  });
+
+  // s4#13: on a statistic card (the raised surface) the skeleton's own fill is that surface in dark,
+  // so the placeholder vanished. The figure's placeholder is a wash of the border ink instead, a
+  // step over any surface in both schemes, never the raised or inset surface it may sit on.
+  test('paints the placeholder with a fill that shows on the card surface in both schemes', () => {
+    const css = readFileSync(new URL('./statistic.css', import.meta.url), 'utf8');
+    const block = /\.cinder-statistic__value--loading \{([^}]*)\}/.exec(css)?.[1] ?? '';
+    expect(block).toMatch(
+      /--_cinder-skeleton-fill: color-mix\(in oklch, var\(--cinder-border-ink\), transparent \d+%\);/,
+    );
+    expect(block).not.toContain('surface-raised');
+    expect(block).not.toContain('surface-inset');
+    // The skeleton bar paints with that fill wherever it reads its colour, the shimmer and the
+    // still (reduced-motion) bar alike, and falls back to its token everywhere else.
+    const skeletonCss = readFileSync(new URL('../skeleton/skeleton.css', import.meta.url), 'utf8');
+    const tokenReads = skeletonCss.match(/var\(--cinder-skeleton-background\)/g) ?? [];
+    const fillReads =
+      skeletonCss.match(/var\(--_cinder-skeleton-fill, var\(--cinder-skeleton-background\)\)/g) ??
+      [];
+    expect(tokenReads.length).toBeGreaterThan(0);
+    expect(fillReads).toHaveLength(tokenReads.length);
   });
 
   test('is off by default: the value shows and the tile is not busy', () => {

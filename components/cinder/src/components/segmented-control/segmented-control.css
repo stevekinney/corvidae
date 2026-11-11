@@ -521,4 +521,24 @@
   .cinder-segmented-control[aria-disabled='true'] .cinder-segmented-control-option {
     color: var(--cinder-text-disabled);
   }
+
+  /* A disabled control reads as disabled at a glance (s2#15): the inset track loses its fill for
+     the disabled control edge, and the chosen segment drops its raised pill, shadow and contrast
+     ring for the disabled fill, as a disabled Input does. Its choice still shows. */
+  .cinder-segmented-control[aria-disabled='true']:not([data-cinder-variant='tablist']):not(
+      [data-cinder-detached]
+    ) {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px var(--cinder-control-border-disabled);
+  }
+
+  .cinder-segmented-control[aria-disabled='true']:not([data-cinder-variant='tablist'])
+    .cinder-segmented-control-option:is(
+      [data-cinder-selected],
+      [data-cinder-current],
+      [data-cinder-pressed]
+    ) {
+    background: var(--cinder-control-background-disabled);
+    box-shadow: inset 0 0 0 1px var(--cinder-control-border-disabled);
+  }
 }

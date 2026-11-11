@@ -39,6 +39,7 @@
     mutating = false,
     nameDetail,
     labelVisible = true,
+    stateText,
     standalone = false,
     labelPosition = 'end',
     name,
@@ -137,6 +138,19 @@
   {/if}
 {/snippet}
 
+{#snippet stateWord()}
+  {#if stateText}
+    <!-- Decorative: the label names the switch and aria-checked carries its state. -->
+    <span
+      class="cinder-toggle-field__state"
+      role="presentation"
+      aria-hidden="true"
+      data-disabled={resolvedDisabled || staleInert || undefined}
+      onclick={toggle}>{checked ? stateText.on : stateText.off}</span
+    >
+  {/if}
+{/snippet}
+
 {#snippet fieldLabel()}
   <span
     id={labelId}
@@ -154,6 +168,7 @@
   {#if label && !context.labelId}
     <span class="cinder-toggle-field">
       {@render control()}
+      {@render stateWord()}
       <span
         id={ownLabelId}
         class="cinder-toggle-field__label"
@@ -166,11 +181,13 @@
     </span>
   {:else}
     {@render control()}
+    {@render stateWord()}
     {@render descriptionText()}
   {/if}
 {:else if descriptionPlacement === 'below' && description}
   <span class="cinder-toggle-field" data-cinder-description="below">
     {@render control()}
+    {@render stateWord()}
     <span class="cinder-toggle-field__text">
       <span
         id={labelId}
@@ -189,9 +206,11 @@
   <span class="cinder-toggle-field" data-label-position={labelPosition}>
     {#if labelPosition === 'start'}
       {@render fieldLabel()}
+      {@render stateWord()}
       {@render control()}
     {:else}
       {@render control()}
+      {@render stateWord()}
       {@render fieldLabel()}
     {/if}
     {@render descriptionText()}

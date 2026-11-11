@@ -91,6 +91,11 @@
         "name": "onValueChangeRequest",
         "reason": "function-or-snippet",
         "description": "Intercept a proposed checked state before the bindable value is written. Return a replacement value to transform it."
+      },
+      {
+        "name": "stateText",
+        "reason": "unknown-shape",
+        "description": "Words beside the switch that follow `checked`, such as `{ on: 'On', off: 'Off' }`: the `on`\nword while checked, the `off` word otherwise. They sit next to the switch, so with\n`labelVisible={false}` they are the only words drawn. They are decorative (`aria-hidden`): the\nlabel stays the accessible name and `aria-checked` carries the state. A press on them flips the\nswitch, as a press on the label does."
       }
     ]
   }

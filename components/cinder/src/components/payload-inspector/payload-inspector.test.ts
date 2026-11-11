@@ -390,6 +390,15 @@ describe('PayloadInspector', () => {
       expect(attachments.getAttribute('aria-expanded')).toBe('false');
       expect(notify.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Notify, 2 fields');
       expect(attachments.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Attachments, 2 items');
+      // s3#3: the label and its count are one flex item, so the toggle's gap (after the chevron)
+      // never pushes ", 2 fields" away from the label ("Notify , 2 fields").
+      const flexItems = [...notify.children];
+      expect(flexItems.map((child) => child.tagName.toLowerCase())).toEqual(['svg', 'span']);
+      expect(flexItems[1]?.textContent).toBe('Notify, 2 fields');
+      const looseText = [...notify.childNodes].filter(
+        (node) => node.nodeType === Node.TEXT_NODE && (node.textContent ?? '').trim() !== '',
+      );
+      expect(looseText).toEqual([]);
       expect(view.textContent).toContain('ops@example.com');
       expect(view.textContent).toContain('#refunds');
       expect(view.textContent).not.toContain('photo.png');

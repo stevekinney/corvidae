@@ -68,6 +68,10 @@
     display: flex;
     align-items: center;
     min-block-size: calc(var(--cinder-statistic-value-font-size, var(--cinder-text-4xl)) * 1.1);
+    /* A statistic card is the raised surface, which is the skeleton's own fill in dark, so the
+       block vanished (s4#13). A wash of the border ink is a visible step over any surface the
+       figure sits on, in both schemes. */
+    --_cinder-skeleton-fill: color-mix(in oklch, var(--cinder-border-ink), transparent 88%);
   }
 
   .cinder-statistic[data-cinder-has-icon] .cinder-statistic__value {

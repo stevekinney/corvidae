@@ -49,6 +49,7 @@ The switch has no text, so its off track is the whole of its visible shape. The 
 | `value` | `string` | no | — | Value submitted for the hidden checkbox when `checked` and `name` is set. Mirrors native checkbox semantics: the pair `name=value` is sent only while checked. Defaults to `'on'`. Ignored when `name` is unset. |
 | `onValueChange` | `(opaque)` | no | — | Notify after the bindable value has been committed. Not expressible in JSON Schema; see the component types for the signature. |
 | `onValueChangeRequest` | `(opaque)` | no | — | Intercept a proposed checked state before the bindable value is written. Return a replacement value to transform it. Not expressible in JSON Schema; see the component types for the signature. |
+| `stateText` | `(opaque)` | no | — | Words beside the switch that follow `checked`, such as `{ on: 'On', off: 'Off' }`: the `on` word while checked, the `off` word otherwise. They sit next to the switch, so with `labelVisible={false}` they are the only words drawn. They are decorative (`aria-hidden`): the label stays the accessible name and `aria-checked` carries the state. A press on them flips the switch, as a press on the label does. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

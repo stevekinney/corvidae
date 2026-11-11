@@ -505,25 +505,29 @@
     onkeyup={handleKeyup}
     onblur={handleTriggerBlur}
   >
-    {#if valuePrefix}
-      <span class="cinder-select__prefix" aria-hidden="true">{valuePrefix}</span>
-    {/if}
-    {#if leading && selectedOption}
-      <span class="cinder-select__leading" aria-hidden="true"
-        >{@render leading(selectedOption)}</span
-      >
-    {/if}
-    {#if selectedOption}
-      <span class="cinder-select__value"
-        >{selectedOption.label}{#if selectedOption.triggerSuffix}<span class="cinder-select__suffix"
-            >{`, ${selectedOption.triggerSuffix}`}</span
-          >{/if}</span
-      >
-    {:else if placeholder}
-      <span class="cinder-select__value" data-cinder-placeholder>{placeholder}</span>
-    {:else}
-      <span class="cinder-select__value" aria-hidden="true">&nbsp;</span>
-    {/if}
+    <!-- One line that wraps: what does not fit falls to a second line the trigger clips. The
+         prefix wraps first, so a narrow trigger drops it whole and truncates the value last. -->
+    <span class="cinder-select__text">
+      {#if valuePrefix}
+        <span class="cinder-select__prefix" aria-hidden="true">{valuePrefix}</span>
+      {/if}
+      {#if leading && selectedOption}
+        <span class="cinder-select__leading" aria-hidden="true"
+          >{@render leading(selectedOption)}</span
+        >
+      {/if}
+      {#if selectedOption}
+        <span class="cinder-select__value"
+          >{selectedOption.label}{#if selectedOption.triggerSuffix}<span
+              class="cinder-select__suffix">{`, ${selectedOption.triggerSuffix}`}</span
+            >{/if}</span
+        >
+      {:else if placeholder}
+        <span class="cinder-select__value" data-cinder-placeholder>{placeholder}</span>
+      {:else}
+        <span class="cinder-select__value" aria-hidden="true">&nbsp;</span>
+      {/if}
+    </span>
   </button>
   <span class="cinder-select-field__chevron" aria-hidden="true"></span>
 </span>

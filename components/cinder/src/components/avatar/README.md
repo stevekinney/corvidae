@@ -20,7 +20,7 @@ Displays a user's profile photo, initials, or fallback icon at a consistent size
 | --- | --- | --- | --- | --- |
 | `alt` | `string` | no | — | Alternative text for the image. Defaults to `name` when present. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-avatar`. |
-| `name` | `string` | no | — | Display name used to compute initials when no image is available. Also used as the default `alt` for the image. |
+| `name` | `string` | no | — | Display name used to compute initials when no image is available: the first letters of its first two words, split on whitespace, hyphens, underscores, dots and colons, after a leading `namespace:` part is dropped (`demo:tool-runner` reads "TR"). Also used as the default `alt` for the image. |
 | `shape` | `"circle"` \| `"square"` | no | — | Shape. Default `circle`. |
 | `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` \| `"xl"` | no | — | Size token. Default `md`. |
 | `src` | `string` | no | — | Image source. When omitted, the initials fallback renders. |

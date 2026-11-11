@@ -7,9 +7,9 @@ const drawerCss = await Bun.file(new URL('./drawer.css', import.meta.url)).text(
  * The last value any rule with this exact selector gives the property, outside the media queries
  * (reduced motion and forced colors), which restate a few properties for their own case.
  */
-function declared(selector: string, property: string): string | undefined {
+function declared(selector: string, property: string, css = drawerCss): string | undefined {
   let value: string | undefined;
-  parse(drawerCss).walkRules((rule) => {
+  parse(css).walkRules((rule) => {
     if (!rule.selectors.includes(selector)) return;
     if (rule.parent?.type === 'atrule' && 'name' in rule.parent && rule.parent.name === 'media') {
       return;
@@ -20,6 +20,38 @@ function declared(selector: string, property: string): string | undefined {
   });
   return value;
 }
+
+/** The inline (second) value of a rule's two-value `padding` shorthand. */
+function inlinePadding(selector: string, css = drawerCss): string | undefined {
+  return declared(selector, 'padding', css)?.split(/\s+(?![^(]*\))/)[1];
+}
+
+// s4#8: the title sat 4px left of the body text, and the body's end inset was wider than its start
+// (a reserved scrollbar gutter). Header, body and footer share one inline inset now, in the drawer
+// and in the modal, and neither body reserves a gutter.
+describe('one inline inset for header, body and footer (s4#8)', () => {
+  test('the drawer header, body and footer pad their inline edges alike', () => {
+    const insets = ['.cinder-drawer__header', '.cinder-drawer__body', '.cinder-drawer__footer'].map(
+      (selector) => inlinePadding(selector),
+    );
+    expect(insets).toEqual([
+      'var(--cinder-space-5)',
+      'var(--cinder-space-5)',
+      'var(--cinder-space-5)',
+    ]);
+    expect(declared('.cinder-drawer__body', 'scrollbar-gutter')).toBe('auto');
+  });
+
+  test('the modal header starts, and its body and footer pad, at the same inset', async () => {
+    const modalCss = await Bun.file(new URL('../modal/modal.css', import.meta.url)).text();
+    expect(declared('.cinder-modal__header', 'padding-inline-start', modalCss)).toBe(
+      'var(--cinder-space-5)',
+    );
+    expect(inlinePadding('.cinder-modal__body', modalCss)).toBe('var(--cinder-space-5)');
+    expect(inlinePadding('.cinder-modal__footer', modalCss)).toBe('var(--cinder-space-5)');
+    expect(declared('.cinder-modal__body', 'scrollbar-gutter', modalCss)).toBe('auto');
+  });
+});
 
 describe('drawer.css footer bar (COR-2322 AC2)', () => {
   const bottomFooter =

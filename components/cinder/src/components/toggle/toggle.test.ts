@@ -231,6 +231,93 @@ describe('Toggle — interactive behaviour', () => {
   });
 });
 
+// s2#1: a hook switch that was off read "On", because its words were a fixed label.
+describe('Toggle — stateText', () => {
+  const stateText = { on: 'On', off: 'Off' };
+
+  function stateWord(container: Element): Element | null {
+    return container.querySelector('.cinder-toggle-field__state');
+  }
+
+  test('draws the off word while unchecked and the on word once checked', async () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'st1',
+        checked: false,
+        label: 'Refund audit hook',
+        labelVisible: false,
+        stateText,
+      },
+    });
+    expect(stateWord(container)?.textContent).toBe('Off');
+    await fireEvent.click(screen.getByRole('switch'));
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    expect(stateWord(container)?.textContent).toBe('On');
+  });
+
+  test('follows a checked value the parent changes', async () => {
+    const view = render(Toggle, {
+      props: { id: 'st2', checked: true, label: 'Refund audit hook', stateText },
+    });
+    expect(stateWord(view.container)?.textContent).toBe('On');
+    await view.rerender({ checked: false });
+    expect(stateWord(view.container)?.textContent).toBe('Off');
+  });
+
+  test('is decorative: the label stays the accessible name, aria-checked the state', () => {
+    const { container } = render(Toggle, {
+      props: {
+        id: 'st3',
+        checked: false,
+        label: 'Refund audit hook',
+        labelVisible: false,
+        stateText,
+      },
+    });
+    expect(stateWord(container)?.getAttribute('aria-hidden')).toBe('true');
+    const button = screen.getByRole('switch');
+    const labelId = button.getAttribute('aria-labelledby') ?? '';
+    expect(document.getElementById(labelId)?.textContent?.trim()).toBe('Refund audit hook');
+  });
+
+  test('a press on the word flips the switch, unless it is disabled', async () => {
+    const { container } = render(Toggle, {
+      props: { id: 'st4', checked: false, label: 'Hook', stateText },
+    });
+    await fireEvent.click(requiredInstance(stateWord(container), HTMLElement));
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('true');
+    cleanup();
+    const disabled = render(Toggle, {
+      props: { id: 'st5', checked: false, label: 'Hook', stateText, disabled: true },
+    });
+    const word = requiredInstance(stateWord(disabled.container), HTMLElement);
+    expect(word.hasAttribute('data-disabled')).toBe(true);
+    await fireEvent.click(word);
+    expect(screen.getByRole('switch').getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('sits beside the switch in each layout', () => {
+    for (const labelPosition of ['end', 'start'] as const) {
+      const { container } = render(Toggle, {
+        props: { id: `st-${labelPosition}`, label: 'Hook', stateText, labelPosition },
+      });
+      const word = stateWord(container);
+      const control = container.querySelector('.cinder-toggle');
+      expect(
+        labelPosition === 'end'
+          ? control?.nextElementSibling === word
+          : word?.nextElementSibling === control,
+      ).toBe(true);
+      cleanup();
+    }
+  });
+
+  test('draws nothing without stateText', () => {
+    const { container } = render(Toggle, { props: { id: 'st6', label: 'Hook' } });
+    expect(stateWord(container)).toBeNull();
+  });
+});
+
 describe('Toggle — rendered label', () => {
   test('clicking the label flips checked (label onclick calls toggle)', async () => {
     const { container } = render(Toggle, {

@@ -4,6 +4,8 @@
  * SKELETON
  * ======================================== */
 
+  /* `--_cinder-skeleton-fill` lets a component that draws a bar on a surface the token does not
+     clear (Statistic, whose card is the raised surface) paint it with a fill that does. */
   .cinder-skeleton {
     display: block;
     width: 100%;
@@ -11,9 +13,10 @@
     border-radius: var(--cinder-radius-sm);
     background: linear-gradient(
       90deg,
-      var(--cinder-skeleton-background) 0%,
-      oklch(from var(--cinder-skeleton-background) calc(l + 0.06) c h) 50%,
-      var(--cinder-skeleton-background) 100%
+      var(--_cinder-skeleton-fill, var(--cinder-skeleton-background)) 0%,
+      oklch(from var(--_cinder-skeleton-fill, var(--cinder-skeleton-background)) calc(l + 0.06) c h)
+        50%,
+      var(--_cinder-skeleton-fill, var(--cinder-skeleton-background)) 100%
     );
     background-size: 200% 100%;
     animation: cinder-skeleton-shimmer 1.5s ease-in-out infinite;
@@ -226,12 +229,12 @@
     :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
       .cinder-skeleton {
       animation: none;
-      background: var(--cinder-skeleton-background);
+      background: var(--_cinder-skeleton-fill, var(--cinder-skeleton-background));
     }
   }
 
   :root:is([data-cinder-reduced-motion='true'], [data-reduced-motion='on']) .cinder-skeleton {
     animation: none;
-    background: var(--cinder-skeleton-background);
+    background: var(--_cinder-skeleton-fill, var(--cinder-skeleton-background));
   }
 }

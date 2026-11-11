@@ -234,6 +234,14 @@
     line-height: 0;
   }
 
+  /* The button sizes its icon: 1em of the button's text, so the icon follows the size step and a
+     caller need not pass one (a bare Lucide icon would otherwise draw at 24px). An icon with a
+     sizing class (`cinder-icon-sm`) keeps it: utilities win over this layer. */
+  .cinder-button__icon > svg {
+    inline-size: 1em;
+    block-size: 1em;
+  }
+
   /* ----------------------------------------
    * Label — the `label` prop's words, bounded (COR-2339).
    * A button holding a label is never wider than its container and may shrink below its words
