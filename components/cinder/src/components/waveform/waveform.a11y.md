@@ -1,4 +1,4 @@
-# Waveform · accessibility
+# Waveform accessibility
 
 ## Pattern
 

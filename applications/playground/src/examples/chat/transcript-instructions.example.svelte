@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Transcript: the agent’s instructions';
   export const description =
-    'The agent’s instructions open the transcript as left-aligned muted text with no status fill, folded to one line, "Instructions · Show", that opens to the full text.';
+    'The agent’s instructions open the transcript as left-aligned muted text with no status fill, folded to one line, "Instructions, Show", that opens to the full text.';
 </script>
 
 <script lang="ts">

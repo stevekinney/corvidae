@@ -2120,7 +2120,7 @@ describe('RunStepTimeline narrative variant', () => {
   };
   const stepOne: RunStep = {
     id: 'one',
-    label: 'Step 1 · Find the last release',
+    label: 'Step 1, Find the last release',
     status: 'succeeded',
     time: '+1.2 s',
     description: 'Found the last release, 1.4.2, on Oct 23',
@@ -2181,7 +2181,7 @@ describe('RunStepTimeline narrative variant', () => {
         stepOne,
         {
           id: 'two',
-          label: 'Step 2 · Collect merged changes',
+          label: 'Step 2, Collect merged changes',
           status: 'running',
           time: 'now',
           description:
@@ -2197,13 +2197,13 @@ describe('RunStepTimeline narrative variant', () => {
         },
         {
           id: 'three',
-          label: 'Step 3 · Draft the notes',
+          label: 'Step 3, Draft the notes',
           status: 'pending',
           description: 'Waits for step 2',
         },
         {
           id: 'four',
-          label: 'Step 4 · Wait for approval',
+          label: 'Step 4, Wait for approval',
           status: 'pending',
           description: 'Waits for step 3. Resumes on the signal `notes-approved`.',
         },
@@ -2256,7 +2256,7 @@ describe('RunStepTimeline narrative variant', () => {
         stepOne,
         {
           id: 'two',
-          label: 'Step 2 · Collect merged changes',
+          label: 'Step 2, Collect merged changes',
           status: 'failed',
           time: '+3.4 s',
           description: 'Failed',
@@ -2268,13 +2268,13 @@ describe('RunStepTimeline narrative variant', () => {
         },
         {
           id: 'three',
-          label: 'Step 3 · Draft the notes',
+          label: 'Step 3, Draft the notes',
           status: 'skipped',
           description: 'Not run',
         },
         {
           id: 'four',
-          label: 'Step 4 · Wait for approval',
+          label: 'Step 4, Wait for approval',
           status: 'skipped',
           description: 'Not run',
         },
@@ -2303,7 +2303,7 @@ describe('RunStepTimeline narrative variant', () => {
         started,
         {
           id: 'two',
-          label: 'Step 2 · Collect merged changes',
+          label: 'Step 2, Collect merged changes',
           status: 'running',
           time: 'last update 40 s ago',
           description:
@@ -2311,13 +2311,13 @@ describe('RunStepTimeline narrative variant', () => {
         },
         {
           id: 'three',
-          label: 'Step 3 · Draft the notes',
+          label: 'Step 3, Draft the notes',
           status: 'pending',
           description: 'Waits for step 2',
         },
         {
           id: 'four',
-          label: 'Step 4 · Wait for approval',
+          label: 'Step 4, Wait for approval',
           status: 'pending',
           description: 'Waits for step 3',
         },
@@ -2341,7 +2341,7 @@ describe('RunStepTimeline narrative variant', () => {
         stepOne,
         {
           id: 'four',
-          label: 'Step 4 · Wait for approval',
+          label: 'Step 4, Wait for approval',
           status: 'waiting',
           description:
             'Waiting for signal `notes-approved`. It starts again when something sends it.',

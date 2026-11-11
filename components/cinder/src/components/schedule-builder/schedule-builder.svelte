@@ -127,7 +127,7 @@
     if (!zones.includes(timeZone)) zones.unshift(timeZone);
     return orderTimeZones(zones, timeZone).map((zone) => {
       const optionLabel = timeZoneOptionLabel(zone);
-      const name = optionLabel.split(' · ')[0] ?? optionLabel;
+      const name = optionLabel.split(', ')[0] ?? optionLabel;
       return {
         value: zone,
         label: optionLabel,
@@ -286,7 +286,7 @@
   const isInterval = $derived(draft.repeats === 'interval');
   // An interval's preview counts from creation, not from a clock.
   const nextRunsLabel = $derived(
-    isInterval ? 'Next runs · counting from when you create it' : 'Next runs',
+    isInterval ? 'Next runs, counting from when you create it' : 'Next runs',
   );
 </script>
 

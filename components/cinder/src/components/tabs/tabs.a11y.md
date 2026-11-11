@@ -1,4 +1,4 @@
-# Tabs · accessibility
+# Tabs accessibility
 
 ## Pattern
 

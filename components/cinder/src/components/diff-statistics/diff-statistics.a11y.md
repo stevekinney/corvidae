@@ -1,4 +1,4 @@
-# DiffStatistics · accessibility
+# DiffStatistics accessibility
 
 ## Pattern
 

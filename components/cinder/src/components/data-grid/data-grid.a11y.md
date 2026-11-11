@@ -1,4 +1,4 @@
-# DataGrid · accessibility
+# DataGrid accessibility
 
 ## Pattern
 

@@ -1,4 +1,4 @@
-# RadioGroup · accessibility
+# RadioGroup accessibility
 
 ## Pattern
 

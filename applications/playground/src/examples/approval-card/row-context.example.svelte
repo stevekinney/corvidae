@@ -26,6 +26,6 @@
   onResolve={() => undefined}
 >
   {#snippet context()}
-    Test chat · this runs for real: approving refunds order 4471.
+    Test chat, this runs for real: approving refunds order 4471.
   {/snippet}
 </ApprovalCard>

@@ -1,4 +1,4 @@
-# VideoPlayer · accessibility
+# VideoPlayer accessibility
 
 ## Pattern
 

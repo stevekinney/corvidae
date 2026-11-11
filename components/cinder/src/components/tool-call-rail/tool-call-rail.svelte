@@ -161,7 +161,7 @@
     if (call.status === 'denied') return call.decision ?? call.result ?? words.denied;
     // An interrupted call has no answer to arrow to: its result is the words for how it ended.
     if (call.status === 'interrupted') return call.result ?? words.interrupted;
-    // A decision is the person's words ("Approved by you 10:33 AM · $18.50 refunded"), not what
+    // A decision is the person's words ("Approved by you 10:33 AM, $18.50 refunded"), not what
     // the call returned, so it carries no arrow.
     if (call.status === 'approved' && call.decision !== undefined && call.decision !== '') {
       return call.decision;
@@ -420,26 +420,27 @@
             <ChevronRight class="cinder-tool-call-rail__chevron" />
           {/if}
         </span>
-        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, false)}</span>
-        {#if failedCount > 0}
-          <span class="cinder-tool-call-rail__summary-separator" aria-hidden="true">·</span>
+        <span class="cinder-tool-call-rail__summary-text">{words.used(calls.length, false)}</span
+        >{#if failedCount > 0}<span
+            class="cinder-tool-call-rail__summary-separator"
+            aria-hidden="true">,</span
+          >
           <span class="cinder-tool-call-rail__count" data-cinder-count="failed">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.failed(failedCount)}
           </span>
-        {/if}
-        {#if waitingCount > 0}
-          <span class="cinder-tool-call-rail__summary-separator" aria-hidden="true">·</span>
+        {/if}{#if waitingCount > 0}<span
+            class="cinder-tool-call-rail__summary-separator"
+            aria-hidden="true">,</span
+          >
           <span class="cinder-tool-call-rail__count" data-cinder-count="waiting">
             <span class="cinder-tool-call-rail__count-dot" aria-hidden="true"></span>
             {words.waiting(waitingCount)}
           </span>
-        {/if}
-        {#if duration !== undefined && duration !== ''}
-          <span
+        {/if}{#if duration !== undefined && duration !== ''}<span
             class="cinder-tool-call-rail__summary-separator"
             data-cinder-duration=""
-            aria-hidden="true">·</span
+            aria-hidden="true">,</span
           >
           <span class="cinder-tool-call-rail__summary-duration">{duration}</span>
         {/if}

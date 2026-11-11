@@ -1,4 +1,4 @@
-# Tree · accessibility
+# Tree accessibility
 
 ## ARIA Roles and Attributes
 

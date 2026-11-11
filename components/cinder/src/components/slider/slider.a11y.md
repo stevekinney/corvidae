@@ -82,5 +82,5 @@ Native form `reset` is not handled internally: a hidden input does not participa
 
 - The `label` prop is required. A slider without an accessible name is unusable for assistive technology.
 - Provide `valueText` whenever the raw number is not self-evident — prices, dates, percentages of an unusual base, etc.
-- `displayValue` is a purely visual formatter for the header's value text. It does not substitute for `valueText`: if the sighted value text needs formatting (a compact "7 notes · C4–B4" label, for example), assume the announced value still needs its own `valueText` unless the raw number is already self-evident to a screen-reader user.
+- `displayValue` is a purely visual formatter for the header's value text. It does not substitute for `valueText`: if the sighted value text needs formatting (a compact "7 notes, C4–B4" label, for example), assume the announced value still needs its own `valueText` unless the raw number is already self-evident to a screen-reader user.
 - For sliders with fewer than ~10 discrete values, prefer a `select`, `radio-group`, or `segmented-control`. Sliders are better for continuous ranges or coarse "feel" adjustments.

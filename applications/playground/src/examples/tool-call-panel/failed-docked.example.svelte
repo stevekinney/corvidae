@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'A failed call, docked';
   export const description =
-    'Selecting a rail row docks its panel beside the conversation, about 340px wide, with an X to close it. The header reads "Send email" with "send-email" small and monospaced, then a red dot and "Failed 10.0s · call 28 of 30". The Input section lists its fields (To, Template, Order ID) and the Error section is a tinted danger block with the message first, then the code in monospace and Retryable Yes. Under it the panel says what retrying sends, then a full-width secondary "Ask the agent to retry" with a refresh icon and secondary "Copy input" and "Copy error" buttons. Approve elsewhere on the page stays the only primary action.';
+    'Selecting a rail row docks its panel beside the conversation, about 340px wide, with an X to close it. The header reads "Send email" with "send-email" small and monospaced, then a red dot and "Failed 10.0s, call 28 of 30". The Input section lists its fields (To, Template, Order ID) and the Error section is a tinted danger block with the message first, then the code in monospace and Retryable Yes. Under it the panel says what retrying sends, then a full-width secondary "Ask the agent to retry" with a refresh icon and secondary "Copy input" and "Copy error" buttons. Approve elsewhere on the page stays the only primary action.';
 </script>
 
 <script lang="ts">

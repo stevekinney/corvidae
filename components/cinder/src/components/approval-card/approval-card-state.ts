@@ -218,7 +218,7 @@ export type InputSummaryPair = {
 };
 
 /**
- * Reads the arguments preview as the pairs of one summary line, "Order ID 4471 · Amount $42.00".
+ * Reads the arguments preview as the pairs of one summary line, "Order ID 4471, Amount $42.00".
  * Only an object has pairs; a nested value counts its contents ("2 items") instead of spilling
  * onto the line, and a secret stays hidden. Anything else has no summary.
  */

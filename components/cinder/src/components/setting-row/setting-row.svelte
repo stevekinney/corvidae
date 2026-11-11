@@ -49,7 +49,7 @@
     saved: 'Saved just now',
     restart: 'Applies after restart',
     'saved-restart': 'Saved, waiting for a restart',
-    reverted: 'Reverted · in effect now',
+    reverted: 'Reverted, in effect now',
   };
 </script>
 

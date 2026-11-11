@@ -107,6 +107,11 @@
     color: var(--cinder-text-muted);
   }
 
+  /* The comma that ends the group's label sits against it. */
+  .cinder-data-table__group-separator {
+    margin-inline-start: 0;
+  }
+
   /* A row with a message keeps no bottom edge of its own: the message row draws it, so the two
    * read as one row. */
   .cinder-data-table .cinder-table__row[data-cinder-message] > .cinder-table__cell {

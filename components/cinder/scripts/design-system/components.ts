@@ -71,7 +71,7 @@ export function componentReadme(
     '',
     purpose,
     '',
-    `**Category:** ${category} · **Status:** ${component.status} · **Import:** \`import { ${name} } from '${component.import}'\``,
+    `**Category:** ${category}, **Status:** ${component.status}, **Import:** \`import { ${name} } from '${component.import}'\``,
     '',
   ];
   if (component.useWhen?.length) {
@@ -103,7 +103,7 @@ export function componentReadme(
 function exampleTitles(plan: PreviewPlan, limit: number): string {
   const titles = plan.examples
     .map((example) => example.title)
-    .join(' · ')
+    .join(', ')
     .replaceAll('"', "'");
   return Array.from(titles).slice(0, limit).join('');
 }
@@ -146,7 +146,7 @@ export function staticPreviewHtml(
   const group = categoryLabel(manifest, component.category);
   const style = snapshot.styles ? `<style>${snapshot.styles}</style>` : '';
   const document =
-    `<!-- @dsCard group="${group}" height=${Math.min(4000, snapshot.height + 8)} subtitle="Static rendition · ${exampleTitles(plan, 200)}" -->\n` +
+    `<!-- @dsCard group="${group}" height=${Math.min(4000, snapshot.height + 8)} subtitle="Static rendition, ${exampleTitles(plan, 200)}" -->\n` +
     `<!doctype html>\n<html lang="en">\n<head><meta charset="utf-8"><title>${component.exportName} — preview</title>${style}</head>\n<body>\n` +
     `<!-- A static rendition captured from the live component: its bundled editor is larger than a preview script may be. -->\n` +
     `${snapshot.html}\n</body>\n</html>\n`;

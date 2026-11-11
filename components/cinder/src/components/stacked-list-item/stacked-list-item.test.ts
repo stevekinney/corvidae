@@ -22,7 +22,7 @@ function textSnippet(text: string) {
 }
 
 describe('StackedListItem status on a phone (COR-2018)', () => {
-  test('puts a middle dot after the status only when line two follows it', () => {
+  test('puts a comma after the status only when line two follows it', () => {
     const stylesheet = readFileSync(new URL('./stacked-list-item.css', import.meta.url), 'utf8');
     expect(stylesheet).toMatch(
       /status-leading:not\(\s*\.cinder-stacked-list-item--no-line-two\s*\)\s*\.cinder-stacked-list-item__status::after/,

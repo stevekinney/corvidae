@@ -1,4 +1,4 @@
-# Card · accessibility
+# Card accessibility
 
 ## Pattern
 

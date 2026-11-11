@@ -13,6 +13,6 @@
 >
   <Text truncate="middle" text="payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68" />
   <StatusDot status="success" label="Connected" size="sm" />
-  <Text variant="caption">payments · 1 running</Text>
+  <Text variant="caption">payments, 1 running</Text>
   <Text variant="caption">just now</Text>
 </div>

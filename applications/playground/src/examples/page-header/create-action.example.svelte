@@ -44,7 +44,7 @@
   </PageHeader>
 
   <PageHeader headingLevel={2} title="Look up order 4468">
-    {#snippet status()}<StatusDot word="Done" size="sm" /> Fri, Oct 30 · took 23 s{/snippet}
+    {#snippet status()}<StatusDot word="Done" size="sm" /> Fri, Oct 30, took 23 s{/snippet}
   </PageHeader>
 
   <PageHeader headingLevel={2} title="Refund order 4471">
@@ -57,7 +57,7 @@
         ]}
       />
     {/snippet}
-    {#snippet status()}<StatusDot word="Failed" size="sm" /> Fri, Oct 30 · took 23 s{/snippet}
+    {#snippet status()}<StatusDot word="Failed" size="sm" /> Fri, Oct 30, took 23 s{/snippet}
     {#snippet actions()}
       <Button variant="secondary">Edit</Button>
       <Button variant="secondary">Start again</Button>

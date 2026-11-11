@@ -11,7 +11,7 @@
 <div class="example-preview-column">
   <div class="example-preview-row">
     <StatusDot word="Connected" />
-    <span>Signed in as you · last tested 2 min ago</span>
+    <span>Signed in as you, last tested 2 min ago</span>
     <Chip label="MCP server" />
   </div>
   <div class="example-preview-row">

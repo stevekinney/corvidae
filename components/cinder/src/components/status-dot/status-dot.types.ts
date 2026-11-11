@@ -54,7 +54,7 @@ export type StatusDotConnectionState = 'connected' | 'connecting' | 'disconnecte
 export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   /** Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. */
   status?: StatusDotStatus;
-  /** A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a middle dot ("Running · checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. */
+  /** A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a comma ("Running, checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. */
   word?: StatusDotWordLabel;
   /** Realtime connection preset. Sets status, default label, and live-region semantics. */
   connectionState?: StatusDotConnectionState;
@@ -78,7 +78,7 @@ export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
 export interface StatusDotSchemaProps {
   /** Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-status-info-solid`; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. */
   status?: StatusDotStatus;
-  /** A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a middle dot ("Running · checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. */
+  /** A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a comma ("Running, checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. */
   word?: StatusDotWordLabel;
   /** Realtime connection preset. Sets status, default label, and live-region semantics. */
   connectionState?: StatusDotConnectionState;

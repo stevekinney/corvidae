@@ -144,8 +144,10 @@
       0 0 0 calc(var(--cinder-ring-offset, 1px) + var(--cinder-ring-width)) var(--cinder-ring-color);
   }
 
+  /* A comma that ends the words before it, so it sits against them; the space after it comes from
+   * the markup. */
   .cinder-approval-card__separator {
-    margin-inline: 0.25em;
+    margin-inline: 0;
   }
 
   /* ----------------------------------------
@@ -248,7 +250,7 @@
     gap: var(--cinder-space-2);
   }
 
-  /* A line of context above the question, such as "Test chat · this runs for real". */
+  /* A line of context above the question, such as "Test chat, this runs for real". */
   .cinder-approval-card__context {
     color: var(--cinder-text-subtle);
     font-size: var(--cinder-text-sm);
@@ -540,7 +542,7 @@
   }
 
   /* The line may wrap between the identifier, the risk word and "Can't be undone", but never inside
-   * one of them: a piece stays whole with the middot that follows it, so a middot never starts a
+   * one of them: a piece stays whole with the comma that follows it, so a comma never starts a
    * line or stands alone, and a phone never cuts "Can't be undone" off at the card's edge. */
   .cinder-approval-card__keep {
     white-space: nowrap;
@@ -574,17 +576,12 @@
     padding-inline-start: calc(16px + var(--cinder-space-2));
   }
 
-  /* Running text, so a long chat title wraps and a middot stays with what it follows. */
+  /* Running text, so a long chat title wraps and a comma stays with what it follows. */
   .cinder-approval-card__outcome {
     margin: 0;
     color: var(--cinder-text-subtle);
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-snug);
-  }
-
-  /* The outcome is running text, so its spaces already separate a middot from what is around it. */
-  .cinder-approval-card__outcome .cinder-approval-card__separator {
-    margin-inline: 0;
   }
 
   /* A decision reads as neutral text with a quiet dot, whatever was decided. */
@@ -775,7 +772,7 @@
     gap: var(--cinder-space-1);
   }
 
-  /* Who asked is running text, so a long chat title wraps and the middot stays with what it follows. */
+  /* Who asked is running text, so a long chat title wraps and the comma stays with what it follows. */
   .cinder-approval-card__detail-ask,
   .cinder-approval-card__detail-tool {
     margin: 0;
@@ -952,19 +949,19 @@
    * ---------------------------------------- */
 
   /* Where the whole line cannot fit, who asked and when sit on a line of their own, so the
-   * line never breaks in the middle of "issue-refund · Dangerous · Can't be undone". */
+   * line never breaks in the middle of "issue-refund, Dangerous, Can't be undone". */
   @container (inline-size < 40rem) {
     .cinder-approval-card__line-source {
       display: block;
     }
 
-    .cinder-approval-card__line-source > .cinder-approval-card__separator:first-child {
+    .cinder-approval-card__line-tool > .cinder-approval-card__source-separator {
       display: none;
     }
   }
 
-  /* Where even "who asked · when" cannot fit on a line, the time takes a line of its own and the
-   * middot that led to it goes, instead of stranding at the end of the line above. The row's line
+  /* Where even "who asked, when" cannot fit on a line, the time takes a line of its own and the
+   * comma that led to it goes, instead of stranding at the end of the line above. The row's line
    * is short and sits beside the glyph; the card's eyebrow and the detail's ask line are longer. */
   @container (inline-size < 17rem) {
     .cinder-approval-card__line .cinder-approval-card__time-separator {

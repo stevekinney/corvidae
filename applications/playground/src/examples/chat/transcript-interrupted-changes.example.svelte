@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Transcript: interrupted while a changing tool ran';
   export const description =
-    'The run ended while Issue refund, a tool that changes things, was running. Its row shows "Interrupted · may have run" in danger text, and the status line says the call may have run and Retry goes back through the approval. It never says nothing was changed, so a refund cannot be issued twice.';
+    'The run ended while Issue refund, a tool that changes things, was running. Its row shows "Interrupted, may have run" in danger text, and the status line says the call may have run and Retry goes back through the approval. It never says nothing was changed, so a refund cannot be issued twice.';
 </script>
 
 <script lang="ts">
@@ -51,7 +51,7 @@
         id: 'call-1',
         name: 'Issue refund',
         input: '4471',
-        result: 'Interrupted · may have run',
+        result: 'Interrupted, may have run',
         duration: '1.2s',
         status: 'interrupted',
       },

@@ -438,7 +438,7 @@
 
   /* A phone puts the status of either placement on line two with no fixed column. The chat list's
      line-two status gives up its column here too (a phone-only exception, COR-2016): the word, a
-     dot-separator, then the latest message. */
+     comma, then the latest message. */
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading
     > .cinder-stacked-list-item__layout,
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
@@ -455,15 +455,15 @@
     padding-inline-end: 0;
   }
 
-  /* On a phone the status moves to line two beside the kind and agent: "Waiting on you · Chat". */
+  /* On a phone the status moves to line two beside the kind and agent: "Waiting on you, Chat". */
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-leading:not(
       .cinder-stacked-list-item--no-line-two
     )
     .cinder-stacked-list-item__status::after,
   .cinder-stacked-list-item--lines[data-cinder-phone].cinder-stacked-list-item--status-line-two
     .cinder-stacked-list-item__status::after {
-    content: '·' / '';
-    margin-inline: var(--cinder-space-1-5);
+    content: ',' / '';
+    margin-inline-end: var(--cinder-space-1-5);
     color: var(--cinder-text-subtle);
   }
 

@@ -1,4 +1,4 @@
-# StatisticGroup · accessibility
+# StatisticGroup accessibility
 
 ## Pattern
 

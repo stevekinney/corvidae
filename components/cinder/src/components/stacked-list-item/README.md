@@ -27,7 +27,7 @@ Single row within a stacked list, typically pairing a label with metadata or an 
 Pass `status` (a [`StatusDot`](../status-dot/README.md) with its word), `time`, and `meta` to draw the row the list pages share:
 
 - **line one**: the status dot and word in a fixed 128px leading column, a bold title, and the time right-aligned at the edge;
-- **line two**: muted `meta`, kind first, then agent, then detail, joined by middots. It starts under the title, not under the status, and ends in an ellipsis rather than wrapping.
+- **line two**: muted `meta`, kind first, then agent, then detail, joined by commas. It starts under the title, not under the status, and ends in an ellipsis rather than wrapping.
 
 The column is the same 128px on every page, so titles start at one x position down the list. The dot and word sit on the baseline of the first line of the title and the time shares that baseline, so both stay beside the first line when a title clamps to two lines with an ellipsis. Pass `tooltip` with the title's text so the full title is the row's tooltip.
 
@@ -41,14 +41,14 @@ The column is the same 128px on every page, so titles start at one x position do
       title: 'Refund order 4471',
       status: 'Waiting on you',
       time: '10:42 AM',
-      kind: 'Chat · Tool runner · waiting 4 min',
+      kind: 'Chat, Tool runner, waiting 4 min',
     },
     {
       id: 'b',
       title: 'Say hello',
       status: 'Done',
       time: '4:12 PM',
-      kind: 'Chat · Assistant · 8 s',
+      kind: 'Chat, Assistant, 8 s',
     },
   ];
 </script>
@@ -69,21 +69,21 @@ A row with nothing to report (a workflow, an available agent) keeps the column's
 
 ### Phone and the chat list
 
-On a phone (a viewport narrower than 640px) the status moves to line two beside the kind and agent (`Waiting on you · Chat · Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
+On a phone (a viewport narrower than 640px) the status moves to line two beside the kind and agent (`Waiting on you, Chat, Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
 
-The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you · I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
+The chat list is a recorded exception on every width, because its pane is too narrow for a leading column. Pass `statusPlacement="line-two"`: line one is the bold title with the time, and line two is the status in a fixed-width column, then a one-line preview, so previews line up. Pass `titleLines={1}` there so a long title truncates with an ellipsis. On a phone the chat list's status gives up its fixed column as well: line two reads the word, a dot separator, then the preview (`Waiting on you, I found order 4471…`), and the title clamps at two lines (`titleLines={2}`).
 
 ### A third line
 
-Line two ends in an ellipsis, so a reason that must never be cut cannot live there on a narrow screen. Pass `detail` for a third line that wraps and is never cut: a schedule's phone row says what it is on line two (`Active · Workflow · Order refund · Tool runner`) and the reason it will not run first on the third, with the cadence last (`Order refund can't load · won't run until a provider is connected · Mondays at 11:00 AM`). The line starts under the title, or at the left edge under the status on a phone, and a page passes it only where it wants it.
+Line two ends in an ellipsis, so a reason that must never be cut cannot live there on a narrow screen. Pass `detail` for a third line that wraps and is never cut: a schedule's phone row says what it is on line two (`Active, Workflow, Order refund, Tool runner`) and the reason it will not run first on the third, with the cadence last (`Order refund can't load, won't run until a provider is connected, Mondays at 11:00 AM`). The line starts under the title, or at the left edge under the status on a phone, and a page passes it only where it wants it.
 
 ```svelte
 <StackedListItem href="/schedules/weekly-refund-audit">
   {#snippet status()}<StatusDot word="Active" />{/snippet}
   {#snippet title()}Weekly refund audit{/snippet}
   {#snippet time()}Next today 11:00 AM{/snippet}
-  {#snippet meta()}Workflow · Order refund · Tool runner{/snippet}
-  {#snippet detail()}Order refund can't load · won't run until a provider is connected · Mondays at
+  {#snippet meta()}Workflow, Order refund, Tool runner{/snippet}
+  {#snippet detail()}Order refund can't load, won't run until a provider is connected, Mondays at
     11:00 AM{/snippet}
 </StackedListItem>
 ```
@@ -166,7 +166,7 @@ Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each i
 | `detail` | `(opaque)` | no | — | A third line under line two that wraps instead of ending in an ellipsis, so nothing on it is ever cut. A schedule row on a phone puts the reason it won't run first and the cadence last on it; the cadence is the part a narrow screen can lose, so it is the last thing the line says. It starts under the title, and is not drawn on a row with `details`. Not expressible in JSON Schema; see the component types for the signature. |
 | `details` | `(opaque)` | no | — | Turns the row into a collapsed group row (the missed runs on Runs): a "Show" / "Hide" button at the right of line one reveals this snippet beneath the row, aligned with the title. A group row is not a link. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Leading visual (avatar, icon, status dot). With a status column it follows the column. Not expressible in JSON Schema; see the component types for the signature. |
-| `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |
+| `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail, joined by commas. It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetryClick` | `(opaque)` | no | — | Called when the row's "Try again" button is chosen. Without it the error shows no button. Not expressible in JSON Schema; see the component types for the signature. |
 | `status` | `(opaque)` | no | — | The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that every list on every page shares, so titles start at one x position down the list; on a phone it moves to line two, before the meta. The dot and word sit on the first line of the title. Not expressible in JSON Schema; see the component types for the signature. |
 | `target` | `(opaque)` | no | — | Browsing context for the title anchor (`_blank`, `_self`, `_parent`, `_top`, or a named frame). Not expressible in JSON Schema; see the component types for the signature. |

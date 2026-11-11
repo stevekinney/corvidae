@@ -109,14 +109,14 @@ describe('SchemaForm input variant', () => {
       lineItems: [{ sku: 'mug-12', quantity: 1 }],
     });
     const editor = requiredInstance(container.querySelector('textarea'), HTMLTextAreaElement);
-    expect(container.textContent).toContain('Valid JSON · array of 1 item');
+    expect(container.textContent).toContain('Valid JSON, array of 1 item');
     expect(container.textContent).not.toContain('Add Line items');
 
     await fireEvent.input(editor, {
       target: { value: '[{"sku":"mug-12","quantity":1},{"sku":"cup-4","quantity":2}]' },
     });
     await flush();
-    expect(container.textContent).toContain('Valid JSON · array of 2 items');
+    expect(container.textContent).toContain('Valid JSON, array of 2 items');
 
     const form = requiredInstance(container.querySelector('form'), HTMLFormElement);
     form.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));

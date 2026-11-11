@@ -71,7 +71,7 @@ export type TimelineEntry = {
   struck?: boolean | undefined;
   /**
    * For an `event`: draws no marker, so the row starts at the inline start. In the `list` variant
-   * a `warning` tone colours the title instead of the marker ("Missed · Interborough was off").
+   * a `warning` tone colours the title instead of the marker ("Missed, Interborough was off").
    * @default false
    */
   plain?: boolean | undefined;

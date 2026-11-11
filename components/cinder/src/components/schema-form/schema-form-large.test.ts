@@ -116,7 +116,7 @@ describe('SchemaForm large schemas', () => {
     const shipping = screen.getByRole('button', { name: /Shipping/ });
     expect(shipping.getAttribute('aria-expanded')).toBe('false');
     expect(screen.queryByLabelText(/Tracking Number/)).toBeNull();
-    expect(shipping.textContent).toContain('Carrier, Tracking Number… · none set');
+    expect(shipping.textContent).toContain('Carrier, Tracking Number…, none set');
   });
 
   test('a closed group summarizes the values it holds', async () => {
@@ -129,7 +129,7 @@ describe('SchemaForm large schemas', () => {
 
     const shipping = screen.getByRole('button', { name: /Shipping/ });
     expect(shipping.getAttribute('aria-expanded')).toBe('false');
-    expect(shipping.textContent).toContain('UPS · Expedited');
+    expect(shipping.textContent).toContain('UPS, Expedited');
   });
 
   test('summarizes defaults and set values per group', () => {
@@ -137,10 +137,10 @@ describe('SchemaForm large schemas', () => {
     const billing = model.field.fields.find((field) => field.key === 'billing')!;
     expect(
       summarizeGroup(billing, { billing: { currency: 'USD', retryCount: 3, taxId: '' } }),
-    ).toBe('Currency, Retry Count… · defaults');
+    ).toBe('Currency, Retry Count…, defaults');
     expect(
       summarizeGroup(billing, { billing: { currency: 'EUR', retryCount: 5, taxId: '' } }),
-    ).toBe('EUR · 5');
+    ).toBe('EUR, 5');
   });
 
   test('summarizes the keys of a record and the branch a choice has taken', () => {
@@ -172,7 +172,7 @@ describe('SchemaForm large schemas', () => {
       'Partial refund',
     );
     expect(summarizeGroup(delivery, { delivery: { headers: {}, refund: 'whole' } })).toBe(
-      'Headers, Refund · none set',
+      'Headers, Refund, none set',
     );
   });
 

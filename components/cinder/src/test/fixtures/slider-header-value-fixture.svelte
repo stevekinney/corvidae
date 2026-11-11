@@ -18,7 +18,7 @@
     value = 7,
   }: SliderHeaderValueFixtureProps = $props();
 
-  const displayValue = (nextValue: number) => `${nextValue} notes · C4–B4`;
+  const displayValue = (nextValue: number) => `${nextValue} notes, C4–B4`;
   // `exactOptionalPropertyTypes` rejects passing `displayValue={undefined}`
   // outright — an optional prop may be omitted, but not explicitly set to
   // `undefined`. Spreading an empty object omits the key entirely instead.

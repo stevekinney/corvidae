@@ -1,4 +1,4 @@
-# CommandItem · accessibility
+# CommandItem accessibility
 
 ## Pattern
 

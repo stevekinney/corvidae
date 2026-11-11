@@ -261,12 +261,12 @@
     return WIDE_KINDS.has(field.kind) ? 'full' : undefined;
   }
 
-  /** What the JSON field's status line says when it parses: an array is counted ("Valid JSON · array of 1 item"). */
+  /** What the JSON field's status line says when it parses: an array is counted ("Valid JSON, array of 1 item"). */
   function jsonStatusLabel(field: SchemaFormField): string {
     const parsed = parseJsonDraft(field.path, rawJsonValue(field));
     if (!parsed.ok || !Array.isArray(parsed.value)) return 'Valid JSON';
     const count = parsed.value.length;
-    return `Valid JSON · array of ${count} ${count === 1 ? 'item' : 'items'}`;
+    return `Valid JSON, array of ${count} ${count === 1 ? 'item' : 'items'}`;
   }
 
   function matchesFilter(field: SchemaFormField): boolean {

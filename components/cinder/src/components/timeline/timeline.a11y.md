@@ -1,4 +1,4 @@
-# Timeline · accessibility
+# Timeline accessibility
 
 ## Pattern
 

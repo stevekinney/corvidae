@@ -1,4 +1,4 @@
-# Breadcrumbs · accessibility
+# Breadcrumbs accessibility
 
 ## Pattern
 

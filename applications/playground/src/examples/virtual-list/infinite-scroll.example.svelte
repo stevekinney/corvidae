@@ -49,7 +49,7 @@
 
 <div style="display: flex; flex-direction: column; gap: 0.75rem;">
   <p style="color: var(--cinder-text-muted); font-size: var(--cinder-text-sm);">
-    {rows.length} rows loaded · {startLoads} older pages · {endLoads} newer pages
+    {rows.length} rows loaded, {startLoads} older pages, {endLoads} newer pages
   </p>
 
   <VirtualList

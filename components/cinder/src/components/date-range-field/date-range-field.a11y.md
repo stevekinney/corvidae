@@ -1,4 +1,4 @@
-# DateRangeField · accessibility
+# DateRangeField accessibility
 
 ## Pattern
 

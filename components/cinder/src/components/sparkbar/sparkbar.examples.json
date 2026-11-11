@@ -19,7 +19,7 @@
       "id": "line",
       "title": "Trend line",
       "description": "Pass points to draw the shape of a metric over a window: a thin line over a baseline, a dot on the latest value, and a label at each end. The label is the accessible name and is not drawn.",
-      "code": "<script lang=\"ts\">\n  import { Sparkbar } from '@lostgradient/cinder';\n</script>\n\n<div style=\"max-width: 22rem;\">\n  <Sparkbar\n    points={[1.4, 1.42, 1.45, 1.49, 1.53, 1.57, 1.6, 1.62]}\n    label=\"Storage use over the last 24 hours, rising to 1.6 GB\"\n    startLabel=\"1.4 GB · 24 hours ago\"\n    endLabel=\"Now\"\n  />\n</div>\n"
+      "code": "<script lang=\"ts\">\n  import { Sparkbar } from '@lostgradient/cinder';\n</script>\n\n<div style=\"max-width: 22rem;\">\n  <Sparkbar\n    points={[1.4, 1.42, 1.45, 1.49, 1.53, 1.57, 1.6, 1.62]}\n    label=\"Storage use over the last 24 hours, rising to 1.6 GB\"\n    startLabel=\"1.4 GB, 24 hours ago\"\n    endLabel=\"Now\"\n  />\n</div>\n"
     }
   ]
 }

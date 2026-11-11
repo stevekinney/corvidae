@@ -313,7 +313,7 @@ describe('SideNavigationItem tooltip', () => {
     return container.ownerDocument.querySelector('[role="tooltip"]');
   }
 
-  test('a collapsed row carries "Reviews · 2 need you"', async () => {
+  test('a collapsed row carries "Reviews, 2 need you"', async () => {
     const { container } = render(SideNavigationItem, {
       props: {
         href: '/reviews',
@@ -326,7 +326,7 @@ describe('SideNavigationItem tooltip', () => {
       },
     });
     await waitFor(() =>
-      expect(tooltipOf(container)?.textContent?.trim()).toBe('Reviews · 2 need you'),
+      expect(tooltipOf(container)?.textContent?.trim()).toBe('Reviews, 2 need you'),
     );
     expect(container.querySelector('a')?.getAttribute('aria-label')).toBe('Reviews, 2 need you');
   });

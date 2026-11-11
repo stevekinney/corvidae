@@ -1,4 +1,4 @@
-# Backdrop · accessibility
+# Backdrop accessibility
 
 ## Pattern
 

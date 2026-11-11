@@ -21,5 +21,5 @@
     ariaLabel="Context"
     ariaValueText="76K of 200K tokens"
   />
-  <Text variant="caption">Used in total: 118,400 tokens · $0.31</Text>
+  <Text variant="caption">Used in total: 118,400 tokens, $0.31</Text>
 </div>

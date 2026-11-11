@@ -1,4 +1,4 @@
-# Sparkbar · accessibility
+# Sparkbar accessibility
 
 ## Pattern
 

@@ -1,4 +1,4 @@
-# KeyboardShortcuts · accessibility
+# KeyboardShortcuts accessibility
 
 ## Pattern
 

@@ -19,11 +19,11 @@ const statusCss = await Bun.file(new URL('./status-dot.css', import.meta.url)).t
 const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Waiting on you', 'warning'],
   ['Running', 'info'],
-  ['Running · checking the result', 'info'],
+  ['Running, checking the result', 'info'],
   ['Waiting', 'pending'],
   ['Scheduled', 'pending'],
   ['Done', 'success'],
-  ['Done · refund not issued', 'neutral'],
+  ['Done, refund not issued', 'neutral'],
   ['Check not met', 'neutral'],
   ['Approved', 'success'],
   ['Denied', 'neutral'],
@@ -40,7 +40,7 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Paused', 'neutral'],
   ['Off', 'neutral'],
   ['Active', 'success'],
-  ['Missed runs · 4', 'warning'],
+  ['Missed runs, 4', 'warning'],
   ['Available', 'success'],
   ['Unavailable', 'neutral'],
   ['Needs setup', 'neutral'],
@@ -53,7 +53,7 @@ const expectedTones: ReadonlyArray<readonly [string, string]> = [
   ['Draining', 'neutral'],
   ['Disconnected', 'warning'],
   ['Live', 'info'],
-  ['Live · last event 1 s ago', 'info'],
+  ['Live, last event 1 s ago', 'info'],
   ['Reconnecting…', 'pending'],
 ];
 
@@ -73,21 +73,21 @@ describe('statusForStatusDotWord', () => {
   });
 
   test('a qualifier rides along on its base word', () => {
-    expect(statusForStatusDotWord('Missed runs · 12')).toBe('warning');
-    expect(statusForStatusDotWord('Running · checking the result')).toBe('info');
+    expect(statusForStatusDotWord('Missed runs, 12')).toBe('warning');
+    expect(statusForStatusDotWord('Running, checking the result')).toBe('info');
   });
 
   test('a qualifier on Done always means the task was not achieved, so the dot is never green', () => {
-    expect(statusForStatusDotWord('Done · refund not issued')).toBe('neutral');
-    expect(statusForStatusDotWord('Done · no tickets found')).toBe('neutral');
-    expect(statusForStatusDotWord('Done · approval denied')).toBe('neutral');
+    expect(statusForStatusDotWord('Done, refund not issued')).toBe('neutral');
+    expect(statusForStatusDotWord('Done, no tickets found')).toBe('neutral');
+    expect(statusForStatusDotWord('Done, approval denied')).toBe('neutral');
     expect(statusForStatusDotWord('Done')).toBe('success');
   });
 
   test('a word the table does not know is undefined', () => {
     expect(statusForStatusDotWord('Needs you')).toBeUndefined();
     expect(statusForStatusDotWord('constructor')).toBeUndefined();
-    expect(statusForStatusDotWord('toString · x')).toBeUndefined();
+    expect(statusForStatusDotWord('toString, x')).toBeUndefined();
   });
 
   test('red is reserved for six words and amber for five', () => {

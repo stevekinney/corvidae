@@ -88,7 +88,7 @@ describe('RunStepTimeline narrative fold', () => {
 });
 
 describe('RunStepTimeline note label', () => {
-  test('a labelled note reads "Your note · " before its first line', () => {
+  test('a labelled note reads "Your note, " before its first line', () => {
     const { container } = render(RunStepTimeline, {
       variant: 'narrative',
       steps: [
@@ -104,7 +104,7 @@ describe('RunStepTimeline note label', () => {
     });
     const note = container.querySelector('.cinder-run-step-timeline__note');
     expect(note?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Your note · The customer already got a replacement.',
+      'Your note, The customer already got a replacement.',
     );
     expect(note?.querySelector('.cinder-run-step-timeline__note-label')).not.toBeNull();
   });

@@ -1,4 +1,4 @@
-# ToastRegion · accessibility
+# ToastRegion accessibility
 
 See [`toast-region/README.md`](./README.md) for the call-site usage guide (`useToast()`, `ToastOptions`, dismiss patterns).
 

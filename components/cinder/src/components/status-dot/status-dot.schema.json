@@ -54,7 +54,7 @@
       {
         "name": "word",
         "reason": "unknown-shape",
-        "description": "A status word from the word-to-tone table, such as \"Waiting on you\" or \"Failed\". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a middle dot (\"Running · checking the result\") rides along. An explicit `status` or `label` wins over what the word supplies."
+        "description": "A status word from the word-to-tone table, such as \"Waiting on you\" or \"Failed\". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a comma (\"Running, checking the result\") rides along. An explicit `status` or `label` wins over what the word supplies."
       }
     ]
   }

@@ -91,7 +91,7 @@
       : collapsed
         ? (countPhrase ?? emptyWords) === undefined
           ? props.label
-          : `${props.label} · ${countPhrase ?? emptyWords}`
+          : `${props.label}, ${countPhrase ?? emptyWords}`
         : composedName,
   );
   const hasIcon = $derived(props.icon !== undefined);

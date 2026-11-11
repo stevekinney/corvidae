@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'A failure inside the hidden run';
   export const description =
-    'A failure in the middle of a run stays on the rail between two folded groups: the first 3 calls, "Show 10 more · 10 done: Lookup order ×10", the failed Send email with its danger line and links, "Show 13 more · 13 done: Check inventory ×4, Lookup customer ×4, Search orders ×3, 2 others", then the last 3 calls. Each group counts only the calls it hides.';
+    'A failure in the middle of a run stays on the rail between two folded groups: the first 3 calls, "Show 10 more, 10 done: Lookup order ×10", the failed Send email with its danger line and links, "Show 13 more, 13 done: Check inventory ×4, Lookup customer ×4, Search orders ×3, 2 others", then the last 3 calls. Each group counts only the calls it hides.';
 </script>
 
 <script lang="ts">

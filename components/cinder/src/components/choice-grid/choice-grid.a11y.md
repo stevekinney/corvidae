@@ -1,4 +1,4 @@
-# ChoiceGrid · accessibility
+# ChoiceGrid accessibility
 
 ## Pattern
 

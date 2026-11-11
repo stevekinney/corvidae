@@ -200,18 +200,18 @@ describe('ToolPicker', () => {
   test('groups the tools under headers with their counts, what is not chosen and the skills note', () => {
     renderPicker();
     expect(headings()).toEqual([
-      'Built in · 6',
-      'GitHub · 3 · none chosen',
-      'Skills · 2 · they follow the tools they use',
+      'Built in, 6',
+      'GitHub, 3, none chosen',
+      'Skills, 2, they follow the tools they use',
     ]);
   });
 
   test('draws no "none chosen" until something is chosen', () => {
     renderPicker({ selected: [] });
     expect(headings()).toEqual([
-      'Built in · 6',
-      'GitHub · 3',
-      'Skills · 2 · they follow the tools they use',
+      'Built in, 6',
+      'GitHub, 3',
+      'Skills, 2, they follow the tools they use',
     ]);
     expect(counter()).toBe('0 of 9 tools chosen');
   });
@@ -255,7 +255,7 @@ describe('ToolPicker', () => {
     );
     expect(row.querySelector('input')).toBeNull();
     expect(row.querySelector('code')?.textContent).toBe('release-notes');
-    expect(row.querySelector('.cinder-tool-picker__suffix')?.textContent).toBe('· Skill');
+    expect(row.querySelector('.cinder-tool-picker__suffix')?.textContent).toBe(', Skill');
     const dash = requiredInstance(row.querySelector('[role="img"]'), HTMLElement);
     expect(dash.getAttribute('aria-label')).toBe('No risk word');
     expect(dash.textContent).toBe('—');
@@ -267,7 +267,7 @@ describe('ToolPicker', () => {
     await fireEvent.click(checkbox('List issues'));
     expect(checkbox('List issues').checked).toBe(true);
     expect(counter()).toBe('4 of 9 tools chosen');
-    expect(headings()[1]).toBe('GitHub · 3');
+    expect(headings()[1]).toBe('GitHub, 3');
   });
 
   test('the counter is a polite live region', () => {
@@ -313,7 +313,7 @@ describe('ToolPicker search', () => {
   test('narrows the list to what matches and the group counts follow', async () => {
     renderPicker();
     await search('issue');
-    expect(headings()).toEqual(['Built in · 1', 'GitHub · 2 · none chosen']);
+    expect(headings()).toEqual(['Built in, 1', 'GitHub, 2, none chosen']);
     expect(dialog().querySelector('input[aria-label="Issue refund"]')).not.toBeNull();
     expect(dialog().querySelector('input[aria-label="Lookup order"]')).toBeNull();
     expect(counter()).toBe('3 of 9 tools chosen');
@@ -587,7 +587,7 @@ describe('ToolPicker with forty or more tools', () => {
 
   test('the counter adds what is chosen once something is', () => {
     renderPicker({ items: many, groups: undefined, selected: ['Built in-0', 'GitHub-3'] });
-    expect(counter()).toBe('42 tools · 2 chosen');
+    expect(counter()).toBe('42 tools, 2 chosen');
   });
 
   test('groups sit under sticky header buttons, the first open and the rest collapsed', () => {
@@ -631,7 +631,7 @@ describe('ToolPicker with forty or more tools', () => {
     renderPicker({ items: many, groups: undefined, selected: [] });
     await fireEvent.click(checkbox('Built in tool 1'));
     await fireEvent.click(groupButtons()[0]!);
-    expect(counter()).toBe('42 tools · 1 chosen');
+    expect(counter()).toBe('42 tools, 1 chosen');
   });
 
   test('the threshold is a prop', () => {

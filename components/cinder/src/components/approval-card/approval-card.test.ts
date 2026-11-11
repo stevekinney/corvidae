@@ -1218,7 +1218,7 @@ describe('ApprovalCard card layout anatomy', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__eyebrow')?.textContent)).toBe(
-      'Approval from Tool runner · 4 min ago',
+      'Approval from Tool runner, 4 min ago',
     );
     expect(container.querySelector('.cinder-approval-card__title')?.textContent?.trim()).toBe(
       'Refund order 4471 for $42.00?',
@@ -1227,7 +1227,7 @@ describe('ApprovalCard card layout anatomy', () => {
       'Issue refund issue-refund',
     );
     expect(squash(container.querySelector('.cinder-approval-card__risk-line')?.textContent)).toBe(
-      "Dangerous · Can't be undone",
+      "Dangerous, Can't be undone",
     );
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',
@@ -1282,7 +1282,7 @@ describe('ApprovalCard row layout', () => {
     const labels = [...container.querySelectorAll('.cinder-approval-card__pair-label')];
     expect(labels.map((label) => label.textContent)).toEqual(['Order ID', 'Order ID']);
     expect(squash(container.querySelector('.cinder-approval-card__input-pairs')?.textContent)).toBe(
-      'Order ID 4471 · Order ID 4472',
+      'Order ID 4471, Order ID 4472',
     );
   });
 
@@ -1293,14 +1293,14 @@ describe('ApprovalCard row layout', () => {
     expect(article.getAttribute('data-cinder-layout')).toBe('row');
     expect(getByRole('img', { name: 'High risk' })).not.toBeNull();
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      "Issue refund issue-refund · Dangerous · Can't be undone · Approval from Tool runner · 4 min ago",
+      "Issue refund issue-refund, Dangerous, Can't be undone, Approval from Tool runner, 4 min ago",
     );
     expect(container.querySelector('.cinder-approval-card__consequence')?.textContent).toBe(
       'Sends $42.00 back to the original card',
     );
     expect(
       squash(container.querySelector('.cinder-approval-card__input-toggle')?.textContent),
-    ).toBe('Input Order ID 4471 · Amount $42.00 · Reason Arrived damaged');
+    ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
     expect(getByRole('button', { name: 'Add a note' })).not.toBeNull();
     expect(container.querySelector('.cinder-approval-card__details')).toBeNull();
   });
@@ -1328,7 +1328,7 @@ describe('ApprovalCard row layout', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'issue-refund · Dangerous · Approval from the agent · 2 min ago',
+      'issue-refund, Dangerous, Approval from the agent, 2 min ago',
     );
     expect(container.querySelector('.cinder-approval-card__undone')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__tool-label')).toBeNull();
@@ -1553,11 +1553,11 @@ describe('ApprovalCard row layout', () => {
       'Unavailable',
     );
     expect(squash(container.querySelector('.cinder-approval-card__line')?.textContent)).toBe(
-      'Publish notes publish-notes · Changes things · Approval from Release helper · 12 min ago',
+      'Publish notes publish-notes, Changes things, Approval from Release helper, 12 min ago',
     );
     expect(
       squash(container.querySelector('.cinder-approval-card__input-summary')?.textContent),
-    ).toBe('Version 2.4 · Changes 12');
+    ).toBe('Version 2.4, Changes 12');
     expect(
       getByText(
         "Release helper is unavailable, so this can't be answered now. It returns when the Demo plugin is enabled.",
@@ -1581,7 +1581,7 @@ describe('ApprovalCard row layout', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
-      'Denied by you · 10:40 AM',
+      'Denied by you, 10:40 AM',
     );
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
@@ -1691,7 +1691,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
       });
       const article = container.querySelector('.cinder-approval-card--row');
       expect(squash(article?.textContent)).toBe(
-        'Refund order 4471 for $42.00? Approved by you in Reviews · 10:46 AM',
+        'Refund order 4471 for $42.00? Approved by you in Reviews, 10:46 AM',
       );
       expect(container.querySelector('.cinder-approval-card__line')).toBeNull();
       expect(container.querySelector('.cinder-approval-card__decided-input')).toBeNull();
@@ -1712,7 +1712,7 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         }),
       });
       expect(squash(container.querySelector('.cinder-approval-card--row')?.textContent)).toBe(
-        'Refund order 4471 for $42.00? Denied by you in Reviews · 10:46 AM',
+        'Refund order 4471 for $42.00? Denied by you in Reviews, 10:46 AM',
       );
       const glyph = container.querySelector('.cinder-approval-card__decided-glyph');
       expect(glyph?.getAttribute('data-cinder-tone')).toBe('neutral');
@@ -1861,8 +1861,8 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
 
         expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
           layout === 'detail'
-            ? 'Approved by you 10:33 AM today · Tool runner'
-            : 'Approved by you · 10:33 AM',
+            ? 'Approved by you 10:33 AM today, Tool runner'
+            : 'Approved by you, 10:33 AM',
         );
         expect(squash(container.querySelector('.cinder-approval-card__result')?.textContent)).toBe(
           'Result: Refunded $18.50 to the original card.',
@@ -1890,10 +1890,10 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
           ),
         ).toBe(
           layout === 'detail'
-            ? 'Approved by you in Reviews at 10:44 AM · Tool runner'
+            ? 'Approved by you in Reviews at 10:44 AM, Tool runner'
             : layout === 'row'
-              ? // The row writes the time after a middot, as it does for a decision made here.
-                'Approved by you in Reviews · 10:44 AM'
+              ? // The row writes the time after a comma, as it does for a decision made here.
+                'Approved by you in Reviews, 10:44 AM'
               : 'Approved by you in Reviews at 10:44 AM',
         );
         expect(container.textContent).toContain("You don't need to do anything here.");
@@ -1928,13 +1928,13 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
 
       test('a context slot writes its line above the question', () => {
         const context = createRawSnippet(() => ({
-          render: () => '<span>Test chat · this runs for real: order 4471 is refunded</span>',
+          render: () => '<span>Test chat, this runs for real: order 4471 is refunded</span>',
         }));
         const { container } = render(ApprovalCard, { props: refundRow({ layout, context }) });
 
         const line = container.querySelector('.cinder-approval-card__context');
         const title = container.querySelector('h3');
-        expect(line?.textContent).toBe('Test chat · this runs for real: order 4471 is refunded');
+        expect(line?.textContent).toBe('Test chat, this runs for real: order 4471 is refunded');
         // Above the question, except on the detail page, which writes the context under who asked.
         const following =
           line !== null &&
@@ -1984,10 +1984,10 @@ describe('ApprovalCard detail layout', () => {
       squash(container.querySelector('.cinder-approval-card__detail-eyebrow')?.textContent),
     ).toBe('Tool approval');
     expect(squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent)).toBe(
-      'Asked by Tool runner in Please refund order 4471, it arrived damaged. · waiting 4 min',
+      'Asked by Tool runner in Please refund order 4471, it arrived damaged., waiting 4 min',
     );
     expect(squash(container.querySelector('.cinder-approval-card__detail-tool')?.textContent)).toBe(
-      'It wants to run Issue refund issue-refund · Dangerous',
+      'It wants to run Issue refund issue-refund, Dangerous',
     );
     expect(squash(container.querySelector('.cinder-approval-card__detail-risk')?.textContent)).toBe(
       "Can't be undone. Sends $42.00 back to the original card",
@@ -2065,7 +2065,7 @@ describe('ApprovalCard detail layout', () => {
     const outcome = container.querySelector('.cinder-approval-card__outcome');
     expect(outcome?.getAttribute('data-cinder-tone')).toBe('success');
     expect(squash(outcome?.textContent)).toBe(
-      'Approved by you 10:33 AM today · Tool runner in Please refund order 4471, it arrived damaged.',
+      'Approved by you 10:33 AM today, Tool runner in Please refund order 4471, it arrived damaged.',
     );
     expect(container.querySelector('.cinder-approval-card__readonly-summary')).toBeNull();
     expect(container.querySelector('.cinder-approval-card__detail-ask')).toBeNull();
@@ -2084,7 +2084,7 @@ describe('ApprovalCard detail layout', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent)).toBe(
-      'Asked by Tool runner in Please refund order 4471, it arrived damaged. · Expired',
+      'Asked by Tool runner in Please refund order 4471, it arrived damaged., Expired',
     );
     expect(container.querySelector('.cinder-approval-card__readonly-summary')?.textContent).toMatch(
       EXPIRED_NOTICE,
@@ -2136,7 +2136,7 @@ describe('ApprovalCard outcome', () => {
 
     expect(
       squash(container.querySelector('.cinder-approval-card__decided-input')?.textContent),
-    ).toBe('Input Order ID 4471 · Amount $42.00 · Reason Arrived damaged');
+    ).toBe('Input Order ID 4471, Amount $42.00, Reason Arrived damaged');
   });
 
   test('says nothing more than the outcome when no notice or reason was given', () => {
@@ -2167,14 +2167,14 @@ describe('ApprovalCard line wrapping', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     // The facts line may wrap between its pieces, so a phone never clips "Can't be undone" at the
-    // card's edge; each piece stays whole and keeps the middot that follows it.
+    // card's edge; each piece stays whole and keeps the comma that follows it.
     expect(css).not.toMatch(/\.cinder-approval-card__line-facts \{[^}]*white-space: nowrap/);
     expect(css).toMatch(/\.cinder-approval-card__keep \{\s*white-space: nowrap;/);
     expect(css).toMatch(/\.cinder-approval-card__undone \{\s*white-space: nowrap;/);
     expect(css).toMatch(/\.cinder-approval-card__line time[^{]*\{\s*white-space: nowrap;/);
   });
 
-  test('puts the time on a line of its own, without the middot, where who asked and when cannot share one', () => {
+  test('puts the time on a line of its own, without the comma, where who asked and when cannot share one', () => {
     const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(
@@ -2185,17 +2185,17 @@ describe('ApprovalCard line wrapping', () => {
     );
   });
 
-  test('keeps each piece of the facts line whole with the middot that follows it', () => {
+  test('keeps each piece of the facts line whole with the comma that follows it', () => {
     const { container } = render(ApprovalCard, { props: refundRow() });
 
     expect(squash(container.querySelector('.cinder-approval-card__line-facts')?.textContent)).toBe(
-      "issue-refund · Dangerous · Can't be undone",
+      "issue-refund, Dangerous, Can't be undone",
     );
     expect(
       [
         ...container.querySelectorAll('.cinder-approval-card__line .cinder-approval-card__keep'),
       ].map((piece) => squash(piece.textContent)),
-    ).toEqual(['issue-refund ·', 'Dangerous ·']);
+    ).toEqual(['issue-refund,', 'Dangerous,']);
     expect(container.querySelector('.cinder-approval-card__line time')?.textContent).toBe(
       '4 min ago',
     );
@@ -2228,19 +2228,23 @@ describe('ApprovalCard source line', () => {
     const { container } = render(ApprovalCard, { props: refundRow() });
 
     expect(squash(container.querySelector('.cinder-approval-card__line-source')?.textContent)).toBe(
-      '· Approval from Tool runner · 4 min ago',
+      'Approval from Tool runner, 4 min ago',
+    );
+    // The comma that leads into the source ends the tool line, so it never starts a line.
+    expect(squash(container.querySelector('.cinder-approval-card__line-tool')?.textContent)).toBe(
+      "Issue refund issue-refund, Dangerous, Can't be undone,",
     );
   });
 
-  test('the card keeps the middot with the source, so the time is never stranded behind it', () => {
+  test('the card keeps the comma with the source, so the time is never stranded behind it', () => {
     const { container } = render(ApprovalCard, { props: refundRow({ layout: 'card' }) });
 
     expect(squash(container.querySelector('.cinder-approval-card__eyebrow')?.textContent)).toBe(
-      'Approval from Tool runner · 4 min ago',
+      'Approval from Tool runner, 4 min ago',
     );
-    // The middot is tied to the source by a no-break space, so it never starts a line or stands alone.
+    // The comma sits against the source, so it never starts a line or stands alone.
     expect(container.querySelector('.cinder-approval-card__eyebrow')?.textContent).toContain(
-      'Approval from Tool runner\u00a0·',
+      'Approval from Tool runner,',
     );
   });
 });
@@ -2265,7 +2269,7 @@ describe('ApprovalCard detail links and what the source said', () => {
       ['Please refund order 4471, it arrived damaged.', '/chat/415b1fd8'],
     ]);
     expect(squash(container.querySelector('.cinder-approval-card__detail-ask')?.textContent)).toBe(
-      'Asked by Tool runner in Please refund order 4471, it arrived damaged. · waiting 4 min',
+      'Asked by Tool runner in Please refund order 4471, it arrived damaged., waiting 4 min',
     );
   });
 
@@ -2282,7 +2286,7 @@ describe('ApprovalCard detail links and what the source said', () => {
 
     const outcome = container.querySelector('.cinder-approval-card__outcome');
     expect(squash(outcome?.textContent)).toBe(
-      'Approved by you 10:33 AM today · Tool runner in Please refund order 4471, it arrived damaged.',
+      'Approved by you 10:33 AM today, Tool runner in Please refund order 4471, it arrived damaged.',
     );
     const link = outcome?.querySelector('a');
     expect(link?.textContent).toBe('Please refund order 4471, it arrived damaged.');
@@ -2302,11 +2306,11 @@ describe('ApprovalCard detail links and what the source said', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toMatch(
-      /^Approved by you 4:12 PM yesterday · /,
+      /^Approved by you 4:12 PM yesterday, /,
     );
   });
 
-  test('the other layouts keep the clock alone after a middot', () => {
+  test('the other layouts keep the clock alone after a comma', () => {
     const { container } = render(ApprovalCard, {
       props: refundRow({
         layout: 'row',
@@ -2318,7 +2322,7 @@ describe('ApprovalCard detail links and what the source said', () => {
     });
 
     expect(squash(container.querySelector('.cinder-approval-card__outcome')?.textContent)).toBe(
-      'Approved by you · 10:33 AM',
+      'Approved by you, 10:33 AM',
     );
   });
 
@@ -2407,7 +2411,7 @@ describe('ApprovalCard answered elsewhere', () => {
     expect(
       squash(container.querySelector('.cinder-approval-card__elsewhere-body')?.textContent),
     ).toBe(
-      "Refund order 4471 for $42.00 · Issue refund. The run is continuing, so this page changed. You don't need to do anything here.",
+      "Refund order 4471 for $42.00, Issue refund. The run is continuing, so this page changed. You don't need to do anything here.",
     );
     // Nothing of the card is left to answer or read: no input, no details, no buttons.
     expect(container.querySelector('.cinder-payload-inspector')).toBeNull();

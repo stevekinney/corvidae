@@ -103,7 +103,7 @@
   }
 
   /* The label's line with a meta: the label's own text truncates first, so what kind of row it is
-     ("Approval · waiting") stays readable on a phone, and a long meta truncates before it takes
+     ("Approval, waiting") stays readable on a phone, and a long meta truncates before it takes
      more than 60% of the line. */
   .cinder-command-item__label[data-cinder-meta] {
     display: flex;
@@ -115,7 +115,7 @@
     min-inline-size: 0;
   }
 
-  /* The secondary text of the label's own line: "Approval · waiting", muted, after the label. */
+  /* The secondary text of the label's own line: "Approval, waiting", muted, after the label. */
   .cinder-command-item__meta {
     flex: none;
     max-inline-size: 60%;
@@ -127,8 +127,8 @@
   }
 
   .cinder-command-item__meta::before {
-    content: '·';
-    margin-inline: var(--cinder-space-1-5);
+    content: ',';
+    margin-inline-end: var(--cinder-space-1-5);
   }
 
   /* A row whose meta has nothing to say has no separator to hang from the label. */

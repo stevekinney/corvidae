@@ -35,7 +35,7 @@
   >
     {#snippet messageActions({ message })}
       {#if message.role === 'assistant'}
-        <span>· Claude Sonnet 5.5</span>
+        <span>, Claude Sonnet 5.5</span>
         <Button type="button" size="xs" variant="ghost">Reply details</Button>
       {:else}
         <Button type="button" size="xs" variant="ghost">Branch</Button>

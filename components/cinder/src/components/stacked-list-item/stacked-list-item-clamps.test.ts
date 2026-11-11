@@ -28,7 +28,7 @@ describe('StackedListItem long values', () => {
         title: textSnippet(longTitle),
         tooltip: longTitle,
         time: textSnippet('4 min'),
-        meta: textSnippet('Approval · Tool runner'),
+        meta: textSnippet('Approval, Tool runner'),
       },
     });
     const title = container.querySelector('.cinder-stacked-list-item__title');
@@ -40,7 +40,7 @@ describe('StackedListItem long values', () => {
   });
 
   test('line two carries its full text as a tooltip in the two-line row and in the plain row', () => {
-    const lineTwo = 'Workflow · Release notes · Every Friday at 11:00 AM · From a workflow file';
+    const lineTwo = 'Workflow, Release notes, Every Friday at 11:00 AM, From a workflow file';
     const lines = render(StackedListItem, {
       props: {
         title: textSnippet('Release notes digest'),
@@ -117,7 +117,7 @@ describe('StackedListItem group row tint', () => {
     const { container } = render(StackedListItem, {
       props: {
         tone: 'warning',
-        status: textSnippet('Missed runs · 4'),
+        status: textSnippet('Missed runs, 4'),
         title: textSnippet('Daily summary missed 4 times since Oct 30'),
         details: textSnippet('Mon, Nov 2'),
       },
@@ -137,9 +137,9 @@ describe('StackedListItem group row tint', () => {
   test('a group row defaults to the neutral tint and shows all of line two when it is open', async () => {
     const { container, getByRole } = render(StackedListItem, {
       props: {
-        status: textSnippet('Missed runs · 4'),
+        status: textSnippet('Missed runs, 4'),
         title: textSnippet('Daily summary'),
-        meta: textSnippet('Schedule · Assistant'),
+        meta: textSnippet('Schedule, Assistant'),
         details: textSnippet('Mon, Nov 2'),
       },
     });

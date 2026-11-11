@@ -1,4 +1,4 @@
-# ShortcutHint · accessibility
+# ShortcutHint accessibility
 
 ## Pattern
 

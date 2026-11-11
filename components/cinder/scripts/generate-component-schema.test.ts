@@ -108,7 +108,7 @@ describe('run-step-timeline generated schema', () => {
         { id: 'started', label: 'Started', status: 'recorded', time: '10:45:20 AM' },
         {
           id: 'collect',
-          label: 'Step 2 · Collect merged changes',
+          label: 'Step 2, Collect merged changes',
           status: 'running',
           description: 'Reading merged pull requests from GitHub.',
           time: 'now',

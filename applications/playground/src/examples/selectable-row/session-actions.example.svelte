@@ -23,7 +23,7 @@
       Customer onboarding workflow investigation with a deliberately long session title
     {/snippet}
     {#snippet description()}Inspect the active workflow execution and event history.{/snippet}
-    {#snippet meta()}Running · Updated 2 minutes ago{/snippet}
+    {#snippet meta()}Running, Updated 2 minutes ago{/snippet}
     {#snippet trailingActions()}
       <Button
         size="sm"

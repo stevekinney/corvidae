@@ -32,7 +32,7 @@ describe('CommandItem leading tone and meta (row 03c)', () => {
     const { container } = render(Harness, { withMeta: true });
     const label = container.querySelector('.cinder-command-item__label');
     const meta = label?.querySelector('.cinder-command-item__meta');
-    expect(meta?.textContent?.trim()).toBe('Approval · waiting');
+    expect(meta?.textContent?.trim()).toBe('Approval, waiting');
     expect(meta?.getAttribute('aria-hidden')).toBe('true');
     expect(label?.querySelector('.cinder-command-item__text')?.textContent?.trim()).toBe(
       'Refund order 4471 for $42.00?',
@@ -44,10 +44,10 @@ describe('CommandItem leading tone and meta (row 03c)', () => {
 });
 
 describe('CommandItem meta separator', () => {
-  test('a meta with nothing in it is not drawn, so no stray "·" trails the label', async () => {
+  test('a meta with nothing in it is not drawn, so no stray "," trails the label', async () => {
     const css = await Bun.file(new URL('./command-item.css', import.meta.url)).text();
     expect(css).toMatch(/\.cinder-command-item__meta:empty\s*\{\s*display:\s*none;/);
-    expect(css).toMatch(/\.cinder-command-item__meta::before\s*\{[^}]*content:\s*'·';/);
+    expect(css).toMatch(/\.cinder-command-item__meta::before\s*\{[^}]*content:\s*',';/);
   });
 });
 

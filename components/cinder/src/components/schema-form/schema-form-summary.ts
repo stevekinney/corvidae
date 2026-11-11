@@ -21,8 +21,8 @@ export function leafFieldsOf(field: SchemaFormField): SchemaFormField[] {
 
 /**
  * The one-line summary of a closed group. When something under the group has been changed it
- * lists those values (`Damaged · whole order`); otherwise it names the fields and says whether
- * the schema supplies defaults (`Carrier, Tracking Number… · none set`).
+ * lists those values (`Damaged, whole order`); otherwise it names the fields and says whether
+ * the schema supplies defaults (`Carrier, Tracking Number…, none set`).
  */
 export function summarizeGroup(group: SchemaFormField, formValue: unknown): string {
   const leaves = leafFieldsOf(group);
@@ -34,7 +34,7 @@ export function summarizeGroup(group: SchemaFormField, formValue: unknown): stri
     changed += 1;
     if (shown.length < MAXIMUM_SHOWN_VALUES) shown.push(text);
   }
-  if (changed > 0) return `${shown.join(' · ')}${changed > shown.length ? '…' : ''}`;
+  if (changed > 0) return `${shown.join(', ')}${changed > shown.length ? '…' : ''}`;
 
   const names = leaves
     .slice(0, MAXIMUM_SHOWN_NAMES)
@@ -42,7 +42,7 @@ export function summarizeGroup(group: SchemaFormField, formValue: unknown): stri
     .join(', ');
   const more = leaves.length > MAXIMUM_SHOWN_NAMES ? '…' : '';
   const hasDefaults = leaves.some((leaf) => 'default' in leaf.schema);
-  return `${names}${more} · ${hasDefaults ? 'defaults' : 'none set'}`;
+  return `${names}${more}, ${hasDefaults ? 'defaults' : 'none set'}`;
 }
 
 /** The text that stands for a leaf's value, or `undefined` when it is still at its default. */

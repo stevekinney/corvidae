@@ -1,4 +1,4 @@
-# ChoiceGridItem · accessibility
+# ChoiceGridItem accessibility
 
 ## Pattern
 

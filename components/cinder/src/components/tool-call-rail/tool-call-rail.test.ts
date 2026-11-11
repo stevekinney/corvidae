@@ -65,7 +65,7 @@ describe('ToolCallRail row count and summary', () => {
     expect(seven.container.querySelector('.cinder-tool-call-rail__group')).toBeNull();
     cleanup();
     const eight = render(ToolCallRail, {
-      props: { calls: turn(8), endLabel: 'Run finished · no reply' },
+      props: { calls: turn(8), endLabel: 'Run finished, no reply' },
     });
     expect(rows(eight.container)).toHaveLength(6);
     expect(text(eight.container.querySelector('.cinder-tool-call-rail__more'))).toBe('Show 2 more');
@@ -74,7 +74,7 @@ describe('ToolCallRail row count and summary', () => {
       '2 done: Lookup order ×2',
     );
     expect(text(eight.container.querySelector('.cinder-tool-call-rail__end'))).toBe(
-      'Run finished · no reply',
+      'Run finished, no reply',
     );
   });
 
@@ -86,7 +86,7 @@ describe('ToolCallRail row count and summary', () => {
       { id: 'refund', name: 'Issue refund', status: 'waiting' },
     ];
     const { container } = render(ToolCallRail, { props: { calls, duration: '18s' } });
-    expect(text(summary(container))).toBe('Used 30 tools · 1 failed · 1 waiting on you · 18s');
+    expect(text(summary(container))).toBe('Used 30 tools, 1 failed, 1 waiting on you, 18s');
     expect(
       container.querySelector('[data-cinder-count="failed"] .cinder-tool-call-rail__count-dot'),
     ).not.toBeNull();
@@ -164,7 +164,7 @@ describe('ToolCallRail folding', () => {
     expect(rows(container)).toHaveLength(30);
     expect(container.querySelector('.cinder-tool-call-rail__more')).toBeNull();
     expect(rows(container).map((row) => row.dataset['cinderToolCallRow'])[3]).toBe('call-3');
-    expect(text(summary(container))).toContain('1 failed · 1 waiting on you');
+    expect(text(summary(container))).toContain('1 failed, 1 waiting on you');
     const fewer = requiredInstance(
       container.querySelector('.cinder-tool-call-rail__fewer button'),
       HTMLElement,
@@ -187,7 +187,7 @@ describe('ToolCallRail folding', () => {
     ]);
     expect(container.querySelector('.cinder-tool-call-rail__group')).toBeNull();
     expect(container.querySelector('.cinder-tool-call-rail__failure')).not.toBeNull();
-    expect(text(toggle)).toContain('Used 30 tools · 1 failed · 1 waiting on you');
+    expect(text(toggle)).toContain('Used 30 tools, 1 failed, 1 waiting on you');
   });
 
   test('denied calls never fold', () => {
@@ -518,7 +518,7 @@ describe('ToolCallRail styles', () => {
       name: 'Issue refund',
       input: '4471',
       status: 'interrupted',
-      result: 'Interrupted · may have run',
+      result: 'Interrupted, may have run',
       duration: '1.2s',
     };
     const { container } = render(ToolCallRail, { props: { calls } });
@@ -535,7 +535,7 @@ describe('ToolCallRail styles', () => {
     expect(marker?.querySelector('.cinder-tool-call-rail__glyph')).not.toBeNull();
     const result = item?.querySelector('.cinder-tool-call-rail__result');
     // No arrow: an interrupted call has no answer to point at.
-    expect(result?.textContent?.trim()).toBe('Interrupted · may have run');
+    expect(result?.textContent?.trim()).toBe('Interrupted, may have run');
     expect(item?.querySelector('.cinder-sr-only')?.textContent).toContain('Interrupted');
   });
 

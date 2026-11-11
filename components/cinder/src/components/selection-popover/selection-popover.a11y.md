@@ -1,4 +1,4 @@
-# SelectionPopover · accessibility
+# SelectionPopover accessibility
 
 ## Pattern
 

@@ -17,7 +17,7 @@ Every element produced by the `children` snippet must be a valid `<li>` so the `
 
 ## Day groups
 
-With `groupBy` each group is an `<li>` that holds a header (`<div id>`) and a nested `<ul role="list" aria-labelledby>` named by that header, so a screen reader announces "Today · Monday, Nov 2, list, 3 items" rather than a flat run of rows. The header is a plain element, not a heading: it names a list, and a page that wants its days in the heading outline should say so itself.
+With `groupBy` each group is an `<li>` that holds a header (`<div id>`) and a nested `<ul role="list" aria-labelledby>` named by that header, so a screen reader announces "Today, Monday, Nov 2, list, 3 items" rather than a flat run of rows. The header is a plain element, not a heading: it names a list, and a page that wants its days in the heading outline should say so itself.
 
 ## Live insertion
 

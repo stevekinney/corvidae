@@ -11,7 +11,7 @@
 <div
   style="display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);"
 >
-  <span>Tool runner · <AttemptsIndicator made={2} allowed={5} /> 2 of 5</span>
-  <span>Assistant · <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>
-  <span>Assistant · <AttemptsIndicator made={1} allowed={1} /> 1 of 1</span>
+  <span>Tool runner, <AttemptsIndicator made={2} allowed={5} /> 2 of 5</span>
+  <span>Assistant, <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>
+  <span>Assistant, <AttemptsIndicator made={1} allowed={1} /> 1 of 1</span>
 </div>

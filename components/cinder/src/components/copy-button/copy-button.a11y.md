@@ -1,4 +1,4 @@
-# CopyButton · accessibility
+# CopyButton accessibility
 
 ## Pattern
 

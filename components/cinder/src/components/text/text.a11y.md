@@ -1,4 +1,4 @@
-# Text · accessibility
+# Text accessibility
 
 ## Pattern
 

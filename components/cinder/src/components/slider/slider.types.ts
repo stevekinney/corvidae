@@ -67,7 +67,7 @@ export type SliderRangeProps = SliderBaseProps & {
   onValueChange?: (value: [number, number]) => void;
   /**
    * Formats the visible value text shown in the header from the full
-   * `[low, high]` tuple (for example, `'0–22'` or `'7 notes · C4–B4'`).
+   * `[low, high]` tuple (for example, `'0–22'` or `'7 notes, C4–B4'`).
    * Replaces only the value display — the per-thumb `valueText` ARIA
    * formatter is untouched. Absent a formatter, the value renders with the
    * current unit-based formatting joined by an en dash.

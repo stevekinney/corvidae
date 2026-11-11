@@ -163,7 +163,7 @@ const schema = {
         name: 'meta',
         reason: 'function-or-snippet',
         description:
-          'Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts\nunder the title (not under the status) and ends in an ellipsis rather than wrapping. A line\nthat must carry a control (an error with its own "Try again") may put one in.',
+          'Line two: muted metadata, kind first, then agent, then detail, joined by commas. It starts\nunder the title (not under the status) and ends in an ellipsis rather than wrapping. A line\nthat must carry a control (an error with its own "Try again") may put one in.',
       },
       {
         name: 'onRetryClick',

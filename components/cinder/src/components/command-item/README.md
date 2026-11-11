@@ -38,7 +38,7 @@ Individual selectable row within a command palette or dropdown command list.
 | `value` | `string` | yes | — | Submitted value; surfaced through the registration record. |
 | `children` | `(opaque)` | yes | — | Main label content. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Leading content (icon, avatar). Rendered with aria-hidden. Not expressible in JSON Schema; see the component types for the signature. |
-| `meta` | `(opaque)` | no | — | Secondary text on the label's own line, after it and muted ("Refund order 4471 for $42.00? · Approval · waiting"). The label and the meta truncate together as one line. Rendered with aria-hidden, so name the row with `accessibleLabel` when the meta carries meaning. Not expressible in JSON Schema; see the component types for the signature. |
+| `meta` | `(opaque)` | no | — | Secondary text on the label's own line, after it and muted ("Refund order 4471 for $42.00?" with the meta "Approval, waiting"). The label and the meta truncate together as one line. Rendered with aria-hidden, so name the row with `accessibleLabel` when the meta carries meaning. Not expressible in JSON Schema; see the component types for the signature. |
 | `onSelect` | `(opaque)` | no | — | Invoked when the item is activated inside CommandPalette. Not expressible in JSON Schema; see the component types for the signature. |
 | `trailing` | `(opaque)` | no | — | Trailing content (kbd hint, badge). Rendered with aria-hidden. Not expressible in JSON Schema; see the component types for the signature. |
 

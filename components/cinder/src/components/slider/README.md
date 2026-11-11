@@ -29,7 +29,7 @@ Pointer interaction follows the same interval: clicking or dragging anywhere in 
 `displayValue` replaces only that value span's text: `(value: number) => string` in single mode, `(value: [number, number]) => string` in range mode (called once with the full tuple, not once per thumb). It's independent of `valueText`, which formats `aria-valuetext` for assistive technology — set both when the visible text and the announced text should differ, or just `displayValue` to restyle what's shown while keeping the default `aria-valuetext` behavior.
 
 ```svelte
-<Slider label="Scale" min={0} max={12} value={7} displayValue={(v) => `${v} notes · C4–B4`} />
+<Slider label="Scale" min={0} max={12} value={7} displayValue={(v) => `${v} notes, C4–B4`} />
 <Slider
   label="Octave range"
   mode="range"

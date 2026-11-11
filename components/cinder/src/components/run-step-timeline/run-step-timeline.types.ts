@@ -91,8 +91,8 @@ export type RunStepNote = {
   /** `danger` tints the block for a failure. Default `neutral`. */
   tone?: 'neutral' | 'danger' | undefined;
   /**
-   * A muted word before the first line, joined to it by a middle dot: `Your note` reads "Your note
-   * · The customer already got a replacement." Use it when the block is somebody's words rather
+   * A muted word before the first line, joined to it by a comma: `Your note` reads "Your note,
+   * The customer already got a replacement." Use it when the block is somebody's words rather
    * than a titled block.
    */
   label?: string | undefined;

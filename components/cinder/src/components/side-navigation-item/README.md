@@ -28,7 +28,7 @@ A row is one 30px control (44px under a coarse pointer): hover, focus and the ac
 ```
 
 - **Accessible name**: with `label` and a non-zero `count`, the link is named `"Health, 3 need attention"` or `"Reviews, 2 need you"`. The pill and the dot are hidden from assistive technology, so colour is never the only signal.
-- **Tooltip**: a row with a count shows its name as a tooltip on hover and focus (`"Health, 3 need attention"`). A collapsed row shows `"Reviews · 2 need you"`, or the label alone when there is no count.
+- **Tooltip**: a row with a count shows its name as a tooltip on hover and focus (`"Health, 3 need attention"`). A collapsed row shows `"Reviews, 2 need you"`, or the label alone when there is no count.
 - **Collapsed rail**: inside a `Sidebar` a row follows the sidebar's collapsed state on its own (pass `collapsed` to override). A row with an `icon` becomes a 40px target: the label is clipped but stays in the accessible name, and the count or dot moves onto the icon's corner. A row without `icon` is unchanged.
 - **Do not also set `title`**: the browser would show its own tooltip beside this one.
 
@@ -49,7 +49,7 @@ A row is one 30px control (44px under a coarse pointer): hover, focus and the ac
 | `dot` | `"neutral"` \| `"success"` \| `"warning"` \| `"danger"` \| `"info"` \| `"accent"` \| `"online"` \| `"offline"` \| `"pending"` | no | — | A status dot shown beside the label (or on the icon when collapsed) in place of the numeric pill, for a row whose state is a signal and not a figure. The dot is hidden from assistive technology, so a row that sets it should also set `count` and `countLabel`, which carry the meaning in the accessible name. |
 | `emptyLabel` | `string` | no | — | The words that follow the label in the accessible name and tooltip when `count` is zero or absent: "nothing needs attention" gives "Health, nothing needs attention". Without it a row with no count is named by its label alone. |
 | `href` | `string` | no | — | Destination URL. Providing this prop renders the item as an `<a>` element instead of a `<button>`. |
-| `label` | `string` | no | — | The row's name as plain text ("Health", "Reviews"). It names the row when a count is present ("Health, 3 need attention") and is the first part of the tooltip ("Reviews · 2 need you"). Without it the row has no composed name and no tooltip. |
+| `label` | `string` | no | — | The row's name as plain text ("Health", "Reviews"). It names the row when a count is present ("Health, 3 need attention") and is the first part of the tooltip ("Reviews, 2 need you"). Without it the row has no composed name and no tooltip. |
 | `listItemClass` | `string` | no | — | Class merged onto the outer <li>. |
 | `children` | `(opaque)` | yes | — | The row's label, rendered after `icon`. When `icon` is also given, a collapsed row (an icon rail) hides this label visually and keeps it in the accessible name. Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | The row's icon. Giving it lets the row collapse to an icon rail: the icon stays, the label stays in the accessible name, and the count or dot moves onto the icon's corner. The wrapper is `aria-hidden`, so the icon is decoration and the label names the row. Not expressible in JSON Schema; see the component types for the signature. |

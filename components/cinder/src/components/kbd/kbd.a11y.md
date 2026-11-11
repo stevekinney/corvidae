@@ -1,4 +1,4 @@
-# Kbd · accessibility
+# Kbd accessibility
 
 ## Pattern
 

@@ -1,4 +1,4 @@
-# Label · accessibility
+# Label accessibility
 
 ## Pattern
 

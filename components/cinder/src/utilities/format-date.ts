@@ -49,7 +49,7 @@ export type TimeZoneLabelOptions = Omit<DateFormatOptions, 'now'> & {
 
 /** Options for {@link formatDayHeading}. */
 export type DayHeadingOptions = DateFormatOptions & {
-  /** Name the zone after the day, as "Today · Central time". Defaults to true. */
+  /** Name the zone after the day, as "Today, Central time". Defaults to true. */
   includeZone?: boolean | undefined;
 };
 
@@ -308,8 +308,8 @@ function relativeNow(locale: Intl.LocalesArgument | undefined): string {
 }
 
 /**
- * A calendar day and a clock time joined by a middle dot, for a detail line that carries more
- * facts after it: "Mon, Nov 2 · 9:20 AM". It always names the day, even when that day is today, and
+ * A calendar day and a clock time joined by a comma, for a detail line that carries more
+ * facts after it: "Mon, Nov 2, 9:20 AM". It always names the day, even when that day is today, and
  * adds the year when it is not this year.
  */
 export function formatDayAndTime(input: DateInput, options: DateFormatOptions = {}): string {
@@ -324,12 +324,12 @@ export function formatDayAndTime(input: DateInput, options: DateFormatOptions = 
     day: 'numeric',
     ...(withYear ? { year: 'numeric' } : {}),
   });
-  return `${day} · ${formatTimeOfDay(date, options)}`;
+  return `${day}, ${formatTimeOfDay(date, options)}`;
 }
 
 /**
- * A day group heading that names the zone: "Today · Central time",
- * "Yesterday · Sunday, Nov 1 · Central time", "Thursday, Oct 29 · Central time".
+ * A day group heading that names the zone: "Today, Central time",
+ * "Yesterday, Sunday, Nov 1, Central time", "Thursday, Oct 29, Central time".
  */
 export function formatDayHeading(input: DateInput, options: DayHeadingOptions = {}): string {
   const date = toDate(input);
@@ -354,7 +354,7 @@ export function formatDayHeading(input: DateInput, options: DayHeadingOptions = 
   if (options.includeZone !== false) {
     segments.push(formatTimeZoneLabel(date, { ...options, style: 'long' }));
   }
-  return segments.join(' · ');
+  return segments.join(', ');
 }
 
 /**

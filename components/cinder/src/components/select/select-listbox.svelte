@@ -445,7 +445,7 @@
     <span class="cinder-select__option-text">
       <span class="cinder-select__option-label"
         >{option.label}{#if option.suffix}<span class="cinder-select__suffix"
-            >{` · ${option.suffix}`}</span
+            >{`, ${option.suffix}`}</span
           >{/if}</span
       >
       {#if option.description}
@@ -513,7 +513,7 @@
     {#if selectedOption}
       <span class="cinder-select__value"
         >{selectedOption.label}{#if selectedOption.triggerSuffix}<span class="cinder-select__suffix"
-            >{` · ${selectedOption.triggerSuffix}`}</span
+            >{`, ${selectedOption.triggerSuffix}`}</span
           >{/if}</span
       >
     {:else if placeholder}

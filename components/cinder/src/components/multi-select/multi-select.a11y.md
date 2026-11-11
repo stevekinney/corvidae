@@ -1,4 +1,4 @@
-# MultiSelect · accessibility
+# MultiSelect accessibility
 
 ## Pattern
 

@@ -42,7 +42,7 @@
       />
     </div>
     <p style="margin-top: 0.75rem; font-size: 0.875rem;">
-      Undo fired: {undoCount} · Pause fired: {pauseCount}
+      Undo fired: {undoCount}, Pause fired: {pauseCount}
     </p>
   {/snippet}
 </ToastRegion>

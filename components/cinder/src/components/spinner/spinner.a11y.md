@@ -1,4 +1,4 @@
-# Spinner · accessibility
+# Spinner accessibility
 
 ## Pattern
 

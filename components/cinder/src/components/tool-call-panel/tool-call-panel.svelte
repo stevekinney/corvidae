@@ -102,7 +102,7 @@
     retryNote:
       labels?.retryNote ??
       ((message: string) =>
-        `Failures aren’t retried automatically. Ask the agent to retry sends “${message}” as your message; while a review is waiting, the composer’s status line reads “Waiting for your approval · a message now steers the run”.`),
+        `Failures aren’t retried automatically. Ask the agent to retry sends “${message}” as your message; while a review is waiting, the composer’s status line reads “Waiting for your approval, a message now steers the run”.`),
     retry: labels?.retry ?? 'Ask the agent to retry',
     copyInput: labels?.copyInput ?? 'Copy input',
     copyResult: labels?.copyResult ?? `Copy ${resultLabel.toLowerCase()}`,
@@ -207,11 +207,15 @@
             <span class="cinder-tool-call-panel__dot"></span>
           {/if}
         </span>
-        <span class="cinder-tool-call-panel__status-word">{statusWords[status]}</span>
+        <span class="cinder-tool-call-panel__status-word"
+          >{statusWords[status]}{#if duration || position}<span
+              class="cinder-tool-call-panel__separator"
+              aria-hidden="true">,</span
+            >{/if}</span
+        >
         {#if duration || position}
           <span class="cinder-tool-call-panel__status-detail">
-            <span class="cinder-tool-call-panel__separator" aria-hidden="true">·</span>
-            {[duration, position].filter(Boolean).join(' · ')}
+            {[duration, position].filter(Boolean).join(', ')}
           </span>
         {/if}
       {/if}

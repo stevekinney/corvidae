@@ -1,4 +1,4 @@
-# JsonSchemaEditor · accessibility
+# JsonSchemaEditor accessibility
 
 ## Pattern
 

@@ -23,7 +23,7 @@ export type PairSummary = {
   linked: boolean;
 };
 
-// Frame 3 of the PayloadRenderer board: a few short pairs read as one line, "Order ID 4471 · Amount
+// Frame 3 of the PayloadRenderer board: a few short pairs read as one line, "Order ID 4471, Amount
 // $42.00". Frames 12, 13, 16 and 17 hold three or more pairs and stay rows, because a value there is
 // masked, still arriving, a link or too long for one line.
 const INLINE_MAXIMUM_PAIRS = 3;
@@ -152,14 +152,14 @@ export type HeaderCountOptions = {
 
 /**
  * The header's count, in words: "1 field", "3 fields", "1 value" for a payload that is not an
- * object, "2 fields so far" while it arrives. The size follows after a middot only when the
- * payload is above 1 KB ("2 fields · 1.4 KB").
+ * object, "2 fields so far" while it arrives. The size follows after a comma only when the
+ * payload is above 1 KB ("2 fields, 1.4 KB").
  */
 export function headerCount(value: unknown, options: HeaderCountOptions = {}): string {
   const count = describeContents(value);
   const counted = options.streaming === true ? `${count} so far` : count;
   return options.bytes !== undefined && options.bytes > 1024
-    ? `${counted} · ${formatBytes(options.bytes)}`
+    ? `${counted}, ${formatBytes(options.bytes)}`
     : counted;
 }
 

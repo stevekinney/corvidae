@@ -1,4 +1,4 @@
-# JsonViewer · accessibility
+# JsonViewer accessibility
 
 ## Pattern
 

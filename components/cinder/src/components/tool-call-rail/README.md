@@ -46,8 +46,8 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 ## How many calls
 
 - One or two calls are plain rows: no `Used N tools` line, no rail connector and no fold.
-- From three calls the summary line appears (`Used 3 tools`) and every call still shows. It adds `· 1 failed` and `· 1 waiting on you`, each with its dot, only when such calls exist, and the turn's `duration` when you pass one.
-- From eight calls the middle folds: the first 3 and the last 3 stay, with `Show 2 more · 2 done: Lookup order ×2` between them. A folded group hides at least two calls, because hiding one saves nothing, so seven calls show all seven.
+- From three calls the summary line appears (`Used 3 tools`) and every call still shows. It adds `1 failed` and `1 waiting on you` after commas, each with its dot, only when such calls exist, and the turn's `duration` when you pass one.
+- From eight calls the middle folds: the first 3 and the last 3 stay, with `Show 2 more, 2 done: Lookup order ×2` between them. A folded group hides at least two calls, because hiding one saves nothing, so seven calls show all seven.
 - Calls that failed, were denied, wait on a person or are running are _pinned_: they stay on the rail wherever they fall and split the folded middle into separate groups, each counting only the calls it hides. The group's summary lists the three names that appear most (`×N` when more than once) and counts every other call as `6 others`.
 - `Show N more` opens that group in place, in time order, and a `Show fewer` button after the last row folds every open group again.
 - Closing the summary line (`open={false}`) leaves the summary and the pinned calls, so nothing that needs a person is ever folded away.
@@ -58,11 +58,11 @@ Use `ToolCallRail` for the tool calls of a chat turn, where the agent's reply le
 `status` picks the glyph on the rail and the words:
 
 - `done`: a neutral grey dot, the result after an arrow.
-- `approved`: a green dot, for a call a person approved. `decision` writes what was decided in the person's words, without an arrow (`Approved by you 10:33 AM · $18.50 refunded`); without it the row shows `result` after an arrow like a `done` call.
+- `approved`: a green dot, for a call a person approved. `decision` writes what was decided in the person's words, without an arrow (`Approved by you 10:33 AM, $18.50 refunded`); without it the row shows `result` after an arrow like a `done` call.
 - `running`: a spinner in place of the dot, `Running…` in place of a result, and the elapsed time.
 - `waiting`: an amber shield and `Waiting on you`, as its own row.
 - `denied`: a prohibition glyph and neutral words. It is not called failed and carries no error block.
-- `interrupted`: a red circled cross and the result in red with no arrow, for a call the run ended on before it answered. Word it by the tool's risk: `Interrupted · didn't finish` for a tool that only reads, `Interrupted · may have run` for one that changes things. It never folds and is never a green or neutral dot.
+- `interrupted`: a red circled cross and the result in red with no arrow, for a call the run ended on before it answered. Word it by the tool's risk: `Interrupted, didn't finish` for a tool that only reads, `Interrupted, may have run` for one that changes things. It never folds and is never a green or neutral dot.
 - `failed`: a red cross and the result in red. `failure` adds one danger-text line with an error glyph and the quiet links `Details` (when `onSelect` is set), `Ask the agent to retry` (`onRetry`) and `Copy input` (`onCopyInput`).
 
 ## Selecting a row and nesting an approval
@@ -123,7 +123,7 @@ selectedId   string                  optional  The call whose panel is open.
 onSelect     (id) => void            optional  Makes rows buttons; fired with the call's id.
 onRetry      (id) => void            optional  Shows "Ask the agent to retry" on failed calls.
 onCopyInput  (id) => void            optional  Shows "Copy input" on failed calls.
-endLabel     string                  optional  The run's end state on its own line ("Run finished · no reply").
+endLabel     string                  optional  The run's end state on its own line ("Run finished, no reply").
 footnote     string                  optional  A muted line under the rail.
 label        string                  optional  Accessible name. Defaults to "Tool calls".
 labels       ToolCallRailLabels      optional  The rail's words, for another language.

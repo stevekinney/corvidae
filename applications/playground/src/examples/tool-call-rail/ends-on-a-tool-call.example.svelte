@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'A turn that ends on a tool call';
   export const description =
-    'A finished turn whose last step is a tool call closes the rail with the run\'s end state, "Run finished · no reply", on its own line with a check glyph, so the turn does not look hung. A call a person approved has a green dot ("Approved by you 10:33 AM · $18.50 refunded").';
+    'A finished turn whose last step is a tool call closes the rail with the run\'s end state, "Run finished, no reply", on its own line with a check glyph, so the turn does not look hung. A call a person approved has a green dot ("Approved by you 10:33 AM, $18.50 refunded").';
 </script>
 
 <script lang="ts">
@@ -24,10 +24,10 @@
       name: 'Issue refund',
       identifier: 'issue-refund',
       input: '4472',
-      decision: 'Approved by you 10:33 AM · $18.50 refunded',
+      decision: 'Approved by you 10:33 AM, $18.50 refunded',
       duration: '0.6s',
       status: 'approved',
     },
   ]}
-  endLabel="Run finished · no reply"
+  endLabel="Run finished, no reply"
 />

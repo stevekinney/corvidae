@@ -87,7 +87,7 @@
     {/snippet}
     {#snippet detail(event)}
       <h3>{event.what}</h3>
-      <p>{event.target} · {event.when}</p>
+      <p>{event.target}, {event.when}</p>
     {/snippet}
   </ListDetail>
 </div>

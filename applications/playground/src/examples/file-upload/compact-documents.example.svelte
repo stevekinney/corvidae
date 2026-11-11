@@ -49,7 +49,7 @@
     accept=".pdf,.md,.txt"
     maxSize={5 * megabyte}
     browseLabel="Add a document"
-    description="or drop files here · PDF, Markdown or text · up to 5 MB each"
+    description="or drop files here, PDF, Markdown or text, up to 5 MB each"
     rejectionMessage={describeRejection}
     {files}
     onFilesChange={(next) => (files = next)}

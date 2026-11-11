@@ -170,7 +170,7 @@ describe('Sparkbar line arm (COR-2010, row 76n)', () => {
     const { container } = render(Sparkbar, {
       points: storage,
       label: 'Storage use over the last 24 hours, rising to 1.6 GB',
-      startLabel: '1.4 GB · 24 hours ago',
+      startLabel: '1.4 GB, 24 hours ago',
       endLabel: 'Now',
     });
 
@@ -196,7 +196,7 @@ describe('Sparkbar line arm (COR-2010, row 76n)', () => {
     const { container } = render(Sparkbar, {
       points: storage,
       label: 'Storage use',
-      startLabel: '1.4 GB · 24 hours ago',
+      startLabel: '1.4 GB, 24 hours ago',
       endLabel: 'Now',
     });
 
@@ -219,7 +219,7 @@ describe('Sparkbar line arm (COR-2010, row 76n)', () => {
     expect(endpoint?.style.insetBlockStart).toBe(`${coordinates.at(-1)![1]}%`);
 
     expect(container.querySelector('.cinder-sparkbar__axis-start')?.textContent).toBe(
-      '1.4 GB · 24 hours ago',
+      '1.4 GB, 24 hours ago',
     );
     expect(container.querySelector('.cinder-sparkbar__axis-end')?.textContent).toBe('Now');
   });

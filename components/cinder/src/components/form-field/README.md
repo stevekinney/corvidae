@@ -19,7 +19,7 @@ Wraps an input, label, and helper or error text into a cohesive accessible field
 
 ## Errors, notes and trailing content
 
-An `error` leads with a warning glyph (a triangle) and sits under the control in a polite live region; `errorGlyph="error"` draws a circle instead, for a conflict such as a URL that is already connected. `errorAction` renders after the message in the same region, for a link ("Open GitHub") or a quiet Retry. `warningAction` does the same for a `warning`, after its words in the same paragraph ("Won’t run until a provider is connected · Connect a provider"). `trailing` shares the control's row, so a Try again button sits beside a field whose test failed. `note` is neutral text under the helper text, wired into `aria-describedby`, for why a field is cleared. `managed` leads with a lock glyph, and `managed.message` replaces the "Managed by" wording with a whole sentence. A label that wraps keeps its lines apart.
+An `error` leads with a warning glyph (a triangle) and sits under the control in a polite live region; `errorGlyph="error"` draws a circle instead, for a conflict such as a URL that is already connected. `errorAction` renders after the message in the same region, for a link ("Open GitHub") or a quiet Retry. `warningAction` does the same for a `warning`, after its words in the same paragraph ("Won’t run until a provider is connected, Connect a provider"). `trailing` shares the control's row, so a Try again button sits beside a field whose test failed. `note` is neutral text under the helper text, wired into `aria-describedby`, for why a field is cleared. `managed` leads with a lock glyph, and `managed.message` replaces the "Managed by" wording with a whole sentence. A label that wraps keeps its lines apart.
 
 ## Props
 

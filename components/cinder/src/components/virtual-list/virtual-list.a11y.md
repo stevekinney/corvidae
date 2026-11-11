@@ -1,4 +1,4 @@
-# VirtualList · accessibility
+# VirtualList accessibility
 
 ## Pattern
 

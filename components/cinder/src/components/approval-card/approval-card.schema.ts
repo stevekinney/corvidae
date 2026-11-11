@@ -248,7 +248,7 @@ const schema = {
     toolPrefix: {
       type: 'string',
       description:
-        'The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`.',
+        'The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund`, Dangerous". Default `It wants to run`.',
     },
     requestedAt: {
       type: 'string',
@@ -360,7 +360,7 @@ const schema = {
         name: 'context',
         reason: 'function-or-snippet',
         description:
-          'A line of context written above the question, such as "Test chat · this runs for real".',
+          'A line of context written above the question, such as "Test chat, this runs for real".',
       },
       {
         name: 'onResolve',

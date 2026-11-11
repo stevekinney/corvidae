@@ -18,7 +18,7 @@
         {#snippet status()}<StatusDot word="Waiting on you" />{/snippet}
         {#snippet title()}{approval}{/snippet}
         {#snippet time()}4 min{/snippet}
-        {#snippet meta()}Approval · Tool runner{/snippet}
+        {#snippet meta()}Approval, Tool runner{/snippet}
       </StackedListItem>
     {/snippet}
   </DataList>

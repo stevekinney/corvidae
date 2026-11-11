@@ -53,7 +53,7 @@ describe('designSystemIndex', () => {
     expect(index['lastChange']).toEqual({
       by: 'A',
       at: '2026-11-09T00:00:00Z',
-      via: 'Claude Code · stevekinney/corvidae@abc',
+      via: 'Claude Code, stevekinney/corvidae@abc',
       note: 'N',
     });
   });

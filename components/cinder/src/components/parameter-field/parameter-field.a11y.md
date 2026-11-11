@@ -1,4 +1,4 @@
-# ParameterField · accessibility
+# ParameterField accessibility
 
 ## Design review
 

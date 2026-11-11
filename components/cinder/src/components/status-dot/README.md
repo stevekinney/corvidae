@@ -24,24 +24,24 @@ Status-dot owns the word-to-tone table for Interborough's status words, so a pag
 </script>
 
 <StatusDot word="Waiting on you" size="sm" />
-<StatusDot word="Running · checking the result" size="sm" />
-<StatusDot word="Done · refund not issued" size="sm" />
+<StatusDot word="Running, checking the result" size="sm" />
+<StatusDot word="Done, refund not issued" size="sm" />
 ```
 
-One word has one tone, identical in light and dark. A qualifier after a middle dot rides along on its base word (`Running · checking the result` is `info`, `Missed runs · 4` is `warning`) unless the table lists the whole phrase (`Done · refund not issued` is `neutral`, because a finished run whose task was not achieved is never green). An explicit `status` or `label` still wins over what the word supplies.
+One word has one tone, identical in light and dark. A qualifier after a comma rides along on its base word (`Running, checking the result` is `info`, `Missed runs, 4` is `warning`) unless the table lists the whole phrase (`Done, refund not issued` is `neutral`, because a finished run whose task was not achieved is never green). An explicit `status` or `label` still wins over what the word supplies.
 
 | Tone | Words |
 | --- | --- |
 | `warning` (amber) | Waiting on you, Missed runs, Disconnected, Needs attention, Needs sign-in |
-| `info` (solid blue) | Running, Running · checking the result, Live, Live · last event 1 s ago |
+| `info` (solid blue) | Running, Running, checking the result, Live, Live, last event 1 s ago |
 | `pending` (hollow ring) | Waiting, Scheduled, Reconnecting… |
 | `success` (green dot) | Done, Approved, Active, Available, Delivered, Connected |
 | `danger` (red) | Failed, Failed for good, Gave up, Can't load, Can't find workflow, Not loaded |
-| `neutral` | Done · refund not issued, Check not met, Denied, Sent back, Expired, Canceled, Stopped, Paused, Off, Unavailable, Needs setup, Ended, Retrying, Draining |
+| `neutral` | Done, refund not issued, Check not met, Denied, Sent back, Expired, Canceled, Stopped, Paused, Off, Unavailable, Needs setup, Ended, Retrying, Draining |
 
 Only `warning`, `info` and `danger` words are coloured; every other word is muted, so the dot carries the tone. Amber is only for waiting on you and Needs attention, and red is reserved for failures to run or to load. The table is exported as `statusDotWordTones`, and `statusForStatusDotWord(word)` returns a word's status, or `undefined` for a word the table does not know (a `word` the table does not know renders a neutral dot).
 
-Some words are scoped, and the page decides where they belong: Ended is for chats only, Delivered and Retrying are for hooks only, Connected, Draining and Disconnected are for workers only, and Stopped also covers a worker that finished draining. Live and Reconnecting… are for the line above a streaming run's steps: `<StatusDot word="Live · last event 1 s ago" />`, and `<StatusDot word="Reconnecting…" label="Reconnecting… last event 40 s ago" />`, where the word sets the tone and `label` the text.
+Some words are scoped, and the page decides where they belong: Ended is for chats only, Delivered and Retrying are for hooks only, Connected, Draining and Disconnected are for workers only, and Stopped also covers a worker that finished draining. Live and Reconnecting… are for the line above a streaming run's steps: `<StatusDot word="Live, last event 1 s ago" />`, and `<StatusDot word="Reconnecting…" label="Reconnecting… last event 40 s ago" />`, where the word sets the tone and `label` the text.
 
 `pending` is a hollow ring (a 1.5px ring in `--cinder-border-control` over a transparent fill), so Waiting and Scheduled read differently from the solid blue Running dot. Under forced colors the solid dot uses `Highlight` and the hollow ring uses `CanvasText`; the word always carries the meaning.
 
@@ -59,7 +59,7 @@ Some words are scoped, and the page decides where they belong: Ended is for chat
 | `size` | `"sm"` \| `"md"` | no | `"md"` | Dot size. |
 | `status` | `"online"` \| `"offline"` \| `"warning"` \| `"danger"` \| `"info"` \| `"pending"` \| `"neutral"` \| `"success"` \| `"accent"` | no | — | Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-status-info-solid`; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. |
 | `wordTone` | `"muted"` \| `"status"` | no | `"muted"` | How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured. |
-| `word` | `(opaque)` | no | — | A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a middle dot ("Running · checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. Not expressible in JSON Schema; see the component types for the signature. |
+| `word` | `(opaque)` | no | — | A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a comma ("Running, checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->
 

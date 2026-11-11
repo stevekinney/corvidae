@@ -1,4 +1,4 @@
-# AudioPlayer · accessibility
+# AudioPlayer accessibility
 
 ## Pattern
 

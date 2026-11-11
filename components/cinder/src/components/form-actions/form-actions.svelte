@@ -72,9 +72,9 @@
   <div class="cinder-form-actions__row">
     <!-- Always mounted, so a count that appears is announced politely. -->
     <div class="cinder-form-actions__summary" role="status">
-      {#if changeCount > 0}<span class="cinder-form-actions__changes">{changeText}</span>{/if}
-      {#if summary}
-        {#if changeCount > 0}<span aria-hidden="true"> · </span>{/if}
+      {#if changeCount > 0}<span class="cinder-form-actions__changes">{changeText}</span
+        >{/if}{#if summary}
+        {#if changeCount > 0}<span aria-hidden="true">, </span>{/if}
         {@render summary()}
       {/if}
     </div>

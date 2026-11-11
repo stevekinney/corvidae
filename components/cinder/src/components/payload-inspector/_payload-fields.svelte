@@ -177,10 +177,10 @@
   <p
     class="cinder-payload-inspector__inline"
     data-cinder-layout="inline"
-    title={entries.map((entry) => `${labelFor(entry.key)} ${valueOf(entry)}`).join(' · ')}
+    title={entries.map((entry) => `${labelFor(entry.key)} ${valueOf(entry)}`).join(', ')}
   >
     {#each entries as entry, index (entry.key)}
-      {#if index > 0}<span aria-hidden="true">{' · '}</span>{/if}<span
+      {#if index > 0}<span aria-hidden="true">{', '}</span>{/if}<span
         class="cinder-payload-inspector__inline-pair"
         ><span class="cinder-payload-inspector__field-label">{labelFor(entry.key)}</span
         >{' '}<strong class="cinder-payload-inspector__inline-value"
@@ -214,15 +214,13 @@
                     class="cinder-icon-sm"
                     aria-hidden="true"
                   />{:else}<ChevronRight class="cinder-icon-sm" aria-hidden="true" />{/if}
-                {labelFor(entry.key)}
-                <span class="cinder-payload-inspector__count">
-                  · {describeContents(entry.value)}</span
+                {labelFor(entry.key)}<span class="cinder-payload-inspector__count"
+                  >, {describeContents(entry.value)}</span
                 >
               </button>
             {:else}
-              {labelFor(entry.key)}
-              <span class="cinder-payload-inspector__count">
-                · {describeContents(entry.value)}</span
+              {labelFor(entry.key)}<span class="cinder-payload-inspector__count"
+                >, {describeContents(entry.value)}</span
               >
             {/if}
           </dt>

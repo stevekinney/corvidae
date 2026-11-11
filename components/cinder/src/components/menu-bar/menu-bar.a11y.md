@@ -1,4 +1,4 @@
-# MenuBar · accessibility
+# MenuBar accessibility
 
 ## Pattern
 

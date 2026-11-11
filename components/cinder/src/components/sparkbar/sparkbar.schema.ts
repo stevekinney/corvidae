@@ -41,7 +41,7 @@ const schema = {
     startLabel: {
       type: 'string',
       description:
-        'Line only: text under the left end of the baseline, such as "1.4 GB · 24 hours ago".',
+        'Line only: text under the left end of the baseline, such as "1.4 GB, 24 hours ago".',
     },
     endLabel: {
       type: 'string',

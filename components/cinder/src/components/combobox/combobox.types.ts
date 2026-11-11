@@ -12,7 +12,7 @@ export type ComboboxOption<T extends string = string> = {
   description?: string;
   /**
    * Colour of the `description` line. `danger` draws a reason that something is wrong ("Can't
-   * load · order-refund.json line 12") in the danger text colour; the words still say it, so
+   * load, order-refund.json line 12") in the danger text colour; the words still say it, so
    * colour is never the only signal. The default is muted text.
    * @default "default"
    */
@@ -23,7 +23,7 @@ export type ComboboxOption<T extends string = string> = {
    */
   code?: string;
   /**
-   * Muted words on the label's own line, after a middle dot ("Chat with an agent · built in"). Use
+   * Muted words on the label's own line, after a comma ("Chat with an agent, built in"). Use
    * it for a fact that belongs beside the name; a sentence goes in `description`, and a short
    * trailing value in `meta`.
    */
@@ -42,7 +42,7 @@ export type ComboboxOption<T extends string = string> = {
   avatar?: string;
   /**
    * What the closed picker shows once this option is chosen, when that is shorter than `label`
-   * ("Central time" for the row "Central time · Chicago"). The open list always shows `label`.
+   * ("Central time" for the row "Central time, Chicago"). The open list always shows `label`.
    */
   triggerLabel?: string;
   /** When true, the option is non-selectable. */

@@ -1,4 +1,4 @@
-# Divider · accessibility
+# Divider accessibility
 
 ## Pattern
 

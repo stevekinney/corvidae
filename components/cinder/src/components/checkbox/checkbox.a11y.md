@@ -1,4 +1,4 @@
-# Checkbox · accessibility
+# Checkbox accessibility
 
 ## Pattern
 

@@ -72,7 +72,7 @@ describe('SelectableRow', () => {
     expect(trailing?.querySelectorAll('button, a')).toHaveLength(2);
     expect(primary?.querySelector('button, a, input, select, textarea')).toBeNull();
     expect(primary?.textContent).toContain('A deliberately long session title');
-    expect(primary?.textContent).toContain('Running · Updated now');
+    expect(primary?.textContent).toContain('Running, Updated now');
   });
 
   test('pointer activation remains isolated between the primary and trailing actions', async () => {

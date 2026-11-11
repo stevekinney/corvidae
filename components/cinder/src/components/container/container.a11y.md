@@ -1,4 +1,4 @@
-# Container · accessibility
+# Container accessibility
 
 ## Pattern
 

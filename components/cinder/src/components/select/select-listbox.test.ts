@@ -82,7 +82,7 @@ describe('Select listbox presentation: trigger', () => {
     const { container } = renderListbox({
       value: 'old',
       options: [
-        { value: 'old', label: 'Claude Sonnet 4 · no longer offered', disabled: true },
+        { value: 'old', label: 'Claude Sonnet 4, no longer offered', disabled: true },
         { value: 'new', label: 'Claude Sonnet 5.5' },
       ],
       error: 'This model is no longer offered. Pick another model before you save.',
@@ -187,7 +187,7 @@ describe('Select listbox presentation: opening and choosing', () => {
     });
     expect(
       container.querySelector('.cinder-select__value')?.textContent?.replace(/\s+/g, ' ').trim(),
-    ).toBe('Claude Sonnet 5.5 · Anthropic');
+    ).toBe('Claude Sonnet 5.5, Anthropic');
     await openByClick(container);
     const [sonnet, archiver] = options();
     expect(sonnet?.querySelector('.cinder-select__option-label')?.textContent?.trim()).toBe(
@@ -198,7 +198,7 @@ describe('Select listbox presentation: opening and choosing', () => {
         ?.querySelector('.cinder-select__option-label')
         ?.textContent?.replace(/\s+/g, ' ')
         .trim(),
-    ).toBe('Nightly archiver · no description');
+    ).toBe('Nightly archiver, no description');
     expect(archiver?.querySelector('.cinder-select__suffix')).not.toBeNull();
   });
 
@@ -354,7 +354,7 @@ describe('Select listbox presentation: groups, messages and footer', () => {
       options: grouped,
       groups: [
         { name: 'anthropic', heading: 'Anthropic' },
-        { name: 'openai', heading: 'OpenAI · not connected', message: messageSnippet },
+        { name: 'openai', heading: 'OpenAI, not connected', message: messageSnippet },
       ],
     });
     await openByClick(container);
@@ -362,7 +362,7 @@ describe('Select listbox presentation: groups, messages and footer', () => {
       document.body.querySelectorAll('.cinder-_option-group__label'),
       (heading) => heading.textContent,
     );
-    expect(headings).toEqual(['Anthropic', 'OpenAI · not connected']);
+    expect(headings).toEqual(['Anthropic', 'OpenAI, not connected']);
     const message = requiredInstance(
       document.body.querySelector('.cinder-select__group-message'),
       HTMLElement,
@@ -382,7 +382,7 @@ describe('Select listbox presentation: groups, messages and footer', () => {
       options: grouped,
       groups: [
         { name: 'anthropic', heading: 'Anthropic' },
-        { name: 'openai', heading: 'OpenAI · not connected', message: messageSnippet },
+        { name: 'openai', heading: 'OpenAI, not connected', message: messageSnippet },
       ],
     });
     await openByClick(container);

@@ -25,7 +25,7 @@ export type StackedListItemGroupLayout = 'row' | 'band';
 /** The colour of the tile behind a row's `leading` glyph. */
 export type StackedListItemLeadingTone = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 /**
- * What a row's `actions` become on a phone. `menu` collapses them into one "···" menu button, the
+ * What a row's `actions` become on a phone. `menu` collapses them into one overflow menu button, the
  * default for every list. `buttons` keeps each action a button and stacks them full width under
  * the row's text, for a row whose action is the point of the row (a review waiting on you).
  */
@@ -130,7 +130,7 @@ type StackedListItemBase = ForwardedLiAttributes & {
    */
   wrapMeta?: boolean;
   /**
-   * Line two: muted metadata, kind first, then agent, then detail, joined by middots. It starts
+   * Line two: muted metadata, kind first, then agent, then detail, joined by commas. It starts
    * under the title (not under the status) and ends in an ellipsis rather than wrapping. A line
    * that must carry a control (an error with its own "Try again") may put one in.
    */

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Transcript: a queued follow-up';
   export const description =
-    'A message sent while the run is working is a dashed, pale bubble marked "Queued · sends when the run is ready", with Remove when the host can take it back. It never looks sent before the run reaches it, and becomes a normal message then.';
+    'A message sent while the run is working is a dashed, pale bubble marked "Queued, sends when the run is ready", with Remove when the host can take it back. It never looks sent before the run reaches it, and becomes a normal message then.';
 </script>
 
 <script lang="ts">

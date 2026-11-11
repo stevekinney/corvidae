@@ -1,4 +1,4 @@
-# CapabilityGate · accessibility
+# CapabilityGate accessibility
 
 ## Pattern
 

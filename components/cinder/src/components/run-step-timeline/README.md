@@ -191,14 +191,14 @@ A step that is under way (`running`) draws a ring, `now` as its time, and may ca
     },
     {
       id: 'find',
-      label: 'Step 1 · Find the last release',
+      label: 'Step 1, Find the last release',
       status: 'succeeded',
       time: '+1.2 s',
       description: 'Found the last release, 1.4.2, on Oct 23',
     },
     {
       id: 'collect',
-      label: 'Step 2 · Collect merged changes',
+      label: 'Step 2, Collect merged changes',
       status: 'running',
       time: 'now',
       description:
@@ -211,24 +211,24 @@ A step that is under way (`running`) draws a ring, `now` as its time, and may ca
     },
     {
       id: 'draft',
-      label: 'Step 3 · Draft the notes',
+      label: 'Step 3, Draft the notes',
       status: 'pending',
       description: 'Waits for step 2',
     },
     {
       id: 'approve',
-      label: 'Step 4 · Wait for approval',
+      label: 'Step 4, Wait for approval',
       status: 'pending',
       description: 'Waits for step 3. Resumes on the signal `notes-approved`.',
     },
   ];
 </script>
 
-<StatusDot word="Live · last event 1 s ago" />
+<StatusDot word="Live, last event 1 s ago" />
 <RunStepTimeline {steps} variant="narrative" label="What happened" />
 ```
 
-The line above the timeline is a `StatusDot` word, not part of the list: `word="Live · last event 1 s ago"` while the stream is open, and `word="Reconnecting…"` with `label="Reconnecting… last event 40 s ago"` (a hollow ring) while it has dropped. A step whose entry may be behind shows how stale it is as its `time` ("last update 40 s ago").
+The line above the timeline is a `StatusDot` word, not part of the list: `word="Live, last event 1 s ago"` while the stream is open, and `word="Reconnecting…"` with `label="Reconnecting… last event 40 s ago"` (a hollow ring) while it has dropped. A step whose entry may be behind shows how stale it is as its `time` ("last update 40 s ago").
 
 ### Folding a long story
 
@@ -249,7 +249,7 @@ A narrative timeline of many entries folds its middle with `fold`: the first 3 a
 />
 ```
 
-A `note` can carry `label` ("Your note") to read as somebody's words: "Your note · The customer already got a replacement."
+A `note` can carry `label` ("Your note") to read as somebody's words: "Your note, The customer already got a replacement."
 
 ## Step states
 
@@ -321,7 +321,7 @@ languageLabelVisible boolean optional  Whether the CodeBlock language label is v
 
 ```
 title     string                  optional  Bold first line of the block.
-label     string                  optional  A muted word before the first line, joined by a middle dot ("Your note").
+label     string                  optional  A muted word before the first line, joined by a comma ("Your note").
 lines     string[]                required  The lines of the block, one per line.
 tone      "neutral" | "danger"    optional  Danger tints the block for a failure. Defaults to neutral.
 streaming boolean                 optional  Follows the last line with a text cursor while lines are still arriving.

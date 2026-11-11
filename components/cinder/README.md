@@ -83,6 +83,17 @@ To author a complete theme, use the theme builder: the `/theme-builder` route of
 
 Public tokens use the `--cinder-` prefix. Internal implementation variables use `--_cinder-`; do not redefine those.
 
+## Content
+
+Cinder's copy is sentence case, names exactly what a control does, and never uses a middle dot (U+00B7) to separate pieces of text. A line such as a status, an agent and a time is not written with a dot between its parts. Pick the alternative that fits:
+
+- **A comma** when the pieces read as one short phrase: "Waiting on you, Chat, 4 min ago".
+- **Separate elements** when each piece is its own thing, such as a `StatusDot` beside a name, or a time in its own `<time>`. Let the layout's gap and the type's tone separate them, not a glyph.
+- **A line break** when the pieces are different kinds of information: a title on one line and its detail on the next.
+- **A `DescriptionList`** when the pieces are label and value metadata, such as "Owner" and "Tool runner".
+
+The root `lint:root` guard `scripts/check-middle-dot-separators.ts` fails on a middle dot in Cinder, the playground and Interborough. Code that must name the character, such as a test asserting its absence, builds it with `String.fromCodePoint(0xb7)`.
+
 ## A2UI catalog (experimental)
 
 > [!WARNING] Experimental, pinned to A2UI v0.9.1 The catalog follows A2UI v0.9.1 and may change until a stable A2UI 1.0 compatibility review. It is opt-in: no surface uses it unless a client asks for it.

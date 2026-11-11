@@ -1,4 +1,4 @@
-# SourceDiffViewer · accessibility
+# SourceDiffViewer accessibility
 
 ## Pattern
 

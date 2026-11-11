@@ -68,7 +68,7 @@ const schema = {
               'Waiting',
               'Scheduled',
               'Done',
-              'Done · refund not issued',
+              'Done, refund not issued',
               'Check not met',
               'Approved',
               'Denied',
@@ -121,7 +121,7 @@ const schema = {
           plain: {
             type: 'boolean',
             description:
-              'For an `event`: draws no marker, so the row starts at the inline start. In the `list` variant\na `warning` tone colours the title instead of the marker ("Missed · Interborough was off").',
+              'For an `event`: draws no marker, so the row starts at the inline start. In the `list` variant\na `warning` tone colours the title instead of the marker ("Missed, Interborough was off").',
             default: false,
           },
         },

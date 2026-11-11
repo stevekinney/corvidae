@@ -18,7 +18,7 @@
   {#snippet children(member)}
     <StackedListItem>
       {#snippet title()}{member.name}{/snippet}
-      {#snippet meta()}{member.role} · {member.status}{/snippet}
+      {#snippet meta()}{member.role}, {member.status}{/snippet}
     </StackedListItem>
   {/snippet}
 </DataList>

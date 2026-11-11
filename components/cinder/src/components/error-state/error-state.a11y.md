@@ -1,4 +1,4 @@
-# ErrorState · accessibility
+# ErrorState accessibility
 
 ## Pattern
 

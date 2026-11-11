@@ -27,7 +27,7 @@
     },
     "caption": {
       "type": "string",
-      "description": "A short muted line under the value that says what it means in words, such as \"Nothing is running\", \"An approval and a question\" or \"3 done · 2 waiting on you\". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own."
+      "description": "A short muted line under the value that says what it means in words, such as \"Nothing is running\", \"An approval and a question\" or \"3 done, 2 waiting on you\". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own."
     },
     "theme": {
       "type": "object",

@@ -39,15 +39,15 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
   presentation="listbox"
   bind:value={model}
   options={[
-    { value: 'opus', label: 'Claude Opus 5.5', description: 'Most capable · tools · images' },
-    { value: 'sonnet', label: 'Claude Sonnet 5.5', description: 'Balanced · tools · images' },
+    { value: 'opus', label: 'Claude Opus 5.5', description: 'Most capable, tools, images' },
+    { value: 'sonnet', label: 'Claude Sonnet 5.5', description: 'Balanced, tools, images' },
   ]}
 />
 ```
 
 ### Listbox presentation
 
-`presentation="listbox"` draws a button that opens a listbox. Options can carry a `description`, a `note` and a `group`; `groups` names the headings, divides them and can add a non-selectable `message`; `leading` draws a mark before each option; `footer` renders outside the listbox with its own keyboard stop; `placeholder` shows while no option is selected; `readonly` keeps the value focusable but not changeable. See `select.a11y.md` for the keyboard model. An option's `suffix` adds muted words on the label's own line ("Nightly archiver · no description"), and `triggerSuffix` adds muted words after the value in the trigger only ("Claude Sonnet 5.5 · Anthropic"). `onValueChangeRequest` can refuse or replace a pick before it is written, and the control shows what it returned, never the refused pick.
+`presentation="listbox"` draws a button that opens a listbox. Options can carry a `description`, a `note` and a `group`; `groups` names the headings, divides them and can add a non-selectable `message`; `leading` draws a mark before each option; `footer` renders outside the listbox with its own keyboard stop; `placeholder` shows while no option is selected; `readonly` keeps the value focusable but not changeable. See `select.a11y.md` for the keyboard model. An option's `suffix` adds muted words on the label's own line ("Nightly archiver, no description"), and `triggerSuffix` adds muted words after the value in the trigger only ("Claude Sonnet 5.5, Anthropic"). `onValueChangeRequest` can refuse or replace a pick before it is written, and the control shows what it returned, never the refused pick.
 
 ## Props
 

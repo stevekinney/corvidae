@@ -1,4 +1,4 @@
-# Grid · accessibility
+# Grid accessibility
 
 ## Pattern
 

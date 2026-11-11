@@ -1,4 +1,4 @@
-# SpectrumChart · accessibility
+# SpectrumChart accessibility
 
 ## Pattern
 

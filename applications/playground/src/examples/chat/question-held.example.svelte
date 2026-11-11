@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Question with Undo';
   export const description =
-    'A choice picked with a five-second Undo window: the choice shows selected and one inline line reads “Answered Staging · Undo (5 s)”. The count pauses while focus or the pointer is inside the question.';
+    'A choice picked with a five-second Undo window: the choice shows selected and one inline line reads “Answered Staging, Undo (5 s)”. The count pauses while focus or the pointer is inside the question.';
 </script>
 
 <script lang="ts">

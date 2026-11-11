@@ -55,7 +55,7 @@ A `oneOf` with two primitives, with an object branch that has no `properties`, o
 
 ## Input variant
 
-`variant="input"` draws the Input block of a page that runs or schedules something. Short fields (strings, numbers, selects) share a row two at a time, and the row falls back to one column when the container is narrow. A boolean is a switch with its description beside it and takes the whole row, as does an array, a group or a JSON field. An array whose items are objects is one JSON editor, not a list of item groups: it starts as `[]`, its status line counts the items ("Valid JSON · array of 1 item"), and Format is in the editor's own toolbar. The default variant keeps checkboxes and item groups.
+`variant="input"` draws the Input block of a page that runs or schedules something. Short fields (strings, numbers, selects) share a row two at a time, and the row falls back to one column when the container is narrow. A boolean is a switch with its description beside it and takes the whole row, as does an array, a group or a JSON field. An array whose items are objects is one JSON editor, not a list of item groups: it starts as `[]`, its status line counts the items ("Valid JSON, array of 1 item"), and Format is in the editor's own toolbar. The default variant keeps checkboxes and item groups.
 
 ## Large schemas
 
@@ -63,7 +63,7 @@ A form with more than eight fields (an object group counts as the fields inside 
 
 - Required fields first, then optional ones, each in schema order, in every object.
 - Two columns for short fields (strings, numbers, booleans, selects, durations). Arrays, groups, chips, tags, records, choices and raw JSON take the whole row. The grid falls back to one column when the container is narrow.
-- Nested objects as collapsible groups. A required group starts open and an optional one closed. A closed group summarizes what is inside it: the values that differ from their defaults (`Damaged · whole order`), or else the first field names with `none set` or, when the schema supplies defaults, `defaults` (`Carrier, Tracking Number… · none set`). Groups come only from nested objects in the schema, never from guessing at field names.
+- Nested objects as collapsible groups. A required group starts open and an optional one closed. A closed group summarizes what is inside it: the values that differ from their defaults (`Damaged, whole order`), or else the first field names with `none set` or, when the schema supplies defaults, `defaults` (`Carrier, Tracking Number…, none set`). Groups come only from nested objects in the schema, never from guessing at field names.
 - A Find a field filter that matches labels, keys and descriptions, and opens the groups that hold a match.
 - Edit as JSON, a panel for pasting a whole input. Apply parses the text, requires an object when the schema is an object, fills in defaults for missing fields, and replaces every field and draft. Pass `jsonEditable={false}` when the host already offers its own JSON entry point for the payload.
 

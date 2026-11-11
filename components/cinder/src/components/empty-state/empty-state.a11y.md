@@ -1,4 +1,4 @@
-# EmptyState · accessibility
+# EmptyState accessibility
 
 ## Pattern
 

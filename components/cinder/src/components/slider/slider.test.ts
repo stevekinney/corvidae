@@ -985,10 +985,10 @@ describe('Slider (displayValue)', () => {
         min: 0,
         max: 12,
         valueText: (v: number) => `${v} of 12 notes`,
-        displayValue: (v: number) => `${v} notes · C4–B4`,
+        displayValue: (v: number) => `${v} notes, C4–B4`,
       },
     });
-    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes · C4–B4');
+    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes, C4–B4');
     expect(getThumbs(container)[0]!.getAttribute('aria-valuetext')).toBe('7 of 12 notes');
   });
 
@@ -1017,7 +1017,7 @@ describe('Slider (displayValue)', () => {
     const { container } = render(SliderHeaderValueFixture, {
       props: { withDisplayValue: true, value: 7 },
     });
-    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes · C4–B4');
+    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes, C4–B4');
   });
 
   test('standalone range Slider renders its own displayValue fixture text', () => {
@@ -1032,7 +1032,7 @@ describe('Slider (displayValue)', () => {
       props: { wrapInFormField: true, withDisplayValue: true, value: 7 },
     });
     expect(container.querySelector('.cinder-slider__label')).toBeNull();
-    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes · C4–B4');
+    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes, C4–B4');
     const thumb = getThumbs(container)[0]!;
     expect(thumb.getAttribute('aria-labelledby')).not.toBeNull();
   });
@@ -1052,9 +1052,9 @@ describe('Slider (displayValue)', () => {
     const { container, rerender } = render(SliderHeaderValueFixture, {
       props: { withDisplayValue: true, value: 7 },
     });
-    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes · C4–B4');
+    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('7 notes, C4–B4');
     await rerender({ withDisplayValue: true, value: 9 });
-    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('9 notes · C4–B4');
+    expect(container.querySelector('.cinder-slider__value')?.textContent).toBe('9 notes, C4–B4');
   });
 
   test('reactively updates the formatted range value as value changes', async () => {

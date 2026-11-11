@@ -141,7 +141,7 @@ const schema = {
         name: 'actions',
         reason: 'function-or-snippet',
         description:
-          'Content that sits beside the "Show all" button on the line under a clamped run, separated from\nit by a middle dot, such as a "Show raw payloads" link. Ignored without `clamp`.',
+          'Content that sits beside the "Show all" button on the line under a clamped run, separated from\nit by a comma, such as a "Show raw payloads" link. Ignored without `clamp`.',
       },
       {
         name: 'children',

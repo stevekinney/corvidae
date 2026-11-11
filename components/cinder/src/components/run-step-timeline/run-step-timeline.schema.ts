@@ -89,8 +89,7 @@ const schema = {
                   },
                   label: {
                     type: 'string',
-                    description:
-                      'A muted word before the first line, joined to it by a middle dot.',
+                    description: 'A muted word before the first line, joined to it by a comma.',
                   },
                   streaming: {
                     type: 'boolean',
@@ -286,7 +285,7 @@ const schema = {
                         label: {
                           type: 'string',
                           description:
-                            'A muted word before the first line, joined to it by a middle dot.',
+                            'A muted word before the first line, joined to it by a comma.',
                         },
                         streaming: {
                           type: 'boolean',
@@ -485,7 +484,7 @@ const schema = {
                               label: {
                                 type: 'string',
                                 description:
-                                  'A muted word before the first line, joined to it by a middle dot.',
+                                  'A muted word before the first line, joined to it by a comma.',
                               },
                               streaming: {
                                 type: 'boolean',
@@ -688,7 +687,7 @@ const schema = {
                                     label: {
                                       type: 'string',
                                       description:
-                                        'A muted word before the first line, joined to it by a middle dot.',
+                                        'A muted word before the first line, joined to it by a comma.',
                                     },
                                     streaming: {
                                       type: 'boolean',
@@ -963,7 +962,7 @@ const schema = {
                               label: {
                                 type: 'string',
                                 description:
-                                  'A muted word before the first line, joined to it by a middle dot.',
+                                  'A muted word before the first line, joined to it by a comma.',
                               },
                               streaming: {
                                 type: 'boolean',
@@ -1166,7 +1165,7 @@ const schema = {
                                     label: {
                                       type: 'string',
                                       description:
-                                        'A muted word before the first line, joined to it by a middle dot.',
+                                        'A muted word before the first line, joined to it by a comma.',
                                     },
                                     streaming: {
                                       type: 'boolean',
@@ -1377,7 +1376,7 @@ const schema = {
                                           label: {
                                             type: 'string',
                                             description:
-                                              'A muted word before the first line, joined to it by a middle dot.',
+                                              'A muted word before the first line, joined to it by a comma.',
                                           },
                                           streaming: {
                                             type: 'boolean',
@@ -1595,7 +1594,7 @@ const schema = {
                                                 label: {
                                                   type: 'string',
                                                   description:
-                                                    'A muted word before the first line, joined to it by a middle dot.',
+                                                    'A muted word before the first line, joined to it by a comma.',
                                                 },
                                                 streaming: {
                                                   type: 'boolean',

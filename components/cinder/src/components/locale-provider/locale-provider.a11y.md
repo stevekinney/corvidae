@@ -1,4 +1,4 @@
-# LocaleProvider · accessibility
+# LocaleProvider accessibility
 
 ## Pattern
 

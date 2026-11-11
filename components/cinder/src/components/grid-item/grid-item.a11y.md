@@ -1,4 +1,4 @@
-# GridItem · accessibility
+# GridItem accessibility
 
 ## Pattern
 

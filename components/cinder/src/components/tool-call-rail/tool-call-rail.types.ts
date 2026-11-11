@@ -6,7 +6,7 @@ import type { HTMLAttributes } from 'svelte/elements';
  *
  * - `done`: finished; a neutral grey dot.
  * - `approved`: finished after a person approved it; a green dot, because the approval is what the
- *   row is about ("Approved by you 10:33 AM · $18.50 refunded").
+ *   row is about ("Approved by you 10:33 AM, $18.50 refunded").
  * - `running`: under way; a spinner in place of the dot and "Running…" in place of a result.
  * - `waiting`: parked on a person's decision; an amber shield and "Waiting on you". It never folds.
  * - `denied`: a person refused it; a neutral prohibition glyph and neutral words, never red and
@@ -14,8 +14,8 @@ import type { HTMLAttributes } from 'svelte/elements';
  * - `failed`: it ended in an error; a red cross and the result in red. It never folds.
  * - `interrupted`: the run ended while the call was under way, so nobody knows how it ended; a red
  *   circled cross and the result in red, with no arrow, because there is no answer. The caller
- *   words it by the tool's risk ("Interrupted · didn't finish" for a tool that only reads,
- *   "Interrupted · may have run" for one that changes things). It never folds, and it is never a
+ *   words it by the tool's risk ("Interrupted, didn't finish" for a tool that only reads,
+ *   "Interrupted, may have run" for one that changes things). It never folds, and it is never a
  *   green or neutral dot.
  */
 export type ToolCallRailStatus =
@@ -33,15 +33,15 @@ export type ToolCallRailCall = {
   input?: string | undefined;
   /**
    * What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow
-   * ("→ $42.00, delivered Mon"); an `interrupted` call shows it as its own words ("Interrupted ·
-   * didn't finish"); a `denied` call shows it as its own words ("Denied by you 10:40 AM ·
+   * ("→ $42.00, delivered Mon"); an `interrupted` call shows it as its own words ("Interrupted,
+   * didn't finish"); a `denied` call shows it as its own words ("Denied by you 10:40 AM,
    * nothing refunded"); a `running` or `waiting` call has none and reads "Running…" or "Waiting on
    * you", unless this is set.
    */
   result?: string | undefined;
   /**
-   * What a person decided, in their own words and without an arrow: "Approved by you 10:33 AM ·
-   * $18.50 refunded" on an `approved` call, or "Denied by you 10:40 AM · nothing refunded" on a
+   * What a person decided, in their own words and without an arrow: "Approved by you 10:33 AM,
+   * $18.50 refunded" on an `approved` call, or "Denied by you 10:40 AM, nothing refunded" on a
    * `denied` one. It takes the place of `result` on the row; without it an `approved` call shows
    * its `result` after an arrow like a `done` one.
    */
@@ -136,7 +136,7 @@ export type ToolCallRailProps = Omit<
   onCopyInput?: ((id: string) => void) | undefined;
   /**
    * The run's end state, on its own line after the last row, in neutral text with a check glyph
-   * ("Run finished · no reply"). Set it when the turn ends on a tool call, so it does not look hung.
+   * ("Run finished, no reply"). Set it when the turn ends on a tool call, so it does not look hung.
    */
   endLabel?: string | undefined;
   /** A muted line under the rail ("Failures and calls that need you stay visible wherever they fall."). */

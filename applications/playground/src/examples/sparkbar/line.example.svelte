@@ -12,7 +12,7 @@
   <Sparkbar
     points={[1.4, 1.42, 1.45, 1.49, 1.53, 1.57, 1.6, 1.62]}
     label="Storage use over the last 24 hours, rising to 1.6 GB"
-    startLabel="1.4 GB · 24 hours ago"
+    startLabel="1.4 GB, 24 hours ago"
     endLabel="Now"
   />
 </div>

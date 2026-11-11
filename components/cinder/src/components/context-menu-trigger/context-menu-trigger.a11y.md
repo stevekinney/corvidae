@@ -1,4 +1,4 @@
-# ContextMenuTrigger · accessibility
+# ContextMenuTrigger accessibility
 
 ## Pattern
 

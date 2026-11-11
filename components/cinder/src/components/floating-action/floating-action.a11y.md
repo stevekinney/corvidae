@@ -1,4 +1,4 @@
-# FloatingAction · accessibility
+# FloatingAction accessibility
 
 ## Pattern
 

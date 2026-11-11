@@ -1,4 +1,4 @@
-# Table · accessibility
+# Table accessibility
 
 ## Pattern
 

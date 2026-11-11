@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Refund approval card';
   export const description =
-    'The card follows the approval-row rules on a neutral raised surface: who asked and when, the wrapping question, the tool with its identifier small and monospaced, muted "Dangerous · Can\'t be undone", then the effect line. The arguments sit under "Runs with" and a note field is sent with both Approve and Deny.';
+    'The card follows the approval-row rules on a neutral raised surface: who asked and when, the wrapping question, the tool with its identifier small and monospaced, muted "Dangerous, Can\'t be undone", then the effect line. The arguments sit under "Runs with" and a note field is sent with both Approve and Deny.';
 </script>
 
 <script lang="ts">

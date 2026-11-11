@@ -1,4 +1,4 @@
-# Alert · accessibility
+# Alert accessibility
 
 ## Pattern
 

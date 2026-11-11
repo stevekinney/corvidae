@@ -1,4 +1,4 @@
-# Meter · accessibility
+# Meter accessibility
 
 ## Pattern
 

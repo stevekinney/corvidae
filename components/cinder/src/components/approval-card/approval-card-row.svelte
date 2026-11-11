@@ -206,28 +206,30 @@
               >{tool.label}</span
             >{' '}{/if}<span class="cinder-approval-card__line-facts"
             ><span class="cinder-approval-card__keep"
-              ><code class="cinder-approval-card__tool-identifier">{tool.name}</code>{' '}<span
+              ><code class="cinder-approval-card__tool-identifier">{tool.name}</code><span
                 class="cinder-approval-card__separator"
-                aria-hidden="true">·</span
+                aria-hidden="true">,</span
               ></span
             >{' '}<span class="cinder-approval-card__keep"
               ><span class="cinder-approval-card__risk-word">{riskWord}</span
-              >{#if tool.irreversible}{' '}<span
+              >{#if tool.irreversible}<span
                   class="cinder-approval-card__separator"
-                  aria-hidden="true">·</span
+                  aria-hidden="true">,</span
                 >{/if}</span
             >{#if tool.irreversible}{' '}<span class="cinder-approval-card__undone"
                 >Can't be undone</span
               >{/if}</span
-          >
+          >{#if hasSourceLine}<span
+              class="cinder-approval-card__separator cinder-approval-card__source-separator"
+              aria-hidden="true">,</span
+            >{/if}
         </span>
         {#if hasSourceLine}
           <span class="cinder-approval-card__line-source">
-            <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
             {#if sourceText !== undefined}<span>{sourceText}</span
-              >{#if requestedText !== undefined}{'\u00a0'}<span
+              >{#if requestedText !== undefined}<span
                   class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                  aria-hidden="true">·</span
+                  aria-hidden="true">,</span
                 >{/if}{/if}
             {#if requestedText !== undefined}
               <time datetime={requestedIso}>{requestedText}</time>
@@ -252,11 +254,11 @@
     <p class="cinder-approval-card__input-summary cinder-approval-card__decided-input">
       <span class="cinder-approval-card__input-word">{inputLabel}</span>
       {#each inputPairs as pair, index (pair.key)}
-        {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">·</span
+        {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">,</span
           >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span>{' '}<span
           class="cinder-approval-card__pair-value"
           data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-        >{' '}
+        >
       {/each}
     </p>
   {/if}
@@ -287,12 +289,12 @@
       {#if inputPairs.length > 0}
         <p class="cinder-approval-card__input-summary" data-cinder-static>
           {#each inputPairs as pair, index (pair.key)}
-            {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">·</span
+            {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true">,</span
               >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
             >{' '}<span
               class="cinder-approval-card__pair-value"
               data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-            >{' '}
+            >
           {/each}
         </p>
       {/if}
@@ -325,12 +327,12 @@
             <span class="cinder-approval-card__input-pairs">
               {#each inputPairs as pair, index (pair.key)}
                 {#if index > 0}<span class="cinder-approval-card__separator" aria-hidden="true"
-                    >·</span
+                    >,</span
                   >{' '}{/if}<span class="cinder-approval-card__pair-label">{pair.label}</span
                 >{' '}<span
                   class="cinder-approval-card__pair-value"
                   data-cinder-muted={pair.muted || undefined}>{pair.text}</span
-                >{' '}
+                >
               {/each}
             </span>
           </button>

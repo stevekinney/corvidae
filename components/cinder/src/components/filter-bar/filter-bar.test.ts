@@ -69,9 +69,9 @@ const WORKFLOW = {
     { value: 'release-notes', label: 'Release notes', count: 1 },
     { value: 'triage-inbox', label: 'Triage inbox', count: 2 },
     { value: 'order-refund', label: 'Order refund', count: 0 },
-    { value: 'chat', label: 'Chat with an agent · internal', count: 6 },
-    { value: 'goal', label: 'Goal attempts · internal', count: 8 },
-    { value: 'tick', label: 'Schedule tick · internal', count: 2 },
+    { value: 'chat', label: 'Chat with an agent, internal', count: 6 },
+    { value: 'goal', label: 'Goal attempts, internal', count: 8 },
+    { value: 'tick', label: 'Schedule tick, internal', count: 2 },
   ],
 };
 
@@ -662,9 +662,9 @@ describe('FilterBar choice chips (rows 10e 52l 52m 53i 53j)', () => {
       'Release notes 1',
       'Triage inbox 2',
       'Order refund 0',
-      'Chat with an agent · internal 6',
-      'Goal attempts · internal 8',
-      'Schedule tick · internal 2',
+      'Chat with an agent, internal 6',
+      'Goal attempts, internal 8',
+      'Schedule tick, internal 2',
     ]);
     expect(rows[0]!.querySelector<HTMLInputElement>('input')?.checked).toBe(true);
     const total = rows.reduce(

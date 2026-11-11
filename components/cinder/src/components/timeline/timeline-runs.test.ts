@@ -47,7 +47,7 @@ describe('Timeline run entry (rows 72k and 73f)', () => {
       row.querySelector('.cinder-stacked-list-item__title time')?.getAttribute('datetime'),
     ).toBe('2026-11-02T16:45:00Z');
     expect(row.querySelector('.cinder-stacked-list-item__meta')?.textContent).toBe(
-      'Started with Run now · Collecting merged changes',
+      'Started with Run now, Collecting merged changes',
     );
   });
 
@@ -131,7 +131,7 @@ describe('Timeline plain event (row 73m)', () => {
     const row = container.querySelector<HTMLElement>('li[data-cinder-plain]');
     expect(row?.querySelector('time')?.textContent).toBe('Mon Nov 2, 3:00 AM');
     expect(row?.querySelector('.cinder-timeline-item__title')?.textContent).toBe(
-      'Missed · Interborough was off',
+      'Missed, Interborough was off',
     );
     expect(css).toMatch(
       /\[data-cinder-plain\] \.cinder-timeline-item__marker\s*\{\s*display: none;/,

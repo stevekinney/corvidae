@@ -1,4 +1,4 @@
-# SpeedDialAction · accessibility
+# SpeedDialAction accessibility
 
 ## Pattern
 

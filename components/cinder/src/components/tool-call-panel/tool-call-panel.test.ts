@@ -75,7 +75,7 @@ describe('ToolCallPanel header', () => {
     expect(text(container.querySelector('h2'))).toBe('Send email send-email');
     expect(container.querySelector('.cinder-tool-call-panel__identifier')?.tagName).toBe('CODE');
     expect(text(container.querySelector('.cinder-tool-call-panel__status'))).toContain(
-      'Failed · 10.0s · call 28 of 30',
+      'Failed, 10.0s, call 28 of 30',
     );
   });
 
@@ -85,11 +85,11 @@ describe('ToolCallPanel header', () => {
         placement: 'docked',
         name: 'Lookup order',
         status: 'done',
-        summary: 'Reads · ran in 0.4s',
+        summary: 'Reads, ran in 0.4s',
       },
     });
     expect(text(container.querySelector('.cinder-tool-call-panel__status'))).toBe(
-      'Reads · ran in 0.4s',
+      'Reads, ran in 0.4s',
     );
   });
 
@@ -196,7 +196,7 @@ describe('ToolCallPanel sections', () => {
       ['Flag', 'Damaged'],
     ]);
     expect(text(container.querySelector('.cinder-tool-call-panel__status'))).toContain(
-      'Done · 0.2s',
+      'Done, 0.2s',
     );
     expect(getByRole('button', { name: 'Copy input' })).toBeTruthy();
     expect(getByRole('button', { name: 'Copy result' })).toBeTruthy();

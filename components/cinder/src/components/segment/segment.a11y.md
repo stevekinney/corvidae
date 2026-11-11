@@ -1,4 +1,4 @@
-# Segment · accessibility
+# Segment accessibility
 
 ## Pattern
 

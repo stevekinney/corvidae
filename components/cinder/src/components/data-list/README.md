@@ -34,7 +34,7 @@ A list-level `density` is inherited by every `StackedListItem` row that does not
 
 ## Day groups
 
-Pass `groupBy` to put consecutive rows under a header band: it returns `{ key, label, detail }` for an item, and consecutive items with one key share a header (`Today · Monday, Nov 2`, with `Central time` at the right). Each group is a nested list named by its header, so a screen reader announces the day. Pass items already sorted; they are not reordered.
+Pass `groupBy` to put consecutive rows under a header band: it returns `{ key, label, detail }` for an item, and consecutive items with one key share a header (`Today, Monday, Nov 2`, with `Central time` at the right). Each group is a nested list named by its header, so a screen reader announces the day. Pass items already sorted; they are not reordered.
 
 ```svelte
 <DataList

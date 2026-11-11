@@ -57,7 +57,7 @@ export type SideNavigationItemProps = NavigationItemSharedHtmlAttributes &
     /**
      * The row's name as plain text ("Health", "Reviews"). It names the row when a count is
      * present ("Health, 3 need attention") and is the first part of the tooltip
-     * ("Reviews · 2 need you"). Without it the row has no composed name and no tooltip.
+     * ("Reviews, 2 need you"). Without it the row has no composed name and no tooltip.
      */
     label?: string;
     /**

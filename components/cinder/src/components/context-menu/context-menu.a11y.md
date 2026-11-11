@@ -1,4 +1,4 @@
-# ContextMenu · accessibility
+# ContextMenu accessibility
 
 ## Pattern
 

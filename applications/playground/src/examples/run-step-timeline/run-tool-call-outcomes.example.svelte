@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'What happened: a failed call and a denied approval';
   export const description =
-    'A run that is Done keeps a failed tool call visible: its entry has a red mark and an open note, "This call failed", and the run still ends "Finished; one tool call failed". After a denied approval the entry reads Denied with a neutral dot, the note you typed shows as "Your note · …", and the run ends "Done · refund not issued".';
+    'A run that is Done keeps a failed tool call visible: its entry has a red mark and an open note, "This call failed", and the run still ends "Finished; one tool call failed". After a denied approval the entry reads Denied with a neutral dot, the note you typed shows as "Your note, …", and the run ends "Done, refund not issued".';
 </script>
 
 <script lang="ts">
@@ -91,7 +91,7 @@
     },
     {
       id: 'done',
-      label: 'Done · refund not issued',
+      label: 'Done, refund not issued',
       status: 'recorded',
       time: '+1 min 2 s',
       description: 'The run finished without issuing the refund',

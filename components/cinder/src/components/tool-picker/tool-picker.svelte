@@ -114,7 +114,7 @@
   const counter = $derived(
     longList
       ? chosenTotal > 0
-        ? `${selectableTotal} ${itemNoun} · ${chosenTotal} chosen`
+        ? `${selectableTotal} ${itemNoun}, ${chosenTotal} chosen`
         : `${selectableTotal} ${itemNoun}`
       : `${chosenTotal} of ${selectableTotal} ${itemNoun} chosen`,
   );
@@ -147,7 +147,7 @@
     else if (selectable && chosenTotal > 0 && chosenCount(section, chosen) === 0) {
       parts.push(noneChosenLabel);
     }
-    return parts.join(' · ');
+    return parts.join(', ');
   }
 
   function handleDone(): void {
@@ -233,9 +233,10 @@
             </h3>
           {:else}
             <h3 class="cinder-tool-picker__group-heading" id={headerId}>
-              <span class="cinder-tool-picker__group-name">{section.name}</span>
-              <span class="cinder-tool-picker__group-count">
-                {#if longList}{groupSummary(section)}{:else}{`· ${groupSummary(section)}`}{/if}
+              <span class="cinder-tool-picker__group-name">{section.name}</span><span
+                class="cinder-tool-picker__group-count"
+              >
+                {#if longList}{` ${groupSummary(section)}`}{:else}{`, ${groupSummary(section)}`}{/if}
               </span>
             </h3>
           {/if}
@@ -269,7 +270,7 @@
                       <span class="cinder-tool-picker__name">{item.label}</span>
                       {#if item.code}<code class="cinder-tool-picker__code">{item.code}</code>{/if}
                       {#if item.suffix}<span class="cinder-tool-picker__suffix"
-                          >· {item.suffix}</span
+                          >, {item.suffix}</span
                         >{/if}
                     </span>
                     {#if item.description}

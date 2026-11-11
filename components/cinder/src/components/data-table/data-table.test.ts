@@ -1297,8 +1297,8 @@ describe('DataTable — cells, row messages, groups and footer', () => {
     });
     const groups = Array.from(container.querySelectorAll('tr.cinder-data-table__group-row'));
     expect(groups.map((group) => group.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-      'Today, Nov 2 · Central time',
-      'Yesterday, Sun Nov 1 · Central time',
+      'Today, Nov 2, Central time',
+      'Yesterday, Sun Nov 1, Central time',
     ]);
     expect(groups[0]?.querySelector('th')?.getAttribute('scope')).toBe('colgroup');
     expect(groups[0]?.querySelector('th')?.getAttribute('colspan')).toBe('2');

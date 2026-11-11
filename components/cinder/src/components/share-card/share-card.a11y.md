@@ -1,4 +1,4 @@
-# ShareCard · accessibility
+# ShareCard accessibility
 
 ## Pattern
 

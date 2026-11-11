@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'At 375px, a bottom sheet';
   export const description =
-    'On a phone the panel is a full-height bottom sheet with a grabber and a Close button, like the shared sheets. The title is "Send email" with "send-email", a red "Failed · 10.0s · call 28 of 30", Input fields (To, Template), Error fields (Message, Retryable Yes) and a secondary full-width 44px "Ask the agent to retry" at the foot. It cross-fades under reduced motion.';
+    'On a phone the panel is a full-height bottom sheet with a grabber and a Close button, like the shared sheets. The title is "Send email" with "send-email", a red "Failed, 10.0s, call 28 of 30", Input fields (To, Template), Error fields (Message, Retryable Yes) and a secondary full-width 44px "Ask the agent to retry" at the foot. It cross-fades under reduced motion.';
 </script>
 
 <script lang="ts">

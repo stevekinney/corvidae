@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Short turns and where the fold starts';
   export const description =
-    'One or two calls are plain rows: no "Used N tools" line, no rail and no fold. From 3 calls the summary line appears and every call still shows. From 8 calls the middle folds, with the first 3 and last 3 around "Show 2 more · 2 done: Lookup order ×2". With 7 calls hiding one row would save nothing, so all 7 show.';
+    'One or two calls are plain rows: no "Used N tools" line, no rail and no fold. From 3 calls the summary line appears and every call still shows. From 8 calls the middle folds, with the first 3 and last 3 around "Show 2 more, 2 done: Lookup order ×2". With 7 calls hiding one row would save nothing, so all 7 show.';
 </script>
 
 <script lang="ts">
@@ -30,7 +30,7 @@
     <p>Two calls look the same.</p>
     <ToolCallRail calls={turn(2)} label="Two calls" />
   </section>
-  <ToolCallRail calls={turn(3)} endLabel="Run finished · no reply" label="Three calls" />
+  <ToolCallRail calls={turn(3)} endLabel="Run finished, no reply" label="Three calls" />
   <ToolCallRail calls={turn(7)} label="Seven calls" />
-  <ToolCallRail calls={turn(8)} endLabel="Run finished · no reply" label="Eight calls" />
+  <ToolCallRail calls={turn(8)} endLabel="Run finished, no reply" label="Eight calls" />
 </div>

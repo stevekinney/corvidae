@@ -1,4 +1,4 @@
-# Skeleton · accessibility
+# Skeleton accessibility
 
 ## Pattern
 

@@ -58,7 +58,7 @@ An omitted `value` opens on every day at 9:00 AM in the browser's time zone. The
 
 ## Time zone
 
-Time zone is a searchable picker over every zone the runtime knows. Each row reads the zone's sentence-case name and its city ("Central time · Chicago") with its offset at the trailing edge ("UTC−6"); the chosen zone leads, then the common zones, and the footer counts what is shown ("Showing 5 of 418 zones. Type to narrow."). Typing searches every zone by name, city or IANA id.
+Time zone is a searchable picker over every zone the runtime knows. Each row reads the zone's sentence-case name and its city ("Central time, Chicago") with its offset at the trailing edge ("UTC−6"); the chosen zone leads, then the common zones, and the footer counts what is shown ("Showing 5 of 418 zones. Type to narrow."). Typing searches every zone by name, city or IANA id.
 
 ## Policies
 

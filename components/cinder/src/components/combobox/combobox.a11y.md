@@ -1,4 +1,4 @@
-# Combobox · accessibility
+# Combobox accessibility
 
 ## Pattern
 

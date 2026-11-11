@@ -64,7 +64,7 @@ describe('componentReadme', () => {
         '',
         'Switches between panels.',
         '',
-        "**Category:** Navigation · **Status:** stable · **Import:** `import { Tabs } from '@lostgradient/cinder'`",
+        "**Category:** Navigation, **Status:** stable, **Import:** `import { Tabs } from '@lostgradient/cinder'`",
         '',
         '## Use when',
         '',
@@ -109,7 +109,7 @@ describe('preview documents', () => {
     expect(cardHeight({ height: 9000, width: 0 })).toBe(4000);
     const narrow = livePreviewHtml(tabs, manifest, plan, { height: 200, width: 760 });
     expect(narrow.split('\n')[0]).toBe(
-      `<!-- @dsCard group="Navigation" height=208 subtitle="Basic 'tabs' · Vertical" -->`,
+      `<!-- @dsCard group="Navigation" height=208 subtitle="Basic 'tabs', Vertical" -->`,
     );
     const wide = livePreviewHtml(tabs, manifest, plan, { height: 200, width: 900 });
     expect(wide.split('\n')[0]).toContain('height=208 width=916 subtitle=');
@@ -125,7 +125,7 @@ describe('preview documents', () => {
     };
     const html = staticPreviewHtml(tabs, manifest, plan, snapshot);
     expect(html.split('\n')[0]).toBe(
-      `<!-- @dsCard group="Navigation" height=308 subtitle="Static rendition · Basic 'tabs' · Vertical" -->`,
+      `<!-- @dsCard group="Navigation" height=308 subtitle="Static rendition, Basic 'tabs', Vertical" -->`,
     );
     expect(html).toContain('<title>Tabs — preview</title><style>.a{}</style></head>');
     expect(staticPreviewHtml(tabs, manifest, plan, { ...snapshot, styles: '' })).toContain(

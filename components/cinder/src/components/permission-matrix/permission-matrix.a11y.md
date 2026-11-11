@@ -1,4 +1,4 @@
-# PermissionMatrix · accessibility
+# PermissionMatrix accessibility
 
 ## Pattern
 

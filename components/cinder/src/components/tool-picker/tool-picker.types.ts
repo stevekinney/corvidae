@@ -11,7 +11,7 @@ export type ToolPickerItem = {
    * not repeated anywhere else on the row.
    */
   code?: string;
-  /** Muted words after the identifier ("Skill"), drawn after a middle dot. */
+  /** Muted words after the identifier ("Skill"), drawn after a comma. */
   suffix?: string;
   /** One line saying what the item does, under the name. */
   description?: string;

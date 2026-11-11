@@ -73,7 +73,7 @@ describe('StackedListItem failed row', () => {
 
   test('an error replaces meta and the row is not a link', () => {
     const { container } = render(StackedListItem, {
-      props: { ...row, href: '/runs/a', error: 'Nope.', meta: textSnippet('Chat · Tool runner') },
+      props: { ...row, href: '/runs/a', error: 'Nope.', meta: textSnippet('Chat, Tool runner') },
     });
     expect(container.querySelector('.cinder-stacked-list-item__meta')).toBeNull();
     expect(container.querySelector('a')).toBeNull();

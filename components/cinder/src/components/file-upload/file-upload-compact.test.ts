@@ -60,7 +60,7 @@ describe('FileUpload compact variant: uploading (row 43b)', () => {
     variant: 'compact',
     multiple: true,
     browseLabel: 'Add a document',
-    description: 'or drop files here · PDF, Markdown or text · up to 5 MB each',
+    description: 'or drop files here, PDF, Markdown or text, up to 5 MB each',
     files: [settled, arriving],
     onFilesChange: () => {},
   };
@@ -112,7 +112,7 @@ describe('FileUpload compact variant: uploading (row 43b)', () => {
     expect(rows.compareDocumentPosition(zone) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(zone.textContent).toContain('Add a document');
     expect(zone.textContent).toContain(
-      'or drop files here · PDF, Markdown or text · up to 5 MB each',
+      'or drop files here, PDF, Markdown or text, up to 5 MB each',
     );
     expect(zone.querySelector('.cinder-file-upload__title')).toBeNull();
     expect(zone.getAttribute('data-variant')).toBe('compact');
@@ -224,7 +224,7 @@ describe('FileUpload button variant (row 33s)', () => {
     variant: 'button',
     browseLabel: 'Upload a file',
     accept: '.yaml,.yml,.json',
-    summary: 'payments-openapi.yaml · OpenAPI 3.1 · 24 operations',
+    summary: 'payments-openapi.yaml, OpenAPI 3.1, 24 operations',
   };
 
   test('draws the Upload a file button and the file summary, and no dropzone body', () => {
@@ -232,7 +232,7 @@ describe('FileUpload button variant (row 33s)', () => {
     const zone = dropzone(container);
     expect(zone.getAttribute('data-variant')).toBe('button');
     expect(screen.getByRole('button', { name: 'Upload a file' })).toBeTruthy();
-    expect(zone.textContent).toContain('payments-openapi.yaml · OpenAPI 3.1 · 24 operations');
+    expect(zone.textContent).toContain('payments-openapi.yaml, OpenAPI 3.1, 24 operations');
     expect(zone.querySelector('.cinder-file-upload__upload-icon')).toBeNull();
     expect(zone.querySelector('.cinder-file-upload__title')).toBeNull();
   });

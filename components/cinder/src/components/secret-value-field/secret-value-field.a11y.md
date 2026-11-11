@@ -1,4 +1,4 @@
-# SecretValueField · accessibility
+# SecretValueField accessibility
 
 ## Pattern
 

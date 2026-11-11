@@ -1,4 +1,4 @@
-# ScrollArea · accessibility
+# ScrollArea accessibility
 
 ## Pattern
 

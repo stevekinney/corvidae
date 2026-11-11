@@ -584,7 +584,7 @@
             {#each note.lines as line, index (index)}
               <p class="cinder-run-step-timeline__note-line">
                 {#if index === 0 && note.label !== undefined && note.label !== ''}<span
-                    class="cinder-run-step-timeline__note-label">{note.label}{' · '}</span
+                    class="cinder-run-step-timeline__note-label">{note.label}{', '}</span
                   >{/if}{line}{#if note.streaming && index === note.lines.length - 1}<span
                     class="cinder-run-step-timeline__cursor"
                     aria-hidden="true"

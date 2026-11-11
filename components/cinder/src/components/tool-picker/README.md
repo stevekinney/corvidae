@@ -4,7 +4,7 @@
 
 `ToolPicker` is a dialog for choosing tools and skills from a list grouped by source. Each row carries the human name, the identifier once in monospace, a one-line description and two trailing facts: a short word such as how risky the tool is (`meta`) and the level it starts at (`detail`). The level is read-only here; changing it happens wherever the chosen tools are listed once they are added. A skill follows the tools it uses, so it is listed with no checkbox (`selectable: false`) and says so in the trailing column.
 
-The title's line carries a counter ("3 of 9 tools chosen"), a search field sits under it, and the list scrolls inside the dialog under sticky group headers ("Built in · 6", "GitHub · 3 · none chosen", "Skills · 2 · they follow the tools they use"). The picker edits a copy: Done writes the choices back to `selected` and calls `onDone`; Cancel, Escape and a click outside leave `selected` alone.
+The title's line carries a counter ("3 of 9 tools chosen"), a search field sits under it, and the list scrolls inside the dialog under sticky group headers ("Built in, 6", "GitHub, 3, none chosen", "Skills, 2, they follow the tools they use"). The picker edits a copy: Done writes the choices back to `selected` and calls `onDone`; Cancel, Escape and a click outside leave `selected` alone.
 
 ## Usage
 
@@ -61,7 +61,7 @@ The title's line carries a counter ("3 of 9 tools chosen"), a search field sits 
 
 - **Loading**: `loading` keeps the title and a live search field and draws three skeleton rows after 300 ms, so a quick load never flashes a placeholder. Done waits until the list is there.
 - **Filtered to nothing**: the search keeps what was typed, and the list says `No tools match “invoice”` with "Try a shorter word." and one action, Clear search. `noMatchTitle` takes a string or a function of the query.
-- **Forty or more tools**: from `collapseFrom` selectable items (40 by default) the counter reads the total ("42 tools"; "42 tools · 3 chosen" once something is chosen), the group headers become buttons ("Built in 6 tools") and every group but the first starts collapsed. Searching opens every group that has a match.
+- **Forty or more tools**: from `collapseFrom` selectable items (40 by default) the counter reads the total ("42 tools"; "42 tools, 3 chosen" once something is chosen), the group headers become buttons ("Built in 6 tools") and every group but the first starts collapsed. Searching opens every group that has a match.
 
 ## Choices and order
 

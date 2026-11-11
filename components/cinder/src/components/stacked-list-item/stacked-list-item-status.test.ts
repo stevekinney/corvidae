@@ -29,7 +29,7 @@ const runs: StatusListRow[] = [
     day: 'Today',
     status: 'Waiting on you',
     time: '10:42 AM',
-    meta: 'Chat · Tool runner · waiting 4 min',
+    meta: 'Chat, Tool runner, waiting 4 min',
     href: '/runs/a',
   },
   {
@@ -37,7 +37,7 @@ const runs: StatusListRow[] = [
     title: 'Triage inbox',
     day: 'Today',
     time: 'Oct 24',
-    meta: '3 steps · 1 run',
+    meta: '3 steps, 1 run',
   },
 ];
 
@@ -48,7 +48,7 @@ describe('StackedListItem status-first row', () => {
         status: textSnippet('Waiting on you'),
         title: textSnippet('Refund order 4471'),
         time: textSnippet('10:42 AM'),
-        meta: textSnippet('Chat · Tool runner'),
+        meta: textSnippet('Chat, Tool runner'),
       },
     });
     const root = container.querySelector('.cinder-stacked-list-item');
@@ -63,7 +63,7 @@ describe('StackedListItem status-first row', () => {
       'Waiting on you',
     );
     expect(root?.querySelector('.cinder-stacked-list-item__line-two')?.textContent).toContain(
-      'Chat · Tool runner',
+      'Chat, Tool runner',
     );
   });
 
@@ -72,7 +72,7 @@ describe('StackedListItem status-first row', () => {
       props: {
         status: textSnippet('Failed for good'),
         title: textSnippet('collect-merged-changes'),
-        meta: textSnippet('Failed after 5 tries · GitHub didn’t answer (HTTP 503).'),
+        meta: textSnippet('Failed after 5 tries, GitHub didn’t answer (HTTP 503).'),
         wrapMeta: true,
       },
     });

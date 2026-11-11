@@ -7,7 +7,7 @@
       "id": "basic",
       "title": "Attempts on a list row",
       "description": "One segment per allowed attempt, filled for the attempts made, neutral in every state. It sits beside its count on a row's second line; the whole bar is one image named \"2 of 5 attempts\".",
-      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div\n  style=\"display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);\"\n>\n  <span>Tool runner · <AttemptsIndicator made={2} allowed={5} /> 2 of 5</span>\n  <span>Assistant · <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>\n  <span>Assistant · <AttemptsIndicator made={1} allowed={1} /> 1 of 1</span>\n</div>\n"
+      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div\n  style=\"display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);\"\n>\n  <span>Tool runner, <AttemptsIndicator made={2} allowed={5} /> 2 of 5</span>\n  <span>Assistant, <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>\n  <span>Assistant, <AttemptsIndicator made={1} allowed={1} /> 1 of 1</span>\n</div>\n"
     },
     {
       "id": "reconnecting",
@@ -19,7 +19,7 @@
       "id": "goal",
       "title": "A goal with three of five attempts used",
       "description": "On a goal row the bar sits beside its count, \"3 of 5\", in the same neutral colours in light and dark; running out of attempts never turns it red.",
-      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div\n  style=\"display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);\"\n>\n  <span>Triage the refund queue · <AttemptsIndicator made={3} allowed={5} /> 3 of 5</span>\n  <span>Reconcile the ledger · <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>\n</div>\n"
+      "code": "<script lang=\"ts\">\n  import { AttemptsIndicator } from '@lostgradient/cinder';\n</script>\n\n<div\n  style=\"display: grid; gap: 0.5rem; font-size: var(--cinder-text-xs); color: var(--cinder-text-muted);\"\n>\n  <span>Triage the refund queue, <AttemptsIndicator made={3} allowed={5} /> 3 of 5</span>\n  <span>Reconcile the ledger, <AttemptsIndicator made={5} allowed={5} /> 5 of 5</span>\n</div>\n"
     }
   ]
 }

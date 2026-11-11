@@ -447,13 +447,13 @@ function timeZoneCity(timeZone: string): string {
 
 /**
  * How the Time zone field names a zone: its sentence-case name and its city, such as
- * `Central time · Chicago`. A zone with no better name than its IANA id, and UTC, read as they are.
+ * `Central time, Chicago`. A zone with no better name than its IANA id, and UTC, read as they are.
  */
 export function timeZoneOptionLabel(timeZone: string): string {
   const name = timeZoneDisplayName(timeZone);
   if (name === 'UTC') return name;
   if (name === timeZone) return timeZone.replaceAll('_', ' ');
-  return `${name} · ${timeZoneCity(timeZone)}`;
+  return `${name}, ${timeZoneCity(timeZone)}`;
 }
 
 /**

@@ -358,7 +358,7 @@ describe('ScheduleBuilder', () => {
       const { container } = render(ScheduleBuilder, {
         value: { cron: '0 9 * * *', timeZone: 'America/Chicago' },
       });
-      expect(trigger(container).textContent?.trim()).toBe('Central time · Chicago');
+      expect(trigger(container).textContent?.trim()).toBe('Central time, Chicago');
     });
 
     test("the open list is a searchable picker with each row's offset at its edge", async () => {
@@ -369,10 +369,10 @@ describe('ScheduleBuilder', () => {
 
       expect(search.getAttribute('placeholder')).toBe('Search time zones');
       expect(rows()).toHaveLength(5);
-      expect(rows()[0]).toContain('Central time · Chicago');
-      expect(rows()[1]).toContain('Central time · Mexico City');
-      expect(rows()[2]).toContain('Pacific time · Los Angeles');
-      expect(rows()[3]).toContain('Mountain time · Denver');
+      expect(rows()[0]).toContain('Central time, Chicago');
+      expect(rows()[1]).toContain('Central time, Mexico City');
+      expect(rows()[2]).toContain('Pacific time, Los Angeles');
+      expect(rows()[3]).toContain('Mountain time, Denver');
       expect(rows()[4]).toContain('UTC');
       expect(
         Array.from(document.body.querySelectorAll('.cinder-schedule-builder__offset')).map(
@@ -488,7 +488,7 @@ describe('ScheduleBuilder', () => {
       });
 
       expect(readBack(container)).toBe('Every 2 hours.');
-      expect(getByText('Next runs · counting from when you create it')).not.toBeNull();
+      expect(getByText('Next runs, counting from when you create it')).not.toBeNull();
       expect(
         Array.from(container.querySelectorAll('.cinder-schedule-builder__preview-item')).map(
           (item) => item.textContent,
@@ -729,7 +729,7 @@ describe('ScheduleBuilder', () => {
       );
       await waitFor(() =>
         expect(document.body.querySelector('[role="option"]')?.textContent).toContain(
-          'Central time · Chicago',
+          'Central time, Chicago',
         ),
       );
     });

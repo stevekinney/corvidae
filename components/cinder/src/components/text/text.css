@@ -114,9 +114,10 @@
     }
   }
 
+  /* The comma ends "Show all", so it takes back the footer's gap and sits against it. */
   .cinder-text__toggle + .cinder-text__actions::before {
-    content: '\00b7' / '';
-    margin-inline-end: var(--cinder-space-2);
+    content: ',' / '';
+    margin-inline: calc(var(--cinder-space-2) * -1) var(--cinder-space-2);
     opacity: 0.6;
   }
 

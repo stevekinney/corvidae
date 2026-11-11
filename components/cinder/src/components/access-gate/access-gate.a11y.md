@@ -1,4 +1,4 @@
-# AccessGate · accessibility
+# AccessGate accessibility
 
 ## Pattern
 

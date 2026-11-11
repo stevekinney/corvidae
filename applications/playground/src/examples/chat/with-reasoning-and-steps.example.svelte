@@ -34,7 +34,7 @@
           },
           {
             title: 'Calculate both solutions',
-            content: 'x₁ = (4 + 8) / 4 = 3  ·  x₂ = (4 − 8) / 4 = −1',
+            content: 'x₁ = (4 + 8) / 4 = 3;  x₂ = (4 − 8) / 4 = −1',
             status: 'done',
           },
         ],

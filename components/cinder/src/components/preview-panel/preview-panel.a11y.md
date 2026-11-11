@@ -1,4 +1,4 @@
-# PreviewPanel · accessibility
+# PreviewPanel accessibility
 
 ## Pattern
 

@@ -1,4 +1,4 @@
-# SchemaView · accessibility
+# SchemaView accessibility
 
 ## Pattern
 

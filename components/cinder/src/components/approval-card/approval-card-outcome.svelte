@@ -9,7 +9,7 @@
     outcomeTime: string | undefined;
     /** Green for an approval, neutral for everything else: a denial is a decision, not an error. */
     tone: 'success' | 'neutral';
-    /** Whether the time follows the word without a middot, as the Done detail writes it: "Approved by you 10:33 AM today". */
+    /** Whether the time follows the word without a comma, as the Done detail writes it: "Approved by you 10:33 AM today". */
     inlineTime?: boolean | undefined;
     /** Whether the word is led by a dot in its tone. Off where a glyph above already says it. Default `true`. */
     dot?: boolean | undefined;
@@ -37,17 +37,15 @@
   <span class="cinder-approval-card__outcome-word">
     {#if dot}<span class="cinder-approval-card__outcome-dot" aria-hidden="true"></span>{/if}
     {outcomeText}
-  </span>
-  {#if outcomeTime !== undefined}
+  </span>{#if outcomeTime !== undefined}
     {#if inlineTime}
       {' '}
     {:else}
-      {'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>{' '}
+      <span class="cinder-approval-card__separator" aria-hidden="true">,</span>{' '}
     {/if}
     <span class="cinder-approval-card__outcome-time">{outcomeTime}</span>
-  {/if}
-  {#if trailing !== undefined}
-    {'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>{' '}
+  {/if}{#if trailing !== undefined}
+    <span class="cinder-approval-card__separator" aria-hidden="true">,</span>{' '}
     <span class="cinder-approval-card__outcome-trailing">{@render trailing()}</span>
   {/if}
 </p>

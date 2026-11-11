@@ -1,4 +1,4 @@
-# MediaControls · accessibility
+# MediaControls accessibility
 
 ## Pattern
 

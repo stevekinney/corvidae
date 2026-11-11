@@ -37,7 +37,7 @@
         {#snippet status()}<StatusDot word={row.status} />{/snippet}
         {#snippet title()}{row.title}{/snippet}
         {#snippet time()}{row.time}{/snippet}
-        {#snippet meta()}Chat · Assistant · 8 s{/snippet}
+        {#snippet meta()}Chat, Assistant, 8 s{/snippet}
       </StackedListItem>
     {/if}
   {/snippet}

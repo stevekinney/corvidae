@@ -47,7 +47,7 @@ export type SparkbarLineProps = SparkbarSharedProps & {
   points: number[];
   /** What the line shows, as a full sentence ("Storage use over the last 24 hours, rising to 1.6 GB"). It is the accessible name of the line, which is an image, and is not drawn. */
   label: string;
-  /** Text under the left end of the baseline, such as "1.4 GB · 24 hours ago". */
+  /** Text under the left end of the baseline, such as "1.4 GB, 24 hours ago". */
   startLabel?: string;
   /** Text under the right end of the baseline, such as "Now". */
   endLabel?: string;
@@ -77,7 +77,7 @@ export type SparkbarSchemaProps = {
   variant?: SparkbarVariant;
   /** Draws a trend line instead of a bar: the series, oldest first, on a scale from its lowest to its highest value. Values that are not finite are skipped. */
   points?: number[];
-  /** Line only: text under the left end of the baseline, such as "1.4 GB · 24 hours ago". */
+  /** Line only: text under the left end of the baseline, such as "1.4 GB, 24 hours ago". */
   startLabel?: string;
   /** Line only: text under the right end of the baseline, such as "Now". */
   endLabel?: string;

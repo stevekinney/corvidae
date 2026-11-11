@@ -20,7 +20,7 @@
       name: 'Payments worker 1',
       status: 'Connected' as const,
       heard: 'just now',
-      meta: 'payments · 3 running',
+      meta: 'payments, 3 running',
     },
   ];
 </script>

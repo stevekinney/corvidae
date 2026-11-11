@@ -717,9 +717,11 @@
         {#if group}
           <tr class="cinder-data-table__group-row">
             <th scope="colgroup" colspan={columnCount} class="cinder-data-table__group-cell">
-              <span class="cinder-data-table__group-label">{group.label}</span>
-              {#if group.detail}
-                <span class="cinder-data-table__group-detail" aria-hidden="true">·</span>
+              <span class="cinder-data-table__group-label">{group.label}</span
+              >{#if group.detail}<span
+                  class="cinder-data-table__group-detail cinder-data-table__group-separator"
+                  aria-hidden="true">,</span
+                >
                 <span class="cinder-data-table__group-detail">{group.detail}</span>
               {/if}
             </th>

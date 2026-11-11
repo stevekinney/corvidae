@@ -10,14 +10,14 @@ What the Fields view draws:
 
 - Nothing to show: one muted line (`emptyLabel`), with no card, no switch and no copy button.
 - A value that is not an object: the value alone, in monospace. The header reads "1 value".
-- A few short pairs: one line, "Order ID 4471 · Amount $42.00", labels regular and values bold.
+- A few short pairs: one line, "Order ID 4471, Amount $42.00", labels regular and values bold.
 - Many short pairs: a wrapping key and value grid sized to its content.
 - Anything else: one pair per row. A nested object is a collapsible tree (objects open, arrays closed); an array of scalars is a bulleted list; an array of objects that share keys is a table with real headers, capped at eight rows with "Showing 8 of 2,140" and Load more; an array of objects that do not share keys is one block of fields per item, headed "Item 1 of 3".
 - Long text clamps to two lines with Show all, and a unified patch goes through the diff viewer.
 
 Fields formats only what the JSON says unambiguously: an ISO date reads "Oct 24, 2026", a boolean "Yes" or "No", null "None", an empty string "Empty". A number reads as stored; anything else (cents as dollars) comes from `formatValue`, keyed by path.
 
-The header counts top-level keys in words ("1 field", "3 fields"), adds the size only above 1 KB ("2 fields · 1.4 KB"), and a nested label carries its own count ("Parts · 3 items").
+The header counts top-level keys in words ("1 field", "3 fields"), adds the size only above 1 KB ("2 fields, 1.4 KB"), and a nested label carries its own count ("Parts, 3 items").
 
 States, in the order they win over each other:
 
@@ -105,7 +105,7 @@ Pass a `parse` function to support alternative serialization formats:
 Set `plain` to show a string as it is: text in a code block under the label, with no Fields / JSON switch, no parsing and no invalid-JSON notice. Use it for a value that is not JSON, or one too long to lay out as fields, and say what it is in the label.
 
 ```svelte
-<PayloadInspector value={firstPartOfTheLog} label="Value · text, 2.1 MB" bare plain />
+<PayloadInspector value={firstPartOfTheLog} label="Value, text, 2.1 MB" bare plain />
 ```
 
 ## Props

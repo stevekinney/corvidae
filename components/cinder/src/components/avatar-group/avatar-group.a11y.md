@@ -1,4 +1,4 @@
-# AvatarGroup · accessibility
+# AvatarGroup accessibility
 
 ## Pattern
 

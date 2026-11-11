@@ -1,4 +1,4 @@
-# Message · accessibility
+# Message accessibility
 
 ## Pattern
 

@@ -466,7 +466,7 @@
     color: var(--cinder-status-danger-text);
   }
 
-  /* "Your note · " before the first line of a note that is somebody's words. */
+  /* "Your note, " before the first line of a note that is somebody's words. */
   .cinder-run-step-timeline__note-label {
     color: var(--cinder-text-muted);
   }

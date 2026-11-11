@@ -24,7 +24,7 @@ Pass `points` (oldest first) to draw a line instead of a bar. `startLabel` and `
 <Sparkbar
   points={[1.4, 1.42, 1.45, 1.49, 1.53, 1.57, 1.6, 1.62]}
   label="Storage use over the last 24 hours, rising to 1.6 GB"
-  startLabel="1.4 GB · 24 hours ago"
+  startLabel="1.4 GB, 24 hours ago"
   endLabel="Now"
 />
 ```
@@ -49,7 +49,7 @@ Sparkbar inherits its foreground from `currentColor` and keeps its background tr
 | `max` | `number` | no | — | Upper bound for the range. Defaults to `1` for fractional values. |
 | `points` | `number`[] | no | — | Draws a trend line instead of a bar: the series, oldest first, on a scale from its lowest to its highest value. Values that are not finite are skipped. |
 | `size` | `"sm"` \| `"md"` \| `"lg"` | no | — | Track thickness and text scale. Default `md`. For a line, the height of the plot: 3rem, 6rem or 8rem. |
-| `startLabel` | `string` | no | — | Line only: text under the left end of the baseline, such as "1.4 GB · 24 hours ago". |
+| `startLabel` | `string` | no | — | Line only: text under the left end of the baseline, such as "1.4 GB, 24 hours ago". |
 | `theme` | { background?: `string`; foreground?: `string`; grid?: `string`; muted?: `string`; palette?: `string`[] } | no | — | Partial visual theme override. Omitted fields inherit the surrounding application. |
 | `trailing` | `string` | no | — | Optional trailing value such as a cost, token count, or percentage. |
 | `value` | `number` | no | — | Current bounded value. Required for a bar; omit it when `points` is given. |

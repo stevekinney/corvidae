@@ -28,7 +28,7 @@
   }
 
   /* ----------------------------------------
- * Summary line: "Used 30 tools · 1 failed · 1 waiting on you · 18s"
+ * Summary line: "Used 30 tools, 1 failed, 1 waiting on you, 18s"
  * ---------------------------------------- */
 
   .cinder-tool-call-rail__summary {
@@ -84,6 +84,11 @@
   .cinder-tool-call-rail__summary-duration {
     color: var(--cinder-text-subtle);
     font-weight: var(--cinder-font-normal);
+  }
+
+  /* A comma ends the words before it, so it takes back the gap that would stand between them. */
+  .cinder-tool-call-rail__summary-separator {
+    margin-inline-start: calc(var(--cinder-space-1-5) * -1);
   }
 
   .cinder-tool-call-rail__count {
@@ -532,7 +537,7 @@
     }
 
     .cinder-tool-call-rail__input:not(:last-child)::after {
-      content: ' · ';
+      content: ', ';
     }
 
     .cinder-tool-call-rail__item[data-cinder-status='failed'] .cinder-tool-call-rail__detail,

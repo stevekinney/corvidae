@@ -29,7 +29,7 @@
  *
  * A group is an `<li>` holding the header and a nested list that the header names, so a screen
  * reader announces the day. The header is the inset band of the design: muted text at the left
- * (`Today · Monday, Nov 2`) and the zone at the right (`Central time`).
+ * (`Today, Monday, Nov 2`) and the zone at the right (`Central time`).
  * ---------------------------------------- */
 
   .cinder-data-list-group {

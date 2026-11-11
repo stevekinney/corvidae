@@ -1,4 +1,4 @@
-# CodeBlock · accessibility
+# CodeBlock accessibility
 
 ## Pattern
 

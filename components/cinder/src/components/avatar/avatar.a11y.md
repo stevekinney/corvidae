@@ -1,4 +1,4 @@
-# Avatar · accessibility
+# Avatar accessibility
 
 ## Pattern
 

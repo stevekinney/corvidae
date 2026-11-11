@@ -351,7 +351,7 @@ describe('Combobox rows and states', () => {
         {
           value: 'refund',
           label: 'Order refund',
-          description: 'Can’t load · order-refund.json line 12: expected a comma',
+          description: 'Can’t load, order-refund.json line 12: expected a comma',
           descriptionTone: 'danger',
           disabled: true,
         },
@@ -514,10 +514,10 @@ describe('Combobox loading and load error', () => {
     expect(
       builtInRow.querySelector('.cinder-combobox__option-label .cinder-combobox__option-suffix')
         ?.textContent,
-    ).toBe(' · built in');
+    ).toBe(', built in');
     expect(builtInRow.querySelector('.cinder-combobox__option-meta')).toBeNull();
     // With no other line the row's text is its name: the label then the suffix, read as one.
-    expect(builtInRow.textContent?.trim()).toBe('Chat with an agent · built in');
+    expect(builtInRow.textContent?.trim()).toBe('Chat with an agent, built in');
     const retry = requiredInstance(
       Array.from(error.querySelectorAll('button')).find((button) =>
         button.textContent?.includes('Try again'),

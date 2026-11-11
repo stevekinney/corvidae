@@ -54,7 +54,7 @@ describe('FormActions', () => {
     const many = render(FormActions, { props: { unsavedChanges: 2, summary, end: buttons } });
     const text = many.container.querySelector('.cinder-form-actions__summary')?.textContent ?? '';
     expect(text.replace(/\s+/g, ' ').trim()).toBe(
-      '2 unsaved changes · Saving raises the policy revision.',
+      '2 unsaved changes, Saving raises the policy revision.',
     );
     cleanup();
     const one = render(FormActions, { props: { unsavedChanges: 1, end: buttons } });

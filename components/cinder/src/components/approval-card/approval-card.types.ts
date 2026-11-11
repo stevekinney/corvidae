@@ -207,7 +207,7 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     said?: string;
     /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
     eyebrow?: string;
-    /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`. */
+    /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund`, Dangerous". Default `It wants to run`. */
     toolPrefix?: string;
     /** When the approval was asked. Written as relative time ("4 min ago") while the approval is pending. */
     requestedAt?: string | number | Date;
@@ -221,7 +221,7 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     rememberScope?: string;
     /** Who decided, once the approval is decided: `you`. Written as "Denied by you". */
     decidedBy?: string;
-    /** When the approval was decided, written as a time of day after the outcome ("Denied by you · 10:40 AM"). */
+    /** When the approval was decided, written as a time of day after the outcome ("Denied by you, 10:40 AM"). */
     decidedAt?: string | number | Date;
     /**
      * The note the approver left with the decision, written under the outcome as "Your note", the
@@ -258,7 +258,7 @@ export type ApprovalCardProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'chi
     footnote?: string;
     /** What the payload is called in the Input block, such as `Runs with`. Default `Input` in the row and `<tool> arguments` in the card. */
     inputLabel?: string;
-    /** A line of context written above the question, such as "Test chat · this runs for real". */
+    /** A line of context written above the question, such as "Test chat, this runs for real". */
     context?: Snippet;
     /**
      * Which view of the arguments the Input block shows, Fields or JSON. Bindable, so one switch
@@ -318,7 +318,7 @@ export type ApprovalCardSchemaProps = {
   said?: string;
   /** The small line above the question in the `detail` layout, beside the risk glyph. Default `Tool approval`. */
   eyebrow?: string;
-  /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund` · Dangerous". Default `It wants to run`. */
+  /** The words before the tool in the `detail` layout: "It wants to run Issue refund `issue-refund`, Dangerous". Default `It wants to run`. */
   toolPrefix?: string;
   /** When the approval was asked, as an ISO timestamp. Written as relative time ("4 min ago") while the approval is pending. */
   requestedAt?: string;

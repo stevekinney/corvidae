@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'An approved call with its approval beneath it';
   export const description =
-    'A tool that changes things is one rail row with its approval nested under it, drawn as decided: "Approved by you · 10:42 AM" shows once, on the nested approval, and the row itself carries the result.';
+    'A tool that changes things is one rail row with its approval nested under it, drawn as decided: "Approved by you, 10:42 AM" shows once, on the nested approval, and the row itself carries the result.';
 </script>
 
 <script lang="ts">

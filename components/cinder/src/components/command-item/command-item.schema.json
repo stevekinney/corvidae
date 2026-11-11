@@ -61,7 +61,7 @@
       {
         "name": "meta",
         "reason": "function-or-snippet",
-        "description": "Secondary text on the label's own line, after it and muted (\"Refund order 4471 for $42.00?\n· Approval · waiting\"). The label and the meta truncate together as one line. Rendered with\naria-hidden, so name the row with `accessibleLabel` when the meta carries meaning."
+        "description": "Secondary text on the label's own line, after it and muted (\"Refund order 4471 for $42.00?\"\nwith the meta \"Approval, waiting\"). The label and the meta truncate together as one line. Rendered with\naria-hidden, so name the row with `accessibleLabel` when the meta carries meaning."
       },
       {
         "name": "onSelect",

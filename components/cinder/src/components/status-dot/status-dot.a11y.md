@@ -1,4 +1,4 @@
-# StatusDot · accessibility
+# StatusDot accessibility
 
 ## Pattern
 

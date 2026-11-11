@@ -46,7 +46,7 @@ Pass a `cell` snippet to draw the content of every body cell, and mark the colum
 
 ### Groups, footer and loading more
 
-`groupBy` opens each run of rows with a header row that names the group and, after a dot, its detail (`Today, Nov 2 · Central time`). `footer` draws a row below the last, such as "Showing 12 of 1,240 events, newest first. Scroll to load more." `onReachEnd` fires when the end scrolls into view, so a long table loads more rows by scrolling and needs no Load more button.
+`groupBy` opens each run of rows with a header row that names the group and, after a dot, its detail (`Today, Nov 2, Central time`). `footer` draws a row below the last, such as "Showing 12 of 1,240 events, newest first. Scroll to load more." `onReachEnd` fires when the end scrolls into view, so a long table loads more rows by scrolling and needs no Load more button.
 
 ### Rows that open
 

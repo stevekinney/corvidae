@@ -55,13 +55,13 @@ describe('SettingRow status (rows 47i, 47j, 47l)', () => {
     expect(line.querySelector('svg')).toBeNull();
   });
 
-  test('reverted reads "Reverted · in effect now" with no glyph or dot', () => {
+  test('reverted reads "Reverted, in effect now" with no glyph or dot', () => {
     const { container } = render(Fixture, { props: { status: 'reverted' } });
     const line = requiredInstance(
       container.querySelector('.cinder-setting-row__status-line'),
       HTMLElement,
     );
-    expect(line.textContent?.trim()).toBe('Reverted · in effect now');
+    expect(line.textContent?.trim()).toBe('Reverted, in effect now');
     expect(line.getAttribute('data-cinder-status')).toBe('reverted');
     expect(line.querySelector('svg')).toBeNull();
     expect(line.querySelector('.cinder-setting-row__dot')).toBeNull();

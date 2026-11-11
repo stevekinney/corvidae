@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'At 375 px';
   export const description =
-    'In a narrow container each row has two lines: the name and duration on line one, and a muted line of key input and result, cut with an ellipsis, on line two. The summary reads "Used 30 tools · 1 failed · 1 waiting on you" with no duration, the dashed button says "Show 24 more" with the short "24 done", the failed row is red with a red cross and the waiting row is amber. The approval nests under the waiting row, and the failure line gives way to the panel.';
+    'In a narrow container each row has two lines: the name and duration on line one, and a muted line of key input and result, cut with an ellipsis, on line two. The summary reads "Used 30 tools, 1 failed, 1 waiting on you" with no duration, the dashed button says "Show 24 more" with the short "24 done", the failed row is red with a red cross and the waiting row is amber. The approval nests under the waiting row, and the failure line gives way to the panel.';
 </script>
 
 <script lang="ts">

@@ -1,4 +1,4 @@
-# MatrixChart · accessibility
+# MatrixChart accessibility
 
 ## Pattern
 

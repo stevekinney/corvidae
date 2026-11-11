@@ -152,7 +152,7 @@
     font-weight: var(--cinder-font-medium);
   }
 
-  /* The middot between the words and the timing reads only where there is no marker to separate them. */
+  /* The comma between the words and the timing reads only where there is no marker to separate them. */
   .cinder-tool-call-panel__separator {
     display: none;
   }
@@ -165,7 +165,7 @@
     display: none;
   }
 
-  /* On a sheet a failed call's whole line reads in danger text: "Failed · 10.0s · call 28 of 30". */
+  /* On a sheet a failed call's whole line reads in danger text: "Failed, 10.0s, call 28 of 30". */
   .cinder-tool-call-panel-drawer[data-cinder-placement='sheet'] .cinder-tool-call-panel__status {
     gap: 0 var(--cinder-space-1);
   }

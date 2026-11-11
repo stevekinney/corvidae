@@ -190,14 +190,14 @@ describe('PayloadInspector', () => {
   });
 
   describe('27d and 27e: the header count and the inline variant', () => {
-    test('a few short pairs read as one line, labels regular and values bold, joined by middots', () => {
+    test('a few short pairs read as one line, labels regular and values bold, joined by commas', () => {
       const { container } = renderInspector({ value: { orderId: 4471, amount: '$42.00' } });
       const inline = requiredInstance(
         container.querySelector('.cinder-payload-inspector__inline'),
         HTMLElement,
       );
       expect(inline.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-        'Order ID 4471 · Amount $42.00',
+        'Order ID 4471, Amount $42.00',
       );
       expect(
         Array.from(inline.querySelectorAll('strong')).map((value) => value.textContent?.trim()),
@@ -234,7 +234,7 @@ describe('PayloadInspector', () => {
       cleanup();
       const large = renderInspector({ value: { a: 'x'.repeat(1400), b: 2 } });
       expect(large.container.querySelector('.cinder-payload-inspector__size')?.textContent).toBe(
-        '2 fields · 1.4 KB',
+        '2 fields, 1.4 KB',
       );
     });
 
@@ -245,7 +245,7 @@ describe('PayloadInspector', () => {
       const labels = Array.from(container.querySelectorAll('dt')).map((label) =>
         label.textContent?.replaceAll(/\s+/g, ' ').trim(),
       );
-      expect(labels).toContain('Notify · 2 fields');
+      expect(labels).toContain('Notify, 2 fields');
     });
   });
 
@@ -360,7 +360,7 @@ describe('PayloadInspector', () => {
         initialDepth: 2,
       });
       expect(container.querySelector('.cinder-payload-inspector__size')?.textContent).toMatch(
-        /^2 fields · 1\.\d KB$/,
+        /^2 fields, 1\.\d KB$/,
       );
       await fireEvent.click(getByRole('radio', { name: 'JSON' }));
       const value = Array.from(container.querySelectorAll('.cinder-json-viewer__value')).find(
@@ -388,8 +388,8 @@ describe('PayloadInspector', () => {
       const attachments = getByRole('button', { name: /^Attachments/ });
       expect(notify.getAttribute('aria-expanded')).toBe('true');
       expect(attachments.getAttribute('aria-expanded')).toBe('false');
-      expect(notify.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Notify · 2 fields');
-      expect(attachments.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Attachments · 2 items');
+      expect(notify.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Notify, 2 fields');
+      expect(attachments.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Attachments, 2 items');
       expect(view.textContent).toContain('ops@example.com');
       expect(view.textContent).toContain('#refunds');
       expect(view.textContent).not.toContain('photo.png');
@@ -432,7 +432,7 @@ describe('PayloadInspector', () => {
         value: { recipients: ['dana@example.com', 'ops@example.com', 'billing@example.com'] },
       });
       const label = container.querySelector('dt');
-      expect(label?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Recipients · 3 items');
+      expect(label?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe('Recipients, 3 items');
       const items = Array.from(container.querySelectorAll('ul > li')).map((item) =>
         item.textContent?.trim(),
       );
@@ -456,7 +456,7 @@ describe('PayloadInspector', () => {
     test('is a small table with real headers from the shared keys, under a counted label', () => {
       const { container } = renderInspector({ value: parts });
       expect(container.querySelector('dt')?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-        'Parts · 3 items',
+        'Parts, 3 items',
       );
       const headers = Array.from(container.querySelectorAll('th')).map((cell) =>
         cell.textContent?.trim(),
@@ -508,7 +508,7 @@ describe('PayloadInspector', () => {
     test('caps the table at eight rows with a footer and Load more, under a counted label', async () => {
       const { container, getByRole } = renderInspector({ value: { items } });
       expect(container.querySelector('dt')?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-        'Items · 2,140 items',
+        'Items, 2,140 items',
       );
       expect(
         Array.from(container.querySelectorAll('th')).map((cell) => cell.textContent?.trim()),
@@ -518,7 +518,7 @@ describe('PayloadInspector', () => {
         container.querySelector('.cinder-payload-inspector__table-footer')?.textContent,
       ).toContain('Showing 8 of 2,140');
       expect(container.querySelector('.cinder-payload-inspector__size')?.textContent).toMatch(
-        /^1 field · \d+(\.\d)? KB$/,
+        /^1 field, \d+(\.\d)? KB$/,
       );
       expect(container.querySelector('dl')?.querySelectorAll('tbody tr')).toHaveLength(8);
       await fireEvent.click(getByRole('button', { name: 'Load more' }));
@@ -713,14 +713,14 @@ describe('PayloadInspector', () => {
       const text = '{ "orderId": 4471, "amount": }';
       const { container, queryAllByRole, getByRole } = renderInspector({
         value: text,
-        label: 'Value · text, 2.1 MB',
+        label: 'Value, text, 2.1 MB',
         bare: true,
         plain: true,
       });
 
-      expect(getByRole('group', { name: 'Value · text, 2.1 MB' })).toBeTruthy();
+      expect(getByRole('group', { name: 'Value, text, 2.1 MB' })).toBeTruthy();
       expect(container.querySelector('.cinder-payload-inspector__label')?.textContent).toBe(
-        'Value · text, 2.1 MB',
+        'Value, text, 2.1 MB',
       );
       expect(queryAllByRole('radio')).toHaveLength(0);
       expect(container.querySelector('.cinder-payload-inspector__warning')).toBeNull();
@@ -973,7 +973,7 @@ describe('PayloadInspector', () => {
       });
       expect(container.querySelector('table')).toBeNull();
       expect(container.querySelector('dt')?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-        'History · 3 items',
+        'History, 3 items',
       );
       const titles = Array.from(
         container.querySelectorAll('.cinder-payload-inspector__item-title'),
@@ -1295,9 +1295,9 @@ describe('PayloadInspector fields and JSON views', () => {
             ?.textContent?.replaceAll(/\s+/g, ' ')
             .trim() === label,
       );
-    expect(rowFor('Customer · 2 fields')?.querySelector('dl')).not.toBeNull();
+    expect(rowFor('Customer, 2 fields')?.querySelector('dl')).not.toBeNull();
     expect(rowFor('Email')?.textContent).toContain('ada@example.com');
-    expect(rowFor('Lines · 1 item')).not.toBeNull();
+    expect(rowFor('Lines, 1 item')).not.toBeNull();
     expect(rowFor('Paid')?.textContent).toContain('Yes');
     expect(rowFor('Note')?.textContent).toContain('None');
   });

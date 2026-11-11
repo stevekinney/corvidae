@@ -176,7 +176,7 @@ describe('Text clamp', () => {
     expect(root.querySelector('button')).toBeNull();
   });
 
-  test("puts the page's own action beside Show all, after a middle dot in the stylesheet", () => {
+  test("puts the page's own action beside Show all, after a comma in the stylesheet", () => {
     measure({ scroll: 140, client: 100 });
     const { container } = render(Text, {
       clamp: 5,

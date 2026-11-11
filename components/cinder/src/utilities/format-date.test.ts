@@ -245,12 +245,12 @@ describe('formatTimeZoneLabel', () => {
 
 describe('formatDayHeading', () => {
   test('names the zone after each day group', () => {
-    expect(formatDayHeading(NOW, central)).toBe('Today · Central time');
+    expect(formatDayHeading(NOW, central)).toBe('Today, Central time');
     expect(formatDayHeading(Date.UTC(2026, 10, 1, 22, 12), central)).toBe(
-      'Yesterday · Sunday, Nov 1 · Central time',
+      'Yesterday, Sunday, Nov 1, Central time',
     );
     expect(formatDayHeading(Date.UTC(2026, 9, 29, 15, 0), central)).toBe(
-      'Thursday, Oct 29 · Central time',
+      'Thursday, Oct 29, Central time',
     );
   });
 
@@ -263,7 +263,7 @@ describe('formatDayHeading', () => {
   test('groups by the viewer-zone calendar day, not the UTC day', () => {
     // 11:30 PM CST on Nov 1 is already Nov 2 in UTC.
     expect(formatDayHeading(Date.UTC(2026, 10, 2, 5, 30), central)).toBe(
-      'Yesterday · Sunday, Nov 1 · Central time',
+      'Yesterday, Sunday, Nov 1, Central time',
     );
   });
 
@@ -357,12 +357,12 @@ describe('COR-2010 board forms', () => {
 
   describe('formatDayAndTime (row 56p)', () => {
     test('writes the run-detail form even when the day is today', () => {
-      expect(formatDayAndTime(Date.UTC(2026, 10, 2, 15, 20), options)).toBe('Mon, Nov 2 · 9:20 AM');
+      expect(formatDayAndTime(Date.UTC(2026, 10, 2, 15, 20), options)).toBe('Mon, Nov 2, 9:20 AM');
     });
 
     test('adds the year for another year and rejects an invalid date', () => {
       expect(formatDayAndTime(Date.UTC(2025, 10, 2, 15, 20), options)).toBe(
-        'Sun, Nov 2, 2025 · 9:20 AM',
+        'Sun, Nov 2, 2025, 9:20 AM',
       );
       expect(formatDayAndTime('nope', options)).toBe('Invalid date');
     });

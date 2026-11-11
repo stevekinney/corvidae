@@ -27,8 +27,8 @@ type CommandItemBaseProps = {
    */
   leadingTone?: 'neutral' | 'warning' | undefined;
   /**
-   * Secondary text on the label's own line, after it and muted ("Refund order 4471 for $42.00?
-   * · Approval · waiting"). The label and the meta truncate together as one line. Rendered with
+   * Secondary text on the label's own line, after it and muted ("Refund order 4471 for $42.00?"
+   * with the meta "Approval, waiting"). The label and the meta truncate together as one line. Rendered with
    * aria-hidden, so name the row with `accessibleLabel` when the meta carries meaning.
    */
   meta?: Snippet;

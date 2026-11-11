@@ -1,4 +1,4 @@
-# SkipLink · accessibility
+# SkipLink accessibility
 
 ## Pattern
 

@@ -1,4 +1,4 @@
-# Masonry · accessibility
+# Masonry accessibility
 
 ## Pattern
 

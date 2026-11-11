@@ -1,4 +1,4 @@
-# Progress · accessibility
+# Progress accessibility
 
 ## Pattern
 

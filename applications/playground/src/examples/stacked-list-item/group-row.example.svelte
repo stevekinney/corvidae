@@ -9,20 +9,20 @@
 
   let expanded = $state(false);
   const missed = [
-    'Mon, Nov 2 · 3:00 AM',
-    'Sun, Nov 1 · 3:00 AM',
-    'Sat, Oct 31 · 4:00 AM',
-    'Fri, Oct 30 · 4:00 AM',
+    'Mon, Nov 2, 3:00 AM',
+    'Sun, Nov 1, 3:00 AM',
+    'Sat, Oct 31, 4:00 AM',
+    'Fri, Oct 30, 4:00 AM',
   ];
 </script>
 
 <DataList items={['daily-summary']} key={(id) => id}>
   {#snippet children()}
     <StackedListItem bind:expanded>
-      {#snippet status()}<StatusDot word="Missed runs · 4" />{/snippet}
+      {#snippet status()}<StatusDot word="Missed runs, 4" />{/snippet}
       {#snippet title()}Daily summary missed 4 times since Oct 30{/snippet}
-      {#snippet meta()}Schedule · Assistant · every day at 3:00 AM (9:00 AM UTC) · Interborough
-        wasn’t running{/snippet}
+      {#snippet meta()}Schedule, Assistant, every day at 3:00 AM (9:00 AM UTC), Interborough wasn’t
+        running{/snippet}
       {#snippet details()}
         {#each missed as occurrence (occurrence)}
           <div>{occurrence}</div>

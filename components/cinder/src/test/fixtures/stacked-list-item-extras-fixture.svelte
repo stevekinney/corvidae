@@ -30,19 +30,19 @@
 <ul role="list">
   {#if mode === 'group'}
     <StackedListItem bind:expanded href="/ignored">
-      {#snippet status()}<StatusDot word="Missed runs · 4" />{/snippet}
+      {#snippet status()}<StatusDot word="Missed runs, 4" />{/snippet}
       {#snippet title()}Daily summary missed 4 times since Oct 30{/snippet}
-      {#snippet meta()}Schedule · Assistant{/snippet}
-      {#snippet details()}<div data-testid="missed">Mon, Nov 2 · 3:00 AM</div>{/snippet}
+      {#snippet meta()}Schedule, Assistant{/snippet}
+      {#snippet details()}<div data-testid="missed">Mon, Nov 2, 3:00 AM</div>{/snippet}
     </StackedListItem>
   {:else if mode === 'detail'}
     <StackedListItem href="/schedules/refunds">
       {#snippet status()}<StatusDot word="Active" />{/snippet}
       {#snippet title()}Weekly refund audit{/snippet}
       {#snippet time()}Next today 11:00 AM{/snippet}
-      {#snippet meta()}Workflow · Order refund · Tool runner{/snippet}
+      {#snippet meta()}Workflow, Order refund, Tool runner{/snippet}
       {#snippet detail()}<span data-testid="detail"
-          >Order refund can’t load · won’t run until a provider is connected · Mondays at 11:00 AM</span
+          >Order refund can’t load, won’t run until a provider is connected, Mondays at 11:00 AM</span
         >{/snippet}
     </StackedListItem>
   {:else}

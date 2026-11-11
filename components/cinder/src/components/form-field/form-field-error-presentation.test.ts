@@ -81,7 +81,7 @@ describe('FormField error presentation (rows 42l, 34d, 34m, 34t)', () => {
       props: {
         id: 'server-url',
         label: 'Server URL',
-        warning: 'Won’t run until a provider is connected ·',
+        warning: 'Won’t run until a provider is connected,',
         warningAction: openGithub,
         children: control,
       },
@@ -90,7 +90,7 @@ describe('FormField error presentation (rows 42l, 34d, 34m, 34t)', () => {
       container.querySelector('.cinder-form-field__warning'),
       HTMLElement,
     );
-    expect(warning.textContent?.startsWith('Won’t run until a provider is connected ·')).toBe(true);
+    expect(warning.textContent?.startsWith('Won’t run until a provider is connected,')).toBe(true);
     expect(warning.querySelector('a')?.textContent).toBe('Open GitHub');
     expect(warning.id).toBe('server-url-warning');
   });

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Transcript: interrupted while a reading tool ran';
   export const description =
-    'The run ended while Lookup order, a tool that only reads, was running. Its row shows "Interrupted · didn’t finish" in danger text with an error glyph, never a dot, and the status line says the call didn’t finish and nothing was changed, with a secondary Retry that sends the turn again.';
+    'The run ended while Lookup order, a tool that only reads, was running. Its row shows "Interrupted, didn’t finish" in danger text with an error glyph, never a dot, and the status line says the call didn’t finish and nothing was changed, with a secondary Retry that sends the turn again.';
 </script>
 
 <script lang="ts">
@@ -51,7 +51,7 @@
         id: 'call-1',
         name: 'Lookup order',
         input: '4471',
-        result: 'Interrupted · didn’t finish',
+        result: 'Interrupted, didn’t finish',
         duration: '1.2s',
         status: 'interrupted',
       },

@@ -31,7 +31,7 @@ const schema = {
     label: {
       type: 'string',
       description:
-        'The row\'s name as plain text ("Health", "Reviews"). It names the row when a count is\npresent ("Health, 3 need attention") and is the first part of the tooltip\n("Reviews · 2 need you"). Without it the row has no composed name and no tooltip.',
+        'The row\'s name as plain text ("Health", "Reviews"). It names the row when a count is\npresent ("Health, 3 need attention") and is the first part of the tooltip\n("Reviews, 2 need you"). Without it the row has no composed name and no tooltip.',
     },
     count: {
       type: 'number',

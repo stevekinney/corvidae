@@ -1,4 +1,4 @@
-# PricingCard · accessibility
+# PricingCard accessibility
 
 ## Pattern
 

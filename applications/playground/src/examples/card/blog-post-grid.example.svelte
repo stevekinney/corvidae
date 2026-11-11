@@ -64,7 +64,7 @@
                 <p
                   style="margin: 0; color: var(--cinder-text-muted); font-size: var(--cinder-text-sm);"
                 >
-                  {post.category} · {post.publishedAt}
+                  {post.category}, {post.publishedAt}
                 </p>
                 <h3 style="margin: var(--cinder-space-2) 0; font-size: var(--cinder-text-lg);">
                   <!-- CIN-115: composes Link rather than a bespoke anchor. The old

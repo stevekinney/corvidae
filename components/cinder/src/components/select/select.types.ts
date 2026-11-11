@@ -18,14 +18,14 @@ export type SelectOption<T extends string = string> = {
    */
   disabled?: boolean;
   /**
-   * Listbox only: muted words on the label's own line, after a middle dot ("Nightly archiver ·
+   * Listbox only: muted words on the label's own line, after a comma ("Nightly archiver,
    * no description"). Use it for a fact that belongs beside the name; a sentence goes in
    * `description`.
    */
   suffix?: string;
   /**
    * Listbox only: muted words drawn after the value in the trigger when this option is the
-   * current one ("Claude Sonnet 5.5 · Anthropic"), while the option row keeps its plain label.
+   * current one ("Claude Sonnet 5.5, Anthropic"), while the option row keeps its plain label.
    * Use it when a group heading names what the trigger no longer has beside it.
    */
   triggerSuffix?: string;

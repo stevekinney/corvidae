@@ -1,4 +1,4 @@
-# Spectrogram · accessibility
+# Spectrogram accessibility
 
 ## Pattern
 

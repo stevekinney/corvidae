@@ -1,4 +1,4 @@
-# GridList · accessibility
+# GridList accessibility
 
 ## Pattern
 

@@ -195,8 +195,8 @@
       : undefined,
   );
   // "Approved by you in Reviews at 10:44 AM" when a card was decided somewhere else, otherwise
-  // "Denied by you" with the time after a middot, as the row writes it too: "Approved by you in
-  // Reviews · 10:46 AM".
+  // "Denied by you" with the time after a comma, as the row writes it too: "Approved by you in
+  // Reviews, 10:46 AM".
   const outcomeBase = $derived(
     effectiveState === 'pending' || effectiveState === 'unavailable'
       ? undefined
@@ -246,7 +246,7 @@
   const elsewhereSentence = $derived(
     [
       outcomeLabel === undefined
-        ? `${rowQuestion.replace(/\?$/, '')} · ${tool.label ?? tool.name}.`
+        ? `${rowQuestion.replace(/\?$/, '')}, ${tool.label ?? tool.name}.`
         : rowQuestion,
       notice,
     ]
@@ -547,14 +547,14 @@
         <p class="cinder-approval-card__detail-ask">
           {#if source !== undefined}<span
               >{sourcePrefix ?? 'Asked by'}{' '}{@render askedFrom()}</span
-            >{#if requestedText !== undefined}{'\u00a0'}<span
+            >{#if requestedText !== undefined}<span
                 class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                aria-hidden="true">·</span
-              >{/if}{/if}
-          {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time>{/if}
-          {#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
+                aria-hidden="true">,</span
+              >{/if}{/if}{#if requestedText !== undefined}{#if source !== undefined}{' '}{/if}<time
+              datetime={requestedIso}>{requestedText}</time
+            >{/if}{#if effectiveState !== 'pending' || !isActionable || !hasResolutionCallback}
             {#if source !== undefined || requestedText !== undefined}
-              <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+              <span class="cinder-approval-card__separator" aria-hidden="true">,</span>
             {/if}
             <StatusDot status={STATE_DOT_STATUS[effectiveState]} label={stateText} size="sm" />
           {/if}
@@ -592,8 +592,10 @@
         <p class="cinder-approval-card__detail-tool">
           {toolPrefix ?? 'It wants to run'}{' '}{#if tool.label !== undefined}<span
               class="cinder-approval-card__tool-label">{tool.label}</span
-            >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code
-          >{'\u00a0'}<span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+            >{' '}{/if}<code class="cinder-approval-card__tool-identifier">{tool.name}</code><span
+            class="cinder-approval-card__separator"
+            aria-hidden="true">,</span
+          >
           <span class="cinder-approval-card__risk-word">{riskWord}</span>
         </p>
       {/if}
@@ -680,9 +682,9 @@
             {#if sourceText !== undefined || requestedText !== undefined}
               <p class="cinder-approval-card__eyebrow">
                 {#if sourceText !== undefined}<span>{sourceText}</span
-                  >{#if requestedText !== undefined}{'\u00a0'}<span
+                  >{#if requestedText !== undefined}<span
                       class="cinder-approval-card__separator cinder-approval-card__time-separator"
-                      aria-hidden="true">·</span
+                      aria-hidden="true">,</span
                     >{/if}{/if}
                 {#if requestedText !== undefined}<time datetime={requestedIso}>{requestedText}</time
                   >{/if}
@@ -704,9 +706,11 @@
               </p>
             {/if}
             <p class="cinder-approval-card__risk-line">
-              <span class="cinder-approval-card__risk-word">{riskWord}</span>
-              {#if tool.irreversible}
-                <span class="cinder-approval-card__separator" aria-hidden="true">·</span>
+              <span class="cinder-approval-card__risk-word">{riskWord}</span
+              >{#if tool.irreversible}<span
+                  class="cinder-approval-card__separator"
+                  aria-hidden="true">,</span
+                >
                 <span class="cinder-approval-card__undone">Can't be undone</span>
               {/if}
             </p>

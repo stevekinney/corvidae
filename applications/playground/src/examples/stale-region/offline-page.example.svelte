@@ -13,7 +13,7 @@
     sandbox: { provider: 'codex', name: 'workspace-write', workingDir: '/workspace' },
     operation: {
       kind: 'command' as const,
-      command: 'Runs with · 3 fields',
+      command: 'Runs with, 3 fields',
       filesTouched: [],
       argsPreview: {},
     },
@@ -38,7 +38,7 @@
       <PageHeader
         headingLevel={2}
         title="Runs"
-        description="Today · Monday, Nov 2"
+        description="Today, Monday, Nov 2"
         createAction={{ label: 'Start run' }}
       >
         {#snippet actions()}
@@ -49,9 +49,9 @@
       <ul
         style="margin: 0; padding: 0; list-style: none; display: grid; gap: var(--cinder-space-2)"
       >
-        <li>Waiting on you · Refund order 4471 · 10:42 AM</li>
-        <li>Done · Refund order 4472 · 10:30 AM</li>
-        <li>Waiting on you · Ship the release notes fix · 9:46 AM</li>
+        <li>Waiting on you, Refund order 4471, 10:42 AM</li>
+        <li>Done, Refund order 4472, 10:30 AM</li>
+        <li>Waiting on you, Ship the release notes fix, 9:46 AM</li>
       </ul>
       <ApprovalCard {...card} onResolve={() => {}} />
     </div>

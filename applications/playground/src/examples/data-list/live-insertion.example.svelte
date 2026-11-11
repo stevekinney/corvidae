@@ -21,14 +21,14 @@
       title: 'Refund order 4471',
       status: 'Waiting on you',
       time: '10:42 AM',
-      meta: 'Chat · Tool runner · waiting 4 min',
+      meta: 'Chat, Tool runner, waiting 4 min',
     },
     {
       id: 'refund-4472',
       title: 'Look up order 4472',
       status: 'Done',
       time: '10:30 AM',
-      meta: 'Chat · Tool runner · 14 s',
+      meta: 'Chat, Tool runner, 14 s',
     },
   ]);
 
@@ -39,7 +39,7 @@
         title: 'Look up order 4475',
         status: 'Running',
         time: '10:45 AM',
-        meta: 'Chat · Tool runner · running 12 s',
+        meta: 'Chat, Tool runner, running 12 s',
       },
       ...runs,
     ];
@@ -50,7 +50,7 @@
 <DataList
   items={runs}
   key={(run) => run.id}
-  groupBy={() => ({ key: 'today', label: 'Today · Monday, Nov 2', detail: 'Central time' })}
+  groupBy={() => ({ key: 'today', label: 'Today, Monday, Nov 2', detail: 'Central time' })}
   insertionAnnouncement={(count) => `${count} new run${count === 1 ? '' : 's'}`}
 >
   {#snippet children(run)}

@@ -118,8 +118,8 @@
             <code>{background.path}</code>
           </span>
           <span class="muted">
-            {background.derived === 'paired' ? 'paired surface' : 'page surface'}
-            {#if alpha < 1}· composited: <code>{compositeOver(color, background.color)}</code>{/if}
+            {background.derived === 'paired' ? 'paired surface' : 'page surface'}{#if alpha < 1},
+              composited: <code>{compositeOver(color, background.color)}</code>{/if}
           </span>
         {/if}
       </dd>

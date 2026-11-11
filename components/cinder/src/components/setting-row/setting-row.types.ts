@@ -10,7 +10,7 @@ import type { FormFieldManaged } from '../form-field/form-field.types.ts';
  *   changed ("Applies after restart", with a restart glyph).
  * - `saved-restart`: saved but not yet in effect ("Saved, waiting for a restart", with an amber dot).
  * - `reverted`: a saved change that waited for a restart was put back to the value in effect
- *   ("Reverted · in effect now", muted, with no glyph).
+ *   ("Reverted, in effect now", muted, with no glyph).
  */
 export type SettingRowStatus = 'saving' | 'saved' | 'restart' | 'saved-restart' | 'reverted';
 

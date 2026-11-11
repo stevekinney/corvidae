@@ -33,8 +33,8 @@ describe('headerCount', () => {
 
   test('adds the size only above 1 KB', () => {
     expect(headerCount({ a: 1, b: 2 }, { bytes: 1024 })).toBe('2 fields');
-    expect(headerCount({ a: 1, b: 2 }, { bytes: 1434 })).toBe('2 fields · 1.4 KB');
-    expect(headerCount({ items: [] }, { bytes: 184 * 1024 })).toBe('1 field · 184 KB');
+    expect(headerCount({ a: 1, b: 2 }, { bytes: 1434 })).toBe('2 fields, 1.4 KB');
+    expect(headerCount({ items: [] }, { bytes: 184 * 1024 })).toBe('1 field, 184 KB');
   });
 
   test('says "so far" while the payload arrives', () => {

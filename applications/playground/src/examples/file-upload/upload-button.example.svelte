@@ -8,7 +8,7 @@
   import { FileUpload, type FileUploadEntry } from '@lostgradient/cinder';
 
   const uid = $props.id();
-  let summary = $state('payments-openapi.yaml · OpenAPI 3.1 · 24 operations');
+  let summary = $state('payments-openapi.yaml, OpenAPI 3.1, 24 operations');
 
   function handleFilesChange(entries: FileUploadEntry[]) {
     const entry = entries.find((candidate) => candidate.rejectionReason === undefined);

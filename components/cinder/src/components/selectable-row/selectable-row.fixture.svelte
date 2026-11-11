@@ -12,7 +12,7 @@
   {#snippet leading()}<span aria-hidden="true">●</span>{/snippet}
   {#snippet title()}A deliberately long session title that must wrap within the row{/snippet}
   {#snippet description()}Session description{/snippet}
-  {#snippet meta()}Running · Updated now{/snippet}
+  {#snippet meta()}Running, Updated now{/snippet}
   {#snippet trailingActions()}
     <button type="button" onclick={onRename}>Rename</button>
     <a href="https://example.com/session" onclick={onOpenExternal}>Open externally</a>

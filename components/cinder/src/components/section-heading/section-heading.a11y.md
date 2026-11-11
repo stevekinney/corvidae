@@ -1,4 +1,4 @@
-# SectionHeading · accessibility
+# SectionHeading accessibility
 
 ## Pattern
 

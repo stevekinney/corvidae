@@ -1,4 +1,4 @@
-# ShortcutField · accessibility
+# ShortcutField accessibility
 
 ## Interaction model
 

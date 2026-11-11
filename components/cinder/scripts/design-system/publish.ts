@@ -95,7 +95,7 @@ export function designSystemIndex(facts: IndexFacts): Record<string, unknown> {
     lastChange: {
       by: facts.author,
       at: facts.at,
-      via: `Claude Code · stevekinney/corvidae@${facts.sha}`,
+      via: `Claude Code, stevekinney/corvidae@${facts.sha}`,
       note: facts.note,
     },
   };

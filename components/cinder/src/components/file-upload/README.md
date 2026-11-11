@@ -67,7 +67,7 @@ In the compact and button variants a file that fails local validation is a dange
   multiple
   maxSize={5 * 1024 * 1024}
   browseLabel="Add a document"
-  description="or drop files here · PDF, Markdown or text · up to 5 MB each"
+  description="or drop files here, PDF, Markdown or text, up to 5 MB each"
   rejectionMessage={({ file }) =>
     `${file.name} is too large; documents can be up to 5 MB. Nothing was added.`}
   {files}

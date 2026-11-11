@@ -1,4 +1,4 @@
-# DataTable · accessibility
+# DataTable accessibility
 
 ## Pattern
 

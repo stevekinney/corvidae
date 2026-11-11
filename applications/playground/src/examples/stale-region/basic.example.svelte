@@ -27,12 +27,10 @@
       <Button mutating iconOnly aria-label="New agent">+</Button>
     </div>
     <div>
-      <Link href="#tool-runner">Tool runner</Link>
-      · Available
+      <Link href="#tool-runner">Tool runner</Link>, Available
     </div>
     <div>
-      <Link href="#assistant">Assistant</Link>
-      · Available
+      <Link href="#assistant">Assistant</Link>, Available
     </div>
     <div>
       <Button variant="ghost" onclick={() => (stale = !stale)}>

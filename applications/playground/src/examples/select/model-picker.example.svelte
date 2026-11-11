@@ -12,20 +12,20 @@
     {
       value: 'opus',
       label: 'Claude Opus 5.5',
-      description: 'Most capable · tools · images · 1M context',
+      description: 'Most capable, tools, images, 1M context',
       group: 'anthropic',
     },
     {
       value: 'sonnet',
       label: 'Claude Sonnet 5.5',
-      description: 'Balanced · tools · images · 1M context',
+      description: 'Balanced, tools, images, 1M context',
       group: 'anthropic',
       triggerSuffix: 'Anthropic',
     },
     {
       value: 'haiku',
       label: 'Claude Haiku 5.5',
-      description: 'Fastest · tools · 200K context',
+      description: 'Fastest, tools, 200K context',
       group: 'anthropic',
     },
   ];
@@ -49,8 +49,8 @@
   options={models}
   groups={[
     { name: 'anthropic', heading: 'Anthropic' },
-    { name: 'openai', heading: 'OpenAI · not connected', divided: true, message: gptMessage },
-    { name: 'gemini', heading: 'Gemini · not connected', divided: true, message: geminiMessage },
+    { name: 'openai', heading: 'OpenAI, not connected', divided: true, message: gptMessage },
+    { name: 'gemini', heading: 'Gemini, not connected', divided: true, message: geminiMessage },
   ]}
   bind:value={model}
 />

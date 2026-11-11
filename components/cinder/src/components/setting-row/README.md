@@ -23,7 +23,7 @@ SettingRow arranges settings-page guidance and a control while publishing FormFi
 
 A setting saves when the person leaves its field and shows what happened on its own row; there is no page-level Save. The label, the raw key (`identifier`, small and monospaced, outside the label so it stays out of the accessible name) and the description sit on the left with the status line, the error and the managed line under them, and the control on the right. Below 30rem of row width the control stacks under the label.
 
-- `status` draws one of five lines in a polite live region that is always mounted: `saving` ("Saving…", spinning glyph), `saved` ("Saved just now", success tone), `restart` ("Applies after restart", restart glyph), `saved-restart` ("Saved, waiting for a restart", amber dot) and `reverted` ("Reverted · in effect now", muted, no glyph), for a change that waited for a restart and was put back. `statusLabel` replaces the words.
+- `status` draws one of five lines in a polite live region that is always mounted: `saving` ("Saving…", spinning glyph), `saved` ("Saved just now", success tone), `restart` ("Applies after restart", restart glyph), `saved-restart` ("Saved, waiting for a restart", amber dot) and `reverted` ("Reverted, in effect now", muted, no glyph), for a change that waited for a restart and was put back. `statusLabel` replaces the words.
 - `error` marks the control invalid and says what is wrong at the field: an invalid value ("Enter a number from 1 to 3650. Nothing was saved.") or a failed save. `onRetry` adds a quiet Retry beside a failed save; the value stays in the field.
 - `managed` with a `message` draws a locked setting with the lock glyph. The control is the page's to make read-only.
 

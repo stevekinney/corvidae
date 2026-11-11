@@ -99,7 +99,7 @@ export type ToolCallPanelProps = Omit<
   /** Where the call falls in its turn ("call 28 of 30"), written after the duration. */
   position?: string | undefined;
   /**
-   * The line under the name, in the caller's words ("Reads · ran in 0.4s"). When set it replaces
+   * The line under the name, in the caller's words ("Reads, ran in 0.4s"). When set it replaces
    * the status word, duration and position.
    */
   summary?: string | undefined;

@@ -1,4 +1,4 @@
-# PayloadInspector · accessibility
+# PayloadInspector accessibility
 
 ## Pattern
 

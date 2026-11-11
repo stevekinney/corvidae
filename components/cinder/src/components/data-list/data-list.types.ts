@@ -7,7 +7,7 @@ import type { StackedListItemDensity } from '../stacked-list-item/stacked-list-i
 export type DataListGroup = {
   /** Identifies the group. Consecutive items with the same key share one header. */
   key: string | number;
-  /** The header's text, such as `Today · Monday, Nov 2`. */
+  /** The header's text, such as `Today, Monday, Nov 2`. */
   label: string;
   /** Muted text at the right of the header, such as the time zone (`Central time`). */
   detail?: string;

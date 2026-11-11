@@ -31,7 +31,7 @@ export type StatisticProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
   loading?: boolean;
   /** Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning. */
   attention?: boolean;
-  /** A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. */
+  /** A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done, 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. */
   caption?: string;
   /** Optional change indicator with direction and accessible wording. */
   change?: StatisticChange;
@@ -61,7 +61,7 @@ export interface StatisticSchemaProps {
   loading?: boolean;
   /** Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning. */
   attention?: boolean;
-  /** A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. */
+  /** A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done, 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. */
   caption?: string;
   /** Optional change indicator with direction and accessible wording. */
   change?: StatisticChange;

@@ -116,9 +116,9 @@
     font-weight: var(--cinder-font-normal);
   }
 
-  /* In the plain layout the count reads as part of the name: "Built in · 6". */
+  /* In the plain layout the count reads as part of the name: "Built in, 6". */
   .cinder-tool-picker__list:not([data-cinder-long]) .cinder-tool-picker__group-heading {
-    gap: var(--cinder-space-1);
+    gap: 0;
   }
 
   .cinder-tool-picker__list:not([data-cinder-long]) .cinder-tool-picker__group-name {
@@ -213,6 +213,12 @@
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
+  }
+
+  /* The suffix starts with a comma, so it takes back the gap before it and sits against the words
+   * it follows. */
+  .cinder-tool-picker__suffix {
+    margin-inline-start: calc(var(--cinder-space-2) * -1);
   }
 
   .cinder-tool-picker__suffix,

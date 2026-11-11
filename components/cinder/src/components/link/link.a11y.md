@@ -1,4 +1,4 @@
-# Link · accessibility
+# Link accessibility
 
 ## Pattern
 

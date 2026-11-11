@@ -55,7 +55,7 @@ const rows: StatusListRow[] = [
     day: 'Today',
     status: 'Waiting on you',
     time: '10:42 AM',
-    meta: 'Chat · Tool runner',
+    meta: 'Chat, Tool runner',
   },
 ];
 
@@ -75,7 +75,7 @@ describe('StackedListItem on a phone', () => {
       'Waiting on you',
     );
     expect(stylesheet).toContain("'leading status line line trailing'");
-    expect(stylesheet).toMatch(/\[data-cinder-phone\][^{]*__status::after\s*\{\s*content:\s*'·'/);
+    expect(stylesheet).toMatch(/\[data-cinder-phone\][^{]*__status::after\s*\{\s*content:\s*','/);
     cleanup();
     setPhone(false);
   });
@@ -92,7 +92,7 @@ describe('StackedListItem on a phone', () => {
       /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*>\s*\.cinder-stacked-list-item__layout\s*\{\s*--_cinder-status-track:\s*auto;/,
     );
     expect(stylesheet).toMatch(
-      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*\.cinder-stacked-list-item__status::after\s*\{\s*content:\s*'·'/,
+      /\[data-cinder-phone\]\.cinder-stacked-list-item--status-line-two\s*\.cinder-stacked-list-item__status::after\s*\{\s*content:\s*','/,
     );
     cleanup();
     setPhone(false);

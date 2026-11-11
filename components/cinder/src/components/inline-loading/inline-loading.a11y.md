@@ -1,4 +1,4 @@
-# InlineLoading · accessibility
+# InlineLoading accessibility
 
 ## Pattern
 

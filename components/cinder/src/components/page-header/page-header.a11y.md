@@ -1,4 +1,4 @@
-# PageHeader · accessibility
+# PageHeader accessibility
 
 ## Pattern
 

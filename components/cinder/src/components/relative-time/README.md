@@ -14,7 +14,7 @@
 <RelativeTime date="2026-08-28T18:00:00Z" />
 ```
 
-It reads in the viewer's time zone on one 12-hour clock: "just now", "4 min ago", "1 h ago", then "Yesterday, 4:12 PM" and "Sun Nov 1, 4:12 PM". Set `format="absolute"` for a label that is never relative ("Today, 10:44 AM"); the tooltip then carries the relative reading, and the relative label's tooltip carries the full dated reading. The same formats are exported as functions: `formatRelativeTime`, `formatDateTime`, `formatDayHeading` ("Today · Central time"), `formatTimeZoneLabel` ("CST" or "Central time") and `formatScheduleTime` ("3:00 AM (9:00 AM UTC)").
+It reads in the viewer's time zone on one 12-hour clock: "just now", "4 min ago", "1 h ago", then "Yesterday, 4:12 PM" and "Sun Nov 1, 4:12 PM". Set `format="absolute"` for a label that is never relative ("Today, 10:44 AM"); the tooltip then carries the relative reading, and the relative label's tooltip carries the full dated reading. The same formats are exported as functions: `formatRelativeTime`, `formatDateTime`, `formatDayHeading` ("Today, Central time"), `formatTimeZoneLabel` ("CST" or "Central time") and `formatScheduleTime` ("3:00 AM (9:00 AM UTC)").
 
 ## Props
 

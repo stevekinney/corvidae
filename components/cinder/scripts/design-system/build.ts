@@ -73,7 +73,7 @@ function git(...args: string[]): string {
 }
 
 function step(message: string): void {
-  console.log(`· ${message}`);
+  console.log(`- ${message}`);
 }
 
 /** Bundles the previews in parallel shard processes, one per shard, with ids as argv entries. */

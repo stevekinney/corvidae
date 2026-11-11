@@ -1,4 +1,4 @@
-# HoverCard · accessibility
+# HoverCard accessibility
 
 ## Pattern
 

@@ -20,7 +20,7 @@ describe('KeyFacts', () => {
 
   test('draws no middle dot between facts', () => {
     const { container } = render(KeyFacts, { items: [{ value: 'A' }, { value: 'B' }] });
-    expect(container.textContent).not.toContain('·');
+    expect(container.textContent).not.toContain(String.fromCodePoint(0xb7));
   });
 
   test('a fact with an href renders its value as a link', () => {

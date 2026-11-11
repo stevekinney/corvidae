@@ -12,6 +12,7 @@ Cinder is the Svelte 5 component library behind Corvidae's applications, Interbo
 - Write labels, headings and section titles in sentence case ("Recent runs", not "RECENT RUNS" or "Recent Runs"). Cinder never sets section labels in uppercase with letter spacing.
 - A button names exactly what it does ("Save changes", "Delete chat"). A loading button keeps its label, or changes it to the present participle ("Creating…").
 - Explain an unavailable action instead of hiding it: `AccessGate` names the missing scope, and a stale region names its reason.
+- Never separate pieces of copy with a middle dot (U+00B7). Use a comma for one short phrase ("Waiting on you, Chat, 4 min ago"), separate elements, a line break, or a `DescriptionList` for label and value metadata. A repository guard fails the build on a middle dot.
 - No emoji in interface copy. Icons are decorative unless the label says otherwise.
 
 ## Colour

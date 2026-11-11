@@ -263,7 +263,7 @@
     font-weight: var(--cinder-font-normal);
   }
 
-  /* The count that follows a nested label: "Parts · 3 items". */
+  /* The count that follows a nested label: "Parts, 3 items". */
   .cinder-payload-inspector__count {
     color: var(--cinder-text-muted);
     font-weight: var(--cinder-font-normal);
@@ -319,7 +319,7 @@
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
 
-  /* Few short pairs: one line, labels regular and values bold, joined by middots. It cuts with an
+  /* Few short pairs: one line, labels regular and values bold, joined by commas. It cuts with an
    * ellipsis only when it cannot fit. */
   .cinder-payload-inspector__inline {
     margin: 0;

@@ -1,4 +1,4 @@
-# AspectRatio · accessibility
+# AspectRatio accessibility
 
 ## Pattern
 

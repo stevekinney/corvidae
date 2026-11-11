@@ -1,4 +1,4 @@
-# Surface · accessibility
+# Surface accessibility
 
 ## Pattern
 

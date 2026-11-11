@@ -10,12 +10,12 @@
   const agents = [
     {
       name: 'Assistant',
-      chats: '12 chats · Answers questions and does general work',
+      chats: '12 chats, Answers questions and does general work',
       canChat: true,
     },
     {
       name: 'Release helper',
-      chats: '0 chats · Held back while its plugin is disabled',
+      chats: '0 chats, Held back while its plugin is disabled',
       canChat: false,
     },
   ];

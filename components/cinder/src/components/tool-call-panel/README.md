@@ -1,6 +1,6 @@
 # ToolCallPanel
 
-The side panel of one tool call, opened from a `ToolCallRail` row. The header names the tool with its identifier small and monospaced, then says where the call stands: a dot, the state, how long it took and where it falls in the turn ("Failed 10.0s · call 28 of 30"). Under it, an Input section lists what the call was given as labelled fields, and the rest depends on the state: a done call shows its Result, a running call says the result is coming, a failed call shows an Error block with its message first and the next steps, and a waiting call carries a note field with Deny and Approve.
+The side panel of one tool call, opened from a `ToolCallRail` row. The header names the tool with its identifier small and monospaced, then says where the call stands: a dot, the state, how long it took and where it falls in the turn ("Failed 10.0s, call 28 of 30"). Under it, an Input section lists what the call was given as labelled fields, and the rest depends on the state: a done call shows its Result, a running call says the result is coming, a failed call shows an Error block with its message first and the next steps, and a waiting call carries a note field with Deny and Approve.
 
 Use `ToolCallPanel` for one call's details beside a conversation. Use `PayloadInspector` for an arbitrary payload on its own page, and `Drawer` for navigation or settings from a page edge. The panel is a `Drawer` below the width it docks at, so it never reflows the conversation on a small screen.
 

@@ -484,10 +484,10 @@ describe('schedule-builder utilities', () => {
 
   describe('time zone names', () => {
     test('a zone reads as its sentence-case name, then its city', () => {
-      expect(timeZoneOptionLabel('America/Chicago')).toBe('Central time · Chicago');
-      expect(timeZoneOptionLabel('America/Mexico_City')).toBe('Central time · Mexico City');
-      expect(timeZoneOptionLabel('America/Los_Angeles')).toBe('Pacific time · Los Angeles');
-      expect(timeZoneOptionLabel('America/Denver')).toBe('Mountain time · Denver');
+      expect(timeZoneOptionLabel('America/Chicago')).toBe('Central time, Chicago');
+      expect(timeZoneOptionLabel('America/Mexico_City')).toBe('Central time, Mexico City');
+      expect(timeZoneOptionLabel('America/Los_Angeles')).toBe('Pacific time, Los Angeles');
+      expect(timeZoneOptionLabel('America/Denver')).toBe('Mountain time, Denver');
     });
 
     test('UTC reads as UTC and a zone the runtime cannot name reads as its id', () => {

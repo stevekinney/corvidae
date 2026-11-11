@@ -1,4 +1,4 @@
-# Badge · accessibility
+# Badge accessibility
 
 ## Pattern
 

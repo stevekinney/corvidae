@@ -62,7 +62,7 @@ Set `loading` while the figure is still being read. The label stays real text, a
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `attention` | `boolean` | no | — | Draws an amber attention dot before the label. Set it only when the value is a non-zero bad count (such as missed runs or items waiting on you), never on a zero or a healthy count. The dot is decorative: the label wording carries the meaning. |
-| `caption` | `string` | no | — | A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done · 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. |
+| `caption` | `string` | no | — | A short muted line under the value that says what it means in words, such as "Nothing is running", "An approval and a question" or "3 done, 2 waiting on you". It describes the group for assistive technology, so state it as a sentence fragment that stands on its own. |
 | `class` | `string` | no | — | Additional class names merged with `.cinder-statistic`. |
 | `label` | `string` | yes | — | Short label describing the metric, e.g. "Monthly Revenue". |
 | `loading` | `boolean` | no | — | Whether the figure is still being read. The label stays real text, a placeholder block stands where the value will be and the caption is left out, so a count never reads as zero while it waits for its data. The group is marked busy and says nothing of a value. |

@@ -192,7 +192,7 @@
       parts.push(`${Object.keys(objectValue.properties).length} props`);
     }
     if (objectValue.title) parts.push(`"${objectValue.title}"`);
-    return parts.join(' · ');
+    return parts.join(', ');
   }
 
   // ===== Children (object/array) =====

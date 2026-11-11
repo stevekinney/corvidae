@@ -30,12 +30,12 @@ const schema = {
           result: {
             type: 'string',
             description:
-              'What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow\n("→ $42.00, delivered Mon"); an `interrupted` call shows it as its own words ("Interrupted ·\ndidn\'t finish"); a `denied` call shows it as its own words ("Denied by you 10:40 AM ·\nnothing refunded"); a `running` or `waiting` call has none and reads "Running…" or "Waiting on\nyou", unless this is set.',
+              'What came back, in one line. A `done`, `approved` or `failed` call shows it after an arrow\n("→ $42.00, delivered Mon"); an `interrupted` call shows it as its own words ("Interrupted,\ndidn\'t finish"); a `denied` call shows it as its own words ("Denied by you 10:40 AM,\nnothing refunded"); a `running` or `waiting` call has none and reads "Running…" or "Waiting on\nyou", unless this is set.',
           },
           decision: {
             type: 'string',
             description:
-              'What a person decided, in their own words and without an arrow: "Approved by you 10:33 AM ·\n$18.50 refunded" on an `approved` call, or "Denied by you 10:40 AM · nothing refunded" on a\n`denied` one. It takes the place of `result` on the row; without it an `approved` call shows\nits `result` after an arrow like a `done` one.',
+              'What a person decided, in their own words and without an arrow: "Approved by you 10:33 AM,\n$18.50 refunded" on an `approved` call, or "Denied by you 10:40 AM, nothing refunded" on a\n`denied` one. It takes the place of `result` on the row; without it an `approved` call shows\nits `result` after an arrow like a `done` one.',
           },
           resultHref: {
             type: 'string',

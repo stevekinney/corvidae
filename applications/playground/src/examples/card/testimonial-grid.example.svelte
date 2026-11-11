@@ -63,7 +63,7 @@
                   <p
                     style="margin: 0; color: var(--cinder-text-muted); font-size: var(--cinder-text-sm); line-height: var(--cinder-leading-snug);"
                   >
-                    {item.role} · {item.company}
+                    {item.role}, {item.company}
                   </p>
                 </div>
               </div>
