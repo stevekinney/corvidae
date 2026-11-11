@@ -65,9 +65,18 @@ test.describe('Phone run composer', () => {
   test('draws Attach and Send as 44px targets and pads the area for the safe area', async ({
     componentPage,
   }) => {
-    const page = await componentPage.open({ entry: chatEntry, theme: 'dark', viewport: phone });
-    // No default chat fixture enables attachments, so reload the entry with the gated instance.
-    await page.goto(`${chatEntry.route}?snapshot=1&attachments=1`, { waitUntil: 'load' });
+    const page = await componentPage.open({
+      entry: chatEntry,
+      theme: 'dark',
+      viewport: phone,
+      fixtureName: 'assertion',
+    });
+    // No default chat fixture enables attachments, so reload the same fixture with the gated
+    // instance. The route keeps its fixture name and hash: without them the page serves the chat
+    // harness, which has no attachments instance.
+    const gated = new URL(page.url());
+    gated.searchParams.set('attachments', '1');
+    await page.goto(gated.toString(), { waitUntil: 'load' });
     const attachmentsChat = page.getByTestId('chat-attachments-enabled');
     await expect(
       attachmentsChat.getByRole('button', { name: 'Attach file', exact: true }),

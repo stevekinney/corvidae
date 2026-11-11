@@ -104,6 +104,17 @@ test.describe('DecisionDeck spring and reduced motion', () => {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto(DECISION_DECK_ROUTE, { waitUntil: 'load' });
 
-    await expect(page.locator(TOP_CARD)).toHaveCSS('transition-duration', '0s');
+    // `foundation.css` wins the cascade under reduced motion with `transition-duration: 0.01ms
+    // !important`, which the browser reports as `1e-05s`, so the card's own `transition: none`
+    // never reads back as `0s`. What must hold is that no spring plays: every duration is under a
+    // millisecond.
+    await expect
+      .poll(() =>
+        page.locator(TOP_CARD).evaluate((element) => {
+          const parts = getComputedStyle(element).transitionDuration.split(',');
+          return Math.max(...parts.map((part) => Number.parseFloat(part)));
+        }),
+      )
+      .toBeLessThan(0.001);
   });
 });

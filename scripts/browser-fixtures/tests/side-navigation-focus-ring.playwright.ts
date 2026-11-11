@@ -269,14 +269,22 @@ test.describe('SideNavigation — grouped focus ring is inset and unclipped', ()
     expect(measurement.boxShadow).not.toBe('none');
     expect(measurement.boxShadow).toContain('inset');
     expect(measurement.boxShadow).toContain(ringColor);
-    const layerCount = measurement.boxShadow.split(/,(?![^(]*\))/).length;
-    expect(layerCount, 'inset ring is a single box-shadow layer').toBe(1);
+    // COR-2315 made the active row a raised pill whose hairline shadow shares the `box-shadow`
+    // channel, so the focused row paints the ring and then the pill's layers. The ring is the
+    // first, topmost layer and the only inset one, so nothing paints over it.
+    const layers = measurement.boxShadow.split(/,(?![^(]*\))/).map((layer) => layer.trim());
+    expect(layers[0], 'the inset ring is the topmost box-shadow layer').toContain('inset');
+    expect(layers[0], 'the inset ring is drawn in the ring color').toContain(ringColor);
+    expect(
+      layers.filter((layer) => layer.includes('inset')),
+      'the inset ring is the only inset layer',
+    ).toHaveLength(1);
 
-    // Selection signal #1: the surface-inset background fill is still painted
+    // Selection signal #1: the raised pill's background fill (COR-2315) is still painted
     // (non-transparent) under the focused row — focus does not cover it.
     expect(
       await colorAlpha(page, measurement.backgroundColor),
-      'active item keeps its surface-inset background while focused',
+      'active item keeps its selected background while focused',
     ).toBeGreaterThan(0);
 
     // The active row is a tint, never an accent stripe (COR-1821), so selection adds no border on

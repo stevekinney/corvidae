@@ -61,10 +61,12 @@ test.describe('theme-parity — light surface ladder + button vividness floor', 
       await page.goto(themeFixtureRoute, { waitUntil: 'load' });
       const surfaceL = await paintedL(page, '.cinder-table', 'backgroundColor');
       const insetL = await paintedL(page, "[data-testid='surface-inset']", 'backgroundColor');
+      // COR-2308 retuned the light ladder to the app-shell steps (surface 0.976, inset 0.958): an
+      // 0.018 step the owner asked for, held to at least 0.015 by tokens-light-ladder.test.ts.
       expect(
         surfaceL - insetL,
         'surface must sit above surface-inset so sunken regions read',
-      ).toBeGreaterThanOrEqual(0.025);
+      ).toBeGreaterThanOrEqual(0.015);
     } finally {
       await context.close();
     }

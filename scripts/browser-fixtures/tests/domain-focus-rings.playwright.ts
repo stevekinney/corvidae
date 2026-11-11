@@ -219,7 +219,9 @@ test.describe('domain focus rings -- chat harness', () => {
       await composer.click();
       await tabUntilFocused(page, sendButton, 'send button', 8);
       await expect(sendButton).toBeFocused();
-      await assertSharedOuterRing(sendButton, 'send button');
+      // Send is the accent-filled primary button while it would send (COR-2284), so it paints the
+      // filled control's gap and then the ring (COR-1498).
+      await assertSharedOuterRing(sendButton, 'send button', { filled: true });
     } finally {
       await dispose();
     }

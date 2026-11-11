@@ -2540,7 +2540,9 @@ test.describe('chat harness — message metadata', () => {
         const timestamp = metadata.locator('time');
         const receipt = metadata.locator('.chat-read-receipt');
         await expect(timestamp).toHaveAttribute('datetime', '2026-01-01T12:34:00Z');
-        await expect(timestamp).toHaveText('12:34 PM');
+        // The seeded message is from 1 January 2026, never today, so it carries its date with the
+        // time (COR-2016: a message from another day says which day it is from).
+        await expect(timestamp).toHaveText('Jan 1, 12:34 PM');
         await expect(receipt).toHaveAccessibleName('Read by Avery');
 
         if (!hasTouch) {

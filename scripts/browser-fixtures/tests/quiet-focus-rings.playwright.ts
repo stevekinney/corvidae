@@ -242,6 +242,23 @@ const FILLED_CASES: readonly RingCase[] = [
     target: (page) => page.locator('.cinder-file-upload__button'),
   },
   {
+    // Send is the accent-filled primary button while it would send (COR-2284), so it is a filled
+    // control here; an empty composer's Send is disabled and takes no focus.
+    label: 'enabled Chat send button',
+    slug: 'chat',
+    expected: 'gap',
+    target: (page) => page.locator('.chat-input-send').first(),
+    prepare: async (page) => {
+      await page.locator('.chat-input textarea').first().fill('Hello');
+      await expect(page.locator('.chat-input-send').first()).toBeEnabled();
+      await expect(page.locator('.chat-input-send').first()).toHaveAttribute(
+        'data-cinder-variant',
+        'primary',
+      );
+    },
+    walkFrom: (page) => page.locator('.chat-input textarea').first(),
+  },
+  {
     label: 'primary FloatingAction (pre-existing on-accent ring, unchanged)',
     slug: 'floating-action',
     expected: 'on-accent',
@@ -250,17 +267,6 @@ const FILLED_CASES: readonly RingCase[] = [
 ];
 
 const UNFILLED_CASES: readonly RingCase[] = [
-  {
-    label: 'enabled Chat send button',
-    slug: 'chat',
-    expected: 'tight',
-    target: (page) => page.locator('.chat-input-send').first(),
-    prepare: async (page) => {
-      await page.locator('.chat-input textarea').first().fill('Hello');
-      await expect(page.locator('.chat-input-send').first()).toBeEnabled();
-    },
-    walkFrom: (page) => page.locator('.chat-input textarea').first(),
-  },
   {
     label: 'off Switch',
     slug: 'toggle',
