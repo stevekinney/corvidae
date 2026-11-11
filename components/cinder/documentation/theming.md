@@ -59,6 +59,21 @@ The toggle recipe below uses `data-theme` because it's a single attribute mutati
 
 > [!NOTE] Because these `[data-theme]` selectors are not limited to `:root`, you can scope a theme override to a subtree — for example, a dark-themed navigation region embedded in an otherwise-light page. Cinder redeclares the core semantic tokens in that subtree, so components such as `Sidebar` and `Drawer` inherit the local dark surface, text, border, active, focus, and variant-control values without app-level token pinning. Nested `[data-theme='light']` scopes can switch those tokens back for a light island. If your app globally replaces Cinder's public tokens for custom branding, repeat those brand overrides in the scoped selector that should use them.
 
+### Island painting and the opt-out
+
+Redeclaring tokens does not paint anything by itself, so Cinder also paints each island. A `[data-theme]` element that is not the root gets `background-color: var(--cinder-surface-canvas)` and `color: var(--cinder-text-default)`, which makes a dark island inside a light page dark, with dark-theme text, without the app painting it. The rule is written with `:where()`, so it has zero specificity: any component background or color inside the island, and any rule you write for the island itself, wins over it. The root element is excluded because `body` already paints the page.
+
+To keep an island transparent, set `data-theme-paint="none"` on it. Use this for a layer that only carries a theme, such as an overlay host that sits above content and should show the page beneath it. The island still redeclares its tokens and `color-scheme`; it just does not paint a background or set a text color.
+
+```html
+<section data-theme="dark">Painted with the dark canvas and dark text.</section>
+<div data-theme="dark" data-theme-paint="none">Dark tokens, transparent background.</div>
+```
+
+### Theme changes do not animate
+
+Components transition color, background and border for hover and press feedback, and a theme change alters every one of those values at once. Call `guardThemeTransitions()` once at application start so a switch of `data-theme` (or of the system color scheme) renders without those transitions; see the README under Theming for its options.
+
 ## Minimal Svelte toggle
 
 Three states — `light`, `dark`, `system` — and a single source of truth: the `data-theme` attribute on `<html>`. Persist the user's choice in `localStorage` so it survives reloads, and apply it before paint so dark-mode users don't flash light first.

@@ -84,6 +84,17 @@
   font-size: var(--cinder-text-base);
 }
 
+/* A theme island (a `data-theme` subtree that is not the root) redeclares the tokens, but a
+   redeclared token paints nothing on its own: without this rule a dark island inside a light page
+   keeps the page's light background and inherits its light text. The island paints the canvas and
+   default text of its own theme. `:where()` keeps the rule at zero specificity, so every component
+   background and color still wins inside it. The root is left to `body`; an island that must stay
+   transparent, such as an overlay layer, opts out with `data-theme-paint='none'`. */
+:where([data-theme]:not(:root, [data-theme-paint='none'])) {
+  background-color: var(--cinder-surface-canvas);
+  color: var(--cinder-text-default);
+}
+
 /* INTERNAL: shared box-shadow ring formula. Components that paint a focus
    ring with the standard "transparent outline + two-stop box-shadow" pattern
    reference this variable so the formula lives in exactly one place. Not part
