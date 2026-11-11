@@ -170,6 +170,7 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
       const decision = String(params['decision']);
       const status =
         decision === 'approve' ? 'approved' : decision === 'deny' ? 'denied' : 'rejected';
+      const surface = params['decisionSurface'];
       // The review leaves the waiting list and is kept as decided, as the Bureau keeps it.
       world.reviews = world.reviews.map((entry) =>
         entry.id === id
@@ -181,6 +182,10 @@ function defaultHandlers(world: BureauWorld): Record<string, BureauHandler> {
                 decidedBy: 'tester',
                 decidedAt: Date.now(),
                 ...(typeof params['reason'] === 'string' ? { reason: params['reason'] } : {}),
+                // COR-2292: where it was decided, as the Bureau keeps it.
+                ...(surface === 'chat' || surface === 'reviews'
+                  ? { decisionSurface: surface }
+                  : {}),
               },
             }
           : entry,

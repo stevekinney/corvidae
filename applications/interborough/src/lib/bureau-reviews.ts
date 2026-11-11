@@ -23,7 +23,15 @@ const resolutionSchema = z.object({
   reason: z.string().optional(),
   answerDigest: z.string().optional(),
   secretRefs: z.array(z.string()).optional(),
+  /** Where a tool approval was decided, when its decision recorded it (COR-2292). */
+  decisionSurface: z.enum(['chat', 'reviews']).optional(),
 });
+
+/**
+ * Where a person decided a tool approval: `chat`, the chat that asked, or `reviews`, the Reviews
+ * page (COR-2292). It is what the receipt names, and it grants nothing.
+ */
+export type ApprovalDecisionSurface = 'chat' | 'reviews';
 
 const reviewCommon = {
   /**
@@ -270,7 +278,8 @@ export function isReviewRoundChanged(error: unknown): boolean {
  * Approves, denies, or rejects a review (`bureau.reviews.resolve`). A rejection needs its reason.
  * `round` is the round of the tool approval the person was shown, which fences the decision on it.
  * `remember` approves a tool approval and allows its tool for the rest of the chat; the Bureau
- * refuses it on a human wait and on a deny or reject.
+ * refuses it on a human wait and on a deny or reject. `decisionSurface` says where a tool approval
+ * was decided; a caller that cannot say leaves it out, and the Bureau refuses it on a human wait.
  */
 export async function resolveBureauReview(
   input: {
@@ -279,6 +288,7 @@ export async function resolveBureauReview(
     readonly reason?: string;
     readonly round?: number;
     readonly remember?: boolean;
+    readonly decisionSurface?: ApprovalDecisionSurface;
   },
   options?: Options,
 ): Promise<ReviewResolution> {

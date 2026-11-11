@@ -180,6 +180,7 @@ describe('deciding a Bureau tool approval', () => {
       id: APPROVAL.id,
       decision: 'approve',
       round: APPROVAL.round,
+      decisionSurface: 'reviews',
     });
     await waitFor(() => expect(rows(container).length).toBe(0));
   });
@@ -194,6 +195,7 @@ describe('deciding a Bureau tool approval', () => {
       id: APPROVAL.id,
       decision: 'approve',
       round: APPROVAL.round,
+      decisionSurface: 'reviews',
       remember: true,
     });
   });
@@ -212,6 +214,7 @@ describe('deciding a Bureau tool approval', () => {
       decision: 'approve',
       reason: 'Go ahead, but only this once.',
       round: APPROVAL.round,
+      decisionSurface: 'reviews',
     });
   });
 
@@ -229,6 +232,7 @@ describe('deciding a Bureau tool approval', () => {
       decision: 'approve',
       reason: 'Fine for this chat.',
       round: APPROVAL.round,
+      decisionSurface: 'reviews',
       remember: true,
     });
   });
@@ -269,6 +273,7 @@ describe('deciding a Bureau tool approval', () => {
       decision: 'reject',
       reason: 'Wrong order.',
       round: APPROVAL.round,
+      decisionSurface: 'reviews',
     });
   });
 
@@ -336,6 +341,7 @@ describe('the keys that act on the open review', () => {
       decision: 'reject',
       reason: 'Not today.',
       round: APPROVAL.round,
+      decisionSurface: 'reviews',
     });
   });
 

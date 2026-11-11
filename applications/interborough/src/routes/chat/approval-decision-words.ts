@@ -35,8 +35,17 @@ export function decidedByLabel(
     : decision.decidedBy;
 }
 
-/** Where the call's approval was decided when that was not the chat, such as "Reviews". */
+/**
+ * Where the call's approval was decided when that was not the chat, such as "Reviews". What the
+ * Bureau recorded with the decision wins (COR-2292): a decision made in Reviews says so after a
+ * reload, and one made in the chat never does, whatever this page watched. A decision that recorded
+ * no surface falls back to what this page saw happen while it was open, and after a reload says
+ * nothing of where.
+ */
 export function decidedPlace(entry: ToolCallEntry, context: DecisionContext): string | undefined {
+  const recorded = entry.decision?.decisionSurface;
+  if (recorded === 'reviews') return CHAT_COPY.tools.decided.elsewhere;
+  if (recorded === 'chat') return undefined;
   return context.elsewhere?.has(entry.callId) === true
     ? CHAT_COPY.tools.decided.elsewhere
     : undefined;

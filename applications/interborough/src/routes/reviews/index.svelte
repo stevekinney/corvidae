@@ -125,8 +125,11 @@
         id: review.id,
         decision,
         ...(reason === undefined ? {} : { reason }),
-        // The round the row showed: a review gated again since is refused, not decided.
-        ...(review.kind === 'tool-approval' ? { round: review.round } : {}),
+        // The round the row showed: a review gated again since is refused, not decided. A tool
+        // approval also says it was decided here, so the chat that asked can say so (COR-2292).
+        ...(review.kind === 'tool-approval'
+          ? { round: review.round, decisionSurface: 'reviews' as const }
+          : {}),
         ...(remember ? { remember: true } : {}),
       },
       {

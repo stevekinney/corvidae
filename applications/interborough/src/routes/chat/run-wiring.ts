@@ -730,6 +730,8 @@ function answerTo(interrupt: Interrupt, resolution: ApprovalResolution): ResumeE
         ...(resolution.reason === undefined || resolution.reason.trim() === ''
           ? {}
           : { reason: resolution.reason }),
+        // The decision was made here, so the receipt names the chat after a reload (COR-2292).
+        decisionSurface: 'chat',
       },
     };
   }
@@ -741,6 +743,7 @@ function answerTo(interrupt: Interrupt, resolution: ApprovalResolution): ResumeE
       ...(resolution.reason === undefined || resolution.reason.trim() === ''
         ? {}
         : { reason: resolution.reason }),
+      decisionSurface: 'chat',
     },
   };
 }

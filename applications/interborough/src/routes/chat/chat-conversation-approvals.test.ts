@@ -254,7 +254,12 @@ describe('an approval in the chat', () => {
     expect(resumes[0]).toMatchObject([
       {
         interruptId: APPROVAL.id,
-        payload: { decision: 'deny', reason: 'Check the carrier’s claim first.' },
+        // The chat says the decision was made here (COR-2292).
+        payload: {
+          decision: 'deny',
+          reason: 'Check the carrier’s claim first.',
+          decisionSurface: 'chat',
+        },
       },
     ]);
   });
@@ -343,7 +348,7 @@ describe('an approval raised after the person answered a question', () => {
     await waitFor(() => expect(bodies).toHaveLength(3));
     expect(bodies[2]?.resume?.[0]).toMatchObject({
       interruptId: APPROVAL.id,
-      payload: { decision: 'approve' },
+      payload: { decision: 'approve', decisionSurface: 'chat' },
     });
   });
 });

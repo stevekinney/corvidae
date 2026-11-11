@@ -95,6 +95,11 @@ export type ApprovalDecision = {
   readonly reason?: string | undefined;
   /** The sentence the tool asked with, which the outcome replaced along with the waiting row. */
   readonly asked?: string | undefined;
+  /**
+   * Where the person decided, as the Bureau recorded it with the decision (COR-2292): `chat` or
+   * `reviews`. Absent when the decision did not say, as every decision recorded before it could.
+   */
+  readonly decisionSurface?: 'chat' | 'reviews' | undefined;
 };
 
 /** Where a `tool-result` row keeps when its call ran: Operative's `TOOL_TIMING_METADATA_KEY`. */
@@ -156,6 +161,7 @@ export function recordedDecision(
   const decidedAt = epochOf(Reflect.get(value, 'decidedAt'));
   const reason: unknown = Reflect.get(value, 'reason');
   const asked: unknown = Reflect.get(value, 'asked');
+  const decisionSurface: unknown = Reflect.get(value, 'decisionSurface');
   if (
     (decision !== 'approve' && decision !== 'deny' && decision !== 'reject') ||
     typeof decidedBy !== 'string' ||
@@ -169,6 +175,8 @@ export function recordedDecision(
     decidedAt,
     ...(typeof reason === 'string' && reason.trim() !== '' ? { reason } : {}),
     ...(typeof asked === 'string' && asked.trim() !== '' ? { asked } : {}),
+    // Only the two surfaces the Bureau records count; anything else reads as unknown.
+    ...(decisionSurface === 'chat' || decisionSurface === 'reviews' ? { decisionSurface } : {}),
   };
 }
 

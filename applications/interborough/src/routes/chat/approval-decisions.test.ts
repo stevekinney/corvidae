@@ -209,6 +209,46 @@ describe('a call whose approval a person decided', () => {
     );
   });
 
+  test('says Reviews after a reload when the Bureau recorded the decision there (COR-2292)', () => {
+    // Nothing the page watched: a reload has no `elsewhere`.
+    const entry = entryDecided({ ...APPROVED, decisionSurface: 'reviews' });
+    expect(entry.decision?.decisionSurface).toBe('reviews');
+    expect(decidedLine(entry, { owner: 'anonymous:local', zone: 'America/Chicago' })).toBe(
+      'Approved by you in Reviews 10:46 AM, refunded 4200',
+    );
+  });
+
+  test('never says Reviews for a decision recorded as the chat’s, whatever the page watched (COR-2292)', () => {
+    const entry = entryDecided({ ...APPROVED, decisionSurface: 'chat' });
+    const context = {
+      owner: 'anonymous:local',
+      elsewhere: new Set([entry.callId]),
+      zone: 'America/Chicago',
+    };
+    expect(decidedLine(entry, context)).toBe('Approved by you 10:46 AM, refunded 4200');
+  });
+
+  test('says nothing of where for a decision that recorded no surface, after a reload (COR-2292)', () => {
+    const entry = entryDecided(APPROVED);
+    expect(entry.decision).not.toHaveProperty('decisionSurface');
+    expect(decidedLine(entry, { owner: 'anonymous:local', zone: 'America/Chicago' })).toBe(
+      'Approved by you 10:46 AM, refunded 4200',
+    );
+  });
+
+  test('reads only the surfaces the Bureau records (COR-2292)', () => {
+    expect(
+      recordedDecision({
+        [APPROVAL_DECISION_METADATA_KEY]: { ...APPROVED, decisionSurface: 'Reviews' },
+      }),
+    ).not.toHaveProperty('decisionSurface');
+    expect(
+      recordedDecision({
+        [APPROVAL_DECISION_METADATA_KEY]: { ...APPROVED, decisionSurface: 'reviews' },
+      })?.decisionSurface,
+    ).toBe('reviews');
+  });
+
   test('a call with no record of a decision reads as it did before', () => {
     const call = railCall(entryDecided(undefined), false, { owner: 'anonymous:local' });
     expect(call.status).toBe('done');

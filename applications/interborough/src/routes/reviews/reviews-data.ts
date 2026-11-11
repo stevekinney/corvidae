@@ -33,6 +33,7 @@ import {
   listPendingReviews,
   pageReviews,
   resolveBureauReview,
+  type ApprovalDecisionSurface,
   type BureauReview,
   type ListedReview,
   type ReviewDecision,
@@ -184,6 +185,11 @@ export interface ResolveBureauReviewVariables {
   readonly round?: number;
   /** Approve and allow the tool for the rest of the chat. Only an approval of a tool takes it. */
   readonly remember?: boolean;
+  /**
+   * Where the decision was made, which only a tool approval takes: the Reviews page sends
+   * `reviews`, so the chat that asked names Reviews after a reload (COR-2292).
+   */
+  readonly decisionSurface?: ApprovalDecisionSurface;
 }
 
 /** What a decision came to: the Bureau's answer, or that it took effect and its outcome was not written. */

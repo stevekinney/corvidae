@@ -31,6 +31,9 @@ import { AG_UI_PATH, createChatRunWiring, openingTurn } from './run-wiring.ts';
 
 const THREAD = 'thread-1';
 
+/** An approval made in the chat, as its resume answers it, naming the chat (COR-2292). */
+const CHAT_APPROVE = { decision: 'approve', decisionSurface: 'chat' } as const;
+
 type Sent = { url: string; method: string; body: unknown };
 
 type SentInput = {
@@ -291,7 +294,7 @@ describe('a run that stops on a tool approval', () => {
     const continuation = inputOf(sent[1]);
     expect(continuation.messages.map((message) => message.id)).toEqual([opener.ids[0]!]);
     expect(continuation.resume).toEqual([
-      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: CHAT_APPROVE },
     ]);
   });
 
@@ -322,7 +325,7 @@ describe('a run that stops on a tool approval', () => {
       {
         interruptId: INTERRUPT.id,
         status: 'resolved',
-        payload: { decision: 'deny', reason: 'Too much' },
+        payload: { decision: 'deny', reason: 'Too much', decisionSurface: 'chat' },
       },
     ]);
   });
@@ -352,6 +355,7 @@ describe('a run that stops on a tool approval', () => {
     expect(inputOf(sent[1]).resume?.[0]?.payload).toEqual({
       decision: 'approve',
       arguments: { cents: 100 },
+      decisionSurface: 'chat',
     });
   });
 
@@ -754,11 +758,11 @@ describe('several approvals', () => {
     await frames(wiring, conversation);
 
     expect(inputOf(sent[1]).resume).toEqual([
-      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: CHAT_APPROVE },
       {
         interruptId: SECOND.id,
         status: 'resolved',
-        payload: { decision: 'deny', reason: 'Not this one' },
+        payload: { decision: 'deny', reason: 'Not this one', decisionSurface: 'chat' },
       },
     ]);
   });
@@ -779,7 +783,7 @@ describe('several approvals', () => {
     await frames(wiring, conversation);
 
     expect(inputOf(sent[1]).resume).toEqual([
-      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: CHAT_APPROVE },
     ]);
   });
 });
@@ -1503,7 +1507,7 @@ describe('a run that waits on several things at once', () => {
         status: 'resolved',
         payload: { decision: 'approve', answer: 'staging' },
       },
-      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: CHAT_APPROVE },
     ]);
     // The question's answer is the run's to add as a row, and the opening turn is what the
     // approval continues.
@@ -1597,7 +1601,7 @@ describe('a resume the mount refused', () => {
     ]);
     expect(inputOf(requests[3]).resume).toEqual(inputOf(requests[1]).resume);
     expect(inputOf(requests[3]).resume).toEqual([
-      { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+      { interruptId: INTERRUPT.id, status: 'resolved', payload: CHAT_APPROVE },
     ]);
   });
 
@@ -1609,7 +1613,7 @@ describe('a resume the mount refused', () => {
     const onRound = (round: number) => ({
       interruptId: INTERRUPT.id,
       status: 'resolved',
-      payload: { decision: 'approve' },
+      payload: CHAT_APPROVE,
       metadata: { '@lostgradient/bureau': { round } },
     });
 
@@ -1659,7 +1663,7 @@ describe('a resume the mount refused', () => {
       await frames(wiring, conversation);
 
       expect(inputOf(sent[1]).resume).toEqual([
-        { interruptId: INTERRUPT.id, status: 'resolved', payload: { decision: 'approve' } },
+        { interruptId: INTERRUPT.id, status: 'resolved', payload: CHAT_APPROVE },
       ]);
     });
   });
@@ -1711,7 +1715,7 @@ describe('a resume the mount refused', () => {
         {
           interruptId: INTERRUPT.id,
           status: 'resolved',
-          payload: { decision: 'approve', remember: true },
+          payload: { decision: 'approve', remember: true, decisionSurface: 'chat' },
           metadata: { '@lostgradient/bureau': { round: 2 } },
         },
       ]);
@@ -1719,8 +1723,11 @@ describe('a resume the mount refused', () => {
 
     test('sends the note typed on an approval, and none when it is blank', async () => {
       for (const [reason, expected] of [
-        ['Check the carrier first.', { decision: 'approve', reason: 'Check the carrier first.' }],
-        ['   ', { decision: 'approve' }],
+        [
+          'Check the carrier first.',
+          { decision: 'approve', reason: 'Check the carrier first.', decisionSurface: 'chat' },
+        ],
+        ['   ', CHAT_APPROVE],
       ] as const) {
         const conversation = appendUserMessage(empty(), 'Refund it');
         const stubbed = mount([
@@ -1751,7 +1758,7 @@ describe('a resume the mount refused', () => {
 
       await frames(wiring, conversation);
 
-      expect(inputOf(sent[1]).resume?.[0]?.payload).toEqual({ decision: 'approve' });
+      expect(inputOf(sent[1]).resume?.[0]?.payload).toEqual(CHAT_APPROVE);
     });
 
     test('names the grant that did not loosen the tool, once, however often the event repeats', async () => {
