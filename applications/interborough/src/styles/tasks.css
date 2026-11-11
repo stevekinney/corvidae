@@ -153,6 +153,68 @@
   flex-basis: 100%;
 }
 
+/*
+ * On a phone the message bar of a run that waits on a person is docked to the bottom of the
+ * screen, at the 44px a finger needs, and holds its place while the page scrolls behind it. It is
+ * the last thing in the page's flow, so the page ends above it and nothing is hidden beneath it.
+ */
+@media (max-width: 767px) {
+  .ib-run__message-blocked {
+    position: sticky;
+    inset-block-end: 0;
+    z-index: 1;
+    padding: var(--cinder-space-3) var(--cinder-space-4);
+    border-block-start: 1px solid var(--cinder-border-muted);
+    background: var(--cinder-surface);
+  }
+
+  .ib-run__message-blocked :where(button, a) {
+    min-block-size: 44px;
+  }
+}
+
+/* What happened: one line per entry, its time after the start at the right, its detail under it. */
+.ib-run-happened {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ib-run-happened__entry {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  column-gap: var(--cinder-space-3);
+  row-gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-run-happened__title {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-weight: 500;
+}
+
+.ib-run-happened__offset {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.ib-run-happened__detail {
+  grid-column: 1 / -1;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* An entry still to come reads quieter than what has happened. */
+.ib-run-happened__entry[data-state='pending'] .ib-run-happened__title {
+  color: var(--cinder-text-muted);
+  font-weight: 400;
+}
+
 /* Signals, updates and queries sit one under another inside their disclosure, not side by side. */
 .ib-run__change .weft-send-tab {
   grid-template-columns: minmax(0, 1fr);

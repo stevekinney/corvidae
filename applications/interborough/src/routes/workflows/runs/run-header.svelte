@@ -17,18 +17,18 @@
     Dropdown,
     PageHeader,
     VisuallyHidden,
+    type StatusDotWordLabel,
   } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { Copy, Ellipsis, MessageSquare, Play, RotateCcw } from '@lucide/svelte';
 
-  import { RUN_DETAIL_COPY, RUN_PAGE_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, RUN_PAGE_COPY, TASK_COPY } from '../../../app/copy.ts';
   import { showFault, showToast } from '../../../app/toast-host.svelte';
   import type { TaskView } from '../../../lib/bureau-tasks.ts';
   import { dayStamp } from '../../../lib/format/clock.ts';
   import { router } from '../../../lib/router.svelte.ts';
   import type { ScopeGate } from '../../../lib/scopes.svelte.ts';
   import StatusLabel from '../../../lib/status-label.svelte';
-  import type { StatusWord } from '../../../lib/status.ts';
   import {
     actionConfirmTier,
     actionLabel,
@@ -50,8 +50,8 @@
     titleIsIdentifier?: boolean;
     /** Said in place of the title when there is none. */
     fallbackTitle: string;
-    /** The run's one status word; `undefined` while nothing has said. */
-    status: StatusWord | undefined;
+    /** The run's one status word, with its qualifier if it has one; `undefined` while nothing has said. */
+    status: StatusDotWordLabel | undefined;
     /** When the run started, in milliseconds, and how long it took once it is over. */
     startedAt?: number | undefined;
     tookMilliseconds?: number | undefined;
@@ -59,8 +59,20 @@
     tookWord?: 'took' | 'ran';
     /** The Bureau's task, when the run is one: it owns Cancel run. */
     task?: TaskView | undefined;
+    /**
+     * The parts of the status line after the day, the time and the duration ("12 s so far",
+     * "waiting 4 min", "needs your approval to continue"), each set off by a comma.
+     */
+    phrases?: readonly string[] | undefined;
+    /** The signals a run waits for, said after the phrases as "waiting for signal" and each name in code. */
+    waitingForSignals?: readonly string[] | undefined;
     /** A short phrase after the status, such as "answer sent, undo for 5 s" while an answer can be undone. */
     note?: string | undefined;
+    /**
+     * Whether Cancel run is a button of its own for a run only the workflow engine holds, in place
+     * of the engine's Cancel in More: a run that waits for a signal offers nothing else to do.
+     */
+    cancelRun?: boolean;
     /** Where Open chat goes, and what it says. */
     chat?: { readonly href: string; readonly label: string } | undefined;
     /** Where Open goal or Open schedule goes, for a run that belongs to one, and what it says. */
@@ -87,7 +99,10 @@
     tookMilliseconds,
     tookWord = 'took',
     task,
+    phrases = [],
+    waitingForSignals = [],
     note,
+    cancelRun = false,
     chat,
     owner,
     runAgain,
@@ -104,12 +119,22 @@
     engineStatus === undefined || onAction === undefined
       ? []
       : availableActions(engineStatus).filter(
-          (action) => task === undefined || action !== 'cancel',
+          (action) => (task === undefined && !cancelRun) || action !== 'cancel',
         ),
+  );
+  // The engine's cancel as a button of its own, when the page asks for one and the run can be canceled.
+  const engineCancel = $derived(
+    cancelRun &&
+      task === undefined &&
+      engineStatus !== undefined &&
+      onAction !== undefined &&
+      availableActions(engineStatus).includes('cancel'),
   );
   const canRestart = $derived(
     engineStatus !== undefined && onRestart !== undefined && isTerminalStatus(engineStatus),
   );
+
+  const signalWords = RUN_DETAIL_COPY.status.waitingForSignal;
 
   let confirming = $state<WorkflowContextualAction | null>(null);
 
@@ -159,7 +184,8 @@
   {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
       datetime={new Date(startedAt).toISOString()}>{dayStamp(startedAt)}</time
     >{/if}{#if tookMilliseconds !== undefined}, {tookWord}
-    {durationWords(tookMilliseconds)}{/if}{#if note !== undefined}, {note}{/if}
+    {durationWords(tookMilliseconds)}{/if}{#each phrases as phrase (phrase)}, {phrase}{/each}{#each waitingForSignals as signal (signal)}, {signalWords}
+    <code class="ib-identifier">{signal}</code>{/each}{#if note !== undefined}, {note}{/if}
 {/snippet}
 
 {#snippet actions()}
@@ -193,6 +219,15 @@
       </Button>
     {/if}
     {#if task !== undefined}<RunCancel {task} />{/if}
+    {#if engineCancel}
+      <Button
+        variant="secondary"
+        label={TASK_COPY.cancelAction}
+        title={actionGate.title}
+        disabled={actionGate.disabled || (pendingAction !== null && pendingAction !== 'cancel')}
+        onclick={() => choose('cancel')}
+      />
+    {/if}
     <Dropdown id="ib-run-actions" placement="bottom-end">
       <Dropdown.Trigger caretVisible={false}>
         <Ellipsis aria-hidden="true" size={16} />

@@ -143,14 +143,14 @@ describe('RunRelated', () => {
     expect(note?.textContent).toContain('Showing 3 of 120');
   });
 
-  test('says a run has no relatives once, in one empty state, and offers no topology', async () => {
+  test('says a run has no relatives once, in one plain line, and offers no topology (54p)', async () => {
     const { findByText, queryByRole } = render(RunRelatedHarness, {
       props: {
         client: client({ empty: true }),
         workflow: { ...selfRun, parentWorkflowId: undefined },
       },
     });
-    expect(await findByText('No related runs')).not.toBeNull();
+    expect(await findByText('No other runs yet.')).not.toBeNull();
     expect(queryByRole('button', { name: 'Topology' })).toBeNull();
   });
 

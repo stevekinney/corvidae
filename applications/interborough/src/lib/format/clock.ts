@@ -84,6 +84,16 @@ export function clockTime(at: number, zone: string = viewerTimeZone()): string {
   }).format(at);
 }
 
+/** The clock of an instant in a zone to the second, on a twelve-hour clock: "10:42:11 AM". */
+export function clockTimeWithSeconds(at: number, zone: string = viewerTimeZone()): string {
+  return new Intl.DateTimeFormat(LOCALE, {
+    hour: 'numeric',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: zone,
+  }).format(at);
+}
+
 /**
  * The day and the clock of an instant in a zone, whatever day it is: "Mon, Nov 2, 10:30 AM". A run's
  * page says when the run started this way, because the run is read long after it happened and a

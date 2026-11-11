@@ -4,7 +4,7 @@
    * runs started alongside it. Each group shows a few and counts the rest, and Topology opens all
    * of it as a small tree in a drawer. A run with no relatives says so once, in one empty state.
    */
-  import { Button, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
+  import { Button, ErrorState, Skeleton } from '@lostgradient/cinder';
   import type { WorkflowState } from '@lostgradient/weft';
   import { createQuery } from '@tanstack/svelte-query';
 
@@ -104,13 +104,7 @@
       onRetry={() => void related.refetch()}
     />
   {:else if !hasRelatedRuns(related.data)}
-    <EmptyState
-      kind="first-use"
-      size="compact"
-      headingLevel={3}
-      title={RUN_RELATED_COPY.noneTitle}
-      description={RUN_RELATED_COPY.noneDescription}
-    />
+    <p class="ib-run__note">{RUN_RELATED_COPY.none}</p>
   {:else}
     {#if related.data.parent !== undefined}
       <section

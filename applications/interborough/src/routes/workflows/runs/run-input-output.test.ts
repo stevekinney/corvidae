@@ -60,12 +60,12 @@ function serveThread(text: string) {
 }
 
 describe('a workflow’s input and output', () => {
-  test('a running workflow says its output is not produced yet, and draws no output card', () => {
+  test('a running workflow says its output appears when the run finishes, and draws no output card (54p)', () => {
     const { getByText, queryByRole, getByRole } = render(Harness, {
       props: { workflow: workflow({ status: 'running' }) },
     });
 
-    expect(getByText(copy.outputPending('running'))).not.toBeNull();
+    expect(getByText(copy.appearsWhenFinished)).not.toBeNull();
     expect(getByRole('group', { name: copy.input })).not.toBeNull();
     expect(queryByRole('group', { name: copy.output })).toBeNull();
   });
@@ -271,6 +271,46 @@ describe('the message in and the reply out of a chat run', () => {
     expect(view.getByText(copy.fromYou)).not.toBeNull();
     expect(view.getByText(/^Sent in the chat, /)).not.toBeNull();
     expect(view.getByRole('heading', { level: 3, name: copy.replyOut })).not.toBeNull();
+  });
+
+  test('a run waiting on a question says it is waiting for the answer, in place of a reply (54w)', async () => {
+    serveThread('Ship the release notes fix.');
+    landAt('/runs/run-1');
+    const view = render(Harness, {
+      props: {
+        task: taskFixture({
+          id: 'run-1',
+          contextId: 'session-1',
+          agentName: 'request-human-input',
+          status: 'input-required',
+          openWaits: [{ kind: 'human-wait', reviewId: 'review-1', signalName: 'environment' }],
+        }),
+        startedAt: Date.parse('2026-10-19T08:00:00.000Z'),
+      },
+    });
+
+    expect(view.getByText(copy.noReplyWaitingAnswer)).not.toBeNull();
+    expect(view.getByText(copy.fromAgent('Request human input'))).not.toBeNull();
+    await waitFor(() =>
+      expect(view.getByTestId('run-message-in').textContent).toBe('Ship the release notes fix.'),
+    );
+  });
+
+  test('a run waiting on an approval says it is waiting for the approval (55s)', () => {
+    landAt('/runs/run-1');
+    const view = render(Harness, {
+      props: {
+        task: taskFixture({
+          id: 'run-1',
+          contextId: 'session-1',
+          status: 'input-required',
+          openWaits: [{ kind: 'tool-approval', reviewId: 'review-1', callId: 'call-1' }],
+        }),
+      },
+    });
+
+    expect(view.getByText(copy.noReplyWaitingApproval)).not.toBeNull();
+    expect(view.queryByText(copy.noReplyWaitingAnswer)).toBeNull();
   });
 
   test('says the message is not kept when the thread cannot be read', async () => {

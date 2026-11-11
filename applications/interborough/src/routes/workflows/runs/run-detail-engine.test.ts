@@ -292,6 +292,25 @@ describe('a run the engine holds', () => {
     });
   });
 
+  test('a run parked on a signal reads Waiting, names the signal, and offers Cancel run as its one button (56g)', async () => {
+    const id = 'wf-detail-signal-1';
+    routeRun(id, { id, status: 'running', waitingForSignals: ['notes-approved'] });
+
+    const view = mount(id);
+
+    const header = await waitFor(() => {
+      const found = view.container.querySelector('[data-run-header]');
+      expect(found?.textContent).toContain('notes-approved');
+      return found as HTMLElement;
+    });
+    expect(header.querySelector('[data-status-word]')?.textContent).toContain('Waiting');
+    expect(header.textContent).toMatch(/waiting for signal\s+notes-approved/);
+    expect(within(header).getByRole('button', { name: 'Cancel run' })).not.toBeNull();
+    expect(view.queryByRole('heading', { level: 2, name: 'What you can do' })).toBeNull();
+    await fireEvent.click(within(header).getByRole('button', { name: 'More actions' }));
+    expect(view.queryByRole('menuitem', { name: 'Cancel' })).toBeNull();
+  });
+
   test('Cancel asks first, and is the engine’s only for a run no task describes', async () => {
     const id = 'wf-detail-cancel-1';
     routeRun(id, { id, status: 'running' });
@@ -356,6 +375,16 @@ describe('the Details rail of a run the engine holds', () => {
     expect(fact(view, 'Workflow')).toBe('Order fulfillment');
     expect(fact(view, 'Revision')).toBe('Unpinned (pre-revision record)');
     expect(view.container.querySelector('dd code.ib-identifier')).not.toBeNull();
+  });
+
+  test('names a workflow Interborough runs itself as built in, in place of a version (06g)', async () => {
+    const id = 'wf-detail-rail-built-in';
+    routeRun(id, { id, type: 'agentRun' });
+
+    const view = mount(id);
+
+    await waitFor(() => expect(fact(view, 'Version')).toBe('Built in'));
+    expect(fact(view, 'Workflow')).toContain('Chat with an agent');
   });
 
   test('says how long until the deadline of a running run, and that it passed once it has', async () => {

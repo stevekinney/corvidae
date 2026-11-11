@@ -108,6 +108,18 @@
         : copy.chatDescription
       : copy.workflowDescription,
   );
+  // What stands in the reply's place: why a run that waits on a person has none yet, or that the
+  // agent has not answered, or that it finished without a written answer.
+  const noReply = $derived.by((): string => {
+    if (task === undefined) return '';
+    if (isTerminalState(task.status)) return TASK_COPY.noAnswer;
+    if (task.status === 'input-required' && task.openWaits.length > 0) {
+      return task.openWaits.some((wait) => wait.kind === 'human-wait')
+        ? copy.noReplyWaitingAnswer
+        : copy.noReplyWaitingApproval;
+    }
+    return TASK_COPY.noAnswerYet;
+  });
   const clamps = $derived(
     answerHtml !== undefined && answerHtml.replace(/<[^>]*>/g, '').length > CLAMP_ABOVE,
   );
@@ -164,9 +176,7 @@
           {/if}
           {#if answerTruncated}<p class="ib-run__note">{TASK_COPY.answerTruncated}</p>{/if}
         {:else}
-          <p class="ib-run__note">
-            {isTerminalState(task.status) ? TASK_COPY.noAnswer : TASK_COPY.noAnswerYet}
-          </p>
+          <p class="ib-run__note">{noReply}</p>
         {/if}
         {#if followState === 'unavailable'}
           <p class="ib-run__note" role="status">{TASK_COPY.followUnavailable}</p>

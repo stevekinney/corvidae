@@ -243,7 +243,11 @@
 {/snippet}
 
 {#snippet version()}
-  <code class="ib-identifier ib-run-value">{versionSummary}</code>
+  {#if workflowType !== undefined && isBuiltInWorkflow(workflowType)}
+    <span class="ib-run-value">{RUN_DETAIL_COPY.facts.builtInVersion}</span>
+  {:else}
+    <code class="ib-identifier ib-run-value">{versionSummary}</code>
+  {/if}
 {/snippet}
 
 {#snippet revision()}

@@ -4,12 +4,14 @@
    * owns the word-to-tone table, so this passes the word and never picks a tone. The one place a
    * records page draws a status, so the word and its colour never come apart.
    */
-  import { StatusDot } from '@lostgradient/cinder';
-
-  import type { StatusWord } from './status.ts';
+  import { StatusDot, type StatusDotWordLabel } from '@lostgradient/cinder';
 
   interface Props {
-    word: StatusWord;
+    /**
+     * One of the seven status words, or any word Cinder's table knows with its qualifier after a
+     * comma ("Running, checking the result"), so a run page can say "Waiting" for a signal.
+     */
+    word: StatusDotWordLabel;
   }
 
   let { word }: Props = $props();

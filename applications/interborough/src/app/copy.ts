@@ -134,8 +134,8 @@ export const RUN_RELATED_COPY = {
   partial: (shown: number, total: number): string =>
     `Showing ${String(shown)} of ${String(total)}. Filter the workflow list by this run’s parent to see the rest.`,
   revisionTitle: (revision: string): string => `Revision (exact executable artifact): ${revision}`,
-  noneTitle: 'No related runs',
-  noneDescription: 'No run started this one, and it has not started any.',
+  /** Said under the heading when no run started this one and it has not started any. */
+  none: 'No other runs yet.',
   loadFailedTitle: 'Related runs could not be read',
   openRun: (label: string): string => `Open run ${label}`,
 } as const;
@@ -321,10 +321,81 @@ export const RUN_DETAIL_COPY = {
     heading: 'Related runs',
     noneInChat: 'No other runs came from this chat.',
   },
-  /** Labels the Details rail adds for a run a goal made. */
-  facts: { goal: 'Goal' },
+  /** Labels the Details rail adds for a run a goal made, and what its Version reads for a built-in workflow. */
+  facts: { goal: 'Goal', builtInVersion: 'Built in' },
   /** The last row of the Started by chain: the run itself, one level in from what started it. */
   lineage: { run: 'Run', thisRun: 'This run' },
+  /**
+   * The parts of the status line after the day and the time, for a run that has not ended: how long
+   * it has run, what a person has to do for it to go on, the signal it waits for, and which attempt
+   * of its goal it is. Parts are joined by commas, never a middle dot.
+   */
+  status: {
+    /** How long a run still going has run, after the time it started. */
+    soFar: (duration: string): string => `${duration} so far`,
+    /** How long a run has waited on a person. */
+    waiting: (duration: string): string => `waiting ${duration}`,
+    /** What the person does for a run waiting on a question, and for one waiting on an approval. */
+    needsAnswer: 'needs an answer to continue',
+    needsApproval: 'needs your approval to continue',
+    /** The run waits for a signal, which is named after this, in code. */
+    waitingForSignal: 'waiting for signal',
+    /** Which attempt of its goal a run is, and how long the agent took inside it. */
+    attempt: (number: number, of: number): string => `attempt ${String(number)} of ${String(of)}`,
+    agentTook: (duration: string): string => `Agent took ${duration}`,
+  },
+  /** The heading of a page whose run is not yet known: the run's identifier names it. */
+  runHeading: (runId: string): string => `Run ${runId}`,
+  /** What a run page says while it, or what it needs, is slow to arrive or was left unread. */
+  states: {
+    /** Under the placeholders after ten seconds, as Cinder's skeleton writes it. */
+    stillLoading: 'Still loading this run. This is taking longer than usual.',
+    /** What replaces the page's sections after Cancel on a slow read. */
+    loadingCanceled: {
+      title: 'Loading canceled',
+      description: 'This run didn’t finish loading. Nothing is missing; it just wasn’t fetched.',
+    },
+    /** The accessible name of the placeholders under What happened. */
+    loadingHappened: 'Loading what happened',
+  },
+  /** What a run page says it is waiting for, and what it has not yet got. */
+  waits: {
+    /** The line under What you can do: how many questions and approvals the run waits on. */
+    summary: (questions: number, approvals: number): string => {
+      const parts: string[] = [];
+      if (questions > 0) {
+        parts.push(questions === 1 ? 'one question' : `${String(questions)} questions`);
+      }
+      if (approvals > 0) {
+        parts.push(approvals === 1 ? 'one approval' : `${String(approvals)} approvals`);
+      }
+      return `This run is waiting on ${parts.join(' and ')}.`;
+    },
+  },
+  /** What happened: the section of what the run did, in order, with the time since it started. */
+  happened: {
+    heading: 'What happened',
+    /** The accessible name of the list of entries. */
+    listLabel: 'What happened, in order',
+    /** The first entry, with the clock time the run started. */
+    started: (clock: string): string => `Started ${clock}`,
+    /** Under Started: what set the run going, when the message in is known. */
+    startedByMessage: (clock: string): string => `You sent a message in the chat at ${clock}`,
+    /** The entry of a run waiting for a person, and what it waits for. */
+    askedApproval: 'Asked for approval',
+    askedAnswer: 'Asked a question',
+    waitingForApproval: 'Waiting for your approval',
+    waitingForAnswer: 'Waiting for your answer',
+    /** The entry that says what comes after a wait. */
+    nextSteps: 'Next steps',
+    nextApprovalWords: 'Continue once you’ve approved or denied',
+    nextAnswerWords: 'Continue once you’ve answered',
+    /** The last entry of a run that is still going and has not replied. */
+    replied: 'Replied',
+    notRun: 'Not run yet',
+    /** Under a tool call: how long it ran. */
+    ranIn: (name: string, duration: string): string => `${name}, ran in ${duration}`,
+  },
   /** The header's links to the goal or the schedule a run belongs to, and to set up another run. */
   openGoal: 'Open goal',
   openSchedule: 'Open schedule',
@@ -360,12 +431,15 @@ export const RUN_DETAIL_COPY = {
     loadingMessage: 'Loading the message',
     /** The message in could not be found in the chat's thread. */
     noMessageIn: 'The message that started this run is not kept in the chat.',
+    /** The reply out of a run that waits on a person: what it waits for, in place of an answer. */
+    noReplyWaitingAnswer: 'No reply yet. It’s waiting for your answer.',
+    noReplyWaitingApproval: 'No reply yet. It’s waiting for your approval.',
+    /** The output of a workflow run still going. */
+    appearsWhenFinished: 'Appears when the run finishes.',
     /** The output of a run that failed. */
     noOutputFailed: 'No output. The run failed, so it never produced one.',
     /** The output of a run that ended without one. */
     noOutputEnded: (how: string): string => `No output. The run ${how}.`,
-    /** The output of a run still going. */
-    outputPending: (status: string): string => `Not produced yet. The run is still ${status}.`,
     /** A long reply held to a few lines, and the control that opens it. */
     showAll: 'Show all',
     showLess: 'Show less',
@@ -5498,11 +5572,6 @@ export const TASK_COPY = {
     'This server cannot follow a task live, so its answer and live updates are not shown here.',
   followReconnecting: 'The connection dropped. Reconnecting.',
   waitsHeading: 'What you can do',
-  /** The line under the heading while the run waits on questions. */
-  waitsSummary: (questions: number): string =>
-    questions === 1
-      ? 'This run is waiting on one question.'
-      : `This run is waiting on ${String(questions)} questions.`,
   /** The heading once everything the run asked has been answered. */
   waitsAnsweredHeading: 'Answered',
   /** The small line over a question: who asked and how long ago. */

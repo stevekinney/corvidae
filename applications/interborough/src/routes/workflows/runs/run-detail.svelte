@@ -65,15 +65,22 @@
   import RunDetails from './run-details.svelte';
   import RunEnginePanels from './run-engine-panels.svelte';
   import { RunEngine } from './run-engine.svelte.ts';
+  import RunHappened from './run-happened.svelte';
   import RunHeader from './run-header.svelte';
   import RunInputOutput from './run-input-output.svelte';
   import RunHowItRan from './run-how-it-ran.svelte';
   import RunPanels from './run-panels.svelte';
   import RunPayloadCards from './run-payload-cards.svelte';
   import { buildRunRows } from './run-rows.ts';
+  import { runStatusLine } from './run-status-line.ts';
   import RunMessageBlocked from './run-message-blocked.svelte';
   import RunWaiting from './run-waiting.svelte';
   import { TaskFollower } from './task-follower.svelte.ts';
+
+  /** How long the run is let to arrive before its placeholders are drawn: Cinder's loading rule. */
+  const LOADING_DELAY_MILLISECONDS = 300;
+  /** How long a read runs before the placeholders say it is taking longer than usual. */
+  const STILL_LOADING_MILLISECONDS = 10_000;
 
   interface RunDetailProps {
     runId: string;
@@ -304,6 +311,33 @@
     },
   );
 
+  // The goal attempt the run is, as the status line says it: which attempt, and whether its agent
+  // has finished and its result is being checked against the goal's check.
+  const attemptLine = $derived(
+    attempt === undefined
+      ? undefined
+      : {
+          number: attempt.attempt.attemptIndex + 1,
+          of: Math.max(attempt.goal.bounds.maximumAttempts, attempt.attempt.attemptIndex + 1),
+          checking: attempt.attempt.status === 'evaluating',
+        },
+  );
+  // The status word and what follows the time in the header: how long a run still going has run,
+  // what a person has to do for a waiting one to go on, the signal it waits for, or the attempt.
+  const statusLine = $derived(
+    summary === undefined
+      ? undefined
+      : runStatusLine({
+          status: summary.status,
+          startedAt: summary.startedAt,
+          over: summary.over,
+          now: engine.clock.now,
+          task: task.data,
+          waitingForSignals: workflow?.waitingForSignals,
+          attempt: attemptLine,
+        }),
+  );
+
   const attemptThreadId = $derived(
     attempt !== undefined && attempt.attempt.sessionId !== '' ? attempt.attempt.sessionId : null,
   );
@@ -467,7 +501,29 @@
   /** Whether an answer to the run's question is in its Undo window, which the status line says. */
   let answerHeld = $state(false);
   const answerUndoSeconds = $derived(Math.round(answerUndoMilliseconds() / 1000));
+
+  /** Whether Cancel, in the status line a slow read shows, stopped the read of the run. */
+  let loadCanceled = $state(false);
+  function cancelLoading(): void {
+    loadCanceled = true;
+    void queryClient.cancelQueries({ queryKey: detailKey });
+    void queryClient.cancelQueries({ queryKey: queryKeys.goals.runs() });
+  }
+  function retryLoading(): void {
+    loadCanceled = false;
+    void task.refetch();
+  }
 </script>
+
+<!-- The header the route can draw at once: the run's identifier names it until the run is known. -->
+{#snippet unknownHeader()}
+  <RunHeader
+    runId={initialRunId}
+    title={undefined}
+    fallbackTitle={RUN_DETAIL_COPY.runHeading(initialRunId)}
+    status={undefined}
+  />
+{/snippet}
 
 {#if follower.removed || unknownRun}
   <NotFoundState
@@ -476,26 +532,45 @@
     view="runs"
   />
 {:else if failed}
-  <ErrorState
-    variant="flat"
-    title={TASK_COPY.loadFailed.title}
-    description={TASK_COPY.loadFailed.description}
-    headingLevel={1}
-    retryLabel={RETRY_LABEL}
-    onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
-  />
+  <article class="ib-run" aria-label={TASK_COPY.runTitle}>
+    {@render unknownHeader()}
+    <ErrorState
+      variant="flat"
+      title={TASK_COPY.loadFailed.title}
+      description={TASK_COPY.loadFailed.description}
+      headingLevel={2}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void (notFound && goals.isError ? goals.refetch() : task.refetch())}
+    />
+  </article>
 {:else if lookupFailed}
-  <ErrorState
-    variant="flat"
-    title={TASK_COPY.loadFailed.title}
-    description={engine.fault?.message ?? TASK_COPY.loadFailed.description}
-    headingLevel={1}
-    retryLabel={RETRY_LABEL}
-    onRetry={() => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(initialRunId) });
-      void fileRun.refetch();
-    }}
-  />
+  <article class="ib-run" aria-label={TASK_COPY.runTitle}>
+    {@render unknownHeader()}
+    <ErrorState
+      variant="flat"
+      title={TASK_COPY.loadFailed.title}
+      description={engine.fault?.message ?? TASK_COPY.loadFailed.description}
+      headingLevel={2}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => {
+        void queryClient.invalidateQueries({ queryKey: queryKeys.workflows.detail(initialRunId) });
+        void fileRun.refetch();
+      }}
+    />
+  </article>
+{:else if loadCanceled && summary === undefined}
+  <article class="ib-run" aria-label={TASK_COPY.runTitle}>
+    {@render unknownHeader()}
+    <ErrorState
+      bordered
+      tone="neutral"
+      headingLevel={2}
+      title={RUN_DETAIL_COPY.states.loadingCanceled.title}
+      description={RUN_DETAIL_COPY.states.loadingCanceled.description}
+      retryLabel={RETRY_LABEL}
+      onRetry={retryLoading}
+    />
+  </article>
 {:else}
   <article class="ib-run" aria-label={TASK_COPY.runTitle}>
     {#if summary !== undefined}
@@ -506,11 +581,14 @@
           (task.data === undefined ? undefined : TASK_COPY.unknownAgent)}
         titleIsIdentifier={displayTitle === undefined}
         fallbackTitle={TASK_COPY.runTitle}
-        status={summary.status}
+        status={statusLine?.word ?? summary.status}
         startedAt={summary.startedAt}
-        tookMilliseconds={summary.over
+        tookMilliseconds={summary.over && attemptLine?.checking !== true
           ? Math.max(0, summary.updatedAt - summary.startedAt)
           : undefined}
+        phrases={statusLine?.phrases}
+        waitingForSignals={statusLine?.signals}
+        cancelRun={(statusLine?.signals.length ?? 0) > 0}
         tookWord={summary.status === 'Canceled' ? 'ran' : 'took'}
         task={task.data}
         chat={chatLink}
@@ -523,19 +601,32 @@
         onAction={(action) => engine.act(action)}
         onRestart={() => (restartOpen = true)}
       />
-    {:else if loading}
-      <Skeleton height="2rem" width="40%" />
     {:else}
-      <RunHeader
-        runId={initialRunId}
-        title={undefined}
-        fallbackTitle={TASK_COPY.runTitle}
-        status={undefined}
-      />
+      {@render unknownHeader()}
     {/if}
 
     <div class="ib-run__layout">
       <div class="ib-run__main">
+        {#if summary === undefined && loading}
+          <section
+            class="ib-run__section"
+            aria-labelledby="ib-run-happened"
+            data-section="what-happened"
+          >
+            <h2 id="ib-run-happened" class="ib-run__heading-2">
+              {RUN_DETAIL_COPY.happened.heading}
+            </h2>
+            <Skeleton
+              variant="list"
+              rows={3}
+              delay={LOADING_DELAY_MILLISECONDS}
+              stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+              stillLoadingLabel={RUN_DETAIL_COPY.states.stillLoading}
+              label={RUN_DETAIL_COPY.states.loadingHappened}
+              onCancel={cancelLoading}
+            />
+          </section>
+        {/if}
         {#if task.data}
           <RunWaiting task={task.data} onAnswerHold={(held) => (answerHeld = held)} />
           <RunMessageBlocked task={task.data} />
@@ -555,6 +646,14 @@
               ? () => (howOverride = true)
               : undefined}
           />
+          {#if task.data !== undefined}
+            <RunHappened
+              task={task.data}
+              threadId={goalTask ? attemptThreadId : undefined}
+              startedAt={summary.startedAt}
+              events={taskEvents}
+            />
+          {/if}
           <RunHowItRan bind:open={() => howOpen, (open) => (howOverride = open)}>
             {#if task.data !== undefined && (workflow !== undefined || record !== undefined)}
               <section
@@ -575,6 +674,7 @@
               note={activityNote}
               engine={workflow === undefined ? undefined : engine}
               {workflow}
+              decideApprovals={false}
             />
             {#if task.data !== undefined}
               <RunPanels taskId={task.data.id} />

@@ -7,6 +7,7 @@ import { describe, expect, test } from 'bun:test';
 import {
   calendarDay,
   clockTime,
+  clockTimeWithSeconds,
   dateLine,
   dayAndTime,
   rowTime,
@@ -137,5 +138,16 @@ describe('zoneLabel and calendarDay', () => {
     // 9:30 PM on Monday in Chicago is already Tuesday in Tokyo.
     expect(calendarDay(lateEvening, ZONE)).toBe(calendarDay(NOW, ZONE));
     expect(calendarDay(lateEvening, 'Asia/Tokyo')).toBe(calendarDay(NOW, ZONE) + 1);
+  });
+});
+
+describe('clockTimeWithSeconds', () => {
+  test('says the second a run started on a twelve-hour clock (55s)', () => {
+    expect(clockTimeWithSeconds(Date.parse('2026-11-02T10:42:11-06:00'), ZONE)).toBe('10:42:11 AM');
+    expect(clockTimeWithSeconds(Date.parse('2026-11-02T16:05:09-06:00'), ZONE)).toBe('4:05:09 PM');
+  });
+
+  test('reads the zone it is given, not the one the instant is in at UTC', () => {
+    expect(clockTimeWithSeconds(Date.parse('2026-11-02T16:42:11Z'), ZONE)).toBe('10:42:11 AM');
   });
 });

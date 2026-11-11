@@ -53,6 +53,32 @@ describe('the run page header', () => {
     expect(view.container.textContent).not.toContain('took');
   });
 
+  test('says what a run that has not ended is doing after the time: the phrases, then the signals it waits for', () => {
+    const view = renderHeader({
+      status: 'Waiting',
+      startedAt: Date.parse('2026-11-02T09:50:00-06:00'),
+      phrases: ['12 s so far'],
+      waitingForSignals: ['notes-approved'],
+    });
+
+    const line = view.container.textContent ?? '';
+    expect(view.container.querySelector('[data-status-word]')?.textContent).toContain('Waiting');
+    expect(line).toContain(', 12 s so far');
+    expect(line).toMatch(/waiting for signal\s+notes-approved/);
+    expect(
+      [...view.container.querySelectorAll('code.ib-identifier')].map((code) => code.textContent),
+    ).toContain('notes-approved');
+  });
+
+  test('a status word with a qualifier is one status, drawn once', () => {
+    const view = renderHeader({ status: 'Running, checking the result' });
+
+    expect(view.container.querySelectorAll('[data-status-word]')).toHaveLength(1);
+    expect(view.container.querySelector('[data-status-word]')?.textContent).toContain(
+      'Running, checking the result',
+    );
+  });
+
   test('sets a title a person gave as text, not as an identifier', () => {
     const view = renderHeader({ title: 'Look up order 4468', titleIsIdentifier: false });
 
@@ -114,6 +140,40 @@ describe('the run page header', () => {
     expect(view.queryByRole('menuitem', { name: 'Cancel' })).toBeNull();
     expect(view.getByRole('menuitem', { name: 'Suspend' })).not.toBeNull();
     expect(view.getByRole('menuitem', { name: 'Force timeout' })).not.toBeNull();
+  });
+
+  test('a run only the engine holds can offer Cancel run as a button, and then More does not offer it again (56g)', async () => {
+    const withButton = renderHeader({
+      status: 'Waiting',
+      engineStatus: 'running',
+      cancelRun: true,
+      onAction: () => {},
+    });
+
+    expect(withButton.getByRole('button', { name: 'Cancel run' })).not.toBeNull();
+    await openMenu(withButton);
+    expect(withButton.queryByRole('menuitem', { name: 'Cancel' })).toBeNull();
+  });
+
+  test('Cancel run, as a button of the engine’s run, asks first, and confirming sends it once', async () => {
+    const actions: WorkflowContextualAction[] = [];
+    const view = renderHeader({
+      status: 'Waiting',
+      engineStatus: 'running',
+      cancelRun: true,
+      onAction: (a: WorkflowContextualAction) => actions.push(a),
+    });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Cancel run' }));
+    expect(actions).toEqual([]);
+    await fireEvent.click(within(view.getByRole('dialog')).getByRole('button', { name: 'Cancel' }));
+    expect(actions).toEqual(['cancel']);
+  });
+
+  test('Cancel run is not a button of its own unless the page asks for it', () => {
+    const view = renderHeader({ engineStatus: 'running', onAction: () => {} });
+
+    expect(view.queryByRole('button', { name: 'Cancel run' })).toBeNull();
   });
 
   test('a running run offers cancel, suspend and force timeout; a suspended one offers resume', async () => {

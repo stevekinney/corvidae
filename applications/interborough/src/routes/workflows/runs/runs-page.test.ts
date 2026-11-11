@@ -292,7 +292,9 @@ describe('a run’s page', () => {
       return TASK;
     });
 
-    await view.findByRole('heading', { level: 1, name: TASK_COPY.loadFailed.title });
+    // The header the route draws at once stays over the error, which is a section under it (55u).
+    await view.findByRole('heading', { level: 1, name: RUN_DETAIL_COPY.runHeading('run-1') });
+    await view.findByRole('heading', { level: 2, name: TASK_COPY.loadFailed.title });
     expect(stub?.callsTo('bureau.goals.list')).toEqual([]);
 
     failing = false;
@@ -309,7 +311,8 @@ describe('a run’s page', () => {
       goalsFail: () => failing,
     });
 
-    await findByRole('heading', { level: 1, name: TASK_COPY.loadFailed.title });
+    await findByRole('heading', { level: 1, name: RUN_DETAIL_COPY.runHeading('goal-1-a0') });
+    await findByRole('heading', { level: 2, name: TASK_COPY.loadFailed.title });
 
     failing = false;
     await fireEvent.click(await findByRole('button', { name: RETRY_LABEL }));

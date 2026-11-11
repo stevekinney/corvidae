@@ -33,9 +33,19 @@
     engine?: RunEngine | undefined;
     /** The run, as the engine holds it. */
     workflow?: WorkflowState | undefined;
+    /** Whether a tool approval is decided under its call; off where the page decides it above. */
+    decideApprovals?: boolean;
   }
 
-  let { task, threadId, taskEvents = 0, note, engine, workflow }: RunActivityProps = $props();
+  let {
+    task,
+    threadId,
+    taskEvents = 0,
+    note,
+    engine,
+    workflow,
+    decideApprovals = true,
+  }: RunActivityProps = $props();
 
   const taskThreadId = $derived(task === undefined ? undefined : threadIdForTask(task, threadId));
 
@@ -52,7 +62,7 @@
   {#if task !== undefined}
     <h3 class="ib-run__heading-3">{TASK_COPY.toolCallsHeading}</h3>
     <!-- A goal's attempt reads the thread of its own session, once the goals have named it; its waits show either way. -->
-    <RunToolCalls {task} threadId={taskThreadId} events={taskEvents} />
+    <RunToolCalls {task} threadId={taskThreadId} events={taskEvents} decide={decideApprovals} />
   {:else if note !== undefined}
     <p class="ib-run__note">{note}</p>
   {/if}

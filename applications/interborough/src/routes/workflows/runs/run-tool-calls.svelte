@@ -4,7 +4,8 @@
    * decision inline under the call that waits for it. The calls come from the chat thread the run
    * belongs to; a run with no chat (a goal's attempt, a catalog task) has none to show, and a run
    * that waits on a question rather than a tool has the question above all of this, in the
-   * waiting section (`run-waiting.svelte`).
+   * waiting section (`run-waiting.svelte`). The page decides every approval there, and passes
+   * `decide` off so the call it gates is shown without a second control for the same review.
    *
    * The thread is read again whenever the run's stream reports something (`events`), because a call
    * that starts or ends inside one status is a change the task's own fields do not show, and
@@ -33,12 +34,14 @@
     threadId?: string | null | undefined;
     /** How many elements the run's stream has reported; the thread is read again when it grows. */
     events?: number;
+    /** Whether a tool approval is decided here, under its call; off where the page decides it above. */
+    decide?: boolean;
   }
 
   /** How long a burst of stream elements waits before the thread is read once for all of them. */
   const EVENT_REREAD_MILLISECONDS = 300;
 
-  let { task, threadId = undefined, events = 0 }: RunToolCallsProps = $props();
+  let { task, threadId = undefined, events = 0, decide = true }: RunToolCallsProps = $props();
   const threadToRead = $derived(threadId === undefined ? task.contextId : threadId);
 
   const thread = createQuery(
@@ -75,10 +78,12 @@
   // is still being read, failed to read, or does not hold the call) has no row to sit under, so it is
   // shown on its own rather than lost, as the chat shows an approval with no call.
   const unmatchedApprovals = $derived(
-    task.openWaits.filter(
-      (wait) =>
-        wait.kind === 'tool-approval' && !entries.some((entry) => entry.callId === wait.callId),
-    ),
+    decide
+      ? task.openWaits.filter(
+          (wait) =>
+            wait.kind === 'tool-approval' && !entries.some((entry) => entry.callId === wait.callId),
+        )
+      : [],
   );
   const threadFailed = $derived(thread.isError && thread.data === undefined);
 </script>
@@ -86,9 +91,11 @@
 {#if entries.length > 0}
   <ToolCalls id={`run-${task.id}`} {entries}>
     {#snippet decision(entry)}
-      {#each task.openWaits.filter((wait) => wait.kind === 'tool-approval' && wait.callId === entry.callId) as wait (wait.reviewId)}
-        <RunWait taskId={task.id} {wait} />
-      {/each}
+      {#if decide}
+        {#each task.openWaits.filter((wait) => wait.kind === 'tool-approval' && wait.callId === entry.callId) as wait (wait.reviewId)}
+          <RunWait taskId={task.id} {wait} />
+        {/each}
+      {/if}
     {/snippet}
   </ToolCalls>
 {:else if threadFailed}

@@ -46,7 +46,7 @@
           {:else}
             <p class="ib-run__note">
               <span class="ib-run__spinner" aria-hidden="true"></span>
-              {copy.outputPending(workflow.status)}
+              {copy.appearsWhenFinished}
             </p>
           {/if}
         </section>

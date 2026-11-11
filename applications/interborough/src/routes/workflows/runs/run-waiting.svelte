@@ -1,15 +1,17 @@
 <script lang="ts">
   /**
-   * What the run is waiting on a person to answer, at the top of the page: each open question the
-   * agent asked, with the control that answers it in place (`run-wait.svelte`). A tool approval is
-   * not here: it is decided under the tool call it gates, in the Activity section, as the chat shows
-   * it. The section is absent when the run asks nothing. An answered question keeps its row for as
-   * long as the page is open: the next read of the task no longer lists the wait, but the row says
-   * what was answered (a secret as fixed words) and does not vanish under the person.
+   * What the run is waiting on a person for, at the top of the page under the heading "What you can
+   * do": each open question the agent asked and each tool approval it needs, with the control that
+   * answers it in place (`run-wait.svelte`), questions first. The line under the heading says how
+   * many of each. An approval is decided here and nowhere else on the page: the tool calls under
+   * How it ran show the call, not a second decision. The section is absent when the run asks
+   * nothing. An answered question keeps its row for as long as the page is open: the next read of
+   * the task no longer lists the wait, but the row says what was answered (a secret as fixed words)
+   * and does not vanish under the person.
    */
   import type { QuestionAnswerRecord } from '@lostgradient/chat';
 
-  import { TASK_COPY } from '../../../app/copy.ts';
+  import { RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
   import type { TaskOpenWait, TaskView } from '../../../lib/bureau-tasks.ts';
   import RunWait from './run-wait.svelte';
 
@@ -26,10 +28,14 @@
   /** What each answered question reads as, kept here so it outlives the wait's own row. */
   let answers = $state.raw<ReadonlyMap<string, QuestionAnswerRecord>>(new Map());
 
-  const open = $derived(task.openWaits.filter((wait) => wait.kind === 'human-wait'));
-  // The open questions, then the ones sent from here that the task no longer lists. One keyed list,
-  // so a row is the same component instance before and after its wait closes, even when the task's
-  // next read lands before the answer's response does.
+  // The questions lead and the approvals follow, each in the order the task lists them.
+  const open = $derived([
+    ...task.openWaits.filter((wait) => wait.kind === 'human-wait'),
+    ...task.openWaits.filter((wait) => wait.kind === 'tool-approval'),
+  ]);
+  // The open waits, then the questions sent from here that the task no longer lists. One keyed
+  // list, so a row is the same component instance before and after its wait closes, even when the
+  // task's next read lands before the answer's response does.
   const questions = $derived.by(() => {
     const openIds = new Set(open.map((wait) => wait.reviewId));
     return [...open, ...kept.filter((wait) => !openIds.has(wait.reviewId))];
@@ -37,18 +43,21 @@
 </script>
 
 {#if questions.length > 0}
-  {@const waiting = open.some((wait) => !answers.has(wait.reviewId))}
+  {@const unanswered = open.filter((wait) => !answers.has(wait.reviewId))}
   <section
     class="ib-run__section ib-run__waiting"
     aria-labelledby="ib-run-waiting"
     data-section="waiting"
   >
     <h2 id="ib-run-waiting" class="ib-run__heading-2">
-      {waiting ? TASK_COPY.waitsHeading : TASK_COPY.waitsAnsweredHeading}
+      {unanswered.length > 0 ? TASK_COPY.waitsHeading : TASK_COPY.waitsAnsweredHeading}
     </h2>
-    {#if waiting}
+    {#if unanswered.length > 0}
       <p class="ib-run__note">
-        {TASK_COPY.waitsSummary(open.filter((wait) => !answers.has(wait.reviewId)).length)}
+        {RUN_DETAIL_COPY.waits.summary(
+          unanswered.filter((wait) => wait.kind === 'human-wait').length,
+          unanswered.filter((wait) => wait.kind === 'tool-approval').length,
+        )}
       </p>
     {/if}
     {#each questions as wait (wait.reviewId)}
