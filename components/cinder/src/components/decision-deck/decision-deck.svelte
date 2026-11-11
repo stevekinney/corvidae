@@ -114,7 +114,6 @@
   let dragging = $state(false);
   let announcement = $state('');
   let rootElement = $state<HTMLElement | null>(null);
-  let emptyElement = $state<HTMLElement | null>(null);
 
   // Held outside reactive state: the gesture is read by the window listeners, never by the markup.
   let drag: DragState | null = null;
@@ -157,7 +156,7 @@
   function settleFocus(origin: FocusOrigin): void {
     if (origin === null) return;
     if (pending.length === 0) {
-      emptyElement?.focus();
+      rootElement?.querySelector<HTMLElement>('.cinder-decision-deck__empty')?.focus();
       return;
     }
     if (origin === 'card') focusTarget('card');
@@ -366,7 +365,7 @@
       </div>
     </div>
   {:else}
-    <div class="cinder-decision-deck__empty" tabindex="-1" bind:this={emptyElement}>
+    <div class="cinder-decision-deck__empty" tabindex="-1">
       <p class="cinder-decision-deck__empty-title">{emptyTitle}</p>
       <p class="cinder-decision-deck__empty-description">{emptyDescriptionText}</p>
     </div>

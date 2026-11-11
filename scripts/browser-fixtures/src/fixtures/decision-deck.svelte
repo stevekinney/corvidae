@@ -23,6 +23,7 @@
   ];
 </script>
 
-<div id="example-mount-basic">
+<!-- Fixture pages force every transition to 0s; the spring test needs this subtree's motion. -->
+<div id="example-mount-basic" data-preserve-motion>
   <DecisionDeck label="Review queue" {items} />
 </div>

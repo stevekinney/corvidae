@@ -6,20 +6,23 @@
 
 <script lang="ts">
   import { DecisionDeck } from '@lostgradient/cinder';
-  import type { DecisionDeckOutcome } from '@lostgradient/cinder';
 
   const items = [
     { id: 'one', title: 'Archive receipts' },
     { id: 'two', title: 'Label the weekly digest' },
   ];
 
-  let decided = $state<Record<string, DecisionDeckOutcome>>({});
+  let log = $state<string[]>([]);
 </script>
 
 <DecisionDeck
   label="Review queue"
   {items}
-  onDecision={({ item, outcome }) => (decided[item.id] = outcome)}
-  onUndo={({ item }) => delete decided[item.id]}
+  onDecision={({ item, outcome }) => {
+    log.push(`${outcome}: ${item.title}`);
+  }}
+  onUndo={() => {
+    log.pop();
+  }}
 />
-<p>{Object.keys(decided).length} decided</p>
+<p>{log.length} decided</p>

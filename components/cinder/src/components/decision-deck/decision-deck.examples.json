@@ -13,7 +13,7 @@
       "id": "decisions",
       "title": "Reacting to decisions",
       "description": "onDecision fires as soon as a decision is made, and onUndo when it is reversed, so the page can keep its own record in step with the deck.",
-      "code": "<script lang=\"ts\">\n  import { DecisionDeck } from '@lostgradient/cinder';\n  import type { DecisionDeckOutcome } from '@lostgradient/cinder';\n\n  const items = [\n    { id: 'one', title: 'Archive receipts' },\n    { id: 'two', title: 'Label the weekly digest' },\n  ];\n\n  let decided = $state<Record<string, DecisionDeckOutcome>>({});\n</script>\n\n<DecisionDeck\n  label=\"Review queue\"\n  {items}\n  onDecision={({ item, outcome }) => (decided[item.id] = outcome)}\n  onUndo={({ item }) => delete decided[item.id]}\n/>\n<p>{Object.keys(decided).length} decided</p>\n"
+      "code": "<script lang=\"ts\">\n  import { DecisionDeck } from '@lostgradient/cinder';\n\n  const items = [\n    { id: 'one', title: 'Archive receipts' },\n    { id: 'two', title: 'Label the weekly digest' },\n  ];\n\n  let log = $state<string[]>([]);\n</script>\n\n<DecisionDeck\n  label=\"Review queue\"\n  {items}\n  onDecision={({ item, outcome }) => {\n    log.push(`${outcome}: ${item.title}`);\n  }}\n  onUndo={() => {\n    log.pop();\n  }}\n/>\n<p>{log.length} decided</p>\n"
     }
   ]
 }
