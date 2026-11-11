@@ -1,7 +1,7 @@
 /**
- * `/goals` (COR-1494, COR-1843, COR-2017): a goal is made on `/goals/new` from an agent chosen from
- * the agents, a prompt, an identity, a validator named by free text, and a most-attempts. The host
- * seeds a validator that never passes, so a goal that names it stays going until it is cancelled,
+ * `/goals` (COR-1494, COR-1843, COR-2017): a goal is made on `/goals/new` from a prompt, a check, an
+ * agent chosen from the agents, and an attempt limit, and changed on `/goals/:goal/edit`. The host
+ * seeds a validator that never passes, so a goal whose check names it stays going until it is cancelled,
  * which the list does not offer (a goal's own page stops it), so the test cancels it through the
  * Bureau and sees its row end as Stopped. A validator the Bureau lacks is `Unprocessable`, said on
  * the page. The seeded goal is listed as a status-first row titled by its name, its page lists its
@@ -71,7 +71,7 @@ test('lists the attempts of the seeded goal on its page, each linking to its run
   await checkA11y('goals — one goal and its attempts');
 });
 
-test('creates a goal that names the validator that never passes, and sees its row end Stopped once it is cancelled', async ({
+test('creates a goal that names the check that never passes, lands on its page, and sees its row end Stopped once it is cancelled', async ({
   page,
   request,
   checkA11y,
@@ -88,13 +88,15 @@ test('creates a goal that names the validator that never passes, and sees its ro
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
   await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello, and keep trying.');
-  await page.getByLabel(GOALS_COPY.form.identityNameLabel).fill('say-hello-forever');
-  await page.getByLabel(GOALS_COPY.form.identityVersionLabel).fill('1');
-  await page.getByLabel(GOALS_COPY.form.validatorNameLabel).fill('demo:never-passes');
-  await page.getByLabel(GOALS_COPY.form.validatorVersionLabel).fill('1');
+  // The check is the validator's name, which the host seeds as one that never passes.
+  await page.getByLabel(GOALS_COPY.form.checkLabel).fill('demo:never-passes');
   await checkA11y('goals — the new goal page');
   await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
-  await expect(page).toHaveURL(/\/goals$/);
+
+  // A goal that is made lands on its own page.
+  await expect(page).toHaveURL(/\/goals\/(?!new$)[^/]+$/);
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('Say hello, and keep trying.');
+  await page.goto('/goals');
 
   // The new row is the one this page had not seen, and it is going, not ended.
   await expect(page.locator('[data-goal]')).toHaveCount(known.length + 1);
@@ -116,6 +118,24 @@ test('creates a goal that names the validator that never passes, and sees its ro
   await checkA11y('goals — a stopped goal');
 });
 
+test('opens Edit goal from a goal’s page with its check and limit in the fields, and Cancel goes back', async ({
+  page,
+  checkA11y,
+}) => {
+  await page.goto('/goals/seeded-goal');
+  await page.getByRole('link', { name: GOALS_COPY.detail.editAction }).click();
+  await expect(page).toHaveURL(/\/goals\/seeded-goal\/edit$/);
+  await expect(
+    page.getByRole('heading', { level: 1, name: GOALS_COPY.form.edit.title }),
+  ).toBeVisible();
+  await expect(page.getByLabel(GOALS_COPY.form.checkLabel)).not.toHaveValue('');
+  await expect(page.getByLabel(GOALS_COPY.form.maximumAttemptsLabel)).not.toHaveValue('');
+  await checkA11y('goals — the edit goal page');
+
+  await page.getByRole('link', { name: GOALS_COPY.form.cancelAction }).click();
+  await expect(page).toHaveURL(/\/goals\/seeded-goal$/);
+});
+
 test('says Unprocessable on the page for a validator the Bureau does not have', async ({
   page,
 }) => {
@@ -123,10 +143,7 @@ test('says Unprocessable on the page for a validator the Bureau does not have', 
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
   await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello.');
-  await page.getByLabel(GOALS_COPY.form.identityNameLabel).fill('say-hello');
-  await page.getByLabel(GOALS_COPY.form.identityVersionLabel).fill('1');
-  await page.getByLabel(GOALS_COPY.form.validatorNameLabel).fill('no-such-validator');
-  await page.getByLabel(GOALS_COPY.form.validatorVersionLabel).fill('1');
+  await page.getByLabel(GOALS_COPY.form.checkLabel).fill('no-such-validator');
 
   await page.getByRole('button', { name: GOALS_COPY.form.createAction }).click();
 

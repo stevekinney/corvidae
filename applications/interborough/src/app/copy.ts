@@ -3508,42 +3508,84 @@ export const GOALS_COPY = {
   },
   /** The words for attempts used, of the most the goal may make. */
   attempts: (used: number, most: number): string => `${String(used)} of ${String(most)}`,
+  /**
+   * New goal (`/goals/new`, which Start again opens prefilled) and Edit goal (`/goals/:goal/edit`),
+   * one form with four fields: what to do, the check, the agent and the attempt limit. The words
+   * of Edit are in `edit`; every other key is the form's own.
+   */
   form: {
     title: 'New goal',
-    description: 'Run an agent on a prompt until a validator passes, within the bounds you set.',
+    description:
+      'Describe what you want and how to tell it worked. The agent keeps trying until the check passes.',
+    /** The accessible name of the form's fields. */
+    fieldsLabel: 'Goal',
+    promptLabel: 'What should the agent do?',
+    promptDescription:
+      'Say what the agent should do. The first line becomes the goal’s name, shown in Goals and on each attempt.',
+    promptRequired: 'Say what the agent should do.',
+    checkLabel: 'Check',
+    checkDescription: 'Write it as a statement that is true or false about the result.',
+    checkPlaceholder: 'How will we know it worked?',
+    checkRequired: 'Say how to tell the goal is done, such as “Reply says hello”.',
     agentLabel: 'Agent',
     agentPlaceholder: 'Choose an agent',
-    agentDescription: 'The agent that runs each attempt.',
+    agentDescription: 'The agent that makes each attempt.',
     agentUnavailableDescription: 'The agents could not be listed. Reload the page to try again.',
     noAgents: {
       title: 'No agents to run a goal',
       description: 'A goal runs an agent, and this installation lists none. Create an agent first.',
     },
-    promptLabel: 'Prompt',
-    promptDescription:
-      'What the agent is asked to do. The goal runs it until the validator passes.',
-    identityNameLabel: 'Identity name',
-    identityVersionLabel: 'Identity version',
-    identityDescription: 'Names this goal, with a version, for the people who read about it.',
-    validatorNameLabel: 'Validator name',
-    validatorVersionLabel: 'Validator version',
-    validatorDescription:
-      'The exact name and version of a validator this server was configured with. One it lacks is refused.',
-    maximumAttemptsLabel: 'Maximum attempts',
-    maximumAttemptsDescription: 'The most attempts the goal makes before it ends as exhausted.',
-    maximumAttemptsInvalid: 'Enter a whole number of attempts, one or more.',
-    maximumTotalStepsLabel: 'Maximum total steps',
-    maximumTotalStepsDescription:
-      'The most steps the goal takes across all its attempts. Interborough needs a bound on the attempts together, and this is it.',
-    maximumTotalStepsInvalid: 'Enter a whole number of steps, one or more.',
+    maximumAttemptsLabel: 'Attempt limit',
+    maximumAttemptsDescription: 'Gives up after this many attempts, from 1 to 20.',
+    maximumAttemptsInvalid: 'Use a number from 1 to 20.',
+    /** Above the first field when a model agent is chosen and no provider holds a key. */
+    needsProvider: (agent: string): string =>
+      `${agent} needs a model provider, so a goal can’t make attempts yet.`,
+    connectProvider: 'Connect a provider',
+    connectProviderPath: '/settings/models',
+    useAgent: (agent: string): string => `Use ${agent}`,
+    /** The note beside the buttons: what the agent chosen needs, or what the form is doing. */
+    footer: {
+      scripted: (agent: string): string => `${agent} is scripted, so no provider is needed.`,
+      starts: 'Creating the goal starts attempt 1.',
+      gated: (agent: string): string =>
+        `Create goal is off until a provider is connected, or you choose ${agent}.`,
+      creating: 'Creating the goal and starting attempt 1…',
+      prompt: 'The prompt is required before this can start.',
+      check: 'The check is required before this can start.',
+      attempts: 'The attempt limit is out of range.',
+    },
     createAction: 'Create goal',
+    creatingAction: 'Creating…',
     cancelAction: 'Cancel',
     /** What Cancel is called once the goal exists, so there is nothing left to cancel. */
     closeAction: 'Close',
-    failed: 'The goal was not created',
+    /** A create the Bureau did not take: what failed, then what is kept. */
+    failedTitle: 'Couldn’t create the goal.',
+    unreachable: 'Interborough didn’t answer.',
+    kept: 'Nothing was saved, and everything you typed is still here.',
+    tryAgain: 'Try again',
     /** The goal was committed, and the Bureau could not start its controller: it stays pending until recovery. */
     startFailedTitle: 'Goal created, but it did not start',
     startFailedGoal: (id: string): string => `Goal ${id}`,
+    /** The name of the placeholders while Start again reads the goal it opens from. */
+    loading: 'Loading the goal',
+    /** Edit goal: New goal's four fields, prefilled, and a Save that starts no attempt. */
+    edit: {
+      title: 'Edit goal',
+      description:
+        'Changes apply to future attempts only. Attempts already made keep the check they ran against.',
+      footer: 'Saving doesn’t start an attempt.',
+      saving: 'Saving the goal…',
+      saveAction: 'Save',
+      savingAction: 'Saving…',
+      /** The goal's view never carries its prompt, so the field starts empty and keeps the current one. */
+      promptPlaceholder: 'Leave this empty to keep the current prompt.',
+      failedTitle: 'Couldn’t save the goal.',
+      kept: 'Nothing was changed.',
+      changed:
+        'The goal changed while you were editing it. Look at it again, then try once more.',
+    },
   },
 } as const;
 

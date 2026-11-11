@@ -170,6 +170,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/goals': /say-hello/,
   // A goal's page is titled by the goal's name.
   '/goals/:goal': /say-hello/,
+  // The Edit page prints its heading's line, whatever the goal's name.
+  '/goals/:goal/edit': /Changes apply to future attempts only/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
   '/hooks': /No answer/,
   '/hooks/new': /Pick an event to see what this hook does/,

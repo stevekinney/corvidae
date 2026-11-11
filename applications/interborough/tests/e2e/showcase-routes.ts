@@ -50,6 +50,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/goals': '/goals',
     '/goals/new': '/goals/new',
     '/goals/:goal': `/goals/${goal}`,
+    '/goals/:goal/edit': `/goals/${goal}/edit`,
     '/hooks': '/hooks',
     '/hooks/new': '/hooks/new',
     '/hooks/:hook': `/hooks/${hook}`,

@@ -1,7 +1,8 @@
 /**
- * The routes under `/goals` (COR-1494): a goal made on `/goals/new` from an agent, a prompt, an
- * identity, a validator named by free text, and a maximum number of attempts, and a goal's own page
- * with its attempts. An unknown validator is the Bureau's `Unprocessable`, said inline. The list is
+ * The routes under `/goals` (COR-1494, COR-2017): a goal made on `/goals/new` from a prompt, a check,
+ * an agent and an attempt limit, and a goal's own page with its attempts. A check the Bureau lacks
+ * is its `Unprocessable`, said above the form's buttons. The form's Edit page, Start again, the
+ * provider gate and the creating state are `goal-form-pages.test.ts`; the list is
  * `goal-list.test.ts`. Owner scoping is the gate, so the view holds no scope of its own.
  *
  * Driven through the route outlet against a stand-in Bureau that keeps the goals, so the route, the
@@ -68,10 +69,9 @@ const AGENTS = ['assistant', 'tool-runner'].map((name) => ({
   a2a: false,
 }));
 
-/** The only validator this Bureau was configured with. */
-// Neither version is `1`, so a form that sent a fixed one would be seen.
-const KNOWN_VALIDATOR = { name: 'accepts-any-answer', version: '2' };
-const IDENTITY_VERSION = '3';
+/** The only check this Bureau was configured with, as a person writes it and as its validator is named. */
+const KNOWN_CHECK = 'Accepts any answer';
+const KNOWN_VALIDATOR = { name: 'accepts-any-answer', version: '1' };
 
 type Served = { goals: GoalRow[]; pageSize: number };
 
@@ -193,28 +193,32 @@ async function openCreatePage(view: ReturnType<typeof open>['view']): Promise<HT
   return view.container;
 }
 
-async function fillGoal(
-  element: HTMLElement,
-  values: { validatorName?: string; validatorVersion?: string } = {},
-) {
+/** Waits for the agent field to settle on Assistant, which the form starts with once the agents are read. */
+async function waitForDefaultAgent(element: HTMLElement): Promise<HTMLSelectElement> {
+  const agent = (await within(element).findByLabelText(
+    GOALS_COPY.form.agentLabel,
+  )) as HTMLSelectElement;
+  await waitFor(() => expect(agent.value).toBe('assistant'));
+  return agent;
+}
+
+/** Types the attempt limit as a person does: focus the field, type, and leave it. */
+async function setAttemptLimit(element: HTMLElement, value: string) {
+  const field = within(element).getByLabelText(GOALS_COPY.form.maximumAttemptsLabel);
+  await fireEvent.focus(field);
+  await fireEvent.input(field, { target: { value } });
+  await fireEvent.blur(field);
+}
+
+/** Fills the prompt and the check, which are what a goal needs besides the agent the form starts with. */
+async function fillGoal(element: HTMLElement, values: { check?: string } = {}) {
   const dialog = within(element);
-  await fireEvent.change(await dialog.findByLabelText(GOALS_COPY.form.agentLabel), {
-    target: { value: 'assistant' },
-  });
+  await waitForDefaultAgent(element);
   await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.promptLabel), {
     target: { value: 'Say hello.' },
   });
-  await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.identityNameLabel), {
-    target: { value: 'say-hello' },
-  });
-  await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.identityVersionLabel), {
-    target: { value: IDENTITY_VERSION },
-  });
-  await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.validatorNameLabel), {
-    target: { value: values.validatorName ?? KNOWN_VALIDATOR.name },
-  });
-  await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.validatorVersionLabel), {
-    target: { value: values.validatorVersion ?? KNOWN_VALIDATOR.version },
+  await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.checkLabel), {
+    target: { value: values.check ?? KNOWN_CHECK },
   });
 }
 
@@ -235,7 +239,7 @@ describe('creating a goal', () => {
     expect(empty.queryByLabelText(GOALS_COPY.form.agentLabel)).toBeNull();
   });
 
-  test('takes an agent, a prompt, an identity, a validator by free text, and a maximum number of attempts, with a bound on steps, and sends exactly those', async () => {
+  test('takes a prompt, a check, an agent and an attempt limit, sends exactly those with a bound on steps, and lands on the new goal', async () => {
     const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
 
@@ -243,31 +247,29 @@ describe('creating a goal', () => {
     expect(router.pathname).toBe('/goals/new');
     const dialog = within(element);
     await fillGoal(element);
-    await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.maximumAttemptsLabel), {
-      target: { value: '4' },
+    await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.promptLabel), {
+      target: { value: '  Say hello.\nThen keep trying.  ' },
     });
-    await fireEvent.input(dialog.getByLabelText(GOALS_COPY.form.maximumTotalStepsLabel), {
-      target: { value: '20' },
-    });
+    await setAttemptLimit(element, '4');
     await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.goals.create').length).toBe(1));
     expect(stub?.callsTo('bureau.goals.create')[0]?.params).toEqual({
       idempotencyKey: expect.stringMatching(/^[A-Za-z0-9._-]{1,64}$/),
       agentName: 'assistant',
-      prompt: 'Say hello.',
-      identity: { name: 'say-hello', version: IDENTITY_VERSION },
-      validator: { name: 'accepts-any-answer', version: '2' },
+      prompt: 'Say hello.\nThen keep trying.',
+      // The first line of the prompt names the goal, at the form's own version.
+      identity: { name: 'Say hello.', version: '1' },
+      // The check is the validator's name as a slug.
+      validator: KNOWN_VALIDATOR,
       // The Bureau needs a bound on all the attempts together besides how many it makes.
-      bounds: { maximumAttempts: 4, maximumTotalSteps: 20 },
+      bounds: { maximumAttempts: 4, maximumTotalSteps: 50 },
     });
-    // A goal that is made takes the person to the list, where it is the new row.
-    await waitFor(() => expect(router.pathname).toBe('/goals'));
-    await waitFor(() => expect(row(view.container, 'goal-created-1')).not.toBeNull());
-    expect(row(view.container, 'goal-created-1')?.dataset['status']).toBe('pending');
+    // A goal that is made takes the person to its own page.
+    await waitFor(() => expect(router.pathname).toBe('/goals/goal-created-1'));
   });
 
-  test('says Unprocessable inline for a validator the Bureau does not have, and creates nothing', async () => {
+  test('says Unprocessable above the buttons for a check the Bureau does not have, creates nothing, and keeps what was typed', async () => {
     const { view, served } = open([]);
     // The header's "+" and the empty state's primary button both make a goal.
     const makers = await view.findAllByRole('button', { name: GOALS_COPY.newAction });
@@ -276,43 +278,73 @@ describe('creating a goal', () => {
     expect(router.pathname).toBe('/goals/new');
     const element = view.container;
     const dialog = within(element);
-    await fillGoal(element, { validatorName: 'no-such-validator' });
+    await fillGoal(element, { check: 'No such validator' });
 
     await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
 
     const fault = await dialog.findByTestId('goal-fault');
     expect(fault.getAttribute('data-fault-code')).toBe('Unprocessable');
-    expect(fault.textContent).toContain('no-such-validator@2');
+    expect(fault.textContent).toContain(GOALS_COPY.form.failedTitle);
+    expect(fault.textContent).toContain('no-such-validator@1');
+    expect(fault.textContent).toContain(GOALS_COPY.form.kept);
+    expect(dialog.getByRole('button', { name: GOALS_COPY.form.tryAgain })).not.toBeNull();
     expect(served.goals).toEqual([]);
-    // What was typed is still there, so the validator can be corrected.
+    // What was typed is still there, so the check can be corrected.
+    expect((dialog.getByLabelText(GOALS_COPY.form.checkLabel) as HTMLInputElement).value).toBe(
+      'No such validator',
+    );
     expect(
-      (dialog.getByLabelText(GOALS_COPY.form.validatorNameLabel) as HTMLInputElement).value,
-    ).toBe('no-such-validator');
+      (dialog.getByLabelText(GOALS_COPY.form.promptLabel) as HTMLTextAreaElement).value,
+    ).toBe('Say hello.');
   });
 
-  test('is not offered until every field has something, and a maximum of attempts is a positive whole number', async () => {
+  test('stays live with nothing typed, says what is missing at the field and in the footer, and focuses the first', async () => {
     const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
     const element = await openCreatePage(view);
     const dialog = within(element);
+    await waitForDefaultAgent(element);
     const create = dialog.getByRole('button', { name: GOALS_COPY.form.createAction });
-    expect(create).toBeDisabled();
+    expect(create).not.toBeDisabled();
+    // Assistant is scripted, so nothing waits on a provider.
+    expect(dialog.getByTestId('goal-form-note').textContent).toBe(
+      GOALS_COPY.form.footer.scripted('Assistant'),
+    );
 
+    await fireEvent.click(create);
+    const prompt = dialog.getByLabelText(GOALS_COPY.form.promptLabel);
+    await waitFor(() => expect(document.activeElement === prompt).toBe(true));
+    expect(dialog.getByText(GOALS_COPY.form.promptRequired)).not.toBeNull();
+    expect(dialog.getByTestId('goal-form-note').textContent).toBe(
+      GOALS_COPY.form.footer.prompt,
+    );
+
+    await fireEvent.input(prompt, { target: { value: 'Say hello.' } });
+    await fireEvent.click(create);
+    const check = dialog.getByLabelText(GOALS_COPY.form.checkLabel);
+    await waitFor(() => expect(document.activeElement === check).toBe(true));
+    expect(check.getAttribute('placeholder')).toBe(GOALS_COPY.form.checkPlaceholder);
+    expect(dialog.getByText(GOALS_COPY.form.checkRequired)).not.toBeNull();
+    expect(dialog.getByTestId('goal-form-note').textContent).toBe(GOALS_COPY.form.footer.check);
+    expect(create).not.toBeDisabled();
+    expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
+  });
+
+  test('says an attempt limit outside 1 to 20 at the field, focuses it, and sends nothing', async () => {
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    const element = await openCreatePage(view);
+    const dialog = within(element);
     await fillGoal(element);
-    await waitFor(() => expect(create).not.toBeDisabled());
-    for (const label of [
-      GOALS_COPY.form.maximumAttemptsLabel,
-      GOALS_COPY.form.maximumTotalStepsLabel,
-    ]) {
-      const field = dialog.getByLabelText(label);
-      const original = (field as HTMLInputElement).value;
-      for (const bad of ['0', '-2', '1.5', '']) {
-        await fireEvent.input(field, { target: { value: bad } });
-        await waitFor(() => expect(create, `${label} ${bad}`).toBeDisabled());
-      }
-      await fireEvent.input(field, { target: { value: original } });
-      await waitFor(() => expect(create).not.toBeDisabled());
-    }
+    await setAttemptLimit(element, '30');
+
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.form.createAction }));
+
+    const limit = dialog.getByLabelText(GOALS_COPY.form.maximumAttemptsLabel);
+    await waitFor(() => expect(document.activeElement === limit).toBe(true));
+    expect(dialog.getByText(GOALS_COPY.form.maximumAttemptsInvalid)).not.toBeNull();
+    expect(dialog.getByTestId('goal-form-note').textContent).toBe(GOALS_COPY.form.footer.attempts);
+    expect(dialog.getByRole('button', { name: GOALS_COPY.form.createAction })).not.toBeDisabled();
     expect(stub?.callsTo('bureau.goals.create')).toEqual([]);
   });
 });
@@ -337,12 +369,11 @@ describe('a goal whose controller failed to start', () => {
     // The page is still there, read-only, and Cancel has become Close.
     expect(router.pathname).toBe('/goals/new');
     expect(dialog.getByRole('button', { name: GOALS_COPY.form.createAction })).toBeDisabled();
-    expect(dialog.queryByRole('button', { name: GOALS_COPY.form.cancelAction })).toBeNull();
+    expect(dialog.queryByRole('link', { name: GOALS_COPY.form.cancelAction })).toBeNull();
     for (const label of [
       GOALS_COPY.form.agentLabel,
       GOALS_COPY.form.promptLabel,
-      GOALS_COPY.form.identityNameLabel,
-      GOALS_COPY.form.validatorNameLabel,
+      GOALS_COPY.form.checkLabel,
       GOALS_COPY.form.maximumAttemptsLabel,
     ]) {
       expect(dialog.getByLabelText(label), label).toBeDisabled();

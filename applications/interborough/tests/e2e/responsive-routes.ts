@@ -97,6 +97,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/goals': '/goals',
     '/goals/new': '/goals/new',
     '/goals/:goal': `/goals/${encodeURIComponent(seed.goal)}`,
+    '/goals/:goal/edit': `/goals/${encodeURIComponent(seed.goal)}/edit`,
     '/hooks': '/hooks',
     '/hooks/new': '/hooks/new',
     '/hooks/:hook': `/hooks/${encodeURIComponent(seed.hook)}`,

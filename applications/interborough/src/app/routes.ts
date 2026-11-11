@@ -311,8 +311,8 @@ export const routes: readonly RouteDefinition[] = [
     view: 'hooks',
     load: () => import('../routes/hooks/index.svelte'),
   },
-  // The list of goals, the page that makes one, and one goal with its attempts. `new` is a path
-  // segment, not a goal: its route comes before `/goals/:goal`.
+  // The list of goals, the page that makes one, one goal with its attempts, and the page that
+  // changes it. `new` is a path segment, not a goal: its route comes before `/goals/:goal`.
   {
     pattern: '/goals',
     kind: 'table',
@@ -331,6 +331,13 @@ export const routes: readonly RouteDefinition[] = [
     pattern: '/goals/:goal',
     kind: 'table',
     crumb: { param: 'goal' },
+    view: 'goals',
+    load: () => import('../routes/goals/index.svelte'),
+  },
+  {
+    pattern: '/goals/:goal/edit',
+    kind: 'form',
+    crumb: 'Edit',
     view: 'goals',
     load: () => import('../routes/goals/index.svelte'),
   },

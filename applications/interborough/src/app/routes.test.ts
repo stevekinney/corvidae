@@ -321,14 +321,18 @@ describe('the routes for schedules and goals', () => {
     expect(componentPathOf('/schedules/:schedule/edit')).toBe(componentPathOf('/schedules'));
   });
 
-  test('keep /goals, /goals/new and /goals/:goal in one view, in the sidebar after Schedules', () => {
+  test('keep /goals, /goals/new, /goals/:goal and /goals/:goal/edit in one view, in the sidebar after Schedules', () => {
     expect(matchRoute('/goals')).toEqual({ pattern: '/goals', params: {} });
     expect(matchRoute('/goals/new')).toEqual({ pattern: '/goals/new', params: {} });
     expect(matchRoute('/goals/goal-1')).toEqual({
       pattern: '/goals/:goal',
       params: { goal: 'goal-1' },
     });
-    for (const pattern of ['/goals', '/goals/new', '/goals/:goal']) {
+    expect(matchRoute('/goals/goal-1/edit')).toEqual({
+      pattern: '/goals/:goal/edit',
+      params: { goal: 'goal-1' },
+    });
+    for (const pattern of ['/goals', '/goals/new', '/goals/:goal', '/goals/:goal/edit']) {
       expect(routes.find((candidate) => candidate.pattern === pattern)?.view).toBe('goals');
     }
     const order = DESTINATIONS.map((destination) => destination.view);
