@@ -206,7 +206,11 @@ test.describe('the Connect tools page', () => {
         connect.sections.test,
         connect.sections.chooseTools,
       ]);
-      await expect(page.getByTestId('connect-summary')).toHaveText(connect.testsFirst);
+      // Before a test passes, Choose tools is a dashed box and the footer says to test (rows 33m, 33n).
+      await expect(page.getByTestId('connect-choose-locked')).toHaveText(
+        connect.chooseTools.locked,
+      );
+      await expect(page.getByTestId('connect-summary')).toHaveText(connect.chooseFirst);
       await checkA11y(`the Connect tools page at ${width}px`);
     });
   }
@@ -226,6 +230,124 @@ test.describe('the Connect tools page', () => {
     await expect(warning).toContainText(connect.command.warningBefore.trim());
     await expect(warning.locator('code')).toHaveText(connect.command.warningCode);
     await expect(page.getByTestId('connect-summary')).toHaveText(connect.testsFirst);
+  });
+
+  /** Chooses an OpenAPI spec file holding `text`, which the host reads before anything is saved. */
+  async function uploadSpec(page: Page, name: string, text: string): Promise<void> {
+    await form(page).getByRole('radio', { name: connect.kind.openapi }).check();
+    await form(page).getByRole('radio', { name: connect.specification.file }).check();
+    await form(page)
+      .locator('#connect-file')
+      .setInputFiles({ name, mimeType: 'application/yaml', buffer: Buffer.from(text) });
+  }
+
+  const PAYMENTS_SPEC = [
+    'openapi: 3.1.0',
+    'info:',
+    '  title: Payments API',
+    "  version: '1'",
+    'servers:',
+    '  - url: https://payments.example.com/v1',
+    'paths:',
+    '  /refunds:',
+    '    get: { operationId: listRefunds, summary: List refunds }',
+    '    post: { operationId: createRefund, summary: Create a refund }',
+    '  /refunds/{id}:',
+    '    parameters: [{ name: id, in: path, required: true, schema: { type: string } }]',
+    '    get: { operationId: getRefund, summary: Get a refund }',
+    '    delete: { operationId: deleteRefund, summary: Delete a refund }',
+    '  /invoices:',
+    '    get: { operationId: listInvoices, summary: List invoices }',
+    '    post: { operationId: createInvoice, summary: Create an invoice }',
+    '',
+  ].join('\n');
+
+  test('OpenAPI spec: Name and Base URL from the spec, an API key, the read the test makes, and its operations (rows 33t to 33y, 34r)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/capabilities/connect');
+
+    await uploadSpec(page, 'payments-openapi.yaml', PAYMENTS_SPEC);
+
+    await expect(form(page).getByLabel(connect.name.label, { exact: true })).toHaveValue(
+      'Payments API',
+    );
+    await expect(form(page)).toContainText(connect.name.fromSpec);
+    await expect(form(page).getByLabel(connect.baseUrl.label)).toHaveValue(
+      'https://payments.example.com/v1',
+    );
+    await expect(
+      form(page).getByRole('radio', { name: connect.authentication['api-key'] }),
+    ).toBeChecked();
+    await expect(page.getByTestId('connect-test-calls')).toHaveText(
+      connect.probe.calls('List refunds', 'GET', '/refunds'),
+    );
+    await expect(page.getByTestId('connect-spec-summary').locator('li')).toHaveText([
+      'payments-openapi.yaml',
+      'OpenAPI 3.1',
+      '6 operations',
+    ]);
+    await expect(page.getByTestId('connect-operations-found')).toHaveText(
+      connect.chooseTools.operations.found(6),
+    );
+    // Reads start on and changes start off (row 33w).
+    await expect(page.getByTestId('connect-operations-selected')).toHaveText(
+      connect.chooseTools.operations.selected(3, 6),
+    );
+    await expect(page.getByTestId('connect-operations-showing')).toHaveText(
+      connect.chooseTools.operations.showing(4, 6),
+    );
+    await expect(page.getByTestId('connect-summary')).toHaveText(connect.joins(3, 'Payments API'));
+  });
+
+  test('OpenAPI spec: a spec with no operationId, and a file that is not a spec, say what is wrong (rows 34u, 34v)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/capabilities/connect');
+
+    await uploadSpec(
+      page,
+      'payments-openapi.yaml',
+      PAYMENTS_SPEC.replaceAll(/operationId: \w+, /g, ''),
+    );
+    await expect(page.getByTestId('connect-file-error')).toHaveText(
+      'None of the 6 operations has an operationId, and each tool needs one. Add operationIds to the spec, then upload it again.',
+    );
+    await expect(page.getByTestId('connect-spec-summary').locator('li')).toHaveText([
+      'payments-openapi.yaml',
+      'OpenAPI 3.1',
+      '6 operations',
+    ]);
+
+    await uploadSpec(
+      page,
+      'payments-openapi.yaml',
+      "openapi: 3.1.0\ninfo:\n  title: Payments API\n  version: '1'\npaths: 5\n",
+    );
+    await expect(page.getByTestId('connect-file-error')).toContainText(
+      '“paths” must be an object.',
+    );
+    await expect(form(page).locator('#connect-file')).toHaveAttribute('aria-invalid', 'true');
+  });
+
+  test('leaving: an untouched form leaves at once, and a filled one asks first (row 35b)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/capabilities/connect');
+    await form(page).getByRole('button', { name: connect.actions.cancel, exact: true }).click();
+    await expect(page).toHaveURL(/\/capabilities\?tab=sources$/);
+
+    await page.goto('/capabilities/connect');
+    await form(page).getByLabel(connect.name.label, { exact: true }).fill('GitHub');
+    await form(page).getByRole('button', { name: connect.actions.cancel, exact: true }).click();
+    const dialog = page.getByRole('dialog', { name: connect.leave.title });
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole('button', { name: connect.leave.keep }).click();
+    await expect(page).toHaveURL(/\/capabilities\/connect$/);
+    await expect(form(page).getByLabel(connect.name.label, { exact: true })).toHaveValue('GitHub');
   });
 
   test('Bearer token: a required masked Token under Sign in (row 34q)', async ({ page }) => {

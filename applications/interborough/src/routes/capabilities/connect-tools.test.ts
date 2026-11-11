@@ -4,9 +4,11 @@
  * docked footer; an MCP server is reached by URL or by a one-line command with a warning under it;
  * Sign in offers OAuth, Bearer token and None. The page builds the host's request from the form,
  * tests the source before it saves it, says why a test failed without a credential or an address
- * in the words, saves it, and opens it in Capabilities › Sources. The host's own routes are
- * exercised against a real host in `src/host/host-tool-sources.test.ts` and the Playwright suite
- * (`connect-tools-restart.spec.ts`).
+ * in the words, saves it with the tools chosen, and says what is now available. The host's own
+ * routes are exercised against a real host in `src/host/host-tool-sources.test.ts` and the
+ * Playwright suite (`connect-tools-restart.spec.ts`). The flow's state machine is tested on its own
+ * in `connect-tools-state.test.ts`; `connect-tools-flow.test.ts` drives the test, Choose tools,
+ * the connect and leaving through this page (rows 33i to 35f).
  */
 import { QueryClient } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -56,6 +58,10 @@ function serve(initial: Parameters<typeof fakeToolSources>[0]): FakeToolSources 
   restore = bureau({ 'bureau.agents.catalog': () => ({ models: [], tools: [] }) }, other).restore;
   return host;
 }
+
+/** The footer's line. */
+const summary = () =>
+  document.body.querySelector('[data-testid="connect-summary"]')?.textContent?.trim();
 
 /** The field with this id, on the page. */
 function field<Element extends HTMLElement = HTMLInputElement>(id: string): Element {
@@ -133,9 +139,8 @@ describe('the Connect tools page', () => {
     // No back link: the breadcrumb is the way back.
     expect(container.querySelector('a')).toBeNull();
     expect(container.querySelector('.cinder-form-actions')).not.toBeNull();
-    expect(container.querySelector('[data-testid="connect-summary"]')?.textContent).toBe(
-      copy.connect.testsFirst,
-    );
+    // Before a test passes, the footer says to test to choose tools (row 33n).
+    expect(summary()).toBe(copy.connect.chooseFirst);
     expect(buttonLabelled(copy.connect.actions.cancel)).not.toBeNull();
     expect(buttonLabelled(copy.connect.actions.connect)).not.toBeNull();
   });
@@ -185,9 +190,7 @@ describe('the Connect tools page', () => {
     expect(warning?.textContent).toContain(copy.connect.command.warningBefore.trim());
     expect(warning?.querySelector('code')?.textContent).toBe('npx -y');
     expect(field('connect-name').required).toBe(true);
-    expect(container.querySelector('[data-testid="connect-summary"]')?.textContent).toBe(
-      copy.connect.testsFirst,
-    );
+    expect(summary()).toBe(copy.connect.testsFirst);
     // A local command signs in to nothing.
     expect(container.querySelector('[name="connect-authentication"]')).toBeNull();
 
@@ -264,15 +267,16 @@ describe('the Connect tools page', () => {
 
     await fireEvent.click(buttonLabelled(copy.connect.probe.action));
 
-    await findByText(copy.connect.probe.listed(2));
+    await findByText(copy.connect.probe.found(2));
     expect(document.body.querySelector('[data-probe-tool="notes__lookup"]')?.textContent).toContain(
-      'Reads only',
+      'Reads',
     );
     expect(document.body.querySelector('[data-probe-tool="notes__wipe"]')?.textContent).toContain(
       'Dangerous',
     );
-    // A test that passed: Connect no longer says it tests first.
-    expect(document.body.querySelector('[data-testid="connect-summary"]')).toBeNull();
+    // A test that passed: the footer counts the tools that join, and Connect names them.
+    expect(summary()).toBe(copy.connect.joins(2, 'notes'));
+    expect(buttonLabelled(copy.connect.actions.connectCount(2))).not.toBeNull();
     expect(requestsTo(host, 'POST', '/probe')).toEqual([
       {
         method: 'POST',
@@ -386,12 +390,24 @@ describe('the Connect tools page', () => {
   });
 
   test('connects an OpenAPI service from a file with a base URL and an API key', async () => {
-    const { host } = await openPage();
+    const { host, findByTestId } = await openPage();
     await choose('connect-kind-openapi');
     await type('connect-name', 'petstore');
     await choose('connect-specification-file');
     const input = field('connect-file');
     const document = { openapi: '3.0.0', info: { title: 'Pets', version: '1' }, paths: {} };
+    // The host reads the spec; what it parsed is what the connect sends.
+    host.inspection = {
+      outcome: 'valid',
+      fileName: 'pets.json',
+      version: '3.0',
+      title: 'Pets',
+      baseUrl: null,
+      operationCount: 0,
+      operations: [],
+      testOperation: null,
+      document,
+    };
     Object.defineProperty(input, 'files', {
       value: [new File([JSON.stringify(document)], 'pets.json', { type: 'application/json' })],
     });
@@ -423,11 +439,14 @@ describe('the Connect tools page', () => {
         expectedRevision: '[]',
       },
     });
-    await waitFor(() => expect(router.search.get('source')).toBe('petstore'));
+    // The name the person typed is kept: the spec's title fills in only an empty Name.
+    expect((await findByTestId('connect-success')).textContent).toContain(
+      copy.connect.success.title('petstore'),
+    );
   });
 
   test('says a file that is not an OpenAPI document is not one, and a file that is too large is refused', async () => {
-    const { findByText } = await openPage();
+    const { host, findByText } = await openPage();
     await choose('connect-kind-openapi');
     await type('connect-name', 'petstore');
     await choose('connect-specification-file');
@@ -438,8 +457,12 @@ describe('the Connect tools page', () => {
       configurable: true,
     });
     await fireEvent.change(input);
-    await fireEvent.click(buttonLabelled(copy.connect.probe.action));
-    await findByText(copy.connect.errors.documentInvalid);
+    // The host read it and said what is wrong, in its own words.
+    await findByText('This isn’t a valid OpenAPI 3 file. It is not YAML or JSON.');
+    expect(requestsTo(host, 'POST', '/host/openapi-inspection')[0]?.body).toEqual({
+      text: 'not json',
+      fileName: 'pets.json',
+    });
 
     const large = new File(['{}'], 'huge.json');
     Object.defineProperty(large, 'size', { value: 3_000_001 });
@@ -522,24 +545,30 @@ describe('the Connect tools page', () => {
     expect(buttonLabelled(copy.connect.probe.action).hasAttribute('disabled')).toBe(true);
   });
 
-  test('opens the source it saved in Capabilities › Sources, and says so', async () => {
-    const { host, findByText } = await openPage();
+  test('says the source it saved is connected, and View in Capabilities opens it in Capabilities › Sources', async () => {
+    const { host, findByTestId } = await openPage();
     await fillBearerMcp();
 
     await fireEvent.click(buttonLabelled(copy.connect.actions.connect));
 
+    const success = await findByTestId('connect-success');
+    expect(success.textContent).toContain(copy.connect.success.title('notes'));
+    expect(host.sources.map((entry) => entry.id)).toEqual(['notes']);
+    // Saved: leaving asks nothing.
+    await fireEvent.click(buttonLabelled(copy.connect.success.view));
     await waitFor(() => expect(router.pathname).toBe('/capabilities'));
     expect(router.search.get('tab')).toBe('sources');
     expect(router.search.get('source')).toBe('notes');
-    await findByText(copy.connect.connected('notes'));
-    expect(host.sources.map((entry) => entry.id)).toEqual(['notes']);
   });
 
-  test('leaves for Capabilities › Sources on Cancel, saving nothing', async () => {
-    const { host } = await openPage();
+  test('leaves for Capabilities › Sources on Cancel once the person discards what was filled in, saving nothing (row 35b)', async () => {
+    const { host, findByRole } = await openPage();
     await fillBearerMcp();
 
     await fireEvent.click(buttonLabelled(copy.connect.actions.cancel));
+    const dialog = await findByRole('dialog', { name: copy.connect.leave.title });
+    expect(router.pathname).toBe('/capabilities/connect');
+    await fireEvent.click(within(dialog).getByRole('button', { name: copy.connect.leave.discard }));
 
     await waitFor(() => expect(router.pathname).toBe('/capabilities'));
     expect(router.search.get('tab')).toBe('sources');

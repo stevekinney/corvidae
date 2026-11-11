@@ -67,7 +67,7 @@ export type ToolSourceForm = {
   readonly specificationUrl: string;
   /** The text of the OpenAPI file the person chose, or the empty string. */
   readonly document: string;
-  /** Where the service is, when the document does not say. */
+  /** Where the service is: the spec's first server, or another environment (row 33u). Required. */
   readonly baseUrl: string;
   /** How the source signs the request in. */
   readonly authentication: ToolSourceAuthenticationChoice;
@@ -279,7 +279,9 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
       }
       specification = { type: 'document', document: document ?? {} };
     }
+    // Required (row 33u): the spec's first server fills it in, and a person may point it elsewhere.
     const baseUrl = form.baseUrl.trim();
+    if (baseUrl === '') errors.baseUrl = copy.baseUrlRequired;
     source = {
       id,
       kind: 'openapi',
@@ -310,6 +312,22 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
     },
     id,
   };
+}
+
+/**
+ * The name of the tool an OpenAPI operation becomes at its source (COR-2022, Choose tools for a
+ * spec): its `operationId` in kebab case, so `createPet` is `create-pet` and `list_invoices` is
+ * `list-invoices`. It follows Armorer's `toToolName` (`armorer/src/integrations/openapi`), which is
+ * not imported here because it brings the OpenAPI client into the browser; a choice saved under any
+ * other name would reach no tool.
+ */
+export function openApiToolName(operationId: string): string {
+  return operationId
+    .replace(/[{}]/g, '')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .replace(/[^a-zA-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .toLowerCase();
 }
 
 /** What a person chose for one tool under Choose tools (COR-2022): whether it is on, and when it asks. */

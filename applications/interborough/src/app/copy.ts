@@ -3696,8 +3696,7 @@ export const GOALS_COPY = {
       promptPlaceholder: 'Leave this empty to keep the current prompt.',
       failedTitle: 'Couldn’t save the goal.',
       kept: 'Nothing was changed.',
-      changed:
-        'The goal changed while you were editing it. Look at it again, then try once more.',
+      changed: 'The goal changed while you were editing it. Look at it again, then try once more.',
     },
   },
 } as const;
@@ -6406,6 +6405,8 @@ export const CAPABILITIES_COPY = {
         source: 'Source',
         address: 'Address',
         signIn: 'Sign in',
+        /** Sign in for an OpenAPI spec, which also holds the Base URL (row 33u). */
+        baseUrlAndSignIn: 'Base URL and sign in',
         test: 'Test connection',
         chooseTools: 'Choose tools',
       },
@@ -6415,6 +6416,8 @@ export const CAPABILITIES_COPY = {
         label: 'Name',
         description:
           'Filled in after the test; change it if you like. Shown in Capabilities and on each tool.',
+        /** The help under Name for an OpenAPI spec, whose title fills it in (rows 33t, 34r). */
+        fromSpec: 'Prefilled from the spec’s title. Shown in Capabilities and on each tool.',
         placeholder: 'GitHub',
       },
       transport: { label: 'How Interborough reaches it', http: 'URL', stdio: 'Command' },
@@ -6436,21 +6439,34 @@ export const CAPABILITIES_COPY = {
       },
       specification: { label: 'Where the document is', url: 'A URL', file: 'A file' },
       specificationUrl: {
-        label: 'OpenAPI document URL',
+        label: 'Spec address',
         description: 'The address of the OpenAPI document.',
         placeholder: 'https://example.com/openapi.json',
       },
       file: {
-        label: 'OpenAPI file',
-        description: 'A JSON file of up to 3 MB.',
+        label: 'Spec',
+        description: 'A JSON or YAML file of up to 3 MB.',
         chosen: (name: string): string => `Using ${name}`,
         tooLarge: 'That file is larger than 3 MB.',
         unreadable: 'That file could not be read.',
       },
+      /**
+       * Reading the spec before it is connected (rows 34s, 34u, 34v): fetching it from its address,
+       * and what a spec that reads says about itself. The summary's parts are drawn side by side,
+       * each its own element, and never joined by a separator character.
+       */
+      spec: {
+        fetching: 'Fetching the spec…',
+        cancel: 'Cancel',
+        summaryLabel: 'What the spec holds',
+        version: (version: string): string => `OpenAPI ${version}`,
+        operations: (count: number): string =>
+          count === 1 ? '1 operation' : `${String(count)} operations`,
+        failed: 'The spec could not be read',
+      },
       baseUrl: {
         label: 'Base URL',
-        description:
-          'Where requests are sent. Leave it empty to use the first server the document names.',
+        description: 'Read from the spec. Change it to point at another environment.',
         placeholder: 'https://api.example.com',
       },
       /** Sign in's choices (rows 33g, 34q): OAuth carries the muted note beside its label. */
@@ -6476,32 +6492,150 @@ export const CAPABILITIES_COPY = {
       },
       probe: {
         action: 'Test connection',
-        listed: (count: number): string =>
-          count === 0
-            ? 'It answered and lists no tools.'
-            : count === 1
-              ? 'It answered and lists 1 tool.'
-              : `It answered and lists ${String(count)} tools.`,
-        toolsLabel: 'Tools it lists',
+        /** The Test button while the test runs (row 34i). */
+        testing: 'Testing…',
+        /** The note beside it while the test runs: the host it contacts (row 34i). */
+        contacting: (where: string): string => `Contacting ${where}…`,
+        /** The note while a local command is started for the test. */
+        starting: 'Starting the command…',
+        /** A test that passed: a green dot and this word, then how many tools it found (row 34w). */
+        connected: 'Connected',
+        found: (count: number): string =>
+          count === 1 ? 'Found 1 tool' : `Found ${String(count)} tools`,
         skipped: (count: number): string =>
           `${String(count)} of its tools cannot be offered under a name an agent can use.`,
         needsAuthorization:
           'The server is there and asks you to sign in. Connect it, then sign in from its page.',
         failedTitle: 'It did not answer',
         failed: 'The source could not be tested',
+        /** Under a test that failed (row 34n). */
+        kept: 'Nothing is saved until you connect. Your address and name stay filled in.',
+        /** Beside an inert Test connection while the server does not answer (row 35f). */
+        offline: 'Off while Interborough can’t be reached.',
+        /**
+         * Beside Test connection for an OpenAPI spec (rows 33v, 34r): the one read the test makes
+         * with the key, so a wrong key shows before Connect.
+         */
+        calls: (operation: string, method: string, path: string): string =>
+          `Calls ${operation} (${method} ${path}) with the key above, so a wrong key shows now.`,
+        /** For a spec that has no read the test can make without input. */
+        callsNothing: 'The spec has no read that needs no input, so the test reads the spec only.',
       },
-      /** Choose tools before a test has listed any. */
-      chooseToolsEmpty: 'Test the connection to list its tools.',
-      /** The footer's summary while no test has passed: Connect runs the test first (row 33r). */
+      /** Choose tools (rows 33i, 33m, 34w, 33w, 33y). */
+      chooseTools: {
+        /** The line above the list, and above the dashed box before a test passes (row 33m). */
+        intro: 'Pick what agents may use, and when each asks.',
+        /** Added to the intro once tools are listed (row 33i). */
+        hints: 'The server’s own hints set the starting values; a Dangerous tool starts on Always.',
+        /** Before a test has listed any (row 33m). */
+        locked: 'Test the connection to list its tools.',
+        /** A server that answered and lists none (row 34w). */
+        none: 'The server answered but offers no tools. Check that it exposes tools, then test again.',
+        /**
+         * The legend of the four levels (row 33i), each word in bold before what it does. The items
+         * are drawn side by side as a list, never joined by a separator character.
+         */
+        legendLabel: 'What each level means',
+        legend: [
+          { word: 'Never', means: 'runs without asking' },
+          { word: 'On changes', means: 'asks unless a chat allows all' },
+          { word: 'Always', means: 'asks every time' },
+          { word: 'Blocked', means: 'never runs' },
+        ],
+        caption: (source: string): string => `Tools ${source} offers`,
+        columns: { on: 'On', tool: 'Tool', risk: 'Risk', asks: 'Asks' },
+        /** The name of a tool's On checkbox, whose column head is its visible label. */
+        onLabel: (tool: string): string => `On: ${tool}`,
+        /** The name of a tool's Asks select, whose column head is its visible label. */
+        asksLabel: (tool: string): string => `Asks: ${tool}`,
+        /** An OpenAPI spec's operations (rows 33w, 33y). */
+        operations: {
+          found: (count: number): string =>
+            `Found ${String(count)} ${count === 1 ? 'operation' : 'operations'}. Reads start on and changes start off. A Dangerous operation starts on Always.`,
+          filterLabel: 'Filter operations',
+          riskLabel: 'Show operations that',
+          all: 'All',
+          selected: (on: number, total: number): string =>
+            `${String(on)} of ${String(total)} selected`,
+          selectAll: (total: number): string => `Select all ${String(total)}`,
+          /** Under a list longer than it shows at once. */
+          showing: (shown: number, total: number): string =>
+            `Showing ${String(shown)} of ${String(total)}. Scroll the list for the rest.`,
+          noMatch: 'No operation matches the filter.',
+        },
+      },
+      /**
+       * The footer's summary before a test has passed (row 33n), and for a local command, whose
+       * Connect runs the test first (row 33r), as it does while a test runs (row 34j).
+       */
+      chooseFirst: 'Test the connection to choose tools.',
       testsFirst: 'Connect tests the connection first.',
+      /** The footer's summary once tools are chosen (rows 33y, 34c), and for a source with none (row 34x). */
+      joins: (count: number, name: string): string =>
+        count === 0
+          ? `${name} will join Capabilities with no tools.`
+          : `${String(count)} ${count === 1 ? 'tool' : 'tools'} from ${name} will join Capabilities.`,
+      /** The footer while Connect runs (rows 34a, 34z): the line, what it adds after 15 s, and the button. */
+      connecting: (name: string): string => `Connecting ${name}…`,
+      slow: 'Taking longer than usual',
+      /** The footer while the server does not answer (row 35f). */
+      offline: 'Connect is off while Interborough can’t be reached.',
       /** What the page says while the host keeps its configuration in its deployment. */
       locked:
         'This host keeps its configuration in its deployment, so a source cannot be connected here.',
-      actions: { connect: 'Connect', cancel: 'Cancel' },
-      connected: (name: string): string =>
-        `Connected ${name}. Restart Interborough to list its tools.`,
-      /** A source the host loaded at once (`restartRequired: false`). */
-      connectedNow: (name: string): string => `Connected ${name}. Its tools are available now.`,
+      actions: {
+        connect: 'Connect',
+        /** Connect once tools are chosen (rows 33y, 34c). */
+        connectCount: (count: number): string =>
+          count === 1 ? 'Connect 1 tool' : `Connect ${String(count)} tools`,
+        connecting: 'Connecting…',
+        cancel: 'Cancel',
+      },
+      /** A connect that failed after a passing test (row 34b), with what was kept. */
+      connectFailed: {
+        lead: 'Couldn’t connect.',
+        stopped: 'The server stopped answering after the test passed.',
+        kept: 'Nothing was saved; your choices are kept.',
+        retry: 'Try again',
+      },
+      /** A source already saved at the address typed (row 34e). */
+      duplicate: (name: string): string =>
+        `${name} is already connected at this address. Use another address, or remove that source first.`,
+      /** After connecting (rows 34f, 34g, 34h). */
+      success: {
+        title: (name: string): string => `${name} is connected`,
+        /** `on` tools on; `off` the names of the tools left off. */
+        line: (on: number, off: readonly string[]): string => {
+          const available =
+            on === 1 ? '1 tool is available now' : `${String(on)} tools are available now`;
+          const left =
+            off.length === 0 ? '' : `; ${nameList(off)} ${off.length === 1 ? 'is' : 'are'} off`;
+          return `${available}${left}. No restart needed.`;
+        },
+        /** For a host that loads the source only when it starts again. */
+        restart: (on: number): string =>
+          `${on === 1 ? '1 tool is' : `${String(on)} tools are`} saved. Restart Interborough to list them.`,
+        listLabel: 'What you chose',
+        off: 'Off',
+        give: 'Give to an agent',
+        view: 'View in Capabilities',
+      },
+      /** The picker "Give to an agent" opens (rows 35c, 35d). */
+      give: {
+        title: (name: string): string => `Give ${name}’s tools to which agent?`,
+        opens: 'Opens its Access tab',
+        loading: 'Reading the agents',
+        failed: 'The agents could not be read.',
+        none: 'No agent can take new tools. An agent defined in code or shipped by a plugin keeps the tools it states.',
+        cancel: 'Cancel',
+      },
+      /** Asked before a filled form is left (rows 35b, 35f). */
+      leave: {
+        title: 'Leave without connecting?',
+        description: 'Nothing you filled in is saved. Leaving discards it.',
+        keep: 'Keep editing',
+        discard: 'Discard and leave',
+      },
       failed: 'The source could not be connected',
       exists: (id: string): string =>
         `A source named ${id} is already saved. Choose another name, or remove it first.`,
@@ -6513,6 +6647,8 @@ export const CAPABILITIES_COPY = {
         urlRequired: 'Enter the server’s URL.',
         commandRequired: 'Enter the command to run.',
         specificationUrlRequired: 'Enter the document’s URL.',
+        /** An OpenAPI spec's Base URL, which the spec's first server fills in (row 33u). */
+        baseUrlRequired: 'Enter the base URL.',
         documentRequired: 'Choose an OpenAPI file.',
         documentInvalid: 'That file is not a JSON object.',
         secretRequired: {

@@ -25,6 +25,16 @@ const form = (extra: Partial<ToolSourceForm>): ToolSourceForm => ({
   ...extra,
 });
 
+describe('openApiToolName', () => {
+  test('names an operation’s tool as Armorer does: its operationId in kebab case', () => {
+    expect(openApiToolName('createPet')).toBe('create-pet');
+    expect(openApiToolName('listRefunds')).toBe('list-refunds');
+    expect(openApiToolName('list_invoices')).toBe('list-invoices');
+    expect(openApiToolName('get{id}Item')).toBe('getid-item');
+    expect(openApiToolName('--refund--')).toBe('refund');
+  });
+});
+
 describe('buildToolSourceRequest', () => {
   test('describes an MCP server reached by URL, with no authentication, a bearer token, or OAuth', () => {
     const url = 'https://example.com/mcp';
@@ -100,6 +110,7 @@ describe('buildToolSourceRequest', () => {
         kind: 'openapi',
         specification: 'file',
         document: '{"openapi":"3.0.0"}',
+        baseUrl: 'https://files.example.com',
         authentication: 'bearer',
         secret: 't',
       }),
@@ -125,6 +136,7 @@ describe('buildToolSourceRequest', () => {
           id: 'notes',
           kind: 'openapi',
           specification: { type: 'document', document: { openapi: '3.0.0' } },
+          baseUrl: 'https://files.example.com',
           authentication: { type: 'bearer', credential: 'token' },
         },
         credentials: { token: 't' },
@@ -151,15 +163,20 @@ describe('buildToolSourceRequest', () => {
         document: errors.documentRequired,
         secret: errors.secretRequired['api-key'],
         header: errors.headerRequired,
+        baseUrl: errors.baseUrlRequired,
       },
     });
+    // An OpenAPI spec's Base URL is required (row 33u).
     expect(buildToolSourceRequest(form({ kind: 'openapi' }))).toEqual({
-      errors: { specificationUrl: errors.specificationUrlRequired },
+      errors: {
+        specificationUrl: errors.specificationUrlRequired,
+        baseUrl: errors.baseUrlRequired,
+      },
     });
     // The page makes the identifier from the name: a name with no letter makes none.
-    expect(
-      buildToolSourceRequest(form({ id: '', name: '42', url: 'https://x.example' })),
-    ).toEqual({ errors: { id: errors.nameInvalid } });
+    expect(buildToolSourceRequest(form({ id: '', name: '42', url: 'https://x.example' }))).toEqual({
+      errors: { id: errors.nameInvalid },
+    });
     expect(buildToolSourceRequest(form({ transport: 'stdio', command: '   ' }))).toEqual({
       errors: { command: errors.commandRequired },
     });
@@ -176,7 +193,14 @@ describe('buildToolSourceRequest', () => {
   test('refuses a file that is not a JSON object', () => {
     for (const document of ['nope', '[1]', '3', 'null']) {
       expect(
-        buildToolSourceRequest(form({ kind: 'openapi', specification: 'file', document })),
+        buildToolSourceRequest(
+          form({
+            kind: 'openapi',
+            specification: 'file',
+            document,
+            baseUrl: 'https://files.example.com',
+          }),
+        ),
       ).toEqual({ errors: { document: errors.documentInvalid } });
     }
   });

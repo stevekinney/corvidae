@@ -5,8 +5,10 @@ import {
   authorizeToolSource,
   connectToolSource,
   getToolSources,
+  HOST_OPENAPI_INSPECTION_ROUTE,
   HOST_TOOL_SOURCES_ROUTE,
   HostToolSourceError,
+  inspectOpenApi,
   previewToolSourceRemoval,
   probeToolSource,
   removeToolSource,
@@ -629,5 +631,103 @@ describe('probeToolSource and connectToolSource (COR-1991)', () => {
     ).toMatchObject({
       kind: 'owner-only',
     });
+  });
+});
+
+describe('inspectOpenApi (COR-2022)', () => {
+  const VALID = {
+    outcome: 'valid',
+    fileName: 'payments-openapi.yaml',
+    version: '3.1',
+    title: 'Payments API',
+    baseUrl: 'https://payments.example.com/v1',
+    operationCount: 1,
+    operations: [
+      {
+        operationId: 'listRefunds',
+        method: 'GET',
+        path: '/refunds',
+        title: 'List refunds',
+        description: null,
+        tier: 'read-only',
+      },
+    ],
+    testOperation: {
+      operationId: 'listRefunds',
+      title: 'List refunds',
+      method: 'GET',
+      path: '/refunds',
+    },
+    document: { openapi: '3.1.0' },
+  };
+
+  test('sends a file’s text with its name, or an address, and saves nothing', async () => {
+    const host = recording(() => Response.json(VALID));
+
+    await inspectOpenApi(
+      { text: 'openapi: 3.1.0', fileName: 'payments-openapi.yaml' },
+      { fetch: host.fetch },
+    );
+    await inspectOpenApi({ url: 'https://api.example.com/openapi.json' }, { fetch: host.fetch });
+
+    expect(host.seen).toEqual([
+      {
+        path: HOST_OPENAPI_INSPECTION_ROUTE,
+        method: 'POST',
+        body: JSON.stringify({ text: 'openapi: 3.1.0', fileName: 'payments-openapi.yaml' }),
+      },
+      {
+        path: HOST_OPENAPI_INSPECTION_ROUTE,
+        method: 'POST',
+        body: JSON.stringify({ url: 'https://api.example.com/openapi.json' }),
+      },
+    ]);
+  });
+
+  test('reads each outcome: valid, invalid with its line, no operationIds, and an address that did not answer', async () => {
+    const answer = async (body: unknown) =>
+      inspectOpenApi(
+        { url: 'https://api.example.com/openapi.json' },
+        { fetch: recording(() => Response.json(body)).fetch },
+      );
+
+    expect(await answer(VALID)).toEqual(VALID as Awaited<ReturnType<typeof inspectOpenApi>>);
+    expect(
+      await answer({
+        outcome: 'invalid',
+        fileName: 'payments-openapi.yaml',
+        line: 14,
+        problem: '“paths” must be an object.',
+        message: 'This isn’t a valid OpenAPI 3 file. Line 14: “paths” must be an object.',
+      }),
+    ).toMatchObject({ outcome: 'invalid', line: 14 });
+    expect(
+      await answer({
+        outcome: 'no-operation-ids',
+        fileName: 'payments-openapi.yaml',
+        version: '3.1',
+        operationCount: 24,
+        message: 'None of the 24 operations has an operationId.',
+      }),
+    ).toMatchObject({ outcome: 'no-operation-ids', operationCount: 24 });
+    expect(
+      await answer({ outcome: 'unreachable', status: 404, message: 'No spec at that address.' }),
+    ).toMatchObject({ outcome: 'unreachable', status: 404 });
+  });
+
+  test('reads the host’s refusal of an address that is not http or https', async () => {
+    const refused = recording(() =>
+      Response.json(
+        { error: 'invalid', message: '"url" must be an http or https address.' },
+        { status: 400 },
+      ),
+    );
+
+    const failure = await failureOf(
+      inspectOpenApi({ url: 'ftp://api.example.com/openapi.json' }, { fetch: refused.fetch }),
+    );
+
+    expect(failure).toBeInstanceOf(HostToolSourceError);
+    expect(failure).toMatchObject({ kind: 'invalid' });
   });
 });

@@ -30,10 +30,19 @@ const escapeForPattern = (text: string): string => text.replace(/[.*+?^${}()|[\]
 const CONNECT = '/capabilities/connect';
 
 const form = (page: Page) => page.getByTestId('connect-form');
-/** Connect, in the form's docked footer; exact, because the Capabilities header has Connect tools. */
+/**
+ * Connect, in the form's docked footer: "Connect", or "Connect 2 tools" once tools are chosen
+ * (COR-2022 row 34c). Anchored, because the Capabilities header has Connect tools.
+ */
 const saveButton = (page: Page) =>
-  form(page).getByRole('button', { name: copy.connect.actions.connect, exact: true });
+  form(page).getByRole('button', { name: /^Connect( \d+ tools?)?$/ });
 const detail = (page: Page) => page.getByTestId('source-detail');
+
+/** After connecting, the success state (row 34f); View in Capabilities opens the source. */
+async function viewConnected(page: Page): Promise<void> {
+  await expect(page.getByTestId('connect-success')).toBeVisible();
+  await page.getByRole('button', { name: copy.connect.success.view }).click();
+}
 
 async function originsOf(request: APIRequestContext): Promise<ConnectOrigins> {
   const response = await request.get(`${E2E_BARRIER_URL}/connect/origins`);
@@ -93,9 +102,7 @@ for (const width of [375, 1280] as const) {
     // The longest form: an OpenAPI service with a key.
     await form(page).getByRole('radio', { name: copy.connect.kind.openapi }).check();
     await form(page).getByLabel(copy.connect.name.label, { exact: true }).fill('a'.repeat(30));
-    await form(page)
-      .getByRole('radio', { name: copy.connect.authentication['api-key'] })
-      .check();
+    await form(page).getByRole('radio', { name: copy.connect.authentication['api-key'] }).check();
     await form(page).locator('#connect-secret').fill('k'.repeat(300));
 
     const overflow = await page.evaluate(() => ({
@@ -151,8 +158,9 @@ test('tests a server with its token, and lists the tools it offers before anythi
 
   await page.getByRole('button', { name: copy.connect.probe.action }).click();
 
-  await expect(page.getByTestId('connect-listed')).toHaveText(copy.connect.probe.listed(2));
-  await expect(page.locator('[data-probe-tool="notes__lookup"]')).toContainText('Reads only');
+  await expect(page.getByTestId('connect-listed')).toHaveText(copy.connect.probe.found(2));
+  // Choose tools lists them with their risk (rows 33i, 34w).
+  await expect(page.locator('[data-probe-tool="notes__lookup"]')).toContainText('Reads');
   await expect(page.locator('[data-probe-tool="notes__wipe"]')).toContainText('Dangerous');
   // Nothing was saved.
   const saved = await snapshotOf(request);
@@ -170,6 +178,11 @@ test('connects an MCP server and an OpenAPI service, whose tools are listed at o
   await bearer(page, E2E_CONNECT_TOKEN);
   await saveButton(page).click();
 
+  // Connect tested first, then saved: the page says what is available now (row 34f).
+  await expect(page.getByTestId('connect-success')).toContainText(
+    copy.connect.success.title('notes'),
+  );
+  await viewConnected(page);
   // A source added to a live host is loaded at once (COR-2009): it is Connected, not waiting.
   await expect(detail(page)).toHaveAttribute('data-source', 'notes');
   await expect(detail(page)).toHaveAttribute('data-state', 'loaded');
@@ -182,10 +195,15 @@ test('connects an MCP server and an OpenAPI service, whose tools are listed at o
     .getByLabel(copy.connect.specificationUrl.label)
     .fill(`${origins.pets}/openapi.json`);
   await form(page).getByLabel(copy.connect.baseUrl.label).fill(origins.pets);
+  // An OpenAPI spec starts on an API key (row 33u); this one needs no sign-in.
+  await form(page).getByRole('radio', { name: copy.connect.authentication.none }).check();
   await page.getByRole('button', { name: copy.connect.probe.action }).click();
-  await expect(page.getByTestId('connect-listed')).toHaveText(copy.connect.probe.listed(3));
+  await expect(page.getByTestId('connect-listed')).toHaveText(copy.connect.probe.found(3));
+  // A spec's changes start off (row 33w): turn on the one that creates a pet.
+  await form(page).locator('#connect-tool-create-pet-on').check();
   await saveButton(page).click();
 
+  await viewConnected(page);
   await expect(detail(page)).toHaveAttribute('data-source', 'pets');
   await expect(detail(page)).toHaveAttribute('data-state', 'loaded');
   // Nothing is saved and not running, so there is nothing to restart for.

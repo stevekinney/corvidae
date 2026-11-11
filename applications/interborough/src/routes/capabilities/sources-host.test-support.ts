@@ -2,11 +2,13 @@
  * A stand-in for the host's tool-source routes, for the Sources tab tests: it answers
  * `GET /host/tool-sources`, `PUT /host/tool-sources/<id>/tools`, `POST …/authorize`,
  * `GET …/affected-agents`, `DELETE /host/tool-sources/<id>`, `POST …/test` (COR-2022), and (COR-1991) `POST …/probe`,
- * `PUT /host/tool-sources/<id>` and `POST /host/restart` from state a test holds, and records
+ * `PUT /host/tool-sources/<id>`, `POST /host/openapi-inspection` (COR-2022) and `POST /host/restart`
+ * from state a test holds, and records
  * what it was sent. The real routes are exercised against a real host in
  * `src/host/host-tool-sources.test.ts` and the Playwright suite (`connect-tools.spec.ts`).
  */
 import type {
+  OpenApiInspection,
   ToolSourceAgent,
   ToolSourceAuthorization,
   ToolSourceProbe,
@@ -28,6 +30,11 @@ export type FakeToolSources = {
   agents: Record<string, ToolSourceAgent[]>;
   /** What `POST …/probe` answers. */
   probe: ToolSourceProbe;
+  /**
+   * What `POST /host/openapi-inspection` answers (COR-2022). Left out, a spec reads as not one,
+   * with the host's words.
+   */
+  inspection?: OpenApiInspection | undefined;
   /** Makes the next probe answer with this response instead of `probe`. */
   refuseProbeNext?: Response | undefined;
   /**
@@ -125,6 +132,19 @@ export function fakeToolSources(initial: {
       }
       return answer;
     }
+    if (path === '/host/openapi-inspection' && method === 'POST') {
+      host.requests.push({ method, path, body });
+      const fileName = (body as { fileName?: string }).fileName ?? null;
+      return Response.json(
+        host.inspection ?? {
+          outcome: 'invalid',
+          fileName,
+          line: null,
+          problem: 'It is not YAML or JSON.',
+          message: 'This isn’t a valid OpenAPI 3 file. It is not YAML or JSON.',
+        },
+      );
+    }
     if (!path.startsWith('/host/tool-sources')) return undefined;
     host.requests.push({ method, path, body });
     if (method !== 'GET' && host.refuseNext !== undefined) {
@@ -152,22 +172,35 @@ export function fakeToolSources(initial: {
         }
       ).source;
       const credentials = Object.keys((body as { credentials: object }).credentials);
+      const oauth = saved.transport?.authentication?.type === 'oauth';
+      // A source a connect adds is loaded at once (COR-2009), with the tools it lists that are on;
+      // an OAuth one waits for its sign-in. Replacing a saved source waits for a restart.
+      const created = (body as { create?: boolean }).create === true;
+      const settings = (body as { tools?: Record<string, ToolSourceToolSettings> }).tools ?? {};
+      const listed = host.probe.outcome === 'listed' ? host.probe.tools : [];
+      const available = listed
+        .filter((tool) => settings[tool.tool]?.enabled !== false)
+        .map((tool) => tool.name);
       host.sources = [
         ...host.sources.filter((entry) => entry.id !== id),
         {
           id,
           kind: saved.kind,
           localCommand: false,
-          state: 'pending-restart',
+          state: !created ? 'pending-restart' : oauth ? 'needs-authorization' : 'loaded',
           tools: [],
           skipped: [],
           unmatchedSettings: [],
           credentials,
           // Only an OAuth source reports whether it holds tokens.
-          ...(saved.transport?.authentication?.type === 'oauth' ? { authorized: false } : {}),
+          ...(oauth ? { authorized: false } : {}),
         },
       ];
-      return Response.json({ id, changed: true, restartRequired: true });
+      return Response.json(
+        created
+          ? { id, changed: true, restartRequired: false, available }
+          : { id, changed: true, restartRequired: true },
+      );
     }
     if (id === undefined && method === 'GET' && host.downReads > 0) {
       host.downReads -= 1;

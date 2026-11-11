@@ -138,6 +138,57 @@ const probeSchema = z.discriminatedUnion('outcome', [
   z.object({ outcome: z.literal('failed'), message: z.string() }),
 ]);
 
+const operationTierSchema = z.enum(['read-only', 'mutating', 'dangerous']);
+
+const inspectionSchema = z.discriminatedUnion('outcome', [
+  z.object({
+    outcome: z.literal('valid'),
+    fileName: z.string().nullable(),
+    version: z.string(),
+    title: z.string().nullable(),
+    baseUrl: z.string().nullable(),
+    operationCount: z.number(),
+    operations: z.array(
+      z.object({
+        operationId: z.string().nullable(),
+        method: z.string(),
+        path: z.string(),
+        title: z.string().nullable(),
+        description: z.string().nullable(),
+        tier: operationTierSchema,
+      }),
+    ),
+    testOperation: z
+      .object({
+        operationId: z.string(),
+        title: z.string().nullable(),
+        method: z.literal('GET'),
+        path: z.string(),
+      })
+      .nullable(),
+    document: z.record(z.string(), z.unknown()),
+  }),
+  z.object({
+    outcome: z.literal('invalid'),
+    fileName: z.string().nullable(),
+    line: z.number().nullable(),
+    problem: z.string(),
+    message: z.string(),
+  }),
+  z.object({
+    outcome: z.literal('no-operation-ids'),
+    fileName: z.string().nullable(),
+    version: z.string(),
+    operationCount: z.number(),
+    message: z.string(),
+  }),
+  z.object({
+    outcome: z.literal('unreachable'),
+    status: z.number().nullable(),
+    message: z.string(),
+  }),
+]);
+
 const authorizationSchema = z.union([
   z.object({ authorized: z.literal(true) }),
   z.object({ authorized: z.literal(false), authorizationUrl: z.string() }),
@@ -206,6 +257,27 @@ export type ToolSourceChange = z.infer<typeof changeSchema>;
 
 /** What starting a sign-in reports: the address to open, or that the stored tokens already work. */
 export type ToolSourceAuthorization = z.infer<typeof authorizationSchema>;
+
+/**
+ * What the host made of an OpenAPI spec before it is connected (`src/host/openapi-inspection.ts`):
+ * a `valid` spec with its title, first server, operations and the read Test connection makes; an
+ * `invalid` file with the line its problem is on; a valid spec in which `no-operation-ids` name a
+ * tool; or an address that was `unreachable`. Each but `valid` carries the whole message a page shows.
+ */
+export type OpenApiInspection = z.infer<typeof inspectionSchema>;
+
+/** One operation of a `valid` spec, as Choose tools lists it. */
+export type OpenApiOperation = Extract<
+  OpenApiInspection,
+  { outcome: 'valid' }
+>['operations'][number];
+
+/** What a spec is read from: the text of a file the person chose, or its address. */
+export type OpenApiSpecInput =
+  { readonly text: string; readonly fileName: string } | { readonly url: string };
+
+/** The route that reads an OpenAPI spec before it is connected, and saves nothing. */
+export const HOST_OPENAPI_INSPECTION_ROUTE = '/host/openapi-inspection';
 
 /** Why a change to a source failed. */
 export type HostToolSourceFaultKind =
@@ -325,6 +397,28 @@ export async function probeToolSource(
 ): Promise<ToolSourceProbe> {
   const response = await send(sourcePath(id, '/probe'), jsonRequest('POST', request), options);
   return readJson(response, probeSchema);
+}
+
+/**
+ * Asks the host to read an OpenAPI spec (COR-2022, rows 33t, 34s, 34u, 34v): the text of a file,
+ * JSON or YAML, or the spec at an address the host fetches. Nothing is saved. Pass a `signal` to
+ * stop a fetch the person cancels.
+ *
+ * @throws {HostToolSourceError} When the host refuses the request (`invalid`: no text and no
+ * address, or an address that is not http or https).
+ */
+export async function inspectOpenApi(
+  input: OpenApiSpecInput,
+  options: Options = {},
+): Promise<OpenApiInspection> {
+  // Copied before the first `await`: the caller owns the input.
+  const body = 'url' in input ? { url: input.url } : { text: input.text, fileName: input.fileName };
+  const response = await send(
+    HOST_OPENAPI_INSPECTION_ROUTE,
+    { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) },
+    options,
+  );
+  return readJson(response, inspectionSchema);
 }
 
 /**
