@@ -103,6 +103,11 @@
   text-decoration: none;
 }
 
+/* In the list, the name is a line of its own that ends with an ellipsis (Cinder's `Text`). */
+.ib-workflow-row__name {
+  display: block;
+}
+
 .ib-workflow-name:hover {
   text-decoration: underline;
 }

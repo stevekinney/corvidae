@@ -45,18 +45,7 @@ You can inspect a component's props, CSS variables, cross-prop constraints, and 
 
 Use lower-camel component names, such as `button` or `dataTable`. Check the manifest's `hasConstraints` and `hasExamples` flags for optional artifacts.
 
-## Local component discovery
-
-From `components/cinder`, run the retained knowledge CLI with Bun:
-
-```bash
-bun run knowledge list --json
-bun run knowledge search modal --json
-bun run knowledge show button --json
-bun run knowledge best-practices styles --json
-```
-
-The CLI reads the manifest and source artifacts from this workspace. Its filesystem-backed knowledge service stays internal to developer tooling. Applications import `manifest` and named metadata from `@lostgradient/cinder`; the library root supports browser and server rendering.
+Applications import `manifest` and named metadata from `@lostgradient/cinder`; the library root supports browser and server rendering.
 
 ## Token data
 

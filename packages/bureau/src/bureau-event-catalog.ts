@@ -367,6 +367,19 @@ export const BUREAU_EVENT_CATALOG: Readonly<
     ['ordinal', 'number'],
     ['committedAtMs', 'number'],
   ]),
+  'session.tainted': entry(
+    'session.tainted',
+    'run',
+    'A run’s guardrails tainted a session for the first time. The session stays tainted for its later runs and for its forks. The payload names the detector, where the content came from and the confidence, never the flagged text.',
+    [
+      ['sessionId', 'string'],
+      ['runId', 'string'],
+      ['detector', 'string'],
+      ['provenance', 'string'],
+      ['confidence', 'number'],
+    ],
+    EVERY_SCOPE,
+  ),
   'review.requested': entry(
     'review.requested',
     'run',

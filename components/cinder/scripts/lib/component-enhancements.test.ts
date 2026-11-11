@@ -32,10 +32,10 @@ describe('component enhancements', () => {
 
     try {
       const enhancements = discoverComponentEnhancements(
-        [{ name: 'second-editor', isExperimental: false }],
+        [{ name: 'second-editor' }],
         componentsRoot,
       );
-      expect(enhancements).toEqual([{ name: 'second-editor', isExperimental: false, sourcePath }]);
+      expect(enhancements).toEqual([{ name: 'second-editor', sourcePath }]);
       expect(componentEnhancementKey(enhancements[0]!)).toBe('stable/second-editor');
 
       const sourceModule: unknown = await import(sourcePath);

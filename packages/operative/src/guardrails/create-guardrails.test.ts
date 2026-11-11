@@ -1,3 +1,4 @@
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it, mock } from 'bun:test';
 import { Conversation } from 'conversationalist';
 
@@ -120,6 +121,52 @@ describe('createGuardrails', () => {
   });
 
   describe('session taint integration', () => {
+    it('taints the session when a detector or a validator fails closed (COR-2300)', async () => {
+      const taints: SessionTaintedEvent[] = [];
+      const onTainted = (event: SessionTaintedEvent) => void taints.push(event);
+      const input = createGuardrails({
+        taint: { onTainted },
+        input: {
+          detectors: [
+            {
+              name: 'broken',
+              detect: async () => {
+                throw new Error('down');
+              },
+            },
+          ],
+          action: 'warn',
+        },
+      });
+      const refused = await input.prepareStep(createTestContext());
+      expect(refused?.content).toContain('blocked');
+      expect(input.taint.isTainted()).toBe(true);
+
+      const output = createGuardrails({
+        taint: { onTainted },
+        output: {
+          validators: [
+            {
+              name: 'broken',
+              validate: async () => {
+                throw new Error('down');
+              },
+            },
+          ],
+        },
+      });
+      const blocked = await output.validateResponse(
+        { content: 'a reply', toolCalls: [] },
+        createTestContext(),
+      );
+      expect(blocked?.content).toContain('blocked');
+      expect(output.taint.isTainted()).toBe(true);
+      expect(taints).toEqual([
+        expect.objectContaining({ detector: 'broken', category: 'detector-failure' }),
+        expect.objectContaining({ detector: 'broken', category: 'detector-failure' }),
+      ]);
+    });
+
     it('taints session when input detection confidence exceeds threshold', async () => {
       const onTainted = mock((_event: SessionTaintedEvent) => {});
       const detector = createMockDetector('injection', {
@@ -247,6 +294,26 @@ describe('createGuardrails', () => {
       expect(tripwireError.category).toBe('prompt-injection');
       expect(tripwireError.phase).toBe('input');
       expect(tripwireError.confidence).toBe(0.95);
+    });
+
+    it('waits for an asynchronous taint write before it throws the tripwire (COR-2105)', async () => {
+      let written = false;
+      const { prepareStep } = createGuardrails({
+        mode: 'tripwire',
+        input: { detectors: [createMockDetector('injection-detector', triggeredDetection)] },
+        taint: {
+          runId: 'run-1',
+          onTainted: async (event) => {
+            await Promise.resolve();
+            expect(event).toMatchObject({ category: 'prompt-injection', runId: 'run-1' });
+            written = true;
+          },
+        },
+      });
+      expect(await rejectionOf(prepareStep(createTestContext()))).toBeInstanceOf(
+        GuardrailTripwireError,
+      );
+      expect(written).toBe(true);
     });
 
     it('does not throw from prepareStep when no input detector triggers', async () => {
@@ -482,7 +549,7 @@ describe('createGuardrails tool-result scanning (COR-2103)', () => {
       taint: { escalatedDetectors: [escalated] },
     });
     expect(await validateToolResult(flagged, toolResultContext())).toBeUndefined();
-    taint.taint({ reason: 'test', detector: 'test', confidence: 1, step: 1 });
+    taint.taint({ reason: 'test', detector: 'test', category: 'test', confidence: 1, step: 1 });
     const replaced = await validateToolResult(flagged, toolResultContext());
     expect(replaced?.error?.message).toContain('"escalated"');
   });

@@ -16,7 +16,8 @@ import { createToolbox } from 'armorer';
 import { afterAll, afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import {
   createScheduleFireHarness,
   fireOnce,

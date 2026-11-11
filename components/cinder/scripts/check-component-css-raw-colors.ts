@@ -42,7 +42,7 @@
  * A CSS linter cannot express this (cross-file count baseline + per-reason
  * classification + Svelte `<style>` extraction), so a scanned report with an
  * explicit reason allowlist is the simplest durable enforcement — mirroring
- * `check-platform-features.ts` and `check-no-cycle-imports.ts`.
+ * `check-platform-features.ts`.
  */
 
 import { Glob } from 'bun';

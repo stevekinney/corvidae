@@ -697,6 +697,46 @@ export class MemoryGovernanceEvent extends Event {
 }
 
 /**
+ * Fired on the bureau emitter once per session, when a run's guardrails first taint it and the
+ * taint is stored in the session (COR-2105). It names the session and the run, the detector, where
+ * the flagged content came from, and the detector's confidence; it never carries the flagged text
+ * or the detector's own detail. A later run of the same session starts tainted and does not fire it
+ * again. It is published after the taint is stored, at most once: a process that stops between the
+ * two stores the taint (which is what matters) and drops the event. `runId` is the run's id, or the
+ * session's for a recovered run that has none.
+ */
+export class SessionTaintEvent extends Event {
+  /** The event name: `session.tainted`. */
+  static readonly type = 'session.tainted' as const;
+
+  /** The session that is now tainted. */
+  readonly sessionId: string;
+  /** The run whose guardrails tainted it. */
+  readonly runId: string;
+  /** The detector that fired. */
+  readonly detector: string;
+  /** Where the flagged content came from, such as `user-input` or `tool-result`. */
+  readonly provenance: string;
+  /** The detector's confidence, from 0 to 1. */
+  readonly confidence: number;
+
+  constructor(taint: {
+    readonly sessionId: string;
+    readonly runId: string;
+    readonly detector: string;
+    readonly provenance: string;
+    readonly confidence: number;
+  }) {
+    super(SessionTaintEvent.type);
+    this.sessionId = taint.sessionId;
+    this.runId = taint.runId;
+    this.detector = taint.detector;
+    this.provenance = taint.provenance;
+    this.confidence = taint.confidence;
+  }
+}
+
+/**
  * Maps event type strings to their corresponding Event subclasses.
  *
  * `schedule.created`/`paused`/`resumed`/`cancelled`/`failed`/`completed`
@@ -756,6 +796,8 @@ export interface BureauEventMap extends EventMap {
   'session.created': SessionCreatedEvent;
   'session.saved': SessionSavedEvent;
   'session.deleted': SessionDeletedEvent;
+  /** A session was tainted for the first time (COR-2105). */
+  [SessionTaintEvent.type]: SessionTaintEvent;
   [ReviewRequestedEvent.type]: ReviewRequestedEvent;
   [ReviewApprovedEvent.type]: ReviewApprovedEvent;
   [ReviewDeniedEvent.type]: ReviewDeniedEvent;

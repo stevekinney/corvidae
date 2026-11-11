@@ -114,7 +114,7 @@ const definitionSchema = z.object({
   tools: z.array(z.string()),
   card: z.array(skillSchema),
   /** The executable skills a run may activate; `null` when the file lists none, and the agent has none. */
-  allowedSkills: z.array(z.string()).nullable().default(null),
+  skills: z.array(z.string()).nullable().default(null),
   children: z.array(z.string()).nullable().optional(),
   a2a: z.boolean(),
   /**
@@ -367,7 +367,7 @@ export type AgentDefinitionInput = {
    * The executable skills a run may activate. An update that leaves it out keeps the file's list,
    * `null` removes it, and an empty list grants none.
    */
-  readonly allowedSkills?: readonly string[] | null;
+  readonly skills?: readonly string[] | null;
   /** File agents this definition may dispatch as durable children. */
   readonly children?: readonly string[] | null;
   /** Whether the agent opts into A2A. Left out, an update keeps the file's value. */

@@ -18,6 +18,10 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 
 `md` is the default and the size for inline actions: the buttons in a row, a card, a dialog footer, or a toolbar. Use `sm` or `xs` where space is tight. Reserve `lg` for a page-level primary action, such as the one call to action that a page is organized around. A screen with several `lg` buttons has no primary action.
 
+## Shortcut hint
+
+`shortcut` takes a key (`"N"`) or an array of keys (`['Ctrl', 'K']`) and renders a ShortcutHint after the label. The hint is decorative and `aria-hidden`, so the button's accessible name stays its label, and it only displays the shortcut; registering the key is the application's job. The hint is plain glyphs in the button's own text color, on every variant: no border, fill, shadow, or key-cap chip, and slightly dimmed so the label stays dominant. It is hidden on touch devices (`pointer: coarse` or `hover: none`), which have no keyboard to press it with. A `Kbd` or `ShortcutHint` you nest in a button by hand gets the same treatment, so do not restyle it per page.
+
 ## Disabled
 
 A disabled button looks the same in every variant: a neutral surface (or none, for `ghost` and `ghost-danger`), `--cinder-text-disabled` text, and the shared disabled opacity. It never keeps its tone while disabled, so a disabled `danger` or `ghost-danger` button does not read as a faded red button. A primary button also never takes a tone from its container: inside a danger `Card` it is still the primary button.
@@ -37,6 +41,7 @@ A disabled button looks the same in every variant: a neutral surface (or none, f
 | `loadingStatus` | `string` | no | — | Text a polite, visually hidden status announces while `loading`, rendered beside the button. |
 | `mutating` | `boolean` | no | `false` | Marks a button that changes something. Inside a stale `<StaleRegion>` it goes inert (`aria-disabled`, still focusable) and is described by the region's reason. |
 | `quiet` | `boolean` | no | `false` | Rests as the bare glyph: drops the resting fill and rule an icon-only `ghost` button otherwise paints, for a toolbar such as the shell's top bar. Hover, pressed and focus still paint. It has no effect unless the button is `iconOnly` with `variant="ghost"`. |
+| `shortcut` | `string` \| `string`[] | no | — | Keyboard shortcut hint rendered after the label, `aria-hidden`; a key or an array of keys. |
 | `size` | `"xs"` \| `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Size of the button. `lg` is for page-level primary actions only; inline actions use `md`. |
 | `variant` | `"primary"` \| `"secondary"` \| `"soft"` \| `"danger"` \| `"soft-danger"` \| `"ghost"` \| `"ghost-danger"` \| `"ghost-accent"` | no | `"secondary"` | Visual style. |
 | `children` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

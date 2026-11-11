@@ -19,6 +19,14 @@
     text-wrap: wrap;
   }
 
+  .cinder-text[data-cinder-variant='display'] {
+    font-size: var(--cinder-text-display);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-tight);
+    letter-spacing: var(--cinder-tracking-display);
+    text-wrap: balance;
+  }
+
   .cinder-text[data-cinder-variant='h1'] {
     font-size: var(--cinder-text-3xl);
     font-weight: var(--cinder-font-bold);
@@ -28,9 +36,9 @@
   }
 
   .cinder-text[data-cinder-variant='h2'] {
-    font-size: var(--cinder-text-2xl);
-    font-weight: var(--cinder-font-semibold);
-    line-height: var(--cinder-leading-tight);
+    font-size: var(--cinder-text-heading);
+    font-weight: var(--cinder-font-heading);
+    line-height: var(--cinder-leading-heading);
     letter-spacing: var(--cinder-tracking-tight);
     text-wrap: balance;
   }
@@ -122,6 +130,18 @@
     outline: var(--cinder-ring-width) solid transparent;
     border-radius: var(--cinder-radius-sm);
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* Cut at the end: one line of whatever holds it, ending with an ellipsis when it is too long. */
+  .cinder-text[data-cinder-truncate='end'] {
+    display: block;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
+    font: inherit;
+    letter-spacing: inherit;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Cut in the middle: the head gives way with an ellipsis and the tail always shows. */

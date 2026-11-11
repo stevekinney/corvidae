@@ -26,6 +26,11 @@
  *   may take.
  * - `guardrails` are plugin guardrails added to the agent's own. An override cannot remove a
  *   guardrail the code agent declares itself.
+ * - `interceptors` are plugin interceptors (`plugin:name`, COR-2253) added to the agent's own hook
+ *   tier for the run, as an agent file's `interceptors` are, so the plugin's needs-setup refusal
+ *   applies to a run that chose them, and an every-agent set the override also lists registers
+ *   once (`run-hook-tiers.ts` leaves it out of the plugin tier). Each is built from the
+ *   contributions at the run, so one a plugin no longer contributes is skipped.
  *
  * A code agent that cannot resolve its run options (one with no `OPERATIVE_RESOLVE_RUN_OPTIONS`)
  * has nothing the overrides can be applied to, and runs as it is.
@@ -54,6 +59,7 @@ import {
   resolveAgentGuardrails,
   type RunOptions,
   toolIdentityUnderKey,
+  withSessionTaint,
 } from '@lostgradient/operative';
 import {
   type AnyToolbox,
@@ -66,7 +72,11 @@ import {
 import { Conversation, replaceSystemMessage } from 'conversationalist';
 
 import type { AnyRunnableAgent } from './agent-catalog';
-import { type AgentContributions, guardrailAdditionsOf } from './agent-contributions';
+import {
+  type AgentContributions,
+  guardrailAdditionsOf,
+  interceptorsOf,
+} from './agent-contributions';
 import { allowedDescriptorsOfFileAgent, resolveModelDescriptor } from './agent-file-catalog';
 import { describeAgentModels } from './agent-models';
 import type { AgentOverrides } from './agent-override-store';
@@ -91,7 +101,10 @@ export interface EffectiveCodeAgentDeployment {
    * may allow only the agent's own tools.
    */
   readonly toolCatalog?: (() => Readonly<Record<string, Tool>>) | undefined;
-  /** The plugin guardrails a `guardrails` override may name. Omitted, none resolves. */
+  /**
+   * The plugin guardrails and interceptors a `guardrails` or `interceptors` override may name.
+   * Omitted, none resolves.
+   */
   readonly contributions?: AgentContributions | undefined;
   /** The secret that signs the approvals a rebuilt toolbox raises; unsigned without one. */
   readonly approvalSecret?: string | undefined;
@@ -309,7 +322,36 @@ export function effectiveCodeAgent(
     return replaceSystemMessage(conversation, overrides.instructions);
   }
 
-  function hooksOf(own: RunOptions['hooks']): RunOptions['hooks'] {
+  /**
+   * The agent's hooks with the interceptors the override names registered in the same tier
+   * (COR-2253). `own` is the registry the agent resolved for this run, so what is added reaches this
+   * run only; an entry `own` already holds under the same id is left alone.
+   */
+  function withInterceptors(own: RunOptions['hooks']): RunOptions['hooks'] {
+    if (overrides.interceptors === undefined || deployment.contributions === undefined) return own;
+    const chosen = interceptorsOf(
+      { interceptors: overrides.interceptors },
+      deployment.contributions,
+    );
+    if (chosen === undefined) return own;
+    const hooks = own ?? new HookRegistry<OperativeHookMap>();
+    const held = new Set(
+      hooks.getHookNames().flatMap((name) => hooks.getHandlers(name).map((entry) => entry.id)),
+    );
+    for (const name of chosen.getHookNames()) {
+      for (const entry of chosen.getHandlers(name)) {
+        if (held.has(entry.id)) continue;
+        hooks.on(name, entry.handler, { ...entry.options, id: entry.id });
+      }
+    }
+    return hooks;
+  }
+
+  function hooksOf(
+    agentHooks: RunOptions['hooks'],
+    context: AgentRunContext | undefined,
+  ): RunOptions['hooks'] {
+    const own = withInterceptors(agentHooks);
     // COR-2118: a configured guardrail is built for this run from the override's configuration. A
     // save checks it against the guardrail's schema; one a plugin's later schema no longer accepts
     // throws here, so the run fails to start rather than run without a guardrail it chose.
@@ -321,7 +363,10 @@ export function effectiveCodeAgent(
     // The additions alone, as a tripwire beside the agent's own guardrails, which already run.
     const configuration = resolveAgentGuardrails(false, undefined, additions);
     if (configuration === undefined) return own;
-    const guardrails = createGuardrails(configuration);
+    // COR-2105 — this tracker holds taint too: it starts from the session's and writes back.
+    const guardrails = createGuardrails(
+      withSessionTaint(configuration, context?.sessionTaint, context?.runId),
+    );
     const hooks = own ?? new HookRegistry<OperativeHookMap>();
     hooks.on('prepareStep', guardrails.prepareStep, {
       id: 'agent:override-guardrails-prepare-step',
@@ -361,7 +406,7 @@ export function effectiveCodeAgent(
 
   async function resolve(input: AgentInput, context?: AgentRunContext): Promise<RunOptions> {
     const own = await resolveOwn(input, context);
-    const hooks = hooksOf(own.hooks);
+    const hooks = hooksOf(own.hooks, context);
     return {
       ...own,
       generate: generateOf(own.generate),

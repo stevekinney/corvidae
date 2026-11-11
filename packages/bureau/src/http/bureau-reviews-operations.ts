@@ -56,7 +56,7 @@ import {
   BureauError,
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
-} from '../create-bureau.ts';
+} from '../bureau-errors.ts';
 import type {
   Bureau,
   PendingReview,

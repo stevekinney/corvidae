@@ -6,7 +6,7 @@ import type { DecisionRequest } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
 import { createAgentCatalog } from '../agent-catalog.ts';
-import { BureauError } from '../create-bureau.ts';
+import { BureauError } from '../bureau-errors.ts';
 import { createSupervisor } from '../create-supervisor.ts';
 import { createDecisionRouting } from './decision-routing.ts';
 import type { DecisionSource } from './types.ts';

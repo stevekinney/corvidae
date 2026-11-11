@@ -12,9 +12,7 @@ import {
   parseCoverageThresholds,
   parseLcovRecords as parseLcovRecordsIn,
   parseSvelteLcovRecords as parseSvelteLcovRecordsIn,
-  parseSvelteMeasurementPlatform,
   runtimeImportsOfTestSupport,
-  svelteCoveragePlatformNotice,
   uncoveredLineReport as uncoveredLineReportIn,
   UNREACHABLE_LINE_MARKER,
   type CoverageScope,
@@ -61,17 +59,14 @@ type RatchetRun = { exitCode: number; stdout: string; stderr: string };
 // The real CLI process is the behavior under test (entry point, argument handling, and exit
 // status), so both runs happen once at module scope, off bun's per-test clock; the tests in
 // 'main() end to end' only assert on the settled results.
-async function runPlatformNoticeRatchet(): Promise<RatchetRun> {
-  const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-platform-notice-'));
+async function runSvelteFloorRatchet(): Promise<RatchetRun> {
+  const scratchDirectory = mkdtempSync(join(tmpdir(), 'coverage-ratchet-svelte-floor-'));
   writeFileSync(
     join(scratchDirectory, 'coverage-ratchet.json'),
     JSON.stringify({
       lines: 1,
       functions: 1,
       svelte: { lines: 0.5, functions: 0.5 },
-      // Deliberately not a real platform/architecture pair, so the
-      // notice fires regardless of whatever machine runs this test.
-      svelteMeasuredOn: { platform: 'not-a-real-platform', architecture: 'not-a-real-arch' },
     }),
   );
   mkdirSync(join(scratchDirectory, 'src'), { recursive: true });
@@ -153,8 +148,8 @@ async function runSupportImportRatchet(): Promise<RatchetRun> {
   return { exitCode, stdout, stderr };
 }
 
-const [platformNoticeRun, supportImportRun] = await Promise.all([
-  runPlatformNoticeRatchet(),
+const [svelteFloorRun, supportImportRun] = await Promise.all([
+  runSvelteFloorRatchet(),
   runSupportImportRatchet(),
 ]);
 
@@ -504,14 +499,14 @@ LF:10
 LH:0
 end_of_record
 TN:
-SF:scripts/knowledge/index.ts
+SF:scripts/generate-manifest.ts
 FNF:10
 FNH:0
 LF:10
 LH:0
 end_of_record
 TN:
-SF:scripts/knowledge/output.ts
+SF:scripts/check-token-naming.ts
 FNF:4
 FNH:4
 LF:4
@@ -687,11 +682,11 @@ end_of_record
 
   test('applies runtime scope exclusions to absolute package-local LCOV paths', () => {
     const absoluteScriptsPath = join(packageRoot, 'scripts', 'build.ts').replaceAll('\\', '/');
-    const absoluteCliPath = join(packageRoot, 'scripts', 'knowledge', 'index.ts').replaceAll(
+    const absoluteManifestPath = join(packageRoot, 'scripts', 'generate-manifest.ts').replaceAll(
       '\\',
       '/',
     );
-    const absoluteCliHelperPath = join(packageRoot, 'scripts', 'knowledge', 'output.ts').replaceAll(
+    const absoluteNamingPath = join(packageRoot, 'scripts', 'check-token-naming.ts').replaceAll(
       '\\',
       '/',
     );
@@ -718,14 +713,14 @@ LF:10
 LH:0
 end_of_record
 TN:
-SF:${absoluteCliPath}
+SF:${absoluteManifestPath}
 FNF:10
 FNH:0
 LF:10
 LH:0
 end_of_record
 TN:
-SF:${absoluteCliHelperPath}
+SF:${absoluteNamingPath}
 FNF:4
 FNH:4
 LF:4
@@ -1007,65 +1002,11 @@ end_of_record
     });
   });
 
-  describe('parseSvelteMeasurementPlatform', () => {
-    test('reads the recorded platform and architecture', () => {
-      expect(
-        parseSvelteMeasurementPlatform(
-          JSON.stringify({
-            lines: 1,
-            functions: 1,
-            svelte: { lines: 0.2106, functions: 0.7652 },
-            svelteMeasuredOn: { platform: 'linux', architecture: 'x64' },
-          }),
-        ),
-      ).toEqual({ platform: 'linux', architecture: 'x64' });
-    });
-
-    test('returns undefined when no svelteMeasuredOn block is present', () => {
-      expect(
-        parseSvelteMeasurementPlatform(JSON.stringify({ lines: 1, functions: 1 })),
-      ).toBeUndefined();
-    });
-
-    test('returns undefined when the block is malformed rather than throwing', () => {
-      // Provenance metadata, not a threshold: a bad block must not break the
-      // gate itself, only lose the platform notice.
-      expect(
-        parseSvelteMeasurementPlatform(
-          JSON.stringify({ lines: 1, functions: 1, svelteMeasuredOn: { platform: 'linux' } }),
-        ),
-      ).toBeUndefined();
-    });
-  });
-
-  describe('svelteCoveragePlatformNotice', () => {
-    const linuxX64 = { platform: 'linux', architecture: 'x64' };
-
-    test('is silent when nothing was recorded', () => {
-      expect(svelteCoveragePlatformNotice(undefined, linuxX64)).toBeUndefined();
-    });
-
-    test('is silent when the running platform matches the recorded one', () => {
-      expect(svelteCoveragePlatformNotice(linuxX64, { ...linuxX64 })).toBeUndefined();
-    });
-
-    test('warns, without failing, when the running platform differs', () => {
-      const notice = svelteCoveragePlatformNotice(linuxX64, {
-        platform: 'darwin',
-        architecture: 'arm64',
-      });
-      expect(notice).toContain('linux/x64');
-      expect(notice).toContain('darwin/arm64');
-      expect(notice).toContain('NOT authoritative');
-    });
-  });
-
   describe('main() end to end', () => {
-    test('prints the platform notice on a passing run, without failing it, when the local platform differs from the recorded one', () => {
-      const result = platformNoticeRun;
+    test('passes a run that meets the Svelte floor and prints no platform notice', () => {
+      const result = svelteFloorRun;
       expect(result.exitCode).toBe(0);
-      expect(result.stderr).toContain('NOTE: the Svelte coverage floor');
-      expect(result.stderr).toContain('not-a-real-platform/not-a-real-arch');
+      expect(result.stderr).not.toContain('NOTE:');
       expect(result.stdout).toContain('Svelte coverage ratchet');
     });
 

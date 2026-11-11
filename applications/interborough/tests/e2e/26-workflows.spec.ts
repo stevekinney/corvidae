@@ -25,6 +25,7 @@ import {
   createWorkflowFile,
   listWorkflowRuns,
   openJsonTab,
+  openTab,
   readWorkflow,
   removeWorkflow,
   SEEDED_WORKFLOWS,
@@ -66,7 +67,7 @@ const detail = (page: Page) => page.locator('[data-page="workflow-detail"]');
 const row = (page: Page, name: string) => page.locator(`[data-workflow="${name}"]`);
 
 /** The types the Bureau registers for itself: the host whose console is the Bureau's engine holds them, and the fixtures' engine does not. */
-const ENGINE_TYPES = ['agentRun', 'durableHeartbeatTick', 'goalRun'] as const;
+const ENGINE_TYPES = ['agentRun', 'durableHeartbeatTick', 'goalRun', 'scheduleTick'] as const;
 
 test.describe('the list', () => {
   for (const width of WIDTHS) {
@@ -395,11 +396,11 @@ test.describe('a code-defined type', () => {
       await expect(detail(page).getByTestId('workflow-definition')).toHaveCount(0);
 
       // Runs holds its newest runs.
-      await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
+      await openTab(detail(page), WORKFLOW_COPY.page.tabs.runs);
       await expect(detail(page).getByTestId('workflow-recent-runs')).toBeVisible();
 
       // History holds the revisions, and the install form with them.
-      await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }).click();
+      await openTab(detail(page), WORKFLOW_COPY.page.tabs.history);
       await expect(detail(page).locator('.weft-revisions-panel')).toBeVisible();
       await checkA11y(`a code-defined type at ${width}px`);
     });
@@ -457,14 +458,14 @@ test.describe('an agent-authored type', () => {
       await expect(root.getByTestId('workflow-trigger-source')).toContainText('24h');
 
       // Nothing has run it, and the Runs tab says so with an action that starts one.
-      await root.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
+      await openTab(root, WORKFLOW_COPY.page.tabs.runs);
       await expect(root.getByTestId('workflow-recent-runs')).toContainText(
         WORKFLOW_COPY.page.runs.emptyTitle,
       );
 
       // History holds the versions that ran: none has, and the page does not offer to activate one.
       await expect(root.getByTestId('workflow-revisions')).toHaveCount(0);
-      await root.getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }).click();
+      await openTab(root, WORKFLOW_COPY.page.tabs.history);
       await expect(root.getByTestId('workflow-revisions')).toContainText(
         WORKFLOW_COPY.revisions.emptyTitle,
       );
@@ -492,7 +493,7 @@ test.describe('an agent-authored type', () => {
       },
     });
     await page.goto('/workflows/e2e-ran');
-    await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }).click();
+    await openTab(detail(page), WORKFLOW_COPY.page.tabs.history);
     const versions = detail(page).getByTestId('workflow-revisions').locator('[data-version]');
     await expect(versions).toHaveCount(1);
     // The file was edited after that version ran, so Weft's verdict against the current one is no.
@@ -675,9 +676,9 @@ test.describe('send signal', () => {
       form.getByRole('status', { name: WORKFLOW_COPY.signal.resultLabel }),
     ).toContainText(WORKFLOW_COPY.signal.result(1, 0));
     // The page's runs take the new instance without a reload.
-    await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.runs }).click();
+    await openTab(detail(page), WORKFLOW_COPY.page.tabs.runs);
     await expect(detail(page).locator('[data-run]').first()).toBeVisible();
-    await detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.overview }).click();
+    await openTab(detail(page), WORKFLOW_COPY.page.tabs.overview);
     const after = await listWorkflowRuns(request, id);
     const running = after.filter((run) => run.status === 'running');
     expect(running).toHaveLength(waiting.length + 1);

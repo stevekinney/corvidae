@@ -6,7 +6,7 @@
  */
 import { reservedIdentifierReason } from '@lostgradient/operative';
 
-import { AUDIT_SYNTHETIC_OWNER_PREFIXES } from './audit-trail';
+import { AUDIT_HOST_OWNER_ID, AUDIT_SYNTHETIC_OWNER_PREFIXES } from './audit-trail';
 
 /**
  * Event history records a run, a session, and a schedule under a workflow-shaped
@@ -41,6 +41,9 @@ const RESERVED_WORKFLOW_ID_PREFIXES: readonly string[] = [
 export function reservedWorkflowIdentifierReason(kind: string, id: string): string | undefined {
   const goalReason = reservedIdentifierReason(kind, id);
   if (goalReason !== undefined) return goalReason;
+  if (id === AUDIT_HOST_OWNER_ID) {
+    return `reserved-identifier: ${kind} "${id}" is the id the audit trail files the host's own records under; choose another.`;
+  }
   const prefix = RESERVED_WORKFLOW_ID_PREFIXES.find((candidate) => id.startsWith(candidate));
   return prefix === undefined
     ? undefined

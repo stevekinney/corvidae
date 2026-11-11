@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "spotlight",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "One focal value with a caveat",
+      "description": "The value is display-size neutral text, never the accent. The caveat sits in warning text directly under it and says how fresh the value is.",
+      "code": "<script lang=\"ts\">\n  import { Spotlight } from '@lostgradient/cinder';\n</script>\n\n<Spotlight value=\"Ends in 45 min\">\n  {#snippet caveat()}Updated 12 min ago{/snippet}\n</Spotlight>\n"
+    },
+    {
+      "id": "live",
+      "title": "Liveness as a status dot",
+      "description": "Liveness is a status dot and word above the value, so the value itself stays neutral.",
+      "code": "<script lang=\"ts\">\n  import { Spotlight } from '@lostgradient/cinder';\n</script>\n\n<Spotlight value=\"2 need you\" status=\"online\" statusLabel=\"Live\" />\n"
+    }
+  ]
+}

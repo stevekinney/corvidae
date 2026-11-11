@@ -9,7 +9,12 @@ import {
   type InspectableContent,
   type InspectableField,
 } from './inspectable-content';
-import type { DetectorContext, GuardrailTriggeredEvent, InputGuardrailOptions } from './types';
+import type {
+  DetectorContext,
+  GuardrailTriggeredEvent,
+  InputGuardrailAction,
+  InputGuardrailOptions,
+} from './types';
 
 /**
  * Creates a refusal response that short-circuits the generate call.
@@ -61,8 +66,9 @@ function userMessagesSinceLastGeneration(
  * - `'tripwire'`: throws a `GuardrailTripwireError`, hard-halting the run before the
  *   generate call fires (see `createGuardrails({ mode: 'tripwire' })`)
  *
- * Detector errors are caught via `Promise.allSettled` to prevent a broken detector
- * from crashing the agent loop.
+ * A detector that throws fails closed (COR-2300): it is a finding of category `detector-failure`
+ * that blocks the input whatever the action but `tripwire`, which halts the run. A plugin
+ * detector whose plugin needs setup is such a failure.
  */
 export function createInputGuardrail(options: InputGuardrailOptions): PrepareStepHook {
   return inputGuardrailHook(options, true);
@@ -80,7 +86,7 @@ export function inputGuardrailHook(
 ): PrepareStepHook {
   const {
     detectors,
-    action = 'block',
+    action: configuredAction = 'block',
     onTriggered,
     mode = 'parallel',
     getSessionTainted,
@@ -128,16 +134,32 @@ export function inputGuardrailHook(
       // string is still inspected through the prose and URL it carries.
       const triggered: InspectedMessage['triggered'] = [];
       for (const [index, field] of inspectable.fields.entries()) {
-        const pipeline = await runDetectorPipeline(field.text, detectors, detectorContext, mode);
+        const pipeline = await runDetectorPipeline(
+          field.text,
+          detectors,
+          detectorContext,
+          mode,
+          true,
+        );
         if (pipeline) triggered.push({ index, pipeline });
       }
       inspected.push({ position, inspectable, assetFindings, triggered });
     }
 
     const assetFindings = inspected.flatMap((entry) => entry.assetFindings);
-    const firstHit = inspected.find((entry) => entry.triggered.length > 0);
-    const topFinding = firstHit?.triggered[0];
+    // A detector that failed outranks a detection: the guardrail fails closed (COR-2300).
+    const failedHit = inspected.find((entry) =>
+      entry.triggered.some(({ pipeline }) => pipeline.failed === true),
+    );
+    const firstHit = failedHit ?? inspected.find((entry) => entry.triggered.length > 0);
+    const topFinding = failedHit
+      ? failedHit.triggered.find(({ pipeline }) => pipeline.failed === true)
+      : firstHit?.triggered[0];
     if (topFinding === undefined && assetFindings.length === 0) return;
+    // A failure is refused under a warning too, since warning about content nothing judged would
+    // let it through.
+    const action: InputGuardrailAction =
+      configuredAction === 'warn' && failedHit !== undefined ? 'block' : configuredAction;
 
     const event: GuardrailTriggeredEvent =
       topFinding !== undefined && firstHit !== undefined

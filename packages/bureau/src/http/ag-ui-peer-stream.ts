@@ -35,7 +35,7 @@ import { type AgentSession, isFailureFinishReason } from '@lostgradient/operativ
 import type { WorkflowState } from '@lostgradient/weft';
 import { type Event, EventType, type Interrupt } from '@ag-ui/core';
 
-import { isDurableRunUnsettled } from '../create-bureau.ts';
+import { isDurableRunUnsettled } from '../durable-run-waits.ts';
 import { ownerOrLocal } from '../owner-of-record.ts';
 import { resolvePersistedRunOwningPrincipal } from '../session-authority.ts';
 import type {

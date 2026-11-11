@@ -73,7 +73,7 @@ export const AGENT_FILE_KNOWN_KEYS = [
   'effort',
   'tools',
   'card',
-  'allowedSkills',
+  'skills',
   'children',
   'a2a',
   'limits',
@@ -220,7 +220,7 @@ export const agentGuardrailSelectionsSchema = storedAgentGuardrailSelectionsSche
 );
 
 /**
- * A file's `allowedSkills` (COR-1975): the executable skills, by name, a run of the agent may
+ * A file's `skills` (COR-1975): the executable skills, by name, a run of the agent may
  * activate. An empty list grants none, and is not the same as no list, so a list emptied one box
  * at a time keeps saying so. A name is not checked here: whether a skill can be granted depends on
  * the deployment's skill catalog, which a write asks (`skill-not-grantable`) and a scan does not,
@@ -229,6 +229,25 @@ export const agentGuardrailSelectionsSchema = storedAgentGuardrailSelectionsSche
 export const agentAllowedSkillsSchema = z
   .array(z.string().min(1))
   .refine((names) => unique(names), { message: 'skill names must be unique' });
+
+/**
+ * A file's `skills` as the front matter reads it: {@link agentAllowedSkillsSchema}, after refusing a
+ * list that holds an object. `skills` named the descriptive Agent Card skills before they became
+ * `card` (COR-2137), so such a list is a stale one, and reading it as the skills a run may activate
+ * would grant whatever its entries happened to say. The refusal is at `skills` itself.
+ */
+const agentFileSkillsSchema = z
+  .array(z.unknown())
+  .superRefine((entries, context) => {
+    if (entries.some((entry) => typeof entry === 'object' && entry !== null)) {
+      context.addIssue({
+        code: 'custom',
+        message:
+          '`skills` lists the executable skills a run may activate, by name; descriptive Agent Card skills belong in `card`',
+      });
+    }
+  })
+  .pipe(agentAllowedSkillsSchema);
 
 /** The file agents this agent may dispatch as durable children. */
 export const agentChildAgentsSchema = z
@@ -432,7 +451,8 @@ function isModelEntry(entry: string): boolean {
 }
 
 /**
- * The frontmatter keys that were renamed, from the old name to the new one (COR-2126, COR-2137, COR-2138). A
+ * The frontmatter keys that were renamed, from the old name to the new one (COR-2126, COR-2137, COR-2138,
+ * COR-2139). A
  * file that still uses an old name is refused at that key's own path.
  */
 const RENAMED_FRONTMATTER_KEYS: Readonly<Record<string, string>> = {
@@ -441,6 +461,7 @@ const RENAMED_FRONTMATTER_KEYS: Readonly<Record<string, string>> = {
   toolApproval: 'approvals',
   childAgents: 'children',
   skillDescriptors: 'card',
+  allowedSkills: 'skills',
   stepLimit: 'limits.steps',
   costBudget: 'limits.cost',
   toolBudget: 'limits.tools',
@@ -481,11 +502,12 @@ export const agentFileFrontmatterSchema = z
       })
       .nullish(),
     /**
-     * The executable skills a run may activate, by name (COR-1975). Absent, the file grants none
-     * and the agent has no skills. Not `skills`, the name `card` had before it was `skillDescriptors`, which an old file
-     * may still carry and Bureau ignores.
+     * The executable skills a run may activate, by name (COR-1975, named `allowedSkills` before
+     * COR-2139). Absent, the file grants none and the agent has no skills. `skills` was once the name
+     * of `card`, so a list of objects, the shape a descriptive skill has, is refused at `skills` and
+     * never read as names.
      */
-    allowedSkills: agentAllowedSkillsSchema.nullish(),
+    skills: agentFileSkillsSchema.nullish(),
     /** Agent identifiers this file may dispatch as durable child runs. */
     children: agentChildAgentsSchema.nullish(),
     /**
@@ -646,6 +668,26 @@ export function withFoldedLegacyLimits(value: unknown): unknown {
   return Object.keys(limits).length === 0 ? rest : { ...rest, limits };
 }
 
+/**
+ * `value` with the skills a definition, an override record or a saved version held read under
+ * `skills` (COR-2139). One written before COR-2139 holds them as `allowedSkills`, which moves to
+ * `skills`. One written before COR-2137 may hold a `skills` list of descriptive Agent Card skills,
+ * objects that `card` now holds; that list is dropped, read as no skills at all, never as names. A
+ * `skills` list of names wins over an `allowedSkills` one. Anything that is not a plain object is
+ * returned as it is, for the schema to judge.
+ */
+function withLegacySkills(value: unknown): unknown {
+  if (!isPlainRecord(value)) return value;
+  const stale =
+    Array.isArray(value['skills']) &&
+    value['skills'].some((entry: unknown) => typeof entry === 'object' && entry !== null);
+  if (!stale && !Object.hasOwn(value, 'allowedSkills')) return value;
+  const { allowedSkills, skills, ...rest } = value;
+  const current = stale ? undefined : skills;
+  const held = current ?? allowedSkills;
+  return held === undefined ? rest : { ...rest, skills: held };
+}
+
 const agentFileDefinitionObjectSchema = z.object({
   name: z.string().min(1),
   description: z.string().nullable().default(null),
@@ -661,8 +703,13 @@ const agentFileDefinitionObjectSchema = z.object({
    * decide whether a stored `skillDescriptors` applies.
    */
   card: z.array(agentSkillDescriptorSchema).optional(),
-  /** Absent from a snapshot written before the field existed, and from a file that has none. */
-  allowedSkills: agentAllowedSkillsSchema.optional(),
+  /**
+   * Absent from a snapshot written before the field existed, and from a file that has none. One
+   * written before COR-2139 holds it as `allowedSkills`, and one written before COR-2137 may hold a
+   * stale `skills` list of descriptive skills; the preprocessing of
+   * {@link agentFileDefinitionSchema} reads the first as `skills` and drops the second.
+   */
+  skills: agentAllowedSkillsSchema.optional(),
   /** Absent from a snapshot written before the field existed, and from a file that has none. */
   children: agentChildAgentsSchema.optional(),
   /** Absent from a snapshot written before the A2A opt-in existed; read as `false`. */
@@ -734,9 +781,13 @@ const agentFileDefinitionObjectSchema = z.object({
  * `limits.steps`, `limits.cost` (`perRunUsd`, `perChatUsd` and `warnAt` read as `run`, `chat` and
  * `warn`) and `limits.tools` (`maxCalls` and `maxDurationSeconds` read as `calls` and `seconds`). A
  * limit that `limits` already holds wins.
+ *
+ * One that holds `allowedSkills` (COR-2139) reads as the same skills under `skills`; a `skills` list
+ * of objects, the descriptive skills `card` holds now, reads as no skills (see
+ * {@link withLegacySkills}).
  */
 export const agentFileDefinitionSchema = z.preprocess(
-  withFoldedLegacyLimits,
+  (value) => withLegacySkills(withFoldedLegacyLimits(value)),
   agentFileDefinitionObjectSchema.transform(
     ({ hooks, defaultEffort, toolApproval, childAgents, skillDescriptors, ...definition }) => ({
       ...definition,
@@ -853,7 +904,7 @@ export interface AgentFileDefinition {
    * none: the agent has no skills. An empty list grants none too, and is kept, because it is what
    * the file says. A name the catalog no longer trusts stays here and is refused at activation.
    */
-  readonly allowedSkills?: readonly string[];
+  readonly skills?: readonly string[];
   /** Agent identifiers this file may dispatch as durable child runs. */
   readonly children?: readonly string[];
   /** Whether the agent opts into A2A. This part only records it; the A2A mount reads it. */
@@ -908,7 +959,7 @@ const definitionKeyTable: Record<keyof AgentFileDefinition, true> = {
   effort: true,
   tools: true,
   card: true,
-  allowedSkills: true,
+  skills: true,
   children: true,
   a2a: true,
   limits: true,
@@ -958,10 +1009,10 @@ export interface AgentFileDefinitionInput {
   /** See {@link AgentFileDefinition.card}. */
   readonly card?: readonly AgentSkillDescriptor[] | undefined;
   /**
-   * See {@link AgentFileDefinition.allowedSkills}. An update that omits it keeps the file's value;
+   * See {@link AgentFileDefinition.skills}. An update that omits it keeps the file's value;
    * `null` removes it, and an empty list grants none.
    */
-  readonly allowedSkills?: readonly string[] | null | undefined;
+  readonly skills?: readonly string[] | null | undefined;
   /** See {@link AgentFileDefinition.children}. */
   readonly children?: readonly string[] | null | undefined;
   /** See {@link AgentFileDefinition.a2a}. An update that omits it keeps the file's value. */
@@ -1195,7 +1246,7 @@ function toDefinition(
     tools: frontmatter.tools ?? [],
     // Zod types an absent optional key as possibly `undefined`; it is never present as one.
     card: (frontmatter.card ?? []) as readonly AgentSkillDescriptor[],
-    ...(frontmatter.allowedSkills == null ? {} : { allowedSkills: frontmatter.allowedSkills }),
+    ...(frontmatter.skills == null ? {} : { skills: frontmatter.skills }),
     ...(frontmatter.children == null ? {} : { children: frontmatter.children }),
     a2a: frontmatter.a2a ?? false,
     ...limitsField(frontmatter.limits),
@@ -1308,7 +1359,7 @@ function knownFrontmatter(definition: AgentFileDefinitionInput): Record<string, 
       ...descriptor,
     }));
   }
-  if (definition.allowedSkills != null) known['allowedSkills'] = [...definition.allowedSkills];
+  if (definition.skills != null) known['skills'] = [...definition.skills];
   if (definition.children != null) known['children'] = [...definition.children];
   if (definition.a2a !== undefined) known['a2a'] = definition.a2a;
   const limits = definition.limits == null ? undefined : limitsOf(definition.limits);
@@ -1351,7 +1402,7 @@ export function resolveAgentFileDefinition(
     ...(input.effort == null ? {} : { effort: input.effort }),
     tools: input.tools ?? [],
     card: input.card ?? [],
-    ...(input.allowedSkills == null ? {} : { allowedSkills: [...input.allowedSkills] }),
+    ...(input.skills == null ? {} : { skills: [...input.skills] }),
     ...(input.children == null ? {} : { children: [...input.children] }),
     a2a: input.a2a ?? false,
     ...limitsField(input.limits),
@@ -1375,14 +1426,14 @@ export function resolveAgentFileDefinition(
 export function agentFileInputOf(definition: AgentFileDefinition): AgentFileDefinitionInput {
   // A rest, so a key the definition gains is carried into the input and not dropped here.
   const { examples: _examples, ...input } = definition;
-  // An update that omits `effort`, `allowedSkills`, `limits`, `retry`, `compaction`, `references`,
+  // An update that omits `effort`, `skills`, `limits`, `retry`, `compaction`, `references`,
   // `guardrails`, `interceptors` or `approvals` keeps the file's value, and
   // a version that has none must remove it: `null` says so. `limits` merges per sub-key, so each
   // of `steps`, `cost` and `tools` is named, and the ones the definition lacks are `null`.
   return {
     ...input,
     effort: definition.effort ?? null,
-    allowedSkills: definition.allowedSkills ?? null,
+    skills: definition.skills ?? null,
     children: definition.children ?? null,
     limits: {
       steps: definition.limits?.steps ?? null,
@@ -1413,7 +1464,7 @@ export function serializeUpdatedAgentFile(
   input: AgentFileDefinitionInput,
 ): Uint8Array | undefined {
   const before = existing.definition;
-  // A key the caller leaves out (`effort`, `allowedSkills`, `children`, `a2a`, `limits`, `retry`, `compaction`,
+  // A key the caller leaves out (`effort`, `skills`, `children`, `a2a`, `limits`, `retry`, `compaction`,
   // `references`, `guardrails`, `interceptors`, `approvals`) is not a change
   // to it: the file keeps the value it has, and a file with no such key is not given one.
   const keptA2a = input.a2a === undefined;
@@ -1421,7 +1472,7 @@ export function serializeUpdatedAgentFile(
     ...input,
     ...(keptA2a ? { a2a: before.a2a } : {}),
     ...(input.effort === undefined ? { effort: before.effort } : {}),
-    ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
+    ...(input.skills === undefined ? { skills: before.skills } : {}),
     ...(input.children === undefined ? { children: before.children } : {}),
     limits: updatedLimits(before.limits, input.limits),
     ...(input.retry === undefined ? { retry: before.retry } : {}),
@@ -1448,7 +1499,7 @@ export function serializeUpdatedAgentFile(
         ...input,
         ...(keptA2a && Object.hasOwn(existing.raw, 'a2a') ? { a2a: before.a2a } : {}),
         ...(input.effort === undefined ? { effort: before.effort } : {}),
-        ...(input.allowedSkills === undefined ? { allowedSkills: before.allowedSkills } : {}),
+        ...(input.skills === undefined ? { skills: before.skills } : {}),
         ...(input.children === undefined ? { children: before.children } : {}),
         limits: updatedLimits(before.limits, input.limits),
         ...(input.retry === undefined ? { retry: before.retry } : {}),

@@ -21,7 +21,8 @@ import { createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { listHeldTasks, waitForTaskState } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import type { Bureau, BureauOptions } from './types';

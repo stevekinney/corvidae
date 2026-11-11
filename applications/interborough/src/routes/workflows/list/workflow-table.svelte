@@ -17,7 +17,14 @@
    * the *Schedule* list's grid (`Weft UI.dc.html` line ~931); the
    * `.dc.html` markup is PROJECT-BRIEF's pixel-fidelity source of truth.
    * `<colgroup>` + `table-layout:fixed` reproduces the same fixed/flexible
-   * column split for a real `<table>` (Tags is the flexible column).
+   * column split for a real `<table>` (Tags is the flexible column). The
+   * table fits its container at every width (Cinder's `fit`, row 16c): a
+   * column whose content never wraps (a status badge with its icon, a
+   * shortened ID with its copy button, a time) is a fixed rem width that holds
+   * it, so the ID is never cut a second time; Revision wraps a shortened
+   * revision onto two lines at most, and its comparison badge ends with an
+   * ellipsis beside its own tooltip; Type and Tags share what is left, and each ends a long value with
+   * an ellipsis.
    *
    * No column is sortable: weft's list order is server-fixed
    * (`createdAt desc, id asc` — plan Ground Truth), so there is no sort
@@ -121,16 +128,16 @@
   }
 </script>
 
-<Table caption="Workflows" selectable={selectionEnabled} scrollable class="weft-workflows-table">
+<Table caption="Workflows" selectable={selectionEnabled} fit class="weft-workflows-table">
   <colgroup>
     {#if selectionEnabled}<col style="width: 36px" />{/if}
-    <col style="width: 116px" />
-    <col style="width: 220px" />
-    <col style="width: 150px" />
-    <col style="width: 120px" />
+    <col style="width: 7rem" />
+    <col style="width: 10.25rem" />
     <col />
-    <col style="width: 92px" />
-    <col style="width: 92px" />
+    <col style="width: 5.5rem" />
+    <col />
+    <col style="width: 4.75rem" />
+    <col style="width: 4.75rem" />
   </colgroup>
   <Table.Header {allSelected} {someSelected} onSelectAll={toggleAll}>
     <Table.Row>
@@ -193,7 +200,7 @@
             {/if}
           </span>
         </Table.Cell>
-        <Table.Cell>{row.type}</Table.Cell>
+        <Table.Cell truncate>{row.type}</Table.Cell>
         <Table.Cell>
           {#if row.revision !== undefined}
             <span class="weft-workflows-table__revision-cell">
@@ -212,7 +219,7 @@
           {#if row.tags && row.tags.filter((tag) => tag !== 'origin:agent-run').length > 0}
             <span class="weft-workflows-table__tags">
               {#each row.tags.filter((tag) => tag !== 'origin:agent-run') as tag (tag)}
-                <Badge variant="neutral" size="xs">{tag}</Badge>
+                <Badge variant="neutral" size="xs" truncate>{tag}</Badge>
               {/each}
             </span>
           {/if}

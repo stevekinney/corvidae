@@ -327,9 +327,7 @@ export function createAgentFileWriter(dependencies: AgentFileWriterDependencies)
             ...(definition.compaction === undefined ? { compaction: before.compaction } : {}),
             ...(definition.references === undefined ? { references: before.references } : {}),
             ...(definition.effort === undefined ? { effort: before.effort } : {}),
-            ...(definition.allowedSkills === undefined
-              ? { allowedSkills: before.allowedSkills }
-              : {}),
+            ...(definition.skills === undefined ? { skills: before.skills } : {}),
           }),
           before,
         );

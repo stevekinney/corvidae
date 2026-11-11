@@ -17,7 +17,8 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog';
 import * as auditTrailModule from './audit-trail';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { humanWaitDeliveryId } from './run-human-waits';
 import type { Bureau, BureauOptions, PendingReview } from './types';

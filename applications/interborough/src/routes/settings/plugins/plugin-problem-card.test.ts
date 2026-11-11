@@ -225,8 +225,8 @@ describe('the cards for the codes the host added', () => {
     expect(root.textContent).toContain('The team key is required.');
   });
 
-  test('after-start-failed keeps the plugin loaded', () => {
-    const { root } = card({ code: 'after-start-failed', message: 'Connection refused.' });
+  test('start-failed keeps the plugin loaded', () => {
+    const { root } = card({ code: 'start-failed', message: 'Connection refused.' });
     expect(root.textContent).toContain('Loaded, a step after startup failed');
     expect(root.textContent).toContain('A step after startup failed');
     expect(root.textContent).toContain('Connection refused.');

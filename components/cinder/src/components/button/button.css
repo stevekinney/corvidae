@@ -213,6 +213,20 @@
  * These slots are decorative-only; meaning lives in the button's accessible name.
  * ---------------------------------------- */
 
+  .cinder-button__shortcut {
+    display: inline-flex;
+    align-items: center;
+    flex-shrink: 0;
+  }
+
+  /* Touch devices have no keyboard to press the shortcut with, so the hint is hidden. It sits
+ * after the base rule so the same-specificity `display` above does not win. */
+  @media (pointer: coarse), (hover: none) {
+    .cinder-button__shortcut {
+      display: none;
+    }
+  }
+
   .cinder-button__icon {
     display: inline-flex;
     align-items: center;

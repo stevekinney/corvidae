@@ -232,7 +232,6 @@
     column-gap: var(--cinder-space-8);
     row-gap: 0;
     align-items: start;
-    padding-block: var(--cinder-space-4);
   }
 
   .weft-settings__nav {

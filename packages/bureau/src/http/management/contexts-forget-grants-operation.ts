@@ -17,7 +17,7 @@ import { sessionOwnerOf } from '@lostgradient/operative';
 import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import { BureauShuttingDownError } from '../../create-bureau.ts';
+import { BureauShuttingDownError } from '../../bureau-errors.ts';
 import type { BureauContexts, BureauInternals } from '../../types.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';

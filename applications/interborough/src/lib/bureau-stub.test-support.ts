@@ -373,7 +373,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       models: null,
       effort: null,
       tools: ['lookup-order'],
-      allowedSkills: null,
+      skills: null,
       children: null,
       card: [
         {

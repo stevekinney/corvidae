@@ -1,6 +1,5 @@
 import {
   resolveWorkspaceOwner,
-  type WorkspaceRuntimeAuthority,
   runtimeWorkspaceOwnerAuthority,
 } from './http/workspace-principal.ts';
 import {
@@ -9,25 +8,15 @@ import {
   type RuntimeServices,
   type RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
-import { createGovernedMemoryTools } from '@lostgradient/memory';
 import {
-  AbortAgentRunError,
   type ActiveRun,
-  AgentContractError,
-  type AgentInput,
   type AgentRun,
   type AgentSession,
   type RunEvent,
   type RunResult,
-  type SessionInputPayload,
-  type ChildSignalContract, // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
-  // import because `./types` exports an unrelated string-union type under
-  // the same name (armorer's shutdown-owner outcome vocabulary). The two are
-  // genuinely different values and must not shadow each other here.
+  type ChildSignalContract,
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
   appendAgentInput,
-  payloadText,
-  assertAgentInput,
   type BackendDescriptor,
   type CombinedOperativeEventMap,
   createActiveRun,
@@ -54,7 +43,6 @@ import {
   isScheduledAgentRunInput,
   type JSONValue,
   type LivenessSnapshot,
-  type OnStepHook,
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   parseSessionInputPayload,
   PERMISSION_MODES,
@@ -62,7 +50,6 @@ import {
   readGenerationProfile,
   reattachDurableActiveRun,
   type RecoveredRunHandle,
-  reservedIdentifierReason,
   resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
   RunRemovedEvent as StoreRunRemovedEvent,
@@ -106,7 +93,6 @@ import {
   SESSION_TITLE_OVERRIDE_LIMIT,
   createSessionHandle,
   ForkThroughMessageError,
-  SKILL_TOOL_DENIED_CODE,
   admitToolResultMedia,
   createStepGeneratedMediaAdmitter,
   isFailureFinishReason,
@@ -145,7 +131,6 @@ import {
   type ListOptions,
   Mailbox,
   type RecoveredWorkflowInfo,
-  isWeftErrorLike,
   type WorkflowState,
   WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
@@ -161,15 +146,11 @@ import {
   Conversation,
   type ConversationHistory,
   CURRENT_SCHEMA_VERSION,
-  isConversationHistory,
   materializeToolResultAsync,
-  type Message,
-  type MessageInput,
   resolveToolResult,
   getOwn,
 } from 'conversationalist';
-
-import type { PluginHostApi } from '@lostgradient/interborough-plugin';
+import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
 import {
   BUREAU_PLUGIN_NAME,
@@ -232,13 +213,13 @@ import {
   validateSessionInputBacklogLimit,
 } from './option-validators.ts';
 import type { AssetService } from './assets/types';
-import type { DefinitionScannerHealth } from './definition-scanner';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import { purgeChatAssets, type ChatAsset } from './chat-asset-purge';
 import { purgeChatMemories, type RunMemoryPlacement } from './chat-memory-purge';
 import {
   AUDIT_AGENT_OWNER_PREFIX,
   AUDIT_HOOK_OWNER_PREFIX,
+  AUDIT_HOST_OWNER_ID,
   AUDIT_SCHEDULE_OWNER_PREFIX,
   AUDIT_SESSION_OWNER_PREFIX,
   AUDIT_SKILL_SOURCE_OWNER_PREFIX,
@@ -287,9 +268,7 @@ import {
   grantLoosensTool,
 } from './tool-approval';
 import {
-  type CommandLedger,
   type CreatedRunSummary,
-  createPrunedCommandLedger,
   createRunCreationLedger,
   BureauLedgerConflictError,
   digestCommandPayload,
@@ -333,6 +312,7 @@ import {
   RunSettledEvent,
   RunRemovedEvent,
   NotificationCreatedEvent,
+  SessionTaintEvent,
   TaskCleanupAcknowledgedEvent,
   DiagnosticEvent,
 } from './events';
@@ -353,12 +333,7 @@ import {
 } from './decisions/create-decisions';
 import { createLateDecisions } from './decisions/late-decisions';
 import { createSettings, type SettingsComposition } from './settings/create-settings';
-import {
-  builtInSettingDefaults,
-  DEFAULT_EVENT_RETENTION_MS,
-  DEFAULT_TASK_RETENTION_MS,
-} from './settings/setting-defaults';
-import type { SettingsValues } from './settings/settings-schema';
+import { builtInSettingDefaults, DEFAULT_EVENT_RETENTION_MS } from './settings/setting-defaults';
 import { summarizerFailures } from './settings/settings-validation';
 import { createMemoryEmbedderSetting, type MemoryEmbedderSetting } from './memory-embedder-setting';
 import { modelPolicyDenialOf } from './model-policy';
@@ -390,9 +365,7 @@ import type {
 } from './runtime-composition';
 import {
   createMaintenanceMemoryAuthority,
-  createToolMemoryAuthority,
   createRuntimeComposition,
-  decodeScheduleRunMarker,
   isScheduledFireAuthority,
   recordRecoveredSkillPolicy,
   recoveredSkillPolicyOf,
@@ -425,13 +398,10 @@ import {
 } from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
-  type CatalogRunSettlement,
   type DurableEnd,
   type DurableEndReader,
   createCatalogSettlementTracker,
-  type CatalogSettlementTracker,
   publishFreshCatalogRun,
-  settlementForRejection,
 } from './catalog-run-settlement';
 import {
   createTaskRegistry,
@@ -444,14 +414,7 @@ import {
   type TaskRegistry,
   type TaskToolGrant,
 } from './task-registry';
-import {
-  isTaskOrigin,
-  parseStartTaskOrigin,
-  type StartTaskOrigin,
-  type TaskOrigin,
-  taskOriginOfStart,
-  taskOriginTag,
-} from './task-origin';
+import { isTaskOrigin, type TaskOrigin, taskOriginOfStart, taskOriginTag } from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
@@ -484,15 +447,12 @@ import {
 import {
   createWorkflowRuntime,
   payloadMaximumBytesOf,
-  type BureauWorkflows,
   type WorkflowRuntime,
   type WorkflowScheduleBlocker,
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
 import { isScheduleTickRunId, startScheduleTick } from './schedule-tick';
-import type { AgentSource, WorkflowSource } from './sources/definition-source';
-import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
@@ -550,13 +510,8 @@ import {
   type ReviewDecisionAuditPayload,
   resolvedReviewOfAudit,
 } from './resolved-review-record';
+import { validateReviewAnswer } from './review-answer';
 import {
-  formatReviewAnswerIssues,
-  type ReviewAnswerIssue,
-  validateReviewAnswer,
-} from './review-answer';
-import {
-  type AnswerEncryptionKeys,
   gateSecretAnswer,
   holdsSealedAnswer,
   type SecretAnswerAuditEntry,
@@ -581,7 +536,6 @@ import {
   reviewCanceledDedupeKey,
   REPLAY_SUPERSEDING_PRINCIPAL,
   REVIEW_SUPERSEDED_EVENT_KIND,
-  TERMINAL_REVIEW_STATUSES,
 } from './review-closing-events';
 import {
   SCHEDULE_FIRE_SETTLED_EVENT_KIND,
@@ -664,7 +618,6 @@ import type {
   BureauShutdownOptions,
   BureauShutdownOwnerReport,
   BureauShutdownReport,
-  BureauWatcherHealth,
   CancelDurableRunOutcome,
   CleanupAcknowledgement,
   ContextDeletionReport,
@@ -674,11 +627,9 @@ import type {
   StartTaskOptions,
   TaskHandle,
   TaskInput,
-  TaskRespondResult,
   TryAgentOptions,
   TryAgentResult,
   OwnedResource,
-  DiagnosticSink,
   CreateScheduleOptions,
   DurableScheduleDefinition,
   DurableScheduleUpdate,
@@ -691,8 +642,6 @@ import type {
   SessionPendingReview,
   ResolveReviewInput,
   ResolveReviewResult,
-  BureauRetentionOptions,
-  ExpiredRecordKind,
   ExpiredRecordRemoval,
   ReviewResolutionFields,
   ReviewStatus,
@@ -715,7 +664,6 @@ import { writeContextTombstone } from './context-tombstone';
 import { type AgUiLease, createAgUiLeases, releaseQuietly } from './http/ag-ui-lease';
 import { purgeChatLedgerEntries } from './chat-ledger-purge';
 import { createNotifications } from './notifications/create-notifications';
-import type { BureauNotifications } from './notifications/notification-types';
 import {
   buildContextWindow,
   type ContextWindowTool,
@@ -724,19 +672,9 @@ import {
 } from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
 import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
-import {
-  TASKS_RESPOND_LEDGER_KEY_PREFIX,
-  type TaskRespondRefusal,
-  type TasksRespondClaim,
-} from './tasks/respond-to-task';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
-import {
-  createWebhookNotifier,
-  type WebhookDeliveryEngine,
-  type WebhookNotifier,
-  type WebhookNotifierOptions,
-} from './webhook-notifier';
+import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { workspaceHookEvents } from './hooks/workspace-hook-events.ts';
 import {
   bindRunWorkspaceAuthority,
@@ -747,1824 +685,122 @@ import {
   mayRunUseSharedConfiguration,
   recoverRunWorkspaceAuthority,
 } from './run-authority.ts';
-import type { HooksDependencies } from './hooks/create-hooks.ts';
-import { createHooks, type CreatedHooks } from './hooks/create-hooks';
-import type { HookSubjectSources } from './hooks/hook-scope';
+import { type CreatedHooks } from './hooks/create-hooks';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
 import { scheduleInputPreview } from './schedule-input-preview';
 import { ownEntry } from './own-entry';
-
-const BUREAU_AGENT_NAME = 'bureau';
-
-function createBureauMemoryTools(
-  memory: Parameters<typeof createGovernedMemoryTools>[0] | undefined,
-  memoryAuthority: Parameters<typeof createToolMemoryAuthority>[2],
-  tenantId: string,
-  ownerForRun: (runId: string | undefined) => Promise<string | undefined>,
-  workspace: WorkspaceRuntimeAuthority | undefined,
-): Record<string, Tool> {
-  if (memory === undefined) return {};
-  return createGovernedMemoryTools(memory, {
-    resolveContext: async ({ toolName, requestContext }) => {
-      if (requestContext === undefined) return undefined;
-      const ownerId =
-        requestContext.runId === undefined
-          ? requestContext.authority.ownerId
-          : ((await ownerForRun(requestContext.runId)) ?? requestContext.authority.ownerId);
-      if (
-        workspace !== undefined &&
-        (await resolveWorkspaceOwner(workspace, ownerId)) === undefined
-      )
-        return undefined;
-      return {
-        collection: requestContext.agentId ?? BUREAU_AGENT_NAME,
-        authority: createToolMemoryAuthority(requestContext, toolName, memoryAuthority, {
-          tenantId,
-          ownerId,
-        }),
-      };
-    },
-  });
-}
-
-function assertNoMemoryToolCollision(
-  source: AgentSource | undefined,
-  memoryTools: Readonly<Record<string, Tool>>,
-): void {
-  const collision = Object.keys(memoryTools).find((name) =>
-    Object.hasOwn(source?.tools ?? {}, name),
-  );
-  if (collision !== undefined) {
-    throw new BureauError(
-      `"options.agentSource.tools" names a tool "${collision}", which Bureau provides itself`,
-      'BAD_REQUEST',
-    );
-  }
-}
-
-/** COR-1937: how many of a context's newest tasks `contexts.window` looks through for its latest step. */
-const CONTEXT_WINDOW_TASK_SCAN_LIMIT = 50;
-
-/** COR-1986: how long a delete waits between attempts to take a thread's lease another holds. */
-const THREAD_LEASE_RETRY_MILLISECONDS = 100;
-const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;
-const SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS = 10;
-/** COR-1621: the longest wait between attempts to reconcile a followed fire with its history. */
-const FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS = 5_000;
-/**
- * COR-1476 — the first wait between attempts to write an ended run's steering
- * `run-ended` entry; each later wait doubles, up to the cap. The write is
- * retried until it is acknowledged or the bureau closes, because the run reads
- * the session's mailbox only after it.
- */
-const SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS = 10;
-const SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS = 2_000;
-/** After the first failure is reported, how long passes before the next one is. */
-const SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS = 60_000;
-/**
- * How long `shutdown({ policy: 'abort' })` waits for the runs it aborted to
- * reach a terminal event before it stops waiting and tears storage down. A
- * run that honors its `AbortSignal` settles within a few ticks; this bound
- * exists only so a run that ignores it cannot hold shutdown open.
- */
-export const ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS = 1_000;
-
-/**
- * Returns whether a persisted session can still resume under transport-issued
- * authority. Terminal sessions retain their authority for auditability, but
- * must not defer boot recovery because no user code can resume from them.
- */
-export function hasRecoverableTransportAuthority(metadata: Record<string, JSONValue>): boolean {
-  if (metadata['lastRunStatus'] !== 'running') return false;
-  const requiresTransportValidator = (revision: unknown): boolean =>
-    typeof revision === 'string' && revision !== 'bureau:1' && revision !== 'bureau:scheduler:1';
-  const lastRunId = metadata['lastRunId'];
-  if (typeof lastRunId !== 'string' || !lastRunId) return false;
-  const authorities = metadata['lastRequestAuthorities'];
-  if (authorities && typeof authorities === 'object' && !Array.isArray(authorities)) {
-    const activeAuthority = ownEntry(authorities as Record<string, JSONValue>, lastRunId);
-    if (!activeAuthority || typeof activeAuthority !== 'object' || Array.isArray(activeAuthority)) {
-      return false;
-    }
-    return requiresTransportValidator(
-      (activeAuthority as Record<string, JSONValue>)['authorizationRevision'],
-    );
-  }
-  const legacyAuthority = metadata['lastRequestAuthority'];
-  if (!legacyAuthority || typeof legacyAuthority !== 'object' || Array.isArray(legacyAuthority)) {
-    return false;
-  }
-  return requiresTransportValidator(
-    (legacyAuthority as Record<string, JSONValue>)['authorizationRevision'],
-  );
-}
-
-export function isTerminalApprovalBindingError(error: unknown): boolean {
-  if (!error || typeof error !== 'object') return false;
-  const code = (error as Record<string, unknown>)['code'];
-  return (
-    code === 'expired' ||
-    code === 'revoked' ||
-    code === 'already-consumed' ||
-    code === 'not-found' ||
-    code === 'invalid-binding'
-  );
-}
-
-export function emptyRecoveredStepMetadata(): Record<string, never> {
-  return {};
-}
-
-export function omitKeysWithPrefix(
-  record: Record<string, JSONValue>,
-  prefix: string,
-): Record<string, JSONValue> {
-  const remaining: Record<string, JSONValue> = {};
-  for (const [key, value] of Object.entries(record)) {
-    if (!key.startsWith(prefix)) remaining[key] = value;
-  }
-  return remaining;
-}
-
-/** Narrows JSON's readonly array union before spreading object metadata. */
-function isJsonObject(value: JSONValue | undefined): value is Record<string, JSONValue> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-/**
- * COR-1828 — the tools a person allowed for the rest of a chat: the `approvalGrants` entry of the
- * session's metadata, a list of tool ids (`namespace:name@version`, COR-1950: a tool whose
- * definition changed is a different id, so its grant no longer applies), or of names for an
- * approval that was not signed. It lives and dies with the session, so deleting the
- * chat ends the grant, and a fork (which copies the owner and its provenance only) starts with none.
- */
-function approvalGrantsOf(metadata: Record<string, JSONValue> | undefined): string[] {
-  const held = metadata?.['approvalGrants'];
-  return Array.isArray(held)
-    ? held.filter((entry): entry is string => typeof entry === 'string')
-    : [];
-}
-
-function omitKey(record: Record<string, JSONValue>, omittedKey: string): Record<string, JSONValue> {
-  const { [omittedKey]: _omitted, ...remaining } = record;
-  return remaining;
-}
-
-/**
- * A set of review ids that tells `onAdd` whenever one is added (COR-1622). The ids of the approvals
- * that left (decided, expired, found invalid) are kept in two such sets, and each addition is a
- * moment the Bureau may hold no tool approval any more, which stops its expiry sweep's own timer.
- */
-class NotifyingReviewIdSet extends Set<string> {
-  constructor(private readonly onAdd: () => void) {
-    super();
-  }
-
-  override add(value: string): this {
-    super.add(value);
-    this.onAdd();
-    return this;
-  }
-}
-
-function stringValues(values: readonly JSONValue[]): string[] {
-  const strings: string[] = [];
-  for (const value of values) {
-    if (typeof value === 'string') strings.push(value);
-  }
-  return strings;
-}
-
-/**
- * COR-1717 — one approval whose resolution started (the marker is written before the approved tool
- * runs). `startedAt` is epoch milliseconds; a session written before the marker carried it holds a
- * bare id, which reads as a record with `startedAt` undefined.
- */
-interface ApprovalResolutionStartedRecord {
-  id: string;
-  startedAt: number | undefined;
-  peerRecovery?: ApprovalPeerRecovery;
-}
-
-/** Reads the started marker in either form, dropping entries that are neither. */
-function readApprovalResolutionStarted(
-  value: JSONValue | undefined,
-): ApprovalResolutionStartedRecord[] {
-  if (!Array.isArray(value)) return [];
-  const records: ApprovalResolutionStartedRecord[] = [];
-  for (const entry of value) {
-    if (typeof entry === 'string') {
-      records.push({ id: entry, startedAt: undefined });
-    } else if (isJsonObject(entry) && typeof entry['id'] === 'string') {
-      const startedAt = entry['startedAt'];
-      records.push({
-        id: entry['id'],
-        startedAt: typeof startedAt === 'number' ? startedAt : undefined,
-        ...(isJsonObject(entry['peerRecovery']) &&
-        entry['peerRecovery']['version'] === 1 &&
-        typeof entry['peerRecovery']['toolDefinitionRevision'] === 'string' &&
-        entry['peerRecovery']['toolDefinitionRevision'].length > 0 &&
-        typeof entry['peerRecovery']['durableOperationKey'] === 'string' &&
-        isJsonObject(entry['peerRecovery']['request']) &&
-        typeof entry['peerRecovery']['request']['reviewId'] === 'string' &&
-        typeof entry['peerRecovery']['request']['round'] === 'number' &&
-        Number.isInteger(entry['peerRecovery']['request']['round']) &&
-        entry['peerRecovery']['request']['round'] >= 0 &&
-        entry['peerRecovery']['request']['decision'] === 'approve' &&
-        typeof entry['peerRecovery']['request']['principal'] === 'string' &&
-        typeof entry['peerRecovery']['request']['digest'] === 'string' &&
-        isJsonObject(entry['peerRecovery']['arguments']) &&
-        typeof entry['peerRecovery']['arguments']['message'] === 'string' &&
-        entry['peerRecovery']['arguments']['message'].trim().length > 0
-          ? { peerRecovery: entry['peerRecovery'] as unknown as ApprovalPeerRecovery }
-          : {}),
-      });
-    }
-  }
-  return records;
-}
-
-/** Serializes started records; a record without `startedAt` omits the key (JSON has no undefined). */
-function writeApprovalResolutionStarted(
-  records: readonly ApprovalResolutionStartedRecord[],
-): JSONValue[] {
-  return records.map((record) =>
-    record.startedAt === undefined
-      ? {
-          id: record.id,
-          ...(record.peerRecovery === undefined
-            ? {}
-            : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
-        }
-      : {
-          id: record.id,
-          startedAt: record.startedAt,
-          ...(record.peerRecovery === undefined
-            ? {}
-            : { peerRecovery: record.peerRecovery as unknown as JSONValue }),
-        },
-  );
-}
-
-function omitStartedRecord(value: JSONValue | undefined, omittedId: string): JSONValue[] {
-  return writeApprovalResolutionStarted(
-    readApprovalResolutionStarted(value).filter((record) => record.id !== omittedId),
-  );
-}
-
-function omitStartedRecordsWithPrefix(value: JSONValue | undefined, prefix: string): JSONValue[] {
-  return writeApprovalResolutionStarted(
-    readApprovalResolutionStarted(value).filter((record) => !record.id.startsWith(prefix)),
-  );
-}
-
-/**
- * Builds the sleep the session-persistence retry loops wait on — a real
- * sleep driven by the composed {@link RuntimeServices.timers} (AB-260), so a
- * `ManualRuntimeServices` clock advances it. The timer-scheduling and timer-clearing members are destructured once so
- * the call sites below read `scheduleTimeout(...)` rather than a literal
- * `timers` method call — see `runtime-composition.ts`'s equivalent pattern
- * for why: the AB-260 binary completion check greps for the literal global
- * timer-scheduling call text, and only a destructured alias avoids it while
- * still routing through the injected timers.
- */
-function createSessionPersistenceSleep(
-  timers: RuntimeServices['timers'],
-): (milliseconds: number) => Promise<void> {
-  const { setTimeout: scheduleTimeout } = timers;
-  return (milliseconds) => new Promise((resolve) => scheduleTimeout(resolve, milliseconds));
-}
-
-/**
- * Builds the sleep that bounds `shutdown({ timeoutMilliseconds })`'s wait — a
- * sleep driven by the composed {@link RuntimeServices.timers} (AB-260),
- * cleared (never resolving) if `signal` aborts first so a `shutdown()` whose
- * real teardown wins the race does not leave this timer pending for the
- * rest of its duration. Under a `ManualRuntimeServices` nothing advances it
- * but the caller's clock.
- */
-function createShutdownTimeoutSleep(
-  timers: RuntimeServices['timers'],
-): (milliseconds: number, signal: AbortSignal) => Promise<void> {
-  const { setTimeout: scheduleTimeout, clearTimeout: cancelTimeout } = timers;
-  return (milliseconds, signal) =>
-    new Promise((resolve) => {
-      if (signal.aborted) return;
-      const handle = scheduleTimeout(resolve, milliseconds);
-      signal.addEventListener('abort', () => cancelTimeout(handle), { once: true });
-    });
-}
-
-function ignoreBestEffortPromiseRejection(): void {}
-
-export function detachBestEffortPromise(promise: Promise<unknown>): void {
-  void promise.catch(ignoreBestEffortPromiseRejection);
-}
-
-/**
- * `WorkflowStatus` values (Weft `core/types/identity.ts`) a workflow can
- * still be forcibly terminated from. Mirrors Weft's own internal
- * `FORCIBLY_TERMINABLE_STATUSES` (`core/engine/termination/cleanup.ts`),
- * which is not exported on the public `@lostgradient/weft` barrel, and
- * operative's parallel (also module-private) `TERMINAL_WORKFLOW_STATUSES`
- * set in `durable/active-run-adapter.ts`. Kept local rather than exported
- * from either package, since neither exposes the underlying constant for
- * `bureau` to import.
- */
-/** How many audit records one page of a review-closing check reads (COR-1613). */
-const AUDIT_PAGE_SIZE = 500;
-
-/**
- * Whether an audit record is a terminal record of a review at a round (COR-1613). A record that
- * names no round is round 0, and a review with no round, a human wait, matches any.
- */
-function closesReviewRound(
-  record: { readonly type: string; readonly detail: unknown },
-  reviewId: string,
-  round: number | undefined,
-): boolean {
-  if (!record.type.startsWith('review.')) return false;
-  if (!TERMINAL_REVIEW_STATUSES.has(record.type.split('.').pop() ?? '')) return false;
-  const detail = record.detail;
-  if (detail === null || typeof detail !== 'object') return false;
-  const reviewDetail = (detail as Record<string, unknown>)['review'];
-  if (reviewDetail === null || typeof reviewDetail !== 'object') return false;
-  const fields = reviewDetail as Record<string, unknown>;
-  if (fields['id'] !== reviewId) return false;
-  if (round === undefined) return true;
-  const recorded = fields['round'];
-  return (typeof recorded === 'number' ? recorded : 0) === round;
-}
-/**
- * The status an audit record closes a review round with (COR-1622), or `undefined` when it is not a
- * terminal record of that round. {@link closesReviewRound}'s rule, with the status it found.
- */
-function closingStatusOfRound(
-  record: { readonly type: string; readonly detail: unknown },
-  reviewId: string,
-  round: number | undefined,
-): string | undefined {
-  return closesReviewRound(record, reviewId, round) ? record.type.split('.').pop() : undefined;
-}
-/**
- * What closing a canceled fire's review needs to know to find the closing's records (COR-1622): the
- * review's id and kind, its run, and the round it stood at (`0` for a human wait). Not the review
- * itself, which only a record that is to be written needs in full.
- */
-type CanceledReviewTarget = {
-  readonly id: string;
-  readonly runId: string;
-  readonly kind: 'tool-approval' | 'human-wait';
-  readonly round: number;
-};
-
-const DURABLE_FORCIBLY_TERMINABLE_STATUSES = new Set<string>(['pending', 'running', 'suspended']);
-
-/**
- * Whether a durable run's status is one it has not settled from: Bureau's own
- * non-terminal set ({@link DURABLE_FORCIBLY_TERMINABLE_STATUSES}), read by the
- * AG-UI mount's busy decision so it cannot drift from what `waitForDurableRun` and
- * `cancelDurableRun` call unsettled. `pending` counts: `createRun` returns once the
- * durable record commits, and Weft reports the workflow `pending` until its inline
- * launch runs.
- */
-export function isDurableRunUnsettled(status: string): boolean {
-  return DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(status);
-}
-
-/**
- * Dependencies {@link resolveCancelDurableRun} needs, factored out for
- * direct dependency injection in tests (AB-205) — in particular the
- * "resolves `already-terminal`, never `requested`" race fixture, which needs
- * to observe/control exactly when `cancel` resolves relative to a workflow
- * completing normally, something a real Weft engine cannot be made to do
- * deterministically.
- */
-export interface CancelDurableRunDependencies {
-  getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  cancel: (runId: string) => Promise<unknown>;
-}
-
-/** What {@link resolveWaitForDurableRun} needs from the durable engine and the bureau's options. */
-export interface WaitForDurableRunDependencies {
-  getDurableRun: (runId: string) => Promise<WorkflowState | null | undefined>;
-  /** Weft's result waiter for the run: resolves, or rejects with the run's own failure or another error. */
-  awaitResult: (runId: string) => Promise<void>;
-  /** `maintenance: 'manual'`, where Weft installs no cross-engine poll. */
-  manualBackgroundTasks: boolean;
-}
-
-/**
- * The resolution algorithm behind {@link BureauTasks.wait}, independent of a real
- * `runtime.durable.engine`. A rejection of the result waiter is accepted only when the store then
- * confirms the run is terminal (a failed, cancelled or timed-out run rejects its own result);
- * any other rejection says nothing about the run and propagates.
- */
-export async function resolveWaitForDurableRun(
-  runId: string,
-  dependencies: WaitForDurableRunDependencies,
-): Promise<WorkflowState | null | undefined> {
-  const isTerminal = (state: WorkflowState) =>
-    !DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status);
-  const current = await dependencies.getDurableRun(runId);
-  if (current === undefined || current === null) return current;
-  if (isTerminal(current)) return current;
-  // Weft's result waiter rechecks the store only inside `runMaintenance()` under
-  // `backgroundTasks: 'manual'`, so a wait nothing re-drives could pend forever for a run another
-  // bureau completes. Refuse it plainly instead of hanging.
-  if (dependencies.manualBackgroundTasks) {
-    throw new BureauError(
-      `waitForDurableRun("${runId}") cannot wait under maintenance: 'manual', ` +
-        `where nothing re-reads the durable store between maintenance passes; call ` +
-        `maintain() and then getDurableRun() instead`,
-      'UNSUPPORTED_CAPABILITY',
-    );
-  }
-  let rejection: unknown;
-  try {
-    await dependencies.awaitResult(runId);
-  } catch (error) {
-    rejection = error;
-  }
-  const settled = await dependencies.getDurableRun(runId);
-  if (settled === undefined || settled === null) return settled;
-  if (isTerminal(settled)) return settled;
-  throw rejection ?? new Error(`Durable run "${runId}" settled without reaching a terminal state`);
-}
-
-/**
- * The pure resolution algorithm behind {@link Bureau.cancelDurableRun}
- * (AB-37, AB-205), independent of any real `runtime.durable.engine` — see
- * {@link CancelDurableRunDependencies}. Never rejects.
- *
- * Resolution order: `getDurableRun` resolving `undefined` (no durable engine
- * composed) resolves `'unsupported-capability'`; resolving `null` (unknown to
- * the engine) resolves `'not-found'`; a resolved `WorkflowState.status`
- * already outside {@link DURABLE_FORCIBLY_TERMINABLE_STATUSES} resolves
- * `'already-terminal'` WITHOUT calling `cancel`. Otherwise `cancel(runId)` is
- * called — a rejection resolves `'failed'` with the error attached; a
- * resolution triggers a REQUIRED post-cancel re-read via `getDurableRun`,
- * because `cancel` resolving is not proof a cancellation record committed (it
- * can win OR lose a race against the workflow completing on its own): a
- * re-read observing `status === 'cancelled'` resolves `'requested'`; a
- * re-read observing any OTHER status outside
- * {@link DURABLE_FORCIBLY_TERMINABLE_STATUSES} (the race where normal
- * completion won instead) resolves `'already-terminal'`; a re-read
- * observing `null` (the run was purged between the two reads) resolves
- * `'not-found'`; a re-read observing `undefined` (the durable engine
- * vanished between the two reads — not expected in practice, since nothing
- * decomposes a bureau's durable engine mid-call, but never assumed) resolves
- * `'unsupported-capability'`; a re-read still reporting a status WITHIN
- * {@link DURABLE_FORCIBLY_TERMINABLE_STATUSES} means `cancel` resolved
- * without the cancellation actually committing — genuinely unproven, not a
- * success — and resolves `'failed'` rather than being misreported as
- * `'already-terminal'` (a code-review finding on this pull request).
- */
-export async function resolveCancelDurableRun(
-  runId: string,
-  dependencies: CancelDurableRunDependencies,
-): Promise<CancelDurableRunOutcome> {
-  try {
-    const state = await dependencies.getDurableRun(runId);
-    if (state === undefined) {
-      return { status: 'unsupported-capability' };
-    }
-    if (state === null) {
-      return { status: 'not-found' };
-    }
-    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(state.status)) {
-      return { status: 'already-terminal' };
-    }
-
-    try {
-      await dependencies.cancel(runId);
-    } catch (error) {
-      return { status: 'failed', error };
-    }
-
-    const rereadState = await dependencies.getDurableRun(runId);
-    if (rereadState === undefined) {
-      return { status: 'unsupported-capability' };
-    }
-    if (rereadState === null) {
-      return { status: 'not-found' };
-    }
-    if (rereadState.status === 'cancelled') {
-      return { status: 'requested' };
-    }
-    if (!DURABLE_FORCIBLY_TERMINABLE_STATUSES.has(rereadState.status)) {
-      return { status: 'already-terminal' };
-    }
-    // `cancel` resolved without rejecting, but the post-cancel re-read still
-    // reports a forcibly-terminable status — the cancellation record did not
-    // actually commit. Reporting `'already-terminal'` here would be a false
-    // positive; reporting `'requested'` would be an unproven claim. Neither
-    // is honest, so this resolves `'failed'`.
-    return {
-      status: 'failed',
-      error: new Error(
-        `cancelDurableRun("${runId}"): engine.cancel resolved but the post-cancel re-read still ` +
-          `reports status "${rereadState.status}" — the cancellation did not commit.`,
-      ),
-    };
-  } catch (error) {
-    return { status: 'failed', error };
-  }
-}
-
-/**
- * Discriminates *why* a `BureauError` with code `NOT_CONFIGURED` was thrown.
- * `NOT_CONFIGURED` alone is not enough for a consumer to decide an HTTP status:
- * some subjects mean "this deployment does not compose that capability at all"
- * (`durable` — a 501 case), others mean "the capability exists but
- * is unconfigured, and the operator can fix it" (`generate`, `persistence`,
- * `approval` — a 503 case). Only set on `NOT_CONFIGURED` errors.
- */
-export type BureauErrorNotConfiguredSubject =
-  | 'generate'
-  | 'durable'
-  | 'persistence'
-  | 'approval'
-  /** COR-1920: a secret answer arrived, and the Bureau has no `answerEncryption` key or no storage for it. */
-  | 'encryption';
-
-class BureauError extends Error {
-  readonly code:
-    | 'NOT_FOUND'
-    | 'CONFLICT'
-    | 'NOT_CONFIGURED'
-    | 'BAD_REQUEST'
-    | 'RATE_LIMITED'
-    | 'UNSUPPORTED_CAPABILITY'
-    | 'STORAGE_UNAVAILABLE';
-  readonly subject: BureauErrorNotConfiguredSubject | undefined;
-
-  // `subject` is required for NOT_CONFIGURED and disallowed for every other
-  // code — a compile-time guarantee that a future NOT_CONFIGURED throw site
-  // cannot skip disambiguation and reintroduce the ambiguity #264 fixed.
-  constructor(message: string, code: Exclude<BureauError['code'], 'NOT_CONFIGURED'>);
-  constructor(message: string, code: 'NOT_CONFIGURED', subject: BureauErrorNotConfiguredSubject);
-  constructor(
-    message: string,
-    code:
-      | 'NOT_FOUND'
-      | 'CONFLICT'
-      | 'NOT_CONFIGURED'
-      | 'BAD_REQUEST'
-      | 'RATE_LIMITED'
-      | 'UNSUPPORTED_CAPABILITY'
-      | 'STORAGE_UNAVAILABLE',
-    subject?: BureauErrorNotConfiguredSubject,
-  ) {
-    super(message);
-    this.name = 'BureauError';
-    this.code = code;
-    this.subject = subject;
-  }
-}
-
-/**
- * `resolveReview` resolved a tool approval, and the tool ran or was refused, but
- * the outcome could not be written into the session's conversation. The review is
- * resolved and will not be offered again; the conversation still shows it as
- * pending until a later write replaces the row.
- *
- * The decision took effect: only the write into the conversation failed. The code
- * is `CONFLICT` for lack of a better one, and a management-plane consumer must not
- * read it as another resolver having won.
- */
-const APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE =
-  'The decision was recorded, but its outcome could not be written into the conversation, which still shows the approval as pending';
-
-class ApprovalOutcomeNotWrittenError extends BureauError {
-  constructor(message: string) {
-    super(message, 'CONFLICT');
-    this.name = 'ApprovalOutcomeNotWrittenError';
-  }
-}
-
-/**
- * A tool call waiting for approval names a tool version the toolbox no longer holds (COR-1872). A
- * durable record pins `namespace:name@version` and runs only that version: `reason` is
- * `version-mismatch` when other versions of the tool are loaded, which `candidates` lists, and
- * `missing` when none is. Recovery reports it as the cause of the review it cannot restore, and
- * `resolveReview` throws it rather than run another version; either way the tool does not run.
- */
-class PinnedToolUnavailableError extends BureauError {
-  /** Why the pinned id did not resolve. */
-  readonly reason: 'missing' | 'ambiguous' | 'version-mismatch';
-  /** The `namespace:name@version` the run recorded. */
-  readonly toolId: string;
-  /** The ids of the loaded tools that came closest; empty for `missing`. */
-  readonly candidates: readonly string[];
-  constructor(
-    toolId: string,
-    reason: 'missing' | 'ambiguous' | 'version-mismatch',
-    candidates: readonly string[],
-  ) {
-    super(
-      `The run recorded tool "${toolId}", and the toolbox ${
-        candidates.length === 0 ? 'holds no version of it' : `holds ${candidates.join(', ')}`
-      } (${reason}).`,
-      'CONFLICT',
-    );
-    this.name = 'PinnedToolUnavailableError';
-    this.reason = reason;
-    this.toolId = toolId;
-    this.candidates = candidates;
-  }
-}
-
-/**
- * The error for an approval whose binding pins a tool id `toolbox` no longer resolves, or
- * `undefined` when it resolves or the approval pins none.
- */
-function pinnedToolUnavailable(
-  toolbox: Pick<BureauToolbox, 'resolveTool'>,
-  approval: Pick<SignedPendingToolApproval, 'approvalBinding'>,
-): PinnedToolUnavailableError | undefined {
-  const toolId = approval.approvalBinding?.toolDefinitionRevision;
-  if (typeof toolId !== 'string') return undefined;
-  const resolution = toolbox.resolveTool(toolId);
-  return resolution.ok
-    ? undefined
-    : new PinnedToolUnavailableError(toolId, resolution.reason, resolution.candidates);
-}
-
-/**
- * `resolveReview` was given the round the caller read, and the review has moved past it: another
- * resolver superseded the approval, which replaces it under the same id with the next round
- * (COR-1659). Nothing took effect, so it is a `CONFLICT` the caller answers by reading the review
- * again; it names no other resolver's decision.
- */
-class ReviewRoundChangedError extends BureauError {
-  constructor(message: string) {
-    super(message, 'CONFLICT');
-    this.name = 'ReviewRoundChangedError';
-  }
-}
-
-/**
- * `reviews.resolve` was given an answer that does not satisfy the schema of the human wait it
- * answers (COR-1804), or none where the schema needs one. Nothing was claimed, delivered or
- * audited, so the review stays pending and the caller may answer again. It is a `BAD_REQUEST`
- * `BureauError`; the catalog maps it to `InvalidParams` with the issues under `data.issues`.
- */
-class ReviewAnswerInvalidError extends BureauError {
-  /** Every way the answer fails its schema; paths are relative to the answer. */
-  readonly issues: readonly ReviewAnswerIssue[];
-
-  constructor(issues: readonly ReviewAnswerIssue[]) {
-    super(
-      `The answer does not satisfy the question’s schema: ${formatReviewAnswerIssues(issues)}`,
-      'BAD_REQUEST',
-    );
-    this.name = 'ReviewAnswerInvalidError';
-    this.issues = issues;
-  }
-}
-
-/**
- * A steering command was refused because it switches the model of an agent with `limits.cost` to
- * one the catalog has no price for (COR-1921). It is a `BAD_REQUEST` `BureauError`, so the
- * catalog's steer answers `InvalidParams` naming the `override` field and the budget; a fork
- * that carries a model across catches it, and answers the carry as rejected.
- */
-class UnpricedSwitchRefusedError extends BureauError {
-  constructor(message: string) {
-    super(message, 'BAD_REQUEST');
-    this.name = 'UnpricedSwitchRefusedError';
-  }
-}
-
-/**
- * A command was refused because Bureau had closed admission (COR-1559). It is a `CONFLICT`
- * `BureauError`, so every caller that handled the throw still does, and it carries when Bureau
- * refused it, on the Bureau's own clock, for a caller that answers with data instead of a throw.
- */
-class BureauShuttingDownError extends BureauError {
-  /** When Bureau refused the command, as an ISO timestamp of its runtime clock. */
-  readonly at: string;
-
-  constructor(message: string, at: string) {
-    super(message, 'CONFLICT');
-    this.name = 'BureauShuttingDownError';
-    this.at = at;
-  }
-}
-
-/**
- * A refusal of {@link BureauTasks.respond}, made before anything took effect. It is a
- * `BureauError` (`NOT_FOUND`, `CONFLICT`, or `BAD_REQUEST`) that also says which request `field`
- * a `BAD_REQUEST` is about, or the short `reason` an addressed wait cannot take the answer, so the
- * management plane answers it as `InvalidParams` or `Unprocessable` without reading the message.
- */
-class TaskRespondError extends BureauError {
-  readonly field: string | undefined;
-  readonly reason: string | undefined;
-  /** Every field of the answer that failed the wait's schema, when that is what was refused (COR-1804). */
-  readonly issues: TaskRespondRefusal['issues'];
-
-  constructor(refusal: TaskRespondRefusal) {
-    super(refusal.message, refusal.code);
-    this.name = 'TaskRespondError';
-    this.field = refusal.field;
-    this.reason = refusal.reason;
-    this.issues = refusal.issues;
-  }
-}
-
-export {
-  ApprovalOutcomeNotWrittenError,
+import {
   BureauError,
-  BureauShuttingDownError,
+  APPROVAL_OUTCOME_NOT_WRITTEN_MESSAGE,
+  ApprovalOutcomeNotWrittenError,
   PinnedToolUnavailableError,
-  ReviewAnswerInvalidError,
+  pinnedToolUnavailable,
   ReviewRoundChangedError,
+  ReviewAnswerInvalidError,
+  UnpricedSwitchRefusedError,
+  BureauShuttingDownError,
   TaskRespondError,
-};
-
-/**
- * What `Bureau.whenRunRecorded` rejects with when the run ended without this process saving its
- * end in the session, so no record of it is coming from here.
- */
-/**
- * COR-1614 — the field that marks a store action ending a run another process ended. Such an
- * action reaches this process's live frames and nothing else that reads the store's actions.
- */
-const COMMITTED_ELSEWHERE = 'committedElsewhere';
-
-function isCommittedElsewhere(action: { readonly detail: unknown }): boolean {
-  const detail = action.detail;
-  return typeof detail === 'object' && detail !== null && COMMITTED_ELSEWHERE in detail;
-}
-
-/**
- * The end a durable run another process cancelled, timed out, or failed stands for on this
- * process's store; `undefined` for any other state. A completed run is left out: a Bureau run that
- * is cancelled or times out never completes its workflow, and one that completes was driven by an
- * engine that reported it.
- */
-function endedElsewhereAs(
-  state: WorkflowState,
-): { readonly type: 'run.aborted' | 'run.error'; readonly error: Error } | undefined {
-  if (state.status === 'cancelled') {
-    return {
-      type: 'run.aborted',
-      error: new AbortAgentRunError('The run was cancelled by another process'),
-    };
-  }
-  if (state.status === 'timed-out' || state.status === 'failed') {
-    return {
-      type: 'run.error',
-      // Uncoded, so a stream reports it as `RUN_FAILED`, the code a peer streaming the same run
-      // reads from its durable status.
-      error: new Error(
-        state.error ?? (state.status === 'timed-out' ? 'The run timed out' : 'The run failed'),
-      ),
-    };
-  }
-  return undefined;
-}
-
-class TerminalSessionRecordAbandonedError extends Error {
-  constructor(runId: string) {
-    super(`Run "${runId}" ended without its end being recorded in its session by this process.`);
-    this.name = 'TerminalSessionRecordAbandonedError';
-  }
-}
-
-/**
- * Thrown by `schedules.create` when a schedule registers successfully against
- * the engine but its {@link import('@lostgradient/weft').ScheduleSummary}
- * cannot be retrieved immediately afterward (`AgentScheduleHandle.describe()`
- * rejects). Mirrors `DurableCapabilityUnavailableError`'s shape discipline
- * (AB-41/AB-43) — `.code`, `.category`, `.retryable` — so the same
- * `isToolError`-style consumer contract can discriminate it without a bare,
- * untyped `Error` leaking through. The schedule itself IS registered; only
- * its locator (the summary) is unavailable.
- */
-export class ScheduleLocatorUnavailableError extends Error {
-  readonly code = 'ScheduleLocatorUnavailableError';
-  readonly category = 'unavailable' as const;
-  readonly retryable = false as const;
-  /** The already-registered schedule whose locator could not be read. */
-  readonly scheduleId: string;
-
-  constructor(scheduleId: string, options?: { cause?: unknown }) {
-    super(
-      `Schedule ${scheduleId} was registered, but its summary could not be retrieved. ` +
-        `The schedule is registered; retry describing it (e.g. bureau.schedules.get('${scheduleId}')) later.`,
-      options,
-    );
-    this.name = 'ScheduleLocatorUnavailableError';
-    this.scheduleId = scheduleId;
-  }
-}
-
-/**
- * Thrown by `schedules.create` (COR-1667) when `agentName` is not in the agent catalog, instead of
- * registering a schedule whose every fire would be refused with `missing-agent`. A `NOT_FOUND`
- * {@link BureauError}, so the management plane answers it as a client error; the name is on
- * `agentName`.
- */
-export class UnknownScheduleAgentError extends BureauError {
-  /** The catalog name no agent resolves. */
-  readonly agentName: string;
-
-  constructor(agentName: string) {
-    super(
-      `Unknown agent "${agentName}": a schedule can only run an agent in the catalog`,
-      'NOT_FOUND',
-    );
-    this.name = 'UnknownScheduleAgentError';
-    this.agentName = agentName;
-  }
-}
-
-/** {@link BureauOptions} once each definition-source option is one source (COR-1873). */
-type LayeredBureauOptions<D extends AgentDefinitions> = Omit<
-  BureauOptions<D>,
-  'agentSource' | 'workflowSource'
-> & {
-  readonly agentSource?: AgentSource;
-  readonly workflowSource?: WorkflowSource;
-};
-
-/** `options` with `agentSource` and `workflowSource` each checked and layered into one source. */
-function withLayeredSources<const D extends AgentDefinitions>(
-  options: BureauOptions<D>,
-): LayeredBureauOptions<D> {
-  const { agentSource, workflowSource, ...rest } = options;
-  return {
-    ...rest,
-    ...(agentSource === undefined
-      ? {}
-      : {
-          agentSource: resolveDefinitionSource('agentSource', 'agent', agentSource, toBadRequest),
-        }),
-    ...(workflowSource === undefined
-      ? {}
-      : {
-          workflowSource: resolveDefinitionSource(
-            'workflowSource',
-            'workflow',
-            workflowSource,
-            toBadRequest,
-          ),
-        }),
-  };
-}
-
-/**
- * COR-1897, COR-1977 — `options` with the agents and workflows the running plugins ship layered
- * beneath the owner's sources. The layers are known only once plugins are composed, so the sources
- * the caller gave are layered again with them. Nothing changes without an `agentSource` or a
- * `pluginAgentSource`, and likewise for workflows.
- */
-function withPluginContentLayers<const D extends AgentDefinitions>(
-  options: LayeredBureauOptions<D>,
-  given: BureauOptions<D>,
-  shipped: readonly { readonly plugin: string; readonly content: URL }[],
-): LayeredBureauOptions<D> {
-  if (shipped.length === 0) return options;
-  const agentSource = layeredWithPlugins(
-    'agentSource',
-    'agent',
-    given.agentSource,
-    options.pluginAgentSource,
-    shipped,
-  );
-  const workflowSource = layeredWithPlugins(
-    'workflowSource',
-    'workflow',
-    given.workflowSource,
-    options.pluginWorkflowSource,
-    shipped,
-  );
-  return {
-    ...options,
-    ...(agentSource === undefined ? {} : { agentSource }),
-    ...(workflowSource === undefined ? {} : { workflowSource }),
-  };
-}
-
-/** The owner's `given` sources with the layer `layerOf` returns for each shipped content, or `undefined` for none. */
-function layeredWithPlugins<const Source extends AgentSource | WorkflowSource>(
-  option: 'agentSource' | 'workflowSource',
-  kind: 'agent' | 'workflow',
-  given: Source | readonly Source[] | undefined,
-  layerOf: ((plugin: string, content: URL) => Source | undefined) | undefined,
-  shipped: readonly { readonly plugin: string; readonly content: URL }[],
-): Source | undefined {
-  if (layerOf === undefined || given === undefined) return undefined;
-  const owners: readonly Source[] = Array.isArray(given) ? given : [given as Source];
-  const layers = shipped.flatMap(({ plugin, content }) => {
-    const layer = layerOf(plugin, content);
-    return layer === undefined ? [] : [layer];
-  });
-  if (layers.length === 0) return undefined;
-  return resolveDefinitionSource(option, kind, [...owners, ...layers], toBadRequest) as Source;
-}
-
-function toBadRequest(message: string): never {
-  throw new BureauError(message, 'BAD_REQUEST');
-}
-
-/**
- * COR-851 — an id an ordinary caller chooses may not sit in a namespace durable
- * goals own (see `reserved-identifiers.ts`). Refused as `BAD_REQUEST` with a
- * message beginning `reserved-identifier:`.
- */
-function rejectReservedIdentifier(kind: string, id: string): void {
-  const reason = reservedIdentifierReason(kind, id);
-  if (reason !== undefined) toBadRequest(reason);
-}
-
-/**
- * COR-1590 — `.` and `..` may not name a session that does not exist yet (see
- * `unopenableNewSessionIdentifierReason`). Refused as `BAD_REQUEST` with a message beginning
- * `unopenable-session-identifier:`.
- */
-function rejectUnopenableNewSessionIdentifier(kind: string, id: string, exists: boolean): void {
-  const reason = exists ? undefined : unopenableNewSessionIdentifierReason(kind, id);
-  if (reason !== undefined) toBadRequest(reason);
-}
-
-/**
- * A schedule's stored input with its text replaced by `text` (COR-2018). A text input is replaced
- * whole; an input of parts keeps its media, after the new text, so an edit of the message never
- * drops an attachment the schedule sends.
- */
-function replaceInputText(stored: SessionInputPayload, text: string): SessionInputPayload {
-  if (typeof stored === 'string') return text;
-  return [{ type: 'text', text }, ...stored.filter((part) => part.type !== 'text')];
-}
-
-/** The text of the last user row in `rows`, or `''` when there is none. */
-function lastUserTextOf(rows: ReadonlyArray<Message> | undefined): string {
-  const last = rows?.findLast((row) => row.role === 'user');
-  if (last === undefined) return '';
-  if (typeof last.content === 'string') return last.content;
-  return last.content.map((part) => (part.type === 'text' ? part.text : '')).join('');
-}
-
-/** Appends a request's rows verbatim, refusing rows the conversation cannot take. */
-function appendRequestRows(
-  conversation: Conversation,
-  rows: ReadonlyArray<Message> | undefined,
-): void {
-  if (rows === undefined || rows.length === 0) return;
-  try {
-    // Built rows keep their ids and content parts; `MessageInput` is the type
-    // the history's `appendMessages` declares, and a built `Message` is the
-    // input it also accepts.
-    conversation.appendMessages(...(rows as unknown as MessageInput[]));
-  } catch (error) {
-    toBadRequest(
-      `"appendMessages" cannot be appended to the session's conversation: ${
-        error instanceof Error ? error.message : String(error)
-      }`,
-    );
-  }
-}
-
-function assertConversationAnswerable(conversation: Conversation): void {
-  const last = conversation.getMessages({ includeHidden: true }).at(-1);
-  if (last?.role !== 'user' && last?.role !== 'tool-result') {
-    toBadRequest(
-      'The conversation a run starts from must end in a user or tool-result message; ' +
-        'pass "message" or "appendMessages", or start from a session that ends in one',
-    );
-  }
-}
-
-function validateMessageRequest(
-  request: {
-    message?: unknown;
-    maximumSteps?: unknown;
-    maximumTokens?: unknown;
-    systemPrompt?: unknown;
-  },
-  options: { readonly messageOptional?: boolean } = {},
-): void {
-  if (request.message === undefined && options.messageOptional === true) {
-    // The caller appends rows instead, or answers the conversation as it stands.
-  } else if (!request.message || typeof request.message !== 'string') {
-    toBadRequest('Request must include a "message" string');
-  }
-}
-
-/**
- * What a task start adds to a run-creation request inside Bureau: the input it was given (the
- * receipt digest covers it), the parts of a part-list input, and a hook that sees the run's
- * `ActiveRun` the moment it exists, before any of its events can be missed.
- */
-type SessionTaskFields = {
-  readonly taskInput?: TaskInput | undefined;
-  /** Where the task came from, as the caller declared it. See {@link StartTaskOptions.origin}. */
-  readonly origin?: StartTaskOrigin | undefined;
-  readonly inputParts?: Exclude<SessionInputPayload, string> | undefined;
-  readonly onActiveRun?: ((activeRun: ActiveRun) => void) | undefined;
-  /**
-   * The caller's start signal, bound to the run once its workflow is prepared and before its
-   * receipt is recorded: the run executes from that point, so an abort must reach it from there.
-   */
-  readonly signal?: AbortSignal | undefined;
-  /** The caller's trace context: the run's `parentContext`, the parent of its spans. */
-  readonly traceContext?: unknown;
-  /** The caller's tracer binding, which runs the run's generate and tool calls under the parent. */
-  readonly withTraceContext?:
-    (<T>(parent: unknown, fn: () => Promise<T>) => Promise<T>) | undefined;
-};
-
-/** The run-creation fields a task input becomes: a message, its parts, or rows to append. */
-function taskRequestFieldsOf(
-  input: TaskInput,
-): Pick<CreateRunRequest & SessionTaskFields, 'message' | 'inputParts' | 'appendMessages'> {
-  if (typeof input === 'string') return { message: input };
-  if (Array.isArray(input)) {
-    // COR-716: an ordered list of user text and media parts, checked as every start path checks it.
-    try {
-      assertAgentInput(input);
-    } catch (error) {
-      if (error instanceof AgentContractError) toBadRequest(`"input" is invalid: ${error.message}`);
-      throw error;
-    }
-    return { inputParts: input };
-  }
-  if (typeof input !== 'object' || input === null) {
-    return toBadRequest('"input" must be a string, a list of parts, or a task input object');
-  }
-  if ('append' in input) return { appendMessages: input.append };
-  if ('conversation' in input) {
-    const history = input.conversation;
-    if (!isConversationHistory(history)) {
-      return toBadRequest('"input.conversation" must be a valid ConversationHistory');
-    }
-    return { appendMessages: history.ids.map((id) => getOwn(history.messages, id)!) };
-  }
-  if ('continue' in input) return {};
-  return toBadRequest('"input" must be a string, a list of parts, or a task input object');
-}
-
-/** The text that stands for a request where only text fits: its message, parts, or last user row. */
-function requestTextOf(request: CreateRunRequest & SessionTaskFields): string {
-  if (request.message !== undefined) return request.message;
-  return request.inputParts === undefined
-    ? lastUserTextOf(request.appendMessages)
-    : payloadText(request.inputParts);
-}
-
-/** The input a request that names no `taskInput` stands for, so its digest covers what it ran. */
-function legacyTaskInputOf(request: CreateRunRequest): unknown {
-  const rows = request.appendMessages ?? [];
-  if (request.message !== undefined) {
-    return rows.length === 0 ? request.message : { message: request.message, append: rows };
-  }
-  return rows.length === 0 ? { continue: true } : { append: rows };
-}
-
-function validateCreateRunRequest(request: CreateRunRequest): void {
-  validateMessageRequest(request, { messageOptional: true });
-
-  if (request.appendMessages !== undefined) {
-    if (
-      !Array.isArray(request.appendMessages) ||
-      !request.appendMessages.every(
-        (row: unknown) =>
-          typeof row === 'object' &&
-          row !== null &&
-          typeof (row as { id?: unknown }).id === 'string' &&
-          (row as { id: string }).id.length > 0 &&
-          typeof (row as { role?: unknown }).role === 'string',
-      )
-    ) {
-      toBadRequest('"appendMessages" must be an array of messages, each with an "id" and a "role"');
-    }
-  }
-
-  if (request.sessionId !== undefined) {
-    if (typeof request.sessionId !== 'string') {
-      toBadRequest('"sessionId" must be a string');
-    }
-
-    if (request.sessionId.trim().length === 0) {
-      toBadRequest('"sessionId" must be a non-empty string');
-    }
-    rejectReservedIdentifier('"sessionId"', request.sessionId.trim());
-  }
-
-  if (request.agentName !== undefined) {
-    if (typeof request.agentName !== 'string') {
-      toBadRequest('"agentName" must be a string');
-    }
-
-    if (request.agentName.trim().length === 0) {
-      toBadRequest('"agentName" must be a non-empty string');
-    }
-  }
-
-  // COR-424 — the ledger keys a run-creation request id on the caller that
-  // issued it. Without an authenticated principal there is no caller to
-  // scope it to, and an unscoped key would let any caller replay another's.
-  if (request.runCreationRequestId !== undefined) {
-    if (
-      typeof request.runCreationRequestId !== 'string' ||
-      request.runCreationRequestId.trim().length === 0
-    ) {
-      toBadRequest('"runCreationRequestId" must be a non-empty string');
-    }
-    if (typeof request.principal !== 'string' || request.principal.trim().length === 0) {
-      toBadRequest('"runCreationRequestId" requires an authenticated "principal"');
-    }
-  }
-}
-
-/**
- * AB-15/AB-22: `bureau.run`'s synchronous-throw surface — unknown agent name,
- * malformed `input`, or malformed `options` — validated BEFORE any async
- * work (durable-engine dispatch, definition resolution) begins. Everything
- * else (session, provider, tool, policy, abort) settles through the
- * returned `AgentRun` handle instead of throwing here.
- */
-function validateAgentRunInput(input: unknown): asserts input is AgentInput {
-  if (typeof input === 'string') return;
-  if (Array.isArray(input)) {
-    // COR-716: an ordered list of user text and media parts. The same check
-    // every start path makes, so a malformed list is refused here, before any
-    // async work, rather than failing inside a step.
-    try {
-      assertAgentInput(input);
-    } catch (error) {
-      if (error instanceof AgentContractError) toBadRequest(`"input" is invalid: ${error.message}`);
-      throw error;
-    }
-    return;
-  }
-  if (
-    input !== null &&
-    typeof input === 'object' &&
-    'conversation' in input &&
-    isConversationHistory(input.conversation)
-  ) {
-    return;
-  }
-  toBadRequest(
-    '"input" must be a string, a non-empty array of text and media parts, or an object with a valid "conversation" ConversationHistory',
-  );
-}
-
-/**
- * The ledger {@link BureauTasks.respond} records its receipts in, in the Bureau's store. An
- * ephemeral Bureau keeps it in memory: a receipt then lives as long as the process does.
- */
-function createTasksRespondLedger(
-  kv: ConditionalTextValueStore | undefined,
-  runtime: RuntimeServices,
-): CommandLedger<TasksRespondClaim, TaskRespondResult> {
-  return createPrunedCommandLedger<TasksRespondClaim, TaskRespondResult>(
-    kv ?? textValueStore(new MemoryStorage()),
-    TASKS_RESPOND_LEDGER_KEY_PREFIX,
-    'respond-conflict',
-    runtime,
-  );
-}
-
-/**
- * The options of one {@link BureauTasks.start} call, each read once. A caller-owned bag is read
- * before the first `await` and never again, so a getter that answers differently on a later read
- * cannot slip a value past this check. A malformed bag is `BAD_REQUEST` before anything is
- * persisted; the owner and the context identifier are validated where the run is created.
- */
-function snapshotStartOptions(options: StartTaskOptions): StartTaskOptions {
-  if (options === null || typeof options !== 'object' || Array.isArray(options)) {
-    toBadRequest('"options" must be an object');
-  }
-  const {
-    contextId,
-    principal,
-    commandId,
-    requestContext,
-    origin,
-    signal,
-    traceContext,
-    withTraceContext,
-  } = options;
-  if (signal !== undefined && !(signal instanceof AbortSignal)) {
-    toBadRequest('"options.signal" must be an AbortSignal');
-  }
-  if (withTraceContext !== undefined && typeof withTraceContext !== 'function') {
-    toBadRequest('"options.withTraceContext" must be a function');
-  }
-  let declaredOrigin: StartTaskOrigin | undefined;
-  try {
-    declaredOrigin = parseStartTaskOrigin(origin);
-  } catch (error) {
-    return toBadRequest(error instanceof Error ? error.message : '"options.origin" is not valid');
-  }
-  return {
-    ...(contextId === undefined ? {} : { contextId }),
-    ...(principal === undefined ? {} : { principal }),
-    ...(commandId === undefined ? {} : { commandId }),
-    ...(requestContext === undefined ? {} : { requestContext }),
-    ...(declaredOrigin === undefined ? {} : { origin: declaredOrigin }),
-    ...(signal === undefined ? {} : { signal }),
-    ...(traceContext === undefined ? {} : { traceContext }),
-    ...(withTraceContext === undefined ? {} : { withTraceContext }),
-  };
-}
-
-/**
- * The session metadata boot recovery needs to decide a recovered run's fate,
- * loaded by id from the owning session. `null` ⇒ the session does not exist.
- */
-export type RecoveredRunSessionMetadata = { lastRunId?: unknown; lastRunStatus?: unknown } | null;
-
-/**
- * The outcome of loading a recovered run's owning session: a successful load
- * (the metadata, possibly `null` for "absent") or a transient read FAILURE that
- * leaves ownership UNKNOWN.
- */
-export type SessionLoadOutcome = { ok: true; session: RecoveredRunSessionMetadata } | { ok: false };
-
-/**
- * Decide what boot recovery does with one handle from `engine.recoverAll()`:
- *
- * - `reattach` — bureau-owned, in-flight, session-confirmed: wrap it in a live
- *   ActiveRun and register it.
- * - `monitor` — native scheduled fire: leave the recovered Weft workflow running
- *   and attach a detached result monitor, but do not register an ActiveRun because
- *   scheduled fires intentionally have no interactive session ownership.
- * - `cancel` — POSITIVELY not a reattachable bureau-owned in-flight run (bad/
- *   missing launch metadata, foreign run id, or a session that is absent / owns a
- *   different run / is already terminal). `engine.cancel` terminalizes it so it
- *   does not run unowned with no monitor.
- * - `skip` — ownership could NOT be confirmed (a transient session-load failure,
- *   or no session store): do NOTHING. `engine.cancel` is terminal, so we never
- *   cancel a run that may be legitimately recovering — the worst case is it
- *   resumes without live `getRun` visibility (the pre-#3 behaviour).
- *
- * Pure (no I/O) so every branch is unit-testable. `recoverAll()` fires the
- * services resolver synchronously per run before returning, and the resolver
- * reconciles a deps-unrebuildable run's session to `lastRunStatus: 'error'` — so
- * by the time this classifies, a session still `'running'` is one the resolver
- * kept. The gate is on SESSION status, NOT engine run-status: a run that
- * resolved-and-finished fast during `recoverAll` is terminal in the engine but its
- * session is still `'running'` (its monitor has not written yet), and it must
- * still be reattached so its completion is persisted.
- */
-export interface ClassifyRecoveredRunArgs {
-  handleId: string;
-  /** Whether the launch metadata identifies a native scheduled fire. */
-  scheduledFire: boolean;
-  /** The narrowed agentRun input when the launch metadata is bureau-owned, else `undefined`. */
-  ownedSessionId: string | undefined;
-  /** Whether reading the handle's launch metadata threw. */
-  metadataReadFailed: boolean;
-  /** A session store is configured (recovery cannot reattach without one). */
-  hasSessionStore: boolean;
-  /** The session-load outcome; only meaningful when `ownedSessionId` is set + `hasSessionStore`. */
-  sessionLoad: SessionLoadOutcome;
-  /**
-   * AB-10 — true when the durable engine flagged this run's checkpointed
-   * `workflowVersion` as differing from the currently-registered one (see
-   * `RuntimeComposition.workflowVersionMismatches`). Only changes the verdict
-   * for what would otherwise be `'reattach'` — the run still reattaches
-   * (pin-and-warn), it is just flagged distinctly so callers can log/alert on
-   * the drift.
-   */
-  versionMismatch?: boolean;
-  /**
-   * COR-297 — the status of the run's durable record, when it was read. A `'pending'` record was
-   * prepared and never launched, so a run that would otherwise reattach is cancelled instead
-   * (`'prepared-not-launched'`). A terminal status (`RECOVERED_RUN_TERMINAL_STATUSES`) on a run
-   * whose session is no longer running means a peer already finished the run, so there is nothing
-   * to cancel (`'skip'`, COR-1916). Omitted, or any other status, changes nothing.
-   */
-  engineRecordStatus?: string;
-}
-
-/**
- * COR-1916 — the durable statuses a run never leaves. A recovered handle whose record already
- * reads one of these, with its session settled, was finished by a peer while this boot was
- * classifying it (a peer takes the claim of a process that stalled past its lease TTL).
- */
-const RECOVERED_RUN_TERMINAL_STATUSES: ReadonlySet<string> = new Set([
-  'completed',
-  'failed',
-  'cancelled',
-  'timed-out',
-]);
-
-/**
- * `classifyRecoveredRun`'s verdict, plus — only when the verdict is
- * `'cancel'` — the structured reason (AB-90/ab90-09's `recovery.rejected`
- * payload). Both derived from the SAME branch pass over `args` as the plain
- * verdict below, so the verdict `emitter.dispatch`es as `recovery.attempted`
- * and the reason it dispatches as `recovery.rejected` can never drift apart.
- */
-export function classifyRecoveredRunDetailed(args: ClassifyRecoveredRunArgs): {
-  verdict: RecoveredRunVerdict;
-  rejection?: RecoveryRejectionReason;
-} {
-  // A failed metadata read means we cannot even identify the run — but it WAS
-  // resumed by recoverAll, so cancel it rather than leave it unowned.
-  if (args.metadataReadFailed) {
-    return { verdict: 'cancel', rejection: 'metadata-read-failed' };
-  }
-  if (args.ownedSessionId === undefined) {
-    // A scheduled fire has no interactive session ownership to confirm. Weft has
-    // already resumed it via the scheduled-fire resolver branch, so monitor its
-    // result without registering it as an ActiveRun or cancelling it as foreign.
-    if (args.scheduledFire) return { verdict: 'monitor' };
-    // Not a bureau-owned agentRun (foreign run id / non-agentRun input) — cancel.
-    return { verdict: 'cancel', rejection: 'foreign-input' };
-  }
-  // Owned input but no session store to confirm against / reattach into — skip.
-  if (!args.hasSessionStore) return { verdict: 'skip' };
-  // Transient session-load failure — ownership UNKNOWN, never cancel; skip.
-  if (!args.sessionLoad.ok) return { verdict: 'skip' };
-  const session = args.sessionLoad.session;
-  // Session absent / owns a different run / not in-flight — positively unowned.
-  if (!session) return { verdict: 'cancel', rejection: 'session-absent' };
-  if (session.lastRunId !== args.handleId) {
-    return { verdict: 'cancel', rejection: 'session-run-mismatch' };
-  }
-  if (session.lastRunStatus !== 'running') {
-    // COR-1916 — session and record agree the run is over: a peer finished it after this boot
-    // took its handle. Cancelling it would be a no-op and reporting it a recovery failure a lie.
-    if (
-      args.engineRecordStatus !== undefined &&
-      RECOVERED_RUN_TERMINAL_STATUSES.has(args.engineRecordStatus)
-    ) {
-      return { verdict: 'skip' };
-    }
-    return { verdict: 'cancel', rejection: 'session-not-running' };
-  }
-  // A pending record never resumes, so a version mismatch is moot for it.
-  if (args.engineRecordStatus === 'pending') {
-    return { verdict: 'cancel', rejection: 'prepared-not-launched' };
-  }
-  return { verdict: args.versionMismatch ? 'reattach-version-mismatch' : 'reattach' };
-}
-
-/**
- * Plain-verdict view of {@link classifyRecoveredRunDetailed}, unchanged for
- * every existing caller and test — this wrapper exists only so the
- * rejection-reason derivation above has exactly one place to live.
- */
-export function classifyRecoveredRun(args: ClassifyRecoveredRunArgs): RecoveredRunVerdict {
-  return classifyRecoveredRunDetailed(args).verdict;
-}
-
-/**
- * Dedupes {@link BureauRecoveryReport.perRunFailures} by `runId`, keeping
- * the FIRST entry seen. A recovered handle whose owning session is absent/
- * mismatched/not-running is classified once by the awaited `onRecoveredWorkflow`
- * hook (during `recoverAll()`) and, because that verdict never registers an
- * `ActiveRun`, classified AGAIN by `recoverDurableRuns`'s own post-`recoverAll()`
- * pass over every unregistered handle — both classifications agree (nothing
- * about the handle changed between them), so without this dedupe the SAME
- * `{runId, reason}` would appear twice, violating the one-entry-per-handle
- * contract (code-review regression fixture, AB-349). Pure and exported for
- * direct unit testing, matching {@link classifyRecoveredRunDetailed}.
- */
-export function dedupeRecoveryPerRunFailures(
-  perRunFailures: readonly { readonly runId: string; readonly reason: string }[],
-): { readonly runId: string; readonly reason: string }[] {
-  const seen = new Set<string>();
-  const deduped: { readonly runId: string; readonly reason: string }[] = [];
-  for (const failure of perRunFailures) {
-    if (seen.has(failure.runId)) continue;
-    seen.add(failure.runId);
-    deduped.push(failure);
-  }
-  return deduped;
-}
-
-export function isRecoverableScheduledFireInput(input: unknown): input is ScheduledAgentRunInput {
-  return (
-    isScheduledAgentRunInput(input) &&
-    typeof input.scheduleId === 'string' &&
-    input.scheduleId.trim().length > 0
-  );
-}
-
-async function loadScheduleIdForRecoveredRun(
-  engine: { storage: { get(key: string): Promise<Uint8Array | null> } },
-  workflowId: string,
-): Promise<
-  | { status: 'found'; scheduleId: string }
-  | { status: 'missing' }
-  | { status: 'read-error'; error: unknown }
-> {
-  try {
-    const value = await engine.storage.get(KEYS.scheduleRun(workflowId));
-    if (!value) return { status: 'missing' };
-    const scheduleId = decodeScheduleRunMarker(decode(value));
-    return scheduleId !== undefined ? { status: 'found', scheduleId } : { status: 'missing' };
-  } catch (error) {
-    return { status: 'read-error', error };
-  }
-}
-
-export async function loadExistingScheduledSessionId(
-  store: SessionStore,
-  input: ScheduledAgentRunInput,
-  runId: string,
-): Promise<string | undefined> {
-  if (input.sessionId !== undefined) {
-    const session = await store.load(input.sessionId);
-    return session?.metadata['lastScheduledFireRunId'] === runId ? input.sessionId : undefined;
-  }
-  const sessions = await store.list();
-  return sessions.find(
-    (session: SessionSummary) =>
-      session.id.startsWith('sched-') &&
-      session.id.endsWith(`-${runId}`) &&
-      session.metadata['lastScheduledFireRunId'] === runId,
-  )?.id;
-}
-
-/**
- * This engine's own disposal rejected a recovered run's handle. The run is still durable and the
- * next boot resumes it, so a shutdown is not reported as the run failing.
- */
-function rejectedByOwnDisposal(error: unknown): boolean {
-  return isWeftErrorLike(error) && error.code === 'EngineDisposedError';
-}
-
-export async function monitorRecoveredScheduledFire(
-  handle: RecoveredRunHandle,
-  diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
-): Promise<void> {
-  try {
-    const result = await handle.result();
-    if (
-      typeof result === 'object' &&
-      result !== null &&
-      'finishReason' in result &&
-      isFailureFinishReason(result.finishReason)
-    ) {
-      const errorMessage =
-        'errorMessage' in result && typeof result.errorMessage === 'string'
-          ? `: ${result.errorMessage}`
-          : '';
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Recovered scheduled fire "${handle.id}" finished with ${String(result.finishReason)}${errorMessage}`,
-      });
-    }
-  } catch (error) {
-    if (rejectedByOwnDisposal(error)) return;
-    diagnose({
-      level: 'error',
-      scope: 'recovery',
-      message: `[bureau] Recovered scheduled fire "${handle.id}" failed: ${serializeUnknownError(error)}`,
-    });
-  }
-}
-
-/**
- * AB-240: the catalog-dispatch analog of {@link monitorRecoveredScheduledFire}.
- * A catalog run (`bureau.run(...)`) has no bureau session and — like a
- * scheduled fire — no interactive session surface, so a recovered one gets
- * the same headless detached-result monitor rather than the
- * session-ownership reattach path. A LIVE catalog run is registered on
- * `store` (COR-1302, `registerCatalogRun`) so `getRun`/`abortRun` resolve its
- * handle's id; a recovered one is not, and stays with this monitor.
- */
-export async function monitorRecoveredCatalogRun(
-  handle: RecoveredRunHandle,
-  agentName: string,
-  diagnose: DiagnosticSink = resolveDiagnosticSink(undefined),
-  settled?: (settlement: CatalogRunSettlement) => Promise<void>,
-  durableEnd?: DurableEndReader,
-  tracker?: Pick<CatalogSettlementTracker, 'commit'>,
-): Promise<void> {
-  let ended: { readonly result: unknown } | { readonly error: unknown };
-  try {
-    ended = { result: await handle.result() };
-  } catch (error) {
-    ended = { error };
-  }
-  // The run's end is known, and what follows is storage work (the durable run's state, then every
-  // listener's reads and writes). A shutdown waits for it however long the database takes.
-  const commit =
-    tracker?.commit ??
-    (async (work: () => Promise<void>) => {
-      await work();
-      return true;
-    });
-  await commit(async () => {
-    if ('result' in ended) {
-      const { result } = ended;
-      if (
-        typeof result === 'object' &&
-        result !== null &&
-        'finishReason' in result &&
-        isFailureFinishReason(result.finishReason)
-      ) {
-        const errorMessage =
-          'errorMessage' in result && typeof result.errorMessage === 'string'
-            ? `: ${result.errorMessage}`
-            : '';
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") finished with ${String(result.finishReason)}${errorMessage}`,
-        });
-      }
-      const fields =
-        typeof result === 'object' && result !== null ? (result as Record<string, unknown>) : {};
-      const finishReason =
-        typeof fields['finishReason'] === 'string' ? fields['finishReason'] : undefined;
-      await settled?.({
-        runId: handle.id,
-        agentName,
-        status: settledTaskState('completed', finishReason),
-        finishReason: finishReason ?? null,
-        message:
-          typeof fields['errorMessage'] === 'string' ? fields['errorMessage'].slice(0, 1000) : null,
-        content: typeof fields['content'] === 'string' ? fields['content'] : null,
-        recovered: true,
-      });
-      return;
-    }
-    // A rejection is not an end: disposing the engine rejects the handle of a run that is still
-    // running, and the next boot resumes it. Only a terminal state the durable run reached is
-    // published (see `settlementForRejection`).
-    const { error } = ended;
-    const settlement = await settlementForRejection({
-      runId: handle.id,
-      agentName,
-      error,
-      recovered: true,
-      durableEnd,
-    });
-    if (settlement === undefined && rejectedByOwnDisposal(error)) return;
-    diagnose({
-      level: 'error',
-      scope: 'recovery',
-      message:
-        settlement === undefined
-          ? `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") is no longer followed, and its durable run is not over: ${serializeUnknownError(error)}`
-          : `[bureau] Recovered catalog run "${handle.id}" (agent "${agentName}") failed: ${serializeUnknownError(error)}`,
-    });
-    if (settlement !== undefined) await settled?.(settlement);
-  });
-}
-
-/**
- * COR-1700 — `humanInput` and `wakeup` are on by default for a durable Bureau, so `true` says
- * nothing and is refused: the only forms are `false`, and for `humanInput` an `inputSchemas` object.
- */
-function rejectOptInToolOption(name: 'humanInput' | 'wakeup' | 'decide', value: unknown): void {
-  if (value === undefined || value === false) return;
-  if (name === 'humanInput' && typeof value === 'object' && value !== null) return;
-  toBadRequest(
-    `"options.${name}" is on by default for a durable Bureau, so ${value === true ? '`true`' : 'that value'} is not accepted; omit it, or pass \`false\` to turn it off`,
-  );
-}
-
-/** {@link BureauRetentionOptions.tasks}, or its default window when none was given. */
-function taskRetentionOf(values: SettingsValues) {
-  return values['retention.tasks'] ?? { olderThan: DEFAULT_TASK_RETENTION_MS };
-}
-
-/** COR-1701 — validates every window of {@link BureauOptions.retention}, each under its own key. */
-
-/**
- * COR-1701: `Bureau.id` is the tenant every run's memory is written under, and the generated
- * default changes on every start. Over a storage backend a restarted Bureau would therefore read
- * an empty tenant while the old one sits unread, with nothing to say so. Refused before anything
- * is composed, so no engine or store is left to release; the handler's `assertPersistence` keeps
- * the broader check for a Bureau it serves.
- */
-function assertMemoryTenantIsStable(
-  options: Pick<BureauOptions, 'memory' | 'storage' | 'id'>,
-): void {
-  if (options.memory !== undefined && options.storage !== undefined && options.id === undefined) {
-    toBadRequest(
-      '"options.memory" over "options.storage" needs an explicit "options.id": the memory tenant is the Bureau id, and a generated id changes on every start, so a restarted Bureau would read an empty tenant',
-    );
-  }
-}
-
-/** The action types a run records as it reaches its terminal status. */
-const TERMINAL_RUN_ACTION_TYPES: ReadonlySet<string> = new Set([
-  'run.completed',
-  'run.aborted',
-  'run.error',
-]);
-
-/**
- * COR-424 — when a run reached its terminal status, by the runtime-clock
- * timestamp of its terminal action; `undefined` until it has recorded one.
- * A run-creation binding's retention window starts here.
- */
-function terminalActionTimestamp(
-  actions: readonly { readonly type: string; readonly timestamp: number }[],
-): number | undefined {
-  return actions.findLast((action) => TERMINAL_RUN_ACTION_TYPES.has(action.type))?.timestamp;
-}
-
-/**
- * The trailing `onStep` hook that records a step's pending tool approvals —
- * registered as `bureau:pending-approval-persist`.
- *
- * A named factory rather than the inline closure it was, because COR-567
- * classifies this registration `effectful` and COR-1267 requires each
- * `effectful` registration to be provable idempotent by a test that invokes it
- * twice. A closure written inline inside `createBureau` is reachable only by
- * dispatching a whole interactive run and then contriving a second execution of
- * the same step; the handler itself is the unit under test, so it has a name.
- *
- * Idempotent by key, not by append: the review id is
- * `approval:${runId}:${callId}`, derived from the step's own tool call, so a
- * crashed step re-running from its boundary produces the SAME id, and both
- * writes it performs — the in-memory override map and the session-metadata
- * persist — are keyed writes.
- */
-export function createPendingApprovalPersistHook(
-  runId: string,
-  sessionId: string,
-  overrides: Map<string, Extract<PendingReview, { kind: 'tool-approval' }>['approval']>,
-  persist: (
-    sessionId: string,
-    reviewId: string,
-    approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
-  ) => Promise<void>,
-): OnStepHook {
-  return async (stepResult) => {
-    for (const stepResultItem of stepResult.results) {
-      if (stepResultItem.outcome !== 'action_required' || !stepResultItem.pendingApproval) {
-        continue;
-      }
-      const reviewId = `approval:${runId}:${stepResultItem.pendingApproval.callId}`;
-      overrides.set(reviewId, stepResultItem.pendingApproval);
-      await persist(sessionId, reviewId, stepResultItem.pendingApproval);
-    }
-  };
-}
-
-/**
- * COR-1596 — the trailing `onStep` hook that hands each tool approval a schedule fire's step left
- * pending to `register`, registered as `bureau:scheduled-fire-approvals`.
- *
- * A named factory for the reason `createPendingApprovalPersistHook` is one: COR-567 classifies the
- * registration `effectful`, so a replayed step runs it again, and it is idempotent because the
- * review id is `approval:${runId}:${callId}`, derived from the step's own tool call.
- */
-export function createScheduledFireApprovalHook(
-  runId: string,
-  register: (
-    reviewId: string,
-    approval: Extract<PendingReview, { kind: 'tool-approval' }>['approval'],
-    stepWasFinal: boolean,
-  ) => void | Promise<void>,
-): OnStepHook {
-  return async (stepResult) => {
-    for (const result of stepResult.results) {
-      if (result.outcome !== 'action_required' || !result.pendingApproval) continue;
-      await register(
-        `approval:${runId}:${result.pendingApproval.callId}`,
-        result.pendingApproval,
-        stepResult.final,
-      );
-    }
-  };
-}
-
-/** COR-2009 — refuses a {@link BureauOptions.expiredRecords} that names neither of its two choices. */
-function validateExpiredRecordsOption(value: unknown): void {
-  if (value === undefined || value === 'maintenance' || value === 'on-request') return;
-  throw new BureauError(
-    `expiredRecords must be 'maintenance' or 'on-request', not ${JSON.stringify(value)}.`,
-    'BAD_REQUEST',
-  );
-}
-
-/** Which pass a retention sweep runs in, as its diagnostics name it. */
-type MaintenancePassName = 'Manual' | 'Automatic' | 'Requested';
-
-/** A pass's count of removed records, or zero for one that failed, which the removal lists apart. */
-function removedCount(result: number | 'failed'): number {
-  return result === 'failed' ? 0 : result;
-}
-
-/**
- * COR-2009 — what {@link Bureau.removeExpiredRecords} reports from each pass's result: how many
- * records of each kind went, their total, and the kinds whose pass failed.
- */
-function expiredRecordRemovalOf(
-  results: Readonly<Record<ExpiredRecordKind, number | 'failed'>>,
-): ExpiredRecordRemoval {
-  const kinds = Object.keys(results) as ExpiredRecordKind[];
-  const byKind = Object.fromEntries(
-    kinds.map((kind) => [kind, removedCount(results[kind])]),
-  ) as Record<ExpiredRecordKind, number>;
-  return {
-    removed: kinds.reduce((total, kind) => total + byKind[kind], 0),
-    byKind,
-    failed: kinds.filter((kind) => results[kind] === 'failed'),
-  };
-}
-
-/**
- * Whether a maintenance pass had anything to drive: a durable engine, the audit trail, governed
- * memory (COR-1546, whose deletions advance only when asked to), a notification retention window
- * (COR-1941), a hook delivery retention window (COR-1943), or terminal tasks it removed.
- * Kept apart from `createBureau` so its complexity stays inside the repository's bound.
- */
-function hasMaintenanceSurface(surface: {
-  readonly durableEngine: boolean;
-  readonly auditTrail: boolean;
-  readonly memory: boolean;
-  readonly notificationRetention: boolean;
-  readonly hookDeliveryRetention: boolean;
-  readonly tasksRemoved: number;
-}): boolean {
-  return (
-    surface.durableEngine ||
-    surface.auditTrail ||
-    surface.memory ||
-    surface.notificationRetention ||
-    surface.hookDeliveryRetention ||
-    surface.tasksRemoved > 0
-  );
-}
-
-/**
- * How often the Bureau's own timer runs its maintenance, and the expiry sweep that goes with it
- * (COR-1613, COR-1622): five minutes, the cadence of Weft's own retention sweep.
- */
-export const EXPIRY_SWEEP_INTERVAL_MILLISECONDS = 300_000;
-
-/**
- * Whether a resumed approval's error result proves the call never ran, so the review stays
- * pending: the toolbox reports its approval binding unconsumed (COR-1579), or, for a toolbox with
- * no approval store that reports no consumption at all, the run's skill gate refused the call with
- * `SKILL_TOOL_DENIED` (COR-1628).
- */
-function resumeRefusedBeforeExecution(result: object): boolean {
-  // A toolbox that reports consumption has the final word: a consumed binding means the call ran,
-  // whatever code its error carries.
-  if ('approvalBindingConsumed' in result) return result.approvalBindingConsumed === false;
-  return (result as { error?: { code?: string } }).error?.code === SKILL_TOOL_DENIED_CODE;
-}
-
-/**
- * Whether the automatic maintenance timer starts: there is a durable engine, governed memory
- * with a deletion to advance (COR-1546), or a key-value store whose audit trail or notifications have a retention
- * policy to apply. A key-value store with no retention has nothing for the timer to do.
- */
-function needsAutomaticMaintenance(composed: {
-  readonly durableEngine: boolean;
-  readonly memory: boolean;
-  readonly keyValueStore: boolean;
-  readonly activeAuditRetention: boolean;
-  readonly activeNotificationRetention: boolean;
-  readonly activeHookDeliveryRetention: boolean;
-}): boolean {
-  return (
-    composed.durableEngine ||
-    composed.memory ||
-    (composed.keyValueStore &&
-      (composed.activeAuditRetention ||
-        composed.activeNotificationRetention ||
-        composed.activeHookDeliveryRetention))
-  );
-}
-
-/** COR-1731: one definition source's recorded scan health, as `internals.diagnostics()` reports it. */
-function watcherHealthOf(
-  source: 'agents' | 'workflows',
-  watched: { readonly health: () => DefinitionScannerHealth },
-): BureauWatcherHealth {
-  const { lastScanAt, lastScanError } = watched.health();
-  return { source, lastScanAt: lastScanAt ?? null, lastScanError: lastScanError ?? null };
-}
-
-/** COR-2009: the audit record of an approved tool call that ran (`tool.settled`, with its review). */
-type ApprovedCallAudit = {
-  readonly runId: string;
-  readonly type: 'tool.settled';
-  readonly detail: Readonly<Record<string, unknown>>;
-};
-
-/**
- * How a construction that fails part-way stops what it started (COR-1781). `constructBureau` names
- * it as construction goes on: none while it fails before anything is guarded, then the shutdown of
- * the composition (`abandonConstruction`), then, once the Bureau object exists, `bureau.shutdown()`.
- */
-type BureauConstruction<D extends AgentDefinitions> = {
-  abandon?: (error: unknown) => Promise<never>;
-  /** Settles `createBureau`'s promise with the built Bureau. */
-  readonly built: (bureau: Bureau<D>) => void;
-};
+  TerminalSessionRecordAbandonedError,
+  ScheduleLocatorUnavailableError,
+  UnknownScheduleAgentError,
+  toBadRequest,
+} from './bureau-errors';
+import {
+  ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
+  DURABLE_FORCIBLY_TERMINABLE_STATUSES,
+  resolveWaitForDurableRun,
+  resolveCancelDurableRun,
+  COMMITTED_ELSEWHERE,
+  isCommittedElsewhere,
+  endedElsewhereAs,
+  terminalActionTimestamp,
+} from './durable-run-waits';
+import {
+  hasRecoverableTransportAuthority,
+  isTerminalApprovalBindingError,
+  emptyRecoveredStepMetadata,
+  type SessionLoadOutcome,
+  type ClassifyRecoveredRunArgs,
+  RECOVERED_RUN_TERMINAL_STATUSES,
+  classifyRecoveredRunDetailed,
+  dedupeRecoveryPerRunFailures,
+  isRecoverableScheduledFireInput,
+  loadScheduleIdForRecoveredRun,
+  loadExistingScheduledSessionId,
+  monitorRecoveredScheduledFire,
+  monitorRecoveredCatalogRun,
+} from './recovered-run-classification';
+import {
+  type BureauConstruction,
+  snapshotWorkspaceOptions,
+  withLayeredSources,
+  snapshotAnswerEncryption,
+  rejectOptInToolOption,
+  validateExpiredRecordsOption,
+  assertMemoryTenantIsStable,
+  BUREAU_AGENT_NAME,
+  withPluginContentLayers,
+  createBureauMemoryTools,
+  assertNoMemoryToolCollision,
+  detachBestEffortPromise,
+  SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS,
+  SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS,
+  SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS,
+  SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS,
+  createSessionPersistenceSleep,
+  createShutdownTimeoutSleep,
+  needsAutomaticMaintenance,
+  EXPIRY_SWEEP_INTERVAL_MILLISECONDS,
+  SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS,
+  taskRetentionOf,
+  type MaintenancePassName,
+  hasMaintenanceSurface,
+  expiredRecordRemovalOf,
+  THREAD_LEASE_RETRY_MILLISECONDS,
+  CONTEXT_WINDOW_TASK_SCAN_LIMIT,
+  resumeRefusedBeforeExecution,
+  FIRE_REVIEW_RECONCILIATION_MAXIMUM_DELAY_MILLISECONDS,
+  notifyPeerCallsReady,
+  watcherHealthOf,
+  rejectHooksWithoutStorage,
+  wantsWebhookNotifier,
+  webhookNotifierOptionsOf,
+  composeHooks,
+  resumeHooks,
+} from './bureau-construction-support';
+import {
+  NotifyingReviewIdSet,
+  omitStartedRecord,
+  isJsonObject,
+  readApprovalResolutionStarted,
+  writeApprovalResolutionStarted,
+  omitKeysWithPrefix,
+  omitStartedRecordsWithPrefix,
+  omitKey,
+  approvalGrantsOf,
+  type CanceledReviewTarget,
+  AUDIT_PAGE_SIZE,
+  closingStatusOfRound,
+  stringValues,
+  createPendingApprovalPersistHook,
+  type ApprovedCallAudit,
+  createScheduledFireApprovalHook,
+} from './approval-state-records';
+import {
+  snapshotStartOptions,
+  taskRequestFieldsOf,
+  type SessionTaskFields,
+  validateCreateRunRequest,
+  requestTextOf,
+  rejectUnopenableNewSessionIdentifier,
+  legacyTaskInputOf,
+  appendRequestRows,
+  assertConversationAnswerable,
+  rejectReservedIdentifier,
+  replaceInputText,
+  validateAgentRunInput,
+  createTasksRespondLedger,
+} from './run-request-validation';
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -2582,146 +818,6 @@ export function createBureau<const D extends AgentDefinitions = Record<never, ne
     )
     .catch(result.reject);
   return result.promise;
-}
-
-/** COR-1939: hooks keep their records in the key-value store, so a Bureau with none cannot have them. */
-function rejectHooksWithoutStorage(
-  hooks: BureauOptions['hooks'],
-  kv: ConditionalTextValueStore | undefined,
-): void {
-  if (hooks !== undefined && kv === undefined) {
-    throw new BureauError(
-      'Hooks need durable storage: pass `storage`, so delivery records survive a restart',
-      'NOT_CONFIGURED',
-      'persistence',
-    );
-  }
-}
-
-/** Whether the webhook notifier is built: a fixed target is configured, or hooks need its engine. */
-function wantsWebhookNotifier(options: BureauOptions<AgentDefinitions>): boolean {
-  return (options.webhooks?.targets.length ?? 0) > 0 || options.hooks !== undefined;
-}
-
-/** The options the notifier is built with: the caller's `webhooks`, and the engine when hooks need it. */
-function webhookNotifierOptionsOf(
-  options: BureauOptions<AgentDefinitions>,
-  signal: AbortSignal,
-): WebhookNotifierOptions {
-  return {
-    targets: [],
-    ...options.webhooks,
-    signal,
-    ...(options.hooks === undefined ? {} : { engine: true }),
-  };
-}
-
-/**
- * COR-1939: builds the hooks over the notifier's engine. They are resumed by `resumeHooks` once the
- * Bureau's workflows are loaded.
- */
-function composeHooks(input: {
-  readonly workspace?: WorkspaceRuntimeAuthority | undefined;
-  readonly eventForHookOwner?: HooksDependencies['eventForHookOwner'];
-  readonly mayStartWorkflows?: HooksDependencies['mayStartWorkflows'];
-  readonly options: BureauOptions<AgentDefinitions>['hooks'];
-  readonly engine: WebhookDeliveryEngine | undefined;
-  readonly kv: ConditionalTextValueStore | undefined;
-  readonly keys: AnswerEncryptionKeys | undefined;
-  readonly bureauId: string;
-  readonly runtimeServices: RuntimeServices;
-  readonly auditTrail: AuditTrail | undefined;
-  readonly diagnose: DiagnosticSink;
-  /** The Bureau's workflows and notifications, read when an action needs them (COR-1940). */
-  readonly workflows: () => BureauWorkflows | undefined;
-  readonly notifications: () => BureauNotifications | undefined;
-  /** Which hook started a run, directly or through the runs above it. */
-  readonly startedByHook: (runId: string) => Promise<string | undefined>;
-  /** The records a hook's scope is matched against (COR-1978). */
-  readonly subjects: HookSubjectSources;
-}): CreatedHooks | undefined {
-  const { options, engine, kv, diagnose } = input;
-  if (options === undefined || engine === undefined || kv === undefined) return undefined;
-  const created = createHooks({
-    workspace: input.workspace,
-    eventForHookOwner: input.eventForHookOwner,
-    mayStartWorkflows: input.mayStartWorkflows,
-    kv,
-    engine,
-    secrets: options.secrets,
-    keys: input.keys,
-    urlPolicy: options.urlPolicy,
-    requestTimeoutMilliseconds: options.requestTimeoutMilliseconds,
-    actionKinds: options.actionKinds,
-    workflows: input.workflows,
-    notifications: input.notifications,
-    startedByHook: input.startedByHook,
-    subjects: input.subjects,
-    bureauId: input.bureauId,
-    newId: (kind) => input.runtimeServices.identifiers.next(kind),
-    audit: async (entry) => {
-      await input.auditTrail?.record(entry);
-    },
-    diagnose: (message, cause) =>
-      diagnose({ level: 'error', scope: 'hooks', message: `[bureau] ${message}`, cause }),
-    notice: (message) => diagnose({ level: 'warn', scope: 'hooks', message }),
-  });
-  return created;
-}
-
-/**
- * COR-1939: resumes the deliveries a previous process left pending. The resume is tracked, so the
- * notifier's `flush()` waits for it and for the deliveries it takes. It runs once the workflow files
- * are loaded (COR-1940): a `start-workflow` delivery resumed before them would find no workflow and
- * be refused as if it did not exist.
- */
-function resumeHooks(input: {
-  readonly hooks: CreatedHooks | undefined;
-  readonly engine: WebhookDeliveryEngine | undefined;
-  readonly diagnose: DiagnosticSink;
-}): void {
-  const { hooks, engine, diagnose } = input;
-  if (hooks === undefined || engine === undefined) return;
-  engine.track(
-    hooks.resume().then(
-      () => undefined,
-      (cause: unknown) =>
-        diagnose({
-          level: 'error',
-          scope: 'hooks',
-          message: '[bureau] Failed to resume pending hook deliveries',
-          cause,
-        }),
-    ),
-  );
-}
-
-function notifyPeerCallsReady<D extends AgentDefinitions>(
-  options: BureauOptions<D>,
-  journal: PeerCallJournal,
-): void {
-  options.peerCallsReady?.(journal);
-}
-
-/** Preserve one immutable membership directory binding throughout runtime construction. */
-function snapshotWorkspaceOptions<const D extends AgentDefinitions>(
-  options: LayeredBureauOptions<D>,
-): LayeredBureauOptions<D> {
-  return options.workspace === undefined
-    ? options
-    : { ...options, workspace: Object.freeze({ ...options.workspace }) };
-}
-
-/** Snapshot caller-owned answer keys before asynchronous construction begins. */
-function snapshotAnswerEncryption(
-  keys: AnswerEncryptionKeys | undefined,
-): AnswerEncryptionKeys | undefined {
-  return keys === undefined
-    ? undefined
-    : {
-        current: keys.current,
-        ...(keys.retired === undefined ? {} : { retired: keys.retired }),
-      };
 }
 
 async function constructBureau<const D extends AgentDefinitions>(
@@ -3140,6 +1236,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(answerEncryption === undefined ? {} : { answerEncryption }),
     },
     {
+      // COR-2105 — a session's taint, once it is stored: the one `session.tainted` the session gets.
+      onSessionTainted: (publication) => emitter.dispatch(new SessionTaintEvent(publication)),
       onScheduleAuthorityDenied: (scheduleId) => {
         runtimeServices.deferred.track(
           pauseInvalidSchedule(scheduleId).catch(() => {
@@ -3647,7 +1745,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               // COR-1828: a tool a person allowed for the rest of the chat skips its `on-changes` ask.
               rememberedTools: approvalGrantsOfRun,
               contributions: options.agentContributions,
-              // COR-1975: the skills a file's `allowedSkills` draws on, read through the host.
+              // COR-1975: the skills a file's `skills` draws on, read through the host.
               ...(options.agentSkillCatalog === undefined
                 ? {}
                 : {
@@ -8862,6 +6960,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         restored.agentName,
         review.runId,
         session?.metadata ?? {},
+        review.sessionId,
       );
       if (resolved === 'unavailable') return refuse('its agent can no longer be resolved');
       policyAgent = resolved;
@@ -8879,6 +6978,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
       {
         sessionAgent: policyAgent,
+        sessionMetadata: session?.metadata,
         initialActiveSkillRecords: records,
         memoryOwner: resolveRunMemoryOwner(session?.metadata ?? {}, review.runId),
       },
@@ -8898,6 +6998,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     agentName: string,
     runId: string,
     metadata: Record<string, JSONValue>,
+    sessionId: string,
   ): Promise<SessionAgentRun | undefined | 'unavailable'> {
     if (agentName === BUREAU_AGENT_NAME) {
       // COR-323 — the implicit Bureau-wide agent no longer exists: a run stored under it is
@@ -8932,6 +7033,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         definitionRevision:
           ownReference?.definitionRevision ?? sessionRecordedRevision(metadata, recordedHash),
       },
+      { sessionId, metadata },
     );
     if (resolution.status === 'resolved') return resolution.run;
     diagnose({
@@ -8995,6 +7097,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       recoveredAgentName,
       runId,
       session.metadata,
+      session.id,
     );
     if (recoveredSessionAgent === 'unavailable') {
       terminalReviewSessions.delete(runId);
@@ -9025,6 +7128,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
       {
         sessionAgent: recoveredSessionAgent,
+        sessionMetadata: session.metadata,
         initialActiveSkillRecords,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
       },
@@ -9476,7 +7580,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
     // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
     // answers as any unknown agent does.
-    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner);
+    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner, undefined, {
+      sessionId,
+      metadata: session?.metadata,
+    });
     if (resolution.status === 'missing-agent') throw missingAgentError(agentName);
     if (resolution.status === 'not-durable-capable') {
       throw new BureauError(
@@ -9636,7 +7743,12 @@ async function constructBureau<const D extends AgentDefinitions>(
           runId,
           requestContext,
         },
-        { sessionAgent, memoryOwner: owner, withoutMemory: triedRun },
+        {
+          sessionAgent,
+          memoryOwner: owner,
+          withoutMemory: triedRun,
+          sessionMetadata: session?.metadata,
+        },
       );
       runRequestContexts.set(runId, requestContext);
 
@@ -12116,6 +10228,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                 recoveredAgentName,
                 handle.id,
                 fullSession.metadata,
+                ownedSessionId,
               );
               if (reattachedSessionAgent !== 'unavailable') {
                 const runRuntime = await runtime.createRunRuntime(
@@ -12131,6 +10244,7 @@ async function constructBureau<const D extends AgentDefinitions>(
                   },
                   {
                     sessionAgent: reattachedSessionAgent,
+                    sessionMetadata: fullSession.metadata,
                     memoryOwner: resolveRunMemoryOwner(fullSession.metadata, handle.id),
                   },
                 );
@@ -12535,6 +10649,11 @@ async function constructBureau<const D extends AgentDefinitions>(
         const { runId, detail } = resource;
         if (runId.startsWith(AUDIT_SCHEDULE_OWNER_PREFIX)) {
           return scheduleOwner(runId.slice(AUDIT_SCHEDULE_OWNER_PREFIX.length));
+        }
+        if (runId === AUDIT_HOST_OWNER_ID) {
+          // COR-2009 — the host has no owner field: its own records (`host.started`) belong to the
+          // deployment's owner, so the owner's audit log lists "Server started".
+          return ownerOrLocal(undefined);
         }
         if (runId.startsWith(AUDIT_AGENT_OWNER_PREFIX)) {
           // COR-1526 — an agent file has no owner field: it belongs to the deployment's owner.
@@ -23116,6 +21235,10 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (hooks === undefined) {
       throw new Error(`Schedule fire "${fire.runId}" has no hook registry to list its approvals.`);
     }
+    // COR-2298 — what the fire gives its tool calls, kept for the approved call that resumes later,
+    // as a session run's is. Stored only once the fire holds an approval, so it is released with the
+    // fire's other approval state (`endScheduledFireWhenNoApprovalRemains`).
+    const fireScope = runScopedExecutionContextOf(services.options);
     // Registered after the merge `registerTrailingOnStep` documents avoiding (COR-1265), and
     // that is sound here: a fire's registry holds the Bureau's tier alone, so the merge's tier
     // offset is zero and the raw trailing priority lands exactly where a registration before the
@@ -23130,6 +21253,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         const session = await runtime.sessionStore?.load(fire.sessionId);
         const decided = session?.metadata['resolvedReviewIds'];
         if (Array.isArray(decided) && decided.includes(reviewId)) return;
+        if (fireScope !== undefined) runScopedContexts.set(fire.runId, fireScope);
         registerScheduledFireApproval(
           scheduledFireReviewState,
           fire,
@@ -24516,7 +22640,7 @@ async function constructBureau<const D extends AgentDefinitions>(
   trackFireReviewSeeds(bureau, fireReviewSeeds);
   if (fireReviewFollower !== undefined) trackFireReviewFollower(bureau, fireReviewFollower);
   construction.built(bureau);
-  // COR-1879 — after the caller has the Bureau, so a plugin's `afterStart` costs a recovered run's
+  // COR-1879 — after the caller has the Bureau, so a plugin's `start` costs a recovered run's
   // first events nothing; `bureau.plugins.ready()` settles when every one has.
   // COR-1879 — a file a running plugin ships that names a contribution nothing loaded holds, and
   // what names each contribution, counted on every `plugins.list()`.
@@ -24570,7 +22694,7 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the plugin's: the schedule it creates announces `schedule.created` with `source: plugin`, and
    * the goal it creates stores the plugin, so every `goal.*` event of the goal carries it.
    */
-  function pluginHostApiOf(host: Bureau, plugin: string): PluginHostApi {
+  function pluginHostApiOf(host: Bureau, plugin: string): PluginHost {
     return {
       agents: { list: () => host.agents.list() },
       schedules: {

@@ -6,6 +6,9 @@
 
   .cinder-tag-input {
     display: grid;
+    /* The field is as wide as its container, however long a tag: a chip ends its label with an
+     * ellipsis instead of widening the field past the page. */
+    grid-template-columns: minmax(0, 1fr);
     gap: var(--cinder-space-2);
   }
 
@@ -71,6 +74,8 @@
   .cinder-tag-input__listbox {
     display: inline-flex;
     flex-wrap: wrap;
+    min-inline-size: 0;
+    max-inline-size: 100%;
     align-items: center;
     gap: var(--cinder-space-2);
     margin: 0;
@@ -115,6 +120,7 @@
   }
 
   .cinder-tag-input__chip-label {
+    min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

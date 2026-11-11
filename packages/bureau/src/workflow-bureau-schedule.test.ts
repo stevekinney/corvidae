@@ -10,7 +10,8 @@ import { join } from 'node:path';
 import { Engine, Scheduler } from '@lostgradient/weft';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import {
   startWorkflowBureau,

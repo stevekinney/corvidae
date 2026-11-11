@@ -69,7 +69,7 @@ function fixturePlugins(): readonly BureauPluginEntry[] {
         name: 'quiet',
         version: '1.0.0',
         description: 'Waits to be turned on.',
-        enabledByDefault: false,
+        enabled: false,
       }),
     ),
     entry(
@@ -106,7 +106,7 @@ function fixturePlugins(): readonly BureauPluginEntry[] {
         name: 'later',
         version: '1.0.0',
         description: 'Gets a signing key once it is turned on.',
-        enabledByDefault: false,
+        enabled: false,
         secrets: [{ key: LATER_SECRET, generated: true }],
       }),
     ),
@@ -371,7 +371,7 @@ describe('GET /host/plugins', () => {
 });
 
 describe('a plugin the file does not name', () => {
-  test('is enabled when its enabledByDefault is true and disabled when it is false', async () => {
+  test('is enabled when its enabled is true and disabled when it is false', async () => {
     const host = await startAt(await scratch());
     const plugins = await standings(host);
 

@@ -285,8 +285,8 @@ test.describe('generated token CSS drives visible styles', () => {
    * Component aliases are declared on `:root`, so an alias resolves against `:root`'s
    * foundation value and a foundation override scoped to an ancestor does NOT reach it.
    * These aliases were briefly deferred out of `:root` so that it WOULD -- and this test
-   * asserted exactly that -- but deferring them broke `validate:consumer`, which requires
-   * every `public: true` token to be declared in the shipped CSS, and failed the 0.25.1
+   * asserted exactly that -- but deferring them broke the check that every
+   * `public: true` token is declared in the shipped CSS, and failed the 0.25.1
    * release. Restoring the declarations restores this limitation.
    *
    * Overriding the component property directly still works and is the supported path --

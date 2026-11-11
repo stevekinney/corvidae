@@ -19,10 +19,10 @@ describe('root metadata export generation', () => {
     const contents = [...generated.values()].join('\n');
 
     expect(generated.size).toBe(6);
-    expect((contents.match(/export \{ default as .*Schema \}/g) ?? []).length).toBe(216);
-    expect((contents.match(/export \{ default as .*Variables \}/g) ?? []).length).toBe(216);
+    expect((contents.match(/export \{ default as .*Schema \}/g) ?? []).length).toBe(217);
+    expect((contents.match(/export \{ default as .*Variables \}/g) ?? []).length).toBe(217);
     expect((contents.match(/import .*ConstraintsJson from .*\.json/g) ?? []).length).toBe(4);
-    expect((contents.match(/import .*ExamplesJson from .*\.json/g) ?? []).length).toBe(186);
+    expect((contents.match(/import .*ExamplesJson from .*\.json/g) ?? []).length).toBe(187);
     expect(contents).toContain('schemaFormSchema');
 
     const first = manifest.components.at(0);

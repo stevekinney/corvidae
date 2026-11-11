@@ -73,6 +73,8 @@
         "@shikijs/langs": "catalog:",
         "@shikijs/themes": "catalog:",
         "@tanstack/svelte-query": "catalog:",
+        "ajv": "catalog:",
+        "ajv-formats": "catalog:",
         "armorer": "workspace:*",
         "conversationalist": "workspace:*",
         "cron-parser": "catalog:",
@@ -907,11 +909,14 @@
       },
       "devDependencies": {
         "@lostgradient/bureau": "workspace:*",
+        "@lostgradient/storage": "workspace:*",
         "@lostgradient/testing": "workspace:*",
         "@lostgradient/typescript": "workspace:*",
         "@types/bun": "catalog:",
+        "armorer": "workspace:*",
         "oxlint": "catalog:",
         "typescript": "catalog:",
+        "zod": "catalog:",
       },
     },
     "plugins/voyage": {

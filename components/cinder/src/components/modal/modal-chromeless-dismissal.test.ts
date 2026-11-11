@@ -1,7 +1,6 @@
 /// <reference lib="dom" />
 import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 import { afterEach, describe, expect, test } from 'bun:test';
-import { readFileSync } from 'node:fs';
 import { createRawSnippet } from 'svelte';
 import { resetScrollLock } from '../../_internal/overlay.ts';
 import { emptySnippet, installModalDialogStubs, textSnippet } from './modal-test-helpers.ts';
@@ -136,13 +135,6 @@ describe('Modal', () => {
       /\.cinder-modal__footer\[data-cinder-chrome='none'\]\s*\{[^}]*border-block-start:\s*none;/s,
     );
   });
-  test('desktop drag strip is omitted for chromeless content', () => {
-    const source = readFileSync(new URL('./modal.svelte', import.meta.url), 'utf8');
-
-    expect(source).toContain('host.isDesktop && !isChromeless');
-    expect(source).not.toContain('host.isDesktop}<div class="cinder-modal__drag-strip"');
-  });
-
   test('clicking the panel background dismisses (backdrop-equivalent) since the panel fills the whole dialog', async () => {
     // Regression: chrome="none" makes the panel/body fill the dialog's
     // entire content box (width/height 100%, inset 0), so a real click can

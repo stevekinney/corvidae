@@ -2098,3 +2098,104 @@ describe('child-run hook isolation and correlation (COR-1269)', () => {
     expect(calls[0]?.context?.delegatedAuthority).not.toEqual(parentGrant);
   });
 });
+
+describe('a versioned subagent tool (COR-2298)', () => {
+  const parkEveryCall = {
+    beforeExecute: () => ({
+      allow: false as const,
+      status: 'needs_approval' as const,
+      reason: 'Operator approval required',
+      action: { message: 'Approve delegation' },
+    }),
+  };
+
+  // Armorer signs an approval only for a call that names who asked for it.
+  const requestContext = {
+    authority: {
+      principalId: 'operator',
+      tenantId: 'tenant',
+      ownerId: 'operator',
+      capabilities: [],
+      authorizationRevision: '1',
+    },
+    audience: 'tenant' as const,
+    agentId: 'supervisor',
+    runId: 'run-1',
+  };
+
+  function delegate(version?: string) {
+    const runs: AgentInput[] = [];
+    const child: RunnableAgent = createAgent({
+      name: 'researcher',
+      generate: async () => ({ content: 'child done', toolCalls: [] }),
+    });
+    const tool = createSubagentTool({
+      name: 'delegate',
+      description: 'Delegate',
+      ...(version === undefined ? {} : { version }),
+      agent: {
+        name: 'researcher',
+        hasOutput: false,
+        run: (agentInput, context) => {
+          runs.push(agentInput);
+          return child.run(agentInput, context);
+        },
+      },
+      agentName: 'researcher',
+      input: z.object({ q: z.string() }),
+      toAgentInput: (params) => params.q,
+    });
+    return { tool, runs };
+  }
+
+  it('carries the version it was given, and none when given none', () => {
+    expect(delegate('1.0.0').tool.identity.version).toBe('1.0.0');
+    expect(delegate().tool.identity.version).toBeUndefined();
+  });
+
+  it('parks a call for approval with no wrapper, and runs the child once approved', async () => {
+    const { tool, runs } = delegate('1.0.0');
+    const toolbox = createToolbox([tool], {
+      approvalSecret: 'versioned-subagent-secret',
+      policy: parkEveryCall,
+    });
+
+    const parked = await toolbox.execute(
+      { id: 'call-1', name: 'delegate', arguments: { q: 'hi' } },
+      { requestContext },
+    );
+    expect(parked.outcome).toBe('action_required');
+    expect(runs).toEqual([]);
+    const approval = parked.pendingApproval;
+    if (approval?.approvalBinding === undefined || approval.approvalToken === undefined) {
+      throw new Error('expected a signed approval');
+    }
+
+    const resumed = await toolbox.resumeApproval(
+      {
+        ...approval,
+        approvalBinding: approval.approvalBinding,
+        approvalToken: approval.approvalToken,
+      },
+      { requestContext },
+    );
+    expect(resumed.outcome).toBe('success');
+    expect(runs).toEqual(['hi']);
+  });
+
+  it('refuses to park an unversioned call, so the child never runs', async () => {
+    const { tool, runs } = delegate();
+    const toolbox = createToolbox([tool], {
+      approvalSecret: 'versioned-subagent-secret',
+      policy: parkEveryCall,
+    });
+
+    const result = await toolbox.execute(
+      { id: 'call-1', name: 'delegate', arguments: { q: 'hi' } },
+      { requestContext },
+    );
+    expect(result.outcome).toBe('error');
+    expect(result.errorMessage).toContain('requires a versioned tool definition');
+    expect(runs).toEqual([]);
+  });
+});

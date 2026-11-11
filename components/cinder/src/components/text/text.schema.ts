@@ -5,9 +5,9 @@ const schema = {
   type: 'object',
   properties: {
     variant: {
-      enum: ['h1', 'h2', 'h3', 'h4', 'h5', 'caption', 'body'],
+      enum: ['display', 'h1', 'h2', 'h3', 'h4', 'h5', 'caption', 'body'],
       description:
-        'Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs.',
+        'Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs.',
       default: 'body',
     },
     as: {
@@ -119,12 +119,13 @@ const schema = {
       default: false,
     },
     truncate: {
-      const: 'middle',
-      description: 'Cuts the text in the middle when it is too long for one line. Needs `text`.',
+      enum: ['middle', 'end'],
+      description:
+        'Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`.',
     },
     text: {
       type: 'string',
-      description: 'The plain text to cut in the middle with `truncate="middle"`.',
+      description: 'The plain text to cut with `truncate`.',
     },
     tailLength: {
       type: 'number',

@@ -31,6 +31,7 @@
   } from '../../_internal/stale-region-context.ts';
   import { classNames } from '../../utilities/class-names.ts';
   import { devWarn } from '../../utilities/dev-warn.ts';
+  import ShortcutHint from '../shortcut-hint/shortcut-hint.svelte';
   import type { ButtonProps } from './button.types.ts';
 
   // Destructured props let the Phase 4 analyzer read names + defaults straight off the AST.
@@ -53,6 +54,7 @@
     quiet = false,
     leadingIcon,
     trailingIcon,
+    shortcut,
     children,
     label,
     class: customClassName,
@@ -307,6 +309,11 @@
   {/if}
   {#if trailingIcon}
     <span class="cinder-button__icon" aria-hidden="true">{@render trailingIcon()}</span>
+  {/if}
+  {#if shortcut !== undefined && !iconOnly}
+    <span class="cinder-button__shortcut" aria-hidden="true">
+      <ShortcutHint keys={Array.isArray(shortcut) ? shortcut : [shortcut]} />
+    </span>
   {/if}
 {/snippet}
 

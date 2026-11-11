@@ -1,5 +1,6 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  "concurrency": "34%",
   "tasks": {
     "build": {
       "outputs": ["build/**", ".svelte-kit/**"],
@@ -15,6 +16,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/workspace-exports.ts",
         "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"
       ]
     },
@@ -705,6 +707,7 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/workspace-exports.ts",
         "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",

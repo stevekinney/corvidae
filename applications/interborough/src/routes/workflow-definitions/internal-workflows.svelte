@@ -84,7 +84,7 @@
       headingLevel={2}
     />
   {:else}
-    <Table caption={copy.caption} density="condensed">
+    <Table caption={copy.caption} density="condensed" class="ib-records__table">
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>{copy.columns.workflow}</Table.HeaderCell>

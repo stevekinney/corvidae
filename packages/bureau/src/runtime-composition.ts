@@ -24,6 +24,7 @@ import type {
   MemoryAuthority,
   MemoryCapability,
   MemoryEvidenceBundle,
+  MemoryRecallDetection,
   MemoryWriteReceipt,
 } from '@lostgradient/memory';
 import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
@@ -60,6 +61,7 @@ import type {
   StopCondition,
   StreamEventMap,
   HumanInputSchema,
+  PersistedSessionTaint,
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
@@ -70,6 +72,9 @@ import {
   createCheckpointStore,
   createDefaultGuardrailsPreset,
   createGuardrails,
+  createSessionTaintTracker,
+  DEFAULT_TAINT_THRESHOLD,
+  withSessionTaint,
   createIdentityHook,
   createRequestHumanInputTool,
   createRunEngine,
@@ -95,6 +100,8 @@ import {
   withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
+  SESSION_TAINT_METADATA_KEY,
+  readSessionTaint,
   sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
@@ -187,6 +194,12 @@ import {
   SessionOwnerConflictError,
 } from './session-authority';
 import { committedFireApprovalIds } from './scheduled-fire-review-state';
+import {
+  createSessionTaintSeam,
+  type SessionTaintPublication,
+  type SessionTaintSeam,
+  type SessionTaintSource,
+} from './session-taint-seam';
 import {
   copyAgentOwnedRunOptions,
   scheduledAgentRunOptions,
@@ -1422,6 +1435,7 @@ export function createMemoryRecallHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
   target: RunMemoryTarget,
+  onDetection?: (detection: MemoryRecallDetection, step: number) => void | Promise<void>,
 ): PrepareStepHook {
   return async (context) => {
     // The current prompt, whatever its shape: a string, or the text parts of a
@@ -1457,8 +1471,17 @@ export function createMemoryRecallHook(
     // A policy change that lands while recall runs leaves the bundle admitted
     // under the old policy, so it is recalled once more; if the policy moves
     // again, nothing is appended rather than evidence no current policy admitted.
-    let bundle = await recall();
-    if (bundle.policyRevision !== memory.policyRevision) bundle = await recall();
+    // Every recall's detections are reported, including one the policy change below discards: the
+    // content was read, and a detector flagged it.
+    const recallReporting = async () => {
+      const recalled = await recall();
+      for (const { detection } of recalled.exclusions) {
+        if (detection !== undefined) await onDetection?.(detection, context.step);
+      }
+      return recalled;
+    };
+    let bundle = await recallReporting();
+    if (bundle.policyRevision !== memory.policyRevision) bundle = await recallReporting();
     // The scan above ran under the policy recall started with; rows it kept
     // may be stale under the one in force now, so scan again either way.
     withdrawStale();
@@ -1706,6 +1729,11 @@ export type RuntimeCompositionDependencies = {
   onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
   /** Queue a durable pause without blocking the scheduler's own serialized fire. */
   onScheduleAuthorityDenied?: (scheduleId: string) => void;
+  /**
+   * COR-2105 — called once a session's taint is first stored, after the write commits.
+   * `createBureau` publishes `session.tainted` from it.
+   */
+  onSessionTainted?: (publication: SessionTaintPublication) => void;
   /**
    * COR-1482 — called once a schedule fire's run has ended, however it ended: completed, failed,
    * or canceled. `createBureau` settles the fire's task here.
@@ -2431,6 +2459,7 @@ export interface RuntimeComposition {
     runId: string,
     principal?: string,
     recorded?: CatalogRunRecordedDefinition,
+    session?: SessionTaintSource,
   ): Promise<SessionAgentRunResolution>;
   /**
    * COR-716 — how a run owned by `principalId` handles the media it carries: the
@@ -2468,6 +2497,12 @@ export interface RuntimeComposition {
       sessionAgent?: SessionAgentRun | undefined;
       /** COR-1546 — the run's owner of record, which its memory is partitioned under. */
       memoryOwner?: string | undefined;
+      /**
+       * COR-2105 — the metadata of the session the run belongs to. The run's Bureau guardrails
+       * start tainted when it holds `guardrailTaint`, and write a taint they raise back to the
+       * session. Absent, the run starts untainted and still writes back.
+       */
+      sessionMetadata?: Readonly<Record<string, JSONValue>> | undefined;
       /**
        * COR-1620 — the skill policy that governs the run cannot be verified, so the run is
        * offered no tool and writes no skill snapshot. This is a filter on what the model sees, not
@@ -2673,7 +2708,8 @@ function registerGuardrailInvariants(
 ): void {
   registry.on('prepareStep', guardrails.prepareStep, {
     id: 'bureau:guardrails-prepare-step',
-    // Scans and may taint in-process session state; no external write.
+    // Scans and may taint the session. The taint is stored by a compare-and-swap that keeps the first
+    // one, so a replayed step stores nothing twice (COR-2105).
     replay: 'safe',
   });
   registry.on('validateResponse', guardrails.validateResponse, {
@@ -3344,6 +3380,40 @@ async function buildRuntimeComposition(
           now: () => runtimeServices.clock.now(),
         })
       : undefined;
+  /**
+   * COR-2105 — the seed and the write-back of one run of `sessionId`: the taint the session holds
+   * in `metadata`, and an `onTainted` that stores a new one and publishes `session.tainted` once.
+   */
+  const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
+  const pendingTaintKey = (sessionId: string, runId: string): string =>
+    `${sessionId}\u0000${runId}`;
+  function sessionTaintSeamFor(
+    sessionId: string,
+    runId: string,
+    metadata: Readonly<Record<string, JSONValue>> | undefined,
+  ): SessionTaintSeam {
+    return createSessionTaintSeam(
+      {
+        store: sessionStore,
+        now: () => runtimeServices.clock.now(),
+        publish: dependencies.onSessionTainted,
+        // A scheduled fire's first step runs before its session exists: hold the taint for the
+        // write-back hook that creates the session.
+        holdForAbsentSession: (heldSessionId, heldRunId, value) => {
+          const key = pendingTaintKey(heldSessionId, heldRunId);
+          if (!pendingScheduledTaints.has(key)) pendingScheduledTaints.set(key, value);
+        },
+        diagnose: (cause) =>
+          diagnose({
+            level: 'warn',
+            scope: 'guardrails',
+            message: `[bureau] The taint of session "${sessionId}" could not be stored: ${serializeUnknownError(cause)}`,
+            cause,
+          }),
+      },
+      { sessionId, runId, metadata },
+    );
+  }
   const baseToolbox: BureauToolbox =
     options.toolbox ??
     createToolbox([], {
@@ -3535,6 +3605,12 @@ async function buildRuntimeComposition(
        * gets the request authority's `ownerId`; `createBureau` always states it.
        */
       memoryOwner?: string | undefined;
+      /**
+       * COR-2105 — the metadata of the session the run belongs to. The run's Bureau guardrails
+       * start tainted when it holds `guardrailTaint`, and write a taint they raise back to the
+       * session. Absent, the run starts untainted and still writes back.
+       */
+      sessionMetadata?: Readonly<Record<string, JSONValue>> | undefined;
       skillPolicyUnverifiable?: boolean | undefined;
       /**
        * COR-1911 — the run neither recalls memory nor remembers its answers: no memory hook is
@@ -3656,13 +3732,74 @@ async function buildRuntimeComposition(
       collection: request.agentName ?? requestContext?.agentId ?? defaultBureauAgentName,
       sessionId: request.sessionId,
     };
+    // COR-1226 — resolved here rather than at the hook-registration site below,
+    // because the skill toolbox needs the same detectors and the same session
+    // taint tracker, and it is constructed before that point. `createGuardrails`
+    // is a pure function of its options, so calling it earlier changes nothing
+    // about what it returns.
+    const guardrailsConfig = resolveGuardrailsConfiguration();
+    // COR-2105 — a run of a session starts from the session's taint and writes a new one back,
+    // from this tracker as from the agent's own (`AgentRunContext.sessionTaint`).
+    const runIdOfTaint = request.runId ?? request.sessionId;
+    const taintSeam = sessionTaintSeamFor(
+      request.sessionId,
+      runIdOfTaint,
+      runtimeOptions?.sessionMetadata,
+    );
+    const guardrails = guardrailsConfig
+      ? createGuardrails(withSessionTaint(guardrailsConfig, taintSeam, runIdOfTaint))
+      : undefined;
+    // COR-2107 — the tracker a flagged recall taints. It is the Bureau's own tracker, seeded from
+    // the session and writing back through the same seam every other tracker of the run uses
+    // (COR-2105), so the taint it raises is stored whichever tier resolved the run's guardrails,
+    // an agent's own included. When the Bureau runs no guardrails but the agent resolves its own,
+    // a tracker over the same seam stands in, so the agent's declaration is not left unable to
+    // taint its session.
+    const recallTaint =
+      guardrails?.taint ??
+      (sessionAgent?.agentResolvesGuardrails === true
+        ? createSessionTaintTracker({
+            ...(taintSeam.initial === undefined ? {} : { initial: taintSeam.initial }),
+            onTainted: taintSeam.onTainted,
+            runId: runIdOfTaint,
+          })
+        : undefined);
+
     if (memory && memoryAuthority) {
-      hooks.on('prepareStep', createMemoryRecallHook(memory, memoryAuthority, memoryTarget), {
-        id: 'bureau:memory-recall',
-        // Recall admission records the read and can quarantine a poisoned
-        // record; both are idempotent on a replayed step.
-        replay: 'effectful',
-      });
+      // COR-2107 — a recall a detector flagged at or above the run's taint threshold taints the
+      // session, as any other scan path does (COR-2102).
+      const recallTaintThreshold =
+        guardrailsConfig?.taint?.taintThreshold ?? DEFAULT_TAINT_THRESHOLD;
+      hooks.on(
+        'prepareStep',
+        createMemoryRecallHook(
+          memory,
+          memoryAuthority,
+          memoryTarget,
+          recallTaint === undefined
+            ? undefined
+            : (detection, step) => {
+                if (detection.confidence < recallTaintThreshold) return;
+                recallTaint.taint({
+                  reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
+                  detector: detection.detector,
+                  category: detection.category,
+                  confidence: detection.confidence,
+                  step,
+                  provenance: 'recalled-memory',
+                });
+                // The write that stores the taint completes before the recall hook returns, as
+                // the guardrail hooks' own does (COR-2105).
+                return recallTaint.settled();
+              },
+        ),
+        {
+          id: 'bureau:memory-recall',
+          // Recall admission records the read and can quarantine a poisoned
+          // record; both are idempotent on a replayed step.
+          replay: 'effectful',
+        },
+      );
       hooks.on(
         'onStep',
         createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
@@ -3684,14 +3821,6 @@ async function buildRuntimeComposition(
         },
       );
     }
-
-    // COR-1226 — resolved here rather than at the hook-registration site below,
-    // because the skill toolbox needs the same detectors and the same session
-    // taint tracker, and it is constructed before that point. `createGuardrails`
-    // is a pure function of its options, so calling it earlier changes nothing
-    // about what it returns.
-    const guardrailsConfig = resolveGuardrailsConfiguration();
-    const guardrails = guardrailsConfig ? createGuardrails(guardrailsConfig) : undefined;
 
     // COR-1226 — skill bodies and skill resources are untrusted instruction
     // input and must pass the same detector pipeline as anything else entering
@@ -3982,6 +4111,7 @@ async function buildRuntimeComposition(
     runId: string,
     principal?: string,
     recorded?: CatalogRunRecordedDefinition,
+    session?: SessionTaintSource,
   ): Promise<SessionAgentRunResolution> {
     const wired = await awaitCatalogAgentRunOptionsResolver(runId);
     if (wired.status === 'absent') {
@@ -3993,7 +4123,21 @@ async function buildRuntimeComposition(
     const resolution = await wired.resolver(
       agentName,
       SESSION_AGENT_PLACEHOLDER_INPUT,
-      { agentName, ...(principal === undefined ? {} : { principal }) },
+      {
+        agentName,
+        ...(principal === undefined ? {} : { principal }),
+        // COR-2105 — an agent that resolves its own guardrails seeds its tracker from the session's
+        // taint and writes a new one back. A run with no session has none to hand.
+        ...(session === undefined
+          ? {}
+          : {
+              sessionTaint: sessionTaintSeamFor(
+                session.sessionId,
+                runId === '' ? session.sessionId : runId,
+                session.metadata,
+              ),
+            }),
+      },
       runId,
       ...(recorded === undefined ? [] : [recorded]),
     );
@@ -4095,6 +4239,7 @@ async function buildRuntimeComposition(
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         sessionAgent,
         memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
+        sessionMetadata: session.metadata,
         // COR-1911 — a run of a tried agent resumes as it began, without memory.
         withoutMemory: sessionOriginOf(session.metadata) === 'try',
       },
@@ -4264,10 +4409,16 @@ async function buildRuntimeComposition(
     }
     const owner = resolveSessionOwner(session.metadata);
     const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
-    const resolution = await resolveSessionAgentRun(agentName, runId ?? '', owner, {
-      agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
-      definitionRevision: sessionRecordedRevision(session.metadata, recordedHash),
-    });
+    const resolution = await resolveSessionAgentRun(
+      agentName,
+      runId ?? '',
+      owner,
+      {
+        agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
+        definitionRevision: sessionRecordedRevision(session.metadata, recordedHash),
+      },
+      { sessionId: session.id, metadata: session.metadata },
+    );
     if (resolution.status === 'missing-agent') {
       throw new Error(`${label}: catalog agent "${agentName}" is no longer in the catalog`);
     }
@@ -4359,7 +4510,15 @@ async function buildRuntimeComposition(
           });
         }
       }
+      const heldTaintKey = pendingTaintKey(sessionId, runId);
+      const heldTaint = pendingScheduledTaints.get(heldTaintKey);
+      let taintWritten: PersistedSessionTaint | undefined;
       const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
+        // The updater can run again after a lost race, so it decides every time.
+        taintWritten =
+          heldTaint !== undefined && readSessionTaint(existing?.metadata) === undefined
+            ? heldTaint
+            : undefined;
         const activeSkillRecords = getActiveSkillRecords();
         const sessionOwnedByAnotherRunningRun =
           existing?.metadata['lastRunStatus'] === 'running' &&
@@ -4401,6 +4560,10 @@ async function buildRuntimeComposition(
             ...(existing === undefined
               ? { [SESSION_OWNER_METADATA_KEY]: owner, [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }
               : {}),
+            // COR-2105 — a taint the fire raised before its session existed is stored with it.
+            ...(taintWritten === undefined
+              ? {}
+              : { [SESSION_TAINT_METADATA_KEY]: { ...taintWritten } }),
             ...(sessionOwnedByAnotherRunningRun || skillPolicyUnverified()
               ? {}
               : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
@@ -4423,6 +4586,27 @@ async function buildRuntimeComposition(
             : context.conversation.current,
         };
       });
+      if (heldTaint !== undefined) {
+        pendingScheduledTaints.delete(heldTaintKey);
+        if (taintWritten !== undefined && saved !== undefined) {
+          try {
+            dependencies.onSessionTainted?.({
+              sessionId,
+              runId: taintWritten.runId,
+              detector: taintWritten.detector,
+              provenance: taintWritten.provenance,
+              confidence: taintWritten.confidence,
+            });
+          } catch (error) {
+            diagnose({
+              level: 'warn',
+              scope: 'guardrails',
+              message: `[bureau] The taint of session "${sessionId}" could not be published: ${serializeUnknownError(error)}`,
+              cause: error,
+            });
+          }
+        }
+      }
       // COR-1482: the first save of a fresh session gives it its incarnation, which the fire's
       // task is bound to once, so `bureau.tasks.list({ contextId })` finds the fire.
       if (!bound && saved !== undefined) {
@@ -5168,6 +5352,12 @@ async function buildRuntimeComposition(
     const firePriorReference = await dependencies.agentRunReferences?.reference(runId);
     const catalogWiring = await awaitCatalogAgentRunOptionsResolver(runId);
     if (catalogWiring.status !== 'absent') {
+      // COR-2105 — the session's taint seeds the agent's guardrails. A reserved id is refused below
+      // before anything is read, so it is not read here either.
+      const taintSession =
+        reservedIdentifierReason('scheduled session', sessionId) === undefined
+          ? await store.load(sessionId)
+          : undefined;
       const agentResolution =
         agentName === defaultBureauAgentName
           ? undefined
@@ -5181,6 +5371,7 @@ async function buildRuntimeComposition(
                     agentDefinitionHash: firePriorReference.hash,
                     definitionRevision: firePriorReference.definitionRevision,
                   },
+              { sessionId, metadata: taintSession?.metadata },
             );
       if (agentResolution?.status !== 'resolved') {
         return {
@@ -5304,6 +5495,7 @@ async function buildRuntimeComposition(
         initialActiveSkillRecords,
         skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
         memoryOwner: owner,
+        sessionMetadata: existing?.metadata,
         sessionAgent: fireAgent,
         admitDispatch:
           options.workspace === undefined || recoveredScheduleId === undefined

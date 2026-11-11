@@ -27,6 +27,7 @@ function textSnippet(text: string) {
 
 describe('Text', () => {
   test.each([
+    ['display', 'H1'],
     ['h1', 'H1'],
     ['h2', 'H2'],
     ['h3', 'H3'],
@@ -78,6 +79,19 @@ describe('Text', () => {
   test('takes its color from the container rather than a color token', () => {
     expect(textCss).toContain('color: currentColor;');
     expect(textCss).not.toMatch(/color:\s*var\(--cinder-text-(default|muted|subtle)/);
+  });
+
+  test('display sets 36px semibold text on the display tokens and h2 reads the heading tokens', () => {
+    const display = textCss.match(/data-cinder-variant='display'\] \{[^}]*\}/)?.[0];
+    expect(display).toContain('font-size: var(--cinder-text-display);');
+    expect(display).toContain('font-weight: var(--cinder-font-semibold);');
+    expect(display).toContain('letter-spacing: var(--cinder-tracking-display);');
+    expect(display).toContain('line-height: var(--cinder-leading-tight);');
+    const h2 = textCss.match(/data-cinder-variant='h2'\] \{[^}]*\}/)?.[0];
+    expect(h2).toContain('font-size: var(--cinder-text-heading);');
+    expect(h2).toContain('font-weight: var(--cinder-font-heading);');
+    expect(h2).toContain('line-height: var(--cinder-leading-heading);');
+    expect(h2).toContain('letter-spacing: var(--cinder-tracking-tight);');
   });
 
   test('resets wrapping and tracking on the base so `as` cannot change a variant look', () => {
@@ -328,6 +342,31 @@ describe('Text middle truncation fit', () => {
 
     expect((container.querySelector('.cinder-text__head') as HTMLElement).style.inlineSize).toBe(
       '',
+    );
+  });
+});
+
+describe('Text truncate="end"', () => {
+  const longName = `responsive-model-${'m'.repeat(300)}`;
+
+  test('renders the whole text on one cut line, with the whole of it in the title', () => {
+    const { container } = render(Text, { as: 'span', truncate: 'end', text: longName });
+    const root = container.querySelector('.cinder-text');
+    expect(root?.tagName).toBe('SPAN');
+    expect(root?.getAttribute('data-cinder-truncate')).toBe('end');
+    expect(root?.textContent).toBe(longName);
+    expect(root?.getAttribute('title')).toBe(longName);
+    expect(root?.hasAttribute('tabindex')).toBe(false);
+  });
+
+  test('keeps a title the caller set', () => {
+    const { container } = render(Text, { truncate: 'end', text: longName, title: 'Model' });
+    expect(container.querySelector('.cinder-text')?.getAttribute('title')).toBe('Model');
+  });
+
+  test('ends the line with an ellipsis in the typography of what holds it', () => {
+    expect(textCss).toMatch(
+      /\.cinder-text\[data-cinder-truncate='end'\]\s*\{[^}]*font:\s*inherit;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/,
     );
   });
 });

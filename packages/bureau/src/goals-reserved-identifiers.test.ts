@@ -12,7 +12,8 @@ import { createMockGenerate, stopWhen, createAgent } from '@lostgradient/operati
 import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import {
   createCheckValidator,
   createDiagnostics,

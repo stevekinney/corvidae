@@ -35,6 +35,11 @@
     "allowedCount": 1
   },
   {
+    "filePath": "src/components/popover/popover-surface.css",
+    "colorClass": "oklch",
+    "allowedCount": 2
+  },
+  {
     "filePath": "src/components/rating/rating.css",
     "colorClass": "oklch",
     "allowedCount": 1
@@ -78,10 +83,5 @@
     "filePath": "src/styles/components/_status-surface.css",
     "colorClass": "oklch",
     "allowedCount": 8
-  },
-  {
-    "filePath": "src/styles/components/experimental/popover.css",
-    "colorClass": "oklch",
-    "allowedCount": 2
   }
 ]

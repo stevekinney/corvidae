@@ -22,8 +22,8 @@
  * | activity (`execute`, `verify`, `compensate`) | refuses without retrying (`nonRetryableErrors`); a refused `verify` fails the result, and a refused `compensate` is a failed compensation | works | refuses |
  * | trigger kind (`start`) | waits: the real `start` is not called | the real `start` runs | the trigger it started is stopped and waits again |
  * | validator (`validate`) | refuses; the goal's attempt fails | works | refuses |
- * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run contains the refusal as it contains any detector's or validator's error, so the guardrail finds nothing and the input, reply or call it would judge goes on (COR-2104) | works | refuses |
- * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run contains the refusal and goes on (COR-2118) | works | refuses |
+ * | guardrail, `input`, `output` and `tools` (`detect`, `validate`) | refuses; a run fails closed (COR-2300): the refusal is a `detector-failure` finding that blocks the input, reply or call it would judge, under a `warn` action too, and taints the session as a block does (a `tripwire` action halts the run) | works | refuses |
+ * | guardrail factory, `input`, `output` and `tools` (`create`, then the guardrail's `detect` or `validate`) | `create` is not gated: an agent that configures it stays valid and builds, and the guardrail it builds refuses as a guardrail does, so a run fails closed on it (COR-2300) | works | refuses |
  * | interceptor, a point Operative runs through its hook registry (`prepareStep`, `beforeToolExecution`, `afterToolExecution`, `onStep`, `selectTools`, `validateResponse`, `validateToolResult`, the compaction points, `selectToolChoice`, `beforeGenerate`, `afterGenerate`, `onRunStart`) | refuses; the step or the run fails with the refusal, so an agent file that lists the interceptor cannot run | works | refuses |
  * | interceptor, an observing point (`onLLMInput`, `onLLMOutput`, `onRunComplete`, `onRunError`, `onRunAbort`) | refuses; Operative settles these handlers and discards a failure, so the run's own outcome and error stand and the plugin's handler does not run | works | refuses |
  * | interceptor, `onError` | refuses; Operative catches a failing recovery hook and the original error propagates, so the handler does not run. One `try` wraps the loop over the recovery handlers, so the refusal also skips every lower-priority `onError` handler of the run, whatever any `onError` option says | works | refuses |
@@ -41,7 +41,7 @@
  * function is: its `handler` refuses, and the fields beside it are kept, so a plugin's own
  * `onError: () => 'continue'` also swallows the refusal. The handler does not run either way.
  *
- * `afterStart` runs whether or not a secret is missing: the plugin loaded, and the host API it
+ * `start` runs whether or not a secret is missing: the plugin loaded, and the host API it
  * receives needs no secret.
  *
  * @module plugin-secret-gate

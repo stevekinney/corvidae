@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "value": {
+      "type": "string",
+      "description": "The one focal value of the screen, such as \"Ends in 45 min\" or \"2 need you\". It is set at display size in the default text colour, never the accent."
+    },
+    "status": {
+      "enum": [
+        "online",
+        "offline",
+        "warning",
+        "danger",
+        "info",
+        "pending",
+        "neutral",
+        "success",
+        "accent"
+      ],
+      "description": "Liveness of the value, drawn as a status dot with its word above the value. Set `statusLabel` to word it. Omit both for a value with no liveness."
+    },
+    "statusLabel": {
+      "type": "string",
+      "description": "The word beside the status dot, such as \"Live\" or \"Paused\". Left unset, a `status` draws the word its tone implies."
+    },
+    "class": {
+      "type": "string",
+      "description": "Custom class merged with `.cinder-spotlight`."
+    }
+  },
+  "additionalProperties": false,
+  "required": ["value"],
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "caveat",
+        "reason": "function-or-snippet",
+        "description": "Staleness or a caution, such as \"Updated 12 min ago\", drawn in warning text directly under the value."
+      }
+    ]
+  }
+}

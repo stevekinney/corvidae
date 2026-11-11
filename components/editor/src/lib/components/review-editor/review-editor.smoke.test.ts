@@ -52,7 +52,11 @@ describe('review-editor public entrypoint', () => {
   test('exports review APIs from workspace source and packed entries', async () => {
     const packageJson = await Bun.file(`${import.meta.dir}/../../../../package.json`).json();
     if (packageJson.private === true) {
-      expect(packageJson.exports['.']).toBe('./src/index.ts');
+      expect(packageJson.exports['.']).toEqual({
+        types: './.types/src/index.d.ts',
+        svelte: './src/index.ts',
+        default: './src/index.ts',
+      });
     } else {
       expect(packageJson.exports['.']).toEqual({
         types: './dist/index.d.ts',

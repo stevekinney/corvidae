@@ -3,13 +3,10 @@ import { describe, expect, test } from 'bun:test';
 import { readCorpusVariables, resolveRegistryPath } from './generate-component-variables.ts';
 
 describe('component variable corpus lookup', () => {
-  test('resolves standard and experimental component registries', () => {
+  test('resolves the component registry', () => {
     expect(resolveRegistryPath('/workspace/components/cinder/src/components/button')).toBe(
       '/workspace/components/cinder/src/tokens/registry.generated.json',
     );
-    expect(
-      resolveRegistryPath('/workspace/components/cinder/src/components/experimental/button'),
-    ).toBe('/workspace/components/cinder/src/tokens/registry.generated.json');
   });
 
   test('caches the parsed registry and supports packages without one', async () => {

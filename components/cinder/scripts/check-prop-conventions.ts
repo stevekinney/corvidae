@@ -655,9 +655,7 @@ function isComponentDirectory(directory: string, name: string): boolean {
 
 /**
  * Existing component directory names (kebab-case), e.g. `avatar`,
- * `avatar-group`, `statistic`, `statistic-group`. Descends one level into
- * `experimental/` so an experimental singular still shadows a proposed
- * top-level plural. Only directories that pass `isComponentDirectory` count,
+ * `avatar-group`, `statistic`, `statistic-group`. Only directories that pass `isComponentDirectory` count,
  * matching what `discoverComponentDirectories()` would enumerate. Used to
  * catch a NEW component name that is a bare plural of an existing singular
  * component instead of `<Singular>Group`.
@@ -667,15 +665,6 @@ export function existingComponentDirectoryNames(root: string = componentsDirecto
   for (const entry of readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith('.')) continue;
     if (entry.name === 'icons') continue;
-    if (entry.name === 'experimental') {
-      const experimentalRoot = join(root, entry.name);
-      for (const nested of readdirSync(experimentalRoot, { withFileTypes: true })) {
-        if (!nested.isDirectory() || nested.name.startsWith('.')) continue;
-        const nestedDirectory = join(experimentalRoot, nested.name);
-        if (isComponentDirectory(nestedDirectory, nested.name)) names.add(nested.name);
-      }
-      continue;
-    }
     const directory = join(root, entry.name);
     if (isComponentDirectory(directory, entry.name)) names.add(entry.name);
   }

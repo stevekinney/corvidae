@@ -7,7 +7,7 @@
  * same storage to show what the next start does with what was left.
  */
 import { createBureau, ScheduleLocatorUnavailableError, type Bureau } from '@lostgradient/bureau';
-import { createPluginStorage, type PluginHostApi } from '@lostgradient/interborough-plugin';
+import { createPluginStorage, type PluginHost } from '@lostgradient/interborough-plugin';
 import { MemoryStorage } from '@lostgradient/storage';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -25,7 +25,7 @@ const CREATE_FAILURE = new Error('The schedule store is unavailable.');
 const STORAGE_FAILURE = new Error('The database is unavailable.');
 
 type SeededBureau = Bureau<Record<string, never>>;
-type Create = PluginHostApi['schedules']['create'];
+type Create = PluginHost['schedules']['create'];
 
 const bureaus: SeededBureau[] = [];
 
@@ -35,7 +35,7 @@ afterEach(() => {
 
 /**
  * A Bureau with the demo plugin enabled over `storage`. `seedOnStart: false` keeps the plugin's own
- * `afterStart` from seeding, so a row controls when the seed runs and what it is handed.
+ * `start` from seeding, so a row controls when the seed runs and what it is handed.
  */
 async function openBureau(
   storage: MemoryStorage,
@@ -72,7 +72,7 @@ async function seededGoals(bureau: SeededBureau): Promise<string[]> {
 }
 
 /** The host API a plugin receives, over the real Bureau, with `schedules.create` replaced by `create`. */
-function withCreate(bureau: SeededBureau, create: Create): PluginHostApi {
+function withCreate(bureau: SeededBureau, create: Create): PluginHost {
   return {
     agents: { list: () => bureau.agents.list() },
     schedules: { create, list: (filter) => bureau.schedules.list(filter) },
@@ -80,8 +80,8 @@ function withCreate(bureau: SeededBureau, create: Create): PluginHostApi {
   };
 }
 
-/** The plugin's scoped storage over `storage`, which is what `afterStart` is handed. */
-function hostOf(bureau: SeededBureau): PluginHostApi {
+/** The plugin's scoped storage over `storage`, which is what `start` is handed. */
+function hostOf(bureau: SeededBureau): PluginHost {
   return withCreate(bureau, (definition) => bureau.schedules.create(definition));
 }
 
@@ -430,7 +430,7 @@ describe('seedDemo records the seeded schedule in the plugin storage', () => {
   });
 });
 
-describe('the demo plugin seeds from afterStart', () => {
+describe('the demo plugin seeds from start', () => {
   test('a Bureau with the plugin enabled seeds one schedule and the goal, and a restart adds nothing', async () => {
     const storage = new MemoryStorage();
     const first = await openBureau(storage, plugin);

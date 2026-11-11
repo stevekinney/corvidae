@@ -132,6 +132,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
           variant: { optional: true, type_kind: 'TSTypeReference', default: L('neutral') },
           size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
           monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+          truncate: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
           severity: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
           class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
           subscriptionState: { optional: false, type_kind: 'TSTypeReference', default: REQUIRED },
@@ -147,6 +148,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
           variant: { optional: true, type_kind: 'TSTypeReference', default: L('neutral') },
           size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
           monospace: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+          truncate: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
           severity: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
           class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
           subscriptionState: {
@@ -169,8 +171,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
   // (see button.types.ts) to avoid TS2590 makes it a genuine `TSIntersectionType`, so this
   // contract now checks real, previously-unchecked ground: the cinder-specific props inlined as
   // the intersection's trailing literal. The href/button discriminant itself (and icon-only
-  // naming/visual constraints) is covered by `scripts/consumer-strict-types.ts` instead, which
-  // can actually assign object literals against the type — this AST-only checker cannot.
+  // naming/visual constraints) is not checked here: this AST-only checker cannot assign object literals against the type.
   button: {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
@@ -182,6 +183,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       loadingStatus: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       mutating: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       quiet: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
+      shortcut: { optional: true, type_kind: 'TSUnionType', default: NO_DEFAULT },
       class: { optional: true, type_kind: 'TSStringKeyword', default: L(undefined) },
     },
     snippets: { children: s0(true), leadingIcon: s0(true), trailingIcon: s0(true) },
@@ -194,9 +196,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
   // & { ...cinder props }` (see card.types.ts) to avoid TS2590 makes it a genuine
   // `TSIntersectionType`, so this contract now checks real, previously-unchecked ground: the
   // cinder-specific props inlined as the intersection's trailing literal. The header/title
-  // exclusivity and div/anchor/button discriminant are covered by
-  // `scripts/consumer-strict-types.ts` instead, which can actually assign object literals
-  // against the type — this AST-only checker cannot.
+  // exclusivity and div/anchor/button discriminant are not checked here: this AST-only checker
+  // cannot assign object literals against the type.
   card: {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
@@ -214,8 +215,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     },
     // `children` is required in every real CardDiscriminant arm, but that discriminant lives
     // inside `PadUnion<...>`, not this flat literal, so the AST checker can't see it here —
-    // marked optional so it isn't flagged as missing; the real requirement is enforced by
-    // `scripts/consumer-strict-types.ts`'s `card-union-positive`/`card-union-negative` fixtures.
+    // marked optional so it isn't flagged as missing; the real requirement lives in the type.
     snippets: { children: s0(true), footer: s0(true), header: s0(true) },
   },
 
@@ -244,7 +244,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
   // PadUnion<DropdownDiscriminant> & { class?: string }` (see dropdown.types.ts) to avoid TS2590
   // makes it a genuine `TSIntersectionType`, so this contract now checks the one prop that
   // survives as a flat literal member; `open`/`id`/`placement`/`trigger`/`children` all live
-  // inside the discriminant now and are covered by `scripts/consumer-strict-types.ts` instead.
+  // inside the discriminant now and are not checked here.
   dropdown: {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
@@ -484,8 +484,8 @@ export const CONTRACT: Record<string, ComponentContract> = {
   // { ...cinder props }` (see navigation-item.types.ts) to avoid TS2590 makes it a genuine
   // `TSIntersectionType`, so this contract now checks real, previously-unchecked ground: the
   // cinder-specific props inlined as the intersection's trailing literal. The href/button
-  // discriminant itself is covered by `scripts/consumer-strict-types.ts` instead, which can
-  // actually assign object literals against the type — this AST-only checker cannot.
+  // discriminant itself is not checked here: this AST-only checker cannot assign object literals
+  // against the type.
   'navigation-item': {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',

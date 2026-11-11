@@ -3,7 +3,7 @@ import type { ToolPolicyHooks } from 'armorer';
 import type { z } from 'zod';
 
 import type { PluginSetupResult } from './contributions.ts';
-import type { PluginHostApi } from './host-api.ts';
+import type { PluginHost } from './host-api.ts';
 
 /** A secret a plugin declares: the full Bungalow secret key, or the key with how it is created. */
 export type PluginSecretDeclaration =
@@ -21,7 +21,7 @@ export interface PluginSecrets {
   get(key: string): Promise<string | undefined>;
 }
 
-/** What `setup`, and `afterStart` beside the host API, receive. */
+/** What `setup`, and `start` beside the host API, receive. */
 export interface PluginSetupContext<TConfiguration = unknown> {
   /** The plugin's configuration, parsed with its `configuration` schema. */
   readonly configuration: TConfiguration;
@@ -30,12 +30,12 @@ export interface PluginSetupContext<TConfiguration = unknown> {
   /** Storage confined to the key prefix `plugin:<name>:`. */
   readonly storage: Storage;
   /**
-   * The host API, the same one `afterStart` receives, for a contribution to call while it runs.
+   * The host API, the same one `start` receives, for a contribution to call while it runs.
    * What it causes is the plugin's: a schedule it creates announces `schedule.created`, and a goal
    * it creates announces every `goal.*` event, with `source` naming the plugin. A call made before
    * the host has started, from `setup` itself, rejects.
    */
-  readonly host: PluginHostApi;
+  readonly host: PluginHost;
   /**
    * The host's tool-approval rule as a policy hook, for the toolbox a plugin builds for one of its
    * code agents: pass it as the toolbox's `policy`. A tool of `tools` that only reads runs, and one
@@ -44,7 +44,7 @@ export interface PluginSetupContext<TConfiguration = unknown> {
    * It governs only the tools named in `tools`, because the host adds its own tools to a run's
    * toolbox, and those take the host's rule instead.
    */
-  readonly toolApprovalHooks: (tools: readonly string[]) => ToolPolicyHooks;
+  readonly approvals: (tools: readonly string[]) => ToolPolicyHooks;
 }
 
 /** The schema a plugin without a `configuration` declares: an object with no members. */
@@ -68,7 +68,7 @@ export interface PluginDescriptor<
   /** Whether the owner cannot disable the plugin. */
   readonly required?: boolean;
   /** Whether the plugin runs before the owner has chosen. Defaults to `true`. */
-  readonly enabledByDefault?: boolean;
+  readonly enabled?: boolean;
   /** The schema of the plugin's configuration. */
   readonly configuration?: TConfigurationSchema;
   /** The secrets the plugin needs. */

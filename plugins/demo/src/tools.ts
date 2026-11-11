@@ -42,12 +42,12 @@ export function createIssueRefundTool() {
  */
 export function createToolRunnerToolbox(
   approvalSecret: string | undefined,
-  toolApprovalHooks: PluginSetupContext['toolApprovalHooks'],
+  approvals: PluginSetupContext['approvals'],
 ) {
   const lookupOrder = createLookupOrderTool();
   const issueRefund = createIssueRefundTool();
   return createToolbox([lookupOrder, issueRefund], {
     ...(approvalSecret === undefined ? {} : { approvalSecret }),
-    policy: toolApprovalHooks([lookupOrder.name, issueRefund.name]),
+    policy: approvals([lookupOrder.name, issueRefund.name]),
   });
 }

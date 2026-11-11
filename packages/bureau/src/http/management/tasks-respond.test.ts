@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { waitForCondition } from '../../test';
 import type { ResolveReviewInput, TaskRespondResult } from '../../types.ts';
 import { createCommandLedger, digestCommandPayload } from '../../command-ledger.ts';
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError } from '../../bureau-errors.ts';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import {

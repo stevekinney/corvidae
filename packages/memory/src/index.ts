@@ -95,6 +95,7 @@ export type {
   MemoryOperationStatus,
   MemoryRecallCandidate,
   MemoryRecallContradiction,
+  MemoryRecallDetection,
   MemoryRecallExclusion,
   MemoryRecallExclusionReason,
   MemoryRecallFilterReport,
