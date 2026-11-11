@@ -64,6 +64,13 @@ describe('the breadcrumb trail', () => {
     ]);
   });
 
+  test('Connect tools reads Capabilities › Connect tools, the way back to Capabilities (rows 33a, 33b)', () => {
+    expect(breadcrumbTrail('/capabilities/connect', NONE)).toEqual([
+      { label: 'Capabilities', href: '/capabilities' },
+      { label: 'Connect tools' },
+    ]);
+  });
+
   test('a top-level page is its view’s name alone', () => {
     expect(breadcrumbTrail('/agents', NONE)).toEqual([{ label: VIEW_COPY.agents.label }]);
     expect(breadcrumbTrail('/health', NONE)).toEqual([{ label: 'Health' }]);

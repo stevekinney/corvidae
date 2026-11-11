@@ -6195,32 +6195,46 @@ export const CAPABILITIES_COPY = {
       description:
         'These saved settings name a tool the server does not list. Nothing is applied to a different tool.',
     },
-    /** The dialog that connects a source (`connect-dialog.svelte`). */
+    /** The Connect tools page at `/capabilities/connect` (`connect-tools.svelte`). */
     connect: {
       action: 'Connect tools',
-      title: 'Connect a tool source',
+      /** The page's heading and the last crumb of its breadcrumb (rows 33a, 33c). */
+      title: 'Connect tools',
       intro:
-        'An MCP server or an OpenAPI service whose tools your agents can call. Its tools join Capabilities when Interborough starts again.',
-      kind: { label: 'What kind of source', mcp: 'MCP server', openapi: 'OpenAPI service' },
-      id: {
+        'Add an MCP server or an OpenAPI spec. Its tools are available to agents straight away, with no restart.',
+      /** The page's sections, in order (row 33d). */
+      sections: {
+        source: 'Source',
+        address: 'Address',
+        signIn: 'Sign in',
+        test: 'Test connection',
+        chooseTools: 'Choose tools',
+      },
+      kind: { label: 'What kind of source', mcp: 'MCP server', openapi: 'OpenAPI spec' },
+      /** What a person calls the source; the identifier it is saved under is made from it (row 33f). */
+      name: {
         label: 'Name',
         description:
-          'Lowercase letters, digits and hyphens, starting with a letter. Each of its tools is named after it, such as notes__lookup.',
-        placeholder: 'notes',
+          'Filled in after the test; change it if you like. Shown in Capabilities and on each tool.',
+        placeholder: 'GitHub',
       },
-      transport: { label: 'How Interborough reaches it', http: 'A URL', stdio: 'A command' },
+      transport: { label: 'How Interborough reaches it', http: 'URL', stdio: 'Command' },
       url: {
         label: 'Server URL',
-        description: 'The address of the MCP server over HTTP.',
-        placeholder: 'https://example.com/mcp',
+        description: 'Streamable HTTP.',
+        placeholder: 'https://mcp.example.com/mcp',
       },
+      /** The one-line command of a local server, and the warning under it (rows 33o, 33p). */
       command: {
         label: 'Command',
-        description:
-          'Interborough runs it on this machine, as you. Only the owner can connect one.',
-        placeholder: 'npx',
+        placeholder: 'npx -y @example/server',
+        warningLabel: 'Runs on this machine',
+        warningBefore:
+          'This runs on this machine as you, with access to your files. Testing the connection runs the command, and ',
+        warningCode: 'npx -y',
+        warningAfter:
+          ' downloads code before it starts. Interborough starts it with the server and stops it when the server stops.',
       },
-      args: { label: 'Arguments', description: 'One per line.' },
       specification: { label: 'Where the document is', url: 'A URL', file: 'A file' },
       specificationUrl: {
         label: 'OpenAPI document URL',
@@ -6240,19 +6254,21 @@ export const CAPABILITIES_COPY = {
           'Where requests are sent. Leave it empty to use the first server the document names.',
         placeholder: 'https://api.example.com',
       },
+      /** Sign in's choices (rows 33g, 34q): OAuth carries the muted note beside its label. */
       authentication: {
-        label: 'How it signs you in',
-        none: 'Nothing',
+        label: 'How it signs in',
+        none: 'None',
         bearer: 'Bearer token',
-        oauth: 'OAuth sign-in',
-        'api-key': 'API key',
+        oauth: 'OAuth',
+        oauthNote: 'opens the provider',
+        'api-key': 'API key in a header',
         oauthHelp:
-          'You sign in from the source’s page once it is saved. Interborough keeps the tokens it receives.',
+          'You sign in to the provider from the source’s page once it is connected. Interborough keeps the tokens it receives.',
       },
       secret: {
-        bearer: { label: 'Bearer token' },
+        bearer: { label: 'Token' },
         'api-key': { label: 'API key' },
-        description: 'Stored encrypted on this machine and never shown again.',
+        description: 'Stored on this machine; never shown again.',
       },
       header: {
         label: 'Header name',
@@ -6275,13 +6291,25 @@ export const CAPABILITIES_COPY = {
         failedTitle: 'It did not answer',
         failed: 'The source could not be tested',
       },
+      /** Choose tools before a test has listed any. */
+      chooseToolsEmpty: 'Test the connection to list its tools.',
+      /** The footer's summary while no test has passed: Connect runs the test first (row 33r). */
+      testsFirst: 'Connect tests the connection first.',
+      /** What the page says while the host keeps its configuration in its deployment. */
+      locked:
+        'This host keeps its configuration in its deployment, so a source cannot be connected here.',
       actions: { connect: 'Connect', cancel: 'Cancel' },
-      connected: (id: string): string => `Connected ${id}. Restart Interborough to list its tools.`,
+      connected: (name: string): string =>
+        `Connected ${name}. Restart Interborough to list its tools.`,
+      /** A source the host loaded at once (`restartRequired: false`). */
+      connectedNow: (name: string): string => `Connected ${name}. Its tools are available now.`,
       failed: 'The source could not be connected',
       exists: (id: string): string =>
         `A source named ${id} is already saved. Choose another name, or remove it first.`,
       errors: {
         idRequired: 'Give the source a name.',
+        /** A name with no letter, which the identifier it is saved under has to start with. */
+        nameInvalid: 'Start the name with a letter.',
         idInvalid: 'Use 1 to 20 lowercase letters, digits or hyphens, starting with a letter.',
         urlRequired: 'Enter the server’s URL.',
         commandRequired: 'Enter the command to run.',

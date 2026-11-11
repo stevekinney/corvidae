@@ -183,3 +183,59 @@ test('G P opens the page, and the sidebar marks it current', async ({ page }) =>
   ).toHaveAttribute('aria-current', 'page');
   await expect(area(page)).toHaveAttribute('data-state', 'ready');
 });
+
+test.describe('the Connect tools page', () => {
+  const connect = copy.source.connect;
+  const form = (page: Page) => page.getByTestId('connect-form');
+
+  for (const width of WIDTHS) {
+    test(`is a page in the reading column under Capabilities, at ${width} pixels`, async ({
+      page,
+      checkA11y,
+    }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.goto('/capabilities/connect');
+
+      // Rows 33a to 33d: the title is in the column, and the sections run in order above the footer.
+      await expect(page.getByRole('heading', { level: 1, name: connect.title })).toBeVisible();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
+      await expect(form(page).getByRole('heading', { level: 2 })).toHaveText([
+        connect.sections.source,
+        connect.sections.address,
+        connect.sections.signIn,
+        connect.sections.test,
+        connect.sections.chooseTools,
+      ]);
+      await expect(page.getByTestId('connect-summary')).toHaveText(connect.testsFirst);
+      await checkA11y(`the Connect tools page at ${width}px`);
+    });
+  }
+
+  test('MCP, Command: a one-line command under a warning, with Name and the footer (rows 33o, 33p, 33r)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/capabilities/connect');
+    await form(page).getByRole('radio', { name: connect.transport.stdio, exact: true }).click();
+    await form(page)
+      .getByLabel(connect.command.label, { exact: true })
+      .fill('npx -y @example/github-mcp');
+    await form(page).getByLabel(connect.name.label, { exact: true }).fill('GitHub');
+
+    const warning = page.getByTestId('connect-command-warning');
+    await expect(warning).toContainText(connect.command.warningBefore.trim());
+    await expect(warning.locator('code')).toHaveText(connect.command.warningCode);
+    await expect(page.getByTestId('connect-summary')).toHaveText(connect.testsFirst);
+  });
+
+  test('Bearer token: a required masked Token under Sign in (row 34q)', async ({ page }) => {
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.goto('/capabilities/connect');
+    await form(page).getByRole('radio', { name: connect.authentication.bearer }).check();
+
+    const token = form(page).locator('#connect-secret');
+    await expect(token).toHaveAttribute('type', 'password');
+    await expect(token).toHaveAttribute('required', '');
+    await expect(form(page)).toContainText(connect.secret.description);
+  });
+});

@@ -11,6 +11,7 @@ import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
 import { settle, until } from '../../lib/fake-timers.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
+import { router } from '../../lib/router.svelte.ts';
 import QueryPage from '../chat/chat-toasts.test-harness.svelte';
 import { bureau, landAt } from '../chat/pages.test-support.ts';
 import CapabilitiesPage from './index.svelte';
@@ -499,27 +500,24 @@ describe('connecting tools from the Sources tab', () => {
     expect(container.querySelectorAll('[data-cinder-variant="primary"]')).toHaveLength(1);
   });
 
-  test('opens the same dialog from the empty state and from the header', async () => {
+  test('opens the same Connect tools page from the empty state and from the header (row 33b)', async () => {
     serve({ sources: [] });
     landAt('/capabilities?tab=sources');
-    const { container, findByTestId, findByText } = mount();
+    const { container, findByText } = mount();
     await findByText(copy.source.empty.title);
-    const buttons = [...container.querySelectorAll<HTMLElement>('button')].filter(
-      (button) =>
-        button.textContent?.trim() === copy.source.connect.action ||
-        button.getAttribute('aria-label') === copy.source.connect.action,
-    );
+    const buttons = () =>
+      [...container.querySelectorAll<HTMLElement>('button')].filter(
+        (button) =>
+          button.textContent?.trim() === copy.source.connect.action ||
+          button.getAttribute('aria-label') === copy.source.connect.action,
+      );
 
-    await fireEvent.click(buttons[1]!);
-    await findByTestId('connect-form');
-    await fireEvent.click(buttonNamed(document.body, copy.source.connect.actions.cancel));
-    await waitFor(() =>
-      expect(
-        document.body.querySelector('[data-testid="connect-form"]')?.outerHTML ?? null,
-      ).toBeNull(),
-    );
-    await fireEvent.click(buttons[0]!);
-    await findByTestId('connect-form');
+    await fireEvent.click(buttons()[1]!);
+    await waitFor(() => expect(router.pathname).toBe('/capabilities/connect'));
+    landAt('/capabilities?tab=sources');
+    await findByText(copy.source.empty.title);
+    await fireEvent.click(buttons()[0]!);
+    await waitFor(() => expect(router.pathname).toBe('/capabilities/connect'));
   });
 
   test('keeps the header "+" the only connect button once a source is saved', async () => {

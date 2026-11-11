@@ -113,6 +113,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The list prints each agent's identifier at every width; a phone row leaves the description to the agent's page.
   '/agents': /responsive-long-description/,
   '/capabilities': /Reads|Changes things|Dangerous|Not classified/,
+  // The empty form prints its footer's summary before any test has passed.
+  '/capabilities/connect': /Connect tests the connection first/,
   // A skill's row reads its identifier as words: "e2e-summarize" is "E2e summarize".
   '/capabilities (skills tab)': /E2e summarize/,
   '/capabilities (sources tab)': /e2e-petstore/,

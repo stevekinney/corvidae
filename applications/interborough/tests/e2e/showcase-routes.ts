@@ -24,6 +24,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/agents': '/agents',
     '/agents/new': '/agents/new',
     '/capabilities': '/capabilities',
+    '/capabilities/connect': '/capabilities/connect',
     '/agents/:agent/edit': `/agents/${agent}/edit`,
     '/agents/:agent': `/agents/${agent}`,
     '/agents/:agent/instructions': `/agents/${agent}/instructions`,

@@ -1,4 +1,4 @@
-/** The Connect dialog's form: the request it builds for the host, and the fields it names when it cannot. */
+/** The Connect tools page's form: the request it builds for the host, and the fields it names when it cannot. */
 import { describe, expect, test } from 'bun:test';
 
 import { CAPABILITIES_COPY } from '../app/copy.ts';
@@ -10,9 +10,11 @@ import {
   effectiveAuthentication,
   EMPTY_TOOL_SOURCE_FORM,
   fieldOfHostField,
+  splitCommandLine,
   startingApproval,
   startingToolChoices,
   toolSettingsOf,
+  toolSourceIdentifier,
   type ToolSourceForm,
 } from './tool-source-form.ts';
 
@@ -59,11 +61,9 @@ describe('buildToolSourceRequest', () => {
     });
   });
 
-  test('describes a local command with the lines of its arguments that have something on them', () => {
+  test('describes a local command from its one line: the first word, then its arguments (row 33o)', () => {
     expect(
-      buildToolSourceRequest(
-        form({ transport: 'stdio', command: ' npx ', args: ' -y \n\n pkg \n' }),
-      ),
+      buildToolSourceRequest(form({ transport: 'stdio', command: ' npx  -y \t pkg ' })),
     ).toMatchObject({
       request: {
         source: { transport: { type: 'stdio', command: 'npx', args: ['-y', 'pkg'] } },
@@ -76,7 +76,7 @@ describe('buildToolSourceRequest', () => {
 
   test('ignores a command and a token for an MCP server that does not use them', () => {
     const result = buildToolSourceRequest(
-      form({ url: 'https://example.com/mcp', command: 'rm', args: '-rf', secret: 'leftover' }),
+      form({ url: 'https://example.com/mcp', command: 'rm -rf', secret: 'leftover' }),
     );
 
     expect(result).toMatchObject({ request: { credentials: {} } });
@@ -156,6 +156,21 @@ describe('buildToolSourceRequest', () => {
     expect(buildToolSourceRequest(form({ kind: 'openapi' }))).toEqual({
       errors: { specificationUrl: errors.specificationUrlRequired },
     });
+    // The page makes the identifier from the name: a name with no letter makes none.
+    expect(
+      buildToolSourceRequest(form({ id: '', name: '42', url: 'https://x.example' })),
+    ).toEqual({ errors: { id: errors.nameInvalid } });
+    expect(buildToolSourceRequest(form({ transport: 'stdio', command: '   ' }))).toEqual({
+      errors: { command: errors.commandRequired },
+    });
+  });
+
+  test('sends the name a person gave the source beside the identifier made from it', () => {
+    expect(
+      buildToolSourceRequest(
+        form({ id: toolSourceIdentifier('GitHub'), name: ' GitHub ', url: 'https://x.example' }),
+      ),
+    ).toMatchObject({ id: 'github', request: { source: { id: 'github' }, name: 'GitHub' } });
   });
 
   test('refuses a file that is not a JSON object', () => {
@@ -177,16 +192,17 @@ describe('buildToolSourceRequest', () => {
 
 describe('the authentication a form offers', () => {
   test('depends on the kind and how an MCP server is reached', () => {
+    // In the order Sign in offers them (rows 33g, 33u).
     expect(authenticationChoices({ kind: 'mcp', transport: 'http' })).toEqual([
-      'none',
-      'bearer',
       'oauth',
+      'bearer',
+      'none',
     ]);
     expect(authenticationChoices({ kind: 'mcp', transport: 'stdio' })).toEqual(['none']);
     expect(authenticationChoices({ kind: 'openapi', transport: 'http' })).toEqual([
-      'none',
-      'bearer',
       'api-key',
+      'bearer',
+      'none',
     ]);
   });
 
@@ -300,5 +316,46 @@ describe('Choose tools (COR-2022)', () => {
       { tool: 'create_issue', title: 'Create issue', approval: 'on-changes' },
       { tool: 'delete_branch', title: 'Delete branch', approval: 'off' },
     ]);
+  });
+});
+
+describe('toolSourceIdentifier', () => {
+  test('makes the identifier a source is saved under from the name a person gave it', () => {
+    expect(toolSourceIdentifier('GitHub')).toBe('github');
+    expect(toolSourceIdentifier('  Payments API  ')).toBe('payments-api');
+    expect(toolSourceIdentifier('2nd Notes: v2!')).toBe('nd-notes-v2');
+    expect(toolSourceIdentifier('notes')).toBe('notes');
+  });
+
+  test('cuts it to 20 characters with no hyphen left at the end', () => {
+    expect(toolSourceIdentifier('a'.repeat(30))).toBe('a'.repeat(20));
+    expect(toolSourceIdentifier('abcdefghijklmnopqrs tuv')).toBe('abcdefghijklmnopqrs');
+  });
+
+  test('makes none from a name with no letter', () => {
+    expect(toolSourceIdentifier('')).toBe('');
+    expect(toolSourceIdentifier('42 - 7')).toBe('');
+  });
+});
+
+describe('splitCommandLine', () => {
+  test('splits on white space and keeps a quoted stretch as one word without its quotes', () => {
+    expect(splitCommandLine('npx -y @example/github-mcp')).toEqual([
+      'npx',
+      '-y',
+      '@example/github-mcp',
+    ]);
+    expect(splitCommandLine(' node  "my server.js" --name \'a b\' ""')).toEqual([
+      'node',
+      'my server.js',
+      '--name',
+      'a b',
+      '',
+    ]);
+    expect(splitCommandLine('   ')).toEqual([]);
+  });
+
+  test('runs a quote left open to the end of the line', () => {
+    expect(splitCommandLine('tool "two words')).toEqual(['tool', 'two words']);
   });
 });

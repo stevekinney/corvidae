@@ -1,9 +1,9 @@
 /**
- * What the Connect dialog (`routes/capabilities/connect-dialog.svelte`) collects for a tool source,
+ * What the Connect tools page (`routes/capabilities/connect-tools.svelte`) collects for a tool source,
  * and the request it turns into: Armorer's plain-JSON description (`armorer/tool-sources`, not
  * imported here because it brings the MCP client into the browser) and the value of each credential
  * the description names. The host checks the description again and is the one that refuses a value;
- * this module only refuses what a person has not filled in, so the dialog can name the field.
+ * this module only refuses what a person has not filled in, so the page can name the field.
  *
  * A credential is held in the form until the request is built and goes nowhere else: it is never
  * put in a message, a key, or a description.
@@ -16,10 +16,13 @@ import type {
   ToolSourceToolSettings,
 } from './host-tool-sources.ts';
 
+/** Where the Connect tools page is (design row 33b): a page under Capabilities, not a dialog. */
+export const CONNECT_TOOLS_PATH = '/capabilities/connect';
+
 /** The pattern an identifier follows: the host refuses any other (`TOOL_SOURCE_IDENTIFIER`). */
 export const TOOL_SOURCE_IDENTIFIER_PATTERN = /^[a-z][a-z0-9-]{0,19}$/;
 
-/** The largest OpenAPI file the dialog reads: the host reads a request body of 4 MB, and the document is most of it. */
+/** The largest OpenAPI file the page reads: the host reads a request body of 4 MB, and the document is most of it. */
 export const MAXIMUM_SPECIFICATION_BYTES = 3_000_000;
 
 /** The name of the credential an MCP or OpenAPI bearer token is stored under. */
@@ -28,7 +31,7 @@ export const BEARER_CREDENTIAL = 'token';
 /** The name of the credential an OpenAPI API key is stored under. */
 export const API_KEY_CREDENTIAL = 'key';
 
-/** The kinds of source the dialog connects. */
+/** The kinds of source the page connects. */
 export type ToolSourceFormKind = 'mcp' | 'openapi';
 
 /** How an MCP server is reached. */
@@ -40,20 +43,24 @@ export type ToolSourceSpecificationChoice = 'url' | 'file';
 /** How a source authenticates. Which choices apply depends on the kind (`authenticationChoices`). */
 export type ToolSourceAuthenticationChoice = 'none' | 'bearer' | 'oauth' | 'api-key';
 
-/** Everything the dialog asks for. */
+/** Everything the page asks for. */
 export type ToolSourceForm = {
   /** Whether the source is an MCP server or an OpenAPI service. */
   readonly kind: ToolSourceFormKind;
-  /** The name the source is saved under, and the prefix of its tools. */
+  /**
+   * The name the source is saved under, and the prefix of its tools. The page derives it from
+   * `name` ({@link toolSourceIdentifier}); a person never types it.
+   */
   readonly id: string;
   /** For an MCP server: a URL, or a command on this machine. */
   readonly transport: ToolSourceTransportChoice;
   /** The MCP server's address. */
   readonly url: string;
-  /** The command a local MCP server is started with. */
+  /**
+   * The command line a local MCP server is started with, as one line (`npx -y @example/server`,
+   * row 33o). The first word is the command and the rest are its arguments ({@link splitCommandLine}).
+   */
   readonly command: string;
-  /** Its arguments, one per line. */
-  readonly args: string;
   /** For an OpenAPI service: a URL to the document, or the document itself from a file. */
   readonly specification: ToolSourceSpecificationChoice;
   /** The address of the OpenAPI document, when it is fetched. */
@@ -77,14 +84,13 @@ export type ToolSourceForm = {
   readonly description: string;
 };
 
-/** The dialog before anything is filled in. */
+/** The page before anything is filled in. */
 export const EMPTY_TOOL_SOURCE_FORM: ToolSourceForm = {
   kind: 'mcp',
   id: '',
   transport: 'http',
   url: '',
   command: '',
-  args: '',
   specification: 'url',
   specificationUrl: '',
   document: '',
@@ -105,12 +111,60 @@ export type ToolSourceFormResult =
   | { readonly request: ToolSourceRequest; readonly id: string }
   | { readonly errors: Readonly<Partial<Record<ToolSourceFormField, string>>> };
 
-/** The ways the source may authenticate, for the kind and transport chosen. */
+/**
+ * The ways the source may authenticate, for the kind and transport chosen, in the order Sign in
+ * offers them: OAuth, Bearer token, None for an MCP server reached by URL (row 33g), and API key in a
+ * header, Bearer token, None for an OpenAPI service (row 33u). A local command signs in to nothing.
+ */
 export function authenticationChoices(
   form: Pick<ToolSourceForm, 'kind' | 'transport'>,
 ): readonly ToolSourceAuthenticationChoice[] {
-  if (form.kind === 'openapi') return ['none', 'bearer', 'api-key'];
-  return form.transport === 'http' ? ['none', 'bearer', 'oauth'] : ['none'];
+  if (form.kind === 'openapi') return ['api-key', 'bearer', 'none'];
+  return form.transport === 'http' ? ['oauth', 'bearer', 'none'] : ['none'];
+}
+
+/**
+ * The identifier a source called `name` is saved under: its letters and digits in lower case,
+ * every other run of characters one hyphen, starting at its first letter and cut to 20 characters,
+ * so "GitHub" is `github` and "Payments API" is `payments-api`. The empty string when the name has
+ * no letter, which no identifier can start without.
+ */
+export function toolSourceIdentifier(name: string): string {
+  const words = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[^a-z]+/, '');
+  return words.slice(0, 20).replace(/-+$/, '');
+}
+
+/**
+ * The words of a command line (`npx -y "@example/my server"`): split on white space, with a
+ * single- or double-quoted stretch kept as one word without its quotes. A quote left open runs to
+ * the end of the line.
+ */
+export function splitCommandLine(text: string): string[] {
+  const words: string[] = [];
+  let word = '';
+  let started = false;
+  let quote: string | undefined;
+  for (const character of text) {
+    if (quote !== undefined) {
+      if (character === quote) quote = undefined;
+      else word += character;
+    } else if (character === '"' || character === "'") {
+      quote = character;
+      started = true;
+    } else if (/\s/.test(character)) {
+      if (started) words.push(word);
+      word = '';
+      started = false;
+    } else {
+      word += character;
+      started = true;
+    }
+  }
+  if (started) words.push(word);
+  return words;
 }
 
 /**
@@ -119,14 +173,6 @@ export function authenticationChoices(
  */
 export function effectiveAuthentication(form: ToolSourceForm): ToolSourceAuthenticationChoice {
   return authenticationChoices(form).includes(form.authentication) ? form.authentication : 'none';
-}
-
-/** The lines of `text` with something on them, trimmed. */
-function linesOf(text: string): string[] {
-  return text
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line !== '');
 }
 
 /** The OpenAPI document in `text`, or `undefined` when it is not a JSON object. */
@@ -178,7 +224,8 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
   const copy = CAPABILITIES_COPY.source.connect.errors;
   const errors: Partial<Record<ToolSourceFormField, string>> = {};
   const id = form.id.trim();
-  if (id === '') errors.id = copy.idRequired;
+  // The page derives the identifier from the name, so an empty one is a name that is missing or has no letter.
+  if (id === '') errors.id = form.name.trim() === '' ? copy.idRequired : copy.nameInvalid;
   else if (!TOOL_SOURCE_IDENTIFIER_PATTERN.test(id)) errors.id = copy.idInvalid;
 
   const authentication = effectiveAuthentication(form);
@@ -211,9 +258,8 @@ export function buildToolSourceRequest(form: ToolSourceForm): ToolSourceFormResu
         },
       };
     } else {
-      const command = form.command.trim();
+      const [command = '', ...args] = splitCommandLine(form.command);
       if (command === '') errors.command = copy.commandRequired;
-      const args = linesOf(form.args);
       source = {
         id,
         kind: 'mcp',

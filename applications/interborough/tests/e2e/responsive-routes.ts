@@ -67,6 +67,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/agents': '/agents',
     '/agents/new': '/agents/new',
     '/capabilities': '/capabilities',
+    '/capabilities/connect': '/capabilities/connect',
     // The agent whose instructions hold a word no line can break at, so the editor's textarea is measured with it.
     '/agents/:agent/edit': `/agents/${instructionsAgent}/edit`,
     '/agents/:agent': `/agents/${agent}`,

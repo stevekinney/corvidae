@@ -227,6 +227,17 @@ describe('the capabilities route', () => {
     expect(route?.kind).toBe('list-detail');
     expect(route?.crumb).toBe('Capabilities');
   });
+
+  test('has Connect tools as a form page under it, in the same view (rows 33a to 33c)', () => {
+    expect(matchRoute('/capabilities/connect')).toEqual({
+      pattern: '/capabilities/connect',
+      params: {},
+    });
+    const route = routes.find((candidate) => candidate.pattern === '/capabilities/connect');
+    expect(route?.view).toBe('capabilities');
+    expect(route?.kind).toBe('form');
+    expect(route?.crumb).toBe('Connect tools');
+  });
 });
 
 describe('the agent editor’s routes', () => {

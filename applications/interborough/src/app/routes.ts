@@ -1,6 +1,12 @@
 import type { Component } from 'svelte';
 
-import { AGENT_PAGE_COPY, SETTINGS_SECTION_COPY, VIEW_COPY, WORKFLOW_COPY } from './copy.ts';
+import {
+  AGENT_PAGE_COPY,
+  CAPABILITIES_COPY,
+  SETTINGS_SECTION_COPY,
+  VIEW_COPY,
+  WORKFLOW_COPY,
+} from './copy.ts';
 import type { PageKind, ViewName } from './views.ts';
 
 /**
@@ -161,6 +167,15 @@ export const routes: readonly RouteDefinition[] = [
     crumb: VIEW_COPY.capabilities.label,
     view: 'capabilities',
     load: () => import('../routes/capabilities/index.svelte'),
+  },
+  // Connect tools is a page under Capabilities, not a dialog (design rows 33a to 33c): a form in the
+  // 720px reading column, whose breadcrumb "Capabilities › Connect tools" is the way back.
+  {
+    pattern: '/capabilities/connect',
+    kind: 'form',
+    crumb: CAPABILITIES_COPY.source.connect.title,
+    view: 'capabilities',
+    load: () => import('../routes/capabilities/connect-tools.svelte'),
   },
   // `/workflows` is the catalog of workflow definitions, and under it one type's page, its runs, and
   // its editor. One component dispatches on the pattern. A run reached from its workflow is under
