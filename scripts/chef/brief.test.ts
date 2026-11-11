@@ -534,14 +534,28 @@ describe('run', () => {
     },
   });
   const answer =
-    (open: boolean): FetchLike =>
+    (open: boolean, comments: { id: string; body: string; createdAt: string }[] = []): FetchLike =>
     async (_url, init) => {
       const { query } = JSON.parse(init.body as string) as { query: string };
       const data = query.includes('IssueRelations')
         ? relations(open)
-        : { issue: issue(description) };
+        : query.includes('IssueComments')
+          ? {
+              issue: {
+                comments: { nodes: comments, pageInfo: { hasNextPage: false, endCursor: null } },
+              },
+            }
+          : { issue: issue(description) };
       return new Response(JSON.stringify({ data }), { status: 200 });
     };
+  const claimComment = (run: string, checkpoint: string, status = 'held') => [
+    {
+      id: 'c-1',
+      createdAt: checkpoint,
+      body: `Claim: run ${run}, branch cor-7-x, since 2026-11-10T09:00:00Z, checkpoint ${checkpoint}, head abc1234, status ${status}\n\nWritten by scripts/chef/linear.ts claim.`,
+    },
+  ];
+  const justNow = () => new Date('2026-11-10T12:00:00Z');
   const fetchIssue = answer(false);
   const dependencies = { fetch: fetchIssue, environment: { LINEAR_API_KEY: 'lin_api_test_value' } };
 
@@ -571,6 +585,60 @@ describe('run', () => {
     expect(result.output).toContain('No issue COR-9');
     expect(await rejectionOf(run([], dependencies))).toBeInstanceOf(UsageError);
     expect(await rejectionOf(run(['not an id'], dependencies))).toBeInstanceOf(UsageError);
+  });
+
+  test('prints the live claim in the brief when it is this run\'s, and "None" without one', async () => {
+    const none = await run(['COR-7', '--stdout'], dependencies);
+    expect(none.output).toContain('## Claim\n\nnone');
+    const mine = await run(['COR-7', '--out-dir', sandbox, '--run', 'run-a', '--json'], {
+      ...dependencies,
+      fetch: answer(false, claimComment('run-a', '2026-11-10T11:00:00Z')),
+      now: justNow,
+    });
+    expect(mine.code).toBe(0);
+    const text = readFileSync(join(sandbox, 'COR-7.md'), 'utf8');
+    expect(text).toContain(
+      '## Claim\n\nheld by run run-a on branch cor-7-x since 2026-11-10T09:00:00Z, last checkpoint 2026-11-10T11:00:00Z, head abc1234',
+    );
+    expect(text).toContain(
+      'Checkpoint after every push, with the pushed head: `bun scripts/chef/linear.ts claim COR-7 --run run-a --branch cor-7-x --head <sha>`.',
+    );
+  });
+
+  test("another run's live claim is exit 1 and no brief is written, with or without --run", async () => {
+    const held = {
+      ...dependencies,
+      fetch: answer(false, claimComment('run-a', '2026-11-10T11:00:00Z')),
+      now: justNow,
+    };
+    for (const extra of [['--run', 'run-b'], []]) {
+      const result = await run(['COR-7', '--out-dir', sandbox, ...extra], held);
+      expect(result.code).toBe(1);
+      expect(result.output).toContain('held by run run-a on branch cor-7-x');
+      expect(result.output).toContain('no brief was written');
+    }
+    expect(readdirSync(sandbox)).toEqual([]);
+  });
+
+  test('a released or expired claim does not refuse the brief; --stdout prints a foreign one', async () => {
+    for (const comments of [
+      claimComment('run-a', '2026-11-10T11:00:00Z', 'released'),
+      claimComment('run-a', '2026-11-09T11:59:00Z'),
+    ]) {
+      const result = await run(['COR-7', '--out-dir', sandbox, '--run', 'run-b'], {
+        ...dependencies,
+        fetch: answer(false, comments),
+        now: justNow,
+      });
+      expect(result.code).toBe(0);
+    }
+    const scout = await run(['COR-7', '--stdout', '--run', 'run-b'], {
+      ...dependencies,
+      fetch: answer(false, claimComment('run-a', '2026-11-10T11:00:00Z')),
+      now: justNow,
+    });
+    expect(scout.code).toBe(0);
+    expect(scout.output).toContain('held by run run-a');
   });
 
   const explode = () => {

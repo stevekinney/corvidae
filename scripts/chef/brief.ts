@@ -6,7 +6,7 @@
 //
 // Usage:
 //   bun scripts/chef/brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>]
-//                             [--out-dir <dir>] [--stdout] [--json]
+//                             [--run <id>] [--out-dir <dir>] [--stdout] [--json]
 //
 // It reads the issue with `linear.ts`'s client and writes `<main checkout>/tmp/chef/briefs/<ID>.md`
 // (gitignored; `--out-dir` replaces the directory), or with `--stdout` prints the brief and writes
@@ -23,6 +23,9 @@
 //     the saved boards and return a design-review verdict per row;
 //   - the open blockers: every blocked-by issue whose state type is not `completed`, or "None", or
 //     why the relations could not be read;
+//   - the claim: the issue's newest claim comment (`linear.ts claim`) as one line, or "None". A
+//     live claim by a run other than `--run` (or any live claim, without `--run`) is exit 1 and no
+//     brief is written; `--stdout` still prints it, since a read-only scout takes no claim;
 //   - the files: each `--path`, else the "Files" section, else the path-like code spans in the
 //     description;
 //   - the verification commands: each `--verify`, else the issue's Verification section, else the
@@ -43,9 +46,13 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   type Blocker,
+  claimIsLive,
   createClient,
+  describeClaim,
+  fetchComments,
   fetchIssue,
   type IssueSummary,
+  latestClaim,
   type LinearDependencies,
   LinearError,
   openBlockers,
@@ -354,6 +361,10 @@ export interface BriefOptions {
   model: string;
   /** Omitted when the blockers were not read; the brief then says so instead of "None". */
   blockers?: BlockerRead | undefined;
+  /** `describeClaim`'s line for the issue; omitted when the claim was not read. */
+  claim?: string | undefined;
+  /** The run the dispatch belongs to; another run's live claim refuses the brief. */
+  run?: string | undefined;
 }
 
 /** The "Open blockers" section: never "None" unless the relations were actually read. */
@@ -430,6 +441,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
       '',
     );
   lines.push(...blockerLines(options.blockers));
+  if (options.claim !== undefined) lines.push('## Claim', '', options.claim, '');
   lines.push(...designLines(issue.identifier, fullDescription, execution === undefined));
   lines.push('## Files', '');
   const issueVerification =
@@ -480,9 +492,14 @@ export async function readBrief(
   identifier: string,
   options: BriefOptions,
   dependencies: LinearDependencies = {},
-): Promise<{ identifier: string; text: string; bytes: number }> {
+): Promise<{ identifier: string; text: string; bytes: number; foreignClaim?: string }> {
   const client = createClient(dependencies);
+  const now = (dependencies.now ?? (() => new Date()))();
   const issue = await fetchIssue(client, identifier);
+  const claim = latestClaim(await fetchComments(client, issue.identifier));
+  const claimLine = describeClaim(claim, now);
+  const foreign =
+    claim !== undefined && claimIsLive(claim.marker, now) && claim.marker.run !== options.run;
   let blockers: BlockerRead;
   try {
     blockers = { open: await openBlockers(client, issue.identifier) };
@@ -490,8 +507,19 @@ export async function readBrief(
     if (!(error instanceof LinearError)) throw error;
     blockers = { unreadable: error.message };
   }
-  const text = renderBrief(issue, { ...options, blockers });
-  return { identifier: issue.identifier, text, bytes: Buffer.byteLength(text) };
+  // The worker's one standing duty toward its claim: record each push, so the claim names a head
+  // another run can verify.
+  const checkpoint =
+    claim !== undefined && !foreign && claimIsLive(claim.marker, now)
+      ? `\n\nCheckpoint after every push, with the pushed head: \`bun scripts/chef/linear.ts claim ${issue.identifier} --run ${claim.marker.run} --branch ${claim.marker.branch} --head <sha>\`.`
+      : '';
+  const text = renderBrief(issue, { ...options, blockers, claim: `${claimLine}${checkpoint}` });
+  return {
+    identifier: issue.identifier,
+    text,
+    bytes: Buffer.byteLength(text),
+    ...(foreign ? { foreignClaim: claimLine } : {}),
+  };
 }
 
 export async function writeBrief(
@@ -500,6 +528,10 @@ export async function writeBrief(
   dependencies: LinearDependencies = {},
 ): Promise<BriefResult> {
   const brief = await readBrief(identifier, options, dependencies);
+  if (brief.foreignClaim !== undefined)
+    throw new LinearError(
+      `Refused: ${brief.identifier} is ${brief.foreignClaim}; no brief was written${options.run === undefined ? " (pass --run <id> when the claim is this run's)" : ''}.`,
+    );
   mkdirSync(options.outDirectory, { recursive: true });
   const path = join(options.outDirectory, `${brief.identifier}.md`);
   writeFileSync(path, brief.text);
@@ -512,7 +544,7 @@ export async function run(
   runner: Runner = defaultRunner,
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
-    values: ['out-dir', 'model'],
+    values: ['out-dir', 'model', 'run'],
     repeated: ['path', 'verify'],
     flags: ['json', 'stdout'],
   });
@@ -523,7 +555,7 @@ export async function run(
     !/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(identifier)
   )
     throw new UsageError(
-      'Usage: brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>] [--out-dir <dir>] [--stdout] [--json]',
+      'Usage: brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>] [--run <id>] [--out-dir <dir>] [--stdout] [--json]',
     );
   const stdout = parsed.flags.has('stdout');
   if (stdout && parsed.values['out-dir'] !== undefined)
@@ -532,6 +564,7 @@ export async function run(
     paths: parsed.repeated['path'] ?? [],
     verify: parsed.repeated['verify'] ?? [],
     model: parsed.values['model'] ?? 'Sonnet',
+    ...(parsed.values['run'] === undefined ? {} : { run: parsed.values['run'] }),
   };
   const json = parsed.flags.has('json');
   try {

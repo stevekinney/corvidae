@@ -17,6 +17,30 @@
 //   bun scripts/chef/linear.ts project-read <project> [--json]
 //   bun scripts/chef/linear.ts project-state <project> <State Name> [--json]
 //   bun scripts/chef/linear.ts project-update <project> --health <onTrack|atRisk|offTrack> --file <md> [--json]
+//   bun scripts/chef/linear.ts claim <ID> --run <id> --branch <branch> [--head <sha>] [--json]
+//   bun scripts/chef/linear.ts claim <ID> --release --run <id> [--json]
+//   bun scripts/chef/linear.ts lease <project> --run <id> [--json]
+//   bun scripts/chef/linear.ts lease <project> --release --run <id> [--json]
+//
+// A claim makes "who holds this issue" a checkable fact. `claim` reads the issue's newest claim
+// comment (a comment whose first line is `Claim: run <run>, branch <branch>, since <ISO>,
+// checkpoint <ISO>, head <sha|none>, status <held|released>`), refuses (exit 1, naming the
+// holder) when it is live and another run's, and otherwise writes the claim, in place when it is
+// this run's own (so each checkpoint updates `checkpoint` and `head`, never adds a comment),
+// moves the issue to In Progress, and reads both back. A claim is live while its status is held
+// and its checkpoint is under `claimExpiryHours` (24) old; a holder that stops checkpointing
+// loses it. After writing, it reads the comments again and refuses if another run's claim is
+// newer than its own, so two simultaneous claims leave one holder. `--release` marks this run's
+// claim released in place and changes no state; `<run>` is the chef run's note name, such as
+// 2026-11-10-134500-sdlc-efficiency. `brief.ts` prints the live claim and refuses another run's.
+//
+// A lease does the same for a project: at most one coordinator at a time. The marker is a native
+// project status update (what `project-update` writes, so `project-read` reads it back) whose first
+// line is `Lease: run <run>, since <ISO>, renewed <ISO>, status <held|released>`. `lease` reads the
+// project's newest such update, refuses (exit 1, naming the holder) when it is held and renewed
+// under `leaseExpiryHours` (12) ago by another run, and otherwise posts a held update (running it
+// again is the renewal; `since` is kept). `--release` posts a released one. The update carries the
+// project's current health, so the lease never changes the status the project shows.
 //
 // `read` prints the summary line, the last three comments' first lines, then the full description
 // (`--json` adds it as `description`).
@@ -27,7 +51,7 @@
 //
 // `<project>` is a project id, slug id or exact name; an unknown or ambiguous name is exit 1 naming
 // the candidates. `project-read` prints the project's name, status, the health of its latest
-// update, and its issue counts by state type (completed, started, unstarted, backlog, canceled),
+// update, its lease, and its issue counts by state type (completed, started, unstarted, backlog, canceled),
 // and refuses (exit 1) to report a count it could not read whole. `project-state` resolves the
 // status by name from the workspace's project statuses (a project status, not an issue state),
 // refuses an unknown name listing the available ones, sets it and reads it back.
@@ -57,6 +81,8 @@ export interface LinearDependencies {
   environment?: Record<string, string | undefined>;
   /** Finds the key when the environment lacks it; defaults to `credentials.ts`'s lookup. */
   resolveKey?: () => string | undefined;
+  /** The clock `claim`, `lease` and `brief.ts` judge a marker's age by; defaults to the real one. */
+  now?: () => Date;
 }
 
 export interface LinearClient {
@@ -183,7 +209,10 @@ export interface CommentSummary {
 /** Pages of 100 comments read before `fetchComments` gives up rather than return a partial list. */
 export const commentPageLimit = 100;
 
-async function fetchComments(client: LinearClient, identifier: string): Promise<CommentSummary[]> {
+export async function fetchComments(
+  client: LinearClient,
+  identifier: string,
+): Promise<CommentSummary[]> {
   const comments: CommentSummary[] = [];
   let after: string | null = null;
   for (let page = 0; page < commentPageLimit; page += 1) {
@@ -833,10 +862,15 @@ async function countProjectIssues(
 }
 
 /** The project's name, status, the health of its latest update, and its issue counts by state type. */
-export async function readProject(client: LinearClient, reference: string): Promise<Outcome> {
+export async function readProject(
+  client: LinearClient,
+  reference: string,
+  now: Date = new Date(),
+): Promise<Outcome> {
   const resolved = await resolveProject(client, reference);
   const project = await fetchProject(client, resolved.id);
   const counts = await countProjectIssues(client, resolved.id);
+  const lease = await latestLease(client, resolved.id);
   const health = project.lastUpdate?.health ?? 'none';
   const status = project.status?.name ?? 'none';
   const total = Object.values(counts).reduce((sum, count) => sum + count, 0);
@@ -844,6 +878,7 @@ export async function readProject(client: LinearClient, reference: string): Prom
     ok: true,
     summary: [
       `${project.name}: status=${status} health=${health} issues=${total}`,
+      `  lease: ${describeLease(lease, now)}`,
       `  completed=${counts.completed} started=${counts.started} unstarted=${counts.unstarted} backlog=${counts.backlog} canceled=${counts.canceled}${counts.other > 0 ? ` other=${counts.other}` : ''}`,
     ].join('\n'),
     data: {
@@ -852,6 +887,7 @@ export async function readProject(client: LinearClient, reference: string): Prom
       slugId: project.slugId,
       status,
       health,
+      lease: lease === undefined ? null : { ...lease.marker, live: leaseIsLive(lease.marker, now) },
       issues: total,
       counts,
     },
@@ -917,11 +953,21 @@ export async function postProjectUpdate(
   body: string,
 ): Promise<Outcome> {
   const resolved = await resolveProject(client, reference);
+  return createProjectUpdate(client, resolved, health, body);
+}
+
+/** Posts the update to an already resolved project; no `health` leaves the project's health alone. */
+async function createProjectUpdate(
+  client: LinearClient,
+  resolved: ProjectReference,
+  health: ProjectHealth | undefined,
+  body: string,
+): Promise<Outcome> {
   const created = await client.request<{
     projectUpdateCreate: { success: boolean; projectUpdate: { id: string } | null };
   }>(
     `mutation ProjectUpdateMake($input: ProjectUpdateCreateInput!) { projectUpdateCreate(input: $input) { success projectUpdate { id } } }`,
-    { input: { projectId: resolved.id, health, body } },
+    { input: { projectId: resolved.id, ...(health === undefined ? {} : { health }), body } },
   );
   const id = created.projectUpdateCreate.projectUpdate?.id;
   if (!created.projectUpdateCreate.success || id === undefined)
@@ -944,29 +990,368 @@ export async function postProjectUpdate(
   const update = back.projectUpdate;
   const verified =
     update !== null &&
-    update.health === health &&
+    (health === undefined || update.health === health) &&
     update.project?.id === resolved.id &&
     normalizeMarkdown(update.body) === normalizeMarkdown(body);
   return {
     ok: verified,
     summary: verified
-      ? `${resolved.name}: project update ${id} posted with health ${health} (read back).`
+      ? `${resolved.name}: project update ${id} posted${health === undefined ? '' : ` with health ${health}`} (read back).`
       : `${resolved.name}: project update ${id} read-back mismatch.`,
-    data: { project: resolved.name, updateId: id, health, verified },
+    data: { project: resolved.name, updateId: id, health: health ?? null, verified },
+  };
+}
+
+// Claims and leases -----------------------------------------------------------------------------
+
+/** A claim with no checkpoint for this long is no longer held: its holder is presumed gone. */
+export const claimExpiryHours = 24;
+/** A lease not renewed for this long is no longer held; a coordinator renews at every batch. */
+export const leaseExpiryHours = 12;
+
+const hourMilliseconds = 3_600_000;
+const isoTime = String.raw`\d{4}-\d{2}-\d{2}T[\d:.]+Z`;
+
+/** The line a claim or lease marker is read from: the first non-empty line, escapes removed. */
+function markerLine(body: string): string {
+  const line = (body.split('\n').find((candidate) => candidate.trim() !== '') ?? '').trim();
+  return line.replace(/\\(?=[^A-Za-z0-9\s])/g, '');
+}
+
+function isLive(status: string, since: string, hours: number, now: Date): boolean {
+  const age = now.getTime() - Date.parse(since);
+  return status === 'held' && Number.isFinite(age) && age < hours * hourMilliseconds;
+}
+
+export interface ClaimMarker {
+  run: string;
+  branch: string;
+  since: string;
+  checkpoint: string;
+  /** The branch's last pushed head, or `none` before the first push. */
+  head: string;
+  status: 'held' | 'released';
+}
+
+export function formatClaim(marker: ClaimMarker): string {
+  return `Claim: run ${marker.run}, branch ${marker.branch}, since ${marker.since}, checkpoint ${marker.checkpoint}, head ${marker.head}, status ${marker.status}`;
+}
+
+const claimPattern = new RegExp(
+  String.raw`^Claim: run ([^\s,]+), branch ([^\s,]+), since (${isoTime}), checkpoint (${isoTime}), head (\S+), status (held|released)$`,
+);
+
+/** The claim a comment body opens with, or nothing when its first line is not a claim line. */
+export function parseClaim(body: string): ClaimMarker | undefined {
+  const match = claimPattern.exec(markerLine(body));
+  if (match === null) return undefined;
+  return {
+    run: match[1] as string,
+    branch: match[2] as string,
+    since: match[3] as string,
+    checkpoint: match[4] as string,
+    head: match[5] as string,
+    status: match[6] as 'held' | 'released',
+  };
+}
+
+export function claimIsLive(marker: ClaimMarker, now: Date): boolean {
+  return isLive(marker.status, marker.checkpoint, claimExpiryHours, now);
+}
+
+export interface ClaimRecord {
+  commentId: string;
+  marker: ClaimMarker;
+}
+
+/** The newest claim among `comments` (oldest first, as `fetchComments` returns them). */
+export function latestClaim(comments: CommentSummary[]): ClaimRecord | undefined {
+  for (const comment of comments.toReversed()) {
+    const marker = parseClaim(comment.body);
+    if (marker !== undefined) return { commentId: comment.id, marker };
+  }
+  return undefined;
+}
+
+/** One line saying who holds an issue, for a person or a brief. */
+export function describeClaim(record: ClaimRecord | undefined, now: Date): string {
+  if (record === undefined) return 'none';
+  const { marker } = record;
+  if (marker.status === 'released')
+    return `released by run ${marker.run} (branch ${marker.branch}, checkpoint ${marker.checkpoint})`;
+  if (!claimIsLive(marker, now))
+    return `expired: run ${marker.run} on branch ${marker.branch} last checkpointed ${marker.checkpoint}, over ${claimExpiryHours} hours ago`;
+  return `held by run ${marker.run} on branch ${marker.branch} since ${marker.since}, last checkpoint ${marker.checkpoint}, head ${marker.head}`;
+}
+
+/**
+ * Take, or checkpoint, this run's claim on `identifier`: refuse when another run's claim is live,
+ * write the claim comment (this run's own is updated in place), move the issue to In Progress, and
+ * read back. A claim by another run that landed between the read and the write and is newer than
+ * this one wins, and this call refuses.
+ */
+export async function claimIssue(
+  client: LinearClient,
+  identifier: string,
+  options: { run: string; branch: string; head?: string | undefined },
+  now: Date,
+): Promise<Outcome> {
+  const issue = await fetchIssue(client, identifier);
+  const current = latestClaim(await fetchComments(client, identifier));
+  const refuse = (holder: ClaimRecord | undefined, wrote = false): Outcome => ({
+    ok: false,
+    summary: `Refused: ${identifier} is ${describeClaim(holder, now)}; ${wrote ? "this run's claim comment was written first and is superseded, and the state was not changed" : 'nothing was changed'}.`,
+    data: { identifier, claimed: false, holder: holder?.marker.run ?? null },
+  });
+  if (
+    current !== undefined &&
+    current.marker.run !== options.run &&
+    claimIsLive(current.marker, now)
+  )
+    return refuse(current);
+  const own = current?.marker.run === options.run ? current : undefined;
+  const held = own !== undefined && own.marker.status === 'held';
+  const marker: ClaimMarker = {
+    run: options.run,
+    branch: options.branch,
+    since: held ? own.marker.since : now.toISOString(),
+    checkpoint: now.toISOString(),
+    head:
+      options.head ??
+      (own !== undefined && own.marker.branch === options.branch ? own.marker.head : 'none'),
+    status: 'held',
+  };
+  const body = `${formatClaim(marker)}\n\nWritten by scripts/chef/linear.ts claim; the first line is the record. Update it with the same command at each checkpoint, release it with --release.`;
+  const written =
+    own === undefined
+      ? await postComment(client, identifier, body)
+      : await updateComment(client, identifier, own.commentId, body);
+  if (!written.ok) return written;
+  const after = latestClaim(await fetchComments(client, identifier));
+  if (after?.marker.run !== options.run) return refuse(after, true);
+  const state =
+    issue.state.name === 'In Progress'
+      ? undefined
+      : await setState(client, identifier, 'In Progress');
+  if (state !== undefined && !state.ok) return state;
+  return {
+    ok: true,
+    summary: `${identifier}: claimed by run ${options.run} on branch ${options.branch}, head ${marker.head}, In Progress (read back).`,
+    data: { identifier, claimed: true, ...marker, state: 'In Progress' },
+  };
+}
+
+/** Mark this run's claim on `identifier` released in place; the issue's state is not touched. */
+export async function releaseClaim(
+  client: LinearClient,
+  identifier: string,
+  runId: string,
+  now: Date,
+): Promise<Outcome> {
+  const current = latestClaim(await fetchComments(client, identifier));
+  if (current === undefined || current.marker.run !== runId)
+    return {
+      ok: false,
+      summary: `Refused: ${identifier} has no claim by run ${runId}; it is ${describeClaim(current, now)}.`,
+      data: { identifier, released: false, holder: current?.marker.run ?? null },
+    };
+  if (current.marker.status === 'released')
+    return {
+      ok: true,
+      summary: `${identifier}: the claim by run ${runId} was already released.`,
+      data: { identifier, released: true },
+    };
+  const marker: ClaimMarker = {
+    ...current.marker,
+    checkpoint: now.toISOString(),
+    status: 'released',
+  };
+  const written = await updateComment(
+    client,
+    identifier,
+    current.commentId,
+    `${formatClaim(marker)}\n\nReleased by scripts/chef/linear.ts claim --release.`,
+  );
+  if (!written.ok) return written;
+  return {
+    ok: true,
+    summary: `${identifier}: claim by run ${runId} released (read back).`,
+    data: { identifier, released: true },
+  };
+}
+
+export interface LeaseMarker {
+  run: string;
+  since: string;
+  renewed: string;
+  status: 'held' | 'released';
+}
+
+export function formatLease(marker: LeaseMarker): string {
+  return `Lease: run ${marker.run}, since ${marker.since}, renewed ${marker.renewed}, status ${marker.status}`;
+}
+
+const leasePattern = new RegExp(
+  String.raw`^Lease: run ([^\s,]+), since (${isoTime}), renewed (${isoTime}), status (held|released)$`,
+);
+
+/** The lease a project update body opens with, or nothing when its first line is not a lease line. */
+export function parseLease(body: string): LeaseMarker | undefined {
+  const match = leasePattern.exec(markerLine(body));
+  if (match === null) return undefined;
+  return {
+    run: match[1] as string,
+    since: match[2] as string,
+    renewed: match[3] as string,
+    status: match[4] as 'held' | 'released',
+  };
+}
+
+export function leaseIsLive(marker: LeaseMarker, now: Date): boolean {
+  return isLive(marker.status, marker.renewed, leaseExpiryHours, now);
+}
+
+interface LeaseRecord {
+  updateId: string;
+  marker: LeaseMarker;
+}
+
+/** The newest lease marker among all of the project's updates. */
+async function latestLease(
+  client: LinearClient,
+  projectId: string,
+): Promise<LeaseRecord | undefined> {
+  // Every page, newest or not, so the answer does not depend on the order Linear lists them in.
+  const updates = await collectPages<{ id: string; body: string; createdAt: string }>(
+    'project updates',
+    async (after) => {
+      const data = await client.request<{
+        project: {
+          projectUpdates: PagedNodes<{ id: string; body: string; createdAt: string }>;
+        } | null;
+      }>(
+        `query ProjectUpdates($id: String!, $after: String) { project(id: $id) { projectUpdates(first: 50, after: $after, orderBy: createdAt) { nodes { id body createdAt } pageInfo { hasNextPage endCursor } } } }`,
+        { id: projectId, after },
+      );
+      if (data.project === null || data.project === undefined)
+        throw new LinearError(`No project ${projectId}.`);
+      return data.project.projectUpdates;
+    },
+  );
+  const newest = updates.toSorted((a, b) => b.createdAt.localeCompare(a.createdAt));
+  for (const update of newest) {
+    const marker = parseLease(update.body);
+    if (marker !== undefined) return { updateId: update.id, marker };
+  }
+  return undefined;
+}
+
+/** The health of the project's latest update, so a lease update never changes the health it shows. */
+async function inheritedHealth(
+  client: LinearClient,
+  projectId: string,
+): Promise<ProjectHealth | undefined> {
+  const project = await fetchProject(client, projectId);
+  const health = project.lastUpdate?.health;
+  return health !== null && health !== undefined && isProjectHealth(health) ? health : undefined;
+}
+
+function describeLease(record: LeaseRecord | undefined, now: Date): string {
+  if (record === undefined) return 'none';
+  const { marker } = record;
+  if (marker.status === 'released') return `released by run ${marker.run} at ${marker.renewed}`;
+  if (!leaseIsLive(marker, now))
+    return `expired: run ${marker.run} last renewed ${marker.renewed}, over ${leaseExpiryHours} hours ago`;
+  return `held by run ${marker.run} since ${marker.since}, renewed ${marker.renewed}`;
+}
+
+/** Take or renew this run's lease on the project; refuse while another run's is live. */
+export async function leaseProject(
+  client: LinearClient,
+  reference: string,
+  runId: string,
+  now: Date,
+): Promise<Outcome> {
+  const resolved = await resolveProject(client, reference);
+  const current = await latestLease(client, resolved.id);
+  const refuse = (holder: LeaseRecord | undefined, wrote = false): Outcome => ({
+    ok: false,
+    summary: `Refused: ${resolved.name} lease is ${describeLease(holder, now)}; ${wrote ? "this run's lease update was posted first and is superseded" : 'nothing was changed'}.`,
+    data: { project: resolved.name, leased: false, holder: holder?.marker.run ?? null },
+  });
+  if (current !== undefined && current.marker.run !== runId && leaseIsLive(current.marker, now))
+    return refuse(current);
+  const kept = current?.marker.run === runId && current.marker.status === 'held';
+  const marker: LeaseMarker = {
+    run: runId,
+    since: kept ? current.marker.since : now.toISOString(),
+    renewed: now.toISOString(),
+    status: 'held',
+  };
+  const written = await createProjectUpdate(
+    client,
+    resolved,
+    await inheritedHealth(client, resolved.id),
+    `${formatLease(marker)}\n\nWritten by scripts/chef/linear.ts lease. Run it again to renew, with --release to end it.`,
+  );
+  if (!written.ok) return written;
+  const after = await latestLease(client, resolved.id);
+  if (after?.updateId !== written.data['updateId']) return refuse(after, true);
+  return {
+    ok: true,
+    summary: `${resolved.name}: lease held by run ${runId} since ${marker.since}, renewed ${marker.renewed} (read back).`,
+    data: { project: resolved.name, leased: true, ...marker },
+  };
+}
+
+/** End this run's lease on the project; refuse when another run holds it or none is recorded. */
+export async function releaseLease(
+  client: LinearClient,
+  reference: string,
+  runId: string,
+  now: Date,
+): Promise<Outcome> {
+  const resolved = await resolveProject(client, reference);
+  const current = await latestLease(client, resolved.id);
+  if (current === undefined || current.marker.run !== runId)
+    return {
+      ok: false,
+      summary: `Refused: ${resolved.name} has no lease held by run ${runId}; it is ${describeLease(current, now)}.`,
+      data: { project: resolved.name, released: false, holder: current?.marker.run ?? null },
+    };
+  if (current.marker.status === 'released')
+    return {
+      ok: true,
+      summary: `${resolved.name}: the lease of run ${runId} was already released.`,
+      data: { project: resolved.name, released: true },
+    };
+  const written = await createProjectUpdate(
+    client,
+    resolved,
+    await inheritedHealth(client, resolved.id),
+    `${formatLease({ ...current.marker, renewed: now.toISOString(), status: 'released' })}\n\nReleased by scripts/chef/linear.ts lease --release.`,
+  );
+  if (!written.ok) return written;
+  return {
+    ok: true,
+    summary: `${resolved.name}: lease of run ${runId} released (read back).`,
+    data: { project: resolved.name, released: true },
   };
 }
 
 interface Parsed {
   positionals: string[];
   options: Map<string, string>;
+  flags: Set<string>;
   json: boolean;
 }
 
 function parse(argv: string[], names: string[]): Parsed {
-  const parsed = parseOptions(argv.slice(1), { values: names, flags: ['json'] });
+  const parsed = parseOptions(argv.slice(1), { values: names, flags: ['json', 'release'] });
   return {
     positionals: parsed.positionals,
     options: new Map(Object.entries(parsed.values)),
+    flags: parsed.flags,
     json: parsed.flags.has('json'),
   };
 }
@@ -1001,7 +1386,7 @@ export async function run(
   const command = argv[0];
   if (command === undefined)
     throw new UsageError(
-      'Name a command: read, state, comment, append, create, blockers, block, project-read, project-state or project-update.',
+      'Name a command: read, state, comment, append, create, blockers, block, project-read, project-state, project-update, claim or lease.',
     );
   const known = [
     'read',
@@ -1014,6 +1399,8 @@ export async function run(
     'project-read',
     'project-state',
     'project-update',
+    'claim',
+    'lease',
   ];
   if (!known.includes(command)) throw new UsageError(`Unknown command ${command}.`);
   const parsed = parse(argv, [
@@ -1026,11 +1413,23 @@ export async function run(
     'by',
     'update',
     'health',
+    'run',
+    'branch',
+    'head',
   ]);
   if (command !== 'comment' && parsed.options.has('update'))
     throw new UsageError('--update applies only to comment.');
   if (command !== 'project-update' && parsed.options.has('health'))
     throw new UsageError('--health applies only to project-update.');
+  const claimLike = command === 'claim' || command === 'lease';
+  if (!claimLike && parsed.flags.has('release'))
+    throw new UsageError('--release applies only to claim and lease.');
+  for (const name of ['run', 'branch', 'head'])
+    if (parsed.options.has(name) && !(claimLike && (name === 'run' || command === 'claim')))
+      throw new UsageError(
+        `--${name} applies only to ${name === 'run' ? 'claim and lease' : 'claim'}.`,
+      );
+  const now = (dependencies.now ?? (() => new Date()))();
   // Validate the arguments before any request, so a usage mistake never costs a network call.
   let plan: (client: LinearClient) => Promise<Outcome>;
   if (command === 'read') {
@@ -1068,7 +1467,7 @@ export async function run(
     plan = (client) => listBlockers(client, id as string);
   } else if (command === 'project-read') {
     const [project] = identifierArgument(parsed, 1);
-    plan = (client) => readProject(client, project as string);
+    plan = (client) => readProject(client, project as string, now);
   } else if (command === 'project-state') {
     const [project, name] = identifierArgument(parsed, 2);
     plan = (client) => setProjectState(client, project as string, name as string);
@@ -1086,6 +1485,36 @@ export async function run(
         `The project update lacks the count line${missing.length === 1 ? '' : 's'}: ${missing.join(' ')}`,
       );
     plan = (client) => postProjectUpdate(client, project as string, health, body);
+  } else if (command === 'claim' || command === 'lease') {
+    const [target] = identifierArgument(parsed, 1);
+    const runId = required(parsed, 'run');
+    if (!/^[\w.-]+$/.test(runId))
+      throw new UsageError(`--run needs a run id such as 2026-11-10-134500-name, not "${runId}".`);
+    const release = parsed.flags.has('release');
+    if (command === 'lease') {
+      plan = (client) =>
+        release
+          ? releaseLease(client, target as string, runId, now)
+          : leaseProject(client, target as string, runId, now);
+    } else if (release) {
+      if (parsed.options.has('branch') || parsed.options.has('head'))
+        throw new UsageError('--release takes no --branch or --head.');
+      plan = (client) => releaseClaim(client, target as string, runId, now);
+    } else {
+      const branch = required(parsed, 'branch');
+      if (!/^[^\s,]+$/.test(branch))
+        throw new UsageError(`--branch cannot hold whitespace or a comma: "${branch}".`);
+      const head = parsed.options.get('head');
+      if (head !== undefined && !/^[0-9a-f]{7,40}$/.test(head))
+        throw new UsageError(`--head needs a commit sha, not "${head}".`);
+      plan = (client) =>
+        claimIssue(
+          client,
+          target as string,
+          { run: runId, branch, ...(head === undefined ? {} : { head }) },
+          now,
+        );
+    }
   } else {
     const [id] = identifierArgument(parsed, 1);
     const by = required(parsed, 'by');

@@ -6,6 +6,7 @@ import {
   citationFindings,
   citationsIn,
   descriptionByteLimit,
+  designRowLimit,
   draftComment,
   isBlocking,
   parseSections,
@@ -335,6 +336,59 @@ describe('the description size limit', () => {
     expect(readyFindings(goodBody + preamble)).toEqual([]);
     const unlinked = `\n## Shared programme text\n\n${'y'.repeat(20_000)}\n`;
     expect(codes(readyFindings(goodBody + unlinked))).toEqual(['description-too-large']);
+  });
+});
+
+describe('the design row limit', () => {
+  const rows = (count: number) =>
+    Array.from({ length: count }, (_, index) => `- **${10 + index}a**: row ${index}.`).join('\n');
+  const canvas = 'https://claude.ai/artifact/GDeC387KnFkpSQoLz86jLw';
+
+  test('an issue naming a canvas with more rows than the limit must be split by board', () => {
+    const findings = readyFindings(
+      `${goodBody}\n\nCanvas: ${canvas}\n\n${rows(designRowLimit + 1)}\n`,
+    );
+    expect(codes(findings)).toEqual(['design-rows-too-many']);
+    expect(isBlocking(findings[0]!)).toBe(true);
+    expect(findings[0]?.message).toContain(`${designRowLimit + 1} design rows`);
+    expect(findings[0]?.message).toContain(`limit of ${designRowLimit}`);
+    expect(findings[0]?.message).toContain('Split it by board');
+  });
+
+  test('a "Design source" section without a canvas link counts the same', () => {
+    const body = `${goodBody}\n\n## Design source\n\n${rows(designRowLimit + 1)}\n`;
+    expect(codes(readyFindings(body))).toEqual(['design-rows-too-many']);
+  });
+
+  test('exactly the limit passes, and rows without a design source are not counted', () => {
+    expect(readyFindings(`${goodBody}\n\nCanvas: ${canvas}\n\n${rows(designRowLimit)}\n`)).toEqual(
+      [],
+    );
+    expect(readyFindings(`${goodBody}\n\n${rows(designRowLimit + 20)}\n`)).toEqual([]);
+  });
+
+  test('the run command reports it as a blocking finding for the issue', async () => {
+    const body = `${goodBody}\n\nCanvas: ${canvas}\n\n${rows(designRowLimit + 5)}\n`;
+    const result = await run(['ready', '--issue', 'COR-1', '--json'], {
+      fetch: async () =>
+        new Response(
+          JSON.stringify({
+            data: {
+              issue: {
+                identifier: 'COR-1',
+                title: 'Big design issue',
+                description: body,
+                updatedAt: '2026-11-11T00:00:00Z',
+                state: { name: 'Backlog', type: 'backlog' },
+              },
+            },
+          }),
+        ),
+      environment: { LINEAR_API_KEY: 'lin_api_test_value' },
+      repository: () => repositoryView(),
+    });
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('design-rows-too-many');
   });
 });
 

@@ -13,13 +13,15 @@
 //        "Open questions", a description over `descriptionByteLimit` (after shared programme text is
 //        replaced by its link, as `brief.ts` does), and every repository path, test file name and
 //        `bun run` script the description cites in a code span resolved against `origin/main`
-//        (`citationFindings` says what it can and cannot resolve). Default state: Backlog. Labels and native blockers are not read here;
+//        (`citationFindings` says what it can and cannot resolve), and an issue naming a design (a
+//        canvas link or a "Design source" section) with more than `designRowLimit` rows, to be
+//        split by board. Default state: Backlog. Labels and native blockers are not read here;
 //        `linear.ts blockers <ID>` still gates promotion.
 //
 // Exit codes: 0 no blocking findings (advisory template-shape notes do not count), 1 blocking findings, 2 invalid
 // usage, 3 Linear unavailable.
 
-import { stripShared } from './brief.ts';
+import { designLinks, designRowIds, stripShared } from './brief.ts';
 import { createClient, LinearError, type LinearClient, type LinearDependencies } from './linear.ts';
 import {
   defaultRunner,
@@ -243,7 +245,12 @@ export function readyFindings(description: string | null): Finding[] {
       code: 'verification-no-commands',
       message: 'Verification holds no commands in code spans.',
     });
-  return [...findings, ...markerFindings(description, sections), ...sizeFindings(description)];
+  return [
+    ...findings,
+    ...markerFindings(description, sections),
+    ...sizeFindings(description),
+    ...designRowFindings(description),
+  ];
 }
 
 // Size and citations ----------------------------------------------------------------------------
@@ -263,6 +270,32 @@ function sizeFindings(description: string): Finding[] {
     {
       code: 'description-too-large',
       message: `The description is ${bytes} bytes, over the limit of ${descriptionByteLimit}. Split the issue, move shared programme text to a linked document (a "Shared programme text" section holding its link), and apply revisions in place.`,
+    },
+  ];
+}
+
+/**
+ * The most design rows one issue may carry before `ready` asks for a split by board. Chosen from
+ * the COR issues that carry rows (2026-11-11, rows counted as `brief.ts` `designRowIds` does):
+ * 62 of 71 completed issues carry 1 to 9 rows; then 39 (COR-2015, Done), and 73, 81, 112, 121,
+ * 122, 147, 191 and 204 (all Done) and the four open ones at 149, 171, 175 and 176 (COR-2022,
+ * COR-2020, COR-2017, COR-2021, all In Progress). A board is about 20 rows (COR-2021: 188 rows
+ * over nine boards), and 30 sits between the 9-row ceiling of the issues that shipped as one unit
+ * and the 39-row one.
+ */
+export const designRowLimit = 30;
+
+function designRowFindings(description: string): Finding[] {
+  const text = stripShared(description).text;
+  const namesDesign =
+    designLinks(text).length > 0 || /^#{1,6}\s+design\s+(?:source|rows?)\b/im.test(text);
+  if (!namesDesign) return [];
+  const rows = designRowIds(text).length;
+  if (rows <= designRowLimit) return [];
+  return [
+    {
+      code: 'design-rows-too-many',
+      message: `The issue carries ${rows} design rows, over the limit of ${designRowLimit}. Split it by board, one issue per board, each with its own rows as acceptance criteria, before it is Ready.`,
     },
   ];
 }

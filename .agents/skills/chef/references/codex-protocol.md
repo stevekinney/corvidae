@@ -2,7 +2,7 @@
 
 The same delivery sequence as the Claude Code workflow `.claude/workflows/deliver-issue.js`, run by hand from Codex. Work one issue at a time, at most two implementation workers at once (AGENTS.md "Parallel runs").
 
-1. Brief. `bun scripts/chef/brief.ts <ID> --json` writes `tmp/chef/briefs/<ID>.md`. Stop as blocked when it lists an open blocker.
+1. Brief. `bun scripts/chef/brief.ts <ID> --run <run> --json` writes `tmp/chef/briefs/<ID>.md`. Stop as blocked when it lists an open blocker.
 2. Implement. Start the `chef-worker` agent from `.codex/agents/chef-worker.toml`, in its own worktree, pointed at the brief file only. It runs `bun scripts/chef/focused-checks.ts`, pushes its branch, and returns ready-for-review, blocked, or needs-decision, with the head. It delivers as the brief's Delivery rule says; steps 3 to 6 are the pull request path.
 3. Review. Start the `chef-reviewer` agent from `.codex/agents/chef-reviewer.toml` against the diff at that head. It returns approve or the blocking findings.
 4. One correction. On blocked, send the findings to a `chef-worker` in the same worktree. It runs `bun scripts/chef/focused-checks.ts`, pushes once, and returns the new head. Review that head again. A second blocked verdict is needs-decision for the owner.
