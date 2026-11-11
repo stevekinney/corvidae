@@ -11,6 +11,8 @@
     StepInfo,
     ToolApprovalReceiptRecord,
   } from '../utilities/types.ts';
+  import type { ChatTurnLabels } from './turn-labels.ts';
+  import type { ChatTurnState } from './turn-state.ts';
 
   export type ChatMessageProps = Omit<HTMLAttributes<HTMLElement>, 'class'> & {
     /** The message to render */
@@ -175,6 +177,25 @@
     sourcesExpanded?: boolean | undefined;
     /** Called when the source list's disclosure is toggled. */
     onsourcestoggle?: (() => void) | undefined;
+    /**
+     * Where this assistant turn stands (COR-2283), as the host knows it. A `reconnecting` turn reads
+     * muted with no caret, under a warning with Retry now and a bar that drains until the next try;
+     * a `stopped` one carries a neutral pill with Discard and Continue; a `failed` one a danger alert
+     * that says the answer is incomplete, why, and what Retry keeps; an `empty` one a dashed row in
+     * place of its line, with its time and Try again. Left out, the turn streams while text arrives
+     * and is complete after. Ignored on a message that is not the assistant's.
+     */
+    turnState?: ChatTurnState | undefined;
+    /** The words of the turn's outcome, any of which the host can replace. */
+    turnLabels?: Partial<ChatTurnLabels> | undefined;
+    /** Called with this message's id when the person chooses Retry now on a reconnecting turn. Retry now shows only when this is set. */
+    onRetryConnection?: ((messageId: string) => void) | undefined;
+    /** Called with this message's id when the person chooses Continue on a stopped turn. Continue shows only when this is set. */
+    onContinueTurn?: ((messageId: string) => void) | undefined;
+    /** Called with this message's id when the person chooses Discard on a stopped turn. Discard shows only when this is set; the host removes the turn. */
+    onDiscardTurn?: ((messageId: string) => void) | undefined;
+    /** Called with this message's id when the person chooses Retry on a failed turn or Try again on an empty one. Each shows only when this is set. */
+    onRetryTurn?: ((messageId: string) => void) | undefined;
   };
 
   const escapeHtml = (value: string): string =>
@@ -191,18 +212,25 @@
     getMessageText,
   } from '../utilities/utilities.ts';
   import {
+    Alert,
+    Badge,
     Button,
+    Callout,
     CircleAlert,
     Copy,
     CopyButton,
     Pencil,
     Popover,
+    Progress,
     Quote,
     RefreshCw,
     RotateCcw,
+    WifiOff,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import MessageSources from './message-sources.svelte';
+  import { resolveTurnLabels } from './turn-labels.ts';
+  import { effectiveTurnState, presentTurnState, reconnectWaitFraction } from './turn-state.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
@@ -260,9 +288,32 @@
     sourcePresentation = 'compact',
     sourcesExpanded = $bindable(false),
     onsourcestoggle,
+    turnState,
+    turnLabels,
+    onRetryConnection,
+    onContinueTurn,
+    onDiscardTurn,
+    onRetryTurn,
     tabindex,
     ...rest
   }: ChatMessageProps = $props();
+
+  // Where this turn stands (COR-2283). Only an assistant turn takes the host's state; every other
+  // message streams or is complete as Chat sees it.
+  const turn = $derived(
+    effectiveTurnState(
+      message.role === 'assistant' ? turnState : undefined,
+      streaming,
+      isStreamingMessage(message),
+    ),
+  );
+  const turnPresentation = $derived(presentTurnState(turn));
+  const turnWords = $derived(resolveTurnLabels(turnLabels));
+  // Text arrives with a caret only in a state that draws one: a reconnecting turn's partial text
+  // stops where it is, muted, until the stream comes back.
+  const contentStreaming = $derived(streaming && turnPresentation.caret);
+  // A turn that draws its own stop (the pill or the alert) leaves out a stop note the run left too.
+  const turnOwnsStop = $derived(turn.kind === 'stopped' || turn.kind === 'failed');
 
   // Quote state. The rendered text of an assistant message is quotable; the
   // parts renderer's wrapper around the markdown body carries
@@ -272,12 +323,14 @@
     message.role === 'assistant' && onQuote !== undefined && getMessageText(message).trim() !== '',
   );
 
-  // Regenerate. Only a finished assistant answer that the host can write again offers it.
+  // Regenerate. Only a finished assistant answer that the host can write again offers it; a
+  // stopped, failed or empty turn offers its own recovery instead.
   const canRegenerate = $derived(
     message.role === 'assistant' &&
       onRegenerate !== undefined &&
       !streaming &&
-      !isStreamingMessage(message),
+      !isStreamingMessage(message) &&
+      turnPresentation.regenerate,
   );
 
   function regenerateMessage(): void {
@@ -510,7 +563,7 @@
     deriveMessageParts(message, {
       toolCallPair: toolPair ?? undefined,
       overrideContent,
-      streaming,
+      streaming: contentStreaming,
       expanded,
       approvalStates,
       approvalResolutionInFlightIds,
@@ -541,12 +594,17 @@
   // The agent's instructions open the transcript as muted text, folded to one line by default.
   const systemRow = $derived(transcript && message.role === 'system');
   let systemOpen = $state(false);
-  // In the transcript a run's notes are rows of their own under the message, not lines inside its bubble.
-  const noteParts = $derived(transcript ? messageParts.filter((part) => part.type === 'note') : []);
-  const bodyParts = $derived(
-    messageParts.filter((part) => part.type !== 'image' && !(transcript && part.type === 'note')),
+  const shownParts = $derived(
+    turnOwnsStop
+      ? messageParts.filter((part) => !(part.type === 'note' && part.kind === 'stopped'))
+      : messageParts,
   );
-  const imageParts = $derived(messageParts.filter((part) => part.type === 'image'));
+  // In the transcript a run's notes are rows of their own under the message, not lines inside its bubble.
+  const noteParts = $derived(transcript ? shownParts.filter((part) => part.type === 'note') : []);
+  const bodyParts = $derived(
+    shownParts.filter((part) => part.type !== 'image' && !(transcript && part.type === 'note')),
+  );
+  const imageParts = $derived(shownParts.filter((part) => part.type === 'image'));
   const copyHtml = $derived.by(() => {
     const body = `<div data-cinder-chat-message style="white-space: pre-wrap">${escapeHtml(textContent)}</div>`;
     const attachmentChips = imageParts
@@ -723,10 +781,132 @@
   </div>
 {/snippet}
 
+{#snippet retryConnectionAction()}
+  <Button
+    type="button"
+    class="chat-turn-action"
+    size="xs"
+    variant="secondary"
+    onclick={() => onRetryConnection?.(message.id)}
+  >
+    {turnWords.retryNow}
+  </Button>
+{/snippet}
+
+{#snippet retryTurnAction()}
+  <Button
+    type="button"
+    class="chat-turn-action"
+    size="xs"
+    variant="secondary"
+    onclick={() => onRetryTurn?.(message.id)}
+  >
+    {turnWords.retry}
+  </Button>
+{/snippet}
+
+{#snippet reconnectingIcon()}
+  <WifiOff aria-hidden="true" />
+{/snippet}
+
+<!-- What a turn that has not simply finished says on itself (COR-2283), with the controls that
+     recover it. A streaming or complete turn draws nothing here. -->
+{#snippet turnOutcome()}
+  {#if turn.kind === 'reconnecting'}
+    <div class="chat-turn-outcome" data-kind="reconnecting">
+      <Callout
+        variant="warning"
+        semantic="note"
+        class="chat-turn-callout"
+        icon={reconnectingIcon}
+        {...onRetryConnection ? { action: retryConnectionAction } : {}}
+      >
+        <span class="chat-turn-text" dir="auto">
+          {turnWords.reconnecting(turn.attempt, turn.attempts, turn.nextTryIn)}
+        </span>
+        <Progress
+          class="chat-turn-wait"
+          value={Math.round(reconnectWaitFraction(turn) * 100)}
+          max={100}
+          size="sm"
+          ariaLabel={turnWords.nextTry}
+          label={`${turn.nextTryIn} s`}
+        />
+      </Callout>
+    </div>
+  {:else if turn.kind === 'stopped'}
+    <div class="chat-turn-outcome chat-turn-row" data-kind="stopped">
+      <Badge variant="neutral" size="sm" class="chat-turn-pill">{turnWords.stopped}</Badge>
+      {#if onDiscardTurn || onContinueTurn}
+        <!-- Secondary on the left, primary on the right. -->
+        <span class="chat-turn-actions">
+          {#if onDiscardTurn}
+            <Button
+              type="button"
+              class="chat-turn-action"
+              size="xs"
+              variant="secondary"
+              onclick={() => onDiscardTurn(message.id)}
+            >
+              {turnWords.discard}
+            </Button>
+          {/if}
+          {#if onContinueTurn}
+            <Button
+              type="button"
+              class="chat-turn-action"
+              size="xs"
+              variant="primary"
+              onclick={() => onContinueTurn(message.id)}
+            >
+              {turnWords.continue}
+            </Button>
+          {/if}
+        </span>
+      {/if}
+    </div>
+  {:else if turn.kind === 'failed'}
+    <div class="chat-turn-outcome" data-kind="failed">
+      <Alert
+        variant="danger"
+        heading={turnWords.incomplete}
+        class="chat-turn-alert"
+        {...onRetryTurn ? { actions: retryTurnAction } : {}}
+      >
+        <span class="chat-turn-text chat-turn-cause" dir="auto">{turn.cause}</span>
+        <span class="chat-turn-text chat-turn-keeps" dir="auto">
+          {turn.keeps ?? turnWords.retryKeeps}
+        </span>
+      </Alert>
+    </div>
+  {:else if turn.kind === 'empty'}
+    <div class="chat-turn-outcome chat-turn-row chat-turn-empty" data-kind="empty">
+      <span class="chat-turn-text" dir="auto" role="status">{turnWords.empty}</span>
+      {#if createdAtValue && formattedCreatedAt}
+        <time class="chat-turn-time" datetime={createdAtValue}>{formattedCreatedAt}</time>
+      {/if}
+      {#if onRetryTurn}
+        <span class="chat-turn-actions">
+          <Button
+            type="button"
+            class="chat-turn-action"
+            size="xs"
+            variant="secondary"
+            onclick={() => onRetryTurn(message.id)}
+          >
+            {turnWords.tryAgain}
+          </Button>
+        </span>
+      {/if}
+    </div>
+  {/if}
+{/snippet}
+
 <div
   class={classNames('chat-message-wrapper', className)}
   data-presentation={transcript ? 'transcript' : undefined}
   data-streaming={streaming || undefined}
+  data-turn-state={turn.kind === 'complete' ? undefined : turn.kind}
   data-role={message.role}
   data-hidden={message.hidden || undefined}
   data-failed={isFailed || undefined}
@@ -885,10 +1065,15 @@
     {/if}
   </article>
 
+  {#if !isEditing}
+    {@render turnOutcome()}
+  {/if}
+
   {#if transcript}
     <!-- A reply that is unfinished (streaming now, or its stream dropped and is reconnecting) has no
-         line under it yet: no time, Copy or Quote until it ends. -->
-    {#if !isEditing && !systemRow && !streaming && !isStreamingMessage(message)}
+         line under it yet: no time, Copy or Quote until it ends. A stopped or failed turn has its
+         line again, and an empty one has none, because its row carries its time. -->
+    {#if !isEditing && !systemRow && turnPresentation.line}
       {@render transcriptLine()}
     {/if}
     {#if noteParts.length > 0}
@@ -898,7 +1083,7 @@
     {/if}
   {/if}
 
-  {#if hasMetadata && !transcript}
+  {#if hasMetadata && !transcript && turn.kind !== 'empty'}
     <div class="chat-message-metadata">
       {#if createdAtValue && formattedCreatedAt}
         <time datetime={createdAtValue}>{formattedCreatedAt}</time>
@@ -1847,7 +2032,8 @@
 
   /* A streaming reply ends in a caret, not three dots, and the caret sits at the end of the last
    * line of text, never on a line of its own: it is drawn after the last block of the rendered
-   * Markdown, or after the raw tail that has not been rendered yet. */
+   * Markdown, or after the raw tail that has not been rendered yet. The caret is a 2 px bar in the
+   * accent colour (COR-2283, R2). */
   .chat-message-wrapper[data-presentation='transcript'] :global(.chat-message-streaming-progress) {
     display: none;
   }
@@ -1862,11 +2048,11 @@
     :global(.message-content-streaming[data-streaming-tail] .message-content-tail::after) {
     content: '';
     display: inline-block;
-    inline-size: 0.5em;
+    inline-size: 2px;
     block-size: 1.05em;
     margin-inline-start: 0.125em;
     vertical-align: text-bottom;
-    background: var(--cinder-text-default);
+    background: var(--cinder-accent-solid);
     animation: chat-message-caret 1.1s steps(1) infinite;
   }
 
@@ -1924,5 +2110,91 @@
   .chat-message-system-toggle:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
+  }
+
+  /* ----------------------------------------
+   * Run outcomes on the turn (COR-2283)
+   *
+   * A turn that has not simply finished says so on itself, under its text, with the controls that
+   * recover it: a warning while the stream reconnects, a neutral pill on a stopped turn, a danger
+   * alert on one that failed partway, and a dashed row on one that finished with no answer.
+   * ---------------------------------------- */
+
+  /* A reconnecting turn's partial text reads muted: it may not be the final answer yet. */
+  .chat-message-wrapper[data-turn-state='reconnecting'] .chat-message-body {
+    color: var(--cinder-text-muted);
+  }
+
+  /* An empty answer has no text, so its turn takes no room above the row that says so. */
+  .chat-message-wrapper[data-turn-state='empty'] .chat-message {
+    padding-block: 0;
+  }
+
+  .chat-turn-outcome {
+    inline-size: 100%;
+    min-inline-size: 0;
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    text-align: start;
+  }
+
+  .chat-turn-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .chat-turn-text {
+    display: block;
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
+    text-align: start;
+  }
+
+  .chat-turn-row .chat-turn-text {
+    flex: 1 1 12rem;
+  }
+
+  .chat-turn-actions {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-inline-start: auto;
+  }
+
+  .chat-turn-outcome :global(.chat-turn-wait) {
+    margin-block-start: var(--cinder-space-2);
+  }
+
+  .chat-turn-outcome :global(.chat-turn-action) {
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: none;
+    padding-inline: var(--cinder-space-3);
+  }
+
+  /* An empty answer is a dashed, neutral row in the transcript: the words, the turn's time and
+   * Try again. */
+  .chat-turn-empty {
+    box-sizing: border-box;
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border: 1px dashed var(--cinder-border);
+    border-radius: var(--cinder-radius-md);
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-turn-time {
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+
+  /* Coarse pointers get full-size targets for the recovery controls. */
+  @media (pointer: coarse) {
+    .chat-turn-outcome :global(.chat-turn-action) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 </style>
