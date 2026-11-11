@@ -14,6 +14,7 @@ import { afterAll, expect, test } from 'bun:test';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assertCliDispatches } from './cli-dispatch.test-support.ts';
 
 import { MemoryStorage } from '@lostgradient/storage';
 import { createMemoryAssetStorage } from '../../../../packages/bureau/src/assets/storage.ts';
@@ -41,6 +42,7 @@ const build = await runWithHangGuard([
 ]);
 if (build.exitCode !== 0) throw new Error(build.stderr.toString());
 
+const dispatches: string[] = [];
 const requests: Array<{ method?: string; params?: Record<string, unknown> }> = [];
 let failAppend = false;
 let failMemoryWrite = false;
@@ -54,12 +56,15 @@ const server = Bun.serve({
   port: 0,
   async fetch(request) {
     const url = new URL(request.url);
-    if (url.pathname === '/bureau/assets/asset-1/content')
+    if (url.pathname === '/bureau/assets/asset-1/content') {
+      dispatches.push(`${request.method} ${url.pathname}`);
       return new Response(bytes, { headers: { 'content-type': 'application/octet-stream' } });
+    }
     if (url.pathname.endsWith('/content'))
       return Response.json({ message: 'obsolete route' }, { status: 404 });
     const body = (await request.json()) as { method?: string; params?: Record<string, unknown> };
     requests.push(body);
+    dispatches.push(body.method ?? `${request.method} ${new URL(request.url).pathname}`);
     const params = body.params ?? {};
     const method = body.method;
     if (
@@ -266,11 +271,15 @@ const bobAsset = await realRpc('BOB_KEY', 'bureau.assets.uploads.complete', {
   uploadId: bobUploadId,
 });
 const bobAssetId = String(bobAsset['assetId']);
-const invoke = (arguments_: string[], variables: Record<string, string> = {}) =>
-  runWithHangGuard([executable, ...arguments_], {
+const invoke = async (arguments_: string[], variables: Record<string, string> = {}) => {
+  const start = dispatches.length;
+  const result = await runWithHangGuard([executable, ...arguments_], {
     cwd: directory,
     env: { PATH: '', HOME: directory, ...variables },
   });
+  assertCliDispatches(arguments_, dispatches.slice(start));
+  return result;
+};
 async function invokeWithInterrupt(
   arguments_: string[],
 ): Promise<{ exitCode: number | null; stdout: Buffer; stderr: Buffer }> {

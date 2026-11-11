@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { executeCliWithDispatchAssertions as executeCli } from './cli-dispatch.test-support.ts';
 
-import { executeCli, parseCliArguments } from './cli-client.ts';
+import { parseCliArguments } from './cli-client.ts';
 
 function sse(...events: Record<string, unknown>[]): Response {
   const body = events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join('');

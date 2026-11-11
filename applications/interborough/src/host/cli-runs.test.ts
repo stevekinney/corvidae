@@ -1,6 +1,7 @@
 import { describe, expect, test } from 'bun:test';
+import { executeCliWithDispatchAssertions as executeCli } from './cli-dispatch.test-support.ts';
 
-import { executeCli, parseCliArguments } from './cli-client.ts';
+import { parseCliArguments } from './cli-client.ts';
 
 function jsonRpc(method: string, result: unknown): Response {
   return Response.json({ jsonrpc: '2.0', id: method, result });

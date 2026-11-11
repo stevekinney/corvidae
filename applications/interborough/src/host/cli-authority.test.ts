@@ -6,6 +6,7 @@ import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { mkdtemp, readFile, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { executeCliWithDispatchAssertions as executeCli } from './cli-dispatch.test-support.ts';
 
 import { afterEach, describe, expect, test } from 'bun:test';
 
@@ -16,7 +17,7 @@ import {
   createBarrierAgents,
 } from '../../tests/e2e/barrier-agent.ts';
 import { request, requestBytes, stream } from './cli-client-transport.ts';
-import { executeCli, parseCliArguments } from './cli-client.ts';
+import { parseCliArguments } from './cli-client.ts';
 import { enableDemoPlugin } from './demo-plugin-home.ts';
 import { startHost, type Host, type HostOptions } from './host.ts';
 

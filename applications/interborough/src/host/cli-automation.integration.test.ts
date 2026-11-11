@@ -3,6 +3,7 @@ import { afterAll, expect, test } from 'bun:test';
 import { mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { assertCliDispatches } from './cli-dispatch.test-support.ts';
 
 const directory = await mkdtemp(join(tmpdir(), 'interborough-cli-automation-'));
 const executable = join(directory, 'interborough');
@@ -51,6 +52,7 @@ const build = await runWithHangGuard([
 ]);
 if (build.exitCode !== 0) throw new Error(build.stderr.toString());
 
+const dispatches: string[] = [];
 const requests: Array<{ method?: string; params?: Record<string, unknown> }> = [];
 const server = Bun.serve({
   hostname: '127.0.0.1',
@@ -58,6 +60,7 @@ const server = Bun.serve({
   async fetch(request) {
     const body = (await request.json()) as { method?: string; params?: Record<string, unknown> };
     requests.push(body);
+    dispatches.push(body.method ?? `${request.method} ${new URL(request.url).pathname}`);
     const params = body.params ?? {};
     const required =
       body.method === 'bureau.schedules.create'
@@ -118,8 +121,15 @@ const server = Bun.serve({
   },
 });
 const environment = { PATH: '', HOME: directory, NODE_ENV: 'production' };
-const invoke = (arguments_: string[]) =>
-  runWithHangGuard([executable, ...arguments_], { cwd: directory, env: environment });
+const invoke = async (arguments_: string[]) => {
+  const start = dispatches.length;
+  const result = await runWithHangGuard([executable, ...arguments_], {
+    cwd: directory,
+    env: environment,
+  });
+  assertCliDispatches(arguments_, dispatches.slice(start));
+  return result;
+};
 afterAll(async () => {
   server.stop(true);
   await rm(directory, { recursive: true, force: true });

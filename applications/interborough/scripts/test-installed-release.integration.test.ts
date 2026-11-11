@@ -1,9 +1,11 @@
-import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
+import { outcomeOf, rethrow } from '@lostgradient/testing/module-scope-scenario';
+import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, test } from 'bun:test';
 import { chmod, mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { buildRelease } from './build-release.ts';
 import { validateInspection, validateInstalledUi } from './test-installed-release-browser.ts';
 import { mcp, runFixtureAgent } from './test-installed-release-transport.ts';
 import {
@@ -30,6 +32,105 @@ const spawnedChild = await (async () => {
   await probe.process.exited;
   return { stdout, stderr, output: probe.output(), errorOutput: probe.errorOutput?.() };
 })();
+
+const defaultProcessOutcome = await outcomeOf(async () => {
+  const root = await mkdtemp(join(tmpdir(), 'installed-release-default-process-'));
+  const executable = join(root, 'bin', 'interborough');
+  try {
+    await mkdir(join(root, 'share/interborough/plugin-runtime/node_modules'), {
+      recursive: true,
+    });
+    await mkdir(join(root, 'bin'), { recursive: true });
+    await writeFile(
+      executable,
+      '#!/bin/sh\necho "Interborough is listening on http://127.0.0.1:43124"\n',
+    );
+    await chmod(executable, 0o755);
+    expect(
+      await throwingRejectionOf(
+        runInstalled(executable, root, false, 0, undefined, {
+          waitForHttp: async () => {
+            throw new Error('fixture startup ended');
+          },
+        }),
+      ),
+    ).toThrow('fixture startup ended');
+    expect(await Bun.file(join(root, 'home/plugins/installed-fixture/plugin.ts')).exists()).toBe(
+      true,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const commandSeamOutcome = await outcomeOf(async () => {
+  const root = await mkdtemp(join(tmpdir(), 'installed-release-command-seam-'));
+  const executable = join(root, 'bin', 'interborough');
+  const home = join(root, 'home');
+  try {
+    await mkdir(join(root, 'bin'), { recursive: true });
+    await writeFile(
+      executable,
+      '#!/bin/sh\necho "Interborough is listening on http://127.0.0.1:43125"\nsleep 30\n',
+    );
+    await chmod(executable, 0o755);
+    expect(
+      await throwingRejectionOf(
+        runInstalled(executable, root, false, 0, home, {
+          waitForListening: async () => ({ port: 43125, text: 'ready' }),
+          waitForHttp: async (url) =>
+            new Response(
+              url.endsWith('/')
+                ? '<script src="/app.js"></script><link rel="stylesheet" href="/app.css">'
+                : 'ok',
+            ),
+          fetch: async () => new Response('ok', { status: 200 }),
+          assertBrowser: async () => undefined,
+          runCommand: async () => ({ exitCode: 1, stdout: '', stderr: 'fixture command failed' }),
+        }),
+      ),
+    ).toThrow('Installed CLI status exited 1');
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+const packagedJourneyOutcome = await outcomeOf(async () => {
+  const root = await mkdtemp(join(tmpdir(), 'installed-release-packaged-coverage-'));
+  const output = join(root, 'release');
+  try {
+    const archive = await buildRelease(['--version', '0.0.0-coverage', '--outdir', output]);
+    const evidence = await runInstalledRelease([
+      '--archive',
+      archive,
+      '--evidence',
+      join(root, 'evidence'),
+    ]);
+    const payload = await Bun.file(evidence).json();
+    expect(payload.assertions[0].details.manifest.sourceSha).toBeString();
+    const authorityUrls: string[] = [];
+    const failure = new Error('intentional authority cleanup probe');
+    expect(
+      await rejectionOf(
+        runInstalledRelease(['--archive', archive, '--evidence', join(root, 'failure-evidence')], {
+          runInstalled: (executable, prefix, relocated, port, home) =>
+            runInstalled(executable, prefix, relocated, port, home, {
+              failAfterAuthority: (urls) => {
+                authorityUrls.push(...urls);
+                throw failure;
+              },
+            }),
+        }),
+      ),
+    ).toBe(failure);
+    expect(authorityUrls).toHaveLength(2);
+    for (const url of authorityUrls) {
+      expect(await rejectionOf(fetch(url))).toBeInstanceOf(Error);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+}, 240_000);
 
 describe('installed-release harness arguments', () => {
   test('accepts archive mode and resolves the archive path', () => {
@@ -247,7 +348,11 @@ describe('installed-release harness arguments', () => {
               recursive: true,
             });
             await writeFile(executable, 'fixture');
-            return { executable, sha256: 'fixture-hash' };
+            return {
+              executable,
+              sha256: 'fixture-hash',
+              manifest: { sourceSha: 'fixture-source' },
+            };
           },
           runInstalled: async (executable, prefix, relocated) => {
             await mkdir(`${prefix}/home/plugins`, { recursive: true });
@@ -265,7 +370,7 @@ describe('installed-release harness arguments', () => {
     }
   });
 
-  // spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
+  // spawn-free: injected process and HTTP readiness failure prevent all real process execution.
   test('propagates readiness failures through the process seam', async () => {
     const root = await mkdtemp(join(tmpdir(), 'installed-release-process-seam-'));
     const process = {
@@ -296,40 +401,16 @@ describe('installed-release harness arguments', () => {
     }
   });
 
-  // spawn-free: a one-line shell fixture runs through the default spawn and the journey fails at readiness before the CLI stage.
-  test('creates the real fixture and exercises the default process spawn', async () => {
-    const root = await mkdtemp(join(tmpdir(), 'installed-release-default-process-'));
-    const executable = join(root, 'bin', 'interborough');
-    try {
-      await mkdir(join(root, 'share/interborough/plugin-runtime/node_modules'), {
-        recursive: true,
-      });
-      await mkdir(join(root, 'bin'), { recursive: true });
-      await writeFile(
-        executable,
-        '#!/bin/sh\necho "Interborough is listening on http://127.0.0.1:43124"\n',
-      );
-      await chmod(executable, 0o755);
-      expect(
-        await throwingRejectionOf(
-          runInstalled(executable, root, false, 0, undefined, {
-            waitForHttp: async () => {
-              throw new Error('fixture startup ended');
-            },
-          }),
-        ),
-      ).toThrow('fixture startup ended');
-      expect(await Bun.file(join(root, 'home/plugins/installed-fixture/plugin.ts')).exists()).toBe(
-        true,
-      );
-    } finally {
-      await rm(root, { recursive: true, force: true });
-    }
-  });
+  test('creates the real fixture and exercises the default process spawn', () =>
+    rethrow(defaultProcessOutcome));
 
-  // spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
+  test('drives the installed CLI branch through the command seam and cleans up failures', () =>
+    rethrow(commandSeamOutcome));
+
+  // spawn-free: process, commands, transport, browser, and readiness are all deterministic stubs.
   test('drives the full installed lifecycle through deterministic operations', async () => {
     const root = await mkdtemp(join(tmpdir(), 'installed-release-full-seam-'));
+    const executable = join(root, 'bin', 'interborough');
     const marker = join(root, 'tool-marker.txt');
     const process = {
       exitCode: null,
@@ -373,18 +454,30 @@ describe('installed-release harness arguments', () => {
       return response({}, 200);
     };
     try {
-      await runInstalled('/bin/true', root, false, 43123, root, {
+      const runCommand = async (_executable: string, arguments_: readonly string[]) => {
+        const json = arguments_.includes('--output') && !arguments_.includes('bash');
+        return {
+          exitCode: 0,
+          stdout: json ? JSON.stringify({ schemaVersion: 1, data: {} }) : '',
+          stderr: '',
+        };
+      };
+      await runInstalled(executable, root, false, 43123, root, {
         spawn: () => probe,
         waitForListening: async () => ({ port: 43123, text: 'listening' }),
         waitForHttp: async () => response('<script src="/app.js"></script><link href="/app.css">'),
         fetch: fetcher,
         assertBrowser: async () => undefined,
+        runCommand,
       });
       expect(await Bun.file(marker).text()).toBe('fixture-owned-dependency');
     } finally {
       await rm(root, { recursive: true, force: true });
     }
   });
+
+  test('covers the packaged CLI journey in the coverage-eligible harness', () =>
+    rethrow(packagedJourneyOutcome));
 
   test('rejects a missing or mixed mode', () => {
     for (const arguments_ of [

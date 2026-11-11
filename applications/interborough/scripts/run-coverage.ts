@@ -1,8 +1,10 @@
 import { $ } from 'bun';
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import {
+  combineEnvironmentCoverage,
   coverageTestArguments,
   discoverCoverageTestFiles,
   UI_COVERAGE_DIRECTORY,
@@ -16,6 +18,15 @@ if (testFiles.length === 0) {
   console.error('No coverage test files were discovered.');
   process.exit(1);
 }
+
+// Host tests require the native environment, while browser tests install DOM globals.
+const hostCoverageDirectory = 'coverage/host';
+await rm(join(packageRoot, hostCoverageDirectory), { recursive: true, force: true });
+const hostRun =
+  await $`TZ=UTC bun --config=./bunfig.toml test ${TEST_TIMEOUT_ARGUMENT} --coverage --coverage-reporter=lcov --coverage-dir=${hostCoverageDirectory} src/host fixtures`
+    .cwd(packageRoot)
+    .nothrow();
+if (hostRun.exitCode !== 0) process.exit(hostRun.exitCode);
 
 // Deliberately NOT `--parallel`. `bun test --parallel` implies `--isolate`,
 // giving each test file a fresh module registry. When a
@@ -47,4 +58,14 @@ const run =
   await $`TZ=UTC bun --config=./bunfig.ui.toml test ${TEST_TIMEOUT_ARGUMENT} --conditions browser --conditions svelte --coverage --coverage-reporter=lcov --coverage-dir=${UI_COVERAGE_DIRECTORY} ${testArguments}`
     .cwd(packageRoot)
     .nothrow();
+if (run.exitCode === 0) {
+  const reportPath = join(packageRoot, UI_COVERAGE_DIRECTORY, 'lcov.info');
+  await Bun.write(
+    reportPath,
+    combineEnvironmentCoverage(
+      await Bun.file(reportPath).text(),
+      await Bun.file(join(packageRoot, hostCoverageDirectory, 'lcov.info')).text(),
+    ),
+  );
+}
 process.exit(run.exitCode);

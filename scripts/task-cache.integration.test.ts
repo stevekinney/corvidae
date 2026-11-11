@@ -878,6 +878,26 @@ test('every test lane that bypasses the JUnit wrapper goes through a runner that
   }
 });
 
+test("Interborough's coverage gate measures both environments without a duplicate host run", async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  expect(configuration.tasks['@lostgradient/interborough#test:coverage'].dependsOn).toEqual([
+    'transit',
+  ]);
+  expect(configuration.tasks['@lostgradient/interborough#test:coverage'].inputs).toContain(
+    '$TURBO_ROOT$/scripts/test-deadlines.ts',
+  );
+  expect(configuration.tasks['@lostgradient/interborough#test:coverage'].inputs).toContain(
+    '$TURBO_ROOT$/testing/testing/src/hang-guard.ts',
+  );
+  const runner = await Bun.file(
+    join(root, 'applications/interborough/scripts/run-coverage.ts'),
+  ).text();
+  expect(runner).toContain('--config=./bunfig.toml test');
+  expect(runner).toContain('src/host fixtures');
+  expect(runner).toContain('--config=./bunfig.ui.toml test');
+  expect(runner).toContain('combineEnvironmentCoverage(');
+});
+
 test('the root self-tests are keyed on the workspace files they validate', async () => {
   // `scripts/workspace-contract.integration.test.ts` reads every workspace manifest and TypeScript configuration,
   // but a root task hashes only root files by default, so without these inputs a manifest-only

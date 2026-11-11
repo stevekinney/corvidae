@@ -629,6 +629,11 @@
     },
     "@lostgradient/interborough#test:coverage": {
       "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts"
+      ],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
     },
