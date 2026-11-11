@@ -382,7 +382,7 @@ describe('a type the Bureau registers for itself', () => {
       WORKFLOW_COPY.internal.types.agentRun.title,
     );
     expect(testId(root, 'workflow-description')?.textContent).toBe(
-      WORKFLOW_COPY.internal.types.agentRun.description,
+      WORKFLOW_COPY.page.internalSummaryByType.agentRun,
     );
     const line = testId(root, 'workflow-line-built-in');
     expect(line?.textContent).toContain(WORKFLOW_COPY.page.header.builtIn);
@@ -1318,5 +1318,44 @@ describe.each(['local', 'remote'] as const)('the details of a workflow on a %s h
           : `${STUB_WORKFLOW_DIRECTORY}/digest.json`,
       ),
     );
+  });
+});
+
+describe('a workflow’s page while its type loads', () => {
+  test('shows its title, its tabs without counts, and its actions off, from the route alone', async () => {
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stub = installWorkflowWorld(
+      emptyWorld({
+        definitions: [sourceDefinition('digest', { signals: ['approve'] })],
+        files: [readyFile('digest')],
+      }),
+    );
+    const file = stub.world.files[0];
+    stub.on('bureau.workflows.get', async () => {
+      await gate;
+      return file;
+    });
+    router.navigate('/workflows/digest', { replace: true });
+    const { container, getByRole } = render(RouteOutletHarness, {
+      props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
+    } as never);
+
+    await waitFor(() => expect(page(container)).not.toBeNull());
+    const root = page(container) as HTMLElement;
+    expect(root.querySelector('h1')?.textContent).toContain('digest');
+    // The tabs are there with no count, because a count waits for data.
+    expect([...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim())).toEqual(
+      [TABS.overview, TABS.code, TABS.runs, TABS.history],
+    );
+    expect(getByRole('button', { name: WORKFLOW_COPY.page.startAction })).toBeDisabled();
+    expect(testId(root, 'workflow-overview')).toBeNull();
+
+    release();
+    const loaded = await ready(container);
+    expect(getByRole('link', { name: WORKFLOW_COPY.page.startAction })).not.toBeNull();
+    expect(testId(loaded, 'workflow-overview')).not.toBeNull();
   });
 });

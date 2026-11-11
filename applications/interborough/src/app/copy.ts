@@ -900,6 +900,10 @@ export const WORKFLOW_COPY = {
     /** The body of an internal workflow's Overview. */
     internalOverview:
       'Interborough starts this workflow itself each time it is needed. You can watch its runs, but not start, edit or pause it.',
+    /** The one sentence under the title of an internal workflow, where the page says it shorter than the list does. */
+    internalSummaryByType: {
+      agentRun: 'Runs an agent for a chat or a schedule.',
+    },
     /** The body of the Overview of Chat with an agent, the one internal type whose use is known. */
     internalOverviewByType: {
       agentRun:

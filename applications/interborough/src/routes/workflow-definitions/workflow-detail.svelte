@@ -41,6 +41,7 @@
     connectionBannerPreset,
     getConnection,
   } from '../../app/connection.svelte.ts';
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
@@ -418,11 +419,20 @@
       : copy.page.internalOverview;
   });
   /** What the workflow is for: an internal one in Interborough's words, else the file's or the engine's. */
-  const summary = $derived(internal?.description ?? description);
+  const summary = $derived.by(() => {
+    const short = copy.page.internalSummaryByType;
+    if (engineType && Object.hasOwn(short, type)) return short[type as keyof typeof short];
+    return internal?.description ?? description;
+  });
   /** The title: an internal workflow's in words, a file's own, else the identifier. */
   const ownTitle = $derived(file?.title?.trim() ?? '');
   const heading = $derived(internal?.title ?? (ownTitle === '' ? type : ownTitle));
   const titled = $derived(heading !== type);
+  // The trail reads "Workflows › Release notes": the title, once it is known, in place of the identifier.
+  usePageLabel(() => ({
+    path: workflowTypePath(type),
+    label: resolved === undefined ? undefined : heading,
+  }));
 
   /** The newest run, `undefined` until the engine has said. */
   const lastRun = $derived(headline.data === undefined ? undefined : headline.data.newest);
