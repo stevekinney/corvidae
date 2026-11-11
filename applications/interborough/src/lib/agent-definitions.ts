@@ -234,6 +234,16 @@ const detailSchema = z.object({
     .nullable()
     // The Bureau always sends it. A stub that predates the key reads as a file agent.
     .default(null),
+  /**
+   * The size in bytes of each reference document a ready file agent read, in the order its
+   * `references` lists them (COR-2020), for lines such as "Refund policy.md 4 KB"; `null` for a
+   * code agent, a file with no references, and a file that is not ready.
+   */
+  referenceSizes: z
+    .array(z.object({ path: z.string(), size: z.number() }))
+    .nullable()
+    // A stub that predates the key reads as an agent whose sizes are not known.
+    .default(null),
 });
 
 /** One agent as `bureau.agents.definitions.get` shows it. */

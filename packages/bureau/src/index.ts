@@ -121,6 +121,7 @@ export type {
   AgentCodeDefinition,
   AgentFileDetail,
   AgentListing,
+  AgentReferenceSize,
   AgentToolDescription,
   AgentUnavailability,
 } from './agent-file-catalog';

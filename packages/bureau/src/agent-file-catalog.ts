@@ -185,6 +185,32 @@ export interface AgentFileDetail extends AgentListing {
   readonly text: string | null;
   /** What the frontmatter and body parse to, or `null` when the file does not parse. */
   readonly definition: AgentFileDefinition | null;
+  /**
+   * COR-2020 — the size of each reference document the agent read, in the order its `references`
+   * lists them, so an editor can show "Refund policy.md 4 KB". Absent for a code agent, a file with
+   * no references, and a file that is not ready, whose documents were not all read.
+   */
+  readonly referenceSizes?: readonly AgentReferenceSize[] | undefined;
+}
+
+/** COR-2020 — one reference document of a ready file agent, and how large it is. */
+export interface AgentReferenceSize {
+  /** The path the agent file's `references` names, relative to the agent file's directory. */
+  readonly path: string;
+  /** The byte length of the document's text, encoded as UTF-8: what a run of the agent reads. */
+  readonly size: number;
+}
+
+const referenceSizeEncoder = new TextEncoder();
+
+/** The size of each document `documents` holds, in their order. */
+function referenceSizesOf(
+  documents: readonly AgentReferenceDocument[],
+): readonly AgentReferenceSize[] {
+  return documents.map(({ path, content }) => ({
+    path,
+    size: referenceSizeEncoder.encode(content).byteLength,
+  }));
 }
 
 /** One tool of the deployment's tool catalog, by the name an agent file uses. */
@@ -1730,7 +1756,14 @@ export function createAgentFileCatalog(options: AgentFileCatalogOptions): AgentF
             entry = unreadable(id, error, revision);
           }
         }
-        return { ...toListing(entry), text: text ?? null, definition: entry.definition ?? null };
+        return {
+          ...toListing(entry),
+          text: text ?? null,
+          definition: entry.definition ?? null,
+          ...(entry.problem !== undefined || entry.documents === undefined
+            ? {}
+            : { referenceSizes: referenceSizesOf(entry.documents) }),
+        };
       }
     },
 

@@ -109,6 +109,31 @@ describe('the interceptors list', () => {
   });
 });
 
+describe('the reference document sizes (COR-2020)', () => {
+  test('get reads the size of each document, and null for an agent with none', async () => {
+    const sizes = [
+      { path: 'refund-policy.md', size: 4096 },
+      { path: 'shipping-zones.txt', size: 215_040 },
+    ];
+    stub = installBureauStub({
+      'bureau.agents.definitions.get': () => readyAgent({ referenceSizes: sizes }),
+    });
+    const detail = await getAgentDefinition('researcher');
+    expect(detail.referenceSizes).toEqual(sizes);
+    stub.restore();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => readyAgent() });
+    const plain = await getAgentDefinition('researcher');
+    expect(plain.referenceSizes).toBeNull();
+  });
+
+  test('get reads an agent from a Bureau that predates the field as having no sizes', async () => {
+    const { referenceSizes: _omitted, ...older } = readyAgent();
+    stub = installBureauStub({ 'bureau.agents.definitions.get': () => older });
+    const read = await getAgentDefinition('researcher');
+    expect(read.referenceSizes).toBeNull();
+  });
+});
+
 describe('the default effort', () => {
   test('get reads the effort a file sets, and null for a file that sets none', async () => {
     stub = installBureauStub({

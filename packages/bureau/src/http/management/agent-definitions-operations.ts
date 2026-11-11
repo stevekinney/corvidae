@@ -259,6 +259,14 @@ const agentDetailSchema = agentListingSchema.extend({
   /** A code-defined agent's own statement of itself; `null` for a file agent. */
   codeDefinition: codeDefinitionSchema.nullable(),
   text: z.string().nullable(),
+  /**
+   * The size in bytes of each reference document a ready file agent read, in the order its
+   * `references` lists them (COR-2020); `null` for a code agent, a file with no references, and a
+   * file that is not ready.
+   */
+  referenceSizes: z
+    .array(z.object({ path: z.string(), size: z.number().int().nonnegative() }))
+    .nullable(),
 });
 
 /**
@@ -489,6 +497,10 @@ function detailView(host: BureauAgentDefinitionsOperationHost, detail: AgentFile
     codeDefinition:
       detail.codeDefinition === undefined ? null : codeDefinitionView(detail.codeDefinition),
     text: detail.text,
+    referenceSizes:
+      detail.referenceSizes === undefined
+        ? null
+        : detail.referenceSizes.map((entry) => ({ path: entry.path, size: entry.size })),
   };
 }
 
@@ -885,7 +897,7 @@ export const agentDefinitionsGetOperation = defineOperation<
   mcpExposable: false,
   summary: 'Read one agent definition',
   description:
-    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only, with a code agent’s saved overrides in force applied (`bureau.agents.overrides.get` reads them apart): its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `card`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
+    'Returns one agent: whether it is `ready`, `invalid` (with the `problem` that makes it so), or `unavailable` (a code agent of a disabled plugin, with the `unavailable` reason, such as `Plugin Demo is disabled`, and the `plugin`; it can be read and duplicated, and no run can start on it), whether it opts into A2A (`a2a`: the handler’s `a2a` allowlist for a code-defined agent, its own file for a persisted one; an invalid file never opts in, even when its `a2a` key says so), its `definitionRevision` (`null` for an invalid file), and, for a file, its `hash`, exact `text`, and parsed `definition`. A ready file agent with reference documents also has `referenceSizes`, each document’s `path` and its `size` in bytes (its text as UTF-8), in the order its `references` lists them; it is `null` for a code agent, a file with no references, and a file that is not ready. An editor writes a change back with `expectedHash` set to `hash`. A code-defined agent has `source: "code"`, no hash, no `text`, and no `definition`; its `codeDefinition` is what the agent states about itself, read-only, with a code agent’s saved overrides in force applied (`bureau.agents.overrides.get` reads them apart): its `instructions`, its `model` (`<provider>/<model>`, `null` for a scripted or routed agent) and the `models` a session may switch to, its `tools` and executable `skills` by name, and its `card`. A file agent has `codeDefinition: null`. Requires `bureau.agents:read` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`.',
   destructive: false,
   tags: ['Agents'],
   inputSchema: getInput,

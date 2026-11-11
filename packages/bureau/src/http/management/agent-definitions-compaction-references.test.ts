@@ -159,6 +159,80 @@ describe('compaction and references on the definition operations', () => {
   });
 });
 
+describe('the sizes of an agent’s reference documents (COR-2020)', () => {
+  const byteLength = (text: string) => new TextEncoder().encode(text).byteLength;
+
+  it('shows each document’s size in bytes, in the order the file lists them', async () => {
+    const served = await serve();
+    const zones = 'Zone A: 2 days. Zoné B: 5 days.\n';
+    const refunds = 'Refund within 30 days.\n';
+    await served.put('zones.txt', zones);
+    await served.put('refunds.md', refunds);
+    await served.put(
+      'support.md',
+      `---\nmodel: ${DEFINITION.model}\nreferences: [zones.txt, refunds.md]\n---\nBody.\n`,
+    );
+    await served.bureau.agents.refresh();
+
+    const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'support' });
+    expect(got.result?.['referenceSizes']).toEqual([
+      { path: 'zones.txt', size: byteLength(zones) },
+      { path: 'refunds.md', size: byteLength(refunds) },
+    ]);
+  });
+
+  it('follows an edit to a document and drops a document an update removes', async () => {
+    const served = await serve();
+    await served.put('zones.txt', 'Short.\n');
+    await served.put('refunds.md', 'Refund within 30 days.\n');
+    await served.put(
+      'support.md',
+      `---\nmodel: ${DEFINITION.model}\nreferences: [zones.txt, refunds.md]\n---\nBody.\n`,
+    );
+    await served.bureau.agents.refresh();
+    const longer = 'Zone A ships in two days, and Zone B in five.\n';
+    await served.put('zones.txt', longer);
+    await served.bureau.agents.refresh();
+    const edited = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'support' });
+    expect(edited.result?.['referenceSizes']).toEqual([
+      { path: 'zones.txt', size: byteLength(longer) },
+      { path: 'refunds.md', size: byteLength('Refund within 30 days.\n') },
+    ]);
+
+    // Removing a document is an update of `references`, fenced on the file's hash like any other.
+    const stale = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'support',
+      expectedHash: 'not-the-hash',
+      definition: { model: DEFINITION.model, references: ['zones.txt'], instructions: 'Body.\n' },
+    });
+    expect(stale.error?.data?.httpStatus).toBe(409);
+    const removed = await callAs(served.owner, 'bureau.agents.definitions.update', {
+      id: 'support',
+      expectedHash: edited.result?.['hash'],
+      definition: { model: DEFINITION.model, references: ['zones.txt'], instructions: 'Body.\n' },
+    });
+    expect(removed.error).toBeUndefined();
+    const after = await callAs(served.owner, 'bureau.agents.definitions.get', { id: 'support' });
+    expect(after.result?.['referenceSizes']).toEqual([
+      { path: 'zones.txt', size: byteLength(longer) },
+    ]);
+  });
+
+  it('is null for a file with no references, a file that is not ready, and a code agent', async () => {
+    const served = await serve();
+    await served.put('plain.md', `---\nmodel: ${DEFINITION.model}\n---\nBody.\n`);
+    await served.put(
+      'lost.md',
+      `---\nmodel: ${DEFINITION.model}\nreferences: [gone.md]\n---\nBody.\n`,
+    );
+    await served.bureau.agents.refresh();
+    for (const id of ['plain', 'lost', 'alpha']) {
+      const got = await callAs(served.owner, 'bureau.agents.definitions.get', { id });
+      expect([id, got.result?.['referenceSizes']]).toEqual([id, null]);
+    }
+  });
+});
+
 describe('the versions of an agent with references', () => {
   it('carry each document’s digest and name the key an edit to a document changes', async () => {
     const served = await serve();

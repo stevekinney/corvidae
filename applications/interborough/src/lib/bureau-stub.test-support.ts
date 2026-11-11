@@ -393,6 +393,7 @@ export function readyAgent(overrides: Partial<AgentDetail> = {}): AgentDetail {
       approvals: null,
       instructions: 'You are a careful researcher.',
     },
+    referenceSizes: null,
     ...overrides,
   };
 }
