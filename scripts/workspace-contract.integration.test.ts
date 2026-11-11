@@ -204,7 +204,9 @@ describe('internal workspace architecture', () => {
     const { scripts = {} } = await readManifest('.');
     // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
     // instead of rejoining the queue at every stage.
-    const validationChain = scripts['validate']?.match(/^bun scripts\/run-exclusively\.ts '([^']+)'$/);
+    const validationChain = scripts['validate']?.match(
+      /^bun scripts\/run-exclusively\.ts '([^']+)'$/,
+    );
     const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint:root',

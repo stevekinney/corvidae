@@ -41,14 +41,9 @@ import { acquireHostLock, ownerFileName, type HostLockHolder } from './run-exclu
  */
 const scratchDirectories: string[] = [];
 const processGroups: number[] = [];
-const recordedWorkers: RecordedWorker[] = [];
 
 afterAll(async () => {
   for (const group of processGroups) killGroup(group);
-  const table = readProcessTable();
-  for (const worker of recordedWorkers) {
-    if (table?.get(worker.pid)?.startedAt === worker.startedAt) killGroup(worker.pid);
-  }
   for (const directory of scratchDirectories) await rm(directory, { recursive: true, force: true });
 });
 
@@ -513,10 +508,9 @@ const statusCommandExitsZero = await inScratchDirectory(async (directory) => {
 const workerCommand = '/opt/bun/bin/bun test --test-worker --isolate --timeout=240000';
 
 /** This process plus `entries`, as a mutable table a signal recorder can remove a process from. */
-function tableWith(entries: Record<number, Omit<ProcessEntry, 'processGroup'>>): Map<
-  number,
-  ProcessEntry
-> {
+function tableWith(
+  entries: Record<number, Omit<ProcessEntry, 'processGroup'>>,
+): Map<number, ProcessEntry> {
   const table = new Map(onlyThisProcess());
   for (const [pid, entry] of Object.entries(entries)) {
     table.set(Number(pid), { processGroup: Number(pid), ...entry });
@@ -632,27 +626,31 @@ const killedRunLeavesNoWorkers = await inScratchDirectory(async (directory) => {
   }
   const { wrapper, processGroup, record } = await startPooledRun(
     pool,
-    process.env,
+    rootScriptEnvironment(),
     { bunTestArguments: ['--parallel=2', ...files], command: null, cwd: directory, size: 2 },
     (candidate) => (candidate.workers?.length ?? 0) === 2,
   );
   const workers = record.workers ?? [];
-  recordedWorkers.push(...workers);
-  wrapper.kill('SIGKILL');
-  await wrapper.exited;
-  killGroup(processGroup);
-  await waitUntil(() => !isGroupAlive(processGroup), {
-    message: 'the bun test leader exited',
-  });
   const survivors = () => {
     const table = readProcessTable();
     return workers.filter((worker) => table?.get(worker.pid)?.startedAt === worker.startedAt);
   };
-  expect(survivors()).toHaveLength(2);
-  const lease = await acquireTestSlots(options(pool, 2, 2, { readProcessTable }));
-  expect(survivors()).toEqual([]);
-  await lease.release();
-  expect(await heldSlots(pool)).toBe(0);
+  try {
+    wrapper.kill('SIGKILL');
+    await wrapper.exited;
+    killGroup(processGroup);
+    await waitUntil(() => !isGroupAlive(processGroup), {
+      message: 'the bun test leader exited',
+    });
+    expect(survivors()).toHaveLength(2);
+    const lease = await acquireTestSlots(options(pool, 2, 2, { readProcessTable }));
+    expect(survivors()).toEqual([]);
+    await lease.release();
+    expect(await heldSlots(pool)).toBe(0);
+  } finally {
+    // Each worker leads its own group; only this run's, by pid and start time, are signalled.
+    for (const worker of survivors()) killGroup(worker.pid);
+  }
 });
 
 describe('the pool size', () => {

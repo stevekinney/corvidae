@@ -513,11 +513,10 @@ function heldSlots(poolDirectory: string, self: SlotOwner, taken: number[]): Hel
   let written: Promise<void> = Promise.resolve();
   const write = (next: SlotOwner): Promise<void> => {
     record = next;
-    const writing = written
-      .catch(() => undefined)
-      .then(async () => {
-        await Promise.all(directories.map((directory) => writeSlotOwner(directory, next)));
-      });
+    const writing = (async () => {
+      await written.catch(() => undefined);
+      await Promise.all(directories.map((directory) => writeSlotOwner(directory, next)));
+    })();
     written = writing;
     return writing;
   };
@@ -554,13 +553,17 @@ function trackWorkers(
 ): { start: (leader: number) => void; stop: () => Promise<RecordedWorker[]> } {
   const known = new Map<number, RecordedWorker>();
   const { promise: stopped, resolve: markStopped } = Promise.withResolvers<void>();
-  let running = true;
+  // A property, so the loop sees `stop` set it across its awaits.
+  const tracking = { running: true };
   let loop: Promise<void> = Promise.resolve();
   const refresh = async (leader: number, leaderStartedAt: string | undefined) => {
     const table = read();
     if (table === undefined) return true;
     const entry = table.get(leader);
-    if (entry === undefined || (leaderStartedAt !== undefined && entry.startedAt !== leaderStartedAt))
+    if (
+      entry === undefined ||
+      (leaderStartedAt !== undefined && entry.startedAt !== leaderStartedAt)
+    )
       return false;
     let changed = false;
     for (const worker of testWorkersOf(leader, table)) {
@@ -584,14 +587,14 @@ function trackWorkers(
     start: (leader) => {
       const leaderStartedAt = processStartTime(leader);
       loop = (async () => {
-        while (running && (await refresh(leader, leaderStartedAt))) {
+        while (tracking.running && (await refresh(leader, leaderStartedAt))) {
           const interval = known.size < expected ? 250 : 1000;
           await Promise.race([Bun.sleep(interval), stopped]);
         }
       })();
     },
     stop: async () => {
-      running = false;
+      tracking.running = false;
       markStopped();
       await loop;
       return [...known.values()];
