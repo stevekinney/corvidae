@@ -73,10 +73,16 @@
   // The types Interborough runs itself are counted for the card, and are never rows of the list.
   const engineRows = $derived(rows.filter((row) => row.engine));
   const workflows = $derived(sortListRows(rows.filter((row) => !row.engine)));
-  const codeNames = $derived(workflows.filter((row) => row.kind === 'code').map((row) => row.name));
+  // The types the engine counts for the list: those code registered, and the files the Bureau cannot
+  // use, which it does not count itself.
+  const codeNames = $derived(
+    workflows
+      .filter((row) => row.kind === 'code' || row.file?.state === 'invalid')
+      .map((row) => row.name),
+  );
 
-  // What the engine says of the code-defined types is read apart from the list, because a count
-  // the engine would not give must not hold the rows back.
+  // What the engine says of those types is read apart from the list, because a count the engine
+  // would not give must not hold the rows back.
   const activity = createQuery(
     () => ({
       queryKey: queryKeys.workflowCatalog.activity(codeNames),

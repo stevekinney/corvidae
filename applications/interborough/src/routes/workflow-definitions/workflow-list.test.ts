@@ -229,7 +229,9 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(partsOf(code)).toEqual(['Running', '3 runs in 24 hours']));
     expect(testId(code, 'workflow-last-run')?.textContent).toMatch(/^Started /);
     const asked = stub?.callsTo('weft.workflows.list').map((call) => call.params['type']);
-    expect(new Set(asked)).toEqual(new Set(['order-processing']));
+    // The engine is asked for the code type, and for the file the Bureau cannot count, and for no
+    // other: the types it runs itself and the files the Bureau counts are not asked about.
+    expect(new Set(asked)).toEqual(new Set(['order-processing', 'broken']));
   });
 
   test('says nothing of a code type’s counts or date when the engine would not give them, and never zero or never run', async () => {
@@ -243,7 +245,7 @@ describe('the list of workflows', () => {
     await waitFor(() => expect(rowCount(container)).toBe(4));
     // Wait for the query to settle with nothing to show, not merely for the request: until then the
     // page has no counts either way, and a check made before proves nothing.
-    const activityKey = queryKeys.workflowCatalog.activity(['order-processing']);
+    const activityKey = queryKeys.workflowCatalog.activity(['broken', 'order-processing']);
     await waitFor(() =>
       expect(
         queryClient
@@ -257,6 +259,11 @@ describe('the list of workflows', () => {
     expect(partsOf(code)).toEqual([]);
     expect(code.textContent).not.toContain(WORKFLOW_COPY.list.neverRun);
     expect(code.textContent).not.toContain(WORKFLOW_COPY.list.runs(0));
+    // The file the Bureau cannot use is counted by the engine too, so it is blank here as well,
+    // and not "never run": no count is not zero runs.
+    const broken = row(container, 'broken');
+    expect(testId(broken, 'workflow-last-run')).toBeNull();
+    expect(broken.textContent).not.toContain(WORKFLOW_COPY.list.neverRun);
   });
 
   test('has Can’t load for a file the Bureau cannot use, with its file and its problem under the identifier, and no counts', async () => {
@@ -267,7 +274,10 @@ describe('the list of workflows', () => {
     expect(broken.dataset['state']).toBe('invalid');
     expect(broken.dataset['status']).toBe(WORKFLOW_COPY.list.statusCantLoad);
     expect(broken.textContent).toContain(WORKFLOW_COPY.list.statusCantLoad);
-    expect(testId(broken, 'workflow-last-run')?.textContent).toBe(WORKFLOW_COPY.list.neverRun);
+    // The Bureau does not count it, so the engine's count of its type says it never ran.
+    await waitFor(() =>
+      expect(testId(broken, 'workflow-last-run')?.textContent).toBe(WORKFLOW_COPY.list.neverRun),
+    );
     expect(partsOf(broken)).toEqual(['broken.json', 'The document is not a workflow.']);
     expect(testId(broken, 'workflow-problem')?.textContent).toContain(
       'The document is not a workflow.',

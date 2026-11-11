@@ -60,12 +60,6 @@
   list-style: none;
 }
 
-.ib-workflows__empty-guide {
-  margin: 0;
-  color: var(--cinder-text-secondary);
-  overflow-wrap: anywhere;
-}
-
 .ib-workflows__engine-note {
   margin: 0 0 var(--cinder-space-2);
   color: var(--cinder-text-muted);
@@ -101,11 +95,6 @@
   font-weight: 600;
   overflow-wrap: anywhere;
   text-decoration: none;
-}
-
-/* In the list, the name is a line of its own that ends with an ellipsis (Cinder's `Text`). */
-.ib-workflow-row__name {
-  display: block;
 }
 
 .ib-workflow-name:hover {

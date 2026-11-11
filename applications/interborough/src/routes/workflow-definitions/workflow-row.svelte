@@ -43,7 +43,7 @@
   {/snippet}
   {#snippet title()}
     {#if model.title === null}
-      <code class="ib-workflow-row__id ib-workflow-row__id--alone">{model.name}</code>
+      <code class="ib-workflow-row__id">{model.name}</code>
     {:else}
       {model.title}
       <code class="ib-identifier" data-testid="workflow-identifier">{model.name}</code>

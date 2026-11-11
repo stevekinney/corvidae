@@ -205,9 +205,42 @@ describe('a row of the list', () => {
     const model = workflowListRow(row, undefined, NOW, ZONE);
     expect(model.statusWord).toBe("Can't load");
     expect(model.title).toBeNull();
-    expect(model.date).toBe(WORKFLOW_COPY.list.neverRun);
     expect(textsOf(model.line)).toEqual(['order-refund.json', 'The document is not a workflow.']);
     expect(model.line[1]?.testId).toBe('workflow-problem');
+  });
+
+  test('says when a file the Bureau cannot use last ran only from the engine’s count of its type, and leaves the edge blank until it has one or when it would not give one', () => {
+    const [row] = joinCatalog([], [listingOf(invalidFile('order-refund'))]);
+    if (row === undefined) throw new Error('No row for order-refund.');
+    // The Bureau does not count a file it cannot use, so no count is not "never run".
+    expect(workflowListRow(row, undefined, NOW, ZONE).date).toBeNull();
+    expect(workflowListRow(row, { runs: null, schedules: null }, NOW, ZONE).date).toBeNull();
+    const never = { runs: { active: 0, last24Hours: 0, lastRunAt: null }, schedules: null };
+    expect(workflowListRow(row, never, NOW, ZONE).date).toBe(WORKFLOW_COPY.list.neverRun);
+    // A file that ran and then broke shows when it last ran, not never run.
+    const ran = {
+      runs: { active: 0, last24Hours: 0, lastRunAt: '2026-10-24T09:15:00-05:00' },
+      schedules: null,
+    };
+    expect(workflowListRow(row, ran, NOW, ZONE).date).toBe('Oct 24');
+    // It still has no counts under its title: its line says its file and its problem.
+    expect(textsOf(workflowListRow(row, ran, NOW, ZONE).line)).toEqual([
+      'order-refund.json',
+      'The document is not a workflow.',
+    ]);
+  });
+
+  test('prefers the Bureau’s own count of a file that loaded to the engine’s', () => {
+    const row = fileRow(
+      readyFile('counted', {
+        runs: { active: 0, last24Hours: 1, lastRunAt: '2026-11-02T08:00:00-06:00' },
+      }),
+    );
+    const engine = {
+      runs: { active: 0, last24Hours: 9, lastRunAt: '2026-10-01T08:00:00-05:00' },
+      schedules: null,
+    };
+    expect(workflowListRow(row, engine, NOW, ZONE).date).toBe('8:00 AM');
   });
 
   test('has Can’t load for a source the engine failed to load, and keeps what the file says', () => {

@@ -64,8 +64,7 @@ export type LinePart = {
 
 /** The two words a row's status column can carry. */
 export type ListStatusWord =
-  | typeof WORKFLOW_COPY.list.statusCantLoad
-  | typeof WORKFLOW_COPY.list.statusPaused;
+  typeof WORKFLOW_COPY.list.statusCantLoad | typeof WORKFLOW_COPY.list.statusPaused;
 
 /** What the list shows of one workflow, as Cinder's status-first row says it. */
 export type WorkflowListRow = {
@@ -106,15 +105,13 @@ export function listDate(at: number, now: number, zone: string = viewerTimeZone(
  * has not said, so a count that could not be read is never shown as never run.
  */
 export function rowDate(
-  row: CatalogRow,
   runs: WorkflowRunCounts | null | undefined,
   now: number,
   zone: string = viewerTimeZone(),
 ): string | null {
-  if (runs === null || runs === undefined) {
-    // A file the Bureau cannot use has no counts, and has not run.
-    return row.file !== null ? WORKFLOW_COPY.list.neverRun : null;
-  }
+  // No counts is not zero runs: a file the Bureau cannot use is not counted by the Bureau, so its
+  // date waits for the engine's own count of its type, and stays blank if the engine will not say.
+  if (runs === null || runs === undefined) return null;
   if (runs.lastRunAt === null) return WORKFLOW_COPY.list.neverRun;
   const at = Date.parse(runs.lastRunAt);
   if (Number.isNaN(at)) return null;
@@ -153,8 +150,9 @@ export function rowLine(row: CatalogRow, runs: WorkflowRunCounts | null | undefi
 }
 
 /**
- * One workflow as the list's status-first row. A code-defined type's counts come from the engine
- * apart from the list (`activity`), and read as nothing until they arrive.
+ * One workflow as the list's status-first row. The counts of a code-defined type, and of a file the
+ * Bureau cannot use, come from the engine apart from the list (`activity`), and read as nothing
+ * until they arrive and when the engine would not give them.
  */
 export function workflowListRow(
   row: CatalogRow,
@@ -162,7 +160,9 @@ export function workflowListRow(
   now: number = Date.now(),
   zone: string = viewerTimeZone(),
 ): WorkflowListRow {
-  const runs = row.kind === 'code' ? activity?.runs : row.runs;
+  // The Bureau counts a file that loaded. A code-defined type, and a file the Bureau cannot use,
+  // are counted by the engine apart from the list, by the name of the type.
+  const runs = row.kind === 'code' ? activity?.runs : (row.runs ?? activity?.runs);
   const title = row.file?.title?.trim() ?? '';
   const segment = rowSegment(row);
   return {
@@ -174,7 +174,7 @@ export function workflowListRow(
         : segment === 'paused'
           ? WORKFLOW_COPY.list.statusPaused
           : null,
-    date: rowDate(row, runs, now, zone),
+    date: rowDate(runs, now, zone),
     line: rowLine(row, runs),
   };
 }

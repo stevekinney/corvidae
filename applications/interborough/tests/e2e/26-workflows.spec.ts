@@ -16,6 +16,7 @@ import { readFile, rm, writeFile } from 'node:fs/promises';
 import { VIEW_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { describeCadence } from '../../src/routes/schedules/cadence.ts';
 import { bureau } from './agent-support.ts';
+import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 import { jsonEditor, jsonEditorSource } from './json-editor-support.ts';
@@ -107,9 +108,12 @@ test.describe('the list', () => {
       await expect(broken.getByTestId('workflow-last-run')).toHaveText(WORKFLOW_COPY.list.neverRun);
       await expect(broken.getByTestId('workflow-run-counts')).toHaveCount(0);
 
-      // The segments count the rows they show, and the Internal workflows card is not a row.
-      await expect(page.getByRole('radio', { name: /^All\s*,\s*\d+$/ })).toBeVisible();
-      await expect(page.getByRole('radio', { name: /^Problems\s*,\s*\d+$/ })).toBeVisible();
+      // The segments count the rows they show. Below 1024 pixels Cinder's filter bar holds them in
+      // a select, so only the wide layout draws each as a radio.
+      if (width >= 1024) {
+        await expect(page.getByRole('radio', { name: /^All\s*,\s*\d+$/ })).toBeVisible();
+        await expect(page.getByRole('radio', { name: /^Problems\s*,\s*\d+$/ })).toBeVisible();
+      }
 
       // A source with no file is the engine's alone, so it is left out: the list reads the same
       // before and after a restart.
@@ -155,6 +159,13 @@ test.describe('the list', () => {
       // A run is going, so the right edge says when it began and line two leads with Running.
       await expect(counted.getByTestId('workflow-last-run')).toContainText('Started');
       await expect(counted).toContainText(WORKFLOW_COPY.list.runningNow);
+      // The captioned frame of a run in progress (rows 61j and 61k): the status column stays empty.
+      await expect(counted).not.toHaveAttribute('data-status', /.+/);
+      await captureForDesignReview(page, {
+        route: '/workflows (a run in progress)',
+        state: 'ready',
+        source: '26-workflows.spec.ts',
+      });
     } finally {
       // Let the instance finish, so it does not stay in the host.
       await expect
