@@ -24,7 +24,7 @@ See the [SideNavigation versus Sidebar decision](https://github.com/stevekinney/
 
 The leaves are also named exports of `@lostgradient/cinder`.
 
-`brand` and `primaryAction` are slots above the list. The sidebar is a tonal surface with no rule beside it, and the current row is a neutral tint, because the accent is for actions and links. The primary action is one `<a>` or `<button>`, drawn as a neutral control the width of the sidebar: a leading accent "+", its label, and the shortcut glyph at the trailing edge as plain text with no key cap. The count on a row is plain muted text at the trailing edge, never a badge.
+`brand` and `primaryAction` are slots above the list. The sidebar is a soft tonal surface with no rule beside it, and the current row is a raised white pill with default text, because the accent is for actions and links. The primary action is one `<a>` or `<button>`, drawn as a neutral control the width of the sidebar: a leading accent "+", its label, and the shortcut glyph at the trailing edge as plain text with no key cap. The count on a row is plain muted text at the trailing edge, never a badge.
 
 ```svelte
 <script lang="ts">

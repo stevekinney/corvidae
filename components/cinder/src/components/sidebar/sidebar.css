@@ -19,8 +19,10 @@
      opt out of stretch behavior, so we deliberately leave it off. */
     align-self: stretch;
     /* A tonal surface sets the sidebar apart from the page, so it needs no rule beside it
-     * (COR-2315): the inset tier is a step off the page in light and in dark. */
-    background: var(--cinder-surface-inset);
+     * (COR-2315): `--cinder-surface` is the soft grey step off the page canvas, tuned by COR-2308 to
+     * 97.6% so the focus ring still reads 3.5:1 on it, and the selected row lifts off it as a raised
+     * white pill (`navigation-item.css`). */
+    background: var(--cinder-surface);
     border-inline-end: none;
     overflow: hidden;
   }
@@ -32,6 +34,14 @@
     block-size: 100%;
     background: transparent;
     border-inline-end: none;
+  }
+
+  /* The drawer paints the raised surface behind a modal sidebar, so a raised pill would not read
+   * there: the selected row is the ink at about 7% instead, over whatever the drawer paints. */
+  .cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical'][data-active='true'],
+  .cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
+    background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 93%);
+    box-shadow: none;
   }
 
   /* The drawer is the phone's navigation, so its rows are touch targets (44px) whatever the

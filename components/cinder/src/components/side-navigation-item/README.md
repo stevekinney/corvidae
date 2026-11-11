@@ -8,7 +8,7 @@ Individual link within a side navigation, supporting nesting and active highligh
 
 ## Rows, counts and the collapsed rail
 
-A row is one 30px control (44px under a coarse pointer): hover, focus and the active fill paint the whole row. Default text is secondary with no fill; hover gives a lighter neutral tint and primary text; the active row is a neutral tint (the ink at about 7%) with default text, semibold weight and `aria-current="page"` and takes no hover change, because the accent is for actions and links; keyboard focus draws the quiet ring around the whole row.
+A row is one 30px control (44px under a coarse pointer): hover, focus and the active fill paint the whole row. Default text is secondary with no fill; hover gives a lighter neutral tint and primary text; the active row is a raised white pill with the hairline shadow, default text, semibold weight and `aria-current="page"` and takes no hover change, because the accent is for actions and links; keyboard focus draws the quiet ring around the whole row.
 
 ```svelte
 <SideNavigation.Item href="/reviews" label="Reviews" count={2} countLabel="need you">

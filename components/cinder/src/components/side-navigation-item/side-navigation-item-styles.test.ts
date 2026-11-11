@@ -91,15 +91,27 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
 });
 
 describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
-  const ACTIVE_TINT = 'color-mix(in oklch, var(--cinder-border-ink), transparent 93%)';
+  const RAISED_PILL = 'var(--cinder-surface-raised)';
+  const SHADOW = 'var(--cinder-shadow-sm)';
 
-  test('is a neutral tint of the ink at about 7% with default text and semibold weight', () => {
+  test('is a raised white pill with the hairline shadow, default text and semibold weight (AC2, AC9)', () => {
     const rule = rulesFor(navigationItemCss, ACTIVE).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
-    expect(declaration(rule, 'background-color')).toBe(ACTIVE_TINT);
+    expect(declaration(rule, 'background-color')).toBe(RAISED_PILL);
+    expect(declaration(rule, 'box-shadow')).toBe(SHADOW);
     expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
     expect(declaration(rule, 'font-weight')).toBe('var(--cinder-font-semibold)');
+  });
+
+  test('keeps the pill shadow beside the focus ring when the active row is focused', () => {
+    const rule = rulesFor(navigationItemCss, `${ACTIVE}:focus-visible`).find(
+      (candidate) => !isUnderForcedColors(candidate),
+    );
+    const shadow = declaration(rule, 'box-shadow');
+    expect(shadow).toContain('inset 0 0 0 var(--cinder-ring-width)');
+    expect(shadow).toContain('var(--_cinder-navigation-item-ring, var(--cinder-ring-color))');
+    expect(shadow).toEndWith(SHADOW);
   });
 
   test('never paints the accent: the accent is for actions and links', () => {
@@ -116,7 +128,7 @@ describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
     const rule = rulesFor(navigationItemCss, `${ACTIVE}:hover`).find(
       (candidate) => !isUnderForcedColors(candidate),
     );
-    expect(declaration(rule, 'background-color')).toBe(ACTIVE_TINT);
+    expect(declaration(rule, 'background-color')).toBe(RAISED_PILL);
     expect(declaration(rule, 'color')).toBe('var(--cinder-text-default)');
   });
 

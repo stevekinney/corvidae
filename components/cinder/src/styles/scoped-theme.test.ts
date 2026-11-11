@@ -109,15 +109,14 @@ describe('scoped theme tokens', () => {
         readFile(SIDE_NAVIGATION_GROUP_CSS_PATH, 'utf8'),
       ]);
 
-    expect(sidebarCss).toContain('background: var(--cinder-surface-inset);');
+    expect(sidebarCss).toContain('background: var(--cinder-surface);');
     expect(sidebarCss).toContain('border-inline-end: none;');
     expect(sidebarCss).toContain('border-block-start: 1px solid var(--cinder-border-muted);');
     expect(navigationItemCss).toContain('color: var(--cinder-text-muted);');
     expect(navigationItemCss).toContain('color: var(--cinder-text-default);');
     expect(navigationItemCss).toContain('background-color: var(--cinder-surface-hover);');
-    expect(navigationItemCss).toContain(
-      'background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 93%);',
-    );
+    expect(navigationItemCss).toContain('background-color: var(--cinder-surface-raised);');
+    expect(navigationItemCss).toContain('box-shadow: var(--cinder-shadow-sm);');
     expect(navigationItemCss).toContain(
       'var(--_cinder-navigation-item-ring, var(--cinder-ring-color))',
     );

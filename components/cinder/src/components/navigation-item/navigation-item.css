@@ -72,7 +72,7 @@
    * OUTSET ring (offset 1px + width 3px = 4px overhang on every side) has no
    * gutter to grow into: it bleeds past the container boundary (clipped where
    * the app sidebar sets `overflow: hidden`) and overlaps the adjacent active
-   * row's `--cinder-surface-inset` background, flattening the focus signal.
+   * row's raised background, flattening the focus signal.
    * The policy-sanctioned B-inset variant (focus-ring-policy.md, trigger #1:
    * focusable row full-bleed against a container edge) paints a single-band
    * ring entirely within the item's own border box — no overhang, no neighbor
@@ -145,7 +145,7 @@
   /* ----------------------------------------
  * Vertical variant — sidebar / vertical-tab contexts
  *
- * Row geometry for sidebar edges. The active row is a neutral tint, never an
+ * Row geometry for sidebar edges. The active row is a neutral raised pill, never an
  * accent stripe (COR-1821), so toggling active state never shifts the label.
  * ---------------------------------------- */
 
@@ -168,15 +168,28 @@
     border-radius: var(--cinder-radius-sm);
   }
 
-  /* The current page is a neutral tint, the ink at about 7%, with default text and semibold weight
-   * (COR-2315). The accent is for actions and links, so the place the person is in is never
-   * accent-coloured (owner, 2026-11-10). The tint is a wash of the ink over whatever is beneath
-   * it, so it reads against the tonal sidebar and against a drawer's surface alike. */
+  /* The current page is a raised white pill with the hairline shadow on the retuned light ladder
+   * (COR-2315 AC9, COR-2308): the sidebar is the soft `--cinder-surface` tint and the selected row
+   * lifts off it as `--cinder-surface-raised`, which is white in light and a step above the surface
+   * in dark. The text stays default and semibold, because the accent is for actions and links, so
+   * the place the person is in is never accent-coloured (owner, 2026-11-10; AC2). The ink tint
+   * (about 7%) remains where the row sits on a raised drawer panel (`sidebar.css`), where a raised
+   * pill would not read. */
   .cinder-navigation-item[data-variant='vertical'][data-active='true'] {
     border-bottom-color: transparent;
-    background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 93%);
+    background-color: var(--cinder-surface-raised);
+    box-shadow: var(--cinder-shadow-sm);
     color: var(--cinder-text-default);
     font-weight: var(--cinder-font-semibold);
+  }
+
+  /* The pill's shadow shares the `box-shadow` channel with the inset focus ring, and this rule is
+   * the more specific one, so an active row that holds keyboard focus keeps both. */
+  .cinder-navigation-item[data-variant='vertical'][data-active='true']:focus-visible {
+    box-shadow:
+      inset 0 0 0 var(--cinder-ring-width)
+        var(--_cinder-navigation-item-ring, var(--cinder-ring-color)),
+      var(--cinder-shadow-sm);
   }
 
   /* Hover on a sidebar row is a lighter neutral tint than the active row, the ink at 4% (row 02n),
@@ -191,10 +204,10 @@
     }
   }
 
-  /* The active row takes no hover change (row 02n): it keeps its tint and its text. */
+  /* The active row takes no hover change (row 02n): it keeps its pill and its text. */
   @media (hover: hover) {
     .cinder-navigation-item[data-variant='vertical'][data-active='true']:hover {
-      background-color: color-mix(in oklch, var(--cinder-border-ink), transparent 93%);
+      background-color: var(--cinder-surface-raised);
       color: var(--cinder-text-default);
     }
   }
@@ -214,7 +227,7 @@
       outline-offset: calc(var(--cinder-ring-width) * -1);
     }
 
-    /* The active row is a tint, and a tint collapses to Canvas here, so the
+    /* The active row is a fill, and a fill collapses to Canvas here, so the
      * selected row would be indistinguishable. SelectedItem/SelectedItemText
      * are the system pair for a selected row; unlike an outline they coexist
      * with the focus ring above. */

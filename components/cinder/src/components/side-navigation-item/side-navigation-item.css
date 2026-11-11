@@ -105,7 +105,7 @@
     font-size: 0;
     line-height: 0;
     /* A ring in the sidebar's own surface separates the dot from the icon beneath it. */
-    box-shadow: 0 0 0 2px var(--cinder-surface-inset);
+    box-shadow: 0 0 0 2px var(--cinder-surface);
   }
 
   .cinder-side-navigation-item[data-cinder-collapsed][data-cinder-has-icon]
@@ -115,6 +115,6 @@
     inset-inline-end: 0.4375rem;
     margin: 0;
     border-radius: 9999px;
-    box-shadow: 0 0 0 2px var(--cinder-surface-inset);
+    box-shadow: 0 0 0 2px var(--cinder-surface);
   }
 }

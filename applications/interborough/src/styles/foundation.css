@@ -68,7 +68,7 @@
 /* Sidebar (design rows 03a to 03m, 04a to 04c, COR-2315). The widths are Cinder's own: the 190px
  * column and the 56px folded column (`sidebar.css`), and the 280px drawer (`drawer.css`, size
  * `xs`). The rows, their counts and dots, the section labels that become hairlines on the rail,
- * the tonal surface with no rule beside it, the neutral active tint and the 76px rail with a label
+ * the tonal surface with no rule beside it, the raised white active pill and the 76px rail with a label
  * under every icon (`railLabels`) are Cinder's too (`sidebar.css`, `side-navigation-item.css`,
  * `side-navigation-group.css`), so what is left here is where the sidebar sits and what the app
  * puts in it.
@@ -191,7 +191,7 @@
 }
 
 /* In the drawer the navigation is the drawer's whole body. Cinder's drawer pads its body and the
- * sidebar paints the inset surface, so together they box the navigation in a gutter inside the
+ * sidebar paints its own surface, so together they box the navigation in a gutter inside the
  * drawer; the drawer's own surface is the background here, and the body has no padding of its own.
  * Its header holds the product name and the close button and nothing else, so it is one compact
  * row with no rule under it, and the drawer has no rule beside it. */

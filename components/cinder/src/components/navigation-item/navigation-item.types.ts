@@ -77,7 +77,7 @@ export type NavigationItemProps = NavigationItemSharedHtmlAttributes &
      *   Used inside `NavigationBar` and similar horizontal tab-bar contexts.
      * - `'mobile'`: stacked full-width layout when an owning navigation surface
      *   enters its narrow container mode.
-     * - `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and a neutral tint (the ink at about 7%) with default text and semibold weight as the active indicator.
+     * - `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and a raised white pill with the hairline shadow, default text and semibold weight as the active indicator.
      *   Used inside `SideNavigation` (set automatically by `SideNavigationItem`) or
      *   standalone sidebar footers where flush sidebar edges are required.
      */

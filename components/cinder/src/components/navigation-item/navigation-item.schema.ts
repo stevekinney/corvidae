@@ -31,7 +31,7 @@ const schema = {
     variant: {
       enum: ['horizontal', 'mobile', 'vertical'],
       description:
-        "Controls item geometry. Emitted as `data-variant`. Default `'horizontal'`.\n\n- `'horizontal'`: top-rounded radius, accent bottom-border active indicator.\n  Used inside `NavigationBar` and similar horizontal tab-bar contexts.\n- `'mobile'`: stacked full-width layout when an owning navigation surface\n  enters its narrow container mode.\n- `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and a neutral tint (the ink at about 7%) with default text and semibold weight as the active indicator.\n  Used inside `SideNavigation` (set automatically by `SideNavigationItem`) or\n  standalone sidebar footers where flush sidebar edges are required.",
+        "Controls item geometry. Emitted as `data-variant`. Default `'horizontal'`.\n\n- `'horizontal'`: top-rounded radius, accent bottom-border active indicator.\n  Used inside `NavigationBar` and similar horizontal tab-bar contexts.\n- `'mobile'`: stacked full-width layout when an owning navigation surface\n  enters its narrow container mode.\n- `'vertical'`: a 30px rounded row (44px under a coarse pointer), a neutral hover tint, and a raised white pill with the hairline shadow, default text and semibold weight as the active indicator.\n  Used inside `SideNavigation` (set automatically by `SideNavigationItem`) or\n  standalone sidebar footers where flush sidebar edges are required.",
     },
   },
   additionalProperties: false,

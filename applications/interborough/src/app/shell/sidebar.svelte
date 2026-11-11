@@ -13,7 +13,7 @@
    *
    * The sidebar is a tonal surface with no rule beside it (Cinder's own, COR-2315): the product's
    * name and the fold button sit in Cinder's `brand` slot, New chat is the `primaryAction`, and the
-   * current destination is a neutral tint.
+   * current destination is a raised white pill.
    *
    * The sidebar takes one of three forms (`./shell-navigation.svelte.ts`): the 190px column, the
    * 76px rail (an icon over its label) with an overlay that opens the column over the page, and the
