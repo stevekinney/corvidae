@@ -1644,6 +1644,216 @@ test.describe('chat harness — message sources (COR-2257)', () => {
   });
 });
 
+test.describe('chat harness — expandable source list (COR-2259)', () => {
+  const sourceTitles = ['Annual report 2025', 'Board minutes, March', 'Pricing memo'];
+
+  async function chooseListPresentation(harness: Locator): Promise<void> {
+    await harness
+      .locator('#harness-source-presentation')
+      .getByText('List', { exact: true })
+      .click();
+  }
+
+  async function horizontalOverflow(page: Page, list: Locator): Promise<number[]> {
+    const listOverflow = await list.evaluate(
+      (element) => element.scrollWidth - element.clientWidth,
+    );
+    const documentOverflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    );
+    return [listOverflow, documentOverflow];
+  }
+
+  for (const profile of [
+    { width: 1440, height: 900, colorScheme: 'light' as const, touch: false },
+    { width: 1440, height: 900, colorScheme: 'dark' as const, touch: false },
+    { width: 375, height: 812, colorScheme: 'light' as const, touch: true },
+    { width: 375, height: 812, colorScheme: 'dark' as const, touch: true },
+  ]) {
+    test(`at ${profile.width}px ${profile.colorScheme}, the list opens in order, links only safe addresses and wraps`, async ({
+      browser,
+    }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        colorScheme: profile.colorScheme,
+        viewport: { width: profile.width, height: profile.height },
+        hasTouch: profile.touch,
+        isMobile: profile.touch,
+      });
+      try {
+        const origin = new URL(environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN)
+          .origin;
+        const outbound: string[] = [];
+        page.on('request', (request) => {
+          if (new URL(request.url()).origin !== origin) outbound.push(request.url());
+        });
+        await chooseListPresentation(harness);
+        await harness.locator('[data-testid="seed-sources"]').click();
+
+        const messageA = harness.locator('article[data-message-id="sources-assistant-a"]');
+        const toggle = messageA.getByRole('button', { name: 'Sources (3)' });
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(harness.locator('.chat-message-sources-toggle')).toHaveCount(1);
+        await expect(messageA.locator('.chat-message-sources-list')).toHaveCount(0);
+
+        // Keyboard on desktop, touch on a phone.
+        await toggle.scrollIntoViewIfNeeded();
+        if (profile.touch) {
+          await toggle.tap();
+        } else {
+          await toggle.focus();
+          await page.keyboard.press('Enter');
+        }
+        const list = messageA.locator('.chat-message-sources-list');
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(list.locator('li strong')).toHaveText(sourceTitles);
+        await expect(list.locator('.chat-message-sources-detail')).toHaveText([
+          'Revenue rose 12% year over year, led by subscriptions.',
+          'The board approved the new pricing.',
+        ]);
+        await expect(list.getByRole('link')).toHaveCount(1);
+        await expect(list.getByRole('link')).toHaveAttribute(
+          'href',
+          'https://example.com/reports/annual-2025',
+        );
+        await expect(list.locator('.chat-message-sources-note')).toHaveText([
+          'Internal document, no public link',
+          "Link hidden: the address isn't a safe web link",
+        ]);
+        for (const overflow of await horizontalOverflow(page, list)) {
+          expect(overflow).toBeLessThanOrEqual(0);
+        }
+        expect(outbound).toEqual([]);
+
+        // Closing keeps focus on the control.
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        await expect(list).toHaveCount(0);
+        await expect(toggle).toBeFocused();
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  test('removing the sources while focus is in the open list moves focus to the message', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      await chooseListPresentation(harness);
+      await harness.locator('[data-testid="seed-sources"]').click();
+      const messageA = harness.locator('article[data-message-id="sources-assistant-a"]');
+      await messageA.getByRole('button', { name: 'Sources (3)' }).click();
+      const link = messageA.locator('.chat-message-sources-list').getByRole('link');
+      await link.focus();
+      await expect(link).toBeFocused();
+
+      await page.evaluate(() => {
+        const harnessWindow = window as Window & { corvidaeChatHarnessRemoveSources?: () => void };
+        if (harnessWindow.corvidaeChatHarnessRemoveSources === undefined) {
+          throw new Error('Chat harness remove-sources hook is unavailable.');
+        }
+        harnessWindow.corvidaeChatHarnessRemoveSources();
+      });
+
+      await expect(messageA.locator('.chat-message-sources')).toHaveCount(0);
+      await expect(messageA).toBeFocused();
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('opening a list above the viewport in a virtualized transcript keeps the visible message in place', async ({
+    browser,
+  }) => {
+    const { harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      await harness.locator('#t-virtualized').click();
+      await chooseListPresentation(harness);
+      await harness.locator('[data-testid="seed-long-sources"]').click();
+      const timeline = harness.locator('.chat-timeline');
+      await expect(timeline.locator('.chat-virtual-row').first()).toBeVisible();
+
+      // Park mid-transcript so rendered overscan rows sit above the viewport.
+      await timeline.evaluate((element) => {
+        element.scrollTop = Math.floor(element.scrollHeight / 2);
+      });
+      await expect
+        .poll(() =>
+          timeline.evaluate((element) => {
+            const top = element.getBoundingClientRect().top;
+            return Array.from(
+              element.querySelectorAll<HTMLElement>(
+                'article[data-message-id^="long-sources-assistant-"]',
+              ),
+            ).some((article) => article.getBoundingClientRect().bottom <= top);
+          }),
+        )
+        .toBe(true);
+
+      const before = await timeline.evaluate((element) => {
+        const top = element.getBoundingClientRect().top;
+        const articles = Array.from(
+          element.querySelectorAll<HTMLElement>('article[data-message-id]'),
+        );
+        const visible = articles.find((article) => article.getBoundingClientRect().bottom > top);
+        const above = articles
+          .filter(
+            (article) =>
+              article.getBoundingClientRect().bottom <= top &&
+              article.querySelector('.chat-message-sources-toggle') !== null,
+          )
+          .at(-1);
+        if (visible === undefined || above === undefined) {
+          throw new Error('Expected a visible message and a sourced message above the viewport.');
+        }
+        return {
+          visibleId: visible.dataset['messageId'] ?? '',
+          visibleOffset: visible.getBoundingClientRect().top - top,
+          aboveId: above.dataset['messageId'] ?? '',
+        };
+      });
+
+      // Open the list in the row above the viewport without scrolling to it.
+      await timeline.evaluate((element, aboveId) => {
+        element
+          .querySelector<HTMLButtonElement>(
+            `article[data-message-id="${aboveId}"] .chat-message-sources-toggle`,
+          )
+          ?.click();
+      }, before.aboveId);
+      await expect(
+        timeline.locator(`article[data-message-id="${before.aboveId}"] .chat-message-sources-list`),
+      ).toHaveCount(1);
+
+      await expect
+        .poll(() =>
+          timeline.evaluate(
+            (element, { visibleId, visibleOffset }) => {
+              const article = element.querySelector<HTMLElement>(
+                `article[data-message-id="${visibleId}"]`,
+              );
+              if (article === null) return Number.POSITIVE_INFINITY;
+              const offset =
+                article.getBoundingClientRect().top - element.getBoundingClientRect().top;
+              return Math.abs(offset - visibleOffset);
+            },
+            { visibleId: before.visibleId, visibleOffset: before.visibleOffset },
+          ),
+        )
+        .toBeLessThanOrEqual(1);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat harness — tool calls', () => {
   async function appendToolScenario(page: Page, scenario: string): Promise<void> {
     await page.evaluate((name) => {

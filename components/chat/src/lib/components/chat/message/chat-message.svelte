@@ -141,6 +141,19 @@
      * written to the transcript.
      */
     sources?: readonly CitationSource[] | undefined;
+    /**
+     * How the Sources control shows the sources: `'compact'` opens Cinder's Citation panel, `'list'`
+     * is a disclosure that lists them under the message. Default `'compact'`.
+     */
+    sourcePresentation?: 'compact' | 'list' | undefined;
+    /**
+     * With `sourcePresentation="list"`, whether the list is open. Bindable, like `toolCallExpanded`:
+     * `Chat` drives it one-way through `onsourcestoggle`, and a standalone `ChatMessage` still gets
+     * a working disclosure.
+     */
+    sourcesExpanded?: boolean | undefined;
+    /** Called when the source list's disclosure is toggled. */
+    onsourcestoggle?: (() => void) | undefined;
   };
 
   const escapeHtml = (value: string): string =>
@@ -218,6 +231,9 @@
     ontoolcalltoggle,
     onSuggestionSelect,
     sources,
+    sourcePresentation = 'compact',
+    sourcesExpanded = $bindable(false),
+    onsourcestoggle,
     tabindex,
     ...rest
   }: ChatMessageProps = $props();
@@ -529,6 +545,12 @@
     ontoolcalltoggle?.();
     onExpandedChange?.(toolCallExpanded);
   }
+
+  // The same local fallback for the source list: `Chat` overwrites it on its next render.
+  function toggleSourcesExpanded() {
+    sourcesExpanded = !sourcesExpanded;
+    onsourcestoggle?.();
+  }
 </script>
 
 {#snippet transcriptLine()}
@@ -760,7 +782,13 @@
 
     {#if shownSources}
       <div class="chat-message-sources" bind:this={sourcesElement}>
-        <MessageSources sources={shownSources} />
+        <MessageSources
+          sources={shownSources}
+          presentation={sourcePresentation}
+          expanded={sourcesExpanded}
+          ontoggle={toggleSourcesExpanded}
+          listId={`${messageId}-sources`}
+        />
       </div>
     {/if}
 

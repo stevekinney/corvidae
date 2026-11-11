@@ -149,6 +149,7 @@
     typingParticipants,
     readReceipts,
     sourcesByMessageId,
+    sourcePresentation = 'compact',
     adapter,
     onAdapterError,
     onPushMessage,
@@ -259,6 +260,54 @@
     onRemeasureRow: remeasureRow,
     defaultExpanded: true,
   });
+  // The expandable source lists (`sourcePresentation="list"`), collapsed by default.
+  const sourcesState = useChatDisclosureState({ onRemeasureRow: remeasureRow });
+
+  /**
+   * The message nearest the top of the viewport and how far below the viewport's top edge it sits,
+   * so a change of height above it can be undone by scrolling.
+   */
+  function captureViewportAnchor(): { messageId: string; offset: number } | undefined {
+    if (!viewport) return undefined;
+    const viewportTop = viewport.getBoundingClientRect().top;
+    for (const article of viewport.querySelectorAll<HTMLElement>('article[data-message-id]')) {
+      const box = article.getBoundingClientRect();
+      if (box.bottom <= viewportTop) continue;
+      const messageId = article.dataset['messageId'];
+      if (messageId === undefined) continue;
+      return { messageId, offset: box.top - viewportTop };
+    }
+    return undefined;
+  }
+
+  /**
+   * Opens or closes a message's source list and keeps the message at the top of the viewport where
+   * it was. A list that opens above the viewport would otherwise push everything the reader is
+   * looking at down; in a virtualized transcript nothing else corrects for it, because the rows
+   * are positioned by the virtualizer rather than by the browser's scroll anchoring.
+   */
+  async function toggleSources(messageId: string): Promise<void> {
+    const anchor = captureViewportAnchor();
+    sourcesState.toggle(messageId);
+    if (!anchor) return;
+    await tick();
+    const scroller = viewport;
+    if (!scroller) return;
+    const toggledRow = scroller
+      .querySelector<HTMLElement>(`article[data-message-id="${CSS.escape(messageId)}"]`)
+      ?.closest<HTMLElement>('.chat-virtual-row');
+    if (toggledRow) {
+      chatVirtualizer.measureElementNode(toggledRow);
+      await tick();
+    }
+    const anchorElement = scroller.querySelector<HTMLElement>(
+      `article[data-message-id="${CSS.escape(anchor.messageId)}"]`,
+    );
+    if (!anchorElement) return;
+    const offset = anchorElement.getBoundingClientRect().top - scroller.getBoundingClientRect().top;
+    const drift = offset - anchor.offset;
+    if (Math.abs(drift) >= 1) scroller.scrollTop += drift;
+  }
 
   // Content-driven streams do not call beginStreaming, so warm the renderer
   // when streaming starts or when Chat mounts during an already-active stream.
@@ -284,6 +333,7 @@
     reasoningState.reset();
     toolCallState.reset();
     stepsState.reset();
+    sourcesState.reset();
     typingIndicatorState.reset();
     readReceiptsState.reset();
     announcements.clearAnnouncements();
@@ -1873,6 +1923,9 @@
           toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
           onSuggestionSelect={handleSuggestionSelect}
           sources={message.role === 'assistant' ? sourcesByMessageId?.get(message.id) : undefined}
+          {sourcePresentation}
+          sourcesExpanded={sourcesState.isExpanded(message.id)}
+          onsourcestoggle={() => void toggleSources(message.id)}
         >
           {#snippet actions()}
             {#if messageActions}

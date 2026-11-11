@@ -291,6 +291,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   readReceipts?: Map<string, ReadReceipt> | undefined;
   /** The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. */
   sourcesByMessageId?: ReadonlyMap<string, readonly CitationSource[]> | undefined;
+  /** How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe. Opening a list above the viewport keeps the message the reader is looking at in place. */
+  sourcePresentation?: 'compact' | 'list' | undefined;
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over

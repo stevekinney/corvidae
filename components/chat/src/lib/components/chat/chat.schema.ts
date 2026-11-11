@@ -88,6 +88,11 @@ const schema = {
       description:
         "Visual treatment for message bubbles.\n- `'bubble'` (default): colored backgrounds differentiate user from assistant.\n- `'flat'`: no bubble backgrounds; role is communicated via alignment and role label.\n  Text-on-surface contrast meets WCAG AA via `--cinder-text-default` on `--cinder-surface-inset`.\n- `'transcript'`: a reply is plain text with no card or role label, a person's message keeps its\n  tinted bubble, and one muted line under each message carries its time, `messageActions`, Copy\n  and Quote as visible words. A message that was not sent keeps its bubble under a red icon\n  (`notSent`), a follow-up the run has not taken yet is a dashed bubble marked Queued\n  (`onRemoveQueued`), and a run's notes sit outside the bubble (`noteAction`).",
     },
+    sourcePresentation: {
+      enum: ['compact', 'list'],
+      description:
+        "How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe. Opening a list above the viewport keeps the message the reader is looking at in place.",
+    },
     bottomThreshold: {
       type: 'number',
       description:

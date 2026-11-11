@@ -566,6 +566,12 @@ const sourcesByMessageId = new Map<string, readonly CitationSource[]>([
 
 An assistant message with at least one source shows a Sources control with the count; an unknown id, an empty array and a user message show nothing, and a Chat given no map renders exactly as before. The control opens Cinder's `Citation`, which lists up to five sources together, links only a safe web address (any other address reads "Link hidden: the address isn't a safe web link"), and never fetches a source. Sources are presentation only: they are never written to the conversation or an export, and duplicates are kept as given. When the host removes a message's sources while focus is on its control or in its panel, focus moves to the message.
 
+Set `sourcePresentation="list"` to show them under the message instead of in a panel. The control is then a collapsed disclosure; opened, it lists every source with its excerpt and its link, through the same URL policy, and closing it leaves focus on the control. Opening a list in a message above the viewport, including in a virtualized transcript, keeps the message at the top of the viewport where it was.
+
+```svelte
+<Chat id="assistant-chat" {conversation} {sourcesByMessageId} sourcePresentation="list" />
+```
+
 ## Guidance
 
 ### Use When
@@ -635,6 +641,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `moreHistoryAvailable` | `boolean` | no | — | Whether the explicit "Load earlier messages" trigger is shown when a load handler exists. Default `true`. |
 | `newMessageIndicatorVisible` | `boolean` | no | — | Whether the "new messages" indicator is currently visible above the composer. Bindable; cleared automatically when the viewport reaches the bottom. Default `false`. |
 | `scrollFadeVisible` | `boolean` | no | — | Show a scroll-driven edge fade on the top and bottom of the message timeline as it overflows. Opt-in and presentation-only — never the sole signal that more messages exist; the jump-to-latest button and unread count remain the authoritative affordances. Only visible when `surfaceMode` is `'default'`: with `surfaceMode="transparent"` the timeline paints no background of its own, so there is no color the fade could correctly fade toward, and it stays inert rather than painting an incorrect opaque band. Default `false`. |
+| `sourcePresentation` | `"compact"` \| `"list"` | no | — | How a message's Sources control shows its `sourcesByMessageId` entries. `'compact'` (default) opens Cinder's Citation panel; `'list'` is a collapsed disclosure that, opened, lists every source under the message with its excerpt and its link when the address is safe. Opening a list above the viewport keeps the message the reader is looking at in place. |
 | `streaming` | `boolean` | no | — | Whether a streaming response is currently in progress. When `true`, the composer is disabled and a stop-generating button is shown, unless the `adapter` provides `sendRunInput`: then the composer stays enabled, Send and Stop sit side by side, and a submission goes to `adapter.sendRunInput` as a follow-up to the running turn. Default `false`. |
 | `streamingStatus` | `string` | no | — | Optional status label displayed in the typing indicator while `streaming` is `true` and no streaming content has arrived yet (e.g. `"Thinking…"` or `"Analyzing file…"`). When omitted, three animated dots are shown. |
 | `surfaceMode` | `"default"` \| `"transparent"` | no | — | Controls the background of the chat surface. Use `'transparent'` to inherit the host element's background when embedding chat inside a card or panel. Default `'default'`. |

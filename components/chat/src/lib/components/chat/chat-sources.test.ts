@@ -246,3 +246,123 @@ describe('Chat — sourcesByMessageId', () => {
     expect(JSON.stringify(conversation)).toBe(snapshot);
   });
 });
+
+// COR-2259: `sourcePresentation="list"` shows the same sources as a disclosure under the message.
+describe('Chat — sourcePresentation="list"', () => {
+  function listToggle(container: HTMLElement, id: string): HTMLButtonElement | null {
+    return messageArticle(container, id).querySelector<HTMLButtonElement>(
+      '.chat-message-sources-toggle',
+    );
+  }
+
+  function sourceList(container: HTMLElement, id: string): HTMLElement | null {
+    return messageArticle(container, id).querySelector<HTMLElement>('.chat-message-sources-list');
+  }
+
+  test('only the assistant message with sources shows one collapsed control and its count', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-list-collapsed',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([
+        ['assistant-a', sourcesForA],
+        ['user-1', sourcesForA],
+      ]),
+      sourcePresentation: 'list',
+    });
+    await tick();
+
+    expect(container.querySelectorAll('.chat-message-sources-toggle')).toHaveLength(1);
+    expect(container.querySelector('.cinder-citation')).toBeNull();
+    const toggle = listToggle(container, 'assistant-a')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle.getAttribute('aria-label')).toBe('Sources (4)');
+    expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('Sources 4');
+    expect(sourceList(container, 'assistant-a')).toBeNull();
+    expect(listToggle(container, 'assistant-b')).toBeNull();
+    expect(listToggle(container, 'user-1')).toBeNull();
+  });
+
+  test('opening the list shows every source in order, with excerpts and only safe links', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-list-open',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'list',
+    });
+    await tick();
+    const toggle = listToggle(container, 'assistant-a')!;
+    await fireEvent.click(toggle);
+    await tick();
+
+    const list = sourceList(container, 'assistant-a')!;
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle.getAttribute('aria-controls')).toBe(list.id);
+    const items = Array.from(list.querySelectorAll('li'));
+    expect(items.map((item) => item.querySelector('strong')?.textContent)).toEqual([
+      'Annual report',
+      'Board minutes',
+      'Annual report',
+      'Unsafe source',
+    ]);
+    expect(items[0]?.querySelector('p')?.textContent).toBe('Revenue rose 12%.');
+    expect(items[0]?.querySelector('strong')?.getAttribute('dir')).toBe('auto');
+    expect(items[1]?.querySelector('a')).toBeNull();
+    expect(items[1]?.querySelector('.chat-message-sources-note')?.textContent).toBe(
+      'Internal document, no public link',
+    );
+    expect(items[3]?.querySelector('a')).toBeNull();
+    expect(items[3]?.querySelector('.chat-message-sources-note')?.textContent).toBe(
+      "Link hidden: the address isn't a safe web link",
+    );
+    const links = Array.from(list.querySelectorAll('a'));
+    expect(links.map((link) => link.getAttribute('href'))).toEqual([
+      'https://example.com/annual',
+      'https://example.com/annual',
+    ]);
+    expect(links[0]?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Open example.com ↗');
+  });
+
+  test('closing the list keeps focus on its control', async () => {
+    const { container } = render(Chat, {
+      id: 'sources-list-close',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'list',
+    });
+    await tick();
+    const toggle = listToggle(container, 'assistant-a')!;
+    toggle.focus();
+    await fireEvent.click(toggle);
+    await tick();
+    expect(sourceList(container, 'assistant-a')).not.toBeNull();
+
+    await fireEvent.click(toggle);
+    await tick();
+    expect(sourceList(container, 'assistant-a')).toBeNull();
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    expect(document.activeElement).toBe(toggle);
+  });
+
+  test('removing the sources while focus is in the open list moves focus to the message', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-list-remove',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'list',
+    });
+    await tick();
+    await fireEvent.click(listToggle(container, 'assistant-a')!);
+    await tick();
+    const link = sourceList(container, 'assistant-a')!.querySelector<HTMLAnchorElement>('a')!;
+    link.focus();
+    expect(document.activeElement).toBe(link);
+
+    await rerender({ sourcesByMessageId: new Map([['assistant-b', sourcesForA]]) });
+    await tick();
+    await tick();
+
+    expect(listToggle(container, 'assistant-a')).toBeNull();
+    expect(sourceList(container, 'assistant-a')).toBeNull();
+    expect(document.activeElement).toBe(messageArticle(container, 'assistant-a'));
+  });
+});

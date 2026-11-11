@@ -79,6 +79,7 @@
   let sourcesByMessageId = $state<ReadonlyMap<string, readonly CitationSource[]> | undefined>(
     undefined,
   );
+  let sourcePresentation = $state<'compact' | 'list'>('compact');
   let directTypingParticipants = $state<TypingParticipant[] | undefined>(undefined);
   let adapterEnabled = $state(false);
   let customMessageSnippets = $state(true);
@@ -515,11 +516,52 @@
       createdAt: '2026-01-01T12:00:00Z',
       updatedAt: '2026-01-01T12:00:00Z',
     };
-    sourcesByMessageId = new Map([
+    sourcesByMessageId = new Map<string, readonly CitationSource[]>([
       ['sources-assistant-a', harnessSources],
       ['sources-assistant-b', []],
       ['sources-user-1', harnessSources],
     ]);
+  }
+
+  // COR-2259: a long transcript in which every answer cites the same three sources, so a
+  // virtualized test can open a list in a row above the viewport.
+  function seedLongSourcedThread(): void {
+    cancelPending('discard');
+    cancelPendingHistoryRequest();
+    readReceipts = undefined;
+    directTypingParticipants = undefined;
+    const messages: Message[] = [];
+    for (let index = 0; index < 40; index += 1) {
+      messages.push(
+        harnessMessage(
+          `long-sources-user-${index + 1}`,
+          'user',
+          `Question ${index + 1}: what changed?`,
+          index * 2,
+        ),
+        harnessMessage(
+          `long-sources-assistant-${index + 1}`,
+          'assistant',
+          `Answer ${index + 1}: revenue rose, led by subscriptions.`,
+          index * 2 + 1,
+        ),
+      );
+    }
+    conversation = {
+      schemaVersion: 4,
+      id: 'harness-long-sources',
+      status: 'active',
+      metadata: {},
+      ids: messages.map((message) => message.id),
+      messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+      createdAt: '2026-01-01T12:00:00Z',
+      updatedAt: '2026-01-01T12:00:00Z',
+    };
+    sourcesByMessageId = new Map<string, readonly CitationSource[]>(
+      messages
+        .filter((message) => message.role === 'assistant')
+        .map((message): [string, readonly CitationSource[]] => [message.id, harnessSources]),
+    );
   }
 
   function clearConversation(): void {
@@ -1074,6 +1116,15 @@
           </Button>
         {/if}
       </div>
+      <SegmentedControl
+        id="harness-source-presentation"
+        selectionMode="single"
+        bind:value={sourcePresentation}
+        label="Source presentation"
+      >
+        <Segment value="compact">Compact</Segment>
+        <Segment value="list">List</Segment>
+      </SegmentedControl>
     </section>
 
     <section
@@ -1095,6 +1146,9 @@
         >
         <Button data-testid="seed-sources" variant="secondary" onclick={seedSourcedThread}
           >Seed sourced thread</Button
+        >
+        <Button data-testid="seed-long-sources" variant="secondary" onclick={seedLongSourcedThread}
+          >Seed long sourced thread</Button
         >
         <Button
           data-testid="remove-sources"
@@ -1162,6 +1216,7 @@
         {...historyProps}
         {...readReceiptProps}
         {...sourcesProps}
+        {sourcePresentation}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
         onSubmit={handleSubmit}
@@ -1222,6 +1277,7 @@
         {...historyProps}
         {...readReceiptProps}
         {...sourcesProps}
+        {sourcePresentation}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
         onSubmit={handleSubmit}
