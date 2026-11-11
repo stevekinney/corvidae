@@ -21,8 +21,9 @@ import {
   createDefaultGuardrailsPreset,
   createGuardrails,
   GUARDRAIL_BLOCKED_CODE,
-  type GuardrailsOptions,
   scanToolResult,
+  type GuardrailsOptions,
+  type SessionTaintedEvent,
 } from '../src/guardrails';
 import type { OperativeHookMap } from '../src/hooks';
 import { createMockGenerate } from '../src/test/index';
@@ -282,6 +283,69 @@ describe('a durable child wait’s result', () => {
     expect(memoKeys.filter((key) => key.startsWith('child-wait-scan-'))).toEqual([
       'child-wait-scan-3-call-1',
     ]);
+  });
+
+  it('taints the session before the step goes on when a tripwire below the taint threshold blocks it', async () => {
+    const tainted: SessionTaintedEvent[] = [];
+    let settledWrites = 0;
+    const lowConfidence = {
+      name: 'low-confidence',
+      detect: async (input: string) =>
+        input.includes('Ignore all previous instructions')
+          ? { triggered: true, category: 'prompt-injection', confidence: 0.6 }
+          : { triggered: false, category: 'prompt-injection', confidence: 0 },
+    };
+    const messages = await parkOn(
+      { answer: INJECTION },
+      guardrailHooks({
+        mode: 'tripwire',
+        input: { detectors: [lowConfidence] },
+        taint: {
+          onTainted: async (event) => {
+            await Promise.resolve();
+            tainted.push(event);
+            settledWrites += 1;
+          },
+        },
+      }),
+    );
+    // The row is appended only after the taint write settled, because parkOn returns after the step.
+    expect(messages.find((message) => message.toolResult)?.toolResult).toMatchObject({
+      outcome: 'error',
+      error: { code: GUARDRAIL_BLOCKED_CODE },
+    });
+    expect(settledWrites).toBe(1);
+    expect(tainted).toHaveLength(1);
+    expect(tainted[0]).toMatchObject({
+      category: 'prompt-injection',
+      detector: 'low-confidence',
+      provenance: 'tool-result',
+    });
+    expect(JSON.stringify(tainted)).not.toContain('Ignore all previous');
+  });
+
+  it('taints with detector-failure when a detector throws on it', async () => {
+    const tainted: SessionTaintedEvent[] = [];
+    const broken = {
+      name: 'broken',
+      detect: async (): Promise<never> => {
+        throw new Error('detector crashed');
+      },
+    };
+    const messages = await parkOn(
+      { answer: 'a page the detector cannot read' },
+      guardrailHooks({
+        mode: 'validate',
+        input: { detectors: [broken], action: 'warn' },
+        taint: { onTainted: async (event) => void tainted.push(event) },
+      }),
+    );
+    expect(messages.find((message) => message.toolResult)?.toolResult).toMatchObject({
+      outcome: 'error',
+      error: { code: GUARDRAIL_BLOCKED_CODE },
+    });
+    expect(tainted).toHaveLength(1);
+    expect(tainted[0]).toMatchObject({ category: 'detector-failure', provenance: 'tool-result' });
   });
 
   it('is appended unchanged when nothing flags it', async () => {
