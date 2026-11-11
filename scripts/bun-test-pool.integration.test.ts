@@ -659,9 +659,11 @@ const killedRunLeavesNoWorkers = await inScratchDirectory(async (directory) => {
  * The run's record write fails, and a stand-in `bun test --test-worker` still runs under the
  * leader. The run must go on tracking its workers and terminate them on exit. The process table
  * hook removes the run's slot directory at its first read after the slot is taken; the tracker
- * makes that read before the record write only when it starts first, so the write then fails. The
- * leader waits for the worker to be seen, up to a bound, so a run that never tracks it ends with
- * the worker alive instead of hanging.
+ * makes that read before the record write only when it starts first, so the write then fails. That
+ * first read comes right after the leader starts, often before it has started the worker, so the
+ * hook looks for the worker in that read and every later one, the same tables the tracker reads
+ * (COR-2397). The leader waits for the worker to be seen, up to a bound, so a run that never tracks
+ * it ends with the worker alive instead of hanging.
  */
 const failedRecordStillTracksWorkers = await inScratchDirectory(async (directory) => {
   const pool = join(directory, 'pool');
@@ -670,10 +672,14 @@ const failedRecordStillTracksWorkers = await inScratchDirectory(async (directory
   const seen = join(directory, 'seen');
   const tracked: number[] = [];
   const reports: string[] = [];
+  let removed = false;
   const read = (): ProcessTable | undefined => {
     const table = readProcessTable();
-    if (!existsSync(join(slotDirectory(pool, 0), ownerFileName))) return table;
-    rmSync(slotDirectory(pool, 0), { recursive: true, force: true });
+    if (!removed) {
+      if (!existsSync(join(slotDirectory(pool, 0), ownerFileName))) return table;
+      rmSync(slotDirectory(pool, 0), { recursive: true, force: true });
+      removed = true;
+    }
     for (const [pid, entry] of table ?? []) {
       if (!entry.command?.includes(worker) || !isTestWorkerCommand(entry.command)) continue;
       if (!tracked.includes(pid)) tracked.push(pid);
