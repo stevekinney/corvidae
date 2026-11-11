@@ -13,7 +13,7 @@ import {
  * A hook belongs to the principal that created it. A caller reads, changes, tests and deletes its
  * own hooks, and reads their deliveries, without any scope; `bureau.hooks:read` grants every
  * owner's to `list`, `get` and `deliveries`, and `bureau.hooks:write` grants every owner's to
- * `update`, `delete` and `test`. Neither implies the other. A caller who may not see a hook is
+ * `update`, `delete`, `test` and `deliveries.retry`. Neither implies the other. A caller who may not see a hook is
  * answered as for a missing one. The owner comes from the caller's credential and never from a
  * payload.
  *

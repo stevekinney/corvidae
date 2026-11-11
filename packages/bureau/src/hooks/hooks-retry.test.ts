@@ -159,10 +159,12 @@ describe('a delivery waiting out its backoff', () => {
     const hook = await bureau.hooks!.create(WEBHOOK);
     await fireRunEvents(bureau);
 
-    await waitForCondition(async () => {
-      const [delivery] = await deliveriesOf(bureau, hook.id);
-      return delivery?.nextAttemptAt !== undefined;
-    }, 'the delivery never waited for its next try');
+    // The backoff sleep is asked for only once the wait can be cut short, after the record says
+    // when the next try is due.
+    await waitForCondition(
+      () => sleep.requested.length === 1,
+      'the delivery never waited for its next try',
+    );
     const [waiting] = await deliveriesOf(bureau, hook.id);
     expect(waiting!.status).toBe('pending');
     expect(waiting!.attempts).toHaveLength(1);
