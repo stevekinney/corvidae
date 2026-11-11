@@ -335,22 +335,25 @@ test.describe('Start run', () => {
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     await detail(page).getByRole('link', { name: WORKFLOW_COPY.page.startAction }).click();
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/run$`));
-    // A file that declares no schema takes its input as JSON.
-    await page
-      .getByRole('textbox', { name: WORKFLOW_COPY.runSetup.jsonLabel })
-      .fill('{ "topic": "weather" }');
+    // A file that declares no schema takes no input (board PageRunSetup, "No input").
+    await expect(page.getByTestId('run-setup-no-form')).toHaveText(
+      WORKFLOW_COPY.runSetup.takesNoInput(id),
+    );
+    await expect(page.getByRole('textbox', { name: WORKFLOW_COPY.runSetup.jsonLabel })).toHaveCount(
+      0,
+    );
     expectEngineMissesForFileRuns(pageErrors);
     await page.getByRole('button', { name: WORKFLOW_COPY.runSetup.startAction }).click();
 
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
     const [run] = await listWorkflowRuns(request, id);
     expect(run?.status).toBe('running');
-    // The instance took the input the page held, as JSON, and was started from the web surface.
+    // The instance was started with no input, from the web surface.
     const started = await bureau(request, 'bureau.workflows.runs.get', { runId: run?.id });
     expect(started.fault).toBeUndefined();
     expect((started.result as { trigger: unknown }).trigger).toMatchObject({
       kind: 'manual',
-      input: { topic: 'weather' },
+      input: null,
       origin: { surface: 'web' },
     });
 

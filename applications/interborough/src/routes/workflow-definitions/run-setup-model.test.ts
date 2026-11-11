@@ -8,15 +8,21 @@ import { describe, expect, test } from 'bun:test';
 import { WORKFLOW_COPY } from '../../app/copy.ts';
 import type { WorkflowResolution } from '../../lib/workflow-catalog.ts';
 import {
+  actionOffReason,
+  agentNames,
   cadenceSentence,
   formSchemaOf,
   inputIssuesOf,
   inputWordsOf,
+  missingRequiredField,
+  runsAtLimit,
   runSetupIdentity,
   runSetupTarget,
   runSetupTrigger,
   shortDate,
+  stepAgentsOf,
   summaryOf,
+  takesNoInput,
 } from './run-setup-model.ts';
 
 const OBJECT_SCHEMA = { type: 'object', properties: { topic: { type: 'string' } } };
@@ -74,9 +80,131 @@ describe('runSetupTarget', () => {
     expect(runSetupTarget('agentRun', code(null))).toEqual({ status: 'engine' });
   });
 
-  test('refuses an invalid file and a paused one, each for its own reason', () => {
+  test('refuses an invalid file, and keeps a paused one’s form while saying it is paused', () => {
     expect(runSetupTarget('broken', file({ state: 'invalid' }))).toEqual({ status: 'invalid' });
-    expect(runSetupTarget('later', file({ paused: true }))).toEqual({ status: 'paused' });
+    expect(runSetupTarget('later', file({ paused: true, inputSchema: OBJECT_SCHEMA }))).toEqual({
+      status: 'paused',
+      kind: 'file',
+      schema: OBJECT_SCHEMA,
+    });
+  });
+});
+
+describe('takesNoInput', () => {
+  test('is true only for a file that declares no input schema', () => {
+    expect(takesNoInput('file', undefined)).toBe(true);
+    expect(takesNoInput('file', OBJECT_SCHEMA)).toBe(false);
+    // A type code registered may read an input its contract does not describe.
+    expect(takesNoInput('code', undefined)).toBe(false);
+  });
+});
+
+describe('actionOffReason', () => {
+  test('names the action and what it waits for, and says nothing while loading or on', () => {
+    expect(actionOffReason('paused', 'Start run')).toBe(
+      'Start run is off while the workflow is paused.',
+    );
+    expect(actionOffReason('provider', 'Start run')).toBe(
+      'Start run is off until a provider is connected.',
+    );
+    expect(actionOffReason('unloaded', 'Start run')).toBe(
+      'Start run is off until the input form loads.',
+    );
+    expect(actionOffReason('invalid', 'Start run')).toBe(
+      'Start run is off while the file can’t load.',
+    );
+    expect(actionOffReason('loading', 'Start run')).toBeNull();
+    expect(actionOffReason(undefined, 'Start run')).toBeNull();
+  });
+});
+
+describe('missingRequiredField', () => {
+  const RELEASE = {
+    type: 'object',
+    properties: { branch: { type: 'string', title: 'Branch' }, since: { type: 'string' } },
+    required: ['branch', 'since'],
+  };
+
+  test('names the first required field left empty, by its title or its key in words', () => {
+    expect(missingRequiredField(RELEASE, { branch: '' })).toBe('Branch');
+    expect(missingRequiredField(RELEASE, { branch: '  ' })).toBe('Branch');
+    expect(missingRequiredField(RELEASE, undefined)).toBe('Branch');
+    expect(missingRequiredField(RELEASE, { branch: 'main' })).toBe('Since');
+  });
+
+  test('says nothing when every required field holds something, or nothing is required', () => {
+    expect(missingRequiredField(RELEASE, { branch: 'main', since: '2026-10-23' })).toBeUndefined();
+    expect(missingRequiredField(OBJECT_SCHEMA, {})).toBeUndefined();
+    expect(missingRequiredField(undefined, {})).toBeUndefined();
+  });
+
+  test('never reads a required key the properties only inherit', () => {
+    expect(
+      missingRequiredField({ type: 'object', properties: {}, required: ['toString'] }, {}),
+    ).toBeUndefined();
+  });
+});
+
+describe('runsAtLimit', () => {
+  const running = (groups: { key: string | null; count: number }[], truncated = false) => ({
+    groups,
+    truncated,
+  });
+
+  test('is the cap when the runs going reach it', () => {
+    expect(runsAtLimit(4, running([{ key: 'release-notes', count: 4 }]))).toBe(4);
+    expect(
+      runsAtLimit(
+        4,
+        running([
+          { key: 'a', count: 3 },
+          { key: 'b', count: 2 },
+        ]),
+      ),
+    ).toBe(4);
+  });
+
+  test('leaves out the types the Bureau runs itself, which never take a slot', () => {
+    expect(
+      runsAtLimit(
+        4,
+        running([
+          { key: 'release-notes', count: 3 },
+          { key: 'agentRun', count: 5 },
+        ]),
+      ),
+    ).toBeUndefined();
+  });
+
+  test('says nothing below the cap, or when either number is unknown', () => {
+    expect(runsAtLimit(4, running([{ key: 'a', count: 3 }]))).toBeUndefined();
+    expect(runsAtLimit(undefined, running([{ key: 'a', count: 9 }]))).toBeUndefined();
+    expect(runsAtLimit(0, running([{ key: 'a', count: 9 }]))).toBeUndefined();
+    expect(runsAtLimit('4', running([{ key: 'a', count: 9 }]))).toBeUndefined();
+    expect(runsAtLimit(4, undefined)).toBeUndefined();
+    expect(runsAtLimit(4, running([{ key: 'a', count: 9 }], true))).toBeUndefined();
+  });
+});
+
+describe('stepAgentsOf and agentNames', () => {
+  test('lists the agents the steps run, each once and sorted', () => {
+    expect(
+      stepAgentsOf([
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'Write.' } },
+        { kind: 'await-signal', signal: 'approve' },
+        { kind: 'activity', handler: 'agent', input: { agent: 'tool-runner', message: 'Run.' } },
+        { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'Again.' } },
+        { kind: 'activity', handler: 'shell', input: { agent: 'not-an-agent-step' } },
+      ]),
+    ).toEqual(['tool-runner', 'writer']);
+    expect(stepAgentsOf(null)).toEqual([]);
+    expect(stepAgentsOf(undefined)).toEqual([]);
+  });
+
+  test('names agents in a sentence', () => {
+    expect(agentNames(['tool-runner'])).toBe('Tool runner');
+    expect(agentNames(['tool-runner', 'writer'])).toBe('Tool runner and Writer');
+    expect(agentNames([])).toBe('');
   });
 });
 
@@ -298,6 +426,22 @@ describe('summaryOf', () => {
     );
     expect(summary({ branch: '' })).toBe('Runs once, right away.');
     expect(summary(undefined)).toBe(WORKFLOW_COPY.runSetup.summaryNow());
+  });
+
+  test('says a run waits for one of the runs going at the concurrency limit (59a)', () => {
+    const summary = (value: unknown) =>
+      summaryOf({
+        name: 'Release notes',
+        when: 'now',
+        cadence: DAILY,
+        schema: RELEASE_SCHEMA,
+        input: form(value),
+        queuedBehind: 4,
+      });
+    expect(summary({ branch: 'main', since: '2026-10-23' })).toBe(
+      'Runs once, when one of the 4 finishes, on main since Oct 23.',
+    );
+    expect(summary(undefined)).toBe('Runs once, when one of the 4 finishes.');
   });
 
   test('says what a schedule creates, with the input and the cadence in plain words', () => {

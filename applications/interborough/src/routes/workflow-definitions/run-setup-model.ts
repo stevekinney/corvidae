@@ -4,7 +4,11 @@
  * engine's refusal of an input turned into the field problems the form shows, what the heading
  * calls the workflow, and the one-line summary of what the primary action will do.
  */
-import { describeScheduleFields, type ScheduleValue } from '@lostgradient/cinder';
+import {
+  describeScheduleFields,
+  humanizeIdentifier,
+  type ScheduleValue,
+} from '@lostgradient/cinder';
 import { HttpClientError } from '@lostgradient/weft';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
@@ -36,16 +40,18 @@ export function declaredSchemaOf(schema: unknown): Record<string, unknown> | und
 /** What a run is started from: a file the Bureau holds, or a type that code registered. */
 export type RunSetupTarget =
   | {
-      readonly status: 'ready';
+      /** `paused` is a file that loaded and starts nothing until it is resumed; its form still shows. */
+      readonly status: 'ready' | 'paused';
       readonly kind: 'file' | 'code';
       /** The JSON Schema the input is described by, or `undefined` when the workflow declares none. */
       readonly schema: unknown;
     }
-  | { readonly status: 'engine' | 'invalid' | 'paused' };
+  | { readonly status: 'engine' | 'invalid' };
 
 /**
  * Whether the workflow can be run from the page. The types the Bureau registers to run itself are
- * never started by a person, and a file that is invalid or paused starts nothing.
+ * never started by a person, and a file that is invalid starts nothing and has no form to draw. A
+ * paused file keeps its form: the page says it is paused, and turns Start run off.
  */
 export function runSetupTarget(type: string, resolution: WorkflowResolution): RunSetupTarget {
   if (isEngineType(type)) return { status: 'engine' };
@@ -58,12 +64,109 @@ export function runSetupTarget(type: string, resolution: WorkflowResolution): Ru
   }
   const { file } = resolution;
   if (file.state !== 'ready') return { status: 'invalid' };
-  if (file.paused) return { status: 'paused' };
   return {
-    status: 'ready',
+    status: file.paused ? 'paused' : 'ready',
     kind: 'file',
     schema: schemaOf(file.inputSchema, resolution.definition, 'inputSchema'),
   };
+}
+
+/**
+ * Whether a workflow takes no input whatever starts it: a file that declares no input schema. A
+ * type code registered without one still takes JSON, because its code may read an input that its
+ * contract does not describe.
+ */
+export function takesNoInput(kind: 'file' | 'code', schema: unknown): boolean {
+  return kind === 'file' && schema === undefined;
+}
+
+/**
+ * Why the primary action is off: the form is still loading, its schema could not be read, the file
+ * cannot be read, the file is paused, or a step's agent needs a model and no provider is connected.
+ */
+export type StartBlock = 'loading' | 'unloaded' | 'invalid' | 'paused' | 'provider';
+
+/**
+ * The reason drawn beside the primary action while it is off, in the action's own name ("Start run
+ * is off while the workflow is paused."). A form that is still loading says nothing: its skeleton
+ * already shows why.
+ */
+export function actionOffReason(block: StartBlock | undefined, action: string): string | null {
+  if (block === undefined || block === 'loading') return null;
+  return WORKFLOW_COPY.runSetup.actionOff[block](action);
+}
+
+/**
+ * The first required field of an object schema that a form draft leaves empty, by the name a
+ * person reads (its `title`, or its key in words), or `undefined` when every required field holds
+ * something. Only the top level is read: it is where a run's required fields are.
+ */
+export function missingRequiredField(schema: unknown, value: unknown): string | undefined {
+  if (!isRecord(schema)) return undefined;
+  const required = schema['required'];
+  const properties = schema['properties'];
+  if (!Array.isArray(required) || !isRecord(properties)) return undefined;
+  const draft: Record<string, unknown> = isRecord(value) ? value : {};
+  const keys: readonly unknown[] = required;
+  for (const key of keys) {
+    if (typeof key !== 'string' || !Object.hasOwn(properties, key)) continue;
+    const held = Object.hasOwn(draft, key) ? draft[key] : undefined;
+    const empty =
+      held === undefined || held === null || (typeof held === 'string' && held.trim() === '');
+    if (!empty) continue;
+    const property = properties[key];
+    const title = isRecord(property) ? property['title'] : undefined;
+    return typeof title === 'string' && title.trim() !== ''
+      ? title.trim()
+      : humanizeIdentifier(key, { casing: 'sentence' });
+  }
+  return undefined;
+}
+
+/** The engine's count of the runs that are going, by type, as `weft.workflows.aggregate` answers it. */
+export type RunningByType = {
+  readonly groups: readonly { readonly key: string | null; readonly count: number }[];
+  readonly truncated: boolean;
+};
+
+/**
+ * The engine's cap on runs at once (`engine.maxConcurrentRuns`) when the runs going already reach
+ * it, so a run started now waits for a slot; `undefined` otherwise, and whenever either number is
+ * unknown. The types the Bureau runs itself never take a slot, so they are not counted, and a count
+ * the engine cut short says nothing.
+ */
+export function runsAtLimit(most: unknown, running: RunningByType | undefined): number | undefined {
+  if (typeof most !== 'number' || !Number.isSafeInteger(most) || most <= 0) return undefined;
+  if (running === undefined || running.truncated) return undefined;
+  let going = 0;
+  for (const group of running.groups) {
+    if (group.key !== null && !isEngineType(group.key)) going += group.count;
+  }
+  return going >= most ? most : undefined;
+}
+
+/**
+ * The agents a file's steps run (an `agent` activity names one in `input.agent`), each once and
+ * sorted, for the provider check. `[]` for a file whose steps were not read.
+ */
+export function stepAgentsOf(
+  steps: readonly Readonly<Record<string, unknown>>[] | null | undefined,
+): string[] {
+  const agents = new Set<string>();
+  for (const step of steps ?? []) {
+    const input = step['input'];
+    if (step['kind'] !== 'activity' || step['handler'] !== 'agent' || !isRecord(input)) continue;
+    const agent = input['agent'];
+    if (typeof agent === 'string' && agent.trim() !== '') agents.add(agent);
+  }
+  return [...agents].sort();
+}
+
+/** Agents named in a sentence: "Tool runner", "Tool runner and Writer", "A, B and C". */
+export function agentNames(agents: readonly string[]): string {
+  const names = agents.map((agent) => humanizeIdentifier(agent, { casing: 'sentence' }));
+  if (names.length <= 1) return names[0] ?? '';
+  return `${names.slice(0, -1).join(', ')} and ${names.at(-1) ?? ''}`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -253,6 +356,8 @@ export function summaryOf(choice: {
   readonly cadence: ScheduleValue;
   readonly schema: unknown;
   readonly input: InputState;
+  /** The cap on runs at once when as many are going, so a run started now waits for one to finish. */
+  readonly queuedBehind?: number | undefined;
 }): string {
   const copy = WORKFLOW_COPY.runSetup;
   const { input } = choice;
@@ -260,9 +365,11 @@ export function summaryOf(choice: {
   const words = input.mode === 'form' ? inputWordsOf(choice.schema, input.value) : undefined;
   if (choice.when === 'now') {
     if (input.mode === 'json') return copy.summaryJson;
-    return copy.summaryNow(
-      words === undefined ? '' : `, ${[words.on, words.since].filter(Boolean).join(' ')}`,
-    );
+    const said =
+      words === undefined ? '' : `, ${[words.on, words.since].filter(Boolean).join(' ')}`;
+    return choice.queuedBehind === undefined
+      ? copy.summaryNow(said)
+      : copy.summaryQueued(choice.queuedBehind, said);
   }
   const cadence = cadenceSentence(choice.cadence);
   if (input.mode === 'json') return copy.summaryScheduleJson(choice.name, cadence);

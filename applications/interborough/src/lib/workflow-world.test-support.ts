@@ -376,6 +376,11 @@ export type World = {
    * saving makes no new version.
    */
   impacts: Record<string, Record<string, unknown>>;
+  /**
+   * The cap on runs at once the host booted with (`engine.maxConcurrentRuns`), as
+   * `bureau.settings.get` reports it in `running`, or `null` for settings that set nothing.
+   */
+  maxConcurrentRuns: number | null;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -406,6 +411,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     savedSteps: {},
     agentModels: {},
     impacts: {},
+    maxConcurrentRuns: null,
     ...overrides,
   };
 }
@@ -699,6 +705,21 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       touch(schedule);
       return receipt(schedule);
     },
+    // The settings, of which only the cap on runs at once is set, and only when the world sets it.
+    'bureau.settings.get': () => {
+      const cap: Record<string, unknown> =
+        world.maxConcurrentRuns === null
+          ? {}
+          : { 'engine.maxConcurrentRuns': world.maxConcurrentRuns };
+      return {
+        values: cap,
+        effective: cap,
+        running: cap,
+        revision: 0,
+        persisted: false,
+        keys: {},
+      };
+    },
     'bureau.workflows.list': (params) => {
       if (world.failBureauFiles) throw workflowFaults.unavailable();
       // The Bureau counts a file's instances only for a caller that asks, as it does.
@@ -886,6 +907,24 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
       const limit = typeof params['limit'] === 'number' ? params['limit'] : matching.length;
       return { items: matching.slice(offset, offset + limit), total: matching.length };
+    },
+    // The runs counted by the one dimension asked for (`type` or `status`), among those whose status
+    // the filter names, as the engine counts them.
+    'weft.workflows.aggregate': (params) => {
+      const status = params['status'];
+      const statuses = typeof status === 'string' ? [status] : Array.isArray(status) ? status : [];
+      const counts = new Map<string, number>();
+      for (const run of world.runs) {
+        if (statuses.length > 0 && !statuses.includes(run.status)) continue;
+        const key = params['groupBy'] === 'type' ? run.type : run.status;
+        counts.set(key, (counts.get(key) ?? 0) + 1);
+      }
+      const groups = [...counts].map(([key, count]) => ({ key, count }));
+      return {
+        total: groups.reduce((sum, group) => sum + group.count, 0),
+        groups,
+        truncated: false,
+      };
     },
     'weft.workflows.revisions.list': (params) =>
       world.installedRevisions[String(params['name'])] ?? [],

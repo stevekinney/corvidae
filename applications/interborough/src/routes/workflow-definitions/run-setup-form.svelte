@@ -9,9 +9,15 @@
    * Name that comes last. Start run and Create schedule are the same page with a different When
    * choice; the choice is bound to the page, whose heading and breadcrumb follow it.
    *
+   * The body stands in every state the page can be in, so When and the footer never move: while
+   * the workflow loads (a skeleton in the form's place), when its schema could not be read (the
+   * Input section's own error block), for a file that cannot be read, and for one that takes no
+   * input. While the page says the action is off (`block`), the reason is drawn beside it.
+   *
    * A start and a schedule create real work, so a second ask while one is in flight is dropped
-   * before the first `await`. A refusal keeps the input where it was: the Bureau's or the engine's
-   * field problems go on the fields they name, and any other failure is a banner.
+   * before the first `await`, and while it is in flight the form is read-only. A refusal keeps the
+   * input where it was: the Bureau's or the engine's field problems go on the fields they name, and
+   * any other failure is an alert above the footer, at the action.
    */
   import {
     Alert,
@@ -21,13 +27,15 @@
     humanizeIdentifier,
     Input,
     RadioGroup,
+    Skeleton,
     type ScheduleValue,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
-  import { untrack } from 'svelte';
+  import { untrack, type Snippet } from 'svelte';
 
-  import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
+  import { getSettings } from '../../lib/bureau-settings.ts';
   import { getClient } from '../../lib/client.ts';
   import { isNetworkFailure } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -36,6 +44,8 @@
   import { startingSchedules } from '../../lib/workflow-catalog.ts';
   import { startWorkflowFile } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
+  import { parseWorkflowAggregateResult } from '../health/aggregate-output.ts';
+  import { aggregateInputFor, WORKING_NOW_FILTER } from '../health/health-counts.ts';
   import {
     browserTimeZone,
     scheduleValueTimeZone,
@@ -46,10 +56,15 @@
   import { cadenceText } from '../schedules/schedule-cadence-text.ts';
   import ScheduleWhen from '../schedules/schedule-when.svelte';
   import {
+    actionOffReason,
     inputIssuesOf,
+    missingRequiredField,
+    runsAtLimit,
     summaryOf,
+    takesNoInput,
     type InputState,
     type RunSetupIdentity,
+    type StartBlock,
   } from './run-setup-model.ts';
   import type { TriggerSummary } from './workflow-presentation.ts';
   import WorkflowInput from './workflow-input.svelte';
@@ -57,19 +72,44 @@
   interface Props {
     /** The workflow's identifier. */
     type: string;
-    /** What starts it: a file the Bureau holds, or a type that code registered. */
-    kind: 'file' | 'code';
+    /** What starts it: a file the Bureau holds, or a type that code registered; `undefined` until it is read. */
+    kind?: 'file' | 'code' | undefined;
     /** The JSON Schema its input is described by, or `undefined` when it declares none. */
     schema: unknown;
+    /**
+     * What the Input section holds: `ready` draws the input from `schema`; `loading` is the form's
+     * skeleton while the workflow is read; `failed` is the section's own error block when the
+     * schema could not be read; `unreadable` says no form can be drawn from a file that cannot be
+     * read.
+     * @default 'ready'
+     */
+    input?: 'ready' | 'loading' | 'failed' | 'unreadable';
+    /** Why the primary action is off, which is said beside it; `undefined` while it is on. */
+    block?: StartBlock | undefined;
     /** What the workflow is called: its title, or its identifier when the file gives none. */
     identity: RunSetupIdentity;
     /** What starts a file on its own, which the When section says beside Now. */
     trigger: TriggerSummary | null;
+    /** The page's alerts about the workflow (paused, can't load, no provider), drawn above Input. */
+    notice?: Snippet;
+    /** Reads the workflow again, from the Input section's error block. */
+    onRetry?: () => void;
     /** The When choice, `now` or `schedule`, which the page's heading and breadcrumb follow. */
     whenChoice?: string;
   }
 
-  let { type, kind, schema, identity, trigger, whenChoice = $bindable('now') }: Props = $props();
+  let {
+    type,
+    kind,
+    schema,
+    input: inputMode = 'ready',
+    block,
+    identity,
+    trigger,
+    notice,
+    onRetry,
+    whenChoice = $bindable('now'),
+  }: Props = $props();
 
   const copy = WORKFLOW_COPY.runSetup;
   const client = getClient();
@@ -91,18 +131,30 @@
   $effect(() => {
     if (!nameEdited) name = startingName;
   });
+  /** Why the last ask did not start or create anything, said in the alert above the footer. */
   let failure = $state<{
     readonly title: string;
-    readonly message: string;
+    /** What the service said, or `null` when the title says it all. */
+    readonly message: string | null;
+    /** That nothing was done and the input is still here, for a refusal the service answered. */
+    readonly closing: string | null;
     /** Where to look when the answer was lost and the work may have been done. */
     readonly check?: { readonly label: string; readonly path: string };
   } | null>(null);
+  /** The first field the last ask found empty, repeated above the footer until the input changes. */
+  let inputProblem = $state<string | null>(null);
 
   /** What the input holds, for the footer's summary. */
   let input = $state<InputState>({ mode: 'form', value: undefined });
   function trackInput(next: InputState): void {
     input = next;
+    inputProblem = null;
   }
+
+  /** Whether the workflow takes no input whatever starts it, so the Input section says so in one line. */
+  const noInput = $derived(
+    inputMode === 'ready' && kind !== undefined && takesNoInput(kind, schema),
+  );
 
   /** The input, which the footer asks for and the Bureau's or the engine's refusal goes back to. */
   let inputField = $state<ReturnType<typeof WorkflowInput<Choice>>>();
@@ -152,6 +204,7 @@
     },
     onMutate: () => {
       failure = null;
+      inputProblem = null;
       inputField?.clear();
     },
     onSuccess: (outcome) => {
@@ -170,36 +223,40 @@
         inputField?.refuse(refused);
         return;
       }
+      const scheduled = variables.when === 'schedule';
       if (isNetworkFailure(error)) {
-        // The request may have reached the Bureau before the answer was lost, so a second ask could
-        // create a second run: say it may have happened, and where to look.
-        const scheduled = variables.when === 'schedule';
+        // The request may have reached the Bureau before the answer was lost, and a start carries no
+        // key that would make a second ask the same one, so a second ask could create a second run:
+        // say it may have happened, and where to look, never that nothing started.
         failure = {
           title: scheduled ? copy.scheduleMaybe : copy.startMaybe,
           message: copy.lostDescription,
+          closing: null,
           check: scheduled
             ? { label: copy.checkSchedules, path: '/schedules' }
             : { label: copy.checkRuns, path: '/runs' },
         };
         return;
       }
-      const title = variables.when === 'schedule' ? copy.scheduleFailed : copy.startFailed;
+      // The service answered with a refusal, so nothing was done, and the ask can be made again.
+      const title = scheduled ? copy.scheduleFailed : copy.startFailed;
+      const closing = scheduled ? copy.nothingCreated : copy.nothingStarted;
       const fault = agentFaultOf(error);
       switch (fault.kind) {
         case 'forbidden':
-          failure = { title, message: copy.forbidden };
+          failure = { title, message: copy.forbidden, closing };
           return;
         case 'not-found':
-          failure = { title, message: copy.blocked.pausedDescription };
+          failure = { title, message: copy.notFoundOnStart, closing };
           return;
         case 'rejected':
         case 'other':
-          failure = { title, message: fault.message };
+          failure = { title, message: fault.message, closing };
           return;
         case 'stale':
         case 'identifier-taken':
           // A start names no hash and no identifier, so neither can be told.
-          failure = { title, message: title };
+          failure = { title, message: null, closing };
           return;
       }
     },
@@ -250,6 +307,45 @@
     if (!schedulesSettled || startedBy.length > 0) return undefined;
     return { kind: 'schedule' as const, text: copy.triggerSchedule(trigger.words) };
   });
+  /** Whether the schedules were read and none, not even the file's own trigger, starts the workflow. */
+  const notScheduled = $derived(
+    schedules.isSuccess && startedBy.length === 0 && trigger?.kind !== 'schedule',
+  );
+
+  /**
+   * The engine's cap on runs at once, read on load. The value in force is the one the host booted
+   * with (`running`): the key applies on restart, so a saved value may not be in force yet. A
+   * caller who may not read the settings is told nothing, and Now reads as it always does.
+   */
+  const settings = createQuery(() => ({
+    queryKey: queryKeys.settings.snapshot(),
+    queryFn: ({ signal }: { signal: AbortSignal }) => getSettings({ signal }),
+    retry: false,
+  }));
+  /**
+   * The runs that are going, by type, so the types the Bureau runs itself (which never take a slot)
+   * can be left out. The count is the engine's, which only a caller who may read runs is given.
+   */
+  const running = createQuery(() => ({
+    queryKey: queryKeys.workflows.aggregate('type', WORKING_NOW_FILTER),
+    queryFn: async () =>
+      parseWorkflowAggregateResult(
+        await client.operations['weft.workflows.aggregate']({
+          ...aggregateInputFor(WORKING_NOW_FILTER),
+          groupBy: 'type' as const,
+        }),
+      ),
+    enabled: principal.hasScope('workflows:read'),
+    retry: false,
+  }));
+  /** The cap, when as many runs as it allows are going: a run started now waits for one to finish. */
+  const atLimit = $derived(
+    runsAtLimit(
+      settings.data?.running['engine.maxConcurrentRuns'] ??
+        settings.data?.effective['engine.maxConcurrentRuns'],
+      running.data,
+    ),
+  );
 
   /** The scope the primary action needs, disabled with its reason when the principal lacks it. */
   const gate = $derived.by(() => {
@@ -257,8 +353,26 @@
     if (kind === 'code') return scopeGate(principal, ['workflows:write']);
     return { disabled: false, title: undefined };
   });
-  const summary = $derived(summaryOf({ name: identity.name, when, cadence, schema, input }));
+  /** Whether a start or a schedule is in flight: the form is read-only, and Cancel is off. */
+  const starting = $derived(run.isPending);
   const action = $derived(when === 'schedule' ? copy.scheduleAction : copy.startAction);
+  const actionLabel = $derived(
+    starting ? (when === 'schedule' ? copy.creatingAction : copy.startingAction) : action,
+  );
+  /** Why the primary action is off, beside it, in the action's own name. */
+  const offReason = $derived(actionOffReason(block, action));
+  const summary = $derived(
+    starting && when === 'now'
+      ? copy.startingSummary(identity.name)
+      : summaryOf({
+          name: identity.name,
+          when,
+          cadence,
+          schema,
+          input,
+          queuedBehind: when === 'now' ? atLimit : undefined,
+        }),
+  );
 
   function begin(value: unknown, choice: Choice): void {
     if (sending) return;
@@ -275,10 +389,14 @@
 
   /** The footer's ask. The input checks itself, and starts only what this ask submitted. */
   function request(): void {
-    if (sending || gate.disabled) return;
+    if (sending || gate.disabled || block !== undefined) return;
     if (when === 'schedule') {
       if (whenBlock?.isInvalid() === true) {
-        failure = { title: copy.scheduleFailed, message: copy.scheduleInvalid };
+        failure = {
+          title: copy.scheduleFailed,
+          message: copy.scheduleInvalid,
+          closing: null,
+        };
         return;
       }
       nameError = nameProblem(name);
@@ -288,13 +406,21 @@
       }
     }
     // The mutation reads the schedule after its first `await`, so it gets a copy the builder cannot change.
-    inputField?.request({
+    const choice: Choice = {
       when,
       cadence: $state.snapshot(cadence),
       name,
       overlap,
       catchUp,
-    });
+    };
+    if (noInput) {
+      begin(undefined, choice);
+      return;
+    }
+    // The form marks the field and moves focus to it; the line above the footer repeats it there.
+    const missing = input.mode === 'form' ? missingRequiredField(schema, input.value) : undefined;
+    inputProblem = missing === undefined ? null : copy.requiredBeforeRun(missing);
+    inputField?.request(choice);
   }
 
   function openLink(event: MouseEvent, path: string): void {
@@ -311,12 +437,153 @@
 </script>
 
 <div class="ib-run-setup__body">
-  {#if failure !== null}
-    <Alert variant="danger" dismissible onDismiss={() => (failure = null)}>
-      <p class="ib-run-setup__alert-title">{failure.title}</p>
-      {#if failure.message !== failure.title}
-        <p class="ib-run-setup__alert-message">{failure.message}</p>
+  {@render notice?.()}
+
+  <!-- While a start is in flight nothing in the form can be changed: what was sent is what shows. -->
+  <div class="ib-run-setup__fields" inert={starting} data-testid="run-setup-fields">
+    {#if when === 'schedule'}
+      <p class="ib-run-setup__lead" data-testid="run-setup-input-lead-schedule">
+        {copy.scheduleInputLead}
+      </p>
+    {/if}
+
+    <FormSection heading={copy.inputHeading} columns={1}>
+      {#if inputMode === 'loading'}
+        <!-- Nothing for the first 300 ms, then fields in the form's layout, then the status line. -->
+        <Skeleton
+          variant="form"
+          rows={2}
+          delay={300}
+          stillLoadingAfter={10_000}
+          stillLoadingLabel={copy.loadingInput}
+          onCancel={cancel}
+          label={copy.loadingInput}
+        />
+      {:else if inputMode === 'failed'}
+        <Alert
+          variant="danger"
+          heading={copy.inputFailed.title}
+          data-testid="run-setup-input-failed"
+        >
+          {copy.inputFailed.description}
+          {#snippet actions()}
+            <Button variant="secondary" size="sm" onclick={() => onRetry?.()}>{RETRY_LABEL}</Button>
+          {/snippet}
+        </Alert>
+      {:else if inputMode === 'unreadable'}
+        <p class="ib-run-setup__line" data-testid="run-setup-no-form">{copy.unreadableInput}</p>
+      {:else if noInput}
+        <p class="ib-run-setup__line" data-testid="run-setup-no-form">
+          {copy.takesNoInput(identity.name)}
+        </p>
+      {:else}
+        <WorkflowInput
+          bind:this={inputField}
+          {schema}
+          composed
+          locked={starting}
+          onChange={trackInput}
+          onInput={begin}
+        />
       {/if}
+    </FormSection>
+
+    <FormSection heading={copy.whenHeading} columns={1}>
+      <RadioGroup
+        name="run-setup-when"
+        label={copy.whenLabel}
+        variant="card"
+        bind:value={whenChoice}
+      >
+        <RadioGroup.Option
+          id="run-setup-when-now"
+          value="now"
+          label={copy.now}
+          description={atLimit === undefined ? copy.nowDescription : copy.nowAtLimit(atLimit)}
+        />
+        <RadioGroup.Option
+          id="run-setup-when-schedule"
+          value="schedule"
+          label={copy.schedule}
+          description={copy.scheduleDescription}
+        />
+      </RadioGroup>
+      {#if when === 'now'}
+        <div class="ib-run-setup__starts" data-testid="run-setup-starts">
+          {#if triggerNote?.kind === 'signal'}
+            <p class="ib-run-setup__line" data-testid="run-setup-trigger">
+              {copy.triggerSignal.before}<code>{triggerNote.name}</code>{copy.triggerSignal.after}
+            </p>
+          {:else if triggerNote?.kind === 'schedule'}
+            <p class="ib-run-setup__line" data-testid="run-setup-trigger">{triggerNote.text}</p>
+          {/if}
+          {#each startedBy as line (line.id)}
+            <p class="ib-run-setup__line" data-testid="run-setup-started-by">
+              {copy.alsoStartedBy.before}<a
+                href={router.href(line.href)}
+                onclick={(event) => openLink(event, line.href)}>{line.label}</a
+              >{copy.alsoStartedBy.after}{line.paused
+                ? copy.alsoStartedBy.paused
+                : line.note === null
+                  ? copy.alsoStartedBy.bare
+                  : copy.alsoStartedBy.cadence(line.note)}
+            </p>
+          {/each}
+          {#if notScheduled}
+            <p class="ib-run-setup__line" data-testid="run-setup-not-scheduled">
+              {copy.notScheduled}
+            </p>
+          {/if}
+        </div>
+      {:else}
+        <ScheduleWhen
+          bind:this={whenBlock}
+          value={cadence}
+          onValueChange={(next) => (cadence = next)}
+          label={copy.scheduleLabel}
+          {overlap}
+          onOverlapChange={(next) => (overlap = next)}
+          {catchUp}
+          onCatchUpChange={(next) => (catchUp = next)}
+          catchUpLabel={copy.catchUpLabel}
+        />
+        <FormField
+          id="run-setup-name"
+          label={copy.nameLabel}
+          description={copy.nameDescription}
+          required
+          error={nameError}
+          errorGlyph="error"
+        >
+          <Input
+            id="run-setup-name"
+            required
+            bind:value={name}
+            oninput={() => {
+              nameEdited = true;
+              nameError = '';
+            }}
+          />
+        </FormField>
+      {/if}
+    </FormSection>
+  </div>
+
+  <!-- What went wrong with the last ask, at the action: never a banner, and never dismissed by hand. -->
+  {#if inputProblem !== null}
+    <Alert variant="danger" data-testid="run-setup-input-problem">{inputProblem}</Alert>
+  {/if}
+  {#if failure !== null}
+    <Alert variant="danger" data-testid="run-setup-failure">
+      <p class="ib-run-setup__alert-message">
+        <span class="ib-run-setup__alert-title">{failure.title}</span>
+        {#if failure.message !== null}
+          <span>{failure.message}</span>
+        {/if}
+        {#if failure.closing !== null}
+          <span>{failure.closing}</span>
+        {/if}
+      </p>
       {#if failure.check !== undefined}
         {@const check = failure.check}
         <p class="ib-run-setup__alert-message">
@@ -328,104 +595,32 @@
     </Alert>
   {/if}
 
-  {#if when === 'schedule'}
-    <p class="ib-run-setup__lead" data-testid="run-setup-input-lead-schedule">
-      {copy.scheduleInputLead}
-    </p>
-  {/if}
-
-  <FormSection heading={copy.inputHeading} columns={1}>
-    <WorkflowInput bind:this={inputField} {schema} composed onChange={trackInput} onInput={begin} />
-  </FormSection>
-
-  <FormSection heading={copy.whenHeading} columns={1}>
-    <RadioGroup name="run-setup-when" label={copy.whenLabel} variant="card" bind:value={whenChoice}>
-      <RadioGroup.Option
-        id="run-setup-when-now"
-        value="now"
-        label={copy.now}
-        description={copy.nowDescription}
-      />
-      <RadioGroup.Option
-        id="run-setup-when-schedule"
-        value="schedule"
-        label={copy.schedule}
-        description={copy.scheduleDescription}
-      />
-    </RadioGroup>
-    {#if when === 'now'}
-      <div class="ib-run-setup__starts" data-testid="run-setup-starts">
-        {#if triggerNote?.kind === 'signal'}
-          <p class="ib-run-setup__line" data-testid="run-setup-trigger">
-            {copy.triggerSignal.before}<code>{triggerNote.name}</code>{copy.triggerSignal.after}
-          </p>
-        {:else if triggerNote?.kind === 'schedule'}
-          <p class="ib-run-setup__line" data-testid="run-setup-trigger">{triggerNote.text}</p>
-        {/if}
-        {#each startedBy as line (line.id)}
-          <p class="ib-run-setup__line" data-testid="run-setup-started-by">
-            {copy.alsoStartedBy.before}<a
-              href={router.href(line.href)}
-              onclick={(event) => openLink(event, line.href)}>{line.label}</a
-            >{copy.alsoStartedBy.after}{line.paused
-              ? copy.alsoStartedBy.paused
-              : line.note === null
-                ? copy.alsoStartedBy.bare
-                : copy.alsoStartedBy.cadence(line.note)}
-          </p>
-        {/each}
-      </div>
-    {:else}
-      <ScheduleWhen
-        bind:this={whenBlock}
-        value={cadence}
-        onValueChange={(next) => (cadence = next)}
-        label={copy.scheduleLabel}
-        {overlap}
-        onOverlapChange={(next) => (overlap = next)}
-        {catchUp}
-        onCatchUpChange={(next) => (catchUp = next)}
-        catchUpLabel={copy.catchUpLabel}
-      />
-      <FormField
-        id="run-setup-name"
-        label={copy.nameLabel}
-        description={copy.nameDescription}
-        required
-        error={nameError}
-        errorGlyph="error"
-      >
-        <Input
-          id="run-setup-name"
-          required
-          bind:value={name}
-          oninput={() => {
-            nameEdited = true;
-            nameError = '';
-          }}
-        />
-      </FormField>
-    {/if}
-  </FormSection>
-
   <div class="ib-run-setup__footer" data-testid="run-setup-footer">
     <p class="ib-run-setup__summary" data-testid="run-setup-summary">{summary}</p>
     <div class="ib-run-setup__actions">
-      <Button variant="secondary" onclick={cancel}>{copy.cancel}</Button>
+      {#if offReason !== null}
+        <span
+          id="run-setup-action-off"
+          class="ib-run-setup__reason"
+          data-testid="run-setup-action-off">{offReason}</span
+        >
+      {/if}
+      <Button variant="secondary" disabled={starting} onclick={cancel}>{copy.cancel}</Button>
       <Button
         data-changes
         variant="primary"
-        disabled={gate.disabled}
+        disabled={gate.disabled || block !== undefined || starting}
         title={gate.title}
-        loading={run.isPending}
-        onclick={request}>{action}</Button
+        aria-describedby={offReason === null ? undefined : 'run-setup-action-off'}
+        onclick={request}>{actionLabel}</Button
       >
     </div>
   </div>
 </div>
 
 <style>
-  .ib-run-setup__body {
+  .ib-run-setup__body,
+  .ib-run-setup__fields {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-6);
@@ -460,8 +655,12 @@
   }
 
   .ib-run-setup__alert-message {
-    margin: var(--cinder-space-1) 0 0;
+    margin: 0;
     overflow-wrap: anywhere;
+  }
+
+  .ib-run-setup__alert-message + .ib-run-setup__alert-message {
+    margin-block-start: var(--cinder-space-1);
   }
 
   /*
@@ -498,5 +697,12 @@
     gap: var(--cinder-space-2);
     align-items: center;
     margin-inline-start: auto;
+  }
+
+  /* Why the primary action is off, beside it. */
+  .ib-run-setup__reason {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    overflow-wrap: anywhere;
   }
 </style>

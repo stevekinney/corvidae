@@ -1375,8 +1375,21 @@ export const WORKFLOW_COPY = {
     triggerSignal: { before: 'Also starts on its own when ', after: ' arrives.' },
     triggerSchedule: (cadence: string): string =>
       `Runs on its own schedule (${cadence}). Change it in the workflow.`,
+    /**
+     * The line under Now while as many runs are going as the engine runs at once
+     * (`engine.maxConcurrentRuns`; board PageRunSetup, "At the concurrency limit").
+     */
+    nowAtLimit: (most: number): string =>
+      `${String(most)} runs are going, the most at once. This one starts when one finishes.`,
+    /** Under When, once the schedules are read, when none starts the workflow (board PageRunSetup, "No input"). */
+    notScheduled: 'Not used by any schedule.',
     /** The footer's one line when the choice is Now: the input in plain words, when it says anything. */
     summaryNow: (inputWords = ''): string => `Runs once, right away${inputWords}.`,
+    /** The same at the concurrency limit: the run waits for one of the runs that are going. */
+    summaryQueued: (most: number, inputWords = ''): string =>
+      `Runs once, when one of the ${String(most)} finishes${inputWords}.`,
+    /** The footer's line while a start is in flight (board PageRunSetup, "Starting"). */
+    startingSummary: (name: string): string => `Starting ${name}…`,
     /** The footer's line while the JSON editor holds an input that parses. */
     summaryJson: 'Runs once, right away, with the JSON above.',
     /** The footer's line while the JSON does not parse. */
@@ -1395,9 +1408,51 @@ export const WORKFLOW_COPY = {
     },
     startAction: 'Start run',
     scheduleAction: 'Create schedule',
+    /** The primary button while a start is in flight; the form is read-only meanwhile. */
+    startingAction: 'Starting…',
+    /** The primary button while a schedule is being created. */
+    creatingAction: 'Creating…',
     cancel: 'Cancel',
-    startFailed: 'The run was not started',
-    scheduleFailed: 'The schedule was not created',
+    /** The lead of the alert above the footer when the start was refused (board PageRunSetup, "Start failed"). */
+    startFailed: 'Couldn’t start the run.',
+    scheduleFailed: 'Couldn’t create the schedule.',
+    /** Closes that alert: a refused start created nothing, and Start run is the retry. */
+    nothingStarted: 'Nothing started, and what you typed is still here.',
+    nothingCreated: 'Nothing was created, and what you typed is still here.',
+    /** The Bureau no longer finds the workflow it was asked to start: it was paused or removed. */
+    notFoundOnStart:
+      'The workflow is paused or was removed. Resume it in the workflow, and it can run.',
+    /** The alert line above the footer that repeats the first missing field (board PageRunSetup, "Validation"). */
+    requiredBeforeRun: (field: string): string => `${field} is required before this can run.`,
+    /** The Input section of a file that declares no input schema (board PageRunSetup, "No input"). */
+    takesNoInput: (name: string): string => `${name} takes no input.`,
+    /** The Input section of a file the Bureau cannot read (board PageRunSetup, "Order refund, can’t load"). */
+    unreadableInput: 'The input form can’t be drawn from a file that can’t be read.',
+    /** The Input section's own error block when the schema could not be read (board PageRunSetup, "Schema failed to load"). */
+    inputFailed: {
+      title: 'Couldn’t load the input form',
+      description:
+        'Interborough didn’t answer when it asked for the schema. Nothing you typed is lost.',
+    },
+    /** The skeleton's status line after ten seconds (board PageRunSetup, "Loading"). */
+    loadingInput: 'Loading the input form…',
+    /** The neutral alert above Input for a paused file, and its button (board PageRunSetup, "Paused workflow"). */
+    paused: (name: string): string => `${name} is paused. Resume it to run it.`,
+    resumeAction: 'Resume',
+    /** The amber alert above Input when a step's agent needs a model and no provider is connected. */
+    noProvider: (agents: string): string =>
+      `No model provider is connected, so ${agents} can’t answer. Connect one to run this.`,
+    connectProvider: 'Connect a provider',
+    /** Closes the red alert of a file that cannot load, after the file and the line it stops on. */
+    unreadableStartOff: 'Start run is off until the file is fixed.',
+    openCode: 'Open Code',
+    /** Why the primary action is off, beside it: the action's own name, then what it waits for. */
+    actionOff: {
+      paused: (action: string): string => `${action} is off while the workflow is paused.`,
+      provider: (action: string): string => `${action} is off until a provider is connected.`,
+      unloaded: (action: string): string => `${action} is off until the input form loads.`,
+      invalid: (action: string): string => `${action} is off while the file can’t load.`,
+    },
     /** The answer was lost, so the Bureau may have acted: say so, and do not suggest trying again blindly. */
     scheduleInvalid: 'A field in the schedule is not valid. Correct it, then create the schedule.',
     startMaybe: 'The run may have started',
@@ -1407,19 +1462,11 @@ export const WORKFLOW_COPY = {
     checkRuns: 'Check the runs',
     checkSchedules: 'Check the schedules',
     forbidden: 'You may not start runs or create schedules here.',
-    loadFailed: {
-      title: 'This workflow could not be loaded',
-      description: 'Try again, or check that you may read workflows.',
-    },
-    /** A workflow that cannot be run from this page, and where to go instead. */
+    /** A type the Bureau starts itself, which is never set up here, and where to go instead. */
     blocked: {
       openWorkflow: 'Open the workflow',
       engineTitle: 'Interborough starts this workflow itself',
       engineDescription: 'There is nothing to set up here.',
-      invalidTitle: 'This workflow cannot run yet',
-      invalidDescription: 'Its file has a problem. Fix it in the workflow, and it can run.',
-      pausedTitle: 'This workflow is paused',
-      pausedDescription: 'Resume it in the workflow, and it can run.',
     },
   },
   /** Choosing the workflow to run, from the runs list. */

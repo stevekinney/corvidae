@@ -12,6 +12,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
+import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { WORKFLOW_COPY } from '../../app/copy.ts';
 import { StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
@@ -22,6 +23,7 @@ import {
   installWorkflowWorld,
   invalidFile,
   readyFile,
+  scheduleFixture,
   sourceDefinition,
   workflowFaults,
   type WorkflowStub,
@@ -55,6 +57,9 @@ const TOPIC_SCHEMA = {
 
 /** A schema the form cannot draw, so its input is typed as JSON. */
 const LIST_SCHEMA = { type: 'array', items: { type: 'integer' } };
+
+/** An object schema that names no field, which the form cannot draw either. */
+const FREE_OBJECT_SCHEMA = { type: 'object' };
 
 /** The input of the sample world's Release notes: a required branch and an optional date. */
 const RELEASE_SCHEMA = {
@@ -112,6 +117,8 @@ function open(
         }),
         readyFile('inbox-triage', { trigger: { kind: 'signal', name: 'message-received' } }),
         readyFile('secret-input', { inputSchema: SECRET_SCHEMA }),
+        // An object schema that names no field: the form cannot draw it, so its input is typed as JSON.
+        readyFile('free-object', { inputSchema: FREE_OBJECT_SCHEMA }),
         readyFile('paused-one', { paused: true }),
         invalidFile('broken'),
       ],
@@ -124,13 +131,23 @@ function open(
 
 const page = (root: ParentNode) => root.querySelector<HTMLElement>('[data-page="run-setup"]');
 
+/**
+ * The page once the workflow is read: the footer stands from the first frame, so the Input section
+ * holding the input (or the line that says there is none) is what says the read has answered.
+ */
 async function ready(container: HTMLElement): Promise<HTMLElement> {
   return waitFor(() => {
     const found = page(container);
     expect(found?.querySelector('[data-testid="run-setup-footer"]')).toBeTruthy();
+    expect(
+      found?.querySelector('[data-testid="run-setup-input"], [data-testid="run-setup-no-form"]'),
+    ).toBeTruthy();
     return found as HTMLElement;
   });
 }
+
+const offReason = (root: ParentNode): string | undefined =>
+  root.querySelector('[data-testid="run-setup-action-off"]')?.textContent?.trim();
 
 const field = (root: ParentNode, label: string): HTMLInputElement =>
   [...root.querySelectorAll<HTMLInputElement>('input')].find(
@@ -169,30 +186,52 @@ describe('the page', () => {
     expect(primary(root).textContent?.trim()).toBe(COPY.startAction);
   });
 
-  test('enters the input as JSON when the workflow declares no schema', async () => {
-    const { container } = open('/workflows/plain/run');
+  test('enters the input as JSON when the schema is one the form cannot draw', async () => {
+    const { container } = open('/workflows/free-object/run');
     const root = await ready(container);
     expect(root.querySelector('textarea')).toBeTruthy();
     expect(root.querySelector('form')).toBeNull();
   });
 
-  test('says an engine type, a paused file and an invalid file cannot run, and links back', async () => {
-    for (const [path, title] of [
-      ['/workflows/agentRun/run', COPY.blocked.engineTitle],
-      ['/workflows/paused-one/run', COPY.blocked.pausedTitle],
-      ['/workflows/broken/run', COPY.blocked.invalidTitle],
-    ] as const) {
-      const { container, findByRole, unmount } = open(path);
-      expect((await findByRole('heading', { level: 2, name: title })) !== null).toBe(true);
-      const link = [...container.querySelectorAll('a')].find(
-        (anchor) => anchor.textContent?.trim() === COPY.blocked.openWorkflow,
-      );
-      expect(link?.getAttribute('href')).toBe(path.replace('/run', ''));
-      expect(container.querySelector('[data-testid="run-setup-footer"]')).toBeNull();
-      expect(container.querySelector('form')).toBeNull();
-      unmount();
-      stub?.restore();
-    }
+  test('says in one line that a file declaring no input schema takes no input (58i, 58j)', async () => {
+    const { container } = open('/workflows/plain/run');
+    const root = await ready(container);
+    expect(root.querySelector('[data-testid="run-setup-no-form"]')?.textContent?.trim()).toBe(
+      COPY.takesNoInput('plain'),
+    );
+    expect(root.querySelector('textarea')).toBeNull();
+    expect(root.querySelector('form')).toBeNull();
+    expect(root.querySelector('[data-testid="run-setup-edit-as-json"]')).toBeNull();
+    expect(root.querySelector('[data-testid="run-setup-summary"]')?.textContent).toBe(
+      COPY.summaryNow(),
+    );
+    expect(primary(root).disabled).toBe(false);
+  });
+
+  test('says no schedule uses a workflow that nothing else starts (58j)', async () => {
+    const { container } = open('/workflows/weekly-cleanup/run', {
+      files: [readyFile('weekly-cleanup', { trigger: { kind: 'manual' } })],
+    });
+    const root = await ready(container);
+    await waitFor(() =>
+      expect(
+        root.querySelector('[data-testid="run-setup-not-scheduled"]')?.textContent?.trim(),
+      ).toBe(COPY.notScheduled),
+    );
+  });
+
+  test('says an engine type is started by Interborough itself, and links back', async () => {
+    const path = '/workflows/agentRun/run';
+    const { container, findByRole } = open(path);
+    expect(
+      (await findByRole('heading', { level: 2, name: COPY.blocked.engineTitle })) !== null,
+    ).toBe(true);
+    const link = [...container.querySelectorAll('a')].find(
+      (anchor) => anchor.textContent?.trim() === COPY.blocked.openWorkflow,
+    );
+    expect(link?.getAttribute('href')).toBe('/workflows/agentRun');
+    expect(container.querySelector('[data-testid="run-setup-footer"]')).toBeNull();
+    expect(container.querySelector('form')).toBeNull();
   });
 
   test('shows a workflow that does not exist as the frame’s not-found state', async () => {
@@ -387,18 +426,18 @@ describe('starting now', () => {
     expect(stub?.callsTo('bureau.workflows.start')).toHaveLength(1);
   });
 
-  test('starts a workflow with no schema from its JSON, or from none', async () => {
-    const { container } = open('/workflows/plain/run');
+  test('starts a workflow whose schema the form cannot draw from its JSON', async () => {
+    const { container } = open('/workflows/free-object/run');
     const root = await ready(container);
     const editor = root.querySelector('textarea') as HTMLTextAreaElement;
     await fireEvent.input(editor, { target: { value: '{ "topic": "weather" }' } });
     await fireEvent.click(primary(root));
     await waitFor(() =>
-      expect(stub?.world.startedRuns).toEqual([{ id: 'plain', input: { topic: 'weather' } }]),
+      expect(stub?.world.startedRuns).toEqual([{ id: 'free-object', input: { topic: 'weather' } }]),
     );
   });
 
-  test('starts with no input when the JSON is empty', async () => {
+  test('starts a file that takes no input with none', async () => {
     const { container } = open('/workflows/plain/run');
     const root = await ready(container);
     await fireEvent.click(primary(root));
@@ -407,7 +446,7 @@ describe('starting now', () => {
   });
 
   test('refuses JSON that does not parse, and starts nothing', async () => {
-    const { container, findByText } = open('/workflows/plain/run');
+    const { container, findByText } = open('/workflows/free-object/run');
     const root = await ready(container);
     await fireEvent.input(root.querySelector('textarea') as HTMLTextAreaElement, {
       target: { value: '{ nope' },
@@ -465,7 +504,7 @@ describe('a start that fails', () => {
 
   test('says the workflow is gone or paused when the Bureau no longer finds it', async () => {
     const view = await fail(workflowFaults.notFound('workflow digest'));
-    expect(await view.findByText(COPY.blocked.pausedDescription)).not.toBeNull();
+    expect(await view.findByText(COPY.notFoundOnStart)).not.toBeNull();
   });
 
   test.each([
@@ -489,7 +528,7 @@ describe('a start that fails', () => {
   });
 
   test('puts the Bureau’s refusal of JSON input under the editor, and keeps it', async () => {
-    const { container, findByText } = open('/workflows/plain/run');
+    const { container, findByText } = open('/workflows/free-object/run');
     stub?.on('bureau.workflows.start', () => {
       throw workflowFaults.invalidInput([{ path: ['topic'], message: 'Topic is required.' }]);
     });
@@ -499,7 +538,7 @@ describe('a start that fails', () => {
     await fireEvent.click(primary(root));
     expect(await findByText('Topic is required.')).not.toBeNull();
     expect(editor.value).toBe('{ "count": 1 }');
-    expect(router.pathname).toBe('/workflows/plain/run');
+    expect(router.pathname).toBe('/workflows/free-object/run');
   });
 });
 
@@ -543,11 +582,11 @@ describe('a page that cannot be set up', () => {
         .findAll({ queryKey: ['workflow-catalog'] })
         .some((query) => query.state.status === 'error'),
     ).toBe(true);
-    expect(view.container.textContent).not.toContain(COPY.loadFailed.title);
+    expect(view.container.textContent).not.toContain(COPY.inputFailed.title);
     expect(field(root, 'Topic').value).toBe('weather');
   });
 
-  test('says the workflow could not be loaded, and reads it again on retry', async () => {
+  test('says in the Input section that the form could not load, with Start run off, and reads it again on retry (58q, 58r)', async () => {
     const { container, findByRole } = open('/workflows/digest/run');
     let reads = 0;
     const original = stub?.world.files[0];
@@ -557,13 +596,25 @@ describe('a page that cannot be set up', () => {
       if (reads === 1 || reads > 2) return original;
       throw workflowFaults.unprocessable('Refused.');
     });
-    await waitFor(() =>
-      expect(container.querySelector('[data-page="run-setup"] [role="alert"]')).toBeTruthy(),
-    );
-    expect(container.textContent).toContain(COPY.loadFailed.title);
+    const block = await waitFor(() => {
+      const found = container.querySelector('[data-testid="run-setup-input-failed"]');
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(block.textContent).toContain(COPY.inputFailed.title);
+    expect(block.textContent).toContain(COPY.inputFailed.description);
+    // The error is the section's own, not a page error: When and the footer are still drawn.
+    const root = page(container) as HTMLElement;
+    expect(root.querySelector('[data-testid="run-setup-footer"]')).toBeTruthy();
+    expect(root.textContent).toContain(COPY.nowDescription);
+    expect(primary(root).disabled).toBe(true);
+    expect(offReason(root)).toBe(COPY.actionOff.unloaded(COPY.startAction));
+
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
-    await ready(container);
-    expect(container.textContent).not.toContain(COPY.loadFailed.title);
+    const loaded = await ready(container);
+    expect(container.textContent).not.toContain(COPY.inputFailed.title);
+    expect(primary(loaded).disabled).toBe(false);
+    expect(offReason(loaded)).toBeUndefined();
   });
 
   test('opens the workflow from the link in its place', async () => {
@@ -969,5 +1020,263 @@ describe('On a schedule, for a file', () => {
     await waitFor(() => expect(primary(view.root).textContent?.trim()).toBe(COPY.startAction));
     expect(field(view.root, 'Branch').value).toBe('main');
     expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run Release notes release-notes');
+  });
+});
+
+/** The element a `data-testid` names, once it is drawn. */
+async function drawn(root: ParentNode, testId: string): Promise<HTMLElement> {
+  return waitFor(() => {
+    const found = root.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    expect(found).toBeTruthy();
+    return found as HTMLElement;
+  });
+}
+
+describe('what stops a run, detected on load', () => {
+  test('says a paused file is paused above Input, with Resume, and turns Start run off with the reason (58f, 58g)', async () => {
+    const view = open('/workflows/paused-one/run');
+    const root = await ready(view.container);
+    const alert = await drawn(root, 'run-setup-paused');
+    expect(words(alert)).toContain(COPY.paused('paused-one'));
+    // A file that declares no schema takes no input, so there is no form and no Edit as JSON.
+    expect(root.querySelector('[data-testid="run-setup-no-form"]')?.textContent?.trim()).toBe(
+      COPY.takesNoInput('paused-one'),
+    );
+    expect(root.querySelector('[data-testid="run-setup-edit-as-json"]')).toBeNull();
+    expect(primary(root).disabled).toBe(true);
+    expect(offReason(root)).toBe(COPY.actionOff.paused(COPY.startAction));
+    // Pressing the off button starts nothing, and there is no Try again loop.
+    await fireEvent.click(primary(root));
+    expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
+    expect(view.queryByRole('button', { name: 'Try again' })).toBeNull();
+  });
+
+  test('resumes a paused file from its alert, and Start run comes back on', async () => {
+    const view = open('/workflows/paused-one/run');
+    const root = await ready(view.container);
+    await drawn(root, 'run-setup-paused');
+    await fireEvent.click(view.getByRole('button', { name: COPY.resumeAction }));
+    await waitFor(() => expect(stub?.file('paused-one')?.paused).toBe(false));
+    await waitFor(() => expect(root.querySelector('[data-testid="run-setup-paused"]')).toBeNull());
+    await waitFor(() => expect(primary(root).disabled).toBe(false));
+    expect(offReason(root)).toBeUndefined();
+  });
+
+  test('says a file that cannot be read in a red alert at the top, with Open Code, and draws no form (58s-58v)', async () => {
+    const view = open('/workflows/broken/run');
+    const root = await ready(view.container);
+    // The file has no title, so the heading names it by its identifier once.
+    expect(words(view.getByRole('heading', { level: 1 }))).toBe('Run broken');
+    const alert = await drawn(root, 'run-setup-unreadable');
+    expect(alert.querySelector('code')?.textContent).toBe('broken.json');
+    expect(words(alert)).toContain('broken.json: The document is not a workflow.');
+    expect(words(alert)).toContain(COPY.unreadableStartOff);
+    expect(root.querySelector('[data-testid="run-setup-no-form"]')?.textContent?.trim()).toBe(
+      COPY.unreadableInput,
+    );
+    expect(root.querySelector('form')).toBeNull();
+    // When is still drawn with Now's own line.
+    expect(root.textContent).toContain(COPY.nowDescription);
+    expect(primary(root).disabled).toBe(true);
+    expect(offReason(root)).toBe(COPY.actionOff.invalid(COPY.startAction));
+
+    await fireEvent.click(view.getByRole('link', { name: COPY.openCode }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/broken'));
+    expect(router.search.get('tab')).toBe('code');
+  });
+
+  test('says no provider is connected when a step’s agent needs a model, and turns Start run off (58k, 58l)', async () => {
+    const view = open('/workflows/weekly-cleanup/run', {
+      files: [
+        readyFile('weekly-cleanup', {
+          title: 'Weekly cleanup',
+          description: 'Clears out old drafts and temporary files every week.',
+          trigger: { kind: 'manual' },
+          steps: [
+            {
+              kind: 'activity',
+              handler: 'agent',
+              input: { agent: 'tool-runner', message: 'Clear old drafts.' },
+            },
+          ],
+        }),
+      ],
+      attention: [{ kind: 'no-provider', area: 'providers', at: null, provider: null }],
+      agentModels: { 'tool-runner': 'anthropic/claude-sonnet' },
+    });
+    const root = await ready(view.container);
+    const alert = await drawn(root, 'run-setup-no-provider');
+    expect(words(alert)).toContain(COPY.noProvider('Tool runner'));
+    expect(view.getByRole('link', { name: COPY.connectProvider }).getAttribute('href')).toContain(
+      '/settings/models',
+    );
+    expect(root.querySelector('[data-testid="run-setup-no-form"]')?.textContent?.trim()).toBe(
+      COPY.takesNoInput('Weekly cleanup'),
+    );
+    expect(primary(root).disabled).toBe(true);
+    expect(offReason(root)).toBe(COPY.actionOff.provider(COPY.startAction));
+  });
+
+  test('says nothing of a provider when one is connected', async () => {
+    const view = open('/workflows/weekly-cleanup/run', {
+      files: [
+        readyFile('weekly-cleanup', {
+          steps: [
+            {
+              kind: 'activity',
+              handler: 'agent',
+              input: { agent: 'tool-runner', message: 'Clear old drafts.' },
+            },
+          ],
+        }),
+      ],
+      agentModels: { 'tool-runner': 'anthropic/claude-sonnet' },
+    });
+    const root = await ready(view.container);
+    await waitFor(() => expect(stub?.callsTo('bureau.health.attention').length).toBeGreaterThan(0));
+    await quietFor(50);
+    expect(root.querySelector('[data-testid="run-setup-no-provider"]')).toBeNull();
+    expect(primary(root).disabled).toBe(false);
+  });
+});
+
+describe('pressing Start run', () => {
+  test('repeats a missing required field above the footer, keeps Start run on, and starts nothing (58d, 58e)', async () => {
+    const view = open('/workflows/release-notes/run');
+    const root = await ready(view.container);
+    await fireEvent.click(primary(root));
+    const line = await drawn(root, 'run-setup-input-problem');
+    expect(words(line)).toBe(COPY.requiredBeforeRun('Branch'));
+    await waitFor(() => expect(field(root, 'Branch').getAttribute('aria-invalid')).toBe('true'));
+    expect(root.textContent).toContain('Branch is required.');
+    // The form moves focus to the first problem.
+    await waitFor(() => expect(document.activeElement).toBe(field(root, 'Branch')));
+    expect(summaryText(root)).toBe(COPY.summaryNow());
+    expect(primary(root).disabled).toBe(false);
+    expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
+
+    // Typing takes the line away.
+    await type(field(root, 'Branch'), 'main');
+    await waitFor(() =>
+      expect(root.querySelector('[data-testid="run-setup-input-problem"]')).toBeNull(),
+    );
+  });
+
+  test('reads Starting… while the start is in flight, with Cancel off and the form read-only (58m, 58n)', async () => {
+    const view = open('/workflows/release-notes/run');
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stub?.on('bureau.workflows.start', async (params) => {
+      await held;
+      stub?.world.startedRuns.push({ id: String(params['id']), input: params['input'] ?? null });
+      return { runId: 'run-held', workflow: 'release-notes', workflowVersion: 'version-1' };
+    });
+    const root = await ready(view.container);
+    await type(field(root, 'Branch'), 'main');
+    await fireEvent.click(primary(root));
+    await waitFor(() => expect(primary(root).textContent?.trim()).toBe(COPY.startingAction));
+    expect(summaryText(root)).toBe(COPY.startingSummary('Release notes'));
+    expect(view.getByRole('button', { name: COPY.cancel }).hasAttribute('disabled')).toBe(true);
+    expect(root.querySelector('[data-testid="run-setup-fields"]')?.hasAttribute('inert')).toBe(
+      true,
+    );
+    expect(root.querySelector('[data-testid="run-setup-edit-as-json"]')).toBeNull();
+
+    release();
+    await waitFor(() => expect(router.pathname).toBe('/workflows/release-notes/runs/run-held'));
+    expect(stub?.callsTo('bureau.workflows.start')).toHaveLength(1);
+  });
+
+  test('says a refused start at the action, keeps what was typed, and retries from Start run once (58o, 58p)', async () => {
+    const view = open('/workflows/release-notes/run');
+    stub?.on('bureau.workflows.start', () => {
+      throw workflowFaults.unprocessable('Interborough didn’t answer.');
+    });
+    const root = await ready(view.container);
+    await type(field(root, 'Branch'), 'main');
+    await fireEvent.click(primary(root));
+    const alert = await drawn(root, 'run-setup-failure');
+    expect(words(alert)).toBe(
+      `${COPY.startFailed} Interborough didn’t answer. ${COPY.nothingStarted}`,
+    );
+    // The alert sits above the footer, at the action, and is the only one: no banner, no Try again.
+    expect(
+      alert.compareDocumentPosition(
+        root.querySelector('[data-testid="run-setup-footer"]') as Node,
+      ) & 4,
+    ).toBeTruthy();
+    expect(view.queryByRole('button', { name: 'Try again' })).toBeNull();
+    expect(field(root, 'Branch').value).toBe('main');
+    expect(summaryText(root)).toBe('Runs once, right away, on main from the last release.');
+    expect(primary(root).textContent?.trim()).toBe(COPY.startAction);
+    expect(primary(root).disabled).toBe(false);
+    expect(stub?.world.startedRuns).toEqual([]);
+
+    stub?.on('bureau.workflows.start', (params) => {
+      stub?.world.startedRuns.push({ id: String(params['id']), input: params['input'] ?? null });
+      return { runId: 'run-retried', workflow: 'release-notes', workflowVersion: 'version-1' };
+    });
+    await fireEvent.click(primary(root));
+    await waitFor(() => expect(router.pathname).toBe('/workflows/release-notes/runs/run-retried'));
+    expect(stub?.world.startedRuns).toEqual([{ id: 'release-notes', input: { branch: 'main' } }]);
+  });
+});
+
+describe('at the concurrency limit', () => {
+  /** Runs that are going: `going` of an ordinary type, and two of a type the Bureau runs itself. */
+  function runsGoing(going: number) {
+    return [
+      ...Array.from({ length: going }, (_, index) =>
+        runFixture(`run-going-${String(index)}`, 'digest', { status: 'running' }),
+      ),
+      runFixture('run-internal-1', 'agentRun', { status: 'running' }),
+      runFixture('run-internal-2', 'agentRun', { status: 'running' }),
+      runFixture('run-done', 'digest', { status: 'completed' }),
+    ];
+  }
+
+  test('says the run waits for a slot when as many runs are going as the cap allows (58z, 59a)', async () => {
+    const view = open('/workflows/release-notes/run', {
+      maxConcurrentRuns: 4,
+      runs: runsGoing(4),
+    });
+    const root = await ready(view.container);
+    await waitFor(() => expect(root.textContent).toContain(COPY.nowAtLimit(4)));
+    expect(root.textContent).not.toContain(COPY.nowDescription);
+    await type(field(root, 'Branch'), 'main');
+    await waitFor(() =>
+      expect(summaryText(root)).toBe(
+        'Runs once, when one of the 4 finishes, on main from the last release.',
+      ),
+    );
+    // Start run stays on: the engine holds the run until a slot opens.
+    expect(primary(root).disabled).toBe(false);
+    expect(offReason(root)).toBeUndefined();
+  });
+
+  test('counts neither the types the Bureau runs itself nor runs that finished', async () => {
+    const view = open('/workflows/release-notes/run', {
+      maxConcurrentRuns: 4,
+      runs: runsGoing(3),
+    });
+    const root = await ready(view.container);
+    await waitFor(() =>
+      expect(stub?.callsTo('weft.workflows.aggregate').length).toBeGreaterThan(0),
+    );
+    await waitFor(() => expect(stub?.callsTo('bureau.settings.get').length).toBeGreaterThan(0));
+    await quietFor(50);
+    expect(root.textContent).toContain(COPY.nowDescription);
+    expect(root.textContent).not.toContain(COPY.nowAtLimit(4));
+    expect(summaryText(root)).toBe(COPY.summaryNow());
+  });
+
+  test('reads Now as usual when the cap cannot be read', async () => {
+    const view = open('/workflows/release-notes/run', { runs: runsGoing(9) });
+    const root = await ready(view.container);
+    await waitFor(() => expect(stub?.callsTo('bureau.settings.get').length).toBeGreaterThan(0));
+    await quietFor(50);
+    expect(root.textContent).toContain(COPY.nowDescription);
   });
 });

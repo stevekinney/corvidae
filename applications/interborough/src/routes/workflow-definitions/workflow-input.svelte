@@ -57,6 +57,8 @@
     composed?: boolean;
     /** Told what the input holds as it changes: the form's draft, or whether the JSON text parses. */
     onChange?: (state: InputState) => void;
+    /** Withholds Edit as JSON, while the page has made the input read-only (a start in flight). */
+    locked?: boolean;
   }
 
   let {
@@ -67,6 +69,7 @@
     testId = 'run-setup-input',
     composed = false,
     onChange,
+    locked = false,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.runSetup;
@@ -246,7 +249,7 @@
           onclick={backToForm}
           >{backBlocked ? copy.backToFormBlocked(problem?.line ?? 1) : copy.backToForm}</Button
         >
-      {:else if offersJson}
+      {:else if offersJson && !locked}
         <Button
           variant="ghost-accent"
           size="sm"
