@@ -513,16 +513,20 @@ The type scale above is a ladder of sizes; a page uses five of its steps, and th
 
 ## Density
 
-A page is either comfortable or compact, and says which once. The values in the table are the comfortable density, the default. Put `data-density="compact"` on an ancestor (a shell's page outlet, say) and `foundation.css` remaps the four tokens for everything inside it: a row drops from 56px to 40px, row padding from 12px by 16px to 8px by 12px, and card padding from 16px to 12px. A component or page reads the tokens with `var()` and never branches on the density itself. `--cinder-pad-page` is the page's side gutter and `--cinder-content-width-reading` is the 760px column a page of text, forms, and lists centres in.
+Density is one axis with three steps, and a page says which once: compact, default or comfortable. The values in the table are the default density. Put `data-density="compact"` or `data-density="comfortable"` on an ancestor (a shell's page outlet, say) and `foundation.css` remaps the tokens for everything inside it. A component or page reads the tokens with `var()` and never branches on the density itself. `--cinder-pad-page` is the page's side gutter and `--cinder-content-width-reading` is the 760px column a page of text, forms, and lists centres in.
+
+- **Compact** is for a page that is a table of operator rows rather than a page of reading. A row drops from 56px to 40px, row padding from 12px by 16px to 8px by 12px, and card padding from 16px to 12px.
+- **Default** is Interborough's density: dense application screens, settings and lists.
+- **Comfortable** is for a consumer product page that is read rather than scanned. Body text is 15px (16px under a coarse pointer), secondary text 14px, a section title 18px and a page title 28px. Controls are 32, 40 and 48px tall (`sm`, `md`, `lg`; a coarse pointer still raises `sm` and `md` to the 44px touch target). Surfaces round to 16px and controls to 10px, card padding is 20px and the stack gap 16px. In light mode it also switches to the consumer surface ladder: a grey canvas (`oklch(95.5% 0.004 265)`) under white surfaces, a deeper well (`oklch(92.5% 0.005 265)`), and muted and subtle text at 42% and 50%. Dark mode is the same in every density.
 
 <!-- BEGIN GENERATED TOKEN TABLE: density -->
 
 | Token | Default | Description |
 | --- | --- | --- |
-| `--cinder-density-row-height` | `3.5rem` | Row height: 56px comfortable, 40px compact. |
-| `--cinder-density-pad-block` | `var(--cinder-space-3)` | Block padding of a row: 12px comfortable, 8px compact. |
-| `--cinder-density-pad-inline` | `var(--cinder-space-4)` | Inline padding of a row: 16px comfortable, 12px compact. |
-| `--cinder-density-pad-card` | `var(--cinder-space-4)` | Padding of a card or panel: 16px comfortable, 12px compact. |
+| `--cinder-density-row-height` | `3.5rem` | Row height: 56px default and comfortable, 40px compact. |
+| `--cinder-density-pad-block` | `var(--cinder-space-3)` | Block padding of a row: 12px default and comfortable, 8px compact. |
+| `--cinder-density-pad-inline` | `var(--cinder-space-4)` | Inline padding of a row: 16px default and comfortable, 12px compact. |
+| `--cinder-density-pad-card` | `var(--cinder-space-4)` | Padding of a card or panel: 16px default, 20px comfortable, 12px compact. |
 
 <!-- END GENERATED TOKEN TABLE -->
 

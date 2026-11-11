@@ -216,7 +216,8 @@ test.describe('alternate-theme — documented token overrides reach components',
 
   // (e) --cinder-space-4 reaches a Card body's padding.
   //
-  // Card CSS: `.cinder-card__body { padding: var(--cinder-space-4); }`
+  // Card CSS: `.cinder-card__body { padding: var(--cinder-density-pad-card); }`, and the default
+  // density declares `--cinder-density-pad-card: var(--cinder-space-4)` on the same `:root`.
   // Stock value: 1rem (16px). Alternate theme: 2.5rem (40px).
   // A hard-coded padding would not change, leaving these equal.
   test('overriding --cinder-space-4 reaches a Card body padding', async ({ page }) => {

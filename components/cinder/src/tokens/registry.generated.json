@@ -1474,7 +1474,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Row height: 56px comfortable, 40px compact."
+      "description": "Row height: 56px default and comfortable, 40px compact."
     },
     {
       "path": "density.pad-block",
@@ -1483,7 +1483,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Block padding of a row: 12px comfortable, 8px compact."
+      "description": "Block padding of a row: 12px default and comfortable, 8px compact."
     },
     {
       "path": "density.pad-inline",
@@ -1492,7 +1492,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Inline padding of a row: 16px comfortable, 12px compact."
+      "description": "Inline padding of a row: 16px default and comfortable, 12px compact."
     },
     {
       "path": "density.pad-card",
@@ -1501,7 +1501,7 @@
       "public": true,
       "themeAware": false,
       "deprecated": false,
-      "description": "Padding of a card or panel: 16px comfortable, 12px compact."
+      "description": "Padding of a card or panel: 16px default, 20px comfortable, 12px compact."
     },
     {
       "path": "type-role.page-title",

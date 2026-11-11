@@ -102,7 +102,7 @@ A page is one of these eight. Pick the archetype first, then compose it from the
 
 Colours are OKLCH and come in light and dark themes. Set the theme with `data-theme="light"` or `data-theme="dark"` on `html`, or on any subtree for a scoped theme island.
 
-- **Surfaces** step up from `cinder-surface-canvas` (the page) to `cinder-surface` (a grouped surface that holds rows, when a group needs one) to `cinder-surface-raised` (popovers, inputs and anything lifted). Use `cinder-surface-inset` for code blocks, header bands and tracks, not for a well that holds other boxes (see Composition). Hover and pressed states use `cinder-surface-hover` and `cinder-surface-pressed`, which wash toward the accent in light mode.
+- **Surfaces:** `cinder-surface-canvas` is the page, `cinder-surface` is a grouped surface that holds rows, when a group needs one, and `cinder-surface-raised` is anything lifted (popovers, inputs and a selected row). In light mode the default is an app-shell ladder: a near-white canvas with the grouped surface a soft grey step below it, so a group separates from the page by fill rather than by a hairline, and raised stays pure white. The comfortable density switches the light arm to a consumer ladder (a grey canvas under white surfaces). Dark mode is a neutral ladder that builds up from the canvas through the surface and the inset to raised. Use `cinder-surface-inset` for code blocks, header bands and tracks, not for a well that holds other boxes (see Composition). Hover and pressed states use `cinder-surface-hover` and `cinder-surface-pressed`, which wash toward the accent in light mode.
 - **Text:** `cinder-text-default` for body copy and primary content. `cinder-text-muted` for readable secondary text that is still part of the content. `cinder-text-subtle` only for tertiary metadata and chrome, never for primary content or a control's only label. `cinder-text-disabled` for disabled controls. All except disabled meet WCAG AA on `cinder-surface`.
 - **Accent:** indigo is the only accent, and it is reserved for primary actions, links and focus. `cinder-accent-solid` is the brand fill: deep indigo in light mode, periwinkle in dark mode. Put `cinder-accent-contrast` on it for labels. When the accent is text or an icon (a link, the active tab), use `cinder-accent-text`. It hovers to `cinder-accent-text-hover`, never the fill-derived `cinder-accent-solid-hover`. Everything that is not an action is neutral: a `Spotlight` value, an eyebrow above a title, an info dot, and the fill of a `Meter` or `Sparkbar` are `cinder-text-default`, `cinder-text-muted` or a neutral tone, never indigo.
 - **Status** comes in four tones, `info`, `success`, `warning` and `danger`, plus `neutral`. Use the solid family (`cinder-status-*-solid` with `cinder-status-*-contrast`) for badges and dots. Use the soft triple (`-background`, `-text`, `-border`) for Alert, Toast, Callout and other tinted surfaces.
@@ -125,6 +125,16 @@ Colours are OKLCH and come in light and dark themes. Set the theme with `data-th
 - Corners: controls use `cinder-radius-control` (8px) and surfaces use `cinder-radius-surface` (12px). Pills and dots use `cinder-radius-full`.
 - Elevation: `cinder-shadow-sm` for raised controls, `cinder-shadow-md` and `cinder-shadow-lg` for floating panels, and `cinder-shadow-overlay` for overlays. Surfaces separate by lightness first and shadow second.
 - Layers: tooltip, dropdown or popover, backdrop, modal, toast, focused affordance, then drag preview, from `cinder-z-tooltip` (1000) up to `cinder-z-drag-preview` (1400).
+
+## Density
+
+Density is one axis with three steps. A page declares it once, with `data-density` on an ancestor such as the page outlet, and every component inside reads the result through the same tokens. Nothing branches on the attribute.
+
+- **Compact** (`data-density="compact"`) is for a page that is a table of operator rows: run lists, queues, logs. Rows drop from 56px to 40px and row and card padding take the next step down.
+- **Default** (no attribute) is for dense application screens: Interborough's settings, detail pages and lists. Use it unless the page is clearly one of the other two.
+- **Comfortable** (`data-density="comfortable"`) is for a consumer product page that people read rather than scan. Body text is 15px (16px on a touch screen), secondary text 14px, section titles 18px and page titles 28px. Controls are 32, 40 and 48px tall, surfaces round to 16px and controls to 10px, cards pad 20px and stacks gap 16px. In light mode it also uses the consumer surface ladder: a grey canvas under white cards. Dark mode looks the same in every density.
+
+Don't mix densities on one page, and don't use comfortable to make an operator table feel friendlier: it costs rows on screen.
 
 ## Focus and states
 

@@ -2203,7 +2203,7 @@
   },
   "density.row-height": {
     "$value": { "value": 3.5, "unit": "rem" },
-    "$description": "Row height: 56px comfortable, 40px compact.",
+    "$description": "Row height: 56px default and comfortable, 40px compact.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-density-row-height",
@@ -2216,7 +2216,7 @@
   },
   "density.pad-block": {
     "$value": { "value": 0.75, "unit": "rem" },
-    "$description": "Block padding of a row: 12px comfortable, 8px compact.",
+    "$description": "Block padding of a row: 12px default and comfortable, 8px compact.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-density-pad-block",
@@ -2229,7 +2229,7 @@
   },
   "density.pad-inline": {
     "$value": { "value": 1, "unit": "rem" },
-    "$description": "Inline padding of a row: 16px comfortable, 12px compact.",
+    "$description": "Inline padding of a row: 16px default and comfortable, 12px compact.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-density-pad-inline",
@@ -2242,7 +2242,7 @@
   },
   "density.pad-card": {
     "$value": { "value": 1, "unit": "rem" },
-    "$description": "Padding of a card or panel: 16px comfortable, 12px compact.",
+    "$description": "Padding of a card or panel: 16px default, 20px comfortable, 12px compact.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-density-pad-card",

@@ -373,13 +373,13 @@
   --cinder-pad-card: var(--cinder-space-4);
   /* Page side gutter: the inline padding a shell puts around a page of content. */
   --cinder-pad-page: var(--cinder-space-6);
-  /* Row height: 56px comfortable, 40px compact. */
+  /* Row height: 56px default and comfortable, 40px compact. */
   --cinder-density-row-height: 3.5rem;
-  /* Block padding of a row: 12px comfortable, 8px compact. */
+  /* Block padding of a row: 12px default and comfortable, 8px compact. */
   --cinder-density-pad-block: var(--cinder-space-3);
-  /* Inline padding of a row: 16px comfortable, 12px compact. */
+  /* Inline padding of a row: 16px default and comfortable, 12px compact. */
   --cinder-density-pad-inline: var(--cinder-space-4);
-  /* Padding of a card or panel: 16px comfortable, 12px compact. */
+  /* Padding of a card or panel: 16px default, 20px comfortable, 12px compact. */
   --cinder-density-pad-card: var(--cinder-space-4);
   /* Page title size (24px); set it at semibold with --cinder-tracking-display. */
   --cinder-text-page-title: var(--cinder-text-3xl);

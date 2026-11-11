@@ -7,7 +7,9 @@
   .cinder-card {
     position: relative;
     inline-size: 100%;
-    border-radius: var(--cinder-radius-lg);
+    /* The surface radius (12px by default), so a comfortable-density page rounds its cards to
+       16px (COR-2310). */
+    border-radius: var(--cinder-radius-surface);
     background: var(--cinder-surface-raised);
     border: 1px solid transparent;
     background-clip: padding-box;
@@ -267,7 +269,8 @@
  * ---------------------------------------- */
 
   .cinder-card__body {
-    padding: var(--cinder-space-4);
+    /* The density's card padding: 16px by default, 12px compact, 20px comfortable (COR-2310). */
+    padding: var(--cinder-density-pad-card);
     background: var(--cinder-surface);
   }
 

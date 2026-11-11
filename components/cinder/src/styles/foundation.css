@@ -141,6 +141,65 @@
       var(--cinder-ring-color);
 }
 
+/* ----------------------------------------------------------------------------
+ * Comfortable density
+ *
+ * Density is one axis: compact, default and comfortable (COR-2310). A consumer
+ * product page, read rather than scanned, declares `data-density="comfortable"`
+ * on an ancestor and gets roomier type (15px body, 14px secondary, an 18px
+ * section title and a 28px page title), taller controls (32, 40 and 48px),
+ * rounder corners (16px surfaces, 10px controls) and more room (20px card
+ * padding, a 16px stack gap). Interborough's operator pages keep the default
+ * or compact density.
+ *
+ * Comfortable also switches the light arm of the surface ladder to the
+ * consumer ladder (COR-2308, owner decision 2026-11-10): a grey canvas under
+ * white surfaces, a deeper well, and muted and subtle text at 42% and 50%.
+ * Dark mode does not change across densities, so each `light-dark()` repeats
+ * the shipped dark value exactly; comfortable-density.test.ts holds the two in
+ * step.
+ *
+ * A custom property resolves where it is declared, so an alias that `:root`
+ * builds from a token retuned here would keep the default inside a comfortable
+ * subtree. The aliases Button and the control frame read (the Button heights
+ * and radii, `--cinder-control-radius`) are redeclared beside the value they
+ * follow. Tokens `:root` derives from the surfaces (the hover and pressed
+ * washes, the soft accent and status grounds) follow the consumer ladder only
+ * when the attribute is on the root element.
+ *
+ * `:where()` keeps specificity at 0. The rule sits in the foundation layer,
+ * after the token layer, so on an element that also carries `data-theme` the
+ * density values win and the `light-dark()` arms still follow that element's
+ * color scheme. The coarse-pointer adjustments live in the one
+ * `(pointer: coarse)` block below, which comes later so it wins.
+ * ---------------------------------------------------------------------------- */
+:where([data-density='comfortable']) {
+  --cinder-text-body: 0.9375rem;
+  --cinder-text-secondary: 0.875rem;
+  --cinder-text-section-title: 1.125rem;
+  --cinder-text-page-title: var(--cinder-text-page-title-large);
+  --cinder-control-height-sm: 2rem;
+  --cinder-control-height-md: 2.5rem;
+  --cinder-control-height-lg: 3rem;
+  --cinder-button-height-sm: var(--cinder-control-height-sm);
+  --cinder-button-height-md: var(--cinder-control-height-md);
+  --cinder-button-height-lg: var(--cinder-control-height-lg);
+  --cinder-radius-surface: 1rem;
+  --cinder-radius-control: 0.625rem;
+  --cinder-control-radius: var(--cinder-radius-control);
+  --cinder-button-radius: var(--cinder-radius-control);
+  --cinder-button-radius-md: var(--cinder-radius-control);
+  --cinder-button-radius-lg: var(--cinder-radius-control);
+  --cinder-pad-card: var(--cinder-space-5);
+  --cinder-density-pad-card: var(--cinder-space-5);
+  --cinder-gap-stack: var(--cinder-space-4);
+  --cinder-surface-canvas: light-dark(oklch(95.5% 0.004 265), oklch(14.5% 0.012 265));
+  --cinder-surface: light-dark(oklch(100% 0 255), oklch(18.5% 0.012 265));
+  --cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), oklch(21% 0.012 265));
+  --cinder-text-muted: light-dark(oklch(42% 0.01 265), oklch(78% 0.01 265));
+  --cinder-text-subtle: light-dark(oklch(50% 0.01 265), oklch(68% 0.01 265));
+}
+
 /* Control size follows the pointer, not the viewport width. A fine pointer keeps the
    shared steps (`--cinder-control-height-sm` 28px, `-md` 32px) at every width, so a narrow
    desktop window stays 32px. A coarse pointer raises every step to `--cinder-touch-target-min`
@@ -155,6 +214,15 @@
     --cinder-control-height-md: var(--cinder-touch-target-min);
     --cinder-control-height-lg: var(--cinder-touch-target-min);
     --cinder-list-row-min-height: var(--cinder-touch-target-min);
+  }
+
+  /* A comfortable page reads at 16px on a touch screen, and its controls keep the 44px touch
+     target: the comfortable sm and md steps (32px and 40px) sit below it and rise to it, and
+     lg (48px) is already above it. */
+  :where([data-density='comfortable']) {
+    --cinder-text-body: 1rem;
+    --cinder-control-height-sm: var(--cinder-touch-target-min);
+    --cinder-control-height-md: var(--cinder-touch-target-min);
   }
 }
 
@@ -418,8 +486,8 @@
 /* ----------------------------------------------------------------------------
  * Compact density
  *
- * The density tokens (`--cinder-density-*`) default to the comfortable values
- * in `tokens-base.css`. A page that is a table of operator rows rather than a
+ * The density tokens (`--cinder-density-*`) default to the default density's
+ * values in `tokens-base.css`. A page that is a table of operator rows rather than a
  * page of reading declares `data-density="compact"` on an ancestor, and
  * everything inside reads the tighter values through the same names. Rows drop
  * from 56px to 40px, and row and card padding take the next step down the
