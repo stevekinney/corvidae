@@ -89,8 +89,6 @@ export const WORKER_COPY = {
       cancelledDescription:
         'You stopped the read, so the list is not shown. Workers keep running while this page is stopped.',
       tryAgain: 'Try again',
-      openHealth: 'Open Health',
-      openHealthPath: '/health',
     },
   },
   detail: {

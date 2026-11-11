@@ -30,6 +30,7 @@
     Dropdown,
     formatTimeOfDay,
     Skeleton,
+    Text,
     Textarea,
     VisuallyHidden,
   } from '@lostgradient/cinder';
@@ -337,12 +338,14 @@
   </p>
 
   {#if !saveFailed}
-    <p class="ib-storage-key__key">
-      <span data-testid="storage-key-name">{entry.key}</span>
-      {#if entry.key.length > LONG_KEY_CHARACTERS}
-        <span class="ib-storage-key__length">{copy.characters(entry.key.length)}</span>
-      {/if}
-    </p>
+    <div class="ib-storage-key__key">
+      <Text clamp={3}>
+        <span data-testid="storage-key-name">{entry.key}</span>
+        {#if entry.key.length > LONG_KEY_CHARACTERS}
+          <span class="ib-storage-key__length">{copy.characters(entry.key.length)}</span>
+        {/if}
+      </Text>
+    </div>
   {/if}
 
   {#if !editing}

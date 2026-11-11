@@ -31,6 +31,7 @@
     HOST_DECISION_MODELS,
     SETTING_UNITS,
     holdsForm,
+    optionLabel,
     settingLabel,
     type Control,
   } from './settings-controls.ts';
@@ -53,6 +54,11 @@
     descriptionOverride?: string | undefined;
     /** The row's own label in place of the one made from the key, such as "Decision model" for `decisions.model`. */
     labelOverride?: string | undefined;
+    /**
+     * The value the setting applies by while it holds none (the snapshot's `effective` entry), shown
+     * as the placeholder of an empty text or number field, so an empty field says what is in force.
+     */
+    inForce?: unknown;
     /** Called when the person changes the value, which ends what Revert said about it. */
     onEdit?: (() => void) | undefined;
     /**
@@ -84,6 +90,7 @@
     reverted = false,
     descriptionOverride,
     labelOverride,
+    inForce,
     onEdit,
     custom,
     controlWidth,
@@ -259,7 +266,7 @@
           {id}
           {label}
           labelVisible={false}
-          options={spec.options.map((option) => ({ value: option, label: option }))}
+          options={spec.options.map((option) => ({ value: option, label: optionLabel(option) }))}
           {...typeof draft === 'string' ? { value: draft } : {}}
           disabled={inert}
           onchange={(event) => {
@@ -287,6 +294,7 @@
             {label}
             variant="code"
             value={typeof draft === 'string' ? draft : ''}
+            {...typeof inForce === 'string' && inForce !== '' ? { placeholder: inForce } : {}}
             disabled={inert}
             onValueChange={(next) => change(next)}
           />
@@ -308,6 +316,7 @@
             {id}
             value={typeof draft === 'number' ? draft : null}
             disabled={inert}
+            {...typeof inForce === 'number' ? { placeholder: String(inForce) } : {}}
             {...unit === undefined ? {} : { adornment: unit }}
             onValueChange={(next) => change(next ?? undefined)}
           />

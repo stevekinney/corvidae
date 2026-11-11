@@ -11,6 +11,7 @@ import {
   holdsJson,
   inSection,
   MODEL_POLICY_KEY,
+  optionLabel,
   settingLabel,
 } from './settings-controls.ts';
 
@@ -264,6 +265,27 @@ describe('the names of the A2A settings', () => {
     expect(settingLabel('a2a.enabled')).toBe('Accept A2A calls');
     expect(settingLabel('a2a.agents')).toBe('Shared agents');
     expect(settingLabel('a2a.push.enabled')).toBe('Push notifications');
-    expect(settingLabel('a2a.push.sweepIntervalMs')).toBe('Sweep interval ms');
+    expect(settingLabel('a2a.push.sweepIntervalMs')).toBe('Sweep interval');
+  });
+});
+
+describe('the names of the engine settings', () => {
+  test('spell out an abbreviation and leave the unit to the field', () => {
+    expect(settingLabel('engine.workflowClaimTtl')).toBe('Workflow claim time to live');
+    expect(settingLabel('engine.schedulerPollIntervalMs')).toBe('Scheduler poll interval');
+    expect(settingLabel('children.delegation.defaultTimeToLiveMilliseconds')).toBe(
+      'Default time to live',
+    );
+    // A key that is nothing but a unit keeps it, so it still has a name.
+    expect(settingLabel('ms')).toBe('Ms');
+  });
+});
+
+describe('the words of an option', () => {
+  test('capitalize a stored value without changing what is saved', () => {
+    expect(optionLabel('automatic')).toBe('Automatic');
+    expect(optionLabel('none')).toBe('None');
+    expect(optionLabel('keep-all')).toBe('Keep all');
+    expect(optionLabel('keepAll')).toBe('Keep all');
   });
 });

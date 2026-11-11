@@ -88,6 +88,7 @@
 <style>
   .ib-api-reference {
     grid-area: content;
+    max-inline-size: var(--ib-settings-content-width);
     min-inline-size: 0;
   }
 </style>

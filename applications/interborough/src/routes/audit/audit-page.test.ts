@@ -208,6 +208,14 @@ const rowsOf = (container: HTMLElement): HTMLElement[] => [
 const cellsOf = (row: HTMLElement): string[] =>
   [...row.querySelectorAll('th, td')].map((cell) => cell.textContent?.trim() ?? '');
 
+/** Each fact of the open event as "Term Value", one row of its one list. */
+const factRows = (detail: HTMLElement): string[] =>
+  [...detail.querySelectorAll('.ib-audit-detail__fact')].map((fact) =>
+    `${fact.querySelector('dt')?.textContent ?? ''} ${fact.querySelector('dd')?.textContent ?? ''}`
+      .replace(/\s+/g, ' ')
+      .trim(),
+  );
+
 const frameState = (container: HTMLElement) =>
   container.querySelector('[data-view="audit"]')?.getAttribute('data-state');
 
@@ -340,6 +348,19 @@ describe('the open event', () => {
     ).toBe('/settings/data-and-retention');
   });
 
+  test('lists every fact in one flat description list, with no box around a fact', async () => {
+    const { findByTestId } = open(FULL);
+    const facts = await findByTestId('audit-facts');
+
+    // One list holds all the facts, so they read as rows under one another, not a box each.
+    expect(facts.querySelectorAll('dl')).toHaveLength(1);
+    expect([...facts.querySelectorAll('dt')].map((term) => term.textContent?.trim())).toEqual([
+      AUDIT_COPY.fact.provider,
+      AUDIT_COPY.fact.effect,
+    ]);
+    expect(facts.querySelector('.cinder-description-list')).toBeNull();
+  });
+
   test('is whichever row is chosen, and its record is kept in the address', async () => {
     const { container, findByTestId } = open(FULL);
     await findByTestId('audit-detail');
@@ -373,9 +394,7 @@ describe('the open event', () => {
     expect(detail.textContent).toContain(
       'in the chat “Please refund order 4471, it arrived damaged.”',
     );
-    const facts = [...detail.querySelectorAll('dl')].map((list) =>
-      list.textContent?.replace(/\s+/g, ' ').trim(),
-    );
+    const facts = factRows(detail);
     expect(facts).toEqual([
       'Tool Issue refund issue-refund',
       expect.stringContaining('Risk Dangerous, Can’t be undone'),
@@ -448,9 +467,7 @@ describe('the open event', () => {
     expect(cellsOf(rowsOf(container)[0] as HTMLElement)[3]).toBe('Tool runner, version 3 → 4');
 
     const detail = await findByTestId('audit-detail');
-    const facts = [...detail.querySelectorAll('dl')].map((list) =>
-      list.textContent?.replace(/\s+/g, ' ').trim(),
-    );
+    const facts = factRows(detail);
     expect(facts).toEqual([
       'Agent Tool runner',
       'Version 3 → 4',
@@ -893,7 +910,7 @@ describe('who may see it', () => {
     failing = true;
     await fireEvent.change(getByLabelText(AUDIT_COPY.periodLabel), { target: { value: 'all' } });
 
-    // Row 82w: Health's own heading stays, the error says the status, and the second action is Open Health.
+    // Row 82w: Health's own heading stays, the error says the status, and Try again is the one action: this page is already on Health.
     await findByText(AUDIT_COPY.failed.title);
     expect(container.textContent).toContain(
       'The server answered with an error (503). Nothing you did caused it.',
@@ -903,8 +920,7 @@ describe('who may see it', () => {
     const retry = getByRole('button', { name: RETRY_LABEL });
     expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
     expect(retry.querySelector('svg')).not.toBeNull();
-    const open = getByRole('link', { name: AUDIT_COPY.failed.openHealth });
-    expect(open.getAttribute('href')).toContain('/health');
+    expect(container.querySelector('.cinder-error-state a')).toBeNull();
     expect(container.textContent).not.toContain('Check Health');
     expect(container.querySelector('.cinder-banner')).toBeNull();
 

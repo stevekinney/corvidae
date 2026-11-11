@@ -65,11 +65,8 @@ test.describe('Settings › Data and retention', () => {
     // shows the window in force (decisions, B11 after round 3).
     const memory = row(page, 'retention.memory');
     await expect(memory).toContainText('Memory');
-    await expect(memory.getByRole('radio', { name: 'Keep forever' })).toHaveCount(0);
-    await expect(memory.getByRole('radio', { name: 'Delete after' })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
+    // A choice of one is no choice: the row draws the days alone, with no segmented control.
+    await expect(memory.getByRole('radio')).toHaveCount(0);
     await expect(memory.getByRole('spinbutton')).toHaveValue('90');
     for (const [key, name] of [
       ['retention.runs', 'Run history'],
@@ -101,13 +98,14 @@ test.describe('Settings › Data and retention', () => {
       'retention.hookDeliveries',
     ]) {
       await expect(row(page, key).locator('.cinder-setting-row__identifier')).toHaveText(key);
-      await expect(row(page, key).getByRole('radio', { name: 'Delete after' })).toBeVisible();
+      // Receipts offers no Keep forever, so it draws its days alone and not a one-segment control.
+      await (key === 'retention.receipts'
+        ? expect(row(page, key).getByRole('spinbutton')).toBeVisible()
+        : expect(row(page, key).getByRole('radio', { name: 'Delete after' })).toBeVisible());
     }
     await expect(page.getByText(/older than/i)).toHaveCount(0);
     // Receipts falls back to a finite window when cleared, so it cannot offer Keep forever.
-    await expect(
-      row(page, 'retention.receipts').getByRole('radio', { name: 'Keep forever' }),
-    ).toHaveCount(0);
+    await expect(row(page, 'retention.receipts').getByRole('radio')).toHaveCount(0);
 
     // Storage is one read-only row, with the alert firing and a link to Health, and no meter.
     const storage = row(page, 'storage-usage');

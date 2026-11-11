@@ -374,7 +374,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-8);
-    max-inline-size: 46rem;
+    max-inline-size: var(--ib-settings-content-width);
     min-inline-size: 0;
   }
 

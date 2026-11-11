@@ -9,7 +9,6 @@ import {
   matchesWorkerFilter,
   orderWorkers,
   queueHasNoRunner,
-  truncateMiddle,
   workerName,
   workerRowMeta,
   workerRowTime,
@@ -62,13 +61,10 @@ describe('names', () => {
     expect(humanizeWorkerId('search_worker.2')).toBe('Search worker 2');
   });
 
-  test('a row cuts a long id from the middle, so its end still tells workers apart', () => {
+  test('a row titles a long id whole, for the row to cut once from the middle', () => {
     const id = 'payments-worker-eu-west-1b-7f3a9c2e-4d81-4b06-a9e2-1c5d0f7b3a68';
-    expect(workerRowTitle(worker({ id, name: 'Payments worker EU' }))).toBe(
-      'payments-worker-eu-w…3a68',
-    );
+    expect(workerRowTitle(worker({ id, name: 'Payments worker EU' }))).toBe(id);
     expect(workerRowTitle(worker({ id: 'reports-worker' }))).toBe('Reports worker');
-    expect(truncateMiddle('short')).toBe('short');
   });
 });
 

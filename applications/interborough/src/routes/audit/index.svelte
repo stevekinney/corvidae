@@ -513,13 +513,7 @@
           description={loadFailure.description}
           retryLabel={RETRY_LABEL}
           onRetry={retry}
-        >
-          {#snippet secondaryAction()}
-            <Button variant="ghost-accent" href={router.href(copy.failed.openHealthPath)}
-              >{copy.failed.openHealth}</Button
-            >
-          {/snippet}
-        </ErrorState>
+        />
       {:else if stopped}
         <ErrorState
           bordered
@@ -528,7 +522,6 @@
           title={copy.stopped.title}
           description={copy.stopped.description}
           retryLabel={RETRY_LABEL}
-          retryVariant="secondary"
           onRetry={readAgain}
         />
       {:else if loading}

@@ -124,13 +124,21 @@ function open(
   } as never);
 }
 
+/** The storage line as drawn: the head and the tail of the middle-cut text, which read as one line. */
+function storageLineOf(view: { container: HTMLElement }): string {
+  const text = view.container.querySelector(
+    '[data-testid="storage-backend"] [data-cinder-truncate]',
+  );
+  return `${text?.querySelector('.cinder-text__head')?.textContent ?? ''}${text?.querySelector('.cinder-text__tail')?.textContent ?? ''}`;
+}
+
 describe('the frame', () => {
   test('is headed Health, names where the installation runs, and has four tabs and no Diagnostics', async () => {
     const view = open();
     const heading = await view.findByRole('heading', { level: 1 });
     expect(heading.textContent).toBe('Health');
     // The stub's host keeps its state in ~/.interborough, which the line writes the way a person does.
-    expect(await view.findByText('Running on SQLite in ~/.interborough')).not.toBeNull();
+    await waitFor(() => expect(storageLineOf(view)).toBe('Running on SQLite in ~/.interborough'));
     expect(view.getByRole('button', { name: /Storage details/ })).not.toBeNull();
 
     const tabs = view.getAllByRole('tab');

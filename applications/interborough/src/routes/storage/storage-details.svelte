@@ -85,13 +85,12 @@
 </script>
 
 <div class="ib-storage-details" data-testid="storage-details">
-  <h2 class="ib-storage-details__title">{HEALTH_FRAME_COPY.storageDetails}</h2>
   {#if loading}
     <div role="status" aria-busy="true" aria-label={copy.loading}>
       <Skeleton height="7.5rem" />
     </div>
   {:else}
-    <DescriptionList {items} variant="fields" />
+    <DescriptionList {items} />
   {/if}
   <p class="ib-storage-details__footer">
     {copy.footerBefore}<Link href={router.href(copy.settingsPath)} onclick={openSettings}
@@ -105,19 +104,14 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-3);
-    /* Wide enough that the list keeps a term beside its value; it stacks below 28rem. */
-    inline-size: min(28.5rem, calc(100vw - 4rem));
+    /* The popover and the sheet own the width; the list stacks a term over its value when narrow. */
+    min-inline-size: 0;
   }
 
   /* A path is one word the width of the popover: break it anywhere rather than past its edge. */
   .ib-storage-details :global(dd) {
+    min-inline-size: 0;
     overflow-wrap: anywhere;
-  }
-
-  .ib-storage-details__title {
-    margin: 0;
-    font-size: var(--cinder-text-sm);
-    font-weight: var(--cinder-font-semibold);
   }
 
   .ib-storage-details__footer {

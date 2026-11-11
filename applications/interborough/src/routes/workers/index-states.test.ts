@@ -259,17 +259,15 @@ describe('Workers route when the workers could not be read (row 78z)', () => {
     expect(view.container.querySelector('.cinder-banner')).toBeNull();
   });
 
-  test('offers a secondary Try again with a refresh icon and "Open Health" drawn as a link', async () => {
+  test('offers a primary Try again with a refresh icon and no link to Health, which this page is on', async () => {
     scripted = failing(500);
 
     const view = renderRoute();
 
     const retry = await view.findByRole('button', { name: copy.failed.tryAgain });
-    expect(retry.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
     expect(retry.querySelector('svg')).not.toBeNull();
-    const open = view.getByRole('link', { name: copy.failed.openHealth });
-    expect(open.getAttribute('href')).toBe('/health');
-    expect(open.getAttribute('data-cinder-variant')).toBe('ghost-accent');
+    expect(view.container.querySelector('.cinder-error-state a')).toBeNull();
   });
 
   test('Try again reads the workers again and the page returns when they answer', async () => {

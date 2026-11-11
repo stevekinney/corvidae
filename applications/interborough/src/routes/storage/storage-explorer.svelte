@@ -372,7 +372,6 @@
       title={copy.stopped.title}
       description={copy.stopped.description}
       retryLabel={copy.stopped.tryAgain}
-      retryVariant="secondary"
       onRetry={readAgain}
     />
   {:else if listing.isPending}

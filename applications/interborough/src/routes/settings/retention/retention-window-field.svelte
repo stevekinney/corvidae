@@ -8,8 +8,8 @@
    *
    * The draft is the Bureau's own value: `'forever'` or `{ olderThan }` in milliseconds, or, for a
    * window with no `'forever'` that keeps its records while unset (`retention.logs`), nothing at all
-   * for Keep forever. A window that deletes while unset is drawn with Delete after alone, so its
-   * row never saves nothing.
+   * for Keep forever. A window that deletes while unset is drawn with the days field alone (a choice
+   * of one is no choice), so its row never saves nothing.
    */
   import { NumberInput, Segment, SegmentedControl } from '@lostgradient/cinder';
 
@@ -107,19 +107,20 @@
 </script>
 
 <div class="ib-retention-field" onfocusout={leaveControl} data-choice={choice}>
-  <SegmentedControl
-    id={`${id}-choice`}
-    label={DATA_RETENTION_COPY.retention.choiceLabel(name)}
-    labelVisible={false}
-    value={choice}
-    {disabled}
-    onValueChange={choose}
-  >
-    {#if keepForeverOffered}
+  <!-- One segment is not a choice: a row that offers no Keep forever draws the days field alone. -->
+  {#if keepForeverOffered}
+    <SegmentedControl
+      id={`${id}-choice`}
+      label={DATA_RETENTION_COPY.retention.choiceLabel(name)}
+      labelVisible={false}
+      value={choice}
+      {disabled}
+      onValueChange={choose}
+    >
       <Segment value="forever">{DATA_RETENTION_COPY.retention.keepForever}</Segment>
-    {/if}
-    <Segment value="after">{DATA_RETENTION_COPY.retention.deleteAfter}</Segment>
-  </SegmentedControl>
+      <Segment value="after">{DATA_RETENTION_COPY.retention.deleteAfter}</Segment>
+    </SegmentedControl>
+  {/if}
   {#if choice === 'after'}
     <div class="ib-retention-field__days" bind:this={field}>
       <NumberInput
@@ -141,7 +142,8 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
     align-items: center;
-    justify-content: flex-end;
+    /* Start-aligned, so every row's first control sits on the column's one left edge. */
+    justify-content: flex-start;
   }
 
   .ib-retention-field__days {

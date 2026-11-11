@@ -141,13 +141,15 @@ describe('Settings › Data and retention', () => {
       expect(row.textContent).toContain(label);
       expect(row.querySelector('.cinder-setting-row__identifier')?.textContent).toBe(key);
       expect(row.textContent).toContain(description);
-      // Memory deletes while unset, so it offers Delete after alone (decisions, B11 after round 3).
+      // Memory deletes while unset, so it has no choice to make: no segmented control at all, only
+      // the days (decisions, B11 after round 3).
       if (key === 'retention.memory') {
-        expect(within(row).queryByRole('radio', { name: 'Keep forever' })).toBeNull();
+        expect(within(row).queryByRole('radio')).toBeNull();
+        expect(within(row).getByRole('spinbutton')).not.toBeNull();
       } else {
         expect(choiceOf(row, 'Keep forever')).not.toBeNull();
+        expect(choiceOf(row, 'Delete after')).not.toBeNull();
       }
-      expect(choiceOf(row, 'Delete after')).not.toBeNull();
     }
   });
 
@@ -216,12 +218,12 @@ describe('Settings › Data and retention', () => {
     expect(served.values['retention.logs']).toBeUndefined();
   });
 
-  test('Memory offers only Delete after and shows the 90 days in force while unset, and never saves a cleared value', async () => {
+  test('Memory draws the days alone, no one-segment control, shows the 90 days in force while unset, and never saves a cleared value', async () => {
     const { view, served } = open();
     const memory = await rowReady(view, 'retention.memory');
 
-    expect(within(memory).queryByRole('radio', { name: 'Keep forever' })).toBeNull();
-    expect(choiceOf(memory, 'Delete after').getAttribute('aria-checked')).toBe('true');
+    expect(within(memory).queryByRole('radio')).toBeNull();
+    expect(within(memory).queryByRole('radiogroup')).toBeNull();
     expect((within(memory).getByRole('spinbutton') as HTMLInputElement).value).toBe('90');
     expect(served.values['retention.memory']).toBeUndefined();
 
@@ -241,12 +243,12 @@ describe('Settings › Data and retention', () => {
     ).toBe(false);
   });
 
-  test('Receipts offers only Delete after, so no click can clear it back to its one-week default', async () => {
+  test('Receipts draws the days alone, so no click can clear it back to its one-week default', async () => {
     const { view, served } = open({ values: { 'retention.receipts': { olderThan: 30 * DAY } } });
     const receipts = await rowReady(view, 'retention.receipts');
 
-    expect(within(receipts).queryByRole('radio', { name: 'Keep forever' })).toBeNull();
-    expect(choiceOf(receipts, 'Delete after').getAttribute('aria-checked')).toBe('true');
+    expect(within(receipts).queryByRole('radio')).toBeNull();
+    expect(within(receipts).queryByRole('radiogroup')).toBeNull();
     expect((within(receipts).getByRole('spinbutton') as HTMLInputElement).value).toBe('30');
     expect(
       updates().filter((call) => 'retention.receipts' in (call.params['patch'] as object)),

@@ -7,7 +7,7 @@
    * host cannot say, the line says only that this is storage. The line does not count keys: the
    * count is in the popover and the table's footer.
    */
-  import { Button, Popover } from '@lostgradient/cinder';
+  import { Button, Popover, Text } from '@lostgradient/cinder';
   import { ChevronDown, ChevronUp } from '@lucide/svelte';
 
   import type { HostPaths } from '../../lib/host-paths.ts';
@@ -26,7 +26,9 @@
 </script>
 
 <span class="ib-storage-backend" data-testid="storage-backend">
-  <span class="ib-storage-backend__line">{line}</span>
+  <span class="ib-storage-backend__line"
+    ><Text truncate="middle" text={line} tailLength={24} /></span
+  >
   <span class="ib-storage-backend__details">
     <Popover bind:open label={HEALTH_FRAME_COPY.popoverLabel} placement="bottom-start">
       {#snippet trigger()}
@@ -63,13 +65,22 @@
     font-size: var(--cinder-text-md);
   }
 
+  /* One line, cut from the middle when the path is long, so the title and the tabs stay in view. */
   .ib-storage-backend__line {
+    flex: 0 1 auto;
     min-width: 0;
-    overflow-wrap: anywhere;
+    max-inline-size: 100%;
+  }
+
+  .ib-storage-backend__line :global(p) {
+    margin: 0;
   }
 
   /* The button stays whole and wraps as one piece beside the path. */
   .ib-storage-backend__details {
+    /* The ghost button's own inline padding comes off, so its label starts where the line above it
+       does when it wraps under the path, and keeps the same gap when it sits beside it. */
+    margin-inline-start: calc(var(--cinder-button-padding-x-sm) * -1);
     display: inline-flex;
     align-items: center;
     gap: var(--cinder-space-2);

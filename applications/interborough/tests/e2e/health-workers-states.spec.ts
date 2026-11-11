@@ -604,7 +604,12 @@ test('a long id wraps in the header with a Copy button, and the list cuts it fro
   await page.goto(`/health/workers?worker=${id}`);
 
   // 79f, 79g.
-  await expect(rows(page).first()).toContainText('payments-worker-eu-w…3a68');
+  // The row holds the whole id and Cinder cuts it from the middle once, at the row's own width, so
+  // the end that tells two workers apart stays visible.
+  const title = rows(page).first().locator('[data-cinder-truncate="middle"]');
+  await expect(title.locator('.cinder-text__head')).toHaveText(id.slice(0, -4));
+  await expect(title.locator('.cinder-text__tail')).toHaveText('3a68');
+  await expect(title.locator('.cinder-text__tail')).toBeVisible();
   await expect(rows(page).first()).toContainText('payments, 1 running');
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Payments worker EU');
   await expect(detail(page).getByTestId('worker-id')).toHaveText(id);
@@ -841,7 +846,7 @@ for (const width of STATE_WIDTHS) {
     await expect(region).toHaveAttribute('data-state', 'empty');
   });
 
-  test(`a failed read is the error state in the Workers section, with Try again and Open Health, at ${width} pixels`, async ({
+  test(`a failed read is the error state in the Workers section, with Try again alone, at ${width} pixels`, async ({
     page,
     checkA11y,
   }) => {
@@ -895,14 +900,10 @@ for (const width of STATE_WIDTHS) {
     );
     await expect(region.getByRole('button', { name: 'Try again' })).toHaveAttribute(
       'data-cinder-variant',
-      'secondary',
+      'primary',
     );
-    // 78z: "drawn as a link" is the ghost-accent button, which has no fill or border; Cinder's
-    // buttons have no variant named link (`ButtonVariant`).
-    await expect(region.getByRole('link', { name: 'Open Health' })).toHaveAttribute(
-      'data-cinder-variant',
-      'ghost-accent',
-    );
+    // This page is a Health tab, so the error offers no way back to Health.
+    await expect(region.getByRole('link', { name: 'Open Health' })).toHaveCount(0);
     await expect(page.locator('.cinder-banner')).toHaveCount(0);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
       true,
@@ -915,7 +916,7 @@ for (const width of STATE_WIDTHS) {
     });
     await checkA11y(`workers—a failed read at ${width}px`);
 
-    // Open Health goes to the Overview; Try again reads again once the server answers.
+    // Try again reads again once the server answers.
     failing = false;
     await region.getByRole('button', { name: 'Try again' }).click();
     await expect(region).toHaveAttribute('data-state', 'empty');

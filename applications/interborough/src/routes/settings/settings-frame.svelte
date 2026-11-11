@@ -185,7 +185,6 @@
     <div class="weft-settings__content">
       {#if phase === 'error'}
         <ErrorState
-          variant="flat"
           title={VIEW_COPY.settings.error.title}
           description={VIEW_COPY.settings.error.description}
           headingLevel={2}
@@ -222,6 +221,8 @@
    * stack. A section can add a sticky notice in the `banner` area over the whole page.
    */
   .weft-settings {
+    /* One reading width for every section, so the column ends at the same edge on each of them. */
+    --ib-settings-content-width: 46rem;
     display: grid;
     grid-template-columns: 170px minmax(0, 1fr);
     grid-template-areas:
@@ -241,7 +242,7 @@
 
   .weft-settings__title-area {
     grid-area: header;
-    max-inline-size: 46rem;
+    max-inline-size: var(--ib-settings-content-width);
     min-inline-size: 0;
     margin-block-end: var(--cinder-space-6);
   }
@@ -251,7 +252,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-    max-inline-size: 46rem;
+    max-inline-size: var(--ib-settings-content-width);
     min-inline-size: 0;
   }
 

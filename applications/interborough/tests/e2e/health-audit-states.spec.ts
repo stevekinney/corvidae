@@ -255,8 +255,8 @@ for (const width of WIDTHS) {
       const retry = state.getByRole('button', { name: 'Try again' });
       await expect(retry).toHaveAttribute('data-cinder-variant', 'primary');
       await expect(retry.locator('svg')).toBeVisible();
-      const openHealth = state.getByRole('link', { name: 'Open Health' });
-      await expect(openHealth).toHaveAttribute('href', '/health');
+      // This page is already on Health, so the error offers no link to it.
+      await expect(state.getByRole('link')).toHaveCount(0);
       await expect(main.getByText('Check Health')).toHaveCount(0);
       await expect(main.locator('.cinder-banner')).toHaveCount(0);
       await captureForDesignReview(page, {

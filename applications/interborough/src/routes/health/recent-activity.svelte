@@ -1,11 +1,11 @@
 <script lang="ts">
   /**
-   * Recent activity: the latest nine things that happened, one line each with the time at the right,
-   * under a heading that names the zone ("Recent activity, Central time") and a link to the whole
+   * Recent activity: the latest nine things that happened, one line each (two at most, then Show all) with the time at the right,
+   * under a heading that names the zone ("Recent activity (Central time)"), as Storage's column does, and a link to the whole
    * audit log with the number of events it holds. A line is a run, a schedule, a provider key, the
    * server or a chat (`recent-activity.ts`); step noise is the run's own timeline.
    */
-  import { Button, Skeleton } from '@lostgradient/cinder';
+  import { Button, Skeleton, Text } from '@lostgradient/cinder';
 
   import { router } from '../../lib/router.svelte.ts';
   import { HEALTH_ACTIVITY_COPY as copy } from './health-copy.ts';
@@ -37,7 +37,7 @@
 <section class="ib-recent-activity" aria-labelledby="ib-recent-activity-title">
   <div class="ib-recent-activity__heading-row">
     <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">
-      {copy.title}<span class="ib-recent-activity__zone">, {copy.zone}</span>
+      {copy.title} <span class="ib-recent-activity__zone">({copy.zone})</span>
     </h2>
     <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
       {copy.auditLink(total)} ›
@@ -65,7 +65,7 @@
     <ul class="ib-recent-activity__list" aria-label={copy.listLabel}>
       {#each lines as line (line.id)}
         <li class="ib-recent-activity__line" data-activity={line.id}>
-          <span class="ib-recent-activity__text">{line.text}</span>
+          <Text clamp={2} class="ib-recent-activity__text">{line.text}</Text>
           <span class="ib-recent-activity__time">{line.time}</span>
         </li>
       {/each}
@@ -96,7 +96,6 @@
   }
 
   .ib-recent-activity__zone {
-    margin-inline-start: 0.35em;
     color: var(--cinder-text-muted);
     font-size: var(--cinder-text-sm);
     font-weight: 400;
@@ -132,8 +131,9 @@
     border-block-end: 1px solid var(--cinder-border-muted);
   }
 
-  .ib-recent-activity__text {
+  .ib-recent-activity__line :global(.ib-recent-activity__text) {
     min-width: 0;
+    margin: 0;
     overflow-wrap: anywhere;
   }
 

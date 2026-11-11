@@ -285,20 +285,32 @@ describe('every view whose probe fails the page, when its probe fails', () => {
     test(`${view} is failing when its probe fails`, async () => {
       stub(view, 'error');
       const { container, findByRole, getByRole } = mountWithProbe(view);
-      // A view whose page has a header keeps it above the failure, so the failure's own heading is level two.
-      expect(
-        await findByRole('heading', {
-          level: copy.header === undefined ? 1 : 2,
-          name: words.title,
-        }),
-      ).not.toBeNull();
+      // A view whose page has a header keeps it above the failure, so the failure's own heading is
+      // level two; a Health tab keeps Health's own heading and tabs around it.
+      const level = copy.header === undefined && view !== 'storage' ? 1 : 2;
+      expect(await findByRole('heading', { level, name: words.title })).not.toBeNull();
       if (copy.header !== undefined) {
         expect(getByRole('heading', { level: 1, name: copy.header })).not.toBeNull();
       }
       expect(frame(container).dataset['state']).toBe('error');
       expect(container.textContent).toContain(words.description);
       expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+      // The error is the default one, with its disc, and Try again is its primary action.
+      expect(container.querySelector('.cinder-error-state[data-cinder-variant]')).toBeNull();
+      expect(getByRole('button', { name: RETRY_LABEL }).getAttribute('data-cinder-variant')).toBe(
+        'primary',
+      );
     });
+
+    if (view === 'storage') {
+      test('storage keeps the Health heading and tabs around its error', async () => {
+        stub(view, 'error');
+        const { findByRole, getByRole } = mountWithProbe(view);
+        await findByRole('heading', { level: 2, name: words.title });
+        expect(getByRole('heading', { level: 1, name: 'Health' })).not.toBeNull();
+        expect(getByRole('tab', { name: 'Storage' }).getAttribute('aria-selected')).toBe('true');
+      });
+    }
   }
 });
 

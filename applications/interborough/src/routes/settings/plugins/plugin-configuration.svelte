@@ -14,7 +14,6 @@
     Alert,
     Button,
     DurationField,
-    FormSection,
     Input,
     JsonEditor,
     NumberInput,
@@ -126,7 +125,7 @@
       description={copy.description}
     />
     <form onsubmit={(event) => void save(event)} novalidate>
-      <FormSection grouped>
+      <div class="ib-plugin-configuration__rows">
         {#each fields as field (field.key)}
           {@const id = idOf(field.key)}
           {@const value = valueOf(field.key, field.defaultValue)}
@@ -216,7 +215,7 @@
             </SettingRow>
           </div>
         {/each}
-      </FormSection>
+      </div>
       <div class="ib-plugin-configuration__footer">
         <Button type="submit" variant="primary" disabled={locked || saving}>
           {saving ? copy.saving : copy.save}
@@ -251,6 +250,22 @@
     flex-direction: column;
     gap: var(--cinder-space-3);
     min-width: 0;
+  }
+
+  /* The rows sit flat in the pane, which is already the frame: hairlines between them and no box of
+     their own. */
+  .ib-plugin-configuration__rows {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+
+  .ib-plugin-configuration__rows > * {
+    padding-block: var(--cinder-space-3);
+  }
+
+  .ib-plugin-configuration__rows > * + * {
+    border-block-start: 1px solid var(--cinder-border-muted);
   }
 
   .ib-plugin-configuration__footer {

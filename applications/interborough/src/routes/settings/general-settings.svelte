@@ -225,6 +225,7 @@
       {form}
       keyState={stateOf(key)}
       {autosave}
+      inForce={snapshot.effective[key]}
       appliedNote={appliedNoteOf(key)}
       reverted={revert.isReverted(key)}
       descriptionOverride={remoteCard ? SETTINGS_COPY.general.remoteDescriptions[key] : undefined}
@@ -398,7 +399,7 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-8);
-    max-inline-size: 46rem;
+    max-inline-size: var(--ib-settings-content-width);
     min-inline-size: 0;
   }
 

@@ -250,17 +250,52 @@ const SETTING_LABELS: Readonly<Record<string, string>> = {
 };
 
 /**
+ * The words of a key part that a person does not say as they are written: the unit a duration key
+ * ends in is dropped (the field carries its own unit), and an abbreviation is spelled out.
+ */
+const SPOKEN_WORDS: Readonly<Record<string, string>> = { ttl: 'time to live' };
+const UNIT_WORDS: ReadonlySet<string> = new Set(['ms', 'milliseconds']);
+
+/** `text` with its first letter capitalized and the rest left as written. */
+function sentenceCase(text: string): string {
+  return text === '' ? text : `${text.charAt(0).toUpperCase()}${text.slice(1)}`;
+}
+
+/**
  * A setting's name as a person reads it: the last part of its key, split into words and in
- * sentence case, so `engine.workflowClaimRenewInterval` is "Workflow claim renew interval".
+ * sentence case, with a trailing unit dropped and an abbreviation spelled out, so
+ * `engine.workflowClaimRenewInterval` is "Workflow claim renew interval" and
+ * `engine.schedulerPollIntervalMs` is "Scheduler poll interval".
  */
 export function settingLabel(key: string): string {
   if (Object.hasOwn(SETTING_LABELS, key)) return SETTING_LABELS[key] ?? key;
   const last = key.split('.').at(-1) ?? key;
-  const words = last
+  const split = last
     .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
     .toLowerCase()
-    .trim();
-  return words === '' ? key : `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
+    .trim()
+    .split(/\s+/)
+    .filter((word) => word !== '');
+  const unitless =
+    split.length > 1 && UNIT_WORDS.has(split.at(-1) ?? '') ? split.slice(0, -1) : split;
+  const words = unitless.map((word) =>
+    Object.hasOwn(SPOKEN_WORDS, word) ? SPOKEN_WORDS[word] : word,
+  );
+  return words.length === 0 ? key : sentenceCase(words.join(' '));
+}
+
+/**
+ * A value of a setting that holds one of a fixed set of words, as a person reads it: `automatic` is
+ * "Automatic", `keep-all` is "Keep all". The stored value is what is saved; this is only the label.
+ */
+export function optionLabel(value: string): string {
+  return sentenceCase(
+    value
+      .replace(/([a-z0-9])([A-Z])/g, '$1 $2')
+      .replace(/[-_]+/g, ' ')
+      .toLowerCase()
+      .trim(),
+  );
 }
 
 /** Whether a property of an object-valued setting is a duration, which every setting takes in milliseconds. */

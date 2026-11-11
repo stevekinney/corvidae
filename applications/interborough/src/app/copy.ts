@@ -4241,9 +4241,6 @@ export const AUDIT_COPY = {
       `The server answered with an error (${String(status)}): ${message.replace(/[.\s]+$/, '')}.`,
     noAnswer: 'The server didn’t answer. Nothing you did caused it.',
     unknown: 'Something went wrong reading the audit log. Nothing you did caused it.',
-    /** The second action: this page is already inside Health, so it says Open Health. */
-    openHealth: 'Open Health',
-    openHealthPath: '/health',
   },
 } as const;
 

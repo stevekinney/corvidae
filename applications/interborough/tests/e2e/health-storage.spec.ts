@@ -223,7 +223,21 @@ test.describe('Health › Storage on the sample world', () => {
     await trigger.click();
     await expect(trigger).toHaveAttribute('aria-expanded', 'true');
     const details = page.getByTestId('storage-details');
-    await expect(details.getByRole('heading', { name: 'Storage details' })).toBeVisible();
+    // The popover is named for the button that opened it; the body does not say it again.
+    await expect(details.getByRole('heading')).toHaveCount(0);
+    // Nothing sticks out past the popover's right edge, and no path is cut off.
+    const fit = await details.evaluate((element) => {
+      const popover = element.closest('.cinder-popover');
+      const own = element.getBoundingClientRect();
+      const frame = popover?.getBoundingClientRect();
+      return {
+        overflow: element.scrollWidth - element.clientWidth,
+        right: own.right,
+        frame: frame?.right ?? 0,
+      };
+    });
+    expect(fit.overflow).toBeLessThanOrEqual(0);
+    expect(fit.right).toBeLessThanOrEqual(Math.ceil(fit.frame));
     await expect(details.locator('dt')).toHaveText([
       'Backend',
       'Location',

@@ -24,6 +24,7 @@
     SearchField,
     StackedListItem,
     StatusDot,
+    Text,
   } from '@lostgradient/cinder';
 
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
@@ -36,6 +37,7 @@
     orderWorkers,
     workerRowMeta,
     workerRowTime,
+    hasLongId,
     workerRowTitle,
     workerStatusOf,
   } from './worker-model.ts';
@@ -152,7 +154,10 @@
               data-status-word={workerStatusOf(worker)}
             >
               {#snippet status()}<StatusDot word={workerStatusOf(worker)} size="sm" />{/snippet}
-              {#snippet title()}{rowTitle}{/snippet}
+              {#snippet title()}{#if hasLongId(worker)}<Text
+                    truncate="middle"
+                    text={rowTitle}
+                  />{:else}{rowTitle}{/if}{/snippet}
               {#snippet time()}<RelativeTime date={workerRowTime(worker)} seconds />{/snippet}
               {#snippet meta()}{workerRowMeta(worker)}{/snippet}
             </StackedListItem>

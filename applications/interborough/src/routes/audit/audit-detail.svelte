@@ -13,10 +13,10 @@
   import {
     Button,
     copyToClipboard,
-    DescriptionList,
     Link,
     SourceDiffViewer,
     StatusDot,
+    Text,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
@@ -106,21 +106,28 @@
 
   {#if model.facts.length > 0}
     <div class="ib-audit-detail__facts" data-testid="audit-facts" {@attach followLinks}>
-      {#each model.facts as fact (fact.term)}
-        {#snippet value()}
-          {#if fact.value.kind === 'text'}
-            <span class:ib-audit-detail__muted={fact.value.muted === true}>{fact.value.text}</span>
-          {:else if fact.value.kind === 'link'}
-            <Link href={router.href(fact.value.href)}>{fact.value.text}</Link>
-          {:else if fact.value.kind === 'tool'}
-            <span>{fact.value.title}</span>
-            <code class="ib-audit-detail__code">{fact.value.identifier}</code>
-          {:else}
-            <StatusDot word={fact.value.word} />
-          {/if}
-        {/snippet}
-        <DescriptionList variant="fields" items={[{ term: fact.term, definition: value }]} />
-      {/each}
+      <!-- One list for every fact, flat: hairlines between the rows and no box around any of them. -->
+      <dl class="ib-audit-detail__fact-list">
+        {#each model.facts as fact (fact.term)}
+          <div class="ib-audit-detail__fact">
+            <dt>{fact.term}</dt>
+            <dd>
+              {#if fact.value.kind === 'text'}
+                <span class:ib-audit-detail__muted={fact.value.muted === true}
+                  >{fact.value.text}</span
+                >
+              {:else if fact.value.kind === 'link'}
+                <Link href={router.href(fact.value.href)}>{fact.value.text}</Link>
+              {:else if fact.value.kind === 'tool'}
+                <span>{fact.value.title}</span>
+                <code class="ib-audit-detail__code">{fact.value.identifier}</code>
+              {:else}
+                <StatusDot word={fact.value.word} />
+              {/if}
+            </dd>
+          </div>
+        {/each}
+      </dl>
     </div>
   {/if}
 
@@ -139,7 +146,7 @@
   {#if longTarget}
     <section class="ib-audit-detail__target" data-testid="audit-target">
       <p class="ib-audit-detail__target-heading">{copy.targetHeading(wholeTarget.length)}</p>
-      <p class="ib-audit-detail__target-value">{wholeTarget}</p>
+      <Text clamp={3} class="ib-audit-detail__target-value">{wholeTarget}</Text>
       <div>
         <Button
           variant="secondary"
@@ -200,6 +207,35 @@
     min-width: 0;
   }
 
+  .ib-audit-detail__fact-list {
+    display: flex;
+    flex-direction: column;
+    margin: 0;
+    min-width: 0;
+  }
+
+  .ib-audit-detail__fact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    padding-block: var(--cinder-space-2);
+  }
+
+  .ib-audit-detail__fact + .ib-audit-detail__fact {
+    border-block-start: 1px solid var(--cinder-border-muted);
+  }
+
+  .ib-audit-detail__fact dt {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .ib-audit-detail__fact dd {
+    margin: 0;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
   .ib-audit-detail__muted {
     color: var(--cinder-text-muted);
   }
@@ -219,9 +255,6 @@
     flex-direction: column;
     gap: var(--cinder-space-2);
     min-width: 0;
-    padding: var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-md);
   }
 
   .ib-audit-detail__target-heading {
@@ -231,7 +264,7 @@
   }
 
   /* Wrapped anywhere, so a value with no break in it never widens the pane or the page. */
-  .ib-audit-detail__target-value {
+  .ib-audit-detail__target :global(.ib-audit-detail__target-value) {
     margin: 0;
     font-family: var(--cinder-font-mono);
     font-size: var(--cinder-text-xs);

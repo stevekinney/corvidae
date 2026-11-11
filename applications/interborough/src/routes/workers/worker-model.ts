@@ -49,21 +49,12 @@ export function workerName(worker: Pick<WorkerSummary, 'id' | 'name'>): string {
 }
 
 /**
- * Shortens `value` to `length` characters by cutting from the middle, keeping the start and the
- * end: `payments-worker-eu-w…3a68`.
- */
-export function truncateMiddle(value: string, length = 25): string {
-  if (value.length <= length) return value;
-  const tail = 4;
-  return `${value.slice(0, length - tail - 1)}…${value.slice(-tail)}`;
-}
-
-/**
  * What a row is titled: the worker's name, or, when its id is long, the id cut from the middle,
- * because the end of a generated id is what tells two workers apart.
+ * because the end of a generated id is what tells two workers apart. The id is whole here: the row
+ * cuts it from the middle once, at its own width (`Text truncate="middle"`).
  */
 export function workerRowTitle(worker: WorkerSummary): string {
-  return hasLongId(worker) ? truncateMiddle(worker.id) : workerName(worker);
+  return hasLongId(worker) ? worker.id : workerName(worker);
 }
 
 /** Line two of a worker's row. */

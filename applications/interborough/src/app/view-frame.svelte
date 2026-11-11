@@ -52,6 +52,7 @@
   import { queryKeys, workflowViewInstance } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
   import NewChatLoading from '../routes/chat/new-chat-loading.svelte';
+  import HealthFrame from '../routes/health/health-frame.svelte';
   import { getPrincipalStore } from '../lib/scopes.svelte.ts';
   import { getConnection } from './connection.svelte.ts';
   import { CHAT_COPY, CONNECTION_COPY, RETRY_LABEL, STALE_DATA_LABEL, VIEW_COPY } from './copy.ts';
@@ -111,6 +112,14 @@
   const pageOwnsLoading =
     definition.pageOwnsLoading === true ||
     definition.pageOwnsLoadingOn?.includes(initial.pattern ?? '') === true;
+  /**
+   * The Health tab a view is, for the views whose page does not draw its own failure: its error
+   * sits inside Health's frame, under the heading and the tabs, so a person who can read the tab
+   * bar can still leave it.
+   */
+  const healthTab = ({ health: 'overview', storage: 'storage' } as const)[
+    initial.view as 'health' | 'storage'
+  ];
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
   const scopeDenied = $derived(
@@ -264,6 +273,29 @@
   }
 </script>
 
+{#snippet failure(title: string, description: string)}
+  {#if healthTab !== undefined}
+    <HealthFrame active={healthTab} live={false}>
+      <ErrorState
+        {title}
+        {description}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        onRetry={() => void probeQuery.refetch()}
+      />
+    </HealthFrame>
+  {:else}
+    {#if frameHeader !== undefined}<PageHeader title={frameHeader} headingLevel={1} />{/if}
+    <ErrorState
+      {title}
+      {description}
+      headingLevel={stateHeadingLevel}
+      retryLabel={RETRY_LABEL}
+      onRetry={() => void probeQuery.refetch()}
+    />
+  {/if}
+{/snippet}
+
 {#snippet refreshError()}
   <div class="weft-view__refresh-error">
     <ErrorState
@@ -371,26 +403,9 @@
       search={notFoundCopy.searchHidden !== true}
     />
   {:else if state === 'error'}
-    {#if frameHeader !== undefined}<PageHeader title={frameHeader} headingLevel={1} />{/if}
-    <!-- New chat's error is the page with its disc, because it replaces a greeting and a composer. -->
-    <ErrorState
-      variant={startsNewChat ? 'default' : 'flat'}
-      title={errorCopy.title}
-      description={errorCopy.description}
-      headingLevel={stateHeadingLevel}
-      retryLabel={RETRY_LABEL}
-      onRetry={() => void probeQuery.refetch()}
-    />
+    {@render failure(errorCopy.title, errorCopy.description)}
   {:else if state === 'unreachable'}
-    {#if frameHeader !== undefined}<PageHeader title={frameHeader} headingLevel={1} />{/if}
-    <ErrorState
-      variant="flat"
-      title={CONNECTION_COPY.page.title}
-      description={CONNECTION_COPY.page.description}
-      headingLevel={stateHeadingLevel}
-      retryLabel={RETRY_LABEL}
-      onRetry={() => void probeQuery.refetch()}
-    />
+    {@render failure(CONNECTION_COPY.page.title, CONNECTION_COPY.page.description)}
   {:else}
     <ForbiddenState title={forbiddenTitle} requirement={forbiddenRequirement} />
   {/if}

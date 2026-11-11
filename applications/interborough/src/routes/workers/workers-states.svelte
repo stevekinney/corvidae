@@ -9,7 +9,6 @@
   import { Button, EmptyState, ErrorState, Skeleton } from '@lostgradient/cinder';
   import { Cpu, ExternalLink } from '@lucide/svelte';
 
-  import { router } from '../../lib/router.svelte.ts';
   import { WORKER_COPY } from './worker-copy.ts';
   import WorkersHeading from './workers-heading.svelte';
   import { workersLoadFailure, type WorkersStateKind } from './workers-states.ts';
@@ -82,15 +81,8 @@
       title={failure.title}
       description={failure.description}
       retryLabel={copy.failed.tryAgain}
-      retryVariant="secondary"
       {onRetry}
-    >
-      {#snippet secondaryAction()}
-        <Button variant="ghost-accent" href={router.href(copy.failed.openHealthPath)}
-          >{copy.failed.openHealth}</Button
-        >
-      {/snippet}
-    </ErrorState>
+    />
   {/if}
 </section>
 
