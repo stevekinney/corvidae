@@ -64,6 +64,18 @@ function findExplicitRationale(source: string): string {
   return rationaleLines.join(' ').trim();
 }
 
+/**
+ * The component id a name written in prose refers to. A rationale names its alternative the way
+ * the component is exported (`DescriptionList`), and a component id is that name in kebab-case
+ * (`description-list`), so lowercasing alone only ever matched one-word names.
+ */
+function toComponentId(name: string): string {
+  return name
+    .replace(/([A-Z]+)([A-Z][a-z])/g, '$1-$2')
+    .replace(/([a-z0-9])([A-Z])/g, '$1-$2')
+    .toLowerCase();
+}
+
 function findNamedAlternative(rationale: string): string | null {
   const patterns = [
     /\b(?:nearest|closest)\s+alternative\s*:\s*[*_`]*([a-z][a-z0-9-]*)\b/i,
@@ -71,8 +83,8 @@ function findNamedAlternative(rationale: string): string | null {
     /\|\s*[*_`]*([a-z][a-z0-9-]*)\b/i,
   ];
   for (const pattern of patterns) {
-    const alternative = rationale.match(pattern)?.[1]?.toLowerCase();
-    if (alternative) return alternative;
+    const alternative = rationale.match(pattern)?.[1];
+    if (alternative) return toComponentId(alternative);
   }
   return null;
 }

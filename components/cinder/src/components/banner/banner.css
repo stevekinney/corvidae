@@ -124,8 +124,11 @@
    * its own full line, so the buttons are as wide as the words. */
   @media (max-width: 39.99rem) {
     .cinder-banner__actions {
+      /* @runtime-state */
       --cinder-button-height-xs: var(--cinder-touch-target-min);
+      /* @runtime-state */
       --cinder-button-height-sm: var(--cinder-touch-target-min);
+      /* @runtime-state */
       --cinder-button-height-md: var(--cinder-touch-target-min);
     }
 

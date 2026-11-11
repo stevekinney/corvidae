@@ -112,10 +112,7 @@ The actions stack under the message at every width, in a row that wraps, and the
 
 <!-- generated:variables:start -->
 
-- `--cinder-button-height-md`
-- `--cinder-button-height-sm`
-- `--cinder-button-height-xs`
-
+This component does not declare any local CSS variables.
 <!-- generated:variables:end -->
 
 ## Subcomponents

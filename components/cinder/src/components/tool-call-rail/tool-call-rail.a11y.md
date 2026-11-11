@@ -31,7 +31,7 @@ Opening a group keeps focus on the control that opened it; the rows it reveals f
 | Enter, Space | Row | Selects the call (`aria-pressed`). |
 | Enter, Space | `Show N more`, `Show fewer`, a failure link | Activates the control. |
 
-### Names, roles and state
+### Assistive-technology announcements
 
 A call with `resultHref` draws its result as a real link (an `a` with the result's words as its name, after the arrow). With `onSelect` the row cannot be a button around a link, so the row is a container holding the link and a button that covers the row; the button keeps the row's whole text as its accessible name and its `aria-pressed`, the link and the button are separate tab stops in that order, and the quiet focus ring shows on the row when the button has focus.
 

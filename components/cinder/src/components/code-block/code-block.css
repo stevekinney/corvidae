@@ -461,7 +461,7 @@
     padding-inline: var(--cinder-code-block-padding);
     font-family: var(--cinder-font-sans);
     font-size: var(--cinder-text-xs);
-    font-weight: 500;
+    font-weight: var(--cinder-font-medium);
     line-height: var(--cinder-leading-normal);
     white-space: normal;
     user-select: none;

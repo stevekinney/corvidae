@@ -150,7 +150,7 @@
   }
 
   .cinder-run-step-timeline__icon [data-cinder-tool-activity-active] {
-    animation: cinder-run-step-timeline-tool-pulse 1.4s ease-in-out infinite;
+    animation: cinder-run-step-timeline-tool-pulse var(--cinder-duration-pulse) ease-in-out infinite;
   }
 
   @media (prefers-reduced-motion: reduce) {

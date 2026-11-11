@@ -47,7 +47,7 @@ Every modern feature Cinder uses falls into exactly one tier. The tier decides w
 
 ## Enforcement
 
-`bun run --filter=@lostgradient/cinder platform:audit` reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The audit is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. It runs in the `validate` path so the inventory stays visible as the library grows.
+`bun run --filter=@lostgradient/cinder platform:audit` reports current usage of every classified feature and flags hard-coded viewport breakpoints in component CSS so a reviewer can confirm each is viewport-owned (allowed) rather than a container-constraint in disguise (a Tier-1 violation). The feature inventory is a **report**, not a hard gate: deliberate adoption is the goal, so the command surfaces usage for human judgment rather than banning features outright. Viewport breakpoints are the one gated part: `lint` runs the audit with `--strict`, which fails on a viewport `@media` width query that `scripts/platform-viewport-baseline.json` does not list. Rewrite a new one as a container query, or, when the viewport genuinely owns it, grandfather it with `--update-baseline`.
 
 When a new modern feature enters the codebase, add a row to the classification table above (with its tier and rule) in the same change. A feature with no row is unclassified and will be flagged in review.
 

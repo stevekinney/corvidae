@@ -24,6 +24,31 @@ describe('findNamingViolations', () => {
     expect(violations[0]?.reason).toMatch(/bare domain/);
   });
 
+  // A group's `$root` token resolves to the group's own path, so `border.$root`
+  // is `border` in the registry. It is the default among the roles beside it,
+  // not a domain standing alone.
+  test("accepts a group's $root token, which carries the group's own path", () => {
+    expect(
+      findNamingViolations([
+        { path: 'border', cssProperty: '--cinder-border' },
+        { path: 'border.muted', cssProperty: '--cinder-border-muted' },
+      ]),
+    ).toEqual([]);
+  });
+
+  test('still rejects a bare domain that is not a $root, beside an unrelated group', () => {
+    const violations = findNamingViolations(['danger', 'border', 'border.muted', 'dangerous.text']);
+    expect(violations).toEqual([{ path: 'danger', reason: expect.stringMatching(/bare domain/) }]);
+  });
+
+  test('holds a $root to every other rule', () => {
+    const violations = findNamingViolations([
+      { path: 'color', cssProperty: '--cinder-color' },
+      { path: 'color.muted', cssProperty: '--cinder-color-muted' },
+    ]);
+    expect(violations.map((violation) => violation.path)).toContain('color');
+  });
+
   test('rejects the color.* top-level namespace', () => {
     const violations = findNamingViolations(['color.danger.background']);
     expect(violations.map((violation) => violation.reason)).toContainEqual(

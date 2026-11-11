@@ -9,7 +9,9 @@
  * ======================================== */
 
   .cinder-map-marker {
+    /* @runtime-state */
     --cinder-map-marker-fill: var(--cinder-surface-raised);
+    /* @runtime-state */
     --cinder-map-marker-ink: var(--cinder-text-default);
 
     position: relative;
@@ -70,7 +72,9 @@
   }
 
   .cinder-map-marker[data-state='live'] {
+    /* @runtime-state */
     --cinder-map-marker-fill: var(--cinder-surface-inverse);
+    /* @runtime-state */
     --cinder-map-marker-ink: var(--cinder-text-inverse);
   }
 
