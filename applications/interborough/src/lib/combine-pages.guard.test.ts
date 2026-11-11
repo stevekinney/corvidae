@@ -12,10 +12,7 @@ import { join, relative } from 'node:path';
 const SOURCE_ROOT = join(import.meta.dir, '..');
 
 /** Files that read the pages of an infinite query but key their rows without a repeat risk, with why. */
-const KEYED_BY_OCCURRENCE: Readonly<Record<string, string>> = {
-  'routes/goals/goal-list.svelte':
-    'keys each row through keyedByOccurrence, which cannot repeat a key',
-};
+const KEYED_BY_OCCURRENCE: Readonly<Record<string, string>> = {};
 
 function sourceFiles(directory: string): string[] {
   return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {

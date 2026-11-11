@@ -482,13 +482,14 @@ describe('a goal’s page', () => {
   });
 
   test('says the goal could not be loaded when the Bureau stops answering after the page opened, and tries again', async () => {
-    const { view, served } = open([goal('goal-1')]);
+    const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    // The frame's probe is told the goal exists; the page that follows finds the Bureau down.
+    // The list was read; from here on the Bureau no longer answers for the goal. The frame's probe
+    // and the page both ask, a fault that is not a refusal or a missing goal is the page's own
+    // error to word, and the frame leaves the page on screen (`ownsStates`).
     let asked = 0;
     stub?.on('bureau.goals.get', () => {
       asked += 1;
-      if (asked === 1) return served.goals[0];
       throw new StubFault('Unavailable', 503, 'The Bureau is down.');
     });
     router.navigate('/goals/goal-1');
