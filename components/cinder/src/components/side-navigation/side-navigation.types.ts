@@ -13,7 +13,7 @@ export type SideNavigationProps = Omit<
    * The product's name, mark or workspace switcher, drawn above the primary action and the list.
    * Wrap it as you like; the slot adds only the padding that aligns it with the rows.
    */
-  brand?: Snippet;
+  brand?: Snippet | undefined;
   /**
    * The one action the product leads with ("Capture", "New chat"), drawn under `brand` and above
    * the list. Render a single `<a>` or `<button>`: it is drawn as a neutral, sidebar-wide control
@@ -22,7 +22,7 @@ export type SideNavigationProps = Omit<
    * accent slab. Name the shortcut for assistive technology with `aria-keyshortcuts` on the
    * control, and mark the glyph `aria-hidden`.
    */
-  primaryAction?: Snippet;
+  primaryAction?: Snippet | undefined;
   /** Must be <li> elements containing NavigationItem and/or SideNavigationGroup. */
   children: Snippet;
 };

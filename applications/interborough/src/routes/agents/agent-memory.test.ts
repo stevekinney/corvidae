@@ -219,8 +219,12 @@ describe('the list', () => {
     const view = open();
     await view.findByText(AISLE.content);
 
-    const kind = within(view.container).getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.kindLabel);
-    const writer = within(view.container).getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.writerLabel);
+    const kind = within(view.container).getByLabelText<HTMLSelectElement>(
+      MEMORY_COPY.filter.kindLabel,
+    );
+    const writer = within(view.container).getByLabelText<HTMLSelectElement>(
+      MEMORY_COPY.filter.writerLabel,
+    );
 
     // Each starts on its first choice, which reads "Kind: All" and "Written by: Anyone".
     expect(kind.value).toBe('all');
@@ -2542,8 +2546,7 @@ describe('the agent’s page', () => {
     // The memory list is the tab's body: the agent's header and its tab bar stay above it.
     expect(await findByText(AISLE.content)).not.toBeNull();
     expect(getByTestId('agent-header')).not.toBeNull();
-    expect((await findByRole('tab', { name: /^Memory/ })).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    const awaited2545 = await findByRole('tab', { name: /^Memory/ });
+    expect(awaited2545.getAttribute('aria-selected')).toBe('true');
   });
 });

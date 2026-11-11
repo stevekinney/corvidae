@@ -11,7 +11,7 @@
  * the connect and leaving through this page (rows 33i to 35f).
  */
 import { QueryClient } from '@tanstack/svelte-query';
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
@@ -48,7 +48,7 @@ afterEach(() => {
   Object.assign(restartProbing, probing);
 });
 
-const mount = (page: typeof ConnectTools | typeof CapabilitiesPage, client?: QueryClient) =>
+const mount = (page: typeof CapabilitiesPage, client?: QueryClient) =>
   render(QueryPage, {
     props: { page, ...(client === undefined ? {} : { client }) },
   } as never);
@@ -440,9 +440,8 @@ describe('the Connect tools page', () => {
       },
     });
     // The name the person typed is kept: the spec's title fills in only an empty Name.
-    expect((await findByTestId('connect-success')).textContent).toContain(
-      copy.connect.success.title('petstore'),
-    );
+    const awaited443 = await findByTestId('connect-success');
+    expect(awaited443.textContent).toContain(copy.connect.success.title('petstore'));
   });
 
   test('says a file that is not an OpenAPI document is not one, and a file that is too large is refused', async () => {

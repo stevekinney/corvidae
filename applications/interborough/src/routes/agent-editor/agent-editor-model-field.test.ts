@@ -340,7 +340,8 @@ describe('a saved agent whose model is no longer offered', () => {
       mountEditor('researcher');
 
     // The model is text, not a field: the Settings tab is where it is changed.
-    expect((await findByTestId('agent-saved-model-value')).textContent).toContain('OpenAI');
+    const awaited343 = await findByTestId('agent-saved-model-value');
+    expect(awaited343.textContent).toContain('OpenAI');
     expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
     const notice = getByTestId('agent-model-notice').textContent ?? '';
     expect(notice).toContain(
@@ -362,7 +363,8 @@ describe('a saved agent whose model is no longer offered', () => {
       modelPolicy: { bureau: { deniedModels: ['gpt-4.1'] }, policyRevision: 1 },
     });
     const { findByTestId } = mountEditor('researcher');
-    expect((await findByTestId('agent-model-notice')).textContent).toContain(
+    const awaited365 = await findByTestId('agent-model-notice');
+    expect(awaited365.textContent).toContain(
       notices.refusedNotice('openai/gpt-4.1', copy.reasons['model-denied']),
     );
   });
@@ -379,7 +381,8 @@ describe('a saved agent whose model is no longer offered', () => {
     });
     const { findByTestId } = mountEditor('researcher');
 
-    const notice = (await findByTestId('agent-model-notice')).textContent ?? '';
+    const awaited382 = await findByTestId('agent-model-notice');
+    const notice = awaited382.textContent ?? '';
     expect(notice).toContain(notices.replacementNotice('anthropic/old', copy.reasons.retired));
     expect(notice).not.toContain('Saving keeps it');
   });
@@ -396,7 +399,8 @@ describe('a saved agent whose model is no longer offered', () => {
     });
     const { findByTestId, getByTestId, getByRole } = mountEditor('researcher');
 
-    expect((await findByTestId('agent-model-notice')).textContent).toContain(
+    const awaited399 = await findByTestId('agent-model-notice');
+    expect(awaited399.textContent).toContain(
       notices.keptNotice('anthropic/off', copy.reasons['turned-off']),
     );
     expect(getByTestId('agent-saved-model-value').textContent).toContain('Anthropic');
@@ -416,7 +420,8 @@ describe('a saved agent whose model is no longer offered', () => {
       ],
     });
     const { findByTestId } = mountEditor('researcher');
-    const notice = (await findByTestId('agent-model-notice')).textContent ?? '';
+    const awaited419 = await findByTestId('agent-model-notice');
+    const notice = awaited419.textContent ?? '';
     expect(notice).toContain(
       notices.replacementNotice('gemini/gemini-2.5-pro', copy.reasons['not-in-catalog']),
     );
@@ -441,7 +446,8 @@ describe('a reload from disk', () => {
   test('reads the providers and the model policy again, along with the file', async () => {
     const calls = bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
     const { findByTestId, getByRole, findByText, queryByTestId } = mountEditor('researcher');
-    expect((await findByTestId('agent-saved-model-value')).textContent).toContain('Anthropic');
+    const awaited444 = await findByTestId('agent-saved-model-value');
+    expect(awaited444.textContent).toContain('Anthropic');
     expect(queryByTestId('agent-model-notice')).toBeNull();
 
     // The file changed on disk, and the policy now forbids the agent's provider.

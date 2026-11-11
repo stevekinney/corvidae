@@ -49,8 +49,7 @@ function topLevelStrings(value: unknown, keys: readonly string[]): string[] {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return [];
   const found: string[] = [];
   for (const key of keys) {
-    if (!Object.hasOwn(value, key)) continue;
-    const entry = (value as Record<string, unknown>)[key];
+    const entry: unknown = Object.getOwnPropertyDescriptor(value, key)?.value;
     if (typeof entry === 'string' && entry !== '') found.push(entry);
   }
   return [...new Set(found)];
@@ -73,12 +72,16 @@ export function shortRunName(runId: string): string {
 
 type Kind = 'chat' | 'agent' | 'run';
 
-/** Which kind of thing a top-level property of the payload names, or `undefined` for a plain value. */
-function kindOf(field: PayloadInspectorField): Kind | undefined {
-  if (field.path.length !== 1 || typeof field.value !== 'string') return undefined;
-  if (CHAT_KEYS.includes(field.key)) return 'chat';
-  if (AGENT_KEYS.includes(field.key)) return 'agent';
-  if (RUN_KEYS.includes(field.key)) return 'run';
+/**
+ * Which kind of thing a top-level property of the payload names, and the identifier it holds, or
+ * `undefined` for a plain value.
+ */
+function referenceOf(field: PayloadInspectorField): { kind: Kind; id: string } | undefined {
+  const id = field.value;
+  if (field.path.length !== 1 || typeof id !== 'string') return undefined;
+  if (CHAT_KEYS.includes(field.key)) return { kind: 'chat', id };
+  if (AGENT_KEYS.includes(field.key)) return { kind: 'agent', id };
+  if (RUN_KEYS.includes(field.key)) return { kind: 'run', id };
   return undefined;
 }
 
@@ -90,8 +93,9 @@ export function payloadLinkFor(
   field: PayloadInspectorField,
   lookups: PayloadLookups,
 ): string | undefined {
-  const kind = kindOf(field);
-  const id = field.value as string;
+  const reference = referenceOf(field);
+  if (reference === undefined) return undefined;
+  const { kind, id } = reference;
   if (kind === 'chat') return lookups.chats.has(id) ? chatSessionPath(id) : undefined;
   if (kind === 'agent') return lookups.agents.has(id) ? agentPath(id) : undefined;
   if (kind === 'run') return lookups.runs.has(id) ? workflowDetailPath(id) : undefined;
@@ -106,8 +110,9 @@ export function payloadValueText(
   field: PayloadInspectorField,
   lookups: PayloadLookups,
 ): string | undefined {
-  const kind = kindOf(field);
-  const id = field.value as string;
+  const reference = referenceOf(field);
+  if (reference === undefined) return undefined;
+  const { kind, id } = reference;
   if (kind === 'chat') {
     const title = lookups.chats.get(id);
     return title === undefined || title === '' ? undefined : title;

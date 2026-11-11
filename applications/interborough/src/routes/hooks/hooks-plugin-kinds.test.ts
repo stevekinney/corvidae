@@ -210,7 +210,8 @@ describe('a contributed hook action under Then', () => {
     });
     await waitFor(() => expect(stub?.callsTo('bureau.plugins.contributions').length).toBe(1));
     // The built-in actions alone are the segmented control, and there is no select to choose from.
-    expect((await view.findAllByRole('radio')).length).toBe(3);
+    const awaited213 = await view.findAllByRole('radio');
+    expect(awaited213.length).toBe(3);
     expect(view.queryByRole('combobox', { name: HOOKS_COPY.editor.action.label })).toBeNull();
   });
 });

@@ -465,7 +465,8 @@ describe('the Settings tab', () => {
 
     const model = await findByTestId('agent-settings-model');
     await waitFor(() => expect(model.textContent?.trim()).toBe('Sonnet, Anthropic'));
-    expect((await findByTestId('agent-settings-models')).textContent).toContain('Haiku');
+    const awaited468 = await findByTestId('agent-settings-models');
+    expect(awaited468.textContent).toContain('Haiku');
     const steps = (await findByLabelText('Step limit')) as HTMLInputElement;
     await waitFor(() => expect(steps.value).toBe('12'));
 

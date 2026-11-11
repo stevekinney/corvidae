@@ -305,7 +305,8 @@ describe('a source’s standing fields (COR-2022)', () => {
     };
     const { fetch } = recording(() => Response.json({ ...SNAPSHOT, sources: [source] }));
 
-    const [read] = (await getToolSources({ fetch })).sources;
+    const awaited308 = await getToolSources({ fetch });
+    const [read] = awaited308.sources;
 
     expect(read).toMatchObject({
       name: 'Notes',

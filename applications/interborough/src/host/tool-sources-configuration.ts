@@ -297,10 +297,14 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
     if (value === undefined) continue;
     // Written trimmed and only when it holds something, so empty text in the file is refused.
     const problem = sourceLabelProblem(value, limit, true);
-    if (problem !== undefined) {
-      throw new ProviderConfigurationError(location, `${field}.${key}`, problem);
+    if (problem !== undefined || typeof value !== 'string') {
+      throw new ProviderConfigurationError(
+        location,
+        `${field}.${key}`,
+        problem ?? 'expected text.',
+      );
     }
-    labels[key] = String(value).trim();
+    labels[key] = value.trim();
   }
   let source: ToolSourceDescription;
   try {

@@ -308,7 +308,8 @@ describe('testing a saved source (Test connection)', () => {
     expect(
       answer.outcome === 'listed' ? answer.tools.map((tool) => tool.tool).toSorted() : [],
     ).toEqual(['create-pet', 'delete-pet', 'list-pets']);
-    expect((await standingOf(manager))?.lastTested).toBe(new Date(NOW).toISOString());
+    const awaited311 = await standingOf(manager);
+    expect(awaited311?.lastTested).toBe(new Date(NOW).toISOString());
     // A test saves nothing, and the running host's catalog is not touched.
     expect(home.state.configuration).toBe(before);
     expect(Object.keys(manager.tools())).toEqual([]);

@@ -934,8 +934,10 @@ function checkedLabels(request: Pick<ToolSourceConnection, 'name' | 'description
   let name: string | undefined;
   if (request.name !== undefined) {
     const problem = sourceLabelProblem(request.name, MAXIMUM_TOOL_SOURCE_NAME_LENGTH, true);
-    if (problem !== undefined) throw new ToolSourceInputError('name', problem);
-    name = String(request.name).trim();
+    if (problem !== undefined || typeof request.name !== 'string') {
+      throw new ToolSourceInputError('name', problem ?? 'expected text.');
+    }
+    name = request.name.trim();
   }
   let description: string | null | undefined;
   if (request.description === null) {
@@ -946,8 +948,10 @@ function checkedLabels(request: Pick<ToolSourceConnection, 'name' | 'description
       MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH,
       false,
     );
-    if (problem !== undefined) throw new ToolSourceInputError('description', problem);
-    const trimmed = String(request.description).trim();
+    if (problem !== undefined || typeof request.description !== 'string') {
+      throw new ToolSourceInputError('description', problem ?? 'expected text.');
+    }
+    const trimmed = request.description.trim();
     description = trimmed === '' ? null : trimmed;
   }
   return { name, description };
@@ -1823,8 +1827,11 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const description = JSON.stringify(source);
       try {
         // No tokens: contacting the server would begin a sign-in nobody is waiting for.
-        if (isOAuth(source) && (await vault.read(id)).oauth?.tokens === undefined) {
-          return { outcome: 'needs-authorization' as const };
+        if (isOAuth(source)) {
+          const stored = await vault.read(id);
+          if (stored.oauth?.tokens === undefined) {
+            return { outcome: 'needs-authorization' as const };
+          }
         }
       } catch (error) {
         return { outcome: 'failed' as const, message: describeFailure(error) };

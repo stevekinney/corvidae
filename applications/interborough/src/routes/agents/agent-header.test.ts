@@ -181,9 +181,8 @@ describe('the tab bar of an agent’s page', () => {
     serve();
     const { findByRole } = mount();
 
-    expect((await findByRole('tab', { name: /^Chats/ })).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    const awaited184 = await findByRole('tab', { name: /^Chats/ });
+    expect(awaited184.getAttribute('aria-selected')).toBe('true');
   });
 });
 
@@ -196,9 +195,8 @@ describe('a tab’s body while it loads, fails or holds old data', () => {
     await findByTestId('agent-tab-loading');
     expect(await findByTestId('agent-header')).not.toBeNull();
     expect(await findByRole('link', { name: 'New chat' })).not.toBeNull();
-    expect((await findByRole('tab', { name: 'Settings' })).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    const awaited199 = await findByRole('tab', { name: 'Settings' });
+    expect(awaited199.getAttribute('aria-selected')).toBe('true');
   });
 
   test('says the tab could not load in its body alone, with the server’s status and Try again', async () => {
@@ -249,20 +247,18 @@ describe('a tab’s body while it loads, fails or holds old data', () => {
     expect(await findByTestId('agent-instructions-body')).not.toBeNull();
     expect(queryByTestId('agent-tab-failed')).toBeNull();
     // Edit would change the agent, so it is held while the tab is old; New chat stays live.
-    await waitFor(async () =>
-      expect((await findByRole('link', { name: 'Edit' })).getAttribute('aria-disabled')).toBe(
-        'true',
-      ),
-    );
+    await waitFor(async () => {
+      const edit = await findByRole('link', { name: 'Edit' });
+      expect(edit.getAttribute('aria-disabled')).toBe('true');
+    });
 
     failing = false;
     await fireEvent.click(within(banner).getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(queryByTestId('agent-tab-stale')?.outerHTML ?? null).toBeNull());
-    await waitFor(async () =>
-      expect((await findByRole('link', { name: 'Edit' })).getAttribute('aria-disabled')).not.toBe(
-        'true',
-      ),
-    );
+    await waitFor(async () => {
+      const edit = await findByRole('link', { name: 'Edit' });
+      expect(edit.getAttribute('aria-disabled')).not.toBe('true');
+    });
   });
 });
 
@@ -298,7 +294,8 @@ describe('the page of an agent a disabled plugin ships', () => {
 
     const header = await findByTestId('agent-header');
     expect(header.querySelector('h1')?.textContent?.trim()).toBe('Release helper');
-    expect((await findByTestId('agent-identifier')).textContent).toBe('demo:release-helper');
+    const awaited301 = await findByTestId('agent-identifier');
+    expect(awaited301.textContent).toBe('demo:release-helper');
     const status = await findByTestId('agent-status');
     await waitFor(() => expect(status.textContent).toContain('Unavailable, 1 chat'));
     expect(status.querySelector('[data-cinder-status="neutral"]')).not.toBeNull();

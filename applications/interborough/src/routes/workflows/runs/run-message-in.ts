@@ -25,6 +25,12 @@ function textOf(content: string | readonly unknown[] | undefined): string {
     .join('\n');
 }
 
+/** The `id` a stored message carries, or `undefined` for a message without one. */
+function idOf(message: unknown): unknown {
+  if (typeof message !== 'object' || message === null) return undefined;
+  return Object.getOwnPropertyDescriptor(message, 'id')?.value;
+}
+
 /**
  * The text of the message that started the run `runId`, or `undefined` when the thread holds no
  * row of the run, or no user message before it, or that message has no text (an attachment alone).
@@ -38,7 +44,7 @@ export function messageInOfRun(runId: string, messages: readonly unknown[]): str
       lastUser = text === '' ? undefined : text;
       continue;
     }
-    const id = (message as { id?: unknown } | null)?.id;
+    const id = idOf(message);
     if (typeof id === 'string' && id.startsWith(`${runId}:`)) return lastUser;
   }
   return undefined;

@@ -1569,7 +1569,7 @@ export const WORKFLOW_COPY = {
       anySignalWait: 'wait for a signal',
       wait: (duration: string): string => `wait ${duration}`,
       other: 'run a step the builder can’t describe',
-      then: 'then',
+      next: 'then',
     },
     /** Below 640 pixels the builder is read-only (board ResponsiveAndDark, row 05n). */
     phone: {
@@ -4596,8 +4596,7 @@ export const AGENT_PAGE_COPY = {
         count === 1 ? '1 schedule' : `${String(count)} schedules`,
       workflow: (count: number): string =>
         count === 1 ? '1 workflow' : `${String(count)} workflows`,
-      hook: (count: number): string =>
-        count === 1 ? '1 hook' : `${String(count)} hooks`,
+      hook: (count: number): string => (count === 1 ? '1 hook' : `${String(count)} hooks`),
       named: (counted: string, names: readonly string[]): string =>
         `${counted} (${names.join(', ')})`,
       joined: (groups: readonly string[]): string => joinedWithAnd(groups),

@@ -105,7 +105,8 @@ describe('hooks on a home that runs on the person’s own machine', () => {
     expect(draft.error).toBeUndefined();
     expect(draft.result).toMatchObject({ hookId: 'draft', status: 'delivered', test: true });
     expect(target.received).toHaveLength(1);
-    expect((await call(host, 'bureau.hooks.list', {})).result.hooks).toEqual([]);
+    const awaited108 = await call(host, 'bureau.hooks.list', {});
+    expect(awaited108.result.hooks).toEqual([]);
 
     const created = await call(host, 'bureau.hooks.create', {
       events: ['review.requested'],

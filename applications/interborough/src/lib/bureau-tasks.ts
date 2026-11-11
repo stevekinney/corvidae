@@ -210,7 +210,8 @@ export function isRunning(task: Pick<TaskView, 'status'>): boolean {
 export async function listRunningTasks(options?: Options): Promise<TaskView[]> {
   const running: TaskView[] = [];
   for (const status of RUNNING_STATES) {
-    running.push(...(await listAllTasks({ status }, options)).filter(isRunning));
+    const tasks = await listAllTasks({ status }, options);
+    running.push(...tasks.filter(isRunning));
   }
   return running;
 }

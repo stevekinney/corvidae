@@ -87,7 +87,8 @@ export async function readRepositoryState(
   repositoryRoot = REPOSITORY_ROOT,
 ): Promise<RepositoryState> {
   const status = await gitOutput(['status', '--porcelain'], repositoryRoot);
-  const sourceSha = (await gitOutput(['rev-parse', 'HEAD'], repositoryRoot)).trim();
+  const awaited90 = await gitOutput(['rev-parse', 'HEAD'], repositoryRoot);
+  const sourceSha = awaited90.trim();
   return { status, sourceSha };
 }
 

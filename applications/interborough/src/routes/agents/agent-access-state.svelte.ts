@@ -484,7 +484,7 @@ export class AgentAccessState {
    * The chat limit is the one last applied, never the field's text, which may hold an amount the
    * Bureau would refuse; an applied text the tab cannot read keeps the file's own chat limit.
    */
-  #costToWrite(file: Definition): AgentLimitsInput['cost'] {
+  #costToWrite(file: Definition): Exclude<AgentLimitsInput['cost'], undefined> {
     const kept = file.limits.cost;
     const warn = kept?.warn === undefined ? {} : { warn: kept.warn };
     const applied = parseLimit(this.spendApplied, false, LIMIT_BOUNDS.spendUsd);

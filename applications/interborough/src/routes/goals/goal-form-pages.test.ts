@@ -76,8 +76,8 @@ const SUMMARIZE = goalFixture('goal-summarize', {
 
 function deferred<Value>() {
   let resolve!: (value: Value) => void;
-  const promise = new Promise<Value>((settle) => {
-    resolve = settle;
+  const promise = new Promise<Value>((_resolve) => {
+    resolve = _resolve;
   });
   return { promise, resolve };
 }
@@ -401,7 +401,9 @@ describe('a model agent chosen with no provider connected', () => {
 
     await fireEvent.click(within(alert).getByRole('button', { name: copy.useAgent('Assistant') }));
 
-    await waitFor(() => expect(page.queryByTestId('goal-needs-provider')?.outerHTML ?? null).toBeNull());
+    await waitFor(() =>
+      expect(page.queryByTestId('goal-needs-provider')?.outerHTML ?? null).toBeNull(),
+    );
     expect((page.getByLabelText(copy.agentLabel) as HTMLSelectElement).value).toBe('assistant');
     expect(page.getByRole('button', { name: copy.createAction })).not.toBeDisabled();
     expect(page.getByTestId('goal-form-note').textContent).toBe(copy.footer.scripted('Assistant'));

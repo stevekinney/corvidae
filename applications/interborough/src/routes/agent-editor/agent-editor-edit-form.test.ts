@@ -162,7 +162,8 @@ describe('what a saved agent’s form owns (rows 41s, 41u, 41v, 41w)', () => {
     expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
     // No select on the form at all: the model is text and the effort has no field.
     expect(within(getByRole('form', { name: copy.formLabel })).queryByRole('combobox')).toBeNull();
-    const note = (await findByTestId('agent-saved-model')).textContent ?? '';
+    const awaited165 = await findByTestId('agent-saved-model');
+    const note = awaited165.textContent ?? '';
     expect(note).toContain(`${editCopy.model.changeLead}${editCopy.model.settingsTab}`);
     expect(note).toContain(editCopy.model.changeTail);
     const link = getByRole('link', { name: editCopy.model.settingsTab });
@@ -211,9 +212,8 @@ describe('what a saved agent’s form owns (rows 41s, 41u, 41v, 41w)', () => {
   test('says no guardrails and no spend limit when the file sets none', async () => {
     bureau();
     const { findByTestId } = mountEditor();
-    expect((await findByTestId('agent-guardrails-summary')).textContent).toContain(
-      editCopy.guardrails.summary([], null),
-    );
+    const awaited214 = await findByTestId('agent-guardrails-summary');
+    expect(awaited214.textContent).toContain(editCopy.guardrails.summary([], null));
   });
 
   test('says a model that is not offered now, and what a save does with it', async () => {
@@ -323,9 +323,8 @@ describe('the reference documents (row 41t)', () => {
     bureau();
     const { findByTestId, container } = mountEditor();
 
-    expect((await findByTestId('agent-no-references')).textContent?.trim()).toBe(
-      editCopy.references.none,
-    );
+    const awaited326 = await findByTestId('agent-no-references');
+    expect(awaited326.textContent?.trim()).toBe(editCopy.references.none);
     expect(container.querySelector('[data-cinder-kind="first-use"]')).toBeNull();
   });
 

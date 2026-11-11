@@ -233,12 +233,10 @@ describe('a value that names something in Interborough', () => {
 
     const chat = await view.findByRole('link', { name: 'Please refund order 4471…' });
     expect(chat.getAttribute('href')).toContain('chat-1');
-    expect((await view.findByRole('link', { name: 'Tool runner' })).getAttribute('href')).toContain(
-      'tool-runner',
-    );
-    expect((await view.findByRole('link', { name: 'Run 8f2c' })).getAttribute('href')).toContain(
-      'run-8f2c0d71',
-    );
+    const awaited236 = await view.findByRole('link', { name: 'Tool runner' });
+    expect(awaited236.getAttribute('href')).toContain('tool-runner');
+    const awaited239 = await view.findByRole('link', { name: 'Run 8f2c' });
+    expect(awaited239.getAttribute('href')).toContain('run-8f2c0d71');
     expect(view.getByText('4471')).not.toBeNull();
     expect(view.getAllByRole('link')).toHaveLength(3);
   });

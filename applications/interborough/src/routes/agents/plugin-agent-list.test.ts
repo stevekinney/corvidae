@@ -177,7 +177,9 @@ describe('the agents a disabled plugin holds back', () => {
     await findByRole('radio', { name: /^All\s*,\s*5$/ });
     await fireEvent.click(await findByRole('radio', { name: /^Available\s*,\s*3$/ }));
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="agents-unavailable"]')?.outerHTML ?? null).toBeNull(),
+      expect(
+        container.querySelector('[data-testid="agents-unavailable"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(container.querySelector('[data-testid="agents-available"]')).not.toBeNull();
   });
@@ -504,6 +506,7 @@ describe('the agents list on a phone', () => {
     await fireEvent.click(
       helper?.querySelector<HTMLElement>('[data-testid="agent-enable-row"]') as HTMLElement,
     );
-    expect((await findByRole('dialog')).textContent).toContain('Enable Demo and restart?');
+    const awaited507 = await findByRole('dialog');
+    expect(awaited507.textContent).toContain('Enable Demo and restart?');
   });
 });

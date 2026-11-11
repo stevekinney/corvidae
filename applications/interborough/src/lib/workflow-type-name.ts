@@ -9,9 +9,8 @@ import { RUN_DETAIL_COPY, WORKFLOW_COPY } from '../app/copy.ts';
 
 /** The display name Interborough records for a workflow type it runs itself, or `undefined`. */
 export function builtInWorkflowName(type: string): string | undefined {
-  return Object.hasOwn(RUN_DETAIL_COPY.workflowNames, type)
-    ? RUN_DETAIL_COPY.workflowNames[type as keyof typeof RUN_DETAIL_COPY.workflowNames]
-    : undefined;
+  const names: Readonly<Record<string, string>> = RUN_DETAIL_COPY.workflowNames;
+  return Object.hasOwn(names, type) ? names[type] : undefined;
 }
 
 /**

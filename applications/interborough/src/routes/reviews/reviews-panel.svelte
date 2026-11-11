@@ -143,7 +143,7 @@
   $effect(() => {
     const listed = new Set(items.map((item) => item.key));
     untrack(() => {
-      for (const key of [...decided]) if (!listed.has(key)) decided.delete(key);
+      for (const key of decided) if (!listed.has(key)) decided.delete(key);
     });
   });
 

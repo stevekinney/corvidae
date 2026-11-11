@@ -188,7 +188,7 @@ export function readBackOf(
     const last = index > 0 && index === steps.length - 1;
     // A manual start reads "Run it when you press Start run, then ask …".
     const afterManual = index === 0 && trigger?.kind === 'manual';
-    return last || afterManual ? `${copy.then} ${phrase}` : phrase;
+    return last || afterManual ? `${copy.next} ${phrase}` : phrase;
   });
   const sentence = [leadOf(rawTrigger, trigger, now), ...phrases]
     .filter((part) => part !== '')

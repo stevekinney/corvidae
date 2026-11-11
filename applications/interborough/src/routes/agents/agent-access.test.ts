@@ -227,7 +227,8 @@ describe('the tab', () => {
     const { container, findByTestId, queryByTestId } = mount();
 
     await rowOf(container, 'lookup-order');
-    expect((await findByTestId('agent-access-count')).textContent).toContain(copy.toolCount(2, 4));
+    const awaited230 = await findByTestId('agent-access-count');
+    expect(awaited230.textContent).toContain(copy.toolCount(2, 4));
     expect(queryByTestId('agent-access-saved')).toBeNull();
     expect(container.querySelector('.ib-access-row__saving')).toBeNull();
   });
@@ -347,15 +348,13 @@ describe('a change', () => {
     serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
     const { container, findByTestId } = mount();
 
-    await fireEvent.click(
-      (await rowOf(container, 'triage-refunds')).querySelector(
-        'input[type="checkbox"]',
-      ) as HTMLInputElement,
-    );
+    const refundsRow = await rowOf(container, 'triage-refunds');
+    await fireEvent.click(refundsRow.querySelector('input[type="checkbox"]') as HTMLInputElement);
 
     const saved = await findByTestId('agent-access-saved');
     expect(saved.textContent).toContain(copy.saved(5));
-    expect((await findByTestId('agent-access-count')).textContent).toContain(copy.toolCount(3, 4));
+    const awaited358 = await findByTestId('agent-access-count');
+    expect(awaited358.textContent).toContain(copy.toolCount(3, 4));
   });
 
   test('moved off its default, drops the (default) mark, and is written (row 39i)', async () => {
@@ -945,7 +944,8 @@ describe('the state', () => {
     await waitFor(() => expect(writes).toHaveLength(1));
     writes[0]?.fail(new Error('down'));
 
-    expect((await failed).kind).toBe('failed');
+    const awaited948 = await failed;
+    expect(awaited948.kind).toBe('failed');
     expect(state.isAllowed('triage-refunds')).toBe(false);
     const save = state.saves.get('tool:triage-refunds');
     if (save?.kind !== 'failed') throw new Error('expected a failed row');
@@ -1028,7 +1028,8 @@ describe('the state', () => {
     const second = ask(state, 'lookup-order', 'blocked');
 
     writes[0]?.fail(new Error('down'));
-    expect((await first).kind).toBe('failed');
+    const awaited1031 = await first;
+    expect(awaited1031.kind).toBe('failed');
     // The later choice stands and still waits on its write: no failure line, no undo.
     expect(state.approvalOf('lookup-order')).toBe('blocked');
     expect(state.saves.get('tool:lookup-order')).toEqual({ kind: 'saving' });
@@ -1048,10 +1049,12 @@ describe('the state', () => {
     const second = ask(state, 'lookup-order', 'blocked');
 
     writes[0]?.fail(new Error('down'));
-    expect((await first).kind).toBe('failed');
+    const awaited1051 = await first;
+    expect(awaited1051.kind).toBe('failed');
     await waitFor(() => expect(writes).toHaveLength(2));
     writes[1]?.fail(new Error('down'));
-    expect((await second).kind).toBe('failed');
+    const awaited1054 = await second;
+    expect(awaited1054.kind).toBe('failed');
 
     // Not Always, which the first change chose and no write saved.
     expect(state.approvalOf('lookup-order')).toBe('never');
@@ -1077,14 +1080,16 @@ describe('the state', () => {
     const second = spend(state, '9');
 
     writes[0]?.fail(new Error('down'));
-    expect((await first).kind).toBe('failed');
+    const awaited1080 = await first;
+    expect(awaited1080.kind).toBe('failed');
     expect(state.spendApplied).toBe('9');
     expect(state.spendPerChat).toBe('9');
 
     await waitFor(() => expect(writes).toHaveLength(2));
     expect(writes[1]?.definition.limits).toEqual({ cost: { run: 10, chat: 9 } });
     writes[1]?.fail(new Error('down'));
-    expect((await second).kind).toBe('failed');
+    const awaited1087 = await second;
+    expect(awaited1087.kind).toBe('failed');
     expect(state.spendApplied).toBe('5');
     expect(state.spendPerChat).toBe('5');
     const save = state.saves.get('spend');

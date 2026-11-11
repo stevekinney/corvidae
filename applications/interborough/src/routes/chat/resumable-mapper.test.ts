@@ -373,8 +373,10 @@ describe('resume cursors committed through the real reader and Chat mapper (COR-
       acknowledgeEvent,
     );
 
-    expect((await first.next()).value).toMatchObject({ type: 'run.started' });
-    expect((await first.next()).value).toMatchObject({ type: 'stream:block-start' });
+    const awaited376 = await first.next();
+    expect(awaited376.value).toMatchObject({ type: 'run.started' });
+    const awaited377 = await first.next();
+    expect(awaited377.value).toMatchObject({ type: 'stream:block-start' });
     // The step's start was accepted before its frame was handed over, and nothing more is pulled.
     expect(cursors).toEqual(['c-plan']);
     await first.return(undefined);

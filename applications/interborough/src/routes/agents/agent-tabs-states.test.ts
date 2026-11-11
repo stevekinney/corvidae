@@ -174,9 +174,8 @@ describe('the tabs of an agent’s page', () => {
     expect(router.search.get('tab')).toBeNull();
     // The rest of the query stays.
     expect(router.search.get('from')).toBe('old');
-    expect((await findByRole('tab', { name: /^Access/ })).getAttribute('aria-selected')).toBe(
-      'true',
-    );
+    const awaited177 = await findByRole('tab', { name: /^Access/ });
+    expect(awaited177.getAttribute('aria-selected')).toBe('true');
 
     router.navigate('/agents/researcher?tab=nonsense');
     await waitFor(() => expect(router.search.get('tab')).toBeNull());
@@ -189,7 +188,8 @@ describe('the tabs of an agent’s page', () => {
       serve();
       const { findByRole, unmount } = mount();
       const name = new RegExp(`^${AGENT_PAGE_COPY.tabs[tab]}`);
-      expect((await findByRole('tab', { name })).getAttribute('aria-selected')).toBe('true');
+      const awaited192 = await findByRole('tab', { name });
+      expect(awaited192.getAttribute('aria-selected')).toBe('true');
       unmount();
       restore?.();
       restore = undefined;
@@ -206,7 +206,8 @@ describe('Edit, which the header holds once for every tab', () => {
     await findByTestId('agent-instructions-body');
     const edits = await findAllByRole('link', { name: 'Edit' });
     expect(edits).toHaveLength(1);
-    expect((await findByTestId('agent-header')).contains(edits[0] as HTMLElement)).toBe(true);
+    const awaited209 = await findByTestId('agent-header');
+    expect(awaited209.contains(edits[0] as HTMLElement)).toBe(true);
     await fireEvent.click(edits[0] as HTMLElement);
 
     expect(router.pathname).toBe('/agents/researcher/edit');
