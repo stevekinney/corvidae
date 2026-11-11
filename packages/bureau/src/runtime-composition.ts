@@ -72,6 +72,7 @@ import {
   createCheckpointStore,
   createDefaultGuardrailsPreset,
   createGuardrails,
+  createSessionTaintTracker,
   DEFAULT_TAINT_THRESHOLD,
   withSessionTaint,
   createIdentityHook,
@@ -1434,7 +1435,7 @@ export function createMemoryRecallHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
   target: RunMemoryTarget,
-  onDetection?: (detection: MemoryRecallDetection, step: number) => void,
+  onDetection?: (detection: MemoryRecallDetection, step: number) => void | Promise<void>,
 ): PrepareStepHook {
   return async (context) => {
     // The current prompt, whatever its shape: a string, or the text parts of a
@@ -1475,7 +1476,7 @@ export function createMemoryRecallHook(
     const recallReporting = async () => {
       const recalled = await recall();
       for (const { detection } of recalled.exclusions) {
-        if (detection !== undefined) onDetection?.(detection, context.step);
+        if (detection !== undefined) await onDetection?.(detection, context.step);
       }
       return recalled;
     };
@@ -3740,15 +3741,29 @@ async function buildRuntimeComposition(
     // COR-2105 — a run of a session starts from the session's taint and writes a new one back,
     // from this tracker as from the agent's own (`AgentRunContext.sessionTaint`).
     const runIdOfTaint = request.runId ?? request.sessionId;
+    const taintSeam = sessionTaintSeamFor(
+      request.sessionId,
+      runIdOfTaint,
+      runtimeOptions?.sessionMetadata,
+    );
     const guardrails = guardrailsConfig
-      ? createGuardrails(
-          withSessionTaint(
-            guardrailsConfig,
-            sessionTaintSeamFor(request.sessionId, runIdOfTaint, runtimeOptions?.sessionMetadata),
-            runIdOfTaint,
-          ),
-        )
+      ? createGuardrails(withSessionTaint(guardrailsConfig, taintSeam, runIdOfTaint))
       : undefined;
+    // COR-2107 — the tracker a flagged recall taints. It is the Bureau's own tracker, seeded from
+    // the session and writing back through the same seam every other tracker of the run uses
+    // (COR-2105), so the taint it raises is stored whichever tier resolved the run's guardrails,
+    // an agent's own included. When the Bureau runs no guardrails but the agent resolves its own,
+    // a tracker over the same seam stands in, so the agent's declaration is not left unable to
+    // taint its session.
+    const recallTaint =
+      guardrails?.taint ??
+      (sessionAgent?.agentResolvesGuardrails === true
+        ? createSessionTaintTracker({
+            ...(taintSeam.initial === undefined ? {} : { initial: taintSeam.initial }),
+            onTainted: taintSeam.onTainted,
+            runId: runIdOfTaint,
+          })
+        : undefined);
 
     if (memory && memoryAuthority) {
       // COR-2107 — a recall a detector flagged at or above the run's taint threshold taints the
@@ -3761,17 +3776,21 @@ async function buildRuntimeComposition(
           memory,
           memoryAuthority,
           memoryTarget,
-          guardrails === undefined
+          recallTaint === undefined
             ? undefined
             : (detection, step) => {
                 if (detection.confidence < recallTaintThreshold) return;
-                guardrails.taint.taint({
+                recallTaint.taint({
                   reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
                   detector: detection.detector,
+                  category: detection.category,
                   confidence: detection.confidence,
                   step,
                   provenance: 'recalled-memory',
                 });
+                // The write that stores the taint completes before the recall hook returns, as
+                // the guardrail hooks' own does (COR-2105).
+                return recallTaint.settled();
               },
         ),
         {
