@@ -43,9 +43,19 @@ export async function revealSettings(
   const composer = page.locator('.chat-input').first();
   await expect(composer).toBeVisible();
   const settings = page.getByTestId('composer-settings');
+  // An open chat on a model reads how full its context window is on its own, and the reading takes
+  // room beside Send, so the fold is settled only once it has arrived (or said it is unavailable).
+  const meter = page.locator('.weft-context-meter, .weft-context-meter__unavailable');
+  const openChatOnModel = !new URL(page.url()).pathname.endsWith('/chats/new');
   await expect(async () => {
     const folded = (await composer.getAttribute('data-controls-folded')) !== null;
     if (folded && (await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
+    // With Settings open, a chat on a model has its Model select on the page, folded or not.
+    const onModel = (await page.getByRole('combobox', { name: 'Model' }).count()) > 0;
+    if (openChatOnModel && onModel) {
+      // load-proof: a miss only looks again once the reading has arrived, so a slow host adds attempts, never a failure.
+      await expect(meter.first()).toBeVisible({ timeout: 1_000 });
+    }
     for (const { name, text } of settled) {
       const select = page.getByRole('combobox', { name });
       // load-proof: a miss only looks again, opening Settings if the row folded meanwhile, so a slow host adds attempts, never a failure.
