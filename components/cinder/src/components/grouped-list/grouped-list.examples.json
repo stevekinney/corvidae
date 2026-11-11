@@ -1,0 +1,25 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "grouped-list",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "Rows on one rounded surface",
+      "description": "The header and footer sit outside the group, rows are linked as a whole, and separators start at the text.",
+      "code": "<script lang=\"ts\">\n  import { GroupedList, GroupedListItem } from '@lostgradient/cinder';\n  import Wifi from '@lucide/svelte/icons/wifi';\n</script>\n\n<GroupedList header=\"Wi-Fi\" footer=\"Known networks join automatically.\">\n  <GroupedListItem href=\"/settings/home\" leadingKind=\"icon\">\n    {#snippet leading()}<Wifi size={20} />{/snippet}\n    {#snippet title()}Home{/snippet}\n    {#snippet subtitle()}Connected{/snippet}\n    {#snippet trailing()}Strong{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/settings/office\" selected>\n    {#snippet leading()}<Wifi size={20} />{/snippet}\n    {#snippet title()}Office{/snippet}\n    {#snippet subtitle()}Known network{/snippet}\n  </GroupedListItem>\n  <GroupedListItem>\n    {#snippet leading()}<Wifi size={20} />{/snippet}\n    {#snippet title()}Cafe{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
+    },
+    {
+      "id": "lead-and-action",
+      "title": "A lead column and a fixed action column",
+      "description": "The lead column and the action column have fixed widths, so a longer value in one row never moves another row or a click target.",
+      "code": "<script lang=\"ts\">\n  import { Button, GroupedList, GroupedListItem } from '@lostgradient/cinder';\n</script>\n\n<GroupedList header=\"Runs\">\n  <GroupedListItem href=\"/runs/1\">\n    {#snippet lead()}45 min left{/snippet}\n    {#snippet title()}Nightly backup{/snippet}\n    {#snippet subtitle()}Running{/snippet}\n    {#snippet action()}<Button size=\"sm\" variant=\"ghost\" aria-label=\"Pause\">Pause</Button>{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/runs/2\">\n    {#snippet lead()}9:30{/snippet}\n    {#snippet title()}Index rebuild, which has a much longer name that wraps onto a second line{/snippet}\n    {#snippet subtitle()}Scheduled{/snippet}\n    {#snippet action()}<Button size=\"sm\" variant=\"ghost\" aria-label=\"Run now\">Run</Button>{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
+    },
+    {
+      "id": "quick-add",
+      "title": "A quick-add first row",
+      "description": "A leading accent plus and a borderless input. Return submits the text to onItemAdd and clears the input.",
+      "code": "<script lang=\"ts\">\n  import { GroupedList, GroupedListItem } from '@lostgradient/cinder';\n\n  let tasks = $state(['Buy oat milk', 'Call the plumber']);\n</script>\n\n<GroupedList header=\"Today\" onItemAdd={(value) => (tasks = [value, ...tasks])} addLabel=\"Add a task\">\n  {#each tasks as task (task)}\n    <GroupedListItem>\n      {#snippet title()}{task}{/snippet}\n    </GroupedListItem>\n  {/each}\n</GroupedList>\n"
+    }
+  ]
+}

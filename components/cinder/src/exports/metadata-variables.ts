@@ -87,6 +87,8 @@ export { default as gridItemVariables } from '../components/grid-item/grid-item.
 export { default as gridListItemVariables } from '../components/grid-list-item/grid-list-item.variables.ts';
 export { default as gridListVariables } from '../components/grid-list/grid-list.variables.ts';
 export { default as gridVariables } from '../components/grid/grid.variables.ts';
+export { default as groupedListItemVariables } from '../components/grouped-list-item/grouped-list-item.variables.ts';
+export { default as groupedListVariables } from '../components/grouped-list/grouped-list.variables.ts';
 export { default as guidanceRegionVariables } from '../components/guidance-region/guidance-region.variables.ts';
 export { default as hoverCardVariables } from '../components/hover-card/hover-card.variables.ts';
 export { default as imageVariables } from '../components/image/image.variables.ts';
@@ -150,6 +152,7 @@ export { default as scrollAreaVariables } from '../components/scroll-area/scroll
 export { default as searchFieldVariables } from '../components/search-field/search-field.variables.ts';
 export { default as secretValueFieldVariables } from '../components/secret-value-field/secret-value-field.variables.ts';
 export { default as sectionHeadingVariables } from '../components/section-heading/section-heading.variables.ts';
+export { default as sectionVariables } from '../components/section/section.variables.ts';
 export { default as segmentVariables } from '../components/segment/segment.variables.ts';
 export { default as segmentedControlVariables } from '../components/segmented-control/segmented-control.variables.ts';
 export { default as selectVariables } from '../components/select/select.variables.ts';

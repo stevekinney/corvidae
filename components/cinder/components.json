@@ -2717,6 +2717,66 @@
       }
     },
     {
+      "name": "GroupedList",
+      "id": "grouped-list",
+      "import": "@lostgradient/cinder",
+      "exportName": "GroupedList",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Inset group of rows on one rounded surface with inset separators, a header and footer outside the surface, and an optional quick-add first row.",
+      "tags": ["list", "group"],
+      "useWhen": [
+        "Listing related rows, such as settings, people or places, as one grouped surface instead of a stack of boxed cards.",
+        "Adding items inline with a first row that takes text and submits on Return."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Rows need a status column, details or a disclosure — use data-list with stacked-list-item."
+        },
+        {
+          "reason": "Comparing values across columns — use table."
+        }
+      ],
+      "related": ["grouped-list-item", "section", "data-list"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/grouped-list/grouped-list.schema.json",
+        "variables": "src/components/grouped-list/grouped-list.variables.json",
+        "examples": "src/components/grouped-list/grouped-list.examples.json"
+      }
+    },
+    {
+      "name": "GroupedListItem",
+      "id": "grouped-list-item",
+      "import": "@lostgradient/cinder",
+      "exportName": "GroupedListItem",
+      "category": "data-display",
+      "status": "beta",
+      "purpose": "Row of a grouped list with leading icon, avatar, thumbnail or control, a fixed lead column, title, subtitle, and trailing value, photo, chevron and action; the whole row is the link.",
+      "tags": ["list", "row"],
+      "useWhen": [
+        "Listing entities inside a grouped list, each with a leading glyph, a title and a secondary line.",
+        "Linking each row to a detail view by passing href, which makes the whole row one link."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Showing a status-first run or approval row with details — use stacked-list-item."
+        },
+        {
+          "reason": "Comparing values across columns — use table."
+        }
+      ],
+      "related": ["grouped-list", "stacked-list-item", "avatar"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/grouped-list-item/grouped-list-item.schema.json",
+        "variables": "src/components/grouped-list-item/grouped-list-item.variables.json",
+        "examples": "src/components/grouped-list-item/grouped-list-item.examples.json"
+      }
+    },
+    {
       "name": "GuidanceRegion",
       "id": "guidance-region",
       "import": "@lostgradient/cinder",
@@ -4600,6 +4660,36 @@
         "schema": "src/components/secret-value-field/secret-value-field.schema.json",
         "variables": "src/components/secret-value-field/secret-value-field.variables.json",
         "examples": "src/components/secret-value-field/secret-value-field.examples.json"
+      }
+    },
+    {
+      "name": "Section",
+      "id": "section",
+      "import": "@lostgradient/cinder",
+      "exportName": "Section",
+      "category": "layout",
+      "status": "beta",
+      "purpose": "Heading, optional description and action, and content, separated from neighbouring sections by space instead of a box.",
+      "tags": ["section", "heading", "layout"],
+      "useWhen": [
+        "Grouping content under a heading on a page or in a panel without drawing a boxed surface around it.",
+        "Pairing a heading with an action such as \"Add\" or \"See all\" above a list."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "The content needs its own raised surface or an edge — use card."
+        },
+        {
+          "reason": "Introducing a whole page with eyebrow label and tabs — use section-heading."
+        }
+      ],
+      "related": ["grouped-list", "section-heading", "card"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/section/section.schema.json",
+        "variables": "src/components/section/section.variables.json",
+        "examples": "src/components/section/section.examples.json"
       }
     },
     {

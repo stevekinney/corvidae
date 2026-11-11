@@ -74,6 +74,8 @@ import formSectionExamplesJson from '../components/form-section/form-section.exa
 import formExamplesJson from '../components/form/form.examples.json' with { type: 'json' };
 import gridListExamplesJson from '../components/grid-list/grid-list.examples.json' with { type: 'json' };
 import gridExamplesJson from '../components/grid/grid.examples.json' with { type: 'json' };
+import groupedListItemExamplesJson from '../components/grouped-list-item/grouped-list-item.examples.json' with { type: 'json' };
+import groupedListExamplesJson from '../components/grouped-list/grouped-list.examples.json' with { type: 'json' };
 import guidanceRegionExamplesJson from '../components/guidance-region/guidance-region.examples.json' with { type: 'json' };
 import hoverCardExamplesJson from '../components/hover-card/hover-card.examples.json' with { type: 'json' };
 import imageExamplesJson from '../components/image/image.examples.json' with { type: 'json' };
@@ -252,6 +254,10 @@ export const formSectionExamples = formSectionExamplesJson;
 export const gridExamples = gridExamplesJson;
 /** Code examples for this component. */
 export const gridListExamples = gridListExamplesJson;
+/** Code examples for this component. */
+export const groupedListExamples = groupedListExamplesJson;
+/** Code examples for this component. */
+export const groupedListItemExamples = groupedListItemExamplesJson;
 /** Code examples for this component. */
 export const guidanceRegionExamples = guidanceRegionExamplesJson;
 /** Code examples for this component. */

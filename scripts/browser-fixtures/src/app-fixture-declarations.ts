@@ -31,6 +31,8 @@ export const appFixtureDeclarations = {
   'zoom-pan-viewer': ['assertion'],
   'access-gate': ['assertion'],
   'section-heading': ['assertion'],
+  section: ['assertion'],
+  'grouped-list': ['assertion'],
   'color-picker': ['assertion'],
   'area-chart': ['assertion'],
   'line-chart': ['assertion'],
