@@ -51,6 +51,7 @@ import dataListExamplesJson from '../components/data-list/data-list.examples.jso
 import dataTableExamplesJson from '../components/data-table/data-table.examples.json' with { type: 'json' };
 import datePickerExamplesJson from '../components/date-picker/date-picker.examples.json' with { type: 'json' };
 import dateRangeFieldExamplesJson from '../components/date-range-field/date-range-field.examples.json' with { type: 'json' };
+import decisionDeckExamplesJson from '../components/decision-deck/decision-deck.examples.json' with { type: 'json' };
 import descriptionListExamplesJson from '../components/description-list/description-list.examples.json' with { type: 'json' };
 import diffStatisticsExamplesJson from '../components/diff-statistics/diff-statistics.examples.json' with { type: 'json' };
 import dividerExamplesJson from '../components/divider/divider.examples.json' with { type: 'json' };
