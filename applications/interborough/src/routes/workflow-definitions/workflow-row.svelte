@@ -54,6 +54,7 @@
   {/snippet}
   {#snippet meta()}
     {#each model.line as part, index (index)}
+      {#if index > 0}{', '}{/if}
       <span class="ib-workflow-line__part" data-testid={part.testId}>
         {#if part.status !== undefined}<StatusDot
             word={part.status}

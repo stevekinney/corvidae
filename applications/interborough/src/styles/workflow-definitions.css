@@ -160,19 +160,10 @@
   overflow-wrap: anywhere;
 }
 
-/* Line two is parts side by side, each divided from the one before by a hairline, not a mark in the words. */
+/* Line two is its parts joined by commas; the run in progress is a dot and a word that stay on one line. */
 .ib-workflow-line__part {
   display: inline-flex;
   align-items: center;
-}
-
-.ib-workflow-line__part + .ib-workflow-line__part::before {
-  content: '';
-  display: inline-block;
-  inline-size: 1px;
-  block-size: 0.9em;
-  margin-inline: var(--cinder-space-2);
-  background: var(--cinder-border-faint);
 }
 
 .ib-workflows__empty-actions {
