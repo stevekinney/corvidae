@@ -22,20 +22,33 @@ function declared(selector: string, property: string): string | undefined {
 }
 
 describe('drawer.css footer bar (COR-2322 AC2)', () => {
-  test('the footer is a bar on the sheet surface with no hard rule above it', () => {
+  const bottomFooter =
+    ".cinder-drawer__panel[data-cinder-placement='bottom'] .cinder-drawer__footer";
+
+  test('a bottom sheet footer is a bar on the sheet surface with no hard rule above it', () => {
     expect(declared('.cinder-drawer__footer', 'background')).toBe('var(--cinder-surface)');
-    expect(declared('.cinder-drawer__footer', 'border-block-start')).toBeUndefined();
-    expect(declared('.cinder-drawer__footer', 'position')).toBe('relative');
+    expect(declared(bottomFooter, 'border-block-start')).toBe('none');
+    expect(declared(bottomFooter, 'position')).toBe('relative');
+    // It restates no background, so the non-modal rule's transparent surface still wins.
+    expect(declared(bottomFooter, 'background')).toBeUndefined();
+  });
+
+  test('a side drawer keeps its footer rule and its padding', () => {
+    expect(declared('.cinder-drawer__footer', 'border-block-start')).toBe(
+      '1px solid var(--cinder-border-muted)',
+    );
+    expect(declared('.cinder-drawer__footer', 'padding-block-end')).toBeUndefined();
+    expect(declared('.cinder-drawer__footer::before', 'content')).toBeUndefined();
   });
 
   test('keeps clear of the bottom safe area', () => {
-    expect(declared('.cinder-drawer__footer', 'padding-block-end')).toBe(
+    expect(declared(bottomFooter, 'padding-block-end')).toBe(
       'max(var(--cinder-space-3), env(safe-area-inset-bottom))',
     );
   });
 
   test('draws a 24px fade above the bar that never takes a click', () => {
-    const fade = '.cinder-drawer__footer::before';
+    const fade = `${bottomFooter}::before`;
     expect(declared(fade, 'position')).toBe('absolute');
     expect(declared(fade, 'inset-block-end')).toBe('100%');
     expect(declared(fade, 'block-size')).toBe('var(--cinder-space-6)');
@@ -86,9 +99,12 @@ describe('drawer.css detents (COR-2322 AC1)', () => {
   });
 
   test('the height transitions between detents and stops transitioning while dragging', () => {
-    expect(declared('.cinder-drawer__panel[data-cinder-detent]', 'transition')).toContain(
-      'height var(--cinder-duration-normal) var(--cinder-ease-standard)',
-    );
+    expect(
+      declared(
+        '.cinder-drawer__panel[data-cinder-detent]:not([data-cinder-closing])',
+        'transition',
+      ),
+    ).toContain('height var(--cinder-duration-normal) var(--cinder-ease-standard)');
     expect(declared('.cinder-drawer__panel[data-cinder-dragging]', 'transition')).toBe('none');
   });
 
@@ -102,6 +118,12 @@ describe('drawer.css detents (COR-2322 AC1)', () => {
     });
     expect(hidden).toBe(true);
     expect(declared('.cinder-drawer__peek', 'flex')).toBe('1');
+  });
+
+  test('a non-modal peek bar is transparent over the inset panel', () => {
+    expect(
+      declared(".cinder-drawer[data-cinder-modal='false'] .cinder-drawer__peek", 'background'),
+    ).toBe('transparent');
   });
 
   test('the grabber is a grab target that does not pan the page', () => {

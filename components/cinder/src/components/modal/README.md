@@ -6,7 +6,7 @@ See the [dialog preset boundary](https://github.com/stevekinney/cinder/blob/main
 
 ## As a bottom sheet
 
-`sheetBelow` (a CSS length such as `"640px"`; off by default) makes the modal dock to the bottom edge below that viewport width (the shared sheets use `"760px"`): a 20px top radius with a square bottom edge, a grabber, an upward shadow, 32px of padding under the last row (more where the device reports a bottom safe area), a height capped so the body scrolls inside the sheet, and a lift above the on-screen keyboard. The footer's actions stack at full width and 44px with the last one, the confirmation, on top; DOM order is unchanged, so the first action keeps initial focus. Under reduced motion the sheet cross-fades instead of sliding.
+`sheetBelow` (a CSS length such as `"640px"`; off by default) makes the modal dock to the bottom edge below that viewport width (the sheet design docks below `"760px"`): a 20px top radius with a square bottom edge, a grabber, an upward shadow, 32px of padding under the last row (more where the device reports a bottom safe area), a height capped so the body scrolls inside the sheet, and a lift above the on-screen keyboard. The footer's actions stack at full width and 44px with the last one, the confirmation, on top; DOM order is unchanged, so the first action keeps initial focus. Under reduced motion the sheet cross-fades instead of sliding.
 
 ## Choosing this component
 

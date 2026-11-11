@@ -87,7 +87,7 @@
    */
   let activePlacement = $state<DrawerPlacement>();
 
-  /** What the grabber announces for each detent, as the value text of its separator. */
+  /** What the grabber announces for each detent, as its separator's value text. */
   const DETENT_LABELS: Record<DrawerDetent, string> = {
     peek: 'Collapsed',
     medium: 'Half height',
@@ -346,7 +346,10 @@
     const releasedAt = dragHeight;
     drag = null;
     dragHeight = null;
-    if (event.currentTarget instanceof HTMLElement && 'releasePointerCapture' in event.currentTarget) {
+    if (
+      event.currentTarget instanceof HTMLElement &&
+      'releasePointerCapture' in event.currentTarget
+    ) {
       try {
         event.currentTarget.releasePointerCapture(event.pointerId);
       } catch {

@@ -312,22 +312,29 @@
     outline: none;
   }
 
-  /* The footer is a bar on a real surface, not a strip over the content (COR-2322 AC2): the body
-   * scrolls under a 24px fade that ends at the bar's top edge, and the bar keeps clear of a bottom
-   * safe area. A non-modal drawer re-points the fade colour at its inset surface above. */
   .cinder-drawer__footer {
-    position: relative;
     display: flex;
     align-items: center;
     justify-content: flex-end;
     gap: var(--cinder-space-3);
     padding: var(--cinder-space-3) var(--cinder-space-5);
-    padding-block-end: max(var(--cinder-space-3), env(safe-area-inset-bottom));
+    border-block-start: 1px solid var(--cinder-border-muted);
     flex-shrink: 0;
     background: var(--cinder-surface);
   }
 
-  .cinder-drawer__footer::before {
+  /* A bottom sheet's footer is a bar on a real surface, not a strip over the content (COR-2322
+   * AC2): the body scrolls under a 24px fade that ends at the bar's top edge instead of a hard
+   * rule, and the bar keeps clear of a bottom safe area. It restates no background, so the
+   * non-modal rule above still makes it transparent, and that rule re-points the fade colour at
+   * the inset surface. */
+  .cinder-drawer__panel[data-cinder-placement='bottom'] .cinder-drawer__footer {
+    position: relative;
+    padding-block-end: max(var(--cinder-space-3), env(safe-area-inset-bottom));
+    border-block-start: none;
+  }
+
+  .cinder-drawer__panel[data-cinder-placement='bottom'] .cinder-drawer__footer::before {
     content: '';
     position: absolute;
     inset-inline: 0;
@@ -341,9 +348,10 @@
     pointer-events: none;
   }
 
-  /* Content never shrinks inside the scrolling column (COR-2322 AC3): a consumer that makes its
-   * body content a flex column would otherwise let a clipped child collapse to nothing as the sheet
-   * gets shorter, where it should keep its height and scroll. */
+  /* Content never shrinks inside the scrolling column (COR-2322 AC3). The body is a block
+   * scroller, so a body taller than the sheet scrolls and its rows keep their height; this keeps
+   * that true if a consumer's class turns the body into a flex column, where a clipped child would
+   * otherwise collapse as the sheet gets shorter. */
   .cinder-drawer__body > * {
     flex-shrink: 0;
   }
@@ -355,7 +363,10 @@
  * 90dvh cap in the bottom block above, which already shrinks by the keyboard inset.
  * ---------------------------------------- */
 
-  .cinder-drawer__panel[data-cinder-detent] {
+  /* Closing leaves `height` out of the list, so the exit waits only for the properties that
+   * change when it closes (translate and opacity) and never for a `height` transition that will
+   * not fire. */
+  .cinder-drawer__panel[data-cinder-detent]:not([data-cinder-closing]) {
     transition:
       translate var(--cinder-duration-normal) var(--cinder-ease-spring),
       opacity var(--cinder-duration-normal) var(--cinder-ease-standard),
@@ -406,6 +417,11 @@
     color: var(--cinder-text-default);
     font: inherit;
     text-align: start;
+  }
+
+  /* A non-modal sheet is a region of the page: its bar is transparent over the inset panel. */
+  .cinder-drawer[data-cinder-modal='false'] .cinder-drawer__peek {
+    background: transparent;
   }
 
   button.cinder-drawer__peek {

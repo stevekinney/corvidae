@@ -80,7 +80,7 @@
   let dialogElement: HTMLDialogElement | undefined = $state();
   let panelElement: HTMLDivElement | undefined = $state();
   let bodyElement: HTMLDivElement | undefined = $state();
-  // The close button, which the "Close (Esc)" Tooltip anchors to by reference so the tooltip's
+  // The close button, which the "Close (Esc)" Tooltip anchors to by reference, so the tooltip's
   // panel is not rendered inside the corner button's own markup.
   let closeButtonElement: HTMLButtonElement | null = $state(null);
   // `mounted` is false during SSR and becomes true after the first client-side

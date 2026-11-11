@@ -20,8 +20,8 @@ A bottom drawer is a sheet, and every sheet follows the same rules (design rows 
 
 ## Footer bar and header bar
 
-- **Footer**: the `footer` slot is a bar on the sheet's surface rather than a strip over the content. The body scrolls under a 24px fade that ends at the bar's top edge, so the call to action never floats over a row, and the bar's bottom padding keeps clear of a bottom safe area.
-- **Content never shrinks**: children of the scrolling body keep their height; a body that outgrows the sheet scrolls instead of squeezing its rows.
+- **Footer**: on a bottom sheet the `footer` slot is a bar on the sheet's surface rather than a strip over the content. The body scrolls under a 24px fade that ends at the bar's top edge in place of a hard rule, so the call to action never floats over a row, and the bar's bottom padding keeps clear of a bottom safe area. Side drawers keep their ruled footer.
+- **Content never shrinks**: the body is a block scroller, so a body that outgrows the sheet scrolls and its rows keep their height; a rule keeps that true if a consumer's class makes the body a flex column.
 - **Header bar**: a bottom sheet with an `action` snippet draws its default header as three columns: the close control at the start (`closeLabel="Cancel"` reads as a text button), the title centred as a 14px semibold label rather than a page heading, and `action` at the end. The DOM order stays title, close, action, so focus order is Cancel then the action.
 
 ## Choosing this component

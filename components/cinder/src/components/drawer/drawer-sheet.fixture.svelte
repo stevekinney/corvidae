@@ -25,7 +25,7 @@
     headerBar = false,
   }: FixtureProps = $props();
   let drawerOpen = $state(untrack(() => open));
-  let drawerDetent = $state<DrawerDetent | undefined>(untrack(() => detent));
+  let drawerDetent = $state<DrawerDetent>(untrack(() => detent));
   const items = $derived(
     Array.from({ length: rows }, (_, index) => ({
       id: `drawer-sheet-row-${index + 1}`,
