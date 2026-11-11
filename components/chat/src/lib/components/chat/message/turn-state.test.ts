@@ -25,7 +25,7 @@ const reconnecting: ChatTurnState = {
   wait: 10,
 };
 const stopped: ChatTurnState = { kind: 'stopped' };
-const failed: ChatTurnState = {
+const failed: Extract<ChatTurnState, { kind: 'failed' }> = {
   kind: 'failed',
   cause: 'The model provider dropped the connection.',
   keeps: 'Retry keeps the text above.',
@@ -179,7 +179,9 @@ describe('effectiveTurnState', () => {
 
   test('a malformed state falls back as if the host gave none', () => {
     const malformed = { kind: 'reconnecting', attempt: 6, attempts: 5, nextTryIn: 3 };
-    expect(effectiveTurnState(malformed as ChatTurnState, false, false)).toEqual(complete);
+    expect(effectiveTurnState(malformed as unknown as ChatTurnState, false, false)).toEqual(
+      complete,
+    );
   });
 });
 
