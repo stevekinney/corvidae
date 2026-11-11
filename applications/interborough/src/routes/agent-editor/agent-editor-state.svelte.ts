@@ -508,6 +508,10 @@ export class AgentEditorState {
   get identifierError(): string {
     if (this.mode === 'edit') return '';
     if (this.#takenNow()) return AGENT_EDITOR_COPY.identifierTaken(this.identifier);
+    // A typed identifier left empty says what it needs; one that follows an empty name says nothing.
+    if (this.identifier === '' && !this.identifierFollowsName) {
+      return AGENT_EDITOR_COPY.identifierInvalid;
+    }
     if (this.identifier === RESERVED_IDENTIFIER) return AGENT_EDITOR_COPY.identifierReserved;
     return this.identifier !== '' && !this.#identifierIsValid()
       ? AGENT_EDITOR_COPY.identifierInvalid
