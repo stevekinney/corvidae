@@ -56,6 +56,57 @@
 
   {#if chosen.length === 0}
     <p class="weft-agent-tools__none" data-testid="agent-tools-none">{copy.noToolsChosen}</p>
+  {:else}
+    <Table
+      caption={copy.newAgent.toolsCaption}
+      density="condensed"
+      class="weft-agent-tools__table"
+      data-testid="agent-tools-table"
+    >
+      <Table.Header>
+        <Table.Row>
+          <Table.HeaderCell>{copy.newAgent.columns.tool}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.newAgent.columns.risk}</Table.HeaderCell>
+          <Table.HeaderCell>{copy.newAgent.columns.asks}</Table.HeaderCell>
+        </Table.Row>
+      </Table.Header>
+      <Table.Body>
+        {#each chosen as tool (tool.name)}
+          {@const fallback = defaultAsks(tool)}
+          <Table.Row data-tool={tool.name}>
+            <Table.Cell as="th">
+              <span class="weft-agent-tools__title">{toolHeading(tool)}</span>
+              {#snippet detail()}
+                <span class="weft-agent-tools__identity">
+                  <span class="weft-agent-tools__identifier">{tool.name}</span>
+                  <span>{toolSourceChip(tool)}</span>
+                </span>
+              {/snippet}
+            </Table.Cell>
+            <Table.Cell>
+              <span class="weft-agent-tools__risk" data-testid="agent-tool-risk"
+                >{riskLabel(tierOf(tool))}</span
+              >
+            </Table.Cell>
+            <Table.Cell controls>
+              <Select
+                id={`agent-asks-${tool.name}`}
+                label={copy.newAgent.asksLabel(tool.name)}
+                labelVisible={false}
+                size="sm"
+                options={asksOptions(fallback)}
+                value={editor.approvalOf(tool.name) ?? fallback}
+                onValueChange={(next) => editor.setApproval(tool.name, next, fallback)}
+              />
+            </Table.Cell>
+          </Table.Row>
+        {/each}
+      </Table.Body>
+    </Table>
+  {/if}
+
+  <p class="weft-agent-tools__note" data-testid="agent-asks-note">{copy.newAgent.asksNote}</p>
+</div>
 
 <style>
   .weft-agent-tools {
