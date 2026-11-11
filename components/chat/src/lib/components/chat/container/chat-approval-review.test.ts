@@ -15,6 +15,7 @@ import {
   APPROVAL_DRAWER_TEXT,
   findPendingApprovalMessageId,
   focusPendingApproval,
+  nextPendingApprovalDeadline,
 } from './chat-approval-review.ts';
 
 setupHappyDom();
@@ -23,7 +24,11 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-function conversationWith(callIds: string[], paired: boolean): readonly Message[] {
+function conversationWith(
+  callIds: string[],
+  paired: boolean,
+  expiresAt?: string,
+): readonly Message[] {
   let history = appendUserMessage(createConversationHistory({ id: 'review' }), 'go');
   for (const callId of callIds) {
     if (paired) {
@@ -39,6 +44,7 @@ function conversationWith(callIds: string[], paired: boolean): readonly Message[
         operation: { kind: 'other' },
         policyVersion: 'policy',
         idempotencyKey: `key-${callId}`,
+        ...(expiresAt === undefined ? {} : { expiresAt }),
       },
     });
   }
@@ -99,12 +105,49 @@ describe('findPendingApprovalMessageId', () => {
   });
 });
 
+describe('an approval with a deadline', () => {
+  const deadline = Date.parse('2026-11-02T10:00:00.000Z');
+  const messages = conversationWith(['a'], true, '2026-11-02T10:00:00.000Z');
+
+  test('waits until its deadline, and stops waiting from the deadline on', () => {
+    expect(findPendingApprovalMessageId(messages, undefined, deadline - 1)).toBeDefined();
+    expect(findPendingApprovalMessageId(messages, undefined, deadline)).toBeUndefined();
+    expect(findPendingApprovalMessageId(messages, undefined, deadline + 1)).toBeUndefined();
+  });
+
+  test('names the next deadline ahead, and none once it passed or was decided', () => {
+    expect(nextPendingApprovalDeadline(messages, undefined, deadline - 5)).toBe(deadline);
+    expect(nextPendingApprovalDeadline(messages, undefined, deadline)).toBeUndefined();
+    expect(
+      nextPendingApprovalDeadline(
+        messages,
+        new Map<string, ApprovalState>([['a', 'approved']]),
+        deadline - 5,
+      ),
+    ).toBeUndefined();
+  });
+
+  test('names the earliest of several deadlines', () => {
+    const later = conversationWith(['a', 'b'], true, '2026-11-02T10:00:00.000Z');
+
+    expect(nextPendingApprovalDeadline(later, undefined, deadline - 5)).toBe(deadline);
+  });
+
+  test('reads an unparseable deadline as none', () => {
+    const odd = conversationWith(['a'], true, 'not a time');
+
+    expect(nextPendingApprovalDeadline(odd, undefined, deadline)).toBeUndefined();
+    expect(findPendingApprovalMessageId(odd, undefined, deadline)).toBeDefined();
+  });
+});
+
 describe('focusPendingApproval', () => {
-  test('focuses the first card that still waits, and never one that is decided', () => {
+  test('focuses the first card that still waits and can be focused by script, and never one that is decided', () => {
     const root = document.createElement('div');
     root.innerHTML = `
-      <article data-cinder-tool-approval data-cinder-state="approved" tabindex="-1" id="done"></article>
-      <article data-cinder-tool-approval data-cinder-state="pending" tabindex="-1" id="waiting"></article>
+      <article class="cinder-approval-card" data-cinder-state="approved" tabindex="-1" id="done"></article>
+      <article class="cinder-approval-card" data-cinder-state="pending" id="static"></article>
+      <article class="cinder-approval-card" data-cinder-state="pending" tabindex="-1" id="waiting"></article>
     `;
     document.body.append(root);
 

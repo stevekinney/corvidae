@@ -146,12 +146,10 @@ describe('Chat composer drawer for a waiting approval', () => {
       conversation: approvalConversation('drawer-order'),
     });
     const drawer = drawerOf(container)!;
-    const composer = container.querySelector('.chat-input')!;
+    const shell = container.querySelector('.chat-input-shell')!;
 
-    expect(
-      drawer.compareDocumentPosition(composer) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
-    expect(drawer.parentElement).toBe(composer.parentElement);
+    expect(drawer.compareDocumentPosition(shell) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(drawer.parentElement).toBe(shell.parentElement);
   });
 
   test('Review approval scrolls to the card and focuses it without answering it', async () => {
@@ -175,6 +173,46 @@ describe('Chat composer drawer for a waiting approval', () => {
 
     expect(document.activeElement).toBe(card);
     expect(resolutions).toEqual([]);
+  });
+
+  test('says nothing once the approval has expired', () => {
+    const expired = appendToolResult(
+      appendToolCall(appendUserMessage(createConversationHistory({ id: 'drawer-expired' }), 'go'), {
+        id: 'call',
+        name: 'issue-refund',
+        arguments: {},
+      }),
+      {
+        callId: 'call',
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          message: QUESTION,
+          risk: 'high',
+          operation: { kind: 'other' },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'test-approval',
+          expiresAt: '2000-01-01T00:00:00.000Z',
+        },
+      },
+    );
+    const { container } = render(Chat, { id: 'chat-drawer-expired', conversation: expired });
+
+    expect(drawerOf(container)).toBeNull();
+  });
+
+  test('leaves the blocked composer to say why on its own row', () => {
+    const { container } = render(Chat, {
+      id: 'chat-drawer-blocked',
+      conversation: approvalConversation('drawer-blocked'),
+      composerStatus: { kind: 'blocked', reason: 'Connect a model provider to chat' },
+    });
+
+    expect(drawerOf(container)).toBeNull();
+    expect(container.querySelector('.chat-input-blocked-reason')?.textContent).toBe(
+      'Connect a model provider to chat',
+    );
   });
 
   test('the drawer goes away once the approval is decided', async () => {
@@ -398,6 +436,58 @@ describe('Chat approval receipt', () => {
     expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
     expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
     expect(drawerOf(view.container)).toBeNull();
+  });
+
+  test('a decided call keeps its own row beside a neighbouring completed call, so the receipt is not folded into a group', async () => {
+    const withNeighbour = (id: string, asking: boolean): ConversationHistory => {
+      const first = appendToolCall(appendUserMessage(createConversationHistory({ id }), 'go'), {
+        id: 'call',
+        name: 'issue-refund',
+        arguments: { orderId: '4471' },
+      });
+      const decided = appendToolResult(
+        first,
+        asking
+          ? {
+              callId: 'call',
+              outcome: 'action_required',
+              content: null,
+              action: {
+                type: 'approval',
+                message: QUESTION,
+                risk: 'high',
+                operation: { kind: 'other' },
+                policyVersion: 'test-policy',
+                idempotencyKey: 'test-approval',
+              },
+            }
+          : { callId: 'call', outcome: 'success', content: 'Refunded $42.00.' },
+      );
+      return appendToolResult(
+        appendToolCall(decided, { id: 'other', name: 'lookup-order', arguments: {} }),
+        { callId: 'other', outcome: 'success', content: 'Order 4471' },
+      );
+    };
+    const view = render(Chat, {
+      id: 'chat-receipt-neighbour',
+      conversation: withNeighbour('receipt-neighbour', true),
+      adapter: {
+        sendMessage: async () => undefined,
+        describeApproval: refundDetails,
+        resolveToolApproval: async () => undefined,
+      },
+    });
+
+    await fireEvent.click(getByRole(view.container, 'button', { name: 'Refund $42.00' }));
+    await fireEvent.click(
+      getByRole(view.container, 'button', { name: 'Press again to refund $42.00' }),
+    );
+    await tick();
+    await view.rerender({ conversation: withNeighbour('receipt-neighbour', false) });
+    await tick();
+
+    const receipt = getByRole(view.container, 'article', { name: QUESTION });
+    expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
   });
 
   test('a call that was never decided here leaves no receipt once its result stops asking', async () => {

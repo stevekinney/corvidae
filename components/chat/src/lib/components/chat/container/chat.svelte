@@ -51,7 +51,8 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatApprovalDrawer from './chat-approval-drawer.svelte';
-  import { findPendingApprovalMessageId, focusPendingApproval } from './chat-approval-review.ts';
+  import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
+  import { focusPendingApproval } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
@@ -509,7 +510,12 @@
     getStreamingContent: () => streamingState.content,
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
-    getAnsweredToolCallIds: () => questions.answers.keys(),
+    // A call whose question was answered here, or whose approval was decided here, keeps its own
+    // row so the answer or the receipt stays readable once the run resumes.
+    getAnsweredToolCallIds: () => [
+      ...questions.answers.keys(),
+      ...commandActions.approvalReceipts.keys(),
+    ],
     getUngroupAllToolCalls: () =>
       Boolean(
         row ||
@@ -1310,12 +1316,16 @@
   const handleEditingChange = commandActions.handleEditingChange;
   const canResolveToolApproval = $derived(commandActions.canResolveToolApproval);
   // An approval is waiting on the person: the composer says so in a drawer, and what is sent now
-  // reads Queue.
-  const approvalWaiting = $derived(commandActions.hasPendingApproval());
+  // reads Queue. A blocked composer has no draft to queue and says why on its own row.
+  const approvalWait = useChatApprovalWait({
+    getMessages: () => messages,
+    getApprovalStates: () => commandActions.approvalStates,
+  });
+  const approvalWaiting = $derived(approvalWait.waiting && composerStatus?.kind !== 'blocked');
 
   /** Takes the person to the approval that waits: scrolls to it, then focuses its card. */
   async function reviewPendingApproval(): Promise<void> {
-    const messageId = findPendingApprovalMessageId(messages, commandActions.approvalStates);
+    const messageId = approvalWait.messageId;
     if (messageId !== undefined) scrollToMessage(messageId);
     await tick();
     if (focusPendingApproval(containerRef)) return;
