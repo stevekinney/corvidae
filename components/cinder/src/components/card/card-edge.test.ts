@@ -38,7 +38,7 @@ const edgeValues: CardEdge[] = ['border', 'shadow'];
 const allEdges: CardEdge[] = ['none', ...edgeValues];
 
 describe('Card draws one edge', () => {
-  test('a Card with both border and shadow is impossible: the only edge values are border and shadow', () => {
+  test('a Card with both border and shadow is impossible: the only edge values are none, border and shadow', () => {
     expect([borderEdge, shadowEdge].map((props) => props.edge)).toEqual(edgeValues);
     expect([bothEdges, elevated, borderedAndShadowed]).toHaveLength(3);
     expect(cardSchema.properties).toHaveProperty('edge');

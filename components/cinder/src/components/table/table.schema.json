@@ -30,11 +30,43 @@
       "type": "boolean",
       "description": "Draw no outline, radius or fill around the table, for a queue or list that sits on the page.\nRows keep their hairlines.",
       "default": false
+    },
+    "fit": {
+      "type": "boolean",
+      "description": "Fits the table to its container's width so a long value never makes it scroll sideways. The\ncolumns share the width (a fixed table layout: set a column's width on its header cell or a\n`<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full\ntext in the `title`, and any other cell wraps its text. Leave it off for a table whose columns\nshould keep their natural widths and scroll when they do not fit.",
+      "default": false
+    },
+    "stackBelow": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "const": false
+        }
+      ],
+      "description": "Width of the table's own container below which a table whose cells hold controls stacks. Each\nbody row becomes a card: the name and its muted detail on the first line, the controls full\nwidth at 44px beneath. A table with no `controls` cell never stacks; it scrolls. The width\nis the container's (the scroll box, or the parent when `scrollable` is false), not the\nwindow's, so a table in a narrow column stacks in a wide window. A simple CSS length such as\n`'640px'`; only `px`, `rem` and `em` are measured against the container, and any other unit\nfalls back to the viewport. `false` keeps the table layout at every width.",
+      "default": "640px"
+    },
+    "class": {
+      "type": "string",
+      "description": "Additional class names merged with `.cinder-table`."
     }
   },
   "additionalProperties": false,
   "metadata": {
     "unsupportedProps": [
+      {
+        "name": "children",
+        "reason": "function-or-snippet",
+        "required": true,
+        "description": "TableHeader, TableBody, etc."
+      },
+      {
+        "name": "scrollContainerProps",
+        "reason": "unknown-shape",
+        "description": "Attributes forwarded to the generated `.cinder-table-scroll` wrapper when\n`scrollable` is true. The wrapper is focusable by default so keyboard users\ncan scroll read-only wide tables. When the table has a caption, or when\n`aria-label` or `aria-labelledby` is provided here, the wrapper becomes a\nnamed `region`; pass `role` or `tabindex` here to override those defaults."
+      },
       {
         "name": "sort",
         "reason": "unknown-shape",
