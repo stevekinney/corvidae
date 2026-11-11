@@ -92,7 +92,7 @@
   /* Only a word that asks for attention or reports a failure is coloured; success, neutral, info and
      pending words stay muted so the dot carries the tone. */
   .cinder-status-dot[data-cinder-status='warning'] {
-    --cinder-status-dot-color: var(--cinder-status-warning-solid);
+    --cinder-status-dot-color: var(--cinder-status-warning-indicator);
     --_cinder-status-dot-word-color: var(--cinder-status-warning-text);
   }
 

@@ -224,9 +224,16 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
     }
   });
 
-  test('the skeleton fill is the inset in light and the raised surface in dark, never the plain surface', () => {
-    expectColor('light', ['--cinder-skeleton-background', [0.958, 0.011, 275]]);
-    expectColor('dark', ['--cinder-skeleton-background', [0.235, 0.014, 265]]);
+  // L#3 (light sweep): the disabled field fill aliased `fill.disabled` (86%) in light, darker than
+  // the white enabled control beside it. It is now the inset, the fill a disabled Button uses.
+  test('the disabled control fill is the inset in light and fill.disabled in dark', () => {
+    expectColor('light', ['--cinder-control-background-disabled', [0.958, 0.011, 275]]);
+    expectColor('dark', ['--cinder-control-background-disabled', [0.3, 0.015, 245]]);
+  });
+
+  test('the skeleton fill is a 12% step of the border ink in both arms, never an opaque surface', () => {
+    expectColor('light', ['--cinder-skeleton-background', [0.2, 0.02, 255], 0.12]);
+    expectColor('dark', ['--cinder-skeleton-background', [1, 0, 0], 0.12]);
   });
 
   test('the focus ring is the accent hue at 62% lightness in both arms', () => {

@@ -522,14 +522,13 @@
   },
   "control.background.disabled": {
     "$type": "color",
-    "$value": { "colorSpace": "oklch", "components": [0.86, 0.006, 255] },
-    "$description": "Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`).",
+    "$value": { "colorSpace": "oklch", "components": [0.958, 0.011, 275] },
+    "$description": "Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly.",
     "$extensions": {
       "com.lostgradient.cinder": {
         "cssProperty": "--cinder-control-background-disabled",
         "public": true,
-        "category": "color",
-        "cssRecipe": null
+        "category": "color"
       }
     }
   },
@@ -2154,15 +2153,16 @@
     "$type": "dimension"
   },
   "skeleton.background": {
-    "$value": { "colorSpace": "oklch", "components": [0.958, 0.011, 275] },
-    "$description": "Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill.",
+    "$value": { "colorSpace": "oklch", "components": [0.2, 0.02, 255], "alpha": 0.12 },
     "$extensions": {
       "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 88%)",
         "cssProperty": "--cinder-skeleton-background",
         "public": true,
         "category": "color"
       }
     },
+    "$description": "Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card.",
     "$type": "color"
   },
   "list.row.min-height": {
@@ -2538,6 +2538,19 @@
         "public": true,
         "category": "color",
         "palette": { "family": "warning", "role": "solid-hover" }
+      }
+    }
+  },
+  "status.warning.indicator": {
+    "$type": "color",
+    "$value": { "colorSpace": "oklch", "components": [0.64, 0.135, 75] },
+    "$description": "Fill of a lone warning indicator: a status dot, a rail count dot, an attention dot, anything that is the only sign of the warning and carries no text. WCAG 1.4.11 holds it to 3:1 against every surface it sits on. `status.warning.solid` is a bright amber at about 1.9:1 on the light surfaces, which is right for a filled button or band but not for a dot, so the light arm is the darker `solid.active` step (3.0:1 or better on the canvas, the surface, raised and the inset). The dark arm is `status.warning.solid` itself, about 10:1 on the dark surfaces.",
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssProperty": "--cinder-status-warning-indicator",
+        "public": true,
+        "category": "color",
+        "contrastPairs": ["surface.canvas", "surface.base", "surface.raised", "surface.inset"]
       }
     }
   },

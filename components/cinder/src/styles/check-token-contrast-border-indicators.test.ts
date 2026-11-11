@@ -184,33 +184,72 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
   }
 });
 
-describe('COR-2010 row 08f: the skeleton fill stays visible on the canvas and the surface', () => {
-  // A skeleton bar is a placeholder, not a control, so WCAG 1.4.11 does not apply; it only has to
-  // read as a shape. The floor is the one the faint hairline holds (1.1:1), which both arms clear on
-  // the page canvas and on the plain surface a card body paints. The dark arm is the raised
-  // surface, never the surface itself, which is what keeps a bar inside a card from vanishing.
-  const SKELETON_FLOOR = 1.1;
-  // COR-2308: the light app-shell ladder puts the grey step on the surface (97.6%) rather than the
-  // canvas (99.4%), so the inset fill (95.8%) now sits closest to the surface: 1.06:1 there and
-  // 1.11:1 on the canvas. The relaxed floor follows the grey step; the full floor holds on the
-  // canvas. Dark: the raised fill (23.5%) reads 1.19:1 on the canvas and 1.12:1 on the surface.
-  const LIGHT_SURFACE_FLOOR = 1.04;
-  const skeleton = values.readOklchToken('--cinder-skeleton-background');
+describe('the warning indicator clears 3:1 on every surface a lone dot sits on', () => {
+  // A warning dot (StatusDot, the collapsed rail's count dot, Statistic's attention dot, the
+  // FilterBar toggle dot) is often the only sign of the warning, so WCAG 1.4.11 holds it to 3:1.
+  // The bright `status.warning.solid` read about 1.9:1 on the light surfaces; the indicator token
+  // is the darker step in light and the solid itself in dark.
+  const indicator = values.readOklchToken('--cinder-status-warning-indicator');
+  const grounds = { canvas: bg, surface, raised: surfaceRaised, inset: surfaceInset };
 
   for (const arm of ['light', 'dark'] as const) {
-    for (const [groundName, ground] of Object.entries({ canvas: bg, surface })) {
-      const floor =
-        arm === 'light' && groundName === 'surface' ? LIGHT_SURFACE_FLOOR : SKELETON_FLOOR;
-      it(`${arm}: the skeleton fill reads at least ${floor}:1 on the ${groundName}`, () => {
+    for (const [groundName, ground] of Object.entries(grounds)) {
+      it(`${arm}: the warning indicator reads at least 3:1 on the ${groundName}`, () => {
         expect(
-          contrastRatio(wcagLuminance(skeleton[arm]), wcagLuminance(ground[arm])),
-        ).toBeGreaterThanOrEqual(floor);
+          contrastRatio(wcagLuminance(indicator[arm]), wcagLuminance(ground[arm])),
+        ).toBeGreaterThanOrEqual(NON_TEXT);
       });
     }
   }
 
-  it('the dark skeleton fill is the raised surface, not the plain surface', () => {
-    expect(skeleton.dark.l).toBeCloseTo(surfaceRaised.dark.l, 5);
-    expect(skeleton.dark.l).not.toBeCloseTo(surface.dark.l, 2);
-  });
+  const componentsDirectory = join(dirname(fileURLToPath(import.meta.url)), '..', 'components');
+  const dotSites: ReadonlyArray<readonly [name: string, file: string, selector: string]> = [
+    ['StatusDot', 'status-dot/status-dot.css', "[data-cinder-status='warning'] {"],
+    [
+      'SideNavigationItem collapsed count dot',
+      'side-navigation-item/side-navigation-item.css',
+      '.cinder-side-navigation-item__count {\n    position: absolute;',
+    ],
+    ['Statistic attention dot', 'statistic/statistic.css', '.cinder-statistic__attention {'],
+    ['FilterBar toggle dot', 'filter-bar/filter-bar.css', '.cinder-filter-bar__dot {'],
+    ['SettingRow dot', 'setting-row/setting-row.css', '.cinder-setting-row__dot {'],
+    [
+      'ToolCallRail waiting count dot',
+      'tool-call-rail/tool-call-rail.css',
+      "[data-cinder-count='waiting'] .cinder-tool-call-rail__count-dot {",
+    ],
+    [
+      'FeedEvent warning dot',
+      'feed-event/feed-event.css',
+      "[data-cinder-tone='warning'] .cinder-feed-event-dot {",
+    ],
+  ];
+  for (const [name, file, selector] of dotSites) {
+    it(`${name} fills with the warning indicator, not the bright solid`, () => {
+      const body = ruleBody(readFileSync(join(componentsDirectory, file), 'utf8'), selector);
+      expect(body).toContain('var(--cinder-status-warning-indicator)');
+      expect(body).not.toContain('var(--cinder-status-warning-solid)');
+    });
+  }
+});
+
+describe('the skeleton fill is a visible step over every surface a bar sits on', () => {
+  // A skeleton bar is a placeholder, not a control, so WCAG 1.4.11 does not apply; it only has to
+  // read as a shape. The fill is a 12% alpha step over the border ink, so it is the same step over
+  // the canvas, the surface a list or card body paints, raised and the inset. The opaque fills it
+  // replaced read about 1.05:1 in light on the surface (the inset bars) and vanished in dark on a
+  // raised statistic card (the raised bars).
+  const SKELETON_FLOOR = 1.15;
+  const skeleton = values.readTranslucentToken('--cinder-skeleton-background');
+  const grounds = { canvas: bg, surface, raised: surfaceRaised, inset: surfaceInset };
+
+  for (const arm of ['light', 'dark'] as const) {
+    for (const [groundName, ground] of Object.entries(grounds)) {
+      it(`${arm}: the skeleton fill reads at least ${SKELETON_FLOOR}:1 on the ${groundName}`, () => {
+        expect(translucentContrastOn(skeleton[arm], ground[arm])).toBeGreaterThanOrEqual(
+          SKELETON_FLOOR,
+        );
+      });
+    }
+  }
 });

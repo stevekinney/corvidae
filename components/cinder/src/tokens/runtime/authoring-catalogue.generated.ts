@@ -2003,7 +2003,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`).',
+        'Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -2011,21 +2011,16 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       disposition: {
         edit: 'supported',
         cssExport: 'supported',
-        dtcgExport: 'complete',
-        cssSerialization: 'typed-value',
+        dtcgExport: 'subset',
+        cssSerialization: 'mixed',
+        reason:
+          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
       },
       variants: [
         {
-          contexts: [
-            'light/default',
-            'light/reduced',
-            'light/forced-reduced-motion',
-            'dark/default',
-            'dark/reduced',
-            'dark/forced-reduced-motion',
-          ],
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
           provenance: {
-            winner: { document: 'sets/semantic.tokens.json', path: 'control.background.disabled' },
+            winner: { document: 'themes/light.tokens.json', path: 'control.background.disabled' },
             layers: [
               {
                 document: 'sets/semantic.tokens.json',
@@ -2034,12 +2029,50 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'control.background.disabled',
                 via: 'declared',
               },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'control.background.disabled',
+                via: 'declared',
+              },
             ],
             effectiveType: {
               type: 'color',
               origin: 'local',
               declaredAt: {
+                document: 'themes/light.tokens.json',
+                path: 'control.background.disabled',
+              },
+            },
+            inputs: { aliases: ['surface.inset'], refs: [], extends: [], recipes: [] },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'control.background.disabled' },
+            layers: [
+              {
                 document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'control.background.disabled',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'control.background.disabled',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: {
+                document: 'themes/dark.tokens.json',
                 path: 'control.background.disabled',
               },
             },
@@ -10145,18 +10178,17 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill.',
+        'Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
       palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
@@ -10184,7 +10216,12 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/light.tokens.json', path: 'skeleton' },
             },
-            inputs: { aliases: ['surface.inset'], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
           },
         },
         {
@@ -10212,7 +10249,12 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'skeleton' },
             },
-            inputs: { aliases: ['surface.raised'], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
           },
         },
       ],
@@ -12024,6 +12066,92 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               },
             },
             inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'status.warning.indicator',
+      cssProperty: '--cinder-status-warning-indicator',
+      category: 'color',
+      component: null,
+      description:
+        'Fill of a lone warning indicator: a status dot, a rail count dot, an attention dot, anything that is the only sign of the warning and carries no text. WCAG 1.4.11 holds it to 3:1 against every surface it sits on. `status.warning.solid` is a bright amber at about 1.9:1 on the light surfaces, which is right for a filled button or band but not for a dot, so the light arm is the darker `solid.active` step (3.0:1 or better on the canvas, the surface, raised and the inset). The dark arm is `status.warning.solid` itself, about 10:1 on the dark surfaces.',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'mixed',
+        reason:
+          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'status.warning.indicator' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'status.warning.indicator',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'status.warning.indicator',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: {
+                document: 'themes/light.tokens.json',
+                path: 'status.warning.indicator',
+              },
+            },
+            inputs: {
+              aliases: ['status.warning.solid.active'],
+              refs: [],
+              extends: [],
+              recipes: [],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'status.warning.indicator' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'status.warning.indicator',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'status.warning.indicator',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'status.warning.indicator' },
+            },
+            inputs: { aliases: ['status.warning.solid'], refs: [], extends: [], recipes: [] },
           },
         },
       ],

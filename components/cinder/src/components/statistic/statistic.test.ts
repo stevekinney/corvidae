@@ -33,26 +33,19 @@ describe('Statistic loading', () => {
     );
   });
 
-  // s4#13: on a statistic card (the raised surface) the skeleton's own fill is that surface in dark,
-  // so the placeholder vanished. The figure's placeholder is a wash of the border ink instead, a
-  // step over any surface in both schemes, never the raised or inset surface it may sit on.
-  test('paints the placeholder with a fill that shows on the card surface in both schemes', () => {
+  // s4#13: on a statistic card (the raised surface) the skeleton's own fill was that surface in
+  // dark, so the placeholder vanished. The skeleton token is now a wash of the border ink, a step
+  // over any surface in both schemes, so the figure's placeholder needs no fill of its own.
+  test('paints the placeholder with the shared skeleton fill, which shows on the card surface', () => {
     const css = readFileSync(new URL('./statistic.css', import.meta.url), 'utf8');
     const block = /\.cinder-statistic__value--loading \{([^}]*)\}/.exec(css)?.[1] ?? '';
-    expect(block).toMatch(
-      /--_cinder-skeleton-fill: color-mix\(in oklch, var\(--cinder-border-ink\), transparent \d+%\);/,
-    );
+    expect(block).not.toContain('skeleton-fill');
     expect(block).not.toContain('surface-raised');
     expect(block).not.toContain('surface-inset');
-    // The skeleton bar paints with that fill wherever it reads its colour, the shimmer and the
-    // still (reduced-motion) bar alike, and falls back to its token everywhere else.
-    const skeletonCss = readFileSync(new URL('../skeleton/skeleton.css', import.meta.url), 'utf8');
-    const tokenReads = skeletonCss.match(/var\(--cinder-skeleton-background\)/g) ?? [];
-    const fillReads =
-      skeletonCss.match(/var\(--_cinder-skeleton-fill, var\(--cinder-skeleton-background\)\)/g) ??
-      [];
-    expect(tokenReads.length).toBeGreaterThan(0);
-    expect(fillReads).toHaveLength(tokenReads.length);
+    const tokens = readFileSync(new URL('../../styles/tokens-base.css', import.meta.url), 'utf8');
+    expect(tokens.replace(/\s+/g, ' ')).toMatch(
+      /--cinder-skeleton-background: color-mix\( ?in oklch, var\(--cinder-border-ink\), transparent \d+% ?\);/,
+    );
   });
 
   test('is off by default: the value shows and the tile is not busy', () => {
@@ -480,7 +473,7 @@ describe('Statistic attention dot', () => {
     const dot = statisticCss.match(/\.cinder-statistic__attention \{([^}]*)\}/);
     expect(dot?.[1]).toContain('inline-size: 0.5rem');
     expect(dot?.[1]).toContain('block-size: 0.5rem');
-    expect(dot?.[1]).toContain('background: var(--cinder-status-warning-solid)');
+    expect(dot?.[1]).toContain('background: var(--cinder-status-warning-indicator)');
     const forced = statisticCss.slice(statisticCss.indexOf('@media (forced-colors: active)'));
     expect(forced).toContain('background: Highlight');
   });

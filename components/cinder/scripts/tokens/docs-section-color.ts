@@ -31,6 +31,7 @@ export const COLOR_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-status-success-solid-active',
       '--cinder-status-warning-solid-hover',
       '--cinder-status-warning-solid-active',
+      '--cinder-status-warning-indicator',
       '--cinder-status-success-contrast',
       '--cinder-status-warning-contrast',
       '--cinder-status-info-contrast',

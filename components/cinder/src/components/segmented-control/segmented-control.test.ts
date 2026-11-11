@@ -195,14 +195,16 @@ describe('SegmentedControl — single mode', () => {
   });
 
   // s2#15: a disabled control looked the same as an enabled one. Its track loses the fill and its
-  // chosen segment drops the raised pill for the disabled fill and edge.
+  // chosen segment drops the raised pill for the disabled fill and edge. The chosen segment is a
+  // selection mark, like a disabled checked checkbox, so it keeps `fill.disabled` even though a
+  // disabled field's fill recedes to the inset in light.
   test('group-level disabled: the track and the chosen segment take the disabled look', () => {
     const css = readFileSync(new URL('./segmented-control.css', import.meta.url), 'utf8');
     expect(css).toMatch(
       /\.cinder-segmented-control\[aria-disabled='true'\]:not\(\[data-cinder-variant='tablist'\]\):not\(\s*\[data-cinder-detached\]\s*\) \{\s*background: transparent;\s*box-shadow: inset 0 0 0 1px var\(--cinder-control-border-disabled\);/,
     );
     expect(css).toMatch(
-      /\[data-cinder-pressed\]\s*\) \{\s*background: var\(--cinder-control-background-disabled\);\s*box-shadow: inset 0 0 0 1px var\(--cinder-control-border-disabled\);/,
+      /\[data-cinder-pressed\]\s*\) \{\s*background: var\(--cinder-fill-disabled\);\s*box-shadow: inset 0 0 0 1px var\(--cinder-control-border-disabled\);/,
     );
   });
 

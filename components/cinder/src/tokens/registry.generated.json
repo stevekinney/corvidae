@@ -313,7 +313,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Disabled control fill: a flat neutral that reads as inert while staying inside the frame (a control never drops to `surface.inset`)."
+      "description": "Disabled control fill: a flat neutral that reads as inert and recedes. Light arm: `surface.inset`, the fill a disabled Button already uses, so the app has one disabled look and a disabled field is quieter than the white enabled one beside it (it used to alias `fill.disabled`, a mid-gray 86% that made a column of disabled selects the loudest thing on the page). Dark arm: `fill.disabled`, which already recedes there. The disabled checked mark of a checkbox, radio or multi-select still paints `fill.disabled` directly."
     },
     {
       "path": "control.border",
@@ -1447,7 +1447,7 @@
       "public": true,
       "themeAware": true,
       "deprecated": false,
-      "description": "Fill of a skeleton bar. The inset in light mode; in dark mode the raised surface, never the plain surface, because `surface.inset` sits too close to the canvas to read as a placeholder and bars inside cards (which sit on `surface.base`) would vanish against a card-colored fill."
+      "description": "Fill of a skeleton bar: a 12% alpha step over `border.ink` in both themes, so a bar is the same visible step over whatever it sits on (the canvas, the surface a list or card body paints, raised, or the inset). An opaque surface fill vanished on a ground of its own colour: the light inset bars read about 1.05:1 on the surface a list and a card body paint, and the dark raised bars vanished on a raised statistic card."
     },
     {
       "path": "list.row.min-height",
@@ -1709,6 +1709,15 @@
       "themeAware": true,
       "deprecated": false,
       "description": "Hover step for solid warning fills."
+    },
+    {
+      "path": "status.warning.indicator",
+      "cssProperty": "--cinder-status-warning-indicator",
+      "category": "color",
+      "public": true,
+      "themeAware": true,
+      "deprecated": false,
+      "description": "Fill of a lone warning indicator: a status dot, a rail count dot, an attention dot, anything that is the only sign of the warning and carries no text. WCAG 1.4.11 holds it to 3:1 against every surface it sits on. `status.warning.solid` is a bright amber at about 1.9:1 on the light surfaces, which is right for a filled button or band but not for a dot, so the light arm is the darker `solid.active` step (3.0:1 or better on the canvas, the surface, raised and the inset). The dark arm is `status.warning.solid` itself, about 10:1 on the dark surfaces."
     },
     {
       "path": "status.warning.background",
@@ -3310,6 +3319,7 @@
     "status.warning.solid": "--cinder-status-warning-solid",
     "status.warning.solid.active": "--cinder-status-warning-solid-active",
     "status.warning.solid.hover": "--cinder-status-warning-solid-hover",
+    "status.warning.indicator": "--cinder-status-warning-indicator",
     "status.warning.background": "--cinder-status-warning-background",
     "status.warning.text": "--cinder-status-warning-text",
     "status.warning.border": "--cinder-status-warning-border",
@@ -3649,6 +3659,7 @@
     "--cinder-status-warning-solid": "status.warning.solid",
     "--cinder-status-warning-solid-active": "status.warning.solid.active",
     "--cinder-status-warning-solid-hover": "status.warning.solid.hover",
+    "--cinder-status-warning-indicator": "status.warning.indicator",
     "--cinder-status-warning-background": "status.warning.background",
     "--cinder-status-warning-text": "status.warning.text",
     "--cinder-status-warning-border": "status.warning.border",
@@ -3988,6 +3999,7 @@
     "--cinder-status-warning-solid": ["status.warning.solid"],
     "--cinder-status-warning-solid-active": ["status.warning.solid.active"],
     "--cinder-status-warning-solid-hover": ["status.warning.solid.hover"],
+    "--cinder-status-warning-indicator": ["status.warning.indicator"],
     "--cinder-status-warning-background": ["status.warning.background"],
     "--cinder-status-warning-text": ["status.warning.text"],
     "--cinder-status-warning-border": ["status.warning.border"],
@@ -4331,6 +4343,7 @@
       "status.warning.solid",
       "status.warning.solid.active",
       "status.warning.solid.hover",
+      "status.warning.indicator",
       "status.warning.background",
       "status.warning.text",
       "status.warning.border",

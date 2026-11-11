@@ -333,6 +333,19 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
     },
     'Off Toggle track',
   ),
+  // A lone warning dot is often the only sign of the warning, so its fill clears 3:1 on every
+  // surface. `status.warning.solid` does not in light (about 1.9:1); the indicator token does.
+  ...onSurfaces(
+    'status:warning-indicator',
+    '--cinder-status-warning-indicator',
+    {
+      group: 'status',
+      classification: 'non-text-indicator',
+      scope: 'wcag',
+      criterion: '1.4.11',
+    },
+    'Warning indicator dot',
+  ),
   // COR-2312: a selected SegmentedControl segment is a raised pill on the inset track, about
   // 1.1:1 on its own, so its 1px contrast-tier ring is the indicator: it clears 3:1 against the
   // track it sits on and the pill it outlines.

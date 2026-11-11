@@ -108,7 +108,7 @@
   }
 
   .cinder-tool-call-rail__count[data-cinder-count='waiting'] .cinder-tool-call-rail__count-dot {
-    background: var(--cinder-status-warning-solid);
+    background: var(--cinder-status-warning-indicator);
   }
 
   /* ----------------------------------------

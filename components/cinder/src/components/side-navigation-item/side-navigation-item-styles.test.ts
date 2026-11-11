@@ -191,7 +191,7 @@ describe('side navigation item: indicators and the collapsed rail (rows 02q, 03b
       `${COLLAPSED} .cinder-side-navigation-item__count`,
     );
     expect(declaration(count, 'position')).toBe('absolute');
-    expect(declaration(count, 'background')).toBe('var(--cinder-status-warning-solid)');
+    expect(declaration(count, 'background')).toBe('var(--cinder-status-warning-indicator)');
     expect(declaration(count, 'font-size')).toBe('0');
     expect(declaration(count, 'inline-size')).toBe(declaration(count, 'block-size'));
     const [dot] = rulesFor(sideNavigationItemCss, `${COLLAPSED} .cinder-side-navigation-item__dot`);

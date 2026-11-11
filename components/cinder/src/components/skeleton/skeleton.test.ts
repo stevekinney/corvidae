@@ -71,10 +71,13 @@ describe('Skeleton', () => {
     }
   });
 
-  test('shimmer uses a small oklch relative lift instead of srgb white mix', () => {
+  test('shimmer halves the fill alpha instead of a lightness lift or an srgb white mix', () => {
+    // The fill is a step of the border ink, which is white in dark mode, so a lightness lift
+    // would not show there; half the alpha shows in both schemes.
     expect(skeletonCss).toMatch(
-      /oklch\(from var\(--_cinder-skeleton-fill, var\(--cinder-skeleton-background\)\) calc\(l \+ 0\.06\) c h\)\s+50%/,
+      /oklch\(from var\(--cinder-skeleton-background\) l c h \/ calc\(alpha \* 0\.5\)\)\s+50%/,
     );
+    expect(skeletonCss).not.toContain('calc(l + ');
     expect(skeletonCss).not.toContain('color-mix(in srgb');
     expect(skeletonCss).not.toContain('white 40%');
   });
@@ -85,9 +88,7 @@ describe('Skeleton', () => {
     )?.[0];
 
     expect(reducedMotionBlock).toContain('animation: none');
-    expect(reducedMotionBlock).toContain(
-      'background: var(--_cinder-skeleton-fill, var(--cinder-skeleton-background));',
-    );
+    expect(reducedMotionBlock).toContain('background: var(--cinder-skeleton-background);');
   });
 });
 

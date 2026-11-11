@@ -101,7 +101,7 @@
     block-size: 0.5rem;
     overflow: hidden;
     border-radius: 9999px;
-    background: var(--cinder-status-warning-solid);
+    background: var(--cinder-status-warning-indicator);
     font-size: 0;
     line-height: 0;
     /* A ring in the sidebar's own surface separates the dot from the icon beneath it. */

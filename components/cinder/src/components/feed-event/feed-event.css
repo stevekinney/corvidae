@@ -95,7 +95,7 @@
 
   .cinder-feed-event[data-cinder-tone='warning'] .cinder-feed-event-rail,
   .cinder-feed-event[data-cinder-tone='warning'] .cinder-feed-event-dot {
-    background: var(--cinder-status-warning-solid);
+    background: var(--cinder-status-warning-indicator);
     color: var(--cinder-status-warning-contrast);
   }
 

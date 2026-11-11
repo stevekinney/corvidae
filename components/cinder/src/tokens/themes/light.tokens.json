@@ -232,6 +232,14 @@
       }
     }
   },
+  "control": {
+    "background": {
+      "disabled": {
+        "$type": "color",
+        "$value": "{surface.inset}"
+      }
+    }
+  },
   "accent": {
     "$type": "color",
     "contrast": {
@@ -868,6 +876,10 @@
             "components": [0.71, 0.15, 75]
           }
         }
+      },
+      "indicator": {
+        "$type": "color",
+        "$value": "{status.warning.solid.active}"
       }
     },
     "neutral": {
@@ -1098,7 +1110,16 @@
   "skeleton": {
     "$type": "color",
     "background": {
-      "$value": "{surface.inset}"
+      "$value": {
+        "colorSpace": "oklch",
+        "components": [0.2, 0.02, 255],
+        "alpha": 0.12
+      },
+      "$extensions": {
+        "com.lostgradient.cinder": {
+          "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 88%)"
+        }
+      }
     }
   },
   "week-schedule": {

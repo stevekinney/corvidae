@@ -622,7 +622,7 @@
 
   .cinder-run-step-marker[data-cinder-status='retrying'],
   .cinder-run-step-marker[data-cinder-status='waiting_approval'] {
-    --_cinder-rst-marker-ring: var(--cinder-status-warning-solid);
+    --_cinder-rst-marker-ring: var(--cinder-status-warning-indicator);
   }
 
   /* Not started, or not run: a dashed ring, so it reads as a place still to be filled. */
