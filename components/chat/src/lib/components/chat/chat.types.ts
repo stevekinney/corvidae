@@ -27,6 +27,11 @@ import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
+<<<<<<< HEAD
+=======
+import type { ChatTurnLabels } from './message/turn-labels.ts';
+import type { ChatTurnState } from './message/turn-state.ts';
+>>>>>>> d1ff2caec (COR-2283: Wire each assistant turn's run state and its recovery callbacks from Chat's props to the turn, and the failed-step retry and step start times to the timeline)
 import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
 import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
@@ -409,6 +414,31 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * message.
    */
   onSuggestionSelect?: (label: string) => void;
+  /**
+   * Where each assistant turn stands, as the host knows it (COR-2283). Called per assistant
+   * message; return a {@link ChatTurnState} to draw the turn's outcome on the turn itself, or
+   * `undefined` to leave it streaming while text arrives and complete after. `reconnecting`
+   * mutes the partial text and drops its caret under the warning "Connection lost. Reconnecting,
+   * attempt 2 of 5. Next try in 8 s." with Retry now and a bar that drains until the next try;
+   * `stopped` draws a neutral pill with Discard and Continue; `failed` a danger alert that says the
+   * answer is incomplete, why, and what Retry keeps, with Retry; `empty` a dashed row with the
+   * turn's time and Try again in place of its line. `advanceTurnState` moves a state on as the run
+   * reports what happened. A callback that throws or returns something else draws the turn as
+   * Chat sees it.
+   */
+  messageTurnState?: ((message: Message) => ChatTurnState | undefined) | undefined;
+  /** The words of a turn's outcome and of the steps under it, any of which the host can replace. */
+  turnLabels?: Partial<ChatTurnLabels> | undefined;
+  /** Called with a reconnecting turn's id when the person chooses Retry now. Retry now shows only when this is set. */
+  onRetryConnection?: ((messageId: string) => void) | undefined;
+  /** Called with a stopped turn's id when the person chooses Continue. Continue shows only when this is set. */
+  onContinueTurn?: ((messageId: string) => void) | undefined;
+  /** Called with a stopped turn's id when the person chooses Discard. Discard shows only when this is set; the host removes the turn from the conversation. */
+  onDiscardTurn?: ((messageId: string) => void) | undefined;
+  /** Called with a failed turn's id when the person chooses Retry, or an empty turn's when they choose Try again. Each shows only when this is set. */
+  onRetryTurn?: ((messageId: string) => void) | undefined;
+  /** Called with a failed tool call's id when the person chooses Retry this step under it. The button shows only when this is set; Copy error always shows. */
+  onRetryStep?: ((toolCallId: string) => void) | undefined;
   /** Called when the explicit history trigger is activated. The consumer prepends compatible messages into `conversation`. */
   onLoadHistory?: () => void | Promise<void>;
   onStopGenerating?: (event: ChatStopGeneratingEvent) => void;

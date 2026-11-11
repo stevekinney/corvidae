@@ -79,6 +79,7 @@
   import ChatParticipantTyping from './chat-participant-typing.svelte';
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
+  import { resolveMessageTurnState } from '../message/turn-state.ts';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
   import {
     Button,
@@ -191,6 +192,13 @@
     messageSteps,
     messageSuggestions,
     onSuggestionSelect,
+    messageTurnState,
+    turnLabels,
+    onRetryConnection,
+    onContinueTurn,
+    onDiscardTurn,
+    onRetryTurn,
+    onRetryStep,
     style,
     onLoadHistory,
     onStopGenerating,
@@ -667,6 +675,21 @@
       if (Number.isFinite(duration) && duration >= 0) durations.set(pair.call.id, duration);
     }
     return durations;
+  }
+
+  /**
+   * When each call of a group started: its message's time. Only a call with no answer yet is read
+   * from this, to show how long the step under way has run (COR-2283, R1).
+   */
+  function toolCallStartTimes(
+    groupPairs: readonly { message: Message; pair: ToolCallPair }[],
+  ): Map<string, number> {
+    const startTimes = new Map<string, number>();
+    for (const { message, pair } of groupPairs) {
+      const start = Date.parse(message.createdAt);
+      if (Number.isFinite(start)) startTimes.set(pair.call.id, start);
+    }
+    return startTimes;
   }
 
   function artifactsForToolCallMessages(
@@ -2071,6 +2094,12 @@
           {sourcePresentation}
           sourcesExpanded={sourcesState.isExpanded(message.id)}
           onsourcestoggle={() => void toggleSources(message.id)}
+          turnState={resolveMessageTurnState(message, messageTurnState)}
+          {turnLabels}
+          {onRetryConnection}
+          {onContinueTurn}
+          {onDiscardTurn}
+          {onRetryTurn}
         >
           {#snippet actions()}
             {#if messageActions}
@@ -2121,6 +2150,9 @@
           pairs={groupPairs.map(({ pair }) => pair)}
           approvalStates={commandActions.approvalStates}
           durations={toolCallDurations(groupPairs)}
+          startTimes={toolCallStartTimes(groupPairs)}
+          {onRetryStep}
+          labels={turnLabels}
         />
         {#if artifacts.length > 0}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">

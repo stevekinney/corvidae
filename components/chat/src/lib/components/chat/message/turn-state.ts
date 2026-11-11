@@ -9,6 +9,8 @@
  * {@link presentTurnState} is what each state draws.
  */
 
+import type { Message } from '../conversation-model.ts';
+
 /**
  * Where an assistant turn stands.
  *
@@ -212,6 +214,24 @@ export function isChatTurnState(value: unknown): value is ChatTurnState {
       return typeof candidate['cause'] === 'string' && isOptionalText(candidate['keeps']);
     default:
       return false;
+  }
+}
+
+/**
+ * The host's state for an assistant turn, from `fromProp` (`ChatProps.messageTurnState`). Any other
+ * message has none, and so does a turn whose callback throws or returns something that is not a
+ * turn state: that turn is drawn as Chat sees it, so a faulty callback never breaks the transcript.
+ */
+export function resolveMessageTurnState(
+  message: Message,
+  fromProp: ((message: Message) => ChatTurnState | undefined) | undefined,
+): ChatTurnState | undefined {
+  if (message.role !== 'assistant' || fromProp === undefined) return undefined;
+  try {
+    const state: unknown = fromProp(message);
+    return isChatTurnState(state) ? state : undefined;
+  } catch {
+    return undefined;
   }
 }
 

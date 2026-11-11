@@ -29,6 +29,15 @@ export type {
 } from './chat.types.ts';
 export type { ChatMarkdownNode, MarkdownNodeOverride } from './message/chat-message-parts.ts';
 export { default as ChatNote } from './message/parts/note-part.svelte';
+export { DEFAULT_TURN_LABELS } from './message/turn-labels.ts';
+export type { ChatTurnLabels } from './message/turn-labels.ts';
+export { advanceTurnState, isChatTurnState, presentTurnState } from './message/turn-state.ts';
+export type {
+  ChatTurnEvent,
+  ChatTurnPresentation,
+  ChatTurnState,
+  ChatTurnStateKind,
+} from './message/turn-state.ts';
 export type { AnswerSendResult } from './question/answer-hold.svelte.ts';
 export { default as ChatQuestion } from './question/chat-question.svelte';
 export type { ChatQuestionHoldCopy, ChatQuestionProps } from './question/chat-question.svelte';

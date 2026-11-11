@@ -402,13 +402,12 @@ describe('Try it', () => {
       );
       await startChat(view, 'My order 4471 arrived broken.');
 
-      // The group's line is the call in the present tense, and its row says the same inside.
+      // The group's line is the call in the present tense, and its row says the same inside. The
+      // header also counts how long the call has run (COR-2283), so only its title is pinned here.
       await view.findAllByText(/Using/);
       expect(
-        view.container
-          .querySelector('.chat-tool-call-heading')
-          ?.textContent?.replace(/\s+/g, ' ')
-          .trim(),
+        view.container.querySelector('.chat-tool-call-heading .chat-tool-call-running')
+          ?.textContent,
       ).toBe('Using Lookup order…');
       expect(view.container.textContent).toContain('Category: damaged');
       expect(view.getByText(copy.try.hint)).not.toBeNull();
