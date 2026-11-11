@@ -132,6 +132,14 @@ describe('a tool approval', () => {
             ],
           },
         });
+        // COR-2280: the signed binding sets this approval's only deadline, and the interrupt says it.
+        const [review] = bureau.reviews.list();
+        const binding =
+          review?.kind === 'tool-approval' ? review.approval.approvalBinding : undefined;
+        expect(binding).toBeDefined();
+        const [interrupt] = (finished as { outcome: { interrupts: Array<{ expiresAt?: string }> } })
+          .outcome.interrupts;
+        expect(interrupt?.expiresAt).toBe(new Date(binding!.expiresAt).toISOString());
         // The call and its pending result reached the stream before the interrupt.
         const types = typesOf(frames);
         expect(types).toEqual([

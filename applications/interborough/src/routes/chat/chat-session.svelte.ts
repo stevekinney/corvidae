@@ -759,8 +759,8 @@ export class ChatSessionState {
    */
   #reconcileApprovalDeadlines(): void {
     for (const { toolCallId, expiresAt } of this.#approvalDeadlines) {
-      const action = findToolResultMessage(this.conversation, toolCallId, { includeHidden: true })
-        ?.toolResult?.action;
+      const row = findToolResultMessage(this.conversation, toolCallId, { includeHidden: true });
+      const action = row?.toolResult?.action;
       if (action?.type !== 'approval') continue;
       this.controller.reconcileApprovalExpiry({ toolCallId, expiresAt, expectedAction: action });
     }
