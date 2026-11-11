@@ -21,6 +21,7 @@ import {
   schedulesSummary,
   schemaOf,
   segmentCounts,
+  sortInternalRows,
   sortListRows,
   specCadence,
   stepLabel,
@@ -301,6 +302,26 @@ describe('a row of the list', () => {
 });
 
 describe('the internal workflows', () => {
+  test('are listed in the order Interborough gives them, then any other as the catalog sorts them', () => {
+    const rows = joinCatalog(
+      [
+        codeDefinition('durableHeartbeatTick'),
+        codeDefinition('futureTick'),
+        codeDefinition('goalRun'),
+        codeDefinition('agentRun'),
+        codeDefinition('scheduleTick'),
+      ],
+      [],
+    );
+    expect(sortInternalRows(rows).map((row) => row.name)).toEqual([
+      'agentRun',
+      'goalRun',
+      'durableHeartbeatTick',
+      'scheduleTick',
+      'futureTick',
+    ]);
+  });
+
   test('are named in the words Interborough gives the types it knows, and by their identifier in words otherwise', () => {
     expect(internalWords('agentRun', 'Engine words.')).toEqual({
       title: 'Chat with an agent',

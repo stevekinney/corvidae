@@ -534,7 +534,8 @@ describe('the internal workflows page', () => {
     const names = [...container.querySelectorAll('[data-workflow][data-engine]')].map((node) =>
       node.getAttribute('data-workflow'),
     );
-    expect(names).toEqual(['agentRun', 'durableHeartbeatTick', 'goalRun']);
+    // In the order Interborough lists them, not the engine's order by name.
+    expect(names).toEqual(['agentRun', 'goalRun', 'durableHeartbeatTick']);
 
     const chat = row(container, 'agentRun');
     expect(chat.querySelector('a')?.textContent).toBe('Chat with an agent');

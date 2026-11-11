@@ -23,7 +23,7 @@
     loadInternalActivity,
   } from '../../lib/workflow-catalog.ts';
   import { workflowRunsPath } from '../../lib/workflow-type-paths.ts';
-  import { internalCells, internalWords } from './workflow-presentation.ts';
+  import { internalCells, internalWords, sortInternalRows } from './workflow-presentation.ts';
 
   const client = getClient();
   const copy = WORKFLOW_COPY.internal;
@@ -37,8 +37,9 @@
     }),
     undefined,
   );
-  const rows = $derived((catalog.data ?? []).filter((row) => row.engine));
-  const names = $derived(rows.map((row) => row.name));
+  const engineRows = $derived((catalog.data ?? []).filter((row) => row.engine));
+  const rows = $derived(sortInternalRows(engineRows));
+  const names = $derived(engineRows.map((row) => row.name));
 
   // How often each type has run is read apart from the list of types, so the rows never wait on it.
   const activity = createQuery(

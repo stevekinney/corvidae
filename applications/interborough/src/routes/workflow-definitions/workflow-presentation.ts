@@ -183,6 +183,19 @@ export function workflowListRow(
 export type InternalWords = { readonly title: string; readonly description: string | null };
 
 /**
+ * The internal types in the order the page lists them: those Interborough has words for, in the
+ * order `WORKFLOW_COPY.internal.types` gives them, then any other as the catalog sorts them.
+ */
+export function sortInternalRows(rows: readonly CatalogRow[]): CatalogRow[] {
+  const known = Object.keys(WORKFLOW_COPY.internal.types);
+  const position = (name: string): number => {
+    const index = known.indexOf(name);
+    return index === -1 ? known.length : index;
+  };
+  return rows.toSorted((first, second) => position(first.name) - position(second.name));
+}
+
+/**
  * The name and the line on what an internal type does: the words Interborough gives it, else the
  * identifier in words and the engine's own description.
  */
