@@ -96,6 +96,12 @@ export type ViewDefinition = {
    */
   readonly pageOwnsLoading?: boolean;
   /**
+   * The route patterns of this view whose page draws its own loading state, as `pageOwnsLoading`
+   * does for the whole view: a workflow's page shows its header and tabs from the route at once and
+   * only its body is a placeholder (Workflows, row 63a).
+   */
+  readonly pageOwnsLoadingOn?: readonly string[];
+  /**
    * The route patterns of this view whose page draws its own empty state under its own header, for
    * a list whose heading, subtitle and "+" stay when nothing is listed (first use, Workflows rows
    * 12h and 60q). The frame then shows the page when its probe says empty, instead of the frame's
@@ -148,6 +154,8 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
     canBeEmpty: true,
     // The list keeps its header and its "+" over its first-use state; a type's runs say theirs in the frame.
     pageOwnsEmptyOn: ['/workflows'],
+    // A workflow's page has its header and tabs from the route, so only its body waits (row 63a).
+    pageOwnsLoadingOn: ['/workflows/:workflow'],
   },
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
   // the workflow sections of a run, the start picker, and the aggregate view read the engine, and they say

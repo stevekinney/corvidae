@@ -444,6 +444,7 @@ describe('a schedule trigger’s spec in words', () => {
     expect(schedulesSummary([{ intervalMs: 3_600_000 }, { cronExpression: '0 6 * * *' }])).toEqual({
       kind: 'schedule',
       words: WORKFLOW_COPY.list.schedules(2),
+      count: 2,
     });
   });
 });

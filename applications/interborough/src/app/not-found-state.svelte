@@ -29,6 +29,8 @@
     create?: ViewLink | undefined;
     /** The way back in the view's own words, such as "Back to chats". The view's list when omitted. */
     back?: ViewLink | undefined;
+    /** Whether the "Search everything" button is drawn. Defaults to true. */
+    search?: boolean;
   }
 
   let {
@@ -37,6 +39,7 @@
     view = 'home',
     create,
     back,
+    search = true,
   }: NotFoundStateProps = $props();
 
   const parent = $derived(
@@ -89,7 +92,9 @@
       >
         {NOT_FOUND_COPY.back(parent.label)}
       </Button>
-      <Button variant="secondary" onclick={() => openSearch?.()}>{NOT_FOUND_COPY.search}</Button>
+      {#if search}
+        <Button variant="secondary" onclick={() => openSearch?.()}>{NOT_FOUND_COPY.search}</Button>
+      {/if}
     {/if}
   {/snippet}
 </EmptyState>

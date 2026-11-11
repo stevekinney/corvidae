@@ -92,6 +92,10 @@
       definition.ownsStatesOnPatterns?.includes(initial.pattern) === true);
   /** Whether this route's page draws its own empty state under its own header (`pageOwnsEmptyOn` in `views.ts`). */
   const pageOwnsEmpty = definition.pageOwnsEmptyOn?.includes(initial.pattern ?? '') === true;
+  /** Whether this route's page draws its own loading state (`pageOwnsLoadingOn` in `views.ts`). */
+  const pageOwnsLoading =
+    definition.pageOwnsLoading === true ||
+    definition.pageOwnsLoadingOn?.includes(initial.pattern ?? '') === true;
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
   const scopeDenied = $derived(
@@ -266,7 +270,7 @@
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >
-  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && definition.pageOwnsLoading === true) || (state === 'error' && definition.pageOwnsFailure === true) || (state === 'empty' && pageOwnsEmpty)}
+  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && pageOwnsLoading) || (state === 'error' && definition.pageOwnsFailure === true) || (state === 'empty' && pageOwnsEmpty)}
     {#if refreshFailed && !connection.unreachable && !ownsStates}
       {@render refreshError()}
     {/if}
@@ -346,6 +350,7 @@
       view={initial.view}
       create={notFoundCopy.create}
       back={notFoundCopy.back}
+      search={notFoundCopy.searchHidden !== true}
     />
   {:else if state === 'error'}
     <!-- New chat's error is the page with its disc, because it replaces a greeting and a composer. -->

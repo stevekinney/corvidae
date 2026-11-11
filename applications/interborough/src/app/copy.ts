@@ -31,6 +31,8 @@ export type ViewLink = { readonly label: string; readonly href: string };
 export type ViewNotFoundCopy = ViewStateCopy & {
   readonly create?: ViewLink;
   readonly back?: ViewLink;
+  /** Leaves out the "Search everything" button, for a page whose only way out is back to its list. */
+  readonly searchHidden?: boolean;
 };
 
 export type ViewCopy = {
@@ -844,6 +846,73 @@ export const WORKFLOW_COPY = {
     tabsLabel: 'Workflow sections',
     tabs: { overview: 'Overview', code: 'Code', runs: 'Runs', history: 'History' },
     startAction: 'Start run',
+    /** The header of a workflow's page: the lines under the title, in the order they are read. */
+    header: {
+      /** "Starts every Friday at 11:00 AM": what starts the workflow, read from its trigger. */
+      starts: (when: string): string => `Starts ${when}`,
+      /** The words around a signal's identifier, which is set in monospace between them. */
+      startsOnSignal: { before: 'Starts when a signal arrives (', after: ')' },
+      /** Several schedules start a type that code registered. */
+      startsFromMany: (count: number): string => `Starts from ${String(count)} schedules`,
+      startYourself: 'you can also start it yourself',
+      runsAs: (agent: string): string => `runs as ${agent}`,
+      /** "Last run" and the date, which is a link to the run, follow each other. */
+      lastRunLabel: 'Last run',
+      lastRun: (when: string): string => `Last run ${when}`,
+      /** The last run of a type Interborough runs itself, said as the day it began. */
+      lastRunToday: (clock: string): string => `Last run today, ${clock}`,
+      neverRun: 'Never run',
+      /** "file" and the file's name, which is set in monospace, follow each other. */
+      fileLabel: 'file',
+      /** The schedule the file defines, with its name as a link between these. */
+      scheduleDefined: { before: 'Schedule: ', after: ', defined in this file.' },
+      /** A schedule that starts the workflow without being defined in the file. */
+      alsoStartedBy: { before: 'Also started by the ', after: ' schedule' },
+      alsoStartedByMany: (count: number): string => `Also started by ${String(count)} schedules.`,
+      /** After "Also started by the X schedule": its state, or its cadence when it is active. */
+      schedulePaused: 'paused',
+      scheduleNote: (note: string): string => ` (${note}).`,
+      scheduleEnd: '.',
+      /** An internal workflow's line: built in, its identifier, what starts it, and when it last ran. */
+      builtIn: 'Built in',
+      /** What starts each internal type, after the words "Started by". */
+      startedBy: {
+        agentRun: 'chats and schedules',
+        goalRun: 'goals',
+        durableHeartbeatTick: 'a timer',
+        scheduleTick: 'schedules',
+      },
+      startedByPrefix: (who: string): string => `Started by ${who}`,
+    },
+    /** The tab names with a count after the label, once the count is known. */
+    tabWithCount: (label: string, count: number): string => `${label} ${String(count)}`,
+    /** The button on an internal workflow's page that leads to the rest of them. */
+    seeInternal: 'See all internal workflows',
+    /** The body of an internal workflow's Overview. */
+    internalOverview:
+      'Interborough starts this workflow itself each time it is needed. You can watch its runs, but not start, edit or pause it.',
+    /** The body of the Overview of Chat with an agent, the one internal type whose use is known. */
+    internalOverviewByType: {
+      agentRun:
+        'Interborough starts this workflow itself each time an agent answers in a chat or a schedule fires. You can watch its runs, but not start, edit or pause it.',
+    },
+    /** The steps of a file, as numbered rows. */
+    steps: {
+      kindAgent: (agent: string): string => `Ask an agent, ${agent}`,
+      kindAgentUnnamed: 'Ask an agent',
+      kindSignal: 'Wait for a signal',
+      kindPerson: 'Wait for a person',
+      kindSleep: (duration: string): string => `Wait ${duration}`,
+      waitingForSignal: 'The run reads Waiting until the signal arrives.',
+      waitingForPerson: 'Shows in Reviews until someone approves or denies.',
+      /** The title of a step the file does not name. */
+      untitled: (position: number): string => `Step ${String(position)}`,
+      /** A long list shows its first step, and this row opens the rest. */
+      more: (count: number): string => `${String(count)} more ${count === 1 ? 'step' : 'steps'}`,
+      fewer: 'Show fewer steps',
+    },
+    /** The "View JSON Schema" link beside Input and Output. */
+    schemaRawLabel: 'View JSON Schema',
     /** The Overview tab. */
     overview: {
       inputLabel: 'Input',
@@ -865,6 +934,12 @@ export const WORKFLOW_COPY = {
     },
     /** The Code tab. */
     code: {
+      /** The line above the file: what it is, where it is, and that it cannot be edited here. */
+      caption: (path: string): string => `JSON, ${path}, read-only`,
+      /** The outline beside the file, and the select that stands in for it on a phone. */
+      outlineTitle: 'Outline',
+      outlineSelect: 'Jump to',
+      outlineSteps: 'steps',
       fileHeading: 'File source',
       outlineHeading: 'Step outline',
       noOutline: 'The file has no steps to outline.',
@@ -876,6 +951,27 @@ export const WORKFLOW_COPY = {
       failedDescription: 'Try again, or check that you may read workflows.',
       unavailableTitle: 'This workflow has no source to show',
       unavailableDescription: 'It is not defined in code, or you may not read workflows.',
+    },
+    /** A file the Bureau cannot read: the banner under the tabs, and the line the problem is marked on. */
+    problem: {
+      /** The sentence that names the file, and the line when the page can find it. */
+      located: (file: string, line: number, reason: string): string =>
+        `${file}, line ${String(line)}: ${reason}.`,
+      unlocated: (file: string, message: string): string => `${file}: ${message}`,
+      startOff: 'Start run is off until the file is fixed. Runs that already started keep going.',
+      openCode: 'Open Code',
+      editAsJson: 'Edit as JSON',
+      /** The note drawn under the marked line. */
+      missingComma: (stoppedAt: number): string =>
+        `Missing comma at the end of this line. The parser stopped at line ${String(stoppedAt)}.`,
+      stopped: (stoppedAt: number): string => `The parser stopped at line ${String(stoppedAt)}.`,
+      expectedComma: 'expected a comma',
+    },
+    /** The page when nothing says it exists: the words the frame shows too (`VIEW_COPY.workflows`). */
+    notFound: {
+      title: 'Workflow not found',
+      description:
+        'This workflow doesn’t exist, or its file was removed. Check the link, or go back to the list.',
     },
   },
   /** `/workflows/:workflow/run`: one run of the workflow in the path, started now or on a schedule. */
@@ -1042,6 +1138,12 @@ export const WORKFLOW_COPY = {
     description:
       'The versions of this workflow that have run, most recently run first, each with whether it is compatible with the current one.',
     caption: 'Versions of this workflow that have run',
+    /** One row's title: "Version 1.3.0, current version". */
+    versionTitle: (version: string, current: boolean): string =>
+      `Version ${version}, ${current ? 'current version' : 'older version'}`,
+    /** The footnote under the list. */
+    footnote:
+      'Compatibility says whether a run started on one version can continue after the next is saved. Scheduled and chat runs always start on the current version.',
     versionColumn: 'Version',
     firstRunColumn: 'First run',
     lastRunColumn: 'Last run',
@@ -1051,7 +1153,7 @@ export const WORKFLOW_COPY = {
     /** The verdict against the current revision. */
     verdictColumn: 'Compatibility',
     compatible: 'Compatible',
-    incompatible: 'Incompatible',
+    incompatible: 'Breaking',
     noCurrent: 'No current revision',
     noCurrentDescription: 'There is no current revision to compare with.',
     /** Why a revision is not compatible with the current one. */
@@ -5939,10 +6041,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: 'The server did not answer. Check that the host is running, then try again.',
     },
     forbidden: { title: FORBIDDEN_COPY.title('Workflows') },
-    notFound: {
-      title: 'This workflow doesn’t exist',
-      description: NOT_FOUND_COPY.description,
-    },
+    // A workflow's page is neutral and has one way back, the list (board PageWorkflow, row 63h).
+    notFound: { ...WORKFLOW_COPY.page.notFound, searchHidden: true },
     notFoundByPattern: {
       '/workflows/:workflow/edit': {
         title: 'This workflow doesn’t exist',

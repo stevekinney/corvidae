@@ -320,7 +320,12 @@ export function specCadence(spec: string): {
 
 /** What starts a workflow, for a row: a cadence in words, or the signal that does. */
 export type TriggerSummary =
-  | { readonly kind: 'schedule'; readonly words: string }
+  | {
+      readonly kind: 'schedule';
+      readonly words: string;
+      /** How many schedules start the type, when it is more than one. */
+      readonly count?: number;
+    }
   | { readonly kind: 'signal'; readonly name: string };
 
 /** A file's trigger as a row says it, or `null` for a file that has none to read. */
@@ -346,7 +351,11 @@ export function schedulesSummary(
   if (schedules.length === 1 && only !== undefined) {
     return { kind: 'schedule', words: describeCadence(only) };
   }
-  return { kind: 'schedule', words: WORKFLOW_COPY.list.schedules(schedules.length) };
+  return {
+    kind: 'schedule',
+    words: WORKFLOW_COPY.list.schedules(schedules.length),
+    count: schedules.length,
+  };
 }
 
 /** What the engine's contract says of a type, keeping only what it says: nothing is padded with "None". */
