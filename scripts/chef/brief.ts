@@ -6,10 +6,15 @@
 //
 // Usage:
 //   bun scripts/chef/brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>]
-//                             [--out-dir <dir>] [--json]
+//                             [--out-dir <dir>] [--stdout] [--json]
 //
 // It reads the issue with `linear.ts`'s client and writes `<main checkout>/tmp/chef/briefs/<ID>.md`
-// (gitignored; `--out-dir` replaces the directory) holding:
+// (gitignored; `--out-dir` replaces the directory), or with `--stdout` prints the brief and writes
+// nothing (a read-only scout needs no checkout and no directory; it still needs the Linear key).
+// The brief ends with its size in bytes. It holds:
+//   - shared programme text, replaced by its link: a section whose heading says it is shared (see
+//     `sharedHeading`) and that links the document holding it keeps its heading and a one-line
+//     pointer, so a programme's preamble is read once, in the document, not in every brief;
 //   - the issue's brief (an "Execution brief" or "Brief" heading) followed by its Current behavior,
 //     Acceptance criteria, Decisions, Out of scope, Constraints and Delivery boundary sections and
 //     every dated revision, or the whole description when it has no brief heading;
@@ -57,6 +62,13 @@ import { resolveMainCheckout } from './repository-locations.ts';
 export { UsageError };
 
 /**
+ * The delivery shape, stated once: every brief carries this sentence, and no other worker-facing
+ * document restates it (`brief.test.ts` checks the agent definition and the Codex protocol).
+ */
+export const deliveryRule =
+  'push your branch and report, and open no pull request unless the dispatch asks for one; you do not merge, because the coordinator verifies and merges your branch (or a pull request through `deliver.ts`); on a conflict, merge `main` in, rerun the focused checks, and return the new head; a red `main` is a warning, not a refusal; and this rule outranks any delivery wording in the issue.';
+
+/**
  * The charter rules: the one source of the worker-facing rules. `brief.test.ts` keeps each in step
  * with the AGENTS.md rule it restates and keeps `references/execution-record.md` from restating them.
  */
@@ -64,7 +76,7 @@ export const charterRules = [
   '**Cost:** batch independent reads and searches into one message. Edit with Edit or Write, never a shell heredoc (a throwaway codemod for a mechanical multi-file rewrite is the exception).',
   '**Checks:** run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check`: `bun scripts/chef/focused-checks.ts`; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` when your change reaches one. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate.',
   '**Branch:** update from `main` only by a real merge (`git fetch origin main && git merge FETCH_HEAD`), never `git reset --soft` onto a newer `main`. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`; a file you did not mean to change means a stale tree.',
-  '**Delivery:** open no pull request unless the dispatch asks for one: push your branch and report. You do not merge; the coordinator merges your branch, or a pull request through `deliver.ts`. On a conflict, merge `main` in, rerun the focused checks, and return the new head. A red `main` is a warning, not a refusal.',
+  `**Delivery:** ${deliveryRule}`,
   '**Review rounds, with a pull request open (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; then open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
   '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion; never poll, and never end a turn to say you are still waiting.',
   '**Defect-class self-check:** before pushing, check the diff against every class in `.agents/skills/chef/references/defect-classes.md` and report each. With a pull request open, run `bun scripts/chef/review-threads.ts classes --pr <n>` before every fix push; on exit 1, push nothing more and return blocked.',
@@ -255,6 +267,63 @@ function designLines(identifier: string, description: string, descriptionInclude
 
 const descriptionLimit = 16_000;
 
+/**
+ * The heading of a section an issue marks as shared programme text: "Shared ...", "Programme ..."
+ * or "Program ..." text, context or preamble. The rule is the heading plus a link, so a section is
+ * replaced only when it points at the document that holds it.
+ */
+const sharedHeading =
+  /^(?:shared\b|program(?:me)?\b)|\bshared\s+(?:program(?:me)?|context|text|preamble)\b|\bpreamble\b/i;
+
+/** The first link in `text`: a URL, or a repository Markdown path in a code span or bare. */
+function documentLink(text: string): string | undefined {
+  return (
+    /https?:\/\/[^\s)>\]]+/.exec(text)?.[0] ??
+    /(?<![\w/])((?:[\w.@-]+\/)+[\w.@-]+\.md)\b/.exec(text)?.[1]
+  );
+}
+
+export interface SharedStripped {
+  text: string;
+  /** Each section replaced by its link, with the bytes it no longer costs. */
+  omitted: { heading: string; link: string; bytes: number }[];
+}
+
+/**
+ * Replaces each shared programme section that links its document with a one-line pointer to the
+ * link. A section without a link stays, because nothing would say where its text lives. Pure.
+ */
+export function stripShared(description: string): SharedStripped {
+  const lines = description.split('\n');
+  const kept: string[] = [];
+  const omitted: SharedStripped['omitted'] = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index] ?? '';
+    kept.push(line);
+    const match = /^(#{1,6})\s+(.*?)\s*#*\s*$/.exec(line);
+    if (match === null || !sharedHeading.test(match[2] ?? '')) continue;
+    const level = (match[1] ?? '').length;
+    let end = index + 1;
+    while (end < lines.length) {
+      const following = /^(#{1,6})\s/.exec(lines[end] ?? '');
+      if (following !== null && (following[1] ?? '').length <= level) break;
+      end += 1;
+    }
+    const body = lines.slice(index + 1, end).join('\n');
+    const link = documentLink(body);
+    if (link === undefined) continue;
+    const bytes = Buffer.byteLength(body.trim());
+    omitted.push({ heading: match[2] ?? '', link, bytes });
+    kept.push(
+      '',
+      `Shared programme text, not repeated here: ${link} (${bytes} bytes omitted).`,
+      '',
+    );
+    index = end - 1;
+  }
+  return { text: kept.join('\n'), omitted };
+}
+
 /** The heading that opens an issue's brief: "Execution brief", or "Brief" alone. */
 const briefHeading = /execution\s+brief|^brief$/i;
 
@@ -308,7 +377,9 @@ export function blockerLines(blockers: BlockerRead | undefined): string[] {
 
 /** Render the brief for `issue`. Pure. */
 export function renderBrief(issue: IssueSummary, options: BriefOptions): string {
-  const description = (issue.description ?? '').trim();
+  const fullDescription = (issue.description ?? '').trim();
+  const stripped = stripShared(fullDescription);
+  const description = stripped.text.trim();
   const execution = sectionOf(description, briefHeading);
   const filesSection = sectionOf(description, /^files?\b|files? to (?:change|touch)/i);
   const paths =
@@ -346,8 +417,20 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     ))
       lines.push(`## ${revision.heading}`, '', revision.body.trim(), '');
   }
+  // A shared section outside the carried sections would otherwise drop its link with its text.
+  const pointers = stripped.omitted.filter((entry) => !lines.join('\n').includes(entry.link));
+  if (pointers.length > 0)
+    lines.push(
+      '## Shared programme text',
+      '',
+      ...pointers.map(
+        (entry) =>
+          `- ${entry.heading}: ${entry.link} (${entry.bytes} bytes omitted; read it once, it is not repeated here).`,
+      ),
+      '',
+    );
   lines.push(...blockerLines(options.blockers));
-  lines.push(...designLines(issue.identifier, description, execution === undefined));
+  lines.push(...designLines(issue.identifier, fullDescription, execution === undefined));
   lines.push('## Files', '');
   const issueVerification =
     execution !== undefined && options.verify.length === 0
@@ -371,7 +454,19 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
     ...charterRules.map((rule) => `- ${rule}`),
     '',
   );
-  return lines.join('\n');
+  return withSize(lines.join('\n'));
+}
+
+/** `text` followed by a last line giving the byte size of the whole brief, that line included. */
+function withSize(text: string): string {
+  let size = Buffer.byteLength(text);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const sized = `${text}\nSize: ${size} bytes.\n`;
+    const actual = Buffer.byteLength(sized);
+    if (actual === size) return sized;
+    size = actual;
+  }
+  return `${text}\nSize: ${size} bytes.\n`;
 }
 
 export interface BriefResult {
@@ -380,11 +475,12 @@ export interface BriefResult {
   bytes: number;
 }
 
-export async function writeBrief(
+/** Reads the issue and its blockers and renders the brief; writes nothing. */
+export async function readBrief(
   identifier: string,
-  options: BriefOptions & { outDirectory: string },
+  options: BriefOptions,
   dependencies: LinearDependencies = {},
-): Promise<BriefResult> {
+): Promise<{ identifier: string; text: string; bytes: number }> {
   const client = createClient(dependencies);
   const issue = await fetchIssue(client, identifier);
   let blockers: BlockerRead;
@@ -395,10 +491,19 @@ export async function writeBrief(
     blockers = { unreadable: error.message };
   }
   const text = renderBrief(issue, { ...options, blockers });
+  return { identifier: issue.identifier, text, bytes: Buffer.byteLength(text) };
+}
+
+export async function writeBrief(
+  identifier: string,
+  options: BriefOptions & { outDirectory: string },
+  dependencies: LinearDependencies = {},
+): Promise<BriefResult> {
+  const brief = await readBrief(identifier, options, dependencies);
   mkdirSync(options.outDirectory, { recursive: true });
-  const path = join(options.outDirectory, `${issue.identifier}.md`);
-  writeFileSync(path, text);
-  return { path, identifier: issue.identifier, bytes: Buffer.byteLength(text) };
+  const path = join(options.outDirectory, `${brief.identifier}.md`);
+  writeFileSync(path, brief.text);
+  return { path, identifier: brief.identifier, bytes: brief.bytes };
 }
 
 export async function run(
@@ -409,7 +514,7 @@ export async function run(
   const parsed = parseOptions(argv, {
     values: ['out-dir', 'model'],
     repeated: ['path', 'verify'],
-    flags: ['json'],
+    flags: ['json', 'stdout'],
   });
   const [identifier, ...extra] = parsed.positionals;
   if (
@@ -418,24 +523,31 @@ export async function run(
     !/^[A-Za-z][A-Za-z0-9]*-\d+$/.test(identifier)
   )
     throw new UsageError(
-      'Usage: brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>] [--out-dir <dir>] [--json]',
+      'Usage: brief.ts <ID> [--path <file>]... [--verify <command>]... [--model <name>] [--out-dir <dir>] [--stdout] [--json]',
     );
-  const outDirectory =
-    parsed.values['out-dir'] ?? join(resolveMainCheckout(runner), 'tmp', 'chef', 'briefs');
+  const stdout = parsed.flags.has('stdout');
+  if (stdout && parsed.values['out-dir'] !== undefined)
+    throw new UsageError('--stdout writes nothing, so it takes no --out-dir.');
+  const options: BriefOptions = {
+    paths: parsed.repeated['path'] ?? [],
+    verify: parsed.repeated['verify'] ?? [],
+    model: parsed.values['model'] ?? 'Sonnet',
+  };
+  const json = parsed.flags.has('json');
   try {
-    const result = await writeBrief(
-      identifier,
-      {
-        paths: parsed.repeated['path'] ?? [],
-        verify: parsed.repeated['verify'] ?? [],
-        model: parsed.values['model'] ?? 'Sonnet',
-        outDirectory,
-      },
-      dependencies,
-    );
+    if (stdout) {
+      const brief = await readBrief(identifier, options, dependencies);
+      return {
+        code: 0,
+        output: json ? JSON.stringify({ ok: true, ...brief }) : brief.text,
+      };
+    }
+    const outDirectory =
+      parsed.values['out-dir'] ?? join(resolveMainCheckout(runner), 'tmp', 'chef', 'briefs');
+    const result = await writeBrief(identifier, { ...options, outDirectory }, dependencies);
     return {
       code: 0,
-      output: parsed.flags.has('json')
+      output: json
         ? JSON.stringify({ ok: true, ...result })
         : `Brief for ${result.identifier} written to ${result.path} (${result.bytes} bytes).`,
     };
@@ -443,9 +555,7 @@ export async function run(
     if (!(error instanceof LinearError)) throw error;
     return {
       code: 1,
-      output: parsed.flags.has('json')
-        ? JSON.stringify({ ok: false, error: error.message })
-        : error.message,
+      output: json ? JSON.stringify({ ok: false, error: error.message }) : error.message,
     };
   }
 }

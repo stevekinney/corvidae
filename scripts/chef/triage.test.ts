@@ -3,11 +3,15 @@ import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.t
 import type { FetchLike } from './linear.ts';
 import { UsageError } from './process-runner.ts';
 import {
+  citationFindings,
+  citationsIn,
+  descriptionByteLimit,
   draftComment,
   isBlocking,
   parseSections,
   proposeAction,
   readyFindings,
+  type RepositoryView,
   run,
   type TriageDependencies,
   type TriageIssue,
@@ -220,6 +224,20 @@ function fakeLinear(served: Served) {
   return { fetchLike, log };
 }
 
+/** What the fake origin/main holds: the files `goodBody` cites, two real paths and two scripts. */
+function repositoryView(): RepositoryView {
+  return {
+    files: new Set([
+      'scripts/chef/a.ts',
+      'scripts/chef/a.test.ts',
+      'applications/interborough/src/routes/chat/index.ts',
+      'scripts/build-release.integration.test.ts',
+    ]),
+    scripts: new Set(['lint:root', 'validate']),
+    ignored: (path) => path.startsWith('tmp/'),
+  };
+}
+
 function dependencies(
   served: Served,
   extra: Partial<TriageDependencies> = {},
@@ -227,7 +245,12 @@ function dependencies(
   const { fetchLike, log } = fakeLinear(served);
   return {
     log,
-    dependencies: { fetch: fetchLike, environment: { LINEAR_API_KEY: 'lin_test' }, ...extra },
+    dependencies: {
+      fetch: fetchLike,
+      environment: { LINEAR_API_KEY: 'lin_test' },
+      repository: () => repositoryView(),
+      ...extra,
+    },
   };
 }
 
@@ -285,5 +308,138 @@ describe('run', () => {
       ['ready', '--issue', 'nope'],
     ])
       expect(await rejectionOf(run(argv, deps))).toBeInstanceOf(UsageError);
+  });
+});
+
+describe('the description size limit', () => {
+  const padding = (bytes: number) => `\n\n${'x'.repeat(bytes)}\n`;
+
+  test('a description over the limit is a blocking finding that names its size and the limit', () => {
+    const body = goodBody + padding(descriptionByteLimit);
+    const findings = readyFindings(body);
+    expect(codes(findings)).toEqual(['description-too-large']);
+    expect(isBlocking(findings[0]!)).toBe(true);
+    expect(findings[0]?.message).toContain(`${Buffer.byteLength(body.trim())} bytes`);
+    expect(findings[0]?.message).toContain(String(descriptionByteLimit));
+  });
+
+  test('the limit counts bytes, not characters', () => {
+    const wide = `${goodBody}\n\n${'é'.repeat(descriptionByteLimit / 2)}\n`;
+    expect(wide.length).toBeLessThan(descriptionByteLimit);
+    expect(codes(readyFindings(wide))).toEqual(['description-too-large']);
+    expect(readyFindings(goodBody + padding(100))).toEqual([]);
+  });
+
+  test('shared programme text replaced by its link does not count', () => {
+    const preamble = `\n## Shared programme text\n\nSee https://linear.app/x/document/chat-board-abc.\n${'y'.repeat(20_000)}\n`;
+    expect(readyFindings(goodBody + preamble)).toEqual([]);
+    const unlinked = `\n## Shared programme text\n\n${'y'.repeat(20_000)}\n`;
+    expect(codes(readyFindings(goodBody + unlinked))).toEqual(['description-too-large']);
+  });
+});
+
+describe('citations resolved against origin/main', () => {
+  const view = repositoryView();
+  const messages = (text: string) => citationFindings(text, view).map((finding) => finding.message);
+
+  test('a description whose citations all resolve has no findings', () => {
+    expect(citationFindings(goodBody, view)).toEqual([]);
+  });
+
+  test('a path that is not on main is named; a real directory and a :line suffix resolve', () => {
+    expect(
+      messages(
+        'See `applications/interborough/src/routes/chats` and `applications/interborough/src/routes/chat`, `scripts/chef/a.ts:10`, `.claude/skills/x.md`.',
+      ),
+    ).toEqual([
+      'The issue cites `applications/interborough/src/routes/chats`, which is not on origin/main.',
+      'The issue cites `.claude/skills/x.md`, which is not on origin/main.',
+    ]);
+  });
+
+  test('a scripts/ path resolves relative to a workspace too', () => {
+    const workspace = {
+      ...view,
+      files: new Set([...view.files, 'applications/interborough/scripts/design-review-capture.ts']),
+    };
+    expect(citationFindings('`scripts/design-review-capture.ts`', workspace)).toEqual([]);
+    expect(messages('`scripts/design-review-capture.ts`')).toHaveLength(1);
+  });
+
+  test('a test file is found by its name anywhere in the tree, and a wrong name is named', () => {
+    expect(
+      messages('Run `build-release.test.ts` and `build-release.integration.test.ts`.'),
+    ).toEqual([
+      'The issue cites the test file `build-release.test.ts`, which no path on origin/main has.',
+    ]);
+  });
+
+  test('bun commands: the script path and the bun run name both resolve', () => {
+    expect(
+      messages(
+        '`bun scripts/nope.ts --flag`\n`bun run with-turborepo-cache`\n`bun run validate`\n`cd applications/interborough && bun run dev`',
+      ),
+    ).toEqual([
+      'The issue cites `scripts/nope.ts`, which is not on origin/main.',
+      'The issue cites `bun run with-turborepo-cache`, which is not a script of the root package.json on origin/main.',
+    ]);
+  });
+
+  test('fenced command lines are read; globs, placeholders, URLs and plain prose are not', () => {
+    const text = [
+      '```sh',
+      'bun test scripts/chef/missing.test.ts',
+      '```',
+      'Prose mentions scripts/chef/prose-only.ts, `scripts/chef/*.ts`, `tmp/chef/briefs/<ID>.md` and `https://example.com/scripts/x.ts`.',
+      'Also `other-repo/src/a.ts` and `scripts/chef/a.ts#L12`.',
+    ].join('\n');
+    expect(messages(text)).toEqual([
+      'The issue cites `scripts/chef/missing.test.ts`, which is not on origin/main.',
+    ]);
+  });
+
+  test('a path under an ignored folder fails unless the line attaches an upload', () => {
+    const findings = citationFindings(
+      '- The rows are in `tmp/cinder-audit/rows.md`.\n- Stylesheet `tmp/proposed-cinder-3.css` (https://uploads.linear.app/abc/proposed-cinder-3.css).',
+      view,
+    );
+    expect(findings.map((finding) => finding.code)).toEqual(['citation-ignored']);
+    expect(findings[0]?.message).toContain('`tmp/cinder-audit/rows.md`');
+    expect(findings[0]?.message).toContain('Commit it, or attach it');
+  });
+
+  test('a path an issue says it creates or writes need not exist yet', () => {
+    expect(
+      messages('Create `scripts/chef/new-thing.ts`. The run writes `tmp/chef/out/log.txt`.'),
+    ).toEqual([]);
+  });
+
+  test('citationsIn lists each citation once, with its kind', () => {
+    expect(
+      citationsIn(
+        '`scripts/chef/a.ts` and `scripts/chef/a.ts` and `bun run validate` `a.test.ts`',
+      ).map((citation) => `${citation.kind}:${citation.value}`),
+    ).toEqual(['path:scripts/chef/a.ts', 'script:validate', 'test:a.test.ts']);
+  });
+
+  test('run fails an issue with a missing citation, and reads no repository when none are cited', async () => {
+    const bad = goodBody.replace('`scripts/chef/a.ts`', '`scripts/chef/b.ts`');
+    const { dependencies: deps } = dependencies({ issues: [issue('COR-1', bad)] });
+    const result = await run(['ready'], deps);
+    expect(result.code).toBe(1);
+    expect(result.output).toContain('citation-missing');
+    expect(result.output).toContain('`scripts/chef/b.ts`');
+    let loaded = 0;
+    const plain = dependencies(
+      { issues: [issue('COR-2', '## Brief\n\nNothing cited here.')] },
+      {
+        repository: () => {
+          loaded += 1;
+          return repositoryView();
+        },
+      },
+    );
+    await run(['ready'], plain.dependencies);
+    expect(loaded).toBe(0);
   });
 });

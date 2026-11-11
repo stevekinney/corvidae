@@ -1,11 +1,12 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { rejectionOf } from '../../testing/testing/src/helpers/promise-outcome.ts';
 import {
   blockerLines,
   charterRules,
+  deliveryRule,
   designLinks,
   designRowIds,
   pathsIn,
@@ -13,6 +14,7 @@ import {
   rowCarriage,
   run,
   sectionOf,
+  stripShared,
   verificationCommands,
 } from './brief.ts';
 import type { FetchLike, IssueSummary } from './linear.ts';
@@ -267,7 +269,7 @@ describe('renderBrief', () => {
   test('cuts a very long description and says so', () => {
     const text = renderBrief(issue('x'.repeat(40_000)), options);
     expect(text).toContain('description cut at 16000');
-    expect(text.length).toBeLessThan(20_000);
+    expect(text.length).toBeLessThan(21_000);
   });
 });
 
@@ -275,7 +277,7 @@ describe('charter rules', () => {
   test('leave merging to the coordinator', () => {
     const rules = charterRules.join('\n');
     expect(rules).not.toContain('merge-gate.ts --pr');
-    expect(rules).toContain('You do not merge');
+    expect(rules).toContain('you do not merge');
   });
 
   // The charter rules are the one source of the worker-facing rules. Each pair names a phrase of a
@@ -569,5 +571,102 @@ describe('run', () => {
     expect(result.output).toContain('No issue COR-9');
     expect(await rejectionOf(run([], dependencies))).toBeInstanceOf(UsageError);
     expect(await rejectionOf(run(['not an id'], dependencies))).toBeInstanceOf(UsageError);
+  });
+
+  const explode = () => {
+    throw new Error('the read-only mode must not run git or touch a checkout');
+  };
+
+  test('--stdout prints the brief and writes nothing, with no checkout lookup', async () => {
+    const before = readdirSync(sandbox);
+    const result = await run(['COR-7', '--stdout'], dependencies, explode);
+    expect(result.code).toBe(0);
+    expect(result.output).toStartWith('# COR-7: Add the thing');
+    expect(result.output).toContain('## Charter rules');
+    expect(readdirSync(sandbox)).toEqual(before);
+  });
+
+  test('--stdout --json carries the text and its size; --out-dir is refused with it', async () => {
+    const result = await run(['COR-7', '--stdout', '--json'], dependencies, explode);
+    const parsed = JSON.parse(result.output) as { text: string; bytes: number };
+    expect(parsed.bytes).toBe(Buffer.byteLength(parsed.text));
+    expect(
+      await rejectionOf(run(['COR-7', '--stdout', '--out-dir', sandbox], dependencies)),
+    ).toBeInstanceOf(UsageError);
+  });
+});
+
+describe('shared programme text', () => {
+  const preamble = 'The programme preamble line.\n'.repeat(400);
+  const sharedBody = `Source of truth: https://linear.app/team/document/chat-board-programme-abc123\n\n${preamble}`;
+  const text = [
+    '## Execution brief',
+    'Do the part.',
+    '',
+    '## Shared programme text',
+    '',
+    sharedBody,
+    '## Acceptance criteria',
+    '- Done.',
+  ].join('\n');
+
+  test('a section that says it is shared and links its document is replaced by the link', () => {
+    const stripped = stripShared(text);
+    expect(stripped.omitted).toEqual([
+      {
+        heading: 'Shared programme text',
+        link: 'https://linear.app/team/document/chat-board-programme-abc123',
+        bytes: Buffer.byteLength(sharedBody.trim()),
+      },
+    ]);
+    expect(stripped.text).not.toContain('The programme preamble line.');
+    expect(stripped.text).toContain('Shared programme text, not repeated here: https://linear.app');
+    expect(stripped.text).toContain('## Acceptance criteria');
+  });
+
+  test('a repository Markdown path counts as the link; a shared section with no link stays', () => {
+    const byPath = stripShared(
+      '## Programme preamble\n\nSee `documentation/repository/chat.md`.\nBody.\n',
+    );
+    expect(byPath.omitted[0]?.link).toBe('documentation/repository/chat.md');
+    const unlinked = stripShared('## Shared context\n\nNo link here.\nBody.\n');
+    expect(unlinked.omitted).toEqual([]);
+    expect(unlinked.text).toContain('Body.');
+  });
+
+  test('an ordinary section is never stripped', () => {
+    const plain = '## Notes\n\nhttps://example.com/x\nstays\n';
+    expect(stripShared(plain)).toEqual({ text: plain, omitted: [] });
+  });
+
+  test('a brief carries the link, not the preamble, and ends with its exact size', () => {
+    const brief = renderBrief(issue(text), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief).not.toContain('The programme preamble line.');
+    expect(brief).toContain('chat-board-programme-abc123');
+    const match = /\nSize: (\d+) bytes\.\n$/.exec(brief);
+    expect(match).not.toBeNull();
+    expect(Number(match?.[1])).toBe(Buffer.byteLength(brief));
+  });
+});
+
+describe('the delivery rule', () => {
+  const root = join(import.meta.dir, '../..');
+
+  test('every brief carries it once, as the one Delivery rule', () => {
+    const brief = renderBrief(issue(description), { paths: [], verify: [], model: 'Sonnet' });
+    expect(brief.split(deliveryRule).length - 1).toBe(1);
+    expect(charterRules.filter((rule) => rule.startsWith('**Delivery:**'))).toHaveLength(1);
+    expect(deliveryRule.split('. ')).toHaveLength(1);
+  });
+
+  test('the agent definition and the Codex protocol point at it instead of restating it', () => {
+    for (const path of [
+      '.claude/agents/chef-worker.md',
+      '.agents/skills/chef/references/codex-protocol.md',
+    ]) {
+      const text = readFileSync(join(root, path), 'utf8');
+      expect(text, path).toContain("brief's Delivery rule");
+      expect(text, path).not.toMatch(/open no pull request unless/i);
+    }
   });
 });

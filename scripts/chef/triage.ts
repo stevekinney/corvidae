@@ -10,14 +10,24 @@
 // ready  Mechanical Definition-of-Ready checks on the ticket template's sections: every section
 //        present and non-empty, acceptance criteria numbered AC1.., Files holding code spans,
 //        Verification holding commands, no TBD/TODO, no Decisions line ending in "?", no open
-//        "Open questions". Default state: Backlog. Labels and native blockers are not read here;
+//        "Open questions", a description over `descriptionByteLimit` (after shared programme text is
+//        replaced by its link, as `brief.ts` does), and every repository path, test file name and
+//        `bun run` script the description cites in a code span resolved against `origin/main`
+//        (`citationFindings` says what it can and cannot resolve). Default state: Backlog. Labels and native blockers are not read here;
 //        `linear.ts blockers <ID>` still gates promotion.
 //
 // Exit codes: 0 no blocking findings (advisory template-shape notes do not count), 1 blocking findings, 2 invalid
 // usage, 3 Linear unavailable.
 
+import { stripShared } from './brief.ts';
 import { createClient, LinearError, type LinearClient, type LinearDependencies } from './linear.ts';
-import { emitResult, parseOptions, UsageError } from './process-runner.ts';
+import {
+  defaultRunner,
+  emitResult,
+  parseOptions,
+  UsageError,
+  type Runner,
+} from './process-runner.ts';
 
 export type Action = 'keep' | 'needs-refinement' | 'propose-backlog';
 
@@ -55,7 +65,10 @@ export interface TriageIssue {
   state: { name: string; type: string };
 }
 
-export type TriageDependencies = LinearDependencies;
+export interface TriageDependencies extends LinearDependencies {
+  /** What `origin/main` holds; the default reads it with git. Tests pass a fake: no git, no network. */
+  repository?: () => RepositoryView;
+}
 
 export const DEFAULT_LIMIT = 50;
 const PAGE_LIMIT = 100;
@@ -230,7 +243,175 @@ export function readyFindings(description: string | null): Finding[] {
       code: 'verification-no-commands',
       message: 'Verification holds no commands in code spans.',
     });
-  return [...findings, ...markerFindings(description, sections)];
+  return [...findings, ...markerFindings(description, sections), ...sizeFindings(description)];
+}
+
+// Size and citations ----------------------------------------------------------------------------
+
+/**
+ * The longest description `ready` accepts, in bytes, after shared programme text is replaced by its
+ * link. The one place the limit lives. Chosen from the 238 open COR issues (2026-11-11): median
+ * 1.8 KB, 75th percentile 3.1 KB, 90th 11.8 KB, and one issue between 8 KB and 10 KB, so 10,000
+ * bytes sits in the natural gap: 25 issues (10%) exceed it and get split, the rest read in full.
+ */
+export const descriptionByteLimit = 10_000;
+
+function sizeFindings(description: string): Finding[] {
+  const bytes = Buffer.byteLength(stripShared(description).text.trim());
+  if (bytes <= descriptionByteLimit) return [];
+  return [
+    {
+      code: 'description-too-large',
+      message: `The description is ${bytes} bytes, over the limit of ${descriptionByteLimit}. Split the issue, move shared programme text to a linked document (a "Shared programme text" section holding its link), and apply revisions in place.`,
+    },
+  ];
+}
+
+/** What a citation is checked against: `origin/main`'s files, its root `package.json` scripts and `.gitignore`. */
+export interface RepositoryView {
+  files: ReadonlySet<string>;
+  scripts: ReadonlySet<string>;
+  /** Whether git would ignore `path` (a scratch folder such as `tmp/`). */
+  ignored(path: string): boolean;
+}
+
+/** The default view: `git ls-tree` and `git show` on `origin/main`, and `git check-ignore`. */
+export function loadRepository(runner: Runner = defaultRunner): RepositoryView {
+  const tree = runner(['git', 'ls-tree', '-r', '-z', '--name-only', 'origin/main']);
+  if (tree.code !== 0)
+    throw new UsageError(
+      "Cannot read origin/main to resolve the issue's citations; run `git fetch origin main`.",
+    );
+  const manifest = runner(['git', 'show', 'origin/main:package.json']);
+  const parsed: unknown = manifest.code === 0 ? JSON.parse(manifest.stdout) : {};
+  const scripts =
+    typeof parsed === 'object' && parsed !== null && 'scripts' in parsed
+      ? Object.keys((parsed as { scripts: Record<string, string> }).scripts)
+      : [];
+  return {
+    files: new Set(tree.stdout.split('\0').filter((path) => path !== '')),
+    scripts: new Set(scripts),
+    ignored: (path) => runner(['git', 'check-ignore', '-q', '--no-index', path]).code === 0,
+  };
+}
+
+const repositoryRoots =
+  /^(?:applications|components|packages|internal|testing|plugins|scripts|documentation|\.agents|\.claude|\.codex|\.github|tmp)\//;
+const testFileName = /^[\w.-]+\.(?:integration\.|slow\.)?test\.tsx?$/;
+/** A line that says the path is produced, not read: a file to create or an output, so it need not exist. */
+const producing =
+  /\b(?:new|creates?|created|adds?|added|writes?|written|saves?|saved|outputs?|emits?|generates?|logs?)\b/i;
+const scriptScope = /(?:^|\s)(?:cd|--filter|--cwd|--cwd=\S*|-F|--workspace)\b/;
+
+export interface Citation {
+  kind: 'path' | 'test' | 'script';
+  value: string;
+  /** Whether the citing line says it produces the path. */
+  producing: boolean;
+  /** Whether the citing line links a Linear upload. */
+  attached: boolean;
+}
+
+/** One candidate token as a citation: trailing punctuation and `:line` or `#L12` suffixes removed. */
+function tokenCitation(token: string): Pick<Citation, 'kind' | 'value'> | undefined {
+  const value = token
+    .replace(/^["'(]+|["',.;:)]+$/g, '')
+    .replace(/(?:#L\d+(?:-L?\d+)?|:\d+(?::\d+)?)$/, '')
+    .replace(/\/$/, '');
+  if (/[*<>{}$|\s]/.test(value) || value === '') return undefined;
+  if (repositoryRoots.test(value)) return { kind: 'path', value };
+  if (testFileName.test(value)) return { kind: 'test', value };
+  return undefined;
+}
+
+/** Every repository path, test file name and `bun run` script the description cites in code. */
+export function citationsIn(description: string): Citation[] {
+  const found = new Map<string, Citation>();
+  let fenced = false;
+  for (const line of description.replace(/<!--[\s\S]*?-->/g, '').split('\n')) {
+    if (/^\s*(```|~~~)/.test(line)) {
+      fenced = !fenced;
+      continue;
+    }
+    const candidates = fenced ? [line.trim()] : inlineSpans(line);
+    const context = {
+      producing: producing.test(line),
+      attached: line.includes('uploads.linear.app'),
+    };
+    for (const candidate of candidates) {
+      for (const token of candidate.split(/\s+/)) {
+        const citation = tokenCitation(token);
+        if (citation !== undefined)
+          found.set(`${citation.kind}:${citation.value}`, { ...citation, ...context });
+      }
+      const script = /^(?:\$\s+)?bun run ([\w:.-]+)(?:\s|$)/.exec(candidate)?.[1];
+      if (script !== undefined && !scriptScope.test(candidate) && !/\.\w+$/.test(script))
+        found.set(`script:${script}`, {
+          kind: 'script',
+          value: script,
+          ...context,
+          producing: false,
+        });
+    }
+  }
+  return [...found.values()];
+}
+
+/**
+ * Findings for citations that `origin/main` does not hold. Resolved: a repository path (a file or
+ * a directory) under a known top-level folder (`scripts/` also relative to any workspace), a test file name (anywhere in the tree), and a
+ * `bun run <name>` that names a root `package.json` script. A path that exists only under an
+ * ignored folder such as `tmp/` is its own finding, unless the same line links a Linear upload.
+ * Not resolved, and never failed: a test's name inside a file, a line number, a glob, a path with a
+ * placeholder, a path in another repository or outside the known folders, a bare file name other
+ * than a test file (a stylesheet cited without its directory), `bun run` after `cd` or `--filter`
+ * (that package's scripts), and a path on a line that says it creates or writes it.
+ */
+export function citationFindings(description: string, view: RepositoryView): Finding[] {
+  const findings: Finding[] = [];
+  const directories = new Set<string>();
+  const names = new Set<string>();
+  for (const file of view.files) {
+    names.add(file.slice(file.lastIndexOf('/') + 1));
+    for (let slash = file.indexOf('/'); slash !== -1; slash = file.indexOf('/', slash + 1))
+      directories.add(file.slice(0, slash));
+  }
+  // A `scripts/` path is also read as relative to a workspace (`applications/x/scripts/y.ts`),
+  // because each workspace owns its `scripts/` directory and issues cite them from there.
+  const onMain = (value: string) =>
+    view.files.has(value) ||
+    directories.has(value) ||
+    (value.startsWith('scripts/') && [...view.files].some((file) => file.endsWith(`/${value}`)));
+  for (const citation of citationsIn(description)) {
+    const { value } = citation;
+    if (citation.kind === 'script') {
+      if (!view.scripts.has(value))
+        findings.push({
+          code: 'citation-missing',
+          message: `The issue cites \`bun run ${value}\`, which is not a script of the root package.json on origin/main.`,
+        });
+    } else if (citation.kind === 'test') {
+      if (!names.has(value))
+        findings.push({
+          code: 'citation-missing',
+          message: `The issue cites the test file \`${value}\`, which no path on origin/main has.`,
+        });
+    } else if (!onMain(value) && !citation.producing) {
+      if (view.ignored(value)) {
+        if (!citation.attached)
+          findings.push({
+            code: 'citation-ignored',
+            message: `The issue cites \`${value}\`, which is only under an ignored folder and dies with the worktree. Commit it, or attach it to the issue.`,
+          });
+      } else {
+        findings.push({
+          code: 'citation-missing',
+          message: `The issue cites \`${value}\`, which is not on origin/main.`,
+        });
+      }
+    }
+  }
+  return findings;
 }
 
 // Actions ---------------------------------------------------------------------------------------
@@ -402,7 +583,14 @@ export async function run(
   let reports: IssueReport[];
   try {
     const issues = await selectIssues(client, options);
-    reports = issues.map((issue) => summarizeIssue(issue, readyFindings(issue.description)));
+    let view: RepositoryView | undefined;
+    reports = issues.map((issue) => {
+      const findings = readyFindings(issue.description);
+      if (issue.description === null || citationsIn(issue.description).length === 0)
+        return summarizeIssue(issue, findings);
+      view ??= (dependencies.repository ?? loadRepository)();
+      return summarizeIssue(issue, [...findings, ...citationFindings(issue.description, view)]);
+    });
   } catch (error) {
     if (error instanceof LinearError) return failure(`Linear is unavailable: ${error.message}`, 3);
     throw error;
