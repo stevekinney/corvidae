@@ -96,7 +96,6 @@ export function createRunOperations<D extends AgentDefinitions>(
     runSessionIncarnations,
     runtime,
     diagnose,
-    dropPendingApprovalOverride,
     runToolboxesByRunId,
     releaseRunScope,
     resolvedReviewIds,
@@ -357,7 +356,7 @@ export function createRunOperations<D extends AgentDefinitions>(
     runSessionIncarnations.delete(id);
     runRequestContexts.delete(id);
     for (const reviewId of pendingApprovalOverrides.keys()) {
-      if (reviewId.startsWith(`approval:${id}:`)) dropPendingApprovalOverride(reviewId);
+      if (reviewId.startsWith(`approval:${id}:`)) core.dropPendingApprovalOverride(reviewId);
     }
     for (const reviewId of invalidApprovalReviewIds) {
       if (reviewId.startsWith(`approval:${id}:`)) invalidApprovalReviewIds.delete(reviewId);

@@ -173,7 +173,6 @@ export function createFireApprovalRestore<D extends AgentDefinitions>(
     emitter,
     runtime,
     diagnose,
-    dropPendingApprovalOverride,
     runToolboxesByRunId,
     releaseRunScope,
     resolvedReviewIds,
@@ -821,7 +820,7 @@ export function createFireApprovalRestore<D extends AgentDefinitions>(
     if (scope.durablyPruned !== true && sessionId !== undefined) {
       await pruneFireApprovalsFromSession(sessionId, runId, (id) => id === reviewId);
     }
-    dropPendingApprovalOverride(reviewId);
+    core.dropPendingApprovalOverride(reviewId);
     endScheduledFireWhenNoApprovalRemains(runId);
   }
 
@@ -1525,7 +1524,7 @@ export function createFireApprovalRestore<D extends AgentDefinitions>(
             await releaseScheduledFireApproval(runId, reviewId, 'invalid', { sessionId });
           } else {
             invalidApprovalReviewIds.add(reviewId);
-            dropPendingApprovalOverride(reviewId);
+            core.dropPendingApprovalOverride(reviewId);
             await peers.prunePersistedInvalidApprovalReviewStateWithRetry(
               sessionId,
               runId,

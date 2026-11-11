@@ -73,7 +73,7 @@ export function createTaskStart<D extends AgentDefinitions>(
   core: BureauCore<D>,
   peers: TaskStartPeers,
 ) {
-  const { runtimeServices, store, runtime, diagnose, toolGrantNow, assertRunAdmissionOpen } = core;
+  const { runtimeServices, store, runtime, diagnose, toolGrantNow } = core;
 
   /**
    * Starts a task: a session run of `agentName` over `input`, in the context `options.contextId`
@@ -257,7 +257,7 @@ export function createTaskStart<D extends AgentDefinitions>(
     input: TaskInput,
     tryOptions: TryAgentOptions = {},
   ): Promise<TryAgentResult> {
-    assertRunAdmissionOpen('run');
+    core.assertRunAdmissionOpen('run');
     const owner = ownerFromPrincipal(tryOptions.principal, toBadRequest);
     if (core.fileAgents === undefined) {
       throw new AgentFileError(

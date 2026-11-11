@@ -94,7 +94,6 @@ export function createSessions<D extends AgentDefinitions>(
     store,
     runtime,
     diagnose,
-    dropPendingApprovalOverride,
     runToolboxesByRunId,
     releaseRunScope,
     orphanedRunIds,
@@ -856,7 +855,7 @@ export function createSessions<D extends AgentDefinitions>(
           principal: 'system:session-deletion',
         });
         for (const reviewId of pendingApprovalOverrides.keys()) {
-          if (reviewId.startsWith(`approval:${runId}:`)) dropPendingApprovalOverride(reviewId);
+          if (reviewId.startsWith(`approval:${runId}:`)) core.dropPendingApprovalOverride(reviewId);
         }
         for (const reviewId of invalidApprovalReviewIds) {
           if (reviewId.startsWith(`approval:${runId}:`)) invalidApprovalReviewIds.delete(reviewId);

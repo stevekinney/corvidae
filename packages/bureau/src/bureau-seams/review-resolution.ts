@@ -238,8 +238,6 @@ export function createReviewResolution<D extends AgentDefinitions>(
     store,
     runtime,
     diagnose,
-    interruptedFields,
-    dropPendingApprovalOverride,
     catalogRunIds,
     runToolboxesByRunId,
     runScopedContexts,
@@ -305,7 +303,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
             ageMilliseconds: now - requestedAt,
             status: 'pending',
             round: pendingApprovalRounds.get(id) ?? 0,
-            ...interruptedFields(id),
+            ...core.interruptedFields(id),
           });
         }
       }
@@ -394,7 +392,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
           ageMilliseconds: now - requestedAt,
           status: 'pending',
           round: pendingApprovalRounds.get(reviewId) ?? 0,
-          ...interruptedFields(reviewId),
+          ...core.interruptedFields(reviewId),
         });
       }
     }
@@ -779,7 +777,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
   function markReviewResolvedLocally(review: SessionPendingReview): void {
     resolvedReviewIds.add(review.id);
     if (review.kind !== 'tool-approval') return;
-    dropPendingApprovalOverride(review.id);
+    core.dropPendingApprovalOverride(review.id);
     if (
       !Array.from(pendingApprovalOverrides.keys()).some((reviewId) =>
         reviewId.startsWith(`approval:${review.runId}:`),

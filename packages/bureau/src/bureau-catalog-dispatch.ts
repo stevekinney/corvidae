@@ -433,6 +433,33 @@ export function createCatalogDispatcher({
     return handle;
   }
 
+  /**
+   * AB-22 review fix: `catalogRuns` (declared near `activeRuns` above) needs
+   * every handle `runAgent` hands back, on both the durable and direct
+   * dispatch branches, so `dispose()` can abort a catalog run still in
+   * flight the same way it already aborts bureau-owned `ActiveRun`s.
+   * Untracked on terminal settlement so a long-lived bureau does not retain
+   * one entry per historical run forever. The `store` entry such a run now
+   * also has (COR-1302, `registerCatalogRun`) is released the same way, when
+   * the run settles.
+   *
+   * This does NOT also untrack `runAttribution` (review finding
+   * PRRT_kwDORvupsc6gUhzr): a settled catalog run's attribution must
+   * survive its own settlement, matching `Bureau.createRun`'s session
+   * record, which likewise lives until an explicit `deleteRun` — the
+   * `eventHistory` authorization test above (`bureau-run.test.ts`) reads
+   * `runAttribution` back AFTER `await run.result()` and requires it still
+   * be there. `runAttribution.delete` for a catalog run's minted `runId`
+   * only ever runs for a run that never actually dispatched (the
+   * `AgentContractError` fallback and non-`AgentContractError` resolver
+   * failure paths below), never for one that reached the durable engine and
+   * settled. Catalog runs have no `deleteRun` equivalent to bound this the
+   * way a bureau session's attribution is bounded: COR-1302 puts a live
+   * catalog run on `store`, but releases it there as it settles without
+   * touching its attribution, so `eventHistory` still resolves the settled
+   * run for its owner. Giving catalog runs their own deletion surface remains
+   * its own design problem, outside COR-1302 as it was outside AB-241.
+   */
   function trackCatalogRun(handle: AgentRun<unknown, boolean>): AgentRun<unknown, boolean> {
     catalogRuns.add(handle);
     // `detachBestEffortPromise`, not a bare `void ... .finally(...)`: AB-15's
@@ -450,6 +477,36 @@ export function createCatalogDispatcher({
     return handle;
   }
 
+  /**
+   * AB-15/AB-22: `bureau.run(name, input, options?)` — synchronous dispatch
+   * to a named catalog agent. Independent of `createRunFromRequest` below:
+   * this drives the catalog agent's OWN generate/tools/durability, not
+   * `runtime`'s bureau-level composition.
+   *
+   * Synchronous throws are limited to unknown `name`, a disposed bureau, and
+   * malformed `input`/`options` (validated up front, before any async work).
+   * When this bureau has a durable engine composed AND the named agent
+   * exposes the definition-resolution capability (AB-21's
+   * `OPERATIVE_RESOLVE_RUN_OPTIONS`), the run is driven through that engine;
+   * otherwise the agent's own in-memory `run()` is used directly. Either way
+   * this function itself returns synchronously — the async work (resolving
+   * run options, or awaiting the durable engine's setup) is deferred behind
+   * `createDeferredAgentRun`.
+   *
+   * AB-240: the durable branch checkpoints the run through the engine (it is
+   * discoverable via `bureau.listDurableRuns()` mid-flight — see
+   * `bureau-run.test.ts`) AND persists its own recovery record — agent name,
+   * `readGenerationProfile(agent).revision`, and the original `input` — via
+   * `runtime.persistCatalogRunRecoveryRecord`, independent of the bureau
+   * session record `createRunFromRequest` writes (a catalog dispatch has no
+   * request context to draw an authority record from, and never owns a
+   * bureau session). A process restart reattaches through
+   * `runtime-composition.ts`'s `resolveRunServices` catalog branch, which
+   * resolves that record back through `runtime.setCatalogAgentRunOptionsResolver`
+   * — i.e. the SAME catalog agent's `OPERATIVE_RESOLVE_RUN_OPTIONS` a live
+   * dispatch would have used, never the Bureau's default runtime
+   * composition.
+   */
   function runDurableCatalogAgent(
     name: string,
     input: AgentInput,

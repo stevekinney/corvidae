@@ -212,8 +212,6 @@ export function createRunCreation<D extends AgentDefinitions>(
     runtime,
     diagnose,
     configureChildWaitServices,
-    assertRunAdmissionOpen,
-    releaseRunToolboxWhenIdle,
     activeRuns,
     erroredActiveRuns,
     runsStoppedByShutdown,
@@ -237,7 +235,7 @@ export function createRunCreation<D extends AgentDefinitions>(
     // host that states no principal owns the run as `anonymous:local`; one that
     // states anything but text is refused here, before anything is persisted.
     const owner = ownerFromPrincipal(request.principal, toBadRequest);
-    assertRunAdmissionOpen('run');
+    core.assertRunAdmissionOpen('run');
 
     if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
 
@@ -335,7 +333,7 @@ export function createRunCreation<D extends AgentDefinitions>(
     // rate-limited or duplicate triggers are rejected outright, not queued.
     // COR-690: re-checked here because the authority validation above awaits,
     // and `shutdown()` may have started during it.
-    assertRunAdmissionOpen('run');
+    core.assertRunAdmissionOpen('run');
     // COR-424 — a request naming a run-creation request id consults the
     // command ledger before flow control, so an exact retry replays the
     // original run instead of being admitted, or rejected, as new work. A
@@ -724,7 +722,7 @@ export function createRunCreation<D extends AgentDefinitions>(
           runId,
           runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
         );
-        assertRunAdmissionOpen('run');
+        core.assertRunAdmissionOpen('run');
         // COR-1481 — the fence again, now that the session is saved and before the run
         // registers: a deletion that began during the awaits above has already looked
         // for this session's runs and would not find this one.
@@ -940,7 +938,7 @@ export function createRunCreation<D extends AgentDefinitions>(
         activeRuns.delete(activeRun);
         erroredActiveRuns.delete(activeRun);
         releaseTaskRowClaims(event.conversation);
-        releaseRunToolboxWhenIdle(runToolbox);
+        core.releaseRunToolboxWhenIdle(runToolbox);
         peers.disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
         // retention step whether or not anyone ever calls `closed()`.
@@ -1001,7 +999,7 @@ export function createRunCreation<D extends AgentDefinitions>(
         activeRuns.delete(activeRun);
         erroredActiveRuns.delete(activeRun);
         releaseTaskRowClaims(event.conversation);
-        releaseRunToolboxWhenIdle(runToolbox);
+        core.releaseRunToolboxWhenIdle(runToolbox);
         peers.disposeRegisteredStreamListeners(disposeStreamListeners);
         // COR-625: a terminal transition owes this run one checkpoint-
         // retention step whether or not anyone ever calls `closed()`.
@@ -1078,7 +1076,7 @@ export function createRunCreation<D extends AgentDefinitions>(
       activeRun.once('run.error', (_event) => {
         activeRuns.delete(activeRun);
         erroredActiveRuns.add(activeRun);
-        releaseRunToolboxWhenIdle(runToolbox);
+        core.releaseRunToolboxWhenIdle(runToolbox);
         // The stream listeners are deliberately NOT disposed here. `run.error`
         // is not terminal: Operative follows it with `run.completed`, which
         // carries the finish reason, so the `run.completed` listener above

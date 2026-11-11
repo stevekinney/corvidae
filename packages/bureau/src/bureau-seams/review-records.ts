@@ -128,7 +128,6 @@ export function createReviewRecords<D extends AgentDefinitions>(
     runSessionIncarnations,
     runtime,
     diagnose,
-    dropPendingApprovalOverride,
     catalogRunIds,
     resolvedReviewIds,
     resolvingReviewIds,
@@ -1085,7 +1084,7 @@ export function createReviewRecords<D extends AgentDefinitions>(
         if (scheduledFireApprovalRuns.has(runId)) {
           await peers.releaseScheduledFireApproval(runId, id, 'expired');
         } else {
-          dropPendingApprovalOverride(id);
+          core.dropPendingApprovalOverride(id);
           await peers.prunePersistedInvalidApprovalReviewStateWithRetry(
             terminalReview.sessionId,
             runId,

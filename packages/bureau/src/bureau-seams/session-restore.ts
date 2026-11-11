@@ -62,7 +62,6 @@ export function createSessionRestore<D extends AgentDefinitions>(
     runtimeServices,
     runtime,
     diagnose,
-    dropPendingApprovalOverride,
     runToolboxesByRunId,
     releaseRunScope,
     pendingApprovalOverrides,
@@ -256,7 +255,7 @@ export function createSessionRestore<D extends AgentDefinitions>(
         for (const reviewId of Object.keys(overrides)) {
           if (!reviewId.startsWith(`approval:${runId}:`)) continue;
           invalidApprovalReviewIds.add(reviewId);
-          dropPendingApprovalOverride(reviewId);
+          core.dropPendingApprovalOverride(reviewId);
           await peers.prunePersistedInvalidApprovalReviewStateWithRetry(
             session.id,
             runId,

@@ -46,11 +46,8 @@ import {
   type Store,
   StoreActionEvent,
   readDurableRunResult,
-  scanToolResult,
-  type GuardrailFiring,
   type OperativeHookMap,
 } from '@lostgradient/operative';
-import type { SessionTaintSeam } from './session-taint-seam';
 import {
   createSkillArtifactLoader,
   SkillActivatedEvent,
@@ -61,8 +58,7 @@ import {
 } from './skills';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { type Engine, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
-import { type Tool, type ToolExecutionResult, type ToolRequestContext } from 'armorer';
-import { Conversation } from 'conversationalist';
+import { type Tool, type ToolRequestContext } from 'armorer';
 import type { PluginHost } from '@lostgradient/interborough-plugin';
 import { shutdownThenRethrow } from './composition-failure';
 import {
@@ -401,6 +397,11 @@ import {
 } from './bureau-seams/session-input-gates';
 import { createReviewRecords, type ReviewRecordsPeers } from './bureau-seams/review-records';
 import { createLiveFrames, type LiveFramesPeers } from './bureau-seams/live-frames';
+import { createRunBookkeeping, type RunBookkeepingPeers } from './bureau-seams/run-bookkeeping';
+import {
+  createApprovedToolScan,
+  type ApprovedToolScanPeers,
+} from './bureau-seams/approved-tool-scan';
 
 /**
  * The callables the seams of `constructBureau` read from one another and from the parent: the
@@ -433,7 +434,9 @@ type BureauPeers = EventHistoryPeers &
   SteeringLogPeers &
   SessionInputGatesPeers &
   ReviewRecordsPeers &
-  LiveFramesPeers;
+  LiveFramesPeers &
+  RunBookkeepingPeers &
+  ApprovedToolScanPeers;
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -1451,11 +1454,21 @@ async function constructBureau<const D extends AgentDefinitions>(
     sessionInputSessionBacklogLimit,
     sessionInputPrincipalBacklogLimit,
     configureChildWaitServices,
-    assertRunAdmissionOpen,
-    releaseRunToolboxWhenIdle,
-    withBackgroundShutdownSignal,
-    interruptedFields,
-    dropPendingApprovalOverride,
+    get assertRunAdmissionOpen() {
+      return assertRunAdmissionOpen;
+    },
+    get releaseRunToolboxWhenIdle() {
+      return releaseRunToolboxWhenIdle;
+    },
+    get withBackgroundShutdownSignal() {
+      return withBackgroundShutdownSignal;
+    },
+    get interruptedFields() {
+      return interruptedFields;
+    },
+    get dropPendingApprovalOverride() {
+      return dropPendingApprovalOverride;
+    },
     activeRuns,
     erroredActiveRuns,
     recoveredActiveRuns,
@@ -2518,6 +2531,16 @@ async function constructBureau<const D extends AgentDefinitions>(
     deliverLiveFrame,
     liveTaskOf,
   } = createLiveFrames<D>(core, peers);
+  const {
+    assertRunAdmissionOpen,
+    releaseRunToolboxWhenIdle,
+    withBackgroundShutdownSignal,
+    interruptedFields,
+    dropPendingApprovalOverride,
+    recordTaskWakeup,
+    recordTaskSettlement,
+  } = createRunBookkeeping<D>(core, peers);
+  const { scanApprovedToolResult, scannedApprovedOutcome } = createApprovedToolScan<D>(core, peers);
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -3170,36 +3193,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // snapshots the runs and toolboxes it drains, so an API or scheduler run
   // admitted afterwards can never exist outside that snapshot.
   let runAdmissionClosed = false;
-  function assertRunAdmissionOpen(subject: 'run' | 'scheduler task'): void {
-    if (runAdmissionClosed) {
-      throw new BureauError(`Cannot create ${subject}: Bureau is shutting down.`, 'CONFLICT');
-    }
-  }
-  // COR-690: a terminal run's toolbox leaves the tracked set only once its own
-  // execution lifecycle is idle. A tool callback that ignored the run's abort
-  // is still running inside it, and a later `shutdown()` must find and await it.
-  function releaseRunToolboxWhenIdle(runToolbox: BureauToolbox): void {
-    detachBestEffortPromise(runToolbox.whenIdle().then(() => runToolboxes.delete(runToolbox)));
-  }
-  function withBackgroundShutdownSignal(callerSignal: AbortSignal | undefined): AbortSignal {
-    return callerSignal
-      ? AbortSignal.any([callerSignal, backgroundShutdownController.signal])
-      : backgroundShutdownController.signal;
-  }
-  function interruptedFields(
-    reviewId: string,
-  ): { interrupted: true; resolutionStartedAt: number | undefined } | Record<never, never> {
-    return interruptedApprovals.has(reviewId)
-      ? { interrupted: true, resolutionStartedAt: interruptedApprovals.get(reviewId) }
-      : {};
-  }
-  function dropPendingApprovalOverride(reviewId: string): void {
-    pendingApprovalOverrides.delete(reviewId);
-    pendingApprovalRounds.delete(reviewId);
-    interruptedApprovals.delete(reviewId);
-    approvalRequestedAt.delete(reviewId);
-    stopLazyExpirySweepWhenNoneHeld();
-  }
 
   /**
    * COR-718 — the runs of schedule fires whose attribution this Bureau holds. A fire's
@@ -3593,91 +3586,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   );
 
   /**
-   * COR-1987 — keeps a task's pending wakeup on its record, so a reload can read it back: a
-   * `schedule.wakeup` record sets it from the time the run announced, and the run parking on a
-   * human wait clears it, because the run then waits for a person, not the clock. A wakeup that
-   * has fired, or a run that ended, needs no write: the task's view shows a wakeup only while the
-   * task is working and the time is still ahead.
-   */
-  function recordTaskWakeup(action: {
-    readonly runId: string;
-    readonly type: string;
-    readonly detail: unknown;
-  }): void {
-    let wakeAt: number | null;
-    if (action.type === 'schedule.wakeup') {
-      const detail =
-        action.detail !== null && typeof action.detail === 'object'
-          ? (action.detail as Record<string, unknown>)
-          : {};
-      const announced = detail['wakeAt'];
-      if (typeof announced !== 'number' || !Number.isFinite(announced)) return;
-      wakeAt = announced;
-    } else if (action.type === 'multiagent.human-wait.parked') {
-      wakeAt = null;
-    } else {
-      return;
-    }
-    tasks.recordWakeup(action.runId, wakeAt).catch((error: unknown) => {
-      diagnose({
-        level: 'error',
-        scope: 'task-registry',
-        message: `[bureau] Could not record the wakeup of task "${action.runId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    });
-  }
-
-  /** COR-1481 — records how a task ended, from the action that ended its run. */
-  function recordTaskSettlement(action: {
-    readonly runId: string;
-    readonly type: string;
-    readonly detail: unknown;
-    readonly timestamp: number;
-  }): void {
-    // `run.error` is not a settlement of its own: Operative announces it before the
-    // `run.completed` (or `run.aborted`) that ends the run and carries its finish reason, so
-    // the one write comes from that. A `run.error` with no such end is another process's, which
-    // `isCommittedElsewhere` keeps from reaching here.
-    if (action.type !== 'run.completed' && action.type !== 'run.aborted') {
-      return;
-    }
-    const detail =
-      action.detail !== null && typeof action.detail === 'object'
-        ? (action.detail as Record<string, unknown>)
-        : {};
-    const finishReason =
-      typeof detail['finishReason'] === 'string' ? detail['finishReason'] : undefined;
-    const status =
-      action.type === 'run.completed' ? settledTaskState('completed', finishReason) : 'canceled';
-    const failure = detail['error'];
-    // Every cancellation terminal, a shutdown's abort included, follows its run's cleanup the
-    // way an API cancellation does, so the task reports what the cleanup actually did.
-    if (status === 'canceled') {
-      const activeRun = store.getRun(action.runId)?.activeRun;
-      if (activeRun !== undefined) void tasks.watchCleanup(action.runId, activeRun.closed());
-    }
-    void tasks
-      .recordSettled(action.runId, {
-        at: new Date(action.timestamp).toISOString(),
-        status,
-        finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
-        message:
-          status === 'failed' && failure !== undefined && failure !== null
-            ? serializeUnknownError(failure).slice(0, 1000)
-            : null,
-      })
-      .catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'task-registry',
-          message: `[bureau] Could not record how task "${action.runId}" ended: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
-  }
-
-  /**
    * COR-1622 — each fire's seed read of its review history, kept as a promise so a close writer
    * can wait for a read that is still under way, and dropped with the fire.
    */
@@ -3823,127 +3731,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   });
   const { loadConversation, saveSession, persistSessionUpdate } = sessionPersistence;
 
-  /**
-   * AB-15/AB-22: `bureau.run(name, input, options?)` — synchronous dispatch
-   * to a named catalog agent. Independent of `createRunFromRequest` below:
-   * this drives the catalog agent's OWN generate/tools/durability, not
-   * `runtime`'s bureau-level composition.
-   *
-   * Synchronous throws are limited to unknown `name`, a disposed bureau, and
-   * malformed `input`/`options` (validated up front, before any async work).
-   * When this bureau has a durable engine composed AND the named agent
-   * exposes the definition-resolution capability (AB-21's
-   * `OPERATIVE_RESOLVE_RUN_OPTIONS`), the run is driven through that engine;
-   * otherwise the agent's own in-memory `run()` is used directly. Either way
-   * this function itself returns synchronously — the async work (resolving
-   * run options, or awaiting the durable engine's setup) is deferred behind
-   * `createDeferredAgentRun`.
-   *
-   * AB-240: the durable branch checkpoints the run through the engine (it is
-   * discoverable via `bureau.listDurableRuns()` mid-flight — see
-   * `bureau-run.test.ts`) AND persists its own recovery record — agent name,
-   * `readGenerationProfile(agent).revision`, and the original `input` — via
-   * `runtime.persistCatalogRunRecoveryRecord`, independent of the bureau
-   * session record `createRunFromRequest` writes (a catalog dispatch has no
-   * request context to draw an authority record from, and never owns a
-   * bureau session). A process restart reattaches through
-   * `runtime-composition.ts`'s `resolveRunServices` catalog branch, which
-   * resolves that record back through `runtime.setCatalogAgentRunOptionsResolver`
-   * — i.e. the SAME catalog agent's `OPERATIVE_RESOLVE_RUN_OPTIONS` a live
-   * dispatch would have used, never the Bureau's default runtime
-   * composition.
-   */
-  /**
-   * AB-22 review fix: `catalogRuns` (declared near `activeRuns` above) needs
-   * every handle `runAgent` hands back, on both the durable and direct
-   * dispatch branches, so `dispose()` can abort a catalog run still in
-   * flight the same way it already aborts bureau-owned `ActiveRun`s.
-   * Untracked on terminal settlement so a long-lived bureau does not retain
-   * one entry per historical run forever. The `store` entry such a run now
-   * also has (COR-1302, `registerCatalogRun`) is released the same way, when
-   * the run settles.
-   *
-   * This does NOT also untrack `runAttribution` (review finding
-   * PRRT_kwDORvupsc6gUhzr): a settled catalog run's attribution must
-   * survive its own settlement, matching `Bureau.createRun`'s session
-   * record, which likewise lives until an explicit `deleteRun` — the
-   * `eventHistory` authorization test above (`bureau-run.test.ts`) reads
-   * `runAttribution` back AFTER `await run.result()` and requires it still
-   * be there. `runAttribution.delete` for a catalog run's minted `runId`
-   * only ever runs for a run that never actually dispatched (the
-   * `AgentContractError` fallback and non-`AgentContractError` resolver
-   * failure paths below), never for one that reached the durable engine and
-   * settled. Catalog runs have no `deleteRun` equivalent to bound this the
-   * way a bureau session's attribution is bounded: COR-1302 puts a live
-   * catalog run on `store`, but releases it there as it settles without
-   * touching its attribution, so `eventHistory` still resolves the settled
-   * run for its owner. Giving catalog runs their own deletion surface remains
-   * its own design problem, outside COR-1302 as it was outside AB-241.
-   */
-
-  /**
-   * Boot-time recovery for durable runs (seams #2, #3/#5b, #5). Resumes any
-   * `agentRun` workflows a previous process left in flight via
-   * `engine.recoverAll()`. Interactive bureau-owned runs reattach as live
-   * `ActiveRun`s; native scheduled fires stay monitor-only because they have no
-   * interactive session ownership or live run surface.
-   *
-   * #2 — no side table. Each recovered run's owning session is read from the
-   * handle's own launch metadata (`handle.getLaunchMetadata().input.sessionId`,
-   * which the run carried in its durable input), not from a pre-built
-   * runId→sessionId scan of the session store. The deps a recovered run needs are
-   * re-provided lazily by the engine's `resolveWorkflowServices` resolver
-   * (`resolveRunServices`) before its generator advances — no pre-injection, no
-   * module-global registry.
-   *
-   * #3/#5b — live visibility. Weft's awaited `onRecoveredWorkflow` hook wraps
-   * each owned handle in a {@link reattachRecoveredRun} adapter and registers it
-   * before resumed user code advances, so per-step events, live subscribers, and
-   * terminal session persistence all share the same recovered event surface.
-   *
-   * Boot returns once `recoverAll()` has STARTED the handles and they are
-   * registered, not when they complete: a recovered run that resumes into a long
-   * model call must not hold the bureau hostage. Each adapter awaits its result
-   * detached.
-   *
-   * Fail-safe: a run whose deps the resolver cannot rebuild is failed terminally
-   * by the engine BEFORE replay (the resolver reconciles its session to `error`
-   * synchronously, with the sessionId in hand); its reattached handle then rejects
-   * and the adapter stays write-free, so the resolver's status is authoritative.
-   * A scheduled fire whose launch metadata narrows to a marker-bearing
-   * `ScheduledAgentRunInput` is not cancelled for lacking `runId` / `sessionId`
-   * ownership. Its services are rebuilt by `resolveRunServices`'s scheduled
-   * branch, and its scheduled session write-back hook owns transcript persistence.
-   * Recovery attaches only a detached result monitor so failures are visible.
-   *
-   * A non-scheduled run whose launch metadata lacks a `sessionId` (checkpointed
-   * before #2, or not bureau-owned) is skipped — there is no compatibility
-   * fallback for cross-upgrade in-flight runs.
-   *
-   * KNOWN SEAM — durable scheduler runs (#7b) are NOT cross-process recoverable.
-   * A durable scheduler task (durable scheduler enabled) runs as an `agentRun`
-   * workflow in this SAME engine with `sessionId === runId` (a synthetic
-   * `scheduler-run-…` id), and the durable run path does NOT write a session
-   * record (only the bureau's interactive `runDurable` path persists sessions).
-   * So if the process crashes with a scheduler run in flight, `recoverAll()`
-   * surfaces it here, but `resolveRunServices` finds no session for its synthetic
-   * id → returns `unavailable` → the engine fails it clean before replay. The
-   * reattached handle then rejects and the adapter stays write-free. Net: scheduler
-   * durable runs are SAME-PROCESS suspend/resume only (their value — preemption
-   * preserves progress within a live process); they surface briefly on recovery
-   * and fail clean rather than resuming. This is intentional, not a gap:
-   * cross-process recovery of scheduler tasks would require persisting a session
-   * per task, which the in-process scheduler deliberately does not do.
-   */
-
-  /**
-   * Boot-single-shot: called at most once per bureau, either immediately
-   * during `createBureau()` or once from the deferred-authority-validator
-   * path (never both — `durableRecoveryStarted` guards it). Resolves a
-   * {@link BureauRecoveryReport} aggregating this one pass's outcome; never
-   * rejects (AB-242's decision record — recovery failure stays diagnostic,
-   * `createBureau()` never rejects on it, in whole or in part).
-   */
   /**
    * COR-1946 — settles the tasks of a process that is gone (see `process-lease.ts`). A lease that is
    * still current is left alone and looked at again when it would lapse, so a process restarted
@@ -4277,138 +4064,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * prefix of its own.
    */
   const regenerateLedger = createRegenerateLedger(runtime.kv, runtimeServices);
-
-  /**
-   * COR-2299 — the hook plan a catalog agent's run this process does not hold would run with:
-   * Bureau's tier for the agent, the plugin tier, and the agent's own hooks, as a dispatch composes
-   * them, each tracker seeded from the session's taint (`sessionTaint`) and writing a new one back.
-   * An agent that cannot be resolved falls back to Bureau's own guardrails alone, so the result is
-   * still scanned.
-   */
-  async function catalogRunHookPlan(
-    runId: string,
-    sessionTaint: SessionTaintSeam,
-    reviewedAgentName: string | undefined,
-  ): Promise<HookRegistry<OperativeHookMap>> {
-    // A run this process restarted into has no attribution; its review still names the agent.
-    const agentName = runAttribution.get(runId)?.agentName ?? reviewedAgentName;
-    let agent = agentName === undefined ? undefined : agentCatalog.find(agentName);
-    // COR-2387: a file agent is scanned with the definition its run recorded, never the catalog's
-    // current one, which an operator may have edited while the run was parked. A snapshot that
-    // cannot be rebuilt leaves the result to Bureau's own guardrails alone.
-    const recordedReference =
-      agentName === undefined ? undefined : await fileAgents?.snapshots.reference(runId);
-    if (
-      fileAgents !== undefined &&
-      agentName !== undefined &&
-      recordedReference !== undefined &&
-      recordedReference.id === agentName
-    ) {
-      try {
-        const rebuilt = await fileAgents.agentForRecordedRun(
-          agentName,
-          recordedReference.hash,
-          recordedReference.definitionRevision,
-        );
-        agent = rebuilt.agent;
-      } catch {
-        agent = undefined;
-      }
-    }
-    if (agent !== undefined && hasDefinitionResolver(agent)) {
-      try {
-        const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('', {
-          runId,
-          sessionTaint,
-          ...(agentName === undefined ? {} : { agentName }),
-          ...catalogRunGuardrailsContext(agent),
-        });
-        return runtime.composeRunHooks({
-          bureau: runtime.createBureauInvariantHooks(undefined, {
-            agentResolvesGuardrails: resolvesOwnGuardrails(agent),
-            sessionTaint,
-          }),
-          agent: resolved.hooks,
-        });
-      } catch {
-        // Falls through to Bureau's own guardrails, which still scan the result.
-      }
-    }
-    return runtime.composeRunHooks({
-      bureau: runtime.createBureauInvariantHooks(undefined, { sessionTaint }),
-      agent: undefined,
-    });
-  }
-
-  /**
-   * COR-2299 — an approved call runs outside the run's step, so its result reaches the session
-   * without the run loop's `validateToolResult` scan. Scanned here with the run's own hook plan (a
-   * run this process does not hold has one built from its agent, seeded from the session's
-   * persisted taint), a hit writes the blocked result in its place, as the loop does, and taints
-   * the session; the taint is stored before this returns. A scan that fails does the same
-   * (COR-2300).
-   */
-  async function scanApprovedToolResult(
-    review: Extract<PendingReview, { kind: 'tool-approval' }>,
-    executed: ToolExecutionResult,
-  ): Promise<ToolExecutionResult> {
-    let conversation = new Conversation(undefined, { runtime: runtimeServices });
-    let metadata: Record<string, JSONValue> | undefined;
-    try {
-      const stored = await runtime.sessionStore?.load(review.sessionId);
-      if (stored !== undefined) {
-        conversation = new Conversation(stored.conversationHistory, { runtime: runtimeServices });
-        metadata = stored.metadata;
-      }
-    } catch {
-      // The conversation only gives a detector its length; an unreadable session is scanned empty,
-      // and starts untainted in memory (a taint it raises is still stored).
-    }
-    const seam = runtime.sessionTaintSeam(review.sessionId, review.runId, metadata);
-    const hooks =
-      runHookPlans.get(review.runId) ??
-      (await catalogRunHookPlan(review.runId, seam, review.agentName));
-    const firings: GuardrailFiring[] = [];
-    const scanned = await scanToolResult(executed, {
-      hooks,
-      conversation,
-      step: 0,
-      reportGuardrail: (firing) => firings.push(firing),
-    });
-    if (scanned.blocked) {
-      // A result a guardrail refused taints the session. The tracker that refused it stores the
-      // taint when it holds the seam, which every agent tier does; a tier built without one (a
-      // hand-written agent under Bureau's guardrails), a tripwire below the taint threshold, and a
-      // scan that failed before a tracker could are stored here. A session that already holds a
-      // taint keeps it (the write is compare-and-set), so this never publishes twice.
-      const firing = firings[0];
-      await seam.onTainted({
-        reason: 'A guardrail refused the result of an approved call',
-        detector: scanned.tripwire?.guardrailName ?? firing?.guardrailName ?? 'tool-result-scan',
-        category:
-          scanned.tripwire?.category ??
-          firing?.category ??
-          (scanned.failed === true ? 'detector-failure' : 'blocked-tool-result'),
-        confidence: scanned.tripwire?.confidence ?? firing?.confidence ?? 1,
-        step: 0,
-        provenance: 'tool-result',
-      });
-      diagnose({
-        level: 'warn',
-        scope: 'guardrails',
-        message: `[bureau] A guardrail blocked the result of the approved call "${review.approval.callId}" of run "${review.runId}"${scanned.tripwire === undefined ? '' : ' (tripwire)'}; the session holds the blocked result.`,
-      });
-    }
-    return scanned.result;
-  }
-
-  /** {@link scanApprovedToolResult} for a result of unknown shape: only a tool's own is scanned. */
-  async function scannedApprovedOutcome(
-    review: Extract<PendingReview, { kind: 'tool-approval' }>,
-    result: unknown,
-  ): Promise<ToolExecutionResult> {
-    return await scanApprovedToolResult(review, result as ToolExecutionResult);
-  }
 
   // Build the bureau object first so the audit trail (and webhook notifier)
   // can subscribe to its action events via addEventListener. The audit trail

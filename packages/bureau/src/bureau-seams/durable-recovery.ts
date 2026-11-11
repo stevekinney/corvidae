@@ -329,6 +329,14 @@ export function createDurableRecovery<D extends AgentDefinitions>(
     }
   }
 
+  /**
+   * Boot-single-shot: called at most once per bureau, either immediately
+   * during `createBureau()` or once from the deferred-authority-validator
+   * path (never both — `durableRecoveryStarted` guards it). Resolves a
+   * {@link BureauRecoveryReport} aggregating this one pass's outcome; never
+   * rejects (AB-242's decision record — recovery failure stays diagnostic,
+   * `createBureau()` never rejects on it, in whole or in part).
+   */
   async function recoverDurableRuns(): Promise<BureauRecoveryReport> {
     // COR-1421 — retain every live frame for the first subscriber while the
     // pass runs.
@@ -385,6 +393,60 @@ export function createDurableRecovery<D extends AgentDefinitions>(
     }
   }
 
+  /**
+   * Boot-time recovery for durable runs (seams #2, #3/#5b, #5). Resumes any
+   * `agentRun` workflows a previous process left in flight via
+   * `engine.recoverAll()`. Interactive bureau-owned runs reattach as live
+   * `ActiveRun`s; native scheduled fires stay monitor-only because they have no
+   * interactive session ownership or live run surface.
+   *
+   * #2 — no side table. Each recovered run's owning session is read from the
+   * handle's own launch metadata (`handle.getLaunchMetadata().input.sessionId`,
+   * which the run carried in its durable input), not from a pre-built
+   * runId→sessionId scan of the session store. The deps a recovered run needs are
+   * re-provided lazily by the engine's `resolveWorkflowServices` resolver
+   * (`resolveRunServices`) before its generator advances — no pre-injection, no
+   * module-global registry.
+   *
+   * #3/#5b — live visibility. Weft's awaited `onRecoveredWorkflow` hook wraps
+   * each owned handle in a {@link reattachRecoveredRun} adapter and registers it
+   * before resumed user code advances, so per-step events, live subscribers, and
+   * terminal session persistence all share the same recovered event surface.
+   *
+   * Boot returns once `recoverAll()` has STARTED the handles and they are
+   * registered, not when they complete: a recovered run that resumes into a long
+   * model call must not hold the bureau hostage. Each adapter awaits its result
+   * detached.
+   *
+   * Fail-safe: a run whose deps the resolver cannot rebuild is failed terminally
+   * by the engine BEFORE replay (the resolver reconciles its session to `error`
+   * synchronously, with the sessionId in hand); its reattached handle then rejects
+   * and the adapter stays write-free, so the resolver's status is authoritative.
+   * A scheduled fire whose launch metadata narrows to a marker-bearing
+   * `ScheduledAgentRunInput` is not cancelled for lacking `runId` / `sessionId`
+   * ownership. Its services are rebuilt by `resolveRunServices`'s scheduled
+   * branch, and its scheduled session write-back hook owns transcript persistence.
+   * Recovery attaches only a detached result monitor so failures are visible.
+   *
+   * A non-scheduled run whose launch metadata lacks a `sessionId` (checkpointed
+   * before #2, or not bureau-owned) is skipped — there is no compatibility
+   * fallback for cross-upgrade in-flight runs.
+   *
+   * KNOWN SEAM — durable scheduler runs (#7b) are NOT cross-process recoverable.
+   * A durable scheduler task (durable scheduler enabled) runs as an `agentRun`
+   * workflow in this SAME engine with `sessionId === runId` (a synthetic
+   * `scheduler-run-…` id), and the durable run path does NOT write a session
+   * record (only the bureau's interactive `runDurable` path persists sessions).
+   * So if the process crashes with a scheduler run in flight, `recoverAll()`
+   * surfaces it here, but `resolveRunServices` finds no session for its synthetic
+   * id → returns `unavailable` → the engine fails it clean before replay. The
+   * reattached handle then rejects and the adapter stays write-free. Net: scheduler
+   * durable runs are SAME-PROCESS suspend/resume only (their value — preemption
+   * preserves progress within a live process); they surface briefly on recovery
+   * and fail clean rather than resuming. This is intentional, not a gap:
+   * cross-process recovery of scheduler tasks would require persisting a session
+   * per task, which the in-process scheduler deliberately does not do.
+   */
   async function recoverDurableRunsPass(): Promise<BureauRecoveryReport> {
     // AB-389 — boot recovery drains the session outbox BEFORE anything
     // else in this pass, so a crash between a commit and its own drain
