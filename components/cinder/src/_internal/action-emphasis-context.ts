@@ -18,6 +18,11 @@ import { optionalContext } from './optional-context.ts';
 export type ActionEmphasisContextValue = {
   /** Whether a primary button under this context draws as secondary. */
   readonly demotePrimary: boolean;
+  /**
+   * Whether buttons under this context draw at the `xs` control height, so a header's actions
+   * never make the header taller than its title.
+   */
+  readonly compact?: boolean;
 };
 
 const [getActionEmphasisContextStrict, setActionEmphasisContextRaw] =
@@ -41,4 +46,12 @@ export function resolveActionVariant<Variant extends string>(
   variant: Variant,
 ): Variant | 'secondary' {
   return context?.demotePrimary === true && variant === 'primary' ? 'secondary' : variant;
+}
+
+/** The size a button draws at: `xs` while the context is compact, otherwise the size asked for. */
+export function resolveActionSize<Size extends string>(
+  context: ActionEmphasisContextValue | undefined,
+  size: Size,
+): Size | 'xs' {
+  return context?.compact === true ? 'xs' : size;
 }
