@@ -714,7 +714,7 @@
         </Skeleton>
       </div>
     {:else}
-      <div class="ib-hook-editor__layout">
+      <div class="ib-hook-editor__layout" class:ib-hook-editor__layout--single={isNew}>
         <form class="ib-hook-editor__steps" onsubmit={submit} novalidate>
           <section class="ib-hook-step" aria-labelledby="ib-hook-step-when">
             <h2 id="ib-hook-step-when" class="ib-hook-step__title">
@@ -998,9 +998,12 @@
     min-width: 0;
   }
 
-  /* A side rail stacks below the main column under 1024px (design row 04b). */
+  /*
+   * A side rail stacks below the main column under 1024px (design row 04b). A new hook is a form at
+   * reading width (sweep S56), so its empty log stays below the steps instead of beside them.
+   */
   @media (min-width: 64rem) {
-    .ib-hook-editor__layout:has(.ib-hook-editor__aside) {
+    .ib-hook-editor__layout:not(.ib-hook-editor__layout--single):has(.ib-hook-editor__aside) {
       grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
     }
   }

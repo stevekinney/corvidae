@@ -157,6 +157,8 @@ function open(
     draftTest?: 'delivered' | { status: number };
     /** The read of one hook never answers, as a slow server does. */
     holdRead?: boolean;
+    /** The read of a hook's deliveries never answers, so only the delivery log is still loading. */
+    holdDeliveries?: boolean;
   } = {},
 ) {
   const served: Served = {
@@ -197,6 +199,7 @@ function open(
       return options.off ? unsupported() : found(params);
     },
     'bureau.hooks.deliveries': (params) => {
+      if (options.holdDeliveries) return new Promise(() => undefined);
       const id = String(params['hookId']);
       served.deliveryReads.push(id);
       const limit = typeof params['limit'] === 'number' ? params['limit'] : 50;
@@ -2033,6 +2036,16 @@ describe('a hook’s delivery log', () => {
     expect(within(deliveries).queryByTestId('hook-delivery-list')).toBeNull();
     expect(deliveries.textContent).toContain(copy.none.title);
     expect(served.deliveryReads).toEqual([]);
+  });
+
+  test('draws placeholders while it is read, and the form beside it is already there', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha', holdDeliveries: true });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-deliveries-loading');
+    expect(within(deliveries).getByRole('heading', { name: copy.heading })).not.toBeNull();
+    expect(within(deliveries).queryByTestId('hook-delivery-list')).toBeNull();
+    expect(within(deliveries).queryByRole('radio', { name: copy.failed })).toBeNull();
+    await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel);
   });
 
   test('says the log could not be read, and Try again reads the log alone, leaving the hook as it is', async () => {
