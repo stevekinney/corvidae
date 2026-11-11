@@ -64,6 +64,38 @@ afterAll(() => {
   });
 });
 
+// happy-dom lays nothing out, so the row reports what a browser would: its own width, and a
+// `scrollWidth` of the larger of that and what the drawn form's controls need.
+let barWidth = 0;
+let needs: Record<string, number> = { wide: 0, medium: 0, narrow: 0 };
+const ownClientWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientWidth');
+const ownScrollWidth = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'scrollWidth');
+function isRow(element: HTMLElement): boolean {
+  return element.classList.contains('cinder-filter-bar__row');
+}
+function drawnForm(element: HTMLElement): string {
+  return element.closest('.cinder-filter-bar')?.getAttribute('data-cinder-layout') ?? 'wide';
+}
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+  configurable: true,
+  get(this: HTMLElement) {
+    return isRow(this) ? barWidth : 0;
+  },
+});
+Object.defineProperty(HTMLElement.prototype, 'scrollWidth', {
+  configurable: true,
+  get(this: HTMLElement) {
+    return isRow(this) ? Math.max(barWidth, needs[drawnForm(this)] ?? 0) : 0;
+  },
+});
+
+afterAll(() => {
+  if (ownClientWidth) Object.defineProperty(HTMLElement.prototype, 'clientWidth', ownClientWidth);
+  else Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
+  if (ownScrollWidth) Object.defineProperty(HTMLElement.prototype, 'scrollWidth', ownScrollWidth);
+  else Reflect.deleteProperty(HTMLElement.prototype, 'scrollWidth');
+});
+
 const { cleanup, render } = await import('@testing-library/svelte');
 const { flushSync } = await import('svelte');
 const { default: FilterBar } = await import('./filter-bar.svelte');
@@ -75,6 +107,7 @@ function setViewport(width: number): void {
 }
 
 function setBarWidth(width: number): void {
+  barWidth = width;
   for (const report of observers) report(width);
   flushSync();
 }
@@ -82,6 +115,8 @@ function setBarWidth(width: number): void {
 afterEach(() => {
   cleanup();
   observers.clear();
+  barWidth = 0;
+  needs = { wide: 0, medium: 0, narrow: 0 };
   setViewport(1440);
 });
 
@@ -159,36 +194,84 @@ describe('FilterBar layout by viewport', () => {
   });
 });
 
-describe('FilterBar layout by its own width', () => {
-  test('a wide viewport beside a wide sidebar steps down instead of overflowing', () => {
+const AGENT_APPLIED = [{ key: 'agent', value: 'tool-runner', label: 'Agent' }];
+
+describe('FilterBar layout by its measured width', () => {
+  test('a row that fits stays wide, however long its labels read', () => {
+    // The Runs page at 1280 pixels: a 1042px bar whose controls, with an agent chip applied, need
+    // 1021px. A text-length estimate put them at 1119px and folded the segments.
+    needs = { wide: 1021, medium: 760, narrow: 300 };
+    const { container } = render(FilterBar, {
+      segments: SEGMENTS,
+      facets: FACETS,
+      appliedFilters: AGENT_APPLIED,
+    });
+    setBarWidth(1042);
+    expect(layoutOf(container)).toBe('wide');
+    expect(container.querySelector('[role="radiogroup"]')).not.toBeNull();
+  });
+
+  test('a row that overflows steps down, and steps back up once the wider form fits', () => {
+    needs = { wide: 1100, medium: 700, narrow: 300 };
     const { container } = render(FilterBar, { segments: SEGMENTS, facets: FACETS });
     expect(layoutOf(container)).toBe('wide');
-    // 1024px of viewport leaves roughly 780px for the bar behind a 190px sidebar.
-    setBarWidth(780);
+    setBarWidth(1042);
     expect(layoutOf(container)).toBe('medium');
-    setBarWidth(340);
+    setBarWidth(600);
     expect(layoutOf(container)).toBe('narrow');
-    setBarWidth(1200);
+    setBarWidth(800);
+    expect(layoutOf(container)).toBe('medium');
+    setBarWidth(1099);
+    expect(layoutOf(container)).toBe('medium');
+    setBarWidth(1100);
     expect(layoutOf(container)).toBe('wide');
   });
 
-  test('a bar with few controls stays wide at the width that would fold a full bar', () => {
-    const { container } = render(FilterBar, {
-      segments: [
-        { value: 'all', label: 'All', count: 3 },
-        { value: 'paused', label: 'Paused', count: 1 },
-        { value: 'problems', label: 'Problems', count: 1 },
-      ],
-      facets: [
-        {
-          type: 'choice',
-          key: 'starts',
-          label: 'Starts',
-          options: [{ value: 'schedule', label: 'On a schedule' }],
-        },
-      ],
+  test('a chip removed from a folded bar draws the wide form again when it now fits', async () => {
+    needs = { wide: 1100, medium: 700, narrow: 300 };
+    const { container, rerender } = render(FilterBar, {
+      segments: SEGMENTS,
+      facets: FACETS,
+      appliedFilters: AGENT_APPLIED,
     });
-    setBarWidth(780);
+    setBarWidth(1042);
+    expect(layoutOf(container)).toBe('medium');
+    needs = { wide: 980, medium: 600, narrow: 300 };
+    await rerender({ appliedFilters: [] } as never);
+    flushSync();
+    expect(layoutOf(container)).toBe('wide');
+  });
+
+  test('a folded bar waits for focus to leave before it draws a wider form, so a new count does not remount the control in use', async () => {
+    needs = { wide: 1100, medium: 700, narrow: 300 };
+    const { container, rerender } = render(FilterBar, { segments: SEGMENTS, facets: FACETS });
+    setBarWidth(1042);
+    expect(layoutOf(container)).toBe('medium');
+    const select = container.querySelector<HTMLElement>(
+      '.cinder-filter-bar__segments-select button',
+    );
+    if (select === null) throw new Error('The folded segments drew no select');
+    select.focus();
+    expect(document.activeElement).toBe(select);
+
+    needs = { wide: 1000, medium: 700, narrow: 300 };
+    await rerender({ segments: SEGMENTS.map((segment) => ({ ...segment, count: 0 })) } as never);
+    flushSync();
+    expect(layoutOf(container)).toBe('medium');
+    expect(document.activeElement).toBe(select);
+
+    const outside = document.createElement('button');
+    document.body.append(outside);
+    outside.focus();
+    flushSync();
+    expect(layoutOf(container)).toBe('wide');
+    outside.remove();
+  });
+
+  test('a bar with no layout to measure keeps the viewport’s form', () => {
+    needs = { wide: 5000, medium: 5000, narrow: 5000 };
+    const { container } = render(FilterBar, { segments: SEGMENTS, facets: FACETS });
+    setBarWidth(0);
     expect(layoutOf(container)).toBe('wide');
   });
 

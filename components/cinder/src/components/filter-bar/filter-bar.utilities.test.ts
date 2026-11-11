@@ -4,13 +4,17 @@ import type { ChoiceFacet, FacetDefinition, FilterSegment } from './filter-bar.t
 import {
   appliedSummary,
   appliedValues,
-  estimateFilterBarWidth,
+  type FilterBarContents,
+  type FilterBarFitInput,
   fromControlValue,
   isCollapsible,
+  narrowerLayout,
+  nextFilterBarFit,
   optionLabel,
   resolveFilterBarLayout,
   segmentSelectLabel,
   toControlValue,
+  viewportLayout,
 } from './filter-bar.utilities.ts';
 
 const SEGMENTS: FilterSegment[] = [
@@ -28,13 +32,10 @@ const CHOICE: ChoiceFacet = {
   ],
 };
 
-function contents(overrides: Partial<Parameters<typeof estimateFilterBarWidth>[0]> = {}) {
+function contents(overrides: Partial<FilterBarContents> = {}): FilterBarContents {
   return {
     segments: SEGMENTS,
     facets: [CHOICE] as readonly FacetDefinition[],
-    appliedFilters: [],
-    segmentsLabel: 'Status',
-    searchVisible: true,
     ...overrides,
   };
 }
@@ -101,121 +102,83 @@ describe('collapsibility', () => {
   });
 });
 
-describe('width estimates', () => {
-  test('each step down needs less room', () => {
-    const wide = estimateFilterBarWidth(contents(), 'wide');
-    const medium = estimateFilterBarWidth(contents(), 'medium');
-    const narrow = estimateFilterBarWidth(contents(), 'narrow');
-    expect(wide).toBeGreaterThan(medium);
-    expect(medium).toBeGreaterThan(narrow);
-  });
-
-  test('the Runs bar needs about a thousand pixels wide, and the Workflows bar far less', () => {
-    const runs = estimateFilterBarWidth(
-      contents({
-        segments: [
-          { value: 'all', label: 'All', count: 19 },
-          { value: 'waiting', label: 'Waiting on you', count: 2 },
-          { value: 'running', label: 'Running', count: 0 },
-          { value: 'done', label: 'Done', count: 15 },
-          { value: 'failed', label: 'Failed', count: 1 },
-          { value: 'canceled', label: 'Canceled', count: 1 },
-        ],
-        facets: [CHOICE, { ...CHOICE, key: 'agent', label: 'Agent' }],
-      }),
-      'wide',
-    );
-    expect(runs).toBeGreaterThan(900);
-    // At 1280 pixels the bar beside Interborough's sidebar is about 1040 pixels, where the wide
-    // form, measured at about 915, fits; the segments are one track, never six gapped controls.
-    expect(runs).toBeLessThan(1040);
-    const workflows = estimateFilterBarWidth(
-      contents({ segments: SEGMENTS, facets: [{ ...CHOICE, key: 'starts', label: 'Starts' }] }),
-      'wide',
-    );
-    expect(workflows).toBeLessThan(700);
-  });
-
-  test('an applied chip is wider than its add chip, and a toggle count adds room', () => {
-    const applied = estimateFilterBarWidth(
-      contents({
-        appliedFilters: [
-          { key: 'startedBy', label: 'Started by', value: 'chats', values: ['chats'] },
-        ],
-      }),
-      'wide',
-    );
-    expect(applied).toBeGreaterThan(estimateFilterBarWidth(contents(), 'wide'));
-    const toggle: FacetDefinition = { type: 'toggle', key: 't', label: 'Missed runs', count: 1 };
-    expect(estimateFilterBarWidth(contents({ facets: [toggle] }), 'wide')).toBeGreaterThan(
-      estimateFilterBarWidth(
-        contents({ facets: [{ type: 'toggle', key: 't', label: 'Missed runs' }] }),
-        'wide',
-      ),
-    );
-  });
-
-  test('accounts for select options and custom controls in wide layouts', () => {
-    const select = estimateFilterBarWidth(
-      contents({
-        segments: [],
-        searchVisible: false,
-        facets: [
-          {
-            type: 'select',
-            key: 'kind',
-            label: 'Kind',
-            placeholder: 'Any kind',
-            options: [{ value: 'long', label: 'A long option label' }],
-          },
-        ],
-      }),
-      'wide',
-    );
-    const custom = estimateFilterBarWidth(
-      contents({
-        segments: [],
-        searchVisible: false,
-        facets: [{ type: 'custom', key: 'date', label: 'Date', control: undefined as never }],
-      }),
-      'wide',
-    );
-    expect(select).toBeGreaterThan(0);
-    expect(custom).toBeGreaterThan(0);
-  });
-});
-
 describe('resolveFilterBarLayout', () => {
-  const base = { contents: contents(), forced: 'auto' as const, phone: false, tablet: false };
+  const base = {
+    collapsible: true,
+    forced: 'auto' as const,
+    viewport: 'wide' as const,
+    fitted: 'wide' as const,
+  };
 
-  test('follows the viewport when the bar has room or is unmeasured', () => {
-    expect(resolveFilterBarLayout({ ...base, containerWidth: undefined })).toBe('wide');
-    expect(resolveFilterBarLayout({ ...base, tablet: true, containerWidth: 5000 })).toBe('medium');
-    expect(
-      resolveFilterBarLayout({ ...base, tablet: true, phone: true, containerWidth: 5000 }),
-    ).toBe('narrow');
+  test('follows the viewport while the bar fits or is unmeasured', () => {
+    expect(viewportLayout(false, false)).toBe('wide');
+    expect(viewportLayout(false, true)).toBe('medium');
+    expect(viewportLayout(true, true)).toBe('narrow');
+    expect(resolveFilterBarLayout(base)).toBe('wide');
+    expect(resolveFilterBarLayout({ ...base, viewport: 'medium' })).toBe('medium');
   });
 
-  test('takes the narrower of the viewport and the bar', () => {
-    expect(resolveFilterBarLayout({ ...base, containerWidth: 500 })).toBe('medium');
-    expect(resolveFilterBarLayout({ ...base, containerWidth: 100 })).toBe('narrow');
+  test('takes the narrower of the viewport and what the bar was measured to fit', () => {
+    expect(resolveFilterBarLayout({ ...base, fitted: 'medium' })).toBe('medium');
+    expect(resolveFilterBarLayout({ ...base, viewport: 'medium', fitted: 'narrow' })).toBe(
+      'narrow',
+    );
+    expect(narrowerLayout('wide', 'narrow')).toBe('narrow');
   });
 
   test('a forced layout wins, and a bar that cannot collapse is wide', () => {
-    expect(resolveFilterBarLayout({ ...base, forced: 'narrow', containerWidth: 5000 })).toBe(
-      'narrow',
-    );
+    expect(resolveFilterBarLayout({ ...base, forced: 'narrow' })).toBe('narrow');
     expect(
-      resolveFilterBarLayout({
-        ...base,
-        contents: contents({
-          segments: [],
-          facets: [{ type: 'select', key: 'k', label: 'K', options: [] }],
-        }),
-        phone: true,
-        tablet: true,
-        containerWidth: 100,
-      }),
+      resolveFilterBarLayout({ ...base, collapsible: false, viewport: 'narrow', fitted: 'narrow' }),
     ).toBe('wide');
+  });
+});
+
+describe('nextFilterBarFit', () => {
+  const base: FilterBarFitInput = {
+    drawn: 'wide',
+    viewport: 'wide',
+    need: 1021,
+    available: 1042,
+    widerNeed: undefined,
+    mayProbe: true,
+  };
+
+  test('a drawn row that fits its box keeps its form', () => {
+    expect(nextFilterBarFit(base)).toEqual({ fitted: undefined, waiting: false });
+    // A row whose rounded scrollWidth is under a pixel past its box still fits.
+    expect(nextFilterBarFit({ ...base, need: 1042.4 })).toEqual({
+      fitted: undefined,
+      waiting: false,
+    });
+  });
+
+  test('a drawn row that overflows steps down one form, and narrow is the floor', () => {
+    expect(nextFilterBarFit({ ...base, need: 1100 }).fitted).toBe('medium');
+    expect(nextFilterBarFit({ ...base, drawn: 'medium', need: 1100 }).fitted).toBe('narrow');
+    expect(nextFilterBarFit({ ...base, drawn: 'narrow', need: 1100 }).fitted).toBeUndefined();
+  });
+
+  test('a folded row steps up when the wider form, as measured, fits', () => {
+    const folded = { ...base, drawn: 'medium' as const, need: 700 };
+    expect(nextFilterBarFit({ ...folded, widerNeed: 1000 }).fitted).toBe('wide');
+    expect(nextFilterBarFit({ ...folded, widerNeed: 1100 }).fitted).toBeUndefined();
+    expect(nextFilterBarFit({ ...folded, drawn: 'narrow', widerNeed: 700 }).fitted).toBe('medium');
+  });
+
+  test('a folded row never steps past the viewport form', () => {
+    expect(
+      nextFilterBarFit({ ...base, drawn: 'medium', viewport: 'medium', need: 700, widerNeed: 1 })
+        .fitted,
+    ).toBeUndefined();
+  });
+
+  test('an unmeasured wider form is drawn to measure it, unless the bar is in use', () => {
+    const folded = { ...base, drawn: 'medium' as const, need: 700 };
+    expect(nextFilterBarFit(folded)).toEqual({ fitted: 'wide', waiting: false });
+    expect(nextFilterBarFit({ ...folded, mayProbe: false })).toEqual({
+      fitted: undefined,
+      waiting: true,
+    });
   });
 });

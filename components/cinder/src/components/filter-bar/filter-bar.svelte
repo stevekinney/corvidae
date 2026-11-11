@@ -28,7 +28,7 @@
 </script>
 
 <script lang="ts">
-  import { tick } from 'svelte';
+  import { tick, untrack } from 'svelte';
   import type { Attachment } from 'svelte/attachments';
   import Funnel from '@lucide/svelte/icons/funnel';
   import Search from '@lucide/svelte/icons/search';
@@ -54,16 +54,20 @@
     appliedValues,
     fromControlValue,
     isCollapsible,
+    measureFilterBarRow,
+    nextFilterBarFit,
     optionLabel,
     resolveFilterBarLayout,
     segmentSelectLabel,
     toControlValue,
+    viewportLayout,
   } from './filter-bar.utilities.ts';
 
   import type {
     AppliedFilter,
     ChoiceFacet,
     FacetDefinition,
+    FilterBarLayout,
     FilterBarProps,
     SelectFacet,
     ToggleFacet,
@@ -95,7 +99,6 @@
   }: FilterBarProps = $props();
 
   const searchId = $derived(`${generatedId}-search`);
-  let containerWidth: number | undefined = $state();
 
   // Internal uncontrolled search value when searchQuery is not provided.
   let internalSearchQuery = $state('');
@@ -111,37 +114,132 @@
   const phone = useViewportBelow(() => FILTER_BAR_PHONE_BREAKPOINT);
   const tablet = useViewportBelow(() => FILTER_BAR_TABLET_BREAKPOINT);
 
-  const contents = $derived({
-    segments,
-    facets,
-    appliedFilters,
-    segmentsLabel,
-    searchVisible,
-  });
-  const collapsible = $derived(isCollapsible(contents));
+  const collapsible = $derived(isCollapsible({ segments, facets }));
+  const viewport = $derived(viewportLayout(phone.current, tablet.current));
+  // The widest form the bar's row was measured to fit. Until it is measured (on the server, and
+  // before the first measurement in the browser) the viewport alone decides.
+  let fitted: FilterBarLayout = $state('wide');
   const layout = $derived(
-    resolveFilterBarLayout({
-      contents,
-      forced: forcedLayout,
-      phone: phone.current,
-      tablet: tablet.current,
-      containerWidth,
-    }),
+    resolveFilterBarLayout({ collapsible, forced: forcedLayout, viewport, fitted }),
   );
 
   // A bar with segments or chips puts its search at the end of the row; a bar of selects alone
   // starts with it, as a list pane's filters do.
   const searchAtStart = $derived((searchPosition ?? (collapsible ? 'end' : 'start')) === 'start');
 
-  // The bar's own width, so a wide form beside a wide sidebar steps down instead of overflowing.
-  const measureWidth: Attachment<HTMLDivElement> = (node) => {
-    if (typeof ResizeObserver === 'undefined') return;
-    const observer = new ResizeObserver((entries) => {
-      const width = entries[0]?.contentRect.width;
-      if (typeof width === 'number' && width > 0) containerWidth = width;
+  // Everything that changes how wide a form's controls are. A measurement is remembered against it,
+  // by value, so fresh arrays with the same labels and counts keep what was measured.
+  const contentsKey = $derived(
+    JSON.stringify([
+      segments.map((segment) => [segment.label, segment.count ?? null]),
+      segmentsLabel,
+      currentSegment,
+      facets.map((facet) => [
+        facet.type,
+        facet.key,
+        facet.label,
+        facet.type === 'select'
+          ? [facet.placeholder ?? null, facet.options.map((option) => option.label)]
+          : null,
+        facet.type === 'toggle' ? (facet.count ?? null) : null,
+      ]),
+      appliedFilters.map((filter) => [filter.key, filter.label, appliedValues(filter)]),
+      searchVisible,
+      searchAtStart,
+    ]),
+  );
+
+  let rowElement: HTMLDivElement | undefined = $state();
+  // Bumped when the bar's width changes, when fonts finish loading, and when focus moves while a
+  // wider form waits to be measured: each asks the bar to measure its row again.
+  let measureRequest = $state(0);
+  // What each form was measured to need, for the contents (and fonts) in `measuredKey`.
+  const needs = new Map<FilterBarLayout, number>();
+  let measuredKey = '';
+  let fontsLoaded = 0;
+  let waitingToProbe = false;
+
+  /** Whether focus or an open popup is inside the bar, so drawing another form would disturb it. */
+  function busy(): boolean {
+    if (barElement === undefined) return false;
+    return (
+      barElement.contains(document.activeElement) ||
+      barElement.querySelector('[aria-expanded="true"]') !== null
+    );
+  }
+
+  // Measures the drawn row and steps the layout down when it overflows, or up when the wider form
+  // fits. It runs after the DOM is updated and before the browser paints, so a form that does not
+  // fit is never seen; a change of `fitted` redraws and measures again, and the remembered needs
+  // stop that at the form that fits.
+  $effect(() => {
+    void measureRequest;
+    const drawn = layout;
+    const key = contentsKey;
+    const cap = viewport;
+    const row = rowElement;
+    if (forcedLayout !== 'auto' || !collapsible || row === undefined) return;
+    untrack(() => {
+      const fullKey = `${String(fontsLoaded)}:${key}`;
+      if (fullKey !== measuredKey) {
+        needs.clear();
+        measuredKey = fullKey;
+      }
+      const available = row.clientWidth;
+      // Nothing measured (a hidden bar, or a DOM with no layout) keeps the viewport's layout.
+      if (available <= 0) return;
+      const need = measureFilterBarRow(row);
+      if (need > available) needs.set(drawn, need);
+      const next = nextFilterBarFit({
+        drawn,
+        viewport: cap,
+        need,
+        available,
+        widerNeed: needs.get(drawn === 'narrow' ? 'medium' : 'wide'),
+        mayProbe: !busy(),
+      });
+      waitingToProbe = next.waiting;
+      if (next.fitted !== undefined) fitted = next.fitted;
     });
-    observer.observe(node);
-    return () => observer.disconnect();
+  });
+
+  // The bar's own width, so a wide form beside a wide sidebar steps down instead of overflowing, and
+  // the moments a measurement can go stale without the contents changing: fonts that finish
+  // loading, and focus leaving a bar that put off drawing a wider form.
+  const measureWidth: Attachment<HTMLDivElement> = (node) => {
+    let lastWidth = 0;
+    const observer =
+      typeof ResizeObserver === 'undefined'
+        ? undefined
+        : new ResizeObserver((entries) => {
+            const width = entries[0]?.contentRect.width;
+            if (typeof width !== 'number' || width === lastWidth) return;
+            lastWidth = width;
+            measureRequest += 1;
+          });
+    observer?.observe(node);
+    const fonts = typeof document === 'undefined' ? undefined : document.fonts;
+    const fontsChanged = (): void => {
+      fontsLoaded += 1;
+      measureRequest += 1;
+    };
+    fonts?.addEventListener('loadingdone', fontsChanged);
+    // Focus that lands somewhere, or leaves for nothing. A move between two controls in the bar
+    // also fires a focusout, with the next control as its related target, which is skipped: while
+    // it is dispatched the bar holds no focus, so a measurement then would draw a wider form under it.
+    const focusMoved = (event: FocusEvent): void => {
+      if (!waitingToProbe) return;
+      if (event.type === 'focusout' && event.relatedTarget !== null) return;
+      measureRequest += 1;
+    };
+    document.addEventListener('focusin', focusMoved);
+    document.addEventListener('focusout', focusMoved);
+    return () => {
+      observer?.disconnect();
+      fonts?.removeEventListener('loadingdone', fontsChanged);
+      document.removeEventListener('focusin', focusMoved);
+      document.removeEventListener('focusout', focusMoved);
+    };
   };
 
   function appliedFilterFor(key: string): AppliedFilter | undefined {
@@ -591,7 +689,7 @@
   bind:this={barElement}
   tabindex="-1"
 >
-  <div class="cinder-filter-bar__row">
+  <div class="cinder-filter-bar__row" bind:this={rowElement}>
     {#if searchVisible && searchAtStart && layout === 'wide'}
       {@render searchField(searchId)}
     {/if}
