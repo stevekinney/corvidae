@@ -8,8 +8,11 @@
    * runs and a link to all of them, with their number after the label. History is the versions that
    * have run, each with whether it is compatible with the current one; a type the Bureau registers
    * for itself has neither Code nor History, and says so on its Overview. The header holds start
-   * run, which opens the run setup page and which every type but the Bureau's own has; edit, pause,
-   * resume and delete, which only a file has; and a "⋯" menu, whose Send a signal opens a dialog.
+   * run, which opens the run setup page and which every type but the Bureau's own has, or Resume in
+   * its place for a paused file; Edit, which only a file has; and a "⋯" menu (board PageWorkflow,
+   * "More menu, and Delete"), whose Send a signal opens a dialog, and which holds a file's
+   * Duplicate, Pause (while it runs) and Delete…, which opens the delete dialog. Delete asks first,
+   * names the schedules that run the workflow from outside its file, and offers to delete them too.
    * Its title, tabs and actions come from the route, so they show while the type is still loading.
    *
    * A write names the hash of the file the page read, so a file that changed on disk since is
@@ -27,7 +30,6 @@
     Alert,
     Banner,
     Button,
-    ConfirmDialog,
     PageHeader,
     Skeleton,
     StatusDot,
@@ -44,6 +46,7 @@
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
   import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
+  import { showToast } from '../../app/toast-host.svelte';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
@@ -75,7 +78,9 @@
     pauseWorkflowFile,
     resumeWorkflowFile,
   } from '../../lib/workflow-files.ts';
+  import { cancelSchedule } from '../schedules/schedule-queries.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
+  import DeleteWorkflowDialog, { type DeleteDialogSchedule } from './delete-workflow-dialog.svelte';
   import RecentRuns from './recent-runs.svelte';
   import RevisionHistory from './revision-history.svelte';
   import SignalForm from './signal-form.svelte';
@@ -103,6 +108,7 @@
     schemaOf,
     triggerSummary,
   } from './workflow-presentation.ts';
+  import { DuplicateRefused, duplicateWorkflowFile } from './workflow-duplicate.ts';
   import { locateJsonProblem } from './workflow-source.ts';
 
   const copy = WORKFLOW_COPY;
@@ -213,6 +219,8 @@
   /** A write failed for a reason the person can act on, in the Bureau's words. */
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
   let confirmingDelete = $state(false);
+  /** Why the delete the dialog asked for failed, shown in the dialog until it is asked again. */
+  let deleteError = $state<string | undefined>(undefined);
   /** The Bureau changed the file and the engine could not follow, so what is on disk is the change. */
   let unapplied = $state(false);
 
@@ -301,25 +309,146 @@
     onError: (error) => writeFailed(error, copy.resumeFailed),
   }));
 
+  /**
+   * Deletes the file, then the schedules the person asked to delete with it. The file goes first:
+   * it is what the person asked for, and its write is guarded by the hash the page read. A delete
+   * the Bureau made and the engine could not apply has still removed the file, so it goes on as a
+   * delete does. A schedule that then cannot be deleted is left, and named, never undone.
+   */
   const removal = createMutation(() => ({
-    mutationFn: (hash: string) => deleteWorkflowFile(type, hash),
+    mutationFn: async (input: {
+      readonly hash: string;
+      readonly schedules: readonly DeleteDialogSchedule[];
+    }): Promise<readonly DeleteDialogSchedule[]> => {
+      try {
+        await deleteWorkflowFile(type, input.hash);
+      } catch (error) {
+        if (!isApplyFailure(error)) throw error;
+      }
+      const left: DeleteDialogSchedule[] = [];
+      for (const schedule of input.schedules) {
+        try {
+          await cancelSchedule(client, schedule.id);
+        } catch {
+          left.push(schedule);
+        }
+      }
+      return left;
+    },
+    onMutate: () => {
+      failure = null;
+      deleteError = undefined;
+    },
+    onSuccess: (left) => {
+      confirmingDelete = false;
+      for (const schedule of left) {
+        showToast(copy.deleteDialog.scheduleLeft(schedule.label), { variant: 'danger' });
+      }
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.schedules(type) });
+      leaveForTheList();
+    },
+    onError: deleteFailed,
+  }));
+
+  /**
+   * A delete the Bureau refused. A file that changed on disk, or is gone, is the page's own state,
+   * so the dialog closes on it; any other refusal stays in the dialog, whose button is the retry.
+   */
+  function deleteFailed(error: unknown): void {
+    const fault = agentFaultOf(error);
+    switch (fault.kind) {
+      case 'stale':
+      case 'not-found':
+        confirmingDelete = false;
+        failWith(fault, copy.deleteFailed);
+        return;
+      case 'forbidden':
+        deleteError = copy.forbidden;
+        return;
+      case 'identifier-taken':
+        deleteError = copy.deleteFailed;
+        return;
+      case 'rejected':
+      case 'other':
+        deleteError = fault.message;
+        return;
+    }
+  }
+
+  /**
+   * Duplicate: a paused copy of the file under a new identifier (`workflow-duplicate.ts`), whose
+   * page opens once the Bureau has written it. Nothing on this page changes before then.
+   */
+  const duplicate = createMutation(() => ({
+    mutationFn: () => {
+      const text = file?.text ?? null;
+      if (text === null) throw new DuplicateRefused(copy.page.menu.duplicateFailed);
+      return duplicateWorkflowFile(type, text, file?.title ?? null);
+    },
     onMutate: () => {
       failure = null;
     },
-    onSuccess: leaveForTheList,
-    // A delete the Bureau made and the engine could not apply has still removed the file, so it
-    // ends where a delete does.
-    onError: (error) =>
-      isApplyFailure(error) ? leaveForTheList() : writeFailed(error, copy.deleteFailed),
+    onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.workflowCatalog.list() });
+      router.navigate(workflowTypePath(result.id));
+    },
+    onError: (error) => {
+      const fault = agentFaultOf(error);
+      const title = copy.page.menu.duplicateFailed;
+      failure = {
+        title,
+        message:
+          fault.kind === 'forbidden'
+            ? copy.forbidden
+            : fault.kind === 'rejected' || fault.kind === 'other'
+              ? fault.message
+              : title,
+      };
+    },
   }));
 
-  const busy = $derived(pause.isPending || resume.isPending || removal.isPending);
+  const busy = $derived(
+    pause.isPending || resume.isPending || removal.isPending || duplicate.isPending,
+  );
 
   /** Runs a write against the hash of the file the page read, when the file has one. */
   function act(write: (hash: string) => void): void {
     const hash = file?.hash;
     if (hash !== undefined && hash !== null) write(hash);
   }
+
+  /**
+   * The schedules that run the workflow from outside its file, which the delete dialog names and
+   * offers to delete with it. The schedule the file defines is the Bureau's, and goes with the file.
+   */
+  const deleteSchedules = $derived<DeleteDialogSchedule[]>(
+    (schedules.data ?? [])
+      .filter(
+        (schedule) =>
+          schedule.id !== file?.schedule?.id &&
+          !schedule.id.startsWith(`bureau-workflow-schedule:${type}:`),
+      )
+      .map((schedule) => ({
+        id: schedule.id,
+        label: schedule.description ?? schedule.id,
+        paused: schedule.status === 'paused',
+      })),
+  );
+
+  function openDelete(): void {
+    deleteError = undefined;
+    confirmingDelete = true;
+  }
+
+  function confirmDelete(alsoSchedules: boolean): void {
+    if (busy) return;
+    act((hash) => removal.mutate({ hash, schedules: alsoSchedules ? deleteSchedules : [] }));
+  }
+
+  /** Whether the file can be copied: one the Bureau loaded, whose text the page has. */
+  const canDuplicate = $derived(
+    file !== undefined && file.state === 'ready' && file.text !== null,
+  );
 
   /** Reads the file again, which discards what the page believed of it. */
   async function reload(): Promise<void> {
@@ -578,40 +707,29 @@
       href={router.href(runSetupPath)}
       onclick={(event) => go(event, runSetupPath)}>{copy.page.startAction}</Button
     >
+  {:else if file !== undefined && actions?.resume === true && file.paused}
+    <!-- A paused file swaps Start run for Resume, and the menu does not repeat it. -->
+    <Button
+      data-changes
+      variant="primary"
+      size="sm"
+      disabled={busy || file.hash === null}
+      onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
+    >
   {:else if invalidFile}
     <!-- Off until the file is fixed, and the banner under the tabs says why. -->
     <Button variant="primary" size="sm" aria-disabled="true">{copy.page.startAction}</Button>
   {/if}
-  {#if file !== undefined && actions !== undefined}
-    {#if actions.pause && !file.paused}
-      <Button
-        data-changes
-        variant="secondary"
-        size="sm"
-        disabled={busy || file.hash === null}
-        onclick={() => act(pause.mutate)}>{copy.pauseAction}</Button
-      >
-    {/if}
-    {#if actions.resume && file.paused}
-      <Button
-        data-changes
-        variant="secondary"
-        size="sm"
-        disabled={busy || file.hash === null}
-        onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
-      >
-    {/if}
-    {#if actions.delete}
-      <Button
-        data-changes
-        variant="danger"
-        size="sm"
-        disabled={busy}
-        onclick={() => (confirmingDelete = true)}>{copy.deleteAction}</Button
-      >
-    {/if}
-  {/if}
-  <WorkflowMoreMenu canSignal={actions?.signal === true} onSendSignal={() => (signalOpen = true)} />
+  <WorkflowMoreMenu
+    canSignal={actions?.signal === true}
+    onSendSignal={() => (signalOpen = true)}
+    onDuplicate={canDuplicate ? () => duplicate.mutate() : undefined}
+    onPause={file !== undefined && actions?.pause === true && !file.paused
+      ? () => act(pause.mutate)
+      : undefined}
+    onDelete={actions?.delete === true ? openDelete : undefined}
+    {busy}
+  />
 {/snippet}
 
 {#snippet headingText()}
@@ -761,12 +879,10 @@
           <RecentRuns
             {type}
             kind={resolved.kind}
-            onStart={canStart ? () => router.navigate(runSetupPath) : undefined}
-            onResume={actions?.resume && file?.paused && file.hash !== null
-              ? () => {
-                  if (!busy) act(resume.mutate);
-                }
-              : undefined}
+            title={heading}
+            agentName={file?.agent ?? null}
+            {canStart}
+            paused={file?.paused === true}
           />
         </Tabs.Panel>
         {#if tabs.includes('history')}
@@ -783,14 +899,19 @@
   {/if}
 </article>
 
-<ConfirmDialog
-  bind:open={confirmingDelete}
-  title={copy.deleteDialog.title}
-  description={copy.deleteDialog.description(type)}
-  confirmLabel={copy.deleteDialog.confirm}
-  destructive
-  onConfirm={() => act(removal.mutate)}
-/>
+{#if file !== undefined}
+  <DeleteWorkflowDialog
+    bind:open={confirmingDelete}
+    name={heading}
+    fileName={`${type}.json`}
+    directory={hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory}
+    schedules={deleteSchedules}
+    busy={removal.isPending}
+    error={deleteError}
+    onConfirm={confirmDelete}
+    onCancel={() => (deleteError = undefined)}
+  />
+{/if}
 
 {#if signalOpen}
   <SignalForm {document} onClose={() => (signalOpen = false)} />

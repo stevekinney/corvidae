@@ -480,3 +480,41 @@
   font-size: var(--cinder-text-sm);
   overflow-wrap: anywhere;
 }
+
+/* ── A workflow's Runs tab and its "⋯" menu ───────────────────────────────── */
+
+/* The Runs list's bar and rows, limited to one workflow, under the tabs. */
+.ib-workflow-runs {
+  padding-block-start: var(--cinder-space-4);
+}
+
+.ib-workflow-runs__list {
+  min-width: 0;
+}
+
+/* The empty state's plain hint, which names the header's action rather than repeating it. */
+.ib-workflow-runs__hint {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow-runs__all {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+}
+
+/* A menu item with a line under its label, such as Pause and what pausing does. */
+.ib-workflow-menu__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+  max-inline-size: 18rem;
+}
+
+.ib-workflow-menu__description {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  white-space: normal;
+}

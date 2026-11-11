@@ -1075,12 +1075,29 @@ export const WORKFLOW_COPY = {
     loadingLabel: 'Loading this workflow',
     /** The button on an internal workflow's page that leads to the rest of them. */
     seeInternal: 'See all internal workflows',
-    /** The header's "⋯" menu, and the dialog its Send a signal item opens. */
+    /**
+     * The header's "⋯" menu (board PageWorkflow, "More menu, and Delete" and "More menu on an
+     * active workflow"), and the dialog its Send a signal item opens. Resume is the header's own
+     * action on a paused workflow, so the menu never repeats it.
+     */
     menu: {
       label: 'More actions',
       sendSignal: 'Send a signal…',
       /** The footer button that ends the dialog; the dialog's own corner button is named "Close dialog". */
       closeSignal: 'Done',
+      duplicate: 'Duplicate',
+      pause: 'Pause',
+      /** The line under Pause: what pausing does to the runs in flight and to the ones to come. */
+      pauseDescription:
+        'Runs in flight finish. No new runs start, from schedules, signals or Start run, until you resume it.',
+      /** Red, and it opens the delete dialog, so it ends with an ellipsis. */
+      delete: 'Delete…',
+      /** The title the copy a Duplicate writes takes, from the workflow's own. */
+      copyTitle: (title: string): string => `${title} copy`,
+      duplicateFailed: 'The workflow was not duplicated',
+      /** Every identifier a copy could take is in use. */
+      duplicateTaken: (id: string): string =>
+        `Every name for a copy of ${id} is taken. Rename or delete a copy, then duplicate it again.`,
     },
     /** The body of an internal workflow's Overview. */
     internalOverview:
@@ -1120,15 +1137,27 @@ export const WORKFLOW_COPY = {
       stepsEmptyTitle: 'This workflow has no steps',
       stepsEmptyDescription: 'Add a step to its file and it appears here.',
     },
-    /** The Runs tab. */
+    /**
+     * The Runs tab: the Runs list's rows and filters, limited to this workflow (board PageWorkflow,
+     * "Runs tab"), and the compact empty state when it has none ("Runs tab, empty").
+     */
     runs: {
-      emptyTitle: 'Nothing has run this workflow yet',
-      emptyDescription: 'A run appears here as soon as one starts.',
-      /** A paused file starts nothing, so its empty state says so rather than promising a trigger. */
+      /** The accessible names of the filter bar and of the rows. */
+      filtersLabel: 'Filter this workflow’s runs',
+      rowsLabel: 'Runs of this workflow, newest first',
+      emptyTitle: 'No runs of this workflow yet',
+      emptyDescription: 'Start one and it shows up here with its steps and result.',
+      /** The plain hint under the sentence, which names the header's action. */
+      emptyHint: 'Press Start run to try it.',
+      /** A paused file starts nothing, so its empty state says why rather than promising a run. */
       emptyDescriptionPaused:
-        'This workflow is paused, so its trigger starts nothing. Resume it and a run appears here once one starts.',
+        'This workflow is paused, so nothing starts it. Its runs show up here once you resume it.',
+      emptyHintPaused: 'Press Resume to start it again.',
       /** A type that code registered is also started by its schedules, so the empty state names no one starter. */
-      emptyDescriptionCode: 'A run appears here as soon as something starts one.',
+      emptyDescriptionCode: 'A run shows up here as soon as something starts one.',
+      /** Filters that leave none of this workflow's runs. */
+      noMatchTitle: 'No run of this workflow matches these filters',
+      noMatchDescription: 'Choose All, or remove Started by, to see its other runs.',
     },
     /** The Code tab. */
     code: {
@@ -1386,11 +1415,36 @@ export const WORKFLOW_COPY = {
     signal: (name: string): string => `When the signal ${name} is sent`,
     unknown: (kind: string): string => `A ${kind} trigger`,
   },
+  /**
+   * The workflow page's delete dialog (board PageWorkflow, "More menu, and Delete" and "Delete, with
+   * the schedule checked"). A schedule the file defines goes with the file; one that only runs the
+   * workflow is named, with a checkbox that deletes it too and a confirm label that says so.
+   */
   deleteDialog: {
-    title: 'Delete this workflow?',
-    description: (name: string): string =>
-      `This removes the file for ${name} and cancels its schedule. Runs already in progress finish on the version they started on.`,
+    title: (name: string): string => `Delete ${name}?`,
+    /** The sentence that names the schedule that runs the workflow, before the rest. */
+    scheduleRuns: (schedule: string, paused: boolean): string =>
+      `The ${schedule} schedule${paused ? ' (paused)' : ''} runs this workflow. `,
+    schedulesRun: (count: number): string => `${String(count)} schedules run this workflow. `,
+    pastRuns: 'Its past runs stay on Runs. ',
+    /** "The file", its name and its directory, both set in monospace, follow each other. */
+    file: { before: 'The file ', middle: ' is removed from ', after: '.' },
+    alsoDeleteSchedule: (schedule: string): string => `Also delete the ${schedule} schedule`,
+    alsoDeleteSchedules: (count: number): string =>
+      `Also delete the ${String(count)} schedules that run it`,
+    /** The helper under the checkbox: what each choice leaves behind. */
+    alsoDeleteHelp: (paused: boolean): string =>
+      `Checked, the schedule is deleted with it. Unchecked, the schedule stays${paused ? ' paused' : ''} and shows “Can’t find workflow”.`,
+    alsoDeleteHelpMany:
+      'Checked, the schedules are deleted with it. Unchecked, they stay and show “Can’t find workflow”.',
     confirm: 'Delete workflow',
+    confirmWithSchedule: 'Delete workflow and schedule',
+    confirmWithSchedules: 'Delete workflow and schedules',
+    busy: 'Deleting…',
+    failedTitle: 'Couldn’t delete the workflow.',
+    /** The workflow is gone, and a schedule it was asked to take with it is not. */
+    scheduleLeft: (schedule: string): string =>
+      `The workflow was deleted, but the ${schedule} schedule was not. Delete it from its page.`,
   },
   stale: {
     title: 'This workflow changed outside Interborough',

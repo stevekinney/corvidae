@@ -7,7 +7,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
-import { WORKFLOW_COPY } from '../../app/copy.ts';
+import { TASK_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import {
@@ -367,7 +367,7 @@ describe('starting a run', () => {
     expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
   });
 
-  test('is the action of the Runs tab’s empty state', async () => {
+  test('is what the Runs tab’s empty state names, in a plain hint under its sentence', async () => {
     const { container } = open('/workflows/digest', { runs: [] });
     const root = await ready(container);
     await openTab(root, TABS.runs);
@@ -376,15 +376,17 @@ describe('starting a run', () => {
         WORKFLOW_COPY.page.runs.emptyTitle,
       ),
     );
-    const action = testId(root, 'workflow-recent-runs')?.querySelector(
-      '.cinder-empty-state button',
+    expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(
+      WORKFLOW_COPY.page.runs.emptyHint,
     );
-    expect(action?.textContent?.trim()).toBe(WORKFLOW_COPY.page.startAction);
-    await fireEvent.click(action as HTMLElement);
-    await waitFor(() => expect(router.pathname).toBe('/workflows/digest/run'));
+    // The action is the header's Start run, so the empty state draws no button of its own.
+    expect(
+      testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state button'),
+    ).toBeNull();
+    expect(startLink(root)?.getAttribute('href')).toBe('/workflows/digest/run');
   });
 
-  test('names an agent-run origin and links its calling run', async () => {
+  test('names an agent-run origin by its kind and the agent whose tool call started it', async () => {
     const { container } = open('/workflows/digest', {
       runs: [
         runFixture('agent-run-1', 'digest', {
@@ -394,34 +396,37 @@ describe('starting a run', () => {
     });
     const root = await ready(container);
     await openTab(root, TABS.runs);
+    await waitFor(() => expect(root.querySelector('[data-run="agent-run-1"]')).not.toBeNull());
     const row = root.querySelector('[data-run="agent-run-1"]') as HTMLElement;
-    await waitFor(() => expect(row.textContent).toContain("An agent's tool call"));
-    expect(row.textContent).toContain('journey-author');
-    expect(row.querySelector('a[href="/runs/calling-run-1"]')?.textContent).toBe('Calling run');
+    // Line two is the Runs list's: the kind of run first, then the agent that called it.
+    expect(row.textContent).toContain(
+      `${TASK_COPY.list.kinds['agent-run']}${TASK_COPY.list.separator}Journey author`,
+    );
     expect(row.textContent).not.toContain('agent-run,');
+    expect(row.querySelector('a')?.getAttribute('href')).toBe('/workflows/digest/runs/agent-run-1');
   });
 });
 
 describe('the Runs tab of a workflow that cannot be started from the page', () => {
-  test('a paused file says it is paused, and Resume starts it again', async () => {
-    const { container } = open('/workflows/paused-one', { runs: [] });
+  test('a paused file says why nothing runs it, and the header’s Resume starts it again', async () => {
+    const { container, getByRole } = open('/workflows/paused-one', { runs: [] });
     const root = await ready(container);
     await openTab(root, TABS.runs);
     const runs = (): HTMLElement => testId(root, 'workflow-recent-runs') as HTMLElement;
     await waitFor(() =>
       expect(runs().textContent).toContain(WORKFLOW_COPY.page.runs.emptyDescriptionPaused),
     );
-    expect(runs().textContent).not.toContain('Its trigger starts a run');
-    const resume = runs().querySelector('.cinder-empty-state button');
-    expect(resume?.textContent?.trim()).toBe(WORKFLOW_COPY.resumeAction);
+    expect(testId(runs(), 'workflow-runs-hint')?.textContent).toBe(
+      WORKFLOW_COPY.page.runs.emptyHintPaused,
+    );
 
-    await fireEvent.click(resume as HTMLElement);
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
     await waitFor(() => expect(stub?.callsTo('bureau.workflows.resume')).toHaveLength(1));
     await waitFor(() => expect(stub?.file('paused-one')?.paused).toBe(false));
-    // Resumed, the page offers to start it instead.
+    // Resumed, the hint names Start run instead, which the header now offers.
     await waitFor(() =>
-      expect(runs().querySelector('.cinder-empty-state button')?.textContent?.trim()).toBe(
-        WORKFLOW_COPY.page.startAction,
+      expect(testId(runs(), 'workflow-runs-hint')?.textContent).toBe(
+        WORKFLOW_COPY.page.runs.emptyHint,
       ),
     );
   });
@@ -436,6 +441,7 @@ describe('the Runs tab of a workflow that cannot be started from the page', () =
     );
     expect(runs().textContent).not.toContain('trigger');
     expect(runs().querySelector('.cinder-empty-state button')).toBeNull();
+    expect(testId(runs(), 'workflow-runs-hint')).toBeNull();
   });
 });
 

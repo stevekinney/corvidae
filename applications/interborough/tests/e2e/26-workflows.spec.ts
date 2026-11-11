@@ -389,6 +389,7 @@ test.describe('a code-defined type', () => {
       await expect(detail(page)).not.toContainText('Install a revision');
       await expect(detail(page).locator('.weft-revisions-panel')).toHaveCount(0);
       await expect(page.getByRole('button', { name: WORKFLOW_COPY.deleteAction })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toHaveCount(0);
       await expect(page.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveCount(0);
 
       // The engine's contract for this type declares no signal, update or query, so there are no facts to list.
@@ -456,7 +457,9 @@ test.describe('an agent-authored type', () => {
       // Active is shown by absence: no word beside the title.
       await expect(root.getByTestId('workflow-state')).toHaveCount(0);
       await expect(root.getByTestId('workflow-steps').getByRole('listitem')).toHaveCount(2);
-      await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
+      // Pause is in the "⋯" menu, not the header.
+      await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toHaveCount(0);
+      await expect(root.getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toBeVisible();
       await expect(root.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveAttribute(
         'href',
         `/workflows/${SEEDED_WORKFLOWS.digest}/edit`,
@@ -473,7 +476,7 @@ test.describe('an agent-authored type', () => {
       );
       await openTab(root, WORKFLOW_COPY.page.tabs.overview);
 
-      // Nothing has run it, and the Runs tab says so with an action that starts one.
+      // Nothing has run it, and the Runs tab says so, with a hint that names Start run.
       await openTab(root, WORKFLOW_COPY.page.tabs.runs);
       await expect(root.getByTestId('workflow-recent-runs')).toContainText(
         WORKFLOW_COPY.page.runs.emptyTitle,
@@ -554,7 +557,7 @@ test.describe('an invalid file', () => {
         root.getByRole('button', { name: WORKFLOW_COPY.page.startAction }),
       ).toHaveAttribute('aria-disabled', 'true');
       await expect(root.getByTestId('workflow-definition')).toHaveCount(0);
-      await expect(root.getByRole('button', { name: WORKFLOW_COPY.deleteAction })).toBeVisible();
+      await expect(root.getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toBeVisible();
       await expect(root.getByRole('link', { name: WORKFLOW_COPY.editAction })).toBeVisible();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toHaveCount(0);
       await expect(root.getByTestId('workflow-signal')).toHaveCount(0);
@@ -604,7 +607,7 @@ test.describe('pause, resume, and delete', () => {
       // Active is shown by absence; Paused is a neutral dot and the word beside the title.
       await expect(root.getByTestId('workflow-state')).toHaveCount(0);
 
-      await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
+      await chooseFromMenu(page, WORKFLOW_COPY.page.menu.pause);
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
       await expect(root.getByTestId('workflow-state')).toContainText(
         WORKFLOW_COPY.page.statusPaused,
@@ -614,14 +617,16 @@ test.describe('pause, resume, and delete', () => {
       await checkA11y(`a paused workflow at ${width}px`);
 
       await root.getByRole('button', { name: WORKFLOW_COPY.resumeAction }).click();
-      await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
+      await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toHaveCount(0);
       await expect(root.getByTestId('workflow-state')).toHaveCount(0);
       const resumed = await readWorkflow(request, 'e2e-pausable');
       expect(resumed.paused).toBe(false);
 
       // Delete confirms, removes the file, and goes to the list, where the row is gone.
-      await root.getByRole('button', { name: WORKFLOW_COPY.deleteAction }).click();
-      const dialog = page.getByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+      await chooseFromMenu(page, WORKFLOW_COPY.page.menu.delete);
+      const dialog = page.getByRole('dialog', {
+        name: WORKFLOW_COPY.deleteDialog.title('e2e-pausable'),
+      });
       await checkA11y(`the delete confirmation at ${width}px`);
       await dialog.getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }).click();
       await expect(page).toHaveURL(/\/workflows$/);
@@ -638,7 +643,7 @@ test.describe('pause, resume, and delete', () => {
     await makeWorkflow(request, 'e2e-stale');
     await page.goto('/workflows/e2e-stale');
     const root = detail(page);
-    await expect(root.getByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeVisible();
+    await expect(root.getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toBeVisible();
 
     // Someone edits the file after the page loaded.
     const before = await readWorkflow(request, 'e2e-stale');
@@ -659,7 +664,7 @@ test.describe('pause, resume, and delete', () => {
     });
     const edited = await readWorkflow(request, 'e2e-stale');
 
-    await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
+    await chooseFromMenu(page, WORKFLOW_COPY.page.menu.pause);
     await expect(root).toHaveAttribute('data-condition', 'stale');
     await expect(root).toContainText(WORKFLOW_COPY.stale.title);
     await checkA11y('the changed-outside state');
@@ -668,9 +673,9 @@ test.describe('pause, resume, and delete', () => {
     expect(after.hash).toBe(edited.hash);
 
     // Delete is refused the same way, and the file stays.
-    await root.getByRole('button', { name: WORKFLOW_COPY.deleteAction }).click();
+    await chooseFromMenu(page, WORKFLOW_COPY.page.menu.delete);
     await page
-      .getByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title })
+      .getByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title('e2e-stale') })
       .getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm })
       .click();
     await expect(root).toHaveAttribute('data-condition', 'stale');
@@ -682,12 +687,18 @@ test.describe('pause, resume, and delete', () => {
     await expect(root.getByTestId('workflow-line-starts')).toContainText(
       new RegExp(describeCadence({ intervalMs: 12 * 3_600_000 }), 'i'),
     );
-    await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
+    await chooseFromMenu(page, WORKFLOW_COPY.page.menu.pause);
     await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
     const paused = await readWorkflow(request, 'e2e-stale');
     expect(paused.paused).toBe(true);
   });
 });
+
+/** Opens the "⋯" menu and chooses an item by its name: Pause, Duplicate or Delete…. */
+async function chooseFromMenu(page: Page, name: string): Promise<void> {
+  await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.menu.label }).click();
+  await page.getByRole('menuitem', { name, exact: true }).click();
+}
 
 /** Opens the "⋯" menu, chooses Send a signal, and returns the dialog that holds the form. */
 async function openSignalDialog(page: Page) {

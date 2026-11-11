@@ -12,7 +12,7 @@
 import type { Page } from '@playwright/test';
 import { rm, writeFile } from 'node:fs/promises';
 
-import { WORKFLOW_COPY } from '../../src/app/copy.ts';
+import { TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { bureau } from './agent-support.ts';
 import { E2E_BUREAU_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -23,8 +23,10 @@ import {
   expectTabOpen,
   listWorkflowRuns,
   openTab,
+  readWorkflow,
   removeWorkflow,
   SEEDED_WORKFLOWS,
+  workflowFaultCode,
   workflowFilePath,
   workflowRunStatus,
 } from './workflow-support.ts';
@@ -194,15 +196,126 @@ test.describe('the tab in the address', () => {
 });
 
 test.describe('the Runs tab', () => {
-  test('is an empty state that offers Start run when nothing has run the workflow', async ({
+  test('keeps the bar, every count at 0, over the compact empty state, whose hint names Start run', async ({
     page,
     checkA11y,
   }) => {
     await page.goto(`/workflows/${SEEDED_WORKFLOWS.digest}?tab=runs`);
     const runs = detail(page).getByTestId('workflow-recent-runs');
     await expect(runs).toContainText(WORKFLOW_COPY.page.runs.emptyTitle);
-    await expect(runs.getByRole('button', { name: WORKFLOW_COPY.page.startAction })).toBeVisible();
+    await expect(runs.getByTestId('workflow-runs-hint')).toHaveText(
+      WORKFLOW_COPY.page.runs.emptyHint,
+    );
+    await expect(runs.getByRole('radio', { name: /^All\s*,\s*0$/ })).toBeVisible();
+    await expect(runs.getByRole('button', { name: TASK_COPY.startedByLabel })).toBeVisible();
+    // The action is the header's Start run; the empty state draws none of its own.
+    await expect(runs.getByRole('button', { name: WORKFLOW_COPY.page.startAction })).toHaveCount(0);
+    await expect(
+      detail(page).getByRole('link', { name: WORKFLOW_COPY.page.startAction }),
+    ).toBeVisible();
     await checkA11y('the Runs tab, empty');
+  });
+
+  test('lists a run of the workflow as the Runs list’s row, which opens the run', async ({
+    page,
+    request,
+  }) => {
+    const id = 'e2e-page-runs-row';
+    created.add(id);
+    await createWorkflowFile(request, id, {
+      trigger: { kind: 'signal', name: 'e2e-page-runs-row-go' },
+      steps: [{ kind: 'await-signal', signal: 'e2e-page-runs-row-wait' }],
+    });
+    const started = await bureau(request, 'bureau.workflows.start', { id, surface: 'web' });
+    expect(started.fault).toBeUndefined();
+    const { runId } = started.result as { runId: string };
+
+    await page.goto(`/workflows/${id}?tab=runs`);
+    const runs = detail(page).getByTestId('workflow-recent-runs');
+    const row = runs.locator(`[data-run="${runId}"]`);
+    await expect(row).toBeVisible();
+    await expect(row).toContainText(TASK_COPY.list.kinds.person);
+    await expect(runs.getByRole('radio', { name: /^All\s*,\s*1$/ })).toBeVisible();
+    await expect(row.getByRole('link').first()).toHaveAttribute(
+      'href',
+      `/workflows/${id}/runs/${runId}`,
+    );
+
+    // Let the instance finish, so it does not stay in the host.
+    await expect
+      .poll(async () => {
+        await bureau(request, 'bureau.workflows.signal', { name: 'e2e-page-runs-row-wait' });
+        return workflowRunStatus(request, runId);
+      })
+      .toBe('completed');
+  });
+});
+
+test.describe('the "⋯" menu', () => {
+  /** Opens the "⋯" menu and chooses an item by its name. */
+  async function choose(page: Page, name: string): Promise<void> {
+    await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.menu.label }).click();
+    await page.getByRole('menuitem', { name, exact: true }).click();
+  }
+
+  test('holds Duplicate, Pause with what pausing does, and Delete… on a running workflow', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    const id = 'e2e-page-menu';
+    created.add(id);
+    await createWorkflowFile(request, id);
+    await page.goto(`/workflows/${id}`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.menu.label }).click();
+    await expect(
+      page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.duplicate }),
+    ).toBeVisible();
+    await expect(page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause })).toBeVisible();
+    await expect(page.getByTestId('workflow-menu-pause-description')).toHaveText(
+      WORKFLOW_COPY.page.menu.pauseDescription,
+    );
+    await expect(
+      page.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.delete }),
+    ).toBeVisible();
+    await checkA11y('the "⋯" menu, open');
+  });
+
+  test('Duplicate writes a paused copy and opens it', async ({ page, request }) => {
+    const id = 'e2e-page-duplicate';
+    created.add(id);
+    created.add(`${id}-copy`);
+    await createWorkflowFile(request, id);
+    await page.goto(`/workflows/${id}`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await choose(page, WORKFLOW_COPY.page.menu.duplicate);
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}-copy$`));
+    const copy = await readWorkflow(request, `${id}-copy`);
+    expect(copy.paused).toBe(true);
+    // A paused copy offers Resume in place of Start run.
+    await expect(
+      detail(page).getByRole('button', { name: WORKFLOW_COPY.resumeAction }),
+    ).toBeVisible();
+  });
+
+  test('Delete asks first, then removes the file and goes to the list', async ({
+    page,
+    request,
+    checkA11y,
+  }) => {
+    const id = 'e2e-page-delete';
+    created.add(id);
+    await createWorkflowFile(request, id);
+    await page.goto(`/workflows/${id}`);
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    await choose(page, WORKFLOW_COPY.page.menu.delete);
+    const dialog = page.getByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title(id) });
+    await expect(dialog).toContainText(`${id}.json`);
+    await checkA11y('the delete dialog');
+    await dialog.getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }).click();
+    await expect(page).toHaveURL(/\/workflows$/);
+    expect(await workflowFaultCode(request, id)).toBe('NotFound');
   });
 });
 

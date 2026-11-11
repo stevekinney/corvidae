@@ -378,14 +378,14 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     await expect(page.getByTestId('new-schedule-input')).toBeVisible();
     await expect(page.getByLabel(/^Name/)).toHaveValue('Order processing');
   },
-  // The file's header carries its four actions; measure the page only once all four are there.
+  // The file's header carries Edit, Start run and the "⋯" menu that holds the rest; measure the
+  // page only once all three are there.
   '/workflows/:workflow (file)': async (page) => {
     const header = page.locator('[data-page="workflow-detail"] .cinder-page-header__actions');
     for (const name of [
       WORKFLOW_COPY.page.startAction,
-      WORKFLOW_COPY.pauseAction,
       WORKFLOW_COPY.editAction,
-      WORKFLOW_COPY.deleteAction,
+      WORKFLOW_COPY.page.menu.label,
     ]) {
       await expect(
         header.getByRole('button', { name }).or(header.getByRole('link', { name })),

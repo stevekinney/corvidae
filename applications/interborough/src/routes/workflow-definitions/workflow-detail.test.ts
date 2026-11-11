@@ -112,6 +112,31 @@ const tabNames = (root: HTMLElement) =>
 
 const TABS = WORKFLOW_COPY.page.tabs;
 
+/** The views' queries the menu helpers need. */
+type Queries = Pick<ReturnType<typeof open>, 'findByRole'>;
+
+/** Opens the "⋯" menu and chooses an item by its name: Pause, Duplicate or Delete… are there. */
+async function chooseFromMenu(view: Queries, name: string): Promise<void> {
+  await fireEvent.click(await view.findByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+  await fireEvent.click(await view.findByRole('menuitem', { name }));
+}
+
+/** Pauses the file from the "⋯" menu. */
+const pauseFromMenu = (view: Queries) => chooseFromMenu(view, WORKFLOW_COPY.page.menu.pause);
+
+/** Opens the delete dialog from the "⋯" menu, for the workflow whose header reads `name`. */
+async function openDeleteDialog(view: Queries, name: string): Promise<HTMLElement> {
+  await chooseFromMenu(view, WORKFLOW_COPY.page.menu.delete);
+  return view.findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title(name) });
+}
+
+/** The page once a file is running again: the header has no Resume. */
+async function running(view: Pick<ReturnType<typeof open>, 'queryByRole'>): Promise<void> {
+  await waitFor(() =>
+    expect(view.queryByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeNull(),
+  );
+}
+
 describe('a code-defined type', () => {
   test('leads with what it is for, what starts it, and its runs, and has no row whose value is none', async () => {
     const { container } = open('/workflows/order-processing');
@@ -263,8 +288,8 @@ describe('a code-defined type', () => {
     const { container } = open('/workflows/order-processing', {
       runs: Array.from({ length: 7 }, (_, index) =>
         runFixture(`run-${String(index)}`, 'order-processing', {
-          createdAt: 1_760_000_000_000 + index * 1000,
-          updatedAt: 1_760_000_000_000 + index * 1000 + 400,
+          createdAt: 1_760_000_000_000 + index * 10_000,
+          updatedAt: 1_760_000_000_000 + index * 10_000 + 3000,
           status: index === 6 ? 'running' : 'completed',
         }),
       ),
@@ -282,16 +307,15 @@ describe('a code-defined type', () => {
       'run-1',
       'run-0',
     ]);
-    expect(runs[0]?.dataset['status']).toBe('running');
+    expect(runs[0]?.dataset['status']).toBe('Running');
     expect(runs[0]?.querySelector('a')?.getAttribute('href')).toBe(
       '/workflows/order-processing/runs/run-6',
     );
-    // A run that has ended says how long it took; one that is going has no duration yet.
-    expect(runs[0]?.textContent).not.toContain('took');
-    expect(runs[1]?.textContent).toContain(WORKFLOW_COPY.page.runDuration('400ms'));
+    // A run that has ended says how long it took, at the end of line two.
+    expect(runs[1]?.textContent).toContain('3 s');
   });
 
-  test('shows an empty state when nothing has run it, whose action opens the run setup page', async () => {
+  test('shows the compact empty state when nothing has run it, whose hint names the header’s Start run', async () => {
     const { container } = open('/workflows/order-processing', { runs: [] });
     const root = await ready(container);
     await openTab(root, TABS.runs);
@@ -303,10 +327,9 @@ describe('a code-defined type', () => {
     expect(
       testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state'),
     ).not.toBeNull();
-    const action = testId(root, 'workflow-recent-runs')?.querySelector('button');
-    expect(action?.textContent?.trim()).toBe(WORKFLOW_COPY.page.startAction);
-    await fireEvent.click(action as HTMLElement);
-    await waitFor(() => expect(router.pathname).toBe('/workflows/order-processing/run'));
+    expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(
+      WORKFLOW_COPY.page.runs.emptyHint,
+    );
   });
 });
 
@@ -559,34 +582,44 @@ describe('an agent-authored type', () => {
     expect(stub?.callsTo('GET /workflows')).toEqual([]);
   });
 
-  test('offers pause, delete, edit, and send signal for a file that loaded, and resume once it is paused', async () => {
-    const { container, getByRole, queryByRole } = open('/workflows/digest');
+  test('offers edit in the header, and pause, delete and send signal in the menu, for a file that loaded', async () => {
+    const view = open('/workflows/digest');
+    const { container, getByRole, queryByRole } = view;
     await ready(container);
-    expect(getByRole('button', { name: WORKFLOW_COPY.pauseAction })).not.toBeNull();
+    expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
     expect(queryByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeNull();
-    expect(getByRole('button', { name: WORKFLOW_COPY.deleteAction })).not.toBeNull();
+    expect(queryByRole('button', { name: WORKFLOW_COPY.deleteAction })).toBeNull();
     expect(getByRole('link', { name: WORKFLOW_COPY.editAction }).getAttribute('href')).toBe(
       '/workflows/digest/edit',
     );
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+    expect(await view.findByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause })).not.toBeNull();
+    expect(view.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.delete })).not.toBeNull();
     // Send a signal is in the "⋯" menu, and the form is a dialog that is not on the page until chosen.
     expect(testId(container, 'workflow-signal')).toBeNull();
     expect(getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).not.toBeNull();
   });
 
-  test('shows a paused file as paused beside its title, with resume and not pause', async () => {
-    const { container, getByRole, queryByRole } = open('/workflows/digest', {
+  test('shows a paused file as paused beside its title, with Resume as the header’s primary action and no Pause', async () => {
+    const view = open('/workflows/digest', {
       files: [readyFile('digest', { paused: true })],
     });
+    const { container, getByRole, queryByRole } = view;
     const root = await ready(container);
     expect(testId(root, 'workflow-state')?.textContent).toContain(WORKFLOW_COPY.page.statusPaused);
     expect(getByRole('button', { name: WORKFLOW_COPY.resumeAction })).not.toBeNull();
-    expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
+    expect(queryByRole('link', { name: WORKFLOW_COPY.page.startAction })).toBeNull();
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+    await view.findByRole('menuitem', { name: WORKFLOW_COPY.page.menu.delete });
+    expect(queryByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause })).toBeNull();
+    expect(queryByRole('menuitem', { name: WORKFLOW_COPY.resumeAction })).toBeNull();
   });
 });
 
 describe('an invalid file', () => {
   test('shows its problem in a banner under the tabs, and its path and source on the Code tab, with delete and edit and no definition or schemas', async () => {
-    const { container, getByRole, queryByRole } = open('/workflows/broken');
+    const view = open('/workflows/broken');
+    const { container, getByRole, queryByRole } = view;
     const root = await ready(container);
 
     const banner = testId(root, 'workflow-file-problem');
@@ -605,10 +638,14 @@ describe('an invalid file', () => {
     expect(testId(root, 'workflow-state')?.textContent).toContain("Can't load");
     // It keeps all four tabs: its runs, its history, and its source are still there to read.
     expect(tabNames(root)).toEqual([TABS.overview, TABS.code, TABS.runs, TABS.history]);
-    expect(getByRole('button', { name: WORKFLOW_COPY.deleteAction })).not.toBeNull();
     expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
     expect(queryByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeNull();
-    expect(queryByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toBeNull();
+    // Its menu holds Delete… alone: it cannot be paused, sent a signal, or copied.
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
+    expect((await view.findAllByRole('menuitem')).map((item) => item.textContent?.trim())).toEqual([
+      WORKFLOW_COPY.page.menu.delete,
+    ]);
+    await fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
     // Start run is shown and off, and the banner says why.
     expect(
       getByRole('button', { name: WORKFLOW_COPY.page.startAction }).getAttribute('aria-disabled'),
@@ -663,18 +700,20 @@ describe('an invalid file', () => {
       expect(queryByRole('button', { name: label })).toBeNull();
     }
     expect(queryByRole('link', { name: WORKFLOW_COPY.editAction })).toBeNull();
+    // With nothing it can do, it has no "⋯" menu either.
+    expect(queryByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toBeNull();
   });
 });
 
 describe('pause, resume, and delete', () => {
   test('pause shows the paused state without a reload, and the next action uses the new hash', async () => {
-    const { container, findByRole, getByRole, queryByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole, getByRole } = view;
     const root = await ready(container);
 
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     await findByRole('button', { name: WORKFLOW_COPY.resumeAction });
     expect(root.textContent).toContain(WORKFLOW_COPY.pausedBadge);
-    expect(queryByRole('button', { name: WORKFLOW_COPY.pauseAction })).toBeNull();
     expect(stub?.callsTo('bureau.workflows.pause')[0]?.params).toEqual({
       id: 'digest',
       expectedHash: 'hash-1',
@@ -685,7 +724,7 @@ describe('pause, resume, and delete', () => {
     const pausedHash = stub?.file('digest')?.hash;
     expect(pausedHash).not.toBe('hash-1');
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
-    await findByRole('button', { name: WORKFLOW_COPY.pauseAction });
+    await running(view);
     expect(root.textContent).not.toContain(WORKFLOW_COPY.pausedBadge);
     expect(stub?.callsTo('bureau.workflows.resume')[0]?.params['expectedHash']).toBe(pausedHash);
     expect(stub?.file('digest')?.paused).toBe(false);
@@ -693,11 +732,10 @@ describe('pause, resume, and delete', () => {
   });
 
   test('delete confirms, removes the file, and goes to the list', async () => {
-    const { container, findByRole, getByRole } = open('/workflows/digest');
-    await ready(container);
+    const view = open('/workflows/digest');
+    await ready(view.container);
 
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+    const dialog = await openDeleteDialog(view, 'digest');
     // Nothing is deleted until it is confirmed.
     expect(stub?.callsTo('bureau.workflows.delete')).toEqual([]);
     await fireEvent.click(
@@ -713,10 +751,9 @@ describe('pause, resume, and delete', () => {
   });
 
   test('an invalid file that has a hash can be deleted', async () => {
-    const { container, findByRole, getByRole } = open('/workflows/broken');
-    await ready(container);
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+    const view = open('/workflows/broken');
+    await ready(view.container);
+    const dialog = await openDeleteDialog(view, 'broken');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
     );
@@ -734,11 +771,12 @@ describe('a file that changed on disk after the page loaded', () => {
   }
 
   test('shows the changed-outside state on pause, with a reload action, and changes nothing', async () => {
-    const { container, findByRole, getByRole, queryByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole, queryByRole } = view;
     const root = await ready(container);
     changeOnDisk();
 
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     expect(await findByRole('button', { name: WORKFLOW_COPY.stale.action })).not.toBeNull();
     expect(root.textContent).toContain(WORKFLOW_COPY.stale.title);
     expect(root.dataset['condition']).toBe('stale');
@@ -749,12 +787,12 @@ describe('a file that changed on disk after the page loaded', () => {
   });
 
   test('shows it on delete too, and deletes nothing', async () => {
-    const { container, findByRole, getByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole } = view;
     await ready(container);
     changeOnDisk();
 
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+    const dialog = await openDeleteDialog(view, 'digest');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
     );
@@ -765,10 +803,11 @@ describe('a file that changed on disk after the page loaded', () => {
   });
 
   test('reloads what is on disk and then acts on it', async () => {
-    const { container, findByRole, getByRole, queryByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole, queryByRole } = view;
     const root = await ready(container);
     changeOnDisk();
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     await fireEvent.click(await findByRole('button', { name: WORKFLOW_COPY.stale.action }));
 
     await waitFor(() => expect(root.dataset['condition']).toBe('ready'));
@@ -777,17 +816,18 @@ describe('a file that changed on disk after the page loaded', () => {
       WORKFLOW_COPY.page.header.runsAs('Editor'),
     );
 
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     await findByRole('button', { name: WORKFLOW_COPY.resumeAction });
     expect(stub?.file('digest')?.paused).toBe(true);
   });
 
   test('is the not-found state when the file was deleted outside Interborough', async () => {
-    const { container, findByRole, getByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole } = view;
     await ready(container);
     if (stub !== undefined) stub.world.files = [];
 
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     await findByRole('heading', { level: 1, name: WORKFLOW_COPY.page.notFound.title });
     await waitFor(() =>
       expect(container.querySelector('[data-view="workflows"]')?.getAttribute('data-state')).toBe(
@@ -1019,12 +1059,13 @@ describe('a part of the page that fails', () => {
 
 describe('a write the Bureau refuses', () => {
   test('says the installation does not let you, for a forbidden pause, and the alert can be dismissed', async () => {
-    const { container, findByRole, getByRole, queryByText } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole, queryByText } = view;
     await ready(container);
     stub?.on('bureau.workflows.pause', () => {
       throw new StubFault('Forbidden', 403, 'No.');
     });
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     const alert = await findByRole('alert');
     expect(alert.textContent).toContain(WORKFLOW_COPY.pauseFailed);
     expect(alert.textContent).toContain(WORKFLOW_COPY.forbidden);
@@ -1035,21 +1076,23 @@ describe('a write the Bureau refuses', () => {
   });
 
   test('says only that the pause failed for a fault that names nothing this page can act on', async () => {
-    const { container, findByRole, getByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole } = view;
     await ready(container);
     stub?.on('bureau.workflows.pause', () => {
       throw workflowFaults.conflict('agent-file-exists');
     });
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     const alert = await findByRole('alert');
     expect(alert.textContent).toContain(WORKFLOW_COPY.pauseFailed);
     expect(alert.textContent).not.toContain('already used');
   });
 
   test('shows the Bureau’s own words when it could not apply a resume or a delete', async () => {
-    const { container, findByRole, findByText, getByRole } = open('/workflows/digest', {
+    const view = open('/workflows/digest', {
       files: [readyFile('digest', { paused: true })],
     });
+    const { container, findByText, getByRole } = view;
     await ready(container);
     stub?.on('bureau.workflows.resume', () => {
       throw workflowFaults.unavailable();
@@ -1061,22 +1104,24 @@ describe('a write the Bureau refuses', () => {
     stub?.on('bureau.workflows.delete', () => {
       throw workflowFaults.unavailable();
     });
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+    const dialog = await openDeleteDialog(view, 'digest');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
     );
-    expect(await findByText(WORKFLOW_COPY.deleteFailed)).not.toBeNull();
+    // A delete the Bureau refused stays in the dialog, in its words, and the button is the retry.
+    await waitFor(() => expect(dialog.textContent).toContain('The engine did not answer.'));
+    expect(dialog.textContent).toContain(WORKFLOW_COPY.deleteDialog.failedTitle);
     expect(router.pathname).toBe('/workflows/digest');
   });
 
   test('is a failure to reload, in words, when the file cannot be read again', async () => {
-    const { container, findByRole, getByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByRole } = view;
     await ready(container);
     const file = stub?.file('digest');
     if (file === undefined) throw new Error('The file is missing.');
     file.hash = 'hash-by-hand';
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     const reload = await findByRole('button', { name: WORKFLOW_COPY.stale.action });
     stub?.on('bureau.workflows.get', () => {
       throw workflowFaults.unprocessable('Cannot read it.');
@@ -1114,7 +1159,8 @@ describe('a workflow deleted between the frame’s read and the page’s', () =>
 
 describe('a write the Bureau made and the engine could not apply', () => {
   test('is shown as changed but not yet applied, and the next action names the new hash', async () => {
-    const { container, findByText, findByRole, getByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByText, findByRole, getByRole } = view;
     const root = await ready(container);
     let calls = 0;
     stub?.on('bureau.workflows.pause', (params) => {
@@ -1129,7 +1175,7 @@ describe('a write the Bureau made and the engine could not apply', () => {
       }
       return { id: 'digest', hash: params['expectedHash'] };
     });
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
 
     expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
     expect(root.textContent).not.toContain(WORKFLOW_COPY.pauseFailed);
@@ -1183,9 +1229,10 @@ describe('a signal that fails', () => {
 
 describe('a resume or a delete the engine could not apply', () => {
   test('a resume is shown as changed, and a delete whose file is gone returns to the list', async () => {
-    const { container, findByRole, findByText, getByRole } = open('/workflows/digest', {
+    const view = open('/workflows/digest', {
       files: [readyFile('digest', { paused: true })],
     });
+    const { container, findByText, getByRole } = view;
     await ready(container);
     stub?.on('bureau.workflows.resume', () => {
       const file = stub?.file('digest');
@@ -1196,14 +1243,13 @@ describe('a resume or a delete the engine could not apply', () => {
     });
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
     expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
-    await findByRole('button', { name: WORKFLOW_COPY.pauseAction });
+    await running(view);
 
     stub?.on('bureau.workflows.delete', () => {
       if (stub !== undefined) stub.world.files = [];
       throw workflowFaults.applyFailed();
     });
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
-    const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+    const dialog = await openDeleteDialog(view, 'digest');
     await fireEvent.click(
       within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
     );
@@ -1214,7 +1260,8 @@ describe('a resume or a delete the engine could not apply', () => {
 describe('the "not applied yet" banner', () => {
   for (const later of ['a resume that succeeds', 'a delete refused as stale'] as const) {
     test(`clears once a later write runs: ${later}`, async () => {
-      const { container, findByText, findByRole, getByRole } = open('/workflows/digest');
+      const view = open('/workflows/digest');
+      const { container, findByText, findByRole, getByRole } = view;
       const root = await ready(container);
       stub?.on('bureau.workflows.pause', () => {
         const file = stub?.file('digest');
@@ -1223,20 +1270,19 @@ describe('the "not applied yet" banner', () => {
         file.hash = 'hash-applied-later';
         throw workflowFaults.applyFailed();
       });
-      await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+      await pauseFromMenu(view);
       expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
       await findByRole('button', { name: WORKFLOW_COPY.resumeAction });
 
       if (later === 'a resume that succeeds') {
         await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.resumeAction }));
         await waitFor(() => expect(stub?.callsTo('bureau.workflows.resume').length).toBe(1));
-        await findByRole('button', { name: WORKFLOW_COPY.pauseAction });
+        await running(view);
       } else {
         stub?.on('bureau.workflows.delete', () => {
           throw workflowFaults.stale('someone-else');
         });
-        await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.deleteAction }));
-        const dialog = await findByRole('dialog', { name: WORKFLOW_COPY.deleteDialog.title });
+        const dialog = await openDeleteDialog(view, 'digest');
         await fireEvent.click(
           within(dialog).getByRole('button', { name: WORKFLOW_COPY.deleteDialog.confirm }),
         );
@@ -1247,7 +1293,8 @@ describe('the "not applied yet" banner', () => {
   }
 
   test('stays while a later write fails for another reason', async () => {
-    const { container, findByText, findByRole, getByRole } = open('/workflows/digest');
+    const view = open('/workflows/digest');
+    const { container, findByText, findByRole } = view;
     const root = await ready(container);
     stub?.on('bureau.workflows.pause', () => {
       const file = stub?.file('digest');
@@ -1256,7 +1303,7 @@ describe('the "not applied yet" banner', () => {
       file.hash = 'hash-applied-later';
       throw workflowFaults.applyFailed();
     });
-    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.pauseAction }));
+    await pauseFromMenu(view);
     expect(await findByText(WORKFLOW_COPY.applyFailed.title)).not.toBeNull();
     stub?.on('bureau.workflows.resume', () => {
       throw workflowFaults.unavailable();
