@@ -944,6 +944,16 @@ Component-owned custom-property theming surfaces, one section per component (bes
 
 <!-- END GENERATED TOKEN TABLE -->
 
+### Week Schedule
+
+<!-- BEGIN GENERATED TOKEN TABLE: week-schedule -->
+
+| Token | Default | Description |
+| --- | --- | --- |
+| `--cinder-week-schedule-today-background` | `color-mix(in oklch, var(--cinder-text-default), transparent 92%)` | Today's row fill -- `text-default` at 8% opacity, so the row stays visibly separate on a raised card and on the page canvas in both themes. |
+
+<!-- END GENERATED TOKEN TABLE -->
+
 ### Terminal ANSI foreground ramp
 
 The 16-slot ANSI foreground ramp is intended for read-only terminal output. It keeps the familiar ANSI ordering while providing explicit light/dark values that are contrast-tested against the terminal inset surface.

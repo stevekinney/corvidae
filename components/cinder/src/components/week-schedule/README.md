@@ -2,7 +2,7 @@
 
 <!-- generated:a11y-record:required -->
 
-`WeekSchedule` displays a recurring week as one row per day: a 56px day column, a time range and a description. Today's row sits on the surface and is announced as the current date. A live window carries an inverted "On now" pill, with no accent colour. A time range never breaks across lines, and a window that ends after midnight says "next day" after its end time.
+`WeekSchedule` displays a recurring week as one row per day: a 56px day column, a time range and a description. Today's row carries a tonal fill and a stronger day name and is announced as the current date. A live window carries an inverted "On now" pill, with no accent colour. A time range never breaks across lines, and a window that ends after midnight says "next day" after its end time.
 
 It only displays a schedule. To edit one, use `ScheduleBuilder`.
 

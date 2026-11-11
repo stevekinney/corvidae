@@ -727,6 +727,12 @@
   --cinder-tree-item-dragging-opacity: 0.55;
   /* Default scroll-viewport height. */
   --cinder-virtual-list-height: 20rem;
+  /* Today's row fill -- `text-default` at 8% opacity, so the row stays visibly separate on a raised card and on the page canvas in both themes. */
+  --cinder-week-schedule-today-background: color-mix(
+    in oklch,
+    var(--cinder-text-default),
+    transparent 92%
+  );
 }
 
 :root[data-theme='dark'] {
@@ -904,6 +910,11 @@
     transparent 88%
   );
   --cinder-skeleton-background: var(--cinder-surface-raised);
+  --cinder-week-schedule-today-background: color-mix(
+    in oklch,
+    var(--cinder-text-default),
+    transparent 92%
+  );
   --cinder-control-background: var(--cinder-surface-raised);
   --cinder-control-background-disabled: var(--cinder-fill-disabled);
   --cinder-control-border: var(--cinder-border-control);
@@ -1062,6 +1073,11 @@
     transparent 88%
   );
   --cinder-skeleton-background: var(--cinder-surface-inset);
+  --cinder-week-schedule-today-background: color-mix(
+    in oklch,
+    var(--cinder-text-default),
+    transparent 92%
+  );
   --cinder-control-background: var(--cinder-surface-raised);
   --cinder-control-background-disabled: var(--cinder-fill-disabled);
   --cinder-control-border: var(--cinder-border-control);

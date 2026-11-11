@@ -236,4 +236,9 @@ export const COMPONENT_DOC_SECTIONS: readonly DocSection[] = ([] = [
     headings: ['## Component tokens', '### Virtual List'],
     cssProperties: ['--cinder-virtual-list-height'],
   },
+  {
+    slug: 'week-schedule',
+    headings: ['## Component tokens', '### Week Schedule'],
+    cssProperties: ['--cinder-week-schedule-today-background'],
+  },
 ]);

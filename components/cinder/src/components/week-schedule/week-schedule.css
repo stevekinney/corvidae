@@ -3,8 +3,8 @@
   /* ========================================
  * WEEK SCHEDULE
  *
- * One row per day: a 56px day column, an unbroken time range and a description. Today's row sits
- * on the surface. A live window carries an inverted "On now" pill, with no accent colour.
+ * One row per day: a 56px day column, an unbroken time range and a description. Today's row carries a
+ * tonal fill and a stronger day name. A live window carries an inverted "On now" pill, with no accent colour.
  * ======================================== */
 
   .cinder-week-schedule {
@@ -27,11 +27,16 @@
   }
 
   .cinder-week-schedule__row[data-today] {
-    background: var(--cinder-surface);
+    background: var(--cinder-week-schedule-today-background);
   }
 
   .cinder-week-schedule__day {
     font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-week-schedule__row[data-today] .cinder-week-schedule__day {
+    color: var(--cinder-text-default);
   }
 
   /* The range never breaks inside: it stays on one line and the row wraps around it. */

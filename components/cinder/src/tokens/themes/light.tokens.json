@@ -1054,5 +1054,21 @@
     "background": {
       "$value": "{surface.inset}"
     }
+  },
+  "week-schedule": {
+    "today": {
+      "background": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.018, 245],
+          "alpha": 0.08
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 92%)"
+          }
+        }
+      }
+    }
   }
 }

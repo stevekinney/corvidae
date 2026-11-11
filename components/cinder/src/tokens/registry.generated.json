@@ -3089,6 +3089,16 @@
       "themeAware": false,
       "deprecated": false,
       "description": "Default scroll-viewport height."
+    },
+    {
+      "path": "week-schedule.today.background",
+      "cssProperty": "--cinder-week-schedule-today-background",
+      "category": "color",
+      "component": "week-schedule",
+      "public": true,
+      "themeAware": true,
+      "deprecated": false,
+      "description": "Today's row fill -- `text-default` at 8% opacity, so the row stays visibly separate on a raised card and on the page canvas in both themes."
     }
   ],
   "pathToCssProperty": {
@@ -3425,7 +3435,8 @@
     "tree.drop-line-color": "--cinder-tree-drop-line-color",
     "tree.drop-line-thickness": "--cinder-tree-drop-line-thickness",
     "tree.item-dragging-opacity": "--cinder-tree-item-dragging-opacity",
-    "virtual-list.height": "--cinder-virtual-list-height"
+    "virtual-list.height": "--cinder-virtual-list-height",
+    "week-schedule.today.background": "--cinder-week-schedule-today-background"
   },
   "cssPropertyToPath": {
     "--cinder-space-0": "space.0",
@@ -3761,7 +3772,8 @@
     "--cinder-tree-drop-line-color": "tree.drop-line-color",
     "--cinder-tree-drop-line-thickness": "tree.drop-line-thickness",
     "--cinder-tree-item-dragging-opacity": "tree.item-dragging-opacity",
-    "--cinder-virtual-list-height": "virtual-list.height"
+    "--cinder-virtual-list-height": "virtual-list.height",
+    "--cinder-week-schedule-today-background": "week-schedule.today.background"
   },
   "cssPropertyToPaths": {
     "--cinder-space-0": ["space.0"],
@@ -4103,7 +4115,8 @@
     "--cinder-tree-drop-line-color": ["tree.drop-line-color"],
     "--cinder-tree-drop-line-thickness": ["tree.drop-line-thickness"],
     "--cinder-tree-item-dragging-opacity": ["tree.item-dragging-opacity"],
-    "--cinder-virtual-list-height": ["virtual-list.height"]
+    "--cinder-virtual-list-height": ["virtual-list.height"],
+    "--cinder-week-schedule-today-background": ["week-schedule.today.background"]
   },
   "byCategory": {
     "spacing": [
@@ -4357,7 +4370,8 @@
       "status-dot.color",
       "table-of-contents.link.color",
       "table-of-contents.link.active-color",
-      "tree.drop-line-color"
+      "tree.drop-line-color",
+      "week-schedule.today.background"
     ],
     "typography": [
       "font.sans",
@@ -4563,6 +4577,7 @@
       "table-of-contents.link.indent-step"
     ],
     "tree": ["tree.drop-line-color", "tree.drop-line-thickness", "tree.item-dragging-opacity"],
-    "virtual-list": ["virtual-list.height"]
+    "virtual-list": ["virtual-list.height"],
+    "week-schedule": ["week-schedule.today.background"]
   }
 }

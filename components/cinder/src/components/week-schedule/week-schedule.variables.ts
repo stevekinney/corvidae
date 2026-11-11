@@ -1,4 +1,4 @@
 /** CSS custom properties this component reads, which a consumer can override. */
-const variables: readonly string[] = [];
+const variables: readonly string[] = ['--cinder-week-schedule-today-background'];
 
 export default variables;

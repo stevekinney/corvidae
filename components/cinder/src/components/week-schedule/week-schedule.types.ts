@@ -12,7 +12,7 @@ export type WeekScheduleDay = {
   endsNextDay?: boolean;
   /** What happens in the window, such as "Happy hour". */
   description?: string;
-  /** Marks this row as today: it sits on the surface and is announced as the current date. */
+  /** Marks this row as today: it carries a tonal fill and a stronger day name and is announced as the current date. */
   today?: boolean;
   /** Marks the window as running now: an inverted "On now" pill carries the signal instead of colour. */
   live?: boolean;
