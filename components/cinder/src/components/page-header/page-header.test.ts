@@ -23,6 +23,13 @@ const { readFileSync } = await import('node:fs');
 const stylesheet = readFileSync(new URL('./page-header.css', import.meta.url), 'utf8');
 const { default: pageHeaderSchema } = await import('./page-header.schema.ts');
 
+describe('PageHeader actions row height', () => {
+  test('adds no block padding beyond the title line box', () => {
+    const rule = stylesheet.match(/\.cinder-page-header__actions\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(rule).not.toMatch(/padding/);
+  });
+});
+
 describe('PageHeader', () => {
   test('schema requires a string title and supports an optional string description', () => {
     const validate = new Ajv2020({ strict: false }).compile(pageHeaderSchema);
@@ -128,18 +135,20 @@ describe('PageHeader', () => {
     ).toBe(false);
   });
 
-  test('a header whose only action is the create "+" keeps it on the title row on a phone', () => {
-    const { container } = render(PageHeader, {
-      props: { title: 'Schedules', createAction: { label: 'New schedule' } },
-    });
-    expect(
-      container
-        .querySelector('.cinder-page-header')
-        ?.classList.contains('cinder-page-header--create-only'),
-    ).toBe(true);
-    expect(stylesheet).toMatch(
-      /@container cinder-page-header \(max-width: 32rem\)\s*\{\s*\.cinder-page-header--create-only \.cinder-page-header__row\s*\{\s*flex-wrap:\s*nowrap/,
-    );
+  test('actions and the create button render at xs and stay beside the title at any width', () => {
+    const { container } = render(Harness, { props: { withActions: true } });
+    const buttons = container.querySelectorAll('.cinder-page-header__actions button');
+    expect(buttons.length).toBe(3);
+    for (const button of buttons) expect(button.getAttribute('data-cinder-size')).toBe('xs');
+    expect(stylesheet).not.toMatch(/@container cinder-page-header/);
+    expect(stylesheet).not.toMatch(/flex-wrap:\s*wrap[^}]*\}\s*\.cinder-page-header__heading/);
+  });
+
+  test('under an error header a primary action is secondary and still xs', () => {
+    const { container } = render(Harness, { props: { withActions: true, error: true } });
+    const primary = container.querySelector('.cinder-page-header__actions button');
+    expect(primary?.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(primary?.getAttribute('data-cinder-size')).toBe('xs');
   });
 
   test('the title renders at the page-title token, which resolves to 24px', () => {
@@ -158,21 +167,6 @@ describe('PageHeader', () => {
     expect(declared('--cinder-text-2xl')).toBe('1.25rem');
     expect(declared('--cinder-leading-heading')).toBe('1.2');
     expect(declared('--cinder-font-heading')).toBe('650');
-  });
-
-  test('a header with other actions beside the create "+" still drops them to their own row', () => {
-    const actions = createRawSnippet(() => ({
-      render: () => `<button>Export</button>`,
-      setup: () => {},
-    }));
-    const { container } = render(PageHeader, {
-      props: { title: 'Runs', actions, createAction: { label: 'Start run' } },
-    });
-    expect(
-      container
-        .querySelector('.cinder-page-header')
-        ?.classList.contains('cinder-page-header--create-only'),
-    ).toBe(false);
   });
 
   test('class prop merges onto root div element', () => {
@@ -401,12 +395,9 @@ describe('PageHeader', () => {
       }
     }
 
-    test('in a narrow container the title takes the row and the actions drop beneath it (W05)', () => {
+    test('the header is a size container and never wraps its actions to a second row', () => {
       expect(stylesheet).toMatch(/\.cinder-page-header\s*\{[^}]*container-type:\s*inline-size/);
-      const narrow = stylesheet.slice(stylesheet.indexOf('@container cinder-page-header'));
-      expect(narrow).toMatch(/__row\s*\{\s*flex-wrap:\s*wrap/);
-      expect(narrow).toMatch(/__heading-group\s*\{\s*flex-basis:\s*100%/);
-      expect(narrow).toMatch(/__actions\s*\{[^}]*flex-basis:\s*100%/);
+      expect(stylesheet).not.toMatch(/__actions\s*\{[^}]*flex-basis:\s*100%/);
     });
 
     test('clamps to two lines and never uses the native title attribute', () => {

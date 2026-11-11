@@ -226,7 +226,7 @@ export function laneProblems(
   // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`.
   if (workspace !== '.' && test !== '' && !WRAPPER_NAMES.some((name) => test.includes(name))) {
     problems.push(
-      `${workspace}: its test script does not run through scripts/bun-test-junit.ts (or the playground runner), so the duration ratchet cannot see its tests`,
+      `${workspace}: its test script does not run through scripts/bun-test-junit.ts (or the playground runner), so the duration check cannot see its tests`,
     );
   }
   // `run-tests.ts` is the playground runner, which splits the lanes by file name itself.

@@ -19,6 +19,8 @@ export { createDefaultGuardrailsPreset } from './default-preset';
 export { guardrailActionOf, guardrailOf } from './guardrail-entries';
 export { createInputGuardrail } from './input-guardrail';
 export { createOutputGuardrail } from './output-guardrail';
+export { SCAN_FAILED_MESSAGE, collectStreamedToolResult, scanToolResult } from './scan-tool-result';
+export type { ScanToolResultOptions, ScannedToolResult } from './scan-tool-result';
 export {
   SESSION_TAINT_METADATA_KEY,
   createSessionTaintTracker,

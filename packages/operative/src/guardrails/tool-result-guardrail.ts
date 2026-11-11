@@ -57,6 +57,14 @@ function inspectResult(result: ToolExecutionResult): {
   }
   const message = result.error?.message;
   if (message !== undefined && message !== '') texts.push(message);
+  // COR-2299: an injection split across two strings (a streamed result's chunks, two fields) trips
+  // no detector leaf by leaf, so the model's whole view of the result is read once more, joined:
+  // with nothing between them, which is how chunks of one text join and catches a split
+  // mid-word, and with a space, which catches a split at a word boundary.
+  if (texts.length > 1) {
+    const leaves = [...texts];
+    texts.push(leaves.join(''), leaves.join(' '));
+  }
   return { texts, uninspectable };
 }
 
@@ -120,7 +128,9 @@ export function guardrailBlockedMessage(guardrailName: string): string {
  * is shown it (see {@link ToolResultGuardrailOptions.action} for what a detection does). A result
  * whose outcome is `action_required` is a call that has not run, and is passed through unread.
  *
- * The first piece of text a detector flags decides; the rest of the result is not read further.
+ * The first piece of text a detector flags decides; the rest of the result is not read further. Each
+ * string is read alone, and then all of them once more joined, so an injection split across strings
+ * is still seen.
  * A detector that throws fails closed, as on the input side (COR-2300): the result is refused.
  */
 export function createToolResultGuardrail(

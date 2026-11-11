@@ -1,7 +1,7 @@
 /**
  * Runs `bun test` with the arguments given and records per-test durations as
  * JUnit XML under `test-output/junit/` in the calling workspace, so the root
- * duration ratchet (`scripts/check-test-durations.ts`) can read them.
+ * duration check (`scripts/check-test-durations.ts`) can read them.
  *
  * `bun test` neither creates the report's directory nor accepts a report
  * without a path, so this wrapper does both. The console output is unchanged

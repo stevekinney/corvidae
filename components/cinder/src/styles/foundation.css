@@ -94,6 +94,11 @@
    inline with the gap constant and its hook. */
 :root {
   --_cinder-focus-ring-filled-gap: 2px;
+  /* The visual height of a compact control: a Button in a header's actions, and the margin that
+     centres those actions on the title's line box. It is `--cinder-control-height-xs` at a fine
+     pointer and is deliberately not raised by the `(pointer: coarse)` rule below, so the 44px
+     touch target of a compact button is its hit-area extension, never its drawn height. */
+  --_cinder-compact-control-height: 1.5rem;
   --_cinder-focus-ring-shadow:
     0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
     0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
