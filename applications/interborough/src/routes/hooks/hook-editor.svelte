@@ -109,7 +109,7 @@
     scopeKindsFor,
   } from './hook-presentation.ts';
   import HookSecretField from './hook-secret-field.svelte';
-  import { holdSecret, takeHeldSecret } from './hook-secret-once.ts';
+  import { holdSecret, peekHeldSecret, takeHeldSecret } from './hook-secret-once.ts';
   import HooksUnavailable from './hooks-unavailable.svelte';
 
   const copy = HOOKS_COPY.editor;
@@ -143,10 +143,12 @@
   /**
    * The signing secret of the hook this page was opened for, when the save that made it just
    * answered with one: shown revealed with its Copy button, once. Replace shows the next one the
-   * same way. Leaving the page forgets it.
+   * same way. Leaving the page forgets it. It is read here and taken once the hook has been drawn,
+   * because the outlet draws a page once more while the address changes, and the first drawing is
+   * thrown away.
    */
   // svelte-ignore state_referenced_locally
-  let revealedSecret = $state<string | null>(isNew ? null : (takeHeldSecret(hookId) ?? null));
+  let revealedSecret = $state<string | null>(isNew ? null : (peekHeldSecret(hookId) ?? null));
 
   const existing = createQuery(
     () => ({
@@ -230,6 +232,10 @@
   );
   const notFound = $derived(!isNew && classifyFault(existing.error)?.kind === 'not-found');
   const hook = $derived(existing.data);
+  // The secret shown with a hook that was just made is shown once: the page that drew it forgets it.
+  $effect(() => {
+    if (hook !== undefined) takeHeldSecret(hookId);
+  });
 
   // "Cancel" in the still-loading line stopped the first read, and "Try again" reads again.
   let loadStopped = $state(false);

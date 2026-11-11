@@ -634,21 +634,21 @@ describe('the hooks list', () => {
   });
 });
 
-describe('the hook editor', () => {
-  async function chooseEvent(view: ReturnType<typeof open>['view'], search: string, name: string) {
-    const input = await view.findByRole('combobox', { name: HOOKS_COPY.editor.event.label });
-    await fireEvent.focus(input);
-    await fireEvent.input(input, { target: { value: search } });
-    const option = await waitFor(() => {
-      const found = Array.from(document.body.querySelectorAll('[role="option"]')).find((element) =>
-        element.textContent?.includes(name),
-      );
-      if (found === undefined) throw new Error(`no option ${name}`);
-      return found;
-    });
-    await fireEvent.mouseDown(option);
-  }
+async function chooseEvent(view: ReturnType<typeof open>['view'], search: string, name: string) {
+  const input = await view.findByRole('combobox', { name: HOOKS_COPY.editor.event.label });
+  await fireEvent.focus(input);
+  await fireEvent.input(input, { target: { value: search } });
+  const option = await waitFor(() => {
+    const found = Array.from(document.body.querySelectorAll('[role="option"]')).find((element) =>
+      element.textContent?.includes(name),
+    );
+    if (found === undefined) throw new Error(`no option ${name}`);
+    return found;
+  });
+  await fireEvent.mouseDown(option);
+}
 
+describe('the hook editor', () => {
   test('searches every event by its words, its raw kind, its area, and what it means', async () => {
     const { view } = open([], { path: '/hooks/new' });
     const input = await view.findByRole('combobox', { name: HOOKS_COPY.editor.event.label });
@@ -682,9 +682,7 @@ describe('the hook editor', () => {
 
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
     const { view } = open([], { path: '/hooks/new' });
-    expect(
-      view.getByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle }),
-    ).not.toBeNull();
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle });
     // A new hook is told what to do first, and has no secret field: the Bureau makes the secret.
     expect(view.getByTestId('hook-check-summary').textContent).toContain(
       HOOKS_COPY.editor.check.pickEvent,
@@ -800,7 +798,15 @@ describe('the hook editor', () => {
     await waitFor(() => expect(subject.options.length).toBe(2));
     await fireEvent.change(subject, { target: { value: AGENT.name } });
 
-    expect(view.getByTestId('hook-sentence').textContent).toContain(`for the agent ${AGENT.name}`);
+    // A new hook's Check says its event, not its sentence, so the subject shows in what is sent.
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'https://example.com/receive' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.create')[0]?.params).toMatchObject({
+      scope: { kind: 'agent', id: AGENT.name },
+    });
   });
 
   test('lists the workflows and the schedules Only for can name, by what a person calls them', async () => {
