@@ -30,6 +30,12 @@ export type ChipDisplayProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & 
   size?: ChipSize;
   /** When set to `"toolbar"`, opts the chip into compact toolbar sizing to align with sibling toolbar controls. */
   density?: ChipDensity;
+  /**
+   * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
+   * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
+   * before it. The chip gains no tint or border.
+   */
+  suggested?: boolean;
   leadingIcon?: Snippet;
   /** Additional class names merged onto the chip element. */
   class?: string;
@@ -64,6 +70,12 @@ export type ChipToggleProps = Omit<
   size?: ChipSize;
   /** When set to `"toolbar"`, opts the chip into compact toolbar sizing to align with sibling toolbar controls. */
   density?: ChipDensity;
+  /**
+   * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
+   * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
+   * before it. The chip gains no tint or border.
+   */
+  suggested?: boolean;
   leadingIcon?: Snippet;
   /** Additional class names merged onto the chip element. */
   class?: string;
@@ -91,6 +103,12 @@ export type ChipRemovableProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> 
   size?: ChipSize;
   /** When set to `"toolbar"`, opts the chip into compact toolbar sizing to align with sibling toolbar controls. */
   density?: ChipDensity;
+  /**
+   * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
+   * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
+   * before it. The chip gains no tint or border.
+   */
+  suggested?: boolean;
   leadingIcon?: Snippet;
   /** Additional class names merged onto the chip element. */
   class?: string;
@@ -177,6 +195,12 @@ export type ChipProps = SharedHtmlAttributes &
     size?: ChipSize;
     /** When set to `"toolbar"`, opts the chip into compact toolbar sizing to align with sibling toolbar controls. */
     density?: ChipDensity;
+    /**
+     * Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral
+     * chip the label reads in the accent text colour, and assistive technology hears "Suggested"
+     * before it. The chip gains no tint or border.
+     */
+    suggested?: boolean;
     leadingIcon?: Snippet;
     /** Additional class names merged onto the chip element. */
     class?: string;

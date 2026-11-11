@@ -42,6 +42,8 @@
     action,
     chevron,
     selected = false,
+    suggested = false,
+    suggestedLabel = 'Suggested',
     href,
     target,
     rel,
@@ -74,6 +76,7 @@
     className,
   )}
   data-cinder-selected={selected ? '' : undefined}
+  data-cinder-suggested={suggested ? '' : undefined}
   aria-current={selected && href === undefined ? 'true' : undefined}
 >
   {#if leading}
@@ -96,6 +99,9 @@
       </div>
     {/if}
     <div class="cinder-grouped-list-item__text">
+      {#if suggested}
+        <span class="cinder-grouped-list-item__suggested">{suggestedLabel}</span>
+      {/if}
       <div class="cinder-grouped-list-item__title">
         {#if href !== undefined}
           <a

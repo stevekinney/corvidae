@@ -65,6 +65,17 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
    * @default false
    */
   selected?: boolean;
+  /**
+   * Marks the row as a suggestion that is not saved until the person confirms it: a quiet accent
+   * text label on a line above the title, with no tint, border or pill.
+   * @default false
+   */
+  suggested?: boolean;
+  /**
+   * The words of the suggested label, such as "Suggested wording". Used with `suggested`.
+   * @default "Suggested"
+   */
+  suggestedLabel?: string;
   /** Makes the whole row a link to this address. */
   href?: string;
   /** Where to open the link. */

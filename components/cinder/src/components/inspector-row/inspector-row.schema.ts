@@ -34,6 +34,18 @@ const schema = {
       description: 'Draws the row as read-only, even when it has an editor.',
       default: false,
     },
+    suggested: {
+      type: 'boolean',
+      description:
+        "Marks the value as a suggestion that is not saved until the person confirms it: a quiet accent\ntext label under the row's label, with no tint, border or pill.",
+      default: false,
+    },
+    suggestedLabel: {
+      type: 'string',
+      description:
+        'The words of the suggested label, such as "Suggested wording". Used with `suggested`.',
+      default: 'Suggested',
+    },
     class: {
       type: 'string',
       description: 'Custom class merged with `.cinder-inspector-row`.',

@@ -53,6 +53,7 @@
   const breakable = $derived(props.breakable ?? false);
   const size = $derived(props.size ?? 'md');
   const density = $derived(props.density);
+  const suggested = $derived(props.suggested ?? false);
   const customClassName = $derived(props.class);
   const leadingIcon = $derived(props.leadingIcon);
   const pressed = $derived(mode === 'toggle' ? (props as ChipToggleProps).pressed : false);
@@ -99,6 +100,7 @@
     'breakable',
     'size',
     'density',
+    'suggested',
     'leadingIcon',
     'class',
     'pressed',
@@ -138,6 +140,7 @@
     data-cinder-size={size}
     data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
     data-cinder-breakable={breakable || undefined}
+    data-cinder-suggested={suggested ? '' : undefined}
     style:--_cinder-chip-brand-color={brandColor}
     class={classNames('cinder-chip', customClassName)}
     aria-pressed={pressed}
@@ -161,7 +164,9 @@
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
-    <span class="cinder-chip__label">{label}</span>
+    <span class="cinder-chip__label"
+      >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
+    >
   </button>
 {:else if mode === 'removable'}
   <span
@@ -173,6 +178,7 @@
     data-cinder-size={size}
     data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
     data-cinder-breakable={breakable || undefined}
+    data-cinder-suggested={suggested ? '' : undefined}
     data-cinder-disabled={disabled || undefined}
     aria-disabled={disabled || undefined}
     style:--_cinder-chip-brand-color={brandColor}
@@ -181,7 +187,9 @@
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
-    <span class="cinder-chip__label">{label}</span>
+    <span class="cinder-chip__label"
+      >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
+    >
     <button
       type="button"
       class="cinder-chip__remove"
@@ -202,12 +210,15 @@
     data-cinder-size={size}
     data-cinder-density={density === 'toolbar' ? 'toolbar' : undefined}
     data-cinder-breakable={breakable || undefined}
+    data-cinder-suggested={suggested ? '' : undefined}
     style:--_cinder-chip-brand-color={brandColor}
     class={classNames('cinder-chip', customClassName)}
   >
     {#if leadingIcon}
       <span class="cinder-chip__icon" aria-hidden="true">{@render leadingIcon()}</span>
     {/if}
-    <span class="cinder-chip__label">{label}</span>
+    <span class="cinder-chip__label"
+      >{#if suggested}<span class="cinder-sr-only">{'Suggested: '}</span>{/if}{label}</span
+    >
   </span>
 {/if}

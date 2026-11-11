@@ -48,6 +48,11 @@ const schema = {
       description:
         'When set to `"toolbar"`, opts the chip into compact toolbar sizing to align with sibling toolbar controls.',
     },
+    suggested: {
+      type: 'boolean',
+      description:
+        'Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral\nchip the label reads in the accent text colour, and assistive technology hears "Suggested"\nbefore it. The chip gains no tint or border.',
+    },
     class: {
       type: 'string',
       description: 'Additional class names merged onto the chip element.',

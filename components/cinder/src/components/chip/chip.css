@@ -147,6 +147,14 @@
     );
   }
 
+  /* Suggested (COR-2326): a neutral chip that is not saved until confirmed reads in the accent
+   * text colour, and assistive technology hears "Suggested" first. No tint, border or extra pill.
+   * The variant sits in `:where()` so the disabled label rule below, at equal specificity and later
+   * in the file, still greys a disabled chip; a status variant keeps its tone. */
+  .cinder-chip[data-cinder-suggested]:where([data-cinder-variant='neutral']) .cinder-chip__label {
+    color: var(--cinder-accent-text);
+  }
+
   /* ----------------------------------------
  * Hover states (button chips only)
  * ---------------------------------------- */

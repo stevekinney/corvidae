@@ -46,6 +46,17 @@ export type InspectorRowProps = Omit<HTMLAttributes<HTMLDivElement>, 'class' | '
    * @default false
    */
   disabled?: boolean;
+  /**
+   * Marks the value as a suggestion that is not saved until the person confirms it: a quiet accent
+   * text label under the row's label, with no tint, border or pill.
+   * @default false
+   */
+  suggested?: boolean;
+  /**
+   * The words of the suggested label, such as "Suggested wording". Used with `suggested`.
+   * @default "Suggested"
+   */
+  suggestedLabel?: string;
   /** Called when an edit is committed: with Enter, by leaving a field, by picking an option, by activating a toggle, or by a custom editor's `commit`. */
   onCommit?: (next: InspectorRowValue | undefined) => void;
   /** Called when an edit is cancelled: with Escape, by activating the row again, or by dismissing the popover. */

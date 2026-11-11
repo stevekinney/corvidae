@@ -258,6 +258,20 @@
     color: var(--cinder-status-danger-text);
   }
 
+  /* Suggested (COR-2326): drafted content that is not saved until confirmed says so in quiet
+   * accent words on its label line. No tint, border or pill: the colour and the words carry it. */
+  .cinder-card__suggested {
+    flex: none;
+    color: var(--cinder-accent-text);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-card__body > .cinder-card__suggested {
+    display: block;
+    margin-block-end: var(--cinder-space-1);
+  }
+
   .cinder-card__description {
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-subtle);

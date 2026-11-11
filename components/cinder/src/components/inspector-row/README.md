@@ -37,6 +37,22 @@ The row never holds the value itself: it calls `onCommit` with the new value and
 </Inspector>
 ```
 
+## Suggested values
+
+`suggested` marks a value the product drafted that is not saved until the person confirms it. The row says so in words: a quiet "Suggested" label in the accent text colour on a line under the row's label, which `suggestedLabel` can change, for example to "Suggested wording". The label is part of the term, so an editable row's name reads it too. The row keeps its own surface: no tint, no dashed or accent border and no pill.
+
+```svelte
+<script lang="ts">
+  import { Inspector, InspectorRow } from '@lostgradient/cinder';
+</script>
+
+<Inspector header="Details">
+  <InspectorRow label="Context" suggested>
+    {#snippet value()}Phone{/snippet}
+  </InspectorRow>
+</Inspector>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -49,6 +65,8 @@ The row never holds the value itself: it calls `onCommit` with the new value and
 | `editLabel` | `string` | no | — | The accessible name of the editor. Left unset, it reads "Edit" and the label. |
 | `kind` | `"text"` \| `"select"` \| `"date"` \| `"toggle"` | no | — | The built-in editor an activation opens. Leave it unset, with no `editor`, for a read-only row. A `toggle` row has no editor: activating it commits the opposite of `current`. |
 | `label` | `string` | yes | — | The row's label, drawn muted in a fixed-width column. |
+| `suggested` | `boolean` | no | `false` | Marks the value as a suggestion that is not saved until the person confirms it: a quiet accent text label under the row's label, with no tint, border or pill. |
+| `suggestedLabel` | `string` | no | `"Suggested"` | The words of the suggested label, such as "Suggested wording". Used with `suggested`. |
 | `editor` | `(opaque)` | no | — | A custom editor, shown in a popover anchored to the row's value. It wins over `kind`. Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | An optional icon drawn before the label. Not expressible in JSON Schema; see the component types for the signature. |
 | `onCancel` | `(opaque)` | no | — | Called when an edit is cancelled: with Escape, by activating the row again, or by dismissing the popover. Not expressible in JSON Schema; see the component types for the signature. |

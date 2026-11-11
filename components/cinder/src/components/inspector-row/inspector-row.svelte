@@ -42,6 +42,8 @@
     editor,
     editLabel,
     disabled = false,
+    suggested = false,
+    suggestedLabel = 'Suggested',
     onCommit,
     onCancel,
     class: className,
@@ -161,12 +163,16 @@
   data-cinder-editable={editable ? '' : undefined}
   data-cinder-readonly={editable ? undefined : ''}
   data-cinder-editing={editing ? '' : undefined}
+  data-cinder-suggested={suggested ? '' : undefined}
 >
   <dt id={labelId} class="cinder-inspector-row__label">
     {#if icon}
       <span class="cinder-inspector-row__icon" aria-hidden="true">{@render icon()}</span>
     {/if}
     <span class="cinder-inspector-row__label-text">{label}</span>
+    {#if suggested}
+      <span class="cinder-inspector-row__suggested">{suggestedLabel}</span>
+    {/if}
   </dt>
   <dd class="cinder-inspector-row__value">
     {#if editing && inlineKind === 'select'}

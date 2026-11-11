@@ -7,7 +7,12 @@ import type {
 } from '../../_internal/union-props.ts';
 export type CardVariant = 'card' | 'well' | 'plain';
 export type CardTone = 'default' | 'muted';
-export type CardSurfaceTone = 'default' | 'danger';
+/**
+ * The card's container treatment. `danger` is a danger-zone surface; `suggested` marks drafted
+ * content that is not saved until the person confirms it, with a quiet accent text label and no
+ * tint, border or pill.
+ */
+export type CardSurfaceTone = 'default' | 'danger' | 'suggested';
 /**
  * The one edge a card draws. `none` (the default) draws neither: the surface step separates the
  * card. `border` is a hairline outline for a real panel; `shadow` is a soft shadow for a floating
@@ -123,8 +128,17 @@ export type CardProps = SharedHtmlAttributes &
      * by its surface alone, and a divider is opt-in.
      */
     headerDivider?: boolean;
-    /** Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. */
+    /**
+     * Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions.
+     * `suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on the
+     * title row (or at the top of the body when the card has no `title`), with no tint, border or pill.
+     */
     tone?: CardSurfaceTone;
+    /**
+     * The words of the `suggested` label, such as "Suggested wording". Used with `tone="suggested"`.
+     * @default "Suggested"
+     */
+    suggestedLabel?: string;
     /** Body surface treatment. `muted` renders a grey/inset body region. */
     bodyTone?: CardTone;
     /** Footer surface treatment. `muted` renders a grey/inset footer region. */

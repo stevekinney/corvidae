@@ -20,6 +20,26 @@ Surface container for grouping related content and actions into a distinct visua
 
 Use `tone="danger"` when a settings section or action group has destructive, irreversible, or broad-scope consequences. The tone paints the Card container and generated title icon, and the border too when `edge="border"` so applications do not need to hand-roll danger-zone borders or backgrounds. Put the concrete state or action in the body and use `ConfirmDialog` for irreversible or workspace-wide changes.
 
+## Suggested content
+
+Use `tone="suggested"` for content the product drafted that is not saved until the person confirms it, such as a suggested next action. The card says so in words: a quiet "Suggested" label in the accent text colour on its title row, or at the top of the body when the card has no `title`. `suggestedLabel` changes the words, for example to "Suggested wording". The card keeps its own surface: no tint, no dashed or accent border and no pill, so a suggestion never reads as a drop zone or a wireframe.
+
+```svelte
+<script lang="ts">
+  import { Button, Card } from '@lostgradient/cinder';
+</script>
+
+<Card tone="suggested" suggestedLabel="Suggested wording" title="Call the landlord about the lease">
+  <p>Drafted from your note. Nothing is saved until you confirm it.</p>
+  {#snippet footer()}
+    <Button variant="primary" size="sm" label="Keep" />
+    <Button variant="ghost" size="sm" label="Discard" />
+  {/snippet}
+</Card>
+```
+
+Do mark every drafted value the same way, and confirm or discard it with a visible action. Don't tint the card, outline it in the accent colour or add a badge to say it is a suggestion: the words carry it.
+
 ## Edge
 
 A card draws one edge, never two. `edge="none"` (the default) draws neither, and the surface step separates the card from the page; `edge="border"` is a hairline outline for a real panel; `edge="shadow"` is a soft shadow with no visible border. There is no prop that asks for both, so a card cannot end up with a border and a shadow together. The choice applies across every `variant` and `tone`, including `variant="well"` and `tone="danger"`.
@@ -70,8 +90,9 @@ A card becomes interactive when it receives `href` (the whole card renders as an
 | `mediaAspectRatio` | `string` \| `number` | no | `"16 / 9"` | The aspect ratio of the media box, such as `"16 / 9"` or `1`. The media fills it and is cropped to fit. Used with `media`. |
 | `mediaPosition` | `"top"` \| `"leading"` | no | `"top"` | Where the media sits: `top` spans the card above the header, `leading` is a column before the content. Used with `media`. |
 | `padding` | `"none"` \| `"default"` | no | — | Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges. |
+| `suggestedLabel` | `string` | no | `"Suggested"` | The words of the `suggested` label, such as "Suggested wording". Used with `tone="suggested"`. |
 | `title` | `string` | no | — | Primary heading text rendered inside the card's header region. |
-| `tone` | `"default"` \| `"danger"` | no | — | Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. |
+| `tone` | `"default"` \| `"danger"` \| `"suggested"` | no | — | Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions. `suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on the title row (or at the top of the body when the card has no `title`), with no tint, border or pill. |
 | `variant` | `"card"` \| `"well"` \| `"plain"` | no | — | Visual container style. `card` is raised; `well` is flatter and inset; `plain` is a heading on the page with no box. |
 | `actions` | `(opaque)` | no | — | Actions rendered at the end of the title row, aligned to the title's baseline. Buttons inside draw at the `xs` control height, so they never make the header taller. Ignored when the card is interactive (`href` or `onclick`), because a control cannot nest inside the whole-card link or button. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | yes | — | Basic card with no generated header. Not expressible in JSON Schema; see the component types for the signature. |

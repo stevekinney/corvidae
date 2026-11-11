@@ -46,6 +46,7 @@
     actions,
     variant = 'card',
     tone = 'default',
+    suggestedLabel = 'Suggested',
     bodyTone = 'default',
     footerTone = 'default',
     headerTone = 'default',
@@ -71,6 +72,9 @@
   );
   const titleTag = $derived(`h${resolvedHeadingLevel}` as const);
   const hasGeneratedHeader = $derived(Boolean(title && !header));
+  // A suggested card says so in words on its title row, or at the top of the body without one.
+  const suggested = $derived(tone === 'suggested');
+  const suggestedInBody = $derived(suggested && !hasGeneratedHeader);
   const titleId = $derived(hasGeneratedHeader ? `${generatedId}-title` : undefined);
   const customHeaderId = $derived(onclick && header ? `${generatedId}-header` : undefined);
   const bodyLabelId = $derived(onclick && !title && !header ? `${generatedId}-body` : undefined);
@@ -121,6 +125,10 @@
   {/if}
 {/snippet}
 
+{#snippet suggestedMark()}
+  <span class="cinder-card__suggested">{suggestedLabel}</span>
+{/snippet}
+
 {#snippet titleRow(showActions: boolean)}
   <div class="cinder-card__title-row">
     <div class="cinder-card__title-group">
@@ -132,6 +140,9 @@
       <svelte:element this={titleTag} id={titleId} class="cinder-card__title"
         >{title}</svelte:element
       >
+      {#if suggested}
+        {@render suggestedMark()}
+      {/if}
     </div>
     {#if showActions && actions}
       <div class="cinder-card__actions"><CompactActions>{@render actions()}</CompactActions></div>
@@ -177,6 +188,9 @@
     {/if}
 
     <div class="cinder-card__body" data-cinder-tone={bodyTone} data-cinder-padding={padding}>
+      {#if suggestedInBody}
+        {@render suggestedMark()}
+      {/if}
       {@render children()}
     </div>
 
@@ -222,6 +236,9 @@
       data-cinder-tone={bodyTone}
       data-cinder-padding={padding}
     >
+      {#if suggestedInBody}
+        {@render suggestedMark()}
+      {/if}
       {@render children()}
     </div>
     {#if footer}<div class="cinder-card__footer" data-cinder-tone={footerTone}>
@@ -265,6 +282,9 @@
           </p>{/if}
       </div>{/if}
     <div class="cinder-card__body" data-cinder-tone={bodyTone} data-cinder-padding={padding}>
+      {#if suggestedInBody}
+        {@render suggestedMark()}
+      {/if}
       {@render children()}
     </div>
     {#if footer}<div class="cinder-card__footer" data-cinder-tone={footerTone}>

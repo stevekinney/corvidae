@@ -217,15 +217,22 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
   // that it is gated on every surface: light 5.31:1 at its lowest (on the inset), dark 5.79:1 (on
   // raised).
   ...onSurfaces('text:subtle', '--cinder-text-subtle', text('text'), 'Subtle text'),
-  ...['--cinder-surface', '--cinder-surface-canvas', '--cinder-surface-inset'].map(
-    (background): ContrastPairing => ({
-      id: `accent:text:${background.replace('--cinder-', '')}`,
-      ...text('accent'),
-      foreground: '--cinder-accent-text',
-      background,
-      description: `Accent text on ${background.replace('--cinder-', '')}`,
-    }),
-  ),
+  // The raised surface and the neutral chip fill join the others for the suggested treatment
+  // (COR-2326), which draws accent text on grouped-list and inspector rows (both on
+  // `--cinder-surface-raised`) and on a neutral chip (on `--cinder-status-neutral-background`).
+  ...[
+    '--cinder-surface',
+    '--cinder-surface-canvas',
+    '--cinder-surface-inset',
+    '--cinder-surface-raised',
+    '--cinder-status-neutral-background',
+  ].map((background): ContrastPairing => ({
+    id: `accent:text:${background.replace('--cinder-', '')}`,
+    ...text('accent'),
+    foreground: '--cinder-accent-text',
+    background,
+    description: `Accent text on ${background.replace('--cinder-', '')}`,
+  })),
   ...(['solid', 'solid-hover', 'solid-active-on-fill'] as const).map((state): ContrastPairing => ({
     id: `accent:contrast:${state}`,
     ...text('accent'),

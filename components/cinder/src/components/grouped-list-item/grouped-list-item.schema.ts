@@ -57,6 +57,18 @@ const schema = {
       description: 'Marks the row as the current one with a tint.',
       default: false,
     },
+    suggested: {
+      type: 'boolean',
+      description:
+        'Marks the row as a suggestion that is not saved until the person confirms it: a quiet accent\ntext label on a line above the title, with no tint, border or pill.',
+      default: false,
+    },
+    suggestedLabel: {
+      type: 'string',
+      description:
+        'The words of the suggested label, such as "Suggested wording". Used with `suggested`.',
+      default: 'Suggested',
+    },
     href: {
       type: 'string',
       description: 'Makes the whole row a link to this address.',

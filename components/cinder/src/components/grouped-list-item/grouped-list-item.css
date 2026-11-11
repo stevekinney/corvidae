@@ -103,6 +103,15 @@
     line-height: var(--cinder-leading-snug, 1.35);
   }
 
+  /* Suggested (COR-2326): a row that is not saved until confirmed says so in quiet accent words on
+   * a line above its title. No tint, border or pill: the colour and the words carry it. */
+  .cinder-grouped-list-item__suggested {
+    color: var(--cinder-accent-text);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-medium);
+    line-height: var(--cinder-leading-snug);
+  }
+
   .cinder-grouped-list-item__subtitle {
     min-inline-size: 0;
     overflow-wrap: anywhere;

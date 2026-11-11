@@ -41,9 +41,15 @@ const schema = {
         'Draw a divider rule under the header. Off by default: the header is separated from the body\nby its surface alone, and a divider is opt-in.',
     },
     tone: {
-      enum: ['default', 'danger'],
+      enum: ['default', 'danger', 'suggested'],
       description:
-        'Container risk treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions.',
+        'Container treatment. `danger` renders a danger-zone surface for high-risk settings or destructive actions.\n`suggested` marks drafted content that is not saved until confirmed: a quiet accent text label on the\ntitle row (or at the top of the body when the card has no `title`), with no tint, border or pill.',
+    },
+    suggestedLabel: {
+      type: 'string',
+      description:
+        'The words of the `suggested` label, such as "Suggested wording". Used with `tone="suggested"`.',
+      default: 'Suggested',
     },
     bodyTone: {
       enum: ['default', 'muted'],

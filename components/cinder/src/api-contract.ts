@@ -207,16 +207,19 @@ export const CONTRACT: Record<string, ComponentContract> = {
       edge: { optional: true, type_kind: 'TSTypeReference', default: L('border') },
       headerDivider: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       tone: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      suggestedLabel: { optional: true, type_kind: 'TSStringKeyword', default: L('Suggested') },
       bodyTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       footerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       headerTone: { optional: true, type_kind: 'TSTypeReference', default: L('default') },
       edgeToEdgeOnMobile: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       padding: { optional: true, type_kind: 'TSTypeReference', default: NO_DEFAULT },
+      mediaPosition: { optional: true, type_kind: 'TSTypeReference', default: L('top') },
+      mediaAspectRatio: { optional: true, type_kind: 'TSUnionType', default: L('16 / 9') },
     },
     // `children` is required in every real CardDiscriminant arm, but that discriminant lives
     // inside `PadUnion<...>`, not this flat literal, so the AST checker can't see it here —
     // marked optional so it isn't flagged as missing; the real requirement lives in the type.
-    snippets: { children: s0(true), footer: s0(true), header: s0(true) },
+    snippets: { children: s0(true), footer: s0(true), header: s0(true), media: s0(true) },
   },
 
   'data-list': {

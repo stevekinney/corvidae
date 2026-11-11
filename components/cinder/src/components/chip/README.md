@@ -18,6 +18,18 @@ Use `Chip mode="display"` for issue labels and short tags only. Use Badge for at
 
 A chip is filled and never outlined: an unselected chip is a tone step on its surface with no edge. A selected toggle chip (`pressed`) is louder than an unselected one and never a solid accent fill: it takes the accent tint, the accent label, a 1.5px accent ring inside its edge and a check glyph before its label, so the selection is not carried by colour alone. A toggle chip is a control, so it is at least `--cinder-control-height-xs` tall and a coarse pointer lifts it to the 44px touch target; a display chip is a label and keeps its compact height.
 
+## Suggested chips
+
+`suggested` marks a chip the product drafted that is not saved until the person confirms it, such as a suggested context on a drafted next action. On a neutral chip the label reads in the accent text colour, and assistive technology hears "Suggested" before the label. The chip gains no tint, border or second pill; a status variant keeps its tone and the spoken word.
+
+```svelte
+<script lang="ts">
+  import { Chip } from '@lostgradient/cinder';
+</script>
+
+<Chip label="@phone" suggested />
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -34,6 +46,7 @@ A chip is filled and never outlined: an unselected chip is a tone step on its su
 | `pressed` | `boolean` | no | — | Toggle mode only. Whether the chip is currently in the pressed (selected) state. Reflected as `aria-pressed`. |
 | `removeAriaLabel` | `string` | no | — | Removable mode only. Accessible label for the remove button. Defaults to `Remove` followed by the chip's `label`. |
 | `size` | `"sm"` \| `"md"` | no | — | Size of the chip. Default `"md"`. |
+| `suggested` | `boolean` | no | — | Marks the chip as a suggestion that is not saved until the person confirms it. On a neutral chip the label reads in the accent text colour, and assistive technology hears "Suggested" before it. The chip gains no tint or border. |
 | `variant` | `"neutral"` \| `"success"` \| `"warning"` \| `"danger"` \| `"info"` \| `"accent"` | no | — | Color variant applied to the chip. Default `"neutral"`. |
 | `leadingIcon` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |
 | `onPressedChange` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

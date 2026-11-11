@@ -38,6 +38,23 @@ Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by tim
 </GroupedList>
 ```
 
+## Suggested rows
+
+`suggested` marks a row the product drafted that is not saved until the person confirms it. The row says so in words: a quiet "Suggested" label in the accent text colour on a line above the title, which `suggestedLabel` can change, for example to "Suggested wording". The row keeps its own surface: no tint, no dashed or accent border and no pill.
+
+```svelte
+<script lang="ts">
+  import { GroupedList, GroupedListItem } from '@lostgradient/cinder';
+</script>
+
+<GroupedList header="Next actions">
+  <GroupedListItem suggested>
+    {#snippet title()}Call the landlord about the lease{/snippet}
+    {#snippet subtitle()}Drafted from your note{/snippet}
+  </GroupedListItem>
+</GroupedList>
+```
+
 ## Props
 
 <!-- generated:props:start -->
@@ -53,6 +70,8 @@ Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by tim
 | `rel` | `string` | no | — | The link's relationship; `noopener noreferrer` is added for `_blank`. |
 | `selected` | `boolean` | no | `false` | Marks the row as the current one with a tint. |
 | `staleAge` | `string` | no | — | A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. |
+| `suggested` | `boolean` | no | `false` | Marks the row as a suggestion that is not saved until the person confirms it: a quiet accent text label on a line above the title, with no tint, border or pill. |
+| `suggestedLabel` | `string` | no | `"Suggested"` | The words of the suggested label, such as "Suggested wording". Used with `suggested`. |
 | `target` | `string` | no | — | Where to open the link. |
 | `urgency` | `"urgent"` \| `"soon"` | no | — | How pressing the lead is. `urgent` uses the warning text colour and `soon` is muted; left unset, the lead uses the default text colour. Used with `leadValue`. |
 | `action` | `(opaque)` | no | — | A trailing action such as a menu button. It sits in a fixed-width column, so a changing value never moves its click target. Not expressible in JSON Schema; see the component types for the signature. |
