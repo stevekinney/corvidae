@@ -187,11 +187,17 @@ describe('palette proposals over the shipped baseline', () => {
   test('pins a status family and a neutral family', () => {
     const success = proposalFor(fresh(), 'success', 'oklch(0.62 0.2 150)');
     expect(textOf(success, 'light', 'status.success.solid')).toBe('oklch(0.62 0.17 150)');
-    expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.965 0.05603 150)');
-    expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.12 0.033 150)');
+    // COR-2308 baselines: the light success background is oklch(96.5% 0.035 148) and the dark one
+    // is the oklab mix of the solid into the surface (oklch(0.2683 0.01698 176.755)). The light
+    // proposal keeps the 0.365 offset from the anchor (0.985) and its gamut-limited chroma drops
+    // to grid step 58; the dark proposal fits at step 100.
+    expect(textOf(success, 'light', 'status.success.background')).toBe('oklch(0.985 0.02333 150)');
+    expect(textOf(success, 'dark', 'status.success.background')).toBe('oklch(0.1083 0.02426 150)');
     const neutral = proposalFor(fresh(), 'neutral', '#6b7280');
-    expect(textOf(neutral, 'light', 'surface.base')).toBe('oklch(0.998 0 264.364)');
-    expect(textOf(neutral, 'dark', 'text.default')).toBe('oklch(0.92 0.02336 264.364)');
+    // The light surface now carries chroma 0.007 against the 0.018 text anchor, so it takes
+    // 0.007 / 0.018 of the seed's chroma; the dark text default keeps the seed's chroma.
+    expect(textOf(neutral, 'light', 'surface.base')).toBe('oklch(0.976 0.00908 264.364)');
+    expect(textOf(neutral, 'dark', 'text.default')).toBe('oklch(0.95 0.02336 264.364)');
   });
 
   test('every proposed value stays inside the selected gamut', () => {

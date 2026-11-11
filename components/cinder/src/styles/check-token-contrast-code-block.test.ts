@@ -60,16 +60,17 @@ function liftedDarkColors(): ReadonlyMap<string, string> {
   return lifted;
 }
 
-describe('dark code-block contrast (COR-2010 inset at 18%)', () => {
+describe('dark code-block contrast (COR-2308 inset at 21%)', () => {
   // The code-block ground is `--cinder-surface-inset` in the dark arm (code-block.css), which the
-  // design moves from 11% to 18% lightness. Shiki's `github-dark` token colors were chosen against
-  // a near-black field, so the move is adopted only while every one of them still clears AA text
-  // on the lighter ground.
+  // design moved from 11% to 18% lightness (COR-2010) and COR-2308's neutral ladder lifts to 21%
+  // (hue 265, chroma 0.012). Shiki's `github-dark` token colors were chosen against a near-black
+  // field, so the move is adopted only while every one of them still clears AA text on the lighter
+  // ground: the dimmest unlifted token color, #ea4a5a, reads 4.75:1 on the 21% inset.
   const inset = surfaceInset.dark;
   const insetLuminance = wcagLuminance(inset);
 
-  it('the dark inset is the 18% band the design draws', () => {
-    expect(inset.l).toBeCloseTo(0.18, 5);
+  it('the dark inset is the 21% band the neutral ladder draws', () => {
+    expect(inset.l).toBeCloseTo(0.21, 5);
   });
 
   it('every github-dark token color clears AA text on the dark inset', () => {
@@ -89,7 +90,7 @@ describe('dark code-block contrast (COR-2010 inset at 18%)', () => {
     }
   });
 
-  it('lifts the comment color, which falls under AA on the 18% inset without it', () => {
+  it('lifts the comment color, which falls under AA on the 21% inset without it (3.68:1)', () => {
     const lifted = liftedDarkColors();
     expect([...lifted.keys()]).toEqual(['#6a737d', '#9ecbff']);
     const unlifted = contrastRatio(relativeLuminance(hexToLinearRgb('#6a737d')), insetLuminance);

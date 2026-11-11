@@ -167,15 +167,17 @@ describe('COR-2010 row 08f: the skeleton fill stays visible on the canvas and th
   // the page canvas and on the plain surface a card body paints. The dark arm is the raised
   // surface, never the surface itself, which is what keeps a bar inside a card from vanishing.
   const SKELETON_FLOOR = 1.1;
-  // COR-2311: the light canvas is a visible step below the surface (97.5%), so the inset fill sits
-  // closer to it. Bars live inside cards, on the surface, where the full floor holds.
-  const LIGHT_CANVAS_FLOOR = 1.04;
+  // COR-2308: the light app-shell ladder puts the grey step on the surface (97.6%) rather than the
+  // canvas (99.4%), so the inset fill (95.8%) now sits closest to the surface: 1.06:1 there and
+  // 1.11:1 on the canvas. The relaxed floor follows the grey step; the full floor holds on the
+  // canvas. Dark: the raised fill (23.5%) reads 1.19:1 on the canvas and 1.12:1 on the surface.
+  const LIGHT_SURFACE_FLOOR = 1.04;
   const skeleton = values.readOklchToken('--cinder-skeleton-background');
 
   for (const arm of ['light', 'dark'] as const) {
     for (const [groundName, ground] of Object.entries({ canvas: bg, surface })) {
       const floor =
-        arm === 'light' && groundName === 'canvas' ? LIGHT_CANVAS_FLOOR : SKELETON_FLOOR;
+        arm === 'light' && groundName === 'surface' ? LIGHT_SURFACE_FLOOR : SKELETON_FLOOR;
       it(`${arm}: the skeleton fill reads at least ${floor}:1 on the ${groundName}`, () => {
         expect(
           contrastRatio(wcagLuminance(skeleton[arm]), wcagLuminance(ground[arm])),

@@ -5959,7 +5959,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 18% lightness, between the canvas (15%) and the surface (21%), so bands step up gently instead of reading as holes.',
+        'Sunken region inside a card body (code blocks, wells, recessed sub-regions, header bands, day bands, tracks). The dark arm sits at 21% lightness, between the surface (18.5%) and raised (23.5%), so a band or a code header steps up from the surface it sits on instead of reading as a hole.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6295,7 +6295,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), but lifts to surface in dark mode, where the 18% inset sits only three lightness points above the 15% canvas a marker is drawn on and would read as a hole rather than a marker; the surface (21%) steps up from the canvas.',
+        'Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), and uses the surface in dark mode, which steps up from the 14.5% canvas a marker is drawn on (18.5%) and stays below the inset bands and raised cards around it.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6373,7 +6373,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.975 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness.',
+        'Page canvas background, distinct from `surface.base` (a card body). Light mode is the app-shell ladder: a near-white canvas (0.994) above the grey surface (0.976) and the inset well (0.958), with raised at pure white (1.000). Dark mode builds up from the canvas (0.145) through the surface (0.185) and the inset (0.210) to raised (0.235).',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6529,7 +6529,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.',
+        'Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink` in light mode and 12% in dark mode. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6616,7 +6616,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, a light cool ink in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 5%, `border` 9%, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
+        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6694,7 +6694,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248). The design draws 52% here, but at 52% the edge reads 2.65:1 on `surface.raised` (the ground of a popover or dialog), below WCAG 1.4.11's 3:1 floor, which the contrast pairs `surface.base` and `surface.raised` hold it to; 56% is the nearest step that clears the floor on both (3.82:1 on the surface, 3.14:1 on raised). Both arms clear 3:1 against the surfaces a control sits on.",
+        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248), which reads 4.03:1 on the surface and 3.60:1 on raised. The design draws 52% here, which clears `surface.raised` (the ground of a popover or dialog) by only 3.04:1 on the neutral dark ladder, so the edge keeps the 56% step as margin over WCAG 1.4.11's 3:1 floor, which the contrast pairs `surface.base` and `surface.raised` hold it to. Both arms clear 3:1 against the surfaces a control sits on.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6941,7 +6941,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink`; structural, so exempt from 3:1, and always lighter than `border`.',
+        'Interior divider: rules between rows, table cells, list items, and under tab lists, and the Divider component. A 5% alpha step over `border.ink` in light mode and 8% in dark mode; structural, so exempt from 3:1, and always lighter than `border`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -11114,12 +11114,11 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       profile: 'color',
       palette: { family: 'success', role: 'background', anchor: false },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
@@ -11181,7 +11180,15 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'status.success.background',
               },
             },
-            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [
+                { cssProperty: '--cinder-status-success-solid', path: 'status.success.solid' },
+                { cssProperty: '--cinder-surface', path: 'surface.base' },
+              ],
+            },
           },
         },
       ],
@@ -11857,12 +11864,11 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       profile: 'color',
       palette: { family: 'warning', role: 'background', anchor: false },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
@@ -11924,7 +11930,15 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 path: 'status.warning.background',
               },
             },
-            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [
+                { cssProperty: '--cinder-status-warning-solid', path: 'status.warning.solid' },
+                { cssProperty: '--cinder-surface', path: 'surface.base' },
+              ],
+            },
           },
         },
       ],
@@ -12603,12 +12617,11 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       profile: 'color',
       palette: { family: 'danger', role: 'background', anchor: false },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
@@ -12667,7 +12680,15 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'status.danger.background' },
             },
-            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [
+                { cssProperty: '--cinder-status-danger-solid', path: 'status.danger.solid' },
+                { cssProperty: '--cinder-surface', path: 'surface.base' },
+              ],
+            },
           },
         },
       ],
@@ -13334,12 +13355,11 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       profile: 'color',
       palette: { family: 'info', role: 'background', anchor: false },
       disposition: {
-        edit: 'supported',
+        edit: 'recipe',
         cssExport: 'supported',
         dtcgExport: 'subset',
-        cssSerialization: 'mixed',
-        reason:
-          'Some contexts emit a trusted CSS recipe and others a typed value; the DTCG value is exported, the recipe is not.',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
       },
       variants: [
         {
@@ -13395,7 +13415,15 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'local',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'status.info.background' },
             },
-            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [
+                { cssProperty: '--cinder-status-info-solid', path: 'status.info.solid' },
+                { cssProperty: '--cinder-surface', path: 'surface.base' },
+              ],
+            },
           },
         },
       ],

@@ -213,6 +213,10 @@ function decorativePairings(): ContrastPairing[] {
 export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
   ...onSurfaces('text:default', '--cinder-text-default', text('text'), 'Default text'),
   ...onSurfaces('text:muted', '--cinder-text-muted', text('text'), 'Muted text'),
+  // COR-2308 lifted the subtle tier to 50% (light) and 68% (dark), close enough to the AA floor
+  // that it is gated on every surface: light 5.31:1 at its lowest (on the inset), dark 5.79:1 (on
+  // raised).
+  ...onSurfaces('text:subtle', '--cinder-text-subtle', text('text'), 'Subtle text'),
   ...['--cinder-surface', '--cinder-surface-canvas', '--cinder-surface-inset'].map(
     (background): ContrastPairing => ({
       id: `accent:text:${background.replace('--cinder-', '')}`,

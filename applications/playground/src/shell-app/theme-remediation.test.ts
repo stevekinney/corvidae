@@ -107,7 +107,9 @@ describe('determinism and pinned Culori fixtures', () => {
       'foreground-oklch-remediation/1+oklch-chroma-grid-101/1',
     );
     const canvas = first.results.find((result) => result.pairingId === 'text:default:canvas');
-    expect(canvas?.ratio).toBeCloseTo(4.9243293080828145, 9);
+    // COR-2308: the candidate is still 0.529 (the binding pairing is the neutral status
+    // background, which did not move), and the light canvas is now oklch(99.4% 0.002 265).
+    expect(canvas?.ratio).toBeCloseTo(5.202779056471655, 9);
   });
 
   test('Culori conversions are pinned for sRGB and Display P3', () => {

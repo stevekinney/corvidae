@@ -5,7 +5,7 @@
     "base": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.998, 0, 255]
+        "components": [0.976, 0.007, 272]
       }
     },
     "raised": {
@@ -18,11 +18,11 @@
       "hover": {
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.9712, 0.0144, 256.02]
+          "components": [0.9664, 0.0168, 256.19]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
-            "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 6%)"
+            "cssRecipe": "color-mix(in oklch, var(--cinder-surface-raised), var(--cinder-accent-solid) 7%)"
           }
         }
       },
@@ -41,13 +41,13 @@
     "inset": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.96, 0.008, 270]
+        "components": [0.958, 0.011, 275]
       }
     },
     "hover": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.96932, 0.0144, 256.02]
+        "components": [0.94864, 0.02098, 272]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
@@ -58,7 +58,7 @@
     "pressed": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.94064, 0.0288, 257.04]
+        "components": [0.92128, 0.03496, 272]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
@@ -76,7 +76,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.975, 0, 255]
+        "components": [0.994, 0.002, 265]
       }
     }
   },
@@ -171,13 +171,13 @@
     "muted": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.32, 0.014, 245]
+        "components": [0.44, 0.01, 265]
       }
     },
     "subtle": {
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.42, 0.012, 245]
+        "components": [0.5, 0.01, 265]
       }
     },
     "disabled": {
@@ -238,7 +238,7 @@
       "$type": "color",
       "$value": {
         "colorSpace": "oklch",
-        "components": [0.94064, 0.0288, 257.04]
+        "components": [0.92128, 0.03496, 272]
       },
       "$extensions": {
         "com.lostgradient.cinder": {
@@ -685,7 +685,12 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.945, 0.075, 148]
+          "components": [0.965, 0.035, 148]
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "oklch(96.5% 0.035 148)"
+          }
         }
       },
       "text": {
@@ -718,7 +723,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.74328, 0.05, 148]
+          "components": [0.73536, 0.05, 149.089]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -762,7 +767,12 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.955, 0.053, 88]
+          "components": [0.968, 0.035, 88]
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "oklch(96.8% 0.035 88)"
+          }
         }
       },
       "text": {
@@ -795,7 +805,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.86488, 0.05, 75]
+          "components": [0.85696, 0.05, 74.596]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -857,6 +867,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.95, 0.025, 25]
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "oklch(95% 0.025 25)"
+          }
         }
       },
       "text": {
@@ -889,7 +904,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.72408, 0.05, 27]
+          "components": [0.71616, 0.05, 26.105]
         },
         "$extensions": {
           "com.lostgradient.cinder": {
@@ -934,6 +949,11 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.95, 0.028, 235]
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "oklch(95% 0.028 235)"
+          }
         }
       },
       "text": {
@@ -966,7 +986,7 @@
         "$type": "color",
         "$value": {
           "colorSpace": "oklch",
-          "components": [0.71128, 0.05, 238]
+          "components": [0.70336, 0.05, 239.007]
         },
         "$extensions": {
           "com.lostgradient.cinder": {

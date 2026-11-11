@@ -25,6 +25,17 @@
  * the canvas reads as white, the well stays a well and not a plate, the neutrals
  * stay neutral, and no interaction state collides with a resting tier.
  *
+ * COR-2308 then reordered the light ladder on an owner decision ("the gray back-office page
+ * is drab and bad"): the default is now the app-shell ladder, a near-white canvas (0.994)
+ * above a soft grey surface (0.976) and a tinted well (0.958 at chroma 0.011, hue 275), with
+ * raised still pure white. The order is inset < surface < canvas < raised, and the grouped
+ * surface separates from the page by fill. The consumer ladder (canvas 0.955, surface and
+ * raised 1.000) is the `data-density="comfortable"` override in foundation.css, gated in
+ * comfortable-density.test.ts. The surface sits at 0.976 rather than the revision's 0.973
+ * because the focus ring has to hold 3.5:1 on it (3.48:1 at 0.973, 3.51:1 at 0.976;
+ * check-token-contrast-borders.test.ts). The dark arm is now a neutral ladder at hue 265
+ * with chroma at most 0.014: canvas 0.145, surface 0.185, inset 0.210, raised 0.235.
+ *
  * The previous version of this file measured separation as ΔL only. That metric
  * cannot see the current design at all: light-mode hover/pressed now wash toward
  * the ACCENT, so a state and a tier can share a lightness and still be obviously
@@ -249,8 +260,10 @@ describe('light mode anchors at white', () => {
     // Chroma on the large light surfaces is most of what "drab" and "sad" actually
     // described: a 0.014-chroma canvas is not a neutral, it is a pale slate. Keep
     // the cast present but well under the threshold where it reads as a blue theme.
-    for (const tier of Object.values(tiers)) {
-      expect(tier.C).toBeLessThanOrEqual(0.008);
+    // The well is the one tinted tier (COR-2308: chroma 0.011 at hue 275), so it reads
+    // as a recess rather than a grey plate; it still stays under 0.012.
+    for (const [name, tier] of Object.entries(tiers)) {
+      expect(tier.C, name).toBeLessThanOrEqual(name === 'inset' ? 0.012 : 0.008);
     }
   });
 
@@ -259,38 +272,55 @@ describe('light mode anchors at white', () => {
     expect(tiers.raised.C).toBe(0);
   });
 
-  test('the four surfaces are strictly ordered inset < bg < surface < raised', () => {
-    expect(tiers.inset.L).toBeLessThan(tiers.bg.L);
-    expect(tiers.bg.L).toBeLessThan(tiers.surface.L);
-    expect(tiers.surface.L).toBeLessThan(tiers.raised.L);
+  test('the app-shell ladder is strictly ordered inset < surface < bg < raised', () => {
+    // COR-2308: the page canvas is near-white and the grouped surface is the grey step below it.
+    expect(tiers.inset.L).toBeLessThan(tiers.surface.L);
+    expect(tiers.surface.L).toBeLessThan(tiers.bg.L);
+    expect(tiers.bg.L).toBeLessThan(tiers.raised.L);
   });
 
-  test('the well is the one tier that separates by fill alone', () => {
-    // bg/surface/raised sit within 0.016 of each other on purpose — they are
-    // separated by border and shadow. `inset` is the exception: a sunken region has
-    // no shadow to fall back on, so its fill has to do the work unaided.
+  test('the surface separates from the canvas by fill', () => {
+    // 0.994 - 0.976 = 0.018: the step the owner asked for, so a group no longer needs a hairline.
+    expect(tiers.bg.L - tiers.surface.L).toBeGreaterThanOrEqual(0.015);
+  });
+
+  test('the well separates from the surface and the canvas by fill alone', () => {
+    // A sunken region has no shadow to fall back on, so its fill has to do the work unaided:
+    // 0.976 - 0.958 = 0.018 below the surface, 0.994 - 0.958 = 0.036 below the canvas.
+    expect(tiers.surface.L - tiers.inset.L).toBeGreaterThanOrEqual(0.015);
     expect(tiers.bg.L - tiers.inset.L).toBeGreaterThanOrEqual(0.015);
   });
 });
 
-describe('the dark arm is untouched by light-mode work', () => {
-  // The dark arm builds UP from near-black across 17 lightness points, where a wide
-  // fill-carried ramp is the right model. It was never the complaint. Pin it so a
-  // future light-mode retune cannot drift it as a side effect. The inset sits at 18% (it was
-  // 11%, which read as a hole below the 15% canvas): header bands, day bands and tracks step up
-  // gently, between the canvas and the 21% surface.
+describe('the dark arm is the neutral COR-2308 ladder', () => {
+  // The dark arm builds UP from near-black, where a fill-carried ramp is the right model.
+  // COR-2308 took the navy out of it (hue 245, chroma about 0.04): every resting tier is now
+  // hue 265 at chroma 0.014 or less. The inset sits between the surface and raised, so a code
+  // header or a table band steps up from the surface it sits on.
   const expected = {
-    '--cinder-surface-inset': 0.18,
-    '--cinder-surface-canvas': 0.15,
-    '--cinder-surface': 0.21,
-    '--cinder-surface-raised': 0.28,
+    '--cinder-surface-canvas': 0.145,
+    '--cinder-surface': 0.185,
+    '--cinder-surface-inset': 0.21,
+    '--cinder-surface-raised': 0.235,
   } as const;
 
   for (const [token, lightness] of Object.entries(expected)) {
-    test(`${token} dark arm stays at ${lightness}`, () => {
+    test(`${token} dark arm sits at ${lightness}`, () => {
       expect(bothArms(token).dark.L).toBeCloseTo(lightness, 5);
     });
+
+    test(`${token} dark arm is neutral (hue 265, chroma at most 0.014)`, () => {
+      expect(bothArms(token).dark.H).toBe(265);
+      expect(bothArms(token).dark.C).toBeLessThanOrEqual(0.014);
+    });
   }
+
+  test('the dark tiers are strictly ordered canvas < surface < inset < raised', () => {
+    const lightness = Object.keys(expected).map((token) => bothArms(token).dark.L);
+    for (let index = 1; index < lightness.length; index += 1) {
+      expect(lightness[index]!).toBeGreaterThan(lightness[index - 1]!);
+    }
+  });
 });
 
 describe('light interaction states wash toward the accent', () => {

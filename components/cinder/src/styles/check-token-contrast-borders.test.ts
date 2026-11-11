@@ -46,7 +46,10 @@ describe('focus ring contrast (WCAG 1.4.11)', () => {
 describe('focus ring contrast on the sidebar and the canvas (COR-2010 row 02o)', () => {
   // The sidebar paints `--cinder-surface` (sidebar.css) beside the page canvas, and the design asks
   // the shared quiet ring to read at 3.6:1 against both, in light and dark.
-  // COR-2311 darkened the light canvas to 97.5% so a card reads as a step; the ring holds 3.5:1 there.
+  // COR-2311 darkened the light canvas to 97.5% so a card reads as a step; the ring held 3.5:1 there.
+  // COR-2308 moved the grey step to the surface the sidebar paints: at the revision's 97.3% the ring
+  // read 3.48:1, so the surface ships at 97.6% (3.51:1). The canvas is now 99.4% (3.70:1). Dark: the
+  // ring reads 4.97:1 on the 18.5% surface and 5.28:1 on the 14.5% canvas.
   const SIDEBAR_RING_FLOOR = 3.5;
   for (const arm of ['light', 'dark'] as const) {
     for (const [groundName, ground] of Object.entries({ sidebar: surface, canvas: bg })) {
@@ -190,53 +193,63 @@ describe('border-on-surface contrast', () => {
     });
   }
 
-  it('the emitted color-mix percentage agrees with the resolved alpha', () => {
+  it('the emitted color-mix percentage agrees with the resolved alpha in each arm', () => {
     // The CSS comes from `cssRecipe` and the resolved artifacts come from
     // `$value`. The generator now materializes the second from the first, so
     // this pins the end result: the border every gate above measured is the
-    // border the stylesheet ships, in every block.
+    // border the stylesheet ships, in every block. COR-2308 gives the dark arm
+    // its own structural steps (8% and 12% of a white ink), so a tier whose
+    // arms differ is a `light-dark()` of the two recipes at `:root`.
     const tierProperties = {
       '--cinder-border-muted': borderMuted,
       '--cinder-border': border,
       '--cinder-border-strong': borderStrong,
       '--cinder-border-control-hover': borderControlHover,
     } as const;
+    const recipeFor = (alpha: number) =>
+      `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - alpha) * 100)}%)`;
     for (const [property, tier] of Object.entries(tierProperties)) {
-      const expected = `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - tier.light.alpha) * 100)}%)`;
+      const lightRecipe = recipeFor(tier.light.alpha);
+      const darkRecipe = recipeFor(tier.dark.alpha);
       const declarations = readAllTokenValues(css, property);
       expect(
         declarations.length,
         `${property} should be declared at :root and in both [data-theme] blocks`,
       ).toBe(3);
-      for (const declaration of declarations) {
-        expect(
-          declaration,
-          `${property} recipe must agree with its resolved alpha in every block`,
-        ).toBe(expected);
-      }
-      expect(tier.dark.alpha, `${property} shares one alpha ladder across arms`).toBe(
-        tier.light.alpha,
+      const [rootDeclaration, darkDeclaration, lightDeclaration] = declarations;
+      expect(rootDeclaration, `${property} :root recipe`).toBe(
+        lightRecipe === darkRecipe ? lightRecipe : `light-dark( ${lightRecipe}, ${darkRecipe} )`,
       );
+      expect(darkDeclaration, `${property} dark recipe`).toBe(darkRecipe);
+      expect(lightDeclaration, `${property} light recipe`).toBe(lightRecipe);
     }
   });
 
-  it('the dark control edge is held at 56% because the design value of 52% fails 3:1 on raised', () => {
-    // The Interborough design draws the dark control edge at oklch(52% .05 248) and also requires
-    // it to clear 3:1. Those two cannot both hold on `surface.raised` (the ground of a popover or
-    // dialog): 52% reads 2.65:1 there. The token ships the nearest step that clears the floor on
-    // both contrast pairs, and this test fails if either the shipped edge or the design value
-    // changes meaning.
-    const designEdge: OklchColor = { l: 0.52, c: 0.05, h: 248 };
-    expect(
-      contrastRatio(wcagLuminance(designEdge), wcagLuminance(surfaceRaised.dark)),
-    ).toBeLessThan(NON_TEXT);
-    expect(
-      contrastRatio(wcagLuminance(designEdge), wcagLuminance(surface.dark)),
-    ).toBeGreaterThanOrEqual(NON_TEXT);
+  it('the dark structural tiers are 8% and 12% of a white ink (COR-2308)', () => {
+    expect(borderInk.dark).toEqual({ l: 1, c: 0, h: 0 });
+    expect(borderMuted.dark.alpha).toBe(0.08);
+    expect(border.dark.alpha).toBe(0.12);
+    expect(borderMuted.light.alpha).toBe(0.05);
+    expect(border.light.alpha).toBe(0.09);
+  });
+
+  it('the dark control edge keeps its 56% step on every dark surface', () => {
+    // The Interborough design draws the dark control edge at oklch(52% .05 248). On the old navy
+    // ladder that read 2.65:1 on `surface.raised`, so the token shipped 56%. COR-2308 darkened
+    // raised to 23.5%, where 52% would clear by only 3.04:1, so the edge keeps 56% as margin:
+    // 4.28:1 on the canvas, 4.03:1 on the surface, 3.83:1 on the inset and 3.60:1 on raised.
     expect(borderControl.dark.l).toBeCloseTo(0.56, 5);
-    expect(
-      contrastRatio(wcagLuminance(borderControl.dark), wcagLuminance(surfaceRaised.dark)),
-    ).toBeGreaterThanOrEqual(NON_TEXT);
+    for (const [groundName, ground] of Object.entries({
+      canvas: bg.dark,
+      surface: surface.dark,
+      inset: surfaceInset.dark,
+      raised: surfaceRaised.dark,
+    })) {
+      expect(
+        contrastRatio(wcagLuminance(borderControl.dark), wcagLuminance(ground)),
+        `dark control edge on the ${groundName}`,
+      ).toBeGreaterThanOrEqual(NON_TEXT);
+    }
   });
 
   it('the control edge is the ink step in the light arm and the opaque literal in the dark arm', () => {
