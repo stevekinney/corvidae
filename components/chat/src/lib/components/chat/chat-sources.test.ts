@@ -226,7 +226,7 @@ describe('Chat — sourcesByMessageId', () => {
     await rerender({ sourcesByMessageId: new Map() });
 
     await waitFor(() =>
-      expect(document.activeElement).toBe(messageArticle(container, 'assistant-a')),
+      expect(document.activeElement === messageArticle(container, 'assistant-a')).toBe(true),
     );
     expect(control.isConnected).toBe(false);
   });
@@ -360,7 +360,7 @@ describe('Chat — sourcePresentation="list"', () => {
     await rerender({ sourcesByMessageId: new Map([['assistant-b', sourcesForA]]) });
 
     await waitFor(() =>
-      expect(document.activeElement).toBe(messageArticle(container, 'assistant-a')),
+      expect(document.activeElement === messageArticle(container, 'assistant-a')).toBe(true),
     );
     expect(listToggle(container, 'assistant-a')).toBeNull();
     expect(sourceList(container, 'assistant-a')).toBeNull();

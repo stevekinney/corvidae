@@ -514,7 +514,9 @@ describe('connecting tools from the Sources tab', () => {
     await findByTestId('connect-form');
     await fireEvent.click(buttonNamed(document.body, copy.source.connect.actions.cancel));
     await waitFor(() =>
-      expect(document.body.querySelector('[data-testid="connect-form"]')).toBeNull(),
+      expect(
+        document.body.querySelector('[data-testid="connect-form"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
     await fireEvent.click(buttons[0]!);
     await findByTestId('connect-form');
