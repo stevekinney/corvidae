@@ -118,7 +118,16 @@ const packagedJourneyOutcome = await outcomeOf(async () => {
   const root = await mkdtemp(join(tmpdir(), 'installed-release-packaged-coverage-'));
   const output = join(root, 'release');
   try {
-    const archive = await buildRelease(['--version', '0.0.0-coverage', '--outdir', output]);
+    const buildArguments = ['--version', '0.0.0-coverage', '--outdir', output];
+    // The release is built on macOS arm64 only. Elsewhere the journey cannot start, so the build
+    // must refuse with its reason instead of producing an archive.
+    if (process.platform !== 'darwin' || process.arch !== 'arm64') {
+      expect(await rejectionOf(buildRelease(buildArguments))).toEqual(
+        new Error('macOS arm64 is required to build this release'),
+      );
+      return;
+    }
+    const archive = await buildRelease(buildArguments);
     const evidence = await runInstalledRelease([
       '--archive',
       archive,

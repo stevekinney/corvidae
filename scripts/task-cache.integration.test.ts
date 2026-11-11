@@ -68,7 +68,15 @@ const scenario2 = await outcomeOf(async () => {
       await run(directory, [process.execPath, 'install']);
       const output = await run(
         directory,
-        [join(root, 'node_modules/.bin/turbo'), 'run', task, `--filter=@lostgradient/${name}`],
+        [
+          join(root, 'node_modules/.bin/turbo'),
+          'run',
+          task,
+          `--filter=@lostgradient/${name}`,
+          // The copied turbo.json sets "concurrency": "34%", which is 1 on a host of up to five
+          // processors, and turbo refuses a persistent task (`dev`) below 2.
+          '--concurrency=2',
+        ],
         { ...process.env, [variable]: 'configuration-test', CORVIDAE_UNRELATED_TEST: 'excluded' },
       );
       expect(output).toContain('configuration received');

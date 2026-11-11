@@ -612,24 +612,36 @@ const nestedRunClampsToItsParentsSlots = await inScratchDirectory(async (directo
 });
 
 /**
- * A real `bun test --parallel=2` over files that never settle. Its workers lead process groups of
- * their own and outlive a leader killed with SIGKILL, so once the wrapper and then the leader are
- * killed, only the workers recorded in the slot keep it held; the next acquirer terminates them
- * and reclaims the slots.
+ * A leader with two workers that lead process groups of their own and outlive it once the wrapper
+ * and then the leader are killed with SIGKILL, so only the workers recorded in the slot keep it
+ * held; the next acquirer terminates them and reclaims the slots. The workers are stand-ins named
+ * like Bun's (`bun test --test-worker`) rather than real `bun test --parallel` workers because
+ * those outlive a killed leader on macOS only: on Linux Bun's workers exit with their parent, so
+ * there is nothing to reclaim and a real run would leave no survivors to assert on.
  */
 const killedRunLeavesNoWorkers = await inScratchDirectory(async (directory) => {
   const pool = join(directory, 'pool');
-  const files = ['first', 'second'].map((name) => join(directory, `${name}.test.ts`));
-  for (const file of files) {
-    await writeFile(
-      file,
-      "import { test } from 'bun:test';\ntest('never settles', () => new Promise(() => {}));\n",
-    );
-  }
+  const worker = join(directory, 'bun');
+  await writeFile(worker, '#!/bin/sh\nwhile true; do sleep 0.2; done\n', { mode: 0o755 });
+  const leader = join(directory, 'leader.ts');
+  await writeFile(
+    leader,
+    `import { spawn } from 'node:child_process';
+for (let index = 0; index < 2; index += 1) {
+  spawn(${JSON.stringify(worker)}, ['test', '--test-worker'], { detached: true, stdio: 'ignore' }).unref();
+}
+await new Promise(() => {});
+`,
+  );
   const { wrapper, processGroup, record } = await startPooledRun(
     pool,
     rootScriptEnvironment(),
-    { bunTestArguments: ['--parallel=2', ...files], command: null, cwd: directory, size: 2 },
+    {
+      bunTestArguments: ['--parallel=2'],
+      command: [process.execPath, leader],
+      cwd: directory,
+      size: 2,
+    },
     (candidate) => (candidate.workers?.length ?? 0) === 2,
   );
   const workers = record.workers ?? [];
