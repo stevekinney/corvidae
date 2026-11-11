@@ -217,8 +217,8 @@ describe('borders', () => {
   });
 
   test('holds a control border to the looser control limit', () => {
-    expect(auditCapture(facts({ borders: [border(3.2, true)] }), capture())).toEqual([]);
-    expect(rules(auditCapture(facts({ borders: [border(5.2, true)] }), capture()))).toEqual([
+    expect(auditCapture(facts({ borders: [border(2.9, true)] }), capture())).toEqual([]);
+    expect(rules(auditCapture(facts({ borders: [border(3.2, true)] }), capture()))).toEqual([
       'border-heavy',
     ]);
   });

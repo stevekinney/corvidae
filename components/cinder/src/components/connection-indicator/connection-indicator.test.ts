@@ -198,7 +198,7 @@ describe('ConnectionIndicator', () => {
     expect(container.querySelector('.cinder-connection-indicator__attempt')).toBeNull();
     const css = readFileSync(new URL('./connection-indicator.css', import.meta.url), 'utf8');
     expect(css).toMatch(
-      /\[data-cinder-status='reconnecting'\]\s+\.cinder-connection-indicator__dot\s*\{\s*--_cinder-connection-indicator-dot-color: var\(--cinder-border-control\);/,
+      /\[data-cinder-status='reconnecting'\]\s+\.cinder-connection-indicator__dot\s*\{\s*--_cinder-connection-indicator-dot-color: var\(--cinder-border-contrast\);/,
     );
     // Only live pulses; the reconnecting dot is neither green nor animated.
     expect(css).not.toMatch(/reconnecting'\][^{]*\{[^}]*animation/);
@@ -294,7 +294,7 @@ describe('ConnectionIndicator', () => {
     test('out of date is an 8px hollow ring in the pending colour, never green', () => {
       const ring = block('.cinder-connection-indicator__ring');
       expect(ring).toContain('inline-size: 0.5rem');
-      expect(ring).toContain('border: 0.09375rem solid var(--cinder-border-control)');
+      expect(ring).toContain('border: 0.09375rem solid var(--cinder-border-contrast)');
       expect(ring).toContain('background: transparent');
       expect(ring).not.toContain('success');
     });

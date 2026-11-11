@@ -142,7 +142,7 @@ test('a base override inside a [data-theme] scope re-derives its dependents', as
   // calc(l - 0.08) over the override, hue and chroma unchanged.
   expect(resolved.accentHover).toBe('oklch(0.52 0.2 30)');
   expect(resolved.inkBorder).not.toBe(resolved.plainBorder);
-  expect(resolved.inkControl).toBe('oklch(0.5 0.2 30 / 0.48)');
+  expect(resolved.inkControl).toBe('oklch(0.5 0.2 30 / 0.32)');
 });
 
 /**

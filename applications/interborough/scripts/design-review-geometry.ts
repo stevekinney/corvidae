@@ -162,8 +162,11 @@ export const GEOMETRY_THRESHOLDS = {
   fontSizeMinimum: 11,
   /** A border between surface and content should read no more strongly than this. */
   structuralBorderContrastMaximum: 1.5,
-  /** A control's border should read no more strongly than this. */
-  controlBorderContrastMaximum: 4.5,
+  /**
+   * A control's resting border should read no more strongly than this: Cinder's `border.control`
+   * is quiet by owner decision and reaches 3:1 only under `prefers-contrast: more`.
+   */
+  controlBorderContrastMaximum: 3,
   /** A border thicker than this is weight, not separation. */
   borderWidthMaximum: 1,
   /** A page drawing structural borders in more weights than this is inconsistent. */

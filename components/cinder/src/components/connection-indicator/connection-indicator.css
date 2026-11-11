@@ -6,7 +6,7 @@
  * Quiet inline status for a live connection: a dot (or an icon) and a word, with no pill around
  * them. The word is always muted; the glyph beside it carries the tone, taken from the semantic
  * status tokens (`--cinder-status-success-solid`, `--cinder-status-warning-text`,
- * `--cinder-border-control`) and never from hard-coded values. `live` is a green dot,
+ * `--cinder-border-contrast`) and never from hard-coded values. `live` is a green dot,
  * `out-of-date` a hollow ring in the pending colour, so neither reads as the other. `polling` is
  * deliberately quieter than `live`: it carries no motion and a lighter font-weight so it can never
  * be mistaken for push, even under grayscale or forced-colors rendering where the color
@@ -42,7 +42,7 @@
     box-sizing: border-box;
     inline-size: 0.5rem;
     block-size: 0.5rem;
-    border: 0.09375rem solid var(--cinder-border-control); /* 1.5px */
+    border: 0.09375rem solid var(--cinder-border-contrast); /* 1.5px */
     border-radius: var(--cinder-radius-full);
     background: transparent;
   }
@@ -84,7 +84,7 @@
      the banner, so the indicator says only "Reconnecting". */
   .cinder-connection-indicator[data-cinder-status='reconnecting']
     .cinder-connection-indicator__dot {
-    --_cinder-connection-indicator-dot-color: var(--cinder-border-control);
+    --_cinder-connection-indicator-dot-color: var(--cinder-border-contrast);
   }
 
   /* connecting spins the icon wrapper to signal in-progress work. This

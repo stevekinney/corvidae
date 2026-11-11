@@ -2053,7 +2053,8 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-control-border',
       category: 'color',
       component: null,
-      description: 'Resting control edge; clears 3:1 against every surface.',
+      description:
+        'Resting control edge: the quiet `border.control` tier, which becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6616,7 +6617,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do two different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 48%, `border.control.hover` 58%) are the only visible boundary of an input, checkbox, or radio, so they must clear 3:1 against every surface. All five are alpha steps over this ink, so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives all five there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
+        'The single polarity-aware ink every neutral border tier is mixed from: a dark cool ink in light mode, neutral white in dark mode. The tiers do three different jobs. STRUCTURAL tiers (`border.muted` 5% light and 8% dark, `border` 9% light and 12% dark, `border.strong` 15%) separate regions and outline containers; they are deliberately quiet and exempt from WCAG 1.4.11 because the region they bound is identified by its content and surface. CONTROL tiers (`border.control` 32%, `border.control.hover` 42%) are the resting edge of an input or bordered button: heavier than every structural tier, and quiet by owner decision rather than 3:1. CONTRAST tiers (`border.contrast` 48%, `border.contrast.hover` 58%) clear 3:1 against every surface; they are what the control tiers become under `prefers-contrast: more`, and what draws an unchecked checkbox, an unselected radio, and a neutral indicator with no other boundary. All seven are alpha steps over this ink (the dark arm of `border.contrast` is the one opaque literal), so each tier tracks the surface underneath it and one override re-tints them together; the generator re-declares each tier inside every [data-theme] block, so overriding this token on a themed element re-derives them there. The four HUED status borders (info, success, warning, danger) are deliberately NOT derived from it and stay opaque, because a translucent status border would take its hue from whatever it happened to sit on.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6694,7 +6695,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        "Functional control boundary: the resting edge of every text-entry control, checkbox, and radio, and of indicators that are the only visible boundary of something interactive. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248), which reads 4.03:1 on the surface and 3.60:1 on raised. The design draws 52% here, which clears `surface.raised` (the ground of a popover or dialog) by only 3.04:1 on the neutral dark ladder, so the edge keeps the 56% step as margin over WCAG 1.4.11's 3:1 floor, which the contrast pairs `surface.base` and `surface.raised` hold it to. Both arms clear 3:1 against the surfaces a control sits on.",
+        "Control boundary: the resting edge of every text-entry control and bordered button. A 32% alpha step over `border.ink` in both themes (owner decision, 2026-11-11): quiet by default, heavier than every structural tier so a control still reads as the interactive thing, and deliberately under WCAG 1.4.11's 3:1, because a control is also identified by its fill, its label, and its focus ring. Under `prefers-contrast: more` it becomes `border.contrast`, which clears 3:1. Never fill an indicator with it, and never draw a control that is only its edge with it: an unchecked checkbox, an unselected radio, and an indicator with no other boundary use `border.contrast`.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6765,7 +6766,12 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
             },
-            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
           },
         },
       ],
@@ -6776,7 +6782,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: null,
       description:
-        'Hovered control boundary, one step heavier than `border.control`. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface.',
+        'Hovered control boundary, one step heavier than `border.control`. A 42% alpha step over `border.ink`; becomes `border.contrast.hover` under `prefers-contrast: more`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -6839,6 +6845,175 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 kind: 'modifier',
                 layer: 'theme.dark',
                 path: 'border.control.hover',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+      ],
+    },
+    {
+      path: 'border.contrast',
+      cssProperty: '--cinder-border-contrast',
+      category: 'color',
+      component: null,
+      description:
+        "The neutral edge that clears WCAG 1.4.11's 3:1 against every surface a control sits on. It does two jobs: it is what `border.control` becomes under `prefers-contrast: more`, it is the edge of a control that is nothing but its edge (an unchecked checkbox, an unselected radio), and it fills neutral indicators that have no other boundary (a toggle's off track, a slider's rail, a drag handle, an empty rating star), which must stay visible on their own. Light arm: a 48% alpha step over `border.ink` (the ink at 52% transparency, about oklch(66% .006 255) over white). Dark arm: the opaque oklch(56% .05 248), which reads 4.03:1 on the surface and 3.60:1 on raised; the 56% step is margin over the 3:1 floor on `surface.raised`, which the contrast pairs hold it to.",
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'border.contrast' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border.contrast',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'border.contrast',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'border.contrast' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border.contrast',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'border.contrast',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/dark.tokens.json', path: 'border' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'border.contrast.hover',
+      cssProperty: '--cinder-border-contrast-hover',
+      category: 'color',
+      component: null,
+      description:
+        'Hovered form of `border.contrast`, one step heavier. A 58% alpha step over `border.ink`; clears 3:1 against every supported surface.',
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/light.tokens.json', path: 'border.contrast.hover' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border.contrast.hover',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'border.contrast.hover',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'inherited',
+              declaredAt: { document: 'themes/light.tokens.json', path: 'border' },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-border-ink', path: 'border.ink' }],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'border.contrast.hover' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'border.contrast.hover',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'border.contrast.hover',
                 via: 'declared',
               },
             ],
@@ -15597,7 +15772,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'button',
       description:
-        'Secondary (default) button border: `border.control` in both themes, so the edge keeps the 3:1 contrast a control boundary needs even though the structural tiers are faint.',
+        "Secondary (default) button border: `border.control` in both themes, so the edge reads heavier than a container's even though the structural tiers are faint, and becomes the 3:1 `border.contrast` tier under `prefers-contrast: more`.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -16643,7 +16818,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'toggle',
       description:
-        "Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 control tier (`border.control`); the dark arm raises lightness for >=3:1 shape contrast against the surface.",
+        "Toggle track color in the off, resting state. The track is the switch's only visible shape, so the light arm is the 3:1 tier (`border.contrast`); the dark arm raises lightness for >=3:1 shape contrast against the surface.",
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -16682,7 +16857,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/light.tokens.json', path: 'toggle' },
             },
-            inputs: { aliases: ['border.control'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.contrast'], refs: [], extends: [], recipes: [] },
           },
         },
         {
@@ -16721,7 +16896,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       category: 'color',
       component: 'toggle',
       description:
-        'Toggle track color in the off state on hover: `border.control.hover` in the light arm, one step heavier than `off-resting`.',
+        'Toggle track color in the off state on hover: `border.contrast.hover` in the light arm, one step heavier than `off-resting`.',
       themeAware: true,
       deprecated: false,
       profile: 'color',
@@ -16763,7 +16938,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               origin: 'inherited',
               declaredAt: { document: 'themes/light.tokens.json', path: 'toggle' },
             },
-            inputs: { aliases: ['border.control.hover'], refs: [], extends: [], recipes: [] },
+            inputs: { aliases: ['border.contrast.hover'], refs: [], extends: [], recipes: [] },
           },
         },
         {

@@ -314,7 +314,7 @@
      accent fill: the track recedes, the choice lifts out of it, and the text keeps the default
      colour. The weight stays the same as the other segments, so choosing one never moves the rest. */
   /* The raised pill alone sits about 1.1:1 on the track in light and dark, so the selected segment
-     also draws a 1px ring in the control tier inside its edge (COR-2312): `--cinder-border-control`
+     also draws a 1px ring in the contrast tier inside its edge (COR-2312): `--cinder-border-contrast`
      clears 3:1 against the inset track and the raised pill in both themes, which the
      `segmented-control:selected-indicator:*` contrast pairings hold. */
   .cinder-segmented-control-option[data-cinder-selected],
@@ -323,7 +323,7 @@
     color: var(--cinder-text-default);
     box-shadow:
       var(--cinder-shadow-sm),
-      inset 0 0 0 1px var(--cinder-border-control);
+      inset 0 0 0 1px var(--cinder-border-contrast);
   }
 
   .cinder-segmented-control-option-icon {
@@ -355,7 +355,7 @@
     color: var(--cinder-text-default);
     box-shadow:
       var(--cinder-shadow-sm),
-      inset 0 0 0 1px var(--cinder-border-control);
+      inset 0 0 0 1px var(--cinder-border-contrast);
   }
 
   /* For the default pill variant: the `[data-cinder-selected]` rule (specificity

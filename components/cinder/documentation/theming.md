@@ -437,7 +437,7 @@ What the builder measures from tokens, in every context:
 
 - **Source validity.** The token runtime validates the source against DTCG 2025.10 and Cinder's semantic rules. An invalid source is reported first, and the other checks produce no results for that revision.
 - **Text contrast, WCAG 2.2 1.4.3.** The unrounded contrast ratio of each text pairing over its composited background must be at least 4.5:1. A pairing is held to the 3:1 large-text threshold only when its rendered size and weight are known, and no pairing records one, so every text pairing is held to 4.5:1.
-- **Non-text contrast, WCAG 2.2 1.4.11.** Control boundaries, focus indicators, and essential graphics must reach 3:1 against the adjacent color. Purely decorative separators are classified apart and are not held to 3:1. A disabled foreground has its ratio recorded with no threshold, because WCAG exempts inactive components.
+- **Non-text contrast, WCAG 2.2 1.4.11.** The contrast-tier border (`--cinder-border-contrast`, which a control's edge becomes under `prefers-contrast: more` and which fills neutral indicators), focus indicators, and essential graphics must reach 3:1 against the adjacent color. A control's resting edge (`--cinder-border-control`) is quiet by design and is not held to 3:1. Purely decorative separators are classified apart and are not held to 3:1. A disabled foreground has its ratio recorded with no threshold, because WCAG exempts inactive components.
 
 A failed text or non-text measurement is an **accessibility error**, and it blocks the CSS and portable exports. Checks can propose a deterministic fix for a failing foreground color. The fix changes only that color, shows every value it would change before you apply it, and applies as one undoable step.
 

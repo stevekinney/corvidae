@@ -95,7 +95,9 @@
     width: var(--_cinder-checkbox-size, 1.125rem);
     height: var(--_cinder-checkbox-size, 1.125rem);
     margin: 0;
-    border: 1px solid var(--cinder-control-border);
+    /* An unchecked box is only its edge, so it is the 3:1 contrast tier, not the quiet control edge
+     a text field draws (owner decision, 2026-11-11). */
+    border: 1px solid var(--cinder-border-contrast);
     border-radius: var(--cinder-radius-sm);
     background: var(--cinder-control-background);
     cursor: pointer;
@@ -120,7 +122,7 @@
  * "stick" after tap on touch devices that emulate :hover. */
   @media (hover: hover) {
     .cinder-checkbox:hover:not(:disabled):not([aria-disabled='true']) {
-      border-color: var(--cinder-control-border-hover);
+      border-color: var(--cinder-border-contrast-hover);
     }
   }
 

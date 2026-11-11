@@ -8,7 +8,7 @@
  * ======================================== */
 
   .cinder-attempts-indicator {
-    --_cinder-attempts-indicator-fill: var(--cinder-border-control);
+    --_cinder-attempts-indicator-fill: var(--cinder-border-contrast);
     --_cinder-attempts-indicator-gap: var(--cinder-space-0-5);
     display: inline-flex;
     gap: var(--_cinder-attempts-indicator-gap);

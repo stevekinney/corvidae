@@ -43,13 +43,13 @@ describe('SegmentedControl width', () => {
 });
 
 describe('SegmentedControl selection indicator', () => {
-  test('the selected and pressed segments draw a control-tier ring inside their edge', () => {
+  test('the selected and pressed segments draw a contrast-tier ring inside their edge', () => {
     for (const selector of [
       '.cinder-segmented-control-option[data-cinder-selected]',
       '.cinder-segmented-control-option[data-cinder-pressed]',
     ]) {
       expect(declarationsFor(css, selector).get('box-shadow')).toContain(
-        'inset 0 0 0 1px var(--cinder-border-control)',
+        'inset 0 0 0 1px var(--cinder-border-contrast)',
       );
     }
   });
@@ -63,7 +63,7 @@ describe('SegmentedControl selection indicator', () => {
       '--cinder-surface-raised',
     ]);
     for (const pairing of pairings) {
-      expect(pairing.foreground).toBe('--cinder-border-control');
+      expect(pairing.foreground).toBe('--cinder-border-contrast');
       expect(pairing.classification).toBe('non-text-indicator');
       expect(pairing.scope).toBe('wcag');
     }

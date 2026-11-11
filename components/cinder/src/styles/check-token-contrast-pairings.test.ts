@@ -81,8 +81,8 @@ describe('the shared pairing table over the shipped theme', () => {
         3,
       );
     }
-    const border = readTranslucentToken('--cinder-border-control', { opaqueArms: ['dark'] });
-    const borderOnSurface = measurePairing(byId('border:control:surface'), properties, {
+    const border = readTranslucentToken('--cinder-border-contrast', { opaqueArms: ['dark'] });
+    const borderOnSurface = measurePairing(byId('border:contrast:surface'), properties, {
       theme: 'light',
     });
     expect(borderOnSurface.status).toBe('measured');

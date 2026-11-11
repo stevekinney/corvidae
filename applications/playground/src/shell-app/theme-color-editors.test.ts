@@ -363,13 +363,15 @@ describe('dependent roles', () => {
 });
 
 describe('the border-ink editor previews every tier it drives', () => {
-  test('alphaStepsOf finds the five border tiers, lightest first', () => {
+  test('alphaStepsOf finds the seven border tiers, lightest first', () => {
     expect(alphaStepsOf(summaryEnvelope, 'border.ink')).toEqual([
       { path: 'border.muted', alpha: 0.05 },
       { path: 'border', alpha: 0.09 },
       { path: 'border.strong', alpha: 0.15 },
-      { path: 'border.control', alpha: 0.48 },
-      { path: 'border.control.hover', alpha: 0.58 },
+      { path: 'border.control', alpha: 0.32 },
+      { path: 'border.control.hover', alpha: 0.42 },
+      { path: 'border.contrast', alpha: 0.48 },
+      { path: 'border.contrast.hover', alpha: 0.58 },
     ]);
     // Not border-specific: any alpha step over the edited color is previewed.
     expect(alphaStepsOf(summaryEnvelope, 'accent.solid')).toEqual([
@@ -424,11 +426,22 @@ describe('the border-ink editor previews every tier it drives', () => {
       'border.strong',
       'border.control',
       'border.control.hover',
+      'border.contrast',
+      'border.contrast.hover',
     ]);
-    // The ladder reads heavier at every step, and only the control tiers clear 3:1.
+    // The ladder reads heavier at every step, and only the contrast tiers clear 3:1: a control's
+    // resting edge is quiet by owner decision.
     const ratios = shipped.map((step) => step.ratio);
     expect(ratios).toEqual(ratios.toSorted((left, right) => left - right));
-    expect(ratios.map((ratio) => ratio >= 3)).toEqual([false, false, false, true, true]);
+    expect(ratios.map((ratio) => ratio >= 3)).toEqual([
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+    ]);
     // A different ink retints every tier at once.
     const retinted = render([0.5, 0.2, 30]);
     expect(retinted.map((step) => step.edge)).not.toEqual(shipped.map((step) => step.edge));

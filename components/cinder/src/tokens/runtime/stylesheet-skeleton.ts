@@ -2,7 +2,7 @@
  * The selector and media skeleton of a Cinder token stylesheet.
  *
  * The generator (`tokens-base.css`) and the theme builder's deployment CSS both fill this
- * one template, so the root/descendant `[data-theme]`, `prefers-reduced-motion` and
+ * one template, so the root/descendant `[data-theme]`, `prefers-contrast`, `prefers-reduced-motion` and
  * `[data-reduced-motion]` precedence contract is written down exactly once. Each field is
  * a block of ready-made declarations (without braces); an empty block is not emitted
  * where the contract allows omitting it.
@@ -31,6 +31,21 @@ export type StylesheetDeclarations = {
 
 const NOT_FORCED_OFF =
   ":not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off']):not([data-reduced-motion='on'])";
+
+/**
+ * A control's edge is quiet by default and becomes the 3:1 tier when the person asks for more
+ * contrast. The block is an alias, so it holds no per-theme values: `border.contrast` is declared
+ * in `:root` and again in each `[data-theme]` block. It names both theme selectors because those
+ * blocks redeclare `border.control`, and it comes after them so it wins at equal specificity.
+ */
+const HIGH_CONTRAST_BLOCK = `@media (prefers-contrast: more) {
+  :root,
+  [data-theme='dark'],
+  [data-theme='light'] {
+    --cinder-border-control: var(--cinder-border-contrast);
+    --cinder-border-control-hover: var(--cinder-border-contrast-hover);
+  }
+}`;
 
 function themeBlock(theme: 'dark' | 'light', declarations: string): string {
   return declarations
@@ -102,7 +117,9 @@ ${d.dark}
 ${d.light}
 }
 
-${systemDark}@media (prefers-reduced-motion: reduce) {
+${systemDark}${HIGH_CONTRAST_BLOCK}
+
+@media (prefers-reduced-motion: reduce) {
   :root${NOT_FORCED_OFF} {
 ${d.reducedMotion}
   }

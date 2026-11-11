@@ -125,7 +125,7 @@
     );
     width: 2px;
     height: 0.5rem;
-    background: var(--cinder-border-control, currentColor);
+    background: var(--cinder-border-contrast, currentColor);
     transform: translate(-50%, -50%);
     border-radius: var(--cinder-radius-full);
   }

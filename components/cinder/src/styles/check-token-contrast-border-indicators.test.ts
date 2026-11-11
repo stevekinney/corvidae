@@ -25,8 +25,9 @@ function ruleOpacity(body: string): number {
 const {
   bg,
   border,
+  borderContrast,
+  borderContrastHover,
   borderControl,
-  borderControlHover,
   borderMuted,
   borderStrong,
   surface,
@@ -55,10 +56,13 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
 
   /** Which border tier this rule body's fill/border actually references. */
   function ruleTier(body: string): TranslucentTokenArms {
-    if (/var\(--cinder-(?:border-control-hover|control-border-hover)[,)]/.test(body)) {
-      return borderControlHover;
+    if (/var\(--cinder-border-contrast-hover[,)]/.test(body)) return borderContrastHover;
+    if (/var\(--cinder-border-contrast[,)]/.test(body)) return borderContrast;
+    // A control edge is quiet by owner decision; anything this suite holds to 3:1 has to name
+    // the contrast tier, so a control-tier reference here is a site that was missed.
+    if (/var\(--cinder-(?:border-control|control-border)(?:-hover)?[,)]/.test(body)) {
+      throw new Error(`An indicator held to 3:1 reads the quiet control tier: ${body}`);
     }
-    if (/var\(--cinder-(?:border-control|control-border)[,)]/.test(body)) return borderControl;
     if (/var\(--cinder-border-muted\)/.test(body)) return borderMuted;
     if (/var\(--cinder-border-strong\)/.test(body)) return borderStrong;
     if (/var\(--cinder-border[,)]/.test(body)) return border;
@@ -70,6 +74,12 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
     readonly body: string;
     /** Set only when the tier reference lives in a different rule than the opacity (ResizablePanels). */
     readonly tierOverride?: TranslucentTokenArms;
+    /**
+     * Set for a control's own resting edge. The owner decided on 2026-11-11 that this edge is the
+     * quiet control tier, not 3:1, so what CIN-603 still guards here is the dilution it removed:
+     * the edge keeps its tier's full alpha and stays heavier than a container's edge.
+     */
+    readonly controlEdge?: true;
   }> = [
     {
       name: 'SortableList placeholder outline',
@@ -84,12 +94,12 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         readComponentCss('resizable-panels', 'resizable-panels.css'),
         '.cinder-resizable-panels__handle-line {',
       ),
-      // The tier (`border.control`) is set via `color` on the PARENT
+      // The tier (`border.contrast`) is set via `color` on the PARENT
       // `.cinder-resizable-panels__handle` rule and consumed here through
       // `currentColor` -- this rule body has no `var(--cinder-border*)` of
       // its own to parse, so the tier is pinned explicitly. The opacity this
       // site actually compounded with is still read from THIS rule's body.
-      tierOverride: borderControl,
+      tierOverride: borderContrast,
     },
     {
       name: 'AreaChart legend toggle border',
@@ -98,6 +108,7 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         "__legend button[aria-pressed='false'] {",
       ),
       tierOverride: borderControl,
+      controlEdge: true,
     },
     {
       name: 'BarChart legend toggle border',
@@ -106,6 +117,7 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         "__legend button[aria-pressed='false'] {",
       ),
       tierOverride: borderControl,
+      controlEdge: true,
     },
     {
       name: 'LineChart legend toggle border',
@@ -114,11 +126,13 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
         "__legend button[aria-pressed='false'] {",
       ),
       tierOverride: borderControl,
+      controlEdge: true,
     },
     {
       name: 'Select empty-state border',
       body: ruleBody(readComponentCss('select', 'select.css'), "[data-cinder-empty='true'] {"),
       tierOverride: borderControl,
+      controlEdge: true,
     },
     {
       name: 'ParameterField rail',
@@ -147,11 +161,20 @@ describe('CIN-603: previously diluted border-tier indicators now clear the funct
       const tier = site.tierOverride ?? ruleTier(site.body);
       const elementOpacity = ruleOpacity(site.body);
       for (const [surfaceName, surfaceToken] of Object.entries(surfaces)) {
+        const effectiveInk: TranslucentColor = {
+          ...tier[arm],
+          alpha: tier[arm].alpha * elementOpacity,
+        };
+        if (site.controlEdge) {
+          it(`${arm}: ${site.name} keeps the undiluted control edge on ${surfaceName}`, () => {
+            expect(elementOpacity).toBe(1);
+            expect(translucentContrastOn(effectiveInk, surfaceToken[arm])).toBeGreaterThan(
+              translucentContrastOn(borderStrong[arm], surfaceToken[arm]),
+            );
+          });
+          continue;
+        }
         it(`${arm}: ${site.name} clears 3:1 on ${surfaceName}`, () => {
-          const effectiveInk: TranslucentColor = {
-            ...tier[arm],
-            alpha: tier[arm].alpha * elementOpacity,
-          };
           expect(translucentContrastOn(effectiveInk, surfaceToken[arm])).toBeGreaterThanOrEqual(
             NON_TEXT,
           );

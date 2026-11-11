@@ -120,6 +120,32 @@
         "$value": {
           "colorSpace": "oklch",
           "components": [0.2, 0.02, 255],
+          "alpha": 0.32
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 68%)"
+          }
+        }
+      },
+      "hover": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
+          "alpha": 0.42
+        },
+        "$extensions": {
+          "com.lostgradient.cinder": {
+            "cssRecipe": "color-mix(in oklch, var(--cinder-border-ink), transparent 58%)"
+          }
+        }
+      }
+    },
+    "contrast": {
+      "$root": {
+        "$value": {
+          "colorSpace": "oklch",
+          "components": [0.2, 0.02, 255],
           "alpha": 0.48
         },
         "$extensions": {
@@ -619,10 +645,10 @@
     "$type": "color",
     "track": {
       "off-resting": {
-        "$value": "{border.control}"
+        "$value": "{border.contrast}"
       },
       "off-hover-resting": {
-        "$value": "{border.control.hover}"
+        "$value": "{border.contrast.hover}"
       }
     }
   },

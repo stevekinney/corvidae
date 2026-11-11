@@ -161,7 +161,8 @@
     block-size: 1.125rem;
     margin-inline-end: var(--cinder-space-3);
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-control-border);
+    /* The off track has no other edge, so it is the 3:1 contrast tier, never the quiet control edge. */
+    background: var(--cinder-border-contrast);
   }
 
   .cinder-inspector-row__switch::after {

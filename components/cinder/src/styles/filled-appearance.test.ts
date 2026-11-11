@@ -16,7 +16,9 @@ import { requiredInstance, setupHappyDom } from '@lostgradient/testing';
 
 import { NON_TEXT, type OklchColor } from '../tokens/runtime/contrast/index.ts';
 import {
+  borderContrast,
   borderControl,
+  borderStrong,
   surfaceInset,
   translucentContrastOn,
 } from './check-token-contrast-test-values.ts';
@@ -356,20 +358,30 @@ describe('Select chevron and inline variant', () => {
 });
 
 describe('Filled edge contrast (WCAG 1.4.11)', () => {
-  // The filled field paints the edge over its own inset fill, so the edge has to clear 3:1
-  // against that fill as well as against the surface around it. Dark mode's edge is opaque.
-  test('the control edge clears 3:1 against the default light and dark inset fill', () => {
+  // The filled field paints the edge over its own inset fill. At rest the edge is the quiet control
+  // tier (owner decision, 2026-11-11), which only has to stay heavier than a container's edge on
+  // that fill; under `prefers-contrast: more` it is the contrast tier, which has to clear 3:1
+  // against the fill as well as against the surface around it. Dark mode's contrast tier is opaque.
+  test('the resting control edge is heavier than a container edge on the inset fill', () => {
     for (const arm of ['light', 'dark'] as const) {
-      expect(translucentContrastOn(borderControl[arm], surfaceInset[arm])).toBeGreaterThanOrEqual(
+      expect(translucentContrastOn(borderControl[arm], surfaceInset[arm])).toBeGreaterThan(
+        translucentContrastOn(borderStrong[arm], surfaceInset[arm]),
+      );
+    }
+  });
+
+  test('the contrast tier clears 3:1 against the default light and dark inset fill', () => {
+    for (const arm of ['light', 'dark'] as const) {
+      expect(translucentContrastOn(borderContrast[arm], surfaceInset[arm])).toBeGreaterThanOrEqual(
         NON_TEXT,
       );
     }
   });
 
-  test("the control edge clears 3:1 against the comfortable density's deeper light inset fill", () => {
+  test("the contrast tier clears 3:1 against the comfortable density's deeper light inset fill", () => {
     // foundation.css: `--cinder-surface-inset: light-dark(oklch(92.5% 0.005 265), ...)`.
     const comfortableInset: OklchColor = { l: 0.925, c: 0.005, h: 265 };
-    expect(translucentContrastOn(borderControl.light, comfortableInset)).toBeGreaterThanOrEqual(
+    expect(translucentContrastOn(borderContrast.light, comfortableInset)).toBeGreaterThanOrEqual(
       NON_TEXT,
     );
     const foundation = readFileSync(new URL('./foundation.css', import.meta.url), 'utf8');

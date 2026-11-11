@@ -571,7 +571,7 @@
    * ---------------------------------------- */
 
   .cinder-run-step-marker {
-    --_cinder-rst-marker-color: var(--cinder-border-control);
+    --_cinder-rst-marker-color: var(--cinder-border-contrast);
 
     box-sizing: border-box;
     display: inline-flex;
@@ -609,7 +609,7 @@
   .cinder-run-step-marker[data-cinder-status='retrying'],
   .cinder-run-step-marker[data-cinder-status='waiting_approval'],
   .cinder-run-step-marker[data-cinder-status='waiting'] {
-    border: 2px solid var(--_cinder-rst-marker-ring, var(--cinder-border-control));
+    border: 2px solid var(--_cinder-rst-marker-ring, var(--cinder-border-contrast));
     background: var(--_cinder-rst-marker-fill, var(--cinder-surface-raised));
   }
 
@@ -628,7 +628,7 @@
   /* Not started, or not run: a dashed ring, so it reads as a place still to be filled. */
   .cinder-run-step-marker[data-cinder-status='pending'],
   .cinder-run-step-marker[data-cinder-status='skipped'] {
-    border: 1.5px dashed var(--cinder-border-control);
+    border: 1.5px dashed var(--cinder-border-contrast);
     background: var(--cinder-surface-raised);
   }
 

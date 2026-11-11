@@ -11,11 +11,13 @@ Two things are _not_ on this list, deliberately:
 
 ## Two jobs, five tiers
 
-A neutral border does one of two jobs, and the two want opposite things.
+A neutral border does one of three jobs.
 
 A **structural edge** separates regions or outlines a container. The region is already identified by its surface and its content, so the edge only has to be perceptible, and the quieter it is the calmer a dense screen reads. WCAG 1.4.11 does not apply to it.
 
-A **control boundary** is the only visible outline of something you can type into, check, or drag. Remove it and the control disappears into the page, so WCAG 1.4.11 requires it to clear 3:1 against whatever it sits on.
+A **control boundary** is the edge of something you can type into, check, or press. It reads heavier than any structural edge, so a control still looks like the interactive thing, but it is quiet at rest: the owner decided on 2026-11-11, from a side-by-side of a form, that a 3:1 edge on every field and button was too heavy, reversing COR-1814. A control is also identified by its fill, its label, and its focus ring. When a person asks for more contrast (`prefers-contrast: more`), the control boundary becomes the contrast tier.
+
+A **contrast-tier** edge or fill clears WCAG 1.4.11's 3:1 against whatever it sits on. It is the control boundary under `prefers-contrast: more`, and it is what a neutral indicator with no other boundary is drawn in at all times: a toggle's off track, a slider tick, a drag handle, a drop placeholder, a pending marker. Remove it and the thing disappears into the page.
 
 Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heavy enough for an input, which made every card, table, and dialog edge as loud as an input. The tiers are now split:
 
@@ -24,15 +26,18 @@ Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heav
 | `--cinder-border-muted` | 5% | Interior dividers: row and cell rules, tab-list rules, the Divider component | Perceptible (1.06:1) and below `border.control` |
 | `--cinder-border` | 9% | Container outer edges: Card, Modal, Drawer, Popover, Feed log, DataTable, PayloadInspector, StatisticGroup, Toast, Sidebar, PageHeader | Perceptible (1.14:1) and below `border.control` |
 | `--cinder-border-strong` | 15% | Emphasized structure: containers and dividers that need more weight than `border` | Perceptible (1.3:1) and below `border.control` |
-| `--cinder-border-control` | 48% | Control boundaries: text fields (through `--cinder-control-border`), the Checkbox and Radio box, and any indicator that is the only outline of something interactive | WCAG 1.4.11, 3:1 on all four surfaces in both themes |
-| `--cinder-border-control-hover` | 58% | The hovered control boundary, and anything that used `border.strong` as a control hover | WCAG 1.4.11 |
+| `--cinder-border-control` | 32% | Control boundaries at rest: text fields (through `--cinder-control-border`) and bordered buttons | Keeps its weight (2.03:1 light, 2.79:1 dark), above every structural tier and below `border.contrast` |
+| `--cinder-border-control-hover` | 42% | The hovered control boundary | Keeps its weight (2.65:1 light, 4.01:1 dark) |
+| `--cinder-border-contrast` | 48% (dark: opaque `oklch(56% .05 248)`) | The control boundary under `prefers-contrast: more`, the unchecked Checkbox box and unselected Radio ring, and any neutral indicator that is the only outline or fill of something | WCAG 1.4.11, 3:1 on all four surfaces in both themes |
+| `--cinder-border-contrast-hover` | 58% | The hovered form of the contrast tier | WCAG 1.4.11 |
 
 `check-token-contrast-borders.test.ts` asserts every row of that table, including the hierarchy: no structural tier may read heavier than `border.control` on any surface, so the two jobs cannot swap places in a later retune.
 
 ### Choosing a tier
 
-- Is it the only visible outline of something interactive (a text field, a check or radio box, a slider tick, a resize handle, a drop placeholder, a legend toggle, a dropzone)? Use `--cinder-border-control`, or the control frame (`--cinder-control-border`) for a text-entry control, and hover to `--cinder-border-control-hover`.
-- Is it a bordered button, or a button-like chip (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, dashed "add" buttons)? It is a control, so it rests on `--cinder-border-control` (the secondary Button through `--cinder-button-border`). A Cinder toggle Chip and the default `soft` Button are filled with no edge instead (COR-2312). The structural tiers are faint enough after COR-1552 that `--cinder-border-strong` no longer clears 3:1 on a button edge.
+- Is it the edge of a control that also has a fill, a label inside it, or a shape of its own (a text field, a select, a legend toggle, a dropzone)? Use `--cinder-border-control`, or the control frame (`--cinder-control-border`) for a text-entry control, and hover to `--cinder-border-control-hover`. Never dilute it with an element `opacity`.
+- Is it a control that is nothing but its edge (an unchecked check box, an unselected radio ring), or an indicator that is the only outline or fill of something (a slider tick, a resize handle, a drop placeholder, a toggle's off track, a pending ring, a selected segment's ring)? Use `--cinder-border-contrast`, which clears 3:1, and never `--cinder-border-control`, which no longer does.
+- Is it a bordered button, or a button-like chip (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, dashed "add" buttons)? It is a control, so it rests on `--cinder-border-control` (the secondary Button through `--cinder-button-border`). A Cinder toggle Chip and the default `soft` Button are filled with no edge instead (COR-2312). The structural tiers are faint enough after COR-1552 that `--cinder-border-strong` would make a button's edge read like a card's.
 - Is it the outer edge of a container? Use `--cinder-border`.
 - Is it a rule between siblings inside a container, a table rule, or a tab-list rule? Use `--cinder-border-muted`.
 - Is it tinted by a status? Use `--cinder-status-*-border`, never `--cinder-status-*-solid`; an active or racing accent edge uses `--cinder-accent-border`. The one exception is the invalid control edge, which reaches the danger fill through `--cinder-control-border-invalid` because on an invalid field it is the control boundary and has to keep clearing 3:1.
@@ -94,7 +99,7 @@ They do not stack. An inset shadow is clipped to the padding box, so it lands on
 
 ```
 y=18  rgb(210,211,213)   the inset border.muted line, 19% ink on surface-raised
-y=19  rgb(141,144,148)   the border.control border, 48% ink
+y=19  rgb(141,144,148)   the control border as measured then, 48% ink (now the `border.contrast` value)
 ```
 
 A stacked pair would have produced a single row at their combined weight. The edge is 2px of two different weights, which is what it was before the tiers were composed — both layers simply track the surface now.
@@ -103,23 +108,24 @@ Sixteen sites (seventeen declarations: the ColorField hatch has two stops) are a
 
 | site | tier | how it is painted |
 | --- | --- | --- |
-| `toggle` track (light arm) | `border.control` (was `border.muted`) | the full track |
-| `toggle` track hover (light arm) | `border.control.hover` | the full track |
-| `parameter-field` rail | `border.control` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 3px wide, full body height |
-| `mega-menu` indicator track | `border.control` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 2px tall |
-| `media-controls` progress track | `border.control` | 4px tall |
-| `drawer` drag-handle pill | `border.control` | 36 × 4px |
-| `command-palette` sheet grabber | `border.control` | 36 × 4px, the same pill the bottom drawer draws |
-| `modal` sheet grabber | `border.control` | 36 × 4px, the same pill the bottom drawer draws |
-| `slider` tick | `border.control` | 2 × 8px, undiluted — the redundant `opacity: 0.6` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
-| `color-field` empty hatch | `border.control` | a 6px `linear-gradient` repeat across the swatch |
-| `feed-event` dot | `border.control` (was `border.strong`) | 8 × 8px |
-| `status-dot` neutral indicator, and the `pending` hollow ring | `border.control` (was `border.strong`) | `--cinder-status-dot-size` |
-| `rating` empty star | `border.control` (was `border.strong`) | a 1.5rem masked glyph |
-| `resizable-panels` grip | `border.control` (was `border.strong`) | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
-| `entry-frame` busy dot (Chat) | `border.control` | 8 × 8px |
-| `attempts-indicator` filled segment, through `--_cinder-attempts-indicator-fill` | `border.control` | a 6px tall segment, one per allowed attempt, over the row or the dialog surface (the empty ones are `surface.inset`) |
-| `connection-indicator` reconnecting dot, through `--_cinder-connection-indicator-dot-color` | `border.control` | 8 × 8px, still, beside the word "Reconnecting"; the same neutral dot a `status-dot` draws, over the page surface |
+| `toggle` track (light arm) | `border.contrast` (was `border.muted`) | the full track |
+| `toggle` track hover (light arm) | `border.contrast.hover` | the full track |
+| `parameter-field` rail | `border.contrast` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 3px wide, full body height |
+| `mega-menu` indicator track | `border.contrast` (was `border.muted`, [CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) | 2px tall |
+| `media-controls` progress track | `border.contrast` | 4px tall |
+| `drawer` drag-handle pill | `border.contrast` | 36 × 4px |
+| `command-palette` sheet grabber | `border.contrast` | 36 × 4px, the same pill the bottom drawer draws |
+| `modal` sheet grabber | `border.contrast` | 36 × 4px, the same pill the bottom drawer draws |
+| `slider` tick | `border.contrast` | 2 × 8px, undiluted — the redundant `opacity: 0.6` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
+| `color-field` empty hatch | `border.contrast` | a 6px `linear-gradient` repeat across the swatch |
+| `feed-event` dot | `border.contrast` (was `border.strong`) | 8 × 8px |
+| `status-dot` neutral indicator, and the `pending` hollow ring | `border.contrast` (was `border.strong`) | `--cinder-status-dot-size` |
+| `rating` empty star | `border.contrast` (was `border.strong`) | a 1.5rem masked glyph |
+| `resizable-panels` grip | `border.contrast` (was `border.strong`) | `color:`, inherited by a child, undiluted — the child's `opacity: 0.5` was removed ([CIN-603](https://linear.app/lost-gradient/issue/CIN-603)) |
+| `entry-frame` busy dot (Chat) | `border.contrast` | 8 × 8px |
+| `attempts-indicator` filled segment, through `--_cinder-attempts-indicator-fill` | `border.contrast` | a 6px tall segment, one per allowed attempt, over the row or the dialog surface (the empty ones are `surface.inset`) |
+| `connection-indicator` reconnecting dot, through `--_cinder-connection-indicator-dot-color` | `border.contrast` | 8 × 8px, still, beside the word "Reconnecting"; the same neutral dot a `status-dot` draws, over the page surface |
+| `inspector-row` switch off track | `border.contrast` | the full 32 × 18px track; it read the control tier through `--cinder-control-border` until the control edge went quiet (2026-11-11) |
 
 Four of those do not reach the tier through `background` at all, which is how two earlier passes of this document missed them: `color-field` uses `background-image`, `resizable-panels` uses `color`, and `rating` and `status-dot` hop through a component token (`--_cinder-rating-empty`, `--cinder-status-dot-color`). `status-dot` borrows a border tier because every other status maps to a `*-solid` and neutral has none.
 
@@ -129,10 +135,10 @@ It scans the token corpus too, for the case no stylesheet sweep can reach: a com
 
 Against WCAG 1.4.11's 3:1 floor for meaningful non-text graphics, measured across all four surface tokens in both arms:
 
-- **Every area site is on `border.control`** and clears it: 3.15–3.23 light, 3.37–3.65 dark (`border.control.hover`, the Toggle hover track: 4.28–4.43 light, 4.24–4.85 dark). Before the two-job split, the `border.strong` areas sat at 58% ink; `border.strong` is now a 32% structural tier (2.04–2.31) that no indicator may use, so they moved to `border.control` rather than following it down.
+- **Every area site is on `border.contrast`** (named `border.control` before 2026-11-11, when the control edge went quiet and these fills kept the 3:1 values under the new name) and clears it: 3.15–3.23 light, 3.37–3.65 dark (`border.contrast.hover`, the Toggle hover track: 4.28–4.43 light, 4.24–4.85 dark). Before the two-job split, the `border.strong` areas sat at 58% ink; `border.strong` is now a 32% structural tier (2.04–2.31) that no indicator may use, so they moved to `border.control` rather than following it down.
 - **History.** Two of these sites (the ParameterField rail and the MegaMenu indicator track) once filled with `border.muted` and sat below 3:1, and two more (the Slider tick and the ResizablePanels grip) were diluted under 3:1 by an element `opacity`; [CIN-603](https://linear.app/lost-gradient/issue/CIN-603) fixed all four, and `check-token-contrast-border-indicators.test.ts` reads each site's real rule body so a revert fails. The two-job split also lowered `border.muted` to 10% (1.17–1.27:1), which is only acceptable because no area fill uses it any more.
 
-### Toggle track, light arm — intentional, and now a control tier
+### Toggle track, light arm — intentional, and now the contrast tier
 
 `--cinder-toggle-track-off-resting` aliases `border.control` in its light arm, and its hover aliases `border.control.hover` (the dark arms are independent literals; COR-2312 raised them from 45% and 52% to `oklch(58% 0.02 245)` and `oklch(64% 0.02 245)`, because 45% sat at about 2.2–2.5:1 on the dark surfaces, and the `toggle:track-off:*` contrast pairings now hold the off track to 3:1 in every context). The off track is the only visible shape of the switch, so it is a control boundary in the sense of the two-job split above, and it moved from `border.muted` (a 19%, then 10%, decorative tier) to the 48% control tier: 3.15–3.23:1 on the four surfaces instead of about 1.5:1. Like every tier it tracks the surface underneath it rather than being a fixed grey, so it reads at a near-identical weight on every surface.
 
@@ -295,7 +301,7 @@ The grip's two halves sit on a parent and its child; the Button, Toggle and Segm
 
 | site | property | tier reference | how it was found |
 | --- | --- | --- | --- |
-| resting Toggle track (`/page/toggle`) | `background` | `--cinder-toggle-track-off-resting` → `var(--cinder-border-control)` | one-hop alias: a non-border property's `var()` fallback names a custom property whose own declaration (inherited from the generated `:root` block) names the tier |
+| resting Toggle track (`/page/toggle`) | `background` | `--cinder-toggle-track-off-resting` → `var(--cinder-border-contrast)` | one-hop alias: a non-border property's `var()` fallback names a custom property whose own declaration (inherited from the generated `:root` block) names the tier |
 
 Coverage note: this table currently audits one site, a corpus-alias area fill
 invisible to static source text. The two opacity-compound rows (the disabled

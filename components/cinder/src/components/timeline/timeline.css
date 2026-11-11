@@ -143,7 +143,7 @@
      * uses for Waiting and Scheduled, and it stays hollow so it never reads as a green or blue
      * event. The fill is transparent, not the surface, so it follows whatever sits behind it. */
   .cinder-timeline-item[data-cinder-tone='pending'] .cinder-timeline-item__marker {
-    border-color: var(--cinder-border-control);
+    border-color: var(--cinder-border-contrast);
     background: transparent;
   }
 

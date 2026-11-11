@@ -98,13 +98,15 @@ const INK_TIERS = [
   ['--cinder-border-muted', { light: 0.05, dark: 0.08 }],
   ['--cinder-border', { light: 0.09, dark: 0.12 }],
   ['--cinder-border-strong', { light: 0.15, dark: 0.15 }],
-  ['--cinder-border-control', { light: 0.48, dark: 0.48 }],
-  ['--cinder-border-control-hover', { light: 0.58, dark: 0.58 }],
-  ['--cinder-button-border', { light: 0.48, dark: 0.48 }],
+  ['--cinder-border-control', { light: 0.32, dark: 0.32 }],
+  ['--cinder-border-control-hover', { light: 0.42, dark: 0.42 }],
+  ['--cinder-border-contrast', { light: 0.48, dark: 0.48 }],
+  ['--cinder-border-contrast-hover', { light: 0.58, dark: 0.58 }],
+  ['--cinder-button-border', { light: 0.32, dark: 0.32 }],
 ] as const;
 
-/** The two control-edge tokens whose dark arm is the opaque literal below, not a step over the ink. */
-const OPAQUE_IN_DARK = new Set<string>(['--cinder-border-control', '--cinder-button-border']);
+/** The one tier whose dark arm is the opaque literal below, not a step over the ink. */
+const OPAQUE_IN_DARK = new Set<string>(['--cinder-border-contrast']);
 
 /** The dark arm as COR-2308 ships it: neutral surfaces, a white border ink, mixed status grounds. */
 const DARK_VALUES: readonly ExpectedColor[] = [
@@ -117,7 +119,9 @@ const DARK_VALUES: readonly ExpectedColor[] = [
   ['--cinder-surface-upcoming-marker', [0.185, 0.012, 265]],
   ['--cinder-surface-canvas', [0.145, 0.012, 265]],
   ['--cinder-border-ink', [1, 0, 0]],
-  ['--cinder-border-control-hover', [1, 0, 0], 0.58],
+  ['--cinder-border-control', [1, 0, 0], 0.32],
+  ['--cinder-border-control-hover', [1, 0, 0], 0.42],
+  ['--cinder-border-contrast-hover', [1, 0, 0], 0.58],
   ['--cinder-border-faint', [0.33, 0.03, 245]],
   ['--cinder-text-default', [0.95, 0.01, 265]],
   ['--cinder-text-muted', [0.78, 0.01, 265]],
@@ -214,7 +218,7 @@ describe('COR-2010: the dark arm moves the inset, inverse chip, control edge and
     expectColor('dark', ['--cinder-text-inverse', [0.185, 0.012, 265]]);
   });
 
-  test('the control edge is the opaque oklch(56% .05 248), which clears 3:1 on raised', () => {
+  test('the contrast tier is the opaque oklch(56% .05 248), which clears 3:1 on raised', () => {
     for (const property of OPAQUE_IN_DARK) {
       expectColor('dark', [property, [0.56, 0.05, 248]]);
     }

@@ -92,11 +92,11 @@ describe('Timeline pending tone and actions (row 72h)', () => {
     expect(css).toMatch(/\.cinder-timeline-item__event::before\s*\{\s*content: '';/);
   });
 
-  test('pending draws a hollow ring in the control border colour', () => {
+  test('pending draws a hollow ring in the contrast border colour', () => {
     const rule = /data-cinder-tone='pending'\] \.cinder-timeline-item__marker\s*\{([^}]*)\}/.exec(
       css,
     )?.[1];
-    expect(rule).toContain('border-color: var(--cinder-border-control)');
+    expect(rule).toContain('border-color: var(--cinder-border-contrast)');
     expect(rule).toContain('background: transparent');
   });
 });

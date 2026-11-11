@@ -189,6 +189,8 @@ export const FOUNDATION_DOC_SECTIONS: readonly DocSection[] = ([] = [
       '--cinder-border-strong',
       '--cinder-border-control',
       '--cinder-border-control-hover',
+      '--cinder-border-contrast',
+      '--cinder-border-contrast-hover',
       '--cinder-border-faint',
       '--cinder-toggle-track-off-resting',
       '--cinder-toggle-track-off-hover-resting',

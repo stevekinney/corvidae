@@ -277,7 +277,8 @@ export type TierUse = {
   readonly isMix: boolean;
 };
 
-const TIER_PATTERN = /--cinder-border(?:-muted|-strong|-control(?:-hover)?)?(?![\w-])/;
+const TIER_PATTERN =
+  /--cinder-border(?:-muted|-strong|-control(?:-hover)?|-contrast(?:-hover)?)?(?![\w-])/;
 const BORDER_PROPERTY = /^(?:border|outline)(?:-[a-z-]+)?$/;
 const CUSTOM_PROPERTY_REFERENCE = /var\(\s*(--[a-zA-Z0-9-]+)/g;
 
@@ -296,7 +297,7 @@ export function referencesBorderTier(value: string): boolean {
   return TIER_PATTERN.test(value);
 }
 
-/** The specific tier custom-property name (`--cinder-border-muted`, `--cinder-border`, `--cinder-border-strong`, `--cinder-border-control`, or `--cinder-border-control-hover`) that `value` references, or `undefined` when it references none. */
+/** The specific tier custom-property name (`--cinder-border-muted`, `--cinder-border`, `--cinder-border-strong`, `--cinder-border-contrast`, `--cinder-border-contrast-hover`, `--cinder-border-control`, or `--cinder-border-control-hover`) that `value` references, or `undefined` when it references none. */
 export function tierNameIn(value: string): string | undefined {
   return TIER_PATTERN.exec(value)?.[0];
 }

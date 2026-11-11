@@ -172,14 +172,14 @@ describe('info status and the hollow pending ring', () => {
     // The info dot shares the neutral rule's control-border colour, never the accent or the info
     // hue (COR-2314).
     expect(statusCss).toMatch(
-      /data-cinder-status='info'\](?:,[^{]*)? \{\s*--cinder-status-dot-color: var\(--cinder-border-control\);/,
+      /data-cinder-status='info'\](?:,[^{]*)? \{\s*--cinder-status-dot-color: var\(--cinder-border-contrast\);/,
     );
     expect(statusCss).not.toContain('--cinder-status-info-solid');
   });
 
-  test('pending is a 1.5px ring in the control border over a transparent fill', () => {
+  test('pending is a 1.5px ring in the contrast border over a transparent fill', () => {
     expect(statusCss).toMatch(
-      /data-cinder-status='pending'\] \{\s*--cinder-status-dot-color: var\(--cinder-border-control\);/,
+      /data-cinder-status='pending'\] \{\s*--cinder-status-dot-color: var\(--cinder-border-contrast\);/,
     );
     const ring = statusCss.match(
       /data-cinder-status='pending'\] \.cinder-status-dot__indicator \{([^}]*)\}/,

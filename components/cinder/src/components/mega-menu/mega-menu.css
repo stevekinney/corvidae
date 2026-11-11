@@ -53,7 +53,7 @@
   .cinder-mega-menu__indicator-track {
     position: relative;
     height: 2px;
-    background: var(--cinder-border-control);
+    background: var(--cinder-border-contrast);
     border-radius: var(--cinder-radius-full);
     overflow: hidden;
   }

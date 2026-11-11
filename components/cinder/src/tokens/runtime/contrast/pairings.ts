@@ -295,27 +295,30 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
       description: `Focus ring against ${SURFACE_LABELS[background]}`,
     }),
   ),
+  // A control's resting edge (`border.control`) is quiet by owner decision and is not held to
+  // 1.4.11; the tier it becomes under `prefers-contrast: more`, which also fills neutral
+  // indicators, is.
   ...onSurfaces(
-    'border:control',
-    '--cinder-border-control',
+    'border:contrast',
+    '--cinder-border-contrast',
     {
       group: 'control-border',
       classification: 'non-text-indicator',
       scope: 'wcag',
       criterion: '1.4.11',
     },
-    'Control border',
+    'Contrast-tier border',
   ),
   ...onSurfaces(
-    'border:control-hover',
-    '--cinder-border-control-hover',
+    'border:contrast-hover',
+    '--cinder-border-contrast-hover',
     {
       group: 'control-border',
       classification: 'non-text-indicator',
       scope: 'wcag',
       criterion: '1.4.11',
     },
-    'Hovered control border',
+    'Hovered contrast-tier border',
   ),
   // COR-2312: an off switch is its track and nothing else, so the track clears 3:1 on every
   // surface in both themes.
@@ -331,7 +334,7 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
     'Off Toggle track',
   ),
   // COR-2312: a selected SegmentedControl segment is a raised pill on the inset track, about
-  // 1.1:1 on its own, so its 1px control-tier ring is the indicator: it clears 3:1 against the
+  // 1.1:1 on its own, so its 1px contrast-tier ring is the indicator: it clears 3:1 against the
   // track it sits on and the pill it outlines.
   ...(['--cinder-surface-inset', '--cinder-surface-raised'] as const).map(
     (background): ContrastPairing => ({
@@ -340,7 +343,7 @@ export const CONTRAST_PAIRINGS: readonly ContrastPairing[] = [
       classification: 'non-text-indicator',
       scope: 'wcag',
       criterion: '1.4.11',
-      foreground: '--cinder-border-control',
+      foreground: '--cinder-border-contrast',
       background,
       description: `Selected SegmentedControl ring against ${SURFACE_LABELS[background]}`,
     }),

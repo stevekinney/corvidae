@@ -35,11 +35,11 @@
    * CIN-603: this rail is a persistent state indicator (it fills the whole
    * body height alongside the editor, not a decorative divider), so it moved
    * from `border.muted` (a 1.4:1 decorative-hairline tier) to
-   * `border.control` (the 3:1 functional tier).
+   * `border.contrast` (the 3:1 functional tier).
    */
   .cinder-parameter-field__rail {
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-border-control);
+    background: var(--cinder-border-contrast);
   }
 
   .cinder-parameter-field[data-cinder-overridden] .cinder-parameter-field__rail {

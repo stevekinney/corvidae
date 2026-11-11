@@ -14,6 +14,8 @@ const {
   accent,
   bg,
   border,
+  borderContrast,
+  borderContrastHover,
   borderControl,
   borderControlHover,
   borderFaint,
@@ -64,11 +66,15 @@ describe('focus ring contrast on the sidebar and the canvas (COR-2010 row 02o)',
 });
 
 describe('border-on-surface contrast', () => {
-  // The neutral tiers do two jobs. STRUCTURAL tiers (muted, border, strong)
+  // The neutral tiers do three jobs. STRUCTURAL tiers (muted, border, strong)
   // separate regions and outline containers; the region is identified by its
   // surface and content, so WCAG 1.4.11 does not apply and they are kept
-  // quiet. CONTROL tiers (control, control.hover) are the only visible
-  // boundary of an input, checkbox, or radio, so they must clear 3:1.
+  // quiet. CONTROL tiers (control, control.hover) are the edge of an input,
+  // button, checkbox, or radio. The owner decided on 2026-11-11 that this edge
+  // is quiet by default, reversing COR-1814: heavier than every structural
+  // tier, lighter than 3:1. CONTRAST tiers (contrast, contrast.hover) clear
+  // 3:1: they are what the control tiers become under `prefers-contrast: more`,
+  // and what fills a neutral indicator that has no other boundary.
   //
   // Faint borders are decorative hairlines and only need to stay distinguishable.
   const FAINT_BORDER = 1.1;
@@ -77,6 +83,13 @@ describe('border-on-surface contrast', () => {
   // surface in either arm (dark: 1.067, 1.143, 1.308), so a regression below the weight the owner
   // chose still fails.
   const STRUCTURAL_FLOORS = { 'border.muted': 1.06, border: 1.14, 'border.strong': 1.3 } as const;
+  // The control tiers are 32% and 42% of the ink in both arms. Each floor sits just under the lowest
+  // ratio the tier measures on any surface (light: 2.036 and 2.654; dark: 2.799 and 4.020), so a
+  // control edge fainter than the weight the owner chose from the comparison fails.
+  const CONTROL_FLOORS = {
+    light: { 'border.control': 2.03, 'border.control.hover': 2.65 },
+    dark: { 'border.control': 2.79, 'border.control.hover': 4.01 },
+  } as const;
   const surfaces = { inset: surfaceInset, bg, surface, raised: surfaceRaised } as const;
   const structuralTiers = {
     'border.muted': borderMuted,
@@ -86,6 +99,10 @@ describe('border-on-surface contrast', () => {
   const controlTiers = {
     'border.control': borderControl,
     'border.control.hover': borderControlHover,
+  } as const;
+  const contrastTiers = {
+    'border.contrast': borderContrast,
+    'border.contrast.hover': borderContrastHover,
   } as const;
   const allTiers = { ...structuralTiers, ...controlTiers } as const;
 
@@ -114,6 +131,22 @@ describe('border-on-surface contrast', () => {
       }
 
       for (const [tierName, tier] of Object.entries(controlTiers)) {
+        it(`${arm}: ${tierName} keeps the weight the owner chose on ${surfaceName}`, () => {
+          expect(translucentContrastOn(tier[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
+            CONTROL_FLOORS[arm][tierName as keyof (typeof CONTROL_FLOORS)['light']],
+          );
+        });
+      }
+
+      it(`${arm}: border.control stays below border.contrast on ${surfaceName}`, () => {
+        // More contrast must mean a heavier edge: if the resting edge ever met the tier it becomes
+        // under `prefers-contrast: more`, the preference would change nothing.
+        expect(translucentContrastOn(borderControl[arm], surfaceToken[arm])).toBeLessThan(
+          translucentContrastOn(borderContrast[arm], surfaceToken[arm]),
+        );
+      });
+
+      for (const [tierName, tier] of Object.entries(contrastTiers)) {
         it(`${arm}: ${tierName} clears WCAG 1.4.11 on ${surfaceName}`, () => {
           expect(translucentContrastOn(tier[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
             NON_TEXT,
@@ -141,10 +174,8 @@ describe('border-on-surface contrast', () => {
 
   for (const arm of ['light', 'dark'] as const) {
     for (const [tierName, tier] of Object.entries(allTiers)) {
-      // The dark control edge is an opaque literal, so it cannot track the surface under it: it
-      // reads 3.14:1 on raised and 4.25:1 on the canvas. Its 3:1 floor on every surface is gated
-      // by the "clears WCAG 1.4.11" tests above instead.
-      if (tierName === 'border.control' && arm === 'dark') continue;
+      // The dark contrast tier is the one opaque literal, so it cannot track the surface under it;
+      // it is not in this ladder, and its 3:1 floor on every surface is gated above instead.
       it(`${arm}: ${tierName} reads within ${MAX_SPREAD * 100}% across every legal surface`, () => {
         const ratios = Object.entries(surfaces).map(
           ([surfaceName, surfaceToken]) =>
@@ -180,10 +211,6 @@ describe('border-on-surface contrast', () => {
       // stops one tier from being nudged off the shared ink and quietly
       // becoming a second source.
       for (const [tierName, tier] of Object.entries(allTiers)) {
-        // The one exception is the dark control edge: an opaque oklch(56% .05 248) chosen by the
-        // design so it clears 3:1 against `surface.raised`; it is gated by the 3:1 floor above
-        // and the pinned literal in retuned-theme-values.test.ts instead.
-        if (tierName === 'border.control' && arm === 'dark') continue;
         expect(
           { l: tier[arm].l, c: tier[arm].c, h: tier[arm].h },
           `${tierName} (${arm}) must resolve to border.ink`,
@@ -204,19 +231,29 @@ describe('border-on-surface contrast', () => {
       '--cinder-border-muted': borderMuted,
       '--cinder-border': border,
       '--cinder-border-strong': borderStrong,
+      '--cinder-border-control': borderControl,
       '--cinder-border-control-hover': borderControlHover,
+      '--cinder-border-contrast-hover': borderContrastHover,
     } as const;
+    // The two control tiers are declared a fourth time, as aliases of the contrast tiers, in the
+    // `prefers-contrast: more` block that follows the theme blocks.
+    const highContrastAlias: Readonly<Record<string, string>> = {
+      '--cinder-border-control': 'var(--cinder-border-contrast)',
+      '--cinder-border-control-hover': 'var(--cinder-border-contrast-hover)',
+    };
     const recipeFor = (alpha: number) =>
       `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - alpha) * 100)}%)`;
     for (const [property, tier] of Object.entries(tierProperties)) {
       const lightRecipe = recipeFor(tier.light.alpha);
       const darkRecipe = recipeFor(tier.dark.alpha);
       const declarations = readAllTokenValues(css, property);
+      const alias = highContrastAlias[property];
       expect(
         declarations.length,
         `${property} should be declared at :root and in both [data-theme] blocks`,
-      ).toBe(3);
-      const [rootDeclaration, darkDeclaration, lightDeclaration] = declarations;
+      ).toBe(alias === undefined ? 3 : 4);
+      const [rootDeclaration, darkDeclaration, lightDeclaration, aliasDeclaration] = declarations;
+      expect(aliasDeclaration, `${property} under prefers-contrast: more`).toBe(alias);
       expect(rootDeclaration, `${property} :root recipe`).toBe(
         lightRecipe === darkRecipe ? lightRecipe : `light-dark( ${lightRecipe}, ${darkRecipe} )`,
       );
@@ -233,12 +270,12 @@ describe('border-on-surface contrast', () => {
     expect(border.light.alpha).toBe(0.09);
   });
 
-  it('the dark control edge keeps its 56% step on every dark surface', () => {
-    // The Interborough design draws the dark control edge at oklch(52% .05 248). On the old navy
+  it('the dark contrast tier keeps its 56% step on every dark surface', () => {
+    // The Interborough design drew the dark control edge, now the contrast tier, at oklch(52% .05 248). On the old navy
     // ladder that read 2.65:1 on `surface.raised`, so the token shipped 56%. COR-2308 darkened
     // raised to 23.5%, where 52% would clear by only 3.04:1, so the edge keeps 56% as margin:
     // 4.28:1 on the canvas, 4.03:1 on the surface, 3.83:1 on the inset and 3.60:1 on raised.
-    expect(borderControl.dark.l).toBeCloseTo(0.56, 5);
+    expect(borderContrast.dark.l).toBeCloseTo(0.56, 5);
     for (const [groundName, ground] of Object.entries({
       canvas: bg.dark,
       surface: surface.dark,
@@ -246,26 +283,45 @@ describe('border-on-surface contrast', () => {
       raised: surfaceRaised.dark,
     })) {
       expect(
-        contrastRatio(wcagLuminance(borderControl.dark), wcagLuminance(ground)),
-        `dark control edge on the ${groundName}`,
+        contrastRatio(wcagLuminance(borderContrast.dark), wcagLuminance(ground)),
+        `dark contrast tier on the ${groundName}`,
       ).toBeGreaterThanOrEqual(NON_TEXT);
     }
   });
 
-  it('the control edge is the ink step in the light arm and the opaque literal in the dark arm', () => {
-    // `--cinder-border-control` is the one tier whose arms differ in kind: light is the ink at 52%
+  it('the contrast tier is the ink step in the light arm and the opaque literal in the dark arm', () => {
+    // `--cinder-border-contrast` is the one tier whose arms differ in kind: light is the ink at 52%
     // transparency (about oklch(66% .006 255) over white), dark is the opaque oklch(56% .05 248).
     const [rootDeclaration, ...blockDeclarations] = readAllTokenValues(
       css,
-      '--cinder-border-control',
+      '--cinder-border-contrast',
     );
-    const lightRecipe = `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - borderControl.light.alpha) * 100)}%)`;
+    const lightRecipe = `color-mix(in oklch, var(--cinder-border-ink), transparent ${Math.round((1 - borderContrast.light.alpha) * 100)}%)`;
     const darkLiteral = 'oklch(56% 0.05 248)';
     expect(rootDeclaration?.replace(/\s+/g, ' ')).toBe(
       `light-dark( ${lightRecipe}, ${darkLiteral} )`,
     );
     expect(blockDeclarations.sort()).toEqual([darkLiteral, lightRecipe].sort());
-    expect(borderControl.dark.alpha).toBe(1);
+    expect(borderContrast.dark.alpha).toBe(1);
+  });
+
+  it('the control edge is 32% of the ink at rest and 42% on hover, in both arms', () => {
+    for (const arm of ['light', 'dark'] as const) {
+      expect(borderControl[arm].alpha).toBe(0.32);
+      expect(borderControlHover[arm].alpha).toBe(0.42);
+    }
+  });
+
+  it('more contrast turns the control edge into the contrast tier, after every theme block', () => {
+    // The alias has to follow the `[data-theme]` blocks, which redeclare the control tiers at the
+    // same specificity, or a scoped theme would keep its quiet edge under `prefers-contrast: more`.
+    const block = css.indexOf('@media (prefers-contrast: more)');
+    expect(block).toBeGreaterThan(css.indexOf("\n[data-theme='light'] {"));
+    expect(block).toBeGreaterThan(css.indexOf("\n[data-theme='dark'] {"));
+    const body = css.slice(block, css.indexOf('@media (prefers-reduced-motion', block));
+    expect(body).toContain(":root,\n  [data-theme='dark'],\n  [data-theme='light'] {");
+    expect(body).toContain('--cinder-border-control: var(--cinder-border-contrast);');
+    expect(body).toContain('--cinder-border-control-hover: var(--cinder-border-contrast-hover);');
   });
 
   it('the polarity ink actually contrasts with the surfaces of its own arm', () => {
@@ -306,11 +362,11 @@ describe('border-on-surface contrast', () => {
 });
 
 describe('field edges (COR-1814)', () => {
-  // A lighter hairline edge was on the table for fields; WCAG 1.4.11 wins
-  // over it. Every text-entry field draws its resting edge with
-  // `--cinder-control-border` (the 48% `border.control` tier) and its hover
-  // edge with `--cinder-control-border-hover` (58%), and both clear 3:1
-  // against the page and against the field's own fill in both themes.
+  // COR-1814 kept field edges at 3:1. The owner reversed that on 2026-11-11, from a side-by-side
+  // of the New schedule form: every text-entry field draws its resting edge with
+  // `--cinder-control-border` (the 32% `border.control` tier) and its hover edge with
+  // `--cinder-control-border-hover` (42%), which stay heavier than a container's edge, and both
+  // clear 3:1 against the page and the field's own fill once the person asks for more contrast.
   const read = (path: string) => Bun.file(new URL(path, import.meta.url)).text();
   const fieldStylesheets = {
     input: '../components/input/input.css',
@@ -343,18 +399,24 @@ describe('field edges (COR-1814)', () => {
   }
 
   for (const arm of ['light', 'dark'] as const) {
-    for (const [edgeName, edge] of Object.entries({
-      'control.border': borderControl,
-      'control.border.hover': borderControlHover,
-    })) {
+    for (const [edgeName, edge, highContrastEdge] of [
+      ['control.border', borderControl, borderContrast],
+      ['control.border.hover', borderControlHover, borderContrastHover],
+    ] as const) {
       for (const [surfaceName, surfaceToken] of Object.entries({
         page: bg,
         'field fill': surfaceRaised,
       })) {
-        it(`${arm}: ${edgeName} clears 3:1 against the ${surfaceName}`, () => {
-          expect(translucentContrastOn(edge[arm], surfaceToken[arm])).toBeGreaterThanOrEqual(
-            NON_TEXT,
+        it(`${arm}: ${edgeName} is heavier than a container's edge against the ${surfaceName}`, () => {
+          expect(translucentContrastOn(edge[arm], surfaceToken[arm])).toBeGreaterThan(
+            translucentContrastOn(borderStrong[arm], surfaceToken[arm]),
           );
+        });
+
+        it(`${arm}: ${edgeName} clears 3:1 against the ${surfaceName} under more contrast`, () => {
+          expect(
+            translucentContrastOn(highContrastEdge[arm], surfaceToken[arm]),
+          ).toBeGreaterThanOrEqual(NON_TEXT);
         });
       }
     }

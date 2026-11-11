@@ -400,7 +400,7 @@
     block-size: 0.25rem;
     margin: var(--cinder-space-2) auto var(--cinder-space-1);
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-border-control);
+    background: var(--cinder-border-contrast);
   }
 
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {

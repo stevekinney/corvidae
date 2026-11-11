@@ -108,7 +108,7 @@
     inline-size: 0.5rem;
     block-size: 0.5rem;
     border-radius: 50%;
-    background: var(--cinder-border-control);
+    background: var(--cinder-border-contrast);
     pointer-events: none;
   }
 

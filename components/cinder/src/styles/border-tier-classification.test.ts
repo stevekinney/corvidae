@@ -61,15 +61,16 @@ describe('CIN-245: structural border tier classification', () => {
 });
 
 /**
- * COR-1552: control borders keep at least 3:1, so once the structural tiers move to 5%, 9% and
- * 15% of the ink, a bordered button's resting edge cannot stay on `--cinder-border-strong`
- * (2.06:1 today, 1.37:1 at 15%). Each one reads `--cinder-border-control` (48%), or
+ * COR-1552: a bordered button's resting edge reads heavier than a container's, so once the
+ * structural tiers moved to 5%, 9% and 15% of the ink it could not stay on
+ * `--cinder-border-strong` (1.37:1 at 15%). Each one reads `--cinder-border-control` (32% since
+ * the owner's decision of 2026-11-11, and the 3:1 contrast tier under `prefers-contrast: more`), or
  * `--cinder-button-border` for the secondary Button, which the token set aliases to the same.
  *
  * This is a source scan of the effective rule for each selector, named here rather than found by
  * a sweep, because the sweep cannot tell a button's resting edge from a card's.
  */
-describe('COR-1552: bordered button resting edges keep the 3:1 control tier', () => {
+describe('COR-1552: bordered button resting edges keep the control tier', () => {
   const COMPONENTS_ROOT = join(import.meta.dirname, '..', 'components');
   const CHAT_ROOT = join(import.meta.dirname, '..', '..', '..', 'chat', 'src', 'lib', 'components');
   const EDITOR_ROOT = join(

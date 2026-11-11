@@ -3,9 +3,13 @@
  * declaration is classified, and the classification is checked rather than
  * asserted.
  *
- * The five tiers -- `--cinder-border-muted`, `--cinder-border`,
- * `--cinder-border-strong`, `--cinder-border-control`, and
- * `--cinder-border-control-hover` -- are alpha over one ink. Wherever one is used
+ * The seven tiers -- `--cinder-border-muted`, `--cinder-border`,
+ * `--cinder-border-strong`, `--cinder-border-control`,
+ * `--cinder-border-control-hover`, `--cinder-border-contrast`, and
+ * `--cinder-border-contrast-hover` -- are alpha over one ink (the dark arm of
+ * `border.contrast` is the one opaque literal). The control tiers are a
+ * control's quiet resting edge; a fill or an indicator that has to be seen on
+ * its own uses the contrast tiers, which clear 3:1. Wherever one is used
  * as a border that is exactly the intent. Wherever one is used as something
  * else, it now carries transparency into a place that was previously opaque,
  * and each of those places needs a deliberate answer:
@@ -99,7 +103,7 @@ export const CORPUS_DOCUMENTS = [
 ];
 
 export const CORPUS_TIER =
-  /\{border(?:\.(?:muted|strong|control(?:\.hover)?))?\}|var\(--cinder-border(?:-muted|-strong|-control(?:-hover)?)?\)/;
+  /\{border(?:\.(?:muted|strong|control(?:\.hover)?|contrast(?:\.hover)?))?\}|var\(--cinder-border(?:-muted|-strong|-control(?:-hover)?|-contrast(?:-hover)?)?\)/;
 
 /**
  * Tier borders that sit in a rule which also sets `opacity`, so the element
@@ -159,7 +163,8 @@ const SCAN_ROOTS = [
 /** `tokens-base.css` is generated from the corpus, where the aliases are already gated. */
 const GENERATED = 'tokens-base.css';
 
-const TIER_REFERENCE = /var\(--cinder-border(?:-muted|-strong|-control(?:-hover)?)?[\s,)]/;
+const TIER_REFERENCE =
+  /var\(--cinder-(?:border(?:-muted|-strong|-control(?:-hover)?|-contrast(?:-hover)?)?|control-border(?:-hover)?|button-border)[\s,)]/;
 const BORDER_PROPERTY = /^(?:border|outline)(?:-[a-z-]+)?$/;
 
 /**
@@ -186,7 +191,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/chat/src/lib/components/chat/message/entry-frame.svelte': [
     {
-      declaration: 'background: var(--cinder-border-control);',
+      declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'entry-frame',
     },
@@ -223,16 +228,27 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/cinder/src/components/command-palette/command-palette.css': [
     {
-      declaration: 'background: var(--cinder-border-control);',
+      declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'command-palette',
     },
   ],
+  'components/cinder/src/components/inspector-row/inspector-row.css': [
+    {
+      declaration: 'background: var(--cinder-border-contrast);',
+      category: 'area',
+      audit: 'inspector-row',
+    },
+  ],
   'components/cinder/src/components/modal/modal.css': [
-    { declaration: 'background: var(--cinder-border-control);', category: 'area', audit: 'modal' },
+    { declaration: 'background: var(--cinder-border-contrast);', category: 'area', audit: 'modal' },
   ],
   'components/cinder/src/components/drawer/drawer.css': [
-    { declaration: 'background: var(--cinder-border-control);', category: 'area', audit: 'drawer' },
+    {
+      declaration: 'background: var(--cinder-border-contrast);',
+      category: 'area',
+      audit: 'drawer',
+    },
   ],
   'components/cinder/src/components/feed-boundary/feed-boundary.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
@@ -240,7 +256,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/feed-event/feed-event.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
-      declaration: 'background: var(--cinder-border-control);',
+      declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'feed-event',
     },
@@ -250,37 +266,37 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/cinder/src/components/media-controls/media-controls.css': [
     {
-      declaration: 'background-color: var(--cinder-border-control);',
+      declaration: 'background-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'media-controls',
     },
   ],
   'components/cinder/src/components/mega-menu/mega-menu.css': [
-    // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.control`.
+    // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.contrast`.
     {
-      declaration: 'background: var(--cinder-border-control);',
+      declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'mega-menu',
     },
   ],
   'components/cinder/src/components/parameter-field/parameter-field.css': [
-    // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.control`.
+    // CIN-603 moved this from `border.muted` to the 3:1 tier, now `border.contrast`.
     {
-      declaration: 'background: var(--cinder-border-control);',
+      declaration: 'background: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'parameter-field',
     },
   ],
   'components/cinder/src/components/rating/rating.css': [
     {
-      declaration: '--_cinder-rating-empty: var(--cinder-border-control);',
+      declaration: '--_cinder-rating-empty: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'rating',
     },
   ],
   'components/cinder/src/components/resizable-panels/resizable-panels.css': [
     {
-      declaration: 'color: var(--cinder-border-control);',
+      declaration: 'color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'resizable-panels',
     },
@@ -288,21 +304,21 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   'components/cinder/src/components/run-step-timeline/run-step-timeline.css': [
     { declaration: 'background: var(--cinder-border-muted);', category: 'hairline' },
     {
-      declaration: '--_cinder-rst-marker-color: var(--cinder-border-control);',
+      declaration: '--_cinder-rst-marker-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'run-step-timeline',
     },
   ],
   'components/cinder/src/components/attempts-indicator/attempts-indicator.css': [
     {
-      declaration: '--_cinder-attempts-indicator-fill: var(--cinder-border-control);',
+      declaration: '--_cinder-attempts-indicator-fill: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'attempts-indicator',
     },
   ],
   'components/cinder/src/components/connection-indicator/connection-indicator.css': [
     {
-      declaration: '--_cinder-connection-indicator-dot-color: var(--cinder-border-control);',
+      declaration: '--_cinder-connection-indicator-dot-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'connection-indicator',
     },
@@ -311,14 +327,14 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   // segment keeps its size. It sits directly on the raised pill, so it composites once.
   'components/cinder/src/components/segmented-control/segmented-control.css': [
     {
-      declaration: 'inset 0 0 0 1px var(--cinder-border-control);',
+      declaration: 'inset 0 0 0 1px var(--cinder-border-contrast);',
       category: 'hairline',
       occurrences: 2,
     },
   ],
   'components/cinder/src/components/slider/slider.css': [
     {
-      declaration: 'background: var(--cinder-border-control, currentColor);',
+      declaration: 'background: var(--cinder-border-contrast, currentColor);',
       category: 'area',
       audit: 'slider',
     },
@@ -328,7 +344,7 @@ export const CLASSIFIED: Record<string, readonly Classification[]> = {
   ],
   'components/cinder/src/components/status-dot/status-dot.css': [
     {
-      declaration: '--cinder-status-dot-color: var(--cinder-border-control);',
+      declaration: '--cinder-status-dot-color: var(--cinder-border-contrast);',
       category: 'area',
       audit: 'status-dot',
     },
@@ -442,7 +458,7 @@ describe('CIN-245: structural border tiers used outside a border declaration', (
     // scan above exempts -- an area fill under an opacity is measured wrong by
     // the audit unless the opacity is folded in. Both shapes are here:
     // SortableList's `border.muted` outline under `opacity: 0.4` (40% effective
-    // ink to 7.6%), and Slider's tick, a `border.control` FILL under
+    // ink to 7.6%), and Slider's tick, a `border.contrast` FILL under
     // `opacity: 0.6`, whose real contrast is ~1.9 rather than the 3.1-3.6 the
     // tier measures undiluted.
     //
