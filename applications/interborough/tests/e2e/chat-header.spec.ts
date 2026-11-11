@@ -12,7 +12,7 @@ import type { Page } from '@playwright/test';
 import { MODEL_SWITCHER_MODELS } from '@lostgradient/plugin-demo';
 import { CHAT_COPY } from '../../src/app/copy.ts';
 import { UPLOAD_CHUNK_BYTES } from '../../src/lib/bureau-assets.ts';
-import { newThreadId, revealSettings, runToEnd } from './chat-support.ts';
+import { hideModelPicker, newThreadId, revealSettings, runToEnd } from './chat-support.ts';
 import { E2E_BASE_URL } from './e2e-constants.ts';
 import { IMAGE_ECHO_AGENT_NAME } from './echo-agent.ts';
 import { expect, test } from './fixtures.ts';
@@ -51,8 +51,12 @@ for (const viewport of VIEWPORTS) {
   }) => {
     await page.setViewportSize(viewport);
     await open(page, request, 'demo:model-switcher');
-    // A composer this narrow folds the three selects into one Settings control; open it.
-    await revealSettings(page);
+    // A composer too narrow for the three values in full folds them into one Settings control; open it.
+    await revealSettings(page, [
+      { name: 'Model', text: SONNET.model },
+      { name: 'Effort', text: 'Agent default' },
+      { name: /Permissions/, text: 'On changes asks' },
+    ]);
 
     // The composer says what the chat runs with before anything was changed.
     await expect(model(page)).toContainText(SONNET.model);
@@ -74,7 +78,10 @@ for (const viewport of VIEWPORTS) {
     // A reload shows the chat kept both.
     await page.reload();
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-    await revealSettings(page);
+    await revealSettings(page, [
+      { name: /Permissions/, text: 'Read-only' },
+      { name: 'Model', text: HAIKU.model },
+    ]);
     await expect(permission(page)).toContainText('Read-only');
     await expect(model(page)).toContainText(HAIKU.model);
     await checkA11y(`the chat composer after changes, at ${viewport.width} pixels`);
@@ -106,6 +113,10 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
   request,
 }) => {
   await open(page, request, 'demo:model-switcher');
+  await revealSettings(page, [
+    { name: 'Model', text: SONNET.model },
+    { name: 'Effort', text: 'Agent default' },
+  ]);
 
   await choose(page, effort(page), 'Low');
   await expect(effort(page)).toContainText('Low');
@@ -114,6 +125,10 @@ test('changes the effort, says when it applies, and keeps it across a reload', a
 
   await page.reload();
   await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
+  await revealSettings(page, [
+    { name: 'Model', text: SONNET.model },
+    { name: 'Effort', text: 'Low' },
+  ]);
   await expect(effort(page)).toContainText('Low');
 });
 
@@ -122,11 +137,14 @@ test('shows the model of an agent that allows one, or none, though it offers no 
   request,
 }) => {
   await open(page, request, SINGLE_MODEL_AGENT_NAME);
+  await revealSettings(page, [{ name: 'Model', text: SONNET.model }]);
   await expect(model(page)).toContainText(SONNET.model);
   await expect(model(page)).toBeDisabled();
 
   // A scripted agent runs on no model, so its composer has Permissions only.
+  await hideModelPicker(page);
   await open(page, request, 'demo:echo');
+  await revealSettings(page);
   await expect(permission(page)).toBeVisible();
   await expect(model(page)).toHaveCount(0);
   await expect(effort(page)).toHaveCount(0);

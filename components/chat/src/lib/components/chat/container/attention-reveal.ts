@@ -17,13 +17,14 @@ const ATTENTION_SELECTOR = [
 ].join(', ');
 
 /**
- * The first item under `root` that waits on the person: a pending approval card, or an open
- * question. A question the host draws at the end of the transcript (the `trailing` snippet) is
- * returned as the whole block the host wrapped it in, so the host's own prompt above it counts as
- * its top. A question already answered is skipped.
+ * The last item under `root` that waits on the person, the one nearest the end: a pending approval
+ * card, or an open question. A question the host draws at the end of the transcript (the
+ * `trailing` snippet) is returned as the whole block the host wrapped it in, so the host's own
+ * prompt above it counts as its top. A question already answered is skipped.
  */
 export function findAttentionTarget(root: ParentNode): HTMLElement | null {
-  for (const candidate of root.querySelectorAll<HTMLElement>(ATTENTION_SELECTOR)) {
+  const candidates = [...root.querySelectorAll<HTMLElement>(ATTENTION_SELECTOR)];
+  for (const candidate of candidates.toReversed()) {
     if (!candidate.classList.contains('chat-question')) return candidate;
     if (candidate.querySelector('[data-question-answer]') !== null) continue;
     return candidate.closest<HTMLElement>('.chat-trailing > *') ?? candidate;
@@ -31,12 +32,22 @@ export function findAttentionTarget(root: ParentNode): HTMLElement | null {
   return null;
 }
 
+/** Where the viewport and the item are, from their client rectangles, in CSS pixels. */
+export interface AttentionGeometry {
+  readonly viewportTop: number;
+  readonly targetTop: number;
+  readonly targetBottom: number;
+}
+
 /**
- * How far to move the scroll so an item whose top is above the viewport's top lands `inset` below
- * it: a negative distance, or `0` when its top is already in view. It never moves down, so an
- * item that fits is left where the pin put it.
+ * How far to move the scroll so an item cut off at the viewport's top lands `inset` below it: a
+ * negative distance, or `0` when its top is already in view. Only an item the pin left partly in
+ * view moves the scroll: one wholly above the viewport is history the person is not looking at,
+ * and an item that fits is left where the pin put it, since the distance is never downward.
  */
-export function revealTopShift(viewportTop: number, targetTop: number, inset: number): number {
+export function revealTopShift(geometry: AttentionGeometry, inset: number): number {
+  const { viewportTop, targetTop, targetBottom } = geometry;
+  if (targetBottom <= viewportTop) return 0;
   const hidden = viewportTop + inset - targetTop;
   // Half a pixel of rounding is not hidden.
   return hidden > 0.5 ? -hidden : 0;

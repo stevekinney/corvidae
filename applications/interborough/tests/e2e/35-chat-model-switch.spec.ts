@@ -46,7 +46,7 @@ for (const viewport of VIEWPORTS) {
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
 
     // The picker lists the two models the agent allows, with the agent's default selected.
-    await showModelPicker(page);
+    await showModelPicker(page, SONNET.model);
     await expect(modelPicker(page)).toContainText(SONNET.model);
     await modelPicker(page).click();
     const options = page.getByRole('option');
@@ -72,14 +72,14 @@ for (const viewport of VIEWPORTS) {
     await send(page, 'And now?');
     await expect(replies).toHaveCount(2);
     await expect(replies.last()).toContainText(modelSwitcherReply(HAIKU.model));
-    await showModelPicker(page);
+    await showModelPicker(page, HAIKU.model);
     await expect(modelPicker(page)).toContainText(HAIKU.model);
 
     // A reload shows the picker on the model the session was switched to, and the next message
     // still runs on it.
     await page.reload();
     await expect(page.locator('[data-view="chat"]')).toHaveAttribute('data-state', 'ready');
-    await showModelPicker(page);
+    await showModelPicker(page, HAIKU.model);
     await expect(modelPicker(page)).toContainText(HAIKU.model);
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(2);
     await checkA11y(`the model picker after a reload, at ${viewport.width} pixels`);
@@ -98,7 +98,7 @@ test('shows the picker disabled for an agent that allows one model, and none for
     await expect(page.locator(ASSISTANT_ROW)).toHaveCount(1);
     if (agent === SINGLE_MODEL_AGENT_NAME) {
       // There is no choice to make, so the picker is disabled, and still says which model answers.
-      await showModelPicker(page);
+      await showModelPicker(page, SONNET.model);
       await expect(modelPicker(page)).toBeDisabled();
       await expect(modelPicker(page)).toContainText(SONNET.model);
     } else {

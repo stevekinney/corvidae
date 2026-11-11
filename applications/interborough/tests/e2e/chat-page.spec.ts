@@ -16,6 +16,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
+import { revealSettings } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -119,6 +120,8 @@ test.describe('an open chat on the sample world', () => {
     page,
   }) => {
     await openRefundChat(page);
+    // The composer folds its selects into Settings when their values in full do not fit beside Send.
+    await revealSettings(page, [{ name: 'Permissions', text: 'On changes asks' }]);
     await page.getByRole('combobox', { name: 'Permissions' }).click();
     // The select keeps all four of the app's modes, in the order of how much they ask.
     await expect(page.getByRole('option')).toHaveCount(4);

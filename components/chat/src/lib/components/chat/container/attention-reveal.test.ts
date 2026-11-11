@@ -39,6 +39,14 @@ describe('findAttentionTarget', () => {
     expect(findAttentionTarget(transcript)).toBeNull();
   });
 
+  test('takes the item nearest the end when more than one waits', () => {
+    const transcript = root(`
+      <div class="cinder-approval-card" data-cinder-state="pending" id="earlier"></div>
+      <div class="cinder-approval-card" data-cinder-state="pending" id="latest"></div>
+    `);
+    expect(findAttentionTarget(transcript)?.id).toBe('latest');
+  });
+
   test('finds nothing in a transcript with nothing waiting', () => {
     expect(findAttentionTarget(root('<article data-message-id="m1">Done.</article>'))).toBeNull();
   });
@@ -47,15 +55,32 @@ describe('findAttentionTarget', () => {
 describe('revealTopShift', () => {
   // The phone and tablet chat: the pin showed Deny and Approve with the card's title, "Refund order
   // 4471 for $42.00?", above the transcript's top edge.
-  test('lifts an item whose top is above the viewport until its top is in view', () => {
-    expect(revealTopShift(200, 120, ATTENTION_INSET)).toBe(-(200 + ATTENTION_INSET - 120));
+  test('lifts an item cut off at the viewport top until its top is in view', () => {
+    expect(
+      revealTopShift({ viewportTop: 200, targetTop: 120, targetBottom: 520 }, ATTENTION_INSET),
+    ).toBe(-(200 + ATTENTION_INSET - 120));
   });
 
   test('leaves an item whose top is already in view', () => {
-    expect(revealTopShift(200, 260, ATTENTION_INSET)).toBe(0);
+    expect(
+      revealTopShift({ viewportTop: 200, targetTop: 260, targetBottom: 500 }, ATTENTION_INSET),
+    ).toBe(0);
+  });
+
+  // A pending item far above the end is history: lifting to it would drag the view off the end and
+  // stop the transcript following the reply that streams under it.
+  test('leaves an item wholly above the viewport', () => {
+    expect(
+      revealTopShift({ viewportTop: 200, targetTop: -400, targetBottom: 180 }, ATTENTION_INSET),
+    ).toBe(0);
   });
 
   test('ignores half a pixel of rounding', () => {
-    expect(revealTopShift(200, 200 + ATTENTION_INSET - 0.4, ATTENTION_INSET)).toBe(0);
+    expect(
+      revealTopShift(
+        { viewportTop: 200, targetTop: 200 + ATTENTION_INSET - 0.4, targetBottom: 500 },
+        ATTENTION_INSET,
+      ),
+    ).toBe(0);
   });
 });

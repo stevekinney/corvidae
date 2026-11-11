@@ -19,26 +19,59 @@ export function conversation(page: Page): Locator {
   return page.getByRole('region', { name: 'Conversation' });
 }
 
+/** A composer select a spec waits for, by its name, and the words it should show once settled. */
+export interface ComposerSelectExpectation {
+  readonly name: string | RegExp;
+  readonly text?: string | RegExp;
+}
+
 /**
  * Opens the composer's Settings control when it has folded Model, Effort and Permissions into one
  * (a composer narrower than 40rem, as at a phone's width, or one whose values do not fit in full
- * beside Send), so the three selects are on the page. A composer showing them in the row has no
- * such control, and this does nothing.
+ * beside Send), so the selects are on the page, and waits until each select in `settled` shows,
+ * with its words when given. A composer showing them in the row has no such control.
+ *
+ * The composer decides the fold (`data-controls-folded`, set by `@lostgradient/chat`) from its
+ * selects' values, which arrive with the chat's settings and the agent's models, so a row can fold
+ * a moment after it is first drawn. The look is taken again until the selects show the words the
+ * spec expects; by then every value that decides the fold has arrived.
  */
-export async function revealSettings(page: Page): Promise<void> {
+export async function revealSettings(
+  page: Page,
+  settled: readonly ComposerSelectExpectation[] = [{ name: /Permissions/ }],
+): Promise<void> {
   const composer = page.locator('.chat-input').first();
   await expect(composer).toBeVisible();
-  const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
-  // The composer says it has folded (`data-controls-folded`, set by `@lostgradient/chat`) once it
-  // has measured its controls: in the row, or behind Settings.
-  await expect(
-    page
-      .getByRole('combobox', { name: /Permissions/ })
-      .or(settings)
-      .first(),
-  ).toBeVisible();
-  if ((await composer.getAttribute('data-controls-folded')) === null) return;
-  if ((await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
+  const settings = page.getByTestId('composer-settings');
+  await expect(async () => {
+    const folded = (await composer.getAttribute('data-controls-folded')) !== null;
+    if (folded && (await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
+    for (const { name, text } of settled) {
+      const select = page.getByRole('combobox', { name });
+      // load-proof: a miss only looks again, opening Settings if the row folded meanwhile, so a slow host adds attempts, never a failure.
+      await expect(select).toBeVisible({ timeout: 1_000 });
+      if (text !== undefined) {
+        // load-proof: a miss only looks again once the chat's settings have arrived, so a slow host adds attempts, never a failure.
+        await expect(select).toContainText(text, { timeout: 1_000 });
+      }
+    }
+  }).toPass();
+}
+
+/**
+ * Expects the composer's selects named by `names` on the page: in the row, or, when the composer
+ * folded them into Settings because their values in full do not fit, in the Settings popover, which
+ * this opens to look and closes again.
+ */
+export async function expectComposerSelects(
+  page: Page,
+  names: readonly (string | RegExp)[],
+): Promise<void> {
+  await revealSettings(
+    page,
+    names.map((name) => ({ name })),
+  );
+  await hideModelPicker(page);
 }
 
 /** A thread identifier no other case uses. */
@@ -170,17 +203,11 @@ export const modelPicker = (page: Page) => page.getByRole('combobox', { name: 'M
 /**
  * Shows the model picker. A composer too narrow for its controls side by side folds them into one
  * Settings button (the phone, and a pane beside the chat list), and the picker is then in the
- * popover that button opens.
+ * popover that button opens. `model` is the model the picker should show once the chat's settings
+ * have arrived, which is also when the composer has settled whether it folds.
  */
-export async function showModelPicker(page: Page): Promise<void> {
-  const settings = page.getByTestId('composer-settings');
-  // The composer is drawn with one or the other: the picker itself, or the button that folds it.
-  await expect(modelPicker(page).or(settings).first()).toBeVisible();
-  if (!(await modelPicker(page).isVisible())) {
-    // A popover left open by an earlier look already holds the picker, and pressing again closes it.
-    if ((await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
-  }
-  await expect(modelPicker(page)).toBeVisible();
+export async function showModelPicker(page: Page, model?: string | RegExp): Promise<void> {
+  await revealSettings(page, [{ name: 'Model', ...(model === undefined ? {} : { text: model }) }]);
 }
 
 /** Closes the popover that holds a folded composer's controls, when it is open, so the page can be used again. */

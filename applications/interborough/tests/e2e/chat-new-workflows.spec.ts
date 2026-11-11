@@ -22,7 +22,7 @@ import {
   connectProviderWithModels,
   openStatesChat,
 } from './chat-states-support.ts';
-import { deleteChats } from './chat-support.ts';
+import { deleteChats, expectComposerSelects } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, loggedFailedResponse, test } from './fixtures.ts';
@@ -132,9 +132,7 @@ test.describe('Typing to Tool runner, provider connected (23x)', () => {
     ).toBeVisible();
     await expect(welcome(page).locator('.ib-new-chat__avatar')).toHaveText('TR');
     await field(page).fill(`${REFUND_ASK} The carrier flagged it. **Check the photo** first.`);
-    await expect(page.getByRole('combobox', { name: 'Model' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Effort' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
+    await expectComposerSelects(page, ['Model', 'Effort', /Permissions/]);
     await expect(send(page)).toBeEnabled();
     await captureForDesignReview(page, {
       route: '/chats/new',
@@ -174,9 +172,7 @@ test.describe('Sending the first message (24b)', () => {
     // The chat page has not opened: the address, the greeting and the selects are still New chat's.
     expect(new URL(page.url()).pathname).toBe('/chats/new');
     await expect(greeting(page)).toHaveText('What should Tool runner do?');
-    await expect(page.getByRole('combobox', { name: 'Model' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Effort' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
+    await expectComposerSelects(page, ['Model', 'Effort', /Permissions/]);
     // The row does not reflow: the attach button stays in its place, off with Send.
     await expect(page.getByRole('button', { name: 'Attach file' })).toBeDisabled();
     await expect(page.locator('.chat-message--user, [data-role="user"]')).toHaveCount(0);
@@ -268,9 +264,7 @@ test.describe('New chat from Workflows, provider connected (24d, 24e, 24f)', () 
       };
     });
     expect(caret).toEqual({ start: PREFILL.length, end: PREFILL.length, focused: true });
-    await expect(page.getByRole('combobox', { name: 'Model' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: 'Effort' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
+    await expectComposerSelects(page, ['Model', 'Effort', /Permissions/]);
     await expect(send(page)).toBeEnabled();
     // It is editable.
     await page.keyboard.type('sends me a summary of open reviews every morning.');

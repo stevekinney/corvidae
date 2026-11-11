@@ -15,6 +15,7 @@ import {
   SAMPLE_TIME_ZONE,
 } from '../../fixtures/sample-now.ts';
 import { connectProviderWithModels } from './chat-states-support.ts';
+import { expectComposerSelects } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -292,8 +293,7 @@ test.describe('New chat when the first message cannot be sent (24c, 24r, 24s)', 
     // No chat page opened, the greeting is still the title, and the model selects are still there.
     expect(new URL(page.url()).pathname).toBe('/chats/new');
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('What should Tool runner do?');
-    await expect(page.getByRole('combobox', { name: 'Model' })).toBeVisible();
-    await expect(page.getByRole('combobox', { name: /Permissions/ })).toBeVisible();
+    await expectComposerSelects(page, ['Model', /Permissions/]);
     // No alert above the page repeats it: the line under the composer is the one account.
     await expect(page.locator('.cinder-alert')).toHaveCount(0);
     await expect(

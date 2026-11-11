@@ -1133,6 +1133,8 @@
   }
 
   function handleJumpToLatest(): void {
+    // The person asked for the end: a waiting item does not lift the transcript back off it.
+    releaseAttention();
     getHistoryRestoration().invalidate();
     if (isVirtualized) {
       // Supersede any stale guard from an earlier top-scroll (scrollToTop()/
@@ -1403,7 +1405,9 @@
   // A pending approval or question taller than the room left would land with only its buttons in
   // view when the transcript pins to its end. While the transcript sits at its end, the item's top
   // is lifted into view instead; once the person scrolls, wheels, touches or presses a key in the
-  // transcript, that item is theirs to move, until another one waits.
+  // transcript, or jumps to the latest message, that item is theirs to move, until another waits.
+  // Nothing moves while focus is inside the item, so a keyboard user's control stays in view.
+  let releaseAttention = (): void => {};
   $effect(() => {
     const scroller = viewport;
     if (scroller === null || typeof ResizeObserver === 'undefined') return undefined;
@@ -1418,6 +1422,7 @@
         released = false;
       }
       if (target === null || released) return;
+      if (target.contains(scroller.ownerDocument.activeElement)) return;
       const pinned = isAtBottom(
         {
           scrollTop: scroller.scrollTop,
@@ -1427,9 +1432,13 @@
         untrack(() => bottomThreshold),
       );
       if (!pinned) return;
+      const targetBox = target.getBoundingClientRect();
       const shift = revealTopShift(
-        scroller.getBoundingClientRect().top,
-        target.getBoundingClientRect().top,
+        {
+          viewportTop: scroller.getBoundingClientRect().top,
+          targetTop: targetBox.top,
+          targetBottom: targetBox.bottom,
+        },
         ATTENTION_INSET,
       );
       if (shift !== 0) scroller.scrollTop += shift;
@@ -1440,6 +1449,7 @@
     const release = (): void => {
       released = target !== null;
     };
+    releaseAttention = release;
     const resizes = new ResizeObserver(schedule);
     resizes.observe(scroller);
     const changes = new MutationObserver(schedule);
@@ -1460,6 +1470,7 @@
       changes.disconnect();
       for (const type of inputs) scroller.removeEventListener(type, release);
       scroller.removeEventListener('scroll', schedule);
+      releaseAttention = () => {};
     };
   });
 
