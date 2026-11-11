@@ -174,6 +174,8 @@ describe('deliver', () => {
       failedStep: null,
       detail: null,
       issues: [],
+      leftOpen: [],
+      acceptedReverts: [],
     });
     expect(record.merges).toHaveLength(1);
     expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
@@ -243,7 +245,12 @@ describe('deliver', () => {
   test('closes the issue with the completion comment and the Done state, read back', async () => {
     const { partial, record } = seams();
     const report = await deliver(
-      { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+      {
+        ...options,
+        issues: ['COR-9'],
+        completionFiles: [join(sandbox, 'done.md')],
+        closes: ['COR-9'],
+      },
       partial,
     );
     expect(report).toMatchObject({
@@ -256,6 +263,59 @@ describe('deliver', () => {
     expect(renderDeliver(report)).toContain('issues: COR-9 Done');
   });
 
+  test('a --pr delivery of an issue it names with --issue leaves its state alone without --closes', async () => {
+    const { partial, record } = seams();
+    const report = await deliver(
+      { ...options, issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+      partial,
+    );
+    expect(report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      issues: [],
+      leftOpen: ['COR-9'],
+    });
+    expect(record.writes).toEqual(['comment COR-9']);
+    expect(record.requests).not.toContain('IssueSetState');
+    const lines = renderDeliver(report).split('\n');
+    expect(lines.at(-1)).toContain('left open, state untouched: COR-9');
+  });
+
+  test('with no issue named it says that nothing was closed and writes nothing to Linear', async () => {
+    const { partial, record } = seams();
+    const report = await deliver(options, partial);
+    expect(record.requests).toEqual([]);
+    expect(renderDeliver(report).split('\n').at(-1)).toContain('no issue closed');
+  });
+
+  test('--closes closes only the issue it names and leaves the others open', async () => {
+    const { partial, record } = seams();
+    const second = join(sandbox, 'second.md');
+    writeFileSync(second, sampleReport);
+    const report = await deliver(
+      {
+        ...options,
+        issues: ['COR-9', 'COR-10'],
+        completionFiles: [join(sandbox, 'done.md'), second],
+        closes: ['COR-10'],
+      },
+      partial,
+    );
+    expect(report).toMatchObject({
+      issues: [{ identifier: 'COR-10', state: 'Done' }],
+      leftOpen: ['COR-9'],
+    });
+    expect(record.writes).toEqual(['comment COR-9', 'comment COR-10', 'state COR-10']);
+  });
+
+  test('--closes must name an --issue, refused before any merge', async () => {
+    const { partial, record } = seams();
+    const error = await rejectionOf(deliver({ ...options, closes: ['COR-9'] }, partial));
+    expect(error).toBeInstanceOf(UsageError);
+    expect((error as Error).message).toContain('--closes COR-9 names no --issue');
+    expect(record.merges).toEqual([]);
+  });
+
   test('closes several issues in order, each with its own comment and then Done', async () => {
     const { partial, record } = seams();
     const second = join(sandbox, 'second.md');
@@ -265,6 +325,7 @@ describe('deliver', () => {
         ...options,
         issues: ['COR-9', 'COR-10'],
         completionFiles: [join(sandbox, 'done.md'), second],
+        closes: ['COR-9', 'COR-10'],
       },
       partial,
     );
@@ -311,6 +372,7 @@ describe('deliver', () => {
         ...options,
         issues: ['COR-9', 'COR-10', 'COR-11'],
         completionFiles: [join(sandbox, 'done.md'), second, second],
+        closes: ['COR-9', 'COR-10', 'COR-11'],
         removeWorktree: { provider: 'claude', name: 'alpha' },
       },
       partial,
@@ -453,6 +515,16 @@ describe('the completion file', () => {
 });
 
 describe('run', () => {
+  test('--help prints the usage, with every option, and exits 0 without touching anything', async () => {
+    const { partial, record } = seams();
+    const result = await run(['--help'], partial);
+    expect(result.code).toBe(0);
+    expect(result.output).toStartWith('Usage:');
+    for (const option of ['--pr', '--branch', '--closes', '--intended', '--help'])
+      expect(result.output).toContain(option);
+    expect(record.merges).toEqual([]);
+  });
+
   const argv = (extra: string[] = []) => [
     '--config',
     options.configPath,
@@ -552,6 +624,10 @@ describe('run', () => {
         'COR-10',
         '--completion-file',
         second,
+        '--closes',
+        'COR-9',
+        '--closes',
+        'COR-10',
         '--json',
       ]),
       partial,
@@ -672,6 +748,8 @@ describe('deliver --branch', () => {
       mergeCommit: SQUASH,
       failedStep: null,
       issues: [],
+      leftOpen: [],
+      acceptedReverts: [],
     });
     expect(record.merges).toEqual([]);
     // The guards ran on the commit that was pushed, and nothing touched a working tree.
@@ -715,6 +793,38 @@ describe('deliver --branch', () => {
     expect(report).toMatchObject({ merged: false, failedStep: 'revert' });
     expect(report.detail).toContain('a.ts undoes abc1234 Add the widget');
     expect(world.calls.some((call) => call.startsWith('merge-tree'))).toBe(false);
+  });
+
+  const undoneFile = () =>
+    branchWorld({
+      [`rev-parse -q --verify ${EARLIER}^:a.ts`]: reply(`${NEW_BLOB}\n`),
+      [`log -1 --format=%h %s ${EARLIER}`]: reply('abc1234 Add the widget\n'),
+    });
+
+  test('--intended accepts the revert finding for the path it names and the merge goes on', async () => {
+    const { report } = await deliverBranch(undoneFile(), guardsPass, { intended: ['a.ts'] });
+    expect(report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      acceptedReverts: ['a.ts undoes abc1234 Add the widget'],
+    });
+    expect(renderDeliver(report)).toContain('revert accepted as intended: a.ts undoes abc1234');
+  });
+
+  test('--intended for another path still fails on the finding, and a path with no finding is an error', async () => {
+    const other = await deliverBranch(undoneFile(), guardsPass, { intended: ['b.ts'] });
+    expect(other.report).toMatchObject({ merged: false, failedStep: 'revert' });
+    expect(other.report.detail).toContain('a.ts undoes');
+    const stale = await deliverBranch(branchWorld(), guardsPass, { intended: ['a.ts'] });
+    expect(stale.report).toMatchObject({ merged: false, failedStep: 'revert' });
+    expect(stale.report.detail).toContain('--intended a.ts names no revert finding');
+  });
+
+  test('--intended is refused with --pr, before anything runs', async () => {
+    const { partial, record } = seams();
+    const error = await rejectionOf(deliver({ ...options, intended: ['a.ts'] }, partial));
+    expect(error).toBeInstanceOf(UsageError);
+    expect(record.merges).toEqual([]);
   });
 
   test('a conflict with main is refused at conflict, with no commit made', async () => {
@@ -857,12 +967,28 @@ describe('deliver --branch', () => {
     expect(record.requests).toEqual([]);
   });
 
+  test('a branch merge without --closes comments on the issue and leaves its state alone', async () => {
+    const { report, record } = await deliverBranch(branchWorld(), guardsPass, {
+      issues: ['COR-9'],
+      completionFiles: [join(sandbox, 'done.md')],
+    });
+    expect(report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      issues: [],
+      leftOpen: ['COR-9'],
+    });
+    expect(record.writes).toEqual(['comment COR-9']);
+    expect(renderDeliver(report).split('\n').at(-1)).toContain('left open, state untouched: COR-9');
+  });
+
   test('closes the issues after the merge, pairing each with its completion file in order', async () => {
     const second = join(sandbox, 'second.md');
     writeFileSync(second, sampleReport);
     const { report, record } = await deliverBranch(branchWorld(), guardsPass, {
       issues: ['COR-9', 'COR-10'],
       completionFiles: [join(sandbox, 'done.md'), second],
+      closes: ['COR-9', 'COR-10'],
       removeWorktree: { provider: 'claude', name: 'alpha' },
     });
     expect(report).toMatchObject({

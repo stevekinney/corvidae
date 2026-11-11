@@ -1,6 +1,6 @@
 # Delivering a branch without a pull request
 
-Owner decision, 2026-11-11: a pull request is optional. A worker pushes its branch, and the coordinator verifies and merges it into `main` with `bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file>`; `scripts/chef/direct-merge.ts` holds the logic. The other options are those of `--pr`, and exactly one of the two is required. A branch merge takes the same merge lock as a pull request merge, runs no test gate, changes no working tree, and names its own failed steps, in this order:
+Owner decision, 2026-11-11: a pull request is optional. A worker pushes its branch, and the coordinator verifies and merges it into `main` with `bun scripts/chef/deliver.ts --branch <branch> --head <sha> --worktree <path> --message-file <file>`; `scripts/chef/direct-merge.ts` holds the logic. The other options are those of `--pr` (including `--issue`/`--completion-file` and `--closes <ID>`, which alone moves an issue to Done), and exactly one of the two is required. A branch merge takes the same merge lock as a pull request merge, runs no test gate, changes no working tree, and names its own failed steps, in this order:
 
 - **`head`**: `origin/<branch>` is not exactly `--head`, or a fetch failed. Re-run the acceptance checks on the new head.
 - **`revert`**: the branch sets a file back to the state it had before a recent commit on `main` (`scripts/chef/revert-check.ts`). The worker rebuilt its tree from a stale base; it merges `main` in properly.

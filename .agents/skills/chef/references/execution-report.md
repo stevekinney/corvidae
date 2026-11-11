@@ -27,7 +27,7 @@ The first line is the marker `Execution report: <branch> attempt <n>`. Level-2 h
 
 The coordinator posts every report, without asking the owner, because it is the only Linear writer for closeout:
 
-- **Complete:** the report is the completion file that `deliver.ts` posts after the merge, before it moves the issue to Done.
+- **Complete:** the report is the completion file that `scripts/chef/deliver.ts` posts after the merge, before it moves the issue to Done (when `--closes` names it).
 - **Partial, Blocked, or Failed:** the report is the blocker or handoff comment, posted with `bun scripts/chef/linear.ts comment <ID> --file <md>`. A Blocked report also sets the native relation with `bun scripts/chef/linear.ts block <ID> --by <BLOCKER>`.
 
 Chef's final report to the owner includes each report's link.

@@ -15,12 +15,19 @@
 //   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--head <sha>]
 //   bun scripts/chef/deliver.ts --branch <remote branch> --head <sha> --worktree <dir>
 //                               --message-file <md>
-//                               [--issue <ID> --completion-file <md>]...
+//                               [--intended <path>]...
+//                               [--issue <ID> --completion-file <md>]... [--closes <ID>]...
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
 //                               [--fixes-main] [--config <json>] [--json]
+//   bun scripts/chef/deliver.ts --help
 // The options after the --branch form go with either form, except that `--fixes-main` goes with
-// `--pr` only: it records a pull request as a repair of a red `main`.
+// `--pr` only: it records a pull request as a repair of a red `main`, and `--intended` goes with
+// `--branch` only. `--help` prints this usage and exits 0.
+//
+// `--intended <path>` (repeatable) names a deletion or revert the change means to make: the `revert`
+// step reports that path's finding as accepted instead of failing. Any other finding still fails the
+// step, and a named path with no finding is an error, so a stale flag cannot hide a later revert.
 //
 // The steps run in order and stop at the first failure, which is named:
 //   merge      with `--branch`, `direct-merge.ts`'s sequence under the merge lock a pull request
@@ -41,17 +48,25 @@
 //              red `main` is a warning in the report, not a refusal;
 //   issue      with `--issue` and `--completion-file`, each of which may repeat and which pair in
 //              order (a combined pull request that carries several issues): for each issue in turn,
-//              `linear.ts`'s comment, then the state Done, each read back. The first failure stops
-//              the step, leaves `merged` true, and names step `issue` and the failing identifier;
-//              the report lists the issues closed before it. Every completion file must be an
-//              execution report (`references/execution-report.md`), and the counts must match:
-//              anything else is refused as invalid usage before the merge;
+//              `linear.ts`'s comment, read back. The state moves to Done only for an issue the caller
+//              also names with `--closes <ID>` (repeatable, and each must be one of the `--issue`
+//              identifiers): a delivery that lands one part of an issue must not close it, and no
+//              identifier is ever read from a pull request title, branch name or body. Without
+//              `--closes` every issue's state is left alone, in `--pr` and `--branch` mode alike.
+//              The first failure stops the step, leaves `merged` true, and names step `issue` and
+//              the failing identifier; the report lists the issues closed before it. Every completion
+//              file must be an execution report (`references/execution-report.md`), and the counts
+//              must match: anything else is refused as invalid usage before the merge. Nothing here
+//              stops Linear's own GitHub integration from moving an issue whose identifier a pull
+//              request title or branch carries; that is outside the script;
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
 // Output: at most five lines, or with `--json` one object: pr, branch, merged, mergeCommit,
-// mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail and issues (each closed issue's identifier and
-// state). `pr` is null for a branch merge and `branch` null for a pull request merge. The
+// mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, issues (each closed
+// issue's identifier and state) and leftOpen (the commented issues whose state was not touched).
+// The text output's last line before any failure says which issues were closed and which were left
+// open, or that none was named. `pr` is null for a branch merge and `branch` null for a pull request merge. The
 // usage-log line of a branch merge holds `branch:<name>` where a pull request's holds its number.
 //
 // Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named), 2
@@ -95,6 +110,10 @@ export interface DeliverOptions {
   issues?: string[] | undefined;
   /** One execution report per issue, in the same order as `issues`. */
   completionFiles?: string[] | undefined;
+  /** The subset of `issues` to move to Done; every other issue gets its comment and keeps its state. */
+  closes?: string[] | undefined;
+  /** Paths whose `revert` finding is intended; `branch` only. */
+  intended?: string[] | undefined;
   removeWorktree?: { provider: string; name: string } | undefined;
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
@@ -122,6 +141,10 @@ export interface DeliverReport {
   detail: string | null;
   /** The issues closed, in order, each with the Linear state it was left in. */
   issues: { identifier: string; state: string }[];
+  /** The revert findings accepted because `--intended` named their path (a branch merge only). */
+  acceptedReverts: string[];
+  /** The issues commented on whose state was left alone, in order. */
+  leftOpen: string[];
 }
 
 export interface DeliverDependencies {
@@ -203,6 +226,8 @@ export async function deliver(
     if (!existsSync(options.messageFile))
       throw new UsageError(`No such message file: ${options.messageFile}`);
   }
+  if (options.branch === undefined && (options.intended ?? []).length > 0)
+    throw new UsageError('--intended applies only with --branch.');
   const issues = options.issues ?? [];
   const completionFiles = options.completionFiles ?? [];
   if (issues.length !== completionFiles.length)
@@ -211,6 +236,12 @@ export async function deliver(
     );
   const duplicate = issues.find((identifier, index) => issues.indexOf(identifier) !== index);
   if (duplicate !== undefined) throw new UsageError(`--issue ${duplicate} is given twice.`);
+  const closes = options.closes ?? [];
+  const unlisted = closes.find((identifier) => !issues.includes(identifier));
+  if (unlisted !== undefined)
+    throw new UsageError(
+      `--closes ${unlisted} names no --issue: a close needs its --issue and --completion-file.`,
+    );
   const completions: string[] = [];
   for (const completionFile of completionFiles) {
     if (!existsSync(completionFile))
@@ -235,6 +266,8 @@ export async function deliver(
     failedStep: null,
     detail: null,
     issues: [],
+    acceptedReverts: [],
+    leftOpen: [],
   };
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
@@ -255,6 +288,7 @@ export async function deliver(
       branch: options.branch,
       head: options.expectedHead ?? '',
       messageFile: options.messageFile ?? '',
+      intended: options.intended ?? [],
       worktree: options.worktree,
       checkMainHealth: true,
       ...usageFields,
@@ -263,6 +297,7 @@ export async function deliver(
     report.mergeCommit = direct.mergeCommit;
     report.mainHealthWarning = direct.mainHealthWarning ?? null;
     report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
+    report.acceptedReverts = direct.acceptedReverts ?? [];
     if (direct.failedStep !== null) return fail(direct.failedStep, direct.detail ?? '');
   } else {
     const merge = partial.merge;
@@ -292,6 +327,10 @@ export async function deliver(
       if (client === undefined) return fail('issue', 'no Linear client was provided.');
       const comment = await postComment(client, identifier, completions[index] ?? '');
       if (!comment.ok) return fail('issue', named(identifier, comment.summary));
+      if (!closes.includes(identifier)) {
+        report.leftOpen.push(identifier);
+        continue;
+      }
       const state = await setState(client, identifier, 'Done');
       if (!state.ok) return fail('issue', named(identifier, state.summary));
       report.issues.push({ identifier, state: 'Done' });
@@ -328,17 +367,34 @@ export function renderDeliver(report: DeliverReport): string {
   ];
   if (report.mainHealthWarning !== null)
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
+  if (report.acceptedReverts.length > 0)
+    lines.push(`revert accepted as intended: ${report.acceptedReverts.join('; ')}`);
   if (report.guardsAlreadyFailing.length > 0)
     lines.push(
       `WARNING guards: already failing on main, with no finding of this change's own: ${report.guardsAlreadyFailing.map((one) => `${one.guard} (${one.findings} output lines)`).join(', ')}`,
     );
-  if (report.issues.length > 0)
+  const closed = report.issues.map((one) => `${one.identifier} ${one.state}`).join(', ');
+  if (report.issues.length > 0) lines.push(`issues: ${closed}`);
+  if (report.leftOpen.length > 0)
     lines.push(
-      `issues: ${report.issues.map((closed) => `${closed.identifier} ${closed.state}`).join(', ')}`,
+      `left open, state untouched: ${report.leftOpen.join(', ')} (close one with --closes <ID>)`,
     );
+  if (report.issues.length === 0 && report.leftOpen.length === 0)
+    lines.push('no issue closed or commented on (name one with --issue, close it with --closes)');
   if (report.failedStep !== null)
     lines.push(`FAILED at ${report.failedStep}: ${report.detail ?? ''}`);
   return lines.join('\n');
+}
+
+/** The header's usage block (from `Usage:` to the first blank comment line after the options). */
+export function usageText(): string {
+  const lines = readFileSync(import.meta.path, 'utf8').split('\n');
+  const start = lines.findIndex((line) => line === '// Usage:');
+  const end = lines.findIndex((line, index) => index > start && line === '//');
+  return lines
+    .slice(start, end === -1 ? undefined : end)
+    .map((line) => line.replace(/^\/\/ ?/, ''))
+    .join('\n');
 }
 
 export async function run(
@@ -358,9 +414,10 @@ export async function run(
       'provider',
       'name',
     ],
-    repeated: ['transcript', 'issue', 'completion-file'],
-    flags: ['remove-worktree', 'fixes-main', 'json'],
+    repeated: ['transcript', 'issue', 'completion-file', 'closes', 'intended'],
+    flags: ['remove-worktree', 'fixes-main', 'json', 'help'],
   });
+  if (parsed.flags.has('help')) return { code: 0, output: usageText() };
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const pr = parsed.values['pr'];
@@ -378,6 +435,7 @@ export async function run(
     throw new UsageError(
       `--issue and --completion-file go together and pair in order: got ${issues.length} and ${completionFiles.length}.`,
     );
+  const closes = parsed.repeated['closes'] ?? [];
   const usageLog = parsed.values['usage-log'];
   const transcripts = parsed.repeated['transcript'] ?? [];
   if ((usageLog === undefined) !== (transcripts.length === 0))
@@ -402,6 +460,8 @@ export async function run(
       expectedHead,
       issues,
       completionFiles,
+      closes,
+      intended: parsed.repeated['intended'] ?? [],
       usageLog,
       transcripts,
       fixesMain: parsed.flags.has('fixes-main'),

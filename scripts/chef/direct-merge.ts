@@ -12,7 +12,11 @@
 //   1. head       fetch `origin/<default>` and the branch; `origin/<branch>` must be exactly the head
 //                 the coordinator accepted;
 //   2. revert     `revert-check.ts` for that head against `origin/<default>` finds no file set back to
-//                 the state it had before a recent commit on the base;
+//                 the state it had before a recent commit on the base. A deletion or revert the
+//                 caller intends is named by path (`intended`, `deliver.ts --intended <path>`): its
+//                 finding is reported as accepted and does not fail the step, any other finding still
+//                 does, and a named path with no finding is an error, so a stale flag cannot hide a
+//                 later revert;
 //   3. conflict   `git merge-tree --write-tree <base> <head>` builds the merged tree; a conflict is
 //                 refused and nothing is merged in: the worker merges the base in and returns a new
 //                 head. A branch that changes nothing relative to the base is refused at `merge`;
@@ -68,6 +72,8 @@ export interface DirectMergeOptions {
   head: string;
   /** The squash commit's message. */
   messageFile: string;
+  /** Paths whose revert finding is intended (a deliberate deletion); each must have a finding. */
+  intended?: string[] | undefined;
   /** A checkout of the repository, where the Git commands run; it is never modified. */
   worktree: string;
   /** Where the batch-validate record is read; defaults to the main checkout's. */
@@ -95,6 +101,8 @@ export interface DirectMergeReport {
    * already failing on `origin/<default>`, reported and not a refusal. Absent when none did.
    */
   guardsAlreadyFailing?: AlreadyFailingGuard[];
+  /** The revert findings the caller named as intended, each file with the commit it undoes. */
+  acceptedReverts?: string[];
   failedStep: string | null;
   detail: string | null;
   usage?: UsageTotals;
@@ -195,14 +203,24 @@ export function directMerge(
   // 2. revert
   try {
     const reverts = revertCheck({ head: options.head, base, cwd: options.worktree }, runner);
-    if (reverts.findings.length > 0)
+    const intended = options.intended ?? [];
+    const unnamed = reverts.findings.filter((finding) => !intended.includes(finding.file));
+    if (unnamed.length > 0)
       return fail(
         'revert',
-        reverts.findings
+        unnamed
           .map((finding) => `${finding.file} undoes ${finding.undoes}`)
           .join('; ')
           .slice(0, 400),
       );
+    const stale = intended.filter((path) => !reverts.findings.some((one) => one.file === path));
+    if (stale.length > 0)
+      return fail(
+        'revert',
+        `--intended ${stale.join(', ')} names no revert finding: remove the stale flag.`,
+      );
+    const accepted = reverts.findings.map((finding) => `${finding.file} undoes ${finding.undoes}`);
+    if (accepted.length > 0) report.acceptedReverts = accepted;
   } catch (error) {
     if (!(error instanceof RevertCheckError)) throw error;
     return fail('revert', error.message);
