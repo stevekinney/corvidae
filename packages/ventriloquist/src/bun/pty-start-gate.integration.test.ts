@@ -162,15 +162,24 @@ describe('the PTY start gate', () => {
       kill() {},
     };
     expect(abandonGate(child)).toBe(true);
-    // The number is free now, and the next descriptor opened takes it; closing it again would close that one.
-    const reused = openSync('/dev/null', 'r');
+    // The number is free now, and the kernel hands out the lowest free number, so opening
+    // descriptors until the number comes back takes it. Another descriptor this process closed
+    // meanwhile (a pipe of an earlier test's child, on Linux) frees a lower number first, so the
+    // first open is not necessarily the channel's number; the others are held and closed after.
+    const held: number[] = [];
     try {
+      let reused = -1;
+      for (let attempt = 0; attempt < 4096 && reused !== channel; attempt += 1) {
+        reused = openSync('/dev/null', 'r');
+        held.push(reused);
+      }
+      // Closing it again would close that one.
       expect(reused).toBe(channel);
       expect(abandonGate(child)).toBe(true);
       expect(releaseGate(child)).toBe(true);
       expect(() => fstatSync(reused)).not.toThrow();
     } finally {
-      closeSync(reused);
+      for (const descriptor of held) closeSync(descriptor);
     }
   });
 

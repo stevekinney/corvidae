@@ -2,7 +2,7 @@
  * Shared fixtures for the workflow file tests (COR-1527): a real temporary directory and a catalog
  * over it, with the host the Bureau builds. Agents are scripted; no provider key is used.
  */
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -92,7 +92,12 @@ export async function createWorkflowFileFixture(
     directory,
     catalog,
     async put(name, text) {
-      await writeFile(join(directory, name), text);
+      // A rename puts the whole file in place at once. `writeFile` truncates and then writes, and
+      // the watcher can scan in between and read an empty file: the catalog then reports the file
+      // as added but invalid, which is a race in the test, not in the watcher.
+      const temporary = join(directory, `.${name}.tmp`);
+      await writeFile(temporary, text);
+      await rename(temporary, join(directory, name));
     },
     nextChange(predicate = () => true) {
       return new Promise((resolve) => {
