@@ -76,8 +76,8 @@ async function select(view: View, key: string): Promise<HTMLElement> {
 }
 
 /** The table's footer once it says `text`. */
-const footerSays = (view: View, text: string) =>
-  waitFor(() => expect(view.getByTestId('storage-count').textContent?.trim()).toBe(text));
+const footerSays = (view: View, sentence: string) =>
+  waitFor(() => expect(view.getByTestId('storage-count').textContent?.trim()).toBe(sentence));
 
 describe('the gate', () => {
   test('a principal without storage:admin sees a lock state naming the scope, and no table', async () => {
