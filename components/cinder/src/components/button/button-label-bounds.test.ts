@@ -24,12 +24,12 @@ const LONG_LABEL = 'Schedule the weekly review for every Friday afternoon at fou
 
 describe('a long Button label is bounded by its container', () => {
   test('the button caps at its container and its label truncates with an ellipsis', () => {
-    expect(declarationsFor(css, '.cinder-button').get('max-inline-size')).toBe('100%');
     expect(declarationsFor(css, '.cinder-button').get('white-space')).toBe('nowrap');
-    // A button holding a label may shrink below its words inside a flex or grid row.
-    expect(
-      declarationsFor(css, '.cinder-button:has(> .cinder-button__label)').get('min-inline-size'),
-    ).toBe('0');
+    // A button holding a label caps at its container and may shrink below its words inside a
+    // flex or grid row.
+    const bounded = declarationsFor(css, '.cinder-button:has(> .cinder-button__label)');
+    expect(bounded.get('max-inline-size')).toBe('100%');
+    expect(bounded.get('min-inline-size')).toBe('0');
 
     const label = declarationsFor(css, '.cinder-button__label');
     expect(label.get('min-inline-size')).toBe('0');

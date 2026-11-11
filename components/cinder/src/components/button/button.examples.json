@@ -74,7 +74,7 @@
       "id": "long-labels",
       "title": "Long labels and the preview row",
       "description": "A label is a short verb phrase. A proposal the person should read sits beside the button, and a label too long for its container truncates with an ellipsis while the full words stay the accessible name.",
-      "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-column\">\n  <div style=\"display: flex; align-items: center; gap: 0.75rem; max-inline-size: 28rem\">\n    <p style=\"flex: 1; min-inline-size: 0; margin: 0\">\n      Move the weekly review to Friday afternoon at four\n    </p>\n    <Button variant=\"primary\" label=\"Apply\" />\n  </div>\n  <div style=\"inline-size: 10rem\">\n    <Button label=\"Move the weekly review to Friday afternoon at four\" />\n  </div>\n</div>\n"
+      "code": "<script lang=\"ts\">\n  import { Button } from '@lostgradient/cinder';\n</script>\n\n<div class=\"example-preview-column\">\n  <div class=\"long-labels-preview-row\">\n    <p class=\"long-labels-preview\">Move the weekly review to Friday afternoon at four</p>\n    <Button variant=\"primary\" label=\"Apply\" />\n  </div>\n  <div class=\"long-labels-narrow\">\n    <Button label=\"Move the weekly review to Friday afternoon at four\" />\n  </div>\n</div>\n\n<style>\n  .long-labels-preview-row {\n    display: flex;\n    align-items: center;\n    gap: 0.75rem;\n    max-inline-size: 28rem;\n  }\n\n  .long-labels-preview {\n    flex: 1;\n    min-inline-size: 0;\n    margin: 0;\n  }\n\n  .long-labels-narrow {\n    inline-size: 10rem;\n  }\n</style>\n"
     },
     {
       "id": "inert",

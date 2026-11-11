@@ -76,7 +76,7 @@ export const CORPUS_ALIASES: Record<string, Classification> = {
   'control.border.disabled': { declaration: 'control.border.disabled', category: 'alias' },
 
   // The Toggle track: the tier fills the whole track in the light arm. The dark
-  // arm is an independent literal and is untouched.
+  // arm is an independent literal, held to 3:1 by the `toggle:track-off` pairings.
   'toggle.track.off-resting': {
     declaration: 'toggle.track.off-resting',
     category: 'area',

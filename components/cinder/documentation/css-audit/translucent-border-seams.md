@@ -32,7 +32,7 @@ Until this change one tier, `--cinder-border` at 48%, did both jobs. It was heav
 ### Choosing a tier
 
 - Is it the only visible outline of something interactive (a text field, a check or radio box, a slider tick, a resize handle, a drop placeholder, a legend toggle, a dropzone)? Use `--cinder-border-control`, or the control frame (`--cinder-control-border`) for a text-entry control, and hover to `--cinder-border-control-hover`.
-- Is it a bordered button, or a button-like chip (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, toggle chips, dashed "add" buttons)? It is a control, so it rests on `--cinder-border-control` (the secondary Button through `--cinder-button-border`). The structural tiers are faint enough after COR-1552 that `--cinder-border-strong` no longer clears 3:1 on a button edge.
+- Is it a bordered button, or a button-like chip (preset chips, copy buttons, Chat action, jump, and edit-cancel buttons, dashed "add" buttons)? It is a control, so it rests on `--cinder-border-control` (the secondary Button through `--cinder-button-border`). A Cinder toggle Chip and the default `soft` Button are filled with no edge instead (COR-2312). The structural tiers are faint enough after COR-1552 that `--cinder-border-strong` no longer clears 3:1 on a button edge.
 - Is it the outer edge of a container? Use `--cinder-border`.
 - Is it a rule between siblings inside a container, a table rule, or a tab-list rule? Use `--cinder-border-muted`.
 - Is it tinted by a status? Use `--cinder-status-*-border`, never `--cinder-status-*-solid`; an active or racing accent edge uses `--cinder-accent-border`. The one exception is the invalid control edge, which reaches the danger fill through `--cinder-control-border-invalid` because on an invalid field it is the control boundary and has to keep clearing 3:1.
@@ -134,7 +134,7 @@ Against WCAG 1.4.11's 3:1 floor for meaningful non-text graphics, measured acros
 
 ### Toggle track, light arm — intentional, and now a control tier
 
-`--cinder-toggle-track-off-resting` aliases `border.control` in its light arm, and its hover aliases `border.control.hover` (the dark arms are independent literals and are untouched). The off track is the only visible shape of the switch, so it is a control boundary in the sense of the two-job split above, and it moved from `border.muted` (a 19%, then 10%, decorative tier) to the 48% control tier: 3.15–3.23:1 on the four surfaces instead of about 1.5:1. Like every tier it tracks the surface underneath it rather than being a fixed grey, so it reads at a near-identical weight on every surface.
+`--cinder-toggle-track-off-resting` aliases `border.control` in its light arm, and its hover aliases `border.control.hover` (the dark arms are independent literals; COR-2312 raised them from 45% and 52% to `oklch(58% 0.02 245)` and `oklch(64% 0.02 245)`, because 45% sat at about 2.2–2.5:1 on the dark surfaces, and the `toggle:track-off:*` contrast pairings now hold the off track to 3:1 in every context). The off track is the only visible shape of the switch, so it is a control boundary in the sense of the two-job split above, and it moved from `border.muted` (a 19%, then 10%, decorative tier) to the 48% control tier: 3.15–3.23:1 on the four surfaces instead of about 1.5:1. Like every tier it tracks the surface underneath it rather than being a fixed grey, so it reads at a near-identical weight on every surface.
 
 ## Tier borders under an element opacity
 

@@ -28,7 +28,7 @@ Keep one labelled primary in a group of actions. The secondary options are icon-
 
 A label is a short verb phrase, about four words: "Save draft", "Run now", "Add a memory". It names the action, not what the action will produce. A proposal, a preview or a sentence the person should read before acting belongs beside the button, in the row or card it acts on, with the button keeping a short verb ("Apply", "Use this").
 
-A button is never wider than its container. A label too long for the room truncates with an ellipsis, and the full words stay the accessible name, so nothing is lost to a screen reader; the sighted reader loses the end of the label, which is why a long label is a content defect rather than a layout to rely on. Labels never wrap onto a second line. Truncation applies to the `label` prop; content you pass as children is laid out as you write it, so pass the words through `label` when they could run long.
+A button that takes its words from `label` is never wider than its container. A label too long for the room truncates with an ellipsis, and the full words stay the accessible name, so nothing is lost to a screen reader; the sighted reader loses the end of the label, which is why a long label is a content defect rather than a layout to rely on. Labels never wrap onto a second line. The cap and the truncation apply to the `label` prop only; content you pass as children is laid out as you write it, so pass the words through `label` when they could run long.
 
 ## Shortcut hint
 
