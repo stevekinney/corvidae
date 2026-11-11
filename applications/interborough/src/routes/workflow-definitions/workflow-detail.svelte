@@ -96,6 +96,7 @@
   } from './workflow-page-presentation.ts';
   import {
     definitionDetails,
+    type DefinitionDetails,
     internalWords,
     scheduleLabel,
     schedulesSummary,
@@ -110,6 +111,8 @@
   const connection = getConnection();
   /** How many of a file's newest runs the header reads: as many as the Runs tab lists. */
   const HEADLINE_LIMIT = 20;
+  /** What an internal workflow's Overview shows of its contract: nothing, it says what it is instead. */
+  const NO_DETAILS: DefinitionDetails = { signals: [], updates: [], queries: [] };
 
   // The page draws the connection banner under its own header, so the shell leaves it to the page.
   $effect(() => connection.claimBanner());
@@ -394,15 +397,16 @@
     undefined,
   );
   /** The steps the Overview lists: the file's, the last good version's for an invalid file, none for a code type. */
-  const overviewSteps = $derived<readonly WorkflowStepSource[] | undefined>(
-    document !== undefined
-      ? document.steps
-      : invalidFile
-        ? (savedSteps.data ?? []).flatMap((step) =>
-            typeof step['kind'] === 'string' ? [{ ...step, kind: step['kind'] }] : [],
-          )
-        : undefined,
-  );
+  const overviewSteps = $derived.by<readonly WorkflowStepSource[] | undefined>(() => {
+    if (!invalidFile) return document?.steps;
+    // A file that cannot load shows the last good version's steps, never its own broken ones. With
+    // no saved version there is nothing to show, which is not the same as a workflow with no
+    // steps, so the section is left out rather than saying "no steps".
+    const saved = (savedSteps.data ?? []).flatMap((step) =>
+      typeof step['kind'] === 'string' ? [{ ...step, kind: step['kind'] }] : [],
+    );
+    return saved.length === 0 ? undefined : saved;
+  });
 
   const agentName = $derived(
     file?.agent === null || file?.agent === undefined ? null : agentLabel(file.agent, undefined),
@@ -732,11 +736,11 @@
             steps={overviewSteps}
             {inputSchema}
             {outputSchema}
-            {details}
+            details={engineType ? NO_DETAILS : details}
             schedules={schedules.data}
-            schedulesFailed={schedules.isError}
-            showSchemas={!invalidFile}
-            listSchedules={file === undefined}
+            schedulesFailed={!engineType && schedules.isError}
+            showSchemas={!invalidFile && !engineType}
+            listSchedules={file === undefined && !engineType}
             {internalNote}
           />
         </Tabs.Panel>

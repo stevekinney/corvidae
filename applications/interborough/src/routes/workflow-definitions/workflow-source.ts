@@ -21,6 +21,16 @@ export type JsonProblem = {
 
 type Failure = { readonly offset: number; readonly afterValue: boolean };
 
+/** Ends the scan at the first place the text stops being JSON, carrying where that is. */
+class JsonStop extends Error {
+  readonly failure: Failure;
+
+  constructor(failure: Failure) {
+    super('The text stops being JSON here.');
+    this.failure = failure;
+  }
+}
+
 const WHITESPACE = new Set([' ', '\t', '\n', '\r']);
 const NUMBER = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
 const LITERALS = ['true', 'false', 'null'] as const;
@@ -34,7 +44,7 @@ function findJsonError(text: string): Failure | null {
   let index = 0;
 
   const fail = (afterValue = false): never => {
-    throw { offset: index, afterValue } satisfies Failure;
+    throw new JsonStop({ offset: index, afterValue });
   };
   const skip = (): void => {
     while (index < text.length && WHITESPACE.has(text.charAt(index))) index += 1;
@@ -128,7 +138,7 @@ function findJsonError(text: string): Failure | null {
     if (index < text.length) fail();
     return null;
   } catch (error) {
-    if (typeof error === 'object' && error !== null && 'offset' in error) return error as Failure;
+    if (error instanceof JsonStop) return error.failure;
     throw error;
   }
 }

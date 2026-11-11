@@ -413,10 +413,19 @@ test.describe('a code-defined type', () => {
     }) => {
       await page.goto('/workflows/agentRun');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      await expect(detail(page).getByRole('heading', { level: 1, name: 'agentRun' })).toBeVisible();
+      // It is titled in words, with its identifier on the built-in line.
       await expect(
-        detail(page).getByRole('tab', { name: WORKFLOW_COPY.page.tabs.history }),
-      ).toHaveCount(0);
+        detail(page).getByRole('heading', {
+          level: 1,
+          name: WORKFLOW_COPY.internal.types.agentRun.title,
+        }),
+      ).toBeVisible();
+      await expect(detail(page).getByTestId('workflow-line-built-in').locator('code')).toHaveText(
+        'agentRun',
+      );
+      for (const absent of [WORKFLOW_COPY.page.tabs.history, WORKFLOW_COPY.page.tabs.code]) {
+        await expect(detail(page).getByRole('tab', { name: absent })).toHaveCount(0);
+      }
       await expect(detail(page)).not.toContainText('Install a revision');
       await expect(detail(page)).not.toContainText(/\bNone\b/);
     });
@@ -597,7 +606,9 @@ test.describe('pause, resume, and delete', () => {
 
       await root.getByRole('button', { name: WORKFLOW_COPY.pauseAction }).click();
       await expect(root.getByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeVisible();
-      await expect(root.getByTestId('workflow-state')).toContainText(WORKFLOW_COPY.page.statusPaused);
+      await expect(root.getByTestId('workflow-state')).toContainText(
+        WORKFLOW_COPY.page.statusPaused,
+      );
       const paused = await readWorkflow(request, 'e2e-pausable');
       expect(paused.paused).toBe(true);
       await checkA11y(`a paused workflow at ${width}px`);

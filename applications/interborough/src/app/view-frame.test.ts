@@ -879,6 +879,21 @@ describe('the Workflows area', () => {
     expect(view.pageOwnsEmptyOn).toEqual(['/workflows']);
   });
 
+  test('a type’s page draws its own loading, so its header and tabs show while the probe is pending (row 63a)', async () => {
+    expect(VIEWS.workflows.pageOwnsLoadingOn).toEqual(['/workflows/:workflow']);
+    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+    const { container, findByTestId, queryByRole } = mount('workflows', {
+      parameters: { workflow: 'digest' },
+      pattern: '/workflows/:workflow',
+    });
+    // The page is on screen and the frame's own words are not, while the frame still says loading.
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('loading');
+    expect(
+      queryByRole('heading', { level: 1, name: VIEW_COPY.workflows.loading.title }),
+    ).toBeNull();
+  });
+
   for (const { pattern, parameters } of ROUTES) {
     test(`${pattern} is forbidden without workflows:read, and asks nothing`, () => {
       const stub = world();

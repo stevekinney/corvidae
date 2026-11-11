@@ -146,7 +146,7 @@
         fileName={`${type}.json`}
         {problem}
         {located}
-        actionLabel={copy.problem.editAsJson}
+        actionLabel={WORKFLOW_COPY.page.problem.editAsJson}
         onAction={onEditAsJson}
       />
     {/if}
@@ -180,10 +180,10 @@
           </div>
         </div>
         {#if outlineItems.length > 0 && wide.current}
-          <aside class="ib-workflow-source__outline" data-testid="workflow-outline">
+          <div class="ib-workflow-source__outline" data-testid="workflow-outline">
             <p class="ib-workflow-source__outline-title">{copy.outlineTitle}</p>
             <TableOfContents ariaLabel={copy.outlineTitle} items={outlineItems} />
-          </aside>
+          </div>
         {/if}
       </section>
     {/if}

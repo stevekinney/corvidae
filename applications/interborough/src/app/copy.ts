@@ -895,7 +895,8 @@ export const WORKFLOW_COPY = {
     menu: {
       label: 'More actions',
       sendSignal: 'Send a signal…',
-      closeSignal: 'Close',
+      /** The footer button that ends the dialog; the dialog's own corner button is named "Close dialog". */
+      closeSignal: 'Done',
     },
     /** The body of an internal workflow's Overview. */
     internalOverview:

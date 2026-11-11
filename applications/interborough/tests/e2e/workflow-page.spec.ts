@@ -6,8 +6,8 @@
  *
  * The host serves the engine's console from the fixtures' engine, which is not the Bureau's, so a
  * code-defined type of the fixtures' engine is not one the Bureau registered: its Code tab says
- * there is no source. The Bureau's own host (`E2E_BUREAU_URL`) registers `agentRun`, whose Code tab
- * shows the description and the contract it registered.
+ * there is no source. The Bureau's own host (`E2E_BUREAU_URL`) registers `agentRun`, a type it runs
+ * itself, which has only Overview and Runs: there is no Code tab until Weft exposes its source.
  */
 import type { Page } from '@playwright/test';
 import { rm, writeFile } from 'node:fs/promises';
@@ -141,7 +141,7 @@ test.describe('the Code tab', () => {
     });
   }
 
-  test('shows what a code-defined type registered, and says it is not the code, on the Bureau’s host', async ({
+  test('has no Code tab for a type the Bureau registers for itself, so its address falls back to the Overview, on the Bureau’s host', async ({
     browser,
   }) => {
     const context = await browser.newContext({ baseURL: E2E_BUREAU_URL });
@@ -150,12 +150,19 @@ test.describe('the Code tab', () => {
       await page.goto('/workflows/agentRun?tab=code');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       const root = detail(page);
-      await expect(root.getByTestId('workflow-code')).toContainText(
-        WORKFLOW_COPY.page.code.codeNote,
-      );
-      await expect(root.getByTestId('workflow-code-source')).toContainText('agentRun');
-      await expect(root.getByTestId('workflow-code')).not.toContainText(
-        WORKFLOW_COPY.page.code.fileHeading,
+      // Only Overview and Runs: there is no source to show until Weft exposes it.
+      await expectTabNames(root, [
+        new RegExp(`^${TABS.overview}$`),
+        new RegExp(`^${TABS.runs}( \\d+)?$`),
+      ]);
+      await expectTabOpen(root, TABS.overview);
+      await expect(page).not.toHaveURL(/tab=/);
+      await expect(root.getByTestId('workflow-code')).toHaveCount(0);
+      await expect(
+        root.getByRole('link', { name: WORKFLOW_COPY.page.seeInternal }),
+      ).toHaveAttribute('href', '/internal-workflows');
+      await expect(root.getByRole('heading', { level: 1 })).toHaveText(
+        WORKFLOW_COPY.internal.types.agentRun.title,
       );
     } finally {
       await context.close();
