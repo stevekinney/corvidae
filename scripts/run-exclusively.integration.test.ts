@@ -341,7 +341,8 @@ const reclaimsOwnerlessDirectoryWrittenThisMillisecond = await inScratchDirector
     await writeFile(join(lockDirectory, 'stray'), '');
     const now = Date.now();
     await utimes(lockDirectory, (now + 0.5) / 1000, (now + 0.5) / 1000);
-    expect((await stat(lockDirectory)).mtimeMs).toBeGreaterThan(now);
+    const written = await stat(lockDirectory);
+    expect(written.mtimeMs).toBeGreaterThan(now);
     setSystemTime(new Date(now));
     try {
       await reclaimAbandoned(lockDirectory, 0);
