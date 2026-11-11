@@ -7,6 +7,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import {
+  E2E_BARRIER_URL,
   E2E_CANCELLATION_REASON,
   E2E_CANCELLED_TASK_OPERATION_ID,
   E2E_CANCELLING_TASK_OPERATION_ID,
@@ -115,7 +116,12 @@ test('a requested cancellation reads as awaiting acknowledgement, never as expir
   page,
   checkA11y,
 }) => {
-  await openTask(page, E2E_CANCELLING_TASK_OPERATION_ID);
+  // The task seeded at startup is settled once Weft's five-minute cancellation grace period passes,
+  // which a full suite outlasts, so this asks the server for a cancellation requested just now.
+  const requested = await page.request.post(`${E2E_BARRIER_URL}/ledger/cancel-requested`);
+  expect(requested.ok(), 'requesting a fresh cancellation').toBe(true);
+  const { operationId } = (await requested.json()) as { operationId: string };
+  await openTask(page, operationId);
 
   const cancellation = region(page, 'Cancellation evidence');
   await expect(cancellation.getByText('Requested, awaiting worker acknowledgement')).toBeVisible();

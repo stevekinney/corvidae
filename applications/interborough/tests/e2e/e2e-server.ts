@@ -40,6 +40,7 @@ import {
   E2E_BARRIER_PORT,
   E2E_BUREAU_PORT,
   E2E_CANCELLATION_GRACE_PERIOD_MS,
+  E2E_CANCELLING_TASK_OPERATION_ID,
   E2E_CONNECT_PORT,
   E2E_DEPLOYMENT_NAME,
   E2E_FIRST_RUN_PORT,
@@ -57,7 +58,7 @@ import {
 
 import { createEchoAgents } from './echo-agent.ts';
 import { createJourneyProviderResolver, createRecallAgents } from './journey-agent.ts';
-import { seedLedgerEvidence } from './ledger-evidence-seed.ts';
+import { seedCancellationRequest, seedLedgerEvidence } from './ledger-evidence-seed.ts';
 import { createModelAgents } from './model-agents.ts';
 import { createQuestionAgents } from './question-agents.ts';
 import { SEEDED_WORKFLOW_FILES } from './seeded-workflow-files.ts';
@@ -628,6 +629,7 @@ process.off('SIGTERM', handleStartupSignal);
 // The barrier's control: the one route a spec uses to learn that a run is waiting and to let it
 // go. It binds loopback only and exists in this process alone, never in the host. The journey's
 // host holds its runs on a barrier of its own, under `/journey`.
+let cancellationRequests = 0;
 const barrierControl = Bun.serve({
   hostname: '127.0.0.1',
   port: E2E_BARRIER_PORT,
@@ -658,6 +660,16 @@ const barrierControl = Bun.serve({
     },
     // The addresses of the servers the connect host's specification connects to: loopback origins, no secret.
     '/connect/origins': { GET: () => Response.json(connectHost.origins) },
+    // A task whose cancellation is requested and not yet acknowledged, made now: the one seeded at
+    // startup is settled once the cancellation grace period has passed, which a full suite outlasts.
+    '/ledger/cancel-requested': {
+      POST: async () => {
+        cancellationRequests += 1;
+        const operationId = `${E2E_CANCELLING_TASK_OPERATION_ID}-${String(cancellationRequests)}`;
+        await seedCancellationRequest(server, operationId);
+        return Response.json({ operationId });
+      },
+    },
     '/journey/waiting': { GET: () => Response.json({ waiting: journeyBarrier.waiting() }) },
     '/journey/release': {
       POST: () => {

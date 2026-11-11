@@ -322,10 +322,14 @@ test.describe('New chat when the first message cannot be sent (24c, 24r, 24s)', 
       reason: 'the test takes the page’s network away on purpose',
     });
     await typeRefund(page);
-    await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
+    // The message is cut off first, and only then every other read: a read the page makes on its
+    // own before Send is pressed would tell the shell first, and the composer gives way to its
+    // blocked row with nothing sent.
+    await page.route('**/ag-ui/agents/**', (route) => route.abort('connectionrefused'));
     await send(page).click();
     // Until the shell knows the server is gone, the page says what happened to the message itself.
     await expect(failure(page)).toBeVisible();
+    await page.route(HOST_REQUESTS, (route) => route.abort('connectionrefused'));
     // The person comes back to the tab, which makes every read ask again: the one that finds the
     // server gone.
     await page.evaluate(() => window.dispatchEvent(new Event('visibilitychange')));

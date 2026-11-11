@@ -3,7 +3,8 @@
  * heading and one toolbar (the count, the filters, the primary action), except Runs, whose header
  * carries Start run and whose filter bar carries the status segments (COR-2017); Workflows,
  * Internal workflows and Goals list their records in a table, Runs and Agents in rows; and every status on
- * them is one of seven words drawn as a StatusDot of that word's tone. A filter that matches
+ * them is one of seven words, or one of the few words a page says besides them, drawn as a
+ * StatusDot of that word's tone. A filter that matches
  * nothing says which filter and offers Clear filters. An agent with a chat that waits on the person
  * says Needs you, and its chat count opens the agent's page.
  */
@@ -39,11 +40,31 @@ const WORKFLOWS_ONLY_TONES = {
   "Can't load": 'danger',
 } as const;
 
+/**
+ * The words Goals says besides the seven: a goal that spent its attempts Gave up, and one that was
+ * canceled Stopped (COR-2017, `goal-rows.ts`). A goal's page also says "Check not met" for an
+ * attempt whose check failed.
+ */
+const GOALS_ONLY_TONES = {
+  'Gave up': 'danger',
+  Stopped: 'neutral',
+} as const;
+
 /** The words each page says besides the seven. */
 const EXTRA_TONES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
   '/runs': RUNS_ONLY_TONES,
   '/workflows': WORKFLOWS_ONLY_TONES,
+  '/goals': GOALS_ONLY_TONES,
+  '/goals/seeded-goal': { ...GOALS_ONLY_TONES, 'Check not met': 'neutral' },
 };
+
+/**
+ * The word a status says before its qualifier: "Running, stopping" is Running. A qualifier never
+ * changes the tone, except on Done, which no records page qualifies.
+ */
+function baseWord(word: string): string {
+  return word.split(', ')[0] ?? word;
+}
 
 const WAITING_THREAD = newThreadId('records-waiting');
 
@@ -234,21 +255,26 @@ test.describe('the records pages', () => {
       const words = await statusWords(page);
       expect(words.length, path).toBeGreaterThan(0);
       // Runs also says "Check not met" for a goal's attempt and "Missed runs" for a schedule's misses,
-      // and Workflows says "Can't load" for a file the Bureau cannot use.
+      // Workflows says "Can't load" for a file the Bureau cannot use, and Goals says how a goal ended.
+      // Earlier specs on this host leave goals of every outcome, so each word is checked, not counted.
       const extra = EXTRA_TONES[path] ?? {};
       const allowed: readonly string[] = [...STATUS_WORDS, ...Object.keys(extra)];
-      for (const word of words) expect(allowed, path).toContain(word);
-      const tones = await page
-        .locator('main [data-cinder-status][data-status-word]')
-        .evaluateAll((dots) =>
-          dots.map((dot) => [
-            dot.getAttribute('data-status-word') ?? '',
-            dot.getAttribute('data-cinder-status') ?? '',
-          ]),
-        );
+      for (const word of words) expect(allowed, `${path}: ${word}`).toContain(baseWord(word));
+      // A word is on its dot, or on the row whose dot it is (a goal's row and an attempt's row).
+      const tones = await page.locator('main [data-status-word]').evaluateAll((marked) =>
+        marked.map((element) => {
+          const dot = element.matches('[data-cinder-status]')
+            ? element
+            : element.querySelector('[data-cinder-status]');
+          return [
+            element.getAttribute('data-status-word') ?? '',
+            dot?.getAttribute('data-cinder-status') ?? '',
+          ];
+        }),
+      );
       const agreed = new Map<string, string>(Object.entries({ ...AGREED_TONES, ...extra }));
       for (const [word = '', tone] of tones) {
-        expect(tone, `${path}: ${word}`).toBe(agreed.get(word));
+        expect(tone, `${path}: ${word}`).toBe(agreed.get(baseWord(word)));
       }
     }
   });

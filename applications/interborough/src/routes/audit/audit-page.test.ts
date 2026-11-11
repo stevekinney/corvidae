@@ -24,6 +24,7 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
+import { AUDIT_LOOKUPS_IN_FLIGHT } from './audit-lookups.svelte.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -1147,6 +1148,59 @@ describe('what the page looks up to word an event', () => {
     await view.findByText('Daily summary');
     // A schedule with no name is a schedule, not an identifier.
     expect(view.getAllByText('A schedule').length).toBeGreaterThan(0);
+  });
+
+  test('asks for the chats of many events a few at a time, and words every one of them', async () => {
+    // Forty runs, each in a chat of its own: a search on a busy host reads hundreds like them.
+    const chats = Array.from({ length: 40 }, (_, index) => `chat-${String(index)}`);
+    const records = chats.map((sessionId, index) =>
+      record(100 + index, 10 + index, { detail: { agentName: 'tool-runner', sessionId } }),
+    );
+    const held: (() => void)[] = [];
+    let holding = true;
+    let inFlight = 0;
+    let most = 0;
+    const view = open(
+      { records, nextCursor: null },
+      {
+        'bureau.contexts.get': async (params) => {
+          inFlight += 1;
+          most = Math.max(most, inFlight);
+          if (holding) await new Promise<void>((resolve) => held.push(resolve));
+          inFlight -= 1;
+          const id = String(params['contextId']);
+          return {
+            id,
+            owner: 'anonymous:local',
+            agentName: 'tool-runner',
+            title: `Title of ${id}`,
+            lastMessagePreview: null,
+            parentContextId: null,
+            forkedFromMessageId: null,
+            model: null,
+            effort: null,
+            permissionMode: 'on-changes',
+            configVersion: 0,
+            messageCount: 2,
+            createdAt: new Date(NOW).toISOString(),
+            updatedAt: new Date(NOW).toISOString(),
+            activity: 'idle',
+          };
+        },
+      },
+    );
+    await waitFor(() => expect(held).toHaveLength(AUDIT_LOOKUPS_IN_FLIGHT));
+    // While those are unanswered, no other chat is asked for.
+    await quietFor(100);
+    expect(stub?.callsTo('bureau.contexts.get')).toHaveLength(AUDIT_LOOKUPS_IN_FLIGHT);
+
+    holding = false;
+    for (const release of held.splice(0)) release();
+    await waitFor(() => expect(stub?.callsTo('bureau.contexts.get')).toHaveLength(chats.length));
+    expect(most).toBe(AUDIT_LOOKUPS_IN_FLIGHT);
+    // Every chat was read, so none of them reads as deleted.
+    await view.findByText('Chat › Title of chat-39');
+    await view.findByText('Chat › Title of chat-0');
   });
 });
 

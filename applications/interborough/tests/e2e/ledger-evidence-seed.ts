@@ -18,7 +18,9 @@
  *   mid-suite.
  * - `E2E_CANCELLING_TASK_OPERATION_ID` is leased, then cancelled. Its
  *   activity ignores the abort signal, so the worker never acknowledges and
- *   the record stays `cancelling` until `E2E_CANCELLATION_GRACE_PERIOD_MS`.
+ *   the record stays `cancelling` until `E2E_CANCELLATION_GRACE_PERIOD_MS`,
+ *   which a full suite outlasts; `seedCancellationRequest` makes another on
+ *   demand.
  * - `E2E_CANCELLED_TASK_OPERATION_ID` is leased, then cancelled. Its activity
  *   honors the abort signal, so the owning attempt reports a cancelled
  *   result and the record settles terminal with that acknowledgement.
@@ -219,6 +221,23 @@ async function seedCrossBuildStorm(server: WeftServer): Promise<RemoteWorker> {
   return surviving;
 }
 
+/**
+ * Dispatches `operationId` to the surviving ledger worker, whose activity ignores the abort signal,
+ * and requests its cancellation; resolves once the record is `cancelling`. It stays there for
+ * `E2E_CANCELLATION_GRACE_PERIOD_MS` (Weft's maximum, five minutes) and is then settled, so a spec
+ * that reads the requested-but-unacknowledged state asks for a fresh one through the barrier
+ * control (`/ledger/cancel-requested` in `e2e-server.ts`) rather than read the one seeded at startup.
+ */
+export async function seedCancellationRequest(
+  server: WeftServer,
+  operationId: string,
+): Promise<void> {
+  await dispatch(server, operationId, 'ignore-cancel');
+  await waitForState(server, operationId, 'leased');
+  await server.cancelTask(operationId, E2E_CANCELLATION_REASON);
+  await waitForState(server, operationId, 'cancelling');
+}
+
 /** Seeds the COR-124 evidence tasks and COR-281's cross-build retry storm; resolves once each has reached its seeded state. */
 export async function seedLedgerEvidence(server: WeftServer): Promise<readonly RemoteWorker[]> {
   // Attempt 1: claimed by a worker that then disappears without a result.
@@ -245,10 +264,7 @@ export async function seedLedgerEvidence(server: WeftServer): Promise<readonly R
     },
   );
 
-  await dispatch(server, E2E_CANCELLING_TASK_OPERATION_ID, 'ignore-cancel');
-  await waitForState(server, E2E_CANCELLING_TASK_OPERATION_ID, 'leased');
-  await server.cancelTask(E2E_CANCELLING_TASK_OPERATION_ID, E2E_CANCELLATION_REASON);
-  await waitForState(server, E2E_CANCELLING_TASK_OPERATION_ID, 'cancelling');
+  await seedCancellationRequest(server, E2E_CANCELLING_TASK_OPERATION_ID);
 
   await dispatch(server, E2E_CANCELLED_TASK_OPERATION_ID, 'honor-cancel');
   await waitForState(server, E2E_CANCELLED_TASK_OPERATION_ID, 'leased');

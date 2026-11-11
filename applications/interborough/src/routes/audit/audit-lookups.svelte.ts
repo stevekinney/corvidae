@@ -4,6 +4,11 @@
  * and the catalogs that name agents and tools for a person. Each is its own query, keyed by what it
  * reads, so a page of records that arrives later asks only for what it adds, and a lookup that
  * fails leaves its sentence plainer instead of failing the log.
+ *
+ * The lookups of single things (a chat, a review, a memory) wait their turn behind
+ * {@link AUDIT_LOOKUPS_IN_FLIGHT} at a time. A search reads up to twenty pages of records, which on a
+ * busy host name hundreds of different chats, and the browser refuses requests past its own limit
+ * (`net::ERR_INSUFFICIENT_RESOURCES`), which would read as chats that were deleted.
  */
 import { createQueries, createQuery } from '@tanstack/svelte-query';
 
@@ -17,11 +22,37 @@ import { getMemory } from '../../lib/memory-client.ts';
 import { queryKeys } from '../../lib/query.ts';
 import { lookupRequestsFor, type AuditLookups, type AuditTool } from './audit-events.ts';
 
+/** How many lookups of single things the page has in flight at once. */
+export const AUDIT_LOOKUPS_IN_FLIGHT = 4;
+
+/**
+ * Runs each task once fewer than `maximum` are running, in the order they were asked for. A task
+ * whose query was cancelled while it waited gives its turn up without asking.
+ */
+function inTurn(maximum: number) {
+  let running = 0;
+  const waiting: (() => void)[] = [];
+  return async function run<T>(signal: AbortSignal, task: () => Promise<T>): Promise<T> {
+    if (running < maximum) running += 1;
+    // A finishing task hands its place straight to the next, so `running` never passes `maximum`.
+    else await new Promise<void>((resolve) => waiting.push(resolve));
+    try {
+      signal.throwIfAborted();
+      return await task();
+    } finally {
+      const next = waiting.shift();
+      if (next === undefined) running -= 1;
+      else next();
+    }
+  };
+}
+
 /** The lookups for the records the page holds, which fill in as the reads arrive. */
 export function useAuditLookups(records: () => readonly AuditRecord[]): {
   readonly current: AuditLookups;
 } {
   const requests = $derived(lookupRequestsFor(records()));
+  const turn = inTurn(AUDIT_LOOKUPS_IN_FLIGHT);
 
   const catalog = createQuery(
     () => ({
@@ -54,7 +85,8 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   const reviews = createQueries(() => ({
     queries: requests.reviewIds.map((reviewId) => ({
       queryKey: queryKeys.bureauReviews.detail(reviewId),
-      queryFn: ({ signal }: { signal: AbortSignal }) => getBureauReview(reviewId, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        turn(signal, () => getBureauReview(reviewId, { signal })),
       retry: false,
       staleTime: 60_000,
     })),
@@ -69,7 +101,8 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   const chats = createQueries(() => ({
     queries: sessionIds.map((sessionId) => ({
       queryKey: queryKeys.contexts.detail(sessionId),
-      queryFn: ({ signal }: { signal: AbortSignal }) => getContext(sessionId, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        turn(signal, () => getContext(sessionId, { signal })),
       retry: false,
       staleTime: 60_000,
     })),
@@ -77,7 +110,8 @@ export function useAuditLookups(records: () => readonly AuditRecord[]): {
   const memories = createQueries(() => ({
     queries: requests.memories.map(({ agent, id }) => ({
       queryKey: queryKeys.memory.detail(agent, id),
-      queryFn: ({ signal }: { signal: AbortSignal }) => getMemory(agent, id, { signal }),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        turn(signal, () => getMemory(agent, id, { signal })),
       retry: false,
       staleTime: 60_000,
     })),
