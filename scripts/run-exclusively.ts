@@ -29,10 +29,12 @@
  * its whole chain without its own stages queueing behind it.
  *
  * The wrapped command also gets two Turborepo defaults, each only when the caller has not set it.
- * `TURBO_CACHE_DIR` points at one cache inside the Git common directory, so a task one worktree ran
- * replays in every other worktree instead of each checkout starting cold. `TURBO_CONCURRENCY` is
- * one task per 8 GiB of memory and per three processors, whichever allows fewer. Measured on
- * 2026-10-22 with a forced validate at four tasks on a 12-core, 32 GB host: the largest task
+ * It sets no cache directory: Turborepo itself keeps one local cache in the main checkout for
+ * every linked worktree, which the wrapped and the unwrapped runs therefore share.
+ * `TURBO_CONCURRENCY` is one task per 8 GiB of memory and per three processors, whichever allows
+ * fewer; `turbo.json`'s `concurrency` of 34% is the processor half of that for the runs that do not
+ * pass through here, and the variable outranks it. Measured on 2026-10-22 with a forced validate
+ * at four tasks on a 12-core, 32 GB host: the largest task
  * (Cinder's coverage run) peaked at 7.8 GB, all tasks together at 13.3 GB, and the load average
  * reached 58. Processors bind before memory does, because a test task runs up to four Bun workers.
  * Turborepo's own default of ten tasks at once oversubscribes both. A stage that passes
@@ -82,13 +84,14 @@ const processorsPerTurborepoTask = 3;
 export const turborepoAffectedBase = 'origin/main';
 
 /**
- * `environment` with the shared Turborepo cache, a memory-scaled task concurrency, and the
- * `--affected` base filled in where the caller has not chosen its own. A `shared` run takes no lock, so several can run at
- * once; each gets half the concurrency, since processors are what a full host runs out of.
+ * `environment` with a memory-scaled task concurrency and the `--affected` base filled in where
+ * the caller has not chosen its own. A `shared` run takes no lock, so several can run at once; each
+ * gets half the concurrency, since processors are what a full host runs out of. The cache
+ * directory is deliberately not set: Turborepo shares its local cache across linked worktrees on
+ * its own, and `turbo.json`'s `concurrency` caps the runs that never pass through here.
  */
 export function withTurborepoDefaults(
   environment: Readonly<Record<string, string | undefined>>,
-  commonDirectory: string,
   host: { readonly totalMemoryBytes: number; readonly processors: number } = {
     totalMemoryBytes: totalmem(),
     processors: cpus().length,
@@ -102,7 +105,6 @@ export function withTurborepoDefaults(
   const concurrency = Math.max(1, shared ? Math.floor(exclusive / 2) : exclusive);
   return {
     ...environment,
-    TURBO_CACHE_DIR: environment['TURBO_CACHE_DIR'] || join(commonDirectory, 'turbo-cache'),
     TURBO_CONCURRENCY: environment['TURBO_CONCURRENCY'] || String(concurrency),
     TURBO_SCM_BASE: environment['TURBO_SCM_BASE'] || turborepoAffectedBase,
   };
@@ -693,7 +695,6 @@ if (import.meta.main) {
     process.exitCode = 64;
   } else {
     const commonDirectoryLookup = gitCommonDirectory();
-    const commonDirectory = await commonDirectoryLookup.catch(() => undefined);
     process.exitCode = await runExclusively({
       // A failed lookup still reaches `runExclusively`, which reports it and runs unlocked.
       lockDirectory: commonDirectoryLookup.then((directory) =>
@@ -702,10 +703,7 @@ if (import.meta.main) {
       script: withPreflight(script),
       args,
       shared,
-      environment:
-        commonDirectory === undefined
-          ? rootScriptEnvironment()
-          : withTurborepoDefaults(rootScriptEnvironment(), commonDirectory, undefined, shared),
+      environment: withTurborepoDefaults(rootScriptEnvironment(), undefined, shared),
     });
   }
 }
