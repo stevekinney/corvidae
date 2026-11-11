@@ -8,12 +8,12 @@
  */
 
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { createRawSnippet, tick } from 'svelte';
 
-import { setupHappyDom } from '@lostgradient/testing';
+import { expectNoLeakedTimers, setupHappyDom, trackTimers } from '@lostgradient/testing';
 import { injectStyles } from '../../../test/css.ts';
 import type { Message, ToolCallPair } from '../conversation-model.ts';
 import type { ToolCallPresentation } from '../utilities/types.ts';
@@ -695,6 +695,144 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(
         container.querySelector('[aria-live="polite"][aria-atomic="true"]')?.textContent,
       ).toContain('issue-refund: Denied');
+    });
+  });
+
+  describe('an approval with a deadline (COR-2280)', () => {
+    const NOW = new Date('2026-11-02T16:40:00.000Z');
+
+    /** A call that waits on an approval which expires `offset` milliseconds after `NOW`. */
+    function waitingPair(id: string, offset: number | undefined): ToolCallPair {
+      return {
+        call: { id, name: 'issue-refund', arguments: { orderId: 4471 } },
+        result: {
+          callId: id,
+          outcome: 'action_required',
+          content: null,
+          action: {
+            type: 'approval',
+            risk: 'high',
+            operation: { kind: 'other' },
+            ...(offset === undefined
+              ? {}
+              : { expiresAt: new Date(NOW.getTime() + offset).toISOString() }),
+          },
+        },
+      } as ToolCallPair;
+    }
+
+    function summaryOf(container: HTMLElement): string {
+      return groupToggle(container).textContent ?? '';
+    }
+
+    afterEach(() => {
+      if (jest.isFakeTimers()) jest.useRealTimers();
+    });
+
+    test('waits before its deadline and reads Expired at it, without a host update', async () => {
+      jest.useFakeTimers({ now: NOW });
+      const { container } = render(ToolCallTimeline, {
+        props: { pairs: [waitingPair('refund-1', 1_000)] },
+      });
+      await tick();
+      expect(summaryOf(container)).toContain('1 waiting for approval');
+
+      jest.advanceTimersByTime(999);
+      await tick();
+      expect(summaryOf(container)).toContain('1 waiting for approval');
+
+      jest.advanceTimersByTime(1);
+      await tick();
+      expect(summaryOf(container)).not.toContain('waiting for approval');
+      expect(summaryOf(container)).toContain('1 expired');
+      await openCall(container);
+      expect(container.querySelector('.chat-tool-call-status')?.textContent).toBe('Expired');
+      expect(
+        container
+          .querySelector('.chat-tool-call-item')
+          ?.getAttribute('data-cinder-tool-call-status'),
+      ).toBe('expired');
+    });
+
+    test('reads an approval that expired before it was shown the same way', async () => {
+      jest.useFakeTimers({ now: NOW });
+      const { container } = render(ToolCallTimeline, {
+        props: { pairs: [waitingPair('refund-1', -60_000)] },
+      });
+      await tick();
+
+      expect(summaryOf(container)).not.toContain('waiting for approval');
+      expect(summaryOf(container)).toContain('1 expired');
+    });
+
+    test('lets a state the host settled win over the deadline', async () => {
+      jest.useFakeTimers({ now: NOW });
+      const settled: ToolCallPair = {
+        call: { id: 'refund-2', name: 'issue-refund', arguments: {} },
+        result: { callId: 'refund-2', outcome: 'success', content: { refunded: 4200 } },
+      };
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [waitingPair('refund-1', -60_000), settled],
+          approvalStates: new Map([['refund-1', 'denied' as const]]),
+        },
+      });
+      await tick();
+
+      expect(summaryOf(container)).toContain('1 denied');
+      expect(summaryOf(container)).not.toContain('expired');
+      expect(summaryOf(container)).not.toContain('waiting for approval');
+    });
+
+    test('counts only the calls still waiting in a group with an expired one', async () => {
+      jest.useFakeTimers({ now: NOW });
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [
+            waitingPair('refund-1', -1_000),
+            waitingPair('refund-2', 60_000),
+            waitingPair('refund-3', undefined),
+          ],
+        },
+      });
+      await tick();
+
+      expect(summaryOf(container)).toContain('1 expired');
+      expect(summaryOf(container)).toContain('2 waiting for approval');
+    });
+
+    test('moves its wake to a changed deadline', async () => {
+      jest.useFakeTimers({ now: NOW });
+      const view = render(ToolCallTimeline, {
+        props: { pairs: [waitingPair('refund-1', 1_000)] },
+      });
+      await tick();
+      await view.rerender({ pairs: [waitingPair('refund-1', 5_000)] });
+      await tick();
+
+      jest.advanceTimersByTime(1_000);
+      await tick();
+      expect(summaryOf(view.container)).toContain('1 waiting for approval');
+
+      jest.advanceTimersByTime(4_000);
+      await tick();
+      expect(summaryOf(view.container)).toContain('1 expired');
+    });
+
+    test('leaves no timer behind once it is unmounted', async () => {
+      const timers = trackTimers();
+      try {
+        const deadline = Date.now() + 3_600_000;
+        const pair = waitingPair('refund-1', deadline - NOW.getTime());
+        const view = render(ToolCallTimeline, { props: { pairs: [pair] } });
+        await tick();
+        expect(timers.active().size).toBeGreaterThan(0);
+
+        view.unmount();
+        expectNoLeakedTimers(timers.active());
+      } finally {
+        timers.release();
+      }
     });
   });
 

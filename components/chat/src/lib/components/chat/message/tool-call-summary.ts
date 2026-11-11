@@ -3,34 +3,80 @@ import { stringify } from '../../../utilities/stringify.ts';
 import { toolResultText } from '../../../utilities/tool-result-text.ts';
 import type { ToolCallPair } from '../conversation-model.ts';
 
-/** Where one tool call stands, as the quiet timeline shows it. */
+/**
+ * Where one tool call stands, as the quiet timeline shows it. `expired` is an approval whose
+ * deadline passed before anyone decided it (COR-2280): it no longer waits.
+ */
 export type ToolCallRowStatus =
-  'pending' | 'succeeded' | 'failed' | 'denied' | 'waiting' | 'waiting-input';
+  'pending' | 'succeeded' | 'failed' | 'denied' | 'expired' | 'waiting' | 'waiting-input';
 
 const STATUS_TEXT: Record<ToolCallRowStatus, string> = {
   pending: 'Pending',
   succeeded: 'Complete',
   failed: 'Failed',
   denied: 'Denied',
+  expired: 'Expired',
   waiting: 'Waiting for approval',
   'waiting-input': 'Waiting for input',
 };
+
+/**
+ * When a waiting approval's deadline passes, in epoch milliseconds: its action's `expiresAt`, read
+ * as Cinder's ApprovalCard reads it, so the card and the summary agree. `undefined` for a call that
+ * is not waiting on an approval, and for a deadline that is not a valid instant.
+ */
+export function toolCallApprovalDeadline(pair: ToolCallPair): number | undefined {
+  const result = pair.result;
+  if (result?.outcome !== 'action_required' || result.action?.type !== 'approval') return undefined;
+  const expiresAt = result.action.expiresAt;
+  if (expiresAt === undefined || expiresAt === '') return undefined;
+  const deadline = Date.parse(expiresAt);
+  return Number.isFinite(deadline) ? deadline : undefined;
+}
+
+/**
+ * The next deadline still ahead of `now` among the calls that wait on an approval nobody settled,
+ * so the timeline wakes once, when the next of them expires, without a host update. `undefined`
+ * when none waits on a deadline ahead.
+ */
+export function nextToolCallApprovalDeadline(
+  pairs: readonly ToolCallPair[],
+  approvalStates: ReadonlyMap<string, ApprovalState> | undefined,
+  now: number,
+): number | undefined {
+  let next: number | undefined;
+  for (const pair of pairs) {
+    const state = approvalStates?.get(pair.call.id);
+    if (state !== undefined && state !== 'pending') continue;
+    const deadline = toolCallApprovalDeadline(pair);
+    if (deadline === undefined || deadline <= now) continue;
+    if (next === undefined || deadline < next) next = deadline;
+  }
+  return next;
+}
 
 const ONE_LINE_LIMIT = 80;
 
 /**
  * A call's status. A denied approval reads `denied`, never `failed`, whether
  * the run reports the denial as the pending approval or as an error result.
+ * An approval nobody settled reads `expired` from its deadline on, measured
+ * against `now` (COR-2280); a state the host settled wins over the deadline.
  */
 export function toolCallRowStatus(
   pair: ToolCallPair,
   approvalState: ApprovalState | undefined,
+  now: number = Date.now(),
 ): ToolCallRowStatus {
   if (approvalState === 'denied') return 'denied';
+  if (approvalState === 'expired') return 'expired';
   const outcome = pair.result?.outcome;
   if (outcome === 'error') return 'failed';
   if (outcome === 'action_required') {
-    return pair.result?.action?.type === 'approval' ? 'waiting' : 'waiting-input';
+    if (pair.result?.action?.type !== 'approval') return 'waiting-input';
+    if (approvalState !== undefined && approvalState !== 'pending') return 'waiting';
+    const deadline = toolCallApprovalDeadline(pair);
+    return deadline !== undefined && now >= deadline ? 'expired' : 'waiting';
   }
   if (outcome === 'success') return 'succeeded';
   return 'pending';
@@ -105,7 +151,8 @@ function toolNamesSegment(pairs: readonly ToolCallPair[]): string {
 
 /**
  * The summary line's segments after "Used N tools": the tools, then any
- * failed, denied, or waiting counts, then the total time when every call has one.
+ * failed, denied, expired, or waiting counts, then the total time when every
+ * call has one. An expired approval counts as expired and never as waiting.
  */
 export function toolCallSummarySegments(
   pairs: readonly ToolCallPair[],
@@ -116,10 +163,12 @@ export function toolCallSummarySegments(
   const count = (status: ToolCallRowStatus) => statuses.filter((value) => value === status).length;
   const failed = count('failed');
   const denied = count('denied');
+  const expired = count('expired');
   const waiting = count('waiting');
   const waitingInput = count('waiting-input');
   if (failed > 0) segments.push(`${failed} failed`);
   if (denied > 0) segments.push(`${denied} denied`);
+  if (expired > 0) segments.push(`${expired} expired`);
   if (waiting > 0) segments.push(`${waiting} waiting for approval`);
   if (waitingInput > 0) segments.push(`${waitingInput} waiting for input`);
   if (durations.length > 0 && durations.every((duration) => duration !== undefined)) {

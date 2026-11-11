@@ -19,6 +19,7 @@
   import {
     formatToolCallDuration,
     isProblemStatus,
+    nextToolCallApprovalDeadline,
     toolCallKeyArgument,
     toolCallResultLine,
     toolCallRowStatus,
@@ -45,14 +46,37 @@
     approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
     durations?: ReadonlyMap<string, number> | undefined;
   } = $props();
+  /** The longest delay a timer takes; a deadline further off wakes the timeline once on the way. */
+  const MAXIMUM_TIMER_DELAY = 2_147_483_647;
+
   const navigationMessageId = $derived(messageId ?? pairs[0]?.call.id ?? 'tool-call-timeline');
   const headingId = $derived(`message-${navigationMessageId}-tool-call-summary`);
   const listId = $derived(`${navigationMessageId}-tool-calls`);
 
+  /**
+   * The time the rows are read at (COR-2280). An approval nobody settled reads as expired from its
+   * deadline on, so the timeline wakes when the next deadline passes, without a host update, and
+   * the count stops saying it waits, as Cinder's ApprovalCard stops offering its buttons.
+   */
+  let currentTime = $state(Date.now());
+
+  $effect(() => {
+    // Read against the time the rows were last read at, so a wake that came before the deadline
+    // (a capped delay) arms the next one, and one past it moves on to the deadline after.
+    const deadline = nextToolCallApprovalDeadline(pairs, approvalStates, currentTime);
+    if (deadline === undefined) return;
+    const delay = Math.min(Math.max(0, deadline - Date.now()), MAXIMUM_TIMER_DELAY);
+    const timer = setTimeout(() => {
+      currentTime = Date.now();
+    }, delay);
+    // A changed deadline, a settled approval and unmounting each drop the timer armed for the last.
+    return () => clearTimeout(timer);
+  });
+
   const rows = $derived(
     pairs.map((pair, index) => {
       const presentation = describeToolCall?.(pair);
-      const status = toolCallRowStatus(pair, approvalStates?.get(pair.call.id));
+      const status = toolCallRowStatus(pair, approvalStates?.get(pair.call.id), currentTime);
       const duration = durations?.get(pair.call.id);
       return {
         key: `${index}:${pair.call.id}`,
