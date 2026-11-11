@@ -234,6 +234,8 @@ const definitionOutputSchema = z.object({
   guardrails: storedAgentGuardrailSelectionsSchema.nullable(),
   /** The plugin interceptors (`plugin:name`) the file lists; `null` when it lists none. */
   interceptors: agentContributionIdsSchema.nullable(),
+  /** The plugin guardrails (`plugin:name`) the file runs only once the session is tainted; `null` when it lists none. */
+  escalations: agentContributionIdsSchema.nullable(),
   /** When each tool asks a person first; `null` when the file sets none and every tool asks on changes. */
   approvals: agentToolApprovalSchema.nullable(),
   instructions: z.string(),
@@ -263,7 +265,7 @@ const agentDetailSchema = agentListingSchema.extend({
 
 /**
  * What a caller supplies to `create` or `update`. An update keeps `effort`, `skills`, `a2a`,
- * `limits`, `retry`, `compaction`, `references`, `guardrails`, `interceptors` and `approvals` when it
+ * `limits`, `retry`, `compaction`, `references`, `guardrails`, `escalations`, `interceptors` and `approvals` when it
  * leaves them out (and each of `limits`' `steps`, `cost` and `tools` that it leaves out of `limits`), so
  * an editor that rewrites a definition cannot change an agent's skills, turn its A2A opt-in off, or
  * drop its step limit, retry, compaction, references, guardrails, interceptors, spend limit, tool
@@ -353,6 +355,12 @@ const definitionInputSchema = z
      */
     interceptors: agentContributionIdsSchema.nullable().optional(),
     /**
+     * The plugin guardrails (`plugin:name`, ids only) that run only once the session is tainted
+     * (COR-2109). Omitted, a create lists none and an update keeps the file's list; `null`, or an
+     * empty list, removes it. An id no plugin contributes is refused as `reference-unresolved`.
+     */
+    escalations: agentContributionIdsSchema.nullable().optional(),
+    /**
      * When each tool asks a person before it runs: a tool name from `tools` mapped to `never`,
      * `on-changes`, `always` or `blocked`. A tool left out asks on changes. Omitted, a create sets
      * none and an update keeps the file's; `null` or an empty map removes the file's.
@@ -362,7 +370,7 @@ const definitionInputSchema = z
   })
   .superRefine((definition, context) => checkModelsList(definition, context))
   .describe(
-    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `effort` (the reasoning effort a chat of the agent starts at: `low`, `medium`, `high`, `xhigh` or `max`, which `model` must support), `tools`, `card`, `skills` (the executable skills a run may activate), `a2a` (whether the agent opts into A2A), `limits` (`steps`, the most steps a run takes, 1 to 1000; `cost`, what the agent may spend in US dollars: `run`, `chat` and `warn` fractions of `run`; `tools`: `calls` and `seconds`), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails` and `interceptors` (ids of plugin guardrails and run interceptors, each `plugin:name`), `approvals` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
+    'The agent’s definition: `name`, `description`, `model`, `models` (the models a session may be switched to), `effort` (the reasoning effort a chat of the agent starts at: `low`, `medium`, `high`, `xhigh` or `max`, which `model` must support), `tools`, `card`, `skills` (the executable skills a run may activate), `a2a` (whether the agent opts into A2A), `limits` (`steps`, the most steps a run takes, 1 to 1000; `cost`, what the agent may spend in US dollars: `run`, `chat` and `warn` fractions of `run`; `tools`: `calls` and `seconds`), `retry` (`attempts` 1 to 10, `delayMilliseconds` 0 to 60000, `jitter`), `compaction` (`enabled`, `thresholdPercent` 50 to 95), `references` (paths of documents beside the file, whose text joins the instructions), `guardrails`, `escalations` and `interceptors` (ids of plugin guardrails, of guardrails that run only once the session is tainted, and of run interceptors, each `plugin:name`), `approvals` (a tool from `tools` mapped to `never`, `on-changes`, `always` or `blocked`) and `instructions`.',
   );
 
 /**
@@ -463,6 +471,7 @@ function definitionView(definition: AgentFileDefinition) {
     guardrails:
       definition.guardrails === undefined ? null : structuredClone([...definition.guardrails]),
     interceptors: definition.interceptors === undefined ? null : [...definition.interceptors],
+    escalations: definition.escalations === undefined ? null : [...definition.escalations],
     approvals: definition.approvals === undefined ? null : { ...definition.approvals },
     instructions: definition.instructions,
   };
@@ -684,7 +693,7 @@ export const agentDefinitionsCreateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Create an agent definition',
   description:
-    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `effort`, `tools`, `card`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `interceptors`, `approvals`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written. A `model` or `models` entry that the `modelPolicy` deployment or Bureau layer forbids is `Unprocessable` with the reason `model-policy-denied`, its issue naming `model` or `models.<index>`. An `effort` the `model` does not support (a tier outside its portable tiers) is `Unprocessable` with the reason `effort-not-supported`, its issue naming `effort`.',
+    'Writes a new agent file for `id`, the agent’s identifier: a lowercase letter or digit, then lowercase letters, digits, and hyphens, ending in a letter or digit. A caller derives it from the agent’s name; the name is only a label. `definition` is the file’s frontmatter (`name`, `description`, `model` written `<provider>/<model-or-alias>`, `effort`, `tools`, `card`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `escalations`, `interceptors`, `approvals`) and its body (`instructions`). A new agent does not opt into A2A unless `a2a` is `true`. The file is written to a temporary file and renamed into place, and the agent is in the catalog before the call returns. Requires `bureau.agents:write` unless the caller owns the deployment’s agents. A taken identifier, including the key of a code-defined agent, is a `Conflict`; a definition that would not load is `Unprocessable`, and nothing is written. A `model` or `models` entry that the `modelPolicy` deployment or Bureau layer forbids is `Unprocessable` with the reason `model-policy-denied`, its issue naming `model` or `models.<index>`. An `effort` the `model` does not support (a tier outside its portable tiers) is `Unprocessable` with the reason `effort-not-supported`, its issue naming `effort`.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: createInput,
@@ -730,7 +739,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   mcpExposable: false,
   summary: 'Replace an agent definition',
   description:
-    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `effort`, `skills`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `interceptors` or `approvals` keeps the file’s value, and a `limits` that omits `steps`, `cost` or `tools` keeps that limit (`null` removes any but `a2a`). An `effort` the `model` does not support, including a kept one after a change of `model`, is refused `Unprocessable` with the reason `effort-not-supported`. A `skills` entry the file does not already list must be a skill the deployment can grant: one from a source it does not trust, or one its catalog lacks, is refused `Unprocessable` with the reason `skill-not-grantable`. A `model` or `models` entry the `modelPolicy` deployment or Bureau layer forbids is refused `Unprocessable` with the reason `model-policy-denied`, though the file already names it: an update that keeps a model the policy has since come to forbid is refused, and one that changes it saves. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
+    'Replaces the agent file for `id` with `definition`, if it still hashes to `expectedHash` (the `hash` a read returned). Frontmatter keys Bureau does not know stay in the file, and an omitted `effort`, `skills`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `escalations`, `interceptors` or `approvals` keeps the file’s value, and a `limits` that omits `steps`, `cost` or `tools` keeps that limit (`null` removes any but `a2a`). An `effort` the `model` does not support, including a kept one after a change of `model`, is refused `Unprocessable` with the reason `effort-not-supported`. A `skills` entry the file does not already list must be a skill the deployment can grant: one from a source it does not trust, or one its catalog lacks, is refused `Unprocessable` with the reason `skill-not-grantable`. A `model` or `models` entry the `modelPolicy` deployment or Bureau layer forbids is refused `Unprocessable` with the reason `model-policy-denied`, though the file already names it: an update that keeps a model the policy has since come to forbid is refused, and one that changes it saves. A `definition` that omits `models` removes the file’s list, as omitting `tools` removes its tools. A file that changed since is a `StaleRevision` fault whose `currentRevision` is the hash now on disk, and nothing is written. A definition that changes nothing writes nothing and returns the same hash. A run in progress keeps the definition it started with. Requires `bureau.agents:write` unless the caller owns the deployment’s agents; anyone else is answered `NotFound`, as is an update of a code-defined key, before any file is read.',
   destructive: true,
   tags: ['Agents'],
   inputSchema: updateInput,
@@ -749,7 +758,7 @@ export const agentDefinitionsUpdateOperation = defineOperation<
   invoke: async ({ input, host, principal }) => {
     const definitions = requireWritableAgent(host, principal, input.id);
     try {
-      // An omitted `effort`, `skills`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `interceptors` or `approvals` keeps the file's value: the catalog applies that rule itself.
+      // An omitted `effort`, `skills`, `a2a`, `limits`, `retry`, `compaction`, `references`, `guardrails`, `escalations`, `interceptors` or `approvals` keeps the file's value: the catalog applies that rule itself.
       const result = await definitions.agents.update(input.id, definitionOf(input.definition), {
         expectedHash: input.expectedHash,
         savedBy: ownerOfPrincipal(principal),

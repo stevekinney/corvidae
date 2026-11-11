@@ -244,6 +244,46 @@ function checkGuardrails(overrides: AgentOverrides, contributions: AgentContribu
 }
 
 /**
+ * Refuses an `escalations` override that lists an id twice, or one no plugin contributes
+ * (COR-2386), as an agent file's `escalations` is refused (COR-2109).
+ */
+function checkEscalations(
+  overrides: AgentOverrides,
+  contributions: AgentContributions | undefined,
+) {
+  const listed = overrides.escalations ?? [];
+  const seen = new Set<string>();
+  const repeated: AgentFileIssue[] = [];
+  listed.forEach((id, index) => {
+    if (seen.has(id)) {
+      repeated.push({
+        path: `escalations.${index}`,
+        message: `"${id}" is listed more than once; list each escalation once`,
+      });
+    }
+    seen.add(id);
+  });
+  if (repeated.length > 0) {
+    throw refused(
+      'invalid-frontmatter',
+      'The overrides list an escalation more than once.',
+      repeated,
+    );
+  }
+  const unresolved = unresolvedContributions(
+    { escalations: listed },
+    contributions ?? NO_AGENT_CONTRIBUTIONS,
+  );
+  if (unresolved.length > 0) {
+    throw refused(
+      'reference-unresolved',
+      `The overrides list ${unresolved.map((issue) => issue.message).join('; ')}. An escalation is listed as plugin:name; check that the plugin is loaded, or remove the entry.`,
+      unresolved,
+    );
+  }
+}
+
+/**
  * Refuses an `interceptors` override that lists an id twice, or one no plugin contributes
  * (COR-2253), as an agent file's `interceptors` is refused: a run must not go on without a set the
  * save chose, and an id that resolves to nothing is a typo or a plugin that is gone. A restore of a
@@ -357,6 +397,7 @@ export function createCodeAgentOverrides(options: CodeAgentOverridesOptions): Co
     checkModels(parsed.data, options.descriptors(), options.modelPolicy());
     checkGuardrails(parsed.data, options.contributions);
     checkInterceptors(parsed.data, options.contributions);
+    checkEscalations(parsed.data, options.contributions);
     return parsed.data;
   }
 
