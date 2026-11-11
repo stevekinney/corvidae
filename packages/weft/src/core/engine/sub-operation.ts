@@ -15,6 +15,7 @@ import {
   executeSleepSubOperation,
   executeWaitSignalSubOperation,
 } from './coordination-branch-executors.ts';
+import { createSettledFulfilledEnvelope } from './deferred-consume-envelope.ts';
 import type { EngineInternals } from './internals.ts';
 import {
   executeActivityOperationResult,
@@ -29,6 +30,7 @@ import {
 } from './operations-coordination.ts';
 import type { OperationWithCallerStack } from './operations-router.ts';
 import type { StateOperationCallbacks } from './operations-state.ts';
+import { normalizeRejectionReason } from './parallel-dispatch.ts';
 import type { SpeculativeExecutionState } from './speculative-execution-state.ts';
 import { callMemoFunction } from './state-utilities.ts';
 import { workflowExecutionTokenForWorkflow } from './strategy-helpers.ts';
@@ -287,10 +289,13 @@ async function executeParallelSubOperation(
   if (operation.settle === 'settled') {
     try {
       const outcomes = await Promise.allSettled(subOperationPromises);
+      // Fulfilled values stay branded so the winning coordinator can finalize a
+      // deferred signal consume inside them; reasons take their durable form so
+      // the live outcome equals the one a replay reconstructs.
       return outcomes.map((outcome) =>
         outcome.status === 'fulfilled'
-          ? { status: 'fulfilled', value: outcome.value }
-          : { status: 'rejected', reason: outcome.reason },
+          ? createSettledFulfilledEnvelope(outcome.value)
+          : { status: 'rejected', reason: normalizeRejectionReason(outcome.reason) },
       );
     } finally {
       signal?.removeEventListener('abort', abortNestedAll);

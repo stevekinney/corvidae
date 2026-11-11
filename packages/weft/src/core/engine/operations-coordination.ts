@@ -116,7 +116,7 @@ export async function processParallelOperation(
     const operationIds = operation.operations.map((sub, i) =>
       typeof sub.operationId === 'string' ? sub.operationId : `parallel:${operation.step}:${i}`,
     );
-    const { slots, hasFirstError, firstError, errors } = await dispatchBranchesAllSettled(
+    const { slots, hasFirstError, firstError } = await dispatchBranchesAllSettled(
       operationIds,
       resumedSlots,
       // Branches return their RAW result (a wait-signal envelope stays unfinalized)
@@ -169,14 +169,14 @@ export async function processParallelOperation(
       throw firstError;
     }
     return operation.settle === 'settled'
-      ? slots.map((slot, index) =>
+      ? slots.map((slot) =>
           slot.status === 'fulfilled'
             ? { status: 'fulfilled', value: slot.value }
             : {
                 status: 'rejected',
                 reason:
                   slot.status === 'rejected'
-                    ? (errors[index] ?? slot.reason)
+                    ? slot.reason
                     : { name: 'UnsettledBranch', message: 'Branch did not settle' },
               },
         )

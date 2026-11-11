@@ -153,20 +153,25 @@ export function* all(
   return values;
 }
 
+/** The engine settles reasons as `{ name, message }`; anything else is coerced to it. */
+function durableReason(reason: unknown): { name: string; message: string } {
+  if (typeof reason === 'object' && reason !== null) {
+    const { name, message } = reason as { name?: unknown; message?: unknown };
+    if (typeof name === 'string' && typeof message === 'string') return { name, message };
+  }
+  return { name: 'Error', message: String(reason) };
+}
+
 function buildSettledEntry(values: unknown[], operationId: string): ParallelOperationCacheEntry {
   return createParallelOperationCacheEntry(
     'all-settled',
     values.map((value, index) => {
-      const outcome = value as {
-        status?: string;
-        value?: unknown;
-        reason?: { name: string; message: string };
-      };
+      const outcome = value as { status?: string; value?: unknown; reason?: unknown };
       return outcome.status === 'fulfilled'
         ? { status: 'fulfilled', value: outcome.value, operationId: `${operationId}:${index}` }
         : {
             status: 'rejected',
-            reason: outcome.reason ?? { name: 'UnknownError', message: 'Branch rejected' },
+            reason: durableReason(outcome.reason),
             operationId: `${operationId}:${index}`,
           };
     }),

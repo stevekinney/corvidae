@@ -29,7 +29,7 @@ async function flush(): Promise<void> {
 }
 
 describe('ctx.all partial-failure preservation', () => {
-  it('exposes ordered allSettled outcomes with original rejection reasons', async () => {
+  it('exposes ordered allSettled outcomes with durable rejection reasons', async () => {
     const engine = new Engine();
     const first = async () => 'first';
     const second = async () => {
@@ -45,6 +45,46 @@ describe('ctx.all partial-failure preservation', () => {
       { status: 'rejected', reason: expect.objectContaining({ message: 'settled branch failed' }) },
     ]);
     engine[Symbol.dispose]();
+  });
+
+  it('recovers persisted allSettled rejections and replays the outcomes the live run saw', async () => {
+    const { TestEngine } = await import('../../testing/test-engine.ts');
+    const { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING } = await import('../engine.ts');
+    const observed: unknown[] = [];
+    let calls = 0;
+    const throwsError = async () => {
+      calls++;
+      throw new TypeError('typed failure');
+    };
+    const throwsString = async () => {
+      calls++;
+      throw 'plain failure';
+    };
+    const settledThenPark = async function* (ctx: WorkflowContext) {
+      const outcomes = yield* ctx.allSettled([ctx.run(throwsError), ctx.run(throwsString)]);
+      observed.push(outcomes);
+      yield* ctx.waitForSignal('continue');
+      return outcomes;
+    };
+    await using original = new TestEngine();
+    original.register(workflow({ name: 'settled-park' }).execute(settledThenPark));
+    await original.start('settled-park', null, { id: 'settled-park-run' });
+    await original[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING]('settled-park-run');
+
+    await using restarted = original.recover();
+    restarted.register(workflow({ name: 'settled-park' }).execute(settledThenPark));
+    const [handle] = await restarted.recoverAll();
+    await restarted[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING]('settled-park-run');
+    await restarted.signal('settled-park-run', 'continue', null);
+    const expected = [
+      { status: 'rejected', reason: { name: 'TypeError', message: 'typed failure' } },
+      { status: 'rejected', reason: { name: 'Error', message: 'plain failure' } },
+    ];
+    expect(await handle!.result()).toEqual(expected);
+    // The live run and every replay after recovery see the same durable outcomes.
+    expect(observed.length).toBeGreaterThan(1);
+    for (const outcomes of observed) expect(outcomes).toEqual(expected);
+    expect(calls).toBe(2);
   });
 
   it('replays a persisted all-settled cache only after priming the branch generators', () => {
@@ -70,9 +110,10 @@ describe('ctx.all partial-failure preservation', () => {
       ]),
     });
     const operation = context.allSettled([
-      (function* () {
+      (function* (): Generator<never, string, unknown> {
         primed++;
         yield { type: 'memo', operationId: 'fresh' } as never;
+        return 'unreached';
       })(),
     ]);
     expect(operation.next()).toEqual({

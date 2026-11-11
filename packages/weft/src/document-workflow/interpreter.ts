@@ -163,6 +163,23 @@ function mapSource(
   return source;
 }
 
+/**
+ * A settled round reports a rejection in its durable `{ name, message }` form, on
+ * the live run and on a replay alike. Rebuild an `Error` before throwing it into
+ * the item's generator so retry policies (`nonRetryableErrors`) and the run's
+ * failure see an error, not a plain record.
+ */
+function rejectionError(reason: unknown): Error {
+  if (reason instanceof Error) return reason;
+  const { name, message } = (typeof reason === 'object' && reason !== null ? reason : {}) as {
+    name?: unknown;
+    message?: unknown;
+  };
+  const error = new Error(typeof message === 'string' ? message : String(reason));
+  if (typeof name === 'string') error.name = name;
+  return error;
+}
+
 function* runMapBatch(
   context: WorkflowContext,
   generators: Generator<ContextOperationRequest, unknown, unknown>[],
@@ -207,7 +224,7 @@ function* runMapBatch(
       nextPending[resultIndex]!.resume =
         outcome.status === 'fulfilled'
           ? { kind: 'next', value: outcome.value }
-          : { kind: 'throw', error: outcome.reason };
+          : { kind: 'throw', error: rejectionError(outcome.reason) };
     }
     pending = nextPending;
   }

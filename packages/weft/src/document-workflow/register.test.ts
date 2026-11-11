@@ -30,6 +30,7 @@ let hangIdentify = false;
 let mapActive = 0;
 let mapMaximum = 0;
 const retryMapAttempts: number[] = [];
+let validationMapAttempts = 0;
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -70,6 +71,21 @@ const host: DocumentWorkflowHost = {
           throw new Error('retry mapped item');
         }
         return item * 10;
+      },
+    },
+    validationMap: {
+      retry: {
+        maxAttempts: 3,
+        initialBackoff: 0,
+        backoffMultiplier: 1,
+        maxBackoff: 0,
+        nonRetryableErrors: ['ValidationError'],
+      },
+      execute: () => {
+        validationMapAttempts++;
+        const error = new Error('invalid mapped item');
+        error.name = 'ValidationError';
+        throw error;
       },
     },
     mapFail: async ({ previous }) => {
@@ -226,6 +242,19 @@ describe('registerWorkflowDocuments()', () => {
     const run = await engine.start('map-retry', null, { id: 'map-retry-run' });
     expect(await run.result()).toEqual([10, 20]);
     expect(retryMapAttempts).toEqual([1, 2, 1]);
+  });
+
+  it('fails a mapped activity on a non-retryable error without retrying it', async () => {
+    validationMapAttempts = 0;
+    const document = createDocument('map-non-retryable', [
+      { kind: 'activity', handler: 'version', input: { items: [1] } },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'validationMap' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-non-retryable', null, { id: 'map-non-retryable-run' });
+    expect(await throwingRejectionOf(run.result())).toThrow('invalid mapped item');
+    expect(validationMapAttempts).toBe(1);
   });
 
   it('retries a nested mapped activity through its originating item', async () => {

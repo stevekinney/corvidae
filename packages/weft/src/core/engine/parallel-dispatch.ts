@@ -48,8 +48,17 @@ export type ParallelDispatchResult = {
    * rethrow this as-is to preserve that contract.
    */
   firstError: unknown;
-  errors: unknown[];
 };
+
+/**
+ * The durable, replay-stable form of a rejection reason: `Error` objects do not
+ * round-trip through MessagePack, and a string or number reason would fail the
+ * cache-entry validator, so every persisted or settled reason is `{ name, message }`.
+ */
+export function normalizeRejectionReason(error: unknown): { name: string; message: string } {
+  const reasonError = error instanceof Error ? error : new Error(String(error));
+  return { name: reasonError.name, message: reasonError.message };
+}
 
 /**
  * Mutable accumulator for the first rejection observed across a fan-out
@@ -108,7 +117,6 @@ export async function dispatchBranchesAllSettled(
   });
 
   const capture = createFirstRejectionCapture();
-  const errors: unknown[] = [];
 
   await Promise.all(
     operationIds.map(async (operationId, index) => {
@@ -123,19 +131,13 @@ export async function dispatchBranchesAllSettled(
         // Persist normalized name/message because Error objects don't
         // round-trip through MessagePack, but capture the original
         // reason to rethrow.
-        const reasonError = error instanceof Error ? error : new Error(String(error));
-        slots[index] = {
-          status: 'rejected',
-          reason: { name: reasonError.name, message: reasonError.message },
-          operationId,
-        };
+        slots[index] = { status: 'rejected', reason: normalizeRejectionReason(error), operationId };
         captureFirstRejection(capture, error);
-        errors[index] = error;
       }
     }),
   );
 
-  return { slots, hasFirstError: capture.hasFirstError, firstError: capture.firstError, errors };
+  return { slots, hasFirstError: capture.hasFirstError, firstError: capture.firstError };
 }
 
 /**
