@@ -139,7 +139,7 @@ import type { ChatAdapter } from '@lostgradient/chat';
 
 const adapter: Pick<ChatAdapter, 'sendMessage' | 'describeApproval'> = {
   sendMessage: async () => undefined,
-  describeApproval: ({ name }, action) =>
+  describeApproval: ({ name }) =>
     name === 'issue-refund'
       ? {
           irreversible: true,
