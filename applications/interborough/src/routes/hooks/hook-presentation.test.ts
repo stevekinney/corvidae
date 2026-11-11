@@ -115,7 +115,7 @@ describe('an event in plain words', () => {
     expect(eventArea('__proto__.happened')).toBe('Other');
   });
 
-  test('is offered with its raw kind beside it, sorted into its area', () => {
+  test('is offered as a clause with its raw kind beside it, sorted into its area', () => {
     const choices = eventChoices(KINDS, 'webhook');
     expect(choices.map((choice) => choice.group)).toEqual([
       'Chats',
@@ -125,8 +125,9 @@ describe('an event in plain words', () => {
     ]);
     expect(choices.find((choice) => choice.value === 'review.requested')).toEqual({
       value: 'review.requested',
-      label: 'Review requested',
-      description: 'review.requested',
+      label: 'A review is waiting',
+      code: 'review.requested',
+      description: '',
       group: 'Reviews',
       disabled: false,
     });

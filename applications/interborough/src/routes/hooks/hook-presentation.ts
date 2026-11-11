@@ -71,10 +71,13 @@ export function eventWords(kind: string): string {
   return sentence === '' ? kind : `${sentence.charAt(0).toUpperCase()}${sentence.slice(1)}`;
 }
 
-/** One event the picker offers: plain words, the raw kind beside them, and its area. */
+/** One event the picker offers: the clause that names it, its raw kind small beside it, and its area. */
 export type EventChoice = {
   readonly value: string;
   readonly label: string;
+  /** The raw kind, drawn small and monospaced beside the label. */
+  readonly code: string;
+  /** Why the action cannot listen to this event, or empty when it can. */
   readonly description: string;
   readonly group: string;
   readonly disabled: boolean;
@@ -102,8 +105,9 @@ export function eventChoices(
       const refusal = eventRefusal(action, event);
       return {
         value: event.kind,
-        label: eventWords(event.kind),
-        description: refusal === undefined ? event.kind : `${event.kind}. ${refusal}`,
+        label: eventOptionLabel(event.kind),
+        code: event.kind,
+        description: refusal ?? '',
         group: eventArea(event.kind),
         disabled: refusal !== undefined,
       };
@@ -112,7 +116,7 @@ export function eventChoices(
 }
 
 /**
- * Whether an event matches what was typed: the plain words, the raw kind, the area and what the
+ * Whether an event matches what was typed: its words, the raw kind, the area and what the
  * Bureau says the event means, so a person can search by any of them. `meanings` holds the last.
  */
 export function eventMatches(
@@ -127,6 +131,7 @@ export function eventMatches(
   if (terms.length === 0) return true;
   const haystack = [
     choice.label,
+    eventWords(choice.value),
     choice.value,
     choice.group ?? '',
     meanings.get(choice.value) ?? '',
@@ -312,7 +317,7 @@ export function eventOptionLabel(kind: string): string {
 }
 
 /** The events of a hook as a clause: one, two joined by `or`, or the first and how many more. */
-function eventClauses(events: readonly string[]): string {
+export function eventClauses(events: readonly string[]): string {
   const clauses = events.map(eventClause);
   const [first, second] = clauses;
   if (first === undefined) return HOOKS_COPY.sentence.noEvent;

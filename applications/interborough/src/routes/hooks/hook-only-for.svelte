@@ -25,13 +25,28 @@
     form: HookFormState;
     /** Every event kind the Bureau describes. */
     kinds: readonly HookEventKind[];
+    /** Why the subject cannot be accepted yet (a kind chosen with none picked), said beside it. */
+    error?: string | undefined;
   }
 
-  let { form, kinds }: Props = $props();
+  let { form, kinds, error }: Props = $props();
 
   const copy = HOOKS_COPY.editor.onlyFor;
 
   const allowed = $derived(scopeKindsFor(form.events, kinds));
+  /**
+   * What not limiting the hook is called: when the events narrow by one kind of subject only, "Any
+   * workflow" says what the hook covers; with several kinds to choose from it is "Everything". The
+   * line under the field says why the events narrow by a workflow when that is all they do.
+   */
+  const everything = $derived.by(() => {
+    const [only] = allowed;
+    if (allowed.length !== 1 || only === undefined) return copy.everything;
+    return only === 'workflow' ? copy.anyWorkflow : only === 'agent' ? copy.anyAgent : copy.anySchedule;
+  });
+  const description = $derived(
+    allowed.length === 1 && allowed[0] === 'workflow' ? copy.workflowDescription : copy.description,
+  );
 
   const agents = createQuery(
     () => ({
@@ -62,7 +77,7 @@
   );
 
   const kindOptions = $derived([
-    { value: '', label: copy.everything },
+    { value: '', label: everything },
     ...allowed.map((kind) => ({ value: kind, label: copy.kinds[kind] })),
     // A kind the events no longer allow stays shown: the page says why it cannot be saved.
     ...(isScopeKind(form.scopeKind) && !allowed.includes(form.scopeKind)
@@ -120,7 +135,7 @@
   <Select
     id="ib-hook-only-for"
     label={copy.label}
-    description={copy.description}
+    {description}
     options={kindOptions}
     value={form.scopeKind}
     onchange={(event) => chooseKind(event.currentTarget.value)}
@@ -129,6 +144,7 @@
     <Select
       id="ib-hook-only-for-subject"
       label={copy.subject[form.scopeKind]}
+      {...error === undefined ? {} : { error }}
       options={subjectOptions}
       value={form.scopeId}
       onchange={(event) => (form.scopeId = event.currentTarget.value)}
