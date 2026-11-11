@@ -114,7 +114,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       /cinder-sr-only/,
     );
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2, Times show in Central time (CST)',
+      'Monday, Nov 2. Times show in Central time (CST).',
     );
   });
 
@@ -305,7 +305,7 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(empty.getByRole('link', { name: 'Open Reviews' })).toBeVisible();
     const clear = page.getByTestId('attention-clear');
     await expect(clear).toContainText(
-      'Nothing needs attention, Storage, schedules, providers and hooks are fine.',
+      'Nothing needs attention. Storage, schedules, providers and hooks are fine.',
     );
     await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
@@ -599,7 +599,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(body).toHaveAttribute('aria-busy', 'true');
     // The date line, the four count labels and the section headings are real text.
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2, Times show in Central time (CST)',
+      'Monday, Nov 2. Times show in Central time (CST).',
     );
     const counts = page.getByTestId('home-loading-counts').locator('.cinder-statistic');
     await expect(counts.locator('.cinder-statistic__label')).toHaveText([
@@ -676,7 +676,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     // The page keeps its date line, and says the load was canceled in place of the cards.
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'canceled');
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2, Times show in Central time (CST)',
+      'Monday, Nov 2. Times show in Central time (CST).',
     );
     const canceled = page.getByTestId('home-canceled');
     await expect(canceled).toContainText('Loading canceled');
@@ -930,7 +930,7 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
       /cinder-sr-only/,
     );
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2, Times show in Central time (CST)',
+      'Monday, Nov 2. Times show in Central time (CST).',
     );
     // Four count cards in two columns, with a dot only on a non-zero bad count.
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
