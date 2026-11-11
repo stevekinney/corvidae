@@ -17,11 +17,12 @@ import {
   taskFixture,
   toolApprovalFixture,
 } from '../../../lib/bureau-fixtures.test-support.ts';
+import type { Goal } from '../../../lib/bureau-goals.ts';
+import type { BureauReview } from '../../../lib/bureau-reviews.ts';
 import type { TaskView } from '../../../lib/bureau-tasks.ts';
 import {
   emptyBureauWorld,
   installBureauWorld,
-  type BureauWorld,
   type BureauWorldStub,
 } from '../../../lib/bureau-world.test-support.ts';
 import { AUTHORIZATION_SCOPES } from '../../../lib/scopes.svelte.ts';
