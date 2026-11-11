@@ -7,9 +7,11 @@ import {
   chatCountText,
   chatUsageByAgent,
   newChatPath,
+  referenceSizeText,
   shortVersion,
   tabCountText,
   toolCountText,
+  versionLine,
 } from './agent-presentation.ts';
 
 const MEDIA = { modalities: {}, mimeFamilies: [], mediaLimits: [] };
@@ -333,5 +335,44 @@ describe('an agent’s tab counts and file version', () => {
   test('names a file version by the short form of its hash', () => {
     expect(shortVersion('0123456789abcdef')).toBe('01234567');
     expect(shortVersion('abc')).toBe('abc');
+  });
+});
+
+describe('versionLine', () => {
+  test('says the version, the day it was saved and that you saved it', () => {
+    expect(
+      versionLine(
+        { revision: 4, savedAt: '2026-10-29T15:00:00.000Z', savedBy: 'anonymous:local' },
+        'UTC',
+      ),
+    ).toBe('Version 4, saved Oct 29 by you');
+  });
+
+  test('says a version made by editing the file was saved in the file, and reads the day in the zone given', () => {
+    expect(
+      versionLine(
+        { revision: 2, savedAt: '2026-10-29T01:00:00.000Z', savedBy: null },
+        'America/Chicago',
+      ),
+    ).toBe('Version 2, saved Oct 28 in the file');
+  });
+
+  test('says nothing when the time cannot be read', () => {
+    expect(
+      versionLine({ revision: 1, savedAt: 'not a date', savedBy: null }, 'UTC'),
+    ).toBeUndefined();
+  });
+});
+
+describe('referenceSizeText', () => {
+  test('drops the decimal of a whole number of units and keeps the rest', () => {
+    expect(referenceSizeText(4096)).toBe('4 KB');
+    expect(referenceSizeText(1536)).toBe('1.5 KB');
+    expect(referenceSizeText(214_016)).toBe('209 KB');
+    expect(referenceSizeText(512)).toBe('512 B');
+  });
+
+  test('says nothing when the Bureau did not give a size', () => {
+    expect(referenceSizeText(undefined)).toBeUndefined();
   });
 });

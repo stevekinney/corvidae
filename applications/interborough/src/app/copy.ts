@@ -3738,17 +3738,25 @@ export const AGENT_PAGE_COPY = {
     /** Why New chat is held: the reason its tooltip gives. */
     newChatReason: (plugin: string): string => `Enable ${plugin} to start a chat`,
   },
+  /**
+   * The Chats tab (board PageAgent, rows 38e to 38g and 39p): one filter row of the state segments
+   * with their counts, a search, Started by and Sort by, over the chats under day bands. Sort by
+   * reads "Newest first" while it is clear: the chats by their last activity.
+   */
   chats: {
-    stateLabel: 'Show chats that are',
-    states: { all: 'All', 'needs-you': 'Needs you', running: 'Running' },
+    filtersLabel: 'Filter this agent’s chats',
+    stateLabel: 'Status',
+    states: { all: 'All', 'needs-you': 'Waiting on you', running: 'Running' },
     searchLabel: 'Search chats by title',
     searchPlaceholder: 'Search chats',
     startedByLabel: 'Started by',
-    startedBy: { any: 'Anyone', chat: 'You', schedule: 'A schedule', goal: 'A goal' },
+    startedByAnyone: 'Anyone',
+    startedBy: { chat: 'You', schedule: 'A schedule', goal: 'A goal' },
     sortLabel: 'Sort by',
-    sorts: { updated: 'Last activity', newest: 'Newest', oldest: 'Oldest' },
-    emptyTitle: 'No chats with this agent yet',
-    emptyDescription: 'A chat you start with it is listed here.',
+    sortDefault: 'Newest first',
+    sorts: { newest: 'Newest started', oldest: 'Oldest first' },
+    emptyTitle: 'No chats yet',
+    emptyDescription: (agent: string): string => `Chats with ${agent} appear here, newest first.`,
     filteredTitle: 'No chats match',
     filteredDescription: 'None of this agent’s chats match these filters.',
     clearFilters: 'Clear filters',
@@ -3769,16 +3777,29 @@ export const AGENT_PAGE_COPY = {
     forbidden: 'You may not add agents.',
     failed: 'The agent could not be duplicated.',
   },
+  /**
+   * The Instructions tab (board PageAgent, rows 38i, 38j and 39r): the version line, the agent
+   * file's body as a document, and the reference documents it reads, which are changed in the
+   * editor, so the tab only lists them.
+   */
   instructions: {
     heading: 'Instructions',
     builtIn: 'This agent is built in, so its instructions cannot be edited here.',
     emptyTitle: 'No instructions',
     emptyDescription: 'This agent has no instructions of its own.',
     emptyAction: 'Add instructions',
+    /** The line over the document: "Version 4, saved Oct 29 by you". A save made by editing the file has no person to name. */
+    version: (revision: number, saved: string, byYou: boolean): string =>
+      `Version ${String(revision)}, saved ${saved}${byYou ? ' by you' : ' in the file'}`,
     referencesHeading: 'Reference documents',
-    referencesDescription: 'Documents the agent reads, as paths beside its file.',
-    noReferencesTitle: 'No reference documents',
-    noReferencesDescription: 'This agent reads no documents besides its instructions.',
+    referencesDescription: 'Read with every chat',
+    referencesNote:
+      'Documents are added and removed in the editor, so each change becomes a version.',
+    editAgent: 'Edit agent',
+    /** The one muted line of an agent that reads no document: the editor, its one link, between the two halves. */
+    noReferencesBefore: 'None added. Add one in ',
+    noReferencesEditor: 'the editor',
+    noReferencesAfter: '.',
   },
   access: {
     heading: 'Access',

@@ -15,9 +15,11 @@
    * are doing and how many there are), and, for an agent that needs a model while no provider is
    * connected, the reason it cannot answer with a link to connect one. Its actions are Edit for an
    * agent file the owner keeps, Duplicate for one that cannot be edited here, and New chat, the one
-   * primary action. The tab bar carries each tab's count once it is known. Choosing a tab writes its
-   * address and keeps the page mounted, so the header and the tab bar never reload; a tab only
-   * opens on a click or Enter, because each one is a history entry.
+   * primary action, except that it is secondary while the Chats tab shows its own empty state,
+   * whose New chat is then the page's only primary (row 39p). The tab bar carries each tab's count
+   * once it is known. Choosing a tab writes its address and keeps the page mounted, so the header
+   * and the tab bar never reload; a tab only opens on a click or Enter, because each one is a
+   * history entry.
    *
    * Each tab's body words its own loading, failure and old data (`agent-tab-state.svelte`), so the
    * header and the tabs stay live while it does. While a tab shows data its last read failed to
@@ -70,6 +72,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import AgentAccess from './agent-access.svelte';
+  import type { ChatCounts } from './agent-chat-filters.ts';
   import AgentChats from './agent-chats.svelte';
   import AgentFacts from './agent-facts.svelte';
   import AgentHooks from './agent-hooks.svelte';
@@ -142,6 +145,19 @@
     chats.data === undefined ? undefined : chatUsageByAgent(chats.data).get(id),
   );
   const status = $derived(agentStatusLine(usage, { known: chats.data !== undefined, unavailable }));
+  /** The counts the Chats tab's segments carry: the same chats the header counts, by state. */
+  const chatCounts = $derived<ChatCounts | undefined>(
+    chats.data === undefined
+      ? undefined
+      : {
+          all: usage?.count ?? 0,
+          'needs-you': usage?.waiting ?? 0,
+          running: usage?.running ?? 0,
+        },
+  );
+  /** Whether the Chats tab is its empty state, where its own New chat is the page's one primary (row 39p). */
+  let chatsEmpty = $state(false);
+  const newChatVariant = $derived(activeTab === 'chats' && chatsEmpty ? 'secondary' : 'primary');
 
   // Whether any provider holds a key, the rule the first-run checklist states. An agent that runs
   // on a model cannot answer without one; one that names no model, such as a script, can.
@@ -339,7 +355,7 @@
   {#if unavailable}
     <!-- Held, not removed: it keeps its place and its focus, and says why it is off. -->
     <Tooltip text={copy.unavailable.newChatReason(pluginTitle)}>
-      <Button variant="primary" size="sm" aria-disabled="true">
+      <Button variant={newChatVariant} size="sm" aria-disabled="true">
         {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
         {CHAT_COPY.newChat}
       </Button>
@@ -347,7 +363,7 @@
   {:else}
     <Button
       href={router.href(newChatPath(id))}
-      variant="primary"
+      variant={newChatVariant}
       size="sm"
       onclick={(event) => goTo(event, newChatPath(id))}
     >
@@ -439,7 +455,7 @@
         </Tabs.List>
         <Tabs.Panel value="chats">
           {@render unavailableBanner()}
-          <AgentChats {id} />
+          <AgentChats {id} name={name ?? id} counts={chatCounts} bind:empty={chatsEmpty} />
         </Tabs.Panel>
         <Tabs.Panel value="instructions">
           {@render unavailableBanner()}
@@ -451,7 +467,7 @@
             updatedAt={definition.dataUpdatedAt}
             onRetry={() => void definition.refetch()}
           >
-            <AgentInstructions {editPath} {plugin} detail={definition.data} />
+            <AgentInstructions {id} {editPath} {plugin} detail={definition.data} />
           </AgentTabState>
         </Tabs.Panel>
         <Tabs.Panel value="access">
@@ -469,7 +485,7 @@
         </Tabs.Panel>
         <Tabs.Panel value="hooks">
           {@render unavailableBanner()}
-          <AgentHooks {id} />
+          <AgentHooks {id} name={name ?? id} />
         </Tabs.Panel>
         <Tabs.Panel value="memory">
           {@render unavailableBanner()}

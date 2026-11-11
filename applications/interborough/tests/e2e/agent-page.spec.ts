@@ -51,40 +51,41 @@ test.describe('the Chats tab', () => {
     for (let index = 0; index < 22; index += 1) await chat(request, `${label} filler ${index}`);
 
     await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}`);
-    const list = page.getByRole('navigation', { name: 'Chats with this agent' });
-    await expect(list.getByRole('button', { name: /filler/ }).first()).toBeVisible();
-    await expect(list.getByRole('button', { name: new RegExp(`needle-${label}`) })).toHaveCount(0);
+    const list = page.getByTestId('agent-chats');
+    await expect(list.getByRole('link', { name: /filler/ }).first()).toBeVisible();
+    await expect(list.getByRole('link', { name: new RegExp(`needle-${label}`) })).toHaveCount(0);
 
+    // The filter bar searches as it is typed in.
     const search = page.getByRole('searchbox', { name: CHATS.searchLabel });
     await search.fill(`needle-${label}`);
-    await search.press('Enter');
 
-    await expect(list.getByRole('button', { name: new RegExp(`needle-${label}`) })).toHaveCount(1);
-    await expect(list.getByRole('button', { name: /filler/ })).toHaveCount(0);
+    await expect(list.getByRole('link', { name: new RegExp(`needle-${label}`) })).toHaveCount(1);
+    await expect(list.getByRole('link', { name: /filler/ })).toHaveCount(0);
     // The request carried the search, so the Bureau cut the page from matches.
     await expect(page.getByRole('button', { name: 'Load more' })).toHaveCount(0);
 
     // A chat that has ended is neither running nor waiting, so those states hold none of them.
-    await page.getByRole('radio', { name: CHATS.states.running }).click();
+    await page.getByRole('radio', { name: new RegExp(`^${CHATS.states.running}`) }).click();
     await expect(page.getByText(CHATS.filteredTitle)).toBeVisible();
-    await page.getByRole('radio', { name: CHATS.states['needs-you'] }).click();
+    await page.getByRole('radio', { name: new RegExp(`^${CHATS.states['needs-you']}`) }).click();
     await expect(page.getByText(CHATS.filteredTitle)).toBeVisible();
     await page.getByRole('button', { name: CHATS.clearFilters }).click();
-    await expect(list.getByRole('button', { name: /filler/ }).first()).toBeVisible();
+    await expect(list.getByRole('link', { name: /filler/ }).first()).toBeVisible();
   });
 
   test('says a schedule started none of an agent’s chats', async ({ page, request }) => {
     await chat(request, 'started by a person');
     await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}`);
 
-    await page.getByLabel(CHATS.startedByLabel).selectOption('schedule');
+    const startedBy = page.getByRole('combobox', { name: CHATS.startedByLabel });
+    await startedBy.click();
+    await page.getByRole('option', { name: CHATS.startedBy.schedule }).click();
 
     await expect(page.getByText(CHATS.filteredTitle)).toBeVisible();
-    await page.getByLabel(CHATS.startedByLabel).selectOption('chat');
+    await startedBy.click();
+    await page.getByRole('option', { name: CHATS.startedBy.chat }).click();
     await expect(
-      page
-        .getByRole('navigation', { name: 'Chats with this agent' })
-        .getByRole('button', { name: /started by a person/ }),
+      page.getByTestId('agent-chats').getByRole('link', { name: /started by a person/ }),
     ).toBeVisible();
   });
 
@@ -118,10 +119,12 @@ test.describe('the Instructions tab', () => {
     const body = page.getByTestId('agent-instructions-body');
     await expect(body.getByRole('heading', { name: 'Be careful' })).toBeVisible();
     await expect(body.locator('strong')).toHaveText('every');
-    await expect(page.getByText(AGENT_PAGE_COPY.instructions.noReferencesTitle)).toBeVisible();
-    // The header holds the one Edit; the tab does not repeat it.
-    await expect(page.getByRole('main').getByRole('link', { name: 'Edit' })).toHaveCount(1);
-    await page.getByTestId('agent-header').getByRole('link', { name: 'Edit' }).click();
+    await expect(page.getByTestId('agent-no-references')).toContainText('None added.');
+    // The header holds the one Edit; the tab links the editor in words of its own.
+    await expect(
+      page.getByRole('main').getByRole('link', { name: 'Edit', exact: true }),
+    ).toHaveCount(1);
+    await page.getByTestId('agent-header').getByRole('link', { name: 'Edit', exact: true }).click();
     await expect(page).toHaveURL(new RegExp(`/agents/${id}/edit$`));
   });
 

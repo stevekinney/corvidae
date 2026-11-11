@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { RETRY_LABEL } from '../../app/copy.ts';
@@ -7,7 +7,13 @@ import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, CONTEXT, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
 import { HOOKS_COPY } from '../hooks/hook-copy.ts';
-import { chatListRequest, DEFAULT_CHAT_FILTERS } from './agent-chat-filters.ts';
+import {
+  chatListRequest,
+  DEFAULT_CHAT_FILTERS,
+  sortOf,
+  startedByOf,
+  stateOf,
+} from './agent-chat-filters.ts';
 import AgentDetail from './agent-detail.svelte';
 
 let restore: (() => void) | undefined;
@@ -80,13 +86,28 @@ describe('the request the Chats tab makes', () => {
   });
 });
 
+describe('what the filter row reports', () => {
+  test('reads each select as the filter it stands for, and the clearing row as no filter', () => {
+    expect(startedByOf('schedule')).toBe('schedule');
+    expect(startedByOf('goal')).toBe('goal');
+    expect(startedByOf('')).toBe('any');
+    expect(startedByOf('nonsense')).toBe('any');
+    expect(sortOf('oldest')).toBe('oldest');
+    expect(sortOf('newest')).toBe('newest');
+    expect(sortOf('')).toBe('updated');
+    expect(stateOf('running')).toBe('running');
+    expect(stateOf('needs-you')).toBe('needs-you');
+    expect(stateOf('nonsense')).toBe('all');
+  });
+});
+
 describe('the Chats tab', () => {
   test('asks for the state a person picks and reads the first page again', async () => {
     landAt('/agents/researcher');
     const served = serve();
     const { findByRole } = mount();
 
-    await fireEvent.click(await findByRole('radio', { name: 'Needs you' }));
+    await fireEvent.click(await findByRole('radio', { name: /^Waiting on you/ }));
 
     await waitFor(() =>
       expect(lastListed(served)).toMatchObject({ activity: 'awaiting-input', offset: 0 }),
@@ -100,10 +121,6 @@ describe('the Chats tab', () => {
 
     const search = await findByRole('searchbox', { name: 'Search chats by title' });
     await fireEvent.input(search, { target: { value: 'refund' } });
-    // Enter in the field submits the form around it.
-    const form = search.closest('form');
-    if (form === null) throw new Error('expected the search to be a form');
-    await fireEvent.submit(form);
 
     await waitFor(() => expect(lastListed(served)).toMatchObject({ titleContains: 'refund' }));
   });
@@ -119,12 +136,15 @@ describe('the Chats tab', () => {
     const { container, findByRole, findByText } = mount();
     await findByText('Plan the week');
 
-    await fireEvent.click(await findByRole('radio', { name: 'Running' }));
+    await fireEvent.click(await findByRole('radio', { name: /^Running/ }));
 
     await findByText('No chats match');
     expect(container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
-    // No inline status line stands in for the empty state.
-    expect(container.querySelector('[role="status"]')).toBeNull();
+    // No inline status line stands in for the empty state (the filter bar's own live region is not one).
+    const lines = [...container.querySelectorAll('[role="status"]')].filter(
+      (line) => line.closest('[role="search"]') === null,
+    );
+    expect(lines).toHaveLength(0);
     await fireEvent.click(await findByRole('button', { name: 'Clear filters' }));
     await findByText('Plan the week');
     expect(lastListed(served)?.['activity']).toBeUndefined();
@@ -158,15 +178,15 @@ describe('the Chats tab', () => {
 
     await findByText('Waiting chat');
 
-    const rows = [...container.querySelectorAll('.ib-agent-chat')];
-    expect(rows.map((row) => row.querySelector('.ib-agent-chat__title')?.textContent)).toEqual([
-      'Waiting chat',
-      'Running chat',
-      'Quiet chat',
-    ]);
-    expect(rows[0]?.textContent).toContain('Needs you');
+    const rows = [...container.querySelectorAll('[data-chat]')];
+    expect(rows.map((row) => row.getAttribute('data-chat'))).toEqual(['a', 'b', 'c']);
+    expect(rows[0]?.textContent).toContain('Waiting chat');
+    expect(rows[1]?.textContent).toContain('Running chat');
+    expect(rows[2]?.textContent).toContain('Quiet chat');
+    // Each row leads with its status word, which is the Waiting on you of the chat list.
+    expect(rows[0]?.textContent).toContain('Waiting on you');
     expect(rows[1]?.textContent).toContain('Running');
-    expect(rows[2]?.textContent).not.toContain('Running');
+    expect(rows[2]?.textContent).toContain('Done');
   });
 
   test('says an agent with no chats has none, with New chat as the action', async () => {
@@ -174,8 +194,9 @@ describe('the Chats tab', () => {
     serve({ 'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }) });
     const { container, findByText } = mount();
 
-    await findByText('No chats with this agent yet');
+    await findByText('No chats yet');
 
+    expect(container.textContent).toContain('Chats with Researcher appear here, newest first.');
     expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
     expect(container.querySelector('[role="status"]')).toBeNull();
     const action = container.querySelector('[data-cinder-kind="first-use"] a');
@@ -197,6 +218,10 @@ describe('the Instructions tab', () => {
           instructions: '# Be careful\n\nCite **every** source.',
           references: ['references/style.md', 'references/glossary.md'],
         },
+        referenceSizes: [
+          { path: 'references/style.md', size: 4096 },
+          { path: 'references/glossary.md', size: 1536 },
+        ],
       },
     );
     const { container, findByTestId, findAllByRole } = mount();
@@ -208,10 +233,22 @@ describe('the Instructions tab', () => {
     // The instructions keep Cinder's Markdown rhythm, so paragraphs do not run together.
     expect(body.classList).toContain('cinder-markdown-content');
     const references = await findByTestId('agent-references');
-    expect([...references.querySelectorAll('li')].map((item) => item.textContent)).toEqual([
-      'references/style.md',
-      'references/glossary.md',
-    ]);
+    expect(
+      [...references.querySelectorAll('li')].map((item) => item.querySelector('code')?.textContent),
+    ).toEqual(['references/style.md', 'references/glossary.md']);
+    // Each document says its size, a whole number of units without its decimal.
+    const items = [...references.querySelectorAll('li')];
+    expect(items[0]?.textContent).toContain('4 KB');
+    expect(items[0]?.textContent).not.toContain('4.0');
+    expect(items[1]?.textContent).toContain('1.5 KB');
+    // The documents are changed in the editor, which the note's link opens.
+    const note = await findByTestId('agent-references-note');
+    expect(note.textContent).toContain(
+      'Documents are added and removed in the editor, so each change becomes a version.',
+    );
+    expect(within(note).getByRole('link', { name: 'Edit agent' }).getAttribute('href')).toBe(
+      '/agents/researcher/edit',
+    );
     // The header holds the one Edit; the tab does not repeat it (sweep S51).
     const edits = await findAllByRole('link', { name: 'Edit' });
     expect(edits.map((edit) => edit.getAttribute('href'))).toEqual(['/agents/researcher/edit']);
@@ -221,11 +258,47 @@ describe('the Instructions tab', () => {
   test('says an agent with no reference documents reads none', async () => {
     landAt('/agents/researcher/instructions');
     serve();
-    const { container, findByText } = mount();
+    const { container, findByTestId } = mount();
 
-    await findByText('No reference documents');
+    const line = await findByTestId('agent-no-references');
 
-    expect(container.querySelectorAll('[data-cinder-kind="first-use"]').length).toBeGreaterThan(0);
+    // One muted line, not an empty state, with the editor as its one link (row 39r).
+    expect(line.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
+      'None added. Add one in the editor.',
+    );
+    expect(within(line).getAllByRole('link')).toHaveLength(1);
+    expect(within(line).getByRole('link', { name: 'the editor' }).getAttribute('href')).toBe(
+      '/agents/researcher/edit',
+    );
+    expect(container.querySelector('[data-cinder-kind="first-use"]')).toBeNull();
+    expect(container.textContent).not.toContain('No reference documents');
+  });
+
+  test('says which version of the file it shows and who saved it', async () => {
+    landAt('/agents/researcher/instructions');
+    const definition = readyAgent({ id: 'researcher' });
+    serve(
+      {
+        'bureau.agents.versions.list': () => ({
+          versions: [
+            {
+              revision: 4,
+              hash: 'identity-4',
+              savedAt: '2026-10-29T15:00:00.000Z',
+              savedBy: 'anonymous:local',
+              definition: definition.definition,
+              changedKeys: ['instructions'],
+            },
+          ],
+        }),
+      },
+      definition,
+    );
+    const { findByTestId } = mount();
+
+    const line = await findByTestId('agent-version');
+
+    expect(line.textContent).toMatch(/^Version 4, saved Oct \d+ by you$/);
   });
 
   test('says an agent defined in code cannot be edited, and offers no Edit', async () => {
@@ -303,8 +376,27 @@ describe('the Hooks tab', () => {
     landAt('/agents/researcher/hooks');
     const view = mount();
 
-    await view.findByRole('heading', { name: HOOKS_COPY.agentTab.emptyTitle });
-    expect(view.getByRole('link', { name: HOOKS_COPY.newAction })).not.toBeNull();
+    await view.findByRole('heading', { name: HOOKS_COPY.agentTab.emptyTitle('Researcher') });
+    expect(view.getByText(HOOKS_COPY.agentTab.emptyDescription)).not.toBeNull();
+    // The empty state's New hook is secondary, like the one over the rows (sweep S51).
+    const action = view.getByRole('link', { name: HOOKS_COPY.newAction });
+    expect(action.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(action.getAttribute('href')).toContain('/hooks/new?agent=researcher');
+  });
+
+  test('says what the list is, with a secondary New hook, and words each row’s switch Active', async () => {
+    serve({ 'bureau.hooks.list': () => ({ hooks: [HOOK] }) });
+    landAt('/agents/researcher/hooks');
+    const view = mount();
+
+    await view.findByRole('link', { name: 'When a review is waiting, notify me' });
+
+    expect(view.getByText(HOOKS_COPY.agentTab.intro('Researcher'))).not.toBeNull();
+    expect(
+      view.getByRole('link', { name: HOOKS_COPY.newAction }).getAttribute('data-cinder-variant'),
+    ).toBe('secondary');
+    expect(view.getByText(HOOKS_COPY.agentTab.active)).not.toBeNull();
+    expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('true');
   });
 
   test('says a home with hooks off has none, and offers to read again when a read fails', async () => {

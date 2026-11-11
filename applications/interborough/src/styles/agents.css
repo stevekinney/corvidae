@@ -218,73 +218,6 @@
   padding-block-start: var(--cinder-space-3);
 }
 
-.ib-agent-chats__controls {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2) var(--cinder-space-3);
-  align-items: end;
-  min-width: 0;
-}
-
-.ib-agent-chats__search {
-  flex: 1 1 14rem;
-  min-inline-size: 0;
-  max-inline-size: 24rem;
-}
-
-.ib-agent-chat-list {
-  display: flex;
-  flex-direction: column;
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-
-/* One chat: a row that is a button, so the whole row opens it. */
-.ib-agent-chat {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
-  align-items: baseline;
-  justify-content: space-between;
-  inline-size: 100%;
-  min-inline-size: 0;
-  padding: var(--cinder-space-2);
-  border: 0;
-  border-block-end: 1px solid var(--cinder-border-faint);
-  background: transparent;
-  color: inherit;
-  font: inherit;
-  text-align: start;
-  cursor: pointer;
-  overflow-wrap: anywhere;
-}
-
-.ib-agent-chat:hover {
-  background: var(--cinder-surface-hover);
-}
-
-.ib-agent-chat__title {
-  flex: 1 1 12rem;
-  min-inline-size: 0;
-  font-weight: 600;
-}
-
-.ib-agent-chat__preview {
-  flex: 2 1 16rem;
-  min-inline-size: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
-.ib-agent-chat__meta {
-  display: inline-flex;
-  gap: var(--cinder-space-2);
-  align-items: center;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-}
-
 .ib-agent-section {
   display: flex;
   flex-direction: column;
@@ -317,6 +250,14 @@
   margin: 0;
   padding: 0;
   list-style: none;
+}
+
+/* A reference document: its path, and its size muted beside it. */
+.ib-agent-references li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: baseline;
 }
 
 .ib-agent-references code,

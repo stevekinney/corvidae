@@ -11,6 +11,18 @@ export type ChatStartedBy = 'any' | ContextOrigin;
 /** The order: last activity, newest started, or oldest started. */
 export type ChatSort = 'updated' | 'newest' | 'oldest';
 
+/** The states in the order the Chats tab's segments draw them. */
+export const CHAT_STATES: readonly ChatState[] = ['all', 'needs-you', 'running'];
+
+/** The origins a person can narrow the Chats tab to, in the order the Started by select lists them. */
+export const CHAT_ORIGINS: readonly ContextOrigin[] = ['chat', 'schedule', 'goal'];
+
+/** The orders other than the default, in the order the Sort by select lists them. */
+export const CHAT_SORTS: readonly Exclude<ChatSort, 'updated'>[] = ['newest', 'oldest'];
+
+/** How many of an agent's chats are in each state, for the counts the segments carry. */
+export type ChatCounts = Readonly<Record<ChatState, number>>;
+
 /** The filters of the Chats tab. `title` is the text a title must contain, empty for no filter. */
 export interface ChatFilters {
   readonly state: ChatState;
@@ -47,4 +59,19 @@ export function chatListRequest(filters: ChatFilters): {
     sortBy: filters.sort === 'updated' ? 'updatedAt' : 'createdAt',
     sortOrder: filters.sort === 'oldest' ? 'asc' : 'desc',
   };
+}
+
+/** The Started by value a select reported: an origin it offers, and anyone for the clearing row (`''`) or an unknown value. */
+export function startedByOf(value: string): ChatStartedBy {
+  return CHAT_ORIGINS.find((origin) => origin === value) ?? 'any';
+}
+
+/** The order a select reported: one it offers, and the default for the clearing row (`''`) or an unknown value. */
+export function sortOf(value: string): ChatSort {
+  return CHAT_SORTS.find((sort) => sort === value) ?? 'updated';
+}
+
+/** The state a segment reported: one the tab offers, and every chat for an unknown value. */
+export function stateOf(value: string): ChatState {
+  return CHAT_STATES.find((state) => state === value) ?? 'all';
 }

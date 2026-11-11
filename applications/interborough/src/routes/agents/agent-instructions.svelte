@@ -1,23 +1,31 @@
 <script lang="ts">
   /**
-   * The Instructions tab of an agent's page: the body of the agent's file as a rendered document,
-   * and the reference documents the file lists. The tab bar names the tab and the header holds
-   * Edit, so the body repeats neither (sweep S51). An agent defined in code has no file to edit, so
-   * it says so and shows the instructions it states for itself when it states any. The page's frame
-   * says when the agent is still being read or could not be (`agent-tab-state.svelte`). The
-   * Markdown is rendered and sanitized by `@lostgradient/markdown`.
+   * The Instructions tab of an agent's page (board PageAgent, rows 38i, 38j and 39r): the version of
+   * the agent's file ("Version 4, saved Oct 29 by you"), the body of the file as a document in a
+   * card, and the reference documents the file lists, read-only, each with its size. Documents are
+   * added and removed in the editor, so the section says so with a link to it, and an agent that
+   * reads none says it in one muted line whose "the editor" is the link. The tab bar names the tab
+   * and the header holds Edit, so the body repeats neither (sweep S51). An agent defined in code has
+   * no file to edit, so it says so and shows the instructions it states for itself when it states
+   * any. The page's frame says when the agent is still being read or could not be
+   * (`agent-tab-state.svelte`). The Markdown is rendered and sanitized by `@lostgradient/markdown`.
    */
-  import { Button, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
+  import { Button, Card, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
+  import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY } from '../../app/copy.ts';
-  import type { AgentDetail } from '../../lib/agent-definitions.ts';
+  import { listAgentVersions, type AgentDetail } from '../../lib/agent-definitions.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
+  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import AgentPluginNote from './agent-plugin-note.svelte';
+  import { referenceSizeText, versionLine } from './agent-presentation.ts';
 
   interface Props {
-    /** Where Add instructions goes: the agent's editor. */
+    /** The agent's identifier. */
+    id: string;
+    /** Where Add instructions and the reference documents' links go: the agent's editor. */
     editPath: string;
     /** The plugin that ships the agent, or `null`: its file is read-only. */
     plugin: string | null;
@@ -25,7 +33,7 @@
     detail: AgentDetail | undefined;
   }
 
-  let { editPath, plugin, detail }: Props = $props();
+  let { id, editPath, plugin, detail }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.instructions;
 
@@ -37,6 +45,26 @@
   );
   const references = $derived(detail?.definition?.references ?? []);
   const html = $derived(body.trim() === '' ? '' : renderMarkdown(body).html);
+  const editable = $derived(isFile && plugin === null);
+
+  // The newest saved version, which is the one the file holds: the Versions list on Settings reads
+  // the same entry. A read that fails or has nothing yet leaves the line out; the document stands.
+  const versions = createQuery(
+    () => ({
+      queryKey: queryKeys.agents.versions(id),
+      queryFn: ({ signal }: { signal: AbortSignal }) => listAgentVersions(id, { signal }),
+      enabled: isFile,
+      retry: false,
+    }),
+    undefined,
+  );
+  const newest = $derived(versions.data?.[0]);
+  const version = $derived(newest === undefined ? undefined : versionLine(newest));
+
+  /** The size of the reference document at `path` as its row says it, or `undefined` when the Bureau did not say. */
+  function sizeOf(path: string): string | undefined {
+    return referenceSizeText(detail?.referenceSizes?.find((entry) => entry.path === path)?.size);
+  }
 
   function goToEditor(event: MouseEvent): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -53,6 +81,10 @@
   >
 {/snippet}
 
+{#snippet editorLink(label: string)}
+  <a href={router.href(editPath)} onclick={goToEditor}>{label}</a>
+{/snippet}
+
 <div class="ib-agent-instructions" data-testid="agent-instructions">
   {#if detail === undefined}
     <div role="status" aria-busy="true" aria-label={copy.heading}>
@@ -65,7 +97,10 @@
       {:else if !isFile}
         <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
       {/if}
-      {#if html === '' && isFile && plugin === null}
+      {#if isFile && version !== undefined}
+        <p class="ib-agent-note" data-testid="agent-version">{version}</p>
+      {/if}
+      {#if html === '' && editable}
         <EmptyState
           kind="first-use"
           size="compact"
@@ -83,13 +118,15 @@
           description={copy.emptyDescription}
         />
       {:else}
-        <!-- `renderMarkdown` sanitizes before it returns HTML. -->
-        <div
-          class="cinder-markdown-content ib-agent-document"
-          data-testid="agent-instructions-body"
-        >
-          {@html html}
-        </div>
+        <Card variant="card" edge="border">
+          <!-- `renderMarkdown` sanitizes before it returns HTML. -->
+          <div
+            class="cinder-markdown-content ib-agent-document"
+            data-testid="agent-instructions-body"
+          >
+            {@html html}
+          </div>
+        </Card>
       {/if}
     </section>
 
@@ -101,19 +138,25 @@
           description={copy.referencesDescription}
         />
         {#if references.length === 0}
-          <EmptyState
-            kind="first-use"
-            size="compact"
-            headingLevel={3}
-            title={copy.noReferencesTitle}
-            description={copy.noReferencesDescription}
-          />
+          <p class="ib-agent-note" data-testid="agent-no-references">
+            {copy.noReferencesBefore}{@render editorLink(
+              copy.noReferencesEditor,
+            )}{copy.noReferencesAfter}
+          </p>
         {:else}
           <ul class="ib-agent-references" data-testid="agent-references">
             {#each keyedByOccurrence(references, (path) => path) as { key, item: path } (key)}
-              <li><code>{path}</code></li>
+              {@const size = sizeOf(path)}
+              <li>
+                <code>{path}</code>
+                {#if size !== undefined}<span class="ib-agent-note">{size}</span>{/if}
+              </li>
             {/each}
           </ul>
+          <p class="ib-agent-note" data-testid="agent-references-note">
+            {copy.referencesNote}
+            {@render editorLink(copy.editAgent)}
+          </p>
         {/if}
       </section>
     {/if}

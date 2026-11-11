@@ -115,11 +115,16 @@ export const HOOKS_COPY = {
     title: 'Hooks are off on this home',
     description: 'This home was started without hooks, so there is nothing to set up here.',
   },
-  /** The Hooks tab of an agent's page: the hooks scoped to that agent. */
+  /** The Hooks tab of an agent's page: the hooks scoped to that agent (board PageAgent, rows 38s, 38t and 39q). */
   agentTab: {
     loadFailed: 'These hooks could not be loaded.',
-    emptyTitle: 'No hooks for this agent yet',
-    emptyDescription: 'A hook here runs only for what this agent does.',
+    /** The line over the tab's rows, which says what the list is. */
+    intro: (agent: string): string =>
+      `Hooks that run for ${agent}. This is the Hooks list filtered to this agent.`,
+    emptyTitle: (agent: string): string => `No hooks for ${agent}`,
+    emptyDescription: 'A hook sends a webhook when something happens to this agent’s runs.',
+    /** The label of each row's switch on this tab; the Hooks page words it On. */
+    active: 'Active',
   },
   /** The pieces a hook is read from, as a sentence: "When X, send a signed message to Y". */
   sentence: {

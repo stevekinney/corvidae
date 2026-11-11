@@ -1,5 +1,6 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
+import { flushSync } from 'svelte';
 
 import { AGENT_PAGE_COPY } from '../../app/copy.ts';
 import { faults, readyAgent, StubFault } from '../../lib/bureau-stub.test-support.ts';
@@ -42,12 +43,18 @@ function serve(
   return served;
 }
 
-/** Picks an option the way a person does: selects it, then the browser fires `change`. */
-async function pick(select: HTMLElement, value: string): Promise<void> {
-  const option = [...select.querySelectorAll('option')].find((entry) => entry.value === value);
-  if (option === undefined) throw new Error(`expected an option ${value}`);
-  option.selected = true;
-  await fireEvent.change(select);
+/** Opens the select with this label's place in the filter row and chooses the option that reads `option`. */
+async function choose(container: HTMLElement, place: number, option: string): Promise<void> {
+  const trigger = container.querySelectorAll('.cinder-select[role="combobox"]')[place];
+  if (trigger === undefined) throw new Error(`expected a select at ${String(place)}`);
+  await fireEvent.click(trigger);
+  flushSync();
+  const found = [...document.querySelectorAll('[role="option"]')].find(
+    (entry) => entry.textContent?.trim() === option,
+  );
+  if (found === undefined) throw new Error(`expected an option ${option}`);
+  await fireEvent.click(found);
+  flushSync();
 }
 
 const lastListed = (served: ReturnType<typeof serve>) =>
@@ -59,24 +66,24 @@ describe('the controls over an agent’s chats', () => {
   test('asks for who started them and for the order, and clears a search', async () => {
     landAt('/agents/researcher');
     const served = serve();
-    const { container, findByLabelText, findByRole } = mount();
+    const { container, findByRole } = mount();
 
-    const startedBy = await findByLabelText('Started by');
-    await pick(startedBy, 'goal');
+    await findByRole('searchbox', { name: 'Search chats by title' });
+    // Started by is the first select of the filter row and Sort by the second.
+    await choose(container, 0, 'A goal');
     await waitFor(() => expect(lastListed(served)).toMatchObject({ origin: 'goal' }));
-    const sort = await findByLabelText('Sort by');
-    await pick(sort, 'oldest');
+    await choose(container, 1, 'Oldest first');
     await waitFor(() =>
       expect(lastListed(served)).toMatchObject({ sortBy: 'createdAt', sortOrder: 'asc' }),
     );
+    // Choosing the clearing row asks for anyone again.
+    await choose(container, 0, 'Anyone');
+    await waitFor(() => expect(lastListed(served)?.['origin']).toBeUndefined());
 
     const search = await findByRole('searchbox', { name: 'Search chats by title' });
     await fireEvent.input(search, { target: { value: 'refund' } });
-    const form = container.querySelector('form[role="search"]');
-    if (form === null) throw new Error('expected the search form');
-    await fireEvent.submit(form);
     await waitFor(() => expect(lastListed(served)).toMatchObject({ titleContains: 'refund' }));
-    await fireEvent.click(await findByRole('button', { name: 'Clear search' }));
+    await fireEvent.input(search, { target: { value: '' } });
     await waitFor(() => expect(lastListed(served)?.['titleContains']).toBeUndefined());
   });
 
@@ -104,7 +111,7 @@ describe('the controls over an agent’s chats', () => {
     serve();
     const { findByRole } = mount();
 
-    await fireEvent.click(await findByRole('button', { name: /Plan the week/ }));
+    await fireEvent.click(await findByRole('link', { name: /Plan the week/ }));
 
     expect(router.pathname).toBe(`/chats/${CONTEXT.id}`);
   });
@@ -121,6 +128,13 @@ describe('the empty Chats tab', () => {
       expect(await findAllByRole('link', { name: 'New chat' })).toHaveLength(2),
     );
     const links = await findAllByRole('link', { name: 'New chat' });
+    // The empty state's New chat owns the page's one primary, so the header's is secondary (row 39p).
+    await waitFor(() =>
+      expect(links.map((link) => link.getAttribute('data-cinder-variant'))).toEqual([
+        'secondary',
+        'primary',
+      ]),
+    );
     await fireEvent.click(links[1] as HTMLElement);
 
     expect(router.pathname).toBe('/chats/new');

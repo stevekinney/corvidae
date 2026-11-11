@@ -1,6 +1,8 @@
 import { AGENT_PAGE_COPY, AGENTS_COPY } from '../../app/copy.ts';
 import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentModels, AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
+import { viewerTimeZone } from '../../lib/format/clock.ts';
+import { formatBytes } from '../../lib/format/index.ts';
 
 /** The path that opens a new chat with `agent`. */
 export function newChatPath(agent: string): string {
@@ -172,4 +174,32 @@ export function tabCountText(count: number | undefined, more = false): string | 
 /** The short form of an agent file's hash that names its version, as the revision history shows it. */
 export function shortVersion(hash: string): string {
   return hash.slice(0, 8);
+}
+
+/**
+ * The line over an agent's instructions: "Version 4, saved Oct 29 by you", from the newest saved
+ * version (board PageAgent, row 38i). `savedBy` is `null` for a version made by editing the file
+ * by hand, which has no person to name. `undefined` when the version or its time cannot be read.
+ */
+export function versionLine(
+  version: { readonly revision: number; readonly savedAt: string; readonly savedBy: string | null },
+  zone: string = viewerTimeZone(),
+): string | undefined {
+  const saved = Date.parse(version.savedAt);
+  if (Number.isNaN(saved)) return undefined;
+  const day = new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    timeZone: zone,
+  }).format(saved);
+  return AGENT_PAGE_COPY.instructions.version(version.revision, day, version.savedBy !== null);
+}
+
+/**
+ * A reference document's size as its row says it: "4 KB", "1.5 KB" or "210 B", or `undefined` when
+ * the Bureau did not say. A whole number of units drops its decimal ("4.0 KB" is "4 KB").
+ */
+export function referenceSizeText(bytes: number | undefined): string | undefined {
+  if (bytes === undefined) return undefined;
+  return formatBytes(bytes).replace('.0 ', ' ');
 }

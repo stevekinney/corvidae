@@ -1,11 +1,15 @@
 <script lang="ts">
   /**
    * The Hooks tab of an agent's page: the hooks list, narrowed by the Bureau to the hooks limited to
-   * this agent. New hook starts one already limited to it. A hook that runs for everything also runs
-   * for this agent, and is on the Hooks page; this tab holds what belongs to the agent alone. Its
-   * rows are the Hooks page's (`hook-rows.svelte`).
+   * this agent. A line says so ("Hooks that run for Tool runner. This is the Hooks list filtered to
+   * this agent.") with a secondary New hook at the right, which starts one already limited to the
+   * agent. A hook that runs for everything also runs for this agent, and is on the Hooks page; this
+   * tab holds what belongs to the agent alone. Its rows are the Hooks page's (`hook-rows.svelte`),
+   * with the switch worded Active. An agent with none shows the empty state naming it, whose New
+   * hook is secondary too (board PageAgent, rows 38s, 38t and 39q; sweep S51).
    */
   import { Alert, Button, EmptyState, Skeleton } from '@lostgradient/cinder';
+  import { Plus } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { RETRY_LABEL } from '../../app/copy.ts';
@@ -20,9 +24,11 @@
   interface Props {
     /** The agent's identifier. */
     id: string;
+    /** The agent's name as a person reads it, which the line over the rows and the empty state say. */
+    name: string;
   }
 
-  let { id }: Props = $props();
+  let { id, name }: Props = $props();
 
   const copy = HOOKS_COPY.agentTab;
 
@@ -50,9 +56,10 @@
 </script>
 
 {#snippet newHook()}
-  <Button href={router.href(newHookPath)} variant="primary" size="sm" onclick={go}
-    >{HOOKS_COPY.newAction}</Button
-  >
+  <Button href={router.href(newHookPath)} variant="secondary" size="sm" onclick={go}>
+    {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
+    {HOOKS_COPY.newAction}
+  </Button>
 {/snippet}
 
 <div class="ib-agent-hooks" data-testid="agent-hooks">
@@ -70,14 +77,17 @@
   {:else if hooks.data !== undefined && hooks.data.length === 0}
     <EmptyState
       kind="first-use"
-      title={copy.emptyTitle}
+      title={copy.emptyTitle(name)}
       description={copy.emptyDescription}
       headingLevel={2}
       action={newHook}
     />
   {:else if hooks.data !== undefined}
-    <div class="ib-agent-hooks__actions">{@render newHook()}</div>
-    <HookRows hooks={hooks.data} />
+    <div class="ib-agent-hooks__intro">
+      <p class="ib-agent-hooks__line">{copy.intro(name)}</p>
+      {@render newHook()}
+    </div>
+    <HookRows hooks={hooks.data} switchLabel={copy.active} />
   {/if}
 </div>
 
@@ -89,9 +99,19 @@
     min-width: 0;
   }
 
-  .ib-agent-hooks__actions {
+  .ib-agent-hooks__intro {
     display: flex;
-    justify-content: flex-end;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .ib-agent-hooks__line {
+    flex: 1 1 16rem;
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
   }
 
   .ib-agent-hooks__failed {
