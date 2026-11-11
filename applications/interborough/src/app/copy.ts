@@ -317,6 +317,52 @@ export const RUN_DETAIL_COPY = {
   },
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',
+  /** The Input and output section: what each card is called, and the sentence under the heading. */
+  io: {
+    /** Under the heading of a run that answered a chat message. */
+    chatDescription:
+      'The message that started the run, what it answered, and the steps in between.',
+    /** Under the heading of a run of a workflow: its input and what it produced. */
+    workflowDescription: 'What this run was started with, and what it produced.',
+    /** Under the heading of a run a schedule started, which has no chat. */
+    scheduleDescription:
+      'A schedule run has no chat, so the schedule’s prompt is the input and the result is the output.',
+    input: 'Input',
+    output: 'Output',
+    /** The card of the message that started a chat run, and who it is from. */
+    messageIn: 'Message in',
+    fromYou: 'From you',
+    /** The card of what the agent answered, and who it is from. */
+    replyOut: 'Reply out',
+    fromAgent: (agent: string): string => `From ${agent}`,
+    /** The card of a schedule run's prompt and result. */
+    prompt: 'Prompt',
+    fromSchedule: 'From the schedule',
+    result: 'Result',
+    /** Under the message in: where and when it was sent. */
+    sentInChat: (when: string): string => `Sent in the chat, ${when}`,
+    /** Under the reply out, with the link that opens the raw payloads. */
+    deliveredToChat: 'Delivered to the chat',
+    showRawPayloads: 'Show raw payloads',
+    /** Said while the chat's thread is read for the message in. */
+    loadingMessage: 'Loading the message',
+    /** The message in could not be found in the chat's thread. */
+    noMessageIn: 'The message that started this run is not kept in the chat.',
+    /** The output of a run that failed. */
+    noOutputFailed: 'No output. The run failed, so it never produced one.',
+    /** The output of a run that ended without one. */
+    noOutputEnded: (how: string): string => `No output. The run ${how}.`,
+    /** The output of a run still going. */
+    outputPending: (status: string): string => `Not produced yet. The run is still ${status}.`,
+    /** A long reply held to a few lines, and the control that opens it. */
+    showAll: 'Show all',
+    showLess: 'Show less',
+    /** Said in a polite live region when the Fields or JSON choice changes, for every card at once. */
+    viewAnnouncement: {
+      fields: 'All payloads now show Fields.',
+      json: 'All payloads now show JSON.',
+    },
+  },
 } as const;
 
 /**

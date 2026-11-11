@@ -155,7 +155,7 @@ test.describe('the runs of a chat', () => {
       `/chats/${threadId}`,
     );
     await expect(page.getByRole('heading', { level: 2, name: 'Input and output' })).toBeVisible();
-    await expect(page.getByRole('heading', { level: 3, name: 'Answer' })).toBeVisible();
+    await expect(page.getByRole('heading', { level: 3, name: 'Reply out' })).toBeVisible();
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
     // What only an operator uses is for a caller who may read the workflow, and this run has none.
     await expect(

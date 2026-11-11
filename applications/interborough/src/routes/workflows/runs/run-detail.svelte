@@ -436,6 +436,8 @@
         {#if summary !== undefined}
           <RunInputOutput
             task={task.data}
+            threadId={goalTask ? attemptThreadId : undefined}
+            startedAt={summary.startedAt}
             answerHtml={answer === undefined ? undefined : answerHtml}
             answerTruncated={follower.artifact?.truncated === true}
             followState={follower.state}
