@@ -643,7 +643,7 @@ describe('ChatMessage — tool-call rendering', () => {
       // The header is the step count, the tools and the total time, one field each and no
       // separator character between them.
       expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps lookup-order ×2 0.7s');
-      expect(toggle.textContent).not.toContain('·');
+      expect(toggle.textContent).not.toContain(String.fromCodePoint(0xb7));
       expect(
         Array.from(toggle.querySelectorAll('.chat-tool-call-summary > *'), (field) =>
           field.textContent?.trim(),
@@ -934,7 +934,7 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).toMatch(
         /\.chat-tool-call-timeline\s*\{[^}]*border:\s*1px solid var\(--cinder-border-muted\)/s,
       );
-      expect(source).not.toContain('·');
+      expect(source).not.toContain(String.fromCodePoint(0xb7));
     });
 
     test('a narrow header drops the raw tool names and each phrase stays on one line', () => {

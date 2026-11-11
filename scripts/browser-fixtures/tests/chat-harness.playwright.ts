@@ -2271,7 +2271,7 @@ test.describe('chat harness — tool calls', () => {
         await expect(toggle).toHaveAttribute('aria-expanded', 'false');
         await expect(toggle).toContainText('1 step');
         await expect(toggle).toContainText('1 waiting for approval');
-        await expect(toggle).not.toContainText('·');
+        await expect(toggle).not.toContainText(String.fromCodePoint(0xb7));
 
         const fields = await activity
           .locator('.chat-tool-call-summary > *')

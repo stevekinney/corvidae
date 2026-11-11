@@ -169,7 +169,9 @@ describe('toolCallSummaryParts', () => {
 
   test('puts no separator character in any phrase', () => {
     const parts = toolCallSummaryParts([lookup], ['denied'], [1200]);
-    expect([parts.tools, ...parts.problems, parts.duration].join('')).not.toContain('·');
+    expect([parts.tools, ...parts.problems, parts.duration].join('')).not.toContain(
+      String.fromCodePoint(0xb7),
+    );
     expect(parts.problems).toEqual(['1 denied']);
   });
 });
