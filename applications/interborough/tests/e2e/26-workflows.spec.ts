@@ -813,10 +813,12 @@ test.describe('the runs of a type', () => {
       // A row opens its run, and the run’s type links back to the type.
       await rows.first().getByRole('link').first().click();
       await expect(page).toHaveURL(/\/runs\/[^/]+$/);
-      // The breadcrumb names the same type, so scope to the run’s own article.
+      // The breadcrumb names the same type, so scope to the run’s own Details, which name the
+      // workflow in words ("inventory-sync-sweep" reads "Inventory sync sweep").
       const link = page
         .getByRole('article', { name: 'Run' })
-        .getByRole('link', { name: 'inventory-sync-sweep' });
+        .getByRole('complementary', { name: 'Details' })
+        .getByRole('link', { name: 'Inventory sync sweep', exact: true });
       await expect(link).toHaveAttribute('href', '/workflows/inventory-sync-sweep');
       await link.click();
       await expect(page).toHaveURL(/\/workflows\/inventory-sync-sweep$/);
