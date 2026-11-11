@@ -349,7 +349,7 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(controls.every((id) => id?.includes('grouped-tools'))).toBe(true);
     const heading = container.querySelector('h3');
     expect(container.querySelector('section')?.getAttribute('aria-labelledby')).toBe(heading?.id);
-    expect(heading?.textContent).toContain('Used 2 tools');
+    expect(heading?.textContent).toContain('2 steps');
     expect(heading?.textContent).toContain('1 failed');
     expect(container.textContent).toContain('Network unavailable');
   });
@@ -375,7 +375,7 @@ describe('ChatMessage — tool-call rendering', () => {
         describeToolCall,
       },
     });
-    expect(answered.container.querySelector('h3')?.textContent).toContain('Used 1 tool');
+    expect(answered.container.querySelector('h3')?.textContent).toContain('1 step');
   });
 
   describe('counted strings agree with the count', () => {
@@ -394,18 +394,18 @@ describe('ChatMessage — tool-call rendering', () => {
       kind: 'search',
     });
 
-    test('says "1 tool" for one pair and "2 tools" for two', () => {
+    test('says "1 step" for one pair and "2 steps" for two', () => {
       const one = render(ToolCallTimeline, {
         props: { pairs: [pair], messageId: 'count-one', describeToolCall },
       });
-      expect(one.container.querySelector('h3')?.textContent).toContain('Used 1 tool');
-      expect(one.container.querySelector('h3')?.textContent).not.toContain('1 tools');
+      expect(one.container.querySelector('h3')?.textContent).toContain('1 step');
+      expect(one.container.querySelector('h3')?.textContent).not.toContain('1 steps');
       cleanup();
 
       const two = render(ToolCallTimeline, {
         props: { pairs: [pair, second], messageId: 'count-two', describeToolCall },
       });
-      expect(two.container.querySelector('h3')?.textContent).toContain('Used 2 tools');
+      expect(two.container.querySelector('h3')?.textContent).toContain('2 steps');
     });
 
     test('names the list "1 consecutive tool call" for one pair', () => {
@@ -640,9 +640,15 @@ describe('ChatMessage — tool-call rendering', () => {
       const toggle = groupToggle(container);
       const list = container.querySelector<HTMLElement>('.chat-tool-call-list')!;
 
-      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-        'Used 2 tools · lookup-order ×2 · 0.7s',
-      );
+      // The header is the step count, the tools and the total time, one field each and no
+      // separator character between them.
+      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe('2 steps lookup-order ×2 0.7s');
+      expect(toggle.textContent).not.toContain('·');
+      expect(
+        Array.from(toggle.querySelectorAll('.chat-tool-call-summary > *'), (field) =>
+          field.textContent?.trim(),
+        ),
+      ).toEqual(['2 steps', 'lookup-order ×2', '0.7s']);
       expect(toggle.getAttribute('aria-expanded')).toBe('false');
       expect(list.hidden).toBe(true);
 
@@ -833,6 +839,228 @@ describe('ChatMessage — tool-call rendering', () => {
       } finally {
         timers.release();
       }
+    });
+  });
+
+  describe('steps in one bordered group', () => {
+    const describeToolCall = (pair: ToolCallPair): ToolCallPresentation =>
+      pair.result === undefined
+        ? { verb: 'Comparing', tense: 'present', detail: 'recent orders…', kind: 'search' }
+        : { verb: 'Compared', tense: 'past', detail: 'recent orders…', kind: 'search' };
+
+    function lookupPairs(count: number): ToolCallPair[] {
+      return Array.from({ length: count }, (_, index): ToolCallPair => ({
+        call: {
+          id: `lookup-${index}`,
+          name: 'lookup_order',
+          arguments: { orderId: `${4400 + index}` },
+        },
+        result: { callId: `lookup-${index}`, outcome: 'success', content: `order ${4400 + index}` },
+      }));
+    }
+
+    test('each row leads with a status icon, then the sentence title, the tool and the time', async () => {
+      const pairs: ToolCallPair[] = [
+        {
+          call: { id: 'done', name: 'lookup_order', arguments: {} },
+          result: { callId: 'done', outcome: 'success', content: 'ok' },
+        },
+        { call: { id: 'open', name: 'issue_refund', arguments: {} } },
+      ];
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs,
+          messageId: 'anatomy',
+          describeToolCall,
+          activityActive: false,
+          durations: new Map([['done', 400]]),
+        },
+      });
+      await openCall(container);
+      const rows = callRows(container);
+      expect(rows).toHaveLength(2);
+      const done = rows[0]!;
+      expect(done.firstElementChild?.classList.contains('chat-tool-call-status-icon')).toBe(true);
+      expect(done.firstElementChild?.getAttribute('data-status')).toBe('succeeded');
+      // Svelte appends its scoping class after the authored one, so the first class names a field.
+      expect(Array.from(done.children, (child) => child.classList[0])).toEqual([
+        'chat-tool-call-status-icon',
+        'chat-tool-call-label',
+        'chat-tool-call-name',
+        'chat-tool-call-result',
+        'chat-tool-call-duration',
+      ]);
+      expect(done.querySelector('.chat-tool-call-label')?.textContent).toBe(
+        'Compared recent orders…',
+      );
+      expect(done.querySelector('.chat-tool-call-name')?.textContent).toBe('lookup_order');
+      expect(done.querySelector('.chat-tool-call-duration')?.textContent).toBe('0.4s');
+      // The pending call has no answer, so the host words it in the present tense.
+      expect(rows[1]!.querySelector('.chat-tool-call-label')?.textContent).toBe(
+        'Comparing recent orders…',
+      );
+      expect(rows[1]!.firstElementChild?.getAttribute('data-status')).toBe('pending');
+    });
+
+    test('the status icon of the call that is running pulses only while the stream is active', () => {
+      const running: ToolCallPair = { call: { id: 'open', name: 'lookup_order', arguments: {} } };
+      const active = render(ToolCallTimeline, {
+        props: { pairs: [running], messageId: 'pulse-on', describeToolCall, activityActive: true },
+      });
+      expect(
+        active.container
+          .querySelector('.chat-tool-call-row .chat-tool-call-status-icon')
+          ?.hasAttribute('data-cinder-tool-activity-active'),
+      ).toBe(true);
+      cleanup();
+
+      const idle = render(ToolCallTimeline, {
+        props: {
+          pairs: [running],
+          messageId: 'pulse-off',
+          describeToolCall,
+          activityActive: false,
+        },
+      });
+      expect(
+        idle.container
+          .querySelector('.chat-tool-call-row .chat-tool-call-status-icon')
+          ?.hasAttribute('data-cinder-tool-activity-active'),
+      ).toBe(false);
+    });
+
+    test('the group is bordered and its header carries the count, the tools and the time', () => {
+      const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+      expect(source).toMatch(
+        /\.chat-tool-call-timeline\s*\{[^}]*border:\s*1px solid var\(--cinder-border-muted\)/s,
+      );
+      expect(source).not.toContain('·');
+    });
+
+    test('a narrow header drops the raw tool names and each phrase stays on one line', () => {
+      const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+      expect(source).toMatch(
+        /@container \(max-width: 21\.99rem\)\s*\{\s*\.chat-tool-call-summary-tools\s*\{\s*display:\s*none;/,
+      );
+      expect(source).toMatch(/\.chat-tool-call-summary > \*\s*\{\s*white-space:\s*nowrap;/);
+      expect(source).toMatch(/\.chat-tool-call-summary\s*\{[^}]*flex-wrap:\s*wrap/s);
+      // The row's status words never wrap either.
+      expect(source).toMatch(
+        /\.chat-tool-call-status,\s*\.chat-tool-call-duration\s*\{[^}]*white-space:\s*nowrap/s,
+      );
+    });
+
+    test('twenty identical consecutive calls fold into one row with the tool count and the total time', async () => {
+      const pairs = lookupPairs(20);
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs,
+          messageId: 'twenty',
+          describeToolCall,
+          durations: new Map(pairs.map((pair) => [pair.call.id, 305])),
+        },
+      });
+      const toggle = groupToggle(container);
+      await clickAndFlush(toggle);
+      const rows = callRows(container);
+      expect(rows).toHaveLength(1);
+      expect(rows[0]!.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        'Compared recent orders… lookup_order ×20 6.1s',
+      );
+      expect(
+        container
+          .querySelector('.chat-tool-call-item')
+          ?.getAttribute('data-cinder-tool-call-repeat'),
+      ).toBe('20');
+      // The group still counts every step, and its navigation row still counts every call.
+      expect(toggle.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+        '20 steps lookup_order ×20 6.1s',
+      );
+      expect(
+        container
+          .querySelector('.chat-tool-call-timeline')
+          ?.getAttribute('data-cinder-tool-call-count'),
+      ).toBe('20');
+
+      // Nothing of the twenty calls is drawn until the row is opened.
+      expect(rows[0]!.getAttribute('aria-expanded')).toBe('false');
+      expect(container.querySelectorAll('.chat-tool-call-repeated-call')).toHaveLength(0);
+    });
+
+    test('opening a folded row shows each call with its own input and output', async () => {
+      const { container } = render(ToolCallTimeline, {
+        props: { pairs: lookupPairs(3), messageId: 'three', describeToolCall },
+      });
+      await clickAndFlush(groupToggle(container));
+      const row = callRows(container)[0]!;
+      expect(callRows(container)).toHaveLength(1);
+      await clickAndFlush(row);
+      expect(row.getAttribute('aria-expanded')).toBe('true');
+      const calls = container.querySelectorAll('.chat-tool-call-repeated-call');
+      expect(calls).toHaveLength(3);
+      expect(calls[0]!.textContent).toContain('1 of 3');
+      expect(calls[0]!.textContent).toContain('4400');
+      expect(calls[2]!.textContent).toContain('3 of 3');
+      expect(calls[2]!.textContent).toContain('order 4402');
+      await clickAndFlush(row);
+      expect(container.querySelectorAll('.chat-tool-call-repeated-call')).toHaveLength(0);
+    });
+
+    test('two identical calls are not folded, and a different tool breaks a run', () => {
+      const two = render(ToolCallTimeline, {
+        props: { pairs: lookupPairs(2), messageId: 'two', describeToolCall },
+      });
+      expect(callRows(two.container)).toHaveLength(2);
+      cleanup();
+
+      const pairs = lookupPairs(5);
+      const interrupted: ToolCallPair[] = [
+        ...pairs.slice(0, 3),
+        {
+          call: { id: 'other', name: 'issue_refund', arguments: {} },
+          result: { callId: 'other', outcome: 'success', content: 'ok' },
+        },
+        ...pairs.slice(3),
+      ];
+      const broken = render(ToolCallTimeline, {
+        props: { pairs: interrupted, messageId: 'broken' },
+      });
+      // Three before the other tool fold; the two after it are too few to.
+      expect(callRows(broken.container)).toHaveLength(4);
+      expect(
+        callRows(broken.container).map(
+          (row) => row.querySelector('.chat-tool-call-name')?.textContent,
+        ),
+      ).toEqual(['lookup_order ×3', 'issue_refund', 'lookup_order', 'lookup_order']);
+    });
+
+    test('a failed call keeps its own row even among identical calls', () => {
+      const pairs = lookupPairs(6);
+      pairs[3] = {
+        call: pairs[3]!.call,
+        result: {
+          callId: pairs[3]!.call.id,
+          outcome: 'error',
+          content: null,
+          error: {
+            code: 'offline',
+            category: 'internal',
+            retryable: true,
+            message: 'Network unavailable',
+          },
+        },
+      };
+      const { container } = render(ToolCallTimeline, {
+        props: { pairs, messageId: 'failed-among' },
+      });
+      const rows = callRows(container);
+      expect(rows.map((row) => row.querySelector('.chat-tool-call-name')?.textContent)).toEqual([
+        'lookup_order ×3',
+        'lookup_order',
+        'lookup_order',
+        'lookup_order',
+      ]);
+      expect(container.querySelectorAll('[data-cinder-tool-call-status="failed"]')).toHaveLength(1);
     });
   });
 

@@ -608,7 +608,9 @@
     | 'grouped'
     | 'duplicate-call-id'
     | 'standalone-navigation'
-    | 'grouped-navigation';
+    | 'grouped-navigation'
+    | 'repeated'
+    | 'waiting-approval';
 
   type ChatHarnessWindow = Window & {
     corvidaeChatHarnessAppendImages?: (images: HarnessImageInput[]) => void;
@@ -758,6 +760,73 @@
           toolResult: { callId: secondCallId, outcome: 'success', content: { status: 'ok' } },
         },
         { role: 'assistant', content: 'After grouped tool activity.' },
+      );
+      return;
+    }
+
+    // Twenty identical lookups in a row, which the group shows as one row.
+    if (scenario === 'repeated') {
+      const callIds = Array.from(
+        { length: 20 },
+        (_, index) => `repeated-call-${index}-${crypto.randomUUID()}`,
+      );
+      conversation = appendMessages(
+        createConversation({ id: 'repeated-tool-calls' }),
+        { role: 'user', content: 'Compare my recent orders.' },
+        ...callIds.map((callId, index) => ({
+          role: 'tool-call' as const,
+          content: '',
+          toolCall: { id: callId, name: 'lookup_order', arguments: { orderId: 4400 + index } },
+        })),
+        ...callIds.map((callId) => ({
+          role: 'tool-result' as const,
+          content: '',
+          toolResult: { callId, outcome: 'success' as const, content: { status: 'ok' } },
+        })),
+        { role: 'assistant', content: 'Compared 20 recent orders.' },
+      );
+      return;
+    }
+
+    // One finished call and one that waits on an approval, for the narrow header.
+    if (scenario === 'waiting-approval') {
+      const doneCallId = `waiting-done-${crypto.randomUUID()}`;
+      const waitingCallId = `waiting-approval-${crypto.randomUUID()}`;
+      conversation = appendMessages(
+        createConversation({ id: 'waiting-approval-tool-calls' }),
+        { role: 'user', content: 'Refund order 4471.' },
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: { id: doneCallId, name: 'lookup_order', arguments: { orderId: 4471 } },
+        },
+        {
+          role: 'tool-call',
+          content: '',
+          toolCall: { id: waitingCallId, name: 'issue_refund', arguments: { orderId: 4471 } },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: { callId: doneCallId, outcome: 'success', content: { status: 'ok' } },
+        },
+        {
+          role: 'tool-result',
+          content: '',
+          toolResult: {
+            callId: waitingCallId,
+            outcome: 'action_required',
+            content: null,
+            action: {
+              type: 'approval',
+              message: 'Approve refunding order 4471?',
+              risk: 'high',
+              operation: { kind: 'command', command: 'refund 4471', argsPreview: { ok: true } },
+              policyVersion: 'test-policy',
+              idempotencyKey: 'test-waiting-approval',
+            },
+          },
+        },
       );
       return;
     }

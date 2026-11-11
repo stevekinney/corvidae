@@ -150,30 +150,91 @@ function toolNamesSegment(pairs: readonly ToolCallPair[]): string {
 }
 
 /**
- * The summary line's segments after "Used N tools": the tools, then any
- * failed, denied, expired, or waiting counts, then the total time when every
- * call has one. An expired approval counts as expired and never as waiting.
+ * The total time of some calls, when every one of them has a duration. A call still running has
+ * none yet, and a total that left it out would read as shorter than the work.
  */
-export function toolCallSummarySegments(
+export function totalToolCallDuration(
+  durations: readonly (number | undefined)[],
+): number | undefined {
+  if (durations.length === 0 || durations.some((duration) => duration === undefined)) {
+    return undefined;
+  }
+  return durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0);
+}
+
+/** What the group's header says after its step count, one phrase to a field. */
+export type ToolCallSummaryParts = {
+  /** The tools in first-use order, with a count when one ran more than once ("lookup-order ×2"). */
+  tools: string;
+  /**
+   * Any failed, denied, expired or waiting counts ("1 failed"), in that order. An expired approval
+   * counts as expired and never as waiting (COR-2280).
+   */
+  problems: string[];
+  /** The total time, when every call has one ("0.7s"). */
+  duration: string | undefined;
+};
+
+/** The header's phrases for a group of calls, kept apart so each can wrap whole. */
+export function toolCallSummaryParts(
   pairs: readonly ToolCallPair[],
   statuses: readonly ToolCallRowStatus[],
   durations: readonly (number | undefined)[],
-): string[] {
-  const segments = [toolNamesSegment(pairs)];
+): ToolCallSummaryParts {
   const count = (status: ToolCallRowStatus) => statuses.filter((value) => value === status).length;
+  const problems: string[] = [];
   const failed = count('failed');
   const denied = count('denied');
   const expired = count('expired');
   const waiting = count('waiting');
   const waitingInput = count('waiting-input');
-  if (failed > 0) segments.push(`${failed} failed`);
-  if (denied > 0) segments.push(`${denied} denied`);
-  if (expired > 0) segments.push(`${expired} expired`);
-  if (waiting > 0) segments.push(`${waiting} waiting for approval`);
-  if (waitingInput > 0) segments.push(`${waitingInput} waiting for input`);
-  if (durations.length > 0 && durations.every((duration) => duration !== undefined)) {
-    const total = durations.reduce<number>((sum, duration) => sum + (duration ?? 0), 0);
-    segments.push(formatToolCallDuration(total));
+  if (failed > 0) problems.push(`${failed} failed`);
+  if (denied > 0) problems.push(`${denied} denied`);
+  if (expired > 0) problems.push(`${expired} expired`);
+  if (waiting > 0) problems.push(`${waiting} waiting for approval`);
+  if (waitingInput > 0) problems.push(`${waitingInput} waiting for input`);
+  const total = totalToolCallDuration(durations);
+  return {
+    tools: toolNamesSegment(pairs),
+    problems,
+    duration: total === undefined ? undefined : formatToolCallDuration(total),
+  };
+}
+
+/** A call shown on its own row, or a run of identical calls shown as one row. */
+export type ToolCallStep<Row> =
+  { kind: 'single'; row: Row } | { kind: 'repeated'; rows: readonly [Row, ...Row[]] };
+
+/** From this many identical calls in a row, the group shows them as one row. */
+export const REPEATED_STEP_MINIMUM = 3;
+
+/**
+ * Folds runs of identical consecutive calls into one step each. `repeatKey` names what makes two
+ * calls identical, and returns `undefined` for a call that never folds, so a failed, denied or
+ * waiting call always keeps its own row. A run shorter than {@link REPEATED_STEP_MINIMUM} stays as
+ * single rows, because two calls are no clearer folded.
+ */
+export function foldRepeatedSteps<Row>(
+  rows: readonly Row[],
+  repeatKey: (row: Row) => string | undefined,
+): ToolCallStep<Row>[] {
+  const steps: ToolCallStep<Row>[] = [];
+  let start = 0;
+  while (start < rows.length) {
+    const first = rows[start] as Row;
+    const key = repeatKey(first);
+    let end = start + 1;
+    if (key !== undefined) {
+      while (end < rows.length && repeatKey(rows[end] as Row) === key) end += 1;
+    }
+    if (end - start >= REPEATED_STEP_MINIMUM) {
+      steps.push({ kind: 'repeated', rows: [first, ...rows.slice(start + 1, end)] });
+    } else {
+      for (let index = start; index < end; index += 1) {
+        steps.push({ kind: 'single', row: rows[index] as Row });
+      }
+    }
+    start = end;
   }
-  return segments;
+  return steps;
 }

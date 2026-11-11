@@ -2,14 +2,17 @@ import { describe, expect, test } from 'bun:test';
 
 import type { ToolCallPair } from '../conversation-model.ts';
 import {
+  foldRepeatedSteps,
   formatToolCallDuration,
   nextToolCallApprovalDeadline,
+  REPEATED_STEP_MINIMUM,
   toolCallApprovalDeadline,
   toolCallKeyArgument,
   toolCallResultLine,
   toolCallRowStatus,
   toolCallStatusText,
-  toolCallSummarySegments,
+  toolCallSummaryParts,
+  totalToolCallDuration,
 } from './tool-call-summary.ts';
 
 function pairWithResult(result: Record<string, unknown>): ToolCallPair {
@@ -108,11 +111,9 @@ describe('an approval with a deadline (COR-2280)', () => {
   test('counts an expired approval as expired, never as waiting', () => {
     const pairs = [approvalPair('a', at(-1_000)), approvalPair('b', at(60_000))];
     const statuses = pairs.map((pair) => toolCallRowStatus(pair, undefined, NOW));
-    expect(toolCallSummarySegments(pairs, statuses, [undefined, undefined])).toEqual([
-      'issue-refund ×2',
-      '1 expired',
-      '1 waiting for approval',
-    ]);
+    const parts = toolCallSummaryParts(pairs, statuses, [undefined, undefined]);
+    expect(parts.tools).toBe('issue-refund ×2');
+    expect(parts.problems).toEqual(['1 expired', '1 waiting for approval']);
   });
 
   test('names the next deadline still ahead among the approvals nobody settled', () => {
@@ -127,5 +128,87 @@ describe('an approval with a deadline (COR-2280)', () => {
     expect(nextToolCallApprovalDeadline(pairs, states, NOW)).toBe(NOW + 5_000);
     expect(nextToolCallApprovalDeadline(pairs, states, NOW + 5_000)).toBe(NOW + 60_000);
     expect(nextToolCallApprovalDeadline(pairs, states, NOW + 60_000)).toBeUndefined();
+  });
+});
+
+describe('totalToolCallDuration', () => {
+  test('adds the durations when every call has one', () => {
+    expect(totalToolCallDuration([400, 300])).toBe(700);
+  });
+
+  test('has no total when a call is still running or when there are no calls', () => {
+    expect(totalToolCallDuration([400, undefined])).toBeUndefined();
+    expect(totalToolCallDuration([])).toBeUndefined();
+  });
+});
+
+describe('toolCallSummaryParts', () => {
+  const lookup = { call: { id: 'a', name: 'lookup-order' } } as ToolCallPair;
+  const refund = { call: { id: 'b', name: 'issue-refund' } } as ToolCallPair;
+
+  test('names each tool once with a count, then the problems, then the total time', () => {
+    const parts = toolCallSummaryParts(
+      [lookup, lookup, refund],
+      ['succeeded', 'failed', 'waiting'],
+      [400, 300, 100],
+    );
+    expect(parts.tools).toBe('lookup-order ×2, issue-refund');
+    expect(parts.problems).toEqual(['1 failed', '1 waiting for approval']);
+    expect(parts.duration).toBe('0.8s');
+  });
+
+  test('has no time while a call is still running, and no problems when all succeeded', () => {
+    const parts = toolCallSummaryParts(
+      [lookup, refund],
+      ['succeeded', 'pending'],
+      [400, undefined],
+    );
+    expect(parts.problems).toEqual([]);
+    expect(parts.duration).toBeUndefined();
+  });
+
+  test('puts no separator character in any phrase', () => {
+    const parts = toolCallSummaryParts([lookup], ['denied'], [1200]);
+    expect([parts.tools, ...parts.problems, parts.duration].join('')).not.toContain('·');
+    expect(parts.problems).toEqual(['1 denied']);
+  });
+});
+
+describe('foldRepeatedSteps', () => {
+  const sameName = (row: string) => row;
+
+  test('folds a run of three or more identical rows into one step', () => {
+    expect(foldRepeatedSteps(['a', 'a', 'a', 'b'], sameName)).toEqual([
+      { kind: 'repeated', rows: ['a', 'a', 'a'] },
+      { kind: 'single', row: 'b' },
+    ]);
+  });
+
+  test('leaves a run shorter than the minimum as single rows', () => {
+    expect(REPEATED_STEP_MINIMUM).toBe(3);
+    expect(foldRepeatedSteps(['a', 'a', 'b', 'b'], sameName)).toEqual([
+      { kind: 'single', row: 'a' },
+      { kind: 'single', row: 'a' },
+      { kind: 'single', row: 'b' },
+      { kind: 'single', row: 'b' },
+    ]);
+  });
+
+  test('never folds a row whose key is undefined, and a run restarts after it', () => {
+    const key = (row: string) => (row === 'x' ? undefined : row);
+    expect(foldRepeatedSteps(['a', 'a', 'x', 'a', 'a', 'a', 'x', 'x', 'x'], key)).toEqual([
+      { kind: 'single', row: 'a' },
+      { kind: 'single', row: 'a' },
+      { kind: 'single', row: 'x' },
+      { kind: 'repeated', rows: ['a', 'a', 'a'] },
+      { kind: 'single', row: 'x' },
+      { kind: 'single', row: 'x' },
+      { kind: 'single', row: 'x' },
+    ]);
+  });
+
+  test('folds only consecutive rows, so the same key apart stays apart', () => {
+    expect(foldRepeatedSteps(['a', 'a', 'b', 'a', 'a'], sameName)).toHaveLength(5);
+    expect(foldRepeatedSteps([], sameName)).toEqual([]);
   });
 });

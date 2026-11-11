@@ -2078,7 +2078,7 @@ test.describe('chat harness — tool calls', () => {
           const presentationActivity = harness.locator('.chat-tool-call-timeline').last();
           await expect(presentationActivity).toBeVisible();
           await openToolCall(presentationActivity);
-          await expect(presentationActivity.locator('.chat-tool-call-activity-icon')).toBeVisible();
+          await expect(presentationActivity.locator('.chat-tool-call-status-icon')).toBeVisible();
           await expect(
             presentationActivity.locator('[data-cinder-tool-activity-active]'),
           ).toHaveCount(0);
@@ -2186,6 +2186,105 @@ test.describe('chat harness — tool calls', () => {
       await expect(details).toContainText('@lostgradient/cinder');
       await page.keyboard.press('Enter');
       await expect(details).toBeHidden();
+    } finally {
+      await dispose();
+    }
+  });
+
+  // COR-2262: a group's header is fields (the step count, the tools, any problem count, the time).
+  // Each field is one unbroken line fragment, a narrow header leaves the raw tool names out, and a
+  // wide one keeps them.
+  for (const width of [320, 848] as const) {
+    test(`a group header keeps each phrase on one line and the names only where they fit (${width}px)`, async ({
+      browser,
+    }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        viewport: { width, height: 1000 },
+      });
+      try {
+        await setHarnessCustomMessageSnippets(page, false);
+        await harness.locator('[data-testid="clear"]').click();
+        await appendToolScenario(page, 'waiting-approval');
+        // A call that waits on an approval keeps a row of its own, after the finished one.
+        const activity = harness.locator('.chat-tool-call-timeline').last();
+        await expect(activity).toBeVisible();
+        await expectContainerThreshold(activity, width);
+
+        const toggle = activity.locator('.chat-tool-call-toggle');
+        await expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        await expect(toggle).toContainText('1 step');
+        await expect(toggle).toContainText('1 waiting for approval');
+        await expect(toggle).not.toContainText('·');
+
+        const fields = await activity
+          .locator('.chat-tool-call-summary > *')
+          .evaluateAll((elements) =>
+            elements.map((element) => {
+              const style = getComputedStyle(element);
+              return {
+                text: element.textContent?.trim() ?? '',
+                shown: style.display !== 'none',
+                height: element.getBoundingClientRect().height,
+                lineHeight: Number.parseFloat(style.lineHeight),
+              };
+            }),
+          );
+        for (const field of fields.filter((entry) => entry.shown)) {
+          expect(field.height, field.text).toBeLessThanOrEqual(field.lineHeight * 1.5);
+        }
+        const tools = fields.find((field) => field.text.includes('issue_refund'));
+        expect(tools?.shown).toBe(width !== 320);
+
+        // The chevron sits beside the first line of the header, not centered on a wrapped one.
+        const alignment = await toggle.evaluate((button) => {
+          const chevron = button.querySelector('.chat-tool-call-chevron')!.getBoundingClientRect();
+          const count = button
+            .querySelector('.chat-tool-call-summary-count')!
+            .getBoundingClientRect();
+          return {
+            chevronMiddle: chevron.top + chevron.height / 2,
+            countMiddle: count.top + count.height / 2,
+          };
+        });
+        expect(Math.abs(alignment.chevronMiddle - alignment.countMiddle)).toBeLessThanOrEqual(2);
+
+        // Opening the group by keyboard shows each call with its full tool name.
+        await toggle.focus();
+        await page.keyboard.press('Enter');
+        await expect(toggle).toHaveAttribute('aria-expanded', 'true');
+        await expect(activity.locator('.chat-tool-call-name')).toHaveText(['issue_refund']);
+        await expectNoPageOverflow(page);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+
+  // COR-2281 M3: twenty identical consecutive calls are one row, and opening it shows each call.
+  test('twenty identical consecutive calls fold into one row that opens to each call', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser);
+    try {
+      await setHarnessCustomMessageSnippets(page, false);
+      await harness.locator('[data-testid="clear"]').click();
+      await appendToolScenario(page, 'repeated');
+      const activity = harness.locator('.chat-tool-call-timeline');
+      await expect(activity).toHaveCount(1);
+      await expect(activity).toHaveAttribute('data-cinder-tool-call-count', '20');
+      const toggle = activity.locator('.chat-tool-call-toggle');
+      await expect(toggle).toContainText('20 steps');
+      await expect(toggle).toContainText('lookup_order ×20');
+      await toggle.click();
+      const rows = activity.locator('.chat-tool-call-row');
+      await expect(rows).toHaveCount(1);
+      await expect(rows).toContainText('lookup_order ×20');
+      await expect(activity.locator('.chat-tool-call-repeated-call')).toHaveCount(0);
+      await rows.click();
+      await expect(activity.locator('.chat-tool-call-repeated-call')).toHaveCount(20);
+      await rows.click();
+      await expect(activity.locator('.chat-tool-call-repeated-call')).toHaveCount(0);
+      await expectNoPageOverflow(page);
     } finally {
       await dispose();
     }
