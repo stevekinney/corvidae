@@ -139,15 +139,15 @@ const GUARDRAILS = [
     source: 'plugin',
     plugin: 'acme',
   },
-  // The host's own guardrails always run, so they are not offered as boxes.
+  // A memory guardrail guards the host's memory, and no agent file lists it.
   {
-    id: 'host:prompt-injection',
-    family: 'input',
-    description: 'detects prompt injection',
+    id: 'acme:memory-scrub',
+    family: 'memory',
+    description: 'scrubs what is remembered',
     configurable: false,
     configuration: null,
-    source: 'host',
-    plugin: 'host',
+    source: 'plugin',
+    plugin: 'acme',
   },
 ];
 
@@ -358,17 +358,40 @@ describe('a change', () => {
     expect((await findByTestId('agent-access-count')).textContent).toContain(copy.toolCount(3, 4));
   });
 
-  test('writes no approval for a level that is the tool’s own default (row 39i)', async () => {
+  test('moved off its default, drops the (default) mark, and is written (row 39i)', async () => {
     landAt('/agents/researcher/access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ approvals: { 'issue-refund': 'on-changes' } }),
+      detailWith({ tools: ['issue-refund', 'triage-refunds'] }),
     );
     const { container } = mount();
 
-    const refund = await rowOf(container, 'issue-refund');
-    expect(selectOf(refund).value).toBe('on-changes');
-    await fireEvent.change(selectOf(refund), { target: { value: 'always' } });
+    const triage = await rowOf(container, 'triage-refunds');
+    await fireEvent.change(selectOf(triage), { target: { value: 'always' } });
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      approvals: { 'triage-refunds': 'always' },
+    });
+    const shown = selectOf(container.querySelector('[data-tool="triage-refunds"]') as HTMLElement);
+    expect(shown.value).toBe('always');
+    expect(shown.options[shown.selectedIndex]?.text.trim()).toBe('Always');
+  });
+
+  test('writes nothing for On changes on a tool whose default it is, which a file says by saying nothing', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({
+        tools: ['issue-refund', 'triage-refunds'],
+        approvals: { 'triage-refunds': 'blocked' },
+      }),
+    );
+    const { container } = mount();
+
+    await fireEvent.change(selectOf(await rowOf(container, 'triage-refunds')), {
+      target: { value: 'on-changes' },
+    });
 
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
     expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ approvals: null });
@@ -507,7 +530,7 @@ describe('guardrails and spend', () => {
 
     const pii = await findByRole('checkbox', { name: 'Pii redaction' });
     expect(container.querySelectorAll('[data-guardrail="acme:pii-redaction"]')).toHaveLength(1);
-    expect(container.querySelector('[data-guardrail="host:prompt-injection"]')).toBeNull();
+    expect(container.querySelector('[data-guardrail="acme:memory-scrub"]')).toBeNull();
     await findByText(copy.guardrailsNote);
 
     await fireEvent.click(pii);
@@ -749,6 +772,35 @@ describe('the states', () => {
     expect(updatesOf(served)).toHaveLength(0);
   });
 
+  test('shows an agent a disabled plugin ships read-only, with every tool off (row 39n)', async () => {
+    landAt('/agents/demo%3Arelease-helper/access');
+    serve({
+      // The list holds what can run, so it leaves the agent out.
+      'bureau.agents.list': () => ({ agents: [FILE_AGENT] }),
+      'bureau.agents.definitions.get': () =>
+        readyAgent({
+          id: 'demo:release-helper',
+          name: 'Release helper',
+          source: 'code',
+          state: 'unavailable',
+          unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+          hash: null,
+          definition: null,
+        }),
+      'bureau.hooks.list': () => ({ hooks: [] }),
+    });
+    const { container } = mount();
+
+    const lookup = await rowOf(container, 'lookup-order');
+    const box = lookup.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(box?.checked).toBe(false);
+    expect(box?.disabled).toBe(true);
+    expect(selectOf(lookup).disabled).toBe(true);
+    expect(container.querySelector('[data-group="bureau:"]')?.textContent).toContain(
+      copy.groupCount(0, 3),
+    );
+  });
+
   test('while the server does not answer, says so and holds every change (rows 40b, 40c)', async () => {
     landAt('/agents/researcher/access');
     serve();
@@ -760,12 +812,14 @@ describe('the states', () => {
       browserOffline: false,
     });
     monitors.push(monitor);
-    const { container, findByRole, findByText } = mount(monitor);
+    const { container, findByRole } = mount(monitor);
 
     const lookup = await rowOf(container, 'lookup-order');
     monitor.reportUnreachable();
 
-    await findByText('Can’t reach the Interborough server.');
+    await waitFor(() =>
+      expect(container.textContent).toContain('Can’t reach the Interborough server.'),
+    );
     const box = await findByRole('checkbox', { name: 'Allow Lookup order' });
     await waitFor(() => expect(box.getAttribute('aria-disabled')).toBe('true'));
     // The old table stays: the row is still there, with its value.
@@ -887,8 +941,15 @@ describe('the state', () => {
     expect(state.approvalOf('lookup-order')).toBe('never');
     expect(state.approvalOf('issue-refund')).toBe('always');
     expect(state.approvalOf('triage-refunds')).toBe('on-changes');
+    // A file that says nothing runs a tool On changes, which Allow all and a remembered tool can
+    // skip, so a dangerous tool's Always is written, and only On changes is left out.
     state.setApproval('issue-refund', 'always');
-    expect(state.approvals.has('issue-refund')).toBe(false);
+    expect(state.approvals.get('issue-refund')).toBe('always');
+    state.setApproval('triage-refunds', 'always');
+    state.setApproval('triage-refunds', 'on-changes');
+    expect(state.approvals.has('triage-refunds')).toBe(false);
+    state.setApproval('issue-refund', 'on-changes');
+    expect(state.approvals.get('issue-refund')).toBe('on-changes');
   });
 
   test('writes the keys it does not edit as they were, and leaves out the ones it must not touch', () => {

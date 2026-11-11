@@ -241,11 +241,13 @@
       .filter((group) => typed.trim() === '' || group.matching.length > 0),
   );
 
-  // The guardrails a plugin offers an agent, once each, and those the file lists that none offers now.
+  // The installed guardrails an agent file can list, once each (one serves several families), and
+  // those the file lists that none offers now. A `memory` guardrail guards the host's memory, and
+  // no agent lists it.
   const guardrailChoices = $derived.by(() => {
     const offered = new Map<string, string>();
     for (const guardrail of installedGuardrails.data ?? []) {
-      if (guardrail.source !== 'plugin' || guardrail.family === 'memory') continue;
+      if (guardrail.family === 'memory') continue;
       if (!offered.has(guardrail.id)) offered.set(guardrail.id, guardrail.description);
     }
     const listed = (form?.guardrails ?? []).filter((guardrail) => !offered.has(guardrail));

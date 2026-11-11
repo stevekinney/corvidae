@@ -16,9 +16,9 @@
  *
  * `approvals` may only name a tool the file lists, or the Bureau refuses the write, so a tool that
  * is not allowed has its approval left out of the write. The approval itself is kept in the state,
- * so allowing the tool again restores what was chosen instead of loosening it. A tool's Asks level
- * that matches the tool's own default (`defaultAsks`) is not written: the file saying nothing gives
- * the same answer.
+ * so allowing the tool again restores what was chosen instead of loosening it. A tool the file says
+ * nothing about shows its own default (`defaultAsks`); a level picked for it is written, except
+ * `on-changes` on a tool whose default that is, which is what the file saying nothing runs.
  *
  * `skills` is written whole, so a skill the file names that the host no longer offers stays until
  * someone withdraws it. A file with no list keeps none until a skill is granted.
@@ -245,9 +245,9 @@ export class AgentAccessState {
   }
 
   /**
-   * The state for an agent as the Bureau shows it, or `undefined` when it states no tools to show
-   * (a file that does not load). With a `writer` and a file to write, each change saves; without
-   * one the state is read-only.
+   * The state for an agent as the Bureau shows it, or `undefined` for an agent file that does not
+   * load. With a `writer` and a file to write, each change saves; without one the state is
+   * read-only.
    */
   static from(
     detail: AgentDetail,
@@ -263,7 +263,8 @@ export class AgentAccessState {
         detail.hash === null ? undefined : writer,
       );
     }
-    if (detail.codeDefinition === null) return undefined;
+    // An agent in code states its own tools; one a disabled plugin ships states none the page can
+    // read (row 39n), so its table shows every tool off.
     return new AgentAccessState(detail, null, catalog, undefined);
   }
 
@@ -319,10 +320,19 @@ export class AgentAccessState {
     return this.approvals.get(name) ?? this.fallbackOf(name);
   }
 
-  /** Sets when the tool asks first. The tool's own default is what a file says by saying nothing, so it is not written. */
+  /**
+   * Sets when the tool asks first. A file that says nothing runs the tool `on-changes`, so only
+   * that level, on a tool whose default it is, is left out of the write. Every other level is
+   * written, the tool's shown default included: a dangerous tool shown at Always asks on every
+   * call either way, but only a written `always` is never skipped by a chat's Allow all or by a
+   * tool allowed for the rest of a chat.
+   */
   setApproval(name: string, approval: ToolApproval): void {
-    if (approval === this.fallbackOf(name)) this.approvals.delete(name);
-    else this.approvals.set(name, approval);
+    if (approval === DEFAULT_APPROVAL && this.fallbackOf(name) === DEFAULT_APPROVAL) {
+      this.approvals.delete(name);
+    } else {
+      this.approvals.set(name, approval);
+    }
   }
 
   /** How many rows the tools table has: the one total the toolbar's count is out of (row 38l). */
