@@ -82,13 +82,14 @@ export type HostSlots = {
 export async function withHostSlots<T>(
   count: number,
   run: (slots: HostSlots) => Promise<T>,
-  options: HostSlotsOptions = {},
+  input: HostSlotsOptions = {},
 ): Promise<T> {
-  // Snapshotted, so a caller that changes its environment after an await cannot change this run.
+  // Snapshotted, so a caller that changes its options after an await cannot change this run.
+  const options = { ...input };
   const environment = { ...(options.environment ?? rootScriptEnvironment()) };
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   const size = options.size ?? poolSize(environment);
-  const wanted = Math.max(1, Math.floor(count));
+  const wanted = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
   const read = options.readProcessTable ?? readProcessTable;
   let held: HeldTestSlots | undefined;
   let slots: HostSlots = {

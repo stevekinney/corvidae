@@ -24,8 +24,9 @@
  * request is never overtaken by later small ones, and a small one behind it waits its turn. Only
  * the waiter at the front claims. Waiting is on state, not on time: the front waiter looks again
  * every quarter second and prints a line whenever what it waits for changes. Waiting has no deadline,
- * because running past it would break the cap; it is bounded by the holders, whose tests the hang
- * guard bounds.
+ * because running past it would break the cap; it is bounded by the holders. The hang guard bounds a
+ * `bun test` holder's tests; nothing times out a holder through `scripts/host-slots.ts` (a browser
+ * suite, a capture, the Docker renderer), which holds its slots for as long as its run lasts.
  *
  * Bun's `--parallel` workers (`bun test --test-worker`) are children of the `bun test` leader but
  * each leads a process group of its own, and they outlive a leader killed with SIGKILL. So while a
