@@ -904,7 +904,9 @@ describe('send signal', () => {
     await ready(view.container);
     await openSignalDialog(view);
     await fireEvent.click(view.getByRole('button', { name: WORKFLOW_COPY.page.menu.closeSignal }));
-    await waitFor(() => expect(testId(view.container, 'workflow-signal')).toBeNull());
+    await waitFor(() =>
+      expect(testId(view.container, 'workflow-signal')?.outerHTML ?? null).toBeNull(),
+    );
   });
 });
 
@@ -1347,9 +1349,9 @@ describe('a workflow’s page while its type loads', () => {
     const root = page(container) as HTMLElement;
     expect(root.querySelector('h1')?.textContent).toContain('digest');
     // The tabs are there with no count, because a count waits for data.
-    expect([...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim())).toEqual(
-      [TABS.overview, TABS.code, TABS.runs, TABS.history],
-    );
+    expect(
+      [...root.querySelectorAll('[role="tab"]')].map((tab) => tab.textContent?.trim()),
+    ).toEqual([TABS.overview, TABS.code, TABS.runs, TABS.history]);
     expect(getByRole('button', { name: WORKFLOW_COPY.page.startAction })).toBeDisabled();
     expect(testId(root, 'workflow-overview')).toBeNull();
 
