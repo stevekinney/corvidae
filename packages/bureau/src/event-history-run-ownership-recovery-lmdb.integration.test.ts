@@ -71,6 +71,7 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
     rejected: [],
   };
   const stepZero = {
+    runId,
     step: 0,
     content: 'A step 0',
     parts: [{ type: 'text', text: 'A step 0' }],
@@ -92,6 +93,7 @@ function expectedRecoveredPage(runId: string, toolCallId: string): unknown {
     final: false,
   };
   const stepOne = {
+    runId,
     step: 1,
     content: 'B recovered step 1',
     parts: [{ type: 'text', text: 'B recovered step 1' }],
