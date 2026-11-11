@@ -163,10 +163,31 @@
 
   /* Each block finds its own direction from its own text, so a reply that mixes an English
      paragraph and an Arabic one sets each at its own start edge, with numbers and punctuation in
-     the right order. Code keeps its left-to-right layout. */
+     the right order. */
   .message-content :global(:is(p, li, blockquote, h1, h2, h3, h4, h5, h6, dt, dd)) {
     unicode-bidi: plaintext;
     text-align: start;
+  }
+
+  /* Code reads left to right whatever direction the reply takes: `dir="auto"` above would otherwise
+     hand an Arabic-first reply's right-to-left direction to its code blocks, Mermaid sources and
+     inline code, setting their lines at the right edge and moving trailing punctuation such as `;`
+     and `()` to the wrong end. Each is isolated, so inline code inside an Arabic sentence stays one
+     left-to-right run. */
+  .message-content
+    :global(
+      :is(
+        pre,
+        code,
+        kbd,
+        samp,
+        [data-cinder-markdown-node='code-block'],
+        [data-cinder-markdown-node='mermaid']
+      )
+    ) {
+    direction: ltr;
+    unicode-bidi: isolate;
+    text-align: left;
   }
 
   .message-content-ellipsis {

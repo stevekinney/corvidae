@@ -15,6 +15,7 @@ setupHappyDom();
 const { render, cleanup, fireEvent } = await import('@testing-library/svelte');
 const { tick } = await import('svelte');
 const { ChatMessage } = await import('../index.ts');
+const { default: MessageContent } = await import('./message-content.svelte');
 
 afterEach(() => {
   cleanup();
@@ -55,6 +56,26 @@ describe('ChatMessage text direction', () => {
     expect(contentSource).toMatch(/\.message-content \{[^}]*text-align: start;/);
     expect(contentSource).toMatch(
       /\.message-content :global\(:is\(p, li, blockquote[^)]*\)\) \{\s*unicode-bidi: plaintext;\s*text-align: start;/,
+    );
+  });
+
+  test('code in an Arabic reply keeps its left-to-right layout', () => {
+    // The open fence renders its code block at once, inside the `dir="auto"` container that an
+    // Arabic first sentence resolves to right to left.
+    const { container } = render(MessageContent, {
+      props: { content: 'هذا هو الاستعلام:\n\n```ts\nconsole.log(x);', streaming: true },
+    });
+
+    const content = container.querySelector('.message-content');
+    expect(content?.getAttribute('dir')).toBe('auto');
+    const wrapper = content?.querySelector('[data-cinder-markdown-node="code-block"]');
+    expect(wrapper).not.toBeNull();
+    expect(wrapper?.querySelector('pre code')?.textContent).toBe('console.log(x);');
+    // Nothing between the container and the code sets a direction of its own, so the rule below is
+    // what keeps the code left to right.
+    expect(wrapper?.querySelector('[dir]')).toBeNull();
+    expect(contentSource).toMatch(
+      /\.message-content\s*:global\(\s*:is\(\s*pre,\s*code,\s*kbd,\s*samp,\s*\[data-cinder-markdown-node='code-block'\],\s*\[data-cinder-markdown-node='mermaid'\]\s*\)\s*\) \{\s*direction: ltr;\s*unicode-bidi: isolate;\s*text-align: left;/,
     );
   });
 
