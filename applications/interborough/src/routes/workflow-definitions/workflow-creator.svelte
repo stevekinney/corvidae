@@ -5,17 +5,23 @@
    * for the person: it starts when someone runs it, with one empty agent step that names no agent,
    * no title and no ID, and no Input or Output, so an untouched form cannot create a schedule. The
    * `name` in the text is the workflow's identifier, so it is read and not sent, as the edit page
-   * does not send it either. Text that is not JSON, a name that is not an identifier or is `new`
-   * (which is this page's address), and a document the Bureau refuses, show the error and save
-   * nothing; so does a name that is taken. A save lands on the new workflow's page.
+   * does not send it either.
+   *
+   * Create workflow is always pressable. With something to fix it sends nothing and takes the
+   * person to the first problem: the line the JSON stops being JSON on, an ID that is not an
+   * identifier, is `new` (which is this page's address) or is taken, or the first field of a step
+   * that is empty. A file the Bureau cannot write shows its words above the footer and keeps
+   * everything typed; Create workflow is the retry. While it writes, the form is read-only and the
+   * button reads Creating. A save lands on the new workflow's page. Leaving with what was typed
+   * asks first.
    */
-  import { Alert, Button, PageHeader } from '@lostgradient/cinder';
+  import { Button, ConfirmDialog, PageHeader } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { onMount } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { LeaveGuard, router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import {
     createDefinitionFromText,
@@ -25,6 +31,7 @@
   } from '../../lib/workflow-files.ts';
   import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import WorkflowBuilder from './workflow-builder.svelte';
+  import { workflowProblems } from './workflow-builder-problems.ts';
 
   const copy = WORKFLOW_COPY;
   const creator = copy.creator;
@@ -45,19 +52,20 @@
   );
 
   let text = $state(TEMPLATE);
-  /** Why the text cannot be saved, or the Bureau's words for a document it refused. */
-  let validation = $state('');
+  /** Create workflow was pressed, so what is wrong is said at its fields from now on. */
+  let checked = $state(false);
+  /** The ID the Bureau said a file already has. */
+  let takenId = $state<string>();
+  /** The builder, which takes the person to the first problem. */
+  let builder = $state<{ focusProblem: () => Promise<void> }>();
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
 
-  const NAME_PROBLEMS = {
-    'not-json': copy.editor.notJson,
-    'not-object': copy.editor.notObject,
-    'no-name': creator.noName,
-    'invalid-name': creator.invalidName,
-    'reserved-name': creator.reservedName,
-  } as const;
+  // Leaving with what was typed asks first; an untouched form leaves at once.
+  const leaveGuard = new LeaveGuard(() => text !== TEMPLATE);
+  $effect(() => leaveGuard.attach());
 
   function created(id: string): void {
+    leaveGuard.release();
     void queryClient.invalidateQueries({ queryKey: ['workflow-catalog'] });
     router.navigate(workflowTypePath(id));
   }
@@ -76,7 +84,9 @@
         return;
       }
       if (isIdentifierTaken(error)) {
-        validation = creator.taken(id);
+        takenId = id;
+        checked = true;
+        void builder?.focusProblem();
         return;
       }
       const fault = agentFaultOf(error);
@@ -102,11 +112,15 @@
   function submit(): void {
     if (save.isPending) return;
     const parsed = createDefinitionFromText(text);
-    if (!parsed.ok) {
-      validation = NAME_PROBLEMS[parsed.reason];
+    const problems = workflowProblems(text, {
+      mode: 'create',
+      ...(takenId === undefined ? {} : { takenId }),
+    });
+    if (!parsed.ok || problems.length > 0) {
+      checked = true;
+      void builder?.focusProblem();
       return;
     }
-    validation = '';
     save.mutate({ id: parsed.id, definition: parsed.definition });
   }
 
@@ -130,25 +144,22 @@
 <div class="ib-workflow" data-page="workflow-creator">
   <PageHeader title={creator.heading} headingLevel={1} description={creator.description} />
 
-  {#if failure !== null}
-    <Alert variant="danger" dismissible onDismiss={() => (failure = null)}>
-      <p class="ib-workflow__alert-title">{failure.title}</p>
-      <p class="ib-workflow__alert-body">{failure.message}</p>
-    </Alert>
-  {/if}
-
   <form class="ib-workflow__section" onsubmit={(event) => event.preventDefault()}>
     <WorkflowBuilder
+      bind:this={builder}
       {text}
       mode="create"
-      error={validation}
+      error=""
+      showProblems={checked}
+      {...takenId === undefined ? {} : { takenId }}
+      saving={save.isPending}
+      {failure}
       jsonId="workflow-creator-text"
       jsonLabel={creator.textLabel}
       jsonDescription={creator.textDescription}
       backHref="/workflows"
       onTextChange={(next) => {
         text = next;
-        validation = '';
       }}
     >
       {#snippet actions()}
@@ -161,9 +172,21 @@
           onclick={() => submit()}
           variant="primary"
           size="sm"
-          disabled={save.isPending}>{creator.saveAction}</Button
+          disabled={save.isPending}
+          >{save.isPending ? creator.creatingAction : creator.saveAction}</Button
         >
       {/snippet}
     </WorkflowBuilder>
   </form>
 </div>
+
+<!-- Asked before what was typed is left behind (row 66h): Cancel, the breadcrumb, a link, back. -->
+<ConfirmDialog
+  bind:open={leaveGuard.asking}
+  title={copy.builder.discard.title}
+  description={copy.builder.discard.description}
+  confirmLabel={copy.builder.discard.confirm}
+  cancelLabel={copy.builder.discard.keep}
+  destructive
+  onConfirm={() => leaveGuard.leave()}
+/>

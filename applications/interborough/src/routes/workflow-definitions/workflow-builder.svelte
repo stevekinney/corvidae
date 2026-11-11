@@ -6,10 +6,15 @@
    * workflow back in one sentence beside the page's Cancel and primary action. The page owns the
    * file's text. The builder reads it and writes a changed copy back through `onTextChange`, and
    * the JSON tab edits the same text, so each view shows the other's edits and neither can lose
-   * what the other wrote (`workflow-builder-model.ts`). Text that is not a JSON object leaves the
-   * builder with nothing to read, so it says so and points at the JSON tab. Below 640 pixels the
+   * what the other wrote (`workflow-builder-model.ts`). Below 640 pixels the
    * builder is read-only (its fields, its JSON and its actions; the tabs still switch) and says to
    * open it on a larger screen, beside a link back (row 05n).
+   *
+   * Create workflow's problems (the ID, what starts it, each step) are said at their fields and
+   * outline their step once the page asks to `showProblems`, from two of them in one line above the
+   * footer, and `focusProblem()` takes the person to the first. Text that is not a JSON object is
+   * the JSON tab's to fix: the Builder tab is off with the reason, and the footer says which line
+   * to fix in place of the read-back.
    */
   import {
     Alert,
@@ -27,7 +32,7 @@
   } from '@lostgradient/cinder';
   import { ArrowDown, ArrowUp, Plus, Trash2 } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
-  import type { Snippet } from 'svelte';
+  import { tick, untrack, type Snippet } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentLabel } from '../../lib/agent-label.ts';
@@ -38,6 +43,7 @@
   import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { workflowTypePath } from '../../lib/workflow-type-paths.ts';
   import { loadModelAgents } from '../schedules/schedule-row-context.ts';
   import {
     addStep,
@@ -61,6 +67,13 @@
     type SchemaKey,
     type WaitUnit,
   } from './workflow-builder-model.ts';
+  import {
+    problemSummary,
+    stepFieldId,
+    workflowProblems,
+    type WorkflowProblem,
+  } from './workflow-builder-problems.ts';
+  import { locateJsonProblem } from './workflow-source.ts';
 
   interface Props {
     /** The file's text, which the page owns. */
@@ -82,6 +95,20 @@
     backHref: string;
     /** The footer's actions, at the right of the read-back: Cancel and the one primary action. */
     actions?: Snippet;
+    /**
+     * Whether the page has asked to save: the problems of the workflow are then said at their
+     * fields and, from two, in one line above the footer. Before that nothing is called wrong.
+     */
+    showProblems?: boolean;
+    /** An ID the Bureau said is already a file, so a text that still names it is a problem. */
+    takenId?: string;
+    /** The save is in flight: the whole form is read-only until it answers. */
+    saving?: boolean;
+    /**
+     * Why the file could not be written, said above the footer at the action. It carries what the
+     * Bureau said, and "Nothing was saved." closes it.
+     */
+    failure?: { readonly title: string; readonly message: string } | null;
   }
 
   let {
@@ -94,14 +121,29 @@
     jsonDescription,
     backHref,
     actions,
+    showProblems = false,
+    takenId,
+    saving = false,
+    failure = null,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.builder;
+  const takenLink = WORKFLOW_COPY.creator.takenLink;
 
-  let tab = $state<'builder' | 'json'>('builder');
+  /** The footer's sentence, which a disabled Builder tab points at as its reason. */
+  const READ_BACK_ID = 'workflow-builder-read-back';
 
-  /** Below 640 pixels the Builder tab can be read but not changed. */
+  // Text the builder cannot read opens on the JSON tab, where it is fixed.
+  let tab = $state<'builder' | 'json'>(
+    untrack(() => (readBuilder(text) === undefined ? 'json' : 'builder')),
+  );
+
+  /** Below 640 pixels the Builder tab can be read but not changed; so is the whole form while it saves. */
   const readOnly = $derived(phoneViewport.current);
+  const locked = $derived(readOnly || saving);
+
+  /** The JSON tab's editor, which finds and focuses the line its text stops being JSON on. */
+  let jsonEditor = $state<{ focusProblem: () => void; focusLine: (line: number) => void }>();
 
   /**
    * The agents an agent step can name. A host that cannot list them leaves the agent to be typed;
@@ -116,6 +158,69 @@
   const view = $derived(
     readBuilder(text, { agentName: (identifier) => agentLabel(identifier, agents.data) }),
   );
+
+  /**
+   * The builder cannot draw text that is not a JSON object, so its tab is off with the reason and
+   * the JSON tab holds the fix. `jsonProblem` is where the text stops being JSON, or `null` when it
+   * parses but is not an object.
+   */
+  const blocked = $derived(view === undefined);
+  const jsonProblem = $derived(blocked ? locateJsonProblem(text) : null);
+  const fixLine = $derived(copy.json.fixLine(jsonProblem?.line ?? 1));
+  /** Valid JSON that is not an object: the editor marks its first line and says so in its status. */
+  const notWorkflow = $derived(blocked && jsonProblem === null && text.trim() !== '');
+
+  $effect(() => {
+    if (blocked && tab === 'builder') tab = 'json';
+  });
+
+  /** Everything wrong with the workflow, whether or not the page has asked to show it. */
+  const problems = $derived(
+    workflowProblems(text, { mode, ...(takenId === undefined ? {} : { takenId }) }),
+  );
+  const visible = $derived(showProblems ? problems : []);
+  const summary = $derived(problemSummary(visible));
+  /** The problem said at a field, by the field's id. */
+  function problemAt(fieldId: string): WorkflowProblem | undefined {
+    return visible.find((problem) => problem.fieldId === fieldId);
+  }
+  /** The `error` a field takes for its problem, or nothing for a field that has none. */
+  function errorOf(fieldId: string): { error?: string } {
+    const problem = problemAt(fieldId);
+    return problem === undefined ? {} : { error: problem.message };
+  }
+  /** Whether a step has something to fix, which outlines its card. */
+  function stepHasProblem(position: number): boolean {
+    return visible.some((problem) => problem.position === position);
+  }
+  /** The ID's problem, when the page has asked to show it and the ID is the Bureau's to refuse. */
+  const idProblem = $derived(
+    visible.find((problem) => problem.kind === 'id' || problem.kind === 'id-taken'),
+  );
+  /** The ID problem the JSON tab says under its editor, whose frame goes red for it. */
+  const jsonError = $derived(error !== '' ? error : (idProblem?.message ?? ''));
+
+  /**
+   * Takes the person to the first problem: the line the JSON stops being JSON on, the ID (on the
+   * JSON tab, the editor that holds it), or the first field of the builder that is wrong.
+   */
+  export async function focusProblem(): Promise<void> {
+    if (blocked) {
+      tab = 'json';
+      await tick();
+      jsonEditor?.focusProblem();
+      return;
+    }
+    const first = problems[0];
+    if (first === undefined) return;
+    if (tab === 'json' && (first.kind === 'id' || first.kind === 'id-taken')) {
+      jsonEditor?.focusProblem();
+      return;
+    }
+    tab = 'builder';
+    await tick();
+    document.getElementById(first.fieldId)?.focus();
+  }
 
   /** The agents the steps name, each once and in order, for the provider check. */
   const namedAgents = $derived(
@@ -232,6 +337,7 @@
   const idCollapsed = $derived(
     mode === 'create' &&
       !idOpen &&
+      idProblem === undefined &&
       view !== undefined &&
       view.title.trim() !== '' &&
       derivedId !== '' &&
@@ -348,25 +454,21 @@
 
   <Tabs bind:value={tab}>
     <Tabs.List label={copy.tabsLabel}>
-      <Tabs.Trigger value="builder">{copy.builderTab}</Tabs.Trigger>
+      <Tabs.Trigger
+        value="builder"
+        disabled={blocked}
+        {...blocked ? { 'aria-describedby': READ_BACK_ID } : {}}>{copy.builderTab}</Tabs.Trigger
+      >
       <Tabs.Trigger value="json">{copy.jsonTab}</Tabs.Trigger>
     </Tabs.List>
 
     <Tabs.Panel value="builder">
-      {#if view === undefined}
-        <Alert variant="warning">
-          <p class="weft-workflow-builder__alert-title">{copy.unreadable.title}</p>
-          <p class="weft-workflow-builder__alert-body">{copy.unreadable.description}</p>
-          <Button variant="secondary" onclick={() => (tab = 'json')}
-            >{copy.unreadable.action}</Button
-          >
-        </Alert>
-      {:else}
+      {#if view !== undefined}
         {#if error !== ''}
           <Alert variant="danger">{error}</Alert>
         {/if}
 
-        <div class="weft-workflow-builder__body" inert={readOnly}>
+        <div class="weft-workflow-builder__body" inert={locked}>
           <FormSection>
             <Input
               id="workflow-builder-title"
@@ -401,6 +503,7 @@
                 description={copy.idDescription}
                 variant="code"
                 required
+                {...idProblem?.kind === 'id' ? { error: idProblem.message } : {}}
                 value={view.name}
                 onValueChange={(next) => onTextChange(setName(text, next))}
               />
@@ -412,6 +515,7 @@
                 description={copy.idChangedDescription.before}
                 variant="code"
                 required
+                {...idProblem?.kind === 'id' ? { error: idProblem.message } : {}}
                 value={view.name}
                 onValueChange={(next) => onTextChange(setName(text, next))}
               >
@@ -422,6 +526,20 @@
                   >
                 {/snippet}
               </Input>
+            {/if}
+            {#if idProblem?.kind === 'id-taken'}
+              {@const takenPath = workflowTypePath(view.name)}
+              {@const at = idProblem.message.lastIndexOf(takenLink)}
+              <p
+                class="weft-workflow-builder__field-error"
+                role="alert"
+                data-testid="workflow-builder-id-taken"
+              >
+                {idProblem.message.slice(0, at)}<a
+                  href={router.href(takenPath)}
+                  onclick={(event) => go(event, takenPath)}>{takenLink}</a
+                >{idProblem.message.slice(at + takenLink.length)}
+              </p>
             {/if}
             <Textarea
               id="workflow-builder-description"
@@ -458,6 +576,7 @@
                 description={copy.signalNameDescription}
                 variant="code"
                 required
+                {...errorOf('workflow-builder-trigger-field')}
                 value={view.trigger.name}
                 onValueChange={(next) => onTextChange(setTrigger(text, 'signal', next))}
               />
@@ -500,6 +619,8 @@
                 label={copy.scheduleLabel}
                 description={copy.scheduleDescription}
                 variant="code"
+                required
+                {...errorOf('workflow-builder-trigger-field')}
                 value={view.trigger.spec}
                 onValueChange={(next) => onTextChange(setTrigger(text, 'schedule', next))}
               />
@@ -524,7 +645,11 @@
                   {#each view.steps as step, index (index)}
                     {@const position = index + 1}
                     {@const id = `workflow-builder-step-${String(position)}`}
-                    <li class="weft-workflow-builder__card" data-step-kind={step.kind}>
+                    <li
+                      class="weft-workflow-builder__card"
+                      data-step-kind={step.kind}
+                      data-problem={stepHasProblem(position) ? '' : undefined}
+                    >
                       <div class="weft-workflow-builder__card-head">
                         <span class="weft-workflow-builder__position">{position}</span>
                         <span class="weft-workflow-builder__kind">{copy.stepKinds[step.kind]}</span>
@@ -580,6 +705,7 @@
                             size="sm"
                             variant="code"
                             required
+                            {...errorOf(stepFieldId(position, 'agent'))}
                             value={step.agent}
                             onValueChange={(next) =>
                               onTextChange(setStepField(text, index, 'agent', next))}
@@ -591,6 +717,7 @@
                             aria-label={copy.agentLabel(position)}
                             size="sm"
                             required
+                            {...errorOf(stepFieldId(position, 'agent'))}
                             value={step.agent}
                             options={agentOptions(step.agent)}
                             {...blockedAgents.has(step.agent)
@@ -608,6 +735,7 @@
                           size="sm"
                           rows={3}
                           required
+                          {...errorOf(stepFieldId(position, 'message'))}
                           value={step.message}
                           oninput={(event) =>
                             onTextChange(
@@ -626,6 +754,7 @@
                           size="sm"
                           variant="code"
                           required
+                          {...errorOf(stepFieldId(position, 'signal'))}
                           value={step.signal}
                           onValueChange={(next) =>
                             onTextChange(setStepField(text, index, 'signal', next))}
@@ -641,6 +770,7 @@
                             min="0"
                             size="sm"
                             required
+                            {...errorOf(stepFieldId(position, 'duration'))}
                             value={parts.amount}
                             onValueChange={(next) =>
                               onTextChange(setWaitDuration(text, index, next, parts.unit))}
@@ -681,6 +811,7 @@
                 >
                 {#each ADD_ACTIONS as action (action.kind)}
                   <Button
+                    id={`workflow-builder-add-${action.kind}`}
                     variant="secondary"
                     size="sm"
                     onclick={() => onTextChange(addStep(text, action.kind))}
@@ -710,28 +841,59 @@
     </Tabs.Panel>
 
     <Tabs.Panel value="json">
-      <div class="weft-workflow-builder__json" inert={readOnly}>
+      <div class="weft-workflow-builder__json" inert={locked}>
         <JsonEditor
+          bind:this={jsonEditor}
           id={jsonId}
           label={jsonLabel}
           description={jsonDescription}
           rows={18}
           value={text}
-          {error}
-          validFeedbackVisible={false}
+          error={jsonError}
+          {...notWorkflow
+            ? {
+                statusLabel: copy.json.notWorkflow,
+                diagnostics: [{ line: 1, message: copy.json.notObject }],
+              }
+            : {}}
           onValueChange={onTextChange}
         />
       </div>
     </Tabs.Panel>
   </Tabs>
 
+  {#if failure !== null}
+    <Alert variant="danger">
+      <p class="weft-workflow-builder__alert-title">{failure.title}</p>
+      <p class="weft-workflow-builder__alert-body">
+        {#if failure.message !== failure.title}{failure.message}
+        {/if}<span>{WORKFLOW_COPY.creator.nothingSaved}</span>
+      </p>
+    </Alert>
+  {/if}
+
+  {#if summary !== undefined}
+    <p
+      class="weft-workflow-builder__problems"
+      aria-live="polite"
+      data-testid="workflow-builder-problems"
+    >
+      {summary}
+    </p>
+  {/if}
+
   <footer class="weft-workflow-builder__footer">
     <p
+      id={READ_BACK_ID}
       class="weft-workflow-builder__read-back"
-      data-truncated={tab === 'json' ? '' : undefined}
+      data-truncated={summary !== undefined ? '' : undefined}
       data-testid="workflow-builder-summary"
     >
-      <span class="cinder-sr-only">{copy.readBack.label}: </span>{view?.readBack ?? ''}
+      {#if blocked}
+        {fixLine}
+      {:else}
+        <span class="cinder-sr-only">{copy.readBack.label}: </span>{view?.readBack ?? ''}
+      {/if}
     </p>
     {#if actions !== undefined}
       <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions()}</div>
@@ -798,6 +960,25 @@
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     min-width: 0;
+  }
+
+  /* A step with something to fix is outlined, so it is found without reading its fields. */
+  .weft-workflow-builder__card[data-problem] {
+    border-color: var(--cinder-status-danger-border);
+  }
+
+  .weft-workflow-builder__field-error {
+    margin: 0;
+    color: var(--cinder-status-danger-text);
+    font-size: var(--cinder-text-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .weft-workflow-builder__problems {
+    margin: 0;
+    color: var(--cinder-status-danger-text);
+    font-size: var(--cinder-text-sm);
+    overflow-wrap: anywhere;
   }
 
   .weft-workflow-builder__card-head {

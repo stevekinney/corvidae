@@ -1395,17 +1395,25 @@ export const WORKFLOW_COPY = {
     textLabel: 'Workflow file',
     /** The note under the JSON tab's editor (board PageWorkflowBuilder, "JSON tab"). */
     textDescription:
-      'The file the builder writes; while it is valid JSON it is the same as the builder. It uses the extended workflow file format: timezone and catchUp on a schedule trigger, a manual trigger kind, and a title on the workflow and on each step. The titles are removed before the workflow runs. Keys the builder doesn’t show are saved exactly as written.',
+      'The file the builder writes; while it is valid JSON it is the same as the builder. Every field the builder writes is here, including the schedule trigger, each title and the Input and Output schemas. Keys the builder doesn’t show are saved exactly as written.',
     saveAction: 'Create workflow',
+    /** The primary button while the file is being written; the whole form is read-only meanwhile. */
+    creatingAction: 'Creating…',
     cancelAction: 'Cancel',
-    saveFailed: 'The workflow was not created',
+    /** The lead of the error above the footer when the file could not be written (board PageWorkflowBuilder, "Create failed"). */
+    saveFailed: 'Couldn’t create the workflow.',
+    /** Closes that error: a create that failed wrote nothing, and Create workflow is the retry. */
+    nothingSaved: 'Nothing was saved.',
     noName: 'Give the workflow a name: a "name" key holding its identifier.',
     invalidName:
       'The name must use lowercase letters, digits, and hyphens, start with a letter, and be at most 64 characters.',
     reservedName:
       'This name is reserved: /workflows/new is the page that creates a workflow, so a workflow called new could never be opened. Choose another.',
+    /** Said at the ID when a file already has it; {@link takenLink} is the link inside it. */
     taken: (name: string): string =>
-      `A workflow called ${name} already exists. Choose another name.`,
+      `A workflow with the ID ${name} already exists. Choose another ID, or open that workflow.`,
+    /** The words of {@link taken} that open the workflow that has the ID. */
+    takenLink: 'open that workflow',
   },
   /**
    * The builder of `/workflows/new` and `/workflows/:workflow/edit` (board PageWorkflowBuilder):
@@ -1569,10 +1577,49 @@ export const WORKFLOW_COPY = {
       backToWorkflow: 'Back to the workflow',
       backToWorkflows: 'Back to Workflows',
     },
-    unreadable: {
-      title: 'The builder needs valid JSON',
-      description: 'The JSON tab holds text that is not a workflow file yet. Fix it there.',
-      action: 'Open the JSON tab',
+    /**
+     * What the builder says when the JSON tab holds text it cannot draw: the Builder tab is off, and
+     * the footer, in place of the read-back, says where to fix it (board PageWorkflowBuilder, "JSON
+     * tab, invalid").
+     */
+    json: {
+      /** The footer's sentence, once. The Builder tab's reason is the same sentence. */
+      fixLine: (line: number): string => `Fix line ${String(line)} to return to the builder.`,
+      /** The toolbar's status for JSON that parses but is not a JSON object. */
+      notWorkflow: 'Valid JSON, not a valid workflow',
+      /** Under the line a value that is not an object starts on. */
+      notObject: 'A workflow is a JSON object.',
+    },
+    /** What Create workflow says is wrong, at the field and once above the footer. */
+    problems: {
+      agent: 'Choose an agent.',
+      message: 'Write what to ask the agent.',
+      signal: 'Name the signal to wait for.',
+      duration: 'Say how long to wait.',
+      startSignal: 'Name the signal that starts it.',
+      schedule: 'Say how often it runs.',
+      /** The line above the footer, from two problems: "2 things to fix: Step 2: name the signal. …". */
+      summaryLead: (count: number): string => `${String(count)} things to fix:`,
+      summary: {
+        id: 'ID: use letters, numbers and dashes.',
+        idTaken: 'ID: choose another.',
+        schedule: 'Starts: say how often it runs.',
+        startSignal: 'Starts: name the signal.',
+        agent: (position: number): string => `Step ${String(position)}: choose an agent.`,
+        message: (position: number): string =>
+          `Step ${String(position)}: write what to ask the agent.`,
+        signal: (position: number): string => `Step ${String(position)}: name the signal.`,
+        duration: (position: number): string => `Step ${String(position)}: say how long to wait.`,
+        steps: 'Steps: add a step.',
+      },
+    },
+    /** Asked when Cancel, or anything else that leaves the page, would lose what was typed. */
+    discard: {
+      title: 'Discard your changes?',
+      description:
+        'You changed this workflow and haven’t saved it. Leaving now discards those changes.',
+      keep: 'Keep editing',
+      confirm: 'Discard changes',
     },
   },
   revisions: {

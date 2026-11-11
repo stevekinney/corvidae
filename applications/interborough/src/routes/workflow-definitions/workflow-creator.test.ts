@@ -6,7 +6,7 @@
  * identifier or is `new`, and a taken name show the error and save nothing; a document the Bureau
  * refuses shows its words. A save lands on the new page.
  */
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -154,24 +154,34 @@ describe('the new-workflow editor', () => {
   });
 
   test('refuses the untouched form, which has no ID, and creates nothing', async () => {
-    const { getByRole, findByText } = open();
+    const { container, getByRole, findByText } = open();
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
     await findByText(WORKFLOW_COPY.creator.invalidName);
     expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
     expect(router.pathname).toBe('/workflows/new');
+    // The ID is the first problem, so it takes focus.
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-name'));
+    const lines = container.querySelector('[data-testid="workflow-builder-problems"]');
+    expect(lines?.textContent?.trim()).toBe(
+      `${BUILDER.problems.summaryLead(3)} ${BUILDER.problems.summary.id} ${BUILDER.problems.summary.agent(1)} ${BUILDER.problems.summary.message(1)}`,
+    );
   });
 
-  test('refuses text that is not JSON, and a JSON value that is not an object, and sends nothing', async () => {
-    const { container, getByRole, findByText } = open();
+  test('refuses text that is not JSON, and a JSON value that is not an object, says the line to fix once, and sends nothing', async () => {
+    const { container, getByRole } = open();
     await openJson(container);
+    const footer = () =>
+      container.querySelector('[data-testid="workflow-builder-summary"]')?.textContent ?? '';
 
     await typeInto(container, '{ not json');
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
-    await findByText(WORKFLOW_COPY.editor.notJson);
+    await waitFor(() => expect(footer()).toContain(BUILDER.json.fixLine(1)));
+    expect(container.textContent?.split(BUILDER.json.fixLine(1))).toHaveLength(2);
 
     await typeInto(container, '[]');
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
-    await findByText(WORKFLOW_COPY.editor.notObject);
+    await waitFor(() => expect(footer()).toContain(BUILDER.json.fixLine(1)));
+    expect(container.textContent).toContain(BUILDER.json.notWorkflow);
     expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
   });
 
@@ -554,8 +564,9 @@ describe('the builder', () => {
   });
 
   test('keeps a multi-line message and description through edits, and saves them as written', async () => {
-    const { container } = open();
+    const { container } = open(listed('demo:assistant'));
     await ready(container);
+    await chooseAgent(container, 1, 'demo:assistant');
     const message = 'First line.\n\nThird line, after a blank one.';
     const description = 'About it.\nMore about it.';
     expect(field(container, 'workflow-builder-step-1-message').tagName).toBe('TEXTAREA');
@@ -587,10 +598,14 @@ describe('the builder', () => {
   });
 
   test('does not save when a form submits from Enter in a field, only from Create or ⌘Enter', async () => {
-    const { container } = open();
+    const { container } = open(listed('demo:assistant'));
     await ready(container);
     await fireEvent.input(field(container, 'workflow-builder-name'), {
       target: { value: 'from-enter' },
+    });
+    await chooseAgent(container, 1, 'demo:assistant');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: 'Say hello.' },
     });
     const form = container.querySelector('form') as HTMLFormElement;
     const submitted = new window.Event('submit', { bubbles: true, cancelable: true });
@@ -760,16 +775,43 @@ describe('the builder', () => {
     expect(container.textContent).toContain(BUILDER.phone.message);
   });
 
-  test('says the builder needs valid JSON, and opens the JSON tab from there', async () => {
-    const { container, findByText } = open();
+  test('turns the Builder tab off with the reason while the JSON is not valid, and says nothing is dropped', async () => {
+    const { container } = open();
+    await ready(container);
+    await openJson(container);
+    // The line the parser stops at is the one after the comma it wanted.
+    const broken = JSON.stringify(
+      { name: 'odd', trigger: { kind: 'manual' }, steps: [] },
+      null,
+      2,
+    ).replace('"name": "odd",', '"name": "odd"');
+    await typeInto(container, broken);
+
+    const tab = builderTab(container);
+    await waitFor(() => expect(tab.hasAttribute('disabled')).toBe(true));
+    // The marked line is the one the comma is missing at the end of, not the one the parser stops at.
+    const reason = BUILDER.json.fixLine(2);
+    expect(summary(container)).toContain(reason);
+    expect(
+      document.getElementById(tab.getAttribute('aria-describedby') ?? '')?.textContent,
+    ).toContain(reason);
+    await fireEvent.click(tab);
+    expect(textarea(container).value).toBe(broken);
+    expect(container.querySelector('#workflow-builder-title')).toBeNull();
+  });
+
+  test('opens on the JSON tab for text it cannot read, and lets the Builder back once the JSON is valid', async () => {
+    const { container } = open();
     await ready(container);
     await openJson(container);
     await typeInto(container, '{ not json');
-    await fireEvent.click(builderTab(container));
+    await waitFor(() => expect(builderTab(container).hasAttribute('disabled')).toBe(true));
 
-    await findByText(BUILDER.unreadable.title);
-    await fireEvent.click(button(container, BUILDER.unreadable.action));
-    await waitFor(() => expect(textarea(container).value).toBe('{ not json'));
+    await typeInto(container, withName('fixed-it'));
+    await waitFor(() => expect(builderTab(container).hasAttribute('disabled')).toBe(false));
+    await fireEvent.click(builderTab(container));
+    await waitFor(() => expect(field(container, 'workflow-builder-name').value).toBe('fixed-it'));
+    expect(summary(container)).not.toContain(BUILDER.json.fixLine(1));
   });
 
   test('shows a refusal on the Builder tab, and keeps the draft', async () => {
@@ -785,10 +827,14 @@ describe('the builder', () => {
   });
 
   test('registers ⌘Enter, which saves from a field, and removes it when the page goes', async () => {
-    const { container, unmount } = open();
+    const { container, unmount } = open(listed('demo:assistant'));
     await ready(container);
     await fireEvent.input(field(container, 'workflow-builder-name'), {
       target: { value: 'keyboard-flow' },
+    });
+    await chooseAgent(container, 1, 'demo:assistant');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: 'Say hello.' },
     });
     const press = (): boolean =>
       shortcuts.handleKey(
@@ -815,5 +861,220 @@ describe('the builder', () => {
     expect(
       footer?.contains(getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction })),
     ).toBe(true);
+  });
+
+  /** Fills the first step and the ID, so the form has nothing left to fix. */
+  async function fillValid(container: HTMLElement, id: string): Promise<void> {
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-name'), { target: { value: id } });
+    await chooseAgent(container, 1, 'demo:assistant');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: 'Say hello.' },
+    });
+  }
+
+  test('says nothing is wrong until Create is pressed, then says each problem at its field, outlines its step, sums two up, and focuses the first', async () => {
+    const { container, getByRole } = open(listed('demo:assistant'));
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-title'), {
+      target: { value: 'Morning Briefing' },
+    });
+    await chooseAgent(container, 1, 'demo:assistant');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: 'Summarize yesterday.' },
+    });
+    await fireEvent.click(button(container, BUILDER.add.signal));
+    await fireEvent.click(button(container, BUILDER.add.agent));
+    await chooseAgent(container, 3, 'demo:assistant');
+    expect(container.querySelector('[data-problem]')).toBeNull();
+    expect(container.textContent).not.toContain(BUILDER.problems.signal);
+    expect(container.querySelector('[data-testid="workflow-builder-problems"]')).toBeNull();
+
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-step-2-signal'));
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+    expect(
+      [...container.querySelectorAll('[data-step-kind]')].map((card) =>
+        card.hasAttribute('data-problem'),
+      ),
+    ).toEqual([false, true, true]);
+    expect(container.textContent).toContain(BUILDER.problems.signal);
+    expect(container.textContent).toContain(BUILDER.problems.message);
+    expect(
+      container.querySelector('[data-testid="workflow-builder-problems"]')?.textContent?.trim(),
+    ).toBe(
+      `${BUILDER.problems.summaryLead(2)} ${BUILDER.problems.summary.signal(2)} ${BUILDER.problems.summary.message(3)}`,
+    );
+    // The ID the title made never fails for its capitals.
+    expect(
+      container.querySelector('[data-testid="workflow-builder-id-line"]')?.textContent,
+    ).toContain('morning-briefing');
+  });
+
+  test('says one problem at its field and takes focus there, without the summary line', async () => {
+    const { container, getByRole } = open(listed('demo:assistant'));
+    await fillValid(container, 'one-problem');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-message'), {
+      target: { value: '' },
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-step-1-message'));
+    expect(container.textContent).toContain(BUILDER.problems.message);
+    expect(container.querySelector('[data-testid="workflow-builder-problems"]')).toBeNull();
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+  });
+
+  test('with every step deleted, says to add one once, reads the footer that way, and Create focuses Add a step', async () => {
+    const { container, getByRole } = open();
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-name'), {
+      target: { value: 'no-steps' },
+    });
+    await fireEvent.click(button(container, BUILDER.remove(1)));
+    await waitFor(() => expect(container.textContent).toContain(BUILDER.noSteps));
+    expect(summary(container)).toContain(BUILDER.readBack.noSteps);
+    expect(button(container, BUILDER.add.agent)).toBeTruthy();
+
+    const create = getByRole('button', { name: WORKFLOW_COPY.creator.saveAction });
+    expect(create.hasAttribute('disabled')).toBe(false);
+    await fireEvent.click(create);
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-add-agent'));
+    expect(container.textContent?.split(BUILDER.noSteps)).toHaveLength(2);
+    expect(container.querySelector('[data-testid="workflow-builder-problems"]')).toBeNull();
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+  });
+
+  test('takes the person from the JSON tab to the first step field that is empty', async () => {
+    const { container, getByRole } = open();
+    await ready(container);
+    await openJson(container);
+    await typeInto(
+      container,
+      JSON.stringify({
+        name: 'from-json',
+        trigger: { kind: 'manual' },
+        steps: [{ kind: 'activity', handler: 'agent', input: { agent: '', message: 'Hi.' } }],
+      }),
+    );
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+
+    await waitFor(() => expect(field(container, 'workflow-builder-step-1-agent')).toBeTruthy());
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-step-1-agent'));
+    expect(container.textContent).toContain(BUILDER.problems.agent);
+    expect(stub?.callsTo('bureau.workflows.create')).toEqual([]);
+  });
+
+  test('opens the ID with a link to the workflow that has it when the ID is taken, keeps Create pressable, and focuses the ID', async () => {
+    const { container, getByRole } = open(listed('demo:assistant'));
+    await fillValid(container, 'digest');
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+
+    const note = await waitFor(() => {
+      const found = container.querySelector('[data-testid="workflow-builder-id-taken"]');
+      expect(found).toBeTruthy();
+      return found as HTMLElement;
+    });
+    expect(note.textContent?.trim()).toBe(WORKFLOW_COPY.creator.taken('digest'));
+    const link = note.querySelector('a');
+    expect(link?.textContent).toBe(WORKFLOW_COPY.creator.takenLink);
+    expect(link?.getAttribute('href')).toBe('/workflows/digest');
+    await waitFor(() => expect(document.activeElement?.id).toBe('workflow-builder-name'));
+    expect(field(container, 'workflow-builder-name').value).toBe('digest');
+    expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1);
+
+    // The taken ID is a problem already known, so pressing Create again asks the Bureau nothing.
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+    expect(stub?.callsTo('bureau.workflows.create')).toHaveLength(1);
+    expect(router.pathname).toBe('/workflows/new');
+
+    await fireEvent.input(field(container, 'workflow-builder-name'), {
+      target: { value: 'digest-two' },
+    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="workflow-builder-id-taken"]')).toBeNull(),
+    );
+  });
+
+  test('says a create that could not write above the footer, keeps everything typed, and has no Try again', async () => {
+    const { container, getByRole, findByText } = open(listed('demo:assistant'));
+    const reason =
+      '~/.interborough/workflows/morning-briefing.json couldn’t be written: permission denied.';
+    stub?.on('bureau.workflows.create', () => {
+      throw workflowFaults.unprocessable(reason);
+    });
+    await fillValid(container, 'morning-briefing');
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+
+    await findByText(reason);
+    const alert = getByRole('alert');
+    expect(alert.textContent).toContain(WORKFLOW_COPY.creator.saveFailed);
+    expect(alert.textContent).toContain(WORKFLOW_COPY.creator.nothingSaved);
+    expect(container.querySelector('footer')?.previousElementSibling?.contains(alert)).toBe(true);
+    expect(button(container, 'Try again')).toBeUndefined();
+    expect(field(container, 'workflow-builder-name').value).toBe('morning-briefing');
+    expect(field(container, 'workflow-builder-step-1-message').value).toBe('Say hello.');
+    expect(router.pathname).toBe('/workflows/new');
+  });
+
+  test('reads Creating and holds the whole form read-only while the file is written', async () => {
+    const { container, getByRole } = open(listed('demo:assistant'));
+    let release: () => void = () => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    stub?.on('bureau.workflows.create', async () => {
+      await held;
+      throw workflowFaults.unprocessable('Refused.');
+    });
+    await fillValid(container, 'slow-flow');
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }));
+
+    const creating = await waitFor(() =>
+      getByRole('button', { name: WORKFLOW_COPY.creator.creatingAction }),
+    );
+    expect(creating.hasAttribute('disabled')).toBe(true);
+    expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
+      true,
+    );
+
+    release();
+    await waitFor(() =>
+      expect(
+        getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).hasAttribute('disabled'),
+      ).toBe(false),
+    );
+    expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
+      false,
+    );
+  });
+
+  test('asks before Cancel discards what was typed, and stays with it on Keep editing', async () => {
+    const { container, getByRole, findByRole } = open();
+    await ready(container);
+    await fireEvent.input(field(container, 'workflow-builder-title'), {
+      target: { value: 'Draft' },
+    });
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction }));
+
+    const dialog = await findByRole('dialog', { name: BUILDER.discard.title });
+    expect(dialog.textContent).toContain(BUILDER.discard.description);
+    expect(router.pathname).toBe('/workflows/new');
+    await fireEvent.click(within(dialog).getByRole('button', { name: BUILDER.discard.keep }));
+    expect(router.pathname).toBe('/workflows/new');
+    expect(field(container, 'workflow-builder-title').value).toBe('Draft');
+
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction }));
+    const again = await findByRole('dialog', { name: BUILDER.discard.title });
+    await fireEvent.click(within(again).getByRole('button', { name: BUILDER.discard.confirm }));
+    await waitFor(() => expect(router.pathname).toBe('/workflows'));
+  });
+
+  test('leaves an untouched form at once, with no dialog', async () => {
+    const { container, getByRole, queryByRole } = open();
+    await ready(container);
+    await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.creator.cancelAction }));
+    expect(router.pathname).toBe('/workflows');
+    expect(queryByRole('dialog', { name: BUILDER.discard.title })).toBeNull();
   });
 });
