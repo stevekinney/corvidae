@@ -202,11 +202,9 @@ const versionedFixtureSource = await listVersionedFixtureSource();
 describe('internal workspace architecture', () => {
   test('validation runs root self-tests once and retains sequential quality and audit gates', async () => {
     const { scripts = {} } = await readManifest('.');
-    // The chain runs `--shared`: the test slot pool (`scripts/bun-test-pool.ts`), not the host
-    // lock, bounds the Bun test workers concurrent validates start.
-    const validationChain = scripts['validate']?.match(
-      /^bun scripts\/run-exclusively\.ts --shared '([^']+)'$/,
-    );
+    // The whole chain runs under one host lock, so a validate keeps its place from lint to audit
+    // instead of rejoining the queue at every stage.
+    const validationChain = scripts['validate']?.match(/^bun scripts\/run-exclusively\.ts '([^']+)'$/);
     const validationStages = validationChain?.[1]?.split(' && ');
     expect(validationStages).toEqual([
       'bun run lint:root',
@@ -223,13 +221,17 @@ describe('internal workspace architecture', () => {
       'bun run format:check',
       'bun run audit',
     ]);
-    // Every stage gets the install check and the Turborepo defaults, and none takes the host lock:
-    // the test slot pool bounds their Bun test workers and the turbo cap the rest (COR-2371).
-    for (const stage of ['lint', 'typecheck', 'test', 'test:slow', 'coverage', 'build']) {
+    // The heavy stages queue behind one lock shared by every checkout on the host, so concurrent
+    // sessions stop oversubscribing it with `tsc`, `svelte-check` and oxlint. The stages that only
+    // run tests take no lock: the test slot pool bounds their Bun test workers (COR-2371).
+    for (const stage of ['lint', 'typecheck', 'build']) {
+      expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts '[^']+'$/);
+    }
+    for (const stage of ['test', 'test:slow', 'coverage']) {
       expect(scripts[stage], stage).toMatch(/^bun scripts\/run-exclusively\.ts --shared '[^']+'$/);
     }
     expect(scripts['typecheck']).toBe(
-      "bun scripts/run-exclusively.ts --shared 'bun run typecheck:root && turbo run typecheck'",
+      "bun scripts/run-exclusively.ts 'bun run typecheck:root && turbo run typecheck'",
     );
     // One turbo run, so the root self-tests and browser fixtures are cached like every package.
     expect(scripts['test']).toBe(
@@ -261,13 +263,14 @@ describe('internal workspace architecture', () => {
       "bun scripts/run-exclusively.ts --shared 'turbo run test:slow test:self:slow --concurrency=1'",
     );
     // COR-2008: the batch validate is `validate` plus the root Playwright suite's Chromium project
-    // and Interborough's end-to-end suite. `validate` itself stays unchanged, so a per-pull-request
-    // exception validate does not grow by the suite's length. Each browser step holds the host
-    // lock on its own, because the pool cannot count a browser. Firefox and WebKit projects stay
-    // out: those browsers are not installed on the host. The `&&` chain is what makes a failing
-    // spec fail the batch, and the Playwright runner exits non-zero for one.
+    // and Interborough's end-to-end suite, under one lock so the batch keeps its place from lint to
+    // the browser specs. `validate` itself stays unchanged, so a per-pull-request exception
+    // validate does not grow by the suite's length. Each browser step also holds the lock on its
+    // own, so it is safe to run alone. Firefox and WebKit projects stay out: those browsers are not
+    // installed on the host. The `&&` chain is what makes a failing spec fail the batch, and the
+    // Playwright runner exits non-zero for one.
     expect(scripts['validate:batch']).toBe(
-      'bun run validate && bun run test:browser:chromium && bun run test:browser:interborough',
+      "bun scripts/run-exclusively.ts 'bun run validate && bun run test:browser:chromium && bun run test:browser:interborough'",
     );
     // Interborough's suite runs on a free block of ports and never reuses a server
     // (`applications/interborough/scripts/run-gated-browser-suite.ts`).
@@ -513,7 +516,7 @@ describe('internal workspace architecture', () => {
     const rootManifest = await readManifest('.');
     const scripts = rootManifest.scripts ?? {};
     expect(scripts['release:check']).toBe(
-      "bun scripts/run-exclusively.ts --shared 'turbo run release:check' && bun run check:test-durations",
+      "bun scripts/run-exclusively.ts 'turbo run release:check' && bun run check:test-durations",
     );
     for (const stage of ['validate', 'check', 'lint', 'typecheck']) {
       expect(scripts[stage], stage).not.toMatch(/release:check|documentation|published-exports/);

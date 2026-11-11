@@ -2,6 +2,7 @@ import { buildBrowser } from '@lostgradient/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { runPooledBunTest } from '../../bun-test-pool.ts';
+import { rootScriptEnvironment } from '../../environment-configuration.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 
 const fixtureDirectory = resolve(import.meta.dirname, '../fixtures/curated-highlighter');
@@ -17,7 +18,10 @@ for (const development of [true, false]) {
     });
     const verification = await runPooledBunTest({
       bunTestArguments: [resolve(fixtureDirectory, 'artifacts.test.ts')],
-      environment: { ...process.env, CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY: outputDirectory },
+      environment: {
+        ...rootScriptEnvironment(),
+        CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY: outputDirectory,
+      },
     });
     if (verification !== 0)
       throw new Error(`Curated fixture verification failed (development: ${development}).`);

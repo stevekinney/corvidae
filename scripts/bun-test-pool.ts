@@ -8,7 +8,7 @@
  * through {@link runPooledBunTest} directly), and each takes one slot per worker before it starts,
  * so the Bun test workers on the host never exceed the pool's size, whoever starts them. `tsc`,
  * `svelte-check`, oxlint and Playwright start no Bun test worker and stay outside the pool; the
- * turbo concurrency cap bounds them, and the host lock serializes the Playwright suites.
+ * host lock, which serializes the heavy stages, and the turbo concurrency cap bound them.
  *
  * The pool lives in the Git common directory, which every worktree shares, as
  * `corvidae-test-slots/`. Each slot is a directory `slot-<i>`, for `i` below the pool's size,
@@ -24,16 +24,27 @@
  * because running past it would break the cap; it is bounded by the holders, whose tests the hang
  * guard bounds.
  *
- * A slot is held while its run's wrapper or any process in its `bun test` process group is alive,
- * judged from one `ps` snapshot of the process table by pid, process group, and the start time
- * recorded beside each, so a recycled pid never passes for a holder. A holder killed with SIGKILL
- * therefore keeps its slots exactly as long as its workers run and frees them the moment they are
- * gone, with no timeout. An unreadable slot or ticket is garbage and is reclaimed at once, since
- * this module never leaves one.
+ * Bun's `--parallel` workers (`bun test --test-worker`) are children of the `bun test` leader but
+ * each leads a process group of its own, and they outlive a leader killed with SIGKILL. So while a
+ * pooled run lives, its wrapper records the leader's test-worker descendants (pid and start time)
+ * in its slot records: at once, then every quarter second until all its workers are recorded, then
+ * every second. The record only grows, less the workers seen to exit. A slot is held while its
+ * run's wrapper, any process in its `bun test` process group, or any recorded worker is alive,
+ * judged from one `ps` snapshot by pid, process group and the start time recorded beside each, so
+ * a recycled pid never passes for a holder. When the wrapper exits, normally or on a forwarded
+ * signal, it terminates the recorded workers before it releases; a reclaimer that finds a holder
+ * whose wrapper and group are gone but whose recorded workers live terminates them (SIGTERM, then
+ * SIGKILL, only a pid whose start time matches and whose command is still a Bun test worker) and
+ * reclaims only once none is left. A holder killed with SIGKILL therefore keeps its slots exactly as
+ * long as its workers run, with no timeout. The remaining window: a worker started after the last
+ * refresh and before the leader is killed is not recorded, so it is neither counted nor terminated.
+ * An unreadable slot or ticket is garbage and is reclaimed at once, since this module never leaves
+ * one.
  *
  * A wrapper started inside a run that holds slots (a test that itself runs a wrapper) finds its
- * parent's token in `CORVIDAE_TEST_SLOTS_TOKEN` and runs inside the parent's slots, so it neither
- * waits on its own parent nor counts twice. The token is honoured only while a live slot names it.
+ * parent's token in `CORVIDAE_TEST_SLOTS_TOKEN` and runs inside the parent's slots, with its
+ * `--parallel` clamped to the slots the parent holds, so it neither waits on its own parent nor
+ * counts twice. The token is honoured only while a live slot names it.
  *
  * The pool's size is {@link defaultPoolSize}, or `CORVIDAE_TEST_SLOTS` when set. A request above it
  * is clamped: the run holds every slot and its `--parallel` is rewritten to the pool's size, so the
@@ -44,20 +55,22 @@
  * and the free slots.
  */
 
-import { mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { cpus, totalmem } from 'node:os';
 import { join } from 'node:path';
 
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import {
   enqueue,
   gitCommonDirectory,
   liveFront,
+  ownerFileName,
   pidStartedAtField,
+  processStartTime,
   processTableEnvironment,
   readOwner,
   readTicket,
   reclaimAbandoned,
-  recordProcessGroup,
   removeLock,
   runInProcessGroup,
   tryInstall,
@@ -140,10 +153,21 @@ export function withWorkerCount(argumentsList: readonly string[], workers: numbe
   );
 }
 
-export type ProcessEntry = { readonly processGroup: number; readonly startedAt: string };
+export type ProcessEntry = {
+  readonly processGroup: number;
+  readonly startedAt: string;
+  /** The parent's pid. */
+  readonly parent?: number;
+  /** The command line. */
+  readonly command?: string;
+};
 
 /** A snapshot of the host's processes by pid. */
 export type ProcessTable = ReadonlyMap<number, ProcessEntry>;
+
+/** `lstart` under the C locale, kept byte for byte as `processStartTime` prints it. */
+const processLine =
+  /^\s*(\d+)\s+(\d+)\s+(\d+)\s+([A-Z][a-z]{2}\s+[A-Z][a-z]{2}\s+\d{1,2}\s+\d{2}:\d{2}:\d{2}\s+\d{4})\s*(.*?)\s*$/;
 
 /**
  * One `ps` snapshot of every process, with the same `lstart` text `processStartTime` records.
@@ -151,7 +175,7 @@ export type ProcessTable = ReadonlyMap<number, ProcessEntry>;
  * dead from a table that cannot be trusted.
  */
 export function readProcessTable(): ProcessTable | undefined {
-  const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,pgid=,lstart='], {
+  const result = Bun.spawnSync(['ps', '-A', '-o', 'pid=,ppid=,pgid=,lstart=,command='], {
     env: processTableEnvironment(),
     stdout: 'pipe',
     stderr: 'ignore',
@@ -159,19 +183,73 @@ export function readProcessTable(): ProcessTable | undefined {
   if (result.exitCode !== 0) return undefined;
   const table = new Map<number, ProcessEntry>();
   for (const line of result.stdout.toString().split('\n')) {
-    const match = /^\s*(\d+)\s+(\d+)\s+(.+?)\s*$/.exec(line);
-    if (match?.[3] !== undefined) {
-      table.set(Number(match[1]), { processGroup: Number(match[2]), startedAt: match[3] });
+    const match = processLine.exec(line);
+    if (match?.[4] !== undefined) {
+      table.set(Number(match[1]), {
+        parent: Number(match[2]),
+        processGroup: Number(match[3]),
+        startedAt: match[4],
+        command: match[5] ?? '',
+      });
     }
   }
   return table.has(process.pid) ? table : undefined;
 }
 
+/** A Bun `--parallel` worker, recorded by pid and start time. */
+export type RecordedWorker = { readonly pid: number; readonly startedAt: string };
+
+const testWorkerCommand = /(?:^|\/)bun\s+test\s(?:.*\s)?--test-worker(?:\s|$)/;
+
+/** Whether a command line is a Bun test worker's. */
+export function isTestWorkerCommand(command: string | undefined): boolean {
+  return command !== undefined && testWorkerCommand.test(command);
+}
+
+/** The Bun test workers among the descendants of `leader`. */
+export function testWorkersOf(leader: number, table: ProcessTable): RecordedWorker[] {
+  const children = new Map<number, number[]>();
+  for (const [pid, entry] of table) {
+    if (entry.parent === undefined || pid === entry.parent) continue;
+    children.set(entry.parent, [...(children.get(entry.parent) ?? []), pid]);
+  }
+  const workers: RecordedWorker[] = [];
+  const seen = new Set([leader]);
+  const pending = [...(children.get(leader) ?? [])];
+  for (let pid = pending.pop(); pid !== undefined; pid = pending.pop()) {
+    if (seen.has(pid)) continue;
+    seen.add(pid);
+    const entry = table.get(pid);
+    if (isTestWorkerCommand(entry?.command) && entry !== undefined) {
+      workers.push({ pid, startedAt: entry.startedAt });
+    }
+    pending.push(...(children.get(pid) ?? []));
+  }
+  return workers;
+}
+
+/** The recorded workers that are alive, by pid and start time; a malformed record names none. */
+export function liveRecordedWorkers(workers: unknown, table: ProcessTable): RecordedWorker[] {
+  if (!Array.isArray(workers)) return [];
+  return workers.filter(
+    (worker: RecordedWorker) =>
+      typeof worker?.pid === 'number' && table.get(worker.pid)?.startedAt === worker.startedAt,
+  );
+}
+
 /**
- * Whether the run that wrote `owner` is alive: its wrapper, by pid and start time, or any member
- * of its recorded process group, unless a new process now leads a group with that id.
+ * Whether the run that wrote `owner` is alive: its wrapper, by pid and start time, any member of
+ * its recorded process group, unless a new process now leads a group with that id, or any of its
+ * recorded workers, by pid and start time.
  */
 export function isHolderAlive(owner: OwnerRecord, table: ProcessTable): boolean {
+  return (
+    isRunAlive(owner, table) || liveRecordedWorkers((owner as SlotOwner).workers, table).length > 0
+  );
+}
+
+/** Whether the wrapper or the `bun test` process group of `owner` is alive. */
+function isRunAlive(owner: OwnerRecord, table: ProcessTable): boolean {
   const own = table.get(owner.pid);
   if (own && (owner.pidStartedAt === undefined || own.startedAt === owner.pidStartedAt)) {
     return true;
@@ -188,8 +266,71 @@ export function isHolderAlive(owner: OwnerRecord, table: ProcessTable): boolean 
   return false;
 }
 
-/** The owner record of one slot: the host lock's, plus the slots its run holds in all. */
-export type SlotOwner = OwnerRecord & { readonly slots: number };
+/**
+ * The owner record of one slot: the host lock's, plus the slots its run holds in all and the Bun
+ * test workers its wrapper has seen.
+ */
+export type SlotOwner = OwnerRecord & {
+  readonly slots: number;
+  readonly workers?: readonly RecordedWorker[];
+};
+
+/** Sends a signal to one process; tests of the pool substitute a recorder. */
+export type SignalProcess = (pid: number, signal: NodeJS.Signals) => void;
+
+function signalProcess(pid: number, signal: NodeJS.Signals): void {
+  try {
+    process.kill(pid, signal);
+  } catch {
+    // Already gone.
+  }
+}
+
+export type TerminateWorkersOptions = {
+  readonly readProcessTable: () => ProcessTable | undefined;
+  readonly signalProcess?: SignalProcess;
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+};
+
+/** How long recorded workers get to exit after SIGTERM, and then after SIGKILL. */
+const workerGraceMs = 2000;
+const workerExitPollMs = 50;
+
+/**
+ * Terminates the recorded workers that are still alive: SIGTERM, then SIGKILL, each sent only to a
+ * pid whose start time matches the record and whose command is still a Bun test worker's. Resolves
+ * to whether none of them is left.
+ */
+export async function terminateRecordedWorkers(
+  workers: readonly RecordedWorker[],
+  options: TerminateWorkersOptions,
+): Promise<boolean> {
+  const send = options.signalProcess ?? signalProcess;
+  const sleep = options.sleep ?? ((milliseconds: number) => Bun.sleep(milliseconds));
+  const signalAll = (signal: NodeJS.Signals): number => {
+    const table = options.readProcessTable();
+    if (table === undefined) return 0;
+    const targets = liveRecordedWorkers(workers, table).filter((worker) =>
+      isTestWorkerCommand(table.get(worker.pid)?.command),
+    );
+    for (const worker of targets) send(worker.pid, signal);
+    return targets.length;
+  };
+  const gone = (): boolean => {
+    const table = options.readProcessTable();
+    return table !== undefined && liveRecordedWorkers(workers, table).length === 0;
+  };
+  for (const signal of ['SIGTERM', 'SIGKILL'] as const) {
+    if (gone()) return true;
+    if (signalAll(signal) === 0) return false;
+    for (let waited = 0; ; waited += workerExitPollMs) {
+      if (gone()) return true;
+      if (waited >= workerGraceMs) break;
+      await sleep(workerExitPollMs);
+    }
+  }
+  return gone();
+}
 
 export function slotDirectory(poolDirectory: string, index: number): string {
   return join(poolDirectory, `slot-${index}`);
@@ -209,20 +350,30 @@ async function exists(path: string): Promise<boolean> {
 }
 
 /**
- * The free slots below `size` and the owners of the held ones. A slot whose holder is dead, or
- * that holds garbage, is reclaimed first; the host lock's reclaim judges it again under its guard,
- * so a slot installed meanwhile is never removed.
+ * The free slots below `size` and the owners of the held ones. A holder whose wrapper and group are
+ * gone but whose recorded workers live has them terminated first, and stays a holder if any is
+ * left. A slot whose holder is dead, or that holds garbage, is reclaimed; the host lock's reclaim
+ * judges it again under its guard, so a slot installed meanwhile is never removed.
  */
 async function surveySlots(
   poolDirectory: string,
   size: number,
-  table: ProcessTable | undefined,
+  options: TerminateWorkersOptions,
 ): Promise<{ free: number[]; holders: SlotOwner[] }> {
   const free: number[] = [];
   const holders: SlotOwner[] = [];
+  let table = options.readProcessTable();
   for (let index = 0; index < size; index++) {
     const directory = slotDirectory(poolDirectory, index);
     const owner = (await readOwner(directory)) as SlotOwner | undefined;
+    const orphans =
+      owner === undefined || table === undefined || isRunAlive(owner, table)
+        ? []
+        : liveRecordedWorkers(owner.workers, table);
+    if (orphans.length > 0) {
+      await terminateRecordedWorkers(orphans, options);
+      table = options.readProcessTable();
+    }
     if (owner !== undefined && (table === undefined || isHolderAlive(owner, table))) {
       holders.push(owner);
       continue;
@@ -260,6 +411,8 @@ export type HeldTestSlots = {
   readonly slots: readonly number[];
   /** Records the `bun test` process group, so the slots outlive a wrapper killed before it. */
   readonly recordProcessGroup: (processGroup: number) => Promise<void>;
+  /** Records the run's Bun test workers, so the slots outlive a leader killed before them. */
+  readonly recordWorkers: (workers: readonly RecordedWorker[]) => Promise<void>;
   readonly release: () => Promise<void>;
 };
 
@@ -271,7 +424,10 @@ export type AcquireTestSlotsOptions = {
   readonly holder: HostLockHolder;
   readonly pollIntervalMs?: number;
   readonly readProcessTable?: () => ProcessTable | undefined;
+  /** Waits between looks, and while an orphaned holder's workers exit. */
   readonly sleep?: (milliseconds: number) => Promise<void>;
+  /** Terminates an orphaned holder's workers; defaults to `process.kill`. */
+  readonly signalProcess?: SignalProcess;
   /** Called with a line each time what the waiter waits for changes. */
   readonly onWait?: (line: string) => void;
   readonly signal?: AbortSignal;
@@ -318,7 +474,11 @@ async function waitForSlots(
     options.signal?.throwIfAborted();
     const front = await liveFront(queue, ticket);
     if (front === ticket) {
-      const { free, holders } = await surveySlots(poolDirectory, size, read());
+      const { free, holders } = await surveySlots(poolDirectory, size, {
+        readProcessTable: read,
+        sleep,
+        ...(options.signalProcess === undefined ? {} : { signalProcess: options.signalProcess }),
+      });
       if (free.length >= count) {
         const taken = await claimSlots(poolDirectory, free, count, self);
         if (taken !== undefined) return heldSlots(poolDirectory, self, taken);
@@ -335,18 +495,106 @@ async function waitForSlots(
   }
 }
 
+/** Replaces a slot's owner file in one rename, so a reader never sees it half-written. */
+async function writeSlotOwner(directory: string, record: SlotOwner): Promise<void> {
+  const staged = join(directory, `${ownerFileName}.${record.token}`);
+  await writeFile(staged, JSON.stringify(record));
+  await rename(staged, join(directory, ownerFileName));
+}
+
+/**
+ * The held slots. One record per run is authoritative in memory, and every write of it, the
+ * process group's and each set of workers', is chained after the last, so no write drops a field
+ * another wrote, and release waits for the last one.
+ */
 function heldSlots(poolDirectory: string, self: SlotOwner, taken: number[]): HeldTestSlots {
   const directories = taken.map((index) => slotDirectory(poolDirectory, index));
+  let record: SlotOwner = self;
+  let written: Promise<void> = Promise.resolve();
+  const write = (next: SlotOwner): Promise<void> => {
+    record = next;
+    const writing = written
+      .catch(() => undefined)
+      .then(async () => {
+        await Promise.all(directories.map((directory) => writeSlotOwner(directory, next)));
+      });
+    written = writing;
+    return writing;
+  };
   return {
     token: self.token,
     slots: taken,
-    recordProcessGroup: async (processGroup) => {
-      await Promise.all(
-        directories.map((directory) => recordProcessGroup(directory, self, processGroup)),
-      );
+    recordProcessGroup: (processGroup) => {
+      const processGroupStartedAt = processStartTime(processGroup);
+      return write({
+        ...record,
+        processGroup,
+        ...(processGroupStartedAt === undefined ? {} : { processGroupStartedAt }),
+      });
     },
+    recordWorkers: (workers) => write({ ...record, workers }),
     release: async () => {
+      await written.catch(() => undefined);
       await Promise.all(directories.map((directory) => removeLock(directory, self)));
+    },
+  };
+}
+
+/**
+ * Follows a running `bun test` leader's worker descendants: refreshes from the process table every
+ * quarter second until it has seen `expected` workers, then every second, until the leader exits or
+ * `stop` is called. The set only grows, less the workers seen to exit, so a refresh after the leader
+ * died cannot erase it. Each change goes to `persist`.
+ */
+function trackWorkers(
+  read: () => ProcessTable | undefined,
+  expected: number,
+  persist: ((workers: readonly RecordedWorker[]) => Promise<void>) | undefined,
+  report: (line: string) => void,
+): { start: (leader: number) => void; stop: () => Promise<RecordedWorker[]> } {
+  const known = new Map<number, RecordedWorker>();
+  const { promise: stopped, resolve: markStopped } = Promise.withResolvers<void>();
+  let running = true;
+  let loop: Promise<void> = Promise.resolve();
+  const refresh = async (leader: number, leaderStartedAt: string | undefined) => {
+    const table = read();
+    if (table === undefined) return true;
+    const entry = table.get(leader);
+    if (entry === undefined || (leaderStartedAt !== undefined && entry.startedAt !== leaderStartedAt))
+      return false;
+    let changed = false;
+    for (const worker of testWorkersOf(leader, table)) {
+      if (known.get(worker.pid)?.startedAt === worker.startedAt) continue;
+      known.set(worker.pid, worker);
+      changed = true;
+    }
+    for (const [pid, worker] of known) {
+      if (table.get(pid)?.startedAt === worker.startedAt) continue;
+      known.delete(pid);
+      changed = true;
+    }
+    if (changed) {
+      await persist?.([...known.values()]).catch((error: unknown) => {
+        report(`could not record the test workers: ${String(error)}`);
+      });
+    }
+    return true;
+  };
+  return {
+    start: (leader) => {
+      const leaderStartedAt = processStartTime(leader);
+      loop = (async () => {
+        while (running && (await refresh(leader, leaderStartedAt))) {
+          const interval = known.size < expected ? 250 : 1000;
+          await Promise.race([Bun.sleep(interval), stopped]);
+        }
+      })();
+    },
+    stop: async () => {
+      running = false;
+      markStopped();
+      await loop;
+      return [...known.values()];
     },
   };
 }
@@ -362,17 +610,25 @@ async function slotRecords(poolDirectory: string): Promise<SlotOwner[]> {
   return records;
 }
 
-/** Whether a live slot is held under `token`, so a run that presents it runs inside them. */
-export async function heldUnderToken(
+/**
+ * The slots the live run holding `token` holds, so a run that presents it runs inside them and
+ * starts no more workers than they allow; undefined when no live slot names the token.
+ */
+export async function slotsHeldUnderToken(
   poolDirectory: string,
   token: string | undefined,
   table: ProcessTable | undefined,
-): Promise<boolean> {
-  if (token === undefined || token === '') return false;
+): Promise<number | undefined> {
+  if (token === undefined || token === '') return undefined;
   const records = await slotRecords(poolDirectory);
-  return records.some(
+  const live = records.filter(
     (owner) => owner.token === token && (table === undefined || isHolderAlive(owner, table)),
   );
+  if (live.length === 0) return undefined;
+  const recorded = live[0]?.slots;
+  return Number.isInteger(recorded) && recorded !== undefined && recorded > 0
+    ? recorded
+    : live.length;
 }
 
 /** The pool's state as lines: a summary, then one line per run that holds slots. */
@@ -430,28 +686,34 @@ export type RunPooledBunTestOptions = {
 
 /**
  * Runs `bun test` holding one slot per worker, in a process group of its own whose signals the
- * wrapper forwards, and releases the slots once the group is gone. Resolves to its exit code.
+ * wrapper forwards, and releases the slots once the group and the workers it recorded are gone.
+ * Resolves to its exit code.
  */
 export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<number> {
   // Snapshotted, so a caller that reuses its options object cannot change a run after an await.
   const options = { ...input, bunTestArguments: [...input.bunTestArguments] };
-  const environment = { ...(options.environment ?? process.env) };
+  const environment = { ...(options.environment ?? rootScriptEnvironment()) };
   const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
   const size = options.size ?? poolSize(environment);
   const requested = requestedWorkers(options.bunTestArguments, options.processors);
-  const workers = Math.min(requested, size);
-  const argumentsList =
-    workers < requested
-      ? withWorkerCount(options.bunTestArguments, workers)
-      : [...options.bunTestArguments];
-  if (workers < requested) {
-    report(`bun-test-pool: running ${workers} workers, the size of the pool, not ${requested}`);
-  }
+  let workers = requested;
+  let argumentsList = [...options.bunTestArguments];
+  const clampTo = (limit: number, reason: string): void => {
+    if (workers <= limit) return;
+    workers = limit;
+    argumentsList = withWorkerCount(options.bunTestArguments, workers);
+    report(`bun-test-pool: running ${workers} workers, ${reason}, not ${requested}`);
+  };
+  clampTo(size, 'the size of the pool');
   const read = options.readProcessTable ?? readProcessTable;
   let held: HeldTestSlots | undefined;
   try {
     const poolDirectory = await (options.poolDirectory ?? defaultPoolDirectory());
-    if (!(await heldUnderToken(poolDirectory, environment[heldSlotsTokenVariable], read()))) {
+    const token = environment[heldSlotsTokenVariable];
+    const parentSlots = await slotsHeldUnderToken(poolDirectory, token, read());
+    if (parentSlots !== undefined) {
+      clampTo(parentSlots, 'the slots of the run it is nested in');
+    } else {
       held = await acquireTestSlots({
         poolDirectory,
         size,
@@ -471,15 +733,24 @@ export async function runPooledBunTest(input: RunPooledBunTestOptions): Promise<
   } catch (error) {
     report(`bun-test-pool: running without a test slot: ${(error as Error).message}`);
   }
+  // Bun starts workers only under `--parallel`; without it the leader runs the tests itself.
+  const tracker = argumentsList.some((argument) => parallelArgument.test(argument))
+    ? trackWorkers(read, workers, held?.recordWorkers, (line) => report(`bun-test-pool: ${line}`))
+    : undefined;
   try {
     return await runInProcessGroup([...(options.command ?? bunTestCommand), ...argumentsList], {
       environment:
         held === undefined ? environment : { ...environment, [heldSlotsTokenVariable]: held.token },
       ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
-      ...(held === undefined ? {} : { recordProcessGroup: held.recordProcessGroup }),
+      recordProcessGroup: async (processGroup) => {
+        await held?.recordProcessGroup(processGroup);
+        tracker?.start(processGroup);
+      },
       report: (line) => report(`bun-test-pool: ${line}`),
     });
   } finally {
+    const recorded = (await tracker?.stop()) ?? [];
+    if (recorded.length > 0) await terminateRecordedWorkers(recorded, { readProcessTable: read });
     await held?.release();
   }
 }
@@ -498,7 +769,8 @@ if (import.meta.main) {
       process.stderr.write(`--size must be a positive integer, not ${sizeOption}\n`);
       process.exitCode = 64;
     } else {
-      const size = sizeOption === undefined ? poolSize(process.env) : Number(sizeOption);
+      const size =
+        sizeOption === undefined ? poolSize(rootScriptEnvironment()) : Number(sizeOption);
       for (const line of await describePool(poolDirectory, size, readProcessTable())) {
         process.stdout.write(`${line}\n`);
       }

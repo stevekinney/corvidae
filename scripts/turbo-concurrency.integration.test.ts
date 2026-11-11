@@ -171,14 +171,16 @@ const bare = await outcomeOf(async () => {
 const wrapped = await outcomeOf(async () => {
   rethrow(setup);
   const host = { totalMemoryBytes: totalmem(), processors: cpus().length };
-  const concurrency = withTurborepoDefaults({}, host)['TURBO_CONCURRENCY'];
-  const peak = await measure((environment) =>
-    spawnInFixture([turboBinary, 'run', 'work'], {
-      ...environment,
-      TURBO_CONCURRENCY: concurrency,
-    }),
-  );
-  expect(peak).toBeLessThanOrEqual(Number(concurrency));
+  for (const shared of [false, true]) {
+    const concurrency = withTurborepoDefaults({}, host, shared)['TURBO_CONCURRENCY'];
+    const peak = await measure((environment) =>
+      spawnInFixture([turboBinary, 'run', 'work'], {
+        ...environment,
+        TURBO_CONCURRENCY: concurrency,
+      }),
+    );
+    expect(peak).toBeLessThanOrEqual(Number(concurrency));
+  }
 });
 
 const affectedTests = await outcomeOf(async () => {
@@ -250,7 +252,7 @@ test('the repository allows at most one task per three processors', () => {
 
 test('a bare turbo run stays within the configured cap', () => rethrow(bare));
 
-test("a run under the wrapper's environment stays within its host-derived cap", () =>
+test("a run under the wrapper's environment stays within its host-derived cap, half of it when shared", () =>
   rethrow(wrapped));
 
 test("affected-tests.ts's runner stays within the configured cap", () => rethrow(affectedTests));

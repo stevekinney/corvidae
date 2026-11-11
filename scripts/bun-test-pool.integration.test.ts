@@ -13,16 +13,21 @@ import {
   defaultPoolSize,
   describePool,
   heldSlotsTokenVariable,
+  isHolderAlive,
   poolSize,
   readProcessTable,
   requestedWorkers,
   runPooledBunTest,
   slotDirectory,
+  testWorkersOf,
   withWorkerCount,
   type AcquireTestSlotsOptions,
+  type ProcessEntry,
   type ProcessTable,
+  type RecordedWorker,
   type SlotOwner,
 } from './bun-test-pool.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import { acquireHostLock, ownerFileName, type HostLockHolder } from './run-exclusively.ts';
 
@@ -36,9 +41,14 @@ import { acquireHostLock, ownerFileName, type HostLockHolder } from './run-exclu
  */
 const scratchDirectories: string[] = [];
 const processGroups: number[] = [];
+const recordedWorkers: RecordedWorker[] = [];
 
 afterAll(async () => {
   for (const group of processGroups) killGroup(group);
+  const table = readProcessTable();
+  for (const worker of recordedWorkers) {
+    if (table?.get(worker.pid)?.startedAt === worker.startedAt) killGroup(worker.pid);
+  }
   for (const directory of scratchDirectories) await rm(directory, { recursive: true, force: true });
 });
 
@@ -126,44 +136,60 @@ async function exitedPid(): Promise<number> {
   return child.pid;
 }
 
-/** Starts a real pooled run of `sleep 30` with a pool of one, and resolves once its group is recorded. */
+/** What a fixture's pooled run starts; by default a stand-in that lives until it is killed. */
+type PooledRunFixture = {
+  readonly bunTestArguments?: readonly string[];
+  /** Null runs the real `bun test`. */
+  readonly command?: readonly string[] | null;
+  readonly cwd?: string;
+  readonly size?: number;
+};
+
+/**
+ * Starts a real pooled run in a wrapper process, and resolves once its slot record satisfies
+ * `ready` (by default, once its process group is recorded).
+ */
 async function startPooledRun(
   poolDirectory: string,
   environment: Record<string, string | undefined> = process.env,
-): Promise<{ wrapper: Subprocess; processGroup: number }> {
+  run: PooledRunFixture = {},
+  ready: (record: SlotOwner) => boolean = () => true,
+): Promise<{ wrapper: Subprocess; processGroup: number; record: SlotOwner }> {
   const fixture = join(poolDirectory, '..', 'pooled-run.ts');
   await writeFile(
     fixture,
     `import { runPooledBunTest } from ${JSON.stringify(join(import.meta.dir, 'bun-test-pool.ts'))};
+const run = JSON.parse(process.argv[3]);
 process.exitCode = await runPooledBunTest({
-  bunTestArguments: [],
-  command: ['sh', '-c', 'sleep 30'],
+  bunTestArguments: run.bunTestArguments ?? [],
+  ...(run.command === null ? {} : { command: run.command ?? ['sh', '-c', 'exec tail -f /dev/null'] }),
+  ...(run.cwd === undefined ? {} : { cwd: run.cwd }),
   poolDirectory: process.argv[2],
-  size: 1,
+  size: run.size ?? 1,
   pollIntervalMs: 5,
   report: () => {},
 });
 `,
   );
-  const wrapper = spawnWithHangGuard([process.execPath, fixture, poolDirectory], {
-    env: environment,
-    stdio: ['ignore', 'ignore', 'inherit'],
-  });
-  let processGroup: number | undefined;
+  const wrapper = spawnWithHangGuard(
+    [process.execPath, fixture, poolDirectory, JSON.stringify(run)],
+    { env: environment, stdio: ['ignore', 'ignore', 'inherit'] },
+  );
+  let record: SlotOwner | undefined;
   await waitUntil(
     async () => {
       const contents = await readFile(
         join(slotDirectory(poolDirectory, 0), ownerFileName),
         'utf8',
       ).catch(() => '');
-      processGroup = contents === '' ? undefined : JSON.parse(contents).processGroup;
-      return processGroup !== undefined;
+      record = contents === '' ? undefined : (JSON.parse(contents) as SlotOwner);
+      return record?.processGroup !== undefined && ready(record);
     },
     { message: 'the pooled run recorded its process group' },
   );
-  if (processGroup === undefined) throw new Error('unreachable');
-  processGroups.push(processGroup);
-  return { wrapper, processGroup };
+  if (record?.processGroup === undefined) throw new Error('unreachable');
+  processGroups.push(record.processGroup);
+  return { wrapper, processGroup: record.processGroup, record };
 }
 
 const threeRunsShareAPoolOfEight = await inScratchDirectory(async (directory) => {
@@ -288,7 +314,9 @@ const holderUnderAnotherZoneIsAlive = await inScratchDirectory(async (directory)
   const pool = join(directory, 'pool');
   // `ps` prints start times in the caller's zone; the lanes run with and without `TZ=UTC`.
   const zone =
-    process.env['TZ'] === 'Pacific/Kiritimati' ? 'Pacific/Pago_Pago' : 'Pacific/Kiritimati';
+    rootScriptEnvironment()['TZ'] === 'Pacific/Kiritimati'
+      ? 'Pacific/Pago_Pago'
+      : 'Pacific/Kiritimati';
   const { processGroup } = await startPooledRun(pool, { ...process.env, TZ: zone });
   const controller = new AbortController();
   const blocked = rejectionOf(
@@ -482,6 +510,151 @@ const statusCommandExitsZero = await inScratchDirectory(async (directory) => {
   expect(output).toBe(`test slot pool ${pool}: 0 of 3 held, 3 free, 0 waiting\n`);
 });
 
+const workerCommand = '/opt/bun/bin/bun test --test-worker --isolate --timeout=240000';
+
+/** This process plus `entries`, as a mutable table a signal recorder can remove a process from. */
+function tableWith(entries: Record<number, Omit<ProcessEntry, 'processGroup'>>): Map<
+  number,
+  ProcessEntry
+> {
+  const table = new Map(onlyThisProcess());
+  for (const [pid, entry] of Object.entries(entries)) {
+    table.set(Number(pid), { processGroup: Number(pid), ...entry });
+  }
+  return table;
+}
+
+/** An orphaned holder: its wrapper has exited and it recorded no group, only `worker`. */
+async function writeOrphanedHolder(pool: string, worker: RecordedWorker): Promise<void> {
+  await writeSlot(pool, 0, owner(pool, { pid: await exitedPid(), workers: [worker] }));
+}
+
+const orphanWorker: RecordedWorker = { pid: 4_000_001, startedAt: 'worker start' };
+
+const reclaimerTerminatesOrphanedWorkers = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeOrphanedHolder(pool, orphanWorker);
+  const table = tableWith({
+    [orphanWorker.pid]: { startedAt: orphanWorker.startedAt, command: workerCommand },
+  });
+  const signals: string[] = [];
+  const lease = await acquireTestSlots(
+    options(pool, 1, 1, {
+      readProcessTable: () => table,
+      signalProcess: (pid, signal) => {
+        signals.push(`${pid} ${signal}`);
+        table.delete(pid);
+      },
+      sleep: neverSleep,
+    }),
+  );
+  expect(signals).toEqual([`${orphanWorker.pid} SIGTERM`]);
+  await lease.release();
+});
+
+const recycledWorkerPidIsIgnored = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeOrphanedHolder(pool, orphanWorker);
+  const signals: string[] = [];
+  const lease = await acquireTestSlots(
+    options(pool, 1, 1, {
+      readProcessTable: () =>
+        tableWith({ [orphanWorker.pid]: { startedAt: 'a later start', command: workerCommand } }),
+      signalProcess: (pid, signal) => signals.push(`${pid} ${signal}`),
+      sleep: neverSleep,
+    }),
+  );
+  expect(signals).toEqual([]);
+  await lease.release();
+});
+
+const nonWorkerIsNeverSignalled = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeOrphanedHolder(pool, orphanWorker);
+  const signals: string[] = [];
+  const controller = new AbortController();
+  const blocked = rejectionOf(
+    acquireTestSlots(
+      options(pool, 1, 1, {
+        readProcessTable: () =>
+          tableWith({
+            [orphanWorker.pid]: { startedAt: orphanWorker.startedAt, command: 'node server.js' },
+          }),
+        signalProcess: (pid, signal) => signals.push(`${pid} ${signal}`),
+        signal: controller.signal,
+        onWait: () => controller.abort(),
+      }),
+    ),
+  );
+  expect(await blocked).toBeInstanceOf(Error);
+  expect(signals).toEqual([]);
+  expect(await heldSlots(pool)).toBe(1);
+});
+
+const nestedRunClampsToItsParentsSlots = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const output = join(directory, 'output');
+  for (const index of [0, 1]) {
+    await writeSlot(pool, index, owner(pool, { token: 'parent', slots: 2 }));
+  }
+  const reports: string[] = [];
+  const code = await runPooledBunTest({
+    bunTestArguments: ['--parallel=4', 'src'],
+    command: ['sh', '-c', `printf '%s\\n' "$@" > '${output}'`, 'sh'],
+    environment: { [heldSlotsTokenVariable]: 'parent' },
+    poolDirectory: pool,
+    size: 8,
+    readProcessTable: onlyThisProcess,
+    report: (line) => reports.push(line),
+  });
+  expect(code).toBe(0);
+  expect(await readFile(output, 'utf8')).toBe('--parallel=2\nsrc\n');
+  expect(reports).toEqual([
+    'bun-test-pool: running 2 workers, the slots of the run it is nested in, not 4',
+  ]);
+  expect(await heldSlots(pool)).toBe(2);
+});
+
+/**
+ * A real `bun test --parallel=2` over files that never settle. Its workers lead process groups of
+ * their own and outlive a leader killed with SIGKILL, so once the wrapper and then the leader are
+ * killed, only the workers recorded in the slot keep it held; the next acquirer terminates them
+ * and reclaims the slots.
+ */
+const killedRunLeavesNoWorkers = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const files = ['first', 'second'].map((name) => join(directory, `${name}.test.ts`));
+  for (const file of files) {
+    await writeFile(
+      file,
+      "import { test } from 'bun:test';\ntest('never settles', () => new Promise(() => {}));\n",
+    );
+  }
+  const { wrapper, processGroup, record } = await startPooledRun(
+    pool,
+    process.env,
+    { bunTestArguments: ['--parallel=2', ...files], command: null, cwd: directory, size: 2 },
+    (candidate) => (candidate.workers?.length ?? 0) === 2,
+  );
+  const workers = record.workers ?? [];
+  recordedWorkers.push(...workers);
+  wrapper.kill('SIGKILL');
+  await wrapper.exited;
+  killGroup(processGroup);
+  await waitUntil(() => !isGroupAlive(processGroup), {
+    message: 'the bun test leader exited',
+  });
+  const survivors = () => {
+    const table = readProcessTable();
+    return workers.filter((worker) => table?.get(worker.pid)?.startedAt === worker.startedAt);
+  };
+  expect(survivors()).toHaveLength(2);
+  const lease = await acquireTestSlots(options(pool, 2, 2, { readProcessTable }));
+  expect(survivors()).toEqual([]);
+  await lease.release();
+  expect(await heldSlots(pool)).toBe(0);
+});
+
 describe('the pool size', () => {
   test('sizes the pool from processors and memory, and honours the override', () => {
     const gibibytes = (count: number) => count * 1024 ** 3;
@@ -544,6 +717,48 @@ describe('reclaiming slots', () => {
   test('a holder recorded under another time zone is still alive', () =>
     rethrow(holderUnderAnotherZoneIsAlive));
 
+  test('a holder whose wrapper and group are gone is held while a recorded worker lives', () => {
+    const worker = { pid: 4_000_002, startedAt: 'worker start' };
+    const record: SlotOwner = {
+      ...holder('/worktree', 4_000_003),
+      processGroup: 4_000_004,
+      token: 'run',
+      slots: 1,
+      workers: [worker],
+    };
+    const alive = tableWith({ [worker.pid]: { startedAt: worker.startedAt } });
+    expect(isHolderAlive(record, alive)).toBe(true);
+    const recycled = tableWith({ [worker.pid]: { startedAt: 'a later start' } });
+    expect(isHolderAlive(record, recycled)).toBe(false);
+    expect(isHolderAlive(record, onlyThisProcess())).toBe(false);
+  });
+
+  test("finds a leader's Bun test workers among its descendants, and only those", () => {
+    const table = tableWith({
+      10: { startedAt: 'leader', command: 'bun test --parallel=2' },
+      11: { startedAt: 'a', parent: 10, command: workerCommand },
+      12: { startedAt: 'b', parent: 10, command: 'sh -c helper' },
+      13: { startedAt: 'c', parent: 12, command: workerCommand },
+      14: { startedAt: 'd', parent: 99, command: workerCommand },
+    });
+    expect(testWorkersOf(10, table).toSorted((left, right) => left.pid - right.pid)).toEqual([
+      { pid: 11, startedAt: 'a' },
+      { pid: 13, startedAt: 'c' },
+    ]);
+  });
+
+  test('the reclaimer terminates the recorded workers of an orphaned holder, then reclaims', () =>
+    rethrow(reclaimerTerminatesOrphanedWorkers));
+
+  test('a recorded worker pid with a different start time is ignored and never signalled', () =>
+    rethrow(recycledWorkerPidIsIgnored));
+
+  test('a recorded pid that is no longer a Bun test worker is never signalled', () =>
+    rethrow(nonWorkerIsNeverSignalled));
+
+  test('a killed run leaves no Bun test worker running and its slots free', () =>
+    rethrow(killedRunLeavesNoWorkers));
+
   test('creates a missing pool directory', () => rethrow(createsAMissingPoolDirectory));
 
   test('treats garbage in the pool as free slots', () => rethrow(treatsGarbageAsFreeSlots));
@@ -558,6 +773,9 @@ describe('running a pooled bun test', () => {
 
   test('a run started under a held slot reuses it instead of waiting on its parent', () =>
     rethrow(reusesItsParentsSlot));
+
+  test('a run nested in a holder of two slots runs at most two workers', () =>
+    rethrow(nestedRunClampsToItsParentsSlots));
 
   test('a token naming no live holder does not bypass the pool', () =>
     rethrow(staleTokenDoesNotBypassThePool));

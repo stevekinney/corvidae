@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 
 import { runPooledBunTest } from '../../../scripts/bun-test-pool.ts';
+import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import {
   coverageTestArguments,
@@ -58,6 +59,6 @@ process.exit(
       ...testArguments,
     ],
     cwd: packageRoot,
-    environment: { ...process.env, TZ: 'UTC' },
+    environment: { ...rootScriptEnvironment(), TZ: 'UTC' },
   }),
 );

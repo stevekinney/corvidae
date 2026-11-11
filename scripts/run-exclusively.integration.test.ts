@@ -706,6 +706,15 @@ describe('withTurborepoDefaults', () => {
     expect(concurrencyFor(256 * gibibyte, 2)).toBe('1');
   });
 
+  test('gives a shared run half the concurrency, and at least one task', () => {
+    const sharedConcurrencyFor = (totalMemoryBytes: number, processors: number) =>
+      withTurborepoDefaults({}, { totalMemoryBytes, processors }, true)['TURBO_CONCURRENCY'];
+    expect(sharedConcurrencyFor(32 * gibibyte, 12)).toBe('2');
+    expect(sharedConcurrencyFor(64 * gibibyte, 24)).toBe('4');
+    expect(sharedConcurrencyFor(16 * gibibyte, 12)).toBe('1');
+    expect(sharedConcurrencyFor(4 * gibibyte, 2)).toBe('1');
+  });
+
   test("keeps the caller's own cache directory and concurrency", () => {
     const environment = withTurborepoDefaults(
       { TURBO_CACHE_DIR: '/elsewhere', TURBO_CONCURRENCY: '1', PATH: '/bin' },

@@ -1,13 +1,14 @@
 /**
- * Runs a root stage, under a lock that every checkout of this repository on the host shares unless
- * `--shared` is given.
+ * Runs a heavy root stage under a lock that every checkout of this repository on the host shares.
  *
- * Bun test workers are bounded host-wide by the test slot pool (`scripts/bun-test-pool.ts`), which
- * every `bun test` the stages start passes through, so the test, coverage, lint, type-check, build
- * and validate stages run `--shared`. The lock remains for the stages whose load the pool cannot
- * count: the Playwright suites, whose browsers start no Bun test worker, and `harden`, which keeps
- * the host busy on purpose. Two of either at once would oversubscribe the host with nothing to
- * bound them.
+ * Each `bun run validate` assumes it has the machine to itself: its `tsc`, `svelte-check` and
+ * oxlint tasks take about 13 GB at four tasks, so three validates at once would not fit a 32 GB
+ * host. The lock serializes the heavy stages (`validate`, `validate:batch`, `lint`, `typecheck`,
+ * `build`, `release:check`, the Playwright suites and `harden`). The stages that only run tests
+ * (`test`, `test:slow`, `coverage`) run `--shared`, because the test slot pool
+ * (`scripts/bun-test-pool.ts`), which every `bun test` passes through, bounds the Bun test workers
+ * on the host, inside a locked stage or not. Pool holders never wait on the lock, so the two cannot
+ * deadlock.
  *
  * The lock is a directory inside the Git common directory, which every worktree of this
  * repository shares. It is renamed into place with its owner file already inside, and `rename`
@@ -43,8 +44,9 @@
  * `--concurrency` itself still wins, since the flag overrides the variable.
  *
  * `--shared` before the command skips the lock and keeps the install check and the Turborepo
- * defaults. Nothing reads the load average: the test slot pool replaced the load backoff that
- * shared runs once had.
+ * defaults, at half the concurrency, since several shared runs (`bun run check`, the test stages)
+ * can run beside each other and beside a locked one. Nothing reads the load average: the test slot
+ * pool replaced the load backoff that shared runs once had.
  *
  * Usage: `bun scripts/run-exclusively.ts [--shared] '<shell command>' [arguments...]`. Arguments
  * reach the command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes
@@ -79,10 +81,10 @@ export const turborepoAffectedBase = 'origin/main';
 
 /**
  * `environment` with a memory-scaled task concurrency and the `--affected` base filled in where
- * the caller has not chosen its own. Shared and locked runs get the same concurrency: the test
- * slot pool, not a smaller turbo cap, bounds the Bun workers that several shared runs start. The
- * cache directory is deliberately not set: Turborepo shares its local cache across linked
- * worktrees on its own, and `turbo.json`'s `concurrency` caps the runs that never pass through here.
+ * the caller has not chosen its own. A `shared` run takes no lock, so several can run at once; each
+ * gets half the concurrency, since processors are what a full host runs out of. The cache
+ * directory is deliberately not set: Turborepo shares its local cache across linked worktrees on
+ * its own, and `turbo.json`'s `concurrency` caps the runs that never pass through here.
  */
 export function withTurborepoDefaults(
   environment: Readonly<Record<string, string | undefined>>,
@@ -90,14 +92,13 @@ export function withTurborepoDefaults(
     totalMemoryBytes: totalmem(),
     processors: cpus().length,
   },
+  shared = false,
 ): Record<string, string | undefined> {
-  const concurrency = Math.max(
-    1,
-    Math.min(
-      Math.floor(host.processors / processorsPerTurborepoTask),
-      Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
-    ),
+  const exclusive = Math.min(
+    Math.floor(host.processors / processorsPerTurborepoTask),
+    Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
   );
+  const concurrency = Math.max(1, shared ? Math.floor(exclusive / 2) : exclusive);
   return {
     ...environment,
     TURBO_CONCURRENCY: environment['TURBO_CONCURRENCY'] || String(concurrency),
@@ -173,7 +174,7 @@ function isProcessAlive(pid: number): boolean {
  */
 export function processTableEnvironment(): Record<string, string | undefined> {
   const environment = Object.fromEntries(
-    Object.entries(process.env).filter(([name]) => name !== 'TZ'),
+    Object.entries(rootScriptEnvironment()).filter(([name]) => name !== 'TZ'),
   );
   return { ...environment, LC_ALL: 'C' };
 }
@@ -491,9 +492,9 @@ export type RunExclusivelyOptions = {
   /** The environment the command inherits; defaults to this process's. */
   readonly environment?: Readonly<Record<string, string | undefined>>;
   /**
-   * Runs without taking the host lock: every stage but the Playwright suites and `harden`, whose
+   * Runs without taking the host lock: `bun run check` and the stages that only run tests, whose
    * Bun test workers the test slot pool bounds instead. It still gets the install check and the
-   * Turborepo defaults.
+   * Turborepo defaults, at half the concurrency.
    */
   readonly shared?: boolean;
 };
@@ -686,7 +687,7 @@ if (import.meta.main) {
       script: withPreflight(script),
       args,
       shared,
-      environment: withTurborepoDefaults(rootScriptEnvironment()),
+      environment: withTurborepoDefaults(rootScriptEnvironment(), undefined, shared),
     });
   }
 }
