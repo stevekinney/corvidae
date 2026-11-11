@@ -39,16 +39,16 @@ describe('Card CSS contract', () => {
     expect(css).toContain(".cinder-card__footer:not([data-cinder-tone='muted'])");
   });
 
-  test('danger tone paints the container surface, border, and icon', async () => {
+  test('danger tone paints the container surface and icon; the border comes from the border edge', async () => {
     const css = await Bun.file(new URL('./card.css', import.meta.url)).text();
     const dangerBlock =
       css.match(/\.cinder-card\[data-cinder-tone='danger'\]\s*\{[^}]*\}/)?.[0] ?? '';
     const iconBlock = css.match(/\.cinder-card__risk-icon\s*\{[^}]*\}/)?.[0] ?? '';
 
     expect(dangerBlock).toContain('background');
-    expect(dangerBlock).toContain('border-color');
+    expect(dangerBlock).not.toContain('border-color');
     expect(dangerBlock).toContain('var(--cinder-status-danger-background)');
-    expect(dangerBlock).toContain('var(--cinder-status-danger-border)');
+    expect(css).toContain("[data-cinder-tone='danger'][data-cinder-edge='border']");
     expect(css).toContain(".cinder-card[data-cinder-tone='danger'] > .cinder-card__header");
     expect(css).toContain(
       ".cinder-card[data-cinder-tone='danger'] > .cinder-card__header .cinder-card__title",

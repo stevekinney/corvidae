@@ -45,7 +45,7 @@
   }
 
   /* One edge per surface (COR-1821): a card draws a border or a shadow, never both. The default
-   * edge is the border. The shadow edge keeps the 1px border in the box, so the card does not
+   * edge is none. The shadow edge keeps the 1px border in the box, so the card does not
    * change size, and paints it transparent. These rules sit after the tone rules below so the
    * danger border colour cannot bring a second edge back. */
   @media (hover: hover) {
@@ -93,7 +93,6 @@
 
   .cinder-card[data-cinder-tone='danger'] {
     background: var(--cinder-status-danger-background);
-    border-color: var(--cinder-status-danger-border);
   }
 
   /* The border edge is the opt-in for a real panel; the default edge is none (COR-2311), so the

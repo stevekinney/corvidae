@@ -18,7 +18,7 @@ Surface container for grouping related content and actions into a distinct visua
 
 ## Danger Zones
 
-Use `tone="danger"` when a settings section or action group has destructive, irreversible, or broad-scope consequences. The tone paints the Card container, border, and generated title icon so applications do not need to hand-roll danger-zone borders or backgrounds. Put the concrete state or action in the body and use `ConfirmDialog` for irreversible or workspace-wide changes.
+Use `tone="danger"` when a settings section or action group has destructive, irreversible, or broad-scope consequences. The tone paints the Card container and generated title icon, and the border too when `edge="border"` so applications do not need to hand-roll danger-zone borders or backgrounds. Put the concrete state or action in the body and use `ConfirmDialog` for irreversible or workspace-wide changes.
 
 ## Edge
 
