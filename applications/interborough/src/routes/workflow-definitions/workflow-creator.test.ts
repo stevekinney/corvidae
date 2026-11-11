@@ -502,6 +502,57 @@ describe('the builder', () => {
     expect(summary(container)).toContain('wait 5000 ms');
   });
 
+  test('a wait keeps its Unit while For is empty, whether For is cleared and retyped or a Unit is chosen first', async () => {
+    const { container } = open();
+    await ready(container);
+    await fireEvent.click(button(container, BUILDER.remove(1)));
+    await fireEvent.click(button(container, BUILDER.add.wait));
+    await waitFor(() => expect(field(container, 'workflow-builder-step-1-unit')).toBeTruthy());
+    await fireEvent.change(field(container, 'workflow-builder-step-1-unit'), {
+      target: { value: 'hours' },
+    });
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '2' },
+    });
+    await waitFor(() => expect(summary(container)).toContain('wait 2 hours'));
+
+    // Cleared to type a new number: Unit stays hours, and 3 is saved as 3 hours.
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '' },
+    });
+    await waitFor(() =>
+      expect(field(container, 'workflow-builder-step-1-duration').value).toBe(''),
+    );
+    expect(field(container, 'workflow-builder-step-1-unit').value).toBe('hours');
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '3' },
+    });
+    await waitFor(() => expect(summary(container)).toContain('wait 3 hours'));
+
+    // A Unit chosen while For is empty is kept, and the number typed next is of that Unit.
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '' },
+    });
+    await waitFor(() =>
+      expect(field(container, 'workflow-builder-step-1-duration').value).toBe(''),
+    );
+    await fireEvent.change(field(container, 'workflow-builder-step-1-unit'), {
+      target: { value: 'days' },
+    });
+    await waitFor(() =>
+      expect(field(container, 'workflow-builder-step-1-unit').value).toBe('days'),
+    );
+    await fireEvent.input(field(container, 'workflow-builder-step-1-duration'), {
+      target: { value: '4' },
+    });
+    await waitFor(() => expect(summary(container)).toContain('wait 4 days'));
+
+    await openJson(container);
+    expect(JSON.parse(textarea(container).value)).toMatchObject({
+      steps: [{ kind: 'sleep', duration: '4d' }],
+    });
+  });
+
   test('keeps a multi-line message and description through edits, and saves them as written', async () => {
     const { container } = open();
     await ready(container);

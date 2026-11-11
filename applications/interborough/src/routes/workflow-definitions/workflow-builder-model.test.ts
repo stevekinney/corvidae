@@ -429,7 +429,33 @@ describe('the edits', () => {
     const steps = (value: string) => parsed(value)['steps'] as Record<string, unknown>[];
     expect(steps(setWaitDuration(text(), 1, '15', 'minutes'))[1]?.['duration']).toBe('15m');
     expect(steps(setWaitDuration(text(), 1, '2', 'days'))[1]?.['duration']).toBe('2d');
-    expect(steps(setWaitDuration(text(), 1, '', 'hours'))[1]?.['duration']).toBe('');
+    expect(steps(setWaitDuration(text(), 1, '', 'hours'))[1]?.['duration']).toBe('h');
+    expect(waitPartsOf('h')).toEqual({ amount: '', unit: 'hours' });
+    expect(waitPartsOf('days')).toEqual({ amount: '', unit: 'days' });
+    expect(waitPartsOf('ms')).toBeNull();
+  });
+
+  test('a wait keeps its unit while For is empty: cleared and retyped, or a unit chosen first', () => {
+    const waitOf = (value: string) => {
+      const step = readBuilder(value)?.steps[1];
+      if (step?.kind !== 'wait' || step.parts === null)
+        throw new Error('expected a For and Unit wait');
+      return step.parts;
+    };
+    const steps = (value: string) => parsed(value)['steps'] as Record<string, unknown>[];
+
+    // Two hours, then For cleared to type a new number: Unit stays hours, and 3 is 3 hours.
+    const twoHours = setWaitDuration(text(), 1, '2', 'hours');
+    const cleared = setWaitDuration(twoHours, 1, '', waitOf(twoHours).unit);
+    expect(waitOf(cleared)).toEqual({ amount: '', unit: 'hours' });
+    const retyped = setWaitDuration(cleared, 1, '3', waitOf(cleared).unit);
+    expect(steps(retyped)[1]?.['duration']).toBe('3h');
+
+    // A unit chosen while For is empty is kept, and the number typed next is of that unit.
+    const days = setWaitDuration(cleared, 1, waitOf(cleared).amount, 'days');
+    expect(days).not.toBe(cleared);
+    expect(waitOf(days)).toEqual({ amount: '', unit: 'days' });
+    expect(steps(setWaitDuration(days, 1, '4', waitOf(days).unit))[1]?.['duration']).toBe('4d');
   });
 
   test('setSchema writes a schema in the file format’s place, and removes it', () => {

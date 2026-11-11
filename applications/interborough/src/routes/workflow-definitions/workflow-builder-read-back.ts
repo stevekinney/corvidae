@@ -138,7 +138,9 @@ function taskOf(message: string): string {
 
 /** How long a wait lasts in words: "15 minutes", "5000 ms", or the duration as written. */
 function durationWords(step: Extract<BuilderStep, { kind: 'wait' }>): string {
-  if (step.parts !== null && step.parts.amount !== '') {
+  if (step.parts !== null) {
+    // An empty "For" is written as its unit's letter alone, which says no length yet.
+    if (step.parts.amount === '') return '';
     const words = UNIT_WORDS[step.parts.unit];
     return `${step.parts.amount} ${step.parts.amount === '1' ? words.one : words.many}`;
   }

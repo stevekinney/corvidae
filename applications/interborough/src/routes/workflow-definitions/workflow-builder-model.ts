@@ -129,8 +129,12 @@ const UNIT_LETTERS: Readonly<Record<WaitUnit, string>> = {
   days: 'd',
 };
 
-/** A whole number of a unit, as Weft's `parseDuration` reads it: `15m`, `2 hours`, `1 day`. */
-const WAIT_PATTERN = /^(\d+)\s*(s|seconds?|m|minutes?|h|hours?|d|days?)$/i;
+/**
+ * A whole number of a unit, as Weft's `parseDuration` reads it: `15m`, `2 hours`, `1 day`. The
+ * number may be missing, as in `h`: that is what "For" and "Unit" write while "For" is empty, so the
+ * chosen unit is kept.
+ */
+const WAIT_PATTERN = /^(\d*)\s*(s|seconds?|m|minutes?|h|hours?|d|days?)$/i;
 
 function isRecord(value: unknown): value is Json {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -199,7 +203,10 @@ function hasObjectInput(step: Json): boolean {
   return step['input'] === undefined || isRecord(step['input']);
 }
 
-/** A wait's duration as a number and a unit, or `null` when it is not a whole number of one unit. */
+/**
+ * A wait's duration as a number and a unit, or `null` when it is not a whole number of one unit.
+ * A unit with no number (`h`) is an empty "For" of that unit; an empty duration is one of minutes.
+ */
 export function waitPartsOf(duration: string): WaitParts | null {
   if (duration.trim() === '') return { amount: '', unit: 'minutes' };
   const match = WAIT_PATTERN.exec(duration.trim());
@@ -209,10 +216,12 @@ export function waitPartsOf(duration: string): WaitParts | null {
   return { amount: match[1] ?? '', unit };
 }
 
-/** The duration a wait's "For" and "Unit" write: `15m`, or `''` while "For" is empty. */
+/**
+ * The duration a wait's "For" and "Unit" write: `15m`, or the unit's letter alone (`h`) while "For"
+ * is empty, so clearing "For" to type a new number, or choosing a unit before it, keeps the unit.
+ */
 export function waitDurationOf(amount: string, unit: WaitUnit): string {
-  const digits = amount.trim();
-  return digits === '' ? '' : `${digits}${UNIT_LETTERS[unit]}`;
+  return `${amount.trim()}${UNIT_LETTERS[unit]}`;
 }
 
 function stepOf(step: unknown): BuilderStep {
