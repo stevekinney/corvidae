@@ -205,6 +205,8 @@
 
   const session = new ChatSessionState({
     sessionId: untrack(() => sessionId),
+    // A new chat's thread is not kept until its first run begins, so nothing reads its history before.
+    unopened: untrack(() => isNew),
     agentName: () => agent,
     // A deleted chat is sent nothing, and a not-found is checked against a read of the chat.
     closed: () => gone,

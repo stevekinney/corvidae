@@ -89,6 +89,13 @@ export type ChatSessionOptions = {
   readonly onGrantNotLoosened?: (notice: GrantNotLoosened) => void;
   /** The Bureau's clock as the page reads it; a fresh one when omitted, for tests to replace. */
   readonly clock?: BureauClock;
+  /**
+   * Whether the session is a new chat whose thread the Bureau does not hold yet. Its history is not
+   * read until a run it started has begun or an attach has restored a run, because a read sent
+   * before the first message is kept would race the request that keeps it. A session that names an
+   * existing thread leaves this out.
+   */
+  readonly unopened?: boolean;
 };
 
 /** Whether `error` is the Bureau, or the AG-UI door, saying it has no such thread. */
@@ -213,9 +220,17 @@ export class ChatSessionState {
   readonly #questionSchemas = new Map<string, Readonly<Record<string, unknown>>>();
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
+  /**
+   * The run token of the controller turn whose transport is in flight (`onTransportStart`), until
+   * that same turn's transport ends. An older turn's end names an older token and releases nothing.
+   */
+  #controllerTransport: number | undefined;
+  /** Whether the Bureau holds this session's thread, so its history may be read. */
+  #opened: boolean;
 
   constructor(options: ChatSessionOptions) {
     this.sessionId = options.sessionId;
+    this.#opened = options.unopened !== true;
     this.#closed = options.closed;
     this.#onNotFound = options.onNotFound;
     this.conversation = createConversationHistory({ id: options.sessionId });
@@ -235,6 +250,8 @@ export class ChatSessionState {
       },
       onRunStarted: () => {
         this.#attachedRun = true;
+        // The run's start keeps the thread, so its history can be read from now on.
+        this.#opened = true;
         options.onRunStarted?.();
       },
       onFrame: () => {
@@ -295,6 +312,12 @@ export class ChatSessionState {
       hooks: {
         resolveToolApproval: (toolCallId, resolution) =>
           this.#wiring.resolveToolApproval(toolCallId, resolution),
+        onTransportStart: (runToken) => {
+          this.#controllerTransport = runToken;
+        },
+        onTransportEnd: (runToken) => {
+          if (this.#controllerTransport === runToken) this.#controllerTransport = undefined;
+        },
         onStreamingChange: (streaming) => {
           this.streaming = streaming;
           // A new turn is a new attempt, and what failed before it is not what it will say. The
@@ -375,6 +398,16 @@ export class ChatSessionState {
       ...withoutRunInput
     } = this.adapter;
     this.#stoppingAdapter = withoutRunInput;
+  }
+
+  /**
+   * Whether a transport of this session is open or opening: an attach reading the thread, or a turn
+   * of the controller (an opener's request, a hidden turn, a promoted follow-up, a retry) whose
+   * transport has not ended. A page that comes back to the session reads this rather than opening a
+   * second attachment over the same run.
+   */
+  get transportActive(): boolean {
+    return this.attaching || this.#controllerTransport !== undefined;
   }
 
   /** What the chat is given: the session's adapter, and while a stop is being held, one that sends no follow-up. */
@@ -516,6 +549,8 @@ export class ChatSessionState {
    * question the Bureau has settled, and the Bureau would refuse it.
    */
   async refresh(): Promise<boolean> {
+    // A new chat's thread is not kept until its first run begins: there is nothing to read yet.
+    if (!this.#opened) return false;
     if (this.streaming || this.attaching || this.#abort.signal.aborted) return false;
     const history = await this.#wiring.history(this.sessionId, this.#abort.signal);
     if (history === undefined || this.streaming || this.attaching) return false;
@@ -650,6 +685,12 @@ export class ChatSessionState {
       const restored = await this.#wiring.attach(this.sessionId, signal);
       if (generation !== this.#retryGeneration || signal.aborted) return false;
       if (restored === undefined) {
+        // A new chat whose thread is not kept yet has no history to read, and the transcript on
+        // screen is all there is.
+        if (!this.#opened) {
+          this.#attachedRun = false;
+          return false;
+        }
         // Nothing is going, so the transcript is what the Bureau holds of the thread.
         const history = await this.#wiring.history(this.sessionId, signal);
         if (generation !== this.#retryGeneration || signal.aborted) return false;
@@ -661,6 +702,8 @@ export class ChatSessionState {
         return false;
       }
       this.restore(restored);
+      // A run was restored, so the Bureau holds the thread.
+      this.#opened = true;
       this.disconnected = false;
       this.#attachedRun = true;
       this.#activeTurn = this.#sendHiddenTurn().catch(() => undefined);
