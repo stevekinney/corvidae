@@ -107,7 +107,8 @@ test.describe('DecisionDeck spring and reduced motion', () => {
     // `foundation.css` wins the cascade under reduced motion with `transition-duration: 0.01ms
     // !important`, which the browser reports as `1e-05s`, so the card's own `transition: none`
     // never reads back as `0s`. What must hold is that no spring plays: every duration is under a
-    // millisecond.
+    // millisecond, and the card's own reduced-motion rule names no property to transition.
+    await expect(page.locator(TOP_CARD)).toHaveCSS('transition-property', 'none');
     await expect
       .poll(() =>
         page.locator(TOP_CARD).evaluate((element) => {
