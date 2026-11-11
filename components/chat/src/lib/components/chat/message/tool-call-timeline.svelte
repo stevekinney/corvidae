@@ -148,8 +148,13 @@
   // Where the step under way falls among the steps so far, and how long it has run (R1). The clock
   // ticks once a second only while a step with a known start is running.
   const runningPosition = $derived(runningRow === undefined ? 0 : rows.indexOf(runningRow) + 1);
+  // A call left unanswered by a run that ended (a chat reopened later) is not under way: it keeps
+  // its icon and words, with no spinner, no position and no clock counting from long ago.
+  const runningLive = $derived(runningRow !== undefined && activityActive);
   const runningStart = $derived(
-    runningRow === undefined ? undefined : startTimes?.get(runningRow.pair.call.id),
+    runningRow === undefined || !activityActive
+      ? undefined
+      : startTimes?.get(runningRow.pair.call.id),
   );
   let elapsedClock = $state(Date.now());
 
@@ -373,9 +378,13 @@
   {/if}
 {/snippet}
 
-{#snippet output(pair: ToolCallPair)}
-  {#if pair.result?.outcome === 'error'}
+{#snippet output(pair: ToolCallPair, status: ToolCallRowStatus)}
+  {#if pair.result?.outcome === 'error' && status === 'failed'}
     {@render failure(pair)}
+  {:else if pair.result?.outcome === 'error'}
+    <!-- A denial the run reports as an error result reads Denied, not failed: it keeps the plain
+         error payload and offers no retry. -->
+    {@render payload('Error', pair.result.error?.message ?? pair.result.content)}
   {:else if pair.result?.parts !== undefined && pair.result}
     {@render payload('Output', toolResultText(pair.result))}
   {:else if pair.result}
@@ -404,13 +413,17 @@
         {#if runningRow?.presentation}
           <!-- The step under way (R1): a spinner, its present-tense title ending in an ellipsis,
                where it falls among the steps so far, and how long it has run. -->
-          <span class="chat-tool-call-spinner" aria-hidden="true">
-            <Spinner size="sm" variant="arc" label="" />
-          </span>
+          {#if runningLive}
+            <span class="chat-tool-call-spinner" aria-hidden="true">
+              <Spinner size="sm" variant="arc" label="" />
+            </span>
+          {:else if runningRow.icon}
+            {@render runningRow.icon()}
+          {/if}
           <span class="chat-tool-call-running" dir="auto"
-            >{runningStepTitle(runningRow.prose ?? '')}</span
+            >{runningLive ? runningStepTitle(runningRow.prose ?? '') : runningRow.prose}</span
           >
-          {#if pairs.length > 1}
+          {#if runningLive && pairs.length > 1}
             <span class="chat-tool-call-summary-segment" data-step-position
               >{words.stepPosition(runningPosition, pairs.length)}</span
             >
@@ -473,7 +486,7 @@
           <div id={row.detailsId} class="chat-tool-call-details" hidden={!open}>
             {#if open}
               {@render payload('Input', row.pair.call.arguments)}
-              {@render output(row.pair)}
+              {@render output(row.pair, row.status)}
             {/if}
           </div>
         </li>
@@ -511,7 +524,7 @@
                       {' '}{member.keyArgument}{/if}
                   </span>
                   {@render payload('Input', member.pair.call.arguments)}
-                  {@render output(member.pair)}
+                  {@render output(member.pair, member.status)}
                 </div>
               {/each}
             {/if}

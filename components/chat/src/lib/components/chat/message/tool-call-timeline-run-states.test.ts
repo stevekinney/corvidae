@@ -124,6 +124,32 @@ describe('R1: the step under way', () => {
     expect(heading(container).textContent?.replace(/\s+/g, ' ').trim()).toBe('Searching sources…');
   });
 
+  test('a call a finished run left unanswered does not turn, count or tick', async () => {
+    const timers = trackTimers();
+    try {
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [done('s1'), running('s2')],
+          describeToolCall,
+          activityActive: false,
+          startTimes: new Map([['s2', Date.now() - 86_400_000]]),
+        },
+      });
+      await tick();
+      const header = heading(container);
+      expect(header.querySelector('.cinder-spinner')).toBeNull();
+      expect(header.querySelector('[data-step-position]')).toBeNull();
+      expect(header.querySelector('[data-elapsed]')).toBeNull();
+      expect(header.querySelector('.chat-tool-call-activity-icon')).not.toBeNull();
+      expect(header.querySelector('.chat-tool-call-running')?.textContent).toBe(
+        'Searching sources',
+      );
+      expectNoLeakedTimers(timers.active());
+    } finally {
+      timers.release();
+    }
+  });
+
   test('a title the host words without an ellipsis gains one', async () => {
     const { container } = render(ToolCallTimeline, {
       props: {
@@ -223,6 +249,34 @@ describe('R7: a failed step', () => {
     ).toEqual(['Copy error', 'Retry this step']);
     await fireEvent.click(getByRole('button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('s3');
+  });
+
+  test('a denial reported as an error reads Denied, with no danger summary and no retry', async () => {
+    const denied: ToolCallPair = {
+      call: { id: 'refund-1', name: 'issue_refund', arguments: { orderId: '4471' } },
+      result: {
+        callId: 'refund-1',
+        outcome: 'error',
+        content: null,
+        error: {
+          code: 'denied',
+          category: 'internal',
+          retryable: false,
+          message: 'The user denied this call',
+        },
+      },
+    };
+    const { container, queryByRole } = render(ToolCallTimeline, {
+      props: {
+        pairs: [denied],
+        approvalStates: new Map([['refund-1', 'denied' as const]]),
+        onRetryStep: () => undefined,
+      },
+    });
+    await tick();
+    expect(container.querySelector('.chat-tool-call-failure')).toBeNull();
+    expect(queryByRole('button', { name: 'Retry this step' })).toBeNull();
+    expect(container.textContent).toContain('The user denied this call');
   });
 
   test('without the callback only Copy error shows', async () => {
