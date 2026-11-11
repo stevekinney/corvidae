@@ -603,10 +603,14 @@ const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
 );
 
+type CliOperationCoverage =
+  | { readonly command: string; readonly action: string }
+  | { readonly excluded: true; readonly reason: string };
+
 /** Exhaustive mapping from the engine catalog to a public CLI action or an explicit exclusion. */
-export const CLI_OPERATION_COVERAGE = Object.freeze(
+export const CLI_OPERATION_COVERAGE: Readonly<Record<string, CliOperationCoverage>> = Object.freeze(
   Object.fromEntries(
-    createCatalogSnapshot().operations.map((operation) => [
+    createCatalogSnapshot().operations.map((operation): [string, CliOperationCoverage] => [
       operation.name,
       operation.transports.jsonRpcHttp && operation.kind === 'unary'
         ? { command: 'api', action: 'call' }
@@ -616,13 +620,7 @@ export const CLI_OPERATION_COVERAGE = Object.freeze(
           },
     ]),
   ),
-) as Readonly<
-  Record<
-    string,
-    | { readonly command: string; readonly action: string }
-    | { readonly excluded: true; readonly reason: string }
-  >
->;
+);
 
 function usage(message: string): CliResult {
   return { stdout: '', stderr: message, exitCode: 2 };
@@ -858,6 +856,68 @@ function targetResolutionFailure(result: CliResult): CliCommandResult {
   return { data: undefined, metadata: { error: result.stderr } };
 }
 
+/** Call one unary operation named by `api call` after validating it against the host catalog. */
+async function executeApiCall(
+  parsed: Parsed,
+  resolved: CliTarget,
+  dependencies: CliClientDependencies,
+  operationName: string,
+): Promise<CliCommandResult> {
+  const inputFile = parsed.options.get('input-file') ?? parsed.options.get('file');
+  const inputOption = parsed.options.get('input');
+  if (inputFile !== undefined && inputOption !== undefined)
+    throw makeCliFailure('Use only one of --input and --input-file.', { usage: true });
+  if (inputFile === '-' && inputOption === '-')
+    throw makeCliFailure('stdin may only be consumed once.', { usage: true });
+  const document = await request(resolved, '/openrpc.json', parsed, dependencies);
+  const methods =
+    isRecord(document.data) && Array.isArray(document.data['methods'])
+      ? document.data['methods']
+      : [];
+  if (!methods.some((method) => isRecord(method) && method['name'] === operationName))
+    throw Object.assign(new Error(`Operation is not externally discoverable: ${operationName}`), {
+      usage: true,
+    });
+  const operation = catalogByName.get(operationName);
+  if (operation === undefined || operation.kind !== 'unary' || !operation.transports.jsonRpcHttp)
+    throw makeCliFailure(
+      `Operation is not a supported unary JSON-RPC operation: ${operationName}.`,
+      { usage: true },
+    );
+  if (operation.destructive && parsed.options.get('yes') !== true)
+    throw makeCliFailure(`Operation ${operationName} is destructive; pass --yes to confirm.`, {
+      exitCode: 5,
+    });
+  const input = inputFile ?? inputOption;
+  const inputText =
+    input === '-'
+      ? await (dependencies.stdin ?? (async () => ''))()
+      : input === undefined
+        ? undefined
+        : await readFile(String(input), 'utf8');
+  if (input === '-' && inputText === undefined)
+    throw Object.assign(new Error('stdin input is unavailable.'), { usage: true });
+  let params: unknown = {};
+  try {
+    params = inputText === undefined ? {} : JSON.parse(inputText);
+  } catch {
+    throw makeCliFailure('Input must contain valid JSON.', { usage: true });
+  }
+  const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      jsonrpc: '2.0',
+      id: `${Date.now()}`,
+      method: operationName,
+      params,
+    }),
+  });
+  return isRecord(response.data) && Object.hasOwn(response.data, 'result')
+    ? { ...response, data: response.data['result'] }
+    : response;
+}
+
 async function execute(
   parsed: Parsed,
   dependencies: CliClientDependencies,
@@ -1035,67 +1095,8 @@ async function execute(
           null,
       };
     }
-    if (action === 'call' && parsed.arguments[1]) {
-      const inputFile = parsed.options.get('input-file') ?? parsed.options.get('file');
-      const inputOption = parsed.options.get('input');
-      if (inputFile !== undefined && inputOption !== undefined)
-        throw makeCliFailure('Use only one of --input and --input-file.', { usage: true });
-      if (inputFile === '-' && inputOption === '-')
-        throw makeCliFailure('stdin may only be consumed once.', { usage: true });
-      const document = await request(resolved, '/openrpc.json', parsed, dependencies);
-      const methods =
-        isRecord(document.data) && Array.isArray(document.data['methods'])
-          ? document.data['methods']
-          : [];
-      if (!methods.some((method) => isRecord(method) && method['name'] === parsed.arguments[1]))
-        throw Object.assign(
-          new Error(`Operation is not externally discoverable: ${parsed.arguments[1]}`),
-          { usage: true },
-        );
-      const operation = catalogByName.get(parsed.arguments[1]);
-      if (
-        operation === undefined ||
-        operation.kind !== 'unary' ||
-        !operation.transports.jsonRpcHttp
-      )
-        throw makeCliFailure(
-          `Operation is not a supported unary JSON-RPC operation: ${parsed.arguments[1]}.`,
-          { usage: true },
-        );
-      if (operation.destructive && parsed.options.get('yes') !== true)
-        throw makeCliFailure(
-          `Operation ${parsed.arguments[1]} is destructive; pass --yes to confirm.`,
-          { exitCode: 5 },
-        );
-      const input = inputFile ?? inputOption;
-      const inputText =
-        input === '-'
-          ? await (dependencies.stdin ?? (async () => ''))()
-          : input === undefined
-            ? undefined
-            : await readFile(String(input), 'utf8');
-      if (input === '-' && inputText === undefined)
-        throw Object.assign(new Error('stdin input is unavailable.'), { usage: true });
-      let params: unknown = {};
-      try {
-        params = inputText === undefined ? {} : JSON.parse(inputText);
-      } catch {
-        throw makeCliFailure('Input must contain valid JSON.', { usage: true });
-      }
-      const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({
-          jsonrpc: '2.0',
-          id: `${Date.now()}`,
-          method: parsed.arguments[1],
-          params,
-        }),
-      });
-      return isRecord(response.data) && Object.hasOwn(response.data, 'result')
-        ? { ...response, data: response.data['result'] }
-        : response;
-    }
+    if (action === 'call' && parsed.arguments[1])
+      return executeApiCall(parsed, resolved, dependencies, parsed.arguments[1]);
     throw Object.assign(new Error('Usage: api list|describe <operation>|call <operation>.'), {
       usage: true,
     });

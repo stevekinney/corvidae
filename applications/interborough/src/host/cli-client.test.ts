@@ -4,6 +4,8 @@ import { join } from 'node:path';
 
 import { describe, expect, test } from 'bun:test';
 
+import { createCatalogSnapshot } from '@lostgradient/weft';
+
 import {
   CLI_COMMAND_REGISTRY,
   CLI_OPERATION_COVERAGE,
@@ -38,6 +40,7 @@ async function fixture() {
 }
 
 describe('Interborough command client', () => {
+  // spawn-free: completion renders a string and no process opener stands in for it.
   test('keeps the public command registry complete and completion output data-only', async () => {
     const publicCommands = Object.keys(CLI_COMMAND_REGISTRY);
     expect(publicCommands).toContain('providers');
@@ -66,6 +69,8 @@ describe('Interborough command client', () => {
     expect(completion.stdout).toContain('complete -c interborough');
     expect(CLI_OPERATION_INVENTORY).toContain('connection.list');
     expect(CLI_OPERATION_INVENTORY).toContain('workflows.*');
+    const catalogNames = createCatalogSnapshot().operations.map((operation) => operation.name);
+    expect(Object.keys(CLI_OPERATION_COVERAGE).sort()).toEqual([...catalogNames].sort());
     for (const [operation, coverage] of Object.entries(CLI_OPERATION_COVERAGE)) {
       if ('excluded' in coverage) expect(coverage.reason).not.toBe('');
       else {

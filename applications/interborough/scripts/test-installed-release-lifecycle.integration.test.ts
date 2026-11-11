@@ -170,6 +170,7 @@ async function exerciseJourney(fault: string, port = 43123, relocated = false) {
   }
 }
 
+// spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
 test('records successful ephemeral-port and relocated journeys', async () => {
   const assertions = await exerciseJourney('', 0, true);
   expect(assertions.some((entry) => entry.assertion.includes('relocation preserved'))).toBe(true);
@@ -210,6 +211,7 @@ for (const [fault, message] of [
   ['deployment-marker', 'preserve deployment marker'],
   ['runtime-link', 'link target was'],
 ] as const) {
+  // spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
   test(`rejects ${fault} and cleans up every spawned process`, async () => {
     expect(
       await throwingRejectionOf(
@@ -219,6 +221,7 @@ for (const [fault, message] of [
   });
 }
 
+// spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
 test('stops and drains the child when initial readiness fails', async () => {
   const root = await mkdtemp(join(tmpdir(), 'installed-release-cleanup-'));
   let killed = false;

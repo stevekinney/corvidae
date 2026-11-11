@@ -173,8 +173,8 @@ async function runInstalledCliCommand(
     ...(input === undefined ? {} : { stdin: 'pipe' as const }),
   });
   if (input !== undefined) {
-    child.stdin.write(input);
-    child.stdin.end();
+    await child.stdin.write(input);
+    await child.stdin.end();
   }
   const [stdout, stderr, exitCode] = await Promise.all([
     new Response(child.stdout).text(),
@@ -331,7 +331,9 @@ export async function runInstalled(
           '/CN=localhost',
         ]);
         if (certificate.exitCode !== 0)
-          throw new Error(`Could not create authority fixture certificate: ${certificate.stderr}`);
+          throw new Error(
+            `Could not create authority fixture certificate: ${String(certificate.stderr)}`,
+          );
         const authorityServer = Bun.serve({
           hostname: '127.0.0.1',
           port: 0,
@@ -492,7 +494,7 @@ export async function runInstalled(
           throw new Error(
             `Dropped installed watch did not fail closed: ${droppedWatch.exitCode} ${droppedWatch.stderr}`,
           );
-        authorityServer.stop(true);
+        await authorityServer.stop(true);
         pass(
           'authenticated TLS authority handshake and wrong-workspace refusal',
           'interborough whoami over TLS',
@@ -516,7 +518,7 @@ export async function runInstalled(
             `Installed CLI ${command.args.join(' ')} exited ${result.exitCode}: ${result.stderr}`,
           );
         if (command.json) {
-          const payload = JSON.parse(result.stdout) as { schemaVersion?: number };
+          const payload = JSON.parse(result.stdout) as { schemaVersion?: number; data?: unknown };
           cliJourneyResults[command.args.join(' ')] = payload.data;
           if (payload.schemaVersion !== 1)
             throw new Error(`Installed CLI ${command.args.join(' ')} returned an invalid envelope`);

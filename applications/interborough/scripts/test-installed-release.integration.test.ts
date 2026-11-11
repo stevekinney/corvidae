@@ -265,6 +265,7 @@ describe('installed-release harness arguments', () => {
     }
   });
 
+  // spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
   test('propagates readiness failures through the process seam', async () => {
     const root = await mkdtemp(join(tmpdir(), 'installed-release-process-seam-'));
     const process = {
@@ -295,6 +296,7 @@ describe('installed-release harness arguments', () => {
     }
   });
 
+  // spawn-free: a one-line shell fixture runs through the default spawn and the journey fails at readiness before the CLI stage.
   test('creates the real fixture and exercises the default process spawn', async () => {
     const root = await mkdtemp(join(tmpdir(), 'installed-release-default-process-'));
     const executable = join(root, 'bin', 'interborough');
@@ -325,6 +327,7 @@ describe('installed-release harness arguments', () => {
     }
   });
 
+  // spawn-free: the injected spawn seam replaces the installed server, and any CLI command runs the no-op /bin/true.
   test('drives the full installed lifecycle through deterministic operations', async () => {
     const root = await mkdtemp(join(tmpdir(), 'installed-release-full-seam-'));
     const marker = join(root, 'tool-marker.txt');
