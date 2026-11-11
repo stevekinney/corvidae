@@ -6,7 +6,9 @@
  * - a `let` written as a shorthand member of the `core` literal in `constructBureau` copies its
  *   value once, so a later assignment is never seen. Only `options` may be one, because nothing
  *   assigns it after the core is built;
- * - a seam that destructures an accessor from `core` freezes the value it had when the factory ran.
+ * - a seam that destructures an accessor from `core` freezes the value it had when the factory ran;
+ * - a seam factory that reads `peers`, or `core.<accessor>`, while it runs (outside the functions it
+ *   returns) reads a binding `constructBureau` has not initialized yet, or freezes the value it has.
  */
 import { readdir } from 'node:fs/promises';
 import { dirname, join } from 'node:path';
@@ -153,6 +155,82 @@ function destructuredAccessors(sourceText: string, plain: ReadonlySet<string>): 
   return found;
 }
 
+/** A function whose body is not run when the enclosing factory runs (an IIFE is handled apart). */
+function isDeferredBody(node: ts.Node): boolean {
+  if (
+    ts.isFunctionDeclaration(node) ||
+    ts.isFunctionExpression(node) ||
+    ts.isArrowFunction(node) ||
+    ts.isMethodDeclaration(node) ||
+    ts.isGetAccessor(node) ||
+    ts.isSetAccessor(node) ||
+    ts.isConstructorDeclaration(node) ||
+    ts.isClassLike(node)
+  ) {
+    const parent = node.parent;
+    const invoked =
+      (ts.isFunctionExpression(node) || ts.isArrowFunction(node)) &&
+      ((ts.isCallExpression(parent) && parent.expression === node) ||
+        (ts.isParenthesizedExpression(parent) &&
+          ts.isCallExpression(parent.parent) &&
+          parent.parent.expression === parent));
+    return !invoked;
+  }
+  return false;
+}
+
+/**
+ * What a seam factory in `sourceText` reads while it runs: any use of `peers`, and `core.<name>`
+ * for a name that is not a plain member. "While it runs" is the statements of the factory body,
+ * not the bodies of the functions, accessors and classes it defines, which run later.
+ */
+function topLevelReads(sourceText: string, plain: ReadonlySet<string>): string[] {
+  const source = parse(sourceText);
+  const found: string[] = [];
+  const report = (node: ts.Node, message: string): void => {
+    const { line } = source.getLineAndCharacterOfPosition(node.getStart(source));
+    found.push(`line ${line + 1}: ${message}`);
+  };
+  const visit = (node: ts.Node): void => {
+    if (isDeferredBody(node)) return;
+    if (ts.isIdentifier(node) && node.text === 'peers') {
+      const parent = node.parent;
+      const isName =
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node) ||
+        (ts.isBindingElement(parent) && parent.propertyName === node);
+      if (!isName) {
+        report(
+          node,
+          '`peers` is read while the factory runs, before `constructBureau` has defined the peer: read `peers.<name>` inside the function that calls it',
+        );
+      }
+    }
+    if (
+      (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === 'core'
+    ) {
+      const member = ts.isPropertyAccessExpression(node) ? node.name : node.argumentExpression;
+      const name = ts.isIdentifier(member) ? member.text : member.getText(source).slice(1, -1);
+      if (!plain.has(name)) {
+        report(
+          node,
+          `\`core.${name}\` is an accessor read while the factory runs, which freezes it or reads it before it exists: read it inside the function that uses it`,
+        );
+      }
+    }
+    ts.forEachChild(node, visit);
+  };
+  for (const statement of source.statements) {
+    if (!ts.isFunctionDeclaration(statement) || statement.body === undefined) continue;
+    if (!statement.parameters.some((parameter) => parameter.name.getText(source) === 'core'))
+      continue;
+    for (const inner of statement.body.statements) visit(inner);
+  }
+  return found;
+}
+
 describe('shorthandViolations', () => {
   it('reports a shorthand let, an unknown name, and an assignment to options below the core', () => {
     expect(
@@ -194,6 +272,78 @@ describe('destructuredAccessors', () => {
   });
 });
 
+describe('topLevelReads', () => {
+  const plain = new Set(['runtime', 'store']);
+
+  it('reports peers and core accessors read while the factory runs', () => {
+    expect(
+      topLevelReads(
+        `
+          export function createSeam(core, peers) {
+            const { runtime } = core;
+            const { stop } = peers;
+            const stopNow = peers.stop;
+            const frozen = core.hooksInstance;
+            const alsoFrozen = core['tasks'];
+            const registered = register({ stop: peers.stop });
+            return {};
+          }
+        `,
+        plain,
+      ),
+    ).toEqual([
+      expect.stringContaining('line 4: `peers` is read while the factory runs'),
+      expect.stringContaining('line 5: `peers` is read while the factory runs'),
+      'line 6: `core.hooksInstance` is an accessor read while the factory runs, which freezes it or reads it before it exists: read it inside the function that uses it',
+      'line 7: `core.tasks` is an accessor read while the factory runs, which freezes it or reads it before it exists: read it inside the function that uses it',
+      expect.stringContaining('line 8: `peers` is read while the factory runs'),
+    ]);
+  });
+
+  it('allows plain members, and anything read inside a function the factory defines', () => {
+    expect(
+      topLevelReads(
+        `
+          export function createSeam(core, peers) {
+            const { runtime, store } = core;
+            let pending;
+            async function work() {
+              await peers.stop();
+              return core.hooksInstance;
+            }
+            const run = () => peers.stop(core.tasks);
+            const handle = { get live() { return core.tasks; }, stop: () => peers.stop() };
+            class Holder { field = core.tasks; method() { return peers.stop; } }
+            const unrelated = other.peers.stop;
+            return { work, run, handle, runtime, store };
+          }
+          function notAFactory(value) {
+            return peers.stop(value.hooksInstance);
+          }
+        `,
+        plain,
+      ),
+    ).toEqual([]);
+  });
+
+  it('reads an immediately invoked function as top level', () => {
+    expect(
+      topLevelReads(
+        `
+          export function createSeam(core, peers) {
+            const value = (() => core.tasks)();
+            const other = (function () { return peers.stop; })();
+          }
+        `,
+        plain,
+      ),
+    ).toEqual([
+      expect.stringContaining('line 3: `core.tasks`'),
+      expect.stringContaining('line 4: `peers` is read'),
+    ]);
+  });
+});
+
 describe('the core of create-bureau.ts', () => {
   it('lists only fixed values as shorthand members', async () => {
     expect(shorthandViolations(await Bun.file(CREATE_BUREAU).text())).toEqual([]);
@@ -210,6 +360,20 @@ describe('the core of create-bureau.ts', () => {
       .toSorted()) {
       const text = await Bun.file(join(SEAMS_DIRECTORY, file)).text();
       found.push(...destructuredAccessors(text, plain).map((violation) => `${file}: ${violation}`));
+    }
+
+    expect(found).toEqual([]);
+  });
+
+  it('never reads `peers` or a core accessor while a seam factory runs', async () => {
+    const plain = plainMembers(await Bun.file(CREATE_BUREAU).text());
+    const entries = await readdir(SEAMS_DIRECTORY, { recursive: true });
+    const found: string[] = [];
+    for (const file of entries
+      .filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'))
+      .toSorted()) {
+      const text = await Bun.file(join(SEAMS_DIRECTORY, file)).text();
+      found.push(...topLevelReads(text, plain).map((violation) => `${file}: ${violation}`));
     }
 
     expect(found).toEqual([]);
