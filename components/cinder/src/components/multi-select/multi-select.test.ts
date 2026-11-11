@@ -66,6 +66,18 @@ describe('MultiSelect', () => {
     expect(css).not.toContain("@import '../checkbox/checkbox.css';");
   });
 
+  test('sizes only its own indicator shell, never every Checkbox shell', async () => {
+    const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
+
+    // An unscoped `.cinder-checkbox-field__control` rule pinned the task Checkbox's shell to 18px
+    // whenever both stylesheets loaded, so its 20px box overflowed and its hit area shrank.
+    expect(css).not.toMatch(/(?<![\w-]|[+>]\s)\.cinder-checkbox-field__control\s*\{/);
+    expect(css).not.toMatch(/(?<![\w-]|[+>]\s)\.cinder-checkbox-field__indicator\s*\{/);
+    expect(css).toContain(
+      '.cinder-multi-select__checkbox-indicator.cinder-checkbox-field__control {',
+    );
+  });
+
   test('owns checkbox box styles so a standalone import stays visible', async () => {
     const css = await Bun.file(new URL('./multi-select.css', import.meta.url)).text();
 

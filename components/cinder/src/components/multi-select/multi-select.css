@@ -180,7 +180,10 @@
     pointer-events: none;
   }
 
-  .cinder-checkbox-field__control {
+  /* The shell and its glyph are scoped to MultiSelect's own indicator. Checkbox styles the same
+     shell classes, and an unscoped copy here would pin every Checkbox's shell to 18px when both
+     stylesheets load, so the 20px task box would overflow its shell and shrink its hit area. */
+  .cinder-multi-select__checkbox-indicator.cinder-checkbox-field__control {
     position: relative;
     display: inline-flex;
     inline-size: 1.125rem;
@@ -188,7 +191,7 @@
     flex-shrink: 0;
   }
 
-  .cinder-checkbox-field__indicator {
+  .cinder-multi-select__checkbox-indicator > .cinder-checkbox-field__indicator {
     --_cinder-checkbox-check-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M12.7 4.3L6.5 10.6 3.3 7.4 2 8.7l4.5 4.5 7.6-7.6z'/%3E%3C/svg%3E");
     position: absolute;
     inset-block-start: 50%;
