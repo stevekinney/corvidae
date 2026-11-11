@@ -102,6 +102,7 @@ const remainingSlugs = [
   'context-menu',
   'copy-button',
   'data-list',
+  'decision-deck',
   'description-list',
   'diff-statistics',
   'divider',

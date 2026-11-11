@@ -71,6 +71,7 @@ export const productOracles: Record<string, ProductOracle> = {
     attribute: { name: 'aria-label', value: 'Copy install command' },
   },
   'data-list': { selector: `[class*="cinder-data-list"]`, text: 'Alice Chen' },
+  'decision-deck': { selector: `[class*="cinder-decision-deck"]`, text: 'Archive receipts' },
   'description-list': { selector: `[class*="cinder-description-list"]`, text: 'Component' },
   'diff-statistics': {
     selector: `[class*="cinder-diff-statistics"]`,

@@ -127,6 +127,7 @@ export const appFixtureDeclarations = {
   'context-menu': ['assertion'],
   'copy-button': ['assertion'],
   'data-list': ['assertion'],
+  'decision-deck': ['assertion'],
   'description-list': ['assertion'],
   'diff-statistics': ['assertion'],
   divider: ['assertion'],
