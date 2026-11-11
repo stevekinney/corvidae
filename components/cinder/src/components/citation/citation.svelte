@@ -72,8 +72,8 @@
     >
       {entry.detail}
     </p>{/if}{#if link.kind === 'link'}<a class="cinder-citation__link" href={link.href}
-      >{openText(link.host)}<span class="cinder-citation__link-arrow" aria-hidden="true">
-        ↗</span
+      >{openText(link.host)}{' '}<span class="cinder-citation__link-arrow" aria-hidden="true"
+        >↗</span
       ></a
     >{:else if link.kind === 'none'}<span class="cinder-citation__note">{noLinkText}</span
     >{:else}<span class="cinder-citation__note" data-cinder-link="rejected">{unsafeLinkText}</span

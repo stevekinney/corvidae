@@ -59,10 +59,8 @@
           {/if}
           {#if link.kind === 'link'}
             <a class="chat-message-sources-link" href={link.href}
-              >{link.host === undefined ? 'Open source' : `Open ${link.host}`}<span
-                aria-hidden="true"
-              >
-                ↗</span
+              >{link.host === undefined ? 'Open source' : `Open ${link.host}`}{' '}<span
+                aria-hidden="true">↗</span
               ></a
             >
           {:else if link.kind === 'none'}

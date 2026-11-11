@@ -224,11 +224,11 @@ describe('Chat — sourcesByMessageId', () => {
     expect(document.activeElement).toBe(control);
 
     await rerender({ sourcesByMessageId: new Map() });
-    await tick();
-    await tick();
 
+    await waitFor(() =>
+      expect(document.activeElement).toBe(messageArticle(container, 'assistant-a')),
+    );
     expect(control.isConnected).toBe(false);
-    expect(document.activeElement).toBe(messageArticle(container, 'assistant-a'));
   });
 
   test('never changes the conversation it is given', async () => {
@@ -358,11 +358,11 @@ describe('Chat — sourcePresentation="list"', () => {
     expect(document.activeElement).toBe(link);
 
     await rerender({ sourcesByMessageId: new Map([['assistant-b', sourcesForA]]) });
-    await tick();
-    await tick();
 
+    await waitFor(() =>
+      expect(document.activeElement).toBe(messageArticle(container, 'assistant-a')),
+    );
     expect(listToggle(container, 'assistant-a')).toBeNull();
     expect(sourceList(container, 'assistant-a')).toBeNull();
-    expect(document.activeElement).toBe(messageArticle(container, 'assistant-a'));
   });
 });
