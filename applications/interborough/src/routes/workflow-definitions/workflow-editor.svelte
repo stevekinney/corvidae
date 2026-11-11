@@ -7,11 +7,13 @@
    * not send it, because the Bureau's update schema rejects a key it does not know.
    *
    * While the draft differs from the file, the page asks `bureau.workflows.impact` what saving it
-   * would do (again each time the draft settles) and says it above the footer: the version it makes,
-   * in one line for a compatible change, and for a breaking one what changed and what happens to
-   * running work. The footer then reads "Save as version …", and "Saving version …" while it writes.
-   * While it writes, the form is read-only, Cancel is off and Save reads Saving. A file the Bureau
-   * cannot write shows its words above the footer and keeps everything typed; Save is the retry.
+   * would do (again each time the draft settles, and against each new hash a save names) and says
+   * it above the footer while that answer is for the text and the file a save would write: the
+   * version it makes, in one line for a compatible change, and for a breaking one what changed and
+   * what happens to running work. The footer then reads "Save as version …", and "Saving version …"
+   * while it writes. While it writes, the form is read-only, Cancel is off and Save reads Saving. A
+   * file the Bureau cannot write shows its words above the footer and keeps everything typed; Save
+   * is the retry.
    *
    * Every write names the hash the form is written against: the file's when it was filled. The page
    * reads the file again when the window takes focus, and a write the Bureau refuses as stale reads
@@ -176,19 +178,29 @@
     return parsed.ok ? parsed.definition : undefined;
   });
 
-  /** What saving the draft would do. A draft the Bureau cannot load has no answer, and no notice. */
+  /**
+   * What saving the draft would do, over the file with the hash a save is written against: Keep
+   * mine and every Reload ask again. A draft the Bureau cannot load has no answer, and no notice;
+   * nothing is asked while the file on disk is not the one a save writes over.
+   */
   const impact = createQuery(() => ({
-    queryKey: queryKeys.workflowCatalog.impact(type, settled),
+    queryKey: queryKeys.workflowCatalog.impact(type, base, settled),
     queryFn: ({ signal }) => getWorkflowImpact(type, draft ?? {}, { signal }),
-    enabled: editable && draft !== undefined,
+    enabled: editable && draft !== undefined && !changedOnDisk,
     refetchOnWindowFocus: false,
     refetchOnReconnect: false,
     gcTime: 0,
     retry: false,
   }));
 
+  /**
+   * The notice, only while the answer is for the draft a save would write: none while the person is
+   * still typing (the text has not settled) or while the file changed on disk.
+   */
   const saveImpact = $derived(
-    draft !== undefined && impact.data !== undefined ? impactNotice(impact.data) : undefined,
+    draft !== undefined && text === settled && !changedOnDisk && impact.data !== undefined
+      ? impactNotice(impact.data)
+      : undefined,
   );
 
   /** A file that is gone: the frame owns that state, so it is asked to look again. */

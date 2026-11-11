@@ -317,6 +317,22 @@ describe('the version a save makes', () => {
     expect(footer(container)).not.toContain('Save as version');
   });
 
+  test('never says the version an earlier draft made while a newer one is typed', async () => {
+    const { container } = open('/workflows/digest/edit', { impacts: { digest: BREAKING } });
+    await ready(container);
+    await changeTheSignal(container);
+    await waitFor(() => expect(footer(container)).toBe('Save as version 1.4.0.'));
+    if (stub !== undefined) stub.world.impacts['digest'] = { ...BREAKING, version: '1.5.0' };
+
+    const edited = parsed(textarea(container).value);
+    edited['description'] = 'Collects merged changes into a draft.';
+    await typeInto(container, JSON.stringify(edited, null, 2));
+    // The answer for the earlier draft is gone as soon as the text changes, before it settles.
+    expect(footer(container)).not.toContain('1.4.0');
+    expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull();
+    await waitFor(() => expect(footer(container)).toBe('Save as version 1.5.0.'));
+  });
+
   test('reads Saving with the version while it writes, with Cancel off, and lands on the workflow (row 65v)', async () => {
     const { container, getByRole } = open('/workflows/digest/edit', {
       impacts: { digest: BREAKING },
@@ -451,6 +467,41 @@ describe('a file that changed on disk', () => {
       kind: 'schedule',
       spec: '1h',
     });
+  });
+
+  test('says no version while the file changed, and Keep mine asks again what saving would do', async () => {
+    const { container, findByRole } = open('/workflows/digest/edit', {
+      impacts: { digest: { ...BREAKING, changes: [], compatibility: 'compatible' } },
+    });
+    await ready(container);
+    await changeTheSignal(container);
+    await waitFor(() => expect(footer(container)).toBe('Save as version 1.4.0.'));
+    const asked = stub?.callsTo('bureau.workflows.impact').length ?? 0;
+
+    // Someone else saves a file over which this draft is a breaking change to a new version.
+    const file = stub?.file('digest');
+    if (file === undefined) throw new Error('The file is missing.');
+    file.hash = 'hash-by-hand';
+    if (stub !== undefined) {
+      stub.world.impacts['digest'] = { ...BREAKING, version: '2.0.0', previousVersion: '1.4.0' };
+    }
+
+    focusManager.setFocused(false);
+    focusManager.setFocused(true);
+    const keepMine = await findByRole('button', { name: EDITOR.changedOnDisk.keepMine });
+    // The answer was for the file the form was filled from, so it is not said over the new one.
+    expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull();
+    expect(footer(container)).not.toContain('Save as version');
+    expect(stub?.callsTo('bureau.workflows.impact')).toHaveLength(asked);
+
+    await fireEvent.click(keepMine);
+    await waitFor(() =>
+      expect(stub?.callsTo('bureau.workflows.impact').length ?? 0).toBeGreaterThan(asked),
+    );
+    await waitFor(() => expect(footer(container)).toBe('Save as version 2.0.0.'));
+    expect(
+      container.querySelector('[data-testid="workflow-editor-impact"]')?.textContent,
+    ).toContain('Saving makes version 2.0.0. This is a breaking change.');
   });
 });
 
