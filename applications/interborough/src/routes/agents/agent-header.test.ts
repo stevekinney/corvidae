@@ -257,7 +257,7 @@ describe('a tab’s body while it loads, fails or holds old data', () => {
 
     failing = false;
     await fireEvent.click(within(banner).getByRole('button', { name: 'Try again' }));
-    await waitFor(() => expect(queryByTestId('agent-tab-stale')).toBeNull());
+    await waitFor(() => expect(queryByTestId('agent-tab-stale')?.outerHTML ?? null).toBeNull());
     await waitFor(async () =>
       expect((await findByRole('link', { name: 'Edit' })).getAttribute('aria-disabled')).not.toBe(
         'true',
