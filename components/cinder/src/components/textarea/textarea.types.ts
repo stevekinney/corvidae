@@ -29,13 +29,6 @@ export type TextareaProps = Omit<HTMLTextareaAttributes, 'class'> & {
   /** Disables the textarea. */
   disabled?: boolean;
   /**
-   * How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an
-   * inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary
-   * the fill alone would lose, with a 12px radius and the 2px focus ring. Left unset, the field
-   * follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise.
-   */
-  appearance?: 'outlined' | 'filled';
-  /**
    * Size step shared with the other fields. A textarea is taller than one line, so `size`
    * sets only its block padding: `sm` 6px, `md` 8px, `lg` 10px, matching the inset of the
    * fields beside it rather than their height.
@@ -50,6 +43,13 @@ export type TextareaProps = Omit<HTMLTextareaAttributes, 'class'> & {
    * @default "default"
    */
   variant?: TextareaVariant;
+  /**
+   * How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an
+   * inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary
+   * the fill alone would lose, with a 12px radius and the 2px focus ring. Left unset, the field
+   * follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise.
+   */
+  appearance?: 'outlined' | 'filled';
   /**
    * When `true` AND `maxlength` is set, renders a live character counter
    * (`{value.length}/{maxlength}`) below the textarea. The counter element

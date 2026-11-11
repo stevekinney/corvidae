@@ -84,27 +84,30 @@
  * contrast (the fill alone measures about 1.1:1), with a 12px radius and the shared 2px focus
  * ring. A select with no `appearance` follows its density: filled under
  * `data-density='comfortable'`, outlined otherwise, and an explicit `appearance='outlined'` opts
- * out. The component marks a ghost or inline select `outlined` itself, so the density default
- * never fills one. The density selector keeps its specificity at or below the state rules, which
- * sit after it, so disabled, inert and read-only still win.
+ * out. The component marks a ghost select `outlined` always, and an inline one unless it asks
+ * for `filled`, so the density default never fills either. The density selector keeps its
+ * specificity at or below the state rules, which sit after it, so disabled, inert and read-only
+ * still win.
  * ---------------------------------------- */
 
   .cinder-select[data-cinder-appearance='filled'],
-  :where([data-density='comfortable']) .cinder-select:not([data-cinder-appearance='outlined']) {
+  .cinder-select:where([data-density='comfortable'] *):not([data-cinder-appearance='outlined']) {
     background-color: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-lg);
   }
 
   /* The comfortable density's filled select is 48px, the `lg` step, at the default `md` size. */
-  :where([data-density='comfortable'])
-    .cinder-select:not([data-cinder-appearance='outlined'])[data-cinder-size='md'] {
+  .cinder-select:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    )[data-cinder-size='md'] {
     min-height: var(--cinder-control-height-lg);
   }
 
   /* Focus lifts the fill to the control surface under the 2px ring. */
   .cinder-select[data-cinder-appearance='filled']:focus-visible,
-  :where([data-density='comfortable'])
-    .cinder-select:not([data-cinder-appearance='outlined']):focus-visible {
+  .cinder-select:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    ):focus-visible {
     background-color: var(--cinder-control-background);
   }
 
@@ -456,7 +459,9 @@
 
   /* A ghost or inline trigger hugs its content, so the list is not held to that narrow width. */
   .cinder-select__panel.cinder-popover:has(> .cinder-select__content[data-cinder-variant='ghost']),
-  .cinder-select__panel.cinder-popover:has(> .cinder-select__content[data-cinder-variant='inline']) {
+  .cinder-select__panel.cinder-popover:has(
+      > .cinder-select__content[data-cinder-variant='inline']
+    ) {
     min-inline-size: min(16rem, calc(100vw - var(--cinder-space-4)));
   }
 

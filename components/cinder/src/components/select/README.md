@@ -51,9 +51,9 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
 
 ## Appearance and the inline variant
 
-The native select never shows the browser's caret: it uses `appearance: none` and Cinder's masked chevron (18px, 12px from the end, with 40px of end padding), in every appearance. `appearance="filled"` draws an inset fill inside the 1px `--cinder-control-border` edge with a 12px radius, and under `data-density="comfortable"` a select with no `appearance` is filled and 48px tall; `appearance="outlined"` opts out. The ghost and inline variants draw no fill of their own.
+The native select never shows the browser's caret: it uses `appearance: none` and Cinder's masked chevron (18px, 12px from the end, with 40px of end padding), in every appearance. `appearance="filled"` draws an inset fill inside the 1px `--cinder-control-border` edge with a 12px radius, and under `data-density="comfortable"` a select with no `appearance` is filled and 48px tall; `appearance="outlined"` opts out. The ghost variant has no fill and ignores `appearance`; the inline variant is outlined unless `appearance="filled"`.
 
-`variant="inline"` is for a select inside a sentence. It takes the surrounding text size and weight, the `sm` height and an auto width, whatever `size` says:
+`variant="inline"` is for a select inside a sentence. It takes the surrounding text size and weight, the `sm` height and an auto width, whatever `size` says. The field is an inline-level box, but it holds block-level children, so put it in a `div` or a flex row rather than a `p`:
 
 ```svelte
 <script lang="ts">
@@ -62,7 +62,7 @@ The native select never shows the browser's caret: it uses `appearance: none` an
   let sender = $state('anyone');
 </script>
 
-<p>
+<div>
   Archive messages from
   <Select
     id="sender"
@@ -76,7 +76,7 @@ The native select never shows the browser's caret: it uses `appearance: none` an
     bind:value={sender}
   />
   after a week.
-</p>
+</div>
 ```
 
 ## Props
@@ -85,7 +85,7 @@ The native select never shows the browser's caret: it uses `appearance: none` an
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
-| `appearance` | `"outlined"` \| `"filled"` | no | — | How the bordered select is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the comfortable density and the 2px focus ring. Left unset, the select follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost` and `inline` variants draw no fill of their own unless `"filled"` is set. The native caret never shows: the Cinder chevron is the only one. |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | How the bordered select is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the comfortable density and the 2px focus ring. Left unset, the select follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost` variant has no fill and ignores it; `inline` is outlined unless `"filled"` is set. The native caret never shows: the Cinder chevron is the only one. |
 | `class` | `string` | no | — | Extra class names merged with `.cinder-select-field`. |
 | `description` | `string` | no | — | Helper text rendered below the control; wired via `aria-describedby`. |
 | `disabled` | `boolean` | no | — | Disables the control. |

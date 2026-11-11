@@ -78,10 +78,13 @@
   const staleRegion = getStaleRegionContext();
   const staleInert = $derived(isStaleInert(staleRegion, mutating));
   const blocked = $derived(readonly || staleInert);
-  // A ghost or inline select draws no fill of its own, so it opts out of the density default
-  // (filled under comfortable density) unless the caller asks for `filled`.
+  // The density default (filled under comfortable density) reaches only the bordered select. A
+  // ghost select has no fill at all and ignores `appearance`; an inline one is outlined unless
+  // the caller asks for `filled`.
   const resolvedAppearance = $derived(
-    appearance ?? (variant === 'default' ? undefined : 'outlined'),
+    variant === 'ghost'
+      ? 'outlined'
+      : (appearance ?? (variant === 'inline' ? 'outlined' : undefined)),
   );
   const field = $derived(
     resolveFieldControl({

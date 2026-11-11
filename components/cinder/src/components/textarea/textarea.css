@@ -93,16 +93,16 @@
  * ---------------------------------------- */
 
   .cinder-textarea[data-cinder-appearance='filled'],
-  :where([data-density='comfortable'])
-    .cinder-textarea:not([data-cinder-appearance='outlined']) {
+  .cinder-textarea:where([data-density='comfortable'] *):not([data-cinder-appearance='outlined']) {
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-lg);
   }
 
   /* Focus lifts the fill to the control surface under the 2px ring. */
   .cinder-textarea[data-cinder-appearance='filled']:focus-visible,
-  :where([data-density='comfortable'])
-    .cinder-textarea:not([data-cinder-appearance='outlined']):focus-visible {
+  .cinder-textarea:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    ):focus-visible {
     background: var(--cinder-control-background);
   }
 
@@ -210,8 +210,9 @@
   /* A filled field is already on the inset surface, so its read-only value drops the fill and
      keeps the dashed edge: editable and read-only values stay apart (COR-2313). */
   .cinder-textarea[data-cinder-appearance='filled'][readonly]:not(:disabled),
-  :where([data-density='comfortable'])
-    .cinder-textarea:not([data-cinder-appearance='outlined'])[readonly]:not(:disabled) {
+  .cinder-textarea:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    )[readonly]:not(:disabled) {
     background: transparent;
   }
 

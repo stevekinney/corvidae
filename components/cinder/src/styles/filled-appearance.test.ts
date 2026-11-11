@@ -28,12 +28,22 @@ const { default: Input } = await import('../components/input/input.svelte');
 const { default: Textarea } = await import('../components/textarea/textarea.svelte');
 const { default: Select } = await import('../components/select/select.svelte');
 
-const inputCss = readFileSync(new URL('../components/input/input.css', import.meta.url), 'utf8');
-const textareaCss = readFileSync(
-  new URL('../components/textarea/textarea.css', import.meta.url),
-  'utf8',
-);
-const selectCss = readFileSync(new URL('../components/select/select.css', import.meta.url), 'utf8');
+/** A stylesheet on one line per whitespace run, so a selector the formatter wrapped still matches. */
+function flatten(path: string): string {
+  return readFileSync(new URL(path, import.meta.url), 'utf8')
+    .replace(/\s+/g, ' ')
+    .replace(/\(\s+/g, '(')
+    .replace(/\s+\)/g, ')');
+}
+
+const inputCss = flatten('../components/input/input.css');
+const textareaCss = flatten('../components/textarea/textarea.css');
+const selectCss = flatten('../components/select/select.css');
+
+/** The density default selector: a field with no explicit outlined appearance in a comfortable subtree. */
+function densityDefault(component: string): string {
+  return `.${component}:where([data-density='comfortable'] *):not([data-cinder-appearance='outlined'])`;
+}
 
 const options = [
   { value: 'a', label: 'Option A' },
@@ -96,10 +106,7 @@ describe('Input appearance', () => {
   });
 
   test('the filled rule is an inset fill and a 12px radius, with the edge left on the base rule', () => {
-    const body = ruleBody(
-      inputCss,
-      ":where([data-density='comfortable']) .cinder-input:not([data-cinder-appearance='outlined'])",
-    );
+    const body = ruleBody(inputCss, densityDefault('cinder-input'));
     expect(body).toContain('background: var(--cinder-surface-inset);');
     expect(body).toContain('border-radius: var(--cinder-radius-lg);');
     expect(body).not.toContain('border-color');
@@ -112,10 +119,7 @@ describe('Input appearance', () => {
   });
 
   test('the comfortable density makes a filled md field 48px by moving it to the lg step', () => {
-    const body = ruleBody(
-      inputCss,
-      ":where([data-density='comfortable'])\n    .cinder-input:not([data-cinder-appearance='outlined'])[data-cinder-size='md']",
-    );
+    const body = ruleBody(inputCss, `${densityDefault('cinder-input')}[data-cinder-size='md']`);
     expect(body).toContain('--_cinder-input-height: var(--cinder-control-height-lg);');
   });
 
@@ -148,10 +152,7 @@ describe('Input appearance', () => {
   });
 
   test('a filled read-only value drops the fill and keeps the dashed edge', () => {
-    const body = ruleBody(
-      inputCss,
-      ":where([data-density='comfortable'])\n    .cinder-input:not([data-cinder-appearance='outlined'])[readonly]:not(:disabled)",
-    );
+    const body = ruleBody(inputCss, `${densityDefault('cinder-input')}[readonly]:not(:disabled)`);
     expect(body).toContain('background: transparent;');
     expect(ruleBody(inputCss, '.cinder-input[readonly]:not(:disabled)')).toContain(
       'border-style: dashed;',
@@ -197,10 +198,7 @@ describe('Textarea appearance', () => {
 
   test('the filled rule is an inset fill and a 12px radius, and the edge stays the control border', () => {
     expect(textareaCss).toContain(".cinder-textarea[data-cinder-appearance='filled'],");
-    const body = ruleBody(
-      textareaCss,
-      ":where([data-density='comfortable'])\n    .cinder-textarea:not([data-cinder-appearance='outlined'])",
-    );
+    const body = ruleBody(textareaCss, densityDefault('cinder-textarea'));
     expect(body).toContain('background: var(--cinder-surface-inset);');
     expect(body).toContain('border-radius: var(--cinder-radius-lg);');
     expect(ruleBody(textareaCss, '.cinder-textarea')).toContain(
@@ -221,10 +219,7 @@ describe('Textarea appearance', () => {
       expect(textareaCss.indexOf(`${selector} {`), selector).toBeGreaterThan(filledAt);
     }
     expect(
-      ruleBody(
-        textareaCss,
-        ":where([data-density='comfortable'])\n    .cinder-textarea:not([data-cinder-appearance='outlined'])[readonly]:not(:disabled)",
-      ),
+      ruleBody(textareaCss, `${densityDefault('cinder-textarea')}[readonly]:not(:disabled)`),
     ).toContain('background: transparent;');
   });
 });
@@ -264,7 +259,8 @@ describe('Select appearance', () => {
     ).toBe('filled');
   });
 
-  test('a ghost or inline select opts out of the density default unless it asks for filled', () => {
+  test('a ghost or inline select opts out of the density default, and only inline can ask for filled', () => {
+    const expected = { ghost: 'outlined', inline: 'filled' } as const;
     for (const variant of ['ghost', 'inline'] as const) {
       const plain = render(Select, {
         props: { id: `plain-${variant}`, label: 'Agent', options, variant },
@@ -274,28 +270,22 @@ describe('Select appearance', () => {
       );
       plain.unmount();
 
-      const filled = render(Select, {
-        props: { id: `filled-${variant}`, label: 'Agent', options, variant, appearance: 'filled' },
+      const asked = render(Select, {
+        props: { id: `asked-${variant}`, label: 'Agent', options, variant, appearance: 'filled' },
       } as never);
-      expect(filled.container.querySelector('select')?.getAttribute('data-cinder-appearance')).toBe(
-        'filled',
+      expect(asked.container.querySelector('select')?.getAttribute('data-cinder-appearance')).toBe(
+        expected[variant],
       );
-      filled.unmount();
+      asked.unmount();
     }
   });
 
   test('the filled rule is an inset fill and a 12px radius, with a 48px height in the comfortable density', () => {
-    const fill = ruleBody(
-      selectCss,
-      ":where([data-density='comfortable']) .cinder-select:not([data-cinder-appearance='outlined'])",
-    );
+    const fill = ruleBody(selectCss, densityDefault('cinder-select'));
     expect(fill).toContain('background-color: var(--cinder-surface-inset);');
     expect(fill).toContain('border-radius: var(--cinder-radius-lg);');
     expect(selectCss).toContain(".cinder-select[data-cinder-appearance='filled'],");
-    const height = ruleBody(
-      selectCss,
-      ":where([data-density='comfortable'])\n    .cinder-select:not([data-cinder-appearance='outlined'])[data-cinder-size='md']",
-    );
+    const height = ruleBody(selectCss, `${densityDefault('cinder-select')}[data-cinder-size='md']`);
     expect(height).toContain('min-height: var(--cinder-control-height-lg);');
     expect(ruleBody(selectCss, '.cinder-select')).toContain(
       'border: 1px solid var(--cinder-control-border);',

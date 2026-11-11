@@ -121,9 +121,9 @@ export type SelectProps<T extends string = string> = Omit<
    * `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps
    * the 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the
    * comfortable density and the 2px focus ring. Left unset, the select follows its density:
-   * `filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost` and `inline`
-   * variants draw no fill of their own unless `"filled"` is set. The native caret never shows:
-   * the Cinder chevron is the only one.
+   * `filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost`
+   * variant has no fill and ignores it; `inline` is outlined unless `"filled"` is set. The
+   * native caret never shows: the Cinder chevron is the only one.
    */
   appearance?: 'outlined' | 'filled';
   /**

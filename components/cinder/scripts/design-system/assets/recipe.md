@@ -147,7 +147,7 @@ A count follows the label with no space and carries its own separator:
 
 ## Input and Select
 
-A field is a label, a control and an error node that is always present. The control fills with `cinder-control-background` and draws a 3:1 boundary; do not remove either. For a filled field add `data-cinder-appearance="filled"` to the control: it takes the inset fill inside the same 1px control border and a 12px radius, never a fill without the edge. Under `data-density="comfortable"` a field with no `data-cinder-appearance` is already filled and 48px tall; `data-cinder-appearance="outlined"` opts one out.
+A field is a label, a control and an error node that is always present. The control fills with `cinder-control-background` and draws a 3:1 boundary; do not remove either. For a filled field add `data-cinder-appearance="filled"` to the control: it takes the inset fill inside the same 1px control border and a 12px radius, never a fill without the edge. Under `data-density="comfortable"` a field with no `data-cinder-appearance` is already filled and 48px tall; `data-cinder-appearance="outlined"` opts one out; a ghost or inline Select written as raw markup carries it, because only the component sets it for them.
 
 ```html
 <div

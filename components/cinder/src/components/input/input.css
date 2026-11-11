@@ -109,23 +109,25 @@
  * ---------------------------------------- */
 
   .cinder-input[data-cinder-appearance='filled'],
-  :where([data-density='comfortable']) .cinder-input:not([data-cinder-appearance='outlined']) {
+  .cinder-input:where([data-density='comfortable'] *):not([data-cinder-appearance='outlined']) {
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-lg);
   }
 
   /* The comfortable density's filled field is 48px, the `lg` step, at the default `md` size.
      A `sm` field keeps its own height, and `lg` is already 48px. */
-  :where([data-density='comfortable'])
-    .cinder-input:not([data-cinder-appearance='outlined'])[data-cinder-size='md'] {
+  .cinder-input:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    )[data-cinder-size='md'] {
     --_cinder-input-height: var(--cinder-control-height-lg);
   }
 
   /* Focus lifts the fill to the control surface under the 2px ring, so a focused field reads as
      the one being edited. */
   .cinder-input[data-cinder-appearance='filled']:focus-visible,
-  :where([data-density='comfortable'])
-    .cinder-input:not([data-cinder-appearance='outlined']):focus-visible {
+  .cinder-input:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    ):focus-visible {
     background: var(--cinder-control-background);
   }
 
@@ -207,8 +209,9 @@
   /* A filled field is already on the inset surface, so its read-only value drops the fill and
      keeps the dashed edge: editable and read-only values stay apart (COR-2313). */
   .cinder-input[data-cinder-appearance='filled'][readonly]:not(:disabled),
-  :where([data-density='comfortable'])
-    .cinder-input:not([data-cinder-appearance='outlined'])[readonly]:not(:disabled) {
+  .cinder-input:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    )[readonly]:not(:disabled) {
     background: transparent;
   }
 
@@ -454,29 +457,33 @@
        the ring for the whole grouped control; the input's own ring is clipped
        away above, not zeroed, so the swap does not animate it. */
     outline: none;
+    /* The filled focus fill belongs to the group, so the inner input stays transparent and no
+       square corner shows through the group's rounded edge (COR-2313). */
+    background: transparent;
   }
 
   /* Filled appearance on the group, as for the standalone input above: the inset fill and the 12px
      radius move to the wrapper, whose 1px edge is the boundary. The density default stays below
      the disabled rule's specificity (`:where()`), and the read-only rule drops the fill. */
   .cinder-input-group--filled,
-  :where([data-density='comfortable'])
-    .cinder-input-group:where(:not(.cinder-input-group--outlined)) {
+  .cinder-input-group:where([data-density='comfortable'] *):where(
+      :not(.cinder-input-group--outlined)
+    ) {
     background: var(--cinder-surface-inset);
     border-radius: var(--cinder-radius-lg);
   }
 
   .cinder-input-group--filled:focus-within,
-  :where([data-density='comfortable'])
-    .cinder-input-group:where(:not(.cinder-input-group--outlined)):focus-within {
+  .cinder-input-group:where([data-density='comfortable'] *):where(
+      :not(.cinder-input-group--outlined)
+    ):focus-within {
     background: var(--cinder-control-background);
   }
 
   .cinder-input-group--filled:has(> .cinder-input[readonly]:not(:disabled)),
-  :where([data-density='comfortable'])
-    .cinder-input-group:where(:not(.cinder-input-group--outlined)):has(
-      > .cinder-input[readonly]:not(:disabled)
-    ) {
+  .cinder-input-group:where([data-density='comfortable'] *):where(
+      :not(.cinder-input-group--outlined)
+    ):has(> .cinder-input[readonly]:not(:disabled)) {
     background: transparent;
   }
 
