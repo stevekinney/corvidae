@@ -163,7 +163,8 @@ describe('drawer.css header bar (COR-2322 AC7)', () => {
 
   test('the title is a 14px semibold label, not a page heading', () => {
     const title = '.cinder-drawer__header[data-cinder-bar] .cinder-drawer__title';
-    expect(declared(title, 'font-size')).toBe('var(--cinder-text-sm)');
+    // 14px is the base step; `--cinder-text-sm` is 13px.
+    expect(declared(title, 'font-size')).toBe('var(--cinder-text-base)');
     expect(declared(title, 'font-weight')).toBe('var(--cinder-font-semibold)');
     expect(declared(title, 'text-align')).toBe('center');
   });

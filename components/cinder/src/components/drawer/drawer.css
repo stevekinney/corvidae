@@ -312,6 +312,20 @@
     outline: none;
   }
 
+  /* A body that scrolls is a tab stop (`overflowFade({ keyboardScrollable })`). The panel clips an
+   * outset ring, so keyboard focus paints the inset ring (Strategy B-inset). */
+  .cinder-drawer__body:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-drawer__body:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
+  }
+
   .cinder-drawer__footer {
     display: flex;
     align-items: center;
@@ -493,7 +507,8 @@
     text-align: center;
     text-overflow: ellipsis;
     white-space: nowrap;
-    font-size: var(--cinder-text-sm);
+    /* 14px is the base step; the small step is 13px. */
+    font-size: var(--cinder-text-base);
     font-weight: var(--cinder-font-semibold);
     line-height: var(--cinder-leading-snug);
   }
