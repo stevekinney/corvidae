@@ -5,6 +5,11 @@
     "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."
   },
   {
+    "file": "applications/interborough/src/routes/agent-editor/agent-editor-tools.svelte",
+    "count": 1,
+    "reason": "Landed on main after the guard was written (COR-2020): the Asks select sits in a table cell whose column header draws the visible label. Restore the visible label, or remove the entry, as the page is redesigned."
+  },
+  {
     "file": "applications/interborough/src/routes/agents/agent-access-tool-row.svelte",
     "count": 1,
     "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."
@@ -127,11 +132,6 @@
   {
     "file": "applications/interborough/src/routes/workers/worker-queue-tasks.svelte",
     "count": 1,
-    "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."
-  },
-  {
-    "file": "applications/interborough/src/routes/workflow-definitions/workflow-builder.svelte",
-    "count": 3,
     "reason": "Predates the guard (COR-2022 sweep W44): a compact or grouped control whose visible label is drawn by its row or group. Restore the visible label, or remove the entry, as the page is redesigned."
   },
   {

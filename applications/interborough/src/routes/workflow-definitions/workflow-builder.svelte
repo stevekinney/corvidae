@@ -294,7 +294,6 @@
                         <Input
                           id={`workflow-builder-step-${String(position)}-agent`}
                           label={copy.agentLabel(position)}
-                          labelVisible={false}
                           size="sm"
                           variant="code"
                           value={step.agent}
@@ -303,7 +302,7 @@
                         />
                         <Textarea
                           id={`workflow-builder-step-${String(position)}-message`}
-                          aria-label={copy.messageLabel(position)}
+                          label={copy.messageLabel(position)}
                           size="sm"
                           rows={2}
                           value={step.message}
@@ -316,7 +315,6 @@
                         <Input
                           id={`workflow-builder-step-${String(position)}-duration`}
                           label={copy.durationLabel(position)}
-                          labelVisible={false}
                           description={copy.durationDescription}
                           size="sm"
                           variant="code"
@@ -328,7 +326,6 @@
                         <Input
                           id={`workflow-builder-step-${String(position)}-signal`}
                           label={copy.signalLabel(position)}
-                          labelVisible={false}
                           size="sm"
                           variant="code"
                           value={step.signal}
