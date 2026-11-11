@@ -636,13 +636,16 @@ export function createResume(context: ResumeContext) {
     // COR-1920: the answer to a question that asks for a secret is digested in reference form, read
     // from the fields its review marks secret (which a closed review still names), so a retry
     // digests alike and no digest of a secret's plaintext is kept.
+    // COR-2292: where a decision was made is provenance, not part of the decision, so it is left out
+    // of the digest: the same decision resumed from another surface is the same command, and the
+    // first attempt's surface stands.
     const digestedPayload = (entry: ResumeEntry): unknown => {
       if (entry.status !== 'resolved') return null;
       const review = reviews.get(entry.interruptId);
       const fields = review?.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
-      const payload = entry.payload as AgUiResumePayload;
+      const { decisionSurface: _surface, ...payload } = entry.payload as AgUiResumePayload;
       if (review === undefined || fields.length === 0 || payload.answer === undefined) {
-        return entry.payload;
+        return payload;
       }
       return { ...payload, answer: secretReferenceFormOfInput(payload.answer, fields, review.id) };
     };

@@ -2807,6 +2807,46 @@ describe('resuming a tool approval with a decision surface (COR-2292)', () => {
     );
   });
 
+  it('treats the same decision resumed from another surface as the first, whose surface stands', async () => {
+    await withHarness(
+      {
+        script: [chargeOnce, say('Charged.')],
+        toolbox: approvalToolbox([]),
+        storage: 'sqlite',
+      },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        await readAgUiStream(
+          await handler(
+            resumeRequest([resolved(id, { decision: 'approve', decisionSurface: 'chat' })]),
+          ),
+        );
+        const resolve = spyOn(bureau.reviews, 'resolve');
+        const runsBefore = listHeldTasks(bureau).length;
+
+        const replay = await readAgUiStream(
+          await handler(
+            resumeRequest(
+              [resolved(id, { decision: 'approve', decisionSurface: 'reviews' })],
+              {},
+              'client-run-3',
+            ),
+          ),
+        );
+
+        expect(replay.some((frame) => frame.event.type === EventType.RUN_ERROR)).toBe(false);
+        expect(resolve).not.toHaveBeenCalled();
+        resolve.mockRestore();
+        expect(listHeldTasks(bureau)).toHaveLength(runsBefore);
+        expect(await bureau.reviews.get(id)).toMatchObject({
+          status: 'approved',
+          decisionSurface: 'chat',
+        });
+      },
+    );
+  });
+
   it('refuses a surface outside the closed set before anything is claimed or resolved', async () => {
     await withHarness(
       { script: [chargeOnce, say('Ok.')], toolbox: approvalToolbox([]), storage: 'sqlite' },
