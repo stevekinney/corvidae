@@ -12,6 +12,8 @@ import {
   qualifyToolNames,
   readToolSourcesConfiguration,
   serializeToolSources,
+  SOURCE_TOOL_APPROVALS,
+  tierApproval,
   TOOL_SOURCE_IDENTIFIER,
 } from './tool-sources-configuration.ts';
 
@@ -134,6 +136,91 @@ describe('toolSources', () => {
   test('refuses a file that is not a JSON object', () => {
     expect(failureOf(() => readToolSourcesConfiguration('[]', location)).field).toBe('the file');
     expect(failureOf(() => readToolSourcesConfiguration('{', location)).field).toBe('the file');
+  });
+});
+
+describe('a source’s name and description, and each tool’s Default asks level (COR-2022)', () => {
+  test('an entry written before them loads and writes back byte for byte', () => {
+    const written = [
+      { source: pets },
+      { source: { ...pets, id: 'ledger' }, tools: { 'delete-pet': { enabled: false } } },
+    ];
+
+    const parsed = parseToolSourcesConfiguration(written, location);
+
+    expect(parsed[0]).not.toHaveProperty('name');
+    expect(parsed[0]).not.toHaveProperty('description');
+    expect(JSON.stringify(serializeToolSources(parsed))).toBe(JSON.stringify(written));
+  });
+
+  test('reads them, trimmed, and writes them back', () => {
+    const parsed = parseToolSourcesConfiguration(
+      [
+        {
+          source: pets,
+          name: ' Payments API ',
+          description: 'Invoices and refunds.',
+          tools: {
+            'list-pets': { approval: 'never' },
+            'create-pet': { approval: 'on-changes', enabled: false },
+            'delete-pet': { approval: 'always', acceptsSecrets: true },
+          },
+        },
+      ],
+      location,
+    );
+    const entry = parsed[0];
+
+    expect(entry?.name).toBe('Payments API');
+    expect(entry?.description).toBe('Invoices and refunds.');
+    expect(entry?.tools.get('list-pets')).toEqual({ approval: 'never' });
+    expect(entry?.tools.get('create-pet')).toEqual({ enabled: false, approval: 'on-changes' });
+    expect(entry?.tools.get('delete-pet')).toEqual({ acceptsSecrets: true, approval: 'always' });
+    expect(parseToolSourcesConfiguration(serializeToolSources(parsed), location)).toEqual(parsed);
+  });
+
+  test('refuses Blocked, a level it does not know, and a label it cannot show', () => {
+    const cases: [unknown, string][] = [
+      // Blocked belongs to one agent's file, never to a source.
+      [
+        [{ source: pets, tools: { 'delete-pet': { approval: 'blocked' } } }],
+        'toolSources[0].tools.delete-pet.approval',
+      ],
+      [
+        [{ source: pets, tools: { 'delete-pet': { approval: 'sometimes' } } }],
+        'toolSources[0].tools.delete-pet.approval',
+      ],
+      [
+        [{ source: pets, tools: { 'delete-pet': { approval: null } } }],
+        'toolSources[0].tools.delete-pet.approval',
+      ],
+      [[{ source: pets, name: '' }], 'toolSources[0].name'],
+      [[{ source: pets, name: '   ' }], 'toolSources[0].name'],
+      [[{ source: pets, name: 42 }], 'toolSources[0].name'],
+      [[{ source: pets, name: 'Pay\nments' }], 'toolSources[0].name'],
+      [[{ source: pets, name: 'x'.repeat(81) }], 'toolSources[0].name'],
+      [[{ source: pets, description: 'y'.repeat(501) }], 'toolSources[0].description'],
+      [[{ source: pets, description: '' }], 'toolSources[0].description'],
+    ];
+    for (const [value, field] of cases) {
+      expect(failureOf(() => parseToolSourcesConfiguration(value, location)).field).toBe(field);
+    }
+    const blocked = failureOf(() =>
+      parseToolSourcesConfiguration(
+        [{ source: pets, tools: { 'delete-pet': { approval: 'blocked' } } }],
+        location,
+      ),
+    );
+    expect(blocked.message).toContain('Access tab');
+  });
+
+  test('the tier gives a tool its starting level: Never for a read, Always for a dangerous tool', () => {
+    expect(tierApproval('read-only')).toBe('never');
+    expect(tierApproval('mutating')).toBe('on-changes');
+    expect(tierApproval('dangerous')).toBe('always');
+    // A tool that declares nothing asks on changes: Armorer never lets it through unclassified.
+    expect(tierApproval(null)).toBe('on-changes');
+    expect(SOURCE_TOOL_APPROVALS).not.toContain('blocked');
   });
 });
 

@@ -26,11 +26,22 @@
  * Armorer parses a description strictly. `tools` holds them per tool, keyed by the tool's own
  * (raw, unqualified) name as the server lists it, never by the `<id>__<tool>` name an agent file
  * uses: the raw name is stable across the naming rules below, which a later change may alter. It
- * has two fields, each a boolean: `acceptsSecrets` (off unless `true`), from which the host sets the
+ * has three fields: `acceptsSecrets` (a boolean, off unless `true`), from which the host sets the
  * tool's `metadata.acceptsSecrets` when the source loads, which is what lets Armorer give the tool
- * the plaintext of a secret answer (COR-1816); and `enabled` (on unless `false`, COR-2009), which
- * turns a tool off so the host does not offer it. A field it does not know is refused rather than
- * ignored. A name the server does not list is not an error: the source reports it as a diagnostic.
+ * the plaintext of a secret answer (COR-1816); `enabled` (a boolean, on unless `false`, COR-2009),
+ * which turns a tool off so the host does not offer it; and `approval` (COR-2022), the tool's
+ * Default asks level, one of {@link SOURCE_TOOL_APPROVALS}, which a source's owner picks in place of
+ * the one its tier gives ({@link tierApproval}). `blocked` is not one of them: it belongs to one
+ * agent's file, never to a source. A field it does not know, or a value it does not know, is
+ * refused rather than ignored. A name the server does not list is not an error: the source reports
+ * it as a diagnostic.
+ *
+ * Two optional fields of the host's own sit beside `source` as well (COR-2022): `name`, what a
+ * person calls the source ("GitHub"), shown in Capabilities and on each tool, and `description`,
+ * one sentence about it. Each is text with no control character, within
+ * {@link MAXIMUM_TOOL_SOURCE_NAME_LENGTH} and {@link MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH}
+ * characters; a source with neither shows its `id`. They are labels, never part of a tool's name,
+ * so changing one renames nothing an agent file stores.
  *
  * ## Tool names
  *
@@ -60,7 +71,8 @@
  *   rest still load.
  *
  * The key is optional and an absent key means no sources, so a file written before the key
- * existed loads unchanged. Every other key of the file is left alone.
+ * existed loads unchanged; so does an entry written before `name`, `description` or `approval`
+ * existed. Every other key of the file is left alone.
  *
  * @module tool-sources-configuration
  */
@@ -92,6 +104,72 @@ export const TOOL_NAME_SEPARATOR = '__';
 /** The longest tool name the host offers: the shortest limit among the model providers. */
 export const MAXIMUM_TOOL_NAME_LENGTH = 64;
 
+/**
+ * The Default asks levels a source may give one of its tools (COR-2022), in the words an agent
+ * file's `approvals` uses: `never` runs without asking, `on-changes` asks unless a chat allows all,
+ * `always` asks every time. `blocked` is left out on purpose: it is a per-agent override.
+ */
+export const SOURCE_TOOL_APPROVALS = ['never', 'on-changes', 'always'] as const;
+
+/** One of {@link SOURCE_TOOL_APPROVALS}. */
+export type SourceToolApproval = (typeof SOURCE_TOOL_APPROVALS)[number];
+
+/** The longest `name` a saved source may have, in characters. */
+export const MAXIMUM_TOOL_SOURCE_NAME_LENGTH = 80;
+
+/** The longest `description` a saved source may have, in characters. */
+export const MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH = 500;
+
+/**
+ * The Default asks level a tool of capability `tier` starts on when its source sets none: a tool
+ * that only reads starts on `never`, a dangerous one on `always`, and one that changes something,
+ * or declares nothing, on `on-changes`. This is the rule Capabilities shows a tool's default by.
+ */
+export function tierApproval(tier: string | null | undefined): SourceToolApproval {
+  if (tier === 'read-only') return 'never';
+  if (tier === 'dangerous') return 'always';
+  return 'on-changes';
+}
+
+/**
+ * Why `value` is not a Default asks level, in words that hold no value, or `undefined` when it is
+ * one. Both the file's reader and a request's reader ask it, so the two refuse the same values.
+ */
+export function sourceToolApprovalProblem(value: unknown): string | undefined {
+  if (value === 'blocked') {
+    return 'blocked is set for one agent, on its Access tab, never for a source.';
+  }
+  return typeof value === 'string' && (SOURCE_TOOL_APPROVALS as readonly string[]).includes(value)
+    ? undefined
+    : 'expected never, on-changes or always.';
+}
+
+/** Whether `value` is a Default asks level. */
+export function isSourceToolApproval(value: unknown): value is SourceToolApproval {
+  return sourceToolApprovalProblem(value) === undefined;
+}
+
+/**
+ * Why `value` cannot be a source's label, in words that hold no value, or `undefined` when it can.
+ * `limit` is the most characters it may have once trimmed; `required` refuses empty text.
+ * Every control character is refused, a line break included: the label sits on one line.
+ */
+export function sourceLabelProblem(
+  value: unknown,
+  limit: number,
+  required: boolean,
+): string | undefined {
+  if (typeof value !== 'string') return 'expected text.';
+  const trimmed = value.trim();
+  if (required && trimmed === '') return 'expected a value, and it is empty.';
+  if (trimmed.length > limit) return `longer than ${limit} characters.`;
+  // eslint-disable-next-line no-control-regex -- a control character is what this refuses.
+  if (/[\u0000-\u001f\u007f]/.test(trimmed)) {
+    return 'contains a line break or another control character.';
+  }
+  return undefined;
+}
+
 /** The host's own settings for one tool of a source. */
 export type ConfiguredToolSettings = {
   /**
@@ -104,6 +182,11 @@ export type ConfiguredToolSettings = {
    * ("Delete branch is off"). Absent, or `true`, it is on.
    */
   readonly enabled?: boolean;
+  /**
+   * The tool's Default asks level, as the source's owner picked it (COR-2022). Absent, the tool
+   * keeps the one its tier gives ({@link tierApproval}).
+   */
+  readonly approval?: SourceToolApproval;
 };
 
 /** One saved tool source. */
@@ -112,6 +195,10 @@ export type ConfiguredToolSource = {
   readonly source: ToolSourceDescription;
   /** The host's settings per tool, keyed by the tool's own name. Empty unless the file sets some. */
   readonly tools: ReadonlyMap<string, ConfiguredToolSettings>;
+  /** What a person calls the source ("GitHub"), trimmed; absent, the source is shown by its `id` (COR-2022). */
+  readonly name?: string;
+  /** One sentence about the source, trimmed; absent when none was given (COR-2022). */
+  readonly description?: string;
 };
 
 /** What an absent `toolSources` key means: no source. */
@@ -197,9 +284,23 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
     throw new ProviderConfigurationError(location, field, 'expected an object.');
   }
   for (const key of Object.keys(entry)) {
-    if (key !== 'source' && key !== 'tools') {
+    if (key !== 'source' && key !== 'tools' && key !== 'name' && key !== 'description') {
       throw new ProviderConfigurationError(location, `${field}.${key}`, 'not a known field.');
     }
+  }
+  const labels: { name?: string; description?: string } = {};
+  for (const [key, limit] of [
+    ['name', MAXIMUM_TOOL_SOURCE_NAME_LENGTH],
+    ['description', MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH],
+  ] as const) {
+    const value = entry[key];
+    if (value === undefined) continue;
+    // Written trimmed and only when it holds something, so empty text in the file is refused.
+    const problem = sourceLabelProblem(value, limit, true);
+    if (problem !== undefined) {
+      throw new ProviderConfigurationError(location, `${field}.${key}`, problem);
+    }
+    labels[key] = String(value).trim();
   }
   let source: ToolSourceDescription;
   try {
@@ -234,13 +335,21 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
         );
       }
       for (const key of Object.keys(settings)) {
-        if (key !== 'acceptsSecrets' && key !== 'enabled') {
+        if (key !== 'acceptsSecrets' && key !== 'enabled' && key !== 'approval') {
           throw new ProviderConfigurationError(
             location,
             `${field}.tools.${name}.${key}`,
             'not a known field.',
           );
         }
+      }
+      const approval = settings['approval'];
+      if (approval !== undefined && !isSourceToolApproval(approval)) {
+        throw new ProviderConfigurationError(
+          location,
+          `${field}.tools.${name}.approval`,
+          sourceToolApprovalProblem(approval) ?? 'expected never, on-changes or always.',
+        );
       }
       const acceptsSecrets = settings['acceptsSecrets'];
       if (acceptsSecrets !== undefined && typeof acceptsSecrets !== 'boolean') {
@@ -263,11 +372,12 @@ function parseEntry(entry: unknown, location: string, field: string): Configured
         Object.freeze({
           ...(acceptsSecrets === undefined ? {} : { acceptsSecrets }),
           ...(enabled === undefined ? {} : { enabled }),
+          ...(approval === undefined ? {} : { approval }),
         }),
       );
     }
   }
-  return { source, tools };
+  return { source, tools, ...labels };
 }
 
 /**
@@ -323,8 +433,10 @@ export function readToolSourcesConfiguration(
 
 /** The `toolSources` value to write for `sources`, in the shape {@link parseToolSourcesConfiguration} reads. */
 export function serializeToolSources(sources: readonly ConfiguredToolSource[]): unknown[] {
-  return sources.map(({ source, tools }) => ({
+  return sources.map(({ source, tools, name, description }) => ({
     source,
+    ...(name === undefined ? {} : { name }),
+    ...(description === undefined ? {} : { description }),
     ...(tools.size === 0 ? {} : { tools: Object.fromEntries(tools) }),
   }));
 }

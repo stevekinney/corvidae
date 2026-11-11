@@ -56,6 +56,7 @@ const routeClasses: Readonly<Record<string, WorkspaceOperationClass>> = {
   'PUT /host/tool-sources/:id': 'administrator-shared',
   'DELETE /host/tool-sources/:id': 'administrator-shared',
   'POST /host/tool-sources/:id/probe': 'administrator-shared',
+  'POST /host/tool-sources/:id/test': 'administrator-shared',
   'GET /host/tool-sources/:id/affected-agents': 'administrator-shared',
   'PUT /host/tool-sources/:id/tools': 'administrator-shared',
   'POST /host/openapi-inspection': 'administrator-shared',

@@ -132,6 +132,11 @@ export async function exerciseAdministratorRoutes(
         body: { source: source('fixture-source'), credentials: { token: 'route-fixture-token' } },
       },
       {
+        key: 'POST /host/tool-sources/:id/test',
+        path: '/host/tool-sources/fixture-source/test',
+        body: {},
+      },
+      {
         key: 'PUT /host/tool-sources/:id/tools',
         path: '/host/tool-sources/fixture-source/tools',
         body: { tools: { wipe: { enabled: true } } },

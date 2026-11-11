@@ -5,12 +5,19 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  *
  * - `GET /host/tool-sources` reports each configured source, where it stands (`loaded`, `failed`,
  *   `needs-authorization`, `pending-restart`), the tools it offers under the names an agent file
- *   uses, and the names of its stored credentials. It never carries a credential or a URL.
+ *   uses, each with whether it is on and its Default asks level (`approval`, COR-2022), and the
+ *   names of its stored credentials. It never carries a credential. Since COR-2022 it carries the
+ *   source's `name`, `description`, `lastTested` and `address`: an MCP server's URL or an OpenAPI
+ *   spec's address cut to its origin and path, so no query or fragment, where a key could sit, is
+ *   repeated, and never a local command.
  * - `PUT /host/tool-sources/<id>` with `{ "source": { … }, "credentials": { "<name>": "<value>" } }`
  *   connects a source, or replaces it. `source` is Armorer's description and its `id` must be `<id>`.
  *   A credential the description names and the host already holds may be left out. `tools` takes
  *   the per-tool settings as the `tools` route does (`{ "delete_branch": { "enabled": false } }`
- *   leaves a tool off, COR-2009). A source this adds is loaded at once, and the answer says
+ *   leaves a tool off, COR-2009; `{ "create_issue": { "approval": "on-changes" } }` sets its
+ *   Default asks level, COR-2022), and replaces the ones saved: it is the person's choice of tools.
+ *   `name` and `description` (COR-2022) label the source; one left out is kept, and an empty
+ *   `description` clears it. A source this adds is loaded at once, and the answer says
  *   `restartRequired: false` with the tools now `available` (no restart needed). With
  *   `"create": true` it only connects: a source already saved under `<id>` answers 409
  *   `{ "error": "exists", "field": "id" }` and nothing changes, which is how a page that lists the
@@ -25,12 +32,20 @@ import { HostMutationError, type HostMutationContext } from './host-mutation-con
  *   words that hold no address, command or value. It saves nothing and keeps no connection. A
  *   request that cannot be used answers as the `PUT` does, and a local command is spawned only for
  *   the owner.
+ * - `POST /host/tool-sources/<id>/test` contacts a saved source as the host loads it, with the
+ *   credentials and sign-in it holds, and answers as the probe does (COR-2022, Test connection on a
+ *   saved source). It saves nothing and keeps no connection; a source that lists its tools moves
+ *   its `lastTested`. A source the configuration does not list answers 404, and a local command is
+ *   spawned only for the owner.
  * - `PUT /host/tool-sources/<id>/tools` with `{ "tools": { "<tool>": { "acceptsSecrets": true } } }`
- *   sets the host's own settings for the named tools of a configured source (COR-1932), and
- *   `{ "enabled": false }` turns a tool off so no agent can be given it (COR-2009). `<tool>` is
- *   the tool's own name as the server lists it, not the `<id>__<tool>` name. Each named tool's
- *   settings are replaced and the others kept; `false` (or `{}`) removes the entry, since off is
- *   the default. A name the server does not list is accepted and reported by `GET` under the
+ *   sets the host's own settings for the named tools of a configured source (COR-1932),
+ *   `{ "enabled": false }` turns a tool off so no agent can be given it (COR-2009), and
+ *   `{ "approval": "always" }` sets its Default asks level, `never`, `on-changes` or `always`
+ *   (`null` returns it to the level its tier gives; `blocked` is refused, being per agent,
+ *   COR-2022). `<tool>` is the tool's own name as the server lists it, not the `<id>__<tool>` name.
+ *   Each field a request names is set and each it leaves out is kept, so saving one control never
+ *   resets another (COR-2022); tools not named are kept, and a tool set back to every default has
+ *   no entry. A name the server does not list is accepted and reported by `GET` under the
  *   source's `unmatchedSettings`. The change loads at the next start; remote mode answers 403
  *   `deployment` like every other change here.
  * - `GET /host/tool-sources/<id>/affected-agents` lists the agent files that name the source's
@@ -88,6 +103,9 @@ export const HOST_TOOL_SOURCE_AFFECTED_AGENTS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE
 
 /** The route that contacts a source before it is saved. */
 export const HOST_TOOL_SOURCE_PROBE_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/probe`;
+
+/** The route that contacts a saved source with what the host holds for it (COR-2022). */
+export const HOST_TOOL_SOURCE_TEST_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/test`;
 
 /** The route that sets the host's per-tool settings of the source it names. */
 export const HOST_TOOL_SOURCE_TOOLS_ROUTE = `${HOST_TOOL_SOURCES_ROUTE}/:id/tools`;
@@ -348,6 +366,21 @@ export function toolSourceRoutes(
           },
           'POST',
           HOST_TOOL_SOURCE_PROBE_ROUTE,
+          log,
+        ),
+    },
+    [HOST_TOOL_SOURCE_TEST_ROUTE]: {
+      POST: (request: Bun.BunRequest<typeof HOST_TOOL_SOURCE_TEST_ROUTE>) =>
+        refuse(request) ??
+        respond(
+          async () =>
+            manager.test(
+              request.params.id,
+              // A test writes nothing, so it carries no revision; the body is not read.
+              await options.mutation(request, { operationId: 'test', expectedRevision: null }),
+            ),
+          'POST',
+          HOST_TOOL_SOURCE_TEST_ROUTE,
           log,
         ),
     },

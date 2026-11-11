@@ -33,7 +33,12 @@ import { SecretPublicationError } from './workspace-secrets.ts';
  *   encrypted vault (`tool-source-vault.ts`, Bungalow secret `tool-source-<id>`), and is read back
  *   only to hand to Armorer's loader through `resolveCredential` and the OAuth token storage.
  *   Nothing here returns, logs, audits or puts in an error a credential, a URL, or an environment
- *   value.
+ *   value, with one exception (COR-2022): {@link ToolSourceManager.snapshot} reports a source's
+ *   `address` for a person to recognise it, cut to its origin and path so a query or fragment,
+ *   where a key could sit, never leaves; a URL never holds a username or password.
+ * - **Labels and Default asks (COR-2022).** An entry may carry a `name` and a `description` beside
+ *   `source`, and each tool an `approval`, its Default asks level. They are saved and reported;
+ *   none needs a restart, and none changes a tool's name or what the running host applies.
  * - **A change is validated, then committed secret first.** {@link ToolSourceManager.connect}
  *   checks the whole request before it writes a byte, stores the credentials, then writes the
  *   configuration through the queue every writer of the file shares (`configuration-queue.ts`). If
@@ -305,6 +310,16 @@ export type ToolSourceToolStanding = {
   readonly savedEnabled: boolean;
   /** Its capability tier (`read-only`, `mutating`, `dangerous`), or `null` when it has none. */
   readonly tier: string | null;
+  /**
+   * The tool's Default asks level (COR-2022), from the saved settings as they are now: the one the
+   * source's owner picked, or, when they picked none, the one its tier gives (`tierApproval`:
+   * Never for a tool that only reads, Always for a dangerous one, On changes otherwise). It is
+   * saved and reported here; an agent's own `approvals` entry for the tool, Blocked among them, is
+   * that agent's override of it.
+   */
+  readonly approval: SourceToolApproval;
+  /** Whether {@link ToolSourceToolStanding.approval} is the owner's own pick rather than the tier's. */
+  readonly approvalSaved: boolean;
 };
 
 /** One source in a {@link ToolSourceSnapshot}. */
@@ -313,6 +328,25 @@ export type ToolSourceStanding = {
   readonly id: string;
   /** `mcp` or `openapi`. */
   readonly kind: ToolSourceDescription['kind'];
+  /** What a person calls the source ("GitHub"), as saved, or `null` when none was given: show its `id` (COR-2022). */
+  readonly name: string | null;
+  /** One sentence about the source, as saved, or `null` when none was given (COR-2022). */
+  readonly description: string | null;
+  /**
+   * Where the source is, for a person to recognise it (COR-2022): an MCP server's URL, or an
+   * OpenAPI spec's address (its base URL when the spec was uploaded), each cut to its origin and
+   * path, so a query or fragment, where a key could sit, is never repeated. A URL never holds a
+   * username or password (the host refuses one). `null` for a local command, whose command line
+   * stays out of every answer, and for an uploaded spec with no base URL.
+   */
+  readonly address: string | null;
+  /**
+   * When the running host last reached the source as it is now saved, as an ISO 8601 time: a load
+   * at start, a load when it was added, or a test ({@link ToolSourceManager.test}) that listed its
+   * tools (COR-2022). Absent until one has; kept in memory, so a restart starts it again with the
+   * load. A failed attempt does not move it.
+   */
+  readonly lastTested?: string;
   /** Whether the source spawns a command on this machine. */
   readonly localCommand: boolean;
   /** Where the source stands. */
@@ -432,9 +466,22 @@ export type ToolSourceConnection = {
   /**
    * The host's settings per tool for a source this request adds (COR-2009), as
    * {@link ToolSourceToolSettingsChange.tools} takes them: `{ "delete_branch": { "enabled": false } }`
-   * leaves a tool off. Omitted, a new source's tools are all on, and a changed source keeps its own.
+   * leaves a tool off, and `{ "create_issue": { "approval": "on-changes" } }` picks its Default asks
+   * level (COR-2022). This is the selection a person makes when they connect: it replaces every
+   * per-tool setting the source had. Omitted, a new source's tools are all on at the level their
+   * tier gives, and a changed source keeps its own.
    */
   readonly tools?: unknown;
+  /**
+   * What a person calls the source (COR-2022): non-empty text of at most
+   * `MAXIMUM_TOOL_SOURCE_NAME_LENGTH` characters, saved trimmed. Omitted, the saved name is kept.
+   */
+  readonly name?: unknown;
+  /**
+   * One sentence about the source (COR-2022), at most `MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH`
+   * characters, saved trimmed. Empty text or `null` clears it; omitted, the saved one is kept.
+   */
+  readonly description?: unknown;
 };
 
 /** What a change to the per-tool settings of a source asks for. Every field is `unknown` because it arrives from a request. */
@@ -442,9 +489,12 @@ export type ToolSourceToolSettingsChange = {
   /** The identifier of a configured source. */
   readonly id: unknown;
   /**
-   * Tool name (as the server lists it, not the `<id>__<tool>` name) to settings. Each named tool's
-   * settings are replaced; tools not named are kept. `{ "acceptsSecrets": false }` or `{}` removes
-   * the tool's entry, which is the default.
+   * Tool name (as the server lists it, not the `<id>__<tool>` name) to the settings to change. Each
+   * field a request names is set and each it leaves out is kept (COR-2022), so a page that saves
+   * one control at once, the On checkbox or the Default asks select, never resets another; tools
+   * not named are kept. A field set back to its default (`acceptsSecrets: false`,
+   * `enabled: true`, `approval: null`, which returns the tool to the level its tier gives) leaves
+   * nothing behind, and a tool with nothing left has no entry.
    */
   readonly tools: unknown;
 };
@@ -515,7 +565,18 @@ export type ToolSourceManager = {
    * (COR-2009). A source that was removed since the host started is left for the next start.
    */
   goLive(add: (tools: Readonly<Record<string, Tool>>) => Promise<void>): void;
-  /** Set the per-tool settings (`acceptsSecrets`, `enabled`) of a configured source. Loaded at the next start. */
+  /**
+   * Contact a saved source the way the host loads it, with the credentials and sign-in it holds,
+   * and report the tools it lists, as {@link probe} reports them (COR-2022, Test connection on a
+   * saved source). It changes nothing saved and holds no connection afterwards; a source that
+   * listed its tools moves {@link ToolSourceStanding.lastTested}. The running host's tools are not
+   * touched, whatever the answer.
+   */
+  test(id: unknown, mutation?: HostMutationContext): Promise<ToolSourceProbe>;
+  /**
+   * Set the per-tool settings (`acceptsSecrets`, `enabled`, `approval`) of a configured source, a
+   * field at a time ({@link ToolSourceToolSettingsChange.tools}). Loaded at the next start.
+   */
   configureTools(
     request: ToolSourceToolSettingsChange,
     mutation?: HostMutationContext,
@@ -765,16 +826,124 @@ function offTools(tools: ReadonlyMap<string, ConfiguredToolSettings>): string[] 
 }
 
 /**
- * `settings` with only what differs from the default kept, `acceptsSecrets: true` and
- * `enabled: false`, or `undefined` when nothing does: the default is no entry at all, so a tool
- * set back to it leaves nothing behind.
+ * `settings` with only what differs from the default kept, `acceptsSecrets: true`,
+ * `enabled: false` and a picked `approval` (COR-2022), or `undefined` when nothing does: the
+ * default is no entry at all, so a tool set back to it leaves nothing behind. A picked `approval`
+ * is kept even when it equals the tier's: the tier is the server's to change, the pick is the
+ * owner's.
  */
 function nonDefaultSettings(settings: ConfiguredToolSettings): ConfiguredToolSettings | undefined {
   const kept: ConfiguredToolSettings = {
     ...(settings.acceptsSecrets === true ? { acceptsSecrets: true } : {}),
     ...(settings.enabled === false ? { enabled: false } : {}),
+    ...(settings.approval === undefined ? {} : { approval: settings.approval }),
   };
   return Object.keys(kept).length === 0 ? undefined : kept;
+}
+
+/**
+ * One tool's settings as a request names them: a field it leaves out is `undefined`, and
+ * `approval: null` asks for the level the tool's tier gives (COR-2022).
+ */
+type ToolSettingsChange = {
+  readonly acceptsSecrets?: boolean;
+  readonly enabled?: boolean;
+  readonly approval?: SourceToolApproval | null;
+};
+
+/**
+ * `current` with each field `change` names set, and each it leaves out kept (COR-2022). `null`
+ * drops a picked `approval`. The result still carries defaults: {@link nonDefaultSettings} drops them.
+ */
+function mergedSettings(
+  current: ConfiguredToolSettings | undefined,
+  change: ToolSettingsChange,
+): ConfiguredToolSettings {
+  const acceptsSecrets = change.acceptsSecrets ?? current?.acceptsSecrets;
+  const enabled = change.enabled ?? current?.enabled;
+  const approval = change.approval === null ? undefined : (change.approval ?? current?.approval);
+  return {
+    ...(acceptsSecrets === undefined ? {} : { acceptsSecrets }),
+    ...(enabled === undefined ? {} : { enabled }),
+    ...(approval === undefined ? {} : { approval }),
+  };
+}
+
+/** The Default asks level a tool stands at (COR-2022): the owner's pick, else its tier's. */
+function approvalStanding(
+  settings: ConfiguredToolSettings | undefined,
+  tier: string | null,
+): Pick<ToolSourceToolStanding, 'approval' | 'approvalSaved'> {
+  const saved = settings?.approval;
+  return saved === undefined
+    ? { approval: tierApproval(tier), approvalSaved: false }
+    : { approval: saved, approvalSaved: true };
+}
+
+/** An address cut to its origin and path, or `null` for one that is not a URL (COR-2022). */
+function publicAddress(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  try {
+    const url = new URL(value);
+    // The query and the fragment are dropped: a key could sit in either.
+    return `${url.origin}${url.pathname}`;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Where a source is, for a person (COR-2022): the MCP server's URL, the OpenAPI spec's address or,
+ * for an uploaded spec, its base URL. A local command is `null`: its command line is never answered.
+ */
+function addressOf(source: ToolSourceDescription): string | null {
+  if (source.kind === 'mcp') {
+    return source.transport.type === 'http' ? publicAddress(source.transport.url) : null;
+  }
+  return publicAddress(
+    source.specification.type === 'url' ? source.specification.url : source.baseUrl,
+  );
+}
+
+/** The labels and address of a saved source, as {@link ToolSourceStanding} carries them (COR-2022). */
+function labelsOf(
+  entry: ConfiguredToolSource,
+): Pick<ToolSourceStanding, 'name' | 'description' | 'address'> {
+  return {
+    name: entry.name ?? null,
+    description: entry.description ?? null,
+    address: addressOf(entry.source),
+  };
+}
+
+/**
+ * The labels a connection names (COR-2022), checked before the first `await`: `undefined` keeps
+ * the saved one, `null` clears a description, and text sets it, trimmed.
+ */
+function checkedLabels(request: Pick<ToolSourceConnection, 'name' | 'description'>): {
+  readonly name: string | undefined;
+  readonly description: string | null | undefined;
+} {
+  let name: string | undefined;
+  if (request.name !== undefined) {
+    const problem = sourceLabelProblem(request.name, MAXIMUM_TOOL_SOURCE_NAME_LENGTH, true);
+    if (problem !== undefined) throw new ToolSourceInputError('name', problem);
+    name = String(request.name).trim();
+  }
+  let description: string | null | undefined;
+  if (request.description === null) {
+    description = null;
+  } else if (request.description !== undefined) {
+    const problem = sourceLabelProblem(
+      request.description,
+      MAXIMUM_TOOL_SOURCE_DESCRIPTION_LENGTH,
+      false,
+    );
+    if (problem !== undefined) throw new ToolSourceInputError('description', problem);
+    const trimmed = String(request.description).trim();
+    description = trimmed === '' ? null : trimmed;
+  }
+  return { name, description };
 }
 
 /** The names of the tools flagged `acceptsSecrets`, sorted. */
@@ -789,19 +958,27 @@ function acceptingTools(tools: ReadonlyMap<string, ConfiguredToolSettings>): str
  * The settings a request names, copied and checked before the first `await` (the caller owns the
  * original). An entry for a name the server does not list is accepted: the source reports it.
  */
-function checkedToolSettings(value: unknown): Map<string, ConfiguredToolSettings> {
+function checkedToolSettings(value: unknown): Map<string, ToolSettingsChange> {
   const copy = copyOfJson(value);
   if (!isPlainObject(copy)) throw new ToolSourceInputError('tools', 'expected an object.');
-  const settings = new Map<string, ConfiguredToolSettings>();
+  const settings = new Map<string, ToolSettingsChange>();
   for (const [name, entry] of Object.entries(copy)) {
     if (name === '') throw new ToolSourceInputError('tools', 'a tool name cannot be empty.');
     if (!isPlainObject(entry)) {
       throw new ToolSourceInputError(`tools.${name}`, 'expected an object.');
     }
     for (const key of Object.keys(entry)) {
-      if (key !== 'acceptsSecrets' && key !== 'enabled') {
+      if (key !== 'acceptsSecrets' && key !== 'enabled' && key !== 'approval') {
         throw new ToolSourceInputError(`tools.${name}.${key}`, 'not a known field.');
       }
+    }
+    // The same values the file's reader takes (`sourceToolApprovalProblem`), and `null` for the tier's.
+    const approval = entry['approval'];
+    if (approval !== undefined && approval !== null && !isSourceToolApproval(approval)) {
+      throw new ToolSourceInputError(
+        `tools.${name}.approval`,
+        sourceToolApprovalProblem(approval) ?? 'expected never, on-changes or always.',
+      );
     }
     const accepts = entry['acceptsSecrets'];
     if (accepts !== undefined && typeof accepts !== 'boolean') {
@@ -814,6 +991,7 @@ function checkedToolSettings(value: unknown): Map<string, ConfiguredToolSettings
     settings.set(name, {
       ...(accepts === undefined ? {} : { acceptsSecrets: accepts }),
       ...(enabled === undefined ? {} : { enabled }),
+      ...(approval === undefined ? {} : { approval }),
     });
   }
   return settings;
@@ -924,6 +1102,42 @@ function testToolOf(tools: readonly Tool[]): Tool | undefined {
 }
 
 /**
+ * What a probe, or a test of a saved source, answers for the tools `loaded` that source `id`
+ * listed: each under the name an agent file would use, the ones skipped with the reason, and for an
+ * OpenAPI source the call {@link testCall} makes with its key.
+ */
+async function listedProbe(
+  id: string,
+  source: ToolSourceDescription,
+  loaded: readonly Tool[],
+): Promise<ToolSourceProbe> {
+  const names = qualifyToolNames(
+    id,
+    loaded.map((tool) => tool.name),
+  );
+  const byName = new Map(names.named.map(({ tool, name }) => [tool, name]));
+  const tools: ToolSourceProbeTool[] = [];
+  for (const tool of loaded) {
+    const name = byName.get(tool.name);
+    if (name === undefined) continue;
+    tools.push({
+      name,
+      tool: tool.name,
+      tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
+      title: readToolTitle(tool.metadata) ?? null,
+      description: tool.description,
+    });
+  }
+  const test = source.kind === 'openapi' ? await testCall(loaded) : undefined;
+  return {
+    outcome: 'listed' as const,
+    tools,
+    skipped: names.skipped,
+    ...(test === undefined ? {} : { test }),
+  };
+}
+
+/**
  * Call the OpenAPI tool {@link testToolOf} picks with no input, so a wrong key shows before the
  * source is saved. The answer names no address or value: an error answer is reported by its status.
  */
@@ -990,6 +1204,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     string,
     { standing: ToolSourceStanding; description: string; settings: string }
   >();
+  /**
+   * When the host last reached each source, and the description it reached (COR-2022): a load at
+   * start or when added, or a test that listed its tools. Reported as `lastTested` only while the
+   * saved description is still the one reached.
+   */
+  const reached = new Map<string, { description: string; at: number }>();
   const loadedSources: LoadedToolSource[] = [];
   /** The connection each source loaded at boot holds, so a removal can close it. */
   const loadedById = new Map<string, LoadedToolSource>();
@@ -1139,6 +1359,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
     return {
       id: entry.source.id,
       kind: entry.source.kind,
+      ...labelsOf(entry),
       localCommand: isLocalCommand(entry.source),
       state,
       tools: [],
@@ -1250,6 +1471,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
               : undefined,
           );
         }
+        const tier = resolveCapabilityTier(tool.metadata, tool.tags) ?? null;
         tools.push({
           name,
           tool: tool.name,
@@ -1257,7 +1479,8 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           savedAcceptsSecrets: acceptsSecrets,
           enabled,
           savedEnabled: enabled,
-          tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
+          tier,
+          ...approvalStanding(entry.tools.get(tool.name), tier),
         });
       }
       const unmatchedSettings = unmatchedToolSettings(
@@ -1270,6 +1493,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           `Tool source "${source.id}" has a setting for "${tool}" that reaches no tool: ${message}`,
         );
       }
+      reached.set(source.id, { description, at: now() });
       remember(standingOf(entry, 'loaded', { tools, skipped, unmatchedSettings }));
     } catch (error) {
       if (error instanceof ToolSourceAuthorizationRequiredError) {
@@ -1469,9 +1693,19 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const { sources, revision } = await readDocument();
       const standings = await Promise.all(
         sources.map((entry) => {
+          const description = JSON.stringify(entry.source);
+          const tested = reached.get(entry.source.id);
+          // When the host last reached the source as it is now saved; a source since pointed elsewhere was not.
+          const lastTested =
+            tested !== undefined && tested.description === description
+              ? { lastTested: new Date(tested.at).toISOString() }
+              : {};
           const previous = booted.get(entry.source.id);
-          if (previous === undefined || previous.description !== JSON.stringify(entry.source)) {
-            return standingWithSecrets(entry, standingOf(entry, 'pending-restart'));
+          if (previous === undefined || previous.description !== description) {
+            return standingWithSecrets(entry, {
+              ...standingOf(entry, 'pending-restart'),
+              ...lastTested,
+            });
           }
           const { standing } = previous;
           // Judged against the saved settings as they are now, and the tools the source listed when it loaded.
@@ -1488,11 +1722,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
               : [];
           return standingWithSecrets(entry, {
             ...standing,
+            // The labels as they are now: a change of name or description needs no restart.
+            ...labelsOf(entry),
+            ...lastTested,
             // The saved settings as they are now, not as they were when the host loaded the source.
             tools: standing.tools.map((tool) => ({
               ...tool,
               savedAcceptsSecrets: entry.tools.get(tool.tool)?.acceptsSecrets === true,
               savedEnabled: entry.tools.get(tool.tool)?.enabled !== false,
+              ...approvalStanding(entry.tools.get(tool.tool), tool.tier),
             })),
             unmatchedSettings,
             ...(previous.settings === settingsRevision(entry)
@@ -1555,30 +1793,70 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
         return { outcome: 'failed' as const, message: describeFailure(error) };
       }
       try {
-        const names = qualifyToolNames(
-          id,
-          loaded.tools.map((tool) => tool.name),
-        );
-        const byName = new Map(names.named.map(({ tool, name }) => [tool, name]));
-        const tools: ToolSourceProbeTool[] = [];
-        for (const tool of loaded.tools) {
-          const name = byName.get(tool.name);
-          if (name === undefined) continue;
-          tools.push({
-            name,
-            tool: tool.name,
-            tier: resolveCapabilityTier(tool.metadata, tool.tags) ?? null,
-            title: readToolTitle(tool.metadata) ?? null,
-            description: tool.description,
-          });
-        }
-        const test = source.kind === 'openapi' ? await testCall(loaded.tools) : undefined;
+        return await listedProbe(id, source, loaded.tools);
+      } finally {
+        await loaded.close().catch(() => undefined);
+      }
+    },
+    // A saved source, loaded as the host loads it, with what the vault holds for it. Nothing is
+    // written; the connection is closed before it answers, and the catalog is not touched.
+    async test(requestedId, input) {
+      const id = checkedIdentifier(requestedId, 'id');
+      if (closed) throw new Error('The host is shutting down.');
+      const { source } = await configured(id);
+      const mutation = input ?? (await createLocalHostMutationContext(bungalow));
+      // A local command is run only for whoever may run one, as a probe and a connection are.
+      await assertMutation(mutation, source);
+      if (RESERVED_TOOL_SOURCE_IDENTIFIERS.includes(id)) {
         return {
-          outcome: 'listed' as const,
-          tools,
-          skipped: names.skipped,
-          ...(test === undefined ? {} : { test }),
+          outcome: 'failed' as const,
+          message: `The identifier "${id}" is reserved for the host's own tools, so this source is not loaded. Remove it.`,
         };
+      }
+      const description = JSON.stringify(source);
+      try {
+        // No tokens: contacting the server would begin a sign-in nobody is waiting for.
+        if (isOAuth(source) && (await vault.read(id)).oauth?.tokens === undefined) {
+          return { outcome: 'needs-authorization' as const };
+        }
+      } catch (error) {
+        return { outcome: 'failed' as const, message: describeFailure(error) };
+      }
+      let loaded: LoadedToolSource;
+      try {
+        loaded = await within(
+          (signal) =>
+            loadToolSource(source, {
+              // The credentials of the source as it is saved now, and only while it still goes to
+              // the place this test reaches: an edit made meanwhile does not send them elsewhere.
+              resolveCredential: async (request) => {
+                const snapshot = await readDocument();
+                const current = snapshot.sources.find(
+                  (entry) => entry.source.id === request.sourceId,
+                );
+                if (current === undefined || recipientOf(current.source) !== recipientOf(source)) {
+                  return undefined;
+                }
+                return resolveCredential(request, snapshot);
+              },
+              oauth: oauthForSource(source, () => undefined),
+              signal,
+              ...fetchOption,
+            }),
+          probeTimeout,
+        );
+      } catch (error) {
+        if (error instanceof ToolSourceAuthorizationRequiredError) {
+          return { outcome: 'needs-authorization' as const };
+        }
+        // Nothing from the failure is repeated: it may hold the address, the command, or a value.
+        return { outcome: 'failed' as const, message: describeFailure(error) };
+      }
+      try {
+        const listed = await listedProbe(id, source, loaded.tools);
+        // Stamped with the description reached: `snapshot` reports it only while that is the one saved.
+        reached.set(id, { description, at: now() });
+        return listed;
       } finally {
         await loaded.close().catch(() => undefined);
       }
@@ -1593,6 +1871,7 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
       const createOnly = request.createOnly === true;
       const incomingTools =
         request.tools === undefined ? undefined : checkedToolSettings(request.tools);
+      const labels = checkedLabels(request);
       // Set inside the source's turn: whether this connection added the source, which is loaded at once.
       let added = false;
       const change = await serialized(() =>
@@ -1648,14 +1927,23 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
             incomingTools !== undefined
               ? new Map(
                   [...incomingTools].flatMap(([name, settings]) => {
-                    const kept = nonDefaultSettings(settings);
+                    const kept = nonDefaultSettings(mergedSettings(undefined, settings));
                     return kept === undefined ? [] : [[name, kept] as const];
                   }),
                 )
               : sameRecipient && existing !== undefined
                 ? existing.tools
                 : new Map<string, ConfiguredToolSettings>();
-          const next: ConfiguredToolSource = { source, tools };
+          // A label the request leaves out is kept, whatever the source now points at: it names, and grants nothing.
+          const name = labels.name ?? existing?.name;
+          const description =
+            labels.description === null ? undefined : (labels.description ?? existing?.description);
+          const next: ConfiguredToolSource = {
+            source,
+            tools,
+            ...(name === undefined ? {} : { name }),
+            ...(description === undefined ? {} : { description }),
+          };
           const revoked =
             existing === undefined || sameRecipient ? [] : acceptingTools(existing.tools);
           const nextSources =
@@ -1667,10 +1955,12 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           // The same checks the next start applies, before a byte is written.
           parseProviderConfiguration(text, location);
           parseToolSourcesConfiguration(nextDocument.toolSources, location);
+          // The whole entry as it would be written: a request that changes only a label or a
+          // Default asks level is a change, which `settingsRevision` alone would miss (COR-2022).
           const unchanged =
             existing !== undefined &&
-            JSON.stringify(existing.source) === JSON.stringify(source) &&
-            settingsRevision(existing) === settingsRevision(next) &&
+            JSON.stringify(serializeToolSources([existing])) ===
+              JSON.stringify(serializeToolSources([next])) &&
             supplied.size === 0 &&
             // A secret that cannot be read is replaced by this request, even one that names no credential.
             !unreadable;
@@ -1706,6 +1996,9 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
                     createOnly,
                     tools:
                       incomingTools === undefined ? undefined : Object.fromEntries(incomingTools),
+                    // A retry that names other labels is another request, not a replay of this one.
+                    name: labels.name,
+                    description: labels.description,
                   },
                 }),
               },
@@ -1750,13 +2043,15 @@ export function createToolSourceManager(options: ToolSourceManagerOptions): Tool
           throw new ToolSourceInputError('source', 'not a configured source.', 'unknown-source');
         }
         const tools = new Map(existing.tools);
-        for (const [name, settings] of incoming) {
-          // The default is no entry at all, so a tool set back to it leaves nothing behind.
-          const kept = nonDefaultSettings(settings);
+        for (const [name, change] of incoming) {
+          // A field the request leaves out keeps its saved value (COR-2022), and the default is no
+          // entry at all, so a tool set back to it leaves nothing behind.
+          const kept = nonDefaultSettings(mergedSettings(tools.get(name), change));
           if (kept === undefined) tools.delete(name);
           else tools.set(name, kept);
         }
-        const next: ConfiguredToolSource = { source: existing.source, tools };
+        // The rest of the entry, its labels among them, is the one saved.
+        const next: ConfiguredToolSource = { ...existing, tools };
         const nextSources = sources.map((entry) => (entry === existing ? next : entry));
         const nextDocument = { ...document, toolSources: serializeToolSources(nextSources) };
         const text = `${JSON.stringify(nextDocument, null, 2)}\n`;

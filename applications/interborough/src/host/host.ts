@@ -88,7 +88,7 @@ import {
  *   `/host/panels` and `/host/plugins/<name>/apps/<app>[/tool-calls]` serve a plugin's
  *   panels (`panel-routes.ts`).
  * - `/host/tool-sources`, `/host/tool-sources/<id>`, `/host/tool-sources/<id>/affected-agents`,
- *   `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
+ *   `/host/tool-sources/<id>/test`, `/host/tool-sources/<id>/authorize`, and `/host/oauth/callback/<id>`: the saved MCP and OpenAPI tool sources in `configuration.json`
  *   (`toolSources`), their encrypted credentials, and the OAuth sign-in (`tool-source-routes.ts`).
  *   The sources load before the Bureau is built, so an agent file lists their tools as
  *   `<id>__<tool>` after the host starts again. A remote host refuses a change with the reason
@@ -608,6 +608,7 @@ export type Host = {
   readonly toolSources: Pick<
     ToolSourceManager,
     | 'probe'
+    | 'test'
     | 'connect'
     | 'configureTools'
     | 'remove'
@@ -1647,6 +1648,7 @@ export async function startHost(options: HostOptions = {}): Promise<Host> {
       configurationQueue,
       toolSources: {
         probe: (request, mutation) => toolSources.probe(request, mutation),
+        test: (id, mutation) => toolSources.test(id, mutation),
         connect: (request, mutation) => toolSources.connect(request, mutation),
         configureTools: (request, mutation) => toolSources.configureTools(request, mutation),
         remove: (request, mutation) => toolSources.remove(request, mutation),
