@@ -907,12 +907,23 @@ test("Interborough's coverage gate measures both environments without a duplicat
   expect(configuration.tasks['@lostgradient/interborough#test:coverage'].inputs).toContain(
     '$TURBO_ROOT$/testing/testing/src/hang-guard.ts',
   );
+  for (const script of ['bun-test-pool.ts', 'run-exclusively.ts', 'environment-configuration.ts']) {
+    expect(configuration.tasks['@lostgradient/interborough#test:coverage'].inputs).toContain(
+      `$TURBO_ROOT$/scripts/${script}`,
+    );
+  }
   const runner = await Bun.file(
     join(root, 'applications/interborough/scripts/run-coverage.ts'),
   ).text();
-  expect(runner).toContain('--config=./bunfig.toml test');
-  expect(runner).toContain('src/host fixtures');
-  expect(runner).toContain('--config=./bunfig.ui.toml test');
+  expect(runner).toContain(
+    "command: ['bun', '--config=./bunfig.toml', 'test', TEST_TIMEOUT_ARGUMENT]",
+  );
+  expect(runner).toContain("'src/host'");
+  expect(runner).toContain("'fixtures'");
+  expect(runner).toContain(
+    "command: ['bun', '--config=./bunfig.ui.toml', 'test', TEST_TIMEOUT_ARGUMENT]",
+  );
+  expect(runner.match(/await runPooledBunTest\(/g)).toHaveLength(2);
   expect(runner).toContain('combineEnvironmentCoverage(');
 });
 
