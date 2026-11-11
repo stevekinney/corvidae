@@ -34,6 +34,10 @@ async function listNothing(page: Page): Promise<void> {
 /** The header's "+": a secondary icon button named for what it makes. */
 const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
 
+/** The list's filter bar, a search landmark named for what it filters. */
+const filterBar = (page: Page) =>
+  page.locator('main').getByRole('search', { name: 'Filter schedules' });
+
 /** Every primary button on the page, which a list page keeps to the one its state offers. */
 const primaryButtons = (page: Page) => page.locator('main button[data-cinder-variant="primary"]');
 
@@ -54,7 +58,7 @@ for (const width of WIDTHS) {
       'A schedule starts a chat or a workflow on a timetable, such as every weekday at 9:00 AM. Create one and its next runs show here.',
     );
     // The empty state is the page: no filter row, and no row.
-    await expect(main.getByRole('toolbar', { name: 'Filter schedules' })).toHaveCount(0);
+    await expect(filterBar(page)).toHaveCount(0);
     await expect(main.locator('li[data-schedule]')).toHaveCount(0);
 
     // The header keeps its secondary "+", and the state's button is the only primary.
@@ -95,6 +99,7 @@ for (const width of WIDTHS) {
       'Tool runner has no paused schedules. Try another status or agent.',
     );
     // The filter bar stays, with the counts of the one schedule Tool runner has.
+    await expect(filterBar(page)).toBeVisible();
     if (width >= 1024) {
       await expect(main.getByRole('radio', { name: /^All\s*,\s*1$/ })).toBeVisible();
       await expect(main.getByRole('radio', { name: /^Active\s*,\s*1$/ })).toBeVisible();
@@ -156,6 +161,7 @@ for (const width of WIDTHS) {
     );
     await expect(main.locator('.cinder-skeleton-row .cinder-skeleton-time-bar')).toHaveCount(4);
     // The segments read All, Active and Paused with no number, and the chips stay.
+    await expect(filterBar(page)).toBeVisible();
     if (width >= 1024) {
       for (const label of ['All', 'Active', 'Paused']) {
         await expect(
@@ -206,7 +212,7 @@ for (const width of WIDTHS) {
     );
     // The full state replaces the list: no rows, no filter bar, and no banner beside it.
     await expect(main.locator('li[data-schedule]')).toHaveCount(0);
-    await expect(main.getByRole('toolbar', { name: 'Filter schedules' })).toHaveCount(0);
+    await expect(filterBar(page)).toHaveCount(0);
     await expect(main.getByRole('region', { name: /problem/ })).toHaveCount(0);
     // The state's Try again is the only primary, and the header's "+" is secondary and inert.
     await expect(primaryButtons(page)).toHaveCount(1);
