@@ -11,6 +11,10 @@
     Search,
     Terminal,
     X,
+    Button,
+    Copy,
+    CopyButton,
+    Spinner,
     type ApprovalState,
   } from '@lostgradient/cinder';
   import { stringify } from '../../../utilities/stringify.ts';
@@ -19,11 +23,15 @@
   import type { ToolCallPresentation } from '../utilities/types.ts';
   import { formatToolCallProse } from '../utilities/utilities.ts';
   import ToolPayloadCode from './tool-payload-code.svelte';
+  import { resolveTurnLabels, type ChatTurnLabels } from './turn-labels.ts';
   import {
     foldRepeatedSteps,
     formatToolCallDuration,
+    formatToolCallElapsed,
     isProblemStatus,
     nextToolCallApprovalDeadline,
+    runningStepTitle,
+    toolCallFailure,
     toolCallKeyArgument,
     toolCallResultLine,
     toolCallRowStatus,
@@ -42,6 +50,9 @@
     activityActive = true,
     approvalStates,
     durations,
+    startTimes,
+    onRetryStep,
+    labels,
   }: {
     pairs: ToolCallPair[];
     messageId?: string;
@@ -51,7 +62,18 @@
     activityActive?: boolean;
     approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
     durations?: ReadonlyMap<string, number> | undefined;
+    /**
+     * When each call started, in milliseconds since the Unix epoch, keyed by call id. The step
+     * under way shows how long it has been running, counted in whole seconds (COR-2283, R1).
+     */
+    startTimes?: ReadonlyMap<string, number> | undefined;
+    /** Called with a failed call's id when the person chooses Retry this step. The button shows only when this is set. */
+    onRetryStep?: ((toolCallId: string) => void) | undefined;
+    /** The words of the step position, the failed count and a failed step's controls. */
+    labels?: Partial<ChatTurnLabels> | undefined;
   } = $props();
+
+  const words = $derived(resolveTurnLabels(labels));
   /** The longest delay a timer takes; a deadline further off wakes the timeline once on the way. */
   const MAXIMUM_TIMER_DELAY = 2_147_483_647;
 
@@ -123,6 +145,26 @@
         row.status === 'pending',
     ),
   );
+  // Where the step under way falls among the steps so far, and how long it has run (R1). The clock
+  // ticks once a second only while a step with a known start is running.
+  const runningPosition = $derived(runningRow === undefined ? 0 : rows.indexOf(runningRow) + 1);
+  const runningStart = $derived(
+    runningRow === undefined ? undefined : startTimes?.get(runningRow.pair.call.id),
+  );
+  let elapsedClock = $state(Date.now());
+
+  $effect(() => {
+    if (runningStart === undefined) return;
+    elapsedClock = Date.now();
+    const timer = setInterval(() => {
+      elapsedClock = Date.now();
+    }, 1000);
+    return () => clearInterval(timer);
+  });
+
+  const runningElapsed = $derived(
+    runningStart === undefined ? undefined : Math.max(0, elapsedClock - runningStart),
+  );
   const hasProblem = $derived(rows.some((row) => isProblemStatus(row.status)));
   const summary = $derived(
     toolCallSummaryParts(
@@ -130,6 +172,15 @@
       rows.map((row) => row.status),
       rows.map((row) => row.duration),
     ),
+  );
+  // Once a step failed, the header counts the steps that worked out of all of them (R7).
+  const failedCount = $derived(rows.filter((row) => row.status === 'failed').length);
+  const countText = $derived(
+    failedCount > 0
+      ? words.stepsDone(rows.filter((row) => row.status === 'succeeded').length, pairs.length)
+      : pairs.length === 1
+        ? '1 step'
+        : `${pairs.length} steps`,
   );
 
   // Failures and denials start open; the reader's own toggle wins after that.
@@ -265,7 +316,12 @@
     data-status={status}
     data-cinder-tool-activity-active={active ? '' : undefined}
   >
-    {#if status === 'succeeded'}
+    {#if active}
+      <!-- The step under way turns while its stream is live (R1). -->
+      <span class="chat-tool-call-row-spinner" aria-hidden="true">
+        <Spinner size="sm" variant="arc" label="" />
+      </span>
+    {:else if status === 'succeeded'}
       <Check aria-hidden="true" />
     {:else if status === 'failed' || status === 'denied' || status === 'expired'}
       <X aria-hidden="true" />
@@ -277,9 +333,49 @@
   </span>
 {/snippet}
 
+<!-- A failed step (R7): what went wrong in one danger line, the rest of the error wrapping under
+     it, and Copy error then Retry this step. -->
+{#snippet failure(pair: ToolCallPair)}
+  {@const failed = toolCallFailure(pair, words.stepFailed)}
+  {#if failed}
+    <div class="chat-tool-call-failure">
+      <p class="chat-tool-call-failure-summary" dir="auto">
+        <X class="chat-tool-call-failure-glyph" aria-hidden="true" />
+        <span>{failed.summary}</span>
+      </p>
+      {#if failed.diagnostic !== undefined}
+        <pre class="chat-tool-call-diagnostic" dir="auto">{failed.diagnostic}</pre>
+      {/if}
+      <div class="chat-tool-call-failure-actions">
+        <CopyButton
+          value={failed.copy}
+          label={words.copyError}
+          copiedLabel={words.errorCopied}
+          confirmDuration={2000}
+          class="chat-tool-call-failure-action"
+        >
+          <Copy class="cinder-icon-xs" aria-hidden="true" />
+          {words.copyError}
+        </CopyButton>
+        {#if onRetryStep}
+          <Button
+            type="button"
+            class="chat-tool-call-failure-action"
+            size="xs"
+            variant="secondary"
+            onclick={() => onRetryStep(pair.call.id)}
+          >
+            {words.retryStep}
+          </Button>
+        {/if}
+      </div>
+    </div>
+  {/if}
+{/snippet}
+
 {#snippet output(pair: ToolCallPair)}
   {#if pair.result?.outcome === 'error'}
-    {@render payload('Error', pair.result.error?.message ?? pair.result.content)}
+    {@render failure(pair)}
   {:else if pair.result?.parts !== undefined && pair.result}
     {@render payload('Output', toolResultText(pair.result))}
   {:else if pair.result}
@@ -306,18 +402,36 @@
       <ChevronRight class="chat-tool-call-chevron" aria-hidden="true" />
       <span class="chat-tool-call-summary">
         {#if runningRow?.presentation}
-          {#if runningRow.icon}{@render runningRow.icon()}{/if}
-          <span class="chat-tool-call-running">{runningRow.prose}</span>
-        {:else}
-          <span class="chat-tool-call-summary-count"
-            >{pairs.length === 1 ? '1 step' : `${pairs.length} steps`}</span
+          <!-- The step under way (R1): a spinner, its present-tense title ending in an ellipsis,
+               where it falls among the steps so far, and how long it has run. -->
+          <span class="chat-tool-call-spinner" aria-hidden="true">
+            <Spinner size="sm" variant="arc" label="" />
+          </span>
+          <span class="chat-tool-call-running" dir="auto"
+            >{runningStepTitle(runningRow.prose ?? '')}</span
           >
-          {#if summary.tools}
-            <span class="chat-tool-call-summary-tools">{summary.tools}</span>
+          {#if pairs.length > 1}
+            <span class="chat-tool-call-summary-segment" data-step-position
+              >{words.stepPosition(runningPosition, pairs.length)}</span
+            >
           {/if}
+          {#if runningElapsed !== undefined}
+            <span class="chat-tool-call-summary-duration" data-elapsed
+              >{formatToolCallElapsed(runningElapsed)}</span
+            >
+          {/if}
+        {:else}
+          <!-- A failed count follows the step count directly, so the two read as one phrase:
+               "2 of 3 steps, 1 failed" (R7). -->
+          <span class="chat-tool-call-summary-count"
+            >{countText}{#if summary.problems.length > 0},{/if}</span
+          >
           {#each summary.problems as problem, index (index)}
             <span class="chat-tool-call-summary-segment" data-problem>{problem}</span>
           {/each}
+          {#if summary.tools}
+            <span class="chat-tool-call-summary-tools">{summary.tools}</span>
+          {/if}
           {#if summary.duration}
             <span class="chat-tool-call-summary-duration">{summary.duration}</span>
           {/if}
@@ -680,6 +794,86 @@
     white-space: pre-wrap;
     overflow-wrap: anywhere;
     color: var(--cinder-text-default);
+  }
+
+  /* The step under way turns in the header and on its row (COR-2283, R1). */
+  .chat-tool-call-spinner,
+  .chat-tool-call-row-spinner {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    block-size: 1lh;
+  }
+
+  .chat-tool-call-spinner :global(.cinder-spinner),
+  .chat-tool-call-row-spinner :global(.cinder-spinner) {
+    inline-size: 12px;
+    block-size: 12px;
+  }
+
+  /* A failed step's row wraps between its parts rather than cutting its Failed status off (R7). */
+  .chat-tool-call-item[data-cinder-tool-call-status='failed'] .chat-tool-call-row {
+    flex-wrap: wrap;
+    row-gap: var(--cinder-space-1);
+  }
+
+  /* What went wrong, in danger text, then the rest of the error, which wraps rather than scrolls. */
+  .chat-tool-call-failure {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .chat-tool-call-failure-summary {
+    display: flex;
+    gap: var(--cinder-space-1);
+    align-items: flex-start;
+    margin: 0;
+    color: var(--cinder-status-danger-text);
+    overflow-wrap: anywhere;
+    text-align: start;
+  }
+
+  .chat-tool-call-failure-summary :global(.chat-tool-call-failure-glyph) {
+    flex: none;
+    inline-size: 12px;
+    block-size: 12px;
+    margin-block: calc((1lh - 12px) / 2);
+  }
+
+  /* Plain text in the group, not a box inside it. */
+  .chat-tool-call-diagnostic {
+    margin: 0;
+    color: var(--cinder-text-default);
+    font-family: var(--cinder-font-mono);
+    font-size: 12px;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    text-align: start;
+  }
+
+  .chat-tool-call-failure-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: none;
+    padding-inline: var(--cinder-space-2);
+  }
+
+  @media (pointer: coarse) {
+    .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   .chat-tool-call-activity-icon {

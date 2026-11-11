@@ -41,6 +41,8 @@ export type ChatTurnLabels = {
    * them. Default `2 of 3 steps`; a host that knows what the steps were can say `Checked 2 of 3 sources`.
    */
   stepsDone: (done: number, total: number) => string;
+  /** What a failed step says when its result says nothing at all. Default `This step failed.`. */
+  stepFailed: string;
   /** The button on a failed step that runs it again. Default `Retry this step`. */
   retryStep: string;
   /** The button on a failed step that copies its error. Default `Copy error`. */
@@ -65,6 +67,7 @@ export const DEFAULT_TURN_LABELS: ChatTurnLabels = {
   tryAgain: 'Try again',
   stepPosition: (position, total) => `Step ${position} of ${total}`,
   stepsDone: (done, total) => `${done} of ${total} ${total === 1 ? 'step' : 'steps'}`,
+  stepFailed: 'This step failed.',
   retryStep: 'Retry this step',
   copyError: 'Copy error',
   errorCopied: 'Copied',
