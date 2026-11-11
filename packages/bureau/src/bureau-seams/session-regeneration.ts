@@ -2,7 +2,9 @@
  * Session regeneration (COR-2296): replace the latest answer of a context with a new one from the
  * model, without running a tool. Built by `constructBureau` and reached only through
  * `createBureau`; the contexts facade calls into it. See `session-regenerate.ts` for the contract,
- * the ledger and the receipt.
+ * the ledger and the receipt. The one model call is made as a run's step makes it: held to the
+ * model policy, after the run's `prepareStep` hooks and before its `validateResponse` hooks, so
+ * Bureau's identity prompt and guardrails (COR-567) bind it as they bind every run.
  */
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore, SteeringCursor } from './core';
@@ -31,8 +33,10 @@ import {
 } from '../session-regenerate';
 import {
   type AgentSession,
+  type GenerateResponse,
   SessionConflictError,
   type SessionStore,
+  type StepContext,
   parseStepRowIdentifier,
   sessionOriginOf,
   sessionOwnerOf,
@@ -159,10 +163,15 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
     // A retained claim under another payload is refused by the claim below, before any judgment.
     if (retained === undefined) await assertLatestEndedAnswer(session, messageId);
     const steering = await desiredSteeringOf(session);
+    // The session's taint, so an agent that resolves its own guardrails starts from it, as the
+    // context's runs do.
+    const taintSource = { sessionId: session.id, metadata: session.metadata };
     const resolution = await runtime.resolveSessionAgentRun(
       session.agentName,
       '',
       ownerOrLocal(sessionOwnerOf(session.metadata) ?? undefined),
+      undefined,
+      taintSource,
     );
     if (resolution.status !== 'resolved') {
       const cause = 'error' in resolution ? resolution.error : undefined;
@@ -172,7 +181,23 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
         cause,
       );
     }
-    const generate = resolution.run.options.generate;
+    const agent = resolution.run;
+    // COR-1996: held to the model policy as every path that runs a catalog agent holds it, so a
+    // plugin code agent is judged here too, not only a file agent, whose generate judges itself.
+    const generate = runtime.holdToModelPolicy(agent.options, agent.generationMode).generate;
+    // COR-567: the Bureau invariants (the identity prompt and the guardrails, which an agent that
+    // resolves its own carries in its tier instead), the plugin tier and the agent's own hooks,
+    // composed as a run of the context composes them. Seeded from the session's taint, under the
+    // session's id, as the agent tier is: no run of the context asks this model. A taint a
+    // guardrail stores here is a write of the session, so the fence below then refuses the answer
+    // as `history-changed`, and an exact retry, which starts tainted, asks again.
+    const hooks = runtime.composeRunHooks({
+      bureau: runtime.createBureauInvariantHooks(undefined, {
+        agentResolvesGuardrails: agent.agentResolvesGuardrails,
+        sessionTaint: runtime.sessionTaintSeam(session.id, session.id, session.metadata),
+      }),
+      agent: agent.options.hooks,
+    });
     let outcome: Awaited<ReturnType<typeof ledger.claim>>;
     try {
       outcome = await ledger.claim(identity, digest, {
@@ -205,22 +230,51 @@ export function createSessionRegeneration<D extends AgentDefinitions>(
     const through = parseStepRowIdentifier(messageId);
     // A toolbox that holds no tool: a structural guarantee, not an instruction, that nothing runs.
     const toolbox: AnyToolbox = createToolbox([]);
-    let response: Awaited<ReturnType<typeof generate>>;
+    // One step's context, shared by its hooks and the call, so what a `prepareStep` hook adds (the
+    // identity prompt) is what the model is asked over.
+    const stepContext: StepContext = {
+      conversation: new Conversation(historyBeforeAnswer(session.conversationHistory, messageId)),
+      step: through?.step ?? 0,
+      ...(signal === undefined ? {} : { signal }),
+    };
+    const maximumTokens = agent.options.maximumTokens;
+    // `undefined` when a `prepareStep` hook answered in the model's place.
+    let response: GenerateResponse | undefined;
     try {
-      response = await generate({
-        conversation: new Conversation(historyBeforeAnswer(session.conversationHistory, messageId)),
-        step: through?.step ?? 0,
-        toolbox,
-        ...(signal === undefined ? {} : { signal }),
-        ...(steering === undefined ? {} : { steering }),
-        ...(through === undefined ? {} : { runId: through.runId }),
-        assistantMessageId: messageId,
-      });
+      // `runFirst`, as the run loop dispatches it: the first handler to answer ends the question.
+      const prepared = hooks.has('prepareStep')
+        ? await hooks.runFirst('prepareStep', stepContext)
+        : undefined;
+      if (prepared === undefined) {
+        const generated = await generate({
+          conversation: stepContext.conversation,
+          step: stepContext.step,
+          toolbox,
+          ...(signal === undefined ? {} : { signal }),
+          ...(maximumTokens === undefined ? {} : { maximumTokens }),
+          ...(steering === undefined ? {} : { steering }),
+          ...(through === undefined ? {} : { runId: through.runId }),
+          assistantMessageId: messageId,
+        });
+        // The waterfall's last answer is the response, whether a handler replaced it (a
+        // redaction) or let it through; a tripwire throws, and is refused below.
+        const validated = hooks.has('validateResponse')
+          ? await hooks.run('validateResponse', generated, stepContext)
+          : undefined;
+        response = validated ?? generated;
+      }
     } catch (error) {
       if (signal?.aborted === true) {
         return released('aborted', 'The request was aborted while the model answered.', error);
       }
+      // A model that failed, a model the policy forbids, and a guardrail that halted the step.
       return released('generation-failed', 'The model could not answer.', error);
+    }
+    if (response === undefined) {
+      return released(
+        'generation-failed',
+        'A hook answered in the model’s place, and regeneration takes only the model’s answer.',
+      );
     }
     // An answer that arrives after the abort is discarded, never committed.
     if (signal?.aborted === true) {

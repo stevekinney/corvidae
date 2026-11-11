@@ -2740,12 +2740,15 @@ export interface BureauContexts {
    * tool approval pending and no tool call left without a result; anything else throws a
    * {@link SessionRegenerateRefusedError} naming why before the model is asked. The model is the
    * one the context's steering names now (or the agent's default), judged by the policy as it is
-   * now, never the one the old answer recorded. An answer that asks for a tool, a model that
-   * fails, an abort through `request.signal`, and a context that changed after it was read (a new
-   * turn, a steering change, a deletion, a deletion and a new context under the id) each throw a
-   * refusal and leave the history as it was: the replacement is one compare-and-swap fenced on
-   * the incarnation and revision the attempt read, and it commits the regeneration's receipt to
-   * the session outbox beside the new answer.
+   * now, never the one the old answer recorded. The call is made under the hooks a run's step is:
+   * Bureau's identity prompt and guardrails, the plugin tier and the agent's own `prepareStep` and
+   * `validateResponse` hooks, so a redaction is what is stored. An answer that asks for a tool, a
+   * model that fails or that the policy forbids, a guardrail that halts the answer, a `prepareStep`
+   * hook that answers in the model's place, an abort through `request.signal`, and a context that
+   * changed after it was read (a new turn, a steering change, a deletion, a deletion and a new
+   * context under the id) each throw a refusal and leave the history as it was: the replacement
+   * is one compare-and-swap fenced on the incarnation and revision the attempt read, and it
+   * commits the regeneration's receipt to the session outbox beside the new answer.
    *
    * `commandId` is recorded in the durable command ledger: only the attempt that claims it asks
    * the model. An exact retry, even after a restart, returns the original result; a duplicate

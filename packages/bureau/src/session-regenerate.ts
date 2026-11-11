@@ -64,7 +64,10 @@ export type SessionRegenerateRefusalReason =
   | 'history-changed'
   /** The model's answer asked for a tool, which regeneration never runs. */
   | 'answer-has-tool-calls'
-  /** The model could not answer: it failed, refused by policy, or answered with no text. */
+  /**
+   * The model could not answer: it failed, the model policy forbids it, a guardrail halted the
+   * step, a `prepareStep` hook answered in its place, or it answered with no text.
+   */
   | 'generation-failed'
   /** The caller's request was aborted before the answer was committed. */
   | 'aborted'

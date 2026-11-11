@@ -8,11 +8,15 @@ import {
   conversationThroughRun,
   createAgent,
   createAgentSession,
+  createModelCatalog,
+  GuardrailTripwireError,
   type AgentSession,
+  type BackendDescriptor,
   type GenerateContext,
   type GenerateResponse,
   type RunRef,
   stopWhen,
+  withBackendDescriptors,
 } from '@lostgradient/operative';
 import { createTool } from 'armorer';
 import {
@@ -28,6 +32,8 @@ import type { AgentDefinitions } from './agent-catalog';
 import { BureauShuttingDownError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { digestCommandPayload } from './command-ledger';
+import { ModelPolicyDeniedError } from './file-agent-generate';
+import type { BureauModelPolicyOptions } from './model-policy';
 import {
   createRegenerateLedger,
   historyBeforeAnswer,
@@ -860,5 +866,144 @@ describe('a regeneration command', () => {
     expect((await ledger.read(identity))?.state).toBe('pending');
     expect(await refusalOf(regenerate(bureau, CRAFTED, ANSWER, 'forged'))).toBe('command-in-doubt');
     expect(script.regenerations).toBe(0);
+  });
+});
+
+const catalogRows = createModelCatalog().descriptors;
+
+/** The default catalog's row for `choice`: the one row a fixed agent's generate reports. */
+function catalogRow(choice: {
+  readonly provider: string;
+  readonly model: string;
+}): BackendDescriptor {
+  const found = catalogRows.find(
+    (row) => row.provider === choice.provider && row.model === choice.model,
+  );
+  if (found === undefined)
+    throw new Error(`The catalog has no ${choice.provider}/${choice.model}.`);
+  return found;
+}
+
+/**
+ * A Bureau whose agent, `agent`, is a code agent that serves `row` alone, under `modelPolicy`. Each
+ * call it takes is recorded in `calls`.
+ */
+async function openFixedBureau(
+  row: BackendDescriptor,
+  modelPolicy: BureauModelPolicyOptions,
+  calls: string[],
+) {
+  const bureau = await createBureau<AgentDefinitions>({
+    agents: {
+      agent: createAgent({
+        name: 'agent',
+        generate: withBackendDescriptors(async () => {
+          calls.push(row.model);
+          return { content: 'a better answer', toolCalls: [] };
+        }, [row]),
+      }),
+    },
+    storage: new MemoryStorage(),
+    durable: true,
+    modelPolicy,
+  });
+  cleanups.push(() => bureau.dispose());
+  return bureau;
+}
+
+/** What `pending` rejected with, or `undefined` when it resolved. */
+async function rejectionOf(pending: Promise<unknown>): Promise<unknown> {
+  return pending.then(
+    () => undefined,
+    (thrown: unknown) => thrown,
+  );
+}
+
+describe('a regeneration under the Bureau’s invariants', () => {
+  it('refuses a code agent whose model the policy forbids, and never calls the model', async () => {
+    const calls: string[] = [];
+    const bureau = await openFixedBureau(
+      catalogRow(OPUS_5_5),
+      { deployment: { deniedModels: [OPUS_5_5.model] }, policyRevision: 2 },
+      calls,
+    );
+    const before = await craft(bureau);
+
+    const error = await rejectionOf(regenerate(bureau, CRAFTED, ANSWER));
+
+    expect(error).toBeInstanceOf(SessionRegenerateRefusedError);
+    expect((error as SessionRegenerateRefusedError).reason).toBe('generation-failed');
+    expect((error as Error).cause).toBeInstanceOf(ModelPolicyDeniedError);
+    expect(calls).toEqual([]);
+    expect(await bureau.contexts.get(CRAFTED)).toEqual(before);
+    expect(await receiptPending(bureau)).toBe(false);
+  });
+
+  it('asks a code agent whose model the policy allows, once', async () => {
+    const calls: string[] = [];
+    const bureau = await openFixedBureau(
+      catalogRow(OPUS_5_5),
+      { bureau: { deniedModels: [OPUS_5.model] }, policyRevision: 3 },
+      calls,
+    );
+    await craft(bureau);
+
+    await regenerate(bureau, CRAFTED, ANSWER);
+
+    expect(calls).toEqual([OPUS_5_5.model]);
+    const after = (await bureau.contexts.get(CRAFTED))!;
+    expect(after.conversationHistory.messages[ANSWER]?.content).toBe('a better answer');
+  });
+
+  it('refuses an answer the output guardrail halts, and stores nothing', async () => {
+    const script = newScript(async () => ({
+      content: 'Write to jane.doe@example.com for the details.',
+      toolCalls: [],
+    }));
+    const bureau = await openBureau(script);
+    const before = await craft(bureau);
+
+    const error = await rejectionOf(regenerate(bureau, CRAFTED, ANSWER));
+
+    expect(error).toBeInstanceOf(SessionRegenerateRefusedError);
+    expect((error as SessionRegenerateRefusedError).reason).toBe('generation-failed');
+    const cause = (error as Error).cause;
+    expect(cause).toBeInstanceOf(GuardrailTripwireError);
+    expect((cause as GuardrailTripwireError).guardrailName).toBe('output-pii');
+    expect(script.regenerations).toBe(1);
+    const after = (await bureau.contexts.get(CRAFTED))!;
+    expect(after.conversationHistory).toEqual(before.conversationHistory);
+    expect(await receiptPending(bureau)).toBe(false);
+  });
+
+  it('asks a first step’s answer again with the Bureau’s identity prompt, as the run asked it', async () => {
+    const script = newScript();
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: { agent: scriptedAgent(script) },
+      storage: new MemoryStorage(),
+      durable: true,
+      identity: { resolve: async () => 'Corvidae identity prompt.' },
+    });
+    cleanups.push(() => bureau.dispose());
+    const firstStep = `${R}:step:0`;
+    await craft(bureau, [
+      {
+        runId: R,
+        rows: [
+          { id: `${R}:user`, role: 'user', content: 'go' },
+          { id: firstStep, role: 'assistant', content: 'old answer' },
+        ],
+      },
+    ]);
+
+    await regenerate(bureau, CRAFTED, firstStep);
+
+    expect(script.regenerations).toBe(1);
+    const asked = Object.values(script.asked[0]?.messages ?? {});
+    expect(
+      asked.filter((message) => message.role === 'system').map((message) => message.content),
+    ).toEqual(['Corvidae identity prompt.']);
+    const after = (await bureau.contexts.get(CRAFTED))!;
+    expect(after.conversationHistory.messages[firstStep]?.content).toBe('a better answer');
   });
 });
