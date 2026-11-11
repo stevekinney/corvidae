@@ -44,8 +44,6 @@ jobs:
     name: Affected workspaces lint and type-check
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    env:
-      TURBO_CONCURRENCY: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -56,16 +54,19 @@ jobs:
           bun-version-file: package.json
       - run: bun --version
       - run: bun install --frozen-lockfile
-      - run: bunx turbo run lint typecheck --affected --continue
+      # No Bun test worker starts here, so the test pool does not bound these tasks; the standard
+      # runner has 4 vCPUs and 16 GB (public repositories). The root `turbo.json` caps at 34%, one
+      # task here, for the shared 12-core development host.
+      - run: bunx turbo run lint typecheck --affected --continue --concurrency=4
 
   tests:
     name: Affected fast-lane tests
     runs-on: ubuntu-latest
-    timeout-minutes: 60
-    # Linux failure for follow-up (COR-2380): bureau's workflow-file-watch and workflow-history
-    # tests race on a runner, and a selection that reaches bureau runs them, so a failure of this
-    # job is shown as failed but does not fail the run. The job stops at its first failing turbo
-    # call. Remove this line once COR-2380 is fixed.
+    timeout-minutes: 90
+    # Linux failures for follow-up (COR-2380): bureau's file-watch tests raced on a runner and are
+    # fixed, but no run of a selection that reaches bureau has been seen green yet, and the isolated
+    # lane reaches Bureau's integration test that fails on `main` (COR-2379). A failure of this job
+    # is shown as failed but does not fail the run. Remove this line once such a run is green.
     continue-on-error: true
     env:
       TURBO_CONCURRENCY: '1'
@@ -81,4 +82,11 @@ jobs:
       - run: bun install --frozen-lockfile
       # A change that reaches the root workspace runs `test:browser-fixtures`, which needs Chromium.
       - run: bunx playwright install --with-deps chromium
-      - run: bun scripts/affected-tests.ts run --base "$TURBO_SCM_BASE"
+      # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
+      # runner image installs PostgreSQL but leaves its binaries off PATH (as in `main.yml`).
+      - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
+      # `--isolated` adds the serial slow and integration lanes, narrowed to the selection: a
+      # change that reaches no such test runs none, so a broken integration test fails before merge
+      # at the cost of only the tests the change reaches. The `main` workflow's slow job runs them
+      # all, but only after the merge.
+      - run: bun scripts/affected-tests.ts run --isolated --base "$TURBO_SCM_BASE"
