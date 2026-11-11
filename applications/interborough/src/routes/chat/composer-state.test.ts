@@ -75,8 +75,8 @@ describe('a blocked composer', () => {
   test('asks to connect a provider, and offers Use Assistant only where Assistant can be chosen', () => {
     expect(composerStatusOf(facts({ noProvider: true }))).toEqual({
       kind: 'blocked',
-      reason: 'Connect a model provider to chat',
-      action: { label: 'Connect a provider', href: '/settings/models' },
+      reason: 'Connect a model provider',
+      action: { label: 'Connect provider', href: '/settings/models', primary: true },
     });
 
     let switched = 0;
@@ -118,7 +118,7 @@ describe('a blocked composer', () => {
     };
     expect(composerStatusOf(noPlugin)).toMatchObject({ action: { label: 'New chat' } });
     expect(composerStatusOf({ ...noPlugin, ended: false })).toMatchObject({
-      action: { label: 'Connect a provider' },
+      action: { label: 'Connect provider' },
     });
   });
 });

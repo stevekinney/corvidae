@@ -231,7 +231,7 @@ describe('Home', () => {
     );
     // The provider notice is the third row alone: no banner or alert says it again.
     expect(container.querySelector('[role="alert"]')).toBeNull();
-    expect(container.textContent).not.toContain('Connect a model provider to chat');
+    expect(container.textContent).not.toContain('Connect provider');
   });
 
   test('has two rows under Needs attention when the host has no storage rule (01i)', async () => {
@@ -408,10 +408,10 @@ describe('Home’s Start a chat card (01k)', () => {
       if (row === null) throw new Error('the blocked row is not drawn');
       return row;
     });
-    expect(blocked.textContent).toContain('Connect a model provider to chat');
+    expect(blocked.textContent).toContain('Connect a model provider');
     expect(card.querySelector('textarea')).toBeNull();
     expect(
-      within(card).getByRole('link', { name: 'Connect a provider' }).getAttribute('href'),
+      within(card).getByRole('link', { name: 'Connect provider' }).getAttribute('href'),
     ).toBe('/settings/models');
     await fireEvent.click(within(card).getByRole('button', { name: 'Use Assistant' }));
     await waitFor(() => expect(card.querySelector('textarea')).not.toBeNull());

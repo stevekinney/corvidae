@@ -308,8 +308,8 @@ describe('Try it', () => {
     bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: false }] });
     const view = mount();
 
-    await view.findByText('Connect a model provider to chat');
-    await view.findByText('Connect a provider');
+    await view.findByText('Connect a model provider');
+    await view.findByText('Connect provider');
     expect(view.queryByRole('textbox', { name: 'Message' })).toBeNull();
     expect(view.getByText(copy.try.usesChanges)).not.toBeNull();
     expect(view.queryByTestId('agent-try-provider')).toBeNull();
@@ -326,7 +326,7 @@ describe('Try it', () => {
     const field = await view.findByRole('textbox', { name: 'Message' });
     expect(field.getAttribute('placeholder')).toBe(copy.try.messagePlaceholder);
     expect(view.getByText(copy.try.hint)).not.toBeNull();
-    expect(view.queryByText('Connect a model provider to chat')).toBeNull();
+    expect(view.queryByText('Connect a model provider')).toBeNull();
   });
 
   describe('while the first answer is being read', () => {

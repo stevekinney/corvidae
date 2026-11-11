@@ -30,7 +30,7 @@
   import { flushSync, tick, untrack } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
   import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
-  import type { ChatComposerStatus } from '../input/composer-status.ts';
+  import { isComposerNoticeStatus, type ChatComposerStatus } from '../input/composer-status.ts';
   import { classNames } from '../../../utilities/class-names.ts';
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
@@ -1325,7 +1325,11 @@
     getMessages: () => messages,
     getApprovalStates: () => commandActions.approvalStates,
   });
-  const approvalWaiting = $derived(approvalWait.waiting && composerStatus?.kind !== 'blocked');
+  const approvalWaiting = $derived(
+    approvalWait.waiting &&
+      composerStatus?.kind !== 'blocked' &&
+      !isComposerNoticeStatus(composerStatus),
+  );
 
   // Follow-ups typed while a run works wait in the Up next drawer, on this page, until the run
   // finishes; only Send now instead hands them to the run as live input (owner decision, COR-2289).
