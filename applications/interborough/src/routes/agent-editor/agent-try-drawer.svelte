@@ -206,7 +206,9 @@
 
     {#if trial.chat !== undefined && trial.phase === 'chatting'}
       {@const chat = trial.chat}
-      {@const waiting = new Set(chat.approvals.map(({ result }) => result.callId))}
+      {@const waiting = new Map(
+        chat.approvals.map(({ message, result }) => [result.callId, message] as const),
+      )}
       {#if changed}
         <Alert variant="info">
           <p class="weft-agent-try__alert-body" data-testid="agent-try-changed">{copy.changed}</p>
@@ -244,6 +246,7 @@
             {#if toolCallPair !== undefined && result !== undefined && result.action?.type === 'approval' && waiting.has(result.callId)}
               {@const call = toolCallPair.call}
               {@const name = toolName(call.name)}
+              {@const reason = waiting.get(result.callId)?.content}
               <div class="weft-agent-try__approval" data-testid="agent-try-approval">
                 <p class="weft-agent-try__waiting">{copy.waitingOn(name)}</p>
                 <ApprovalCard
@@ -255,7 +258,7 @@
                     arguments: call.arguments,
                     summary: declaredSummary(
                       result.action.message,
-                      typeof result.content === 'string' ? result.content : undefined,
+                      typeof reason === 'string' ? reason : undefined,
                     ),
                   })}
                   tool={{

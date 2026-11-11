@@ -461,7 +461,7 @@ describe('Try it, where it is drawn', () => {
     expect(reset.querySelector('svg')).not.toBeNull();
     // Nothing opens it: there is no Try it button in the header, and no sheet.
     expect(view.queryByRole('button', { name: copy.try.action })).toBeNull();
-    expect(view.queryByRole('dialog')).toBeNull();
+    expect(view.queryByRole('dialog', { name: copy.try.title })).toBeNull();
     // Beside the form, not inside it.
     const form = view.getByRole('form', { name: copy.formLabel });
     expect(form.contains(panel)).toBe(false);

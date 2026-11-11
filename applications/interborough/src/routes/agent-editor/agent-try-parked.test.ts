@@ -181,8 +181,8 @@ describe('Try it, parked on an approval', () => {
     const approval = await view.findByTestId('agent-try-approval');
     expect(approval.textContent).toContain(copy.try.waitingOn('Issue refund'));
     expect(approval.textContent).toContain(copy.try.testChat);
-    // The Bureau's message is the policy's reason again, so the question names the tool, as Chat's does.
-    expect(approval.textContent).toContain('Run Issue refund');
+    // The tool's own question, which differs from the reason its result row carries.
+    expect(approval.textContent).toContain('Refund order-1001?');
     expect(within(approval).getByRole('button', { name: /^Approve/ })).not.toBeNull();
     expect(within(approval).getByRole('button', { name: /^Deny/ })).not.toBeNull();
     // The trial goes on, and nothing is deleted.
