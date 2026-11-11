@@ -15,6 +15,7 @@ Purpose: Inline status message with assertive role for surfacing time-sensitive 
 
 - Communicating a page- or app-wide notice that persists across views — use a banner instead.
 - Providing supplemental commentary or guidance inline with content — use a callout instead.
+- Wrapping a form control or an inline choice, such as a segmented-control — place it in the page flow with a plain label instead.
 
 ## Keyboard and focus
 

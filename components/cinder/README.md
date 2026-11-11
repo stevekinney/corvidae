@@ -104,6 +104,15 @@ Cinder's copy is sentence case, names exactly what a control does, and never use
 
 The root `lint:root` guard `scripts/check-middle-dot-separators.ts` fails on a middle dot in Cinder, the playground and Interborough. Code that must name the character, such as a test asserting its absence, builds it with `String.fromCodePoint(0xb7)`.
 
+## Composition
+
+Most defects in a generated page come from how the components are arranged, not from the components. The [brand book](./scripts/design-system/assets/brand-book.md) states the binding composition rules and [Composing a page](./documentation/interface-guide.md#composing-a-page) names the page archetypes. Two rules apply to every page:
+
+- **Record metadata is label and value, not pills.** A [`Badge`](./src/components/badge/README.md) or a [`Chip`](./src/components/chip/README.md) is for a status or a short tag. The label and value metadata of a record (an owner, a created date, a price) goes in a [`DescriptionList`](./src/components/description-list/README.md), or a [`KeyFacts`](./src/components/key-facts/README.md) row for a few typed facts.
+- **An inline choice stays in the page flow.** Do not wrap a form control or an inline choice, such as a [`SegmentedControl`](./src/components/segmented-control/README.md), in a tinted [`Callout`](./src/components/callout/README.md) or [`Alert`](./src/components/alert/README.md). Place it in the flow with a plain label, and keep the callout or alert for a note or a message about it.
+
+A third applies to lists: trailing row actions sit in a fixed column, so a badge never changes where an action button lands. Put the badge with the metadata in the content column of the [`StackedListItem`](./src/components/stacked-list-item/README.md).
+
 ## A2UI catalog (experimental)
 
 > [!WARNING] Experimental, pinned to A2UI v0.9.1 The catalog follows A2UI v0.9.1 and may change until a stable A2UI 1.0 compatibility review. It is opt-in: no surface uses it unless a client asks for it.

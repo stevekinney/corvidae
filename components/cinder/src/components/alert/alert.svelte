@@ -10,6 +10,7 @@
    * @useWhen Calling out a transient condition the user must notice immediately within a specific region.
    * @avoidWhen Communicating a page- or app-wide notice that persists across views — use a banner instead.
    * @avoidWhen Providing supplemental commentary or guidance inline with content — use a callout instead.
+   * @avoidWhen Wrapping a form control or an inline choice, such as a segmented-control — place it in the page flow with a plain label instead.
    * @related banner, callout, toast-region
    */
   export type { AlertProps, AlertVariant } from './alert.types.ts';

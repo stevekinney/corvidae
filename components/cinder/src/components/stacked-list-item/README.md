@@ -132,6 +132,8 @@ Pass `leadingTone` to draw `leading` as a 32px rounded tile tinted with that ton
 
 Pass `actions` for trailing text buttons (Memory and New chat on Agents). Each is a secondary small button on a tablet or desktop; below 640px they collapse into one menu button ("More actions", 44px under a coarse pointer) with the same actions. A disabled action keeps `aria-disabled` and stays focusable, with `disabledReason` as its description and tooltip, in the menu too.
 
+Trailing actions sit in a fixed column. The trailing region is the row's last grid column and is only as wide as its actions, so they sit against the row's end edge whatever the body holds. A status badge or other metadata in the body can lengthen or shorten the text beside the actions, and it never changes where an action button lands, because the body column takes the slack. Keep it that way: put a badge with the metadata in the content column (`meta`, `description` or the status cell), never inside `trailing` or `actions`, where it would take width from the buttons and move them from one row to the next. Below 448px of row width the trailing region drops under the body, or collapses to one menu button, on every row alike.
+
 ## Props
 
 <!-- generated:props:start -->

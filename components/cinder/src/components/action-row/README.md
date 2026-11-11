@@ -40,6 +40,10 @@ ActionRow owns the interactive target. Do not put it on an interactive list-item
 </div>
 ```
 
+## Trailing region
+
+The `trailing` region is the row's last grid column, as wide as its content and aligned to the row's end edge. Keep it for a value or a glyph that is the same on every row, such as a time or a chevron. A status badge or other metadata belongs with the metadata in the body (`description` or `meta`), so it never changes where the row's trailing content lands.
+
 ## CSS Variables
 
 Override these variables on the `ActionRow` root with a `style` attribute or a stylesheet rule that targets your row class.

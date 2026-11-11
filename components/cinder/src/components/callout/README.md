@@ -36,6 +36,10 @@ Inline highlight block for tips, warnings, or contextual notes within content fl
 </Callout>
 ```
 
+## Keep controls out of a callout
+
+A callout is a note beside the content it qualifies. Do not wrap a form control or an inline choice, such as a [`SegmentedControl`](../segmented-control/README.md), in a tinted callout: the tint makes a choice look like a warning, the control stretches to fill a box it was not drawn for, and its own colours clash with the status colour. Place the control in the page flow with a plain label, and keep the callout for one short note, with one link or button at its end.
+
 ## Props
 
 <!-- generated:props:start -->

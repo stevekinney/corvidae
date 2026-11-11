@@ -59,6 +59,10 @@ Pass `groupBy` to put consecutive rows under a header band: it returns `{ key, l
 
 Pass `insertionAnnouncement` to make the list live: a new row, such as a run that starts while the page is open, appears at the top of its group, and the function receives the number of new rows and returns the text (`1 new run`) that a polite live region speaks and draws as an accent status strip above the first group. Before any row arrives the region takes no space, so the first render announces and draws nothing, and the list holds the reader's place when the strip appears. Rows inserted above the viewport do not move what the reader is looking at: browsers with scroll anchoring already hold the position, and the list scrolls by the difference where they do not. A list scrolled to its top is left alone, so the new row is seen.
 
+## Row actions stay in a fixed column
+
+A row's trailing actions sit in a fixed column at the end of the row, so a status badge or other metadata never changes where an action button lands. Put badges with the metadata in the row's content column, as [`StackedListItem`](../stacked-list-item/README.md#trailing-actions) does, and keep the trailing region for the actions alone.
+
 ## Long values
 
 The list wraps unbroken values (an identifier) anywhere by default, and `StackedListItem` rows clamp their titles at two lines, so no value widens the list past its frame.

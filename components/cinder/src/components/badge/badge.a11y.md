@@ -15,6 +15,7 @@ Purpose: Compact non-interactive label that annotates an adjacent element with a
 
 - The label must be interactive or removable — use chip instead.
 - Showing only a colored dot for presence — use status-dot instead.
+- Showing label and value metadata for a record, such as an owner, a date or a price — use description-list instead.
 
 ## Keyboard and focus
 

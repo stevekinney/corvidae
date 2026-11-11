@@ -14,6 +14,7 @@
    * @useWhen Annotating a plan name, customer row, or invoice line with its current payment lifecycle state.
    * @avoidWhen The label must be interactive or removable — use chip instead.
    * @avoidWhen Showing only a colored dot for presence — use status-dot instead.
+   * @avoidWhen Showing label and value metadata for a record, such as an owner, a date or a price — use description-list instead.
    * @related chip, status-dot
    */
   export type { BadgeProps, BadgeSeverity, BadgeSize, BadgeVariant } from './badge.types.ts';

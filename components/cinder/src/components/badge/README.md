@@ -2,7 +2,9 @@
 
 A small inline label for status, category, or count display.
 
-Use Badge for attached counts, statuses, and compact annotations; use `Chip mode="display"` when the item is an issue label or tag.
+Use Badge for a status or a short tag only: an attached count, a status word, a compact annotation. Use `Chip mode="display"` when the item is an issue label or tag. Label and value metadata for a record (an owner, a created date, a price) is not a row of badges: put it in a [`DescriptionList`](../description-list/README.md), or a [`KeyFacts`](../key-facts/README.md) row for a few typed facts.
+
+A badge belongs with the metadata in a row's content column and never in its trailing action column, so it cannot change where an action button lands (see [`StackedListItem`](../stacked-list-item/README.md#trailing-actions)). Show a status only when it is actionable, and never beside a button that says the same thing.
 
 ## Usage
 

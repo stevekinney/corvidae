@@ -23,6 +23,10 @@ Semantic dl/dt/dd list for term–description pairs such as metadata or attribut
 
 The `two-column` variant sets a muted term on the left and the value on the right, with no row dividers.
 
+### Metadata for a record
+
+`DescriptionList` is how a record shows its label and value metadata: an owner, a created date, a price. Do not draw those pairs as a row of `Badge` or `Chip` pills; pills are for a status or a short tag. The `two-column`, `fields` and `facts` variants set the label and the value side by side, so labels line up down the page and the values read as text. For a few typed facts that each take an icon and a value, such as a kind, a neighbourhood and a price band, use [`KeyFacts`](../key-facts/README.md).
+
 ### Formatted values
 
 A definition can be a value the list formats, so every list shows timestamps, IDs and tags the same way:
