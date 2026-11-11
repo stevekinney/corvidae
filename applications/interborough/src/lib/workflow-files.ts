@@ -391,6 +391,46 @@ export async function updateWorkflowFile(
   );
 }
 
+const impactChangeSchema = z.object({
+  kind: z.string(),
+  /** The step's position, counted from 1, for a change to one step. */
+  step: z.number().optional(),
+  /** What it was and what it becomes, for a change that names both (a step's signal, its agent). */
+  from: z.unknown().optional(),
+  to: z.unknown().optional(),
+  breaking: z.boolean(),
+});
+
+const impactSchema = z.object({
+  version: z.string().nullable(),
+  previousVersion: z.string().nullable(),
+  changes: z.array(impactChangeSchema),
+  compatibility: z.enum(['compatible', 'breaking']).nullable(),
+  inFlight: z.number().nullable(),
+});
+
+/**
+ * What saving a definition would do, as `bureau.workflows.impact` answers it: the `version` the
+ * save makes (`null` when it changes nothing that makes one), the `previousVersion` it replaces,
+ * each change with whether it is `breaking`, the verdict, and how many runs are `inFlight` (`null`
+ * when the caller may not count them).
+ */
+export type WorkflowImpact = z.infer<typeof impactSchema>;
+
+/** One change {@link WorkflowImpact} lists. */
+export type WorkflowImpactChange = WorkflowImpact['changes'][number];
+
+/** What saving `definition` as the workflow `id` would do. It writes nothing. */
+export async function getWorkflowImpact(
+  id: string,
+  definition: WorkflowDefinitionInput,
+  options?: Options,
+): Promise<WorkflowImpact> {
+  return impactSchema.parse(
+    await callBureau('bureau.workflows.impact', { id, definition }, options),
+  );
+}
+
 /** Sets `paused: true` in the workflow's file, if it still hashes to `expectedHash`. */
 export async function pauseWorkflowFile(
   id: string,

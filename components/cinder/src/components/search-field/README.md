@@ -12,12 +12,17 @@ Dedicated text input with a clear button and search icon for filtering or queryi
 <SearchField />
 ```
 
+## Filled appearance
+
+`appearance` is forwarded to the inner Input: `"filled"` draws the inset fill inside the 1px `--cinder-control-border` edge, and a field with no `appearance` is filled under `data-density="comfortable"` and outlined otherwise.
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | How the field is drawn, forwarded to the inner Input. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose. Left unset, the field follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. |
 | `class` | `string` | no | — | Additional class merged with `.cinder-search-field`. |
 | `disabled` | `boolean` | no | — | Disables the input and the clear button. |
 | `id` | `string` | no | — | Stable id for the input element. Required when composing with `FormField`. |

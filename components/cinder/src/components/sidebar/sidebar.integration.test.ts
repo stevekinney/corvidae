@@ -956,9 +956,10 @@ describe('Sidebar collapsed CSS contract', () => {
 
   test('the drawer’s rows are 44px touch targets whatever the pointer', async () => {
     const css = await Bun.file(new URL('./sidebar.css', import.meta.url)).text();
+    // Every vertical row of the drawer, not only the selected one, whose own rule comes first.
     const rule = parseCssRules(css).find((candidate) =>
-      candidate.selectors.some((selector) =>
-        selector.startsWith('.cinder-sidebar--mobile .cinder-navigation-item'),
+      candidate.selectors.includes(
+        ".cinder-sidebar--mobile .cinder-navigation-item[data-variant='vertical']",
       ),
     );
     expect(rule?.declarations).toContain('min-block-size: 2.75rem');

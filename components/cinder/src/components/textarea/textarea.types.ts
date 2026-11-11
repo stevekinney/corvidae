@@ -44,6 +44,13 @@ export type TextareaProps = Omit<HTMLTextareaAttributes, 'class'> & {
    */
   variant?: TextareaVariant;
   /**
+   * How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an
+   * inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary
+   * the fill alone would lose, with a 12px radius and the 2px focus ring. Left unset, the field
+   * follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise.
+   */
+  appearance?: 'outlined' | 'filled' | undefined;
+  /**
    * When `true` AND `maxlength` is set, renders a live character counter
    * (`{value.length}/{maxlength}`) below the textarea. The counter element
    * is wired into `aria-describedby` so screen readers announce it as part

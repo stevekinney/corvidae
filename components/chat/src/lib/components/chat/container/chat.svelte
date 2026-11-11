@@ -30,7 +30,7 @@
   import { flushSync, tick, untrack } from 'svelte';
   import { isStreamingMessage } from '../builders.ts';
   import type { Message, MessageInput, ToolCallPair } from '../conversation-model.ts';
-  import type { ChatComposerStatus } from '../input/composer-status.ts';
+  import { isComposerNoticeStatus, type ChatComposerStatus } from '../input/composer-status.ts';
   import { classNames } from '../../../utilities/class-names.ts';
   import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import {
@@ -51,6 +51,8 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatApprovalDrawer from './chat-approval-drawer.svelte';
+  import ChatAvailabilityState from './chat-availability-state.svelte';
+  import { availabilityLabels, availabilityReplacesComposer } from './chat-availability.ts';
   import ChatFollowUpDiscardDrawer from './chat-follow-up-discard-drawer.svelte';
   import ChatFollowUpDrawer from './chat-follow-up-drawer.svelte';
   import { appendToDraft, followUpText, type QueuedFollowUp } from './chat-follow-up-queue.ts';
@@ -60,6 +62,7 @@
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
+  import ChatQuestionDock from '../question/chat-question-dock.svelte';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
   import ChatSearchBar from './chat-search-bar.svelte';
@@ -77,7 +80,14 @@
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
-  import { Button, ConfirmDialog, Quote, SelectionPopover } from '@lostgradient/cinder';
+  import {
+    Button,
+    ConfirmDialog,
+    EmptyState,
+    MessageSquare,
+    Quote,
+    SelectionPopover,
+  } from '@lostgradient/cinder';
   import { useChatStreamingState } from './use-chat-streaming-state.svelte.ts';
   import { useChatCommandActions } from './use-chat-command-actions.svelte.ts';
   import { useChatQuotes } from './use-chat-quotes.svelte.ts';
@@ -143,8 +153,13 @@
     composerFormattingToolbar = false,
     composerMarkdownStyling = true,
     composerStatus,
+    availability,
+    questionPlacement = 'inline',
+    questionLabels,
     empty,
     trailing,
+    emptyTitle = 'No messages yet',
+    emptyDescription,
     emptyPrompts,
     messageActions,
     messageStatus,
@@ -403,8 +418,27 @@
             return reference.id;
           },
     () => maxFileSize,
+    // A composer that is replaced (blocked, archived, read only, or hidden by an availability state)
+    // has nothing to give back, so a question then stays in its row rather than docking over it.
+    () =>
+      composerStatus?.kind === 'blocked' ||
+      isComposerNoticeStatus(composerStatus) ||
+      availabilityReplacesComposer(availability)
+        ? 'inline'
+        : questionPlacement,
   );
   provideQuestionStore(questions);
+
+  // The first open question that is docked takes the composer's place; Reply in chat instead puts
+  // it back in its row and gives the composer back.
+  const dockedQuestion = $derived(questions.dockedQuestions[0]);
+  const dockedPosition = $derived(questions.dockedAnswered + 1);
+  const dockedTotal = $derived(questions.dockedAnswered + questions.dockedQuestions.length);
+
+  function replyInChatInstead(toolCallId: string): void {
+    questions.dismissDock(toolCallId);
+    void tick().then(() => inputRef?.focus());
+  }
 
   const commandActions = useChatCommandActions({
     getAdapter: () => adapter,
@@ -1302,6 +1336,17 @@
   // The line under the composer is the host's. A pending approval is shown in the transcript, so
   // the composer keeps its hint and stays live (a message sent now steers the run).
   const resolvedComposerStatus = $derived<ChatComposerStatus | undefined>(composerStatus);
+  // A conversation that is not available (loading, canceled, failed or deleted) stands in the
+  // transcript's place; a failed or deleted one has nothing to send to, so it takes the composer's
+  // place too, while a loading or canceled one keeps the editor and Send waits for the history.
+  // Both stay mounted but out of sight, so a draft and the scroll state survive.
+  const transcriptHidden = $derived(availability !== undefined);
+  const composerHidden = $derived(availabilityReplacesComposer(availability));
+  const composerWaitsForHistory = $derived(
+    availability?.kind === 'loading' || availability?.kind === 'canceled'
+      ? availabilityLabels(availability).sendWaits
+      : undefined,
+  );
   // While a question Chat draws waits on the composer, its placeholder says what to do: a free-text
   // question just reads Answer; a choice says the choices are above and an answer of your own is
   // welcome. A host that draws its own question (`composerAnswering`) words the placeholder itself.
@@ -1325,7 +1370,11 @@
     getMessages: () => messages,
     getApprovalStates: () => commandActions.approvalStates,
   });
-  const approvalWaiting = $derived(approvalWait.waiting && composerStatus?.kind !== 'blocked');
+  const approvalWaiting = $derived(
+    approvalWait.waiting &&
+      composerStatus?.kind !== 'blocked' &&
+      !isComposerNoticeStatus(composerStatus),
+  );
 
   // Follow-ups typed while a run works wait in the Up next drawer, on this page, until the run
   // finishes; only Send now instead hands them to the run as live input (owner decision, COR-2289).
@@ -2085,6 +2134,16 @@
       {/if}
     {/snippet}
 
+    {#snippet emptyPromptButtons()}
+      <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
+        {#each emptyPrompts ?? [] as prompt, index (index)}
+          <button type="button" class="chat-empty-prompt" onclick={() => handlePromptClick(prompt)}>
+            {prompt}
+          </button>
+        {/each}
+      </div>
+    {/snippet}
+
     {#key timelineResetIdentity}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
@@ -2101,6 +2160,7 @@
         aria-relevant={isVirtualized ? undefined : 'additions'}
         data-cinder-virtualized={isVirtualized ? '' : undefined}
         data-cinder-history-restoring={isRestoringNonVirtualHistory ? '' : undefined}
+        style:display={transcriptHidden ? 'none' : undefined}
         tabindex="0"
         onwheel={getHistoryRestoration().handleUserInput}
         ontouchstart={getHistoryRestoration().handleUserInput}
@@ -2127,20 +2187,17 @@
             {@render empty()}
           {:else}
             <div class="chat-empty" role="status">
-              <p>No messages yet</p>
-              {#if emptyPrompts && emptyPrompts.length > 0}
-                <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
-                  {#each emptyPrompts as prompt, index (index)}
-                    <button
-                      type="button"
-                      class="chat-empty-prompt"
-                      onclick={() => handlePromptClick(prompt)}
-                    >
-                      {prompt}
-                    </button>
-                  {/each}
-                </div>
-              {/if}
+              <EmptyState
+                kind="first-use"
+                headingLevel={2}
+                title={emptyTitle}
+                {...emptyDescription === undefined ? {} : { description: emptyDescription }}
+                {...emptyPrompts && emptyPrompts.length > 0 ? { action: emptyPromptButtons } : {}}
+              >
+                {#snippet icon()}
+                  <MessageSquare />
+                {/snippet}
+              </EmptyState>
             </div>
           {/if}
         {:else if isVirtualized}
@@ -2189,8 +2246,12 @@
       </div>
     {/key}
 
+    {#if availability !== undefined}
+      <ChatAvailabilityState {availability} />
+    {/if}
+
     <!-- Input Area with Jump Buttons -->
-    <div class="chat-input-wrapper">
+    <div class="chat-input-wrapper" style:display={composerHidden ? 'none' : undefined}>
       <ChatJumpControls
         showJumpButton={scrollState.showJumpButton}
         hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
@@ -2201,7 +2262,10 @@
       />
 
       <!-- Input Area -->
-      <div class="chat-input-area">
+      <div
+        class="chat-input-area"
+        data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+      >
         {#if quotes.quotes.length > 0}
           <ChatQuoteChips
             quotes={quotes.quotes}
@@ -2236,6 +2300,18 @@
             onremove={removeQueuedFollowUp}
           />
         {/if}
+        {#if dockedQuestion !== undefined}
+          {#key dockedQuestion.toolCallId}
+            <ChatQuestionDock
+              id={`${id}-question-dock`}
+              question={dockedQuestion}
+              position={dockedPosition}
+              total={dockedTotal}
+              onReply={() => replyInChatInstead(dockedQuestion.toolCallId)}
+              labels={questionLabels}
+            />
+          {/key}
+        {/if}
         <ChatInput
           id={inputId}
           bind:this={inputRef}
@@ -2249,7 +2325,7 @@
           paused={disabled}
           {pausedReason}
           sending={composerSending}
-          starting={composerStarting}
+          starting={composerStarting ?? composerWaitsForHistory}
           clearOnSubmit={clearComposerOnSubmit}
           allowFollowUp={followUpsEnabled && !composerCompact}
           queueing={approvalWaiting || followUps.holding}
@@ -2774,6 +2850,12 @@
 
   .chat-container[data-surface-mode='transparent'] .chat-input-area {
     background: transparent;
+  }
+
+  /* A docked question takes the composer's place. The composer stays mounted, so a draft and its
+     attachments survive, and comes back when the question is answered or replied to in chat. */
+  .chat-input-area[data-question-docked] > :global(.chat-input-shell) {
+    display: none;
   }
 
   /* Responsive adjustments: tighten padding at narrow widths.

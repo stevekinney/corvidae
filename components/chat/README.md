@@ -294,7 +294,7 @@ const accepted: boolean = controller.reconcileApprovalExpiry({
 
 ## Questions
 
-A tool result with `outcome: 'action_required'` and an `input` action that carries a JSON Schema renders as a question, not as a plain result. Chat derives a `tool-input` message part from it, shows the action's `message` as the prompt, and draws the control the schema asks for in place (COR-1309, COR-1836). The part is titled "Input requested by" the tool's name. The schema is the answer's schema (draft 2020-12); the `x-` keywords are the ones Operative's `requestHumanInput` documents.
+A tool result with `outcome: 'action_required'` and an `input` action that carries a JSON Schema renders as a question, not as a plain result. Chat derives a `tool-input` message part from it, shows the action's `message` as the question, and draws the control the schema asks for in place (COR-1309, COR-1836). The question is the part's one visible heading and the accessible name of its region, ahead of the controls; the tool's name is not said there, because the expanded tool activity carries it. A request with no `message` falls back to "Input requested by" the tool's name. The schema is the answer's schema (draft 2020-12); the `x-` keywords are the ones Operative's `requestHumanInput` documents.
 
 | Kind | Schema | Control |
 | --- | --- | --- |

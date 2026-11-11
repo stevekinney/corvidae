@@ -58,13 +58,15 @@ test.describe('Checkbox first-line alignment', () => {
 
   test('a one-line label: the box centre is the line centre', async ({ page }) => {
     const { label } = field(page, 'single-line');
-    expect((await firstLineOf(label)).lines).toBe(1);
+    const { lines } = await firstLineOf(label);
+    expect(lines).toBe(1);
     await expectBesideFirstLine(page, 'single-line', BOX);
   });
 
   test('a three-line label: the box top sits within the first line box', async ({ page }) => {
     const { label } = field(page, 'long-label');
-    expect((await firstLineOf(label)).lines).toBeGreaterThanOrEqual(3);
+    const { lines } = await firstLineOf(label);
+    expect(lines).toBeGreaterThanOrEqual(3);
     await expectBesideFirstLine(page, 'long-label', BOX);
   });
 
@@ -72,7 +74,8 @@ test.describe('Checkbox first-line alignment', () => {
     page,
   }) => {
     const { control, label } = field(page, 'task-long-label');
-    expect((await firstLineOf(label)).lines).toBeGreaterThanOrEqual(3);
+    const { lines } = await firstLineOf(label);
+    expect(lines).toBeGreaterThanOrEqual(3);
     await expectBesideFirstLine(page, 'task-long-label', TASK_BOX);
     const radius = await control.evaluate((element) =>
       Number.parseFloat(getComputedStyle(element).borderTopLeftRadius),
@@ -82,7 +85,8 @@ test.describe('Checkbox first-line alignment', () => {
 
   test('a described three-line label keeps the box beside the first line', async ({ page }) => {
     const { label } = field(page, 'described');
-    expect((await firstLineOf(label)).lines).toBeGreaterThanOrEqual(3);
+    const { lines } = await firstLineOf(label);
+    expect(lines).toBeGreaterThanOrEqual(3);
     await expectBesideFirstLine(page, 'described', BOX);
   });
 
@@ -90,9 +94,11 @@ test.describe('Checkbox first-line alignment', () => {
     page,
   }) => {
     const single = await boxOf(field(page, 'single-line').control);
-    const singleTop = single.top - (await boxOf(page.locator('[data-testid="single-line"]'))).top;
+    const singleRow = await boxOf(page.locator('[data-testid="single-line"]'));
+    const singleTop = single.top - singleRow.top;
     const long = await boxOf(field(page, 'long-label').control);
-    const longTop = long.top - (await boxOf(page.locator('[data-testid="long-label"]'))).top;
+    const longRow = await boxOf(page.locator('[data-testid="long-label"]'));
+    const longTop = long.top - longRow.top;
     expect(Math.abs(singleTop - longTop)).toBeLessThanOrEqual(ALIGNMENT_TOLERANCE);
   });
 

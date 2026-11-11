@@ -92,7 +92,9 @@ async function openJson(container: HTMLElement): Promise<void> {
     return found as HTMLElement;
   });
   await fireEvent.click(tab);
-  await waitFor(() => expect(container.querySelector('#workflow-builder-description')).toBeNull());
+  await waitFor(() =>
+    expect(container.querySelector('#workflow-builder-description')?.outerHTML ?? null).toBeNull(),
+  );
   await waitFor(() => expect(textarea(container)).toBeTruthy());
 }
 
@@ -992,7 +994,9 @@ describe('the builder', () => {
       target: { value: 'digest-two' },
     });
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="workflow-builder-id-taken"]')).toBeNull(),
+      expect(
+        container.querySelector('[data-testid="workflow-builder-id-taken"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
   });
 

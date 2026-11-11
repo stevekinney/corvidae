@@ -47,10 +47,15 @@ const schema = {
       default: 'md',
     },
     variant: {
-      enum: ['default', 'ghost'],
+      enum: ['default', 'ghost', 'inline'],
       description:
-        'Visual style. `ghost` has no border or fill at rest, a neutral tint on hover and while open,\nthe focus ring wrapping the whole control, and keeps its chevron: use it for a select inside\na bordered container (a composer, an inline toolbar) so the row of controls reads as one\nsurface. `default` is the bordered select for forms and filter bars.',
+        'Visual style. `ghost` has no border or fill at rest, a neutral tint on hover and while open,\nthe focus ring wrapping the whole control, and keeps its chevron: use it for a select inside\na bordered container (a composer, an inline toolbar) so the row of controls reads as one\nsurface. `inline` sits inside a sentence ("Archive messages from [sender]"): it takes the\nsurrounding text size and weight, the `sm` height and an auto width, whatever `size` says.\n`default` is the bordered select for forms and filter bars.',
       default: 'default',
+    },
+    appearance: {
+      enum: ['outlined', 'filled'],
+      description:
+        'How the bordered select is drawn. `"outlined"` is the control fill inside a 1px edge.\n`"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps\nthe 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the\ncomfortable density and the 2px focus ring. Left unset, the select follows its density:\n`filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost`\nvariant has no fill and ignores it; `inline` is outlined unless `"filled"` is set. The\nnative caret never shows: the Cinder chevron is the only one.',
     },
     tone: {
       enum: ['default', 'accent'],

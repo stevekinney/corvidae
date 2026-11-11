@@ -183,6 +183,16 @@ const schema = {
       description:
         "MIME types the composer takes, as exact types or `type/*` families; also the file picker's `accept`. A file of another type shows as an `error` attachment and is never uploaded.",
     },
+    emptyTitle: {
+      type: 'string',
+      description:
+        'The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`.',
+    },
+    emptyDescription: {
+      type: 'string',
+      description:
+        'One sentence under the empty state title, such as what the agent does. Has no effect when a custom `empty` snippet is provided. Default none.',
+    },
     emptyPrompts: {
       type: 'array',
       items: {

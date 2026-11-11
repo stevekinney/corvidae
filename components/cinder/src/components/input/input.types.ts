@@ -77,6 +77,14 @@ export type InputProps = Omit<HTMLInputAttributes, 'class' | 'size'> &
      */
     variant?: InputVariant;
     /**
+     * How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an
+     * inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary
+     * the fill alone would lose, with a 12px radius, a 48px height in the comfortable density and
+     * the 2px focus ring. Left unset, the field follows its density: `filled` under
+     * `data-density="comfortable"`, `outlined` otherwise.
+     */
+    appearance?: 'outlined' | 'filled' | undefined;
+    /**
      * Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px,
      * `lg` 40px, the same heights as a Button of that size. Replaces the native character-width
      * `size` attribute, which Cinder does not forward; set a width with CSS instead.

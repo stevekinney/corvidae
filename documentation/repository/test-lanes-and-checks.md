@@ -38,6 +38,8 @@ The batch validate, `bun run validate:batch`, is `bun run validate` followed by 
 
 `gate-run.ts run` records each batch validate (the command `repository.json` names as `batchCommand`, `bun run validate:batch`) in `<main checkout>/tmp/chef/main-health.json` with its head, exit code, and time. `merge-gate.ts` reads it and warns in its report while the last batch validate at a head on `main`'s first-parent history failed; it never refuses on it, so a red `main` is the coordinator's to read and fix forward, not a lock on every merge. A fix for a red `main` is declared with `--fixes-main`, which records it in the health file.
 
+The `main` GitHub Actions workflow (`.github/workflows/main.yml`) shares one concurrency group across every push, without cancelling a run in progress, so GitHub keeps at most one pending run and replaces it with the newest commit (COR-2396). A `main` run therefore covers every push since the previous run, and a red run names a range of commits, not one.
+
 `bun scripts/chef/batch-validate.ts` runs the batch validate on `origin/main` in a dedicated worktree once at least five merges have landed since the last recorded batch head or two hours have passed, and skips when the health file already holds a green record at the current head. It applies no load gate unless `--max-load <n>` is given, and one host-wide lock in the Git common directory (`corvidae-batch-validate.lock`) keeps a single batch validate running per host, so a second coordinator exits 0 instead of starting another. A coordinator schedules it with a Claude Code scheduled task or `/loop` ([program runs](../../.agents/skills/chef/references/program-runs.md)), never with CI, cron files, or launchd plists.
 
 ## Affected test selection

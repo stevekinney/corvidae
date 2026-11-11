@@ -14,24 +14,19 @@
    * @related page-header, toolbar, navigation-bar
    * @rationale Nearest alternatives: Toolbar is the WAI-ARIA roving-tabindex control group and NavigationBar is a bar of navigation items; neither is a material bar that carries the page's title.
    */
+  import type { Snippet } from 'svelte';
+
   export type {
     AppBarAction,
     AppBarBackAction,
     AppBarHeadingLevel,
     AppBarProps,
   } from './app-bar.types.ts';
-</script>
 
-<script lang="ts">
-  import type { Snippet } from 'svelte';
-  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
-
-  import { classNames } from '../../utilities/class-names.ts';
-  import Button from '../button/button.svelte';
-  import Tooltip from '../tooltip/tooltip.svelte';
-  import type { AppBarProps } from './app-bar.types.ts';
-
-  /** One icon-only control in the bar: Back, or one of the actions. */
+  /**
+   * One icon-only control in the bar: Back, or one of the actions. Declared in the module script
+   * because the snippet that draws it is hoisted there.
+   */
   type IconControl = {
     label: string;
     href?: string | undefined;
@@ -39,6 +34,15 @@
     disabled?: boolean | undefined;
     icon?: Snippet | undefined;
   };
+</script>
+
+<script lang="ts">
+  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+
+  import { classNames } from '../../utilities/class-names.ts';
+  import Button from '../button/button.svelte';
+  import Tooltip from '../tooltip/tooltip.svelte';
+  import type { AppBarProps } from './app-bar.types.ts';
 
   let {
     title,

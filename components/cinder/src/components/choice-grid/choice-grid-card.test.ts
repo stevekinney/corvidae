@@ -18,6 +18,15 @@ function radios(container: HTMLElement): HTMLElement[] {
 }
 
 describe('ChoiceGrid card variant (row 33e)', () => {
+  test('a host sets a minimum card height with --_cinder-choice-card-min-block-size, and the default is none', async () => {
+    const css = await Bun.file(
+      new URL('../choice-grid-item/choice-grid-item.css', import.meta.url),
+    ).text();
+    const card = /\.cinder-choice-grid-item\[data-cinder-variant='card'\] \{([^}]*)\}/u.exec(css)?.[1];
+
+    expect(card).toContain('min-block-size: var(--_cinder-choice-card-min-block-size, 0);');
+  });
+
   test('each card has an indicator, an icon, a title and a description', () => {
     const { container } = render(Fixture);
     const [mcp, openapi] = radios(container);

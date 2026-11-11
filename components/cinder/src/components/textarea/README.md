@@ -12,12 +12,17 @@ Multi-line text input for longer freeform content with optional resize control.
 <Textarea id="notes" label="Notes" />
 ```
 
+## Filled appearance
+
+`appearance="filled"` draws an inset fill inside the same 1px `--cinder-control-border` edge, a 12px radius and the 2px focus ring, as on Input. Under `data-density="comfortable"` a textarea with no `appearance` is filled; the default density stays outlined, and `appearance="outlined"` opts a field out.
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose, with a 12px radius and the 2px focus ring. Left unset, the field follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. |
 | `class` | `string` | no | — | Extra class names merged with `.cinder-textarea`. |
 | `countVisible` | `boolean` | no | — | When `true` AND `maxlength` is set, renders a live character counter (`{value.length}/{maxlength}`) below the textarea. The counter element is wired into `aria-describedby` so screen readers announce it as part of the field's description, and it is also placed inside an `aria-live="polite"` region so updates are announced as the user types. |
 | `description` | `string` | no | — | Helper text displayed below the textarea; wired via `aria-describedby`. |

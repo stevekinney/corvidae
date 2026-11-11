@@ -48,7 +48,7 @@ export function retireSettledApprovals(
   pendingApprovals: Set<string>,
   now: number,
 ): void {
-  for (const id of [...pendingApprovals]) {
+  for (const id of pendingApprovals) {
     if (!isPendingApprovalResult(toolResultOf(history, id), now)) pendingApprovals.delete(id);
   }
 }

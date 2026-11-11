@@ -62,6 +62,11 @@ const schema = {
         'Visual style. `"code"` applies a shared monospace metric set (font-family, font-size,\nline-height, tab-size) for source-like values such as regular expressions, URIs, or\nidentifiers. `"bare"` is an editable title: text that looks like a 600-weight title, with\nno border at rest, a hover tint, a focus ring over the control fill, and a width that\nfollows its content.',
       default: 'default',
     },
+    appearance: {
+      enum: ['outlined', 'filled'],
+      description:
+        'How the field is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an\ninset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary\nthe fill alone would lose, with a 12px radius, a 48px height in the comfortable density and\nthe 2px focus ring. Left unset, the field follows its density: `filled` under\n`data-density="comfortable"`, `outlined` otherwise.',
+    },
     size: {
       enum: ['sm', 'md', 'lg'],
       description:

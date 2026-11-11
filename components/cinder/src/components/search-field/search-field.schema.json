@@ -26,6 +26,10 @@
       "type": "string",
       "description": "Bindable search value."
     },
+    "appearance": {
+      "enum": ["outlined", "filled"],
+      "description": "How the field is drawn, forwarded to the inner Input. `\"outlined\"` is the control fill inside a\n1px edge. `\"filled\"` is an inset fill inside the same 1px `--cinder-control-border` edge,\nwhich keeps the 3:1 boundary the fill alone would lose. Left unset, the field follows its\ndensity: `filled` under `data-density=\"comfortable\"`, `outlined` otherwise."
+    },
     "size": {
       "enum": ["sm", "md", "lg"],
       "description": "Height step from the shared `--cinder-control-height-*` scale, forwarded to the inner\nInput: `sm` 28px, `md` 32px, `lg` 40px.",

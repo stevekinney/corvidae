@@ -45,7 +45,8 @@
     width: 100%;
     min-height: var(--cinder-control-height-md);
     padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-3) var(--cinder-space-8);
+    /* 40px at the end clears Cinder's chevron (18px, 12px in from the end) in every appearance. */
+    padding-inline: var(--cinder-space-3) var(--cinder-space-10);
 
     font-size: var(--cinder-text-sm);
     line-height: var(--cinder-leading-normal);
@@ -74,6 +75,40 @@
   .cinder-select[data-cinder-size='lg'] {
     min-height: var(--cinder-control-height-lg);
     padding-block: var(--cinder-space-2);
+  }
+
+  /* ----------------------------------------
+ * Filled appearance (COR-2313)
+ *
+ * An inset fill inside the same 1px `--cinder-control-border` edge, so the boundary keeps its 3:1
+ * contrast (the fill alone measures about 1.1:1), with a 12px radius and the shared 2px focus
+ * ring. A select with no `appearance` follows its density: filled under
+ * `data-density='comfortable'`, outlined otherwise, and an explicit `appearance='outlined'` opts
+ * out. The component marks a ghost select `outlined` always, and an inline one unless it asks
+ * for `filled`, so the density default never fills either. The density selector keeps its
+ * specificity at or below the state rules, which sit after it, so disabled, inert and read-only
+ * still win.
+ * ---------------------------------------- */
+
+  .cinder-select[data-cinder-appearance='filled'],
+  .cinder-select:where([data-density='comfortable'] *):not([data-cinder-appearance='outlined']) {
+    background-color: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-lg);
+  }
+
+  /* The comfortable density's filled select is 48px, the `lg` step, at the default `md` size. */
+  .cinder-select:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    )[data-cinder-size='md'] {
+    min-height: var(--cinder-control-height-lg);
+  }
+
+  /* Focus lifts the fill to the control surface under the 2px ring. */
+  .cinder-select[data-cinder-appearance='filled']:focus-visible,
+  .cinder-select:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    ):focus-visible {
+    background-color: var(--cinder-control-background);
   }
 
   @media (hover: hover) {
@@ -147,9 +182,9 @@
   .cinder-select-field__chevron {
     position: absolute;
     inset-block-start: 50%;
-    inset-inline-end: var(--cinder-space-2);
-    inline-size: 1rem;
-    block-size: 1rem;
+    inset-inline-end: var(--cinder-space-3);
+    inline-size: 1.125rem;
+    block-size: 1.125rem;
     transform: translateY(-50%);
     pointer-events: none;
     z-index: 1;
@@ -165,8 +200,8 @@
     mask-repeat: no-repeat;
     -webkit-mask-position: center;
     mask-position: center;
-    -webkit-mask-size: 1rem 1rem;
-    mask-size: 1rem 1rem;
+    -webkit-mask-size: 1.125rem 1.125rem;
+    mask-size: 1.125rem 1.125rem;
   }
 
   .cinder-select:disabled + .cinder-select-field__chevron {
@@ -281,6 +316,38 @@
   }
 
   /* ----------------------------------------
+ * Inline variant (COR-2313)
+ * A select inside a sentence ("Archive messages from [sender]"). The value takes the surrounding
+ * font family, size and weight, the control is the `sm` height whatever `size` says, and the
+ * width follows the longest option instead of filling the line. The end padding and the chevron
+ * are the shared ones, so the caret never overlaps the text.
+ * ---------------------------------------- */
+
+  .cinder-select-field[data-cinder-variant='inline'] {
+    display: inline-flex;
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    vertical-align: middle;
+  }
+
+  .cinder-select-field[data-cinder-variant='inline'] .cinder-select-field__control {
+    inline-size: auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-select[data-cinder-variant='inline'] {
+    inline-size: auto;
+    min-inline-size: 0;
+    max-inline-size: 100%;
+    min-height: var(--cinder-control-height-sm);
+    padding-block: var(--cinder-space-0-5);
+    font-family: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+  }
+
+  /* ----------------------------------------
  * Read-only
  * Shows its value and takes focus, but does not open: no pointer affordance, no hover change.
  * ---------------------------------------- */
@@ -390,8 +457,11 @@
     overflow: hidden;
   }
 
-  /* A ghost trigger hugs its content, so the list is not held to that narrow width. */
-  .cinder-select__panel.cinder-popover:has(> .cinder-select__content[data-cinder-variant='ghost']) {
+  /* A ghost or inline trigger hugs its content, so the list is not held to that narrow width. */
+  .cinder-select__panel.cinder-popover:has(> .cinder-select__content[data-cinder-variant='ghost']),
+  .cinder-select__panel.cinder-popover:has(
+      > .cinder-select__content[data-cinder-variant='inline']
+    ) {
     min-inline-size: min(16rem, calc(100vw - var(--cinder-space-4)));
   }
 

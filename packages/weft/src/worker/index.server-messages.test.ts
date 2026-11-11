@@ -249,6 +249,8 @@ describe('RemoteWorker server frames', () => {
   it("clears a canceled attempt's automatic heartbeat while its activity ignores the signal", async () => {
     using setIntervalSpy = spyOn(globalThis, 'setInterval');
     using clearIntervalSpy = spyOn(globalThis, 'clearInterval');
+    // Compared by identity: two timers are deep-equal, so `toHaveBeenCalledWith` cannot tell them apart.
+    const clearedTimers = () => clearIntervalSpy.mock.calls.map((call) => call[0] as unknown);
     const release = createDeferred();
     const signals = new Map<string, AbortSignal>();
     // A 60-second lease derives a 20-second automatic heartbeat, a delay no other worker timer uses.
@@ -311,8 +313,8 @@ describe('RemoteWorker server frames', () => {
     const [canceledTimer, liveTimer] = heartbeatTimers;
     expect(signals.get('attempt-old')?.reason).toBe('operator stop');
     expect(signals.get('attempt-new')?.aborted).toBe(false);
-    expect(clearIntervalSpy).toHaveBeenCalledWith(canceledTimer);
-    expect(clearIntervalSpy).not.toHaveBeenCalledWith(liveTimer);
+    expect(clearedTimers()).toContain(canceledTimer);
+    expect(clearedTimers()).not.toContain(liveTimer);
     // Both stubborn attempts are still unsettled; only the barrier finished.
     expect(worker.inFlight).toBe(2);
 
@@ -324,7 +326,7 @@ describe('RemoteWorker server frames', () => {
 
     expect(resultFor('attempt-old')).toMatchObject({ status: 'cancelled', error: 'operator stop' });
     expect(resultFor('attempt-new')).toMatchObject({ status: 'failed', error: 'settled late' });
-    expect(clearIntervalSpy).toHaveBeenCalledWith(liveTimer);
+    expect(clearedTimers()).toContain(liveTimer);
     expect(
       server.received.filter(
         (message) =>

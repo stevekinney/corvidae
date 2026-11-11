@@ -81,6 +81,31 @@
     padding-block: var(--cinder-space-2-5);
   }
 
+  /* ----------------------------------------
+ * Filled appearance (COR-2313)
+ *
+ * An inset fill inside the same 1px `--cinder-control-border` edge, so the boundary keeps its 3:1
+ * contrast (the fill alone measures about 1.1:1), with a 12px radius and the shared 2px focus ring.
+ * A field with no `appearance` follows its density: filled under `data-density='comfortable'`,
+ * outlined otherwise, and an explicit `appearance='outlined'` opts out. The density selector
+ * keeps its specificity at or below the state rules, which sit after it, so disabled and
+ * read-only still win.
+ * ---------------------------------------- */
+
+  .cinder-textarea[data-cinder-appearance='filled'],
+  .cinder-textarea:where([data-density='comfortable'] *):not([data-cinder-appearance='outlined']) {
+    background: var(--cinder-surface-inset);
+    border-radius: var(--cinder-radius-lg);
+  }
+
+  /* Focus lifts the fill to the control surface under the 2px ring. */
+  .cinder-textarea[data-cinder-appearance='filled']:focus-visible,
+  .cinder-textarea:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    ):focus-visible {
+    background: var(--cinder-control-background);
+  }
+
   .cinder-textarea::placeholder {
     color: var(--cinder-text-muted);
   }
@@ -180,6 +205,15 @@
     border-style: dashed;
     cursor: default;
     caret-color: transparent;
+  }
+
+  /* A filled field is already on the inset surface, so its read-only value drops the fill and
+     keeps the dashed edge: editable and read-only values stay apart (COR-2313). */
+  .cinder-textarea[data-cinder-appearance='filled'][readonly]:not(:disabled),
+  .cinder-textarea:where([data-density='comfortable'] *):not(
+      [data-cinder-appearance='outlined']
+    )[readonly]:not(:disabled) {
+    background: transparent;
   }
 
   /* ----------------------------------------

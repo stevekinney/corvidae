@@ -31,18 +31,7 @@ const tableHtml =
   '<table><thead><tr><th>Name</th><th>Owner</th><th>Status</th><th>Reference</th></tr></thead><tbody><tr><td>Alpha</td><td>Avery</td><td>Ready</td><td>REF-1</td></tr></tbody></table>';
 
 function setLayout(element: Element, box: { left: number; right: number }): void {
-  element.getBoundingClientRect = () =>
-    ({
-      left: box.left,
-      right: box.right,
-      top: 0,
-      bottom: 20,
-      width: box.right - box.left,
-      height: 20,
-      x: box.left,
-      y: 0,
-      toJSON: () => ({}),
-    }) as DOMRect;
+  element.getBoundingClientRect = () => new DOMRect(box.left, 0, box.right - box.left, 20);
 }
 
 function setScrollMetrics(

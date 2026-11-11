@@ -129,6 +129,12 @@ export const queryKeys = {
     detail: (type: string) => ['workflow-catalog', 'detail', type] as const,
     /** One workflow file as `bureau.workflows.get` shows it, for the editor. */
     file: (type: string) => ['workflow-catalog', 'file', type] as const,
+    /**
+     * What saving the editor's draft of one file would do (`bureau.workflows.impact`), over the file
+     * with the hash `base` that the save is written against, so a new file on disk asks again.
+     */
+    impact: (type: string, base: string | null, draft: string) =>
+      ['workflow-catalog', 'impact', type, base, draft] as const,
     /** The schedules that start one type (`weft.schedules.list` with `workflowType`). */
     schedules: (type: string) => ['workflow-catalog', 'schedules', type] as const,
     /** A code-defined workflow's description and registered contract (`bureau.workflows.internal.get`). */

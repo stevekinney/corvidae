@@ -125,8 +125,8 @@ describe('icons/index', () => {
       names.length,
     );
     // The map and the calendar are named apart from the global `Map` and the Calendar component.
-    expect(root.Calendar).not.toBe(root.CalendarIcon);
-    expect(exported.Map).toBeUndefined();
+    expect(root['Calendar']).not.toBe(root['CalendarIcon']);
+    expect(exported['Map']).toBeUndefined();
   });
 
   it('is decorative by default and named when it is labelled', () => {

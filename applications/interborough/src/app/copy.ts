@@ -1746,21 +1746,87 @@ export const WORKFLOW_COPY = {
       `Started ${String(started)} ${started === 1 ? 'instance' : 'instances'}, delivered to ${String(delivered)} ${delivered === 1 ? 'instance' : 'instances'}.`,
     failed: 'The signal was not sent',
   },
+  /**
+   * `/workflows/:workflow/edit` (board PageWorkflowBuilder, "Edit workflow" and its states): the
+   * builder over an existing file, the version a save makes, saving and its failure, a file that
+   * changed on disk, the offline banner, loading, and a file that cannot load.
+   */
   editor: {
+    /** The heading: the workflow's title, or its identifier for a file with none. */
     heading: (name: string): string => `Edit ${name}`,
     textLabel: 'Workflow file',
     textDescription:
       'The file’s JSON. Its name is the file’s identifier, so it is not sent when you save.',
-    saveAction: 'Save changes',
+    saveAction: 'Save',
+    /** The primary button while the file is written; the whole form is read-only meanwhile. */
+    savingAction: 'Saving…',
     cancelAction: 'Cancel',
-    saveFailed: 'The workflow was not saved',
-    notJson: 'This is not valid JSON, so nothing was saved.',
-    notObject: 'A workflow is a JSON object, so nothing was saved.',
+    /** The footer, in place of the read-back, while the draft makes a new version. */
+    saveAs: (version: string): string => `Save as version ${version}.`,
+    /** The footer while the file is written: the version it makes, when the Bureau said. */
+    savingVersion: (version: string | null): string =>
+      version === null ? 'Saving…' : `Saving version ${version}…`,
+    /** The lead of the error above the footer when the file could not be written. */
+    saveFailed: (name: string): string => `Couldn’t save ${name}.`,
+    /** The status line Cinder's skeleton shows after ten seconds of loading. */
+    stillLoading: (name: string): string => `Still loading ${name}…`,
+    /**
+     * The compatibility notice above the footer (board PageWorkflowBuilder, "Edit workflow"): the
+     * version saving makes, and whether a run in flight can carry on under it. A compatible edit
+     * says so in one line; a breaking one says what changed and what happens to running work.
+     */
+    impact: {
+      compatible: (version: string): string =>
+        `Saving makes version ${version}. This is a compatible change, so runs in flight keep going.`,
+      /** The first version a workflow gets, with nothing before it to be compatible with. */
+      first: (version: string): string => `Saving makes version ${version}.`,
+      breaking: (version: string): string =>
+        `Saving makes version ${version}. This is a breaking change.`,
+      /** One breaking change, by its kind. */
+      changes: {
+        stepSignal: (step: number, from: string, to: string): string =>
+          `Step ${String(step)} now waits for ${to} instead of ${from}.`,
+        stepRemoved: (step: number): string => `Step ${String(step)} is removed.`,
+        stepReplaced: (step: number): string =>
+          `Step ${String(step)} is now a different kind of step.`,
+        stepInput: (step: number): string => `Step ${String(step)} is given different settings.`,
+        inputSchema: 'The Input fields change.',
+        outputSchema: 'The Output fields change.',
+        other: 'A step changes in a way a run in flight can’t follow.',
+      },
+      /** What happens to running work, by how many runs are in flight. */
+      noneInFlight: 'No runs are in flight, so nothing running is affected.',
+      inFlight: (count: number, previous: string | null): string =>
+        `${String(count)} ${count === 1 ? 'run is' : 'runs are'} in flight${previous === null ? '' : ` on version ${previous}`}, and this change can stop ${count === 1 ? 'it' : 'them'} from finishing.`,
+      /** The caller may not count the runs in flight. */
+      unknownInFlight: 'A run in flight may not be able to finish after this change.',
+      laterRuns: (version: string): string => `Later runs use ${version}.`,
+      renameNote: 'Renaming a step (its Step name) is never breaking.',
+    },
+    /**
+     * The warning under the tabs when the file changed on disk while the form was open (board
+     * PageWorkflowBuilder, "Edit · file changed on disk"). Nothing happens until the person chooses.
+     */
+    changedOnDisk: {
+      title: 'This file changed on disk.',
+      reload: 'Reload',
+      keepMine: 'Keep mine',
+    },
+    /** The offline banner's sentence for an edit form, in place of the preset's own. */
+    offlineConsequence: 'Your edits are kept in the form. Save is off until you’re back.',
+    /** The same sentence while the server, not the browser, does not answer. */
+    unreachableConsequence: 'Your edits are kept in the form. Save is off until it’s back.',
+    /**
+     * A file the Bureau cannot load, which opens on the JSON tab (board PageWorkflowBuilder, "Edit a
+     * file that can't load"): the file's name, where it stops being a workflow, and what to do.
+     */
     invalid: {
-      title: 'This workflow’s file is invalid',
-      description:
-        'Interborough cannot run it until the file is fixed. Edit it below, or fix the file and reload.',
-      action: 'Reload from disk',
+      sentence: (file: string, reason: string): string =>
+        `${file} can’t be read as a workflow: ${reason}.`,
+      /** The reason for JSON that stops at a line: "line 12 expected a comma". */
+      atLine: (line: number, reason: string): string => `line ${String(line)} ${reason}`,
+      expectedComma: 'expected a comma',
+      fix: 'Fix it here, or Cancel and open the file in your editor.',
     },
     unreadable: {
       title: 'This workflow’s file cannot be read',

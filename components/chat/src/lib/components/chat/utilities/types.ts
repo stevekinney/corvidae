@@ -169,7 +169,7 @@ export type ToolInputMessagePart = {
   key: string;
   toolCallId: string;
   toolName: string;
-  /** The action's message, shown above the form. */
+  /** The action's message: the question, which is the request's one visible heading and the name of its region. */
   message: string | undefined;
   /** The JSON Schema object the form renders and validates against. */
   schema: Record<string, unknown>;

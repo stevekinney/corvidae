@@ -11,7 +11,7 @@
   import type { AttachmentKind } from './attachment-kind.ts';
   import type { ChatComposerControlsContext } from './composer-controls.ts';
   import type { ChatComposerFormat, ChatComposerToolbarContext } from './composer-markdown.ts';
-  import type { ChatComposerStatus } from './composer-status.ts';
+  import type { ChatComposerBlockedAction, ChatComposerStatus } from './composer-status.ts';
 
   export type { ChatAttachment } from './chat-attachment.ts';
 
@@ -241,6 +241,7 @@
     COMPOSER_DISCARD_DRAFT_LABEL,
     composerStatusText,
     isComposerDrawerStatus,
+    isComposerNoticeStatus,
   } from './composer-status.ts';
   import {
     COMPOSER_FOLLOW_UP_PLACEHOLDER,
@@ -621,6 +622,14 @@
     return 'Enter to send · Shift and Enter for a new line';
   });
   const blocked = $derived(status?.kind === 'blocked' ? status : undefined);
+  /** The neutral bar that replaces the composer for an archived or a read-only chat. */
+  const notice = $derived(isComposerNoticeStatus(status) ? status : undefined);
+  let noticeLabelRef = $state<HTMLButtonElement | null>(null);
+  const noticeHasActions = $derived(
+    notice?.kind === 'archived'
+      ? notice.newChat !== undefined || notice.unarchive !== undefined
+      : notice?.request !== undefined,
+  );
   // Send is filled with the accent only while it would send: an empty or held composer leaves it
   // outlined and quiet, and Stop stays outlined.
   const sendVariant = $derived<'primary' | 'secondary'>(
@@ -1366,7 +1375,7 @@
           {#if blocked.action !== undefined}
             {#if blocked.action.href !== undefined}
               <Button
-                variant="secondary"
+                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
                 size="sm"
                 href={blocked.action.href}
                 label={blocked.action.label}
@@ -1375,7 +1384,7 @@
             {:else}
               <Button
                 type="button"
-                variant="secondary"
+                variant={blocked.action.primary === true ? 'primary' : 'secondary'}
                 size="sm"
                 label={blocked.action.label}
                 onclick={blocked.action.onclick}
@@ -1400,6 +1409,78 @@
                 onclick={blocked.link.onclick}
               />
             {/if}
+          {/if}
+        </div>
+      {/if}
+    </div>
+  {:else if notice !== undefined}
+    <!-- Archived or read only: one neutral bar in place of the composer. The secondary action sits
+         on the left and the primary one on the right, after the words. -->
+    <div
+      class={classNames('chat-input', 'chat-input-blocked', 'chat-input-notice', className)}
+      data-chat-composer-status={notice.kind}
+      role="group"
+      aria-label={notice.kind === 'archived' ? 'Chat archived' : 'Chat read only'}
+    >
+      <div class="chat-input-blocked-message">
+        {#if notice.kind === 'archived'}
+          <svg
+            class="chat-input-notice-glyph cinder-icon-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect width="20" height="5" x="2" y="3" rx="1" />
+            <path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8" />
+            <path d="M10 12h4" />
+          </svg>
+          <p class="chat-input-blocked-reason" dir="auto">{statusText}</p>
+        {:else}
+          <svg
+            class="chat-input-notice-glyph cinder-icon-sm"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
+            <rect width="18" height="11" x="3" y="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <p class="chat-input-blocked-reason" dir="auto">
+            {#if notice.tooltip !== undefined}
+              <button type="button" class="chat-input-notice-label" bind:this={noticeLabelRef}>
+                {statusText}
+              </button>
+              <Tooltip
+                text={notice.tooltip}
+                class="chat-input-tooltip"
+                placement="top"
+                triggerRef={noticeLabelRef}
+              />
+            {:else}
+              {statusText}
+            {/if}
+          </p>
+        {/if}
+      </div>
+      {#if noticeHasActions}
+        <div class="chat-input-blocked-actions">
+          {#if notice.kind === 'archived'}
+            {#if notice.newChat !== undefined}
+              {@render noticeAction(notice.newChat, 'secondary')}
+            {/if}
+            {#if notice.unarchive !== undefined}
+              {@render noticeAction(notice.unarchive, 'primary')}
+            {/if}
+          {:else if notice.request !== undefined}
+            {@render noticeAction(notice.request, 'primary')}
           {/if}
         </div>
       {/if}
@@ -1754,7 +1835,7 @@
       {/if}
     </form>
   {/if}
-  {#if blocked === undefined}
+  {#if blocked === undefined && notice === undefined}
     {#if attentionCount > 0}
       <!-- Why Send is off while files need attention: under the composer, and named by Send. -->
       <p id={attachmentReasonId} class="chat-input-attachment-reason">
@@ -1772,6 +1853,14 @@
     {announcer.message}
   </div>
 </div>
+
+{#snippet noticeAction(action: ChatComposerBlockedAction, variant: 'primary' | 'secondary')}
+  {#if action.href !== undefined}
+    <Button {variant} size="sm" href={action.href} label={action.label} onclick={action.onclick} />
+  {:else}
+    <Button type="button" {variant} size="sm" label={action.label} onclick={action.onclick} />
+  {/if}
+{/snippet}
 
 <style>
   /* Compact: the field and Send (or Stop) are one row, with no controls beside them. */
@@ -2251,6 +2340,30 @@
     margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
+  }
+
+  /* The neutral bar of an archived or read-only chat: the blocked row's layout with no warning
+   * colour, the words in the body colour and the secondary action before the primary one. */
+  .chat-input-notice :global(.chat-input-notice-glyph) {
+    flex: none;
+    margin-block-start: 0.1875rem;
+    color: var(--cinder-text-muted);
+  }
+
+  .chat-input-notice .chat-input-blocked-reason {
+    color: var(--cinder-text-default);
+  }
+
+  .chat-input-notice-label {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: inherit;
+    font: inherit;
+    text-decoration: underline dotted;
+    text-underline-offset: 0.2em;
+    cursor: help;
   }
 
   .chat-input-blocked-actions {

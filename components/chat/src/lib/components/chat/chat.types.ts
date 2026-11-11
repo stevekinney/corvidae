@@ -10,6 +10,7 @@ import type {
   ChatToolApprovalResolution,
 } from './adapter/chat-adapter.ts';
 import type { ResolvedChatArtifact } from './artifact/artifact-viewer.types.ts';
+import type { ChatAvailability } from './container/chat-availability.ts';
 import type {
   ChatScrollStateChangeEvent,
   ChatStopGeneratingEvent,
@@ -25,6 +26,7 @@ import type {
 import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
+import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
 import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
@@ -241,9 +243,15 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerMarkdownStyling?: boolean;
   /** The line under the composer, such as a reconnect, queued follow-ups or the host's own note; or, with `kind: 'blocked'`, the whole composer: one compact row that says why sending is off, in place of the text box and the controls. When omitted, the composer shows its hint. */
   composerStatus?: ChatComposerStatus | undefined;
+  /** Set while the conversation cannot be shown as it is: `{ kind: 'loading' }` draws skeleton turns and a status line that counts the seconds, keeps the editor and has Send wait for the history, and once the read is slow adds Cancel (`onCancel`); `{ kind: 'canceled', onRetry }` offers Retry; `{ kind: 'error', cause, onRetry }` replaces the transcript and the composer with Cinder's `ErrorState`, with Try again and `allConversations`; `{ kind: 'deleted', allConversations }` does the same for a conversation that no longer exists. Left out, the conversation shows as usual. */
+  availability?: ChatAvailability | undefined;
   empty?: Snippet;
   /** Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. */
   trailing?: Snippet;
+  /** The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`. */
+  emptyTitle?: string | undefined;
+  /** One sentence under the empty state title, such as what the agent does. Has no effect when a custom `empty` snippet is provided. Default none. */
+  emptyDescription?: string | undefined;
   /** List of suggested starter prompt strings shown as clickable buttons in the default empty state. Clicking a prompt submits it immediately as a user message. Has no effect when a custom `empty` snippet is provided. */
   emptyPrompts?: string[];
   /** Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata. */
@@ -354,6 +362,19 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Every other kind of question is answered in place either way. Default `false`.
    */
   answerInComposer?: boolean | undefined;
+  /**
+   * Where a question that has choices (a choice, a choice with Something else, a yes or no) is
+   * answered. `'inline'` (default) draws its controls in its transcript row. `'docked'` draws the
+   * question in place of the composer: a Needs you warning, a fieldset named The agent is asking,
+   * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
+   * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
+   * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
+   * composer back and returns the question to its row. Every other kind of question stays in its
+   * row either way. Needs {@link ChatProps.onInputSubmit}.
+   */
+  questionPlacement?: 'inline' | 'docked' | undefined;
+  /** The words of the docked question, any of which the host can replace. */
+  questionLabels?: Partial<ChatQuestionDockLabels> | undefined;
   /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */

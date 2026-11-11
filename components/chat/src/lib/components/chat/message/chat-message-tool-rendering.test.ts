@@ -719,12 +719,14 @@ describe('ChatMessage — tool-call rendering', () => {
             type: 'approval',
             risk: 'high',
             operation: { kind: 'other' },
+            policyVersion: 'policy',
+            idempotencyKey: `key-${id}`,
             ...(offset === undefined
               ? {}
               : { expiresAt: new Date(NOW.getTime() + offset).toISOString() }),
           },
         },
-      } as ToolCallPair;
+      };
     }
 
     function summaryOf(container: HTMLElement): string {

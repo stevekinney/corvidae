@@ -371,6 +371,11 @@ export type World = {
   savedSteps: Record<string, Array<Record<string, unknown>>>;
   /** The model each code agent names, by identifier (`provider/model`), or `null` for a scripted one. */
   agentModels: Record<string, string | null>;
+  /**
+   * What `bureau.workflows.impact` answers, by identifier. A workflow that is not here answers that
+   * saving makes no new version.
+   */
+  impacts: Record<string, Record<string, unknown>>;
 };
 
 export function emptyWorld(overrides: Partial<World> = {}): World {
@@ -400,6 +405,7 @@ export function emptyWorld(overrides: Partial<World> = {}): World {
     scheduleBlockers: {},
     savedSteps: {},
     agentModels: {},
+    impacts: {},
     ...overrides,
   };
 }
@@ -830,6 +836,19 @@ export function installWorkflowWorld(world: World = emptyWorld()): WorkflowStub 
       return written(file);
     },
     'bureau.workflows.signal': () => world.signalAnswer,
+    'bureau.workflows.impact': (params) => {
+      const file = find(params['id']);
+      if (file === undefined) throw workflowFaults.notFound(`workflow ${String(params['id'])}`);
+      return (
+        world.impacts[file.id] ?? {
+          version: null,
+          previousVersion: file.version,
+          changes: [],
+          compatibility: null,
+          inFlight: 0,
+        }
+      );
+    },
   };
 
   const weftHandlers: Record<string, (params: Record<string, unknown>) => unknown> = {

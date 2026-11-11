@@ -16,9 +16,9 @@ on:
 permissions:
   contents: read
 
-# Runs of different commits never cancel each other.
+# One group for every push: a running run finishes, and a newer pending run replaces the older pending one.
 concurrency:
-  group: main-${{ github.sha }}
+  group: main
   cancel-in-progress: false
 
 env:

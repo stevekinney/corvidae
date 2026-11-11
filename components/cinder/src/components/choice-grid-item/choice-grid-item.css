@@ -199,7 +199,9 @@
     align-items: start;
     justify-content: stretch;
     gap: var(--cinder-space-2-5) var(--cinder-space-2);
-    min-block-size: 0;
+    /* A host that wants taller cards, such as 3.25rem (52 px) radios for a docked question, sets
+     * the variable on the grid or any ancestor; the default is the height of the content. */
+    min-block-size: var(--_cinder-choice-card-min-block-size, 0);
     padding: var(--cinder-space-2-5) var(--cinder-space-3);
     border-width: 1px;
     border-radius: var(--cinder-radius-md);

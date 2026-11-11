@@ -32,6 +32,7 @@ export { default as ChatNote } from './message/parts/note-part.svelte';
 export type { AnswerSendResult } from './question/answer-hold.svelte.ts';
 export { default as ChatQuestion } from './question/chat-question.svelte';
 export type { ChatQuestionHoldCopy, ChatQuestionProps } from './question/chat-question.svelte';
+export type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
 export { ChatQuestionAnswerError, recordAnswer } from './question/question-answer.ts';
 export type { ChatQuestionIssue, QuestionAnswerRecord } from './question/question-answer.ts';
 export { classifyQuestion } from './question/question-kind.ts';
@@ -241,6 +242,12 @@ export type {
   ScrollConfiguration,
   ScrollState,
 } from './container/index.ts';
+
+export type {
+  ChatAvailability,
+  ChatAvailabilityAction,
+  ChatAvailabilityLabels,
+} from './container/chat-availability.ts';
 
 // Export
 export { ConversationExportActions } from './export/index.ts';

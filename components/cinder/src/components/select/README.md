@@ -49,12 +49,43 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
 
 `presentation="listbox"` draws a button that opens a listbox. Options can carry a `description`, a `note` and a `group`; `groups` names the headings, divides them and can add a non-selectable `message`; `leading` draws a mark before each option; `footer` renders outside the listbox with its own keyboard stop; `placeholder` shows while no option is selected; `readonly` keeps the value focusable but not changeable. See `select.a11y.md` for the keyboard model. An option's `suffix` adds muted words on the label's own line ("Nightly archiver, no description"), and `triggerSuffix` adds muted words after the value in the trigger only ("Claude Sonnet 5.5, Anthropic"). `onValueChangeRequest` can refuse or replace a pick before it is written, and the control shows what it returned, never the refused pick.
 
+## Appearance and the inline variant
+
+The native select never shows the browser's caret: it uses `appearance: none` and Cinder's masked chevron (18px, 12px from the end, with 40px of end padding), in every appearance. `appearance="filled"` draws an inset fill inside the 1px `--cinder-control-border` edge with a 12px radius, and under `data-density="comfortable"` a select with no `appearance` is filled and 48px tall; `appearance="outlined"` opts out. The ghost variant has no fill and ignores `appearance`; the inline variant is outlined unless `appearance="filled"`.
+
+`variant="inline"` is for a select inside a sentence. It takes the surrounding text size and weight, the `sm` height and an auto width, whatever `size` says. The field is an inline-level box, but it holds block-level children, so put it in a `div` or a flex row rather than a `p`:
+
+```svelte
+<script lang="ts">
+  import { Select } from '@lostgradient/cinder';
+
+  let sender = $state('anyone');
+</script>
+
+<div>
+  Archive messages from
+  <Select
+    id="sender"
+    label="Sender"
+    labelVisible={false}
+    variant="inline"
+    options={[
+      { value: 'anyone', label: 'anyone' },
+      { value: 'contacts', label: 'my contacts' },
+    ]}
+    bind:value={sender}
+  />
+  after a week.
+</div>
+```
+
 ## Props
 
 <!-- generated:props:start -->
 
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
+| `appearance` | `"outlined"` \| `"filled"` | no | — | How the bordered select is drawn. `"outlined"` is the control fill inside a 1px edge. `"filled"` is an inset fill inside the same 1px `--cinder-control-border` edge, which keeps the 3:1 boundary the fill alone would lose, with a 12px radius, a 48px height in the comfortable density and the 2px focus ring. Left unset, the select follows its density: `filled` under `data-density="comfortable"`, `outlined` otherwise. The `ghost` variant has no fill and ignores it; `inline` is outlined unless `"filled"` is set. The native caret never shows: the Cinder chevron is the only one. |
 | `class` | `string` | no | — | Extra class names merged with `.cinder-select-field`. |
 | `description` | `string` | no | — | Helper text rendered below the control; wired via `aria-describedby`. |
 | `disabled` | `boolean` | no | — | Disables the control. |
@@ -71,7 +102,7 @@ Inside a bordered container (a composer, an inline toolbar) use `variant="ghost"
 | `size` | `"sm"` \| `"md"` \| `"lg"` | no | `"md"` | Height step from the shared `--cinder-control-height-*` scale: `sm` 28px, `md` 32px, `lg` 40px. Replaces the native list-box `size` attribute, which Cinder does not forward. |
 | `tone` | `"default"` \| `"accent"` | no | `"default"` | Colour of the value. `accent` draws it in the accent colour and weight, for the one select that names what the container it sits in is about to do (the agent a new chat is with), beside `default` controls that only set options. |
 | `valuePrefix` | `string` | no | — | Listbox only: muted text drawn before the value in the trigger ("Model" before "Claude Sonnet 5.5"). It is decorative and hidden from assistive technology; the name comes from `label`. |
-| `variant` | `"default"` \| `"ghost"` | no | `"default"` | Visual style. `ghost` has no border or fill at rest, a neutral tint on hover and while open, the focus ring wrapping the whole control, and keeps its chevron: use it for a select inside a bordered container (a composer, an inline toolbar) so the row of controls reads as one surface. `default` is the bordered select for forms and filter bars. |
+| `variant` | `"default"` \| `"ghost"` \| `"inline"` | no | `"default"` | Visual style. `ghost` has no border or fill at rest, a neutral tint on hover and while open, the focus ring wrapping the whole control, and keeps its chevron: use it for a select inside a bordered container (a composer, an inline toolbar) so the row of controls reads as one surface. `inline` sits inside a sentence ("Archive messages from [sender]"): it takes the surrounding text size and weight, the `sm` height and an auto width, whatever `size` says. `default` is the bordered select for forms and filter bars. |
 | `footer` | `(opaque)` | no | — | Listbox only: content drawn below the options, outside the `role="listbox"` element, so the arrow keys never reach it. A link or button in it is a keyboard stop of its own, after the last option, reached with Tab from the trigger. Not expressible in JSON Schema; see the component types for the signature. |
 | `groups` | `(opaque)` | no | — | Listbox only: headings, dividers and messages for the option groups. Not expressible in JSON Schema; see the component types for the signature. |
 | `leading` | `(opaque)` | no | — | Listbox only: a mark drawn before each option's label and before the selected value in the trigger, such as an avatar. Decorative. Not expressible in JSON Schema; see the component types for the signature. |

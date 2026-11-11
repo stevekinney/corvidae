@@ -1000,7 +1000,7 @@ test.describe('chat harness — mounts cleanly', () => {
       }
 
       const request = inputChat.getByRole('region', {
-        name: 'Input requested by book_meeting_room',
+        name: 'Which room, and for how many people?',
       });
       await expect(request).toBeVisible();
       await expect(request.getByText('Which room, and for how many people?')).toBeVisible();

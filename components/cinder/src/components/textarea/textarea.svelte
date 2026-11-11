@@ -33,6 +33,7 @@
     required,
     class: customClassName,
     variant = 'default',
+    appearance,
     size = 'md',
     maxlength,
     countVisible = false,
@@ -73,6 +74,7 @@
     class={classNames('cinder-_input-frame', 'cinder-textarea', customClassName)}
     data-cinder-variant={variant}
     data-cinder-size={size}
+    data-cinder-appearance={appearance}
     aria-invalid={field.ariaInvalid}
     aria-describedby={field.describedBy}
     bind:value
