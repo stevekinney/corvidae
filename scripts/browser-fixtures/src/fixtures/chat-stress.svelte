@@ -38,18 +38,25 @@
   const requested = Number(new URLSearchParams(globalThis.location.search).get('case') ?? '1');
   const cases = parseStressCases(casesData);
   const stressCase = findStressCase(cases, requested);
-  let failure: string | undefined;
-  let built: StressSetup | undefined;
-  if (stressCase === undefined) failure = `Chat stress case '${requested}' does not exist.`;
-  else {
+  // Either the case's setup or the reason it cannot be built, decided once so no binding is
+  // reassigned. With a failure the page draws only the error, so the empty setup is never shown.
+  function resolveSetup(): { setup: StressSetup; failure: string | undefined } {
+    if (stressCase === undefined) {
+      return {
+        setup: failedStressSetup(),
+        failure: `Chat stress case '${requested}' does not exist.`,
+      };
+    }
     try {
-      built = buildStressSetup(stressCase);
+      return { setup: buildStressSetup(stressCase), failure: undefined };
     } catch (error) {
-      failure = error instanceof Error ? error.message : String(error);
+      return {
+        setup: failedStressSetup(),
+        failure: error instanceof Error ? error.message : String(error),
+      };
     }
   }
-  // With a failure the page draws only the error, so the empty setup is never shown.
-  const setup = built ?? failedStressSetup();
+  const { setup, failure } = resolveSetup();
 
   const ACCEPTED_TYPES = ['image/*', 'application/pdf', 'text/plain'];
 
@@ -341,7 +348,7 @@
         emptyDescription="Ask the agent about orders, refunds and the ledger."
         {sourcesByMessageId}
         sourcePresentation={setup.sourcePresentation}
-        onRegenerate={setup.regenerate ? () => {} : undefined}
+        {...setup.regenerate ? { onRegenerate: () => {} } : {}}
         onRetryConnection={(messageId) => {
           recordTurnAction('retry-now', messageId);
           applyTurnEvent({ type: 'reconnected' });
