@@ -266,7 +266,7 @@ const STYLESHEET_AT_RULE =
   /^@(?:charset|import|namespace|layer|media|supports|font-face|keyframes|property|container|page|counter-style|font-feature-values|scope)\b/i;
 const SCRIPT_KEYWORD =
   /^(?:import|export|const|let|var|function|class|async|await|return|if|for|while|switch|try|do|new)\b/;
-const DECLARATION_OR_NESTED_RULE = /^\{\s*(?:-{0,2}[a-z][\w-]*\s*:|[}&.#:*\[@>~+])/i;
+const DECLARATION_OR_NESTED_RULE = /^\{\s*(?:-{0,2}[a-z][\w-]*\s*:|[}&.#:*[@>~+])/i;
 
 /** The first {@link SNIFF_BYTES} of a file as text, or `undefined` when it is binary or unreadable. */
 function leadingText(path: string): string | undefined {
@@ -317,7 +317,9 @@ export function boardResponse(root: string, request: Request): Response {
   if (below.split(sep)[0] === BLOB_DIRECTORY && extname(path) === '') {
     const text = leadingText(path);
     if (text !== undefined && looksLikeStylesheet(text))
-      return new Response(Bun.file(path, { type: 'text/css;charset=utf-8' }));
+      return new Response(Bun.file(path), {
+        headers: { 'Content-Type': 'text/css;charset=utf-8' },
+      });
   }
   return new Response(Bun.file(path));
 }
