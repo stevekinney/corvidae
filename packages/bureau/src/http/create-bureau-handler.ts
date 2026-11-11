@@ -137,6 +137,10 @@ import {
   contextsForkOperation,
 } from './management/contexts-fork-operation.ts';
 import {
+  type BureauContextsRegenerateOperationHost,
+  contextsRegenerateOperation,
+} from './management/contexts-regenerate-operation.ts';
+import {
   type BureauContextsRenameOperationHost,
   contextsRenameOperation,
 } from './management/contexts-rename-operation.ts';
@@ -399,6 +403,7 @@ export type BureauHandlerHost = BureauEventsOperationHost &
   BureauContextsForgetGrantsOperationHost &
   BureauContextsSteerOperationHost &
   BureauContextsForkOperationHost &
+  BureauContextsRegenerateOperationHost &
   BureauContextsRenameOperationHost &
   BureauContextsWindowOperationHost &
   BureauAgentModelsOperationHost &
@@ -814,6 +819,7 @@ export const BUREAU_HANDLER_OPERATIONS = [
   contextsForgetGrantsOperation,
   contextsSteerOperation,
   contextsForkOperation,
+  contextsRegenerateOperation,
   contextsRenameOperation,
   contextsWindowOperation,
   ...bureauAgentDefinitionsOperations,
@@ -1299,6 +1305,7 @@ export function buildBureauHandlerHost(
         bureau.contexts.forgetGrants(id, tools, forgetOptions),
       steer: (id, request) => bureau.contexts.steer(id, request),
       fork: (id, request) => bureau.contexts.fork(id, request),
+      regenerate: (id, request) => bureau.contexts.regenerate(id, request),
       get lifecycle() {
         return bureau.lifecycle;
       },

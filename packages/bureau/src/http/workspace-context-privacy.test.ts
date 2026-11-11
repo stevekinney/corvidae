@@ -28,7 +28,12 @@ const cases = [
     operation: 'bureau.contexts.fork',
     input: { commandId: 'private-fork', throughMessageId: null },
   },
+  // COR-2296: the answer each actor is asked to regenerate is its context's one reply, named below.
+  { operation: 'bureau.contexts.regenerate', input: { commandId: 'private-regenerate' } },
 ] as const;
+
+/** The answer of a context's one-step task: the reply `bureau.contexts.regenerate` replaces. */
+const answerOf = (taskId: string): string => `${taskId}:step:0`;
 
 for (const row of cases) {
   test(`${row.operation} preserves context privacy for all six actors`, async () => {
@@ -51,6 +56,15 @@ for (const row of cases) {
             () => opened.bureau.tasks.detail(task.id)?.status === 'completed',
             'context task finishes',
           );
+        if (row.operation === 'bureau.contexts.regenerate')
+          await waitForCondition(async () => {
+            const record = await opened.bureau.internals.taskRegistry.record(task.id);
+            const session = await opened.bureau.contexts.get(task.contextId);
+            return (
+              record?.settled !== undefined &&
+              session?.conversationHistory.ids.at(-1) === answerOf(task.id)
+            );
+          }, 'the answer to regenerate is stored');
         if (row.operation === 'bureau.contexts.retract') {
           const queued = await workspacePrivacyCall(opened, 'owner', 'bureau.contexts.input', {
             contextId: task.contextId,
@@ -69,6 +83,9 @@ for (const row of cases) {
           ...(row.operation === 'bureau.contexts.retract'
             ? { inputId: `private-input-${actor}` }
             : {}),
+          ...(row.operation === 'bureau.contexts.regenerate'
+            ? { messageId: answerOf(task.id) }
+            : {}),
           contextId: task.contextId,
         });
         witnesses.observeWire(row.operation, actor, result);
@@ -85,6 +102,9 @@ for (const row of cases) {
             ...row.input,
             ...(row.operation === 'bureau.contexts.retract'
               ? { inputId: `private-input-${actor}` }
+              : {}),
+            ...(row.operation === 'bureau.contexts.regenerate'
+              ? { messageId: answerOf(task.id) }
               : {}),
             contextId: 'unknown-context',
           });
