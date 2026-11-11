@@ -1,8 +1,8 @@
 /**
  * The sidebar (design rows 03a to 03m, 04a to 04c, 05r, 07h, 07k): the product's name as text, Home
  * on its own, then Work, Build and System with Settings last; Reviews carrying the reviews waiting
- * on the person, Health a dot that follows what needs attention; and the three forms it takes, the
- * column, the rail with its overlay, and the drawer.
+ * on the person, Health a dot that follows what needs attention; New chat as its primary action; and
+ * the three forms it takes, the column, the 76px rail with its overlay, and the drawer.
  */
 import { HttpClient } from '@lostgradient/weft';
 import { fireEvent, render, waitFor } from '@testing-library/svelte';
@@ -106,17 +106,17 @@ function matchMediaWhere(matching: (query: string) => boolean): void {
   });
 }
 
-/** A viewport at least 1024px wide, where the sidebar stays in the page. */
+/** A viewport at least 1200px wide, where the sidebar stays in the page. */
 function onDesktop(): void {
-  matchMediaWhere((query) => query.includes('min-width: 1024px'));
+  matchMediaWhere((query) => query.includes('min-width: 1200px'));
 }
 
-/** A tablet with a fine pointer: under 1024px and over 640px, so the rail. */
+/** A tablet: from 700px to 1199px, so the 76px rail. */
 function onTablet(): void {
   matchMediaWhere(() => false);
 }
 
-/** A phone, or a touch tablet: the drawer. */
+/** A phone, under 700px: the drawer behind the tab bar. */
 function onPhone(): void {
   matchMediaWhere((query) => query.includes('max-width'));
 }
@@ -175,6 +175,28 @@ describe('the sidebar', () => {
     expect(collapse.textContent?.trim()).toBe('');
     expect(collapse.querySelector('svg')).not.toBeNull();
     expect(name?.parentElement).toBe(collapse.parentElement);
+  });
+
+  test('offers New chat as its primary action, with its key as plain text (COR-2315)', async () => {
+    onDesktop();
+    stubEngine();
+    landAt('/runs');
+    const { getByRole, container } = mount();
+
+    const action = getByRole('button', { name: 'New chat' });
+    expect(action.closest('.cinder-side-navigation__primary-action')).not.toBeNull();
+    expect(action.getAttribute('aria-keyshortcuts')).toBe('C');
+    const key = action.querySelector('[data-cinder-shortcut]');
+    expect(key?.textContent).toBe('C');
+    expect(key?.getAttribute('aria-hidden')).toBe('true');
+    // The product's name and the fold button are Cinder's brand slot, above the action.
+    const brand = container.querySelector('.cinder-side-navigation__brand');
+    expect(brand?.querySelector('.weft-shell-sidebar__name')).not.toBeNull();
+    // 4 is DOCUMENT_POSITION_FOLLOWING: the action comes after the brand in the document.
+    expect((brand?.compareDocumentPosition(action) ?? 0) & 4).toBe(4);
+
+    await fireEvent.click(action);
+    expect(router.pathname).toBe('/chats/new');
   });
 
   test('holds Home, then Work, Build and System in order, System pinned last (03h)', () => {
@@ -382,8 +404,8 @@ describe('the sidebar', () => {
   });
 });
 
-describe('the sidebar on a tablet with a fine pointer (04a)', () => {
-  test('is the 56px rail whatever the preference says, and the preference is left alone', () => {
+describe('the sidebar on a tablet (04a)', () => {
+  test('is the 76px rail whatever the preference says, and the preference is left alone', () => {
     onTablet();
     stubEngine();
     landAt('/chats');
@@ -395,6 +417,18 @@ describe('the sidebar on a tablet with a fine pointer (04a)', () => {
     expect(container.querySelector('.weft-shell-sidebar-slot')?.getAttribute('data-mode')).toBe(
       'rail',
     );
+    // The rail draws a label under every icon (COR-2315), which is Cinder's `railLabels`.
+    expect(container.querySelector('aside')?.hasAttribute('data-cinder-rail-labels')).toBe(true);
+  });
+
+  test('draws the labelled rail only on a tablet, not on the folded column of a desktop', () => {
+    onDesktop();
+    stubEngine();
+    window.localStorage.setItem('interborough-sidebar-collapsed', 'true');
+    landAt('/chats');
+    const { container } = mount();
+    expect(container.querySelector('.weft-shell-sidebar--collapsed')).not.toBeNull();
+    expect(container.querySelector('aside')?.hasAttribute('data-cinder-rail-labels')).toBe(false);
   });
 
   test('expanding opens the full sidebar as an overlay that closes on navigation', async () => {

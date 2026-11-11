@@ -1,9 +1,9 @@
 /**
  * The shell's chrome on the sample world (`fixtures/sample-world-seed.ts`, the showcase host), in
  * every form it takes and at every width the design draws (COR-2015, design rows 03a to 03m, 04a to
- * 04f, 05h, 05i, 05r, 07h, 07k): the 190px sidebar, the 56px rail with its tooltips, the rail's
- * overlay on a tablet, the 280px drawer on a phone and on a touch tablet, the 320px floor and 200%
- * text size. Each captioned state is captured for the design review under its own name.
+ * 04f, 05h, 05i, 05r, 07h, 07k, COR-2315): the 190px sidebar, the 56px folded column, the 76px rail
+ * with its labels and its overlay on a tablet, the bottom tab bar and the 280px drawer on a phone,
+ * the 320px floor and 200% text size. Each captioned state is captured for the design review under its own name.
  *
  * Reviews shows the two reviews waiting on the person, and Health an amber dot named "Health, 3
  * need attention", which the sample world's attention feed (`bureau.health.attention`) holds.
@@ -38,7 +38,7 @@ async function open(
   path: string,
   width: number,
   height = 900,
-  counts = width >= 640,
+  counts = width >= 700,
 ): Promise<void> {
   await page.setViewportSize({ width, height });
   await page.goto(path);
@@ -218,16 +218,22 @@ test.describe('on a desktop', () => {
   });
 });
 
-test.describe('on a tablet with a fine pointer', () => {
-  test('the sidebar is the 56px rail, and expanding opens the column over the page, closing on navigation (04a)', async ({
+test.describe('on a tablet', () => {
+  test('the sidebar is the 76px rail with a label under every icon, and expanding opens the column over the page, closing on navigation (04a)', async ({
     page,
   }) => {
     await open(page, '/health', 768);
-    await expectWidth(sidebar(page), 56);
+    await expectWidth(sidebar(page), 76);
     // The rail runs the page's full height, so Settings is pinned to the bottom (04a).
     const rail = await boxOf(sidebar(page));
     expect(rail.y + rail.height).toBeGreaterThanOrEqual(page.viewportSize()!.height - 1);
     await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
+    // Every row draws its label, under its icon, so the rail needs no tooltip.
+    const runs = navigation(page).getByRole('link', { name: 'Runs' });
+    await expect(runs.locator('.cinder-side-navigation-item__label')).toBeVisible();
+    expect(await yOf(runs.locator('.cinder-side-navigation-item__label'))).toBeGreaterThan(
+      await yOf(runs.locator('.cinder-side-navigation-item__icon')),
+    );
     const outletBefore = await boxOf(page.locator('main.weft-shell-outlet'));
     await expect(
       page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
@@ -245,7 +251,7 @@ test.describe('on a tablet with a fine pointer', () => {
 
     await navigation(page).getByRole('link', { name: 'Runs' }).click();
     await expect(page).toHaveURL(/\/runs$/);
-    await expectWidth(sidebar(page), 56);
+    await expectWidth(sidebar(page), 76);
   });
 
   test('Escape closes the overlay, and the quick settings preference does not apply here (04b)', async ({
@@ -255,24 +261,24 @@ test.describe('on a tablet with a fine pointer', () => {
       window.localStorage.setItem('interborough-sidebar-collapsed', 'false');
     });
     await open(page, '/', 768);
-    // Whatever the preference says, below 1024px the rail rule wins.
-    await expectWidth(sidebar(page), 56);
+    // Whatever the preference says, below 1200px the rail rule wins.
+    await expectWidth(sidebar(page), 76);
     await page.getByRole('button', { name: 'Expand sidebar' }).click();
     await expectWidth(sidebar(page), 190);
     await page.keyboard.press('Escape');
-    await expectWidth(sidebar(page), 56);
+    await expectWidth(sidebar(page), 76);
     expect(
       await page.evaluate(() => window.localStorage.getItem('interborough-sidebar-collapsed')),
     ).toBe('false');
   });
 
-  test('a preference to fold the sidebar applies from 1024px, and only there (04b)', async ({
+  test('a preference to fold the sidebar applies from 1200px, and only there (04b)', async ({
     page,
   }) => {
     await page.addInitScript(() => {
       window.localStorage.setItem('interborough-sidebar-collapsed', 'true');
     });
-    await open(page, '/', 1024);
+    await open(page, '/', 1200);
     await expectWidth(sidebar(page), 56);
     await page.setViewportSize({ width: 1280, height: 900 });
     await expectWidth(sidebar(page), 56);
@@ -280,6 +286,35 @@ test.describe('on a tablet with a fine pointer', () => {
 });
 
 test.describe('on a phone', () => {
+  test('a bottom tab bar holds Home, Chat, Reviews and Runs, with an accent icon and label on the current one, and More opens the drawer (COR-2315)', async ({
+    page,
+  }) => {
+    await open(page, '/runs', 375, 812, false);
+    const tabs = page.getByRole('navigation', { name: 'Main tabs' });
+    await expect(tabs).toBeVisible();
+    await expect(tabs.locator('.cinder-navigation-item')).toHaveText([
+      'Home',
+      'Chat',
+      'Reviews',
+      'Runs',
+      'More',
+    ]);
+    // The bar sits at the bottom of the screen and every tab is a touch target.
+    const bar = await boxOf(tabs);
+    expect(bar.y + bar.height).toBeGreaterThanOrEqual(812 - 1);
+    for (const tab of await tabs.locator('.cinder-navigation-item').all()) {
+      expect(await heightOf(tab)).toBeGreaterThanOrEqual(44);
+    }
+    // The current tab has no fill and no top border: its icon and label take the accent colour.
+    const current = tabs.getByRole('link', { name: 'Runs' });
+    await expect(current).toHaveAttribute('aria-current', 'page');
+    await expect(current).toHaveCSS('border-top-width', '0px');
+    await expect(current).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+
+    await tabs.getByRole('button', { name: 'More' }).click();
+    await expect(drawer(page)).toBeVisible();
+  });
+
   test('there is no sidebar, and the menu button opens the 280px drawer with 44px rows (04a, 05r)', async ({
     page,
     checkA11y,
@@ -406,23 +441,17 @@ test.describe('on a phone', () => {
 test.describe('on a touch tablet', () => {
   test.use({ hasTouch: true, isMobile: true });
 
-  test('the menu button and the same 280px drawer replace the rail, 44px rows (04c, 07h)', async ({
+  test('gets the same 76px rail, whose labels are drawn and so need no drawer (04c, COR-2315)', async ({
     page,
   }) => {
-    await open(page, '/', 768, 1024, false);
-    await expect(sidebar(page)).toHaveCount(0);
-    await page.getByRole('button', { name: 'Open navigation' }).click();
-    const panel = drawer(page);
-    await expect(panel).toBeVisible();
-    await expectWidth(panel.locator('.cinder-drawer__panel'), 280);
-    await expect(panel.locator('.cinder-drawer__title')).toHaveText('Interborough');
-    await expect(panel.getByRole('button', { name: 'Close navigation' })).toBeVisible();
-    for (const row of await panel.locator('a.cinder-side-navigation-item').all()) {
-      expect(await heightOf(row)).toBeGreaterThanOrEqual(44);
-    }
+    await open(page, '/', 768, 1024);
+    await expectWidth(sidebar(page), 76);
+    await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);
     await expect(
-      page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
-    ).toContainText('⌘K');
+      navigation(page)
+        .getByRole('link', { name: 'Runs' })
+        .locator('.cinder-side-navigation-item__label'),
+    ).toBeVisible();
     await captureForDesignReview(page, { route: '/', state: 'tablet touch', source: SOURCE });
   });
 });
@@ -592,7 +621,7 @@ test.describe('the top bar’s popovers on the sample world', () => {
     await expect(page).toHaveURL(/\/settings$/);
   });
 
-  test('the Sidebar choice folds the sidebar at 1024px and wider, and survives a reload (02y, 04b)', async ({
+  test('the Sidebar choice folds the sidebar at 1200px and wider, and survives a reload (02y, 04b)', async ({
     page,
   }) => {
     await open(page, '/', 1280);

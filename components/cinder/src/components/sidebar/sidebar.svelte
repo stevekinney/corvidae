@@ -37,6 +37,7 @@
     label = 'Sidebar',
     mobileBreakpoint = SIDEBAR_MOBILE_BREAKPOINT,
     drawerQuery,
+    railLabels = false,
     closeLabel = 'Close navigation',
     class: className,
     navigation: navigationSnippet,
@@ -183,6 +184,7 @@
     aria-label={validatedLabel}
     data-cinder-sidebar-mobile-breakpoint={validatedMobileBreakpoint}
     data-cinder-collapsed={collapsed ? '' : undefined}
+    data-cinder-rail-labels={railLabels ? '' : undefined}
     data-cinder-ssr-mobile-fallback={usesSsrResponsiveFallback ? '' : undefined}
     style:--cinder-sidebar-mobile-breakpoint={validatedMobileBreakpoint}
   >

@@ -66,6 +66,21 @@ export const DESTINATIONS: readonly Destination[] = [
   { view: 'settings', path: '/settings', letter: 'n', icon: Settings, group: 'system' },
 ];
 
+/**
+ * The destinations the phone's bottom tab bar shows, in order, before its More tab: the places a
+ * thumb goes most. Everything else is behind More, in the navigation drawer.
+ */
+export const TAB_BAR_VIEWS: readonly ViewName[] = ['home', 'chat', 'reviews', 'runs'];
+
+/**
+ * Whether `pathname` is inside the destination at `path`. Home is only `/`, because every other
+ * path begins with it; any other destination owns its own path and what is below it.
+ */
+export function isActiveDestinationPath(pathname: string, path: string): boolean {
+  if (path === '/') return pathname === '/';
+  return pathname === path || pathname.startsWith(`${path}/`);
+}
+
 /** The key sequence that opens a destination, such as `['g', 'c']`. */
 export function destinationKeys(destination: { readonly letter: string }): readonly string[] {
   return ['g', destination.letter];

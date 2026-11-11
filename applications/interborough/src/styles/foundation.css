@@ -65,14 +65,16 @@
   gap: var(--cinder-space-3);
 }
 
-/* Sidebar (design rows 03a to 03m, 04a to 04c). The widths are Cinder's own: the 190px column and
- * the 56px rail (`sidebar.css`), and the 280px drawer (`drawer.css`, size `xs`). The rows, their
- * counts and dots, the section labels that become hairlines on the rail, and the active tint are
- * Cinder's too (`side-navigation-item.css`, `side-navigation-group.css`), so what is left here is
- * where the sidebar sits and what the app puts in it.
+/* Sidebar (design rows 03a to 03m, 04a to 04c, COR-2315). The widths are Cinder's own: the 190px
+ * column and the 56px folded column (`sidebar.css`), and the 280px drawer (`drawer.css`, size
+ * `xs`). The rows, their counts and dots, the section labels that become hairlines on the rail,
+ * the tonal surface with no rule beside it, the neutral active tint and the 76px rail with a label
+ * under every icon (`railLabels`) are Cinder's too (`sidebar.css`, `side-navigation-item.css`,
+ * `side-navigation-group.css`), so what is left here is where the sidebar sits and what the app
+ * puts in it.
  *
  * The sidebar sits inside a slot that keeps its place in the row. On a tablet that place is the
- * rail's 56px, so expanding the rail takes the sidebar out of the row (`--overlay`) without moving
+ * rail's 76px, so expanding the rail takes the sidebar out of the row (`--overlay`) without moving
  * the page: the column opens over it, above a scrim, and closes on navigation. */
 
 .weft-shell-sidebar-slot {
@@ -85,14 +87,11 @@
    * bottom (design row 04a); a block slot would leave it as tall as its content. */
   display: flex;
   flex: none;
-  inline-size: 3.5rem;
+  inline-size: 4.75rem;
 }
 
 .weft-shell-sidebar {
   flex: none;
-  background: var(--cinder-surface-inset);
-  /* The inset surface sets the sidebar apart from the page; a rule beside it only distracts. */
-  border-inline-end: none;
 }
 
 .weft-shell-sidebar .cinder-sidebar__footer {
@@ -125,7 +124,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--cinder-space-1) var(--cinder-space-1) var(--cinder-space-1) var(--cinder-space-2);
+  padding-block: var(--cinder-space-1);
 }
 
 .weft-shell-sidebar__name {
@@ -146,6 +145,14 @@
 
 .weft-shell-sidebar--collapsed .weft-shell-sidebar__name {
   display: none;
+}
+
+/* The phone's bottom tab bar (`../app/shell/tab-bar.svelte`) sits under the page and never scrolls
+ * with it, because the outlet above it is the one scrolling region. Cinder draws the tabs; the
+ * bar only keeps clear of a home indicator. */
+.weft-shell-tab-bar {
+  flex: none;
+  padding-block-end: env(safe-area-inset-bottom, 0px);
 }
 
 /* One ordered column with System pinned to the bottom (design row 03h): the navigation fills the

@@ -1017,14 +1017,14 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
   });
 });
 
-test.describe('Home on a tablet with a fine pointer (05s)', () => {
-  test('keeps the 56px rail, the full top bar, the four counts across and the buttons trailing their rows', async ({
+test.describe('Home on a tablet (05s)', () => {
+  test('keeps the 76px rail, the full top bar, the four counts across and the buttons trailing their rows', async ({
     page,
     checkA11y,
   }) => {
     await openHome(page, 768);
     const rail = page.locator('aside.weft-shell-sidebar');
-    expect(Math.round((await rail.boundingBox())!.width)).toBe(56);
+    expect(Math.round((await rail.boundingBox())!.width)).toBe(76);
     await expect(
       page.getByRole('banner').getByRole('button', { name: /^Search everything/ }),
     ).toContainText('⌘K');

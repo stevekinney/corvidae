@@ -1,16 +1,18 @@
 /**
- * How the shell shows its navigation (design rows 04a to 04c): the column at 1024px and wider, the
- * rail from 640px with a fine pointer, and the drawer under 640px and for touch below 1024px. The
- * person's own preference applies only to the column.
+ * How the shell shows its navigation (design rows 04a to 04c, COR-2315): the column at 1200px and
+ * wider, the 76px rail from 700px to 1199px, and the drawer behind the bottom tab bar under 700px.
+ * The person's own preference applies only to the column.
  */
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { LayoutPreferences } from '../layout-preferences.svelte.ts';
 import {
+  DESKTOP_MINIMUM_WIDTH,
+  DRAWER_BREAKPOINT,
   DRAWER_QUERY,
   EXPANDED_QUERY,
+  RAIL_MINIMUM_WIDTH,
   ShellNavigation,
-  TOUCH_DRAWER_QUERY,
 } from './shell-navigation.svelte.ts';
 
 const undo: Array<() => void> = [];
@@ -41,7 +43,7 @@ function navigation(): { shell: ShellNavigation; preferences: LayoutPreferences 
 }
 
 describe('the shell navigation', () => {
-  test('is the column at 1024px and wider, and follows the person’s preference there', () => {
+  test('is the column at 1200px and wider, and follows the person’s preference there', () => {
     viewport([EXPANDED_QUERY]);
     const { shell, preferences } = navigation();
     expect(shell.mode).toBe('expanded');
@@ -51,7 +53,7 @@ describe('the shell navigation', () => {
     expect(window.localStorage.getItem('interborough-sidebar-collapsed')).toBe('true');
   });
 
-  test('is the rail on a tablet with a fine pointer, whatever the preference says (04b)', () => {
+  test('is the rail on a tablet, whatever the preference says (04b)', () => {
     viewport([]);
     const { shell, preferences } = navigation();
     preferences.setSidebarCollapsed(false);
@@ -67,7 +69,7 @@ describe('the shell navigation', () => {
     expect(shell.collapsed).toBe(true);
   });
 
-  test('is the drawer under 640px, closed until opened, and never writes the preference', () => {
+  test('is the drawer under 700px, closed until opened, and never writes the preference', () => {
     viewport([DRAWER_QUERY]);
     const { shell, preferences } = navigation();
     expect(shell.mode).toBe('drawer');
@@ -80,12 +82,24 @@ describe('the shell navigation', () => {
     expect(shell.drawerOpen).toBe(false);
   });
 
-  test('is the drawer for touch below 1024px, because a rail has no labels on touch (04c)', () => {
-    expect(TOUCH_DRAWER_QUERY).toContain('(pointer: coarse)');
-    expect(TOUCH_DRAWER_QUERY).toContain('max-width: 1023.98px');
-    expect(DRAWER_QUERY).toContain(TOUCH_DRAWER_QUERY);
+  test('draws its breakpoints at 1200px and 700px (COR-2315)', () => {
+    expect(DESKTOP_MINIMUM_WIDTH).toBe(1200);
+    expect(RAIL_MINIMUM_WIDTH).toBe(700);
+    expect(EXPANDED_QUERY).toBe('(min-width: 1200px)');
+    expect(DRAWER_QUERY).toBe('(max-width: 699.98px)');
+    expect(DRAWER_BREAKPOINT).toBe('699.98px');
+  });
+
+  test('gives touch no form of its own: a tablet gets the rail, whose labels are drawn', () => {
+    // Only the width decides. A pointer-based drawer query would hide the rail on a touch tablet,
+    // where the rail now draws its labels and needs no tooltip.
+    expect(DRAWER_QUERY).not.toContain('pointer');
+    viewport([]);
+    expect(navigation().shell.mode).toBe('rail');
+  });
+
+  test('a viewport that matches both queries is a phone first', () => {
     viewport([DRAWER_QUERY, EXPANDED_QUERY]);
-    // A viewport that matches both is a touch device and a drawer first.
     expect(navigation().shell.mode).toBe('drawer');
   });
 });

@@ -27,6 +27,14 @@ export type SidebarProps = Omit<
    */
   mobileBreakpoint?: string;
   /**
+   * When the sidebar is collapsed above `mobileBreakpoint`, draws it as a 76px rail with a short
+   * label under every icon instead of the 56px icon-only column whose labels are clipped. The
+   * labels are drawn, so the rail needs no tooltip and a touch screen needs no drawer. A row's
+   * count or dot rides the icon's corner, and the brand and the primary action keep to their icon
+   * or plus. Has no effect on an expanded sidebar or on the drawer. Default `false`.
+   */
+  railLabels?: boolean;
+  /**
    * A parenthesized media query that also turns the sidebar into the drawer, beside the width
    * breakpoint, for a layout that depends on more than width: `'(pointer: coarse) and
    * (max-width: 1023.98px)'` gives touch devices the drawer at every width below 1024, because an

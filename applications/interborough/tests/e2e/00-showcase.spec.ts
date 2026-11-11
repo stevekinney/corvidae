@@ -188,7 +188,7 @@ for (const width of [375, 1280] as const) {
     await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
     // The top bar and the navigation stay live, because navigation still works for loaded pages.
     await expect(page.getByRole('button', { name: 'Search everything' })).toBeEnabled();
-    if (width < 640) {
+    if (width < 700) {
       // Below a top-level page on a phone the trail's back link takes the menu button's place
       // (06m); the menu is on the page that has no parent.
       await expect(page.getByRole('button', { name: 'Open navigation' })).toHaveCount(0);

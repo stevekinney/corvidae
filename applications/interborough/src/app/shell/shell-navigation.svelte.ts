@@ -1,32 +1,36 @@
 /**
- * How the shell shows its navigation (design rows 04a to 04c), which is a choice of three forms:
+ * How the shell shows its navigation (design rows 04a to 04c, COR-2315), which is a choice of three
+ * forms:
  *
- * - `expanded`: at 1024px and wider the sidebar is in the page, 190px wide, or folded to its 56px
+ * - `expanded`: at 1200px and wider the sidebar is in the page, 190px wide, or folded to its 56px
  *   icon rail when the person chose that in quick settings (the only place that choice applies).
- * - `rail`: from 640px to 1023px with a fine pointer the sidebar is the 56px rail, whatever the
- *   preference says. Expanding it opens the full sidebar as an overlay over the page, which closes
- *   on navigation.
- * - `drawer`: under 640px there is no sidebar, and the menu button opens it as a 280px drawer. Touch
- *   follows the pointer, not the width: under `(pointer: coarse)` the drawer is used at every width
- *   below 1024, because a rail whose labels live in tooltips has no labels on a touch screen.
+ * - `rail`: from 700px to 1199px the sidebar is the 76px rail, an icon over a short label for
+ *   every destination, whatever the preference says and whatever the pointer. Expanding it opens
+ *   the full sidebar as an overlay over the page, which closes on navigation.
+ * - `drawer`: under 700px there is no sidebar. The shell shows a bottom tab bar (`./tab-bar.svelte`)
+ *   for the places a thumb goes most, and the tab bar's More tab and the top bar's menu button open
+ *   the full navigation as a 280px drawer. The rail's labels are drawn, not tooltips, so touch
+ *   needs no form of its own: a tablet gets the rail.
  *
- * One object owns the three, so the sidebar, the top bar and the shell agree about which one is on
- * screen and about what "collapsed" means in each.
+ * One object owns the three, so the sidebar, the top bar, the tab bar and the shell agree about
+ * which one is on screen and about what "collapsed" means in each.
  */
-import { SIDEBAR_MOBILE_MEDIA_QUERY } from '@lostgradient/cinder';
 import { getContext, setContext } from 'svelte';
 import { MediaQuery } from 'svelte/reactivity';
 
 import type { LayoutPreferences } from '../layout-preferences.svelte.ts';
 
 /** The viewport width at and above which the sidebar stays in the page, in CSS pixels. */
-export const DESKTOP_MINIMUM_WIDTH = 1024;
+export const DESKTOP_MINIMUM_WIDTH = 1200;
 
-/** Touch devices below {@link DESKTOP_MINIMUM_WIDTH}: the drawer, never the rail. */
-export const TOUCH_DRAWER_QUERY = `(pointer: coarse) and (max-width: ${String(DESKTOP_MINIMUM_WIDTH - 0.02)}px)`;
+/** The viewport width at and above which the sidebar is the rail rather than the drawer. */
+export const RAIL_MINIMUM_WIDTH = 700;
 
-/** The viewports that show the navigation drawer: phones, and touch devices below 1024px. */
-export const DRAWER_QUERY = `${SIDEBAR_MOBILE_MEDIA_QUERY}, ${TOUCH_DRAWER_QUERY}`;
+/** The widest viewport that shows the drawer and the tab bar, as a CSS length for `Sidebar`. */
+export const DRAWER_BREAKPOINT = `${String(RAIL_MINIMUM_WIDTH - 0.02)}px`;
+
+/** The viewports that show the tab bar and the navigation drawer: phones. */
+export const DRAWER_QUERY = `(max-width: ${DRAWER_BREAKPOINT})`;
 
 /** The viewports wide enough for the sidebar to stay in the page. */
 export const EXPANDED_QUERY = `(min-width: ${String(DESKTOP_MINIMUM_WIDTH)}px)`;

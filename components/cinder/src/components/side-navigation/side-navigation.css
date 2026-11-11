@@ -44,6 +44,11 @@
     padding-block-end: var(--cinder-space-2);
   }
 
+  .cinder-side-navigation__brand > * {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
   .cinder-side-navigation__primary-action {
     padding-block-end: var(--cinder-space-3);
   }

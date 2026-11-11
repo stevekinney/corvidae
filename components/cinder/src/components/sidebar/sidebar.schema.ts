@@ -19,6 +19,11 @@ const schema = {
       description:
         "Viewport width below which the sidebar switches from the inline aside to\nthe mobile drawer. Accepts a simple CSS length such as `'639.98px'` or\n`'1024px'`. Default `'639.98px'`, so tablets keep the inline column and\nits icon rail.",
     },
+    railLabels: {
+      type: 'boolean',
+      description:
+        'When the sidebar is collapsed above `mobileBreakpoint`, draws it as a 76px rail with a short\nlabel under every icon instead of the 56px icon-only column whose labels are clipped. The\nlabels are drawn, so the rail needs no tooltip and a touch screen needs no drawer. A row's\ncount or dot rides the icon's corner, and the brand and the primary action keep to their icon\nor plus. Has no effect on an expanded sidebar or on the drawer. Default `false`.',
+    },
     drawerQuery: {
       type: 'string',
       description:

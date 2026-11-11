@@ -5673,6 +5673,10 @@ export const NAVIGATION_COPY = {
   productName: 'Interborough',
   /** The names of the sidebar's sections; Home sits above them with none. */
   groups: { work: 'Work', build: 'Build', system: 'System' },
+  /** The accessible name of the phone's bottom tab bar. */
+  tabBar: 'Main tabs',
+  /** The tab that opens the navigation drawer, which holds every destination the tab bar leaves out. */
+  moreTab: 'More',
   /** The top bar's button that opens the navigation drawer. */
   openNavigation: 'Open navigation',
   /** The drawer's own button that closes it again. */

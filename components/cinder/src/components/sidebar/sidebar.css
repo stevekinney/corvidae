@@ -172,6 +172,13 @@
     border: 0;
   }
 
+  /* The brand and the primary action drop their row-aligning padding on the rail, where there is
+ * no label column to line up with, and centre over the icons. */
+  .cinder-sidebar[data-cinder-collapsed] .cinder-side-navigation__brand {
+    justify-content: center;
+    padding-inline: 0;
+  }
+
   /* The primary action collapses to its accent "+" on the rail, and the shortcut glyph steps
  * aside. `font-size: 0` hides the bare label text, which stays in the accessible name. */
   .cinder-sidebar[data-cinder-collapsed] .cinder-side-navigation__primary-action > :is(a, button) {
@@ -240,5 +247,62 @@
     > [aria-hidden='true'] {
     flex-shrink: 0;
     font-size: var(--cinder-text-sm);
+  }
+
+  /* ----------------------------------------
+ * Collapsed with labels (`railLabels`, COR-2315)
+ *
+ * The rail is 76px and draws a short label under every icon, so it needs no tooltip. It is the
+ * folded sidebar above with the labels put back, so each rule below carries the extra attribute
+ * and element selectors that make it outrank the folded rule it undoes, whatever order the
+ * stylesheets load in.
+ * ---------------------------------------- */
+
+  .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]:not(.cinder-sidebar--mobile) {
+    inline-size: 4.75rem;
+  }
+
+  .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]
+    .cinder-side-navigation
+    :is(a, button).cinder-side-navigation-item {
+    flex-direction: column;
+    justify-content: center;
+    gap: var(--cinder-space-0-5);
+    inline-size: 100%;
+    min-block-size: 3.25rem;
+    margin-inline: 0;
+    padding-block: var(--cinder-space-1-5);
+    padding-inline: var(--cinder-space-0-5);
+    text-align: center;
+    font-size: 0.6875rem;
+    line-height: 0.875rem;
+  }
+
+  .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]
+    .cinder-side-navigation
+    :is(a, button).cinder-side-navigation-item[data-cinder-has-icon]
+    > .cinder-side-navigation-item__label {
+    position: static;
+    display: block;
+    inline-size: auto;
+    max-inline-size: 100%;
+    block-size: auto;
+    margin: 0;
+    overflow: hidden;
+    clip: auto;
+    clip-path: none;
+    font-size: 0.6875rem;
+    line-height: 0.875rem;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* The count and the dot ride the icon's top-right corner, which is left of the row's edge now
+ * that the row is the rail's full width. */
+  .cinder-sidebar[data-cinder-collapsed][data-cinder-rail-labels]
+    .cinder-side-navigation-item[data-cinder-has-icon]
+    :is(.cinder-side-navigation-item__count, .cinder-side-navigation-item__dot) {
+    inset-block-start: var(--cinder-space-1-5);
+    inset-inline-end: calc(50% - 1.25rem);
   }
 }

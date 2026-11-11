@@ -584,7 +584,7 @@ for (const width of WIDTHS) {
       'not-found',
     );
     // Beside the page on a desktop, behind the menu button on a phone.
-    if (width < 640) {
+    if (width < 700) {
       await page.getByRole('button', { name: 'Open navigation' }).click();
     }
     const navigation = page.getByRole('navigation', { name: 'Views' });

@@ -11,8 +11,13 @@
    * caller without `bureau.diagnostics:read` is refused it). The dot is hidden from assistive
    * technology; the row's name says it ("Health, 3 need attention").
    *
+   * The sidebar is a tonal surface with no rule beside it (Cinder's own, COR-2315): the product's
+   * name and the fold button sit in Cinder's `brand` slot, New chat is the `primaryAction`, and the
+   * current destination is a neutral tint.
+   *
    * The sidebar takes one of three forms (`./shell-navigation.svelte.ts`): the 190px column, the
-   * 56px rail with an overlay that opens the column over the page, and the 280px drawer.
+   * 76px rail (an icon over its label) with an overlay that opens the column over the page, and the
+   * 280px drawer behind the phone's tab bar.
    */
   import {
     Button,
@@ -26,19 +31,23 @@
 
   import { router } from '../../lib/router.svelte.ts';
   import { usePendingReviewsCount } from '../../routes/reviews/pending-reviews-count.svelte.ts';
-  import { NAVIGATION_COPY, VIEW_COPY } from '../copy.ts';
+  import { NAVIGATION_COPY, SHORTCUT_COPY, VIEW_COPY } from '../copy.ts';
+  import { getKeyboardPreferences } from '../keyboard-preferences.svelte.ts';
   import { getLayoutPreferences, LayoutPreferences } from '../layout-preferences.svelte.ts';
   import { useAttentionCount } from './attention-count.svelte.ts';
   import {
     DESTINATIONS,
     DESTINATION_GROUPS,
+    isActiveDestinationPath,
+    NEW_CHAT_KEY,
+    NEW_CHAT_PATH,
     type Destination,
     type DestinationGroup,
   } from './destinations.ts';
   import {
+    DRAWER_BREAKPOINT,
     getShellNavigation,
     ShellNavigation,
-    TOUCH_DRAWER_QUERY,
   } from './shell-navigation.svelte.ts';
 
   interface SidebarNavProps {
@@ -71,10 +80,14 @@
   }
 
   function isActivePath(path: string): boolean {
-    // Home is only `/`: every other path begins with it.
-    if (path === '/') return router.pathname === '/';
-    return router.pathname === path || router.pathname.startsWith(`${path}/`);
+    return isActiveDestinationPath(router.pathname, path);
   }
+
+  // The keyboard preferences are the shell's; a sidebar mounted without it shows the key, which is
+  // what the registry does by default. With single-key shortcuts off the key does nothing, so the
+  // glyph beside New chat is left out rather than promise it.
+  const keyboard = getKeyboardPreferences();
+  const showNewChatKey = $derived(keyboard?.singleKeyShortcuts ?? true);
 
   function onNavClick(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -107,6 +120,11 @@
   function toggleCollapsed(): void {
     shell.collapsed = !shell.collapsed;
   }
+
+  function onNewChat(): void {
+    router.navigate(NEW_CHAT_PATH);
+    shell.close();
+  }
 </script>
 
 <svelte:window
@@ -129,12 +147,13 @@
   <Sidebar
     label={NAVIGATION_COPY.productName}
     closeLabel={NAVIGATION_COPY.closeNavigation}
-    drawerQuery={TOUCH_DRAWER_QUERY}
+    mobileBreakpoint={DRAWER_BREAKPOINT}
+    railLabels={mode === 'rail'}
     bind:collapsed={() => shell.collapsed, (value) => (shell.collapsed = value)}
     class={sidebarClass}
   >
     {#snippet navigation()}
-      {#if mode !== 'drawer'}
+      {#snippet brandRow()}
         <div class="weft-shell-sidebar__brand">
           <span class="weft-shell-sidebar__name">{NAVIGATION_COPY.productName}</span>
           <Button
@@ -152,7 +171,22 @@
             {/if}
           </Button>
         </div>
-      {/if}
+      {/snippet}
+      {#snippet newChatAction()}
+        <!-- Cinder draws the control: a neutral, sidebar-wide row with an accent plus, this label,
+             and the key as plain text. The key's name is `aria-keyshortcuts`, so the glyph is
+             decoration. -->
+        <button
+          type="button"
+          aria-keyshortcuts={showNewChatKey ? NEW_CHAT_KEY.toUpperCase() : undefined}
+          onclick={onNewChat}
+        >
+          {SHORTCUT_COPY.newChat}
+          {#if showNewChatKey}
+            <span data-cinder-shortcut aria-hidden="true">{NEW_CHAT_KEY.toUpperCase()}</span>
+          {/if}
+        </button>
+      {/snippet}
       {#snippet destinationItem(destination: Destination)}
         {@const Icon = destination.icon}
         {@const label = VIEW_COPY[destination.view].label}
@@ -191,7 +225,12 @@
           </SideNavigationItem>
         {/if}
       {/snippet}
-      <SideNavigation ariaLabel={NAVIGATION_COPY.destinations} class="weft-shell-side-navigation">
+      <SideNavigation
+        ariaLabel={NAVIGATION_COPY.destinations}
+        class="weft-shell-side-navigation"
+        brand={mode === 'drawer' ? undefined : brandRow}
+        primaryAction={newChatAction}
+      >
         {#each DESTINATION_GROUPS as group (group)}
           {#if group === 'home'}
             {#each destinationsIn(group) as destination (destination.path)}
