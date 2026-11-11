@@ -6,6 +6,7 @@ import {
   assertValidParallelOperationCacheEntry,
   BranchTopologyChangedError,
   createParallelOperationCacheEntry,
+  durableRejectionReason,
   isParallelOperationCacheEntry,
   type ParallelBranchSlot,
   type ParallelOperationCacheEntry,
@@ -153,15 +154,6 @@ export function* all(
   return values;
 }
 
-/** The engine settles reasons as `{ name, message }`; anything else is coerced to it. */
-function durableReason(reason: unknown): { name: string; message: string } {
-  if (typeof reason === 'object' && reason !== null) {
-    const { name, message } = reason as { name?: unknown; message?: unknown };
-    if (typeof name === 'string' && typeof message === 'string') return { name, message };
-  }
-  return { name: 'Error', message: String(reason) };
-}
-
 function buildSettledEntry(values: unknown[], operationId: string): ParallelOperationCacheEntry {
   return createParallelOperationCacheEntry(
     'all-settled',
@@ -171,7 +163,7 @@ function buildSettledEntry(values: unknown[], operationId: string): ParallelOper
         ? { status: 'fulfilled', value: outcome.value, operationId: `${operationId}:${index}` }
         : {
             status: 'rejected',
-            reason: durableReason(outcome.reason),
+            reason: durableRejectionReason(outcome.reason),
             operationId: `${operationId}:${index}`,
           };
     }),

@@ -16,6 +16,7 @@ import { Context } from '../context.ts';
 import { BranchTopologyChangedError } from '../context/parallel-cache-entry.ts';
 import { Engine } from '../engine.ts';
 import { hydrateCheckpointReplayState } from '../engine/checkpoint-replay.ts';
+import { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING } from '../engine/index.ts';
 import {
   CURRENT_CHECKPOINT_SCHEMA_VERSION,
   CheckpointSchemaVersionError,
@@ -49,7 +50,6 @@ describe('ctx.all partial-failure preservation', () => {
 
   it('recovers persisted allSettled rejections and replays the outcomes the live run saw', async () => {
     const { TestEngine } = await import('../../testing/test-engine.ts');
-    const { ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING } = await import('../engine.ts');
     const observed: unknown[] = [];
     let calls = 0;
     const throwsError = async () => {

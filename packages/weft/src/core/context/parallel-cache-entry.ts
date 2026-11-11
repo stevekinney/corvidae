@@ -220,3 +220,12 @@ export function createParallelOperationCacheEntry(
     subOperationCount,
   };
 }
+
+/** The engine settles reasons as `{ name, message }`; anything else is coerced to it. */
+export function durableRejectionReason(reason: unknown): { name: string; message: string } {
+  if (typeof reason === 'object' && reason !== null) {
+    const { name, message } = reason as { name?: unknown; message?: unknown };
+    if (typeof name === 'string' && typeof message === 'string') return { name, message };
+  }
+  return { name: 'Error', message: String(reason) };
+}
