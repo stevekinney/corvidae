@@ -760,6 +760,23 @@ describe('Chat — slot composition', () => {
         setup: () => {},
       }));
 
+    // Status alone leaves the call in its group, which is not a message row, so the snippet does
+    // not draw for it (COR-2289).
+    const grouped = render(Chat, {
+      props: {
+        id: 'chat-paired-tool-result-grouped',
+        conversation,
+        messageStatus: contextSnippet('status') as never,
+      },
+    });
+    expect(grouped.container.querySelectorAll('.chat-tool-call-timeline')).toHaveLength(1);
+    expect(
+      grouped.container.querySelectorAll('.chat-message-wrapper[data-role="tool-call"]'),
+    ).toHaveLength(0);
+    expect(grouped.container.querySelector('[data-row-context]')).toBeNull();
+    grouped.unmount();
+
+    // With actions, a call with an artifact keeps its own row, where both snippets see the pair.
     const { container } = render(Chat, {
       props: {
         id: 'chat-paired-tool-result-context',

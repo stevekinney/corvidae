@@ -58,7 +58,8 @@
     messageId?: string;
     describeToolCall?: ((pair: ToolCallPair) => ToolCallPresentation | undefined) | undefined;
     expanded?: boolean;
-    onToggle?: (() => void) | undefined;
+    /** Called with whether the group is open after the person toggles its summary line. */
+    onToggle?: ((open: boolean) => void) | undefined;
     activityActive?: boolean;
     approvalStates?: ReadonlyMap<string, ApprovalState> | undefined;
     durations?: ReadonlyMap<string, number> | undefined;
@@ -195,7 +196,7 @@
 
   function toggleGroup(): void {
     groupOverride = !groupOpen;
-    onToggle?.();
+    onToggle?.(groupOverride);
   }
 
   // A row starts open only for a failure or a denial; the reader's own toggle wins after that. A

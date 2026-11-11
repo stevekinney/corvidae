@@ -17,6 +17,7 @@ import type {
   StepMessagePart,
   SuggestionMessagePart,
 } from '../utilities/types.ts';
+import type { ChatTurnLabels } from './turn-labels.ts';
 
 /**
  * A body part — every renderable part EXCEPT image, step, and suggestion.
@@ -112,6 +113,14 @@ export type ChatMessagePartsRendererProps = {
   onSuggestionSelect?: ((label: string) => void) | undefined;
   /** Whether tool activity belongs to the currently active stream. */
   toolActivityActive?: boolean;
+  /** Called with a failed tool call's id when the person chooses Retry this step. The button shows only when this is set. */
+  onRetryStep?: ((toolCallId: string) => void) | undefined;
+  /** How long each tool call took, in milliseconds, keyed by call id. */
+  toolCallDurations?: ReadonlyMap<string, number> | undefined;
+  /** When each tool call started, in milliseconds since the Unix epoch, keyed by call id. */
+  toolCallStartTimes?: ReadonlyMap<string, number> | undefined;
+  /** The words of a step's position, its failed count and a failed step's controls. */
+  turnLabels?: Partial<ChatTurnLabels> | undefined;
 };
 
 /** A renderable unit: a single body part, a contiguous run of image parts, a group of step parts, or a group of suggestion chips. */

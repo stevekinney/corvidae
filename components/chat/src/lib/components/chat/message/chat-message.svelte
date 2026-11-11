@@ -196,6 +196,12 @@
     onDiscardTurn?: ((messageId: string) => void) | undefined;
     /** Called with this message's id when the person chooses Retry on a failed turn or Try again on an empty one. Each shows only when this is set. */
     onRetryTurn?: ((messageId: string) => void) | undefined;
+    /** Called with a failed tool call's id when the person chooses Retry this step under it. The button shows only when this is set. */
+    onRetryStep?: ((toolCallId: string) => void) | undefined;
+    /** How long each tool call of this message took, in milliseconds, keyed by call id. */
+    toolCallDurations?: ReadonlyMap<string, number> | undefined;
+    /** When each tool call of this message started, in milliseconds since the Unix epoch, keyed by call id. */
+    toolCallStartTimes?: ReadonlyMap<string, number> | undefined;
   };
 
   const escapeHtml = (value: string): string =>
@@ -295,6 +301,9 @@
     onContinueTurn,
     onDiscardTurn,
     onRetryTurn,
+    onRetryStep,
+    toolCallDurations,
+    toolCallStartTimes,
     tabindex,
     ...rest
   }: ChatMessageProps = $props();
@@ -1015,6 +1024,10 @@
           {onsteps}
           {onSuggestionSelect}
           {toolActivityActive}
+          {onRetryStep}
+          {toolCallDurations}
+          {toolCallStartTimes}
+          {turnLabels}
         />
 
         {#if hasMarkdownBody && textContent.length > TRUNCATE_THRESHOLD}

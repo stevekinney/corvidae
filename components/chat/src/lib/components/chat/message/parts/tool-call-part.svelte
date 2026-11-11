@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import type { ToolCallMessagePart } from '../../utilities/types.ts';
+  import type { ChatTurnLabels } from '../turn-labels.ts';
 
   export type ToolCallPartProps = {
     /** The tool-call render part (call + optional resolved result). */
@@ -11,6 +12,14 @@
     /** Called when the card's disclosure toggle is activated. */
     onToggle?: (() => void) | undefined;
     activityActive?: boolean;
+    /** Called with the call's id when the person chooses Retry this step after it failed. The button shows only when this is set. */
+    onRetryStep?: ((toolCallId: string) => void) | undefined;
+    /** How long the call took, in milliseconds, once it has a result. */
+    durationMilliseconds?: number | undefined;
+    /** When the call started, in milliseconds since the Unix epoch; a call under way counts from it. */
+    startedAt?: number | undefined;
+    /** The words of the step's position, its failed count and a failed step's controls. */
+    labels?: Partial<ChatTurnLabels> | undefined;
   };
 </script>
 
@@ -23,6 +32,10 @@
     expanded = false,
     onToggle,
     activityActive = true,
+    onRetryStep,
+    durationMilliseconds,
+    startedAt,
+    labels,
   }: ToolCallPartProps = $props();
 
   const pairs = $derived([part.pair]);
@@ -33,6 +46,14 @@
     part.approvalState === undefined
       ? undefined
       : new Map([[part.pair.call.id, part.approvalState]]),
+  );
+  const durations = $derived(
+    durationMilliseconds === undefined
+      ? undefined
+      : new Map([[part.pair.call.id, durationMilliseconds]]),
+  );
+  const startTimes = $derived(
+    startedAt === undefined ? undefined : new Map([[part.pair.call.id, startedAt]]),
   );
   const describeToolCall = $derived(
     part.presentation === undefined ? undefined : () => part.presentation,
@@ -52,4 +73,8 @@
   {onToggle}
   {activityActive}
   {approvalStates}
+  {durations}
+  {startTimes}
+  {onRetryStep}
+  {labels}
 />

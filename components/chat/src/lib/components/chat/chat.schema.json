@@ -236,12 +236,12 @@
       {
         "name": "messageActions",
         "reason": "function-or-snippet",
-        "description": "Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata."
+        "description": "Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata. A tool call drawn in a group of calls is not a message row and gets none; while this is set, a call with an artifact keeps its own row."
       },
       {
         "name": "messagePart",
         "reason": "function-or-snippet",
-        "description": "Per-message-part override. Replaces the rendering of an individual body part\n(markdown, tool call, tool result) while delegating the rest to the built-ins\nvia the `renderDefault` snippet it receives. Image parts are excluded — they\nrender through the grouped attachment grid, not this override."
+        "description": "Per-message-part override. Replaces the rendering of an individual body part\n(markdown, tool call, tool result) while delegating the rest to the built-ins\nvia the `renderDefault` snippet it receives. Image parts are excluded — they\nrender through the grouped attachment grid, not this override. With this set, each tool call\nkeeps its own row so the override sees it; without it, contiguous tool calls draw as one group."
       },
       {
         "name": "messageReasoning",
@@ -251,7 +251,7 @@
       {
         "name": "messageStatus",
         "reason": "function-or-snippet",
-        "description": "Status rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageActions` and `row`, including resolved tool pairs and artifact metadata."
+        "description": "Status rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageActions` and `row`, including resolved tool pairs and artifact metadata. A tool call drawn in a group of calls is not a message row and gets none."
       },
       {
         "name": "messageSteps",
@@ -400,7 +400,7 @@
       {
         "name": "row",
         "reason": "function-or-snippet",
-        "description": "Full-row override. Renders an entire message row; receives the shared row context and\na `renderDefault` snippet for the built-in row (inversion of control), so a\nconsumer can wrap or fully replace specific rows. Paired tool results are\nfolded into the visible tool-call row's `toolCallPair`, with validated\n`cinder:artifact` metadata available as `artifact`."
+        "description": "Full-row override. Renders an entire message row; receives the shared row context and\na `renderDefault` snippet for the built-in row (inversion of control), so a\nconsumer can wrap or fully replace specific rows. Paired tool results are\nfolded into the visible tool-call row's `toolCallPair`, with validated\n`cinder:artifact` metadata available as `artifact`. With this set, each tool call keeps its own\nrow so the override sees it, and the host groups them if it wants to; without it, contiguous\ntool calls draw as one group."
       },
       {
         "name": "sourcesByMessageId",

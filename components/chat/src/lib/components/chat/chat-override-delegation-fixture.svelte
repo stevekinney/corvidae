@@ -5,17 +5,19 @@
     conversation: ConversationHistory;
     /** When true, the row/part overrides delegate to renderDefault; else replace. */
     delegate: boolean;
+    /** Passed to Chat: called with a failed call's id when the person chooses Retry this step. */
+    onRetryStep?: ((toolCallId: string) => void) | undefined;
   };
 </script>
 
 <script lang="ts">
   import Chat from './chat.svelte';
 
-  let { conversation, delegate }: OverrideDelegationFixtureProps = $props();
+  let { conversation, delegate, onRetryStep }: OverrideDelegationFixtureProps = $props();
 </script>
 
 <div style="height: 20rem;">
-  <Chat id="delegation-chat" {conversation}>
+  <Chat id="delegation-chat" {conversation} {onRetryStep}>
     {#snippet row({ message }, renderDefault)}
       <div class="row-wrapper" data-role={message.role}>
         {#if delegate}

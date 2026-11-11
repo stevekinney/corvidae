@@ -563,24 +563,37 @@
     getMessageReasoning: () => messageReasoning,
     getFirstUnreadId: () => unreadState.firstUnreadId,
     // A call whose question was answered here, or whose approval was decided here, keeps its own
-    // row so the answer or the receipt stays readable once the run resumes.
+    // row so the answer or the receipt stays readable once the run resumes. So does a call that
+    // carries reasoning or steps of its own, which a group does not draw, and, while the host
+    // draws message actions, one with an artifact those actions may act on.
     getAnsweredToolCallIds: () => [
       ...questions.answers.keys(),
       ...commandActions.approvalReceipts.keys(),
+      ...toolCallIdsWithOwnContent(messages),
     ],
+    // Only a host that draws rows or parts itself sees every tool call as its own row: the group
+    // does not pass through `row` or `messagePart`. Actions, status, reasoning, steps and the
+    // expansion callback leave grouping on (COR-2289).
     getUngroupAllToolCalls: () =>
-      Boolean(
-        row ||
-        messagePart ||
-        messageActions ||
-        messageStatus ||
-        messageReasoning ||
-        messageSteps ||
-        onExpandedChange ||
-        searchState.isOpen ||
-        rollbackMessageId,
-      ),
+      Boolean(row || messagePart || searchState.isOpen || rollbackMessageId),
   });
+
+  /**
+   * The tool calls that keep their own row so nothing of theirs is lost: one with reasoning or
+   * steps, and, while the host draws message actions, one with an artifact.
+   */
+  function toolCallIdsWithOwnContent(candidates: readonly Message[]): string[] {
+    return candidates.flatMap((message) => {
+      const callId = message.toolCall?.id;
+      if (message.role !== 'tool-call' || callId === undefined) return [];
+      const reasoning = resolveMessageReasoning(message, messageReasoning);
+      return (reasoning !== undefined && reasoning !== '') ||
+        resolveMessageSteps(message, messageSteps) !== undefined ||
+        (messageActions !== undefined && artifactForToolCallMessage(message) !== undefined)
+        ? [callId]
+        : [];
+    });
+  }
   const messages = $derived(transcript.messages);
   const lastMessageId = $derived(transcript.lastMessageId);
   const rollbackBoundaryIndex = $derived(transcript.rollbackBoundaryIndex);
@@ -2093,6 +2106,8 @@
          malformed callback can never break the chat render (see resolve* in
          chat/utilities). A plain transcript yields `undefined` for all three. -->
       {@const derivedReasoning = resolveMessageReasoning(message, messageReasoning)}
+      <!-- A tool call on its own row reads its time the way a group's calls do. -->
+      {@const ownToolCallPairs = message.toolCall ? toolCallGroupPairs([message]) : []}
       {@const derivedEntries = resolveMessageTranscriptEntries(message)}
       {@const derivedNotes = resolveMessageNotes(message)}
       {@const derivedSteps = resolveMessageSteps(message, messageSteps)}
@@ -2180,6 +2195,13 @@
           {onContinueTurn}
           {onDiscardTurn}
           {onRetryTurn}
+          {onRetryStep}
+          toolCallDurations={ownToolCallPairs.length > 0
+            ? toolCallDurations(ownToolCallPairs)
+            : undefined}
+          toolCallStartTimes={ownToolCallPairs.length > 0
+            ? toolCallStartTimes(ownToolCallPairs)
+            : undefined}
         >
           {#snippet actions()}
             {#if messageActions}
@@ -2233,6 +2255,7 @@
           startTimes={toolCallStartTimes(groupPairs)}
           {onRetryStep}
           labels={turnLabels}
+          onToggle={onExpandedChange}
         />
         {#if artifacts.length > 0}
           <div class="chat-artifact-actions" role="group" aria-label="Artifact actions">

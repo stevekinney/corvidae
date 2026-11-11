@@ -34,6 +34,10 @@
     onSuggestionSelect,
     noteAction,
     toolActivityActive = true,
+    onRetryStep,
+    toolCallDurations,
+    toolCallStartTimes,
+    turnLabels,
   }: ChatMessagePartsRendererProps = $props();
 
   const units = $derived(toRenderUnits(parts));
@@ -88,7 +92,17 @@
   {#if part.type === 'markdown'}
     <MarkdownPart {part} {markdownNode} />
   {:else if part.type === 'tool-call'}
-    <ToolCallPart {part} {messageId} {expanded} {onToggle} activityActive={toolActivityActive} />
+    <ToolCallPart
+      {part}
+      {messageId}
+      {expanded}
+      {onToggle}
+      activityActive={toolActivityActive}
+      {onRetryStep}
+      durationMilliseconds={toolCallDurations?.get(part.pair.call.id)}
+      startedAt={toolCallStartTimes?.get(part.pair.call.id)}
+      labels={turnLabels}
+    />
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}

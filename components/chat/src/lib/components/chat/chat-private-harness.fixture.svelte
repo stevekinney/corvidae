@@ -1329,6 +1329,11 @@
         {#snippet messageStatus({ message }: ChatRowContext)}
           <span data-testid="harness-message-status" data-message-id={message.id}>Seen</span>
         {/snippet}
+        <!-- A host that draws parts keeps each tool call on its own row, which the standalone tool
+             rows of this mode exercise; the other mode draws contiguous calls as one group. -->
+        {#snippet messagePart(part, renderDefault)}
+          {@render renderDefault(part)}
+        {/snippet}
       </Chat>
     {:else}
       <Chat

@@ -7,7 +7,7 @@
 
 /// <reference lib="dom" />
 import { afterAll, afterEach, describe, expect, mock, test } from 'bun:test';
-import { tick } from 'svelte';
+import { createRawSnippet, tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 import {
@@ -48,6 +48,8 @@ afterAll(() => {
 
 const { render, fireEvent, cleanup, getByRole } = await import('@testing-library/svelte');
 const { default: Chat } = await import('./chat.svelte');
+const { default: OverrideDelegationFixture } =
+  await import('./chat-override-delegation-fixture.svelte');
 
 afterEach(() => {
   cleanup();
@@ -221,5 +223,105 @@ describe('Chat — run outcomes on the turn', () => {
     );
     await fireEvent.click(getByRole(timeline!, 'button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('source-2');
+  });
+});
+
+describe('tool-call grouping under host customization (COR-2289)', () => {
+  function threeLookups(id: string, lastOutcome: 'success' | 'error' = 'success') {
+    let conversation = appendUserMessage(createConversationHistory({ id }), 'Compare the orders');
+    for (const [index, order] of ['4471', '4472', '4473'].entries()) {
+      const callId = `lookup-${order}`;
+      conversation = appendToolCall(conversation, {
+        id: callId,
+        name: 'lookup_order',
+        arguments: { order },
+      });
+      const failed = lastOutcome === 'error' && index === 2;
+      conversation = appendToolResult(conversation, {
+        callId,
+        outcome: failed ? 'error' : 'success',
+        content: failed ? null : { order },
+        ...(failed
+          ? {
+              error: {
+                code: 'timeout',
+                category: 'timeout',
+                retryable: true,
+                message: 'The ledger did not answer within 10 s.',
+              },
+            }
+          : {}),
+      });
+    }
+    return appendAssistantMessage(conversation, 'All three orders shipped.');
+  }
+
+  test('a Chat with message actions, status, reasoning and an expansion callback still draws three contiguous calls as one group', async () => {
+    const expandedChanges: boolean[] = [];
+    const messageActions = createRawSnippet(() => ({
+      render: () => '<span data-testid="host-action">Pin</span>',
+    }));
+    const messageStatus = createRawSnippet(() => ({
+      render: () => '<span data-testid="host-status">Seen</span>',
+    }));
+    const { container } = render(Chat, {
+      id: 'grouped-with-actions',
+      conversation: threeLookups('grouped-with-actions'),
+      messageActions,
+      messageStatus,
+      messageReasoning: (message: Message) =>
+        message.role === 'assistant' ? 'Compared the three ship dates.' : undefined,
+      onExpandedChange: (expanded: boolean) => expandedChanges.push(expanded),
+    });
+    await tick();
+
+    const timelines = container.querySelectorAll<HTMLElement>('.chat-tool-call-timeline');
+    expect(timelines).toHaveLength(1);
+    expect(timelines[0]!.dataset['cinderToolCallCount']).toBe('3');
+    // The host's snippets still draw on the messages that are rows of their own.
+    expect(container.querySelectorAll('[data-testid="host-action"]').length).toBeGreaterThan(0);
+
+    await fireEvent.click(timelines[0]!.querySelector<HTMLElement>('.chat-tool-call-toggle')!);
+    expect(expandedChanges).toEqual([true]);
+    // Three lookups of one tool fold into one row that counts them.
+    const items = timelines[0]!.querySelectorAll<HTMLElement>('.chat-tool-call-item');
+    expect(items).toHaveLength(1);
+    expect(items[0]!.dataset['cinderToolCallRepeat']).toBe('3');
+  });
+
+  test('a tool call the host gives reasoning keeps its own row, and its neighbours still group', async () => {
+    const { container } = render(Chat, {
+      id: 'reasoning-call',
+      conversation: threeLookups('reasoning-call'),
+      messageReasoning: (message: Message) =>
+        message.toolCall?.id === 'lookup-4473' ? 'Checking the last order twice.' : undefined,
+    });
+    await tick();
+
+    const counts = [...container.querySelectorAll<HTMLElement>('.chat-tool-call-timeline')].map(
+      (timeline) => timeline.dataset['cinderToolCallCount'],
+    );
+    expect(counts).toEqual(['2', '1']);
+  });
+
+  test('a host that draws rows and parts sees each call on its own row, and a failed one still offers Retry this step', async () => {
+    const retryStep = mock((_toolCallId: string) => undefined);
+    const { container } = render(OverrideDelegationFixture, {
+      props: {
+        conversation: threeLookups('own-rows', 'error'),
+        delegate: true,
+        onRetryStep: retryStep,
+      },
+    });
+    await tick();
+
+    const timelines = [...container.querySelectorAll<HTMLElement>('.chat-tool-call-timeline')];
+    expect(timelines.map((timeline) => timeline.dataset['cinderToolCallCount'])).toEqual([
+      '1',
+      '1',
+      '1',
+    ]);
+    await fireEvent.click(getByRole(timelines[2]!, 'button', { name: 'Retry this step' }));
+    expect(retryStep).toHaveBeenCalledWith('lookup-4473');
   });
 });

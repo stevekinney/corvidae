@@ -256,23 +256,26 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   emptyDescription?: string | undefined;
   /** List of suggested starter prompt strings shown as clickable buttons in the default empty state. Clicking a prompt submits it immediately as a user message. Has no effect when a custom `empty` snippet is provided. */
   emptyPrompts?: string[];
-  /** Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata. */
+  /** Actions rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageStatus` and `row`, including resolved tool pairs and artifact metadata. A tool call drawn in a group of calls is not a message row and gets none; while this is set, a call with an artifact keeps its own row. */
   messageActions?: Snippet<[context: ChatRowContext]>;
-  /** Status rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageActions` and `row`, including resolved tool pairs and artifact metadata. */
+  /** Status rendered for a visible message row. Receives the same {@link ChatRowContext} as `messageActions` and `row`, including resolved tool pairs and artifact metadata. A tool call drawn in a group of calls is not a message row and gets none. */
   messageStatus?: Snippet<[context: ChatRowContext]>;
   /**
    * Full-row override. Renders an entire message row; receives the shared row context and
    * a `renderDefault` snippet for the built-in row (inversion of control), so a
    * consumer can wrap or fully replace specific rows. Paired tool results are
    * folded into the visible tool-call row's `toolCallPair`, with validated
-   * `cinder:artifact` metadata available as `artifact`.
+   * `cinder:artifact` metadata available as `artifact`. With this set, each tool call keeps its own
+   * row so the override sees it, and the host groups them if it wants to; without it, contiguous
+   * tool calls draw as one group.
    */
   row?: ChatRowOverride;
   /**
    * Per-message-part override. Replaces the rendering of an individual body part
    * (markdown, tool call, tool result) while delegating the rest to the built-ins
    * via the `renderDefault` snippet it receives. Image parts are excluded — they
-   * render through the grouped attachment grid, not this override.
+   * render through the grouped attachment grid, not this override. With this set, each tool call
+   * keeps its own row so the override sees it; without it, contiguous tool calls draw as one group.
    */
   messagePart?: MessagePartOverride;
   /** Per-node override for fenced code blocks, tables, and Mermaid blocks inside markdown messages. */
