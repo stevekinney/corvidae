@@ -458,7 +458,7 @@ describe('Chat — sourcePresentation="inline"', () => {
     await rerender({ sourcesByMessageId: new Map() });
 
     await waitFor(() =>
-      expect(document.activeElement).toBe(messageArticle(container, 'assistant-a')),
+      expect(document.activeElement === messageArticle(container, 'assistant-a')).toBe(true),
     );
     expect(chip.isConnected).toBe(false);
   });
