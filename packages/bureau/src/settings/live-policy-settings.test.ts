@@ -276,6 +276,21 @@ describe('context.summarizerModel', () => {
     bureau.models.replace(catalog);
     expect(bureau.models.summarizer()?.model).toBe('first');
   });
+
+  it('refuses a retired row, at write and when a replace retires the row', async () => {
+    const retired = { ...row('anthropic', 'old'), lifecycle: 'retired' as const };
+    const bureau = await open({ models: { catalog: [...catalog, retired] } });
+    const { revision } = await bureau.settings.get();
+    expect(
+      await bureau.settings.update(
+        { 'context.summarizerModel': 'anthropic/old' },
+        { expectedRevision: revision },
+      ),
+    ).toMatchObject({ outcome: 'rejected', reason: 'invalid-value' });
+    await change(bureau, { 'context.summarizerModel': 'anthropic/first' });
+    bureau.models.replace([{ ...row('anthropic', 'first'), lifecycle: 'retired' as const }]);
+    expect(bureau.models.summarizer()).toBeUndefined();
+  });
 });
 
 describe('decisions.maximumPerTask', () => {
