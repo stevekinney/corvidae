@@ -92,7 +92,9 @@ describe('vertical navigation item: one 30px control (rows 02m, 02n)', () => {
 
 describe('vertical navigation item: active (rows 02n, 02p, COR-2315)', () => {
   const RAISED_PILL = 'var(--cinder-surface-raised)';
-  const SHADOW = 'var(--cinder-shadow-sm)';
+  // The pill's shadow reads a private hook first, so a surface that drops the pill (the phone
+  // drawer, `sidebar.css`) sets the hook and never `box-shadow`, and keeps the focus ring.
+  const SHADOW = 'var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm))';
 
   test('is a raised white pill with the hairline shadow, default text and semibold weight (AC2, AC9)', () => {
     const rule = rulesFor(navigationItemCss, ACTIVE).find(

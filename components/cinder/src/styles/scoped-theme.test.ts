@@ -116,7 +116,9 @@ describe('scoped theme tokens', () => {
     expect(navigationItemCss).toContain('color: var(--cinder-text-default);');
     expect(navigationItemCss).toContain('background-color: var(--cinder-surface-hover);');
     expect(navigationItemCss).toContain('background-color: var(--cinder-surface-raised);');
-    expect(navigationItemCss).toContain('box-shadow: var(--cinder-shadow-sm);');
+    expect(navigationItemCss).toContain(
+      'box-shadow: var(--_cinder-navigation-item-pill-shadow, var(--cinder-shadow-sm));',
+    );
     expect(navigationItemCss).toContain(
       'var(--_cinder-navigation-item-ring, var(--cinder-ring-color))',
     );

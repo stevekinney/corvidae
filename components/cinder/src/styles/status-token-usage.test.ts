@@ -52,8 +52,14 @@ describe('status token usage', () => {
     for (const status of ['neutral', 'accent', 'success', 'warning', 'danger', 'info']) {
       expect(chipSource).toContain(`var(${soft(status)}-background)`);
       expect(chipSource).toContain(`var(${soft(status)}-text)`);
-      expect(chipSource).toContain(`var(${soft(status)}-border)`);
+      // The neutral chip is filled with no edge (COR-2312), so it reads no border token.
+      if (status !== 'neutral') expect(chipSource).toContain(`var(${soft(status)}-border)`);
     }
+
+    const neutral = chipSource.match(
+      /\.cinder-chip\[data-cinder-variant='neutral'\]\s*\{([^}]*)\}/,
+    );
+    expect(declarationValue(neutral?.[1] ?? '', 'border-color')).toBe('transparent');
   });
 
   // COR-1552: a Badge draws no visible outline. Its border is still there, so the box
@@ -65,15 +71,19 @@ describe('status token usage', () => {
     const soft = (variant: string) =>
       variant === 'accent' ? '--cinder-accent' : `--cinder-status-${variant}`;
 
+    // Info is neutral (COR-2314): the info Badge shares the neutral rule and its tokens.
+    const painted = (variant: string) => soft(variant === 'info' ? 'neutral' : variant);
+
     for (const variant of ['neutral', 'accent', 'success', 'warning', 'danger', 'info']) {
+      // The selector may sit in a list with another variant's selector before the brace.
       const rule = badgeSource.match(
-        new RegExp(`\\.cinder-badge\\[data-cinder-variant='${variant}'\\]\\s*\\{([^}]*)\\}`),
+        new RegExp(`\\.cinder-badge\\[data-cinder-variant='${variant}'\\][^{}]*\\{([^}]*)\\}`),
       );
       expect(rule?.[1], `${variant} rule`).toBeDefined();
       const body = rule?.[1] ?? '';
-      expect(declarationValue(body, 'background')).toBe(`var(${soft(variant)}-background)`);
-      expect(declarationValue(body, 'color')).toBe(`var(${soft(variant)}-text)`);
-      expect(declarationValue(body, 'border-color')).toBe(`var(${soft(variant)}-background)`);
+      expect(declarationValue(body, 'background')).toBe(`var(${painted(variant)}-background)`);
+      expect(declarationValue(body, 'color')).toBe(`var(${painted(variant)}-text)`);
+      expect(declarationValue(body, 'border-color')).toBe(`var(${painted(variant)}-background)`);
     }
 
     const critical = badgeSource.match(

@@ -16,6 +16,12 @@ afterEach(() => {
 });
 
 const REASON = 'Approving is off until Interborough is reachable';
+/**
+ * `rerender` merges into the current props, so a reason clears only when passed as undefined. The
+ * prop is `disabledReason?: string`, which exactOptionalPropertyTypes will not let a literal
+ * undefined satisfy, hence the cast through unknown.
+ */
+const NO_REASON = { disabledReason: undefined } as unknown as Partial<ApprovalCardProps>;
 
 function editableCard(overrides: Partial<ApprovalCardProps> = {}): ApprovalCardProps {
   return {
@@ -52,7 +58,7 @@ describe('ApprovalCard disabled reason on every commit path', () => {
     await fireEvent.click(confirm);
     expect(onResolve).not.toHaveBeenCalled();
 
-    await view.rerender(editableCard({ onResolve }));
+    await view.rerender({ ...editableCard({ onResolve }), ...NO_REASON });
     await fireEvent.click(view.getByRole('button', { name: 'Confirm edited approval' }));
     expect(onResolve).toHaveBeenCalledWith({
       decision: 'approve_with_edits',

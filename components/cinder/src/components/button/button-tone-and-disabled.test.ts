@@ -1,7 +1,11 @@
 /// <reference lib="dom" />
 /**
  * COR-1821: a primary Button never takes a status tone from its container, and a disabled Button
- * looks disabled the same way in every variant.
+ * looks disabled the same way in every variant. No stylesheet re-faces a Button beneath a tone,
+ * variant, severity, status or state ancestor, with one named exception: PageHeader's hero band on
+ * its `accent` and `night` tones (COR-2320 AC10), a dark surface band the header owns rather than
+ * a status tone, which provides a white primary and a translucent secondary
+ * (`HERO_BAND_EXCEPTION` below).
  *
  * happy-dom does not compute styles from stylesheets, so the visual halves are pinned against the
  * CSS source with `postcss`, as `callout.css.test.ts` does. The render half proves the structure:
@@ -183,26 +187,66 @@ describe('a primary Button never takes a container tone', () => {
     const files = new Bun.Glob('**/*.css').scanSync({ cwd: sourceDirectory });
     for (const file of files) {
       if (file === 'components/button/button.css') continue;
-      parse(loadCss(file)).walkRules((rule) => {
-        selectorParser((selectors) => {
-          selectors.each((selector) => {
-            const compounds: string[] = [''];
-            selector.each((node) => {
-              if (node.type === 'combinator') compounds.push('');
-              else compounds[compounds.length - 1] += node.toString();
-            });
-            const buttonIndex = compounds.findIndex((compound) =>
-              /\.cinder-button(?![\w-])/.test(compound),
-            );
-            if (buttonIndex <= 0) return;
-            const ancestors = compounds.slice(0, buttonIndex).join(' ');
-            if (/\[data-cinder-(?:tone|variant|severity|status|state)\b/.test(ancestors)) {
-              offenders.push(`${file}: ${selector.toString().trim()}`);
-            }
-          });
-        }).processSync(rule.selector);
-      });
+      offenders.push(...retoningSelectors(file, loadCss(file)));
     }
     expect(offenders).toEqual([]);
   });
+
+  test('the hero band exception covers only the PageHeader accent and night bands', () => {
+    const planted = [
+      ".cinder-card[data-cinder-tone='danger'] .cinder-button[data-cinder-variant='primary'] { background: red; }",
+      ".cinder-page-header[data-cinder-tone='tint'] .cinder-button[data-cinder-variant='primary'] { background: red; }",
+      ":is(.cinder-page-header[data-cinder-tone='accent'], .cinder-card[data-cinder-tone='danger']) .cinder-button { color: red; }",
+    ].join('\n');
+    // A status or tone ancestor still fails, in PageHeader's own file and in any other.
+    expect(retoningSelectors('components/page-header/page-header.css', planted)).toHaveLength(3);
+    expect(retoningSelectors('components/card/card.css', planted)).toHaveLength(3);
+
+    const heroBand =
+      ":is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night']) .cinder-button[data-cinder-variant='primary'] { background: white; }";
+    expect(retoningSelectors('components/page-header/page-header.css', heroBand)).toEqual([]);
+    // The same selector in another component's stylesheet is not excepted.
+    expect(retoningSelectors('components/card/card.css', heroBand)).toHaveLength(1);
+  });
 });
+
+/**
+ * The one ancestor allowed to re-face a Button: PageHeader's hero band on its `accent` and `night`
+ * tones (COR-2320 AC10). Those tones are dark surface bands the header owns, not status tones, and
+ * a primary Button in the page's indigo would vanish on an indigo band, so the hero provides a
+ * white primary and a translucent secondary. The match is exact, whitespace aside, and only in
+ * PageHeader's stylesheet; any other tone, variant, severity, status or state ancestor still fails.
+ */
+const HERO_BAND_EXCEPTION = {
+  file: 'components/page-header/page-header.css',
+  ancestors: new Set([
+    ":is(.cinder-page-header[data-cinder-tone='accent'],.cinder-page-header[data-cinder-tone='night'])",
+  ]),
+};
+
+/** Every selector in `css` that styles a `.cinder-button` beneath a tone-like ancestor. */
+function retoningSelectors(file: string, css: string): string[] {
+  const offenders: string[] = [];
+  parse(css).walkRules((rule) => {
+    selectorParser((selectors) => {
+      selectors.each((selector) => {
+        const compounds: string[] = [''];
+        selector.each((node) => {
+          if (node.type === 'combinator') compounds.push('');
+          else compounds[compounds.length - 1] += node.toString();
+        });
+        const buttonIndex = compounds.findIndex((compound) =>
+          /\.cinder-button(?![\w-])/.test(compound),
+        );
+        if (buttonIndex <= 0) return;
+        const ancestors = compounds.slice(0, buttonIndex).join(' ');
+        if (!/\[data-cinder-(?:tone|variant|severity|status|state)\b/.test(ancestors)) return;
+        const excepted =
+          file === HERO_BAND_EXCEPTION.file &&
+          HERO_BAND_EXCEPTION.ancestors.has(ancestors.replace(/\s+/g, ''));
+        if (!excepted) offenders.push(`${file}: ${selector.toString().trim()}`);
+      });
+    }).processSync(rule.selector);
+  });
+  return offenders;
+}

@@ -655,10 +655,15 @@ describe('Toggle — size contract in the stylesheet (COR-1552)', () => {
   });
 
   test('a coarse pointer sizes the hit area to at least 2.75rem by 2.75rem', () => {
-    const coarse = css.match(/@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n  \}/)?.[1] ?? '';
-    expect(coarse, 'no (any-pointer: coarse) block').not.toBe('');
-    expect(coarse).toContain('.cinder-toggle');
-    expect(coarse.match(/2\.75rem/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    // The field's own coarse block (COR-2360) sizes the label row's box, so find the block that
+    // pads the switch itself.
+    const coarse =
+      [...css.matchAll(/@media \(any-pointer: coarse\)\s*\{([\s\S]*?)\n  \}/g)]
+        .map((match) => match[1] ?? '')
+        .find((block) => /\.cinder-toggle\s*\{/.test(block)) ?? '';
+    expect(coarse, 'no (any-pointer: coarse) block for .cinder-toggle').not.toBe('');
+    expect(coarse).toMatch(/--_cinder-toggle-pad-inline:[^;]*2\.75rem/);
+    expect(coarse).toMatch(/--_cinder-toggle-pad-block:[^;]*2\.75rem/);
   });
 });
 

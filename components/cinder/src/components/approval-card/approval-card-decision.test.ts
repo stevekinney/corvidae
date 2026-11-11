@@ -27,6 +27,13 @@ afterEach(() => {
 });
 
 const REASON = 'Approving is off until Interborough is reachable';
+const ARM_HINT = 'Reverts in 3 seconds. Escape cancels.';
+/**
+ * `rerender` merges into the current props, so a reason clears only when passed as undefined. The
+ * prop is `disabledReason?: string`, which exactOptionalPropertyTypes will not let a literal
+ * undefined satisfy, hence the cast through unknown.
+ */
+const NO_REASON = { disabledReason: undefined } as unknown as Partial<ApprovalCardProps>;
 
 type DecisionOverrides = {
   [Key in keyof ApprovalCardProps]?: ApprovalCardProps[Key] | undefined;
@@ -228,15 +235,18 @@ describe('ApprovalCard decision layout', () => {
 describe('ApprovalCard decision layout: arming an irreversible action', () => {
   test('the first press arms a danger button and writes the hint, and the second press commits', async () => {
     const onResolve = mock((_resolution: unknown) => undefined);
-    const { getByRole } = render(ApprovalCard, { props: decisionCard({ onResolve }) });
+    const { getByRole, getByText } = render(ApprovalCard, { props: decisionCard({ onResolve }) });
 
     await fireEvent.click(getByRole('button', { name: 'Refund $42.00' }));
 
     expect(onResolve).not.toHaveBeenCalled();
     const armed = getByRole('button', { name: 'Press again to refund $42.00' });
     expect(armed.getAttribute('data-cinder-variant')).toBe('danger');
-    const hint = getByRole('status');
-    expect(squash(hint.textContent)).toBe('Reverts in 3 seconds. Escape cancels.');
+    // Each Button keeps its own empty loading live region, so the hint is found by its text and
+    // its status role is asserted on it.
+    const hint = getByText(ARM_HINT);
+    expect(hint.getAttribute('role')).toBe('status');
+    expect(squash(hint.textContent)).toBe(ARM_HINT);
     expect(armed.getAttribute('aria-describedby')).toBe(hint.id);
 
     await fireEvent.click(armed);
@@ -248,7 +258,9 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
   test('reverts after three seconds without committing', async () => {
     jest.useFakeTimers();
     const onResolve = mock((_resolution: unknown) => undefined);
-    const { getByRole, queryByRole } = render(ApprovalCard, { props: decisionCard({ onResolve }) });
+    const { getByRole, queryByRole, queryByText } = render(ApprovalCard, {
+      props: decisionCard({ onResolve }),
+    });
 
     await fireEvent.click(getByRole('button', { name: 'Refund $42.00' }));
     expect(getByRole('button', { name: 'Press again to refund $42.00' })).not.toBeNull();
@@ -260,7 +272,7 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
     jest.advanceTimersByTime(1);
     await tick();
     expect(queryByRole('button', { name: 'Press again to refund $42.00' })).toBeNull();
-    expect(queryByRole('status')).toBeNull();
+    expect(queryByText(ARM_HINT)).toBeNull();
     await fireEvent.click(getByRole('button', { name: 'Refund $42.00' }));
     expect(onResolve).not.toHaveBeenCalled();
   });
@@ -302,7 +314,7 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
     expect(onResolve).not.toHaveBeenCalled();
     expect(view.queryByRole('button', { name: 'Press again to refund $42.00' })).toBeNull();
 
-    await view.rerender(decisionCard({ onResolve }));
+    await view.rerender({ ...decisionCard({ onResolve }), ...NO_REASON });
     await fireEvent.click(view.getByRole('button', { name: 'Refund $42.00' }));
     await fireEvent.click(view.getByRole('button', { name: 'Press again to refund $42.00' }));
     expect(onResolve).toHaveBeenCalledTimes(1);

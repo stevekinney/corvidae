@@ -469,9 +469,10 @@ describe('vertical navigation-item geometry lives on the item', () => {
       ".cinder-navigation-item[data-variant='vertical'][data-active='true']",
     );
     expect(rule).toBeDefined();
-    // The current page is an accent tint (Sweep S13, row 02p), visible on any sidebar paint.
-    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-accent-background)');
-    // A selected row is a tint, never an accent stripe (COR-1821).
+    // The current page is a raised pill off the sidebar's tonal surface (COR-2315 AC9, row 02p),
+    // never an accent tint: the accent is for actions and links.
+    expect(declValue(rule!, 'background-color')).toBe('var(--cinder-surface-raised)');
+    // A selected row is a fill, never an accent stripe (COR-1821).
     expect(declValue(rule!, 'border-inline-start-color')).toBeUndefined();
     expect(rule!.toString()).not.toContain('color-mix(');
   });
