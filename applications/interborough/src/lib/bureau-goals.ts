@@ -7,7 +7,8 @@
  *
  * `cancel` names the revision of the goal the caller read. A goal's revision advances on every write
  * to its record, a controller transition included, so a goal that moved since is refused instead of
- * being cancelled against a state the caller did not see.
+ * being cancelled against a state the caller did not see. `update` always names it, for the same
+ * reason.
  */
 import { z } from 'zod';
 
@@ -192,4 +193,53 @@ export async function cancelGoal(
     ...(expectedRevision === undefined ? {} : { expectedRevision }),
   };
   return cancelSchema.parse(await callBureau('bureau.goals.cancel', params, options));
+}
+
+/**
+ * What a goal's Edit page changes (COR-2017): the four fields of New goal. Each field left out
+ * keeps its value, and at least one is named. The change applies to the attempts the goal has not
+ * yet made; an attempt already made keeps the check it ran against.
+ */
+export type GoalChange = {
+  readonly prompt?: string;
+  /**
+   * Accepted only as the goal's own agent, so the form may send every field it shows; the Bureau
+   * refuses another agent as a `Conflict` (`agent-fixed`).
+   */
+  readonly agentName?: string;
+  /** Named by free text, exactly, as when the goal was created. */
+  readonly validator?: { readonly name: string; readonly version: string };
+  /** It must leave room for an attempt beyond those already opened. */
+  readonly maximumAttempts?: number;
+};
+
+const updateSchema = z.object({
+  goalRunId: z.string(),
+  outcome: z.enum(['updated', 'unchanged']),
+  status: z.enum(GOAL_STATUSES),
+  revision: z.number().int(),
+});
+
+/** What changing a goal answers: whether anything changed, and the goal's status and revision. */
+export type GoalUpdated = z.infer<typeof updateSchema>;
+
+/**
+ * Changes a goal, if it is still at `expectedRevision` (`bureau.goals.update`). A goal that moved
+ * since is a `StaleRevision` fault and nothing is written; saving starts no attempt.
+ */
+export async function updateGoal(
+  goalRunId: string,
+  expectedRevision: number,
+  change: GoalChange,
+  options?: Options,
+): Promise<GoalUpdated> {
+  const params = {
+    goalRunId,
+    expectedRevision,
+    ...(change.prompt === undefined ? {} : { prompt: change.prompt }),
+    ...(change.agentName === undefined ? {} : { agentName: change.agentName }),
+    ...(change.validator === undefined ? {} : { validator: change.validator }),
+    ...(change.maximumAttempts === undefined ? {} : { maximumAttempts: change.maximumAttempts }),
+  };
+  return updateSchema.parse(await callBureau('bureau.goals.update', params, options));
 }

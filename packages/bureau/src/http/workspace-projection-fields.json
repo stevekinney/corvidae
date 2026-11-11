@@ -1100,6 +1100,7 @@
     "$.goals[].usage.tokens",
     "$.nextOffset"
   ],
+  "output:bureau.goals.update": ["$.goalRunId", "$.outcome", "$.revision", "$.status"],
   "output:bureau.guardrails.list": [
     "$.guardrails",
     "$.guardrails[].configurable",

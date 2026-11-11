@@ -526,6 +526,9 @@ export type {
   BureauGoalRecoveryReport,
   BureauGoalRequest,
   BureauGoals,
+  BureauGoalUpdateOutcome,
+  BureauGoalUpdateRejectionCode,
+  BureauGoalUpdateRequest,
 } from './goal-types';
 export type {
   LivenessSnapshotEnvelope,

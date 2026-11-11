@@ -57,7 +57,10 @@ import type {
   BureauGoalRecoveryReport,
   BureauGoalRequest,
   BureauGoals,
+  BureauGoalUpdateOutcome,
+  BureauGoalUpdateRequest,
 } from './goal-types';
+import { updateGoal } from './goal-update';
 import { ownerOrLocal } from './owner-of-record';
 import { principalAllows } from './principal-allows';
 
@@ -99,7 +102,25 @@ function canonicalJson(value: unknown): string {
   return JSON.stringify(value) ?? 'null';
 }
 
-/** The parts of a record that a create request determines, for telling a repeat from a conflict. */
+/** Whether an untyped field is text or absent. */
+const isOptionalText = (value: unknown): value is string | undefined =>
+  value === undefined || typeof value === 'string';
+
+/** Whether an untyped field is a validator's name and version, both text, or absent. */
+function isOptionalIdentity(
+  value: unknown,
+): value is { readonly name: string; readonly version: string } | undefined {
+  if (value === undefined) return true;
+  if (typeof value !== 'object' || value === null) return false;
+  const { name, version } = value as Record<string, unknown>;
+  return typeof name === 'string' && typeof version === 'string';
+}
+
+/**
+ * The parts of a record that a create request determines, for telling a repeat from a conflict.
+ * COR-2017: a goal changed by `update` no longer matches the request that created it, so repeating
+ * that request under the same id answers `conflict`.
+ */
 function configurationOf(state: GoalState): string {
   return canonicalJson([
     state.identity,
@@ -512,6 +533,55 @@ export function createBureauGoals<TName extends string = string>(
       : cancelGoal(dependencies, record, options);
   }
 
+  async function update(
+    goalRunId: string,
+    given: BureauGoalUpdateRequest<TName>,
+  ): Promise<BureauGoalUpdateOutcome> {
+    // Untyped input, like `cancel`'s: every field is read defensively. A principal that is not
+    // text names no one, so it may change nothing (answered as no goal); any other field of the
+    // wrong type is a typed rejection, and nothing is read or written for it.
+    const supplied: Record<string, unknown> =
+      typeof given === 'object' && given !== null ? (given as Record<string, unknown>) : {};
+    const { principal, expectedRevision, prompt, agentName, validator, maximumAttempts } = supplied;
+    if (!isOptionalText(principal)) return { outcome: 'not-found' };
+    if (
+      typeof expectedRevision !== 'number' ||
+      !Number.isSafeInteger(expectedRevision) ||
+      expectedRevision < 0
+    ) {
+      return {
+        outcome: 'rejected',
+        code: 'invalid-configuration',
+        reason: 'An update must name the revision it read as expectedRevision.',
+      };
+    }
+    if (
+      !isOptionalText(prompt) ||
+      !isOptionalText(agentName) ||
+      !isOptionalIdentity(validator) ||
+      !(maximumAttempts === undefined || typeof maximumAttempts === 'number')
+    ) {
+      return {
+        outcome: 'rejected',
+        code: 'invalid-configuration',
+        reason:
+          'An update’s prompt and agent name must be text, its validator a name and version, and its attempt limit a number.',
+      };
+    }
+    const request: BureauGoalUpdateRequest = {
+      expectedRevision,
+      ...(principal === undefined ? {} : { principal }),
+      ...(prompt === undefined ? {} : { prompt }),
+      ...(agentName === undefined ? {} : { agentName }),
+      ...(validator === undefined ? {} : { validator }),
+      ...(maximumAttempts === undefined ? {} : { maximumAttempts }),
+    };
+    const record = await authorized(goalRunId, request);
+    return record === undefined
+      ? await absent(goalRunId, request)
+      : updateGoal(dependencies, record, request);
+  }
+
   async function recover(
     goalRunId?: string,
     query?: BureauGoalQuery,
@@ -693,6 +763,7 @@ export function createBureauGoals<TName extends string = string>(
     list,
     active,
     cancel,
+    update,
     recover,
     close,
   };

@@ -40,6 +40,7 @@ import {
   type GoalRunStatus,
   type GoalRunTerminalReason,
   TERMINAL_STATUS_BY_REASON,
+  type ValidatorIdentity,
 } from '@lostgradient/operative';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
@@ -165,6 +166,69 @@ export type GoalRevisionMismatch = {
 
 export type GoalCancellationRequestResult = GoalControlResult | GoalRevisionMismatch;
 
+/**
+ * COR-2017 — what `bureau.goals.update` changes on a goal: what an attempt the goal has not yet
+ * opened reads. A field left out keeps its value. Nothing an attempt already made recorded changes:
+ * each attempt's validation keeps the validator identity it ran against.
+ */
+export interface GoalConfigurationPatch {
+  /** The prompt an attempt opened from now on is given. */
+  readonly prompt?: string | undefined;
+  /**
+   * The catalog agent that runs the goal's attempts. Accepted only when it names the agent the goal
+   * already has (`agent-fixed` otherwise), so a caller may send every field it shows.
+   */
+  readonly agentName?: string | undefined;
+  /** The validator each check from now on runs. */
+  readonly validator?: ValidatorIdentity | undefined;
+  /** How many attempts the goal may make in all, the ones it has made included. */
+  readonly maximumAttempts?: number | undefined;
+}
+
+/** Why the store refused a {@link GoalConfigurationPatch}. Nothing was written. */
+export type GoalConfigurationRejection =
+  /** The goal has ended. */
+  | 'terminal'
+  /** A cancellation is recorded: the goal is ending. */
+  | 'cancellation-requested'
+  /**
+   * The patch names another agent. A goal's sessions and its attempts' runs are bound to the agent
+   * they started with, and every ownership check compares them with the agent the record names, so
+   * a later agent would disown them. That holds even before the first attempt is recorded: the
+   * controller starts with the goal, and its start reads the agent and claims the first attempt's
+   * run before the record says the attempt exists.
+   */
+  | 'agent-fixed'
+  /**
+   * The patch changes the attempt limit of a goal whose last allowed attempt is in flight. The
+   * controller decides that attempt's ending against the limit it read, so a change now could
+   * contradict the decision it is about to commit.
+   */
+  | 'attempt-limit-fixed'
+  /**
+   * The patch sets the attempt limit at or below the number of attempts the goal has opened. The
+   * goal would have no room for the retry its controller may already be deciding on.
+   */
+  | 'attempt-limit-too-low'
+  /** The patched record would not decode. */
+  | 'invalid-record';
+
+/** What {@link GoalStore.updateConfiguration} answers. */
+export type GoalConfigurationResult =
+  | { readonly status: 'updated'; readonly record: GoalState }
+  /** The record already says what the patch asked for; nothing was written. */
+  | { readonly status: 'unchanged'; readonly record: GoalState }
+  | {
+      readonly status: 'rejected';
+      readonly reason: GoalConfigurationRejection;
+      readonly record: GoalState;
+    }
+  /** Lost the compare-and-swap too many times in a row; carries what is stored now. */
+  | { readonly status: 'stale'; readonly record: GoalState }
+  | GoalRevisionMismatch
+  | { readonly status: 'missing' }
+  | { readonly status: 'corrupt' };
+
 export interface GoalStore {
   /**
    * Create-if-absent. The record must be a fresh `pending` one (revision 1,
@@ -202,6 +266,20 @@ export interface GoalStore {
     now: string,
     expectedRevision?: number,
   ): Promise<GoalCancellationRequestResult>;
+  /**
+   * COR-2017 — applies `patch` to a goal that has not ended and has no cancellation recorded. The
+   * write is a compare-and-swap on the record's `revision`, decided before anything else: a record
+   * at another revision is `revision-mismatch` and nothing is written. It advances `revision` and
+   * never `transitionSeq`, and appends nothing to the audit log, so the controller's next commit
+   * re-reads it like any other control-plane write. See {@link GoalConfigurationRejection} for what
+   * it refuses.
+   */
+  updateConfiguration(
+    goalRunId: string,
+    patch: GoalConfigurationPatch,
+    now: string,
+    expectedRevision: number,
+  ): Promise<GoalConfigurationResult>;
   /**
    * Increments `controllerRestarts`. A terminal goal is `rejected`. With
    * `expectedCount`, the increment is a compare-and-swap on the count: a record
@@ -287,7 +365,8 @@ type Evaluation =
   | { readonly outcome: 'write'; readonly next: GoalState }
   | {
       readonly outcome: 'done';
-      readonly result: GoalTransitionResult | GoalControlResult | GoalRevisionMismatch;
+      readonly result:
+        GoalTransitionResult | GoalControlResult | GoalRevisionMismatch | GoalConfigurationResult;
     };
 
 export function createGoalStore(
@@ -346,7 +425,8 @@ export function createGoalStore(
   }
 
   async function mutate<
-    Result extends GoalTransitionResult | GoalControlResult | GoalRevisionMismatch,
+    Result extends
+      GoalTransitionResult | GoalControlResult | GoalRevisionMismatch | GoalConfigurationResult,
   >(
     goalRunId: string,
     evaluate: (current: GoalState) => Evaluation,
@@ -498,6 +578,14 @@ export function createGoalStore(
         (record) => ({ status: 'updated', record }),
       );
     },
+    updateConfiguration(goalRunId, patch, now, expectedRevision) {
+      return mutate<GoalConfigurationResult>(
+        goalRunId,
+        (current) => evaluateConfigurationUpdate(current, patch, now, expectedRevision),
+        (record) => ({ status: 'stale', record }),
+        (record) => ({ status: 'updated', record }),
+      );
+    },
     async recordControllerRestart(goalRunId, now, expectedCount) {
       const result = await control(goalRunId, (current) =>
         isTerminal(current.status)
@@ -542,6 +630,67 @@ function hasValidTerminalReason(request: GoalTransitionRequest): boolean {
     request.terminalReason !== undefined &&
     TERMINAL_STATUS_BY_REASON[request.terminalReason] === request.to
   );
+}
+
+// ---------------------------------------------------------------------------
+// Configuration update (COR-2017)
+// ---------------------------------------------------------------------------
+
+const sameValidator = (left: ValidatorIdentity, right: ValidatorIdentity): boolean =>
+  left.name === right.name && left.version === right.version;
+
+/**
+ * Decides one `updateConfiguration` against the record stored now. Pure, like the other
+ * evaluators: it names the next record or the answer, and `mutate` writes it.
+ *
+ * The attempt limit is held to what the controller may be deciding at this moment. A controller
+ * reads the record, then commits a decision some activities later, and the store re-checks that
+ * commit against the record as it is then. So a limit may change only where every decision the
+ * controller could be making reads the same under both limits: there must be room for another
+ * attempt under each (the old limit above the attempts opened, and the new one too). A goal whose
+ * last allowed attempt is in flight, or a limit at or below the attempts opened, is refused.
+ */
+function evaluateConfigurationUpdate(
+  current: GoalState,
+  patch: GoalConfigurationPatch,
+  now: string,
+  expectedRevision: number,
+): Evaluation {
+  const done = (result: GoalConfigurationResult): Evaluation => ({ outcome: 'done', result });
+  const refuse = (reason: GoalConfigurationRejection): Evaluation =>
+    done({ status: 'rejected', reason, record: current });
+  if (current.revision !== expectedRevision) {
+    return done({ status: 'revision-mismatch', record: current });
+  }
+  if (isTerminal(current.status)) return refuse('terminal');
+  if (current.cancellation !== undefined) return refuse('cancellation-requested');
+  const { objective, validator, bounds } = current;
+  const prompt = patch.prompt ?? objective.prompt;
+  const agentName = patch.agentName ?? objective.agentName;
+  const nextValidator = patch.validator ?? validator;
+  const maximumAttempts = patch.maximumAttempts ?? bounds.maximumAttempts;
+  if (
+    prompt === objective.prompt &&
+    agentName === objective.agentName &&
+    sameValidator(nextValidator, validator) &&
+    maximumAttempts === bounds.maximumAttempts
+  ) {
+    return done({ status: 'unchanged', record: current });
+  }
+  if (agentName !== objective.agentName) return refuse('agent-fixed');
+  const opened = current.attempts.length;
+  if (maximumAttempts !== bounds.maximumAttempts) {
+    if (opened >= bounds.maximumAttempts) return refuse('attempt-limit-fixed');
+    if (maximumAttempts <= opened) return refuse('attempt-limit-too-low');
+  }
+  const next: GoalState = {
+    ...current,
+    objective: { ...objective, prompt, agentName },
+    validator: { name: nextValidator.name, version: nextValidator.version },
+    bounds: { ...bounds, maximumAttempts },
+    updatedAt: now,
+  };
+  return isGoalState(next) ? { outcome: 'write', next } : refuse('invalid-record');
 }
 
 /** The attempts after applying the request's attempt patch, or the rejection that stops it. */

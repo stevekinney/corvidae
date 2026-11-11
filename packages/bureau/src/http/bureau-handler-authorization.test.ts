@@ -149,6 +149,8 @@ const GOAL_PARAMETERS = {
   identity: { name: 'goal', version: '1' },
   validator: { name: 'check', version: '1' },
   bounds: { maximumAttempts: 1, maximumTotalSteps: 1 },
+  // COR-2017: an update names the revision it read, so the call reaches its own check.
+  expectedRevision: 0,
 } as const;
 
 /**

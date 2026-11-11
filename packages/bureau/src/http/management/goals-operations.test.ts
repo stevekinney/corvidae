@@ -12,6 +12,7 @@ import {
   createCheckValidator,
   goalRequest,
   hangUntilAborted,
+  pollUntil,
   workerAgent,
 } from '../../testing/goal-fixtures.test-support';
 import {
@@ -90,13 +91,47 @@ async function createdBy(opened: OpenedBureau, key: string, idempotencyKey: stri
 
 const idOf = (body: RpcBody) => (body.result!['goal'] as { goalRunId: string }).goalRunId;
 
+/** The revision a `StaleRevision` fault names as current, when `body` carries one. */
+function currentRevisionOf(body: { error?: { data?: unknown } } | undefined): number | undefined {
+  const data = body?.error?.data;
+  if (typeof data !== 'object' || data === null) return undefined;
+  const current = (data as Record<string, unknown>)['currentRevision'];
+  return typeof current === 'number' ? current : undefined;
+}
+
+/**
+ * Changes a goal as `key` against the revision it is at when the call is sent. The goal's controller
+ * can commit a transition between the read and the write, which the call answers `StaleRevision`
+ * with the revision now current, having written nothing; it is then sent again at that revision.
+ */
+async function updateAtCurrentRevision(
+  opened: OpenedBureau,
+  key: string,
+  goalRunId: string,
+  change: Record<string, unknown>,
+): Promise<RpcBody> {
+  let expectedRevision = (await opened.bureau.goals.get(goalRunId))!.revision;
+  for (;;) {
+    const body = await rpc(
+      opened.handler,
+      'bureau.goals.update',
+      { goalRunId, expectedRevision, ...change },
+      key,
+    );
+    const current = currentRevisionOf(body);
+    if (current === undefined) return body;
+    expectedRevision = current;
+  }
+}
+
 describe('the operations list', () => {
-  it('serves the four goal operations, registered and listed in OpenRPC', async () => {
+  it('serves the five goal operations, registered and listed in OpenRPC', async () => {
     const names = [
       'bureau.goals.list',
       'bureau.goals.get',
       'bureau.goals.create',
       'bureau.goals.cancel',
+      'bureau.goals.update',
     ];
     expect(bureauGoalsOperations.map((operation) => operation.name)).toEqual(names);
     for (const operation of bureauGoalsOperations) {
@@ -324,6 +359,102 @@ describe('expectedRevision on cancel', () => {
   });
 });
 
+describe('bureau.goals.update', () => {
+  const NEW_PROMPT = 'PROMPT-UPDATE-SENTINEL-71c0';
+
+  /** A goal of alice's whose first attempt is in flight. */
+  async function runningGoalOfAlice(opened: OpenedBureau): Promise<string> {
+    const goalRunId = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
+    await pollUntil(async () => (await opened.bureau.goals.get(goalRunId))?.status === 'running');
+    return goalRunId;
+  }
+
+  it('changes the owner’s goal for its future attempts, and answers a receipt that leaves the change out', async () => {
+    const opened = await serve();
+    const gAlice = await runningGoalOfAlice(opened);
+
+    const updated = await updateAtCurrentRevision(opened, 'alice-key', gAlice, {
+      prompt: NEW_PROMPT,
+      maximumAttempts: 5,
+    });
+
+    expect(updated.error).toBeUndefined();
+    expect(updated.result).toEqual({
+      goalRunId: gAlice,
+      outcome: 'updated',
+      status: 'running',
+      revision: expect.any(Number),
+    });
+    const stored = await opened.bureau.goals.get(gAlice);
+    expect(stored?.objective.prompt).toBe(NEW_PROMPT);
+    expect(stored?.bounds.maximumAttempts).toBe(5);
+    expect(stored?.attempts).toHaveLength(1);
+    const read = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, 'alice-key');
+    expect(read.result).toMatchObject({ bounds: { maximumAttempts: 5 } });
+    expect(JSON.stringify(read)).not.toContain(NEW_PROMPT);
+  });
+
+  it('answers StaleRevision for another revision, writing nothing', async () => {
+    const opened = await serve();
+    const gAlice = await runningGoalOfAlice(opened);
+    const revision = (await opened.bureau.goals.get(gAlice))!.revision;
+
+    const stale = await rpc(
+      opened.handler,
+      'bureau.goals.update',
+      { goalRunId: gAlice, expectedRevision: revision + 1_000, prompt: NEW_PROMPT },
+      'alice-key',
+    );
+
+    expect(status(stale)).toBe(409);
+    expect(stale.error?.data).toMatchObject({
+      expectedRevision: revision + 1_000,
+      currentRevision: expect.any(Number),
+    });
+    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(SECRET_PROMPT);
+  });
+
+  it('answers what the goal rules refuse as the typed fault', async () => {
+    const opened = await serve();
+    const gAlice = await runningGoalOfAlice(opened);
+    const call = (change: Record<string, unknown>) =>
+      updateAtCurrentRevision(opened, 'alice-key', gAlice, change);
+
+    expect(status(await call({}))).toBe(400);
+    expect(status(await call({ maximumAttempts: 257 }))).toBe(400);
+    expect(status(await call({ agentName: 'nobody' }))).toBe(404);
+    expect(status(await call({ validator: { name: 'absent', version: '1' } }))).toBe(422);
+    const tooLow = await call({ maximumAttempts: 1 });
+    expect(status(tooLow)).toBe(409);
+    expect(tooLow.error?.data).toMatchObject({ reason: 'attempt-limit-too-low' });
+    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(SECRET_PROMPT);
+
+    await opened.bureau.goals.cancel(gAlice);
+    const ended = await call({ prompt: NEW_PROMPT });
+    expect(status(ended)).toBe(409);
+    expect(['terminal', 'cancellation-requested']).toContain(
+      ended.error?.data?.['reason'] as string,
+    );
+  });
+
+  it('lets another principal change a goal only with bureau.goals:write', async () => {
+    const opened = await serve();
+    const gAlice = await runningGoalOfAlice(opened);
+
+    for (const key of ['bob-key', 'goals-reader-key']) {
+      const denied = await updateAtCurrentRevision(opened, key, gAlice, { prompt: NEW_PROMPT });
+      expect([key, status(denied)]).toEqual([key, 404]);
+    }
+    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(SECRET_PROMPT);
+
+    const changed = await updateAtCurrentRevision(opened, 'goals-writer-key', gAlice, {
+      prompt: NEW_PROMPT,
+    });
+    expect(changed.error).toBeUndefined();
+    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(NEW_PROMPT);
+  });
+});
+
 describe('a goal that another principal owns', () => {
   it('is read by its owner, whoever made it, and by no one else', async () => {
     const opened = await serve();
@@ -427,11 +558,25 @@ describe('workspace privacy for goals', () => {
     ] as WorkspacePrivacyActor[]) {
       const denied = actor === 'foreign' || actor === 'removed';
       const expectedStatus = denied ? 403 : actor === 'owner' ? 200 : 404;
-      for (const [method, input] of [
+      for (const [method, given] of [
         ['bureau.goals.get', { goalRunId: aliceGoal }],
+        ['bureau.goals.update', { goalRunId: aliceGoal, prompt: 'workspace-test' }],
         ['bureau.goals.cancel', { goalRunId: aliceGoal, reason: 'workspace-test' }],
       ] as const) {
-        const response = await workspacePrivacyCall(opened, actor, method, input);
+        // COR-2017: an update names the revision the goal is at, read just before it is sent.
+        let input: Record<string, unknown> =
+          method === 'bureau.goals.update'
+            ? { ...given, expectedRevision: (await opened.bureau.goals.get(aliceGoal))!.revision }
+            : given;
+        let response = await workspacePrivacyCall(opened, actor, method, input);
+        // The goal's controller can commit a transition between that read and the update, which
+        // answers StaleRevision with the revision now current and writes nothing.
+        let current = currentRevisionOf(response.body);
+        while (current !== undefined) {
+          input = { ...input, expectedRevision: current };
+          response = await workspacePrivacyCall(opened, actor, method, input);
+          current = currentRevisionOf(response.body);
+        }
         witnesses.observeWire(method, actor, response);
         expect(response.status, `${actor} ${method}`).toBe(denied ? 403 : 200);
         if (actor === 'owner') expect(response.body?.error).toBeUndefined();

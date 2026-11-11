@@ -9,6 +9,7 @@ import {
   goalHasEnded,
   listAllGoals,
   listGoals,
+  updateGoal,
 } from './bureau-goals.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
 
@@ -77,6 +78,37 @@ describe('the Bureau’s goals', () => {
     expect(stub.callsTo('bureau.goals.cancel').map((call) => call.params)).toEqual([
       { goalRunId: 'g-1', expectedRevision: 8 },
       { goalRunId: 'g-1' },
+    ]);
+  });
+
+  test('are changed by the revision that was read, sending only the fields that change', async () => {
+    stub = installBureauStub({
+      'bureau.goals.update': () => ({
+        goalRunId: 'g-1',
+        outcome: 'updated',
+        status: 'running',
+        revision: 9,
+      }),
+    });
+
+    expect(
+      await updateGoal('g-1', 8, {
+        prompt: 'Summarize open refunds.',
+        validator: { name: 'refunds-listed', version: '1' },
+        maximumAttempts: 5,
+      }),
+    ).toEqual({ goalRunId: 'g-1', outcome: 'updated', status: 'running', revision: 9 });
+    await updateGoal('g-1', 9, { agentName: 'tool-runner' });
+
+    expect(stub.callsTo('bureau.goals.update').map((call) => call.params)).toEqual([
+      {
+        goalRunId: 'g-1',
+        expectedRevision: 8,
+        prompt: 'Summarize open refunds.',
+        validator: { name: 'refunds-listed', version: '1' },
+        maximumAttempts: 5,
+      },
+      { goalRunId: 'g-1', expectedRevision: 9, agentName: 'tool-runner' },
     ]);
   });
 });

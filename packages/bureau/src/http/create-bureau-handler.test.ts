@@ -640,6 +640,7 @@ describe('createBureauHandler catalog', () => {
         'bureau.goals.create',
         'bureau.goals.get',
         'bureau.goals.list',
+        'bureau.goals.update',
         'bureau.guardrails.list',
         'bureau.health.attention',
         'bureau.hooks.create',

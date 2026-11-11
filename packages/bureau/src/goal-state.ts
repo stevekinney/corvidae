@@ -1482,9 +1482,10 @@ const identifierEncoder = new TextEncoder();
  * (`attempt-terminal:<id>:<n>`, `cancel:<id>`). Weft refuses any of them past
  * its limit, and a refused signal never arrives: the goal would park forever.
  * So the id is checked against every one of them, at the last attempt the
- * goal's own bound allows, before anything is written.
+ * goal's own bound allows, before anything is written. `bureau.goals.update` (COR-2017) asks it
+ * again of a raised attempt limit, whose last attempt derives longer identifiers.
  */
-function validateGoalRunId(goalRunId: string, maximumAttempts: number): void {
+export function validateGoalRunId(goalRunId: string, maximumAttempts: number): void {
   if (goalRunId.length === 0) {
     throw new GoalRunIdError('empty', 'The goal id must not be empty.');
   }

@@ -322,6 +322,99 @@ export type BureauGoalCancelOutcome =
   | { readonly outcome: 'not-found' };
 
 // ---------------------------------------------------------------------------
+// update
+// ---------------------------------------------------------------------------
+
+/**
+ * COR-2017 — what `update()` changes about a goal. Each field left out keeps its value, and at
+ * least one must be named. The change applies to attempts the goal opens from now on and to checks
+ * it runs from now on; an attempt already checked keeps the validator it ran against, which its
+ * validation records.
+ */
+export interface BureauGoalUpdateRequest<TName extends string = string> {
+  /**
+   * The goal's `revision` the caller read. The update is a compare-and-swap on it: any other
+   * revision answers `stale-revision` having written nothing. The revision advances on every
+   * write, a controller transition included.
+   */
+  readonly expectedRevision: number;
+  /**
+   * The prompt an attempt opened from now on is given. Under the `continue` conversation policy a
+   * retry's turn is the validator's feedback when it has some, so the prompt reaches a retry only
+   * when the feedback is absent; under `fork-from-baseline` it leads every retry's turn.
+   */
+  readonly prompt?: string | undefined;
+  /**
+   * The catalog agent that runs the goal's attempts. Accepted only when it names the agent the goal
+   * already has, so a caller may send every field it shows; another agent is `agent-fixed`. A goal's
+   * sessions and its attempts' runs belong to the agent they started with, and its controller
+   * claims the first attempt's run as soon as the goal is created.
+   */
+  readonly agentName?: TName | undefined;
+  /** The validator each check from now on runs, resolved from `BureauOptions.validators` by exact name and version. */
+  readonly validator?: ValidatorIdentity | undefined;
+  /**
+   * How many attempts the goal may make in all, at most 256. It must leave room for another
+   * attempt beyond those already opened (`attempt-limit-too-low` otherwise), and a goal whose last
+   * allowed attempt is in flight keeps its limit (`attempt-limit-fixed`).
+   */
+  readonly maximumAttempts?: number | undefined;
+  /** The principal making the change; a goal it does not own answers `not-found`. Omitted is a trusted, internal call. */
+  readonly principal?: string | undefined;
+}
+
+/** Why `update()` refused a request. Nothing was written. */
+export type BureauGoalUpdateRejectionCode =
+  /** The request names no field to change, or a value the goal rules refuse. */
+  | 'invalid-configuration'
+  /** The new prompt and the goal's instructions together pass the inline objective limit. */
+  | 'objective-too-large'
+  | 'validator-missing'
+  | 'validator-version-mismatch'
+  /** The goal requires deterministic validation, and the new validator does not declare it. */
+  | 'unsupported-validation'
+  /** The goal has ended. */
+  | 'terminal'
+  /** A cancellation is recorded, so the goal is ending. */
+  | 'cancellation-requested'
+  /** The request names an agent other than the goal's, which cannot change. */
+  | 'agent-fixed'
+  /** The goal's last allowed attempt is in flight, so its limit cannot change. */
+  | 'attempt-limit-fixed'
+  /** The new limit leaves no room for an attempt beyond those already opened. */
+  | 'attempt-limit-too-low';
+
+/**
+ * What an `update()` outcome means.
+ *
+ * - `updated`: the change is committed; `goal` is the record after it.
+ * - `unchanged`: the goal already says what the request asked for. Nothing was written, and the
+ *   revision did not advance.
+ * - `rejected`: the change was refused for `code`. Nothing was written.
+ * - `stale-revision`: the goal is at another revision than `expectedRevision`. Nothing was written;
+ *   `goal` is what is stored now.
+ * - `contended`: the change lost the compare-and-swap to concurrent writers every time the store
+ *   retried. Nothing was written; read the goal and call again.
+ * - `not-found`: no such goal, or one this principal does not own.
+ * - `record-unreadable`: a record is stored under the id but cannot be decoded.
+ */
+export type BureauGoalUpdateOutcome =
+  | { readonly outcome: 'updated'; readonly goal: GoalState }
+  | { readonly outcome: 'unchanged'; readonly goal: GoalState }
+  | {
+      readonly outcome: 'rejected';
+      readonly code: BureauGoalUpdateRejectionCode;
+      readonly reason: string;
+      /** For `validator-version-mismatch`: the versions that are registered. */
+      readonly availableVersions?: readonly string[];
+    }
+  | { readonly outcome: 'stale-revision'; readonly goal: GoalState }
+  | { readonly outcome: 'contended'; readonly goal: GoalState }
+  /** A record is stored under this id but cannot be decoded: a permanent fault, not absence. */
+  | { readonly outcome: 'record-unreadable' }
+  | { readonly outcome: 'not-found' };
+
+// ---------------------------------------------------------------------------
 // recover
 // ---------------------------------------------------------------------------
 
@@ -423,6 +516,16 @@ export interface BureauGoals<TName extends string = string> {
   /** The attempt run or validation execution in flight, or `undefined` when none is. */
   active(goalRunId: string, query?: BureauGoalQuery): Promise<BureauGoalActiveWork | undefined>;
   cancel(goalRunId: string, options?: BureauGoalCancelOptions): Promise<BureauGoalCancelOutcome>;
+  /**
+   * COR-2017 — changes a goal's prompt, validator, or attempt limit for the attempts and checks it
+   * has not yet made, against the revision the caller read. The agent is accepted only unchanged. Nothing an attempt already
+   * recorded changes, and no attempt is started. See {@link BureauGoalUpdateRequest} for what each
+   * field may change and when, and {@link BureauGoalUpdateOutcome} for the answers.
+   */
+  update(
+    goalRunId: string,
+    request: BureauGoalUpdateRequest<TName>,
+  ): Promise<BureauGoalUpdateOutcome>;
   /**
    * One goal when an id is named, otherwise the sweep over every goal that is
    * not terminal and that the principal may see (all of them when it is

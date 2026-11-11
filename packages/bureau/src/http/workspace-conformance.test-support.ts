@@ -171,6 +171,7 @@ export const WORKSPACE_CONFORMANCE_GROUPS = [
       ['bureau.goals.get', 'owner'],
       ['bureau.goals.create', 'caller-create'],
       ['bureau.goals.cancel', 'owner'],
+      ['bureau.goals.update', 'owner'],
     ],
   },
   {

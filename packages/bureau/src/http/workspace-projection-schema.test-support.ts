@@ -186,6 +186,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The signal receipt contains started run identifiers and delivered or rejected counts, not the signal payload (workflow signal output schema).',
   'bureau.goals.cancel':
     'The cancellation receipt contains the goal identifier, outcome, status and revision; it does not return the cancellation reason (goals cancel output schema).',
+  'bureau.goals.update':
+    'The update receipt contains the goal identifier, outcome, status and revision; it does not return the prompt, agent or validator it wrote (goals update output schema).',
   'bureau.workflows.runs.list':
     'runSummarySchema returns run identity, workflow, status, time and origin; trigger, input, result and error belong only to runDetailSchema.',
   'bureau.schedules.runnow':

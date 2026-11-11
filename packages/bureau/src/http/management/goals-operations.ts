@@ -10,7 +10,8 @@
  * A goal's `revision` advances on every write to its record, a controller transition included.
  * `cancel` takes `expectedRevision`, compared inside the store's compare-and-swap that writes the
  * cancellation marker; a mismatch is a `StaleRevision` fault carrying the revision now current,
- * and nothing is written.
+ * and nothing is written. `update` (COR-2017) requires it, under the same compare-and-swap, and
+ * shares `cancel`'s scope: `bureau.goals:write` changes another owner's goal.
  *
  * What a goal's views leave out: its prompt and instructions (the objective's text, like a task's
  * message), each attempt's validator feedback and evidence, and its audit log. A view is the
@@ -27,7 +28,7 @@ import { sha256HexSync } from '@lostgradient/cryptography';
 import { defineOperation, type OperationFault, type Principal } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { BureauGoalCreateOutcome } from '../../goal-types.ts';
+import type { BureauGoalCreateOutcome, BureauGoalUpdateOutcome } from '../../goal-types.ts';
 import type { GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
 import type { Bureau } from '../../types.ts';
@@ -49,7 +50,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 /** What the goal operations read from the handler's `host`. */
 export type BureauGoalsOperationHost = BureauOwnershipHost &
   BureauAgentVisibilityHost & {
-    readonly goals: Pick<Bureau['goals'], 'create' | 'get' | 'list' | 'cancel'>;
+    readonly goals: Pick<Bureau['goals'], 'create' | 'get' | 'list' | 'cancel' | 'update'>;
   };
 
 const goalStatus = z.enum([
@@ -586,10 +587,174 @@ export const goalsCancelOperation = defineOperation<
   },
 });
 
+const updateInput = z.object({
+  goalRunId: goalIdentifier.describe('The identifier of the goal to change.'),
+  expectedRevision: z
+    .number()
+    .int()
+    .min(0)
+    .describe(
+      'The goal’s `revision` the caller read; when it has changed since, the call is a `StaleRevision` fault and nothing is written.',
+    ),
+  prompt: z
+    .string()
+    .min(1)
+    .max(100_000)
+    .optional()
+    .describe('The prompt each attempt the goal opens from now on is given.'),
+  agentName: z
+    .string()
+    .min(1)
+    .max(256)
+    .optional()
+    .describe(
+      'The catalog agent that runs the goal’s attempts. Accepted only when it names the agent the goal already has; another agent is a `Conflict`.',
+    ),
+  validator: z
+    .strictObject({ name: z.string().min(1), version: z.string().min(1) })
+    .optional()
+    .describe(
+      'The validator each check from now on runs: one this Bureau was configured with, by exact name and version.',
+    ),
+  maximumAttempts: positiveInteger
+    .optional()
+    .describe(
+      'How many attempts the goal may make in all, at most 256. It must leave room for an attempt beyond those already opened.',
+    ),
+});
+
+const updateOutput = z.object({
+  goalRunId: z.string(),
+  /** `updated`: the change is committed. `unchanged`: the goal already said so; nothing was written. */
+  outcome: z.enum(['updated', 'unchanged']),
+  status: goalStatus,
+  /** The goal’s revision after the call, for the next `expectedRevision`. */
+  revision: z.number().int(),
+});
+
+/** The fault a refused update is answered with. */
+function updateRefusal(
+  outcome: Extract<BureauGoalUpdateOutcome, { outcome: 'rejected' }>,
+): OperationFault {
+  switch (outcome.code) {
+    case 'invalid-configuration':
+    case 'objective-too-large':
+      return {
+        code: 'InvalidParams',
+        message: outcome.reason,
+        data: { issues: [{ path: ['goal'], message: outcome.reason, code: 'custom' }] },
+      };
+    case 'terminal':
+    case 'cancellation-requested':
+    case 'agent-fixed':
+    case 'attempt-limit-fixed':
+    case 'attempt-limit-too-low':
+      return { code: 'Conflict', message: outcome.reason, data: { reason: outcome.code } };
+    default:
+      return { code: 'Unprocessable', message: outcome.reason, data: { reason: outcome.code } };
+  }
+}
+
+export const goalsUpdateOperation = defineOperation<
+  typeof updateInput,
+  typeof updateOutput,
+  BureauGoalsOperationHost
+>({
+  name: 'bureau.goals.update',
+  authorize: authorizeWorkspaceOperation('bureau.goals.update'),
+  mcpExposable: false,
+  summary: 'Change a goal',
+  description:
+    'Changes one of the caller’s own goals for the attempts it has not yet made (COR-2017); a caller holding `bureau.goals:write` changes any owner’s, and anyone else is answered `NotFound`. It names at least one of `prompt`, `agentName`, `validator`, and `maximumAttempts`, and `expectedRevision`, which is compared inside the store’s compare-and-swap that writes the change: a goal that has changed since is a `StaleRevision` fault whose `currentRevision` is the revision now current, and nothing is written. An attempt already made keeps the validator it was checked against, an attempt in flight keeps the prompt it started with, and no attempt is started. Under the default `continue` conversation a retry’s turn is the validator’s feedback when there is some, so a new prompt reaches a retry only when the feedback is absent. `agentName` is accepted only as the goal’s own agent, which cannot change: the goal’s sessions and runs belong to it. A goal that has ended, or whose cancellation is recorded, is a `Conflict`; so is another agent, a limit that leaves no room for another attempt, and a new limit while the goal’s last allowed attempt is in flight (`data.reason` says which). An agent the caller may not name is `NotFound`; a validator the Bureau lacks, or one that cannot supply the determinism the goal requires, is `Unprocessable`. The write scope does not imply the read scope, so the receipt carries the status and revision and nothing else of the goal.',
+  destructive: true,
+  tags: ['Goals'],
+  inputSchema: updateInput,
+  outputSchema: updateOutput,
+  producibleFaults: [
+    'InvalidParams',
+    'NotFound',
+    'Conflict',
+    'StaleRevision',
+    'Unprocessable',
+    'Unavailable',
+  ],
+  access: { kind: 'authenticated' },
+  discoverable: true,
+  transports,
+  unknownKeyPolicy,
+  invoke: async ({ input, host, principal }) => {
+    await goalFor(host, principal, input.goalRunId, 'bureau.goals:write');
+    if (
+      input.prompt === undefined &&
+      input.agentName === undefined &&
+      input.validator === undefined &&
+      input.maximumAttempts === undefined
+    ) {
+      const message =
+        'An update must name at least one of prompt, agentName, validator, and maximumAttempts.';
+      throw {
+        code: 'InvalidParams',
+        message,
+        data: { issues: [{ path: ['goal'], message, code: 'custom' }] },
+      } satisfies OperationFault;
+    }
+    // An agent the caller may not name (COR-1904) is as unknown to it as one the catalog lacks.
+    if (
+      input.agentName !== undefined &&
+      !host.agentVisibility.mayName(principal, input.agentName)
+    ) {
+      throw resourceNotFound('agent', input.agentName);
+    }
+    // The predicate has decided who may change the goal, so the Bureau's trusted call is used.
+    const outcome = await host.goals.update(input.goalRunId, {
+      expectedRevision: input.expectedRevision,
+      ...(input.prompt === undefined ? {} : { prompt: input.prompt }),
+      ...(input.agentName === undefined ? {} : { agentName: input.agentName }),
+      ...(input.validator === undefined ? {} : { validator: input.validator }),
+      ...(input.maximumAttempts === undefined ? {} : { maximumAttempts: input.maximumAttempts }),
+    });
+    switch (outcome.outcome) {
+      case 'not-found':
+        throw resourceNotFound('goal', input.goalRunId);
+      case 'record-unreadable':
+        throw {
+          code: 'Unavailable',
+          message: `The record of goal "${input.goalRunId}" cannot be read`,
+          data: { reason: 'goal-record-unreadable' },
+        } satisfies OperationFault;
+      case 'contended':
+        throw {
+          code: 'Unavailable',
+          message: `Goal "${input.goalRunId}" changed under every try to write the update; read it and call again`,
+          data: { reason: 'goal-record-contended' },
+        } satisfies OperationFault;
+      case 'stale-revision':
+        throw {
+          code: 'StaleRevision',
+          message: `Goal "${input.goalRunId}" is at revision ${outcome.goal.revision}, not the expected revision ${input.expectedRevision}`,
+          data: {
+            expectedRevision: input.expectedRevision,
+            currentRevision: outcome.goal.revision,
+          },
+        } satisfies OperationFault;
+      case 'rejected':
+        throw updateRefusal(outcome);
+      default:
+        return {
+          goalRunId: input.goalRunId,
+          outcome: outcome.outcome,
+          status: outcome.goal.status,
+          revision: outcome.goal.revision,
+        };
+    }
+  },
+});
+
 /** The goal operations, in the order the handler serves them. */
 export const bureauGoalsOperations = [
   goalsListOperation,
   goalsGetOperation,
   goalsCreateOperation,
   goalsCancelOperation,
+  goalsUpdateOperation,
 ] as const;

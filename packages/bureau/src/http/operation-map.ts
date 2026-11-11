@@ -148,6 +148,7 @@ export const OPERATION_MAP = {
   'bureau.goals.get': { workspaceClass: 'private-owned', member: 'goals.get' },
   'bureau.goals.create': { workspaceClass: 'private-owned', member: 'goals.create' },
   'bureau.goals.cancel': { workspaceClass: 'private-owned', member: 'goals.cancel' },
+  'bureau.goals.update': { workspaceClass: 'private-owned', member: 'goals.update' },
 
   'bureau.workflows.create': { workspaceClass: 'administrator-shared', member: 'workflows.create' },
   'bureau.workflows.update': { workspaceClass: 'administrator-shared', member: 'workflows.update' },
