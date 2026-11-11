@@ -102,7 +102,11 @@ test.describe('an approval in the chat', () => {
     await expect(approval).toHaveCount(0);
     expect(resumes).toHaveLength(1);
     expect(resumes[0]).toHaveLength(1);
-    expect(resumes[0]?.[0]?.payload).toEqual({ decision: 'approve', remember: true });
+    expect(resumes[0]?.[0]?.payload).toEqual({
+      decision: 'approve',
+      remember: true,
+      decisionSurface: 'chat',
+    });
     expect(resumes[0]?.[0]?.metadata).toMatchObject({
       '@lostgradient/bureau': { round: expect.any(Number) },
     });
@@ -123,7 +127,7 @@ test.describe('an approval in the chat', () => {
 
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     expect(resumes).toHaveLength(1);
-    expect(resumes[0]?.[0]?.payload).toEqual({ decision: 'approve' });
+    expect(resumes[0]?.[0]?.payload).toEqual({ decision: 'approve', decisionSurface: 'chat' });
   });
 });
 

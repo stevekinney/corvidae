@@ -174,7 +174,7 @@ describe('an approval in the chat', () => {
           {
             interruptId: APPROVAL.id,
             status: 'resolved',
-            payload: { decision: 'approve', remember: true },
+            payload: { decision: 'approve', remember: true, decisionSurface: 'chat' },
             metadata: { '@lostgradient/bureau': { round: 2 } },
           },
         ],
