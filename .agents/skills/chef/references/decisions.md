@@ -51,11 +51,11 @@ Measured so far (2026-11-09, first batch: COR-2101 and COR-2102, plus triage of 
 | --- | --- | --- |
 | `thread-triage` | AGENTS.md "Review guidelines": fix a real defect in changed lines, decline the out-of-scope or speculative, track what a COR issue already captures | routine (0.85) |
 | `review-tier` | One-way doors, locks, and `turbo.json` get full review; small two-way-door changes light; mechanical or documentation-only none | routine (0.85) |
-| `dispatch-plan` | AGENTS.md "Parallel runs": an economical model when the interfaces are known and the issue has tests, a stronger one for one-way doors | routine (0.85) |
+| `dispatch-plan` | [Coordination](coordination.md#parallel-run-rules): an economical model when the interfaces are known and the issue has tests, a stronger one for one-way doors | routine (0.85) |
 | `split-before-dispatch` | [Sizing and splitting](planning-and-routing.md#sizing-and-splitting): split an issue too large for one reviewable pull request | routine (0.85) |
 | `flake-verdict` | AGENTS.md "Test tiers": a flake fails on the base too or passes on a rerun of the same head; a regression fails only on the head, consistently | routine (0.85) |
 | `drift-action` | `scripts/chef/drift.ts` findings: `merged-open` closes the issue, `review-without-pr` reopens it, `stale-in-progress` links a pull request or is ignored | routine (0.85) |
-| `escalate` | AGENTS.md "Parallel runs": a stronger model for a defect that survived two corrections | routine (0.85) |
+| `escalate` | [Coordination](coordination.md#parallel-run-rules): a stronger model for a defect that survived two corrections | routine (0.85) |
 | `criteria-binary` | Definition of Ready: every acceptance criterion is binary and names its check | routine (0.85) |
 | `verification-exact` | Definition of Ready: Verification gives exact commands runnable from the repository root | routine (0.85) |
 | `unanswered-question` | Definition of Ready: no open or deferred question remains | routine (0.85) |

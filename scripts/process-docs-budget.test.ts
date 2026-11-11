@@ -22,8 +22,10 @@ describe('process document word budgets', () => {
     expect(wordCount('  one\ttwo\n\nthree `four` | --- |  ')).toBe(7);
   });
 
-  test('AGENTS.md stays within 3,800 words', () => {
-    expect(wordsIn('AGENTS.md')).toBeLessThanOrEqual(3800);
+  // Every session pays for AGENTS.md on every request, so it also has a character budget (COR-2372).
+  test('AGENTS.md stays within 2,250 words and 16,000 characters', () => {
+    expect(wordsIn('AGENTS.md')).toBeLessThanOrEqual(2250);
+    expect(readFileSync(join(root, 'AGENTS.md'), 'utf8').length).toBeLessThanOrEqual(16_000);
   });
 
   test('.agents/skills/chef/SKILL.md stays within 3,000 words', () => {

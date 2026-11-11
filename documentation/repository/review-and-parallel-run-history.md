@@ -1,6 +1,22 @@
 # Review and parallel-run audit history
 
-The measurements behind AGENTS.md "Review guidelines" and "Parallel runs".
+The measurements behind AGENTS.md "Review guidelines" and "Parallel runs", and the review rules in full.
+
+## The review rules in full
+
+AGENTS.md "Review guidelines" states these in short; this is their full text.
+
+- Sort by reversibility. A _two-way door_ is internal code or a private source package that a later change can cheaply alter. It gets a comment only for a concrete failure under a supported configuration: name the inputs or interleaving and the wrong durable result. A _one-way door_ is a persisted format or schema, a wire protocol, an exported surface the mirrors publish, or a published spec; review those closely and ask whether the design paints the project into a corner.
+- Review the diff, not the repository. Behavior already on `main`, code from a merged dependency branch, and anything a linked COR issue or decision document specifies are out of scope; cite the document and stop. On a re-review, comment only on lines changed since the previous review, and never re-raise a thread the author answered unless the new commits changed whether it can happen. One comment per defect class.
+- Check Linear before posting a finding or suggesting a change: read the linked COR issues and search the COR backlog, across projects, for the affected behavior, symbols, and proposed work, judging plausible matches by scope, status, acceptance criteria, and recorded decisions, never by title alone. When a ticket already captures the suggestion, cite its identifier and link instead of duplicating it or demanding that an unrelated pull request implement it. A ticket does not excuse a concrete blocker this diff introduces: explain the failing case and why it must be fixed before merge. If Linear is unavailable, say the overlap check could not be completed; do not claim there is no matching ticket or block solely on that lookup.
+- Accept breaking changes during pre-release. Do not request backwards compatibility, deprecation periods, compatibility wrappers, or preservation of obsolete APIs. Update affected in-repository callers directly and remove deprecated code in the changed path. Review whether the resulting supported behavior works; a deliberate breaking change is not itself a defect, and persisted data, wire protocols, and published contracts still get one-way-door scrutiny.
+- Find root causes. Ask what class of defect a finding is and grep for its siblings. Fix the class once, with a regression test, lint rule, or type constraint, or decline the finding as a one-off; do not patch instances one at a time. A finding earns this only if it would plausibly recur or sits on a one-way door.
+- Block on demonstrated correctness risks. A blocking finding names a supported input or reachable interleaving, the wrong result, and its concrete consequence, such as data loss, broken authorization, invalid state transitions, or a violated persisted or published contract. Touching a one-way door is not itself a blocker. Style, naming, optional refactoring, preferences, contrived edge cases, and speculative hardening of internal code do not block; omit nitpicks.
+- Answer every thread before merge: fixed (name the commit), declined (one-line reason), or tracked (name the issue). An unanswered thread blocks the merge.
+- Cap review at three rounds. In rounds two and three, fix regressions the fixes introduced, one-way-door defects, and real defects in lines this pull request changed; decline the rest with a reason. After the third round, collect anything still open that does not block into one follow-up issue instead of pushing again. Push once per round, not once per commit: Codex reviews every push to an open pull request automatically, by owner decision, so batch a round's fixes into one push, run the focused checks before pushing, and never push a fix for one thread while others from the same round are still open.
+- Prefer a guard to a comment: when a class of finding recurs across pull requests, add the missing lint rule, type constraint, or test.
+
+## The audits
 
 A two-way door gets a comment only for a concrete failure under a supported configuration. Examples that are not one: "two engines under `ownership: 'none'`", or "a caller mutates its own request mid-call".
 

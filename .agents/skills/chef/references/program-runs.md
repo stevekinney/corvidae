@@ -21,9 +21,14 @@ Read this when chef's scope is a whole Linear project, or any body of work that 
 
 ## Batch validate on a timer
 
+GitHub Actions runs the full suite on every push to `main` and per-change checks on pull requests, advisory for now (COR-2374). CI on `main` is the routine signal; run a local batch validate when CI cannot answer the question. The tier rules, moved from AGENTS.md "Gate on local checks":
+
+- **Per batch:** run one `bun run validate:batch` on `origin/main` after a batch of merges lands, or at the end of a program run, as a background command: `bun run validate`, the root Playwright suite's `chromium` project, then Interborough's end-to-end suite (`bun run test:browser:interborough`), under one host lock (COR-2007). Fix a failure forward.
+- **Main health:** `merge-gate.ts` warns, and never refuses, while the last batch validate on `main` failed; a fix for a red `main` is declared with `--fixes-main`. `bun scripts/chef/batch-validate.ts` runs the batch validate after five merges or two hours, one per host; schedule it with a Claude Code scheduled task or `/loop`, never with CI, cron files, or launchd plists.
+
 `bun scripts/chef/batch-validate.ts --max-load 8` runs the batch validate (`repository.json`'s `batchCommand`, here `bun run validate:batch`, which is `bun run validate` followed by the root Playwright suite's `chromium` project and Interborough's end-to-end Playwright suite) on `origin/main` in the dedicated worktree `<worktree root>/batch-validate`, through `gate-run.ts`, so the result lands in `main`'s health record, which `merge-gate.ts` reads to warn, never refuse, while `main` is red. It runs only when `main` has moved since the last recorded batch head and either at least five merges have landed since that head or two hours have passed, and it skips when the health record already holds a green result at the current head. The load gate postpones a due run while the one-minute host load is 8 or higher. A host-wide lock in the Git common directory (`corvidae-batch-validate.lock`) keeps one batch validate running per host: a second coordinator exits 0 with "already running" instead of starting another. Otherwise it prints why it did not run and exits 0. `--dry-run` says what it would do. It runs for as long as the validate takes, so schedule it as a background command.
 
-The script adds no scheduler, and this repository takes no CI, cron files, or launchd plists (AGENTS.md). The coordinator schedules it from its own session:
+The script adds no scheduler. GitHub Actions runs the full suite on every push to `main` and per-change checks on pull requests, advisory for now, but the local batch validate is never scheduled with CI, cron files, or launchd plists (the main-health rule above). The coordinator schedules it from its own session:
 
 - **Claude Code scheduled task:** create one that runs `bun scripts/chef/batch-validate.ts --max-load 8 --json` from the main checkout every 20 to 30 minutes, with a prompt that reads the one-line result, and on a failure (exit 1) runs `bun scripts/chef/gate-run.ts triage <log> --base <last green head>` and routes each mapped task to the pull request's owner as a fix forward.
 - **`/loop`:** `/loop 30m bun scripts/chef/batch-validate.ts --max-load 8 --json`, ended with the run.
@@ -61,7 +66,7 @@ A skipped run costs nothing but the tick, so a short interval is fine; do not st
 ## Recover the coordinator's state
 
 - A long run compacts the coordinator's context. The work-history note and live Linear are the run's state; what the coordinator remembers is not.
-- Never hand off for context size alone; automatic compaction is the backstop. Record `lastCtx` (`transcript-usage.ts`) in the note's state section at each batch boundary, and bring the state section up to date before any long wait.
+- Above about 200K tokens of context, restart from the run log at a batch boundary as a fresh session (AGENTS.md "Parallel runs"); otherwise automatic compaction is the backstop. Record `lastCtx` (`transcript-usage.ts`) in the note's state section at each batch boundary, and bring the state section up to date before any long wait.
 - After a compaction or a resumption, before any dispatch, merge, or Linear write: re-read the note's execution state and decision log, re-query every in-flight issue, list the open pull requests and worktrees the note names, account for every live worker, and reconcile them.
 - Update the note at every batch transition, so that a fresh coordinator could resume from the note alone. Rewrite its state section in place and append events to the sibling log, as `execution-record.md` describes; an append-only note grows past what a resuming coordinator can read.
 

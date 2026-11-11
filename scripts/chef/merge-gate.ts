@@ -3,9 +3,10 @@
 // a coordinator merges with one call instead of several, and the merge cannot skip a check the
 // hand-run sequence used to forget.
 //
-// It runs no test gate. A worker runs its focused checks before opening the pull request, and the
-// per-batch `validate` on `main` is the backstop (AGENTS.md "Gate on local checks"); `main` moving
-// is not a reason to repeat either. It refuses only for the reasons below, each a fast check.
+// It runs no test gate. A worker runs its focused checks before opening the pull request, and
+// GitHub Actions' full suite on every push to `main` is the backstop (AGENTS.md "Gate on local
+// checks"; a local batch validate is in `.agents/skills/chef/references/program-runs.md`); `main`
+// moving is not a reason to repeat either. It refuses only for the reasons below, each a fast check.
 //
 // Usage:
 //   bun scripts/chef/merge-gate.ts [--config <json>] --pr <n> --worktree <dir> --comment-file <md>

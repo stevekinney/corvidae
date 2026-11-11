@@ -147,7 +147,7 @@ async function deliverOne(issue) {
   phase('implement');
   log(`${issue}: dispatching chef-worker from ${prepared.briefPath}`);
   const built = await agent(
-    `Implement the issue from the brief file ${prepared.briefPath} and nothing else. ${NO_MERGE}`,
+    `Implement the issue from the brief file ${prepared.briefPath} and nothing else. This dispatch asks for a pull request: open it non-draft and return its number. ${NO_MERGE}`,
     {
       label: `implement ${issue}`,
       phase: 'implement',

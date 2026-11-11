@@ -15,8 +15,8 @@
 //   tests           bun scripts/affected-tests.ts run (the quick tier)
 //   tests:isolated  bun scripts/affected-tests.ts run --isolated, when the selection reaches a
 //                   *.integration.test.ts or *.slow.test.ts file
-// Steps run one after another and a failure does not stop the rest. A diff of more than 800 added
-// and deleted lines outside test files, or of more than 25 files, prints a warning suggesting a
+// Steps run one after another and a failure does not stop the rest. A diff of more than 3,000 added
+// and deleted lines outside test files, or of more than 60 files, prints a warning suggesting a
 // split; it never fails the run.
 //
 // With --json the result is {ok, steps: [{name, command, exitCode}], warnings} on standard output
@@ -40,10 +40,14 @@ import {
 
 export { UsageError };
 
-/** A diff above this many added plus deleted lines outside test files draws the split warning. */
-export const LINE_LIMIT = 800;
+/**
+ * A diff above this many added plus deleted lines outside test files draws the split warning. Work
+ * is sized by area at 500 to 2,000 changed lines, because tokens per changed line fall as a unit
+ * grows (`.agents/skills/chef/references/planning-and-routing.md` "Sizing and splitting").
+ */
+export const LINE_LIMIT = 3000;
 /** A diff above this many changed files draws the split warning. */
-export const FILE_LIMIT = 25;
+export const FILE_LIMIT = 60;
 
 export interface WorkspaceReference {
   name: string;

@@ -70,6 +70,32 @@ describe('workflow scripts', () => {
         }
       });
 
+      // An agent call is a read-only lookup (`model: 'haiku'`, asked to push or commit nothing), a
+      // review (`chef-reviewer`), or an implementation, which must run as `chef-worker`: a
+      // `general-purpose` worker starts near 69K tokens of context against 18K (COR-2372).
+      test('dispatches every implementation to the chef-worker agent type', () => {
+        const calls = source.split(/\bagent\(/).slice(1);
+        expect(calls.length).toBeGreaterThan(0);
+        let implementations = 0;
+        for (const chunk of calls) {
+          // The call runs to its closing `);`; its options object is the part from `label:` on.
+          const call = chunk.slice(0, chunk.search(/\)\s*;/));
+          const start = call.lastIndexOf('label:');
+          expect(start).toBeGreaterThan(0);
+          const prompt = call.slice(0, start);
+          const options = call.slice(start);
+          const agentType = /agentType:\s*'([^']+)'/.exec(options)?.[1];
+          if (agentType === 'chef-reviewer') continue;
+          if (agentType === undefined && /model:\s*'haiku'/.test(options)) {
+            expect(prompt).not.toMatch(/\b(push|commit)\b/i);
+            continue;
+          }
+          implementations += 1;
+          expect(agentType, prompt.slice(0, 120)).toBe('chef-worker');
+        }
+        expect(implementations).toBeGreaterThan(0);
+      });
+
       test('names only scripts and agent types that exist', () => {
         for (const match of source.matchAll(/scripts\/chef\/([\w-]+)\.ts/g)) {
           expect(existsSync(join(root, 'scripts', 'chef', `${match[1]}.ts`))).toBe(true);
@@ -80,6 +106,15 @@ describe('workflow scripts', () => {
       });
     });
   }
+
+  // A chef-worker opens no pull request unless its dispatch asks for one, and deliver-issue.js
+  // reviews the pull request its implement dispatch returns, so that dispatch must ask for one.
+  test('deliver-issue.js asks its implement dispatch for a pull request', () => {
+    const source = readFileSync(join(workflowsDirectory, 'deliver-issue.js'), 'utf8');
+    const call = source.slice(source.indexOf('const built = await agent('));
+    const prompt = call.slice(0, call.indexOf('label:'));
+    expect(prompt).toContain('asks for a pull request');
+  });
 });
 
 describe('codex-protocol.md', () => {

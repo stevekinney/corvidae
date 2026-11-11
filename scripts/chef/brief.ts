@@ -23,13 +23,14 @@
 //   - the verification commands: each `--verify`, else the issue's Verification section, else the
 //     focused checks for what the worker changed, with the root lint always among them;
 //   - the charter rules every worker gets (`charterRules` below, their one source; the
-//     `references/execution-record.md` "Worker charter" template points here): the merge gate, the
-//     review rounds, the turn rule, the defect-class self-check, context, the report, corrections,
-//     and acceptance-criteria statuses.
+//     `references/execution-record.md` "Worker charter" template points here): cost, checks,
+//     branch updates, delivery, the review rounds, the turn rule, the defect-class self-check,
+//     context, the report, corrections, and acceptance-criteria statuses.
 //
 // The script only prepares the brief. The coordinator tool starts the session: one fresh session
 // per issue, on Sonnet unless the brief names a reason for another model, from this file, and the
-// session ends when its pull request merges. Never reuse a session for the next issue.
+// session ends when its change merges (by pull request or by a direct merge of its pushed branch).
+// Never reuse a session for the next issue.
 //
 // Exit codes: 0 brief written, 1 issue not found or API failure, 2 invalid CLI usage.
 
@@ -60,12 +61,15 @@ export { UsageError };
  * with the AGENTS.md rule it restates and keeps `references/execution-record.md` from restating them.
  */
 export const charterRules = [
-  '**Merge gate:** run the focused checks on what you changed before opening the pull request, not `bun run check`: one command, `bun scripts/chef/focused-checks.ts`, which runs prettier on the changed files, `bun run lint:root`, the root type-check when root or `scripts/` files changed, lint and type-check of each changed workspace, and the affected tests, and prints one summary line; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` itself when your change reaches one. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate and does not repeat a check because `main` moved. You do not merge: after the coordinator accepts your ready-for-review return, it delivers with `deliver.ts`, which refuses for a conflict with the base, an unresolved review thread, or a head other than the one accepted. On a conflict, merge `main` in yourself, run the focused checks again, and return the new head. A red `main` is a warning there, not a refusal.',
-  '**Review rounds (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; after round three, open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
-  '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait for a gate, a check, or a review bot in a background command and keep working; never end a turn to report that you are still waiting.',
-  "**Defect-class self-check:** before opening the pull request, check the diff against every class in `.agents/skills/chef/references/defect-classes.md`, fix what applies, and report each class's result in the return. Before every fix push, run `bun scripts/chef/review-threads.ts classes --pr <n>`; on exit 1, push no further patch and return blocked.",
-  '**Context:** keep it small. Write gate output to a log and read a failure with a targeted search. A context past about 250K tokens means: write a handoff brief under `tmp/chef/` and hand off to a fresh session.',
-  '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Write logs and evidence under `tmp/chef/<package>/round-<n>/` in the main checkout, with a new directory for each correction round. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
+  '**Cost:** batch independent reads and searches into one message. Edit with Edit or Write, never a shell heredoc (a throwaway codemod for a mechanical multi-file rewrite is the exception).',
+  '**Checks:** run the focused checks on what you changed once, when the change is complete, in the background and never polled, not `bun run check`: `bun scripts/chef/focused-checks.ts`; fix every failed step. A test file that starts a process is named `*.integration.test.ts`; the command runs `bun scripts/affected-tests.ts run --isolated` when your change reaches one. A full `bun run validate` only for a one-way door, the lock or concurrency infrastructure, or `turbo.json` and the root scripts. Delivery runs no gate.',
+  '**Branch:** update from `main` only by a real merge (`git fetch origin main && git merge FETCH_HEAD`), never `git reset --soft` onto a newer `main`. Before every push, run `bun scripts/chef/revert-check.ts` and read `git diff --name-only origin/main...HEAD`; a file you did not mean to change means a stale tree.',
+  '**Delivery:** open no pull request unless the dispatch asks for one: push your branch and report. You do not merge; the coordinator merges your branch, or a pull request through `deliver.ts`. On a conflict, merge `main` in, rerun the focused checks, and return the new head. A red `main` is a warning, not a refusal.',
+  '**Review rounds, with a pull request open (AGENTS.md "Review guidelines"):** answer every thread before merge; at most three rounds; round one fixes every real finding; rounds two and three fix only regressions, one-way-door defects, and real defects in changed lines; then open items go to one follow-up issue; push once per round, because Codex reviews every push automatically; do not re-answer a re-reported comment.',
+  '**Turn rule:** end a turn only on a state change: merged, blocked, needs-decision, or ready-for-review. Wait on a completion; never poll, and never end a turn to say you are still waiting.',
+  '**Defect-class self-check:** before pushing, check the diff against every class in `.agents/skills/chef/references/defect-classes.md` and report each. With a pull request open, run `bun scripts/chef/review-threads.ts classes --pr <n>` before every fix push; on exit 1, push nothing more and return blocked.',
+  '**Context:** at 150K tokens of context, stop: commit, push, and report needs-decision with what is done and what remains.',
+  '**Report:** your final message is the report, at most 15 lines; do not create a `report.md` or any other report file. Lines: `status:`, `pr:` (or none), `head:`, `worktree:`, `checks:` (command and exit code), `revert check:`, `changed files:`, `not verified:`, `decisions:`, and each acceptance criterion with its status. Logs and evidence go under `tmp/chef/<package>/round-<n>/` in the main checkout. Your final step runs `bun scripts/chef/leftovers.ts` and quotes its line.',
   '**Corrections:** after two unsuccessful attempts at the same defect or acceptance criterion, stop patching and return evidence for causal reassessment.',
   '**Acceptance criteria:** give every criterion exactly one status in the return. Implemented: not yet checked. Verified: a named command passed or a manual check was done. Failed: a check failed. Blocked: an external dependency prevents checking. Not verified: not checked, with the reason. Criteria include dated revisions and amending comments; a conflict between them is needs-decision. Number unnumbered criteria AC1, AC2 in the return only.',
 ];
@@ -324,7 +328,7 @@ export function renderBrief(issue: IssueSummary, options: BriefOptions): string 
   const lines = [
     `# ${issue.identifier}: ${issue.title}`,
     '',
-    `State: ${issue.state.name}. Model: ${options.model} (use another only with a stated reason). One fresh session for this issue; it ends when its pull request merges.`,
+    `State: ${issue.state.name}. Model: ${options.model} (use another only with a stated reason). One fresh session for this issue; it ends when its change merges.`,
     '',
     '## Execution brief',
     '',

@@ -1,10 +1,10 @@
 # Repository guards
 
-The detail behind the guards AGENTS.md "Commands" names in one sentence each. The rules stay in AGENTS.md; this file holds what each guard rejects, its markers, and its allowlists. The test-lane, documentation-coverage, and test-duration guards are described in [test lanes and checks](test-lanes-and-checks.md).
+The detail behind the guards AGENTS.md "Commands" names in one sentence each. The rules stay in AGENTS.md, in short; this file holds their full text where AGENTS.md shortens it, what each guard rejects, its markers, and its allowlists. The test-lane, documentation-coverage, and test-duration guards are described in [test lanes and checks](test-lanes-and-checks.md).
 
 ## Load-sensitive deadlines
 
-Owner decision: tests that can flake under load cannot be in the critical path. Everything `bun run check` and `bun run validate` run has one deadline, the awake-time hang guard (`HANG_GUARD_MILLISECONDS`, 120 seconds), and it is never a performance bound.
+Owner decision: tests that can flake under load cannot be in the critical path. Everything `bun run check` and `bun run validate` run has one deadline, the awake-time hang guard (`HANG_GUARD_MILLISECONDS`, 120 seconds), and it is never a performance bound. Bun's per-test timeout is twice that, passed by `scripts/bun-test.ts`, so a `package.json` script never starts `bun test` itself.
 
 - Bun's per-test timeout is twice the hang guard, passed as `--timeout` by `scripts/bun-test.ts` and `scripts/bun-test-junit.ts` (`[test] timeout` in `bunfig.toml` is ignored, and `setDefaultTimeout` in a preload covers the first file only), so a `package.json` script never starts `bun test` itself.
 - Every UI preload calls `configureAsyncUtilityDeadline` so Testing Library's `findBy*` and `waitFor` wait up to the hang guard.
@@ -44,4 +44,4 @@ Every library and component runs `scripts/check-inherited-key-reads.ts` in its `
 
 ## Process documentation
 
-The process documents carry word budgets and checked references, so they cannot regrow or rot unnoticed. `scripts/process-docs-budget.test.ts` holds AGENTS.md to 3,800 words, and the chef `SKILL.md` and each `.agents/skills/chef/references/*.md` to 3,000. `scripts/process-docs-references.test.ts` checks that every `scripts/...` path and `bun scripts/...` command named in AGENTS.md, `.agents/skills/**/*.md`, `.claude/agents/*.md`, and `documentation/repository/*.md` exists, that every relative Markdown link in them resolves, anchors included, and that every AGENTS.md section another document or script cites by name in quotes exists. Move mechanics, history, and rationale into a document under `documentation/repository/` and link it, rather than raising a budget.
+The process documents carry word budgets and checked references, so they cannot regrow or rot unnoticed. `scripts/process-docs-budget.test.ts` holds AGENTS.md, which every agent session pays for on every request, to 2,250 words and 16,000 characters, and the chef `SKILL.md` and each `.agents/skills/chef/references/*.md` to 3,000. `scripts/process-docs-references.test.ts` checks that every `scripts/...` path and `bun scripts/...` command named in AGENTS.md, `.agents/skills/**/*.md`, `.claude/agents/*.md`, and `documentation/repository/*.md` exists, that every relative Markdown link in them resolves, anchors included, and that every AGENTS.md section another document or script cites by name in quotes exists. Move mechanics, history, and rationale into a document under `documentation/repository/` and link it, rather than raising a budget.

@@ -4,9 +4,10 @@
 // and the worktree removal in turn.
 //
 // It runs no test gate and never merges the default branch into the pull request. The worker ran
-// its focused checks before opening the pull request, and the per-batch `validate` on `main` is the
-// backstop (AGENTS.md "Gate on local checks"), so the default branch moving is not a reason to
-// repeat either.
+// its focused checks before opening the pull request, and GitHub Actions' full suite on every push
+// to `main` is the backstop (AGENTS.md "Gate on local checks"; a local batch validate is in
+// `.agents/skills/chef/references/program-runs.md`), so the default branch moving is not a reason
+// to repeat either.
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--head <sha>]
