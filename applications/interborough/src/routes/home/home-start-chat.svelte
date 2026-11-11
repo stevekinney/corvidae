@@ -88,7 +88,7 @@
 </script>
 
 <div data-testid="home-start-chat">
-  <HomeCard title={copy.title} flush={false}>
+  <HomeCard title={copy.title}>
     {#if agents.data === undefined && agents.isError}
       <HomeCardError title={copy.failed} onRetry={() => void agents.refetch()} />
     {:else if blocked !== undefined}

@@ -15,7 +15,7 @@
    * rows in the rows' own shape. While the server does not answer each row's button is held like
    * every control that changes something.
    */
-  import { Card, DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
+  import { DataList, StackedListItem, StatusDot } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { HOME_COPY } from '../../app/copy.ts';
@@ -75,7 +75,8 @@
 </script>
 
 {#if items.data !== undefined && rows.length === 0}
-  <Card class="ib-home-attention-clear" data-testid="attention-clear">
+  <!-- One line on the page itself, with no box: the sections beside it draw none either. -->
+  <div class="ib-home-attention-clear" data-testid="attention-clear">
     <div class="ib-home-attention-clear__line">
       <!-- The sentence beside it says all of this; the dot only draws it. -->
       <span aria-hidden="true"
@@ -87,7 +88,7 @@
       </p>
       <HomeLink path="/health" label={copy.link} />
     </div>
-  </Card>
+  </div>
 {:else}
   <HomeCard
     title={copy.title}

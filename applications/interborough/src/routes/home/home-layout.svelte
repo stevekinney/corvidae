@@ -1,12 +1,15 @@
 <script lang="ts">
   /**
-   * The frame Home's cards sit in, shared by the page and by its loading placeholders so the two
-   * are the same layout and nothing moves when data arrives: the date line, the four counts in one
-   * row, then two columns (what needs you, what is running and what needs attention at the left,
-   * the box that starts a chat at the right) and the chats you were last in across the full width
-   * below. On a phone every card is a row of one column, in the order the counts, Needs you,
-   * Running now, the box that starts a chat, Needs attention, Recent chats. While the first-run
+   * The layout Home's sections sit in, shared by the page and by its loading placeholders so the
+   * two are the same layout and nothing moves when data arrives: the date line, the four counts in
+   * one row, then two columns (what needs you, what is running and what needs attention at the
+   * left, the box that starts a chat at the right) and the chats you were last in across the full
+   * width below. On a phone every section is a row of one column, in the order the counts, Needs
+   * you, Running now, the box that starts a chat, Needs attention, Recent chats. While the first-run
    * checklist shows the box that starts a chat sits under it, in the left column.
+   *
+   * The sections draw no box (Cinder's `Section`), so space alone separates them: the gap between
+   * two sections is Cinder's own space between sections (`--cinder-space-8`).
    */
   import type { Snippet } from 'svelte';
 
@@ -67,7 +70,7 @@
   .ib-home {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-4);
+    gap: var(--cinder-space-6);
     min-inline-size: 0;
   }
 
@@ -77,14 +80,14 @@
     font-size: var(--cinder-text-base);
   }
 
-  /* On a phone every card is a row of one column, in the order the page lists them: what needs you,
-   * what is running, the box that starts a chat, then what needs attention. The left column's cards
-   * share a parent only for the wide layout, so on a phone that parent drops out of the box tree and
-   * the cards are ordered as the parent's own children. */
+  /* On a phone every section is a row of one column, in the order the page lists them: what needs
+   * you, what is running, the box that starts a chat, then what needs attention. The left column's
+   * sections share a parent only for the wide layout, so on a phone that parent drops out of the box
+   * tree and the sections are ordered as the parent's own children. */
   .ib-home__columns {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-4);
+    gap: var(--cinder-space-8);
     min-inline-size: 0;
   }
 
@@ -120,7 +123,7 @@
     .ib-home__main {
       display: flex;
       flex-direction: column;
-      gap: var(--cinder-space-4);
+      gap: var(--cinder-space-8);
       min-inline-size: 0;
     }
 

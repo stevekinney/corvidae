@@ -57,7 +57,7 @@
       <HomeCard title={HOME_COPY.attention.title}><HomeSkeletonRows rows={3} action /></HomeCard>
     {/snippet}
     {#snippet startChatAside()}
-      <HomeCard title={HOME_COPY.startChat.title} flush={false}>
+      <HomeCard title={HOME_COPY.startChat.title}>
         <div class="ib-home-loading__composer">
           <Skeleton height="4.75rem" radius="var(--cinder-radius-md)" />
           <div class="ib-home-loading__controls">
