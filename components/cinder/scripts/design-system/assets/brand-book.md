@@ -1,4 +1,4 @@
-Cinder is the Svelte 5 component library behind Corvidae's applications, Interborough first among them. It is built for dense, operational interfaces: lists of runs and workers, settings, approvals, logs, terminals and editors. It is quiet by default and reserves its one accent colour, an indigo, for the thing that needs action. Each component card mounts the real component from its playground examples.
+Cinder is the Svelte 5 component library behind Corvidae's applications, Interborough first among them. Its identity is calm and content-first: the content of a page is the focal element, and everything else steps back until it is needed. Space does most of the work, text carries the hierarchy, and one accent colour, an indigo, is reserved for the thing that needs action. Density is a setting, not the identity. Lists of runs and workers, settings, approvals, logs, terminals and editors can be set closely (`density="condensed"` on a row, `cinder-control-height-sm` on a control) without becoming a console of bordered panels. Each component card mounts the real component from its playground examples.
 
 ## Principles
 
@@ -15,14 +15,96 @@ Cinder is the Svelte 5 component library behind Corvidae's applications, Interbo
 - Never separate pieces of copy with a middle dot (U+00B7). Use a comma for one short phrase ("Waiting on you, Chat, 4 min ago"), separate elements, a line break, or a `DescriptionList` for label and value metadata. A repository guard fails the build on a middle dot.
 - No emoji in interface copy. Icons are decorative unless the label says otherwise.
 
+## Composition
+
+These rules are binding. Most of what makes a page read as enterprise software is composition: a sidebar, a title with buttons at the right, then a grid of bordered panels. The components are right; the arrangement is the defect. A finding that a component, default or token can carry belongs in Cinder, never in a one-off page fix. Each rule has a do and a don't.
+
+### Surface and emphasis
+
+- **Space before tone before border, and elevation for anything that floats.** Separate neighbours with space first. If space is not enough, step the surface tone (`cinder-surface-canvas`, `cinder-surface`, `cinder-surface-inset`). Draw a border only where a control needs its boundary or a table needs its rules. Use a shadow (`cinder-shadow-md` and up) only for what floats above the page: a popover, a menu, a modal.
+  - Do: group a page into `Section` blocks, which separate by space under a heading, and hold a settings list on one `GroupedList` surface.
+  - Don't: draw a bordered `Card` around every block, or put a shadow on a resting surface.
+- **One focal element per screen.** A person should be able to say what the screen is for in one glance. It is a single value, a single list or a single question, set larger or earlier than everything else.
+  - Do: open an overview with one `Spotlight` ("2 need you"), and let the list beneath it be the content.
+  - Don't: set four equal statistic tiles and three buttons side by side, so nothing leads.
+- **The emphasis order is size, then weight, then text tone, then colour.** Reach for the quietest lever that works. Make something larger or earlier first; then bolder; then step its text from `cinder-text-subtle` through `cinder-text-muted` to `cinder-text-default`; and only then use colour. Accent is last, and it means an action.
+  - Do: make the page title `cinder-text-page-title` at semibold and leave the metadata in `cinder-text-muted`.
+  - Don't: tint a value red and bold it and underline it to make it important.
+- **At most one tinted box and at most one line of explanation per screen.** A tinted box is a `Callout`, `Alert`, `Banner` or any status-tinted surface. An explanation line is a `Section` `description` or a note under a heading.
+  - Do: one neutral `Callout` with a link, and a `description` under the first heading only.
+  - Don't: stack an `Alert`, a `Callout` and a paragraph under every heading, so that the page explains itself instead of showing its content.
+- **No nested inset boxes.** No wells, and no bordered cards inside cards. A box inside a box doubles the edges and shrinks the content.
+  - Do: use flat rows, a `Section` under a heading, an `Inspector` of quiet property rows, and editable titles that look like text until they are focused.
+  - Don't: put a `cinder-surface-inset` well inside a `Card`, or a bordered field group inside a bordered panel.
+
+### Rows, controls and actions
+
+- **A row is a link, and its title is never underlined.** The whole row is the target: `StackedListItem` and `GroupedListItem` take an `href`, tint on hover and draw one focus ring around the row.
+  - Do: give the row an `href` and let the hover tint say it is a link.
+  - Don't: underline the title, or add a "View" link at the end of the row to open what the row already opens.
+- **A badge or status never moves a click target.** Trailing row actions sit in a fixed column at the end of the row. A badge belongs with the metadata in the content column, so its width never changes where a button lands.
+  - Do: put the status in the content column (`StackedListItem`'s status cell or `meta`) and keep `actions` for buttons alone.
+  - Don't: put a `Badge` inside `trailing` beside a button, so the button sits further left on the rows that have one.
+- **Controls keep a 3:1 boundary, and touch targets are 44px.** The visible edge of an input, checkbox, radio or segmented control is `cinder-control-border`, which clears 3:1 against every surface. On a coarse pointer a row or control grows to `cinder-touch-target-min` (44px).
+  - Do: fill a control with `cinder-control-background` and outline it with `cinder-control-border`.
+  - Don't: drop an input's border because the surface behind it is tinted, or shrink a tap target below 44px to fit another column.
+- **Approve, deny, edit and Cancel are never hidden behind an overflow menu.** The decision and its way out stay visible as labelled buttons, where the failure or the question is.
+  - Do: show `ApprovalCard`'s Approve, Deny and Edit buttons, and a Cancel next to any pending operation.
+  - Don't: tuck Deny or Cancel into a "More" `DropdownMenu` to make the row look tidier.
+- **Secondary options are icon-only buttons with tooltips, and there is one labelled primary.** A row or screen has one labelled primary action. Other options are `Button` with `iconOnly` and a `Tooltip`, each with an accessible name. The decision pair above is the exception: those stay labelled.
+  - Do: one "Save changes" primary, and a pencil and a trash icon button beside it, each with a tooltip.
+  - Don't: a row of four labelled secondary buttons, which all read as equal.
+- **Status shows only when it is actionable.** A status says that a person has something to do or that something went wrong. Never show a status badge beside a button that says the same thing.
+  - Do: show "Waiting on you" on a run that needs a decision, and nothing on a run that is fine.
+  - Don't: show a "Failed" badge beside a "Retry failed run" button. Show the button, with the failure message beside it.
+
+### Content and records
+
+- **Record metadata is label and value, not pills.** A `Badge` or a `Chip` is for a status or a short tag. The label and value metadata of a record goes in a `DescriptionList`, or a `KeyFacts` row for a few typed facts.
+  - Do: `DescriptionList` with `variant="two-column"`: Owner, Created, Price, each a muted label with its value.
+  - Don't: a row of pills that reads "Ada Lovelace", "Nov 10", "$$", with nothing to say which is which.
+- **An inline choice stays in the page flow.** Do not wrap a form control or an inline choice, such as a `SegmentedControl`, in a tinted `Callout` or `Alert`. Place it in the flow with a plain label.
+  - Do: a heading or `FormField` label, and the `SegmentedControl` beneath it.
+  - Don't: an info-tinted `Callout` that holds a `SegmentedControl`, whose tint clashes with the control and stretches it.
+- **History and audit lists use the existing `Timeline`.** Events in time, with who and when, are a `Timeline` (`variant="list"` for compact rows).
+  - Do: `Timeline` entries with a timestamp and a title for each change.
+  - Don't: hand-draw a list of rows with dots and a line.
+- **Freshness is subtle in lists.** A row shows a gray clock and a short age ("4 h"), and only when its data is stale. The full warning, in words, goes on the detail page (`Spotlight`'s `caveat`, or `StaleRegion`).
+  - Do: a gray clock icon and "4 h" at the end of a stale row; nothing on a fresh one.
+  - Don't: tint every row's age amber, or write "Data may be out of date" under each row.
+- **No metadata subtitle on listing rows.** A listing row is a title, and at most one status or one time. The rest is on the detail page.
+  - Do: "Spring menu launch" with "Waiting on you" when it needs the reader.
+  - Don't: a second line of owner, neighbourhood and price under every title.
+- **Assume most records have no image.** Lists are text first. A photo, when a record has one, sits at the end of the row (`GroupedListItem`'s trailing photo), and a record without one shows nothing in its place.
+  - Do: a text row, with an optional photo at its end.
+  - Don't: reserve a leading column of grey placeholder squares for images most rows do not have.
+- **Never use a middle dot as a separator.** See Content above; the repository guard fails the build on one.
+  - Do: a comma, separate elements, a line break or a `DescriptionList`.
+  - Don't: "Waiting on you" then a dot, then "Chat", then a dot, then "4 min ago".
+- **Prototype text entry uses `MarkdownEditor`.** Capture fields, notes, descriptions, comments and prompts use `MarkdownEditor` from `@lostgradient/editor`, in the bundle as `Cinder.MarkdownEditor`.
+  - Do: `Cinder.MarkdownEditor` for a note field.
+  - Don't: draw a plain textarea or a look-alike editor.
+
+## Page archetypes
+
+A page is one of these eight. Pick the archetype first, then compose it from the components it names. Each has one focal element, and the page is arranged to lead with it. A page that fits none is usually two pages.
+
+- **Focus list.** A short list of the things that need a person now. Components: `Section`, `GroupedList` or `DataList` with `StackedListItem` rows, and optionally one `Spotlight`. Focal element: the first row, or the `Spotlight` value above the list.
+- **Collection.** Many like records to scan, filter and open. Components: `FilterBar`, `DataList` with `StackedListItem` rows (or `DataTable` for columns), `LoadMore` or `Pagination`, and `EmptyState`. Focal element: the list. The page has one labelled primary action, such as "New".
+- **Detail with inspector.** One record, read and edited in place. Components: `PageHeader`, `Section`, `Inspector` with `InspectorRow` properties (a quiet right rail at desktop width), `DescriptionList` for read-only metadata, and `Timeline` for its history. Focal element: the record's title and its content, with the inspector kept quiet.
+- **Conversation.** A turn-by-turn exchange with a person or an agent. Components: `Message`, `ToolCallPanel`, `ApprovalCard` for a pending decision, and `MarkdownEditor` as the composer. Focal element: the latest message, then the composer.
+- **Flow.** One task in steps: set up, create, check out. Components: `Steps`, `FormSection`, `FormField` with its control, and `FormActions` (or `DockedActionBar` on a phone). Focal element: the current step's one question.
+- **Queue.** Items that each need a decision, worked from the top. Components: `SegmentedControl` for the filter with counts, `DataList` with status-first `StackedListItem` rows, and `ApprovalCard` for the decision. Focal element: the item at the head of the queue and its decision buttons.
+- **Overview.** The state of a whole system at a glance, and the only archetype with stat tiles or cards. Components: `Spotlight`, `StatisticGroup` of `Statistic` tiles, `Card`, `Sparkbar`, `Meter` and the charts. Focal element: the `Spotlight`; the tiles and cards stay secondary to it.
+- **Browse.** Discovering records by searching, filtering and reading. Components: `SearchField`, `SegmentedControl`, `GroupedList` rows with an optional photo at the end, `KeyFacts`, `WeekSchedule` for a recurring time, and `Image` for a hero. Focal element: the record being read, or the results while searching. It is rows, not a grid of cards.
+
 ## Colour
 
 Colours are OKLCH and come in light and dark themes. Set the theme with `data-theme="light"` or `data-theme="dark"` on `html`, or on any subtree for a scoped theme island.
 
-- **Surfaces** step up from `cinder-surface-canvas` (the page) to `cinder-surface` (panels and cards) to `cinder-surface-raised` (popovers, inputs and anything lifted). Use `cinder-surface-inset` for wells, code blocks, header bands and tracks inside a card. Hover and pressed states use `cinder-surface-hover` and `cinder-surface-pressed`, which wash toward the accent in light mode.
+- **Surfaces** step up from `cinder-surface-canvas` (the page) to `cinder-surface` (a grouped surface that holds rows, when a group needs one) to `cinder-surface-raised` (popovers, inputs and anything lifted). Use `cinder-surface-inset` for code blocks, header bands and tracks, not for a well that holds other boxes (see Composition). Hover and pressed states use `cinder-surface-hover` and `cinder-surface-pressed`, which wash toward the accent in light mode.
 - **Text:** `cinder-text-default` for body copy and primary content. `cinder-text-muted` for readable secondary text that is still part of the content. `cinder-text-subtle` only for tertiary metadata and chrome, never for primary content or a control's only label. `cinder-text-disabled` for disabled controls. All except disabled meet WCAG AA on `cinder-surface`.
-- **Accent:** `cinder-accent-solid` is the brand fill: deep indigo in light mode, periwinkle in dark mode. Put `cinder-accent-contrast` on it for labels. When the accent is text or an icon (links, active tabs, selected rows), use `cinder-accent-text`. It hovers to `cinder-accent-text-hover`, never the fill-derived `cinder-accent-solid-hover`.
-- **Status** comes in four tones, `info`, `success`, `warning` and `danger`, plus `neutral`. Use the solid family (`cinder-status-*-solid` with `cinder-status-*-contrast`) for badges and dots. Use the soft triple (`-background`, `-text`, `-border`) for Alert, Toast, Callout and other tinted surfaces.
+- **Accent:** indigo is the only accent, and it is reserved for primary actions, links and focus. `cinder-accent-solid` is the brand fill: deep indigo in light mode, periwinkle in dark mode. Put `cinder-accent-contrast` on it for labels. When the accent is text or an icon (a link, the active tab), use `cinder-accent-text`. It hovers to `cinder-accent-text-hover`, never the fill-derived `cinder-accent-solid-hover`. Everything that is not an action is neutral: a `Spotlight` value, an eyebrow above a title, an info dot, and the fill of a `Meter` or `Sparkbar` are `cinder-text-default`, `cinder-text-muted` or a neutral tone, never indigo.- **Status** comes in four tones, `info`, `success`, `warning` and `danger`, plus `neutral`. Use the solid family (`cinder-status-*-solid` with `cinder-status-*-contrast`) for badges and dots. Use the soft triple (`-background`, `-text`, `-border`) for Alert, Toast, Callout and other tinted surfaces.
 - **Borders** have two jobs. The structural tiers `cinder-border-muted`, `cinder-border` and `cinder-border-strong` are quiet alpha steps that separate regions. Use `cinder-border-muted` for interior dividers and `cinder-border` for a component's outer edge. The control tiers `cinder-border-control` and `cinder-border-control-hover` are the only visible edge of an input, checkbox or radio, so they clear 3:1 on every surface.
 - **Controls** fill with `cinder-control-background` (the raised surface) and outline with `cinder-control-border`. Never use `cinder-surface` as an input fill.
 - **Charts** use `cinder-chart-series-1` through `cinder-chart-series-8` in order. Terminal output uses the `cinder-terminal-ansi-*` palette.
@@ -30,7 +112,7 @@ Colours are OKLCH and come in light and dark themes. Set the theme with `data-th
 ## Type
 
 - Cinder uses the system UI stack (the `sans` family, CSS `--cinder-font-sans`) and the system monospace stack (the `mono` family, `--cinder-font-mono`). There are no web fonts to load.
-- The base size is 14px (`cinder-text-base`), a step below the browser default for dense application UI. Sizes use rem so browser zoom scales them.
+- The base size is 14px (`cinder-text-base`), a step below the browser default, which keeps long lists of rows readable without crowding them. Sizes use rem so browser zoom scales them.
 - Type roles: a page title is `cinder-text-page-title` (20px) at semibold. A section title is `cinder-text-section-title` (16px) at semibold. Body text is `cinder-text-body` (14px). Secondary text is `cinder-text-secondary` (13px) in `cinder-text-muted`. Code is `cinder-text-code` (13px) in the mono stack.
 - Label and value pairs share one hierarchy. The label is `cinder-text-base`, semibold, full-strength text with snug leading. The value is `cinder-text-sm`, normal weight, muted text with normal leading.
 - Line heights: `cinder-leading-tight` (1.15) for headings, `cinder-leading-normal` (1.5) for body text, `cinder-leading-relaxed` (1.625) for long-form reading. Keep prose to `cinder-content-width-prose` (65ch).
@@ -54,9 +136,14 @@ Colours are OKLCH and come in light and dark themes. Set the theme with `data-th
 - Durations run from `cinder-duration-fast` (120ms) through `cinder-duration-normal` (200ms) to `cinder-duration-slow` (400ms). Ease with `cinder-ease-standard`, or `cinder-ease-decelerate` for things that enter.
 - Reduced motion sets durations to 0. Never let motion carry meaning on its own.
 
-## Iconography
+## Icons and imagery
 
-Cinder ships no general-purpose icon set. Icons come from Lucide (`@lucide/svelte`) and are passed in through snippet props such as `leadingIcon` and `trailingIcon`. Draw them at 14 to 16px with a stroke of 2, in `currentColor`. Icon slots render `aria-hidden`, so the meaning belongs in the label or `aria-label`. An icon-only button still needs an accessible name.
+- **Icons are a curated vocabulary of Lucide glyphs** (`@lucide/svelte`), one glyph per meaning, used the same way on every page. Cinder's entry exports the ones its own components draw, and the curated vocabulary for pages is being filed separately; until it lands, choose from these. Actions: `Plus`, `Pencil`, `Trash2`, `Copy`, `Check`, `X`, `Search`, `RefreshCw`, `RotateCcw`, `SendHorizontal`, and `MoreHorizontal` for an overflow menu of secondary options only. Direction: `ChevronDown`, `ChevronLeft`, `ChevronRight`, `ChevronUp` and `ArrowUp`. Status: `Info`, `CircleAlert` and `TriangleAlert`. Things: `FileText`, `FileCode`, `Globe`, `Terminal`, `MessageSquare`, `MessageCircle` and `Paperclip`. Import them from `@lostgradient/cinder`, as in `import { Pencil } from '@lostgradient/cinder'`.
+- Icons are passed in through snippet props such as `leadingIcon` and `trailingIcon`. Draw them at 14 to 16px with a stroke of 2, in `currentColor`, in a neutral text colour. Icon slots render `aria-hidden`, so the meaning belongs in the label or `aria-label`. An icon-only button still needs an accessible name and, for a secondary option, a `Tooltip`.
+- **Use one glyph per meaning.** Do not draw two icons for the same thing on different pages, and do not use an icon only to fill space beside a label that already says it.
+- **Media falls back to a monogram, and a monogram is never decoration.** `Avatar` shows a person's or an entity's image, and falls back to their initials when there is none or it fails to load. A monogram identifies someone or something; do not put one on a row, a card or a heading as ornament.
+- **No placeholders for missing images.** A record without an image shows no image. An `Image` that fails to load shows its fallback, and a list never reserves an empty leading column for pictures.
+- Cinder has no logo mark, so a design supplies its own in the application and does not draw one in Cinder's name.
 
 ## Using it
 
@@ -99,4 +186,4 @@ A canvas artboard with Cinder installed under `ds/cinder/`:
 - **Previews.** Each card's `components/<Name>/preview.js` is its own compiled script that mounts up to four of the component's playground examples; the cards do not use the bundle.
 - **Static renditions.** {{staticComponents}} bundle editors too large for a preview script, so their cards are static HTML captured from the live component. They look right but don't respond to input.
 - **Parts of compound components.** {{componentsWithoutCard}} sub-components (for example `TabList`, `TableCell` and `DropdownItem`) appear in their parent's preview and have guidelines but no card of their own.
-- **Types, fonts and assets.** There is no `index.d.ts`, because each component's README carries its props table. There are no font files, because Cinder uses system font stacks. There are no logo or icon assets, because Cinder has no mark and takes its icons from Lucide.
+- **Types, fonts and assets.** There is no `index.d.ts`, because each component's README carries its props table. There are no font files, because Cinder uses system font stacks. There are no logo or icon files, because Cinder has no mark and takes its icons from Lucide (see Icons and imagery).
