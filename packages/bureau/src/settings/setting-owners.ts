@@ -61,7 +61,6 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
       'retention.audit',
       'retention.chats',
       'retention.events',
-      'retention.tasks',
       'retention.receipts',
       'retention.memory',
       'retention.logs',
@@ -69,6 +68,12 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
       'retention.hookDeliveries',
       'retention.checkpoints',
     ],
+    reads: 'literal',
+  },
+  {
+    name: 'task retention',
+    module: 'bureau-construction-support.ts',
+    keys: ['retention.tasks'],
     reads: 'literal',
   },
   {
