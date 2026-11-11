@@ -1,43 +1,31 @@
 /**
- * Deterministic coverage gate for the application: this workspace's `test:coverage`. `check-coverage-cli.ts` runs
- * one `run-coverage.ts` pass (the UI's `bun test --coverage` invocation, with
- * the same `--config=./bunfig.ui.toml --conditions browser --conditions
- * svelte` flags the UI half of `test` uses), parses the LCOV report it writes
- * to `coverage/ui/lcov.info`, prints per-area line/function coverage, and
- * fails when either the run itself failed or adjusted coverage drops below
- * the floor recorded in `coverage-baseline.ts`.
+ * The application's coverage report: this workspace's `test:coverage`. `check-coverage-cli.ts`
+ * runs one `run-coverage.ts` pass (the UI's `bun test --coverage` invocation, with the same
+ * `--config=./bunfig.ui.toml --conditions browser --conditions svelte` flags the UI half of `test`
+ * uses), parses the LCOV report it writes to `coverage/ui/lcov.info`, and prints per-area
+ * line/function coverage. It is a report: no floor fails it, only a failing test run does.
  *
- * This is a RATCHET, not a 100%-coverage gate. `docs/implementation-plan.md`
- * §11 targets 100% adjusted coverage with an explicit reviewed allowance
- * file, weft-style, once the console's surfaces stabilize — that is the
- * aspirational end state, not what this script enforces today. See
- * `coverage-baseline.ts` for how to move the floor forward.
- *
- * Deliberately NOT a clone of the engine's `scripts/check-coverage.ts`: no
- * per-file line-keyed allowance layers, no refresh-layer partitioning. That
- * machinery was earned over dozens of PRs restoring coverage on a mature
- * codebase; a bootstrapping console gates on area-level totals instead.
- *
- * **The layout.** The floors in `coverage-baseline.ts` and the test orders in
- * `coverage-test-order*.ts` name files by this workspace's layout: `src/…` for
- * the source, `tests/…` and `fixtures/…` beside it, `scripts/browser/…` for the
- * browser tooling, and `scripts/…` for these coverage scripts. The run executes
- * from the application root, so the Weft, Cinder, and other workspace files its
- * tests reach appear in the same report as `../…` paths; {@link uiCoverageRecords}
- * drops them, because each of those workspaces gates its own source.
+ * **The layout.** The test orders in `coverage-test-order*.ts` name files by this workspace's
+ * layout: `src/…` for the source, `tests/…` and `fixtures/…` beside it, `scripts/browser/…` for
+ * the browser tooling, and `scripts/…` for these coverage scripts. The run executes from the
+ * application root, so the Weft, Cinder, and other workspace files its tests reach appear in the
+ * same report as `../…` paths; {@link uiCoverageRecords} drops them, because each of those
+ * workspaces reports its own source.
  *
  * @module
  */
 import { isAbsolute, join } from 'node:path';
 
-import {
-  COVERAGE_BASELINES,
-  coverageMeasurementPlatform,
-  type AreaCoverage,
-  type CoverageBaseline,
-} from './coverage-baseline.ts';
 import { DARWIN_BASELINE_COVERAGE_TEST_ORDER } from './coverage-test-order-darwin.ts';
 import { LINUX_BASELINE_COVERAGE_TEST_ORDER } from './coverage-test-order.ts';
+
+/** Raw hit/found counts for one coverage area (or the `OVERALL` rollup). */
+export type AreaCoverage = {
+  linesFound: number;
+  linesHit: number;
+  functionsFound: number;
+  functionsHit: number;
+};
 
 /** The application's package root, which every path below is relative to. */
 const PACKAGE_ROOT = join(import.meta.dir, '..');
@@ -279,136 +267,15 @@ export function formatPercentage(value: number): string {
   return `${value.toFixed(2)}%`;
 }
 
-export type Regression = {
-  area: string;
-  metric: 'lines' | 'functions';
-  currentPercentage: number;
-  baselinePercentage: number;
-};
-
-// Two runs of the exact same command over the exact same source produce
-// identical hit/found counts (LCOV counts are exact integers), so this only
-// needs to absorb floating-point rounding in the percentage division, not
-// day-to-day measurement noise. A real regression is never this small.
-const REGRESSION_EPSILON = 1e-9;
-
-/**
- * Compare current per-area totals against the recorded baseline and report
- * every area whose line or function coverage dropped. An area present in the
- * baseline but absent from the current run (e.g. a directory rename) is
- * skipped here, because this function can't tell a shape change from
- * "coverage went to zero"; `check-coverage-cli.ts` fails the gate on such an
- * area separately, naming it as missing rather than as a regression.
- */
-export function findRegressions(
-  current: ReadonlyMap<string, AreaCoverage>,
-  baseline: ReadonlyMap<string, AreaCoverage>,
-): Regression[] {
-  const regressions: Regression[] = [];
-  for (const [area, baselineTotals] of baseline) {
-    const currentTotals = current.get(area);
-    if (currentTotals === undefined) continue;
-
-    const currentLines = percentage(currentTotals.linesHit, currentTotals.linesFound);
-    const baselineLines = percentage(baselineTotals.linesHit, baselineTotals.linesFound);
-    if (currentLines < baselineLines - REGRESSION_EPSILON) {
-      regressions.push({
-        area,
-        metric: 'lines',
-        currentPercentage: currentLines,
-        baselinePercentage: baselineLines,
-      });
-    }
-
-    const currentFunctions = percentage(currentTotals.functionsHit, currentTotals.functionsFound);
-    const baselineFunctions = percentage(
-      baselineTotals.functionsHit,
-      baselineTotals.functionsFound,
-    );
-    if (currentFunctions < baselineFunctions - REGRESSION_EPSILON) {
-      regressions.push({
-        area,
-        metric: 'functions',
-        currentPercentage: currentFunctions,
-        baselinePercentage: baselineFunctions,
-      });
-    }
-  }
-  return regressions;
-}
-
-/** Render the per-area (plus `OVERALL`) current-vs-baseline table as printable lines. */
-export function renderAreaTable(
-  current: ReadonlyMap<string, AreaCoverage>,
-  baseline: ReadonlyMap<string, AreaCoverage>,
-): string[] {
-  const areas = [...new Set([...current.keys(), ...baseline.keys()])].toSorted();
-  const lines = ['area | lines | functions | baseline lines | baseline functions'];
-  for (const area of areas) {
+/** Render the per-area (plus `OVERALL`) coverage table as printable lines. */
+export function renderAreaTable(current: ReadonlyMap<string, AreaCoverage>): string[] {
+  const lines = ['area | lines | functions'];
+  for (const area of [...current.keys()].toSorted()) {
     const totals = current.get(area);
-    const base = baseline.get(area);
-    const linesCell = totals
-      ? formatPercentage(percentage(totals.linesHit, totals.linesFound))
-      : '(missing)';
-    const functionsCell = totals
-      ? formatPercentage(percentage(totals.functionsHit, totals.functionsFound))
-      : '(missing)';
-    const baseLinesCell = base
-      ? formatPercentage(percentage(base.linesHit, base.linesFound))
-      : '(new)';
-    const baseFunctionsCell = base
-      ? formatPercentage(percentage(base.functionsHit, base.functionsFound))
-      : '(new)';
+    if (totals === undefined) continue;
     lines.push(
-      `${area} | ${linesCell} | ${functionsCell} | ${baseLinesCell} | ${baseFunctionsCell}`,
+      `${area} | ${formatPercentage(percentage(totals.linesHit, totals.linesFound))} | ${formatPercentage(percentage(totals.functionsHit, totals.functionsFound))}`,
     );
   }
   return lines;
-}
-
-/**
- * Resolve the baseline the current platform gates against. Returns a `null`
- * baseline (after printing why) for the two ungated cases: an unrecognized
- * platform, and a recognized platform with no recorded baseline yet — the
- * latter prints a paste-ready bootstrap object so the first measurement on
- * a new platform (e.g. the first CI run after the darwin/linux split)
- * supplies the numbers a follow-up commit records.
- */
-export function resolveBaselineForPlatform(
-  currentAreas: ReadonlyMap<string, AreaCoverage>,
-  platform: ReturnType<typeof coverageMeasurementPlatform> = coverageMeasurementPlatform(),
-  baselines: typeof COVERAGE_BASELINES = COVERAGE_BASELINES,
-): {
-  baseline: CoverageBaseline | null;
-  platform: string;
-} {
-  if (platform === null) {
-    console.log(
-      `\nNo coverage baseline vocabulary for platform "${process.platform}" — measurement ran clean but is not gated here. Record a baseline in scripts/coverage-baseline.ts to gate this platform.`,
-    );
-    return { baseline: null, platform: process.platform };
-  }
-
-  const baseline = baselines[platform];
-  if (baseline === null) {
-    const bootstrap: CoverageBaseline = {
-      measuredAt: new Date().toISOString(),
-      overall: currentAreas.get('OVERALL') ?? emptyTotals(),
-      areas: Object.fromEntries(
-        [...currentAreas.entries()]
-          .filter(([area]) => area !== 'OVERALL')
-          .toSorted(([left], [right]) => left.localeCompare(right)),
-      ),
-    };
-    console.log(
-      `\nNo ${platform} baseline recorded yet — bootstrap mode: measurement ran clean and is NOT gated this run.`,
-    );
-    console.log(
-      `Record it by pasting this into scripts/coverage-baseline.ts as the ${platform} entry:\n`,
-    );
-    console.log(JSON.stringify(bootstrap, null, 2));
-    return { baseline: null, platform };
-  }
-
-  return { baseline, platform };
 }

@@ -2,9 +2,7 @@
  * Pure measurement/window engine for `dynamicSize` virtual-list mode.
  *
  * Everything in this module is dependency-free arithmetic: no DOM, no runes,
- * no `ResizeObserver`. It is deliberately held to a 100%-lines/100%-functions
- * coverage floor (see `coverage-ratchet.json`) because none of it needs a
- * live browser to exercise every branch.
+ * no `ResizeObserver`. None of it needs a live browser to exercise every branch.
  */
 
 import type {

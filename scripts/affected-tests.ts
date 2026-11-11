@@ -13,8 +13,8 @@
  *   narrows to the selected files.
  * - A workspace with nothing selected runs nothing.
  *
- * This is the quick tier. It never runs `test:gate` or `test:coverage` (coverage floors are judged
- * by `bun run validate`), and it never runs the serial isolated lanes (`test:slow`,
+ * This is the quick tier. It never runs `test:coverage` (coverage is a report, `bun run coverage`,
+ * with no floor), and it never runs the serial isolated lanes (`test:slow`,
  * `test:self:slow`), which hold the `*.slow.test.ts` and `*.integration.test.ts` files: tests that
  * start a process or an out-of-process service, and so depend on how loaded the host is. The
  * isolated lanes run, narrowed to the selection, only with `--isolated` or when a changed file is
@@ -65,8 +65,6 @@ const LANE_SCRIPTS = new Set([
   'test',
   'test:slow',
   'test:coverage',
-  'test:host',
-  'test:gate',
   'test:self',
   'test:self:slow',
   'test:browser-fixtures',

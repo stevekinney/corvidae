@@ -1,7 +1,7 @@
 /**
  * Adapter-level coverage for the operations the shared contract does not reach on its own. Before
  * the adapter moved out of Weft, Weft's engine suites ran these paths; they now have direct tests
- * so the package's coverage floor holds without an engine.
+ * so the package's coverage report still counts them without an engine.
  */
 import { describe, expect, it } from 'bun:test';
 

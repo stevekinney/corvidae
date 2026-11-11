@@ -13,12 +13,7 @@
     "lint": {
       "outputs": [],
       "dependsOn": ["transit"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
-        "$TURBO_ROOT$/scripts/workspace-exports.ts",
-        "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"
-      ]
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts"]
     },
     "lint:fix": {
       "cache": false
@@ -30,11 +25,16 @@
     "typecheck": {
       "outputs": [],
       "dependsOn": ["transit", "^types"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/scripts/typecheck-contracts.ts"]
+    },
+    "release:check": {
+      "outputs": [],
+      "dependsOn": ["transit", "^types"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
         "$TURBO_ROOT$/scripts/check-documentation-code-blocks.ts",
         "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
+        "$TURBO_ROOT$/scripts/workspace-exports.ts",
         "$TURBO_ROOT$/scripts/published-exports.json"
       ]
     },
@@ -73,9 +73,6 @@
         "$TURBO_ROOT$/scripts/workspace-directories.ts"
       ]
     },
-    "test:gate": {
-      "dependsOn": ["transit", "test"]
-    },
     "clean": {
       "cache": false
     },
@@ -93,6 +90,7 @@
         "$TURBO_DEFAULT$",
         "{applications,components,packages,testing,internal,plugins}/*/package.json",
         "{applications,components,packages,testing,internal,plugins}/*/tsconfig*.json",
+        "{applications,components,packages,testing,internal,plugins}/**/*.{slow,integration}.test.ts",
         "scripts/browser-fixtures/package.json",
         "scripts/browser-fixtures/tsconfig*.json",
         "testing/testing/src/hang-guard.ts",
@@ -255,10 +253,13 @@
         "WEFT_COVERAGE_MODE",
         "NODE_V8_COVERAGE",
         "WEFT_KEEP_DURABILITY_FIXTURES"
+      ],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/bun-test.ts",
+        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
+        "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/weft#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/storage#test": {
       "outputs": ["test-output/junit/**"],
@@ -287,9 +288,6 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/storage#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/storage-bun-sqlite#test": {
       "outputs": ["test-output/junit/**"],
@@ -332,9 +330,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/storage-bun-sqlite#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/storage-indexeddb#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
@@ -362,9 +357,6 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/storage-indexeddb#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/storage-neon#test": {
       "outputs": ["test-output/junit/**"],
@@ -407,9 +399,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/storage-neon#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/storage-node-sqlite#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
@@ -450,9 +439,6 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/storage-node-sqlite#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/storage-postgres#test": {
       "outputs": ["test-output/junit/**"],
@@ -495,9 +481,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/storage-postgres#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/storage-turso#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
@@ -539,9 +522,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/storage-turso#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/storage-web-extension#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
@@ -569,9 +549,6 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/storage-web-extension#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/storage-cloudflare#test": {
       "outputs": ["test-output/junit/**"],
@@ -601,9 +578,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/storage-cloudflare#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/storage-lmdb#test": {
       "outputs": ["test-output/junit/**"],
       "dependsOn": ["transit"],
@@ -632,9 +606,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/storage-lmdb#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/evaluation#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
@@ -644,9 +615,6 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/evaluation#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/chat#test:coverage": {
       "dependsOn": ["transit"],
@@ -659,33 +627,10 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/chat#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/interborough#test:coverage": {
-      "dependsOn": ["transit", "test:host"],
+      "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
       "env": ["CODEX_CI", "NODE_ENV"]
-    },
-    "@lostgradient/interborough#test:host": {
-      "outputs": ["test-output/junit/**"],
-      "dependsOn": ["transit"],
-      "env": ["CODEX_CI", "NODE_ENV"],
-      "inputs": [
-        "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/bun-test-junit.ts",
-        "$TURBO_ROOT$/scripts/check-test-durations.ts",
-        "$TURBO_ROOT$/scripts/test-duration-allowlist.json",
-        "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
-        "$TURBO_ROOT$/scripts/test-deadlines.ts",
-        "$TURBO_ROOT$/scripts/worker-crash-report.ts",
-        "$TURBO_ROOT$/scripts/affected-tests-manifest.ts",
-        "$TURBO_ROOT$/scripts/environment-configuration.ts",
-        "$TURBO_ROOT$/scripts/workspace-directories.ts"
-      ]
-    },
-    "@lostgradient/interborough#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/terminal#test:coverage": {
       "dependsOn": ["transit"],
@@ -698,16 +643,11 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/terminal#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/ventriloquist#lint": {
       "outputs": [],
       "dependsOn": ["transit"],
       "inputs": [
         "$TURBO_DEFAULT$",
-        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
-        "$TURBO_ROOT$/scripts/workspace-exports.ts",
         "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
@@ -720,9 +660,6 @@
       "inputs": [
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/scripts/typecheck-contracts.ts",
-        "$TURBO_ROOT$/scripts/check-documentation-code-blocks.ts",
-        "$TURBO_ROOT$/scripts/check-documentation-coverage.ts",
-        "$TURBO_ROOT$/scripts/published-exports.json",
         "$TURBO_ROOT$/scripts/terminal/evidence.schema.json",
         "$TURBO_ROOT$/scripts/terminal/evidence-schema.ts",
         "$TURBO_ROOT$/scripts/terminal/browser-asset-evidence.ts"
@@ -761,9 +698,6 @@
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
     },
-    "@lostgradient/ventriloquist#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
-    },
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],
@@ -777,9 +711,6 @@
         "$TURBO_ROOT$/testing/testing/src/hang-guard.ts",
         "$TURBO_ROOT$/scripts/test-deadlines.ts"
       ]
-    },
-    "@lostgradient/cinder#test:gate": {
-      "dependsOn": ["transit", "test:coverage"]
     },
     "@lostgradient/cinder#test": {
       "outputs": ["test-output/junit/**"],

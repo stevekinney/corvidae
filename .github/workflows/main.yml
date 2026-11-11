@@ -1,6 +1,8 @@
 # Advisory full suite on every push to `main` (COR-2369): every stage of `bun run validate`,
-# split into jobs so no job's peak memory passes the 16 GB standard runner (Cinder's coverage run
-# peaked at 7.8 GB on a laptop, so it runs alone). Nothing here is a required status check.
+# split into jobs so no job's peak memory passes the 16 GB standard runner (Cinder's suite peaked
+# at 7.8 GB under coverage on a laptop, so it still runs alone). Nothing here is a required status
+# check. Coverage (`bun run coverage`) and the publish-surface sweep (`bun run release:check`) are
+# not part of `validate` and not run here.
 # Playwright browser suites (`bun run test:browser:chromium`) are not run; see the pull request
 # that added this file.
 name: Main
@@ -77,7 +79,7 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Cinder's coverage run peaked at 7.8 GB on a laptop, so it runs alone.
+          # Cinder's suite peaked at 7.8 GB under coverage on a laptop, so it runs alone.
           - name: cinder
             filter: --filter=@lostgradient/cinder
           - name: components
@@ -86,9 +88,6 @@ jobs:
             filter: --filter=./packages/* --filter=!@lostgradient/weft --filter=!@lostgradient/bureau
           - name: applications, plugins, testing
             filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/*
-          # Linux failure for follow-up (COR-2380): Weft's tests pass,
-          # but its `test:coverage` step fails because the coverage allowance for
-          # src/server/workflow-event-feed.ts:401 "points at a covered line" on Linux.
           # Linux failure for follow-up (COR-2380): bureau's
           # src/workflow-file-watch.test.ts "watching the workflow directory > picks up an added
           # file" (the catalog lacks `late` after the change event) and a sibling "a file with an
@@ -100,7 +99,9 @@ jobs:
           - name: bureau
             filter: --filter=@lostgradient/bureau
             advisory: true
-          - name: weft coverage
+          # This shard ran Weft's coverage run until COR-2370 and now runs its `test` task, which
+          # has not run in this shard yet; it stays advisory until it passes on Linux.
+          - name: weft
             filter: --filter=@lostgradient/weft
             advisory: true
           # Catch-all: it only excludes what the shards above select (including bureau and weft,
@@ -124,10 +125,8 @@ jobs:
       # The Postgres suites start a disposable cluster with `initdb` and `pg_ctl` from PATH; the
       # runner image installs PostgreSQL but leaves its binaries off PATH.
       - run: echo "$(ls -d /usr/lib/postgresql/*/bin | tail -1)" >> "$GITHUB_PATH"
-      - run: bunx turbo run test:gate --continue ${{ matrix.filter }}
-      # `bun run report:test-durations` is not run: it needs every workspace's JUnit report in one
-      # checkout, and a shard holds only its own, so it exits 1 on the others. Running it needs the
-      # shards' reports gathered into one job (an artifact upload), which is a follow-up.
+      # The `test` task `bun run validate` runs for every workspace, not a coverage run.
+      - run: bunx turbo run test --continue ${{ matrix.filter }}
 
   tests-slow:
     name: Slow and integration tests

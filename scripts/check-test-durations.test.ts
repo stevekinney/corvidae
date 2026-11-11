@@ -9,7 +9,7 @@ import {
   integrationLaneProblems,
   judgeDurations,
   laneProblems,
-  measuresWorkspace,
+  laneWiringProblems,
   parseJunit,
   verdict,
 } from './check-test-durations.ts';
@@ -262,25 +262,19 @@ describe('verdict', () => {
   const overBudget = ['over budget: 3000 ms — w :: f.test.ts :: c :: t'];
   const stale = ['stale allowlist entry (took 0 ms, under the 1000 ms floor): w :: f :: c :: t'];
 
-  test('validate mode reports over-budget and stale findings as warnings and exits 0', () => {
-    expect(verdict('report', [], overBudget, stale)).toMatchObject({ exitCode: 0 });
-    expect(verdict('report', [], overBudget, stale).lines).toEqual([...overBudget, ...stale]);
+  test('exits 1 on over-budget and stale findings, and on a stale entry alone', () => {
+    expect(verdict([], overBudget, stale)).toMatchObject({ exitCode: 1 });
+    expect(verdict([], overBudget, stale).lines).toEqual([...overBudget, ...stale]);
+    expect(verdict([], [], stale)).toMatchObject({ exitCode: 1 });
   });
 
-  test('enforcing mode exits 1 on the same findings, and on a stale entry alone', () => {
-    expect(verdict('enforce', [], overBudget, stale)).toMatchObject({ exitCode: 1 });
-    expect(verdict('enforce', [], [], stale)).toMatchObject({ exitCode: 1 });
-  });
-
-  test('wiring problems fail both modes, because they do not depend on host load', () => {
+  test('wiring problems fail it', () => {
     const wiring = ['w: has .slow.test.ts files but defines no test:slow script'];
-    expect(verdict('report', wiring, [], [])).toMatchObject({ exitCode: 1 });
-    expect(verdict('enforce', wiring, [], [])).toMatchObject({ exitCode: 1 });
+    expect(verdict(wiring, [], [])).toMatchObject({ exitCode: 1 });
   });
 
-  test('no findings exit 0 in both modes', () => {
-    expect(verdict('report', [], [], [])).toMatchObject({ exitCode: 0, lines: [] });
-    expect(verdict('enforce', [], [], [])).toMatchObject({ exitCode: 0, lines: [] });
+  test('no findings exit 0', () => {
+    expect(verdict([], [], [])).toMatchObject({ exitCode: 0, lines: [] });
   });
 });
 
@@ -338,30 +332,21 @@ describe('the on-demand check measures before it enforces', () => {
     }
   });
 
-  test('validate reports without forcing a second measurement', async () => {
+  test('validate neither measures nor enforces durations; release:check does, after its sweep', async () => {
     const { scripts } = (await Bun.file(join(root, 'package.json')).json()) as {
       scripts: Record<string, string>;
     };
-    expect(scripts['validate']).toContain('bun run report:test-durations');
-    expect(scripts['validate']).not.toContain('measure:test-durations');
-    expect(scripts['report:test-durations']).not.toContain('--force');
+    expect(scripts['validate']).not.toContain('test-durations');
+    expect(scripts['report:test-durations']).toBeUndefined();
+    expect(scripts['release:check']).toContain('bun run check:test-durations');
   });
 });
 
-describe('measuresWorkspace', () => {
-  test('the report mode skips a workspace that validate gates through its coverage run', () => {
-    // validate's `test:gate` runs only `test:coverage` there, so no fast-lane report exists in a
-    // fresh worktree; reading for one would fail the report as a wiring problem.
-    const gatedThroughCoverage = {
-      test: 'bun ../../scripts/bun-test-junit.ts',
-      'test:coverage': 'bun test --coverage',
-    };
-    expect(measuresWorkspace('report', gatedThroughCoverage)).toBe(false);
-    expect(measuresWorkspace('report', { test: 'bun ../../scripts/bun-test-junit.ts' })).toBe(true);
-  });
-
-  test('the enforce mode, which reruns every test first, measures every workspace', () => {
-    expect(measuresWorkspace('enforce', { test: 'x', 'test:coverage': 'y' })).toBe(true);
+describe('lane wiring of the real workspaces', () => {
+  test('every slow and integration test file has its lane, and no test script bypasses the wrapper', () => {
+    // The wiring half of the duration check does not depend on a measurement, so it stays in the
+    // gate (`test:self`) although `bun run release:check` is the only command that runs the check.
+    expect(laneWiringProblems()).toEqual([]);
   });
 });
 
