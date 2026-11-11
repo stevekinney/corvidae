@@ -184,6 +184,23 @@
   padding-inline-start: var(--cinder-space-6);
 }
 
+/* The run itself closes the chain, one level in from the last origin. */
+.ib-run-lineage__self[data-depth='2'] {
+  padding-inline-start: var(--cinder-space-3);
+}
+
+.ib-run-lineage__self[data-depth='3'] {
+  padding-inline-start: var(--cinder-space-6);
+}
+
+.ib-run-lineage__self[data-depth='4'] {
+  padding-inline-start: calc(var(--cinder-space-6) + var(--cinder-space-3));
+}
+
+.ib-run-origin__kind {
+  color: var(--cinder-text-muted);
+}
+
 .ib-run-tags__label {
   margin-block-end: var(--cinder-space-1);
   color: var(--cinder-text-subtle);

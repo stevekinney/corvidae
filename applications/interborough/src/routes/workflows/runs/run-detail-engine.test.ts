@@ -17,6 +17,7 @@ import { contextDetailFixture, taskFixture } from '../../../lib/bureau-fixtures.
 import { queryKeys } from '../../../lib/query.ts';
 import { router } from '../../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES, type Principal } from '../../../lib/scopes.svelte.ts';
+import { workflowTypeName } from '../../../lib/workflow-type-name.ts';
 import { openStepNumber } from '../detail/steps/open-step.test-support.ts';
 import {
   parseJsonObject,
@@ -158,7 +159,9 @@ describe('a run of a workflow file the engine does not hold', () => {
     expect(view.queryAllByRole('tab').length).toBe(0);
     expect(view.getByRole('heading', { level: 2, name: 'Input and output' })).not.toBeNull();
     const rail = view.getByRole('complementary');
-    const link = [...rail.querySelectorAll('a')].find((one) => one.textContent === 'e2e-approval');
+    const link = [...rail.querySelectorAll('a')].find(
+      (one) => one.textContent === workflowTypeName('e2e-approval'),
+    );
     expect(link?.getAttribute('href')).toBe(router.href('/workflows/e2e-approval'));
     expect(view.queryByText('No workflow found')).toBeNull();
     const lineage = view.getByTestId('run-lineage');

@@ -8,7 +8,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
-import { TASK_COPY } from '../../../app/copy.ts';
+import { RUN_DETAIL_COPY, TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import {
   contextDetailFixture,
@@ -87,6 +87,39 @@ describe('where a run came from', () => {
 
     expect(await fireEvent.click(openChat, { button: 0 })).toBe(false);
     expect(router.pathname).toContain('session-1');
+  });
+
+  test('the chain names what started the run, then the run itself one level in', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', agentName: 'echo' })],
+    });
+
+    await waitFor(() => expect(origin(view.container)?.querySelector('a')).toBeTruthy());
+    const items = origin(view.container)?.querySelectorAll('li.ib-run-lineage__item') ?? [];
+    expect(items).toHaveLength(1);
+    expect(items[0]?.textContent).toContain(TASK_COPY.list.kinds.chat);
+    const self = origin(view.container)?.querySelector('li.ib-run-lineage__self');
+    expect(self?.getAttribute('data-depth')).toBe('2');
+    expect(self?.textContent).toContain(RUN_DETAIL_COPY.lineage.run);
+    expect(self?.textContent).toContain(RUN_DETAIL_COPY.lineage.thisRun);
+  });
+
+  test('a goal’s attempt says which attempt it is, after the goal', async () => {
+    const view = open('/runs/goal-1-a0', {
+      goals: [
+        goalFixture('goal-1', {
+          agentName: 'planner',
+          attempts: [goalAttemptFixture('goal-1-a0', { status: 'aborted' })],
+        }),
+      ],
+      scopes: BUREAU_ONLY,
+    });
+
+    await waitFor(() =>
+      expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.attempt(1, 3)),
+    );
+    expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal);
+    expect(origin(view.container)?.textContent).toContain(goalTitle('goal-1'));
   });
 
   test('the chat named in the origin line opens in place too', async () => {

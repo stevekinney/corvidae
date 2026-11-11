@@ -3,7 +3,8 @@
    * What started a run, and what started that: a list that opens with this run's origin (the chat,
    * the schedule, the goal, the person, the API) and, when the origin is another run (an agent's
    * child, or a step of a workflow), goes on to that run's own origin, up to three levels. A step
-   * links to the workflow instance it is part of, which is the run it names (row 14c).
+   * links to the workflow instance it is part of, which is the run it names (row 14c). The list ends
+   * with a row for the run itself ("Run", "This run"), one level in from the last origin.
    *
    * The page has already read this run, its goal and its chat. The runs above it are read here, one
    * after another, because each names the next; a run that cannot be read ends the list there: the
@@ -12,11 +13,12 @@
    */
   import { createQuery } from '@tanstack/svelte-query';
 
+  import { RUN_DETAIL_COPY } from '../../../app/copy.ts';
   import { getContext, type ChatContext } from '../../../lib/bureau-client.ts';
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { getTask, type TaskView } from '../../../lib/bureau-tasks.ts';
   import RunOrigin from './run-origin.svelte';
-  import { buildRunRows, type RunOrigin as Origin } from './run-rows.ts';
+  import { buildRunRows, type RunAttempt, type RunOrigin as Origin } from './run-rows.ts';
 
   interface RunLineageProps {
     runId: string;
@@ -39,18 +41,27 @@
 
   let { runId, task, goal, chat }: RunLineageProps = $props();
 
+  function rowOf(
+    id: string,
+    taskOf: TaskView | undefined,
+    goalOf: Goal | undefined,
+    chatOf: ChatContext | undefined,
+  ) {
+    const rows = buildRunRows({
+      tasks: taskOf === undefined ? [] : [taskOf],
+      goals: goalOf === undefined ? [] : [goalOf],
+      chats: chatOf === undefined ? [] : [chatOf],
+    });
+    return rows.find((row) => row.id === id);
+  }
+
   function originOf(
     id: string,
     taskOf: TaskView | undefined,
     goalOf: Goal | undefined,
     chatOf: ChatContext | undefined,
   ): Origin {
-    const rows = buildRunRows({
-      tasks: taskOf === undefined ? [] : [taskOf],
-      goals: goalOf === undefined ? [] : [goalOf],
-      chats: chatOf === undefined ? [] : [chatOf],
-    });
-    return rows.find((row) => row.id === id)?.origin ?? { kind: 'none' };
+    return rowOf(id, taskOf, goalOf, chatOf)?.origin ?? { kind: 'none' };
   }
 
   /** The run an origin names as the one that started it, when it names one. */
@@ -59,6 +70,7 @@
   }
 
   const origin = $derived(originOf(runId, task, goal, chat));
+  const attempt: RunAttempt | null = $derived(rowOf(runId, task, goal, chat)?.attempt ?? null);
   const parentRunId = $derived(parentOf(origin));
 
   const ancestors = createQuery(
@@ -87,9 +99,13 @@
   );
 </script>
 
-<li class="ib-run-lineage__item" data-depth="1"><RunOrigin {origin} /></li>
+<li class="ib-run-lineage__item" data-depth="1"><RunOrigin {origin} {attempt} /></li>
 {#each ancestors.data ?? [] as ancestor, index (ancestor.runId)}
   <li class="ib-run-lineage__item" data-depth={index + 2}>
     <RunOrigin origin={ancestor.origin} />
   </li>
 {/each}
+<li class="ib-run-lineage__self" data-depth={(ancestors.data?.length ?? 0) + 2}>
+  <span class="ib-run-origin__kind">{RUN_DETAIL_COPY.lineage.run}</span>
+  {RUN_DETAIL_COPY.lineage.thisRun}
+</li>

@@ -2,19 +2,22 @@
   /**
    * What started a run, in the Started by column: one line for each kind of origin the Bureau
    * records, with a link to the thing that started it where there is a page for it (the chat, the
-   * schedule, the goal, the run that started it). A run recorded before origins were kept reads
-   * "Not recorded".
+   * schedule, the goal, the run that started it). A chat and a goal lead with what they are ("Chat",
+   * "Goal"), and a goal's attempt follows its link ("attempt 2 of 5"). A run recorded before origins
+   * were kept reads "Not recorded".
    */
   import { TASK_COPY } from '../../../app/copy.ts';
   import { router } from '../../../lib/router.svelte.ts';
-  import type { RunOrigin } from './run-rows.ts';
+  import { goalTitle, type RunAttempt, type RunOrigin } from './run-rows.ts';
   import { STARTED_BY_LABELS } from './started-by.ts';
 
   interface RunOriginProps {
     origin: RunOrigin;
+    /** Which attempt of its goal the run is, when it is one. */
+    attempt?: RunAttempt | null | undefined;
   }
 
-  let { origin }: RunOriginProps = $props();
+  let { origin, attempt = null }: RunOriginProps = $props();
 
   /** Opens a link in place, leaving a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
@@ -35,7 +38,7 @@
         >{origin.agentName === '' ? origin.parentRunId : origin.agentName}</code
       >
     {:else if origin.kind === 'goal'}
-      <code class="ib-identifier">{origin.name}</code> ({TASK_COPY.goal})
+      {goalTitle(origin.name)}
     {:else if origin.kind === 'parent'}
       <code class="ib-identifier">{origin.parentRunId}</code>
     {/if}
@@ -44,6 +47,7 @@
 
 <span class="ib-run-origin" data-origin={origin.kind}>
   {#if origin.kind === 'chat'}
+    <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.chat}</span>
     {@render link(origin.href)}
   {:else if origin.kind === 'person'}
     {origin.surface === null
@@ -69,7 +73,11 @@
     An agent's tool call, {origin.agentName},
     <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}>Calling run</a>
   {:else if origin.kind === 'goal'}
-    {@render link(origin.href)}{#if origin.session}
+    <span class="ib-run-origin__kind">{TASK_COPY.list.kinds.goal}</span>
+    {@render link(origin.href)}{#if attempt !== null}, {TASK_COPY.list.attempt(
+        attempt.number,
+        attempt.of,
+      )}{/if}{#if origin.session}
       {@const session = origin.session},
       <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
         >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
