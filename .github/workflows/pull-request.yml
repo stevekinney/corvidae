@@ -63,11 +63,6 @@ jobs:
     name: Affected fast-lane tests
     runs-on: ubuntu-latest
     timeout-minutes: 90
-    # Linux failures for follow-up (COR-2380): bureau's file-watch tests raced on a runner and are
-    # fixed, but no run of a selection that reaches bureau has been seen green yet, and the isolated
-    # lane reaches Bureau's integration test that fails on `main` (COR-2379). A failure of this job
-    # is shown as failed but does not fail the run. Remove this line once such a run is green.
-    continue-on-error: true
     env:
       TURBO_CONCURRENCY: '1'
     steps:

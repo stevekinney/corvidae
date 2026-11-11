@@ -100,20 +100,14 @@ jobs:
             filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/*
           - name: bureau
             filter: --filter=@lostgradient/bureau
-          # This shard ran Weft's coverage run until COR-2370 and now runs its `test` task. It stays
-          # advisory because two heartbeat tests fail on `main` on macOS too ("clears a cancelled
-          # attempt's automatic heartbeat interval while its activity ignores the signal" in
-          # worker/long-poll.test.ts and worker/index.server-messages.test.ts); COR-2380 owns the
-          # Linux failures only, so the flag goes when `main` is green there.
+          # This shard ran Weft's coverage run until COR-2370 and now runs its `test` task.
           - name: weft
             filter: --filter=@lostgradient/weft
-            advisory: true
           # Catch-all: it only excludes what the shards above select (including bureau and weft,
           # which live under packages/), so a new top-level workspace folder lands here rather
           # than in no shard.
           - name: everything else
             filter: --filter=!./components/* --filter=!./packages/* --filter=!./applications/* --filter=!./plugins/* --filter=!./testing/*
-    continue-on-error: ${{ matrix.advisory == true }}
     env:
       # One task at a time: a task runs up to four Bun workers on a 4 vCPU runner.
       TURBO_CONCURRENCY: '1'
