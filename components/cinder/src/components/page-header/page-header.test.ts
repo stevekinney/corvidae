@@ -167,7 +167,12 @@ describe('PageHeader', () => {
     const buttons = container.querySelectorAll('.cinder-page-header__actions button');
     expect(buttons.length).toBe(3);
     for (const button of buttons) expect(button.getAttribute('data-cinder-size')).toBe('xs');
-    expect(stylesheet).not.toMatch(/@container cinder-page-header/);
+    // A narrow header may move its inline status under the title, but never the row or actions.
+    const containerRules = stylesheet.split(/@container cinder-page-header/).slice(1);
+    for (const rule of containerRules) {
+      const body = rule.slice(0, rule.indexOf('\n  }'));
+      expect(body).not.toMatch(/__row|__actions|__heading-group/);
+    }
     expect(stylesheet).not.toMatch(/flex-wrap:\s*wrap[^}]*\}\s*\.cinder-page-header__heading/);
   });
 
@@ -345,6 +350,12 @@ describe('PageHeader', () => {
       const { container } = render(Harness);
 
       expect(container.querySelector('.cinder-page-header__status')).toBeNull();
+    });
+
+    test('drops an inline status under the title in a narrow header, so the title keeps room', () => {
+      expect(stylesheet).toMatch(
+        /@container cinder-page-header \(max-width: 32rem\)\s*\{[^@]*__status\[data-cinder-placement='inline'\]\s*\{[^}]*flex:\s*1 1 100%/,
+      );
     });
 
     test('keeps the inline status on the first line of a wrapping title', () => {

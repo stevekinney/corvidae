@@ -95,6 +95,22 @@
     white-space: nowrap;
   }
 
+  /* In a narrow header an inline status would leave the title no room beside it and the actions,
+     so it drops under the title and wraps there. The actions never move (COR-2337). */
+  @container cinder-page-header (max-width: 32rem) {
+    .cinder-page-header__title-line {
+      flex-wrap: wrap;
+      row-gap: var(--cinder-space-1);
+    }
+
+    .cinder-page-header__status[data-cinder-placement='inline'] {
+      flex: 1 1 100%;
+      flex-wrap: wrap;
+      min-block-size: 0;
+      white-space: normal;
+    }
+  }
+
   .cinder-page-header__status[data-cinder-placement='below'] {
     margin-block-start: var(--cinder-space-1);
   }
