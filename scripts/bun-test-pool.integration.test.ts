@@ -23,13 +23,16 @@ import {
   type ProcessTable,
   type SlotOwner,
 } from './bun-test-pool.ts';
+import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
 import { acquireHostLock, ownerFileName, type HostLockHolder } from './run-exclusively.ts';
 
 /**
  * The pool's scenarios. Each owns a scratch pool directory, never the real Git common directory.
  * Liveness comes from an injected process table where the scenario is about the pool's logic, and
  * from the real one where it is about real processes; waiting is on state, through `onWait`,
- * `report` and `waitUntil`, and a waiter's poll yields a turn instead of sleeping.
+ * `report` and `waitUntil`, and a waiter's poll yields a turn instead of sleeping. A scenario that
+ * reads the real process table or starts a process runs once at module scope, where no per-test
+ * clock applies, and its test rethrows what it recorded (COR-1392, COR-1507).
  */
 const scratchDirectories: string[] = [];
 const processGroups: number[] = [];
@@ -43,6 +46,13 @@ async function scratch(): Promise<string> {
   const directory = await mkdtemp(join(tmpdir(), 'corvidae-test-slots-'));
   scratchDirectories.push(directory);
   return directory;
+}
+
+/** Runs one scenario against its own scratch directory and returns what it threw. */
+function inScratchDirectory(body: (directory: string) => Promise<void>): Promise<unknown> {
+  return outcomeOf(async () => {
+    await body(await scratch());
+  });
 }
 
 function holder(cwd: string, pid = process.pid): HostLockHolder {
@@ -156,6 +166,322 @@ process.exitCode = await runPooledBunTest({
   return { wrapper, processGroup };
 }
 
+const threeRunsShareAPoolOfEight = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const first = await acquireTestSlots(options(pool, 8, 4));
+  const second = await acquireTestSlots(options(pool, 8, 4));
+  const { promise: waiting, resolve: markWaiting } = Promise.withResolvers<void>();
+  let thirdHeld = false;
+  const third = acquireTestSlots(options(pool, 8, 4, { onWait: () => markWaiting() })).then(
+    (held) => {
+      thirdHeld = true;
+      return held;
+    },
+  );
+  await waiting;
+  expect(thirdHeld).toBe(false);
+  expect(await heldSlots(pool)).toBe(8);
+  await first.release();
+  const held = await third;
+  expect(await heldSlots(pool)).toBe(8);
+  await Promise.all([second.release(), held.release()]);
+  expect(await heldSlots(pool)).toBe(0);
+});
+
+const eightRunsNeverExceedThePool = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const size = 5;
+  let held = 0;
+  let mostHeld = 0;
+  const observed: number[] = [];
+  await Promise.all(
+    Array.from({ length: 8 }, async (_, index) => {
+      const slots = 1 + (index % 4);
+      const lease = await acquireTestSlots(options(pool, size, slots));
+      held += slots;
+      mostHeld = Math.max(mostHeld, held);
+      observed.push(await heldSlots(pool));
+      await turn();
+      held -= slots;
+      await lease.release();
+    }),
+  );
+  expect(mostHeld).toBeLessThanOrEqual(size);
+  expect(Math.max(...observed)).toBeLessThanOrEqual(size);
+  expect(observed).toHaveLength(8);
+  expect(await heldSlots(pool)).toBe(0);
+});
+
+const grantsInArrivalOrder = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const order: string[] = [];
+  const holding = await acquireTestSlots(options(pool, 4, 3));
+  const waitingLines: Record<string, string[]> = { large: [], small: [] };
+  const start = async (name: 'large' | 'small', slots: number) => {
+    const { promise: waiting, resolve } = Promise.withResolvers<void>();
+    const lease = acquireTestSlots(
+      options(pool, 4, slots, {
+        onWait: (line) => {
+          waitingLines[name]?.push(line);
+          resolve();
+        },
+      }),
+    ).then((held) => {
+      order.push(name);
+      return held;
+    });
+    await waiting;
+    // Wrapped, because an async function that returns a promise waits for it.
+    return { lease };
+  };
+  const large = await start('large', 4);
+  // One slot is free, but the small request arrived after the large one and must wait its turn.
+  const small = await start('small', 1);
+  expect(waitingLines['small']?.[0]).toStartWith('queued behind');
+  expect(order).toEqual([]);
+  await holding.release();
+  const largeLease = await large.lease;
+  await largeLease.release();
+  const smallLease = await small.lease;
+  await smallLease.release();
+  expect(order).toEqual(['large', 'small']);
+});
+
+const reclaimsExitedHolder = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeSlot(pool, 0, owner(pool, { pid: await exitedPid() }));
+  const lease = await acquireTestSlots(options(pool, 1, 1, { sleep: neverSleep }));
+  await lease.release();
+});
+
+const doesNotMistakeRecycledPid = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeSlot(pool, 0, owner(pool, { pidStartedAt: 'Thu Jan  1 00:00:00 1970' }));
+  const lease = await acquireTestSlots(
+    options(pool, 1, 1, { sleep: neverSleep, readProcessTable }),
+  );
+  await lease.release();
+});
+
+const killedWrapperKeepsItsSlots = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const { wrapper, processGroup } = await startPooledRun(pool);
+  wrapper.kill('SIGKILL');
+  await wrapper.exited;
+  const controller = new AbortController();
+  const blocked = rejectionOf(
+    acquireTestSlots(
+      options(pool, 1, 1, {
+        readProcessTable,
+        signal: controller.signal,
+        onWait: () => controller.abort(),
+      }),
+    ),
+  );
+  expect(await blocked).toBeInstanceOf(Error);
+  killGroup(processGroup);
+  const lease = await acquireTestSlots(options(pool, 1, 1, { readProcessTable }));
+  await lease.release();
+});
+
+const holderUnderAnotherZoneIsAlive = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  // `ps` prints start times in the caller's zone; the lanes run with and without `TZ=UTC`.
+  const zone =
+    process.env['TZ'] === 'Pacific/Kiritimati' ? 'Pacific/Pago_Pago' : 'Pacific/Kiritimati';
+  const { processGroup } = await startPooledRun(pool, { ...process.env, TZ: zone });
+  const controller = new AbortController();
+  const blocked = rejectionOf(
+    acquireTestSlots(
+      options(pool, 1, 1, {
+        readProcessTable,
+        signal: controller.signal,
+        onWait: () => controller.abort(),
+      }),
+    ),
+  );
+  expect(await blocked).toBeInstanceOf(Error);
+  expect(await heldSlots(pool)).toBe(1);
+  killGroup(processGroup);
+});
+
+const createsAMissingPoolDirectory = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'missing', 'pool');
+  const lease = await acquireTestSlots(options(pool, 2, 2, { sleep: neverSleep }));
+  expect(await heldSlots(pool)).toBe(2);
+  await lease.release();
+});
+
+const treatsGarbageAsFreeSlots = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await mkdir(join(pool, 'queue'), { recursive: true });
+  await writeFile(slotDirectory(pool, 0), 'a stray file');
+  await writeSlot(pool, 1, 'not json');
+  await writeFile(join(pool, 'queue', 'stray.txt'), '');
+  await writeFile(join(pool, 'queue', '0000000000000001-bad.json'), 'not json');
+  const lease = await acquireTestSlots(options(pool, 2, 2, { sleep: neverSleep }));
+  expect(lease.slots).toEqual([0, 1]);
+  await lease.release();
+  expect(await readdir(join(pool, 'queue'))).toEqual(['stray.txt']);
+});
+
+const returnsTheExitCodeAndReleases = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const groupFile = join(directory, 'group');
+  const code = await runPooledBunTest({
+    bunTestArguments: [],
+    command: ['sh', '-c', `sleep 30 & echo $$ > '${groupFile}'; exit 3`],
+    poolDirectory: pool,
+    size: 2,
+    report: () => {},
+  });
+  expect(code).toBe(3);
+  expect(isGroupAlive(Number(await readFile(groupFile, 'utf8')))).toBe(false);
+  expect(await heldSlots(pool)).toBe(0);
+});
+
+const clampsARequestAboveThePool = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const output = join(directory, 'output');
+  const reports: string[] = [];
+  const code = await runPooledBunTest({
+    bunTestArguments: ['--parallel=8'],
+    command: ['sh', '-c', `{ printf '%s\\n' "$@"; ls '${pool}'; } > '${output}'`, 'sh'],
+    poolDirectory: pool,
+    size: 4,
+    report: (line) => reports.push(line),
+  });
+  expect(code).toBe(0);
+  const written = await readFile(output, 'utf8');
+  const lines = written.trim().split('\n');
+  expect(lines[0]).toBe('--parallel=4');
+  expect(lines.filter((line) => /^slot-\d+$/.test(line))).toHaveLength(4);
+  expect(reports).toEqual(['bun-test-pool: running 4 workers, the size of the pool, not 8']);
+});
+
+const reusesItsParentsSlot = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeSlot(pool, 0, owner(pool, { token: 'parent' }));
+  const code = await runPooledBunTest({
+    bunTestArguments: [],
+    command: ['sh', '-c', 'exit 7'],
+    environment: { [heldSlotsTokenVariable]: 'parent' },
+    poolDirectory: pool,
+    size: 1,
+    readProcessTable: onlyThisProcess,
+    report: () => {},
+  });
+  expect(code).toBe(7);
+  const recorded = JSON.parse(await readFile(join(slotDirectory(pool, 0), ownerFileName), 'utf8'));
+  expect(recorded.token).toBe('parent');
+});
+
+const staleTokenDoesNotBypassThePool = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  await writeSlot(pool, 0, owner(pool, { token: 'holder' }));
+  const reports: string[] = [];
+  const { promise: waiting, resolve: markWaiting } = Promise.withResolvers<void>();
+  const running = runPooledBunTest({
+    bunTestArguments: [],
+    command: ['sh', '-c', 'exit 0'],
+    environment: { [heldSlotsTokenVariable]: 'gone' },
+    poolDirectory: pool,
+    size: 1,
+    pollIntervalMs: 1,
+    readProcessTable: onlyThisProcess,
+    report: (line) => {
+      reports.push(line);
+      markWaiting();
+    },
+  });
+  await waiting;
+  expect(reports[0]).toContain('waiting for 1 of 1 test slots');
+  await rm(slotDirectory(pool, 0), { recursive: true });
+  expect(await running).toBe(0);
+});
+
+const exportsItsTokenToTheTests = await inScratchDirectory(async (directory) => {
+  const output = join(directory, 'token');
+  await runPooledBunTest({
+    bunTestArguments: [],
+    command: ['sh', '-c', `printf '%s' "$${heldSlotsTokenVariable}" > '${output}'`],
+    poolDirectory: join(directory, 'pool'),
+    size: 1,
+    report: () => {},
+  });
+  const token = await readFile(output, 'utf8');
+  expect(token.length).toBeGreaterThan(0);
+});
+
+const runsWithoutASlotWhenThePoolIsUnusable = await inScratchDirectory(async (directory) => {
+  const blocked = join(directory, 'a-file');
+  await writeFile(blocked, '');
+  const reports: string[] = [];
+  const code = await runPooledBunTest({
+    bunTestArguments: [],
+    command: ['sh', '-c', 'exit 5'],
+    poolDirectory: join(blocked, 'pool'),
+    size: 1,
+    report: (line) => reports.push(line),
+  });
+  expect(code).toBe(5);
+  expect(reports.join('\n')).toContain('bun-test-pool: running without a test slot');
+});
+
+const pooledRunIgnoresTheHostLock = await inScratchDirectory(async (directory) => {
+  const lock = await acquireHostLock({
+    lockDirectory: join(directory, 'host-lock'),
+    holder: holder(directory),
+  });
+  try {
+    const code = await runPooledBunTest({
+      bunTestArguments: [],
+      command: ['sh', '-c', 'exit 0'],
+      poolDirectory: join(directory, 'pool'),
+      size: 1,
+      report: () => {},
+    });
+    expect(code).toBe(0);
+  } finally {
+    await lock.release();
+  }
+});
+
+const signalReachesTheTestGroup = {
+  SIGTERM: await signalScenario('SIGTERM'),
+  SIGINT: await signalScenario('SIGINT'),
+};
+
+function signalScenario(signal: 'SIGTERM' | 'SIGINT'): Promise<unknown> {
+  return inScratchDirectory(async (directory) => {
+    const pool = join(directory, 'pool');
+    const { wrapper, processGroup } = await startPooledRun(pool);
+    wrapper.kill(signal);
+    await wrapper.exited;
+    expect(isGroupAlive(processGroup)).toBe(false);
+    expect(await heldSlots(pool)).toBe(0);
+  });
+}
+
+const statusCommandExitsZero = await inScratchDirectory(async (directory) => {
+  const pool = join(directory, 'pool');
+  const status = spawnWithHangGuard(
+    [
+      process.execPath,
+      join(import.meta.dir, 'bun-test-pool.ts'),
+      'status',
+      '--pool',
+      pool,
+      '--size',
+      '3',
+    ],
+    { stdout: 'pipe', stderr: 'inherit' },
+  );
+  const output = await new Response(status.stdout).text();
+  expect(await status.exited).toBe(0);
+  expect(output).toBe(`test slot pool ${pool}: 0 of 3 held, 3 free, 0 waiting\n`);
+});
+
 describe('the pool size', () => {
   test('sizes the pool from processors and memory, and honours the override', () => {
     const gibibytes = (count: number) => count * 1024 ** 3;
@@ -183,86 +509,14 @@ describe('the pool size', () => {
 });
 
 describe('acquiring slots', () => {
-  test('three runs of four workers share a pool of eight two at a time', async () => {
-    const pool = join(await scratch(), 'pool');
-    const first = await acquireTestSlots(options(pool, 8, 4));
-    const second = await acquireTestSlots(options(pool, 8, 4));
-    const { promise: waiting, resolve: markWaiting } = Promise.withResolvers<void>();
-    let thirdHeld = false;
-    const third = acquireTestSlots(options(pool, 8, 4, { onWait: () => markWaiting() })).then(
-      (held) => {
-        thirdHeld = true;
-        return held;
-      },
-    );
-    await waiting;
-    expect(thirdHeld).toBe(false);
-    expect(await heldSlots(pool)).toBe(8);
-    await first.release();
-    const held = await third;
-    expect(await heldSlots(pool)).toBe(8);
-    await Promise.all([second.release(), held.release()]);
-    expect(await heldSlots(pool)).toBe(0);
-  });
+  test('three runs of four workers share a pool of eight two at a time', () =>
+    rethrow(threeRunsShareAPoolOfEight));
 
-  test('eight concurrent runs never hold more than the pool', async () => {
-    const pool = join(await scratch(), 'pool');
-    const size = 5;
-    let held = 0;
-    let mostHeld = 0;
-    const observed: number[] = [];
-    await Promise.all(
-      Array.from({ length: 8 }, async (_, index) => {
-        const slots = 1 + (index % 4);
-        const lease = await acquireTestSlots(options(pool, size, slots));
-        held += slots;
-        mostHeld = Math.max(mostHeld, held);
-        observed.push(await heldSlots(pool));
-        await turn();
-        held -= slots;
-        await lease.release();
-      }),
-    );
-    expect(mostHeld).toBeLessThanOrEqual(size);
-    expect(Math.max(...observed)).toBeLessThanOrEqual(size);
-    expect(observed).toHaveLength(8);
-    expect(await heldSlots(pool)).toBe(0);
-  });
+  test('eight concurrent runs never hold more than the pool', () =>
+    rethrow(eightRunsNeverExceedThePool));
 
-  test('grants slots in arrival order, so neither a large nor a small request starves', async () => {
-    const pool = join(await scratch(), 'pool');
-    const order: string[] = [];
-    const holding = await acquireTestSlots(options(pool, 4, 3));
-    const waitingLines: Record<string, string[]> = { large: [], small: [] };
-    const start = async (name: 'large' | 'small', slots: number) => {
-      const { promise: waiting, resolve } = Promise.withResolvers<void>();
-      const lease = acquireTestSlots(
-        options(pool, 4, slots, {
-          onWait: (line) => {
-            waitingLines[name]?.push(line);
-            resolve();
-          },
-        }),
-      ).then((held) => {
-        order.push(name);
-        return held;
-      });
-      await waiting;
-      // Wrapped, because an async function that returns a promise waits for it.
-      return { lease };
-    };
-    const large = await start('large', 4);
-    // One slot is free, but the small request arrived after the large one and must wait its turn.
-    const small = await start('small', 1);
-    expect(waitingLines['small']?.[0]).toStartWith('queued behind');
-    expect(order).toEqual([]);
-    await holding.release();
-    const largeLease = await large.lease;
-    await largeLease.release();
-    const smallLease = await small.lease;
-    await smallLease.release();
-    expect(order).toEqual(['large', 'small']);
-  });
+  test('grants slots in arrival order, so neither a large nor a small request starves', () =>
+    rethrow(grantsInArrivalOrder));
 
   test('two claims racing for the same slots never both hold them', async () => {
     const pool = join(await scratch(), 'pool');
@@ -279,226 +533,45 @@ describe('acquiring slots', () => {
 });
 
 describe('reclaiming slots', () => {
-  test('reclaims a slot whose holder has exited without waiting', async () => {
-    const pool = join(await scratch(), 'pool');
-    await writeSlot(pool, 0, owner(pool, { pid: await exitedPid() }));
-    const lease = await acquireTestSlots(options(pool, 1, 1, { sleep: neverSleep }));
-    await lease.release();
-  });
+  test('reclaims a slot whose holder has exited without waiting', () =>
+    rethrow(reclaimsExitedHolder));
 
-  test('does not mistake a recycled pid for a holder', async () => {
-    const pool = join(await scratch(), 'pool');
-    await writeSlot(pool, 0, owner(pool, { pidStartedAt: 'Thu Jan  1 00:00:00 1970' }));
-    const lease = await acquireTestSlots(
-      options(pool, 1, 1, { sleep: neverSleep, readProcessTable }),
-    );
-    await lease.release();
-  });
+  test('does not mistake a recycled pid for a holder', () => rethrow(doesNotMistakeRecycledPid));
 
-  test('a killed wrapper keeps its slots until its process group is gone, then frees them', async () => {
-    const pool = join(await scratch(), 'pool');
-    const { wrapper, processGroup } = await startPooledRun(pool);
-    wrapper.kill('SIGKILL');
-    await wrapper.exited;
-    const controller = new AbortController();
-    const blocked = rejectionOf(
-      acquireTestSlots(
-        options(pool, 1, 1, {
-          readProcessTable,
-          signal: controller.signal,
-          onWait: () => controller.abort(),
-        }),
-      ),
-    );
-    expect(await blocked).toBeInstanceOf(Error);
-    killGroup(processGroup);
-    const lease = await acquireTestSlots(options(pool, 1, 1, { readProcessTable }));
-    await lease.release();
-  });
+  test('a killed wrapper keeps its slots until its process group is gone, then frees them', () =>
+    rethrow(killedWrapperKeepsItsSlots));
 
-  test('a holder recorded under another time zone is still alive', async () => {
-    const pool = join(await scratch(), 'pool');
-    // `ps` prints start times in the caller's zone; the lanes run with and without `TZ=UTC`.
-    const zone =
-      process.env['TZ'] === 'Pacific/Kiritimati' ? 'Pacific/Pago_Pago' : 'Pacific/Kiritimati';
-    const { processGroup } = await startPooledRun(pool, { ...process.env, TZ: zone });
-    const controller = new AbortController();
-    const blocked = rejectionOf(
-      acquireTestSlots(
-        options(pool, 1, 1, {
-          readProcessTable,
-          signal: controller.signal,
-          onWait: () => controller.abort(),
-        }),
-      ),
-    );
-    expect(await blocked).toBeInstanceOf(Error);
-    expect(await heldSlots(pool)).toBe(1);
-    killGroup(processGroup);
-  });
+  test('a holder recorded under another time zone is still alive', () =>
+    rethrow(holderUnderAnotherZoneIsAlive));
 
-  test('creates a missing pool directory', async () => {
-    const pool = join(await scratch(), 'missing', 'pool');
-    const lease = await acquireTestSlots(options(pool, 2, 2, { sleep: neverSleep }));
-    expect(await heldSlots(pool)).toBe(2);
-    await lease.release();
-  });
+  test('creates a missing pool directory', () => rethrow(createsAMissingPoolDirectory));
 
-  test('treats garbage in the pool as free slots', async () => {
-    const pool = join(await scratch(), 'pool');
-    await mkdir(join(pool, 'queue'), { recursive: true });
-    await writeFile(slotDirectory(pool, 0), 'a stray file');
-    await writeSlot(pool, 1, 'not json');
-    await writeFile(join(pool, 'queue', 'stray.txt'), '');
-    await writeFile(join(pool, 'queue', '0000000000000001-bad.json'), 'not json');
-    const lease = await acquireTestSlots(options(pool, 2, 2, { sleep: neverSleep }));
-    expect(lease.slots).toEqual([0, 1]);
-    await lease.release();
-    expect(await readdir(join(pool, 'queue'))).toEqual(['stray.txt']);
-  });
+  test('treats garbage in the pool as free slots', () => rethrow(treatsGarbageAsFreeSlots));
 });
 
 describe('running a pooled bun test', () => {
-  test('returns the exit code and releases the slots', async () => {
-    const directory = await scratch();
-    const pool = join(directory, 'pool');
-    const groupFile = join(directory, 'group');
-    const code = await runPooledBunTest({
-      bunTestArguments: [],
-      command: ['sh', '-c', `sleep 30 & echo $$ > '${groupFile}'; exit 3`],
-      poolDirectory: pool,
-      size: 2,
-      report: () => {},
-    });
-    expect(code).toBe(3);
-    expect(isGroupAlive(Number(await readFile(groupFile, 'utf8')))).toBe(false);
-    expect(await heldSlots(pool)).toBe(0);
-  });
+  test('returns the exit code and releases the slots', () =>
+    rethrow(returnsTheExitCodeAndReleases));
 
-  test('clamps a request above the pool to the pool and passes the clamped worker count', async () => {
-    const directory = await scratch();
-    const pool = join(directory, 'pool');
-    const output = join(directory, 'output');
-    const reports: string[] = [];
-    const code = await runPooledBunTest({
-      bunTestArguments: ['--parallel=8'],
-      command: ['sh', '-c', `{ printf '%s\\n' "$@"; ls '${pool}'; } > '${output}'`, 'sh'],
-      poolDirectory: pool,
-      size: 4,
-      report: (line) => reports.push(line),
-    });
-    expect(code).toBe(0);
-    const written = await readFile(output, 'utf8');
-    const lines = written.trim().split('\n');
-    expect(lines[0]).toBe('--parallel=4');
-    expect(lines.filter((line) => /^slot-\d+$/.test(line))).toHaveLength(4);
-    expect(reports).toEqual(['bun-test-pool: running 4 workers, the size of the pool, not 8']);
-  });
+  test('clamps a request above the pool to the pool and passes the clamped worker count', () =>
+    rethrow(clampsARequestAboveThePool));
 
-  test('a run started under a held slot reuses it instead of waiting on its parent', async () => {
-    const directory = await scratch();
-    const pool = join(directory, 'pool');
-    await writeSlot(pool, 0, owner(pool, { token: 'parent' }));
-    const code = await runPooledBunTest({
-      bunTestArguments: [],
-      command: ['sh', '-c', 'exit 7'],
-      environment: { [heldSlotsTokenVariable]: 'parent' },
-      poolDirectory: pool,
-      size: 1,
-      readProcessTable: onlyThisProcess,
-      report: () => {},
-    });
-    expect(code).toBe(7);
-    const recorded = JSON.parse(
-      await readFile(join(slotDirectory(pool, 0), ownerFileName), 'utf8'),
-    );
-    expect(recorded.token).toBe('parent');
-  });
+  test('a run started under a held slot reuses it instead of waiting on its parent', () =>
+    rethrow(reusesItsParentsSlot));
 
-  test('a token naming no live holder does not bypass the pool', async () => {
-    const directory = await scratch();
-    const pool = join(directory, 'pool');
-    await writeSlot(pool, 0, owner(pool, { token: 'holder' }));
-    const reports: string[] = [];
-    const { promise: waiting, resolve: markWaiting } = Promise.withResolvers<void>();
-    const running = runPooledBunTest({
-      bunTestArguments: [],
-      command: ['sh', '-c', 'exit 0'],
-      environment: { [heldSlotsTokenVariable]: 'gone' },
-      poolDirectory: pool,
-      size: 1,
-      pollIntervalMs: 1,
-      readProcessTable: onlyThisProcess,
-      report: (line) => {
-        reports.push(line);
-        markWaiting();
-      },
-    });
-    await waiting;
-    expect(reports[0]).toContain('waiting for 1 of 1 test slots');
-    await rm(slotDirectory(pool, 0), { recursive: true });
-    expect(await running).toBe(0);
-  });
+  test('a token naming no live holder does not bypass the pool', () =>
+    rethrow(staleTokenDoesNotBypassThePool));
 
-  test('exports its token to the tests it runs', async () => {
-    const directory = await scratch();
-    const output = join(directory, 'token');
-    await runPooledBunTest({
-      bunTestArguments: [],
-      command: ['sh', '-c', `printf '%s' "$${heldSlotsTokenVariable}" > '${output}'`],
-      poolDirectory: join(directory, 'pool'),
-      size: 1,
-      report: () => {},
-    });
-    const token = await readFile(output, 'utf8');
-    expect(token.length).toBeGreaterThan(0);
-  });
+  test('exports its token to the tests it runs', () => rethrow(exportsItsTokenToTheTests));
 
-  test('runs without a slot, with a warning, when the pool cannot be used', async () => {
-    const directory = await scratch();
-    const blocked = join(directory, 'a-file');
-    await writeFile(blocked, '');
-    const reports: string[] = [];
-    const code = await runPooledBunTest({
-      bunTestArguments: [],
-      command: ['sh', '-c', 'exit 5'],
-      poolDirectory: join(blocked, 'pool'),
-      size: 1,
-      report: (line) => reports.push(line),
-    });
-    expect(code).toBe(5);
-    expect(reports.join('\n')).toContain('bun-test-pool: running without a test slot');
-  });
+  test('runs without a slot, with a warning, when the pool cannot be used', () =>
+    rethrow(runsWithoutASlotWhenThePoolIsUnusable));
 
-  test('a pooled run never waits on the host lock', async () => {
-    const directory = await scratch();
-    const lock = await acquireHostLock({
-      lockDirectory: join(directory, 'host-lock'),
-      holder: holder(directory),
-    });
-    try {
-      const code = await runPooledBunTest({
-        bunTestArguments: [],
-        command: ['sh', '-c', 'exit 0'],
-        poolDirectory: join(directory, 'pool'),
-        size: 1,
-        report: () => {},
-      });
-      expect(code).toBe(0);
-    } finally {
-      await lock.release();
-    }
-  });
+  test('a pooled run never waits on the host lock', () => rethrow(pooledRunIgnoresTheHostLock));
 
   for (const signal of ['SIGTERM', 'SIGINT'] as const) {
-    test(`a signal to the wrapper reaches the test process group and releases its slots (${signal})`, async () => {
-      const pool = join(await scratch(), 'pool');
-      const { wrapper, processGroup } = await startPooledRun(pool);
-      wrapper.kill(signal);
-      await wrapper.exited;
-      expect(isGroupAlive(processGroup)).toBe(false);
-      expect(await heldSlots(pool)).toBe(0);
-    });
+    test(`a signal to the wrapper reaches the test process group and releases its slots (${signal})`, () =>
+      rethrow(signalReachesTheTestGroup[signal]));
   }
 });
 
@@ -548,22 +621,5 @@ describe('the status of the pool', () => {
     ]);
   });
 
-  test('the status command exits 0', async () => {
-    const pool = join(await scratch(), 'pool');
-    const status = spawnWithHangGuard(
-      [
-        process.execPath,
-        join(import.meta.dir, 'bun-test-pool.ts'),
-        'status',
-        '--pool',
-        pool,
-        '--size',
-        '3',
-      ],
-      { stdout: 'pipe', stderr: 'inherit' },
-    );
-    const output = await new Response(status.stdout).text();
-    expect(await status.exited).toBe(0);
-    expect(output).toBe(`test slot pool ${pool}: 0 of 3 held, 3 free, 0 waiting\n`);
-  });
+  test('the status command exits 0', () => rethrow(statusCommandExitsZero));
 });
