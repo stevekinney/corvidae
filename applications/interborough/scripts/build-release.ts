@@ -35,7 +35,11 @@ export type ReleaseOperations = {
   readonly architecture?: string;
   readonly now?: () => number;
   readonly sleep?: (milliseconds: number) => Promise<void>;
+  /** Reads the release checkout's porcelain status and `HEAD` revision; defaults to {@link readRepositoryState}. */
+  readonly readRepositoryState?: () => Promise<RepositoryState>;
 };
+/** The checkout facts a release is built from: porcelain status (empty when clean) and the `HEAD` revision. */
+export type RepositoryState = { readonly status: string; readonly sourceSha: string };
 
 export function parseReleaseArguments(argv: readonly string[]): ReleaseArguments {
   let version: string | undefined;
@@ -64,6 +68,27 @@ export async function runCommand(arguments_: string[], cwd = REPOSITORY_ROOT): P
   ]);
   if (exitCode !== 0)
     throw new Error(`${arguments_.join(' ')} failed (${exitCode}): ${stderr || stdout}`);
+}
+
+async function gitOutput(arguments_: string[], cwd: string): Promise<string> {
+  const childProcess = Bun.spawn(['git', ...arguments_], { cwd, stdout: 'pipe', stderr: 'pipe' });
+  const [exitCode, stdout, stderr] = await Promise.all([
+    childProcess.exited,
+    new Response(childProcess.stdout).text(),
+    new Response(childProcess.stderr).text(),
+  ]);
+  if (exitCode !== 0)
+    throw new Error(`git ${arguments_.join(' ')} failed (${exitCode}): ${stderr || stdout}`);
+  return stdout;
+}
+
+/** Reads the real Git porcelain status and `HEAD` revision of a checkout, failing when either Git command exits nonzero. */
+export async function readRepositoryState(
+  repositoryRoot = REPOSITORY_ROOT,
+): Promise<RepositoryState> {
+  const status = await gitOutput(['status', '--porcelain'], repositoryRoot);
+  const sourceSha = (await gitOutput(['rev-parse', 'HEAD'], repositoryRoot)).trim();
+  return { status, sourceSha };
 }
 
 async function locateFromProductionInstall(
@@ -376,16 +401,9 @@ export async function buildRelease(
     (operations.architecture ?? process.arch) !== 'arm64'
   )
     throw new Error('macOS arm64 is required to build this release');
-  const status = await new Response(
-    Bun.spawn(['git', 'status', '--porcelain'], { cwd: REPOSITORY_ROOT, stdout: 'pipe' }).stdout,
-  ).text();
+  const readState = operations.readRepositoryState ?? (() => readRepositoryState());
+  const { status, sourceSha } = await readState();
   if (status.trim() !== '') throw new Error('Release inputs are dirty');
-  const revisionProcess = Bun.spawn(['git', 'rev-parse', 'HEAD'], {
-    cwd: REPOSITORY_ROOT,
-    stdout: 'pipe',
-  });
-  const revisionText = await new Response(revisionProcess.stdout).text();
-  const sourceSha = revisionText.trim();
   await mkdir(options.outdir, { recursive: true });
   const targetRoot = join(options.outdir, 'interborough');
   const archive = join(options.outdir, `interborough-${options.version}-darwin-arm64.tar.gz`);

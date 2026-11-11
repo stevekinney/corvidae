@@ -6,10 +6,29 @@ import { join } from 'node:path';
 import {
   buildRelease,
   parseReleaseArguments,
+  readRepositoryState,
   runCommand,
   runReleaseCommand,
   type ReleaseOperations,
+  type RepositoryState,
 } from './build-release.ts';
+
+const FIXTURE_SOURCE_SHA = '0123456789abcdef0123456789abcdef01234567';
+const cleanRepositoryState = async (): Promise<RepositoryState> => ({
+  status: '',
+  sourceSha: FIXTURE_SOURCE_SHA,
+});
+
+async function disposableRepository(): Promise<string> {
+  const repository = await mkdtemp(join(tmpdir(), 'interborough-release-repository-'));
+  const git = ['git', '-c', 'user.name=Release Test', '-c', 'user.email=release@example.test'];
+  const unsigned = ['-c', 'commit.gpgsign=false', '-c', 'core.hooksPath=/dev/null'];
+  await runCommand(['git', 'init', '--quiet'], repository);
+  await writeFile(join(repository, 'tracked.txt'), 'tracked\n');
+  await runCommand(['git', 'add', 'tracked.txt'], repository);
+  await runCommand([...git, ...unsigned, 'commit', '--quiet', '-m', 'fixture'], repository);
+  return repository;
+}
 
 async function releaseFixture(
   options: {
@@ -75,7 +94,9 @@ async function releaseFixture(
   if (options.escapingLink)
     await symlink('/tmp/interborough-release-missing-target', join(sdk, 'escape'));
   const buildArguments: string[][] = [];
+  const commands: string[][] = [];
   const command = async (arguments_: string[]): Promise<void> => {
+    commands.push(arguments_);
     if (arguments_[1] === 'build') {
       buildArguments.push(arguments_);
       if (options.commandFailure) throw new Error('fixture command failed');
@@ -161,7 +182,7 @@ await new Promise(() => {});
       }
     }
   };
-  const operations: ReleaseOperations = {
+  const productionOperations: ReleaseOperations = {
     platform: 'darwin',
     architecture: 'arm64',
     runCommand: command,
@@ -174,7 +195,12 @@ await new Promise(() => {});
     },
     buildPanelPage: async () => ({ html: '<html>app</html>', contentDigest: 'sha256:fixture' }),
   };
-  return { root, operations, buildArguments };
+  // Fixtures control repository state so a dirty checkout cannot stop the assertions early.
+  const operations: ReleaseOperations = {
+    ...productionOperations,
+    readRepositoryState: cleanRepositoryState,
+  };
+  return { root, operations, productionOperations, buildArguments, commands };
 }
 
 async function expectRelocatedFailure(
@@ -270,6 +296,7 @@ describe('release arguments', () => {
           buildRelease(['--version', '0.0.0-test', '--outdir', output], {
             platform: 'darwin',
             architecture: 'arm64',
+            readRepositoryState: cleanRepositoryState,
           }),
         ),
       ).toThrow('Release output already exists');
@@ -283,19 +310,81 @@ describe('release arguments', () => {
 
   // spawn-free: the release fixture controls every child process boundary deterministically.
   test('rejects dirty release inputs before reading or staging them', async () => {
-    const marker = join(import.meta.dir, '.release-dirty-input');
-    await writeFile(marker, 'dirty');
+    const fixture = await releaseFixture();
+    const output = join(fixture.root, 'release');
     try {
       expect(
         await throwingRejectionOf(
-          buildRelease(['--version', '0.0.0-test', '--outdir', '/tmp/release'], {
-            platform: 'darwin',
-            architecture: 'arm64',
+          buildRelease(['--version', '0.0.0-test', '--outdir', output], {
+            ...fixture.operations,
+            readRepositoryState: async () => ({
+              status: ' M applications/interborough/package.json\n',
+              sourceSha: FIXTURE_SOURCE_SHA,
+            }),
           }),
         ),
       ).toThrow('Release inputs are dirty');
+      expect(fixture.commands).toEqual([]);
+      expect(await Bun.file(join(output, 'interborough', 'release.json')).exists()).toBe(false);
     } finally {
-      await rm(marker, { force: true });
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the disposable repository is the only Git process boundary this test reads.
+  test('reads the real status and revision of a disposable repository', async () => {
+    const repository = await disposableRepository();
+    try {
+      const clean = await readRepositoryState(repository);
+      expect(clean.status).toBe('');
+      expect(clean.sourceSha).toMatch(/^[0-9a-f]{40}$/);
+      await writeFile(join(repository, 'tracked.txt'), 'modified\n');
+      await writeFile(join(repository, 'untracked.txt'), 'untracked\n');
+      const dirty = await readRepositoryState(repository);
+      expect(dirty.status).toContain('tracked.txt');
+      expect(dirty.status).toContain('?? untracked.txt');
+      expect(dirty.sourceSha).toBe(clean.sourceSha);
+    } finally {
+      await rm(repository, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: a plain temporary directory makes the real Git reader exit nonzero.
+  test('fails when Git cannot read the repository state', async () => {
+    const directory = await mkdtemp(join(tmpdir(), 'interborough-release-not-a-repository-'));
+    try {
+      expect(await throwingRejectionOf(readRepositoryState(directory))).toThrow(
+        'git status --porcelain failed',
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  // spawn-free: the fixture controls every child process boundary except the real Git reader.
+  test('reads the real checkout state when no repository reader is injected', async () => {
+    const actual = await readRepositoryState();
+    const fixture = await releaseFixture();
+    const output = await mkdtemp(join(tmpdir(), 'interborough-release-default-reader-'));
+    try {
+      const release = buildRelease(
+        ['--version', '0.0.0-test', '--outdir', output],
+        fixture.productionOperations,
+      );
+      if (actual.status.trim() !== '') {
+        expect(await throwingRejectionOf(release)).toThrow('Release inputs are dirty');
+        expect(fixture.commands).toEqual([]);
+      } else {
+        await release;
+        const manifestText = await Bun.file(join(output, 'interborough', 'release.json')).text();
+        const manifest = JSON.parse(manifestText) as { sourceSha: string };
+        expect(manifest.sourceSha).toBe(actual.sourceSha);
+        const archiveCommand = fixture.commands.find((arguments_) => arguments_[1] === 'archive');
+        expect(archiveCommand?.slice(0, 3)).toEqual(['git', 'archive', actual.sourceSha]);
+      }
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+      await rm(output, { recursive: true, force: true });
     }
   });
 
