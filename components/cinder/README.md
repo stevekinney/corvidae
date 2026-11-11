@@ -79,6 +79,14 @@ html[data-theme='dark'] {
 
 Use `[data-theme='dark']` or `[data-theme='light']` on a subtree for scoped theme islands. Cinder pins the core semantic surface, text, border, overlay, interaction, status, and control tokens inside those scopes so components inherit local values without app-level token overrides. If your app replaces Cinder's public tokens for custom branding, set those brand overrides in the same scoped theme selector.
 
+Call `guardThemeTransitions()` once at application start. Components transition color, background and border for hover and press feedback, and a theme change alters all of those at once, so without the guard every button, card and banner animates from the old theme's colors to the new ones (and a hidden or throttled page can stall halfway, leaving light surfaces under dark text). The guard watches `data-theme` on the root and the system `prefers-color-scheme` setting, sets `THEME_CHANGING_ATTRIBUTE` (`data-cinder-theme-changing`) on the root for the two frames that render the change, which the foundation styles answer with `transition: none`, and returns a function that removes it. `ThemeTransitionGuardOptions` takes another `root`, a `matchMedia` (or `null` to ignore the system setting) and a `requestFrame` scheduler.
+
+```ts
+import { guardThemeTransitions } from '@lostgradient/cinder';
+
+const stopGuarding = guardThemeTransitions();
+```
+
 To author a complete theme, use the theme builder: the `/theme-builder` route of the playground application (`bun run --filter=@lostgradient/playground dev`). It edits every public token, reports scoped accessibility findings, and exports a Cinder Theme v1 source file, deployment CSS, and portable DTCG. See [Theming](./documentation/theming.md#the-theme-builder) for the export formats, a worked example, and what the accessibility checks do and do not cover, and [Design tokens](./documentation/tokens.md#editing-the-full-registry-in-the-theme-builder) for how the registry is exposed for editing.
 
 Public tokens use the `--cinder-` prefix. Internal implementation variables use `--_cinder-`; do not redefine those.

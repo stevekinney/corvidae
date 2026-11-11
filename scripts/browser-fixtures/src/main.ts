@@ -10,6 +10,7 @@ import {
   DatePicker,
   DateRangeField,
   Dropdown,
+  guardThemeTransitions,
   Input,
   MegaMenu,
   MenuBar,
@@ -82,6 +83,8 @@ async function start(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
   const componentName = decodeURIComponent(window.location.pathname.split('/').at(-1) ?? '');
   themeFromStorage();
+  // Installed the way an application installs it, after the stored theme is applied.
+  guardThemeTransitions();
   applySnapshotMode(isSnapshotMode(params));
   const { fixture, component: fixtureComponent } = await loadFixture(
     componentName,

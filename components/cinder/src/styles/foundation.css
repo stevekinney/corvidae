@@ -31,6 +31,17 @@
   scroll-behavior: auto !important;
 }
 
+/* While the theme changes, every themed color changes at once; without this, each component's
+   hover and press transitions animate from the old theme's colors to the new ones, and a page
+   whose rendering is throttled can stall partway. `guardThemeTransitions()` sets the attribute
+   for the frames that render the change. */
+:root[data-cinder-theme-changing],
+:root[data-cinder-theme-changing] *,
+:root[data-cinder-theme-changing] *::before,
+:root[data-cinder-theme-changing] *::after {
+  transition: none !important;
+}
+
 *,
 *::before,
 *::after {

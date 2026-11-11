@@ -16,7 +16,7 @@
    * the composer included, and never under Shift (⌘⇧K is the composer's link shortcut); the plain
    * keys never act inside a field, and a person can turn them off in Settings.
    */
-  import { Banner } from '@lostgradient/cinder';
+  import { Banner, guardThemeTransitions } from '@lostgradient/cinder';
   import type { HttpClient } from '@lostgradient/weft';
   import { useQueryClient } from '@tanstack/svelte-query';
   import { onDestroy, untrack } from 'svelte';
@@ -198,6 +198,8 @@
   });
 
   const theme = provideTheme(new ThemeStore());
+  // A theme switch must not animate every themed color from the old theme to the new one.
+  onDestroy(guardThemeTransitions());
   const layout = provideLayoutPreferences(new LayoutPreferences());
   const keyboard = provideKeyboardPreferences(new KeyboardPreferences());
   const notifications = new NotificationStore({

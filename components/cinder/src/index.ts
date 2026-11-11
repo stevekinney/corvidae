@@ -325,6 +325,12 @@ export type {
   TimeZoneLabelOptions,
 } from './utilities/format-date.ts';
 
+export {
+  THEME_CHANGING_ATTRIBUTE,
+  guardThemeTransitions,
+} from './utilities/theme-transition-guard.ts';
+export type { ThemeTransitionGuardOptions } from './utilities/theme-transition-guard.ts';
+
 export { default as DataList } from './components/data-list/index.ts';
 export type { DataListGroup, DataListProps } from './components/data-list/index.ts';
 
