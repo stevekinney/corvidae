@@ -620,11 +620,8 @@ export type {
   DurableComposition,
   RuntimeComposition,
 } from './runtime-composition-types';
-export {
-  createRuntimeComposition,
-  resolveProviderGenerate,
-  resolveProviderDecide,
-} from './runtime-composition';
+export { createRuntimeComposition } from './runtime-composition';
+export { resolveProviderGenerate, resolveProviderDecide } from './provider-resolution';
 export {
   createMemoryPersistHook,
   createMemoryRecallHook,

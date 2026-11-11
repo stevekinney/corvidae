@@ -9,7 +9,7 @@ import {
 } from '@lostgradient/operative';
 import { decode, KEYS, isWeftErrorLike } from '@lostgradient/weft';
 import { type RecoveredRunVerdict, type RecoveryRejectionReason } from './events';
-import { decodeScheduleRunMarker } from './runtime-composition';
+import { decodeScheduleRunMarker } from './schedule-run-marker';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
   type CatalogRunSettlement,

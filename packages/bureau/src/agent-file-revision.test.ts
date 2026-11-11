@@ -26,7 +26,7 @@ import { DIRECTORY_POLL_INTERVAL_MILLISECONDS } from './sources/watched-director
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
-} from './runtime-composition';
+} from './session-agent-revision';
 import {
   type AgentFileFixture,
   agentFileText,

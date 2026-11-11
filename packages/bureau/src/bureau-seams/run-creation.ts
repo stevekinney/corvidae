@@ -31,9 +31,9 @@ import type { BureauSteeringGate } from '../steering';
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
-  registerTrailingOnStep,
-  sessionRunMediaOptions,
-} from '../runtime-composition';
+} from '../session-agent-revision';
+import { registerTrailingOnStep } from '../bureau-invariant-hooks';
+import { sessionRunMediaOptions } from '../provider-resolution';
 import { type BureauToolbox, type SessionAgentRun } from '../runtime-composition-types';
 import { wireDurableOptInTools } from '../run-request-context';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';

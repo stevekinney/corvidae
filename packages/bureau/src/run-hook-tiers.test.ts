@@ -42,7 +42,8 @@ import {
   interceptorsOf,
 } from './agent-contributions';
 import { composeRunHooks } from './run-hook-tiers';
-import { BUREAU_PINNED_LAST_PRIORITY, createRuntimeComposition } from './runtime-composition';
+import { createRuntimeComposition } from './runtime-composition';
+import { BUREAU_PINNED_LAST_PRIORITY } from './bureau-invariant-hooks';
 
 afterEach(async () => {
   // load-proof: the work this lets finish runs on in-memory storage and settles through promise continuations only, as in runtime-composition.test.ts; no timer or I/O is pending

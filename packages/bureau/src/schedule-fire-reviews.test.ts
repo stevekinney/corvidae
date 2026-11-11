@@ -18,7 +18,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { BureauError } from './bureau-errors';
 import { createScheduledFireApprovalHook } from './approval-state-records';
 import { OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
-import { isScheduledFireAuthority, scheduledFireApprovalMetadata } from './runtime-composition';
+import { isScheduledFireAuthority, scheduledFireApprovalMetadata } from './bureau-invariant-hooks';
 import {
   approvalToolbox,
   askingGenerate,

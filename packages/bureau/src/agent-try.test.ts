@@ -25,7 +25,7 @@ import { isTryAgentName, tryToolProblem } from './agent-try';
 import { createAgent } from '@lostgradient/operative';
 import { BureauError, UnknownScheduleAgentError } from './bureau-errors';
 import { createBureau } from './create-bureau';
-import { SESSION_AGENT_DEFINITION_HASH_METADATA_KEY } from './runtime-composition';
+import { SESSION_AGENT_DEFINITION_HASH_METADATA_KEY } from './session-agent-revision';
 import { runTask, taskContent, waitForCondition, waitForTaskState } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { createBureauHandler } from './http/create-bureau-handler';

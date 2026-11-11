@@ -19,7 +19,7 @@ import { BUREAU_AGENT_NAME } from '../bureau-construction-support';
 import type { BureauCore } from './core';
 import type { BureauRecoveryReport } from '../types';
 import type { BureauSteeringGate } from '../steering';
-import { sessionRunMediaOptions } from '../runtime-composition';
+import { sessionRunMediaOptions } from '../provider-resolution';
 import { type BureauToolbox, type SessionAgentRun } from '../runtime-composition-types';
 import {
   type ClassifyRecoveredRunArgs,

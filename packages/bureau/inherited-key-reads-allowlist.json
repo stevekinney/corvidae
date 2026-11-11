@@ -86,7 +86,7 @@
       "reason": "textField is called only with string literals"
     },
     {
-      "file": "src/runtime-composition.ts",
+      "file": "src/skill-step-metadata.ts",
       "expression": "candidate[field]",
       "count": 1,
       "reason": "the keys come from an array literal declared in the same function"

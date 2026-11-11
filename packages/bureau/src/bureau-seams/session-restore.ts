@@ -12,11 +12,10 @@ import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
 import {
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
-  isScheduledFireAuthority,
-  recordRecoveredSkillPolicy,
-  recoveredSkillPolicyOf,
   sessionRecordedRevision,
-} from '../runtime-composition';
+} from '../session-agent-revision';
+import { isScheduledFireAuthority } from '../bureau-invariant-hooks';
+import { recordRecoveredSkillPolicy, recoveredSkillPolicyOf } from '../skill-step-metadata';
 import {
   type BureauToolbox,
   type SessionAgentRun,

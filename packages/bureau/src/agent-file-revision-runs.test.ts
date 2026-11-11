@@ -14,7 +14,7 @@ import {
 import { type Storage, MemoryStorage } from '@lostgradient/storage';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
-import { SESSION_AGENT_REVISION_METADATA_KEY } from './runtime-composition';
+import { SESSION_AGENT_REVISION_METADATA_KEY } from './session-agent-revision';
 import { waitForCondition, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';

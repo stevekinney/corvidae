@@ -26,7 +26,7 @@ import { BureauError } from '../bureau-errors';
 import type { ChildTopologyParent } from '../child-topology';
 import { DURABLE_FORCIBLY_TERMINABLE_STATUSES } from '../durable-run-waits';
 import { type DurableEndReader, publishFreshCatalogRun } from '../catalog-run-settlement';
-import { registerTrailingOnStep } from '../runtime-composition';
+import { registerTrailingOnStep } from '../bureau-invariant-hooks';
 import { type ScheduledFireServicesNotice } from '../runtime-composition-types';
 import { type SubordinateClaim, subordinateTaskAdmission } from '../catalog-task-settlement';
 import type { SubordinateRun, WorkflowStepStart } from '../bureau-catalog-dispatch';

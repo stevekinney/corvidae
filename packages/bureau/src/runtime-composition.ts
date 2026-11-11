@@ -10,7 +10,6 @@ import type { RuntimeServices } from '@lostgradient/lifecycle';
 import { createSecretAnswerStore, secretResolverOf } from './secret-answers';
 import {
   createDefaultRuntimeServices,
-  HOOK_TIER_PRIORITY_BANDS,
   HookRegistry,
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
@@ -20,21 +19,16 @@ import type {
   AgentSession,
   DurableRunDeps,
   GenerateFunction,
-  DecisionModel,
   GenerationMode,
   BureauChildInvariants,
-  GuardrailHooks,
   GuardrailsOptions,
   JSONValue,
   OnStepHook,
   OperativeHookMap,
-  ProviderDefinition,
   RunOptions,
   ScheduledAgentRunInput,
   SessionStore,
   SessionSummary,
-  StepRecord,
-  StreamEventMap,
   PersistedSessionTaint,
 } from '@lostgradient/operative';
 import {
@@ -48,7 +42,6 @@ import {
   createSessionTaintTracker,
   DEFAULT_TAINT_THRESHOLD,
   withSessionTaint,
-  createIdentityHook,
   createRunEngine,
   createRunWorkflow,
   createSessionStore,
@@ -66,8 +59,6 @@ import {
   ScheduleSkippedEvent,
   withActiveSkillToolPolicy,
   bureauInvariantsField,
-  withCache,
-  withEnhancedStreaming,
   WorkflowVersionMismatchEvent,
   SESSION_ORIGIN_METADATA_KEY,
   SESSION_TAINT_METADATA_KEY,
@@ -109,21 +100,13 @@ import {
   type ConditionalTextValueStore,
   type Storage,
   storageConditionalBatch,
-  type TextValueStore,
   textValueStore,
 } from '@lostgradient/storage';
-import {
-  type AnyToolbox,
-  createToolbox,
-  type ToolCallInput,
-  type ToolRequestContext,
-} from 'armorer';
+import { type AnyToolbox, createToolbox, type ToolRequestContext } from 'armorer';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
-  getFirstSystemMessage,
-  getOwn,
 } from 'conversationalist';
 import { activeSkillToolPolicy, agentSkillsRun, createSkillGuardrailOptions } from './agent-skills';
 import { isTryAgentName } from './agent-try';
@@ -149,11 +132,8 @@ import {
   scheduledAgentRunOptions,
   sessionExecuteOptions,
 } from './session-agent-options';
-import type { CacheConfiguration, ProviderConfiguration, StreamingConfiguration } from './types';
-import { ownEntry } from './own-entry';
 import { DEFAULT_MAX_CONCURRENT_RUNS } from './settings/settings-options';
 import { holdGenerateToModelPolicy } from './code-agent-model-policy';
-import { type RecoveredScheduleMarker, isRecord } from './schedule-run-marker';
 import type {
   BureauInvariantOptions,
   BureauToolbox,
@@ -162,7 +142,6 @@ import type {
   DurableComposition,
   MediaRowHolder,
   MediaRunOptions,
-  RecoveredSkillPolicy,
   RunRuntimeRequest,
   RuntimeComposition,
   RuntimeCompositionDependencies,
@@ -200,764 +179,51 @@ import {
   wireDurableOptInTools,
   withDefaultToolboxRequestContext,
 } from './run-request-context';
-
-function persistedScheduleMarker(input: ScheduledAgentRunInput): string | undefined {
-  if (typeof input.scheduleId !== 'string') return undefined;
-  const scheduleId = input.scheduleId.trim();
-  return scheduleId.length > 0 ? scheduleId : undefined;
-}
-
-function hasPersistedScheduleMarker(input: ScheduledAgentRunInput): boolean {
-  return persistedScheduleMarker(input) !== undefined;
-}
-
-/**
- * Weft 0.10+ native `KEYS.scheduleRun(...)` marker: an object of shape
- * `{ id, occurrence? }` written by `encodeScheduleRunMetadata` (see weft's
- * `src/core/engine/schedule-run-metadata.ts`). Pre-0.10 stores may still hold
- * the legacy plain-string marker, handled separately in
- * {@link decodeScheduleRunMarker}.
- */
-function isScheduleRunMarkerObject(value: unknown): value is { id: string; occurrence?: number } {
-  if (!isRecord(value)) return false;
-  const { id, occurrence } = value;
-  return typeof id === 'string' && (occurrence === undefined || typeof occurrence === 'number');
-}
-
-/**
- * Decode a `KEYS.scheduleRun(...)` storage value (already `decode()`d from
- * bytes) into its schedule id, accepting both the legacy plain-string marker
- * and Weft 0.10+'s `{ id, occurrence? }` metadata object. Returns `undefined`
- * when the value is neither shape, or the id is blank. The returned id is
- * always trimmed, so accidental whitespace never propagates into downstream
- * equality checks or embedded session ids.
- */
-export function decodeScheduleRunMarker(decoded: unknown): string | undefined {
-  if (typeof decoded === 'string') {
-    const trimmed = decoded.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-  if (isScheduleRunMarkerObject(decoded)) {
-    const trimmed = decoded.id.trim();
-    return trimmed.length > 0 ? trimmed : undefined;
-  }
-  return undefined;
-}
-
-/** The text of the first system message `options.conversation` carries, or `undefined`. */
-function agentInstructionsFromRunOptions(options: RunOptions): string | undefined {
-  const history =
-    options.conversation instanceof Conversation
-      ? options.conversation.current
-      : options.conversation;
-  const content = getFirstSystemMessage(history)?.content;
-  if (typeof content === 'string') return content;
-  if (content === undefined) return undefined;
-  const text = content
-    .map((part) => (part.type === 'text' ? part.text : ''))
-    .join('')
-    .trim();
-  return text.length === 0 ? undefined : text;
-}
-
-/** The input a session run resolves its agent with; the run's own conversation replaces it. */
-const SESSION_AGENT_PLACEHOLDER_INPUT = 'session run';
-
-/** The default agent a run with no `agentName` belongs to; it has no catalog entry. */
-const BUREAU_AGENT_NAME = 'bureau';
-
-/** Session metadata: the definition revision of the named agent the latest run started under. */
-export const SESSION_AGENT_REVISION_METADATA_KEY = 'lastAgentRevision';
-
-/**
- * COR-1524 — where a session run records the SHA-256 of the agent file it started with (`null`
- * for a code-defined agent), so a recovered run builds from its snapshot.
- */
-export const SESSION_AGENT_DEFINITION_HASH_METADATA_KEY = 'lastAgentDefinitionHash';
-
-/**
- * COR-1584 — the definition revision a session's metadata recorded for the definition at `hash`.
- * A session's metadata names its latest run's definition only, so the revision is the run's own
- * only when the hash is the one the metadata names; any other run's revision is not recorded
- * there, and the caller gets `undefined`.
- */
-export function sessionRecordedRevision(
-  metadata: Readonly<Record<string, unknown>>,
-  hash: unknown,
-): number | undefined {
-  const revision = metadata[SESSION_AGENT_REVISION_METADATA_KEY];
-  return typeof hash === 'string' &&
-    metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY] === hash &&
-    typeof revision === 'number'
-    ? revision
-    : undefined;
-}
-
-function recoveredMarkerSessionId(marker: RecoveredScheduleMarker | undefined): string | undefined {
-  return marker?.status === 'found' ? undefined : marker?.sessionId;
-}
-
-function lastScheduledFirePromptIndex(history: ConversationHistory, runId: string): number {
-  for (let index = history.ids.length - 1; index >= 0; index -= 1) {
-    const message = getOwn(history.messages, history.ids[index]!);
-    if (message?.role === 'user' && message.metadata['scheduledFireRunId'] === runId) {
-      return index;
-    }
-  }
-  return -1;
-}
-
-function removeConversationIndexRange(
-  history: ConversationHistory,
-  startIndex: number,
-  endIndex: number,
-): ConversationHistory {
-  const ids = history.ids.filter((_, index) => index < startIndex || index > endIndex);
-  const messages: Record<string, ConversationHistory['messages'][string]> = {};
-  for (const [position, id] of ids.entries()) {
-    const message = getOwn(history.messages, id);
-    if (message) messages[id] = { ...message, position };
-  }
-  return { ...history, ids, messages };
-}
-
-export function removeLastScheduledFireTranscript(
-  history: ConversationHistory,
-  runId: string,
-): ConversationHistory {
-  const promptIndex = lastScheduledFirePromptIndex(history, runId);
-  if (promptIndex === -1) return history;
-  const nextUserIndex = history.ids.findIndex((id, index) => {
-    if (index <= promptIndex) return false;
-    return getOwn(history.messages, id)?.role === 'user';
-  });
-  const endIndex = nextUserIndex === -1 ? history.ids.length - 1 : nextUserIndex - 1;
-  return removeConversationIndexRange(history, promptIndex, endIndex);
-}
-
-/**
- * Builds the generate function for a configured provider from the definitions a host registered.
- *
- * The definition whose `name` equals `configuration.provider` serves it: its `stream` method,
- * wrapped in enhanced streaming over `streamEventTarget`, when one is given, and its `generate`
- * method otherwise. The configuration reaches the definition whole, so a field the shared
- * configuration type does not name (an injected `client`, say) arrives unchanged.
- *
- * @throws {Error} When two definitions carry one name, whether or not the configuration selects
- * it, or when no definition carries `configuration.provider`.
- */
-export function resolveProviderGenerate(
-  definitions: readonly ProviderDefinition[],
-  configuration: ProviderConfiguration,
-  streamEventTarget: TypedEventTarget<StreamEventMap> | undefined,
-  streamingConfiguration: StreamingConfiguration | undefined,
-  pluginConfiguration?: unknown,
-): GenerateFunction {
-  const seen = new Set<string>();
-  for (const { name } of definitions) {
-    if (seen.has(name)) throw new Error(`Duplicate provider definition "${name}".`);
-    seen.add(name);
-  }
-  const definition = definitions.find(({ name }) => name === configuration.provider);
-  if (definition === undefined) {
-    const registered = definitions.map(({ name }) => name).join(', ');
-    throw new Error(
-      `Unknown provider "${configuration.provider}". Registered providers: ${registered === '' ? 'none' : registered}.`,
-    );
-  }
-  if (streamEventTarget === undefined) {
-    if (definition.generate === undefined) {
-      throw new TypeError(`Provider "${definition.name}" does not provide generate capability.`);
-    }
-    return definition.generate(configuration, pluginConfiguration);
-  }
-  if (definition.stream === undefined) {
-    throw new TypeError(`Provider "${definition.name}" does not provide stream capability.`);
-  }
-  return withEnhancedStreaming(definition.stream(configuration, pluginConfiguration), {
-    eventTarget: streamEventTarget,
-    onTextDelta: streamingConfiguration?.onTextDelta,
-  });
-}
-
-/** Builds the native decision model for a configured provider. */
-export function resolveProviderDecide(
-  definitions: readonly ProviderDefinition[],
-  configuration: ProviderConfiguration,
-  pluginConfiguration?: unknown,
-): DecisionModel {
-  const seen = new Set<string>();
-  for (const { name } of definitions) {
-    if (seen.has(name)) throw new Error(`Duplicate provider definition "${name}".`);
-    seen.add(name);
-  }
-  const definition = definitions.find(({ name }) => name === configuration.provider);
-  if (definition === undefined) {
-    const registered = definitions.map(({ name }) => name).join(', ');
-    throw new Error(
-      `Unknown provider "${configuration.provider}". Registered providers: ${registered === '' ? 'none' : registered}.`,
-    );
-  }
-  if (definition.decide === undefined) {
-    throw new TypeError(`Provider "${definition.name}" does not provide decide capability.`);
-  }
-  return definition.decide(configuration, pluginConfiguration);
-}
-
-export function applyCache(
-  generate: GenerateFunction,
-  configuration: CacheConfiguration | undefined,
-  store: TextValueStore | undefined,
-): GenerateFunction {
-  if (!configuration) {
-    return generate;
-  }
-
-  const cacheStore = configuration.store ?? store;
-  if (configuration.enabled === false || !cacheStore) {
-    return generate;
-  }
-
-  return withCache(generate, {
-    ...configuration,
-    store: cacheStore,
-  });
-}
+import {
+  activeSkillSessionMetadataForStep,
+  activeSkillsFromStepMetadata,
+  activeSkillsStepMetadata,
+  activeSkillsStepMetadataKey,
+  createSkillRecordSnapshotHook,
+  createUnavailableToolbox,
+  describe,
+  isSkillActivationRecordArray,
+  recordRecoveredSkillPolicy,
+  recordedAgentStep,
+} from './skill-step-metadata';
+import {
+  appendConversationMessages,
+  applyCache,
+  sessionRunMediaOptions,
+  unsetMediaOptions,
+} from './provider-resolution';
+import {
+  BUREAU_HOOK_TIER,
+  registerGuardrailInvariants,
+  registerIdentityInvariant,
+  registerTrailingOnStep,
+  scheduledFireApprovalMetadata,
+} from './bureau-invariant-hooks';
+import {
+  BUREAU_AGENT_NAME,
+  SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
+  SESSION_AGENT_PLACEHOLDER_INPUT,
+  SESSION_AGENT_REVISION_METADATA_KEY,
+  agentInstructionsFromRunOptions,
+  sessionRecordedRevision,
+} from './session-agent-revision';
+import {
+  type RecoveredScheduleMarker,
+  decodeScheduleRunMarker,
+  hasPersistedScheduleMarker,
+  persistedScheduleMarker,
+  recoveredMarkerSessionId,
+  removeLastScheduledFireTranscript,
+} from './schedule-run-marker';
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
   createSessionStore,
 };
-
-/**
- * The media options Bureau contributes to a run that already has its own: whichever of
- * the two the run left unset. An agent that supplied its own resolver or its own
- * unverified-asset policy keeps it.
- */
-export function unsetMediaOptions(run: MediaRunOptions, bureau: MediaRunOptions): MediaRunOptions {
-  return {
-    ...(run.contentSourceResolver === undefined && bureau.contentSourceResolver !== undefined
-      ? { contentSourceResolver: bureau.contentSourceResolver }
-      : {}),
-    ...(run.assetSafety === undefined && bureau.assetSafety !== undefined
-      ? { assetSafety: bureau.assetSafety }
-      : {}),
-    ...(run.generatedMediaAdmitter === undefined && bureau.generatedMediaAdmitter !== undefined
-      ? { generatedMediaAdmitter: bureau.generatedMediaAdmitter }
-      : {}),
-  };
-}
-
-/**
- * COR-1577 — the media options of a session run: Bureau's for the run's owner, except where the
- * named agent supplied its own resolver or unverified-asset policy, as on a catalog dispatch.
- */
-export function sessionRunMediaOptions(
-  sessionAgent: SessionAgentRun | undefined,
-  bureau: MediaRunOptions,
-): MediaRunOptions {
-  if (sessionAgent === undefined) return bureau;
-  const { contentSourceResolver, assetSafety, generatedMediaAdmitter } = sessionAgent.options;
-  return {
-    ...(contentSourceResolver === undefined ? {} : { contentSourceResolver }),
-    ...(assetSafety === undefined ? {} : { assetSafety }),
-    ...(generatedMediaAdmitter === undefined ? {} : { generatedMediaAdmitter }),
-    ...unsetMediaOptions(sessionAgent.options, bureau),
-  };
-}
-
-function messagesAreEqual(
-  left: ConversationHistory['messages'][string],
-  right: ConversationHistory['messages'][string],
-): boolean {
-  return JSON.stringify(left) === JSON.stringify(right);
-}
-
-function appendConversationMessages(
-  current: ConversationHistory,
-  candidate: ConversationHistory,
-  base: ConversationHistory,
-): ConversationHistory {
-  const baseIds = new Set(base.ids);
-  const candidateIds = new Set(candidate.ids);
-  const currentIds = new Set(current.ids);
-  const currentPreservedIds = current.ids.filter((id) => candidateIds.has(id) || !baseIds.has(id));
-  const candidateOnlyIds = candidate.ids.filter((id) => !currentIds.has(id));
-  const ids = [...currentPreservedIds, ...candidateOnlyIds];
-  const messages: Record<string, ConversationHistory['messages'][string]> = {};
-
-  for (const id of ids) {
-    const candidateMessage = getOwn(candidate.messages, id);
-    const baseMessage = getOwn(base.messages, id);
-    const message =
-      candidateMessage &&
-      (!baseMessage ||
-        !messagesAreEqual(candidateMessage, baseMessage) ||
-        !getOwn(current.messages, id))
-        ? candidateMessage
-        : (getOwn(current.messages, id) ?? candidateMessage);
-    if (message) messages[id] = message;
-  }
-
-  for (const [position, id] of ids.entries()) {
-    const message = getOwn(messages, id);
-    if (message) messages[id] = { ...message, position };
-  }
-
-  return {
-    ...current,
-    metadata: {
-      ...current.metadata,
-      ...candidate.metadata,
-    },
-    ids,
-    messages,
-    updatedAt: candidate.updatedAt,
-  };
-}
-
-const activeSkillsStepMetadataKey = '__bureauActiveSkills';
-const activeSkillsStepMetadataVersion = 2;
-
-function activeSkillsStepMetadata(records: readonly SkillActivationRecord[]): JSONValue {
-  return {
-    version: activeSkillsStepMetadataVersion,
-    entries: records as unknown as JSONValue,
-  };
-}
-
-export function activeSkillsFromStepMetadata(
-  metadata: StepRecord['metadata'],
-): SkillActivationRecord[] | undefined {
-  const raw = metadata?.[activeSkillsStepMetadataKey];
-  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return undefined;
-  const snapshot = raw as Record<string, unknown>;
-  if (snapshot['version'] !== activeSkillsStepMetadataVersion) return undefined;
-  const entries = snapshot['entries'];
-  return isSkillActivationRecordArray(entries) ? entries : undefined;
-}
-
-/**
- * Validates a value read back out of session or step metadata as activation records.
- *
- * Every digest field is required, not optional. A record missing one would recover a skill by name
- * with nothing to check the content against, which is the failure the records exist to prevent —
- * so a malformed snapshot recovers nothing rather than recovering unverifiably.
- */
-export function isSkillActivationRecordArray(value: unknown): value is SkillActivationRecord[] {
-  if (!Array.isArray(value)) return false;
-  for (const item of value) {
-    if (typeof item !== 'object' || item === null) return false;
-    const candidate = item as Record<string, unknown>;
-    for (const field of [
-      'name',
-      'sourceId',
-      'sourceKind',
-      'trust',
-      'artifactDigest',
-      'instructionsDigest',
-      'activatedAt',
-    ]) {
-      if (typeof candidate[field] !== 'string') return false;
-    }
-    if (typeof candidate['catalogRevision'] !== 'number') return false;
-    if (!Array.isArray(candidate['requestedTools'])) return false;
-    if (candidate['requestedTools'].some((tool) => typeof tool !== 'string')) return false;
-  }
-  return true;
-}
-
-/**
- * The session-metadata keys a step boundary writes.
- *
- * The same keys {@link createSkillRecordSnapshotHook} writes, deliberately: one snapshot
- * mechanism, one set of keys, one thing for recovery to read. Two parallel snapshots is how a
- * recovered run ends up restoring whichever of them the reader happened to know about.
- */
-function activeSkillSessionMetadataForStep(
-  records: readonly SkillActivationRecord[],
-  step: number,
-  runId?: string,
-): Record<string, JSONValue> {
-  return {
-    activeSkillRecords: records as unknown as JSONValue,
-    ...(runId !== undefined
-      ? {
-          activeSkillRecordsRunId: runId,
-          activeSkillRecordsStep: step,
-        }
-      : {}),
-  };
-}
-
-/** A snapshot field named in a reason: its string, or what the field holds instead. */
-function describe(value: unknown): string {
-  return typeof value === 'string' ? `"${value}"` : value === null ? 'null' : 'nothing';
-}
-
-const recoveredSkillPolicies = new WeakMap<object, RecoveredSkillPolicy>();
-
-/** Records what recovery built `toolbox` with. */
-export function recordRecoveredSkillPolicy(toolbox: object, policy: RecoveredSkillPolicy): void {
-  recoveredSkillPolicies.set(toolbox, policy);
-}
-
-/** What recovery built `toolbox` with, or `undefined` for a toolbox it did not build. */
-export function recoveredSkillPolicyOf(toolbox: object): RecoveredSkillPolicy | undefined {
-  return recoveredSkillPolicies.get(toolbox);
-}
-
-export function recordedAgentStep(value: unknown): StepRecord | undefined {
-  if (typeof value !== 'object' || value === null) return undefined;
-  const candidate = value as Record<string, unknown>;
-  if (
-    typeof candidate['conversationSnapshot'] !== 'object' ||
-    candidate['conversationSnapshot'] === null
-  ) {
-    return undefined;
-  }
-  if (typeof candidate['nextAccumulators'] !== 'object' || candidate['nextAccumulators'] === null) {
-    return undefined;
-  }
-  const record = candidate['record'];
-  if (typeof record !== 'object' || record === null) return undefined;
-  const stepRecord = record as Record<string, unknown>;
-  const step = stepRecord['step'];
-  if (!Number.isInteger(step) || (step as number) < 0) return undefined;
-  if (typeof stepRecord['content'] !== 'string') return undefined;
-  // COR-713: only a current-version step record counts; an older one carries no parts.
-  if (stepRecord['schemaVersion'] !== 2 || !Array.isArray(stepRecord['parts'])) return undefined;
-  if (!Array.isArray(stepRecord['toolCalls'])) return undefined;
-  if (!Array.isArray(stepRecord['results'])) return undefined;
-  if (typeof stepRecord['final'] !== 'boolean') return undefined;
-  if (
-    stepRecord['metadata'] !== undefined &&
-    (typeof stepRecord['metadata'] !== 'object' ||
-      stepRecord['metadata'] === null ||
-      Array.isArray(stepRecord['metadata']))
-  ) {
-    return undefined;
-  }
-  return record as StepRecord;
-}
-
-/**
- * Snapshot the active skill set to session metadata after each completed step.
- *
- * EFFECTFUL hook (seam #11): on a durable recovery the crashed in-flight step
- * re-runs from its boundary, so this hook can fire AGAIN for the same step. The
- * write is IDEMPOTENT — a re-fire for step N overwrites `activeSkillRecords` with the
- * same value (completed steps do not re-run their tool executions, so the active-skill
- * set is unchanged on replay). This is a state snapshot, NOT an append — the last
- * writer wins (matching the single-source-of-truth model for `activeSkillRecords`).
- *
- * Replay classification: `effectful` (writes to external storage) but SAFE across
- * recovery re-fires because the payload is deterministic for a given step boundary
- * (completed steps replay identically, producing the same active-skill set).
- */
-/**
- * Snapshots the catalog revision and every activation record after each step.
- *
- * The provider-backed snapshot carries a name and a tool policy. That is enough to re-activate
- * something with the same name and nothing at all to prove it is the same skill — COR-752 named
- * exactly this gap ("neither carries source, trust decision, digest, or admitted instructions").
- * These records carry the source, the trust decision, the artifact digest and the instructions
- * digest, which is what lets recovery refuse a skill whose content drifted rather than silently
- * resurrecting different text under a reviewed name.
- */
-function createSkillRecordSnapshotHook(
-  client: { activationRecords(): readonly SkillActivationRecord[] },
-  catalog: { revision: number; digest: string },
-  sessionId: string,
-  store: SessionStore,
-  runId?: string,
-): OnStepHook {
-  return async (context) => {
-    try {
-      await store.updateMetadata(sessionId, {
-        activeSkillRecords: client.activationRecords() as unknown as JSONValue,
-        skillCatalogRevision: catalog.revision,
-        skillCatalogDigest: catalog.digest,
-        ...(runId === undefined
-          ? {}
-          : { activeSkillRecordsRunId: runId, activeSkillRecordsStep: context.step }),
-      });
-    } catch {
-      // Non-fatal, same as the entry-based hook: a failed snapshot must not abort the step. The
-      // cost is that recovery starts from an empty active set, which is the safe direction.
-    }
-  };
-}
-
-function createUnavailableToolbox(): BureauToolbox {
-  const emptyToolbox = createToolbox([], { context: {} });
-  const execute = ((
-    toolCalls: ToolCallInput | ToolCallInput[],
-    executionOptions?: Parameters<BureauToolbox['execute']>[1],
-  ) => {
-    const normalizedToolCalls = Array.isArray(toolCalls) ? toolCalls : [toolCalls];
-    if (normalizedToolCalls.length > 0) {
-      throw new Error('No toolbox configured but tool calls were received');
-    }
-
-    return emptyToolbox.execute([], executionOptions);
-  }) as unknown as BureauToolbox['execute'];
-
-  return {
-    ...emptyToolbox,
-    execute,
-  };
-}
-
-/**
- * `createRuntimeComposition` builds bureau-level generate/toolbox/
- * persistence/durability composition — entirely orthogonal to the typed
- * `agents` catalog (AB-22), which `createBureau` wires separately. Omitting
- * `agents` here means every existing caller (including the 100+ direct
- * `createRuntimeComposition({...})` calls in this package's own test suite)
- * keeps working unchanged; it is not part of this function's contract.
- */
-/**
- * Priority pinning a Bureau registration behind every other tier's entries on
- * the same hook point (COR-1265, criteria 9 and 10), before the `bureau` band
- * is added.
- *
- * Two dispatch shapes let a later handler decide the outcome: `runLast`
- * returns the last defined result, and the waterfall feeds each handler the
- * previous one's return value. On both, "runs last" means "wins", so a Bureau
- * registration that narrows — today `bureau:guardrails-validate-response` — has
- * to sort behind whatever an agent or a direct caller registered. The trailing
- * `onStep` hooks take the same value for the ordering reason rather than the
- * authority one: they persist the session once the step's mutations settle, and
- * an agent-tier `onStep` handler is one of those mutations.
- *
- * The tier band works against Bureau here. `mergeHookRegistries` adds each
- * tier's fixed band (`HOOK_TIER_PRIORITY_BANDS`, COR-2127), and Bureau's is the
- * LARGEST — `+3000`, above the plugin, agent and direct tiers. The constant
- * sits that band above `Number.MIN_SAFE_INTEGER`, so a merged Bureau entry
- * stays inside the safe-integer range and still lands below anything
- * registered at a priority a caller would plausibly write, whichever tiers a
- * run has.
- *
- * The residual, stated rather than implied: a lower tier whose entry, band
- * included, sits at or below this one's merged priority sorts after it
- * anyway. No finite constant closes that, because a priority is a plain number
- * with no floor, and `-Infinity` closes it only until a second entry carries it
- * — the registry's `b.priority - a.priority` comparator would then return
- * `NaN`. A tier deliberately reaching for the bottom of the number line is not
- * the threat this is defending against; an ordinary registration that happens
- * to outrank Bureau is.
- */
-export const BUREAU_PINNED_LAST_PRIORITY =
-  Number.MIN_SAFE_INTEGER + HOOK_TIER_PRIORITY_BANDS.bureau;
-
-/**
- * The ownership tier every registration Bureau makes belongs to (COR-1265) —
- * set once on a registry, stamped by `on()` onto each entry so it survives
- * `mergeHookRegistries`.
- */
-export const BUREAU_HOOK_TIER = 'bureau';
-
-/**
- * Registers the identity invariant. Shared by the per-run composition and by
- * {@link RuntimeComposition.createBureauInvariantHooks}, which is the whole
- * reason it is a function: the two register at different points in their own
- * registries and must not drift into two different registrations.
- */
-function registerIdentityInvariant(
-  registry: HookRegistry<OperativeHookMap>,
-  identity: NonNullable<RuntimeCompositionOptions['identity']>,
-): void {
-  registry.on('prepareStep', createIdentityHook(identity), {
-    id: 'bureau:identity',
-    // Appends a system message to the step's conversation and touches nothing
-    // outside it; a replayed step rebuilds that conversation from persisted
-    // history, so re-running this reproduces state rather than repeating an
-    // external effect.
-    replay: 'safe',
-  });
-}
-
-/**
- * Registers the guardrail invariants: the input scan, the tool-result scan (COR-2103), the output
- * check, and the tool-call validators (COR-2104), in the order the legacy arrays ran the first and
- * last.
- *
- * The caller decides WHEN — the per-run composition registers `prepareStep`
- * last of all its `prepareStep` hooks on purpose, so the input guardrail scans a
- * step context every earlier hook has already contributed to.
- */
-function registerGuardrailInvariants(
-  registry: HookRegistry<OperativeHookMap>,
-  guardrails: GuardrailHooks,
-): void {
-  registry.on('prepareStep', guardrails.prepareStep, {
-    id: 'bureau:guardrails-prepare-step',
-    // Scans and may taint the session. The taint is stored by a compare-and-swap that keeps the first
-    // one, so a replayed step stores nothing twice (COR-2105).
-    replay: 'safe',
-  });
-  registry.on('validateResponse', guardrails.validateResponse, {
-    id: 'bureau:guardrails-validate-response',
-    // COR-1265 criterion 10. `validateResponse` is dispatched as a waterfall,
-    // so the LAST handler to answer hands its response to the run — an agent-
-    // or direct-tier handler running after this one would decide what the
-    // guardrail's narrowing was worth. Pinned last so it does not.
-    priority: BUREAU_PINNED_LAST_PRIORITY,
-    replay: 'safe',
-  });
-  // COR-2103 — the input detectors over each tool result. `validateToolResult` is a waterfall too,
-  // so it is pinned last for the same reason as `validateResponse`.
-  registry.on('validateToolResult', guardrails.validateToolResult, {
-    id: 'bureau:guardrails-validate-tool-result',
-    priority: BUREAU_PINNED_LAST_PRIORITY,
-    replay: 'safe',
-  });
-  // COR-2104 — the tool-call validators. `beforeToolExecution` waterfalls the call list, so they
-  // are pinned last too: they judge the calls every other tier's hook settled on.
-  registry.on('beforeToolExecution', guardrails.beforeToolExecution, {
-    id: 'bureau:guardrails-before-tool-execution',
-    priority: BUREAU_PINNED_LAST_PRIORITY,
-    replay: 'safe',
-  });
-}
-
-/**
- * Priority placing a hook after every hook bureau's own composition registered.
- *
- * The same value as {@link BUREAU_PINNED_LAST_PRIORITY}, and deliberately not a
- * separate band: COR-1265's criterion 9 makes the two trailing hooks outrank
- * every tier's `onStep` handlers, not merely Bureau's own, and a value chosen
- * relative to Bureau's default `0` could not do that once a second tier exists.
- */
-const TRAILING_HOOK_PRIORITY = BUREAU_PINNED_LAST_PRIORITY;
-
-/**
- * Registers a per-call `onStep` hook that must run AFTER the run runtime's own
- * — the session write-back on a scheduled fire, the pending-approval persist on
- * an interactive run. Both were array spreads (`[...runRuntime.onStep, extra]`)
- * whose ordering came from their position in the literal; the priority states
- * it instead, so it survives the hook moving.
- *
- * This mutates the run's registry and returns it, rather than merging into a
- * fresh one, because the registry is created per run inside `createRunRuntime`
- * and the caller here owns that run outright.
- *
- * COR-1265: every caller now merges the result before handing it to a run, so
- * the completed Bureau tier is what `composeRunHooks` takes as its `bureau`
- * tier. That ordering is the point — registering here AFTER the merge would
- * put the trailing hook in the merged registry at its raw priority while every
- * other Bureau entry had already been given the `bureau` band, which is
- * precisely the renumbering this function used to avoid by refusing to merge at
- * all.
- */
-export function registerTrailingOnStep(
-  hooks: HookRegistry<OperativeHookMap>,
-  id: string,
-  handler: OnStepHook,
-): HookRegistry<OperativeHookMap> {
-  hooks.on('onStep', handler, {
-    id,
-    priority: TRAILING_HOOK_PRIORITY,
-    // Writes a session record.
-    replay: 'effectful',
-  });
-  return hooks;
-}
-
-/**
- * COR-1596 — the field of a persisted request authority that says it is a schedule fire's.
- */
-export const SCHEDULED_FIRE_AUTHORITY_MARKER = 'scheduledFire';
-
-/**
- * COR-1596 — whether the authority a session recorded for `runId` is a schedule fire's. A fire
- * runs on the Bureau-wide runtime and its agent name is a label, not a catalog entry, so what
- * resumes its approval after a restart must not look the name up in the catalog the way a session
- * run's does.
- */
-export function isScheduledFireAuthority(
-  metadata: Record<string, JSONValue>,
-  runId: string,
-): boolean {
-  const authorities = metadata['lastRequestAuthorities'];
-  if (!isPlainAuthorityRecord(authorities)) return false;
-  const authority = ownEntry(authorities, runId);
-  return isPlainAuthorityRecord(authority) && authority[SCHEDULED_FIRE_AUTHORITY_MARKER] === true;
-}
-
-/**
- * COR-1596 — what a schedule fire's session records for a tool call its step left awaiting
- * approval: the pending approval under its review id, its supersession round (0, or the round
- * already recorded), and the request authority the fire ran under. These are the keys a session
- * run's approvals are recorded under, so the boot restore of a terminal run's approvals finds a
- * fire's too. Idempotent by key: a replayed step writes the same entries.
- *
- * `committed`, given for a fire that is replaying after a crash, names the review ids of the
- * approvals the run's checkpoint holds. A fire writes its session as each step completes and
- * commits the step after, so a crash between the two leaves an approval in the session that the
- * run never committed; the replay may not make that call again. Every approval of this run that
- * is neither committed nor this step's is dropped from the write, and the authority with the last
- * of them.
- */
-export function scheduledFireApprovalMetadata(
-  metadata: Record<string, JSONValue>,
-  runId: string,
-  results: readonly { readonly outcome: string; readonly pendingApproval?: unknown }[],
-  requestContext: ToolRequestContext,
-  committed?: ReadonlySet<string>,
-): Record<string, JSONValue> {
-  const prefix = `approval:${runId}:`;
-  // A review the session records as decided is not recorded as pending again: a replay that
-  // makes the same call under the same id would list it for ever, with nothing to decide.
-  const decided = new Set(
-    Array.isArray(metadata['resolvedReviewIds']) ? metadata['resolvedReviewIds'] : [],
-  );
-  const approvals: Array<[string, JSONValue]> = [];
-  for (const result of results) {
-    if (result.outcome !== 'action_required' || result.pendingApproval === undefined) continue;
-    const approval = JSON.parse(JSON.stringify(result.pendingApproval)) as JSONValue;
-    const callId = isPlainAuthorityRecord(approval) ? approval['callId'] : undefined;
-    if (typeof callId !== 'string' || decided.has(`${prefix}${callId}`)) continue;
-    approvals.push([`${prefix}${callId}`, approval]);
-  }
-  const recordOf = (value: JSONValue | undefined): Record<string, JSONValue> =>
-    isPlainAuthorityRecord(value) ? value : {};
-  const stepIds = new Set(approvals.map(([id]) => id));
-  const existingOverrides = recordOf(metadata['pendingApprovalOverrides']);
-  const abandoned = new Set(
-    committed === undefined
-      ? []
-      : Object.keys(existingOverrides).filter(
-          (id) => id.startsWith(prefix) && !committed.has(id) && !stepIds.has(id),
-        ),
-  );
-  if (approvals.length === 0 && abandoned.size === 0) return {};
-  const without = (record: Record<string, JSONValue>): Record<string, JSONValue> =>
-    Object.fromEntries(Object.entries(record).filter(([id]) => !abandoned.has(id)));
-  const overrides = { ...without(existingOverrides), ...Object.fromEntries(approvals) };
-  const rounds = recordOf(metadata['pendingApprovalRounds']);
-  const authorities = recordOf(metadata['lastRequestAuthorities']);
-  const authority = JSON.parse(
-    JSON.stringify({
-      ...requestContext.authority,
-      ...(requestContext.audience === undefined ? {} : { audience: requestContext.audience }),
-      ...(requestContext.agentId === undefined ? {} : { agentId: requestContext.agentId }),
-      [SCHEDULED_FIRE_AUTHORITY_MARKER]: true,
-    }),
-  ) as JSONValue;
-  const { [runId]: _ended, ...otherAuthorities } = authorities;
-  const holdsApproval = Object.keys(overrides).some((id) => id.startsWith(prefix));
-  return {
-    pendingApprovalOverrides: overrides,
-    pendingApprovalRounds: {
-      ...without(rounds),
-      ...Object.fromEntries(approvals.map(([id]) => [id, ownEntry(rounds, id) ?? 0])),
-    },
-    lastRequestAuthorities: holdsApproval
-      ? { ...authorities, [runId]: authority }
-      : otherAuthorities,
-  };
-}
 
 export async function createRuntimeComposition(
   options: RuntimeCompositionOptions,

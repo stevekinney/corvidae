@@ -65,19 +65,15 @@ import { createTool, createToolbox, type ToolRequestContext } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { Conversation, createConversationHistory, getMessages } from 'conversationalist';
 import { z } from 'zod';
+import { createRuntimeComposition } from './runtime-composition';
 import {
   activeSkillsFromStepMetadata,
-  applyCache,
-  BUREAU_PINNED_LAST_PRIORITY,
-  createRuntimeComposition,
-  decodeScheduleRunMarker,
   isSkillActivationRecordArray,
   recordedAgentStep,
-  registerTrailingOnStep,
-  removeLastScheduledFireTranscript,
-  resolveProviderDecide,
-  resolveProviderGenerate,
-} from './runtime-composition';
+} from './skill-step-metadata';
+import { applyCache, resolveProviderDecide, resolveProviderGenerate } from './provider-resolution';
+import { BUREAU_PINNED_LAST_PRIORITY, registerTrailingOnStep } from './bureau-invariant-hooks';
+import { decodeScheduleRunMarker, removeLastScheduledFireTranscript } from './schedule-run-marker';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './catalog-run-recovery-record';
 import { createMemoryPersistHook, createRunMemoryAuthority } from './run-memory';
 import {
