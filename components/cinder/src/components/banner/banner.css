@@ -12,12 +12,16 @@
  * ======================================== */
 
   .cinder-banner {
-    display: flex;
-    /* A banner wraps instead of squeezing: the words take their lines and the actions drop to a
-     * line of their own at the right when the width runs out (a phone), never overlapping. */
-    flex-wrap: wrap;
-    align-items: center;
-    gap: var(--cinder-space-3);
+    display: grid;
+    /* The glyph, the message and the dismiss button share the first row; the actions stack under
+     * the message on the next row at every width (COR-2314), so a banner reads the same on a phone
+     * as on a desktop and the buttons never overlap the words. An absent glyph or dismiss button
+     * leaves its track at zero width, and the gaps are margins on the parts so nothing is left
+     * behind. */
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    column-gap: 0;
+    row-gap: var(--cinder-space-3);
+    align-items: start;
     inline-size: 100%;
     padding-block: var(--cinder-space-3);
     padding-inline: var(--cinder-space-4);
@@ -47,17 +51,22 @@
  * ---------------------------------------- */
 
   .cinder-banner__content {
-    flex: 1 1 14rem;
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
+    /* A line of words stays readable: the message never runs wider than 68 characters. */
+    max-inline-size: 68ch;
   }
 
   /* A glyph at the start, as tall as the first line so it sits beside it, not centered on a
    * two-line message. */
   .cinder-banner__icon {
     display: inline-flex;
-    flex-shrink: 0;
+    grid-column: 1;
+    grid-row: 1;
+    margin-inline-end: var(--cinder-space-3);
     align-items: center;
-    align-self: flex-start;
+    align-self: start;
     block-size: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
   }
 
@@ -86,13 +95,21 @@
  * Actions region
  * ---------------------------------------- */
 
+  /* Under the message, in a row that wraps: several actions break onto lines of their own rather
+   * than squeezing, and a button label never wraps inside its button. */
   .cinder-banner__actions {
-    display: inline-flex;
+    display: flex;
+    flex-wrap: wrap;
+    grid-column: 2;
+    grid-row: 2;
     align-items: center;
+    justify-self: start;
     gap: var(--cinder-space-2);
-    flex-shrink: 0;
-    /* At the right whether it shares the line with the words or has dropped to its own. */
-    margin-inline-start: auto;
+  }
+
+  .cinder-banner__actions button,
+  .cinder-banner__actions a {
+    white-space: nowrap;
   }
 
   /* Touch: the action is a full 44px target, not the compact desktop height. */
@@ -142,6 +159,9 @@
  * (see src/styles/components.css). Only Banner-specific layout positioning,
  * the motion-gated transition, and status-driven focus chrome live here. */
   .cinder-banner__dismiss {
+    grid-column: 3;
+    grid-row: 1;
+    margin-inline-start: var(--cinder-space-3);
     align-self: center;
   }
 

@@ -67,6 +67,8 @@ The column is the same 128px on every page, so titles start at one x position do
 
 A row with nothing to report (a workflow, an available agent) keeps the column's width and leaves it empty: pass `statusColumn` on the row, or `statusColumn` on the `DataList` to keep it for every row. A leading visual such as an avatar follows the column.
 
+The status column is optional. A row (or a list) that has nothing to say about state leaves out `status` and `statusColumn`, and the row reserves no column, so the title starts at the row's edge; do not add a status only to fill the column. When a row does have a status, the documented form is a `StatusDot` with its word: a neutral dot and a word, with colour kept for a warning or a failure. A tinted Badge or pill is not a row status.
+
 ### Phone and the chat list
 
 On a phone (a viewport narrower than 640px) the status moves to line two beside the kind and agent (`Waiting on you, Chat, Tool runner`) and the time stays on line one. The word and dot are unchanged, and a row with no status simply has none.
@@ -170,7 +172,7 @@ Trailing actions sit in a fixed column. The trailing region is the row's last gr
 | `leading` | `(opaque)` | no | — | Leading visual (avatar, icon, status dot). With a status column it follows the column. Not expressible in JSON Schema; see the component types for the signature. |
 | `meta` | `(opaque)` | no | — | Line two: muted metadata, kind first, then agent, then detail, joined by commas. It starts under the title (not under the status) and ends in an ellipsis rather than wrapping. A line that must carry a control (an error with its own "Try again") may put one in. Not expressible in JSON Schema; see the component types for the signature. |
 | `onRetryClick` | `(opaque)` | no | — | Called when the row's "Try again" button is chosen. Without it the error shows no button. Not expressible in JSON Schema; see the component types for the signature. |
-| `status` | `(opaque)` | no | — | The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that every list on every page shares, so titles start at one x position down the list; on a phone it moves to line two, before the meta. The dot and word sit on the first line of the title. Not expressible in JSON Schema; see the component types for the signature. |
+| `status` | `(opaque)` | no | — | The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that every list on every page shares, so titles start at one x position down the list; on a phone it moves to line two, before the meta. The dot and word sit on the first line of the title. The column is optional: a row with no `status` (and no `statusColumn`) reserves none. A dot with its word is the documented row status; a tinted Badge or pill is not. Not expressible in JSON Schema; see the component types for the signature. |
 | `target` | `(opaque)` | no | — | Browsing context for the title anchor (`_blank`, `_self`, `_parent`, `_top`, or a named frame). Not expressible in JSON Schema; see the component types for the signature. |
 | `time` | `(opaque)` | no | — | The time, or the next run, at the right edge of line one, aligned to its top. Pass a `RelativeTime` or a plain string. Not expressible in JSON Schema; see the component types for the signature. |
 | `title` | `(opaque)` | yes | — | Primary label. Required. Not expressible in JSON Schema; see the component types for the signature. |

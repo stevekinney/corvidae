@@ -285,3 +285,16 @@ describe('Badge truncate', () => {
     expect(badgeCss).toMatch(/\.cinder-badge__label > svg\s*\{[^}]*display:\s*inline-block;/);
   });
 });
+
+describe('Badge — the info variant is neutral (COR-2314)', () => {
+  test('info shares the neutral rule, so it paints the neutral status tokens, not the accent', () => {
+    const rule = cssRule(".cinder-badge[data-cinder-variant='info']");
+    expect(rule).toContain('background: var(--cinder-status-neutral-background);');
+    expect(rule).toContain('color: var(--cinder-status-neutral-text);');
+    expect(rule).not.toContain('--cinder-accent');
+  });
+
+  test('no rule paints a badge with the info status tokens', () => {
+    expect(badgeCss).not.toContain('--cinder-status-info');
+  });
+});

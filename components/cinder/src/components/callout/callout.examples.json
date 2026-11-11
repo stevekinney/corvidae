@@ -6,7 +6,7 @@
     {
       "id": "basic",
       "title": "Basic callout",
-      "description": "Inline aside highlighting a tip next to body content.",
+      "description": "Inline aside next to body content. With no variant it is the quiet neutral note.",
       "code": "<script lang=\"ts\">\n  import { Callout } from '@lostgradient/cinder';\n</script>\n\n<Callout title=\"Note\">\n  This setting applies to all projects in your organization and cannot be overridden per-project.\n</Callout>\n"
     },
     {
@@ -18,7 +18,7 @@
     {
       "id": "neutral-with-action",
       "title": "Neutral note with an action",
-      "description": "A plain note that explains a state, with an icon and one link at the inline end.",
+      "description": "A plain note that explains a state, with an icon and one link under the message.",
       "code": "<script lang=\"ts\">\n  import { Callout, Link } from '@lostgradient/cinder';\n  import { Info } from '@lucide/svelte';\n</script>\n\n<Callout variant=\"neutral\" semantic=\"note\">\n  {#snippet icon()}\n    <Info size={16} />\n  {/snippet}\n  Gave up after 5 attempts. The check was never met.\n  {#snippet action()}\n    <Link href=\"/goals/draft-release-notes/attempts/5\">Open attempt 5</Link>\n  {/snippet}\n</Callout>\n"
     }
   ]

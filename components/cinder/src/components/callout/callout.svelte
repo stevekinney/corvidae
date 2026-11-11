@@ -24,7 +24,7 @@
   import type { CalloutProps } from './callout.types.ts';
 
   let {
-    variant = 'info',
+    variant = 'neutral',
     semantic = 'aside',
     title,
     icon,

@@ -11,7 +11,7 @@ import type { StatusDotWordLabel } from './status-dot.words.ts';
  * theme without forking the component.
  *
  * - `success` maps to `--cinder-status-success-solid` (same hue as `online`).
- * - `info` maps to `--cinder-status-info-solid`, a solid blue dot (Running).
+ * - `info` maps to `--cinder-border-control`, the neutral solid dot (Running), not an accent or a blue.
  * - `pending` is a hollow ring: a 1.5px ring in `--cinder-border-control` over a transparent fill.
  * - `accent` maps to `--cinder-accent-solid`.
  *
@@ -69,14 +69,14 @@ export type StatusDotProps = Omit<HTMLAttributes<HTMLSpanElement>, 'class'> & {
   labelVisible?: boolean;
   /** Dot size. Default `'md'`. */
   size?: StatusDotSize;
-  /** How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured. */
+  /** How the visible word is coloured: `muted` (the default) leaves a success, neutral, info or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning and danger words are always coloured. */
   wordTone?: StatusDotWordTone;
   /** Extra classes appended to the root element. */
   class?: string;
 };
 
 export interface StatusDotSchemaProps {
-  /** Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-status-info-solid`; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. */
+  /** Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-border-control`, the neutral dot; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`. */
   status?: StatusDotStatus;
   /** A status word from the word-to-tone table, such as "Waiting on you" or "Failed". It sets both the tone and the visible word, so a page never picks its own tone; a qualifier after a comma ("Running, checking the result") rides along. An explicit `status` or `label` wins over what the word supplies. */
   word?: StatusDotWordLabel;
@@ -93,7 +93,7 @@ export interface StatusDotSchemaProps {
   live?: boolean;
   /** Dot size. @default "md" */
   size?: StatusDotSize;
-  /** How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured. @default "muted" */
+  /** How the visible word is coloured: `muted` (the default) leaves a success, neutral, info or pending word muted so the dot carries the tone; `status` paints it in the status's text colour, for a result sentence such as a green "Found 3 tools". Warning and danger words are always coloured. @default "muted" */
   wordTone?: StatusDotWordTone;
   /** Extra classes appended to the root element. */
   class?: string;

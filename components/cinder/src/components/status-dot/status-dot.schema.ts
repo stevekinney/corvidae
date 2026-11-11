@@ -17,7 +17,7 @@ const schema = {
         'accent',
       ],
       description:
-        'Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-status-info-solid`; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`.',
+        'Semantic status. Drives color via `data-cinder-status`; defaults to a neutral dot or derives from `connectionState`. `success` maps to `--cinder-status-success-solid`; `info` maps to `--cinder-border-control`, the neutral dot; `pending` is a hollow ring; `accent` maps to `--cinder-accent-solid`.',
     },
     connectionState: {
       enum: ['connected', 'connecting', 'disconnected', 'error'],
@@ -47,7 +47,7 @@ const schema = {
     wordTone: {
       enum: ['muted', 'status'],
       description:
-        'How the visible word is coloured: `muted` (the default) leaves a success, neutral or pending word muted so the dot carries the tone; `status` paints it in the status\'s text colour, for a result sentence such as a green "Found 3 tools". Warning, danger and info words are always coloured.',
+        'How the visible word is coloured: `muted` (the default) leaves a success, neutral, info or pending word muted so the dot carries the tone; `status` paints it in the status\'s text colour, for a result sentence such as a green "Found 3 tools". Warning and danger words are always coloured.',
       default: 'muted',
     },
     class: {

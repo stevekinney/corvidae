@@ -88,6 +88,8 @@ type StackedListItemBase = ForwardedLiAttributes & {
    * The row's status: a `StatusDot` with its word. It leads the row in a fixed 128px column that
    * every list on every page shares, so titles start at one x position down the list; on a phone
    * it moves to line two, before the meta. The dot and word sit on the first line of the title.
+   * The column is optional: a row with no `status` (and no `statusColumn`) reserves none. A dot
+   * with its word is the documented row status; a tinted Badge or pill is not.
    */
   status?: Snippet;
   /**

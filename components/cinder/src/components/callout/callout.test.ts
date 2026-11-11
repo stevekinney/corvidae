@@ -103,13 +103,23 @@ describe('Callout variants', () => {
     });
   }
 
-  test('defaults data-cinder-variant to "info" when variant is omitted', () => {
+  test('defaults data-cinder-variant to "neutral" when variant is omitted', () => {
     const { container } = render(Callout, {
       props: { children: emptySnippet },
     });
-    expect(container.querySelector('.cinder-callout')?.getAttribute('data-cinder-variant')).toBe(
-      'info',
-    );
+    const root = container.querySelector('.cinder-callout');
+    expect(root?.getAttribute('data-cinder-variant')).toBe('neutral');
+    // The default is untinted: it takes no status-surface class.
+    expect(root?.classList.contains('cinder-_status-surface')).toBe(false);
+  });
+
+  test('a caller that wants the tinted info look passes variant="info"', () => {
+    const { container } = render(Callout, {
+      props: { variant: 'info', children: emptySnippet },
+    });
+    const root = container.querySelector('.cinder-callout');
+    expect(root?.getAttribute('data-cinder-variant')).toBe('info');
+    expect(root?.classList.contains('cinder-_status-surface')).toBe(true);
   });
 });
 
@@ -161,13 +171,30 @@ describe('Callout neutral variant and action', () => {
     expect(bare.container.querySelector('.cinder-callout__action')).toBeNull();
   });
 
-  test('the stylesheet centres the neutral row and pushes the action to the inline end', async () => {
+  test('the stylesheet draws neutral as an icon and muted text with no tint', async () => {
     const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
     const neutral = declarationsFor(css, ".cinder-callout[data-cinder-variant='neutral']");
     expect(neutral.get('align-items')).toBe('center');
-    expect(neutral.get('background')).toBe('var(--cinder-status-neutral-background)');
-    expect(neutral.get('border-color')).toBe('var(--cinder-status-neutral-border)');
-    expect(declarationsFor(css, '.cinder-callout__action').get('margin-inline-start')).toBe('auto');
+    expect(neutral.get('background')).toBe('transparent');
+    expect(neutral.get('border-color')).toBe('transparent');
+    expect(neutral.get('color')).toBe('var(--cinder-text-muted)');
+  });
+
+  test('the stylesheet stacks the action under a message capped at 68ch, in a wrapping row', async () => {
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    const content = declarationsFor(css, '.cinder-callout__content');
+    expect(content.get('max-inline-size')).toBe('68ch');
+    expect(content.get('grid-row')).toBe('1');
+    const action = declarationsFor(css, '.cinder-callout__action');
+    expect(action.get('grid-row')).toBe('2');
+    expect(action.get('grid-column')).toBe('2');
+    expect(action.get('flex-wrap')).toBe('wrap');
+    expect(action.get('margin-inline-start')).toBeUndefined();
+    for (const control of ['button', 'a']) {
+      expect(declarationsFor(css, `.cinder-callout__action ${control}`).get('white-space')).toBe(
+        'nowrap',
+      );
+    }
   });
 });
 

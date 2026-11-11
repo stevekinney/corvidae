@@ -89,7 +89,7 @@
     --cinder-status-dot-color: var(--cinder-text-muted);
   }
 
-  /* Only a word that asks for attention or reports a failure is coloured; success, neutral and
+  /* Only a word that asks for attention or reports a failure is coloured; success, neutral, info and
      pending words stay muted so the dot carries the tone. */
   .cinder-status-dot[data-cinder-status='warning'] {
     --cinder-status-dot-color: var(--cinder-status-warning-solid);
@@ -101,14 +101,12 @@
     --_cinder-status-dot-word-color: var(--cinder-status-danger-text);
   }
 
-  .cinder-status-dot[data-cinder-status='info'] {
-    --cinder-status-dot-color: var(--cinder-status-info-solid);
-    --_cinder-status-dot-word-color: var(--cinder-status-info-text);
-  }
-
-  /* Neutral is a solid control-border dot; pending is the same colour as a hollow ring (drawn by
-     the indicator below), so Waiting and Scheduled read differently from the solid Running dot. */
+  /* Neutral is a solid control-border dot, and so is info (COR-2314): emphasis comes from position
+     and weight, and the accent and status hues are kept for what needs attention, so a Running dot
+     is not a blue point of interest. Pending is the same colour as a hollow ring (drawn by the
+     indicator below), so Waiting and Scheduled read differently from the solid Running dot. */
   .cinder-status-dot[data-cinder-status='neutral'],
+  .cinder-status-dot[data-cinder-status='info'],
   .cinder-status-dot[data-cinder-status='pending'] {
     --cinder-status-dot-color: var(--cinder-border-control);
   }

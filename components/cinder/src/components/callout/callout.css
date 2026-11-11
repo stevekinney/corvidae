@@ -15,9 +15,14 @@
  * ======================================== */
 
   .cinder-callout {
-    display: flex;
-    align-items: flex-start;
-    gap: var(--cinder-space-3);
+    display: grid;
+    /* The glyph and the message share the first row; the action stacks under the message on the
+     * next row (COR-2314). An absent glyph leaves its track at zero width, and the gap is a margin
+     * on the glyph, so nothing is left behind. */
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: 0;
+    row-gap: var(--cinder-space-3);
+    align-items: start;
     inline-size: 100%;
     padding-block: var(--cinder-space-3);
     padding-inline: var(--cinder-space-4);
@@ -39,13 +44,15 @@
  * ---------------------------------------- */
 
   .cinder-callout__icon {
-    flex-shrink: 0;
+    grid-column: 1;
+    grid-row: 1;
     display: inline-flex;
     align-items: center;
     justify-content: center;
     width: 1.25rem;
     height: 1.25rem;
     margin-block-start: var(--cinder-space-0-5);
+    margin-inline-end: var(--cinder-space-3);
     color: inherit;
   }
 
@@ -59,8 +66,11 @@
  * ---------------------------------------- */
 
   .cinder-callout__content {
-    flex: 1;
+    grid-column: 2;
+    grid-row: 1;
     min-width: 0;
+    /* A line of words stays readable: the message never runs wider than 68 characters. */
+    max-inline-size: 68ch;
   }
 
   /* ----------------------------------------
@@ -78,15 +88,23 @@
 
   /* ----------------------------------------
  * Action
- * One link or button at the inline end of the row.
+ * Under the message, in a row that wraps: several actions break onto lines of their own rather
+ * than squeezing, and a button label never wraps inside its button.
  * ---------------------------------------- */
 
   .cinder-callout__action {
-    flex: none;
     display: flex;
+    flex-wrap: wrap;
+    grid-column: 2;
+    grid-row: 2;
     align-items: center;
+    justify-self: start;
     gap: var(--cinder-space-2);
-    margin-inline-start: auto;
+  }
+
+  .cinder-callout__action button,
+  .cinder-callout__action a {
+    white-space: nowrap;
   }
 
   /* ----------------------------------------
@@ -105,15 +123,16 @@
  * See documentation/css-audit/status-triple-equivalence.md for the full table.
  * ---------------------------------------- */
 
-  /* Neutral is a note, not a status, so it takes the neutral tokens instead of the status-surface
-   * recipe, which tints from a status hue. Its row is centred, so the icon and the action line up
-   * with the text however many lines it wraps to. */
+  /* Neutral is a note, not a status, so it is an icon and muted text with no tint, edge or inset
+   * (COR-2314): emphasis comes from position and weight, and a tint is kept for a warning or a
+   * blocking condition. Its row is centred, so the icon lines up with the text however many lines
+   * it wraps to. */
   .cinder-callout[data-cinder-variant='neutral'] {
     align-items: center;
-    border-color: var(--cinder-status-neutral-border);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-status-neutral-background);
-    color: var(--cinder-status-neutral-text);
+    padding-inline: 0;
+    border-color: transparent;
+    background: transparent;
+    color: var(--cinder-text-muted);
   }
 
   .cinder-callout[data-cinder-variant='neutral'] .cinder-callout__icon {

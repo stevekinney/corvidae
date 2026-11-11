@@ -77,7 +77,9 @@
    * change, and each variant paints it in its own background. The `--cinder-status-*-border`
    * tokens are untouched, because Chip and the danger Button still read them. */
 
-  .cinder-badge[data-cinder-variant='neutral'] {
+  /* Info is neutral (COR-2314): the accent and status hues are kept for what needs attention. */
+  .cinder-badge[data-cinder-variant='neutral'],
+  .cinder-badge[data-cinder-variant='info'] {
     background: var(--cinder-status-neutral-background);
     color: var(--cinder-status-neutral-text);
     border-color: var(--cinder-status-neutral-background);
@@ -99,12 +101,6 @@
     background: var(--cinder-status-danger-background);
     color: var(--cinder-status-danger-text);
     border-color: var(--cinder-status-danger-background);
-  }
-
-  .cinder-badge[data-cinder-variant='info'] {
-    background: var(--cinder-status-info-background);
-    color: var(--cinder-status-info-text);
-    border-color: var(--cinder-status-info-background);
   }
 
   .cinder-badge[data-cinder-variant='accent'] {

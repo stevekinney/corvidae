@@ -165,13 +165,16 @@ describe('StatusDot word prop', () => {
 });
 
 describe('info status and the hollow pending ring', () => {
-  test('info renders a solid blue dot with a default word', () => {
+  test('info renders a solid neutral dot with a default word', () => {
     const { container } = render(StatusDot, { props: { status: 'info' } });
     expect(rootOf(container).getAttribute('data-cinder-status')).toBe('info');
     expect(container.querySelector('.cinder-status-dot__label')?.textContent).toBe('Info');
+    // The info dot shares the neutral rule's control-border colour, never the accent or the info
+    // hue (COR-2314).
     expect(statusCss).toMatch(
-      /data-cinder-status='info'\] \{\s*--cinder-status-dot-color: var\(--cinder-status-info-solid\);/,
+      /data-cinder-status='info'\](?:,[^{]*)? \{\s*--cinder-status-dot-color: var\(--cinder-border-control\);/,
     );
+    expect(statusCss).not.toContain('--cinder-status-info-solid');
   });
 
   test('pending is a 1.5px ring in the control border over a transparent fill', () => {
@@ -196,13 +199,12 @@ describe('status word colour', () => {
   test.each([
     ['warning', '--cinder-status-warning-text'],
     ['danger', '--cinder-status-danger-text'],
-    ['info', '--cinder-status-info-text'],
   ])('a %s word is coloured with %s', (status, token) => {
     const block = statusCss.match(new RegExp(`data-cinder-status='${status}'\\] \\{([^}]*)\\}`));
     expect(block?.[1]).toContain(`--_cinder-status-dot-word-color: var(${token})`);
   });
 
-  test.each(['online', 'offline', 'pending', 'neutral', 'success', 'accent'])(
+  test.each(['online', 'offline', 'pending', 'neutral', 'info', 'success', 'accent'])(
     'a %s word stays muted',
     (status) => {
       const block = statusCss.match(

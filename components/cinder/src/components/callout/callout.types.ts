@@ -8,9 +8,11 @@ import type { HTMLAttributes } from 'svelte/elements';
  * `--cinder-status-danger-solid`). `alert.svelte` uses `error` instead of `danger`;
  * that divergence is tracked in `banner.a11y.md`.
  *
- * `'neutral'` is a plain note that is not a status: a quiet panel for explaining a state, such as
- * why a goal ended, with the neutral tokens instead of a status tint. Its row is vertically
- * centred, so an `icon` and an `action` sit beside the text.
+ * `'neutral'` is the default: a plain note that is not a status, an icon and muted text with no
+ * tint, for explaining a state, such as why a goal ended. Its row is vertically centred, so an
+ * `icon` sits beside the text. The status variants are tinted, so keep them for a warning or a
+ * blocking condition, at most one tinted box on a screen; a caller that wants the old tinted
+ * default passes `variant="info"`.
  */
 export type CalloutVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
 /**
@@ -57,7 +59,7 @@ export type CalloutProps = Omit<
   HTMLAttributes<HTMLElement>,
   'children' | 'class' | 'role' | 'aria-live' | 'aria-atomic' | 'aria-relevant' | 'aria-busy'
 > & {
-  /** Visual + semantic variant. Default `'info'`; `'neutral'` is a plain note with no status tint. */
+  /** Visual + semantic variant. Default `'neutral'`, a quiet note of an icon and muted text with no tint; the status variants are tinted, so keep them for a warning or a blocking condition. */
   variant?: CalloutVariant;
   /** Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark. */
   semantic?: CalloutSemantic;
@@ -86,9 +88,10 @@ export type CalloutProps = Omit<
    */
   icon?: Snippet;
   /**
-   * Optional action rendered at the inline end of the row, usually one `Link` or `Button`, such
-   * as "Open attempt 5". It is interactive content, so it is the one part of a callout a person
-   * can act on; the callout itself stays static.
+   * Optional action rendered under the message, usually one `Link` or `Button`, such as "Open
+   * attempt 5". Several actions sit in a row that wraps, and a button label never wraps. It is
+   * interactive content, so it is the one part of a callout a person can act on; the callout
+   * itself stays static.
    */
   action?: Snippet;
   /** Callout body content. */

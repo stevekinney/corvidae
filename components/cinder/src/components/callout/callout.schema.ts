@@ -12,7 +12,7 @@ const schema = {
     variant: {
       enum: ['neutral', 'info', 'success', 'warning', 'danger'],
       description:
-        "Visual + semantic variant. Default `'info'`; `'neutral'` is a plain note with no status tint.",
+        "Visual + semantic variant. Default `'neutral'`, a quiet note of an icon and muted text with no tint; the status variants are tinted, so keep them for a warning or a blocking condition.",
     },
     semantic: {
       enum: ['aside', 'note'],

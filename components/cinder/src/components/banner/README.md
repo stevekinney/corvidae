@@ -71,7 +71,7 @@ Passing `children` replaces the generated words and keeps everything else; with 
 </Banner>
 ```
 
-When the width runs out (a phone) the message wraps and the actions drop to a line of their own at the right. Below 640px, and on a touch pointer, each action is 44px tall. `stackActions` goes further below 640px: the actions take a row of their own, one above the next, each a full-width button, which is how a phone's restart notice offers Revert and Restart now.
+The actions stack under the message at every width, in a row that wraps, and the message is capped at 68 characters wide; a button label never wraps. Below 640px, and on a touch pointer, each action is 44px tall. `stackActions` goes further below 640px: the actions take a row of their own, one above the next, each a full-width button, which is how a phone's restart notice offers Revert and Restart now.
 
 ## Props
 
