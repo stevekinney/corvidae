@@ -168,6 +168,8 @@ jobs:
     name: Test durations
     needs: [root, tests]
     if: ${{ !cancelled() }}
+    # A duration on a shared runner is a report and never turns the run red; a shard with no report is named in the job's output.
+    continue-on-error: true
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
