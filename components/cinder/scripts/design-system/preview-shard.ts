@@ -11,10 +11,10 @@
  * report file, and exits non-zero when anything failed.
  */
 
-import { sveltePlugin } from '@lostgradient/testing';
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
+import { bundleBrowserScript } from './bundle-build.ts';
 import { examplesRoot } from './paths.ts';
 import {
   escapePreviewScript,
@@ -41,25 +41,8 @@ const plans = new Map(
 async function bundle(plan: PreviewPlan, entryName: string): Promise<string | Error> {
   const entry = join(entries, `${entryName}.ts`);
   writeFileSync(entry, previewEntrySource(plan, examplesRoot));
-  const result = await Bun.build({
-    entrypoints: [entry],
-    format: 'iife',
-    target: 'browser',
-    minify: true,
-    conditions: ['browser', 'svelte'],
-    define: {
-      'process.env.NODE_ENV': '"production"',
-      'import.meta.env.DEV': 'false',
-      'import.meta.env.SSR': 'false',
-    },
-    plugins: [sveltePlugin({ generate: 'client', injectCss: true })],
-    loader: { '.css': 'css' },
-    throw: false,
-  });
-  if (!result.success) return new Error(result.logs.map(String).join(' | ').slice(0, 400));
-  const output = result.outputs.find((artifact) => artifact.path.endsWith('.js'));
-  if (!output) return new Error('the bundle produced no script');
-  return escapePreviewScript(await output.text());
+  const code = await bundleBrowserScript(entry);
+  return code instanceof Error ? code : escapePreviewScript(code);
 }
 
 const report: ShardReport = { built: {}, failures: [] };

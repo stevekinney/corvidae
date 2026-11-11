@@ -3,6 +3,14 @@
  * plan for publishing the folder in batches.
  */
 
+import { BUNDLE_NAMESPACE } from './bundle.ts';
+
+/** The libraries the design system loads before `components/bundle.js`: React 18, as it reads. */
+export const BUNDLE_LIBRARIES = [
+  { name: 'react', version: '18' },
+  { name: 'react-dom', version: '18' },
+];
+
 const ONES = [
   'zero',
   'one',
@@ -81,11 +89,11 @@ export function designSystemIndex(facts: IndexFacts): Record<string, unknown> {
     layout: 'files',
     createdOnFiles: { v: 1, at: facts.at },
     title: 'Cinder',
-    // No namespace: a namespaced system expects a shared `components/bundle.js`, and without one
-    // the Design System page renders every card static and blank. Cinder's cards each load their
-    // own `preview.js` instead.
-    namespace: null,
-    libraries: [],
+    // The namespace is the global `components/bundle.js` assigns. The bundle reads React 18 from
+    // the page, so the libraries name it for the page to load; a design canvas supplies its own.
+    // Each card still loads its own `preview.js`, which needs neither.
+    namespace: BUNDLE_NAMESPACE,
+    libraries: BUNDLE_LIBRARIES,
     sections: {},
     groups: [],
     assetGroups: {},

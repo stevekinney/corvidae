@@ -118,7 +118,7 @@ The root `lint:root` guard `scripts/check-middle-dot-separators.ts` fails on a m
 
 ## Design system
 
-Cinder's design system for Claude Design is generated from this workspace: the tokens from `src/tokens/resolved/`, a guideline page per component from `components.json` and the component's README, and a preview card per component that mounts up to four of its playground examples. Build it after Cinder changes. From the Corvidae root:
+Cinder's design system for Claude Design is generated from this workspace: the tokens from `src/tokens/resolved/`, a guideline page per component from `components.json` and the component's README, a preview card per component that mounts up to four of its playground examples, and `components/bundle.js`, one script that exposes every component as `window.Cinder` so a design canvas mounts the real components. Each `Cinder.<Export>` is a React component over the Svelte one, built by `scripts/design-system/bundle-runtime.svelte.ts`; the canvas supplies React 18, and the bundle carries none. The brand book's "Consuming the components" section shows a canvas using it. Build it after Cinder changes. From the Corvidae root:
 
 ```bash
 bun run --filter=@lostgradient/cinder design-system:build

@@ -1,7 +1,8 @@
 /**
  * Builds Cinder's design system for Claude Design: a publishable `project/` folder holding the
- * token files, the brand book, a guideline page per component, and a live preview card for every
- * component with playground examples.
+ * token files, the brand book, a guideline page per component, a live preview card for every
+ * component with playground examples, and `components/bundle.js`, which exposes every component
+ * as `window.Cinder` for a design canvas to mount.
  *
  * Usage: bun scripts/design-system/build.ts [--out <directory>] [--note <text>]
  *
@@ -25,6 +26,8 @@ import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { captureStaticSnapshots, checkRenders } from './browser.ts';
+import { buildComponentBundle } from './bundle-build.ts';
+import type { BundleSource } from './bundle.ts';
 import {
   componentReadme,
   livePreviewHtml,
@@ -156,6 +159,19 @@ async function main(): Promise<number> {
   writeFileSync(
     join(componentsDirectory, 'bundle.css'),
     buildBundleCss(join(cinderRoot, 'src/styles/all.css')),
+  );
+
+  step('bundle.js');
+  const bundleSources: BundleSource[] = [
+    {
+      entry: join(cinderRoot, 'src/index.ts'),
+      names: manifest.components.map((component) => component.exportName),
+      lazy: false,
+    },
+  ];
+  writeFileSync(
+    join(componentsDirectory, 'bundle.js'),
+    await buildComponentBundle(bundleSources, join(workDirectory, 'bundle')),
   );
 
   const plans = new Map<string, PreviewPlan>();

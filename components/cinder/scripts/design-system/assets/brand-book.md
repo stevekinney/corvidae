@@ -66,9 +66,31 @@ Cinder ships no general-purpose icon set. Icons come from Lucide (`@lucide/svelt
 - A design built with this system should use these components and tokens as they are. A finding a component, default or token can absorb belongs in Cinder, not in a one-off page fix.
 - This system is generated from the repository and is read-only here. To change it, change Cinder and regenerate.
 
+## Consuming the components
+
+`components/bundle.js` exposes every component in this system as the global `window.Cinder`, so a design canvas mounts the real components instead of drawing look-alikes in its own markup and CSS. Load `tokens.css`, then `components/bundle.css`, then `components/bundle.js`. The canvas supplies React 18; the bundle carries no React of its own.
+
+- Mount a component by its export name: `Cinder.Button`, `Cinder.Card`, `Cinder.Modal`. Attributes are props, written in kebab case for camelCase props, and element content becomes the component's `children`.
+- A component mounted inside another one's content joins it as it would in Svelte, so `Cinder.TabList` inside `Cinder.Tabs` works.
+- Props update in place: a changed prop re-renders the component and keeps its state. Callbacks are the component's own props, such as `onclick`.
+- A prop that takes a Svelte snippet other than `children`, such as a button's `leadingIcon`, takes no canvas content. Use the component's string props, such as `label`, `title` and `description`, instead.
+- Without React, `Cinder.mount('Button', element, { label: 'Save' })` mounts a component into a DOM element and returns `update(props)` and `destroy()`. `Cinder.componentNames` lists every name.
+
+A canvas artboard with Cinder installed under `ds/cinder/`:
+
+```html
+<link rel="stylesheet" href="ds/cinder/tokens.css">
+<link rel="stylesheet" href="ds/cinder/components/bundle.css">
+<script src="ds/cinder/components/bundle.js"></script>
+
+<x-import component-from-global-scope="Cinder.Card" title="Inbox" description="Three items to process">
+  <x-import component-from-global-scope="Cinder.Button" variant="primary">Process inbox</x-import>
+</x-import>
+```
+
 ## Not synced
 
-- **Shared bundle.** Cinder is a Svelte 5 library, so this system has no `components/bundle.js` and no React libraries. Each `components/<Name>/preview.js` is its own compiled script that mounts up to four of the component's playground examples. To build with Cinder, import it from `@lostgradient/cinder` in the repository.
+- **Previews.** Each card's `components/<Name>/preview.js` is its own compiled script that mounts up to four of the component's playground examples; the cards do not use the bundle.
 - **Static renditions.** {{staticComponents}} bundle editors too large for a preview script, so their cards are static HTML captured from the live component. They look right but don't respond to input.
 - **Parts of compound components.** {{componentsWithoutCard}} sub-components (for example `TabList`, `TableCell` and `DropdownItem`) appear in their parent's preview and have guidelines but no card of their own.
 - **Types, fonts and assets.** There is no `index.d.ts`, because each component's README carries its props table. There are no font files, because Cinder uses system font stacks. There are no logo or icon assets, because Cinder has no mark and takes its icons from Lucide.

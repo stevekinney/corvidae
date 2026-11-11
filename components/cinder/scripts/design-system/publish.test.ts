@@ -48,7 +48,11 @@ describe('designSystemIndex', () => {
       at: '2026-11-09T00:00:00Z',
     });
     expect(index['editing']).toBe('code');
-    expect(index['namespace']).toBeNull();
+    expect(index['namespace']).toBe('Cinder');
+    expect(index['libraries']).toEqual([
+      { name: 'react', version: '18' },
+      { name: 'react-dom', version: '18' },
+    ]);
     expect(index['docs']).toEqual({ readme: 'project/README.md', sections: [] });
     expect(index['lastChange']).toEqual({
       by: 'A',
