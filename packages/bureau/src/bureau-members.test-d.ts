@@ -126,6 +126,7 @@ export type InternalsMembers = AssertNever<
     | 'taskRetention'
     | 'webhookNotifier'
     | 'scorerSampler'
+    | 'pendingScheduledTaintCount'
     | 'auditTrail'
     | 'abortingTasks'
     | 'whenTaskRecorded'

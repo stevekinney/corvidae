@@ -3034,6 +3034,11 @@ async function buildRuntimeComposition(
     }
   }
 
+  // Declared before any await in composition: a schedule fire can settle while it is running.
+  const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
+  const pendingTaintKey = (sessionId: string, runId: string): string =>
+    `${sessionId}\u0000${runId}`;
+
   /**
    * COR-1482: tells the host a schedule fire's run has ended. The settlement is a record about a
    * run that already ended, so a host that cannot write it is diagnosed, never thrown into the
@@ -3406,9 +3411,6 @@ async function buildRuntimeComposition(
    * COR-2105 — the seed and the write-back of one run of `sessionId`: the taint the session holds
    * in `metadata`, and an `onTainted` that stores a new one and publishes `session.tainted` once.
    */
-  const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
-  const pendingTaintKey = (sessionId: string, runId: string): string =>
-    `${sessionId}\u0000${runId}`;
   function sessionTaintSeamFor(
     sessionId: string,
     runId: string,
