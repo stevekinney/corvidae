@@ -39,13 +39,13 @@
     </SecretValueField>
   {:else}
     <span id={labelId} class="ib-hook-secret__label">{copy.secretLabel}</span>
-    <p class="ib-hook-secret__masked" role="group" aria-labelledby={labelId}>
+    <div class="ib-hook-secret__masked" role="group" aria-labelledby={labelId}>
       <span
         class="ib-hook-secret__mask"
         aria-label={copy.secretMasked}
         data-testid="hook-secret-mask">{'••••••••••••••••'}</span
       >
-    </p>
+    </div>
   {/if}
   <div class="ib-hook-secret__actions">
     <Button
@@ -77,10 +77,6 @@
   .ib-hook-secret__label {
     font-size: var(--cinder-text-sm);
     font-weight: 500;
-  }
-
-  .ib-hook-secret__masked {
-    margin: 0;
   }
 
   .ib-hook-secret__mask {
