@@ -14,7 +14,7 @@
     SelectableRow,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { createQuery } from '@tanstack/svelte-query';
 
   import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
@@ -33,7 +33,6 @@
   import ToolPageState from './tool-page-state.svelte';
 
   const copy = CAPABILITIES_COPY;
-  const queryClient = useQueryClient();
   const selectionLocation = routerSelectionLocationFor('/capabilities');
 
   const catalog = createQuery(
@@ -56,9 +55,13 @@
   /** The address names a tool the catalog does not hold. A tool the filter only hides is held. */
   const missing = $derived(asked && !tools.some((tool) => tool.name === requested));
 
-  /** Stops waiting for the tool: the request is dropped and the address no longer names it. */
+  /**
+   * Stops waiting for the tool: the address no longer names it, so the list takes the page's place
+   * while the catalog keeps loading. The request is not cancelled, because cancelling a query that
+   * has never had an answer reverts it to a pending query with nothing in flight, which no load
+   * state can leave.
+   */
   function stopWaiting(): void {
-    void queryClient.cancelQueries({ queryKey: queryKeys.agents.catalog() });
     router.navigate('/capabilities', { replace: true });
   }
 </script>

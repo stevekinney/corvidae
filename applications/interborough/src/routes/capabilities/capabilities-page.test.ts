@@ -3,11 +3,12 @@
  * item beside it, their empty states, and the tab in the address.
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
-import { afterEach, describe, expect, test } from 'bun:test';
-import { tick } from 'svelte';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
+import { flushSync, tick } from 'svelte';
 
 import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
+import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
@@ -394,6 +395,40 @@ describe('a tool’s page', () => {
     await fireEvent.click(await findByRole('link', { name: copy.tool.page.notFound.back }));
     expect(router.pathname).toBe('/capabilities');
     expect(router.search.get('tool')).toBeNull();
+  });
+
+  test('Cancel on the slow-loading line leaves the catalog loading, so the list still arrives', async () => {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const served = serve();
+    const answer = globalThis.fetch;
+    const holdBack = installFetchImplementation(async (input, init) => {
+      await released;
+      return answer(input, init);
+    });
+    restore = () => {
+      holdBack();
+      served.restore();
+    };
+    jest.useFakeTimers();
+    landAt('/capabilities?tool=read-file');
+    const { container, getByRole } = mount();
+    try {
+      flushSync();
+      jest.advanceTimersByTime(10_000);
+      flushSync();
+      await fireEvent.click(getByRole('button', { name: 'Cancel' }));
+      expect(router.search.get('tool')).toBeNull();
+    } finally {
+      jest.useRealTimers();
+    }
+    release();
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="tools-count"]')).not.toBeNull(),
+    );
+    expect(container.querySelector('[data-testid="tool-loading"]')).toBeNull();
   });
 
   test('is the full error state, with a primary Try again, when the tool cannot be loaded', async () => {
