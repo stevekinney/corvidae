@@ -1,4 +1,4 @@
-# ChatConversationList · accessibility
+# ChatConversationList accessibility
 
 ## Pattern
 

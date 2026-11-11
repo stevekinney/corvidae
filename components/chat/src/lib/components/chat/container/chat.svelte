@@ -44,7 +44,8 @@
   } from '../utilities/index.ts';
   import { ChatMessage, ChatDateSeparator } from '../message/index.ts';
   import { ChatInput } from '../input/index.ts';
-  import { DEFAULT_SCROLL_CONFIGURATION } from './scroll-utilities.ts';
+  import { DEFAULT_SCROLL_CONFIGURATION, isAtBottom } from './scroll-utilities.ts';
+  import { ATTENTION_INSET, findAttentionTarget, revealTopShift } from './attention-reveal.ts';
   import { useChatScrollState } from './use-chat-scroll-state.svelte.ts';
   import { useChatUnreadState } from './use-chat-unread-state.svelte.ts';
   import { useChatKeyboardNav } from './use-chat-keyboard-nav.svelte.ts';
@@ -1398,6 +1399,69 @@
       composerStatus?.kind !== 'blocked' &&
       !isComposerNoticeStatus(composerStatus),
   );
+
+  // A pending approval or question taller than the room left would land with only its buttons in
+  // view when the transcript pins to its end. While the transcript sits at its end, the item's top
+  // is lifted into view instead; once the person scrolls, wheels, touches or presses a key in the
+  // transcript, that item is theirs to move, until another one waits.
+  $effect(() => {
+    const scroller = viewport;
+    if (scroller === null || typeof ResizeObserver === 'undefined') return undefined;
+    let target: HTMLElement | null = null;
+    let released = false;
+    let frame = 0;
+    const reveal = (): void => {
+      frame = 0;
+      const next = findAttentionTarget(scroller);
+      if (next !== target) {
+        target = next;
+        released = false;
+      }
+      if (target === null || released) return;
+      const pinned = isAtBottom(
+        {
+          scrollTop: scroller.scrollTop,
+          scrollHeight: scroller.scrollHeight,
+          clientHeight: scroller.clientHeight,
+        },
+        untrack(() => bottomThreshold),
+      );
+      if (!pinned) return;
+      const shift = revealTopShift(
+        scroller.getBoundingClientRect().top,
+        target.getBoundingClientRect().top,
+        ATTENTION_INSET,
+      );
+      if (shift !== 0) scroller.scrollTop += shift;
+    };
+    const schedule = (): void => {
+      if (frame === 0) frame = requestAnimationFrame(reveal);
+    };
+    const release = (): void => {
+      released = target !== null;
+    };
+    const resizes = new ResizeObserver(schedule);
+    resizes.observe(scroller);
+    const changes = new MutationObserver(schedule);
+    changes.observe(scroller, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ['data-cinder-state', 'data-question-phase'],
+    });
+    const inputs = ['wheel', 'touchstart', 'pointerdown', 'keydown'] as const;
+    for (const type of inputs) scroller.addEventListener(type, release, { passive: true });
+    // A pin to the end scrolls without any input from the person: look again after it.
+    scroller.addEventListener('scroll', schedule, { passive: true });
+    schedule();
+    return () => {
+      if (frame !== 0) cancelAnimationFrame(frame);
+      resizes.disconnect();
+      changes.disconnect();
+      for (const type of inputs) scroller.removeEventListener(type, release);
+      scroller.removeEventListener('scroll', schedule);
+    };
+  });
 
   // Follow-ups typed while a run works wait in the Up next drawer, on this page, until the run
   // finishes; only Send now instead hands them to the run as live input (owner decision, COR-2289).

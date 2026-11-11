@@ -76,7 +76,11 @@ describe('a one-click answer is held for a short Undo window', () => {
       'true',
     );
     expect(status(container)?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
-      'Answered Staging · Undo (5 s)',
+      'Answered Staging Undo (5 s)',
+    );
+    // What was answered and the Undo are separate elements, never joined by a separator glyph.
+    expect(status(container)?.querySelector('.chat-question-status-text')?.textContent).toBe(
+      'Answered Staging',
     );
     // One line, and one Undo: the line is the only place the answer can be taken back.
     expect(screen.getAllByRole('button', { name: /Undo/ })).toHaveLength(1);

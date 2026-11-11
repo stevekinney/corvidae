@@ -522,9 +522,7 @@ describe('Chat Remove on a queued follow-up (B06, row 18k)', () => {
     await submitNow(rendered.container, 'Then look up order 4476.');
     await settle();
 
-    expect(queuedRow(rendered.container)?.textContent).toContain(
-      'Queued · sends when the run is ready',
-    );
+    expect(queuedRow(rendered.container)?.textContent).toContain('Queued until the run is ready');
     const id = conversation().ids.at(-1)!;
     await fireEvent.click(removeButton(rendered.container)!);
     await settle();

@@ -18,7 +18,16 @@ describe('ChatInput — shortcut accessibility', () => {
     expect(chatInputSource).toMatch(/shortcut-description/);
     // The hint is for sighted readers; the hidden description is what the controls point at.
     expect(chatInputSource).toMatch(/class="chat-input-hint" aria-hidden="true"/);
-    expect(chatInputSource).toContain('Enter to send · Shift and Enter for a new line');
+    expect(chatInputSource).toContain('Enter to send. Shift and Enter for a new line.');
+  });
+
+  test('draws no keyboard hint and no shortcut words on a touch-only device', () => {
+    const rule = chatInputSource.match(
+      /@media \(hover: none\) and \(pointer: coarse\) \{([\s\S]*?)\n  \}/,
+    );
+    expect(rule?.[1]).toContain('.chat-input-hint[data-chat-keyboard-hint]');
+    expect(rule?.[1]).toContain('.chat-input-format-hint');
+    expect(rule?.[1]).toContain('display: none');
   });
 
   test('renders a visually hidden shortcut description element', () => {

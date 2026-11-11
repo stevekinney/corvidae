@@ -223,6 +223,13 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* The pick hint names number keys; a touch-only device has none at hand, so it is not drawn. */
+@media (hover: none) and (pointer: coarse) {
+  .weft-chat-question__hint {
+    display: none;
+  }
+}
+
 .weft-chat-approval__actions {
   display: flex;
   gap: var(--cinder-space-2);

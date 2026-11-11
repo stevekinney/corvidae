@@ -21,16 +21,23 @@ export function conversation(page: Page): Locator {
 
 /**
  * Opens the composer's Settings control when it has folded Model, Effort and Permissions into one
- * (a composer narrower than 40rem, as at a phone's width), so the three selects are on the page.
- * A composer wide enough to show them beside Send has no such control, and this does nothing.
+ * (a composer narrower than 40rem, as at a phone's width, or one whose values do not fit in full
+ * beside Send), so the three selects are on the page. A composer showing them in the row has no
+ * such control, and this does nothing.
  */
 export async function revealSettings(page: Page): Promise<void> {
   const composer = page.locator('.chat-input').first();
   await expect(composer).toBeVisible();
-  // The composer folds below 40rem (`COMPOSER_FOLD_WIDTH` in `@lostgradient/chat`), of its own width.
-  const box = await composer.boundingBox();
-  if (box === null || box.width >= 40 * 16) return;
   const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
+  // The composer says it has folded (`data-controls-folded`, set by `@lostgradient/chat`) once it
+  // has measured its controls: in the row, or behind Settings.
+  await expect(
+    page
+      .getByRole('combobox', { name: /Permissions/ })
+      .or(settings)
+      .first(),
+  ).toBeVisible();
+  if ((await composer.getAttribute('data-controls-folded')) === null) return;
   if ((await settings.getAttribute('aria-expanded')) !== 'true') await settings.click();
 }
 

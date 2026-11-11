@@ -2,7 +2,11 @@ import { describe, expect, test } from 'bun:test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, relative } from 'node:path';
-import { collectScannedFiles, findMiddleDotSeparators } from './check-middle-dot-separators';
+import {
+  collectScannedFiles,
+  findMiddleDotSeparators,
+  SCANNED_DIRECTORIES,
+} from './check-middle-dot-separators';
 
 // The planted cases spell the character `DOT` and `plant` writes it out, so this file holds no
 // literal middle dot for the guard's own scan to find.
@@ -84,5 +88,20 @@ describe('scanned file discovery', () => {
     } finally {
       rmSync(directory, { recursive: true, force: true });
     }
+  });
+});
+
+describe('scan roots', () => {
+  // Chat draws the composer hint, the queued label and the held answer line Interborough shows, so
+  // a separator written there reaches the person exactly as one written in Cinder would.
+  test('cover both component libraries and the applications that write copy', () => {
+    expect(SCANNED_DIRECTORIES).toEqual(
+      expect.arrayContaining([
+        'components/cinder',
+        'components/chat',
+        'applications/playground',
+        'applications/interborough',
+      ]),
+    );
   });
 });

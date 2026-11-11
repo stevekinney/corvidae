@@ -857,7 +857,7 @@ describe('ChatInput', () => {
       );
       expect(shortcutDescription?.textContent).toContain('Command+Enter or Control+Enter to send');
       expect(target.querySelector('.chat-input-hint')?.textContent).toBe(
-        'Command or Control and Enter to send · Enter for a new line',
+        'Command or Control and Enter to send. Enter for a new line.',
       );
       await fireEvent.input(composer, { target: { value: 'send this' } });
 
@@ -886,7 +886,7 @@ describe('ChatInput', () => {
       const composer = target.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
       await fireEvent.input(composer, { target: { value: 'first\nsecond' } });
       expect(target.querySelector('.chat-input-hint')?.textContent).toBe(
-        'Enter to send · Shift and Enter for a new line',
+        'Enter to send. Shift and Enter for a new line.',
       );
       await fireEvent.keyDown(composer, { key: 'Enter' });
       expect(submitCount).toBe(0);

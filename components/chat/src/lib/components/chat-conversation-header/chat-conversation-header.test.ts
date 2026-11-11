@@ -131,7 +131,13 @@ describe('ChatConversationHeader', () => {
       },
     });
 
-    expect(normalizedText(container)).toBe('Launch support 1 message · active');
+    expect(normalizedText(container)).toBe('Launch support 1 message active');
+    // Each piece is its own element, never joined by a separator glyph.
+    const meta = container.querySelector('.cinder-chat-conversation-header__meta');
+    expect(
+      [...(meta?.children ?? [])].map((child) => child.textContent?.replace(/\s+/g, ' ').trim()),
+    ).toEqual(['1 message', 'active']);
+    expect(meta?.textContent).not.toContain(String.fromCodePoint(0xb7));
     expect(
       container.querySelector('.cinder-chat-conversation-header__meta span[title]'),
     ).toBeNull();

@@ -82,7 +82,8 @@
   >
     {#if note.kind === 'memory'}
       <span class="chat-note__label">Remembered</span>
-      <span>{note.collection} · {note.memoryClass}</span>
+      <span class="chat-note__collection">{note.collection}</span>
+      <span class="chat-note__memory-class">{note.memoryClass}</span>
       {#if href !== undefined}
         <a class="chat-note__link" {href} data-chat-note-link>View</a>
       {/if}

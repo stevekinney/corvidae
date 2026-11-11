@@ -2,7 +2,7 @@
  * The short wait between picking an answer and the run continuing with it.
  *
  * A one-click answer (a choice, a yes or no) cannot be taken back once the agent has it, so the
- * question holds the pick for a few seconds first: the person sees "Answered Staging · Undo (5 s)",
+ * question holds the pick for a few seconds first: the person sees "Answered Staging" beside an Undo (5 s) button,
  * can undo, and the answer goes to the host when the count ends. The count pauses while focus or
  * the pointer is inside the question, so a person reading or reaching for Undo is never raced. An
  * answer still held when the question is torn down is sent at once, never dropped.

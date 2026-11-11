@@ -5,10 +5,10 @@
   /**
    * The words of a one-click answer while it is held (see `undoMilliseconds`) and after it is sent.
    * Each is a function of what the person picked, so a host can say it its own way; the defaults
-   * read "Answered Staging · Undo (5 s)" and then "You answered: Staging".
+   * read "Answered Staging" beside an Undo (5 s) button, and then "You answered: Staging".
    */
   export type ChatQuestionHoldCopy = {
-    /** The words before Undo while the answer is held. Default: `Answered <label> ·`. */
+    /** The words before Undo while the answer is held. Default: `Answered <label>`. */
     held: (label: string, seconds: number) => string;
     /** The Undo action's label, with the seconds left. Default: `Undo (<seconds> s)`. */
     undo: (seconds: number) => string;
@@ -57,7 +57,7 @@
     /**
      * How long a one-click answer (a choice, a yes or no) is held before `onSubmit` is called, in
      * milliseconds. While it is held the choice shows selected and one inline line reads "Answered
-     * Staging · Undo (5 s)"; Undo opens the question again. The count pauses while focus or the
+     * Staging" beside an Undo (5 s) button; Undo opens the question again. The count pauses while focus or the
      * pointer is inside the question, and an answer still held when the question goes away is sent
      * at once. Default `0`: a pick is sent as it is made. Typed and form answers are never held.
      */
@@ -145,7 +145,7 @@
   });
   const announcer = useAnnouncer();
   const copy = $derived<ChatQuestionHoldCopy>({
-    held: (label) => `Answered ${label} ·`,
+    held: (label) => `Answered ${label}`,
     undo: (seconds) => `Undo (${seconds} s)`,
     sent: (label) => `You answered: ${label}`,
     ...holdCopy,

@@ -249,7 +249,7 @@ describe('transcript presentation', () => {
     const queued = message({ metadata: { _deliveryStatus: 'sending' } });
     const without = mount({ message: queued });
     expect(without.container.querySelector('.chat-message-queued-label')?.textContent).toContain(
-      'Queued · sends when the run is ready',
+      'Queued until the run is ready',
     );
     expect(without.container.querySelector('[data-pending]')).not.toBeNull();
     expect(without.queryByRole('button', { name: 'Remove' })).toBeNull();
@@ -331,16 +331,16 @@ describe('transcript presentation', () => {
     const { container, getByRole } = mount({
       message: message({ role: 'system', content: 'You are a refund helper. Be brief.' }),
     });
-    const toggle = getByRole('button', { name: 'Instructions · Show' });
+    const toggle = getByRole('button', { name: 'Instructions' });
     expect(toggle.getAttribute('aria-expanded')).toBe('false');
     const body = container.querySelector('.chat-message-body');
     expect(body?.hasAttribute('hidden')).toBe(true);
     // No time, Copy or other line: the instructions are not a message anyone sent.
     expect(container.querySelector('.chat-message-line')).toBeNull();
     await fireEvent.click(toggle);
-    expect(getByRole('button', { name: 'Instructions · Hide' }).getAttribute('aria-expanded')).toBe(
-      'true',
-    );
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    // The toggle names what it opens; its state is aria-expanded and the chevron, not a word.
+    expect(toggle.textContent?.trim()).toBe('Instructions');
     expect(body?.hasAttribute('hidden')).toBe(false);
     expect(body?.textContent).toContain('You are a refund helper');
   });

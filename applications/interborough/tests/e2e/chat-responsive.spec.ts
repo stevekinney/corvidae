@@ -11,7 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
-import { NAVIGATION_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY, NAVIGATION_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -66,6 +66,30 @@ async function openRefundFromList(page: Page): Promise<void> {
   await expect(page.locator('[data-chat]')).toHaveCount(5);
   await page.locator('[data-chat]').filter({ hasText: REFUND }).getByRole('link').first().click();
   await expect(page.locator('[data-approval-decision]')).toBeVisible();
+}
+
+/**
+ * The waiting approval's title sits inside the transcript's visible box: the transcript, pinned to
+ * its end, lifted the card until its question shows above Deny and Approve.
+ */
+async function expectApprovalTitleInView(page: Page): Promise<void> {
+  const card = page.locator('.cinder-approval-card[data-cinder-state="pending"]').first();
+  const title = card.getByRole('heading').first();
+  await expect(title).toBeVisible();
+  const transcript = page.locator('.chat-timeline').first();
+  await expect
+    .poll(async () => {
+      const [titleBox, transcriptBox] = await Promise.all([
+        title.boundingBox(),
+        transcript.boundingBox(),
+      ]);
+      if (titleBox === null || transcriptBox === null) return false;
+      return (
+        titleBox.y >= transcriptBox.y - 1 &&
+        titleBox.y + titleBox.height <= transcriptBox.y + transcriptBox.height + 1
+      );
+    })
+    .toBe(true);
 }
 
 test.describe('Chat on a phone (04y, 06l, 06m)', () => {
@@ -135,6 +159,21 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     await expect(page).toHaveURL(/\/chats$/);
     await expect(chatList(page)).toBeVisible();
     await expect(page.locator('[data-chat]')).toHaveCount(5);
+  });
+
+  test('opens on the approval with its question in view, not only its buttons', async ({
+    page,
+  }) => {
+    await openRefundFromList(page);
+    await expectApprovalTitleInView(page);
+
+    // With a provider the composer is live and its approval drawer takes more of the screen.
+    const connected = await page.context().newPage();
+    await connectProvider(connected);
+    await open(connected, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(connected.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    await expectApprovalTitleInView(connected);
+    await connected.close();
   });
 
   test('draws Deny and Approve at equal widths and 44px (06m)', async ({ page }) => {
@@ -208,7 +247,75 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
   });
 });
 
+test.describe('The composer at desktop width', () => {
+  test('never cuts a setting to a stub: the values show in full, or fold into Settings', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await open(page, 1280, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    const composer = page.locator('.chat-input').first();
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    const settings = page.getByRole('button', { name: 'Settings: Model, Effort and Permissions' });
+    await expect(
+      page
+        .getByRole('combobox', { name: /Permissions/ })
+        .or(settings)
+        .first(),
+    ).toBeVisible();
+    // Whatever stays in the row is drawn whole: nothing in it is clipped to an ellipsis.
+    const clipped = await composer.locator('.chat-input-footer-left').evaluate((footer) =>
+      [footer, ...footer.querySelectorAll<HTMLElement>('*')]
+        // A visually hidden element is clipped to a pixel on purpose and draws nothing.
+        .filter((element) => element.clientWidth > 1)
+        .filter((element) => element.scrollWidth > element.clientWidth + 1)
+        .map((element) => element.textContent?.trim()),
+    );
+    expect(clipped).toEqual([]);
+    if ((await composer.getAttribute('data-controls-folded')) !== null) {
+      await expect(settings).toBeVisible();
+      await expect(page.getByRole('combobox', { name: /Permissions/ })).toHaveCount(0);
+    }
+  });
+});
+
+test.describe('Keyboard hints on a phone', () => {
+  test('a phone with a mouse names the number keys under a question and the Enter keys under the composer', async ({
+    page,
+  }) => {
+    await connectProvider(page);
+    await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
+    await expect(page.getByRole('button', { name: /Staging/ })).toBeVisible();
+    await expect(page.getByText(CHAT_COPY.pickHint)).toBeVisible();
+  });
+
+  test.describe('on a touch-only device', () => {
+    test.use({ hasTouch: true, isMobile: true });
+
+    test('names no keys: no number-key hint under a question, no Enter hint under the composer', async ({
+      page,
+    }) => {
+      await connectProvider(page);
+      await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.release}`);
+      await expect(page.getByRole('button', { name: /Staging/ })).toBeVisible();
+      await expect(page.getByText(CHAT_COPY.pickHint)).toHaveCount(1);
+      await expect(page.getByText(CHAT_COPY.pickHint)).toBeHidden();
+
+      await open(page, 375, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+      await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+      await expect(page.locator('.chat-input-hint')).toHaveCount(1);
+      await expect(page.locator('.chat-input-hint')).toBeHidden();
+    });
+  });
+});
+
 test.describe('Chat on a tablet (06n)', () => {
+  test('opens on the approval with its question in view, provider connected', async ({ page }) => {
+    await connectProvider(page);
+    await open(page, 768, `/chats/${SAMPLE_WORLD_THREADS.refund}`);
+    await expect(page.getByRole('textbox', { name: 'Message' })).toBeVisible();
+    await expectApprovalTitleInView(page);
+  });
+
   test('shows the list and the conversation side by side, with the one blocked composer row and no agent select', async ({
     page,
   }) => {

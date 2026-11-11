@@ -127,7 +127,7 @@ describe('the live composer', () => {
   test('shows the hint under the box, hides it for hint false, and a status replaces it', async () => {
     const view = render(ChatInput, { id: 'live-hint' });
     expect(view.container.querySelector('.chat-input-hint')?.textContent).toBe(
-      'Enter to send · Shift and Enter for a new line',
+      'Enter to send. Shift and Enter for a new line.',
     );
 
     await view.rerender({ hint: false });
@@ -138,6 +138,18 @@ describe('the live composer', () => {
     expect(view.container.querySelector('.chat-input-status')?.textContent).toBe(
       'A message now steers the run.',
     );
+  });
+
+  test('marks only its own keyboard hint, which a touch-only device does not draw', async () => {
+    const view = render(ChatInput, { id: 'touch-hint' });
+    const hint = () => view.container.querySelector('.chat-input-hint');
+    // The default names keys, so the touch-only rule in the stylesheet hides it by this mark.
+    expect(hint()?.hasAttribute('data-chat-keyboard-hint')).toBe(true);
+
+    await view.rerender({ hint: 'Replies may take a minute.' });
+    // A host's own hint is its words, not keys, and stays on every device.
+    expect(hint()?.textContent?.trim()).toBe('Replies may take a minute.');
+    expect(hint()?.hasAttribute('data-chat-keyboard-hint')).toBe(false);
   });
 
   test('Send is a secondary button with the send glyph and a word, quiet while the box is empty', async () => {

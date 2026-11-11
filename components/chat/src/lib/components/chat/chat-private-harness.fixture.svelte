@@ -1327,7 +1327,7 @@
           </Button>
         {/snippet}
         {#snippet messageStatus({ message }: ChatRowContext)}
-          <span data-testid="harness-message-status" data-message-id={message.id}>·</span>
+          <span data-testid="harness-message-status" data-message-id={message.id}>Seen</span>
         {/snippet}
       </Chat>
     {:else}

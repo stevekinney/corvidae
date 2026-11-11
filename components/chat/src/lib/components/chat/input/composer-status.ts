@@ -118,7 +118,7 @@ export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'note') return status.text;
   if (status.kind === 'waiting') {
     return status.steers
-      ? 'Waiting for your approval · a message now steers the run'
+      ? 'Waiting for your approval. A message now steers the run.'
       : 'Waiting for your approval';
   }
   if (status.kind === 'reconnecting') {
@@ -127,6 +127,6 @@ export function composerStatusText(status: ChatComposerStatus): string {
   }
   const count = Math.max(1, Math.trunc(status.count ?? 1));
   return count === 1
-    ? 'Follow-up queued · sends when the run is ready'
-    : `${count} follow-ups queued · they send when the run is ready`;
+    ? 'Follow-up queued until the run is ready'
+    : `${count} follow-ups queued until the run is ready`;
 }

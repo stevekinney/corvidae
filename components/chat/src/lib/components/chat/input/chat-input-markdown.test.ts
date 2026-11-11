@@ -180,14 +180,14 @@ describe('ChatInput — status line', () => {
     });
     const line = () => container.querySelector('.chat-input-status');
 
-    expect(line()?.textContent).toBe('Waiting for your approval · a message now steers the run');
+    expect(line()?.textContent).toBe('Waiting for your approval. A message now steers the run.');
     expect(line()?.getAttribute('data-chat-composer-status')).toBe('waiting');
 
     await rerender({ id: 'status-line', status: { kind: 'reconnecting', attempt: 3 } });
     expect(line()?.textContent).toBe('Reconnecting… attempt 3');
 
     await rerender({ id: 'status-line', status: { kind: 'queued', count: 2 } });
-    expect(line()?.textContent).toBe('2 follow-ups queued · they send when the run is ready');
+    expect(line()?.textContent).toBe('2 follow-ups queued until the run is ready');
 
     await rerender({ id: 'status-line', status: undefined });
     expect(line()).toBeNull();

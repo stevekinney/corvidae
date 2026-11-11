@@ -57,13 +57,17 @@
       {summary.title}
     </svelte:element>
     <p class="cinder-chat-conversation-header__meta">
-      {summary.messageCount}
-      {summary.messageCount === 1 ? 'message' : 'messages'}
-      <span aria-hidden="true"> · </span>
+      <span>
+        {summary.messageCount}
+        {summary.messageCount === 1 ? 'message' : 'messages'}
+      </span>
       <span class="cinder-chat-conversation-header__status">{summary.status}</span>
       {#if participantLabel}
-        <span aria-hidden="true"> · </span>
-        <span title={fullParticipantLabel} aria-label={fullParticipantLabel}>
+        <span
+          class="cinder-chat-conversation-header__participants"
+          title={fullParticipantLabel}
+          aria-label={fullParticipantLabel}
+        >
           {participantLabel}
         </span>
       {/if}

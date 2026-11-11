@@ -1,4 +1,4 @@
-# ChatConversationHeader · accessibility
+# ChatConversationHeader accessibility
 
 ## Pattern
 

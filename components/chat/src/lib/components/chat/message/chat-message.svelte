@@ -223,6 +223,7 @@
     Popover,
     Progress,
     Quote,
+    ChevronRight,
     RefreshCw,
     RotateCcw,
     WifiOff,
@@ -720,7 +721,7 @@
       {/if}
       <span class="chat-message-not-sent-label" role="status">Not sent</span>
     {:else if isPending}
-      <span class="chat-message-queued-label">Queued · sends when the run is ready</span>
+      <span class="chat-message-queued-label">Queued until the run is ready</span>
       {#if onRemoveQueued}
         <Button
           type="button"
@@ -946,7 +947,8 @@
         aria-controls={`${messageId}-body`}
         onclick={() => (systemOpen = !systemOpen)}
       >
-        Instructions · {systemOpen ? 'Hide' : 'Show'}
+        <ChevronRight class="chat-message-system-chevron" aria-hidden="true" />
+        Instructions
       </button>
     {/if}
 
@@ -2098,6 +2100,9 @@
   }
 
   .chat-message-system-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
     align-self: flex-start;
     padding: 0;
     border: none;
@@ -2111,6 +2116,23 @@
   .chat-message-system-toggle:hover {
     color: var(--cinder-text-default);
     text-decoration: underline;
+  }
+
+  .chat-message-system-toggle :global(.chat-message-system-chevron) {
+    flex: none;
+    inline-size: 12px;
+    block-size: 12px;
+    transition: transform 120ms ease;
+  }
+
+  .chat-message-system-toggle[aria-expanded='true'] :global(.chat-message-system-chevron) {
+    transform: rotate(90deg);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .chat-message-system-toggle :global(.chat-message-system-chevron) {
+      transition: none;
+    }
   }
 
   .chat-message-system-toggle:focus-visible {

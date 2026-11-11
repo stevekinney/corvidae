@@ -88,7 +88,7 @@ describe('Chat composer status and approval row', () => {
 
     expect(statusLine(container)).toBeUndefined();
     expect(container.querySelector('.chat-input-hint')?.textContent).toBe(
-      'Enter to send · Shift and Enter for a new line',
+      'Enter to send. Shift and Enter for a new line.',
     );
   });
 
@@ -162,7 +162,7 @@ describe('Chat composer status and approval row', () => {
       { kind: 'note', text: 'Effort High applies from the next step.' },
       'Effort High applies from the next step.',
     ],
-    [{ kind: 'queued' }, 'Follow-up queued · sends when the run is ready'],
+    [{ kind: 'queued' }, 'Follow-up queued until the run is ready'],
   ] as const)('shows %j under the composer', (composerStatus, text) => {
     const { container } = render(Chat, {
       id: `chat-status-${composerStatus.kind}`,

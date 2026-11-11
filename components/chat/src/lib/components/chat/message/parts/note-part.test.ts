@@ -38,7 +38,10 @@ describe('NotePart', () => {
       href: '/agents/helper/memories',
     });
     expect(container.textContent).toContain('Remembered');
-    expect(container.textContent).toContain('preferences · episodic');
+    // The collection and the class are two elements, never joined by a separator glyph.
+    expect(container.querySelector('.chat-note__collection')?.textContent).toBe('preferences');
+    expect(container.querySelector('.chat-note__memory-class')?.textContent).toBe('episodic');
+    expect(container.textContent).not.toContain(String.fromCodePoint(0xb7));
     const link = container.querySelector('a[data-chat-note-link]');
     expect(link?.getAttribute('href')).toBe('/agents/helper/memories');
   });

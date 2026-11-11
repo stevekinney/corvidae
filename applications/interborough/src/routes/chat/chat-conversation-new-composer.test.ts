@@ -15,9 +15,6 @@ import { chooseOption, optionDescriptions, optionLabels } from './listbox.test-s
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
-// `@lostgradient/chat` words these hints with a middle dot and Interborough does not own that copy yet.
-const CHAT_SEPARATOR = String.fromCodePoint(0xb7);
-
 const SONNET = { provider: 'anthropic', model: 'claude-sonnet-5', displayName: 'Claude Sonnet 5' };
 const HAIKU = { provider: 'anthropic', model: 'claude-haiku-5', displayName: 'Claude Haiku 5' };
 const RUNNER = {
@@ -194,9 +191,11 @@ describe('a new chat with a model agent and a provider', () => {
 
     await waitFor(() => expect(editor(container)).not.toBeNull());
     expect(container.querySelector('.chat-input-format [role="toolbar"]')).not.toBeNull();
-    expect(container.querySelector('.chat-input-format-hint')?.textContent).toBe(
-      `⌘B bold ${CHAT_SEPARATOR} ⌘I italic ${CHAT_SEPARATOR} ⌘E code ${CHAT_SEPARATOR} ⌘⇧K link`,
-    );
+    expect(
+      [...(container.querySelector('.chat-input-format-hint')?.children ?? [])].map(
+        (shortcut) => shortcut.textContent,
+      ),
+    ).toEqual(['⌘B bold', '⌘I italic', '⌘E code', '⌘⇧K link']);
   });
 
   test('keeps the choices until the first message, then applies each under the revision the last left', async () => {

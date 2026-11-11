@@ -85,8 +85,14 @@ describe('the formatting row', () => {
 
     const row = container.querySelector('.chat-input-format')!;
     expect(row.querySelector('[role="toolbar"]')?.getAttribute('aria-label')).toBe('Formatting');
-    expect(row.querySelector('.chat-input-format-hint')?.textContent).toBe(
-      '⌘B bold · ⌘I italic · ⌘E code · ⌘⇧K link',
+    // Each shortcut is its own element, spaced apart, never joined by a separator glyph.
+    expect(
+      [...(row.querySelector('.chat-input-format-hint')?.children ?? [])].map(
+        (shortcut) => shortcut.textContent,
+      ),
+    ).toEqual(['⌘B bold', '⌘I italic', '⌘E code', '⌘⇧K link']);
+    expect(row.querySelector('.chat-input-format-hint')?.textContent).not.toContain(
+      String.fromCodePoint(0xb7),
     );
     expect(row.querySelector('.chat-input-format-hint')?.getAttribute('aria-hidden')).toBe('true');
     // The toolbar left the footer: it is not beside attach and Send any more.

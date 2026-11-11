@@ -24,17 +24,31 @@
     white-space: nowrap;
   }
 
+  /* The count, the status and the participants are each their own element, spaced apart rather
+   * than joined by a separator glyph; the participants give way first when the line is short. */
   .cinder-chat-conversation-header__meta {
+    display: flex;
+    gap: var(--cinder-space-3);
     margin: var(--cinder-space-0-5) 0 0;
     overflow: hidden;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    text-overflow: ellipsis;
     white-space: nowrap;
+  }
+
+  .cinder-chat-conversation-header__meta > span {
+    flex: none;
   }
 
   .cinder-chat-conversation-header__status {
     text-transform: capitalize;
+  }
+
+  .cinder-chat-conversation-header__meta > .cinder-chat-conversation-header__participants {
+    flex: 0 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .cinder-chat-conversation-header__actions {

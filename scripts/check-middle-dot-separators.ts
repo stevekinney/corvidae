@@ -14,7 +14,7 @@
  * `&middot;`, `&#183;` or `&#xb7;`), because they draw the same glyph. Code that must name the
  * character, such as a test asserting its absence, builds it with `String.fromCodePoint(0xb7)`.
  *
- * The scan roots are the code that writes copy for people: Cinder, the playground and
+ * The scan roots are the code that writes copy for people: Cinder, Chat, the playground and
  * Interborough. A line with a genuine non-separator use carries a trailing or preceding
  * `middle-dot-allowed: <reason>` marker whose reason is at least twenty characters; none does
  * today, and an addition needs a reason a reviewer would accept.
@@ -30,6 +30,7 @@ const root = join(import.meta.dir, '..');
 /** Directories scanned, relative to the repository root. */
 export const SCANNED_DIRECTORIES = [
   'components/cinder',
+  'components/chat',
   'applications/playground',
   'applications/interborough',
 ];

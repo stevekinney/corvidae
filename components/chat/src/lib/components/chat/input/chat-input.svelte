@@ -162,7 +162,7 @@
     answering?: boolean;
     /**
      * The line of help under the composer while no status is showing. Default
-     * `Enter to send · Shift and Enter for a new line` (worded for the `submitOn` gesture);
+     * `Enter to send. Shift and Enter for a new line.` (worded for the `submitOn` gesture);
      * `false` hides it.
      */
     hint?: string | false | undefined;
@@ -210,7 +210,7 @@
    * ```
    */
 
-  import { flushSync, untrack } from 'svelte';
+  import { flushSync, tick, untrack } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
   import { useAnnouncer } from '../../../utilities/use-announcer.svelte.ts';
   import { createIdFactory, useStableId } from '../../../utilities/id-factory.ts';
@@ -236,7 +236,7 @@
     composerShortcutFormat,
     highlightComposerMarkdown,
   } from './composer-markdown.ts';
-  import { COMPOSER_FOLD_WIDTH } from './composer-controls.ts';
+  import { composerControlsFold } from './composer-controls.ts';
   import {
     COMPOSER_DISCARD_DRAFT_LABEL,
     composerStatusText,
@@ -266,8 +266,32 @@
   // get a unique suffix rather than a duplicate DOM ID.
   const usedAttachmentIds = new Set<string>();
 
-  /** The words of the shortcuts, drawn at the right of the toolbar while the composer has focus. */
-  const FORMATTING_HINT = '⌘B bold · ⌘I italic · ⌘E code · ⌘⇧K link';
+  /**
+   * The width `element` needs to draw every value in it in full: its width with nothing in it
+   * squeezed, plus what each value that still ends in an ellipsis is short by (a ghost select caps
+   * its value below its text). The style is put back before anything is painted.
+   */
+  function naturalWidth(element: HTMLElement): number {
+    const { flex, inlineSize } = element.style;
+    element.style.flex = 'none';
+    element.style.inlineSize = 'max-content';
+    let width = element.getBoundingClientRect().width;
+    for (const descendant of element.querySelectorAll<HTMLElement>('*')) {
+      // A visually hidden element is clipped to a pixel on purpose and draws nothing.
+      if (descendant.clientWidth <= 1) continue;
+      const shortBy = descendant.scrollWidth - descendant.clientWidth;
+      if (shortBy > 1 && getComputedStyle(descendant).textOverflow === 'ellipsis') width += shortBy;
+    }
+    element.style.flex = flex;
+    element.style.inlineSize = inlineSize;
+    return width;
+  }
+
+  /**
+   * The words of the shortcuts, drawn at the right of the toolbar while the composer has focus. Each
+   * is its own element, spaced apart, never joined by a separator glyph.
+   */
+  const FORMATTING_HINTS = ['⌘B bold', '⌘I italic', '⌘E code', '⌘⇧K link'] as const;
 
   const FORMATTING_BUTTONS = [
     { format: 'bold', label: 'Bold', keyshortcuts: 'Meta+B Control+B', icon: Bold },
@@ -417,22 +441,52 @@
   let editorElement = $state<HTMLTextAreaElement | null>(null);
   let fileInputRef = $state<HTMLInputElement | null>(null);
 
-  // Whether the composer is too narrow for the host's controls, measured against its own width
-  // so a docked side panel and a phone fold them alike. A composer that cannot measure (no
-  // ResizeObserver) draws the full row.
+  // Whether the host's controls fold into one: below the fold width of the composer's own width,
+  // so a docked side panel and a phone fold them alike, and at any width when their values in full
+  // do not fit beside the meter and Send, so a desktop composer never shows them cut to stubs. A
+  // composer that cannot measure (no ResizeObserver) draws the full row.
   let folded = $state(false);
+  let footerLeftElement = $state<HTMLDivElement | null>(null);
   $effect(() => {
     const element = formElement;
+    const footerLeft = footerLeftElement;
     if (element === null || typeof ResizeObserver === 'undefined') return;
     const remInPixels =
       Number.parseFloat(getComputedStyle(document.documentElement).fontSize) || 16;
-    const measure = (width: number): void => {
-      folded = width > 0 && width < COMPOSER_FOLD_WIDTH * remInPixels;
+    // The width the unfolded row needed, kept while it is folded, when it cannot be measured.
+    let neededWidth: number | undefined;
+    let disposed = false;
+    const measure = (): void => {
+      if (disposed) return;
+      const availableWidth = footerLeft?.getBoundingClientRect().width ?? 0;
+      if (footerLeft !== null && !untrack(() => folded)) {
+        neededWidth = naturalWidth(footerLeft);
+      }
+      const next = composerControlsFold({
+        composerWidth: element.getBoundingClientRect().width,
+        remInPixels,
+        availableWidth,
+        neededWidth,
+      });
+      if (next === untrack(() => folded)) return;
+      folded = next;
+      // Unfolded again: measure the full row once it is drawn, before it is painted.
+      if (!next) void tick().then(measure);
     };
-    measure(element.getBoundingClientRect().width);
-    const observer = new ResizeObserver(() => measure(element.getBoundingClientRect().width));
+    measure();
+    const observer = new ResizeObserver(measure);
     observer.observe(element);
-    return () => observer.disconnect();
+    if (footerLeft !== null) observer.observe(footerLeft);
+    // A value the host's controls load or change alters what they need without resizing anything.
+    const mutations = new MutationObserver(measure);
+    if (footerLeft !== null) {
+      mutations.observe(footerLeft, { childList: true, subtree: true, characterData: true });
+    }
+    return () => {
+      disposed = true;
+      observer.disconnect();
+      mutations.disconnect();
+    };
   });
   const controlsContext = $derived<ChatComposerControlsContext>({ folded });
 
@@ -617,10 +671,12 @@
     if (hint === false) return undefined;
     if (hint !== undefined) return hint;
     if (submitOn === 'modifier-enter') {
-      return 'Command or Control and Enter to send · Enter for a new line';
+      return 'Command or Control and Enter to send. Enter for a new line.';
     }
-    return 'Enter to send · Shift and Enter for a new line';
+    return 'Enter to send. Shift and Enter for a new line.';
   });
+  /** Marks the default hint, which names keys, so a touch-only device leaves it out. */
+  const keyboardHint = $derived(hint === undefined ? '' : undefined);
   const blocked = $derived(status?.kind === 'blocked' ? status : undefined);
   /** The neutral bar that replaces the composer for an archived or a read-only chat. */
   const notice = $derived(isComposerNoticeStatus(status) ? status : undefined);
@@ -1518,6 +1574,7 @@
       bind:this={formElement}
       class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
       data-compact={compact || undefined}
+      data-controls-folded={folded || undefined}
       data-ready={(canSubmit && !showStopButton) || undefined}
       method="POST"
       {action}
@@ -1569,7 +1626,9 @@
               </Button>
             {/each}
           </div>
-          <p class="chat-input-format-hint" aria-hidden="true">{FORMATTING_HINT}</p>
+          <p class="chat-input-format-hint" aria-hidden="true">
+            {#each FORMATTING_HINTS as shortcut (shortcut)}<span>{shortcut}</span>{/each}
+          </p>
         </div>
       {/if}
 
@@ -1677,7 +1736,7 @@
 
       <!-- Footer with actions -->
       <div class="chat-input-footer">
-        <div class="chat-input-footer-left">
+        <div class="chat-input-footer-left" bind:this={footerLeftElement}>
           {#if allowAttachments}
             <input
               bind:this={fileInputRef}
@@ -1845,7 +1904,9 @@
     {#if statusText && drawerStatus === undefined}
       <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
     {:else if hintText !== undefined}
-      <p class="chat-input-hint" aria-hidden="true">{hintText}</p>
+      <p class="chat-input-hint" aria-hidden="true" data-chat-keyboard-hint={keyboardHint}>
+        {hintText}
+      </p>
     {/if}
   {/if}
   <!-- Screen reader announcements -->
@@ -2261,11 +2322,14 @@
   }
 
   .chat-input-format-hint {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 0 var(--cinder-space-3);
     min-inline-size: 0;
     margin: 0;
     font-size: var(--cinder-text-xs);
     color: var(--cinder-text-muted);
-    text-align: end;
   }
 
   /* Too narrow for the shortcuts' words: the buttons carry them in their names. */
@@ -2302,6 +2366,15 @@
 
   .chat-input-hint {
     text-align: center;
+  }
+
+  /* A touch-only device has no keys to press: the default keyboard hint and the shortcuts' words are
+   * not drawn there. A host's own hint is its own words and stays. */
+  @media (hover: none) and (pointer: coarse) {
+    .chat-input-hint[data-chat-keyboard-hint],
+    .chat-input-format-hint {
+      display: none;
+    }
   }
 
   /* The blocked row: one compact row the height of the control row, in place of the composer. */

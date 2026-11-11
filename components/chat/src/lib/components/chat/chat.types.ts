@@ -217,7 +217,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   header?: Snippet;
   /** Controls rendered in the composer footer, beside Send. Use it for host-owned controls such as a model `Select`. The snippet takes no arguments, stays interactive while a run streams and while a tool approval is pending, and the caller owns the semantics inside it. When omitted, the composer renders as before. */
   composerActions?: Snippet;
-  /** Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether the composer is narrower than `COMPOSER_FOLD_WIDTH` (`folded`), so a host can draw one Settings control in place of several selects; the footer never wraps. */
+  /** Controls at the start of the composer footer, right after the attach button: the host's own selects for the model, effort and permissions. The snippet stays interactive while a run streams; the caller owns the semantics inside it. It is told whether to fold (`folded`): the composer is narrower than `COMPOSER_FOLD_WIDTH`, or the controls with their values in full do not fit beside the meter and Send, so a host can draw one Settings control in place of several selects; the footer never wraps and never cuts a value to a stub. */
   composerControls?: Snippet<[ChatComposerControlsContext]> | undefined;
   /** The top row inside the composer's border, above the text: the host's own control for who the message goes to, such as an agent select. The snippet takes no arguments, and the caller owns the semantics inside it. */
   composerHeader?: Snippet | undefined;
@@ -235,7 +235,7 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
   composerPlaceholder?: string | undefined;
   /** Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`. */
   composerAnswering?: boolean;
-  /** The line of help under the composer while no status shows. Default `Enter to send · Shift and Enter for a new line`; `false` hides it. */
+  /** The line of help under the composer while no status shows. Default `Enter to send. Shift and Enter for a new line.`; `false` hides it. */
   composerHint?: string | false | undefined;
   /** Toolbar slot at the start of the composer footer, given a `format` command for the composer's selection. */
   composerToolbar?: Snippet<[ChatComposerToolbarContext]>;
