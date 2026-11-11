@@ -203,10 +203,11 @@ test('shows a durable specialist child while held, then restores its completed c
     const childLink = conversation(page).getByRole('link', { name: 'View run' });
     await expect(childLink).toHaveCount(1);
     await expect(conversation(page).getByText(CHAT_PROOF_CHILD, { exact: true })).toHaveCount(1);
-    // The child's card says Running once; the heading above the transcript says it too, for the chat.
-    await expect(
-      page.getByRole('region', { name: 'Chat conversation' }).getByText('Running', { exact: true }),
-    ).toHaveCount(1);
+    // The child's card says Running once; the heading above the transcript says it too, for the chat,
+    // and so does the composer's run toolbar while the run works (COR-2284), and nothing else.
+    const chatRegion = page.getByRole('region', { name: 'Chat conversation' });
+    await expect(chatRegion.locator('.chat-input-running-label')).toHaveText('Running');
+    await expect(chatRegion.getByText('Running', { exact: true })).toHaveCount(2);
     const childHref = await childLink.getAttribute('href');
     expect(childHref).toMatch(/^\/runs\/[^/]+$/);
     childRunId = childHref?.slice('/runs/'.length);

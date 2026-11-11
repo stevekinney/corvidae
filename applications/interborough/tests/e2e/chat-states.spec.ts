@@ -213,8 +213,13 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     // Lookup order says what it found in words, as the board draws it, and took 0.4s.
     await expect(lookup).toContainText('$42.00, delivered Monday, flagged damaged');
     await expect(lookup).toContainText('0.4s');
-    // The reply is stamped with when it was written and the model that wrote it.
-    await expect(conversation.getByText(/10:42 AM\s*Claude Sonnet 5\.5/)).toBeVisible();
+    // The reply is stamped with when it was written and, after Copy and Quote (COR-2281), the
+    // model that wrote it.
+    await expect(
+      conversation
+        .getByRole('group', { name: 'Message details' })
+        .filter({ hasText: /^\s*10:42 AM\s*Copy\s*Quote\s*Claude Sonnet 5\.5/ }),
+    ).toBeVisible();
     // The composer is the one blocked row, not a banner.
     await expect(blockedRow(page)).toContainText('Connect a model provider to chat');
     await expect(blockedRow(page).getByRole('link', { name: 'Connect a provider' })).toBeVisible();

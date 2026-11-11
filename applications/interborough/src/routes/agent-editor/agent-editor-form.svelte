@@ -454,6 +454,15 @@
     justify-content: space-between;
   }
 
+  /* On a short screen (a phone on its side, or a page zoomed in) the bar, the header and the shell's
+     tab bar would cover every field, so the bar ends the form instead of staying in view. */
+  @media (max-height: 480px) {
+    .weft-agent-form__footer {
+      position: static;
+      margin-block-end: 0;
+    }
+  }
+
   .weft-agent-form__a2a {
     display: flex;
     flex-wrap: wrap;

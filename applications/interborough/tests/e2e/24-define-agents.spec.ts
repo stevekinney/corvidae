@@ -205,12 +205,14 @@ test.describe('a new agent', () => {
     // Four titled sections, in the order a person fills them in: a new agent has no Guardrails and
     // limits, which the Access tab sets once it is saved (S31). The tools are a group, so its title
     // is the group's legend rather than a heading.
-    await expect(editor(page).getByRole('heading', { level: 2 })).toHaveText([
-      copy.sections.identity,
-      copy.sections.model,
-      copy.sections.instructions,
-    ]);
+    await expect(
+      editor(page).getByRole('form', { name: copy.formLabel }).getByRole('heading', { level: 2 }),
+    ).toHaveText([copy.sections.identity, copy.sections.model, copy.sections.instructions]);
     await expect(page.getByRole('group', { name: copy.sections.tools })).toBeVisible();
+    // At this width Try it is the panel beside the form, titled by its own heading (row 41n).
+    await expect(
+      page.getByTestId('agent-try-panel').getByRole('heading', { level: 2, name: copy.try.title }),
+    ).toBeVisible();
   });
 
   for (const width of WIDTHS) {
@@ -558,7 +560,9 @@ test.describe('an agent that exists', () => {
     // The agent is in the list until it is deleted.
     await page.goto('/agents');
     await expect(page.locator('[data-agent="e2e-delete"]')).toHaveCount(1);
-    await page.getByRole('link', { name: 'End-to-end agent' }).click();
+    // The row's title is the link to the agent's page; its name carries the identifier beside the
+    // title, and the row's icon buttons are links named after the agent too.
+    await page.getByRole('link', { name: 'End-to-end agent e2e-delete', exact: true }).click();
     await page.getByRole('link', { name: copy.editAction }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-delete\/edit$/);
 

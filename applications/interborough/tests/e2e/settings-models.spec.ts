@@ -438,8 +438,9 @@ test.describe('Settings › Models, manage, replace and remove', () => {
       'data-cinder-variant',
       'danger',
     );
+    // The agents are named in the order the sample world lists them (SHOWCASE_AGENT_IDENTIFIERS).
     await expect(dialog).toContainText(
-      'Tool runner, Request human input, Model switcher and Workflow author stop answering until you add a key. Run now on their schedules is disabled too. Chats and runs stay.',
+      'Tool runner, Request human input, Workflow author and Model switcher stop answering until you add a key. Run now on their schedules is disabled too. Chats and runs stay.',
     );
     await expect(dialog).not.toContainText('Assistant');
     await expect(dialog).not.toContainText('Echo');

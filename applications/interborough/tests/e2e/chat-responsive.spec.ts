@@ -11,6 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import { SAMPLE_NOW, SAMPLE_TIME_ZONE } from '../../fixtures/sample-now.ts';
 import { SAMPLE_WORLD_THREADS } from '../../fixtures/sample-world-records.ts';
+import { NAVIGATION_COPY } from '../../src/app/copy.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
 import { E2E_SHOWCASE_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
@@ -179,10 +180,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     page,
   }) => {
     await openRefundFromList(page);
-    const viewport = page.viewportSize()!;
+    // Under 700 pixels the shell's tab bar holds the bottom edge (COR-2315), so the composer docks on
+    // top of it: the page's own margin and the pane's border lie between them, and nothing else.
+    const tabBar = await boxOf(page.getByRole('navigation', { name: NAVIGATION_COPY.tabBar }));
     const blocked = await boxOf(blockedRow(page));
-    // The page's own margin and the pane's border lie under it, and nothing else.
-    expect(viewport.height - (blocked.y + blocked.height)).toBeLessThan(40);
+    expect(tabBar.y - (blocked.y + blocked.height)).toBeGreaterThanOrEqual(0);
+    expect(tabBar.y - (blocked.y + blocked.height)).toBeLessThan(40);
 
     const connected = await page.context().newPage();
     await connectProvider(connected);
@@ -190,8 +193,12 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
     const composer = connected.getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeVisible();
     const send = await boxOf(connected.getByRole('button', { name: 'Send message' }));
-    // The hint line sits under the composer; the composer's own bottom is within it of the edge.
-    expect(viewport.height - (send.y + send.height)).toBeLessThan(120);
+    // The hint line sits under the composer; the composer's own bottom is within it of the tab bar.
+    const liveTabBar = await boxOf(
+      connected.getByRole('navigation', { name: NAVIGATION_COPY.tabBar }),
+    );
+    expect(liveTabBar.y - (send.y + send.height)).toBeGreaterThanOrEqual(0);
+    expect(liveTabBar.y - (send.y + send.height)).toBeLessThan(120);
     await captureForDesignReview(connected, {
       route: '/chats/:chat',
       state: 'phone conversation, provider connected',

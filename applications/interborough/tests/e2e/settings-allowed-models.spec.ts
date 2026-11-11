@@ -319,16 +319,20 @@ test.describe('Settings at the three widths', () => {
       'Let agents schedule themselves to continue later.',
     );
 
-    // The banner stacks its buttons, each as wide as the banner's words and 44px tall.
+    // The banner stacks its buttons under its words (COR-2314), each as wide as the words' column,
+    // beside the glyph, and 44px tall.
     const banner = page.getByTestId('settings-restart-summary');
     await expect(banner).toContainText('1 change waits for a restart');
-    const bannerBox = await banner.boundingBox();
+    const wordsBox = await banner.locator('.cinder-banner__content').boundingBox();
+    expect(wordsBox).not.toBeNull();
     for (const name of ['Revert 1 change', 'Restart now']) {
       const box = await banner.getByRole('button', { name }).boundingBox();
       expect(Math.round(box?.height ?? 0), `${name} is 44px tall`).toBe(44);
-      // The banner has 16px of padding on each side and no side border.
-      expect(Math.round(box?.width ?? 0), `${name} is full width`).toBe(
-        Math.round((bannerBox?.width ?? 0) - 32),
+      expect(Math.round(box?.x ?? 0), `${name} starts under the words`).toBe(
+        Math.round(wordsBox?.x ?? -1),
+      );
+      expect(Math.round(box?.width ?? 0), `${name} is as wide as the words`).toBe(
+        Math.round(wordsBox?.width ?? -1),
       );
     }
 

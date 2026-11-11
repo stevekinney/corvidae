@@ -34,6 +34,17 @@ const RUNS_ONLY_TONES = {
   'Missed runs': 'warning',
 } as const;
 
+/** The word only Workflows says besides the seven: a file the Bureau cannot use (COR-2021). */
+const WORKFLOWS_ONLY_TONES = {
+  "Can't load": 'danger',
+} as const;
+
+/** The words each page says besides the seven. */
+const EXTRA_TONES: Readonly<Record<string, Readonly<Record<string, string>>>> = {
+  '/runs': RUNS_ONLY_TONES,
+  '/workflows': WORKFLOWS_ONLY_TONES,
+};
+
 const WAITING_THREAD = newThreadId('records-waiting');
 
 test.afterAll(async () => {
@@ -184,7 +195,17 @@ test.describe('the records pages', () => {
     await expect(
       page.locator('[data-agent="demo:assistant"]').getByTestId('agent-needs-you'),
     ).toHaveCount(0);
-    await row.getByTestId('agent-chat-count').click();
+    // The whole row is the link to the agent's page (COR-2020), so its chat count opens the agent
+    // with it: a click on the count lands on the row's link.
+    await expect(row.getByTestId('agent-chat-count')).toBeVisible();
+    const rowLink = row.locator('a.cinder-stacked-list-item__title-link');
+    await expect(rowLink).toHaveAttribute('href', `/agents/${TWO_QUESTIONS_AGENT_NAME}`);
+    const count = await row.getByTestId('agent-chat-count').boundingBox();
+    expect(count).not.toBeNull();
+    await page.mouse.click(
+      (count?.x ?? 0) + (count?.width ?? 0) / 2,
+      (count?.y ?? 0) + (count?.height ?? 0) / 2,
+    );
     await expect(page).toHaveURL(new RegExp(`/agents/${TWO_QUESTIONS_AGENT_NAME}$`));
   });
 
@@ -212,9 +233,10 @@ test.describe('the records pages', () => {
       await expect(page.locator('main [data-cinder-status]').first()).toBeVisible();
       const words = await statusWords(page);
       expect(words.length, path).toBeGreaterThan(0);
-      // Runs also says "Check not met" for a goal's attempt and "Missed runs" for a schedule's misses.
-      const allowed: readonly string[] =
-        path === '/runs' ? [...STATUS_WORDS, ...Object.keys(RUNS_ONLY_TONES)] : STATUS_WORDS;
+      // Runs also says "Check not met" for a goal's attempt and "Missed runs" for a schedule's misses,
+      // and Workflows says "Can't load" for a file the Bureau cannot use.
+      const extra = EXTRA_TONES[path] ?? {};
+      const allowed: readonly string[] = [...STATUS_WORDS, ...Object.keys(extra)];
       for (const word of words) expect(allowed, path).toContain(word);
       const tones = await page
         .locator('main [data-cinder-status][data-status-word]')
@@ -224,10 +246,9 @@ test.describe('the records pages', () => {
             dot.getAttribute('data-cinder-status') ?? '',
           ]),
         );
-      for (const [word, tone] of tones) {
-        expect(tone, `${path}: ${word}`).toBe(
-          { ...AGREED_TONES, ...RUNS_ONLY_TONES }[word as keyof typeof AGREED_TONES],
-        );
+      const agreed = new Map<string, string>(Object.entries({ ...AGREED_TONES, ...extra }));
+      for (const [word = '', tone] of tones) {
+        expect(tone, `${path}: ${word}`).toBe(agreed.get(word));
       }
     }
   });

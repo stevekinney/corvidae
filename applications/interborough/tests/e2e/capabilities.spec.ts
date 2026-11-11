@@ -67,7 +67,8 @@ test.describe('the Tools tab', () => {
       await expect(detail.getByTestId('tool-approval')).toHaveText(
         /Asks: (Never|On changes|Always)/,
       );
-      await expect(detail.getByTestId('tool-source')).toHaveText(/^(Built in|From .+)$/);
+      // The chip's text is its label alone; the space around it is the chip's markup, not a word.
+      await expect(detail.getByTestId('tool-source')).toHaveText(/^\s*(Built in|From \S.*?)\s*$/);
       await expect(detail.getByTestId('tool-input-schema')).toBeVisible();
       await expect(detail.getByTestId('capability-users')).toBeVisible();
       // The open tool is in the address, so the page can be linked.

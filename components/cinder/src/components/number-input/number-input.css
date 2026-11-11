@@ -13,6 +13,13 @@
     max-inline-size: 10rem;
   }
 
+  /* A unit beside the number (an adornment such as "days") takes its own room, so the cap grows
+   * by that much and the digits keep theirs: under 10rem the steppers and the unit would leave a
+   * three-digit value too little to show whole. */
+  :where(.cinder-number-input-field:has(.cinder-number-input__adornment)) {
+    max-inline-size: 14rem;
+  }
+
   .cinder-input-group:has(> .cinder-number-input__input) > .cinder-number-input__input {
     padding-inline-end: var(--cinder-space-2);
   }

@@ -26,15 +26,25 @@ const NOT_ISSUED = 'The refund of order order-1001 was not issued.';
 
 const composer = (page: Page) => page.getByRole('textbox');
 
-/** Sends a follow-up and waits for the Bureau to answer it, so what follows acts on an admitted input. */
+/** The Up next drawer, where a follow-up typed while a run works waits for it (COR-2284). */
+const upNext = (page: Page) => page.locator('[data-chat-follow-up-drawer]');
+
+/**
+ * Sends a follow-up to the run that is going: typed, it waits in Up next, and Send now instead hands
+ * it to the run as live input (COR-2284). Waits for the Bureau to answer the input, so what follows
+ * acts on an admitted input.
+ */
 async function sendFollowUp(page: Page, text: string): Promise<void> {
+  await send(page, text);
+  await expect(upNext(page)).toContainText(text);
   const answered = page.waitForResponse(
     (response) =>
       response.url().endsWith('/bureau/jsonrpc') &&
       (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
   );
-  await send(page, text);
+  await upNext(page).getByRole('button', { name: 'Send now instead' }).click();
   await answered;
+  await expect(upNext(page)).toHaveCount(0);
 }
 
 async function send(page: Page, text: string): Promise<void> {
@@ -171,20 +181,27 @@ test.describe('a tool approval', () => {
     const alert = page.locator('[data-approval-decision]');
     await expect(alert).toBeVisible();
 
-    // The run has stopped on the approval, so nothing is going to deliver this follow-up.
+    // The run has stopped on the approval, so a follow-up typed now waits in Up next for the run
+    // to finish rather than going to it (COR-2284).
     await send(page, 'And one more thing');
-    // The message says "Not sent", and its Retry is in the details beside that word.
-    await page.getByRole('button', { name: 'Not sent: details' }).click();
-    await expect(page.getByRole('button', { name: 'Retry' })).toBeVisible();
-    await page.keyboard.press('Escape');
+    await expect(upNext(page)).toContainText('And one more thing');
     await alert.getByRole('button', { name: 'Approve' }).click();
     await expect(conversation(page).getByText(REFUNDED)).toHaveCount(2);
 
     const opener = starts[0]?.messages.at(-1);
-    const continuation = starts.find((body) => body.resume !== undefined);
+    const continuationIndex = starts.findIndex((body) => body.resume !== undefined);
+    const continuation = starts[continuationIndex];
     expect(opener?.content).toBe('Refund the order');
     expect(continuation?.messages.map((message) => message.id)).toEqual([opener?.id]);
     expect(JSON.stringify(continuation?.messages)).not.toContain('And one more thing');
+    // Once the continued run has finished, the follow-up goes as a turn of its own, after it.
+    await expect(upNext(page)).toHaveCount(0);
+    await expect
+      .poll(() =>
+        starts.findIndex((body) => body.messages.at(-1)?.content === 'And one more thing'),
+      )
+      .toBeGreaterThan(continuationIndex);
+    await expect(conversation(page).getByText('And one more thing')).toHaveCount(1);
   });
 });
 

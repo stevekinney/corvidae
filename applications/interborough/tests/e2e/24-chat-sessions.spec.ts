@@ -7,7 +7,7 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
-import { TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { CHAT_COPY, TASK_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import {
   conversation,
   deleteChats,
@@ -396,13 +396,19 @@ test.describe('a new chat', () => {
 
     await send(page, 'A first message that is refused');
 
-    // The message is kept and marked Not sent; its Retry is in the details the red icon opens (the
-    // transcript presentation of B06), not a button on the row.
-    await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
+    // The chat did not start (design rows 24c and 24r): the line under the composer says so and why,
+    // the typed text stays in the box, and its Retry sends it again. No chat page opens behind it.
+    const failure = page.getByTestId('new-chat-failure');
+    await expect(failure).toHaveRole('alert');
+    await expect(failure).toContainText(
+      `${CHAT_COPY.newChatWelcome.startFailed.lead} The thread is busy. ${CHAT_COPY.newChatWelcome.startFailed.kept}`,
+    );
+    await expect(composer(page)).toHaveValue('A first message that is refused');
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo(?::|%3A)assistant$/);
     refuse = false;
-    await page.getByRole('button', { name: 'Not sent: details' }).click();
-    await page.getByRole('button', { name: 'Retry', exact: true }).click();
+    await failure
+      .getByRole('button', { name: CHAT_COPY.newChatWelcome.startFailed.retry, exact: true })
+      .click();
     await expect(page).toHaveURL(sessionUrl);
     await expect(conversation(page).getByText('Hello from the assistant.')).toBeVisible();
   });

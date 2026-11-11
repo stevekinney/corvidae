@@ -155,13 +155,18 @@ test('offers a branch only on the last reply of a run, not on the earlier reply 
   await page.getByRole('textbox').fill('Start the work');
   await page.getByRole('textbox').press('Enter');
   await expectWaiting(request, 1);
+  // A follow-up typed while the run works waits in Up next; Send now instead hands it to the run
+  // (COR-2284).
+  await page.getByRole('textbox').fill('Also this');
+  await page.getByRole('textbox').press('Enter');
+  const upNext = page.locator('[data-chat-follow-up-drawer]');
+  await expect(upNext).toContainText('Also this');
   const delivered = page.waitForResponse(
     (response) =>
       response.url().endsWith('/bureau/jsonrpc') &&
       (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
   );
-  await page.getByRole('textbox').fill('Also this');
-  await page.getByRole('textbox').press('Enter');
+  await upNext.getByRole('button', { name: 'Send now instead' }).click();
   await delivered;
 
   // While a run is going, no reply offers a branch, whichever run it belongs to.

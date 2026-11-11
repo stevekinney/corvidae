@@ -55,6 +55,20 @@ describe('NumberInput basics', () => {
     expect(css).toMatch(/:where\(\.cinder-number-input-field\)\s*\{[^}]*max-inline-size:\s*10rem;/);
   });
 
+  test('widens the cap for a field with a unit beside the number, so the digits keep their room', async () => {
+    const [css, { container }] = await Promise.all([
+      Bun.file(new URL('./number-input.css', import.meta.url)).text(),
+      Promise.resolve(render(NumberInput, { props: { id: 'n', value: 365, adornment: 'days' } })),
+    ]);
+
+    expect(
+      container.firstElementChild?.querySelector('.cinder-number-input__adornment'),
+    ).not.toBeNull();
+    expect(css).toMatch(
+      /:where\(\.cinder-number-input-field:has\(\.cinder-number-input__adornment\)\)\s*\{[^}]*max-inline-size:\s*14rem;/,
+    );
+  });
+
   test('composes the editable control through Input', () => {
     const { container } = render(NumberInput, { props: { id: 'n', value: 2 } });
 

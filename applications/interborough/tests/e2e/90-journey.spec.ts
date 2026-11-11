@@ -80,14 +80,21 @@ function sessionOf(page: Page): string {
 
 const sessionAddress = /\/chats\/(?!new(?:$|\?))[^/?]+$/;
 
-/** Sends a follow-up and waits for the Bureau to answer it, so what follows acts on an admitted input. */
+/**
+ * Sends a follow-up to the run that is going: typed, it waits in Up next, and Send now instead hands
+ * it to the run as live input (COR-2284). Waits for the Bureau to answer the input, so what follows
+ * acts on an admitted input.
+ */
 async function sendFollowUp(page: Page, text: string): Promise<void> {
+  await send(page, text);
+  const upNext = page.locator('[data-chat-follow-up-drawer]');
+  await expect(upNext).toContainText(text);
   const answered = page.waitForResponse(
     (response) =>
       response.url().endsWith('/bureau/jsonrpc') &&
       (response.request().postData() ?? '').includes('"bureau.contexts.input"'),
   );
-  await send(page, text);
+  await upNext.getByRole('button', { name: 'Send now instead' }).click();
   await answered;
 }
 

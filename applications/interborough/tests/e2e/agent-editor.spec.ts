@@ -8,6 +8,7 @@ import type { APIRequestContext, Page } from '@playwright/test';
 import { existsSync } from 'node:fs';
 
 import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY } from '../../src/app/copy.ts';
+import { agentDuplicatePath } from '../../src/lib/agent-paths.ts';
 import { providerDisplayName } from '../../src/routes/settings/models/format-model.ts';
 import {
   addTools,
@@ -384,8 +385,14 @@ test.describe('Duplicate', () => {
     });
     expect(made.fault).toBeUndefined();
 
+    // A file agent's page offers Edit, not Duplicate (COR-2020: Duplicate is for an agent that
+    // cannot be edited here), so its copy is made from Duplicate's own address.
     await page.goto('/agents/approvals-source');
-    await page.getByRole('link', { name: AGENT_PAGE_COPY.duplicate }).click();
+    await expect(
+      page.getByTestId('agent-header').getByRole('link', { name: AGENT_EDITOR_COPY.editAction }),
+    ).toBeVisible();
+    await expect(page.getByRole('link', { name: AGENT_PAGE_COPY.duplicate })).toHaveCount(0);
+    await page.goto(agentDuplicatePath('approvals-source'));
     await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveValue(
       'approvals-source-copy',
     );

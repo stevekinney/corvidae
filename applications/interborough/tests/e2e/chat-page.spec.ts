@@ -345,6 +345,11 @@ test.describe('an open chat while the server does not answer (16y, 18e)', () => 
     const composerBox = page.getByRole('textbox', { name: /^Message/ });
     await composerBox.fill(followUp);
     await composerBox.press('Enter');
+    // While the approval waits the follow-up waits in Up next (COR-2284); Send now instead hands it
+    // to the run, which is the request the dropped connection fails.
+    const upNext = page.locator('[data-chat-follow-up-drawer]');
+    await expect(upNext).toContainText(followUp);
+    await upNext.getByRole('button', { name: 'Send now instead' }).click();
     await expect(page.getByRole('status').filter({ hasText: 'Not sent' })).toBeVisible();
 
     await page.clock.pauseAt((await page.evaluate(() => Date.now())) + 500);
@@ -854,9 +859,13 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
         `You denied this refund and said: “${NOTE}” I haven’t issued it, and I’ll wait for the claim before trying again.`,
       ),
     ).toBeVisible();
-    // The time and the model are separate items in the footer line (a flex row with a gap), so no
-    // separator is written between them.
-    await expect(conversationArea(page)).toContainText(/10:40 AM\s*Claude Sonnet 5\.5/);
+    // The reply's line reads the time, then Copy and Quote, then the model the host adds (COR-2281);
+    // they are separate items in a flex row with a gap, so no separator is written between them.
+    await expect(
+      conversationArea(page)
+        .getByRole('group', { name: 'Message details' })
+        .filter({ hasText: /^\s*10:40 AM\s*Copy\s*Quote\s*Claude Sonnet 5\.5/ }),
+    ).toHaveCount(1);
     // The composer is the normal live one with Send, and the chat is Done.
     const composer = conversationArea(page).getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeEnabled();

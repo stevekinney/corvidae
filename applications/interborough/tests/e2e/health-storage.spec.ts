@@ -364,13 +364,28 @@ test.describe('Health › Storage on the sample world', () => {
       await expect(pane.getByRole('button')).toContainText(['Copy key', 'Copy value']);
       await expect(pane.getByText('Format version')).toBeVisible();
 
-      const widths = await pane.evaluate((element) => ({
-        pane: element.getBoundingClientRect().width,
-        scroll: element.scrollWidth,
-        page: document.documentElement.scrollWidth,
-        viewport: innerWidth,
-      }));
-      expect(widths.scroll).toBeLessThanOrEqual(Math.ceil(widths.pane));
+      // The key wraps inside the pane, and nothing scrolls sideways: not the pane's own scroller and
+      // not the page. (The pane's scrollWidth is not the measure: a SegmentedControl keeps room for
+      // its focus ring past its edge and hands it back with a negative margin, COR-2312, which
+      // nothing draws in.)
+      const widths = await pane.evaluate((element) => {
+        const key = element.querySelector('[data-testid="storage-key-name"]');
+        let scroller = element.parentElement;
+        while (scroller !== null && !/auto|scroll/.test(getComputedStyle(scroller).overflowX)) {
+          scroller = scroller.parentElement;
+        }
+        return {
+          paneRight: element.getBoundingClientRect().right,
+          keyRight: key?.getBoundingClientRect().right ?? Infinity,
+          keyOverflow: key === null ? Infinity : key.scrollWidth - key.clientWidth,
+          scrollerOverflow: scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth,
+          page: document.documentElement.scrollWidth,
+          viewport: innerWidth,
+        };
+      });
+      expect(widths.keyOverflow).toBeLessThanOrEqual(0);
+      expect(widths.keyRight).toBeLessThanOrEqual(Math.ceil(widths.paneRight));
+      expect(widths.scrollerOverflow).toBeLessThanOrEqual(0);
       expect(widths.page).toBeLessThanOrEqual(widths.viewport);
 
       await pane.getByRole('button', { name: 'Copy key' }).click();

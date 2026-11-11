@@ -18,6 +18,7 @@ import {
   showcaseEnvironment,
   showcaseHookFetch,
   showcaseHostOptions,
+  showcasePlugins,
   splitShowcaseFlag,
 } from './showcase.ts';
 
@@ -188,6 +189,22 @@ describe('showcaseHostOptions', () => {
     ]);
     expect(SHOWCASE_ALERTS.webhooks).toBeUndefined();
     expect(options.storageSizeReportIntervalMilliseconds).toBe(0);
+  });
+
+  test('lists its nine plugins at 1.0.0 each, whatever version a plugin ships at', () => {
+    const plugins = showcasePlugins();
+    expect(plugins.map((entry) => entry.descriptor.name)).toEqual([
+      'inspectors',
+      'anthropic',
+      'openai',
+      'gemini',
+      'typesafe',
+      'guardrails',
+      'voyage',
+      'demo',
+      'ollama',
+    ]);
+    for (const entry of plugins) expect(entry.descriptor.version).toBe('1.0.0');
   });
 
   test('starts at the version the audit log names, 2.4.1 (row 82h)', () => {

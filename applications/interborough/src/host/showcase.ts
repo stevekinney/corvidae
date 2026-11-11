@@ -131,9 +131,10 @@ export function showcaseProviderResolver(
 const SAMPLE_PLUGIN_VERSION = '1.0.0';
 
 /**
- * The entry with its descriptor at {@link SAMPLE_PLUGIN_VERSION}. The provider plugins ship at their
- * own version, and the sample world shows all nine alike; a showcase home is seeded afresh on every
- * start, so no record pins the version it was given here.
+ * The entry with its descriptor at {@link SAMPLE_PLUGIN_VERSION}. Each plugin ships at its own
+ * version, and the sample world shows all nine alike, so a plugin's release never moves the
+ * sample; a showcase home is seeded afresh on every start, so no record pins the version it was
+ * given here.
  */
 function atSampleVersion(entry: BureauPluginEntry): BureauPluginEntry {
   return { ...entry, descriptor: { ...entry.descriptor, version: SAMPLE_PLUGIN_VERSION } };
@@ -153,12 +154,12 @@ export function showcasePlugins(): readonly BureauPluginEntry[] {
     if (entry === undefined) throw new Error(`The workspace ships no plugin named ${name}.`);
     return entry;
   };
-  return [
+  const entries: readonly BureauPluginEntry[] = [
     shippedEntry('inspectors'),
-    atSampleVersion(shippedEntry('anthropic')),
-    atSampleVersion(shippedEntry('openai')),
-    atSampleVersion(shippedEntry('gemini')),
-    atSampleVersion(shippedEntry('typesafe')),
+    shippedEntry('anthropic'),
+    shippedEntry('openai'),
+    shippedEntry('gemini'),
+    shippedEntry('typesafe'),
     { descriptor: guardrails, source: 'package', location: '@lostgradient/plugin-guardrails' },
     { descriptor: voyage, source: 'package', location: '@lostgradient/plugin-voyage' },
     {
@@ -171,6 +172,7 @@ export function showcasePlugins(): readonly BureauPluginEntry[] {
     },
     { descriptor: ollama, source: 'package', location: '@lostgradient/plugin-ollama' },
   ];
+  return entries.map(atSampleVersion);
 }
 
 /**

@@ -95,7 +95,8 @@ test.describe('the list of agents', () => {
       .click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Atool-runner$/);
-    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText(/tool-runner/i);
+    // The picker names the agent as a person reads it, not by its identifier.
+    await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText('Tool runner');
   });
 });
 
