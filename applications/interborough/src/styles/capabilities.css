@@ -52,6 +52,27 @@
   font-size: var(--cinder-text-lg);
 }
 
+/* A tool's name for a person, with its identifier small and monospaced beside it; they wrap apart on a narrow pane. */
+.ib-capability__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-capability__code {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* One muted line, with an inline link when there is something to do about it. */
+.ib-capability__line {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 /* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. */
 .ib-capability__identifier,
 .ib-capability__location,

@@ -14,11 +14,12 @@
     SelectableRow,
     Skeleton,
   } from '@lostgradient/cinder';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
   import { CAPABILITIES_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import { getAgentCatalog } from '../../lib/agent-definitions.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import { router } from '../../lib/router.svelte.ts';
   import {
     matchesFilter,
     tierLabel,
@@ -29,8 +30,10 @@
   } from './capability-presentation.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import ToolDetail from './tool-detail.svelte';
+  import ToolPageState from './tool-page-state.svelte';
 
   const copy = CAPABILITIES_COPY;
+  const queryClient = useQueryClient();
   const selectionLocation = routerSelectionLocationFor('/capabilities');
 
   const catalog = createQuery(
@@ -46,14 +49,30 @@
   let filter = $state('');
   const tools = $derived(catalog.data?.tools ?? []);
   const shown = $derived(tools.filter((tool) => matchesFilter(tool.name, filter)));
+
+  /** The tool the address names (`?tool=`), which is a tool's own page while it loads, fails or is missing. */
+  const requested = $derived(router.search.get('tool'));
+  const asked = $derived(requested !== null && requested !== '');
+  /** The address names a tool the catalog does not hold. A tool the filter only hides is held. */
+  const missing = $derived(asked && !tools.some((tool) => tool.name === requested));
+
+  /** Stops waiting for the tool: the request is dropped and the address no longer names it. */
+  function stopWaiting(): void {
+    void queryClient.cancelQueries({ queryKey: queryKeys.agents.catalog() });
+    router.navigate('/capabilities', { replace: true });
+  }
 </script>
 
 <div class="ib-capabilities__panel" data-testid="tools-panel">
-  {#if catalog.isPending}
+  {#if catalog.isPending && asked}
+    <ToolPageState kind="loading" onCancel={stopWaiting} />
+  {:else if catalog.isPending}
     <div role="status" aria-busy="true" aria-label={copy.tool.loading}>
       <Skeleton height="1.5rem" width="40%" />
       <Skeleton height="12rem" />
     </div>
+  {:else if catalog.isError && asked}
+    <ToolPageState kind="failed" onRetry={() => void catalog.refetch()} />
   {:else if catalog.isError}
     <Alert variant="danger">
       <p class="ib-capabilities__alert-title">{copy.tool.loadFailed.title}</p>
@@ -76,8 +95,6 @@
         key={(tool) => tool.name}
         label={copy.listLabel.tools}
         detailLabel={copy.detailLabel.tools}
-        emptyTitle={copy.emptyDetailTitle}
-        emptyDescription={copy.emptyDetailDescription}
         selectionParameter="tool"
         {selectionLocation}
         storageKey="interborough-capabilities-tools"
@@ -123,6 +140,13 @@
         {/snippet}
         {#snippet detail(tool)}
           <ToolDetail {tool} />
+        {/snippet}
+        {#snippet empty()}
+          {#if missing}
+            <ToolPageState kind="not-found" />
+          {:else}
+            <EmptyState title={copy.emptyDetailTitle} description={copy.emptyDetailDescription} />
+          {/if}
         {/snippet}
       </ListDetail>
     </div>

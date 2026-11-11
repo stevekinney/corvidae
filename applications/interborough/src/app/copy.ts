@@ -5123,19 +5123,15 @@ export const CAPABILITIES_COPY = {
       description: 'No tool name contains what you typed.',
       clear: 'Clear filter',
     },
-    whatItDoes: 'What it does',
-    safety: 'What it may do',
-    approval: 'By default',
-    source: 'Where it comes from',
     inputs: 'Inputs',
     inputsLabel: (name: string): string => `Inputs of ${name}`,
     noInputs: 'This tool takes no inputs.',
     noSchema: 'This tool does not describe its inputs.',
     users: 'Used by',
+    /** Used by when no agent has the tool: one muted line with a link inline, never a centred empty state (rows 30e, 30h, 32j). */
     noUsers: {
-      title: 'No agent uses this tool',
-      description: 'Add it to an agent in the agent editor to put it to work.',
-      action: { label: 'Open agents', href: '/agents' },
+      line: 'No agent has this tool yet.',
+      action: { label: 'Add to an agent', href: '/agents' },
     },
     tier: {
       'read-only': 'Reads only',
@@ -5143,15 +5139,62 @@ export const CAPABILITIES_COPY = {
       dangerous: 'Dangerous',
       unclassified: 'Not classified',
     },
-    tierDescription: {
-      'read-only': 'It looks at things and changes nothing.',
-      mutating: 'It changes things.',
-      dangerous: 'It can do damage that is hard to undo.',
-      unclassified: 'It does not say what it does, so it is treated as one that changes things.',
+    /**
+     * The muted chip row under the description (rows 30a, 30f): the risk, the default asks level and
+     * where the tool comes from. Each chip has a tooltip; none is coloured, because risk is said in
+     * words and a glyph, never in red.
+     */
+    chips: {
+      label: 'About this tool',
+      risk: {
+        'read-only': 'Reads',
+        mutating: 'Changes things',
+        dangerous: 'Dangerous',
+        unclassified: 'Not classified',
+      },
+      riskTooltip: {
+        'read-only': 'Looks at things and changes nothing.',
+        mutating: 'Changes things in what it reaches.',
+        dangerous: 'Can do damage that is hard to undo.',
+        unclassified: 'Does not say what it does, so it is treated as one that changes things.',
+      },
+      asks: (level: string): string => `Asks: ${level}`,
+      /** What each default level does, before the four values that follow it. */
+      asksTooltip: {
+        never: 'Runs without asking.',
+        'on-changes': 'Asks before it changes something, and runs a read without asking.',
+        always: 'Asks before every call.',
+        blocked: 'Never runs.',
+      },
+      asksValues:
+        'The values are Never, On changes, Always and Blocked. A chat’s permission mode never overrides Always or Blocked.',
+      /** The source chip: the MCP server a tool of the host's names, or where else it comes from. */
+      source: {
+        bureau: 'Built in',
+        host: (server: string | undefined): string =>
+          server === undefined ? 'From an MCP server' : `From ${server}`,
+        plugin: (plugin: string): string => `From the ${plugin} plugin`,
+        skill: (skill: string): string => `From the ${skill} skill`,
+      },
+      sourceTooltip: {
+        bureau: 'Ships with Interborough, not from a plugin.',
+        host: 'Comes from a tool source connected to this host.',
+        plugin: 'Comes from a plugin this host runs.',
+        skill: 'Brought by a skill.',
+      },
     },
-    approvals: {
-      allow: 'Runs without asking',
-      ask: 'Asks you first',
+    /** The states of one tool's page that nothing old can fill: loading, failing to load and missing (rows 30k to 30m). */
+    page: {
+      loading: { label: 'Loading this tool', stillLoading: 'Still loading this tool…' },
+      failed: {
+        title: 'This tool couldn’t be loaded',
+        description: 'Interborough didn’t send it back. Nothing changed.',
+      },
+      notFound: {
+        title: 'This tool doesn’t exist',
+        description: 'It may have been removed, or the link is wrong.',
+        back: 'Back to capabilities',
+      },
     },
     /** Where a tool comes from; the host passes Interborough's MCP servers' tools, so its are an MCP server's. */
     sources: {

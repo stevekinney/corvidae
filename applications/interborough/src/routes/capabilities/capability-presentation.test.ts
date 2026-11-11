@@ -3,9 +3,13 @@ import { describe, expect, test } from 'bun:test';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
 import {
-  approvalLabel,
+  asksLabel,
+  asksTooltip,
+  defaultAsks,
   isUntrusted,
   matchesFilter,
+  riskLabel,
+  riskTooltip,
   skillKey,
   skillSourceLabel,
   sourceKindLabel,
@@ -14,11 +18,13 @@ import {
   sourceStateVariant,
   sourceToolStanding,
   sourceToolTier,
-  tierDescription,
   tierLabel,
   tierOf,
   tierVariant,
+  toolHeading,
+  toolSourceChip,
   toolSourceLabel,
+  toolSourceTooltip,
   toolSummary,
   trustLabel,
   unavailableText,
@@ -57,25 +63,83 @@ describe('a tool’s tier', () => {
     expect(tierVariant('unclassified')).toBe('neutral');
   });
 
-  test('has words, a sentence and a badge variant for each tier', () => {
+  test('has words and a badge variant for each tier', () => {
     expect(
       (['read-only', 'mutating', 'dangerous'] as const).map((tier) => [
         tierLabel(tier),
-        tierDescription(tier),
         tierVariant(tier),
       ]),
     ).toEqual([
-      ['Reads only', 'It looks at things and changes nothing.', 'success'],
-      ['Changes things', 'It changes things.', 'warning'],
-      ['Dangerous', 'It can do damage that is hard to undo.', 'danger'],
+      ['Reads only', 'success'],
+      ['Changes things', 'warning'],
+      ['Dangerous', 'danger'],
+    ]);
+  });
+
+  test('has a muted risk word and a tooltip sentence for each tier, never a colour', () => {
+    expect(
+      (['read-only', 'mutating', 'dangerous', 'unclassified'] as const).map((tier) => [
+        riskLabel(tier),
+        riskTooltip(tier),
+      ]),
+    ).toEqual([
+      ['Reads', 'Looks at things and changes nothing.'],
+      ['Changes things', 'Changes things in what it reaches.'],
+      ['Dangerous', 'Can do damage that is hard to undo.'],
+      ['Not classified', 'Does not say what it does, so it is treated as one that changes things.'],
     ]);
   });
 });
 
-describe('a tool’s approval, source and summary', () => {
-  test('say what an agent’s call does by default and where the tool comes from', () => {
-    expect(approvalLabel(TOOL)).toBe('Runs without asking');
-    expect(approvalLabel({ ...TOOL, defaultApproval: 'ask' })).toBe('Asks you first');
+describe('a tool’s default asks level', () => {
+  test('is Never for a read, On changes for a change or an unclassified tool, and Always for a dangerous one', () => {
+    expect(defaultAsks(TOOL)).toBe('never');
+    expect(defaultAsks({ ...TOOL, tier: 'mutating', defaultApproval: 'ask' })).toBe('on-changes');
+    expect(defaultAsks({ ...TOOL, tier: null, defaultApproval: 'ask' })).toBe('on-changes');
+    expect(defaultAsks({ ...TOOL, tier: 'dangerous', defaultApproval: 'ask' })).toBe('always');
+    expect(asksLabel(TOOL)).toBe('Asks: Never');
+    expect(asksLabel({ ...TOOL, tier: 'dangerous', defaultApproval: 'ask' })).toBe('Asks: Always');
+  });
+
+  test('is never Blocked, which belongs to one agent’s file, and its tooltip names the four values', () => {
+    for (const tier of ['read-only', 'mutating', 'dangerous', null] as const) {
+      for (const defaultApproval of ['allow', 'ask'] as const) {
+        expect(defaultAsks({ ...TOOL, tier, defaultApproval })).not.toBe('blocked');
+      }
+    }
+    expect(asksTooltip(TOOL)).toBe(
+      'Runs without asking. The values are Never, On changes, Always and Blocked. A chat’s permission mode never overrides Always or Blocked.',
+    );
+  });
+});
+
+describe('a tool’s source chip and heading', () => {
+  test('says Built in, From the server its name leads with, From the plugin, or From the skill', () => {
+    expect(toolSourceChip({ ...TOOL, source: 'bureau' })).toBe('Built in');
+    expect(toolSourceChip({ ...TOOL, name: 'github__create_issue' })).toBe('From github');
+    expect(toolSourceChip(TOOL)).toBe('From an MCP server');
+    expect(toolSourceChip({ ...TOOL, source: 'plugin', plugin: 'demo' })).toBe(
+      'From the demo plugin',
+    );
+    expect(toolSourceChip({ ...TOOL, source: 'skill', skill: 'lookup' })).toBe(
+      'From the lookup skill',
+    );
+    expect(toolSourceTooltip({ source: 'bureau' })).toBe(
+      'Ships with Interborough, not from a plugin.',
+    );
+  });
+
+  test('is the tool’s title, or its identifier read as words with the plugin or server left off', () => {
+    expect(toolHeading({ name: 'issue-refund', title: 'Issue refund' })).toBe('Issue refund');
+    expect(toolHeading({ name: 'bureau:discover-agents', title: null })).toBe('Discover agents');
+    expect(toolHeading({ name: 'github__create_issue', title: '  ' })).toBe('Create issue');
+    expect(toolHeading({ name: 'read-file', title: null })).toBe('Read file');
+    expect(toolHeading({ name: 'bureau:', title: null })).toBe('bureau:');
+  });
+});
+
+describe('a tool’s source and summary', () => {
+  test('say where the tool comes from', () => {
     expect(toolSourceLabel(TOOL)).toBe('MCP server');
     expect(toolSourceLabel({ ...TOOL, source: 'bureau' })).toBe('Built in');
     expect(toolSourceLabel({ ...TOOL, source: 'plugin', plugin: 'gemini' })).toBe('Plugin gemini');

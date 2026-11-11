@@ -17,12 +17,17 @@ const pageLabels = new SvelteMap<string, string>();
 /** The details popovers pages supply for their own crumb, by the path they belong to. */
 const pageDetails = new SvelteMap<string, Snippet>();
 
+/** The leaves pages supply for an item they hold open under their own path, by that path. */
+const pageLeaves = new SvelteMap<string, string>();
+
 /**
  * The trail for `pathname`: one item for each leading part of the path whose first matching route
  * has a crumb, each linking to its own path except the last, which is the page itself. With
  * `leaf` false there is no page to end the trail, as on an address no route owns, so every item
  * links: the not-found page adds its own "Not found" after them. A page that supplied details for
- * its own path (`usePageDetails`) has them on its entry as the popover that entry opens.
+ * its own path (`usePageDetails`) has them on its entry as the popover that entry opens. A page
+ * that keeps an item open in its address, as Capabilities keeps a tool in `?tool=`, adds that
+ * item as one more entry after its own (`usePageLeaf`), so its own entry links back to it.
  */
 export function breadcrumbTrail(
   pathname: string,
@@ -30,6 +35,7 @@ export function breadcrumbTrail(
   table: readonly RouteDefinition[] = routes,
   leaf = true,
   details: ReadonlyMap<string, Snippet> = pageDetails,
+  leaves: ReadonlyMap<string, string> = pageLeaves,
 ): BreadcrumbItem[] {
   const segments = pathname.split('/').filter((segment) => segment.length > 0);
   const items: { label: string; path: string }[] = [];
@@ -51,6 +57,10 @@ export function breadcrumbTrail(
   if (own?.leafCrumb !== undefined && items.at(-1)?.path === pathname) {
     items.push({ label: own.leafCrumb, path: pathname });
   }
+  const open = leaves.get(pathname);
+  if (open !== undefined && items.at(-1)?.path === pathname) {
+    items.push({ label: open, path: pathname });
+  }
   return items.map((item, index) => {
     if (!leaf || index !== items.length - 1) return { label: item.label, href: item.path };
     const popover = details.get(item.path);
@@ -70,6 +80,23 @@ export function usePageLabel(read: () => { path: string; label: string | undefin
     pageLabels.set(path, label);
     return () => {
       if (pageLabels.get(path) === label) pageLabels.delete(path);
+    };
+  });
+}
+
+/**
+ * Supplies the entry that follows the page's own while the calling component is mounted: the item
+ * the page keeps open in its address (a tool in `/capabilities?tool=`), such as "Discover agents",
+ * or "Not found" for one that is missing. The label is read reactively, and `undefined` adds none.
+ * The page's own entry then links back to the page without the item.
+ */
+export function usePageLeaf(read: () => { path: string; label: string | undefined }): void {
+  $effect(() => {
+    const { path, label } = read();
+    if (label === undefined) return undefined;
+    pageLeaves.set(path, label);
+    return () => {
+      if (pageLeaves.get(path) === label) pageLeaves.delete(path);
     };
   });
 }

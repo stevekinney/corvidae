@@ -49,10 +49,13 @@ test.describe('the Tools tab', () => {
       await page.locator(`[data-tool-row="${tool.name}"]`).click();
       const detail = page.getByTestId('tool-detail');
       await expect(detail).toHaveAttribute('data-tool', tool.name);
-      await expect(detail.getByTestId('tool-approval')).toHaveText(
-        /Runs without asking|Asks you first/,
+      await expect(detail.getByTestId('tool-risk')).toHaveText(
+        /Reads|Changes things|Dangerous|Not classified/,
       );
-      await expect(detail.getByTestId('tool-source')).toHaveText(copy.tool.sources[tool.source]);
+      await expect(detail.getByTestId('tool-approval')).toHaveText(
+        /Asks: (Never|On changes|Always)/,
+      );
+      await expect(detail.getByTestId('tool-source')).toHaveText(/^(Built in|From .+)$/);
       await expect(detail.getByTestId('tool-input-schema')).toBeVisible();
       await expect(detail.getByTestId('capability-users')).toBeVisible();
       // The open tool is in the address, so the page can be linked.

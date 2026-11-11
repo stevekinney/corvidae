@@ -3,11 +3,12 @@
  * tier, default approval and source, and for a skill's trust and why it is unavailable. Every
  * answer is a function of an enumerated value, so a value this build does not know still reads.
  */
-import { CAPABILITIES_COPY } from '../../app/copy.ts';
-import type { AgentCatalog } from '../../lib/agent-definitions.ts';
+import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
+import type { AgentCatalog, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
 import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
+import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 
 /** One tool as the catalog lists it. */
 export type CatalogTool = AgentCatalog['tools'][number];
@@ -36,14 +37,66 @@ export function tierLabel(tier: ToolTier): string {
   return TOOL.tier[tier];
 }
 
-/** A sentence saying what a tier means. */
-export function tierDescription(tier: ToolTier): string {
-  return TOOL.tierDescription[tier];
+/** The word a tool's risk chip shows (design row 30a): muted words, never a colour of their own. */
+export function riskLabel(tier: ToolTier): string {
+  return TOOL.chips.risk[tier];
 }
 
-/** The words for what happens by default when an agent calls the tool. */
-export function approvalLabel(tool: CatalogTool): string {
-  return TOOL.approvals[tool.defaultApproval];
+/** The sentence a risk chip's tooltip says (design row 30f). */
+export function riskTooltip(tier: ToolTier): string {
+  return TOOL.chips.riskTooltip[tier];
+}
+
+/**
+ * The asks level a tool has when an agent's file says nothing about it, in the words Access uses:
+ * a dangerous tool defaults to Always (design row 30i), one that changes something or declares
+ * nothing to On changes, and one that only reads to Never. Blocked is never a default: it belongs
+ * to one agent's file, which the catalog does not carry.
+ */
+export function defaultAsks(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): ToolApproval {
+  if (tool.tier === 'dangerous') return 'always';
+  return tool.defaultApproval === 'ask' ? 'on-changes' : 'never';
+}
+
+/** The words of the asks chip: "Asks: Never". */
+export function asksLabel(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+  return TOOL.chips.asks(AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)]);
+}
+
+/** The sentence the asks chip's tooltip says: what the level does, then the four values. */
+export function asksTooltip(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+  return `${TOOL.chips.asksTooltip[defaultAsks(tool)]} ${TOOL.chips.asksValues}`;
+}
+
+/** The server a tool of the host's belongs to, which its name leads with (`notes__lookup`), or `undefined` when it carries none. */
+function serverOf(tool: Pick<CatalogTool, 'name'>): string | undefined {
+  const index = tool.name.indexOf('__');
+  return index > 0 ? tool.name.slice(0, index) : undefined;
+}
+
+/** The words of the source chip: "Built in", "From notes", "From the Demo plugin". */
+export function toolSourceChip(tool: CatalogTool): string {
+  const chip = TOOL.chips.source;
+  if (tool.source === 'bureau') return chip.bureau;
+  if (tool.source === 'plugin') return chip.plugin(tool.plugin ?? '');
+  if (tool.source === 'skill') return chip.skill(tool.skill ?? '');
+  return chip.host(serverOf(tool));
+}
+
+/** The sentence the source chip's tooltip says. */
+export function toolSourceTooltip(tool: Pick<CatalogTool, 'source'>): string {
+  return TOOL.chips.sourceTooltip[tool.source];
+}
+
+/**
+ * The name a tool's page opens with (design rows 29z, 30g): the tool's own title when it has one,
+ * otherwise its identifier read as words ("bureau:discover-agents" is "Discover agents"), so the
+ * heading is never the identifier itself, which sits small and monospaced beside it.
+ */
+export function toolHeading(tool: Pick<CatalogTool, 'name' | 'title'>): string {
+  if (tool.title !== null && tool.title.trim() !== '') return tool.title.trim();
+  const identifier = tool.name.split(/__|:/).at(-1) ?? '';
+  return identifier.trim() === '' ? tool.name : humanizeName(identifier);
 }
 
 /** The words for where a tool comes from. */

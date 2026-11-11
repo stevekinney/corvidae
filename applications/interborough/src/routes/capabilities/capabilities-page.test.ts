@@ -6,6 +6,7 @@ import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { tick } from 'svelte';
 
+import { breadcrumbTrail } from '../../app/breadcrumbs.svelte.ts';
 import { CAPABILITIES_COPY } from '../../app/copy.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
@@ -136,8 +137,8 @@ describe('the Tools tab', () => {
 
     await fireEvent.click(container.querySelector('[data-tool-row="gemini:search"]')!);
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="tool-source"]')?.textContent).toBe(
-        'Plugin gemini',
+      expect(container.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+        'From the gemini plugin',
       ),
     );
   });
@@ -162,11 +163,17 @@ describe('the Tools tab', () => {
     );
     const detail = container.querySelector('[data-testid="tool-detail"]')!;
     expect(detail.getAttribute('data-tool')).toBe('read-file');
-    expect(detail.textContent).toContain('Reads a file from disk.');
-    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent).toBe(
-      'Runs without asking',
+    // The page says one sentence about the tool: its short description, not the prompt the model reads.
+    expect(detail.querySelector('[data-testid="tool-summary"]')?.textContent).toBe(
+      'Reads one file',
     );
-    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent).toBe('MCP server');
+    expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe('Reads');
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: Never',
+    );
+    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+      'From an MCP server',
+    );
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       'Path',
     );
@@ -194,17 +201,23 @@ describe('the Tools tab', () => {
       if (found === null) throw new Error('the tool is not open yet');
       return found;
     });
-    await findByText(copy.tool.noUsers.title);
-    const empty = detail.querySelector('[data-testid="capability-users"] [data-cinder-kind]');
-    expect(empty?.getAttribute('data-cinder-kind')).toBe('first-use');
+    await findByText(copy.tool.noUsers.line, { exact: false });
+    // One muted line with an inline link, never a centred empty state (rows 30e and 32j).
+    expect(detail.querySelector('[data-testid="capability-users"] [data-cinder-kind]')).toBeNull();
+    const line = detail.querySelector('[data-testid="capability-users-empty"]');
+    expect(line?.textContent).toContain(copy.tool.noUsers.line);
     expect(
-      detail.querySelector(`a[href="${copy.tool.noUsers.action.href}"]`)?.textContent,
+      line?.querySelector(`a[href="${copy.tool.noUsers.action.href}"]`)?.textContent,
     ).toContain(copy.tool.noUsers.action.label);
     expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
       copy.tool.noSchema,
     );
-    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent).toBe(
-      'Asks you first',
+    // A tool that declares no tier asks On changes by default, and its risk is not classified.
+    expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe(
+      'Not classified',
+    );
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: On changes',
     );
     expect(detail.textContent).not.toMatch(/\bNone\b/);
   });
@@ -253,6 +266,155 @@ describe('the Tools tab', () => {
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
     await findByText('read-file');
+  });
+});
+
+/** A tool of an MCP server that deletes things, which has a title of its own and no user. */
+const DELETE_BRANCH = {
+  name: 'github__delete_branch',
+  title: 'Delete branch',
+  description: 'Deletes a branch from a GitHub repository.\nThe rest is for the model.',
+  shortDescription: 'Deletes a branch from a GitHub repository.',
+  inputSchema: {
+    type: 'object',
+    properties: { branch: { type: 'string', description: 'The branch to delete.' } },
+    required: ['branch'],
+  },
+  tier: 'dangerous',
+  defaultApproval: 'ask',
+  source: 'host',
+  plugin: null,
+  users: [],
+};
+
+const openTool = async (path: string) => {
+  landAt(path);
+  const view = mount();
+  const detail = await waitFor(() => {
+    const found = view.container.querySelector('[data-testid="tool-detail"]');
+    if (found === null) throw new Error('the tool is not open yet');
+    return found;
+  });
+  return { ...view, detail };
+};
+
+describe('a tool’s page', () => {
+  test('opens with its name for a person and its identifier beside it, then the sentence, the chips, Used by and Inputs', async () => {
+    restore = serve([...TOOLS, DELETE_BRANCH]).restore;
+    const { detail } = await openTool('/capabilities?tool=github__delete_branch');
+
+    expect(detail.querySelector('h3')?.textContent).toBe('Delete branch');
+    expect(detail.querySelector('[data-testid="tool-identifier"]')?.textContent).toBe(
+      'github__delete_branch',
+    );
+    expect(detail.querySelector('[data-testid="tool-summary"]')?.textContent).toBe(
+      'Deletes a branch from a GitHub repository.',
+    );
+    // A dangerous tool defaults to Always, and says so in words rather than in red.
+    expect(detail.querySelector('[data-testid="tool-risk"]')?.textContent?.trim()).toBe(
+      'Dangerous',
+    );
+    expect(detail.querySelector('[data-testid="tool-approval"]')?.textContent?.trim()).toBe(
+      'Asks: Always',
+    );
+    expect(detail.querySelector('[data-testid="tool-source"]')?.textContent?.trim()).toBe(
+      'From github',
+    );
+    expect(
+      detail.querySelector('[data-testid="tool-risk"]')?.getAttribute('data-cinder-variant'),
+    ).toBe('neutral');
+    // Only the dangerous chip has a shield: the risk chip carries the one icon that means risk.
+    expect(detail.querySelectorAll('.lucide-shield')).toHaveLength(1);
+
+    const order = [
+      detail.querySelector('header'),
+      detail.querySelector('ul[aria-label="About this tool"]'),
+      detail.querySelector('[data-testid="capability-users"]'),
+      detail.querySelector('[data-testid="tool-input-schema"]'),
+    ];
+    for (const [index, element] of order.entries()) {
+      expect(element).not.toBeNull();
+      const next = order[index + 1];
+      if (element !== null && next !== null && next !== undefined) {
+        expect(
+          element.compareDocumentPosition(next) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ).toBeTruthy();
+      }
+    }
+    // The raw schema is the quiet disclosure SchemaView ends with, closed until it is asked for.
+    expect(detail.querySelector('[data-testid="tool-input-schema"]')?.textContent).toContain(
+      'JSON schema',
+    );
+  });
+
+  test('reads a tool with no title of its own by its identifier as words, and ends the breadcrumb with it', async () => {
+    restore = serve().restore;
+    const { detail } = await openTool('/capabilities?tool=read-file');
+
+    expect(detail.querySelector('h3')?.textContent).toBe('Read file');
+    expect(detail.querySelector('[data-testid="tool-identifier"]')?.textContent).toBe('read-file');
+    await waitFor(() =>
+      expect(breadcrumbTrail('/capabilities')).toEqual([
+        { label: 'Capabilities', href: '/capabilities' },
+        { label: 'Read file' },
+      ]),
+    );
+  });
+
+  test('gives each chip a focusable anchor and a tooltip that says what it means', async () => {
+    restore = serve([...TOOLS, DELETE_BRANCH]).restore;
+    const { detail, findByRole } = await openTool('/capabilities?tool=github__delete_branch');
+
+    for (const testId of ['tool-risk', 'tool-approval', 'tool-source']) {
+      expect(detail.querySelector(`[data-testid="${testId}"]`)?.getAttribute('tabindex')).toBe('0');
+    }
+    await fireEvent.focusIn(detail.querySelector('[data-testid="tool-approval"]')!);
+    const tooltip = await findByRole('tooltip');
+    expect(tooltip.textContent).toContain('Asks before every call.');
+    expect(tooltip.textContent).toContain(
+      'The values are Never, On changes, Always and Blocked. A chat’s permission mode never overrides Always or Blocked.',
+    );
+  });
+
+  test('says a missing tool is missing, ends the breadcrumb with Not found, and leads back to the list', async () => {
+    restore = serve().restore;
+    landAt('/capabilities?tool=no-such-tool');
+    const { container, findByRole, findByText } = mount();
+
+    await findByText(copy.tool.page.notFound.title);
+    expect(container.querySelector('[data-testid="tool-not-found"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="tool-detail"]')).toBeNull();
+    await waitFor(() =>
+      expect(breadcrumbTrail('/capabilities')).toEqual([
+        { label: 'Capabilities', href: '/capabilities' },
+        { label: 'Not found' },
+      ]),
+    );
+
+    await fireEvent.click(await findByRole('link', { name: copy.tool.page.notFound.back }));
+    expect(router.pathname).toBe('/capabilities');
+    expect(router.search.get('tool')).toBeNull();
+  });
+
+  test('is the full error state, with a primary Try again, when the tool cannot be loaded', async () => {
+    let fail = true;
+    restore = bureau({
+      'bureau.agents.catalog': () => {
+        if (fail) throw new Error('down');
+        return { models: [], tools: TOOLS };
+      },
+    }).restore;
+    landAt('/capabilities?tool=read-file');
+    const { container, findByRole, findByText } = mount();
+
+    await findByText(copy.tool.page.failed.title);
+    expect(container.querySelector('[data-testid="tool-load-failed"]')).not.toBeNull();
+    expect(container.textContent).toContain(copy.tool.page.failed.description);
+    fail = false;
+    await fireEvent.click(await findByRole('button', { name: 'Try again' }));
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="tool-detail"]')).not.toBeNull(),
+    );
   });
 });
 

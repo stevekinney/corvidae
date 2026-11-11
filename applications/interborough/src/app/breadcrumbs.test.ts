@@ -49,6 +49,21 @@ describe('the breadcrumb trail', () => {
     ]);
   });
 
+  test('a page that keeps an item open in its address adds it after its own entry, which then links back (COR-2022)', () => {
+    const leaves = new Map([['/capabilities', 'Discover agents']]);
+    expect(breadcrumbTrail('/capabilities', NONE, routes, true, new Map(), leaves)).toEqual([
+      { label: 'Capabilities', href: '/capabilities' },
+      { label: 'Discover agents' },
+    ]);
+    // Another page, or a page with no open item, is unchanged.
+    expect(breadcrumbTrail('/agents', NONE, routes, true, new Map(), leaves)).toEqual([
+      { label: 'Agents' },
+    ]);
+    expect(breadcrumbTrail('/capabilities', NONE, routes, true, new Map(), new Map())).toEqual([
+      { label: 'Capabilities' },
+    ]);
+  });
+
   test('a top-level page is its view’s name alone', () => {
     expect(breadcrumbTrail('/agents', NONE)).toEqual([{ label: VIEW_COPY.agents.label }]);
     expect(breadcrumbTrail('/health', NONE)).toEqual([{ label: 'Health' }]);
