@@ -56,18 +56,23 @@ export const SETTING_OWNERS: readonly SettingOwner[] = [
   },
   {
     name: 'retention',
-    module: 'create-bureau.ts',
+    module: 'bureau-seams/maintenance.ts',
     keys: [
       'retention.audit',
       'retention.chats',
       'retention.events',
-      'retention.receipts',
       'retention.memory',
       'retention.logs',
       'retention.notifications',
       'retention.hookDeliveries',
       'retention.checkpoints',
     ],
+    reads: 'literal',
+  },
+  {
+    name: 'receipt retention',
+    module: 'create-bureau.ts',
+    keys: ['retention.receipts'],
     reads: 'literal',
   },
   {
