@@ -535,7 +535,8 @@ test('the browser-fixtures task declares every root file its commands read, and 
     if (seen.has(current)) continue;
     seen.add(current);
     const source = readFileSync(join(root, current), 'utf8');
-    for (const specifier of analyzeSource(current, source).specifiers) {
+    const analysis = analyzeSource(current, source);
+    for (const specifier of analysis.specifiers) {
       const target = resolveSpecifier(current, specifier, paths, workspaces);
       if (target !== null && (target.startsWith(fixturesDirectory) || isRootCode(target))) {
         pending.push(target);
@@ -780,7 +781,8 @@ test('a package task keys on every root script it runs and every root script tho
   // imports, are among its inputs: the package's own files do not change when a root script does.
   // This covers the class for every script of every workspace, not one runner at a time.
   const { discoverWorkspaces, listTree } = await import('./affected-tests.ts');
-  const { analyzeSource, resolveSpecifier } = await import('./affected-tests-graph.ts');
+  const { analyzeSource, owningWorkspace, resolveSpecifier } =
+    await import('./affected-tests-graph.ts');
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const tasks: Record<string, { inputs?: string[] }> = configuration.tasks;
   const workspaces = discoverWorkspaces(root);
@@ -798,9 +800,23 @@ test('a package task keys on every root script it runs and every root script tho
       if (seen.has(current)) continue;
       seen.add(current);
       const source = readFileSync(join(root, current), 'utf8');
-      for (const specifier of analyzeSource(current, source).specifiers) {
+      const analysis = analyzeSource(current, source);
+      for (const specifier of analysis.specifiers) {
         const target = resolveSpecifier(current, specifier, paths, workspaces);
         if (target !== null && isScript(target)) pending.push(target);
+      }
+      // Literal Bun subprocess command arrays name entrypoints outside the import graph.
+      // Other path strings may only be comparisons, so they are not execution edges.
+      for (const command of source.matchAll(/\[\s*['"]bun['"]\s*,\s*['"]([^'"]+\.ts)['"]/g)) {
+        const literal = command[1]!;
+        if (!analysis.pathLiterals.includes(literal)) continue;
+        for (const directory of [
+          posix.dirname(current),
+          owningWorkspace(current, workspaces).directory,
+        ]) {
+          const target = posix.normalize(posix.join(directory, literal));
+          if (paths.has(target) && isScript(target)) pending.push(target);
+        }
       }
     }
     return [...seen].filter(isRootScript);
