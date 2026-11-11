@@ -206,6 +206,34 @@ describe('container command and run arguments', () => {
     expect(containerNameForRun(1, 2)).toBe('corvidae-baselines-1-2');
   });
 
+  it('limits the container to the processors its run holds host slots for', () => {
+    expect(
+      dockerRunArguments({
+        containerName: 'corvidae-baselines-1-2',
+        cpus: 4,
+        imageTag: 'image:tag',
+        outputDirectory: '/tmp/out',
+        command: 'true',
+        environment: {},
+      }),
+    ).toEqual([
+      'run',
+      '--interactive',
+      '--rm',
+      '--init',
+      '--name',
+      'corvidae-baselines-1-2',
+      '--platform',
+      'linux/arm64',
+      '--cpus',
+      '4',
+      '--volume',
+      '/tmp/out:/out',
+      'image:tag',
+      'true',
+    ]);
+  });
+
   it('parses the wrapper flags and forwards the rest', () => {
     expect(
       parseWrapperArguments(['--source', 'abc', '--accept-behavioural-failures', '--grep', 'x']),

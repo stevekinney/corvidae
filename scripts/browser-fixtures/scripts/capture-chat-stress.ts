@@ -62,6 +62,7 @@ import {
   type SourceIdentity,
   type StressProfile,
 } from './chat-stress-plan.ts';
+import { withHostSlots } from '../../host-slots.ts';
 import { prepareManifest } from './prepare-manifest.ts';
 
 /** The one deadline every wait of the run shares. */
@@ -669,4 +670,5 @@ async function main(): Promise<number> {
   return finalSummary.passed ? 0 : 1;
 }
 
-if (import.meta.main) process.exitCode = await main();
+// One headless Chromium takes every image in turn: one host slot.
+if (import.meta.main) process.exitCode = await withHostSlots(1, () => main());

@@ -28,6 +28,7 @@ import { closeSync, existsSync, openSync, readSync } from 'node:fs';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
 import { extname, join, relative, resolve, sep } from 'node:path';
 
+import { withHostSlots } from '../../../scripts/host-slots.ts';
 import { HANG_GUARD_MILLISECONDS } from '../../../testing/testing/src/hang-guard.ts';
 
 /** A board renders as mounted once it holds at least this much text. */
@@ -379,4 +380,5 @@ export async function renderBoards(
   return failures > 0 ? 1 : 0;
 }
 
-if (import.meta.main) process.exitCode = await renderBoards();
+// One headless Chromium renders every board in turn: one host slot.
+if (import.meta.main) process.exitCode = await withHostSlots(1, () => renderBoards());

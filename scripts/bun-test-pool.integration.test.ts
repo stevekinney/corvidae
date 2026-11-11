@@ -861,7 +861,7 @@ describe('running a pooled bun test', () => {
 });
 
 describe('the boundary of the pool', () => {
-  test('tsc, svelte-check and Playwright never take test slots', async () => {
+  test('tsc, svelte-check and Playwright never run through a Bun test wrapper', async () => {
     const manifests = ['package.json'];
     for await (const path of new Bun.Glob(
       '{applications,components,packages,testing,internal,plugins}/*/package.json',

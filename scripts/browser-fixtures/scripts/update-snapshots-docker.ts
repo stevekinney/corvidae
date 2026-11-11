@@ -44,7 +44,9 @@ import {
   type BaselineComponentScope,
   type BaselineProvenance,
 } from './baseline-provenance.ts';
+import { withHostSlots } from '../../host-slots.ts';
 import {
+  CONTAINER_CPUS,
   DOCKERFILE_PATH,
   applyBaselines,
   archiveCommit,
@@ -60,6 +62,7 @@ import {
   hostOwnershipEnvironment,
   parseWrapperArguments,
   readDockerArchitecture,
+  readDockerCpuCount,
   readHostLoad,
   resolveCommit,
   runContainerWithCleanup,
@@ -77,9 +80,23 @@ import {
 import { provenanceComponentScope } from './update-snapshots.ts';
 
 /** Build the renderer image and start an archived container run, recording host load. Shared with the visual run. */
-export async function startRendererRun(
+/**
+ * Builds the renderer image and runs the suite in it, holding one host slot per processor the
+ * container may use (`scripts/host-slots.ts`): {@link CONTAINER_CPUS}, or the Docker VM's count
+ * when that is smaller. The container is limited to the slots it was granted.
+ */
+export function startRendererRun(
   mode: 'update' | 'visual',
   dockerArguments: readonly string[],
+): ReturnType<typeof rendererRun> {
+  const containerCpus = Math.min(CONTAINER_CPUS, readDockerCpuCount() ?? CONTAINER_CPUS);
+  return withHostSlots(containerCpus, (slots) => rendererRun(mode, dockerArguments, slots.count));
+}
+
+async function rendererRun(
+  mode: 'update' | 'visual',
+  dockerArguments: readonly string[],
+  cpus: number,
 ): Promise<{
   exitCode: number;
   sha: string;
@@ -123,6 +140,7 @@ export async function startRendererRun(
     docker,
     dockerRunArguments({
       containerName,
+      cpus,
       imageTag,
       outputDirectory,
       command: containerCommand(mode, options.forwarded),

@@ -7,8 +7,11 @@
  * or `scripts/bun-test-selected.ts` (or, for the few runners that start `bun test` themselves,
  * through {@link runPooledBunTest} directly), and each takes one slot per worker before it starts,
  * so the Bun test workers on the host never exceed the pool's size, whoever starts them. `tsc`,
- * `svelte-check`, oxlint and Playwright start no Bun test worker and stay outside the pool; the
- * host lock, which serializes the heavy stages, and the turbo concurrency cap bound them.
+ * `svelte-check` and oxlint start no Bun test worker and stay outside the pool; the host lock,
+ * which serializes the heavy stages, and the turbo concurrency cap bound them. Browser suites,
+ * captures, the Docker renderer and fan-outs of worker processes take slots from this pool too,
+ * one per process they keep busy, through `scripts/host-slots.ts`
+ * (`documentation/repository/host-admission.md`).
  *
  * The pool lives in the Git common directory, which every worktree shares, as
  * `corvidae-test-slots/`. Each slot is a directory `slot-<i>`, for `i` below the pool's size,

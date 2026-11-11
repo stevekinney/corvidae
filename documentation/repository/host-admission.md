@@ -29,3 +29,42 @@ How each was invoked, how many processes it runs at once and what bounds that, a
 | `applications/interborough/scripts/test-installed-release-browser.ts` | The release workflow, on a runner | One headless Chromium against the installed artifact | Not measured | Neither (runs on a CI runner) |
 | `packages/weft` `test:benchmarks`, `packages/ventriloquist/scripts/pty-spawn-stress.ts`, the `test:a2a-tck` scripts of `packages/weft` and `packages/bureau` | By hand | Benchmark subprocesses, PTY stress children, or one external test kit, one run at a time | Not measured | Neither |
 | `scripts/dev-container.ts` | By hand | The whole development container | Not measured | Neither |
+
+## Admission
+
+`scripts/host-slots.ts` admits the work in the table through the test slot pool, with no new mechanism. A run takes one slot for each process it keeps busy at once, from the same pool and through the same arrival-order queue as every `bun test` worker, so the pool bounds the two together. The pool's size, its admission rule for `bun test` and the host lock are unchanged.
+
+- `withHostSlots(count, run)` holds `count` slots while an in-process `run` resolves, and tells `run` how many it holds. This process is the holder. If it is killed outright, the next waiter reclaims its slots, judged by pid and start time.
+- `runWithHostSlots(count, argv)` and `bun scripts/host-slots.ts --slots=<n> -- <command>` run a command in a process group of their own while holding the slots, and record the group in them, as a pooled `bun test` does. A wrapper killed outright keeps its slots for as long as anything in the group lives, and frees them once the group is gone.
+- A run started inside one that holds slots finds the holder's token in `CORVIDAE_TEST_SLOTS_TOKEN` and runs inside the holder's slots: the pool's nested-run rule. A command run under host slots gets the token, so a `bun test` or a wrapper it starts runs inside them too.
+- A request above the pool's size is clamped to the pool, and the run is told so. Where there is no Git checkout, as inside the renderer container, the run warns and goes ahead without a slot.
+- A slot holder never waits on the host lock, so the pool and the lock cannot deadlock. No wrapped command starts a locked stage.
+
+What each entry point holds now:
+
+- **Covered now.** `update-snapshots-docker.ts` and `run-browser-docker.ts` hold 4 slots (`CONTAINER_CPUS`), or the Docker VM's processor count when that is smaller. They hold them from `docker build` until the container exits, and `docker run` gets `--cpus` equal to the slots granted.
+- **Covered now.** The Cinder design-system build holds 4 slots (`SHARD_COUNT`) while its preview shards run, and runs no more shards than it was granted. It then holds 1 slot for each of its three Chromium phases.
+- **Covered now.** `capture-chat-stress.ts`, `design-review-capture.ts`, `design-review-render-boards.ts` and `test:terminal-browser` each hold 1 slot for the run, since each runs one browser at a time.
+- **Covered now.** Root `test:browser` (and so `test:browser:visual`), `test:browser:preview` and `test:browser:terminal` hold 4 slots, and pin Playwright to `--workers=4`. In the renderer container they run without a slot, inside its `--cpus` limit.
+- **Covered now.** The `test:browser` scripts of Interborough, the playground and the terminal example hold 1 slot each, matching their `workers: 1`.
+- **Already covered.** The locked root stages hold the host lock, and Interborough's UI shards hold test slots. So do the lifecycle tests that drive `run-linux-lifecycle.ts` and `check-static-playground.ts`.
+- **Not covered.** The playground's `test:production`, run by hand, is not covered: its `fullyParallel` run uses Playwright's default worker count, so holding a fixed number of slots needs the worker count pinned inside the gate the lifecycle tests share.
+- **Not covered.** `memory-canary.ts` starts `bun test` directly, because it reads the child's peak memory from `resourceUsage()`. Routing it through the pool's runner means restructuring how it measures.
+- **Not covered.** The playground measurement scripts, the terminal engine probes, the Weft benchmarks, the PTY stress script, the A2A test kits and `dev-container.ts` are research and diagnosis tools, run by hand one at a time. They are left for a change that has a reason to touch them.
+- **Not covered.** `test-installed-release-browser.ts` runs on a CI runner, which has no other session to share with.
+
+`scripts/host-slots.integration.test.ts` proves the behavior:
+
+- A second holder waits while the first holds the pool, and proceeds when it releases.
+- A nested run does not acquire again.
+- A token that names no live holder does not bypass the pool.
+- A holder killed outright has its slots reclaimed.
+- A killed wrapper keeps its slots while its command group lives.
+- Every Playwright script outside the host lock takes host slots.
+
+## Still outside admission
+
+- Work started by hand without the scripts: a bare `bunx playwright test`, `docker run` or `chromium` invocation takes no slot. Neither does any tool outside this repository: another repository's tests, a browser the developer uses, Spotlight and `fseventsd` indexing the worktrees.
+- Work inside a container belongs to the Docker VM, which the slots bound only through `--cpus` on the renderer's `docker run`. A wrapper killed outright frees its slots once its own process is gone, while the container keeps running until `docker run --rm` ends or someone runs `docker kill`. A capture killed outright likewise frees its slot, while a browser it launched exits only when its pipe to the capture closes.
+- A slot stands for one busy process, not one processor. The four preview shards peaked at 657% together, so the build uses more processors than the slots it holds. The pool's size, left at processors minus two, absorbs part of that.
+- Memory is not admitted separately. The pool's size already allows for 3 GiB per slot, but a browser suite's workers and its web server can use more.

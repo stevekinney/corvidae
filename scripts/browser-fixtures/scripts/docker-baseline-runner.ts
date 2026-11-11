@@ -88,6 +88,21 @@ export function readDockerArchitecture(): string | undefined {
   return architecture.length > 0 ? architecture : undefined;
 }
 
+/**
+ * The processors a renderer container may use, and the host slots its run holds
+ * (`scripts/host-slots.ts`): the pool's smallest size, so a run never takes a whole pool, and the
+ * container is limited to them with `--cpus`.
+ */
+export const CONTAINER_CPUS = 4;
+
+/** The Docker VM's processor count, which bounds `--cpus`; undefined when Docker cannot say. */
+export function readDockerCpuCount(): number | undefined {
+  const result = Bun.spawnSync(['docker', 'info', '--format', '{{.NCPU}}']);
+  if (result.exitCode !== 0) return undefined;
+  const count = Number(result.stdout.toString().trim());
+  return Number.isInteger(count) && count > 0 ? count : undefined;
+}
+
 /** The renderer is native arm64; an emulated daemon would render, and time out, differently. */
 export function dockerArchitectureProblem(architecture: string | undefined): string | undefined {
   if (architecture === REQUIRED_BASELINE_ARCHITECTURE) return undefined;
@@ -148,6 +163,8 @@ export function containerCommand(mode: ContainerMode, extraArguments: readonly s
 
 export type DockerRunOptions = {
   containerName: string;
+  /** The processors the container may use, as `--cpus`; unlimited when absent. */
+  cpus?: number;
   imageTag: string;
   outputDirectory: string;
   command: string;
@@ -165,6 +182,7 @@ export function dockerRunArguments(options: DockerRunOptions): string[] {
     '--platform',
     DOCKER_PLATFORM,
   ];
+  if (options.cpus !== undefined) dockerArguments.push('--cpus', String(options.cpus));
   for (const [name, value] of Object.entries(options.environment)) {
     if (value !== undefined && value.length > 0) dockerArguments.push('--env', `${name}=${value}`);
   }
