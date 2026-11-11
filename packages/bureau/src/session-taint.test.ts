@@ -517,4 +517,38 @@ describe('a scheduled fire into a new session (COR-2105)', () => {
       await bureau.dispose();
     }
   });
+
+  it('drops the taint a fire held when its first step trips a tripwire', async () => {
+    const seen: boolean[] = [];
+    const bureau = await createBureau<AgentDefinitions>({
+      agents: {
+        helper: createAgent({
+          generate,
+          toolbox: createToolbox([]) as unknown as Toolbox,
+          guardrails: { mode: 'tripwire', input: { detectors: [markerDetector(seen)] } },
+        }),
+      },
+      storage: new MemoryStorage(),
+      durable: true,
+      maintenance: 'manual',
+    });
+    try {
+      const schedule = await bureau.schedules.create({
+        agentName: 'helper',
+        input: `scheduled ${MARKER}`,
+        spec: '1h',
+        sessionId: 'scheduled-tripwire-session',
+      });
+      const fired = await bureau.schedules.runNow(schedule?.id ?? '');
+      const workflowId = fired !== undefined && 'workflowId' in fired ? fired.workflowId : '';
+      await waitUntil(async () => {
+        const state = await bureau.durableEngine()!.get(workflowId);
+        return state?.status === 'completed' || state?.status === 'failed';
+      });
+      await waitUntil(() => bureau.internals.pendingScheduledTaintCount() === 0);
+      expect(seen.length).toBeGreaterThan(0);
+    } finally {
+      await bureau.dispose();
+    }
+  });
 });

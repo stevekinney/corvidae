@@ -2622,6 +2622,8 @@ export interface RuntimeComposition {
     runId: string,
     metadata: Readonly<Record<string, JSONValue>> | undefined,
   ): SessionTaintSeam;
+  /** COR-2381 — how many taints a scheduled fire holds for a session it has not yet created. */
+  pendingScheduledTaintCount(): number;
 }
 
 /** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
@@ -3032,12 +3034,22 @@ async function buildRuntimeComposition(
     }
   }
 
+  // Declared before any await in composition: a schedule fire can settle while it is running.
+  const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
+  const pendingTaintKey = (sessionId: string, runId: string): string =>
+    `${sessionId}\u0000${runId}`;
+
   /**
    * COR-1482: tells the host a schedule fire's run has ended. The settlement is a record about a
    * run that already ended, so a host that cannot write it is diagnosed, never thrown into the
    * engine's event dispatch.
    */
   function settleScheduledFire(settlement: ScheduledFireSettlement): void {
+    // COR-2381 — a fire whose first step tripped never ran its write-back hook, which is what
+    // deletes a held taint; every exit path of a fire settles here.
+    for (const key of pendingScheduledTaints.keys()) {
+      if (key.endsWith(`\u0000${settlement.runId}`)) pendingScheduledTaints.delete(key);
+    }
     const hook = dependencies.onScheduledFireSettled;
     if (hook === undefined) return;
     void (async () => hook(settlement))().catch((error: unknown) => {
@@ -3399,9 +3411,6 @@ async function buildRuntimeComposition(
    * COR-2105 — the seed and the write-back of one run of `sessionId`: the taint the session holds
    * in `metadata`, and an `onTainted` that stores a new one and publishes `session.tainted` once.
    */
-  const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
-  const pendingTaintKey = (sessionId: string, runId: string): string =>
-    `${sessionId}\u0000${runId}`;
   function sessionTaintSeamFor(
     sessionId: string,
     runId: string,
@@ -5982,6 +5991,7 @@ async function buildRuntimeComposition(
     bureauChildInvariants,
     composeRunHooks: composeHooks,
     sessionTaintSeam: sessionTaintSeamFor,
+    pendingScheduledTaintCount: () => pendingScheduledTaints.size,
     resolveSessionAgentRun,
   };
 
