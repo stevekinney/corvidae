@@ -14,7 +14,13 @@
  */
 import type { Page, Route } from '@playwright/test';
 
-import { AGENTS_COPY, NOT_FOUND_ROUTE_COPY, SETTINGS_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import {
+  AGENTS_COPY,
+  NOT_FOUND_ROUTE_COPY,
+  SETTINGS_COPY,
+  TASK_COPY,
+  VIEW_COPY,
+} from '../../src/app/copy.ts';
 import { VIEW_NAMES, VIEWS, type ViewName, type ViewStateName } from '../../src/app/views.ts';
 import { HEALTH_ATTENTION_COPY, HEALTH_COUNTS_COPY } from '../../src/routes/health/health-copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
@@ -137,13 +143,14 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
         : { definitions: [] },
   },
   // The runs are the Bureau's: the view asks it for one task and one goal, and is empty only when
-  // it has neither. The list that follows asks for a hundred of each.
+  // it has neither. The list asks for a hundred of each, and draws its own states under its own
+  // header (`ownsStatesOnPatterns`), so it must be answered the way the probe is: an empty probe
+  // with a list of rows beneath it would not be the first-use state, and a failed probe over a list
+  // that loaded would not be the error.
   runs: {
     url: /\/bureau\/jsonrpc/,
     matches: (url, body) =>
-      url.pathname === '/bureau/jsonrpc' &&
-      /"bureau\.(tasks|goals)\.list"/.test(body) &&
-      /"limit":1[,}]/.test(body),
+      url.pathname === '/bureau/jsonrpc' && /"bureau\.(tasks|goals)\.list"/.test(body),
     empty: { tasks: [], nextPageToken: null },
     emptyFor: (body) =>
       body.includes('"bureau.tasks.list"')
@@ -158,6 +165,17 @@ const PROBES: Readonly<Record<ProbedView, ProbeRoute>> = {
   reviews: bureauProbe('bureau.reviews.list', { reviews: [] }),
   workers: jsonRpcProbe('weft.workers.list'),
   storage: jsonRpcProbe('weft.storage.capabilities'),
+};
+
+/**
+ * What the page says under its own header for a view that owns its states on its list's address
+ * (`ownsStatesOnPatterns`): the words of its failed and first-use states, which are not the frame's.
+ */
+const OWN_STATE_TITLES: Readonly<
+  Partial<Record<ViewName, { readonly error: string; readonly empty: string }>>
+> = {
+  agents: { error: VIEW_COPY.agents.error.title, empty: AGENTS_COPY.empty.title },
+  runs: { error: TASK_COPY.list.loadFailed.title, empty: TASK_COPY.empty.title },
 };
 
 /** A principal that holds `scopes` and nothing else, as the page and the engine's `principal` operation both report it. */
@@ -313,14 +331,12 @@ for (const view of VIEW_NAMES) {
             outcome !== 'forbidden' &&
             VIEWS[view].ownsStatesOnPatterns?.includes(PATHS[view]) === true;
           if (ownsOnRoute) {
-            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(
-              VIEW_COPY.agents.label,
-            );
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
             const stateTitle =
               outcome === 'error'
-                ? VIEW_COPY.agents.error.title
+                ? OWN_STATE_TITLES[view]?.error
                 : outcome === 'empty'
-                  ? AGENTS_COPY.empty.title
+                  ? OWN_STATE_TITLES[view]?.empty
                   : undefined;
             if (stateTitle !== undefined) {
               await expect(

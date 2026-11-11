@@ -4831,6 +4831,59 @@ export const TASK_COPY = {
       occurrencesLabel: 'Missed occurrences',
       viewSchedule: 'View schedule',
     },
+    /** The status line under the placeholders when the list is slow to load (row 10l). */
+    stillLoading: 'Still loading runs. This is taking longer than usual.',
+    /** What replaces the rows after Cancel on a slow load; the header and the bar stay (row 14p). */
+    loadingCanceled: {
+      title: 'Loading canceled',
+      description: 'Runs didn’t finish loading. Nothing is missing; it just wasn’t fetched.',
+    },
+    /** A list none of its reads could deliver: the full error state under the header (rows 12u, 12v and 14s). */
+    loadFailed: {
+      title: 'Couldn’t load runs',
+      /** The server answered with a fault; its status is said when it gave one. */
+      description: (status: number | undefined): string =>
+        status === undefined
+          ? 'The server answered with an error. Nothing you did caused it.'
+          : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+      /** The server did not answer at all. */
+      unreachable: 'The server did not answer. Check that Interborough is running, then try again.',
+      /** The second action: Health says whether the host is up. */
+      checkHealth: 'Check Health',
+      healthPath: '/health',
+    },
+    /**
+     * The sentence of the filtered empty state (rows 10r, 12t and 52y): which runs there are none of,
+     * then which filter to change, in the order the bar draws them (status, agent, origin, search).
+     */
+    noMatch: {
+      /** The adjective a status segment puts before "runs": "No failed runs". */
+      statusWords: {
+        waiting: 'waiting',
+        running: 'running',
+        done: 'finished',
+        failed: 'failed',
+        canceled: 'canceled',
+      },
+      /** "Model switcher has no runs" when an agent is chosen, "No runs" otherwise. */
+      none: (agent: string | undefined, status: string | undefined): string => {
+        const runs = status === undefined ? 'runs' : `${status} runs`;
+        return agent === undefined ? `No ${runs}` : `${agent} has no ${runs}`;
+      },
+      /** After "runs": what started them, from the Started by label ("a goal"). */
+      startedBy: (origin: string): string => `started by ${origin}`,
+      /** After "runs": the words typed in Search runs. */
+      matching: (words: string): string => `matching “${words}”`,
+      /** The filters a person can change, as they read in "Try another agent or origin." */
+      filters: { status: 'status', agent: 'agent', origin: 'origin', search: 'search' },
+      /** The last sentence, naming each filter that is on: "Try another status, agent or origin." */
+      tryAnother: (filters: readonly string[]): string => {
+        const last = filters.at(-1);
+        if (last === undefined) return 'Change the filters to see more runs.';
+        const rest = filters.slice(0, -1);
+        return `Try another ${rest.length === 0 ? last : `${rest.join(', ')} or ${last}`}.`;
+      },
+    },
   },
   filtersLabel: 'Filter runs',
   agentLabel: 'Agent',
@@ -4841,9 +4894,16 @@ export const TASK_COPY = {
     title: 'The runs could not be loaded',
     description: 'The server did not answer. Check that the host is running, then try again.',
   },
+  /**
+   * Nothing has run yet: the empty state that is the whole page (rows 52v and 52w). Start run is the
+   * one primary, and Chat with an agent, a secondary beside it, is the other way to make a run.
+   */
   empty: {
     title: 'No runs yet',
-    description: 'A run is one go of an agent. Start a chat and its runs are listed here.',
+    description:
+      'A run is one piece of work an agent or workflow does. Chat with an agent, or start a workflow, and it shows up here.',
+    chatAction: 'Chat with an agent',
+    chatPath: '/chats/new',
   },
   unknownAgent: 'An agent',
   untitledChat: 'Untitled chat',
@@ -4865,7 +4925,7 @@ export const TASK_COPY = {
   filterAction: 'Filter',
   clearAction: 'Clear filters',
   noMatch: {
-    title: 'No run matches these filters',
+    title: 'No runs match these filters',
     description: 'Change the filters to see more runs.',
   },
   loadMore: 'Load more',

@@ -13,6 +13,15 @@
    * Running now count makes too) and the segments, the facets, the search and the page of ten are
    * all applied here. A list the filters leave empty says so and offers Clear filters. The engine's
    * own table of workflows is the Health area's; it is not here.
+   *
+   * The page keeps its header in every state, so it draws its own (`ownsStatesOnPatterns` in
+   * `app/views.ts`): nothing yet is an empty state that is the page, with no filter bar and a
+   * primary Start run beside a secondary Chat with an agent; filters that match nothing keep the
+   * bar, every count at 0, over a Clear filters state that names the agent; a read in progress
+   * shows placeholders after 300 ms (`run-list-states.svelte`), and once it is slow, a Cancel that
+   * leaves "Loading canceled" and Try again; a read that failed with nothing to show is the full
+   * error state with the header's "+" muted. A server that does not answer is the shell's banner,
+   * with the list on screen at full contrast and the header's "+" held by the stale region.
    */
   import {
     Button,
@@ -22,15 +31,17 @@
     FilterBar,
     LoadMore,
     PageHeader,
-    Skeleton,
+    StaleRegion,
     type AppliedFilter,
     type FacetDefinition,
     type FilterSegment,
   } from '@lostgradient/cinder';
-  import { createQuery } from '@tanstack/svelte-query';
+  import { MessageSquare, Play, Plus } from '@lucide/svelte';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
-  import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
+  import { getConnection } from '../../../app/connection.svelte.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
   import { useBureauEventsLive } from '../../../app/live-polling.svelte.ts';
   import { agentLabel as agentLabelOf } from '../../../lib/agent-label.ts';
   import { listAgents, listAllContexts } from '../../../lib/bureau-client.ts';
@@ -45,6 +56,8 @@
   import MissedRunsRow from './missed-runs-row.svelte';
   import { readRunSchedules } from './missed-runs.ts';
   import RunListRow from './run-list-row.svelte';
+  import RunListStates from './run-list-states.svelte';
+  import { runListFailure, runNoMatchDescription } from './run-list-states.ts';
   import {
     buildRunRows,
     filterLabelOf,
@@ -64,9 +77,13 @@
 
   /** The form that starts a run. */
   const START_RUN_PATH = '/runs/new';
+  /** The query that reads every task: its key is cancelled by name when a slow read is given up. */
+  const TASKS_QUERY_KEY = ['bureau-tasks', 'runs', 'all'] as const;
   /** How often a running run's duration is read again while one is on the list. */
   const RUNNING_CLOCK_MILLISECONDS = 1_000;
   const filter = $derived(parseRunFilter(router.current.search));
+  const queryClient = useQueryClient();
+  const connection = getConnection();
 
   // The queries below follow `bureau.events`: a run by `run.*` and `action`, a goal by `goal.*`,
   // a chat by `session.*` (`app/bureau-event-queries.ts`). Each asks again on a timer only while the
@@ -76,7 +93,7 @@
   const tasks = createQuery(() => {
     const polling = !bureauLive();
     return {
-      queryKey: ['bureau-tasks', 'runs', 'all'] as const,
+      queryKey: TASKS_QUERY_KEY,
       queryFn: ({ signal }: { signal: AbortSignal }) => listAllTasks({}, { signal }),
       // A catalog run is announced by `run.settled` alone: no event says one has started, and
       // `run.removed` is not emitted for it (COR-1730), so a run still going shows only on the timer.
@@ -198,7 +215,8 @@
     RUN_SEGMENTS.map((value) => ({
       value,
       label: TASK_COPY.list.segments[value],
-      count: tasks.data === undefined ? 'pending' : counts[value],
+      // The counts wait for every read: a segment is not 0 because a read has not arrived.
+      count: loading ? 'pending' : counts[value],
     })),
   );
   const facets = $derived<FacetDefinition[]>([
@@ -260,119 +278,181 @@
 
   // A list built from what could be read would pass a missing goal or chat off as none: the runs
   // of a goal would be gone and the runs of a chat would lose their origin. Any of the three
-  // failing with nothing cached is a failed list, and Retry reads the ones that failed.
+  // failing with nothing cached is a failed list, and Try again reads the ones with nothing yet.
   const failed = $derived(
     (tasks.isError && tasks.data === undefined) ||
       (goals.isError && goals.data === undefined) ||
       (chats.isError && chats.data === undefined),
   );
-  function retry(): void {
-    if (tasks.isError) void tasks.refetch();
-    if (goals.isError) void goals.refetch();
-    if (chats.isError) void chats.refetch();
-  }
+  const failure = $derived(
+    runListFailure([
+      { operation: 'bureau.tasks.list', error: tasks.data === undefined ? tasks.error : null },
+      { operation: 'bureau.goals.list', error: goals.data === undefined ? goals.error : null },
+      { operation: 'bureau.contexts.list', error: chats.data === undefined ? chats.error : null },
+    ]),
+  );
   const loading = $derived(tasks.isPending || goals.isPending || chats.isPending);
+
+  // Cancel, in the status line a slow read shows, gives the read up: the rows are replaced by
+  // "Loading canceled" and Try again, and the header and the bar stay. Reads that go on to deliver
+  // (the fallback timer asks again) end it, because it is the state of a list with nothing yet.
+  let canceled = $state(false);
+  const showCanceled = $derived(canceled && loading);
+  function cancelLoading(): void {
+    canceled = true;
+    void queryClient.cancelQueries({ queryKey: TASKS_QUERY_KEY });
+    void queryClient.cancelQueries({ queryKey: queryKeys.goals.runs() });
+    void queryClient.cancelQueries({ queryKey: queryKeys.contexts.runs() });
+  }
+  function retry(): void {
+    canceled = false;
+    if (tasks.data === undefined) void tasks.refetch();
+    if (goals.data === undefined) void goals.refetch();
+    if (chats.data === undefined) void chats.refetch();
+  }
   const firstUse = $derived(!loading && !failed && everyRun.length === 0);
+  const noMatch = $derived(
+    runNoMatchDescription(
+      filter,
+      filter.agent === undefined ? undefined : agentLabel(filter.agent),
+    ),
+  );
 </script>
 
-<section class="ib-runs ib-records" aria-label={TASK_COPY.listHeading}>
-  <PageHeader
-    title={TASK_COPY.listHeading}
-    description={TASK_COPY.list.description}
-    headingLevel={1}
-    createAction={{
-      label: TASK_COPY.startRun,
-      href: router.href(START_RUN_PATH),
-      onclick: (event: MouseEvent) => open(event, START_RUN_PATH),
-    }}
+{#snippet bar()}
+  <FilterBar
+    aria-label={TASK_COPY.filtersLabel}
+    {segments}
+    segmentValue={filter.status ?? 'all'}
+    segmentsLabel={TASK_COPY.statusLabel}
+    {facets}
+    {appliedFilters}
+    searchQuery={typed}
+    searchPlaceholder={TASK_COPY.list.searchPlaceholder}
+    searchAriaLabel={TASK_COPY.list.searchLabel}
+    onSegmentChange={(value) => change({ status: value === 'all' ? '' : value })}
+    onSearchChange={search}
+    onFacetChange={(key, value) => change({ [key]: value })}
+    onFilterRemove={(key) => change({ [key]: '' })}
   />
+{/snippet}
 
-  {#snippet startRun()}
-    <Button
-      href={router.href(START_RUN_PATH)}
-      variant="primary"
-      size="sm"
-      onclick={(event) => open(event, START_RUN_PATH)}>{TASK_COPY.startRun}</Button
-    >
-  {/snippet}
+<section class="ib-runs ib-records" aria-label={TASK_COPY.listHeading} data-page="runs">
+  <!-- While the server gives no answer the shell draws its banner above the page; this region is
+       how the header's "+" and the first-use state's Start run join the controls it holds. -->
+  <StaleRegion stale={connection.unreachable} reason={CONNECTION_COPY.changesOff}>
+    <!-- Starting a run needs no list, so the "+" stays live while the list loads or fails. Under a
+         full error state the header draws it muted, so Try again is the one strong action. -->
+    <PageHeader
+      title={TASK_COPY.listHeading}
+      description={TASK_COPY.list.description}
+      headingLevel={1}
+      error={failed}
+      createAction={{
+        label: TASK_COPY.startRun,
+        href: router.href(START_RUN_PATH),
+        onclick: (event: MouseEvent) => open(event, START_RUN_PATH),
+      }}
+    />
 
-  {#if !failed && !firstUse}
-    <FilterBar
-      aria-label={TASK_COPY.filtersLabel}
-      {segments}
-      segmentValue={filter.status ?? 'all'}
-      segmentsLabel={TASK_COPY.statusLabel}
-      {facets}
-      {appliedFilters}
-      searchQuery={typed}
-      searchPlaceholder={TASK_COPY.list.searchPlaceholder}
-      searchAriaLabel={TASK_COPY.list.searchLabel}
-      onSegmentChange={(value) => change({ status: value === 'all' ? '' : value })}
-      onSearchChange={search}
-      onFacetChange={(key, value) => change({ [key]: value })}
-      onFilterRemove={(key) => change({ [key]: '' })}
-    />
-  {/if}
-
-  {#if loading}
-    <div role="status" aria-busy="true" aria-label={TASK_COPY.loading}>
-      <Skeleton height="3.5rem" />
-      <Skeleton height="3.5rem" />
-    </div>
-  {:else if failed}
-    <ErrorState
-      variant="flat"
-      title={TASK_COPY.loadFailed.title}
-      description={TASK_COPY.loadFailed.description}
-      headingLevel={2}
-      retryLabel={RETRY_LABEL}
-      onRetry={retry}
-    />
-  {:else if rows.length === 0 && filtered}
-    <EmptyState
-      kind="filtered"
-      title={TASK_COPY.noMatch.title}
-      description={TASK_COPY.noMatch.description}
-      headingLevel={2}
-      clearFiltersLabel={TASK_COPY.clearAction}
-      onClearFilters={clearFilters}
-    />
-  {:else if rows.length === 0}
-    <EmptyState
-      kind="first-use"
-      title={TASK_COPY.empty.title}
-      description={TASK_COPY.empty.description}
-      headingLevel={2}
-    >
-      {#snippet action()}{@render startRun()}{/snippet}
-    </EmptyState>
-  {:else}
-    <div class="ib-runs__list" {@attach followLinks}>
-      <DataList
-        items={entries}
-        key={(entry: RunListEntry) => entry.key}
-        aria-label={TASK_COPY.list.rowsLabel}
-        groupBy={(entry: RunListEntry) => runDayGroup(entry.at, now, zone)}
+    {#if failed}
+      <ErrorState
+        bordered
+        title={TASK_COPY.list.loadFailed.title}
+        description={failure.description}
+        detail={failure.detail}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        onRetry={retry}
       >
-        {#snippet children(entry: RunListEntry)}
-          {#if entry.kind === 'run'}
-            <RunListRow row={entry.row} {now} {zone} {agentLabel} />
-          {:else}
-            <MissedRunsRow missed={entry.missed} {zone} {agentLabel} />
-          {/if}
+        {#snippet secondaryAction()}
+          <Button
+            variant="secondary"
+            href={router.href(TASK_COPY.list.loadFailed.healthPath)}
+            onclick={(event) => open(event, TASK_COPY.list.loadFailed.healthPath)}
+          >
+            {TASK_COPY.list.loadFailed.checkHealth}
+          </Button>
         {/snippet}
-      </DataList>
-      {#if shownRuns < rows.length}
-        <LoadMore
-          hasMore
-          loadedCount={shownRuns}
-          totalCount={rows.length}
-          buttonLabel={TASK_COPY.loadMore}
-          endOfListMessage=""
-          maxRetries={0}
-          onLoadMore={showMore}
+      </ErrorState>
+    {:else if loading}
+      <RunListStates
+        kind={showCanceled ? 'canceled' : 'loading'}
+        {bar}
+        onCancel={cancelLoading}
+        onRetry={retry}
+      />
+    {:else if firstUse}
+      <EmptyState
+        bordered
+        kind="first-use"
+        title={TASK_COPY.empty.title}
+        description={TASK_COPY.empty.description}
+        headingLevel={2}
+      >
+        {#snippet icon()}<Play aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          <Button
+            href={router.href(START_RUN_PATH)}
+            variant="primary"
+            mutating
+            onclick={(event) => open(event, START_RUN_PATH)}
+          >
+            {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
+            {TASK_COPY.startRun}
+          </Button>
+          <Button
+            href={router.href(TASK_COPY.empty.chatPath)}
+            variant="secondary"
+            onclick={(event) => open(event, TASK_COPY.empty.chatPath)}
+          >
+            {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
+            {TASK_COPY.empty.chatAction}
+          </Button>
+        {/snippet}
+      </EmptyState>
+    {:else}
+      {@render bar()}
+
+      {#if rows.length === 0}
+        <EmptyState
+          bordered
+          kind="filtered"
+          title={TASK_COPY.noMatch.title}
+          description={noMatch}
+          headingLevel={2}
+          clearFiltersLabel={TASK_COPY.clearAction}
+          onClearFilters={clearFilters}
         />
+      {:else}
+        <div class="ib-runs__list" {@attach followLinks}>
+          <DataList
+            items={entries}
+            key={(entry: RunListEntry) => entry.key}
+            aria-label={TASK_COPY.list.rowsLabel}
+            groupBy={(entry: RunListEntry) => runDayGroup(entry.at, now, zone)}
+          >
+            {#snippet children(entry: RunListEntry)}
+              {#if entry.kind === 'run'}
+                <RunListRow row={entry.row} {now} {zone} {agentLabel} />
+              {:else}
+                <MissedRunsRow missed={entry.missed} {zone} {agentLabel} />
+              {/if}
+            {/snippet}
+          </DataList>
+          {#if shownRuns < rows.length}
+            <LoadMore
+              hasMore
+              loadedCount={shownRuns}
+              totalCount={rows.length}
+              buttonLabel={TASK_COPY.loadMore}
+              endOfListMessage=""
+              maxRetries={0}
+              onLoadMore={showMore}
+            />
+          {/if}
+        </div>
       {/if}
-    </div>
-  {/if}
+    {/if}
+  </StaleRegion>
 </section>

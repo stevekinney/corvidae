@@ -9,7 +9,7 @@ import { HttpClient } from '@lostgradient/weft';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { RETRY_LABEL, TASK_COPY, VIEW_COPY } from '../../../app/copy.ts';
+import { RETRY_LABEL, TASK_COPY } from '../../../app/copy.ts';
 import RouteOutletHarness from '../../../app/shell/route-outlet.test-harness.svelte';
 import type { ChatContext } from '../../../lib/bureau-client.ts';
 import {
@@ -122,7 +122,9 @@ describe('the runs list', () => {
   test('is empty only when the Bureau has no task and no goal', async () => {
     const { container, findByRole } = open('/runs');
 
-    await findByRole('heading', { level: 1, name: VIEW_COPY.runs.empty?.title ?? '' });
+    // The list keeps its heading and says first use under it (`ownsStatesOnPatterns`), never the frame's.
+    await findByRole('heading', { level: 2, name: TASK_COPY.empty.title });
+    await findByRole('heading', { level: 1, name: TASK_COPY.listHeading });
     expect(frameState(container)).toBe('empty');
   });
 
@@ -175,7 +177,7 @@ describe('the runs list', () => {
       contextsFail: () => failing,
     });
 
-    await findByRole('heading', { level: 2, name: TASK_COPY.loadFailed.title });
+    await findByRole('heading', { level: 2, name: TASK_COPY.list.loadFailed.title });
     expect(rowIds(container)).toEqual([]);
 
     failing = false;
@@ -191,7 +193,7 @@ describe('the runs list', () => {
       goalsFail: () => (stub?.callsTo('bureau.goals.list').length ?? 0) > 1,
     });
 
-    await findByRole('heading', { level: 2, name: TASK_COPY.loadFailed.title });
+    await findByRole('heading', { level: 2, name: TASK_COPY.list.loadFailed.title });
     expect(rowIds(container)).toEqual([]);
   });
 

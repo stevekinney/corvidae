@@ -449,13 +449,42 @@ describe('a view that owns its states', () => {
 });
 
 describe('a view that owns its states on some routes only', () => {
-  test('is the Agents and Goals views, on the address of their lists', () => {
+  test('is the Agents, Runs and Goals views, on the address of each one’s list', () => {
     expect(VIEW_NAMES.filter((view) => VIEWS[view].ownsStatesOnPatterns !== undefined)).toEqual([
       'agents',
+      'runs',
       'goals',
     ]);
     expect(VIEWS.agents.ownsStatesOnPatterns).toEqual(['/agents']);
+    expect(VIEWS.runs.ownsStatesOnPatterns).toEqual(['/runs']);
     expect(VIEWS.goals.ownsStatesOnPatterns).toEqual(['/goals']);
+  });
+
+  test('renders the Runs list, and says error in data-state, when its probe fails', async () => {
+    stub('runs', 'error');
+    const { container, findByTestId, queryByRole } = mount('runs', { pattern: '/runs' });
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+    expect(queryByRole('heading', { name: VIEW_COPY.runs.error.title })).toBeNull();
+    expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  test('renders the Runs list, and says empty in data-state, when its probe finds nothing', async () => {
+    stub('runs', 'empty');
+    const { container, findByTestId, queryByRole } = mount('runs', { pattern: '/runs' });
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
+    expect(
+      queryByRole('heading', { level: 1, name: VIEW_COPY.runs.empty?.title ?? '' }),
+    ).toBeNull();
+  });
+
+  test('leaves the start picker its failure from the frame, as the list of runs shares its view', async () => {
+    // The picker asks the same probe as the list; only the list owns its states.
+    stub('runs', 'error');
+    const { container, findByRole } = mount('runs', { pattern: '/runs/new' });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.runs.error.title });
+    expect(frame(container).dataset['state']).toBe('error');
   });
 
   test('renders the Goals list, and says error in data-state, when its probe fails', async () => {

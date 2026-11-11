@@ -12,7 +12,7 @@ import { taskFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import { installFetchImplementation } from '../../lib/live-source/fetch.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
-import { VIEW_COPY, WORKFLOW_COPY } from '../copy.ts';
+import { TASK_COPY, VIEW_COPY, WORKFLOW_COPY } from '../copy.ts';
 import Harness from './route-outlet.test-harness.svelte';
 
 let restore: (() => void) | undefined;
@@ -25,7 +25,16 @@ afterEach(() => {
  * What every list answers when it is empty: the engine's (`items`) and the Bureau's tasks and
  * goals, which the runs view asks. One body serves them all, because each reads only its own field.
  */
-const EMPTY = { items: [], total: 0, tasks: [], nextPageToken: null, goals: [], nextOffset: null };
+const EMPTY = {
+  items: [],
+  total: 0,
+  tasks: [],
+  nextPageToken: null,
+  goals: [],
+  contexts: [],
+  agents: [],
+  nextOffset: null,
+};
 
 /** The same, with one item in each list. */
 const ONE = {
@@ -34,6 +43,8 @@ const ONE = {
   tasks: [taskFixture({ id: 'first-item' })],
   nextPageToken: null,
   goals: [],
+  contexts: [],
+  agents: [],
   nextOffset: null,
 };
 
@@ -162,8 +173,26 @@ describe('an empty view’s call to action', () => {
       props: { client: new HttpClient({ baseUrl: 'http://localhost/api' }), scopes: [] },
     });
 
-    const link = await findByRole('link', { name: 'Start a chat' });
+    // The list draws its own first use under its header (`ownsStatesOnPatterns`): a secondary
+    // Chat with an agent beside the primary Start run.
+    const link = await findByRole('link', { name: TASK_COPY.empty.chatAction });
 
     expect(link.getAttribute('href')).toBe('/chats/new');
+  });
+
+  test('of the empty runs list is the state’s primary Start run, which opens the picker', async () => {
+    stubEmptyEngine();
+    landAt('/runs');
+    const { container, findByRole } = mount();
+
+    await findByRole('heading', { level: 2, name: TASK_COPY.empty.title });
+    const action = container.querySelector<HTMLElement>(
+      '.cinder-empty-state [data-cinder-variant="primary"]',
+    );
+    expect(action?.textContent?.trim()).toBe(TASK_COPY.startRun);
+    await fireEvent.click(action as HTMLElement);
+
+    expect(await findByRole('heading', { name: WORKFLOW_COPY.runPicker.title })).not.toBeNull();
+    expect(router.pathname).toBe('/runs/new');
   });
 });

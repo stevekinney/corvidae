@@ -152,10 +152,15 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
   // the workflow sections of a run, the start picker, and the aggregate view read the engine, and they say
   // so themselves when the caller may not.
+  //
+  // The list at `/runs` keeps its header, its "+" and its filter bar in every state, so it draws its
+  // own loading, empty (first use) and failed states (`routes/workflows/runs/run-list.svelte`); a
+  // run's page and the start picker, which share the view, leave them to the frame.
   runs: {
     scopes: [],
     canBeEmpty: true,
     creating: (_search, pathname) => pathname === '/runs/new',
+    ownsStatesOnPatterns: ['/runs'],
   },
   schedules: {
     scopes: ['schedules:read'],
