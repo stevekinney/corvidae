@@ -451,7 +451,10 @@ export class AgentEditorState {
     next.instructions = this.instructions;
     next.a2a = this.a2a;
     next.#attempted = this.#attempted;
-    next.#baseline = this.#baseline;
+    // The model the catalog starts the form on was not chosen by the person, so it is no change.
+    const chosen = next.#parts();
+    next.#baseline =
+      this.#baseline === undefined ? undefined : { ...this.#baseline, model: chosen.model };
     return next;
   }
 
@@ -632,7 +635,10 @@ export class AgentEditorState {
       description: this.description,
       model: `${this.model}\n${this.effort}`,
       instructions: this.instructions,
-      tools: JSON.stringify([[...this.tools].sort(), this.#approvals]),
+      tools: JSON.stringify([
+        [...this.tools].sort(),
+        Object.entries(this.#approvals ?? {}).sort(([left], [right]) => left.localeCompare(right)),
+      ]),
       limits: [
         this.guardrails,
         this.stepLimit,
