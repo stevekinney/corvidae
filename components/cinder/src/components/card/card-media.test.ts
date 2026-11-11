@@ -64,9 +64,7 @@ describe('Card media', () => {
     const { container } = render(Card, {
       props: { media: imageSnippet, mediaAspectRatio: 0, children: textSnippet('a') },
     });
-    expect(ratioOf(container)).toBe(
-      '16 / 9',
-    );
+    expect(ratioOf(container)).toBe('16 / 9');
   });
 
   test('leading media is carried on the card for the column layout', () => {

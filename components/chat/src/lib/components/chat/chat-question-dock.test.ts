@@ -473,7 +473,9 @@ describe('a composer that is replaced', () => {
     await settle();
 
     expect(dockOf(container)).toBeNull();
-    expect(container.querySelector('[data-cinder-tool-input] .chat-question-choices')).not.toBeNull();
+    expect(
+      container.querySelector('[data-cinder-tool-input] .chat-question-choices'),
+    ).not.toBeNull();
   });
 
   test('keeps a question in its row for a read-only chat', async () => {

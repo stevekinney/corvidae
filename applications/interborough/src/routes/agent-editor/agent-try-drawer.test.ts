@@ -33,7 +33,7 @@ let restoreViewport: (() => void) | undefined;
 /** Narrows the viewport to a tablet (640 to 1023px) or a phone (below 640px) for Try it's queries. */
 function viewport(width: 'tablet' | 'phone'): void {
   const original = window.matchMedia;
-  window.matchMedia = ((query: string) => ({
+  window.matchMedia = (query: string) => ({
     matches: query === TRY_SHEET_QUERY || (width === 'phone' && query === TRY_BOTTOM_SHEET_QUERY),
     media: query,
     onchange: null,
@@ -42,7 +42,7 @@ function viewport(width: 'tablet' | 'phone'): void {
     addListener: () => {},
     removeListener: () => {},
     dispatchEvent: () => false,
-  })) as unknown as typeof window.matchMedia;
+  });
   restoreViewport = () => {
     window.matchMedia = original;
   };

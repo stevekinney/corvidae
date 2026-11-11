@@ -200,11 +200,9 @@ export function sortInternalRows(rows: readonly CatalogRow[]): CatalogRow[] {
  * identifier in words and the engine's own description.
  */
 export function internalWords(name: string, description: string | null): InternalWords {
-  const types = WORKFLOW_COPY.internal.types;
-  if (Object.hasOwn(types, name)) {
-    const known = types[name as keyof typeof types];
-    return { title: known.title, description: known.description };
-  }
+  const types: Readonly<Record<string, InternalWords>> = WORKFLOW_COPY.internal.types;
+  const known = Object.hasOwn(types, name) ? types[name] : undefined;
+  if (known !== undefined) return { title: known.title, description: known.description };
   return { title: humanizeIdentifier(name), description };
 }
 

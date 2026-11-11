@@ -50,11 +50,7 @@ afterEach(() => {
   focusManager.setFocused(undefined);
 });
 
-function open(
-  path: string,
-  overrides: Partial<World> = {},
-  connection: ConnectionMonitor | undefined = undefined,
-) {
+function open(path: string, overrides: Partial<World> = {}, connection?: ConnectionMonitor) {
   stub = installWorkflowWorld(
     emptyWorld({
       definitions: [sourceDefinition('digest')],
@@ -312,7 +308,9 @@ describe('the version a save makes', () => {
 
     await typeInto(container, original);
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull(),
+      expect(
+        container.querySelector('[data-testid="workflow-editor-impact"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(footer(container)).not.toContain('Save as version');
   });
@@ -329,7 +327,9 @@ describe('the version a save makes', () => {
     await typeInto(container, JSON.stringify(edited, null, 2));
     // The answer for the earlier draft is gone as soon as the text changes, before it settles.
     expect(footer(container)).not.toContain('1.4.0');
-    expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="workflow-editor-impact"]')?.outerHTML ?? null,
+    ).toBeNull();
     await waitFor(() => expect(footer(container)).toBe('Save as version 1.5.0.'));
   });
 
@@ -455,7 +455,9 @@ describe('a file that changed on disk', () => {
     focusManager.setFocused(true);
     await fireEvent.click(await findByRole('button', { name: EDITOR.changedOnDisk.keepMine }));
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="workflow-editor-changed"]')).toBeNull(),
+      expect(
+        container.querySelector('[data-testid="workflow-editor-changed"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
     expect(textarea(container).value).toContain('"1h"');
 
@@ -463,7 +465,7 @@ describe('a file that changed on disk', () => {
     await waitFor(() => expect(router.pathname).toBe('/workflows/digest'));
     const call = stub?.callsTo('bureau.workflows.update').at(-1);
     expect(call?.params['expectedHash']).toBe('hash-by-hand');
-    expect((call?.params['definition'] as Record<string, unknown>)['trigger']).toEqual({
+    expect(call?.params['definition']).toHaveProperty('trigger', {
       kind: 'schedule',
       spec: '1h',
     });
@@ -490,7 +492,9 @@ describe('a file that changed on disk', () => {
     focusManager.setFocused(true);
     const keepMine = await findByRole('button', { name: EDITOR.changedOnDisk.keepMine });
     // The answer was for the file the form was filled from, so it is not said over the new one.
-    expect(container.querySelector('[data-testid="workflow-editor-impact"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="workflow-editor-impact"]')?.outerHTML ?? null,
+    ).toBeNull();
     expect(footer(container)).not.toContain('Save as version');
     expect(stub?.callsTo('bureau.workflows.impact')).toHaveLength(asked);
 

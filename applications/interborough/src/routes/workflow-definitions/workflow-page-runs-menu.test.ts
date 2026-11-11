@@ -372,7 +372,7 @@ describe('the delete dialog', () => {
       props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
     } as never);
     await ready(view.container);
-    await choose(view as unknown as ReturnType<typeof open>, MENU.delete);
+    await choose(view, MENU.delete);
     const dialog = await view.findByRole('dialog', { name: DELETE.title('digest') });
     await fireEvent.click(
       within(dialog).getByRole('checkbox', { name: DELETE.alsoDeleteSchedule('Inbox triage') }),

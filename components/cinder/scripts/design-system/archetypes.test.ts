@@ -206,7 +206,10 @@ describe('the recipe and the archetype pages are built from real components', ()
 
   test('use no middle dot as a separator', () => {
     for (const { name, text } of markupFragments()) {
-      expect({ name, dot: text.includes(String.fromCodePoint(0xb7)) }).toEqual({ name, dot: false });
+      expect({ name, dot: text.includes(String.fromCodePoint(0xb7)) }).toEqual({
+        name,
+        dot: false,
+      });
     }
   });
 });

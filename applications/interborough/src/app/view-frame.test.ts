@@ -501,7 +501,9 @@ describe('a view that owns its states on some routes only', () => {
     const { container, findByTestId, queryByRole } = mount('goals', { pattern: '/goals' });
     expect(await findByTestId('content')).not.toBeNull();
     await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
-    expect(queryByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' })).toBeNull();
+    expect(
+      queryByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' }),
+    ).toBeNull();
   });
 
   test('renders a goal’s page, and says error in data-state, when its probe fails', async () => {

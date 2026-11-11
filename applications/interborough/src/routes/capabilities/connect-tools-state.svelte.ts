@@ -562,9 +562,10 @@ export class ConnectFlow {
       const attempt = phase.attempt;
       request.probe(controller.signal).then(
         (probe) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) return undefined;
           if (probe.outcome === 'listed' && request.kind === 'mcp') this.seed('mcp', probe.tools);
           this.#dispatch({ type: 'tested', attempt, probe });
+          return undefined;
         },
         (error: unknown) => {
           if (controller.signal.aborted) return;
@@ -585,9 +586,10 @@ export class ConnectFlow {
       }, connectTiming.slowAfterMilliseconds);
       request.connect(this.choices, controller.signal).then(
         (change) => {
-          if (controller.signal.aborted) return;
+          if (controller.signal.aborted) return undefined;
           this.#stop();
           this.#dispatch({ type: 'connected', attempt, change });
+          return undefined;
         },
         (error: unknown) => {
           if (controller.signal.aborted) return;

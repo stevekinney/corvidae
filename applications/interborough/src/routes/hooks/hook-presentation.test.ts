@@ -2,9 +2,11 @@
  * How the hooks pages say what the Bureau holds (COR-1858): an event in plain words and its area,
  * the events an action may not listen to, a hook as a sentence, and what a delivery came to.
  */
+import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
 import type { Hook, HookDelivery, HookEventKind } from '../../lib/bureau-hooks.ts';
+import { ServerUnreachableError } from '../../lib/faults.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 import {
   deliveryFailed,

@@ -120,8 +120,6 @@
     </Tabs.List>
     <Tabs.Panel value="tools"><ToolsPanel /></Tabs.Panel>
     <Tabs.Panel value="skills"><SkillsPanel /></Tabs.Panel>
-    <Tabs.Panel value="sources"
-      ><SourcesPanel onConnect={openConnect} /></Tabs.Panel
-    >
+    <Tabs.Panel value="sources"><SourcesPanel onConnect={openConnect} /></Tabs.Panel>
   </Tabs>
 </section>

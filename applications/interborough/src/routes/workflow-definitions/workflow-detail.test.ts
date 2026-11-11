@@ -644,7 +644,8 @@ describe('an invalid file', () => {
     expect(queryByRole('button', { name: WORKFLOW_COPY.resumeAction })).toBeNull();
     // Its menu holds Delete… alone: it cannot be paused, sent a signal, or copied.
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
-    expect((await view.findAllByRole('menuitem')).map((item) => item.textContent?.trim())).toEqual([
+    const menuItems = await view.findAllByRole('menuitem');
+    expect(menuItems.map((item) => item.textContent?.trim())).toEqual([
       WORKFLOW_COPY.page.menu.delete,
     ]);
     await fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });

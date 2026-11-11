@@ -134,7 +134,6 @@
     font-weight: 600;
   }
 
-
   .ib-hook-events__list {
     display: flex;
     flex-direction: column;

@@ -404,7 +404,11 @@ export type MessagePartDerivationContext = {
   approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
   /** Describes an approval beyond its action; `undefined` adds nothing to what the action carries. */
   describeApproval?:
-    ((toolCall: { id: string; name: string }, action: ToolApprovalAction) => ChatApprovalDetails | undefined) | undefined;
+    | ((
+        toolCall: { id: string; name: string },
+        action: ToolApprovalAction,
+      ) => ChatApprovalDetails | undefined)
+    | undefined;
   /**
    * UI-only answers to questions, keyed by tool-call id. A question in this map keeps its
    * `tool-input` part (and so its "You answered" row) after its result stops asking for input.

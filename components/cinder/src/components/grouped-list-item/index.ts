@@ -3,8 +3,8 @@ import GroupedListItem from './grouped-list-item.svelte';
 
 export default GroupedListItem;
 export type {
-  GroupedListItemLeadingKind,
   GroupedListItemLeadUnit,
+  GroupedListItemLeadingKind,
   GroupedListItemProps,
   GroupedListItemUrgency,
 } from './grouped-list-item.types.ts';

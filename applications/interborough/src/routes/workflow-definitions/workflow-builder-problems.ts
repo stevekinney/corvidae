@@ -92,10 +92,7 @@ function idProblem(text: string, takenId: string | undefined): WorkflowProblem |
  * each step, or the missing steps. Text the builder cannot read (not a JSON object) has none: the
  * JSON tab says what is wrong with it.
  */
-export function workflowProblems(
-  text: string,
-  options: WorkflowProblemOptions,
-): WorkflowProblem[] {
+export function workflowProblems(text: string, options: WorkflowProblemOptions): WorkflowProblem[] {
   const view = readBuilder(text);
   if (view === undefined) return [];
   const problems: WorkflowProblem[] = [];

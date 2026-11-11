@@ -188,7 +188,10 @@ test.describe('the records pages', () => {
     await expect(page).toHaveURL(new RegExp(`/agents/${TWO_QUESTIONS_AGENT_NAME}$`));
   });
 
-  test('Goals is a list of status-first rows with a StatusDot each', async ({ page, checkA11y }) => {
+  test('Goals is a list of status-first rows with a StatusDot each', async ({
+    page,
+    checkA11y,
+  }) => {
     await page.goto('/goals');
 
     await expect(page.locator('[data-view="goals"]')).toHaveAttribute('data-state', 'ready');

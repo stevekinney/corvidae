@@ -52,9 +52,7 @@ describe('NumberInput basics', () => {
     ]);
 
     expect(container.firstElementChild?.classList.contains('cinder-number-input-field')).toBe(true);
-    expect(css).toMatch(
-      /:where\(\.cinder-number-input-field\)\s*\{[^}]*max-inline-size:\s*10rem;/,
-    );
+    expect(css).toMatch(/:where\(\.cinder-number-input-field\)\s*\{[^}]*max-inline-size:\s*10rem;/);
   });
 
   test('composes the editable control through Input', () => {

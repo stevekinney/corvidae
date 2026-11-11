@@ -24,12 +24,12 @@ Focus enters the marker through normal document order. Popover opens on activati
 
 ### Keyboard matrix
 
-| Key or gesture | Context            | Expected behavior                                    |
-| -------------- | ------------------ | ---------------------------------------------------- |
-| Enter or Space | Citation marker    | Open the source Popover.                             |
+| Key or gesture | Context            | Expected behavior                                       |
+| -------------- | ------------------ | ------------------------------------------------------- |
+| Enter or Space | Citation marker    | Open the source Popover.                                |
 | Tab            | Open card          | Reach source links, then pagination controls, in order. |
-| Escape         | Open card          | Dismiss the Popover and restore trigger context.     |
-| Shift+Tab      | Pagination control | Move backward through the normal focus order.        |
+| Escape         | Open card          | Dismiss the Popover and restore trigger context.        |
+| Shift+Tab      | Pagination control | Move backward through the normal focus order.           |
 
 ### Assistive-technology announcements
 

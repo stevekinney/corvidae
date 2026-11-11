@@ -42,7 +42,11 @@
   const everything = $derived.by(() => {
     const [only] = allowed;
     if (allowed.length !== 1 || only === undefined) return copy.everything;
-    return only === 'workflow' ? copy.anyWorkflow : only === 'agent' ? copy.anyAgent : copy.anySchedule;
+    return only === 'workflow'
+      ? copy.anyWorkflow
+      : only === 'agent'
+        ? copy.anyAgent
+        : copy.anySchedule;
   });
   const description = $derived(
     allowed.length === 1 && allowed[0] === 'workflow' ? copy.workflowDescription : copy.description,

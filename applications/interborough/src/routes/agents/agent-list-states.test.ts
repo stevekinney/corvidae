@@ -148,7 +148,9 @@ describe('the Agents list when a refresh fails over a list already read', () => 
     failing = false;
     await fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="agents-refresh-failed"]')?.outerHTML ?? null).toBeNull(),
+      expect(
+        container.querySelector('[data-testid="agents-refresh-failed"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
   });
 });

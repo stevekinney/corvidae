@@ -181,10 +181,9 @@ export function builtInLine(input: {
   const now = input.now ?? Date.now();
   const zone = input.zone ?? viewerTimeZone();
   const parts: HeaderPart[] = [[{ text: copy.builtIn }], [{ text: input.name, code: true }]];
-  if (Object.hasOwn(copy.startedBy, input.name)) {
-    const who = copy.startedBy[input.name as keyof typeof copy.startedBy];
-    parts.push([{ text: copy.startedByPrefix(who) }]);
-  }
+  const startedBy: Readonly<Record<string, string>> = copy.startedBy;
+  const who = Object.hasOwn(startedBy, input.name) ? startedBy[input.name] : undefined;
+  if (who !== undefined) parts.push([{ text: copy.startedByPrefix(who) }]);
   const last = input.lastRunAt;
   if (last === null) {
     parts.push([{ text: copy.neverRun }]);

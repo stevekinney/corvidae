@@ -217,9 +217,7 @@
   // The receipt reads "by Priya Raman in Reviews, 10:46 AM": the place is the only link, and the
   // comma stays with the time. A middle dot never separates them.
   const byText = $derived(decidedBy === undefined ? '' : `by ${decidedBy}`);
-  const inText = $derived(
-    decidedIn === undefined ? '' : decidedBy === undefined ? 'in ' : ' in ',
-  );
+  const inText = $derived(decidedIn === undefined ? '' : decidedBy === undefined ? 'in ' : ' in ');
   const timeText = $derived(
     outcomeTime === undefined ? '' : hasWho ? `, ${outcomeTime}` : outcomeTime,
   );
@@ -390,15 +388,17 @@
     {#if command !== undefined}
       <div class="cinder-approval-card__fact cinder-approval-card__fact--command">
         <dt>Command</dt>
-        <dd><div class="cinder-approval-card__command">
-              <CodeBlock
-                code={command}
-                language="shell"
-                languageLabelVisible={false}
-                copyable={false}
-                wrap
-              />
-            </div></dd>
+        <dd>
+          <div class="cinder-approval-card__command">
+            <CodeBlock
+              code={command}
+              language="shell"
+              languageLabelVisible={false}
+              copyable={false}
+              wrap
+            />
+          </div>
+        </dd>
       </div>
     {/if}
   </dl>

@@ -11,14 +11,17 @@
 <div style="display: grid; gap: 1rem; max-inline-size: 28rem;">
   <Card title="The Rooftop" description="Half-price wells until 8:00 pm" mediaAspectRatio="3 / 2">
     {#snippet media()}
-      <svg viewBox="0 0 600 400" role="img" aria-label="The rooftop terrace at dusk" preserveAspectRatio="xMidYMid slice">
+      <svg
+        viewBox="0 0 600 400"
+        role="img"
+        aria-label="The rooftop terrace at dusk"
+        preserveAspectRatio="xMidYMid slice"
+      >
         <rect width="600" height="400" fill="currentColor" opacity="0.15" />
         <circle cx="440" cy="130" r="48" fill="currentColor" opacity="0.4" />
       </svg>
     {/snippet}
     Open until midnight.
   </Card>
-  <Card title="The Pier" description="No photo yet">
-    Cards without media draw no placeholder.
-  </Card>
+  <Card title="The Pier" description="No photo yet">Cards without media draw no placeholder.</Card>
 </div>

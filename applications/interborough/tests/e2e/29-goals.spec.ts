@@ -95,7 +95,9 @@ test('creates a goal that names the check that never passes, lands on its page, 
 
   // A goal that is made lands on its own page.
   await expect(page).toHaveURL(/\/goals\/(?!new$)[^/]+$/);
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Say hello, and keep trying.');
+  await expect(page.getByRole('heading', { level: 1 })).toContainText(
+    'Say hello, and keep trying.',
+  );
   await page.goto('/goals');
 
   // The new row is the one this page had not seen, and it is going, not ended.

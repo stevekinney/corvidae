@@ -167,9 +167,7 @@ describe('ToolInputPart', () => {
 
     const heading = container.querySelector('.chat-tool-input-heading')!;
     const form = container.querySelector('form')!;
-    expect(
-      heading.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING,
-    ).toBeTruthy();
+    expect(heading.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   test('names the tool when the request has no question', async () => {

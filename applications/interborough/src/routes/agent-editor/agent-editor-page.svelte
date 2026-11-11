@@ -414,10 +414,10 @@
       : copy.edit.subtitle,
   );
 
-  /** Moves focus to the field with `id`, once the messages a submit shows are on the page. */
-  async function focusField(id: string): Promise<void> {
+  /** Moves focus to the field with `fieldId`, once the messages a submit shows are on the page. */
+  async function focusField(fieldId: string): Promise<void> {
     await tick();
-    document.getElementById(id)?.focus();
+    document.getElementById(fieldId)?.focus();
   }
 
   /**

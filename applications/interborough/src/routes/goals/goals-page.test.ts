@@ -293,9 +293,9 @@ describe('creating a goal', () => {
     expect((dialog.getByLabelText(GOALS_COPY.form.checkLabel) as HTMLInputElement).value).toBe(
       'No such validator',
     );
-    expect(
-      (dialog.getByLabelText(GOALS_COPY.form.promptLabel) as HTMLTextAreaElement).value,
-    ).toBe('Say hello.');
+    expect((dialog.getByLabelText(GOALS_COPY.form.promptLabel) as HTMLTextAreaElement).value).toBe(
+      'Say hello.',
+    );
   });
 
   test('stays live with nothing typed, says what is missing at the field and in the footer, and focuses the first', async () => {
@@ -315,9 +315,7 @@ describe('creating a goal', () => {
     const prompt = dialog.getByLabelText(GOALS_COPY.form.promptLabel);
     await waitFor(() => expect(document.activeElement === prompt).toBe(true));
     expect(dialog.getByText(GOALS_COPY.form.promptRequired)).not.toBeNull();
-    expect(dialog.getByTestId('goal-form-note').textContent).toBe(
-      GOALS_COPY.form.footer.prompt,
-    );
+    expect(dialog.getByTestId('goal-form-note').textContent).toBe(GOALS_COPY.form.footer.prompt);
 
     await fireEvent.input(prompt, { target: { value: 'Say hello.' } });
     await fireEvent.click(create);

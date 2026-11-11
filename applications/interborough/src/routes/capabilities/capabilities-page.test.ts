@@ -905,9 +905,7 @@ describe('a skill’s page', () => {
     const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
 
     expect(detail.querySelector('h3')?.textContent).toBe('Summarize');
-    expect(detail.querySelector('[data-testid="skill-identifier"]')?.textContent).toBe(
-      'summarize',
-    );
+    expect(detail.querySelector('[data-testid="skill-identifier"]')?.textContent).toBe('summarize');
     expect(detail.querySelector('[data-testid="skill-summary"]')?.textContent).toBe(
       'Summarizes a document.',
     );
@@ -915,7 +913,9 @@ describe('a skill’s page', () => {
     expect(metaOf(detail)).toEqual(['Instructions only', 'User', 'Loaded when relevant']);
     expect(detail.querySelector('[data-testid="skill-brings"]')).toBeNull();
     // No separator dot stands between the words of the line.
-    expect(detail.querySelector('[data-testid="skill-meta"]')?.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(detail.querySelector('[data-testid="skill-meta"]')?.textContent).not.toContain(
+      String.fromCodePoint(0xb7),
+    );
   });
 
   test('lists the tools a skill brings with what each may do and when it asks, and counts them in the line', async () => {
@@ -926,7 +926,11 @@ describe('a skill’s page', () => {
     expect(detail.querySelector('[data-testid="skill-identifier"]')?.textContent).toBe(
       'customer-lookup',
     );
-    expect(metaOf(detail)).toEqual(['Instructions and 2 tools', 'Built in', 'Loaded when relevant']);
+    expect(metaOf(detail)).toEqual([
+      'Instructions and 2 tools',
+      'Built in',
+      'Loaded when relevant',
+    ]);
 
     const cells = (name: string) =>
       [...detail.querySelectorAll(`[data-brought-tool="${name}"] td`)].map((cell) =>
