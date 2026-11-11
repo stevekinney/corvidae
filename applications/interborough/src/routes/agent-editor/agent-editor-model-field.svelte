@@ -4,25 +4,20 @@
    * provider (`agent-editor-models.ts`). A model the model policy forbids, a model turned off or
    * retired, and a provider with no API key are listed and disabled, each with its reason, and a
    * line under the field points to Settings › Models to connect a provider. The abilities of the
-   * chosen model show under the field as one muted line (row 41h), and a new agent's form follows it
-   * with "Not listed? Connect a provider in Settings › Models". The model the agent's file already
-   * names stays selected even when it is not offered now, with a notice, and a save writes it back
-   * as it was.
+   * chosen model show under the field as one muted line (row 41h), and the form follows it with
+   * "Not listed? Connect a provider in Settings › Models". The field belongs to a new agent's form: a
+   * saved agent shows its model as read-only text (`agent-editor-saved-model.svelte`).
    *
    * The field is required: after a submit with no model it says so (`error`, row 42m). When the
    * catalog did not load (row 42v) it reads "No models to show", and a danger callout under it says
    * so with a Try again, while the rest of the form can still be filled in.
    */
-  import { Alert, Button, Callout, Combobox, type ComboboxOption } from '@lostgradient/cinder';
+  import { Button, Callout, Combobox, type ComboboxOption } from '@lostgradient/cinder';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { providerDisplayName } from '../settings/models/format-model.ts';
-  import {
-    abilitiesOf,
-    type ModelChoice,
-    type ModelUnavailableReason,
-  } from './agent-editor-models.ts';
+  import { abilitiesOf, type ModelChoice } from './agent-editor-models.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
 
   interface Props {
@@ -107,28 +102,8 @@
       .map((group) => providerDisplayName(group.provider)),
   );
 
-  /** What a save does with the agent's own model decides which notice the field shows. */
-  function noticeFor(reason: ModelUnavailableReason): (model: string, reason: string) => string {
-    switch (reason) {
-      case 'provider-denied':
-      case 'model-denied':
-        return copy.refusedNotice;
-      case 'retired':
-      case 'not-in-catalog':
-        return copy.replacementNotice;
-      case 'turned-off':
-        return copy.keptNotice;
-    }
-  }
-
   const chosen = $derived(editor.chosenModel);
   const abilities = $derived(chosen?.row === undefined ? undefined : abilitiesOf(chosen.row));
-  /** Why the agent's own model cannot be chosen now, or `undefined` when it can. */
-  const notice = $derived(
-    chosen?.unavailable === undefined || editor.mode === 'create'
-      ? undefined
-      : noticeFor(chosen.unavailable)(chosen.value, copy.reasons[chosen.unavailable]),
-  );
 
   /** Follows the link in the app's router, unless the click asks for a new tab. */
   function openSettings(event: MouseEvent): void {
@@ -171,10 +146,6 @@
     </Callout>
   {/if}
 
-  {#if notice !== undefined}
-    <Alert variant="warning" data-testid="agent-model-notice">{notice}</Alert>
-  {/if}
-
   {#if abilities !== undefined}
     <!-- One muted line: what the model can do, then its window, each word plain (row 41h). -->
     <div
@@ -198,7 +169,7 @@
       {copy.unconnectedLead(unconnected)}
       <a href={router.href(SETTINGS_MODELS_PATH)} onclick={openSettings}>{copy.settingsLink}</a>.
     </p>
-  {:else if editor.mode === 'create'}
+  {:else}
     <p class="weft-agent-model__hint" data-testid="agent-model-not-listed">
       {newCopy.notListed}
       <a href={router.href(SETTINGS_MODELS_PATH)} onclick={openSettings}>{copy.settingsLink}</a>

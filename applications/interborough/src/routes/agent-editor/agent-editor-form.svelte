@@ -1,37 +1,53 @@
 <script lang="ts">
   /**
-   * The fields of the agent editor, in titled sections: Identity (name, identifier, description),
-   * Model (the model and its default effort), Instructions, Tools, and, for an agent that exists,
-   * Guardrails and limits. A new agent's form has no Guardrails and limits section: the Access tab
-   * is where they are set once the agent is saved (S31). The column is capped at Cinder's reading
-   * width, so the fields do not stretch across a wide window (S35).
+   * The fields of the agent editor, in titled sections. A new agent's form has Identity (name,
+   * identifier, description), Model (the model and its default effort), Instructions and Tools (a
+   * table with one Asks select per tool, `agent-editor-tools.svelte`, chosen from a drawer,
+   * `agent-editor-tool-picker.svelte`). The column is capped at Cinder's reading width, so the
+   * fields do not stretch across a wide window (S35).
+   *
+   * A saved agent's form owns identity and instructions only (rows 41s to 41w): Name (required),
+   * its identifier as one small monospaced line, Description, the Model as read-only text that
+   * points to the Settings tab (`agent-editor-saved-model.svelte`), Instructions, the reference
+   * documents the file reads (each with a remove button that takes effect with the next save),
+   * and two read-only lines that point to the Access tab: the tools, and the guardrails with the
+   * spend limit. The Access tab is where those are set (S31), each change there saving a version of
+   * its own. A demoted block at the foot holds the delete (row 41x). Its identifier cannot change
+   * here: the host has no operation that renames a saved agent, so the Change of row 41s, and the
+   * dialog it opens (rows 42z, 43a), wait for one.
    *
    * A sticky bar at the foot holds what acts on the agent as a whole: the A2A switch, the save's
    * status ("Saving…" while it is in flight, rows 43j and 14w; "Not saved yet" on a new agent
-   * otherwise, rows 43w and 44b), a delete for an agent that exists,
+   * otherwise, rows 43w and 44b; "Saved, Version 4" with a green check on a saved agent, row 41y),
    * and Cancel then Save (row 42n). Save stays enabled whatever the form holds (W35): a submit marks
    * the fields that stop it, and the page focuses the first. While a save is in flight Save is in
-   * Cinder's loading state, which ignores a second press, and Cancel stays available. ⌘Enter submits
-   * the form from the page. `card` has no field here; the state carries it through a save unchanged
+   * Cinder's loading state, which ignores a second press, Cancel stays available, and the text
+   * fields are read-only until the server answers (row 43k). ⌘Enter submits the form from the
+   * page. `card` has no field here; the state carries it through a save unchanged
    * (`agent-editor-state.svelte.ts`).
    *
    * A new agent's identifier is set from its name and shown once, small and monospaced, with a
-   * Change that turns it into a field with a Reset back to the name's (rows 41e, 42x). Its Tools
-   * section is a table with one Asks select per tool (`agent-editor-tools.svelte`). Tools are chosen
-   * from a drawer (`agent-editor-tool-picker.svelte`).
+   * Change that turns it into a field with a Reset back to the name's (rows 41e, 42x).
    *
    * The form owns no requests. The page that renders it sends a save and a delete, and says whether
    * one is in flight. The page does not render the form for a catalog with no model
    * (`agent-editor-no-provider.svelte`). The model is chosen in `agent-editor-model-field.svelte`,
    * and its default effort in `agent-editor-effort-field.svelte`.
    */
+  import { Check, X } from '@lucide/svelte';
   import { Button, EmptyState, FormSection, Input, Textarea, Toggle } from '@lostgradient/cinder';
 
   import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
+  import { agentTabPath } from '../../lib/agent-paths.ts';
+  import { keyedByOccurrence } from '../../lib/list-keys.ts';
+  import { router } from '../../lib/router.svelte.ts';
+  import { referenceSizeText } from '../agents/agent-presentation.ts';
   import { AGENT_EDITOR_FORM_ID } from './agent-editor-form-id.ts';
+  import { followInApp } from './agent-editor-links.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
   import AgentEditorEffortField from './agent-editor-effort-field.svelte';
   import AgentEditorModelField from './agent-editor-model-field.svelte';
+  import AgentEditorSavedModel from './agent-editor-saved-model.svelte';
   import AgentEditorToolPicker from './agent-editor-tool-picker.svelte';
   import AgentEditorTools from './agent-editor-tools.svelte';
 
@@ -50,6 +66,12 @@
     retryingModels?: boolean;
     /** Reads the catalog again, from the model field's Try again (row 42v). */
     onRetryModels?: (() => void) | undefined;
+    /** The version a saved agent is at, for the sticky bar's "Saved, Version 4" (row 41y). */
+    savedRevision?: number | undefined;
+    /** The agent's name as its file says it now, for the delete block (row 41x). */
+    savedName?: string;
+    /** The size in bytes of each reference document, as the Bureau reports them (row 41t). */
+    referenceSizes?: readonly { readonly path: string; readonly size: number }[] | null;
   }
 
   let {
@@ -61,6 +83,9 @@
     onDelete,
     retryingModels = false,
     onRetryModels,
+    savedRevision,
+    savedName = '',
+    referenceSizes = null,
   }: Props = $props();
 
   const copy = AGENT_EDITOR_COPY;
@@ -69,6 +94,19 @@
 
   const creating = $derived(editor.mode === 'create');
   const errors = $derived(editor.shownErrors);
+  const accessPath = $derived(agentTabPath(editor.identifier, 'access'));
+
+  /** The size of the reference document at `path` as its row says it, or `undefined` when the Bureau did not say. */
+  function sizeOf(path: string): string | undefined {
+    return referenceSizeText(referenceSizes?.find((entry) => entry.path === path)?.size);
+  }
+
+  /** The spend limit as the guardrails line words it, or `null` when the form sets none. */
+  const spendLimit = $derived(
+    editor.spendPerRun.trim() === ''
+      ? null
+      : copy.edit.guardrails.spendPerRun(editor.spendPerRun.trim()),
+  );
 
   function submit(event: SubmitEvent): void {
     event.preventDefault();
@@ -84,25 +122,23 @@
   novalidate
   onsubmit={submit}
 >
-  <FormSection heading={copy.sections.identity} columns={creating ? 1 : 2}>
+  <FormSection heading={copy.sections.identity} columns={1}>
     <Input
       id="agent-name"
       label={copy.nameLabel}
       description={copy.nameDescription}
-      required={creating}
+      required
+      readonly={saving}
       error={errors.name}
       bind:value={editor.name}
     />
 
     {#if !creating}
-      <Input
-        id="agent-identifier"
-        label={copy.identifierLabel}
-        description={copy.identifierEditDescription}
-        variant="code"
-        readonly
-        value={editor.identifier}
-      />
+      <!-- A saved agent's identifier, once, small and monospaced (row 41s); it cannot be changed here. -->
+      <p class="weft-agent-form__identifier" data-testid="agent-identifier">
+        <span>{copy.edit.idLabel}</span>
+        <code class="weft-agent-form__identifier-value">{editor.identifier}</code>
+      </p>
     {:else if editor.identifierFollowsName}
       <p class="weft-agent-form__identifier" data-testid="agent-identifier">
         {#if editor.identifier !== ''}
@@ -124,6 +160,7 @@
         description={newCopy.identifierHint}
         variant="code"
         required
+        readonly={saving}
         value={editor.identifier}
         onValueChange={(next) => (editor.identifier = next)}
         error={errors.identifier}
@@ -148,6 +185,7 @@
         id="agent-description"
         label={copy.descriptionLabel}
         description={copy.descriptionDescription}
+        readonly={saving}
         bind:value={editor.description}
       />
     </div>
@@ -155,14 +193,18 @@
 
   <!-- The section's title names each control below, so the control's own label is not shown twice. -->
   <FormSection heading={copy.sections.model} columns={1}>
-    <AgentEditorModelField
-      {editor}
-      error={errors.model}
-      loadFailed={editor.catalogMissing}
-      retrying={retryingModels}
-      onRetry={onRetryModels}
-    />
-    <AgentEditorEffortField {editor} />
+    {#if creating}
+      <AgentEditorModelField
+        {editor}
+        error={errors.model}
+        loadFailed={editor.catalogMissing}
+        retrying={retryingModels}
+        onRetry={onRetryModels}
+      />
+      <AgentEditorEffortField {editor} />
+    {:else}
+      <AgentEditorSavedModel {editor} agentId={editor.identifier} />
+    {/if}
   </FormSection>
 
   <!-- A Markdown body: monospaced, with its word count beside the title (row 41i). -->
@@ -177,90 +219,103 @@
       description={copy.instructionsDescription}
       variant="code"
       rows={8}
+      readonly={saving}
       bind:value={editor.instructions}
     />
   </FormSection>
 
-  <FormSection
-    as="fieldset"
-    heading={copy.sections.tools}
-    {...creating
-      ? editor.catalogMissing
-        ? {}
-        : { meta: newCopy.toolCount(editor.chosenTools.length, editor.toolChoices.length) }
-      : { description: copy.toolsDescription }}
-    columns={1}
-  >
-    {#if editor.catalogMissing}
-      <p class="weft-agent-form__note" data-testid="agent-tools-waiting">
-        {newCopy.toolsWaitOnModels}
-      </p>
-    {:else if editor.toolChoices.length === 0}
-      <EmptyState
-        kind="first-use"
-        size="compact"
-        align="start"
-        headingLevel={3}
-        title={copy.noTools}
-      />
-    {:else}
-      <AgentEditorTools {editor} onAdd={() => (pickerOpen = true)} />
-    {/if}
-  </FormSection>
-
   {#if !creating}
-    <FormSection heading={copy.sections.limits} description={copy.limits.description} columns={2}>
-      <div class="weft-agent-form__wide">
-        <Textarea
-          id="agent-guardrails"
-          label={copy.limits.guardrailsLabel}
-          description={copy.limits.guardrailsDescription}
-          rows={2}
-          error={editor.limitErrors.guardrails ?? ''}
-          bind:value={editor.guardrails}
-        />
-      </div>
-      <Input
-        id="agent-step-limit"
-        label={copy.limits.stepLimitLabel}
-        description={copy.limits.stepLimitDescription}
-        inputmode="numeric"
-        error={editor.limitErrors.stepLimit ?? ''}
-        bind:value={editor.stepLimit}
-      />
-      <Input
-        id="agent-spend-per-run"
-        label={copy.limits.spendPerRunLabel}
-        description={copy.limits.spendPerRunDescription}
-        inputmode="decimal"
-        error={editor.limitErrors.spendPerRun ?? ''}
-        bind:value={editor.spendPerRun}
-      />
-      <Input
-        id="agent-spend-per-chat"
-        label={copy.limits.spendPerChatLabel}
-        description={copy.limits.spendPerChatDescription}
-        inputmode="decimal"
-        error={editor.limitErrors.spendPerChat ?? ''}
-        bind:value={editor.spendPerChat}
-      />
-      <Input
-        id="agent-tool-calls"
-        label={copy.limits.toolCallsLabel}
-        description={copy.limits.toolCallsDescription}
-        inputmode="numeric"
-        error={editor.limitErrors.toolCalls ?? ''}
-        bind:value={editor.toolCalls}
-      />
-      <Input
-        id="agent-tool-seconds"
-        label={copy.limits.toolSecondsLabel}
-        description={copy.limits.toolSecondsDescription}
-        inputmode="decimal"
-        error={editor.limitErrors.toolSeconds ?? ''}
-        bind:value={editor.toolSeconds}
-      />
+    <!-- Read with every chat. A document is taken off the list with the next save (row 41t). -->
+    <FormSection
+      heading={copy.edit.references.heading}
+      meta={copy.edit.references.note}
+      columns={1}
+    >
+      {#if editor.referencesKept.length === 0}
+        <p class="weft-agent-form__note" data-testid="agent-no-references">
+          {copy.edit.references.none}
+        </p>
+      {:else}
+        <ul class="weft-agent-form__references" data-testid="agent-references">
+          {#each keyedByOccurrence(editor.referencesKept, (path) => path) as { key, item: path } (key)}
+            {@const size = sizeOf(path)}
+            <li class="weft-agent-form__reference">
+              <code>{path}</code>
+              {#if size !== undefined}<span class="weft-agent-form__note">{size}</span>{/if}
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                iconOnly
+                aria-label={copy.edit.references.removeLabel(path)}
+                disabled={saving}
+                onclick={() => editor.removeReference(path)}
+              >
+                <X size={14} aria-hidden="true" />
+              </Button>
+            </li>
+          {/each}
+        </ul>
+      {/if}
     </FormSection>
+  {/if}
+
+  {#if creating}
+    <FormSection
+      as="fieldset"
+      heading={copy.sections.tools}
+      {...editor.catalogMissing
+        ? {}
+        : { meta: newCopy.toolCount(editor.chosenTools.length, editor.toolChoices.length) }}
+      columns={1}
+    >
+      {#if editor.catalogMissing}
+        <p class="weft-agent-form__note" data-testid="agent-tools-waiting">
+          {newCopy.toolsWaitOnModels}
+        </p>
+      {:else if editor.toolChoices.length === 0}
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          align="start"
+          headingLevel={3}
+          title={copy.noTools}
+        />
+      {:else}
+        <AgentEditorTools {editor} onAdd={() => (pickerOpen = true)} />
+      {/if}
+    </FormSection>
+  {:else}
+    <!-- Tools, guardrails and the spend limit are set on the Access tab (S31); here they are read (rows 41v, 41w). -->
+    <FormSection heading={copy.sections.tools} columns={1}>
+      <p class="weft-agent-form__note" data-testid="agent-tools-summary">
+        {copy.edit.tools.count(editor.chosenTools.length)}
+        {copy.edit.tools.changeLead}<a
+          href={router.href(accessPath)}
+          onclick={(event) => followInApp(event, accessPath)}>{copy.edit.tools.accessTab}</a
+        >{copy.edit.tools.changeTail}
+      </p>
+      <p class="weft-agent-form__note" data-testid="agent-guardrails-summary">
+        {copy.edit.guardrails.summary(editor.guardrailIds, spendLimit)}
+        {copy.edit.guardrails.changeLead}<a
+          href={router.href(accessPath)}
+          onclick={(event) => followInApp(event, accessPath)}>{copy.edit.guardrails.accessTab}</a
+        >{copy.edit.guardrails.changeTail}
+      </p>
+    </FormSection>
+
+    <!-- Demoted: the destructive action sits apart from Save (row 41x). -->
+    <section class="weft-agent-form__danger" aria-labelledby="agent-delete-title">
+      <div class="weft-agent-form__danger-text">
+        <h2 id="agent-delete-title" class="weft-agent-form__danger-title">
+          {copy.edit.deleteBlock.title}
+        </h2>
+        <p class="weft-agent-form__note">{copy.edit.deleteBlock.description(savedName)}</p>
+      </div>
+      <Button data-changes type="button" variant="danger" disabled={busy} onclick={onDelete}
+        >{copy.deleteAction}</Button
+      >
+    </section>
   {/if}
 
   <div class="weft-agent-form__footer">
@@ -271,13 +326,15 @@
 
     <div class="weft-agent-form__actions">
       <p class="weft-agent-form__status" role="status" data-testid="agent-save-status">
-        {saving ? newCopy.saving : creating ? copy.try.notSavedYet : ''}
+        {#if saving}
+          {newCopy.saving}
+        {:else if creating}
+          {copy.try.notSavedYet}
+        {:else if savedRevision !== undefined}
+          <Check aria-hidden="true" size={14} color="var(--cinder-status-success-text)" />
+          {copy.edit.saved(savedRevision)}
+        {/if}
       </p>
-      {#if editor.mode === 'edit'}
-        <Button data-changes variant="danger" disabled={busy} onclick={onDelete}
-          >{copy.deleteAction}</Button
-        >
-      {/if}
       <Button type="button" variant="ghost" onclick={onCancel}>{copy.cancelAction}</Button>
       <Button data-changes type="submit" variant="primary" loading={saving}>
         {creating ? copy.createAction : copy.saveAction}
@@ -287,7 +344,7 @@
 </form>
 
 <!-- A dialog inside the form would put its buttons in the form, so the picker sits beside it. -->
-{#if editor.toolChoices.length > 0}
+{#if creating && editor.toolChoices.length > 0}
   <AgentEditorToolPicker {editor} bind:open={pickerOpen} />
 {/if}
 
@@ -319,6 +376,55 @@
     margin: 0;
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
+  }
+
+  .weft-agent-form__references {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .weft-agent-form__reference {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    align-items: center;
+    font-size: var(--cinder-text-sm);
+  }
+
+  /* The size and the remove button sit at the end of the row. */
+  .weft-agent-form__reference > :global(button) {
+    margin-inline-start: auto;
+  }
+
+  /*
+   * The delete, apart from the fields and above the sticky bar: a hairline over a title and its
+   * sentence with the button at the right, never a box inside the form (row 41x).
+   */
+  .weft-agent-form__danger {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-3) var(--cinder-space-4);
+    align-items: center;
+    justify-content: space-between;
+    padding-block-start: var(--cinder-space-4);
+    border-block-start: 1px solid var(--cinder-border);
+  }
+
+  .weft-agent-form__danger-text {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .weft-agent-form__danger-title {
+    margin: 0;
+    font-size: var(--cinder-text-base);
+    font-weight: 600;
   }
 
   .weft-agent-form__identifier-value {

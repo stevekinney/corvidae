@@ -17,8 +17,12 @@
    * Cancel (row 14x). It never says saved without the server's answer. A save the server fails
    * says so above the form, with what was typed still in it (row 42w). There is no draft and
    * nothing to publish: under the heading, a new agent's form says what an agent is (row 41a), and
-   * an agent that exists says when it was last saved and links to its versions, on the Settings
-   * tab of its page.
+   * an agent that exists says that a change is saved as a new version and that running chats keep
+   * the version they started with (row 41q), naming the version a save in flight makes (row 43k).
+   * The sticky bar says which version the agent is at (row 41y). The file line gives the file's
+   * path relative to the Interborough home, with the full path in a tooltip and a copy button (row
+   * 41r). While the agent is read, the form is placeholders with a Save that cannot be pressed
+   * (rows 43h, 43i); the top bar's trail names the agent once it is read (row 41q).
    *
    * Leaving a form that differs from what was saved asks first (rows 42o, 42p), through the
    * router's {@link LeaveGuard}: Cancel, the breadcrumb, a link in the shell, back and forward, and
@@ -53,12 +57,13 @@
     ConfirmDialog,
     CopyButton,
     PageHeader,
-    RelativeTime,
     Skeleton,
+    Tooltip,
   } from '@lostgradient/cinder';
   import { HttpClientError } from '@lostgradient/weft';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
 
+  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
   import { AGENT_EDITOR_COPY, RETRY_LABEL } from '../../app/copy.ts';
   import {
     agentFaultOf,
@@ -71,10 +76,10 @@
     type AgentCatalog,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
-  import { agentPath, agentTabPath } from '../../lib/agent-paths.ts';
+  import { agentPath } from '../../lib/agent-paths.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { getSettings } from '../../lib/bureau-settings.ts';
-  import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
+  import { agentFilePath, agentRelativePath, getHostPaths } from '../../lib/host-paths.ts';
   import { getProviders } from '../../lib/host-providers.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
@@ -84,6 +89,7 @@
   import { AgentEditorState, type ModelContext } from './agent-editor-state.svelte.ts';
   import { copyIdentifierOf, copySeedOf } from './agent-copy.ts';
   import AgentEditorForm from './agent-editor-form.svelte';
+  import AgentEditorLoading from './agent-editor-loading.svelte';
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
   import AgentRevisionHistory from './agent-revision-history.svelte';
   import AgentTryDrawer from './agent-try-drawer.svelte';
@@ -189,7 +195,6 @@
     enabled: agentId !== undefined,
   }));
   const latestVersion = $derived(versions.data?.[0]);
-  const versionsPath = $derived(agentTabPath(agentId ?? '', 'settings'));
 
   let editor = $state<AgentEditorState>();
   /** A write was refused because the file changed on disk after the form was filled. */
@@ -269,8 +274,17 @@
     return agentFilePath(directory, identifier);
   });
 
+  /** The file's path relative to the Interborough home, which reads the same on every host. */
+  const relativePath = $derived(agentRelativePath(invalidAgent?.id ?? editor?.identifier ?? ''));
+
   /** The agent's name as its file says it now, not as it is being typed. */
   const savedName = $derived(detail.data?.name ?? agentId ?? '');
+
+  // The top bar's trail reads "Agents, Tool runner, Edit" once the agent is read (row 41q).
+  usePageLabel(() => ({
+    path: agentPath(agentId ?? ''),
+    label: agentId === undefined ? undefined : detail.data?.name,
+  }));
 
   const heading = $derived(
     agentId === undefined ? copy.createHeading : copy.editHeading(savedName),
@@ -391,6 +405,16 @@
   const saving = $derived(save.isPending && !timedOut);
   const busy = $derived(saving || removal.isPending);
 
+  /**
+   * The line under the heading of a saved agent (rows 41q, 43k): what a save makes, and, while one
+   * is in flight, the version it makes.
+   */
+  const editSubtitle = $derived(
+    saving && latestVersion !== undefined
+      ? copy.edit.subtitleSaving(latestVersion.revision + 1)
+      : copy.edit.subtitle,
+  );
+
   /** Moves focus to the field with `id`, once the messages a submit shows are on the page. */
   async function focusField(id: string): Promise<void> {
     await tick();
@@ -422,15 +446,6 @@
       handler: () => submit(),
     }),
   );
-
-  /** Follows the link to the versions in the app's router, unless the click asks for a new tab. */
-  function openVersions(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(versionsPath);
-  }
 
   function confirmDelete(): void {
     if (currentHash !== null) removal.mutate(currentHash);
@@ -526,14 +541,8 @@
     {#snippet description()}
       {#if agentId === undefined}
         <span data-testid="agent-new-subtitle">{newAgentSubtitle}</span>
-      {:else if latestVersion !== undefined}
-        <span data-testid="agent-saved">
-          {copy.saved}
-          <RelativeTime date={latestVersion.savedAt} />,
-          <a href={router.href(versionsPath)} onclick={openVersions}
-            >{copy.version(latestVersion.revision)}</a
-          >
-        </span>
+      {:else}
+        <span data-testid="agent-edit-subtitle">{editSubtitle}</span>
       {/if}
     {/snippet}
     {#snippet actions()}
@@ -562,10 +571,28 @@
     {/snippet}
   </PageHeader>
 
-  {#if filePath !== ''}
+  <!-- Drawn once the host has answered, so the line is not replaced when its tooltip arrives. -->
+  {#if filePath !== '' && !hostPaths.isPending}
+    <!-- The path relative to the home, which is where a person looks; the full one is in the tooltip (row 41r). -->
     <p class="weft-agent-editor__path">
       <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
-      <CodeLocation class="weft-code-location" file={filePath} data-testid="agent-file-path" />
+      {#if hostPaths.data === undefined}
+        <CodeLocation
+          class="weft-code-location"
+          file={relativePath}
+          data-testid="agent-file-path"
+        />
+      {:else}
+        <!-- Focusable, so the full path is reachable from the keyboard as well as by hovering. -->
+        <Tooltip text={filePath}>
+          <CodeLocation
+            class="weft-code-location"
+            file={relativePath}
+            tabindex={0}
+            data-testid="agent-file-path"
+          />
+        </Tooltip>
+      {/if}
       <CopyButton
         value={filePath}
         label={copy.newAgent.copyFilePath}
@@ -644,6 +671,8 @@
       onReload={reloadProviders}
       reloading={catalog.isFetching || hostPaths.isFetching}
     />
+  {:else if loading && agentId !== undefined}
+    <AgentEditorLoading onCancel={cancel} />
   {:else if loading}
     <div role="status" aria-busy="true" aria-label={heading}>
       <Skeleton height="1.5rem" width="40%" />
@@ -675,6 +704,9 @@
             onDelete={() => (confirmingDelete = true)}
             retryingModels={catalog.isFetching}
             onRetryModels={() => void catalog.refetch()}
+            savedRevision={latestVersion?.revision}
+            {savedName}
+            referenceSizes={detail.data?.referenceSizes ?? null}
           />
         {/key}
       </div>

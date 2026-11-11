@@ -2,9 +2,9 @@
  * The agent editor's model field, against a stand-in for the Bureau and the host: models grouped
  * by provider, a provider with no key disabled and pointing to Settings › Models, a model the
  * model policy forbids (or one turned off or retired) listed with its reason and not offered, the
- * abilities of the chosen model, and an agent's own model that is no longer offered, which is
- * shown with a notice that says what a save does with it: kept when it is only turned off, refused
- * when it is retired, gone from the catalog, or forbidden by the model policy.
+ * abilities of the chosen model, and a saved agent's own model that is no longer offered, which is
+ * read-only text with a notice that says what a save does with it: kept when it is only turned
+ * off, refused when it is retired, gone from the catalog, or forbidden by the model policy.
  */
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -318,14 +318,15 @@ describe('a model turned off or retired', () => {
   });
 });
 
-describe('an agent whose model is no longer offered', () => {
+describe('a saved agent whose model is no longer offered', () => {
+  const notices = AGENT_EDITOR_COPY.edit.model;
   const written = (model: string): AgentDetail => {
     const agent = readyAgent();
     if (agent.definition === null) throw new Error('expected a definition');
     return { ...agent, definition: { ...agent.definition, model } };
   };
 
-  test('shows a model the policy forbids with a notice that a save needs another, and shows the Bureau’s refusal of a save that keeps it', async () => {
+  test('shows a model the policy forbids as read-only text with a notice that a save is refused, and shows the Bureau’s refusal of a save that keeps it', async () => {
     const refusal =
       'The definition cannot be used: model: "openai/gpt-4.1" is forbidden by the deployment model policy (provider denied)';
     const calls = bureau({
@@ -335,12 +336,16 @@ describe('an agent whose model is no longer offered', () => {
     calls.on('bureau.agents.definitions.update', () => {
       throw faults.unprocessable(refusal);
     });
-    const { findByRole, findByText, getByTestId, getByRole } = mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
+    const { findByTestId, findByText, getByTestId, getByRole, queryByRole } =
+      mountEditor('researcher');
 
-    expect(field).toHaveValue('openai/gpt-4.1');
+    // The model is text, not a field: the Settings tab is where it is changed.
+    expect((await findByTestId('agent-saved-model-value')).textContent).toContain('OpenAI');
+    expect(queryByRole('combobox')).toBeNull();
     const notice = getByTestId('agent-model-notice').textContent ?? '';
-    expect(notice).toContain(copy.refusedNotice('openai/gpt-4.1', copy.reasons['provider-denied']));
+    expect(notice).toContain(
+      notices.refusedNotice('openai/gpt-4.1', copy.reasons['provider-denied']),
+    );
     expect(notice).not.toContain('Saving keeps it');
 
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
@@ -356,10 +361,9 @@ describe('an agent whose model is no longer offered', () => {
       agent: written('openai/gpt-4.1'),
       modelPolicy: { bureau: { deniedModels: ['gpt-4.1'] }, policyRevision: 1 },
     });
-    const { findByRole, getByTestId } = mountEditor('researcher');
-    await findByRole('combobox', { name: 'Model' });
-    expect(getByTestId('agent-model-notice').textContent).toContain(
-      copy.refusedNotice('openai/gpt-4.1', copy.reasons['model-denied']),
+    const { findByTestId } = mountEditor('researcher');
+    expect((await findByTestId('agent-model-notice')).textContent).toContain(
+      notices.refusedNotice('openai/gpt-4.1', copy.reasons['model-denied']),
     );
   });
 
@@ -373,16 +377,14 @@ describe('an agent whose model is no longer offered', () => {
         ],
       }),
     });
-    const { findByRole, getByTestId } = mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
+    const { findByTestId } = mountEditor('researcher');
 
-    expect(field).toHaveValue('anthropic/old');
-    const notice = getByTestId('agent-model-notice').textContent ?? '';
-    expect(notice).toContain(copy.replacementNotice('anthropic/old', copy.reasons.retired));
+    const notice = (await findByTestId('agent-model-notice')).textContent ?? '';
+    expect(notice).toContain(notices.replacementNotice('anthropic/old', copy.reasons.retired));
     expect(notice).not.toContain('Saving keeps it');
   });
 
-  test('keeps the notice that a save keeps a model that is only turned off', async () => {
+  test('keeps the notice that a save keeps a model that is only turned off, and writes it back', async () => {
     const calls = bureau({
       agent: written('anthropic/off'),
       catalog: catalogFixture({
@@ -392,13 +394,12 @@ describe('an agent whose model is no longer offered', () => {
         ],
       }),
     });
-    const { findByRole, getByTestId, getByRole } = mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
+    const { findByTestId, getByTestId, getByRole } = mountEditor('researcher');
 
-    expect(field).toHaveValue('anthropic/off');
-    expect(getByTestId('agent-model-notice').textContent).toContain(
-      copy.keptNotice('anthropic/off', copy.reasons['turned-off']),
+    expect((await findByTestId('agent-model-notice')).textContent).toContain(
+      notices.keptNotice('anthropic/off', copy.reasons['turned-off']),
     );
+    expect(getByTestId('agent-saved-model-value').textContent).toContain('Anthropic');
 
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
@@ -406,23 +407,7 @@ describe('an agent whose model is no longer offered', () => {
     expect(update?.params['definition']).toMatchObject({ model: 'anthropic/off' });
   });
 
-  test('is replaced by the model the person chooses instead, and the notice goes', async () => {
-    const calls = bureau({
-      agent: written('openai/gpt-4.1'),
-      modelPolicy: { deployment: { deniedProviders: ['openai'] }, policyRevision: 1 },
-    });
-    const { findByRole, getByRole, queryByTestId } = mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
-    await chooseModel(field, 'anthropic/claude-sonnet-5');
-
-    await waitFor(() => expect(queryByTestId('agent-model-notice')?.outerHTML ?? null).toBeNull());
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
-    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
-    const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ model: 'anthropic/claude-sonnet-5' });
-  });
-
-  test('says the installation no longer offers a model the catalog lacks, under its provider', async () => {
+  test('says the installation no longer offers a model the catalog lacks', async () => {
     bureau({
       agent: written('gemini/gemini-2.5-pro'),
       hostProviders: [
@@ -430,55 +415,33 @@ describe('an agent whose model is no longer offered', () => {
         { name: 'gemini', hasKey: false },
       ],
     });
-    const { findByRole, getByTestId } = mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('gemini/gemini-2.5-pro');
-    expect(getByTestId('agent-model-notice').textContent).toContain(
-      copy.replacementNotice('gemini/gemini-2.5-pro', copy.reasons['not-in-catalog']),
+    const { findByTestId } = mountEditor('researcher');
+    const notice = (await findByTestId('agent-model-notice')).textContent ?? '';
+    expect(notice).toContain(
+      notices.replacementNotice('gemini/gemini-2.5-pro', copy.reasons['not-in-catalog']),
     );
-    expect(getByTestId('agent-model-notice').textContent).not.toContain('Saving keeps it');
-    await openModelOptions(field);
-    expect(groupsOf().at(-1)).toEqual({
-      name: 'Gemini',
-      options: [copy.notConnected('Gemini'), 'gemini/gemini-2.5-pro'],
-    });
+    expect(notice).not.toContain('Saving keeps it');
   });
 
-  test('is not called unconnected when its provider is connected', async () => {
-    bureau({
-      agent: written('openai/gpt-3.5'),
-      hostProviders: [
-        { name: 'anthropic', hasKey: true },
-        { name: 'openai', hasKey: true },
-      ],
-    });
-    const { findByRole, queryByTestId } = mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('openai/gpt-3.5');
-    await openModelOptions(field);
-    expect(groupsOf()).toEqual([
-      { name: 'Anthropic', options: ['anthropic/claude-sonnet-5'] },
-      { name: 'OpenAI', options: ['openai/gpt-4.1', 'openai/gpt-3.5'] },
-    ]);
-    expect(queryByTestId('agent-model-unconnected')).toBeNull();
-    expect(document.body.textContent).not.toContain('is not connected');
-  });
-
-  test('shows no notice for a model that is offered, and none for a new agent', async () => {
+  test('shows no notice for a model that is offered, and none on a new agent’s form', async () => {
     bureau();
     const edited = mountEditor('researcher');
-    await edited.findByRole('combobox', { name: 'Model' });
+    await edited.findByTestId('agent-saved-model-value');
     expect(edited.queryByTestId('agent-model-notice')).toBeNull();
+    edited.unmount();
+
+    const created = mountEditor();
+    await created.findByRole('combobox', { name: 'Model' });
+    expect(created.queryByTestId('agent-model-notice')).toBeNull();
+    expect(created.queryByTestId('agent-saved-model')).toBeNull();
   });
 });
 
 describe('a reload from disk', () => {
   test('reads the providers and the model policy again, along with the file', async () => {
     const calls = bureau({ hostProviders: [{ name: 'anthropic', hasKey: true }] });
-    const { findByRole, getByRole, findByText, queryByTestId, findByTestId } =
-      mountEditor('researcher');
-    const field = await findByRole('combobox', { name: 'Model' });
-    expect(field).toHaveValue('anthropic/claude-sonnet-5');
+    const { findByTestId, getByRole, findByText, queryByTestId } = mountEditor('researcher');
+    expect((await findByTestId('agent-saved-model-value')).textContent).toContain('Anthropic');
     expect(queryByTestId('agent-model-notice')).toBeNull();
 
     // The file changed on disk, and the policy now forbids the agent's provider.

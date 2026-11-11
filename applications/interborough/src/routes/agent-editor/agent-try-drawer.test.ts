@@ -288,15 +288,20 @@ describe('Try it', () => {
   });
 
   test('is off while the form cannot be tried', async () => {
-    bureau();
-    const view = mount();
-    const field = await view.findByRole('textbox', { name: 'Message' });
-    expect((field as HTMLTextAreaElement).disabled).toBe(false);
-    await type(await view.findByRole('textbox', { name: /^Steps per run/ }), 'many');
+    // A saved agent's form shows no field for its limits or effort, so the file's own value is
+    // what cannot be tried: here an effort that the model does not list.
+    const detail = readyAgent();
+    bureau({
+      'bureau.agents.definitions.get': () => ({
+        ...detail,
+        definition: { ...detail.definition!, effort: 'max' },
+      }),
+    });
+    const blocked = mount();
     await waitFor(() =>
-      expect((view.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).disabled).toBe(
-        true,
-      ),
+      expect(
+        (blocked.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).disabled,
+      ).toBe(true),
     );
   });
   test('with no model provider connected the shared blocked row stands in for the composer, over an empty transcript', async () => {

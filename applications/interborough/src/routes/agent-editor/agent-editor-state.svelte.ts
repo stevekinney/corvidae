@@ -211,7 +211,15 @@ export const FIELD_IDS = {
 
 /** The parts of the form the leave question names, in the form's order (row 42o). */
 type FormPart =
-  'name' | 'identifier' | 'description' | 'model' | 'instructions' | 'tools' | 'limits' | 'a2a';
+  | 'name'
+  | 'identifier'
+  | 'description'
+  | 'model'
+  | 'instructions'
+  | 'references'
+  | 'tools'
+  | 'limits'
+  | 'a2a';
 
 /** The words the leave question uses for each part of the form. */
 const PART_LABELS: Readonly<Record<FormPart, string>> = {
@@ -220,6 +228,7 @@ const PART_LABELS: Readonly<Record<FormPart, string>> = {
   description: AGENT_EDITOR_COPY.descriptionLabel,
   model: AGENT_EDITOR_COPY.sections.model,
   instructions: AGENT_EDITOR_COPY.sections.instructions,
+  references: AGENT_EDITOR_COPY.edit.references.heading,
   tools: AGENT_EDITOR_COPY.sections.tools,
   limits: AGENT_EDITOR_COPY.sections.limits,
   a2a: AGENT_EDITOR_COPY.a2aLabel,
@@ -232,6 +241,7 @@ const FORM_PARTS: readonly FormPart[] = [
   'description',
   'model',
   'instructions',
+  'references',
   'tools',
   'limits',
   'a2a',
@@ -335,11 +345,18 @@ export class AgentEditorState {
 
   /**
    * The documents the file's `references` name, beside it. A save of an existing agent leaves them
-   * to the file (an update that omits `references` keeps them); a copy is created with them, since it
+   * to the file (an update that omits `references` keeps them) unless one was removed
+   * ({@link removeReference}); a copy is created with them, since it
    * lands in the directory they sit in (a plugin's agent is refused by the Bureau); a trial runs
    * without them, because there is no file for them to sit beside.
    */
   readonly references: readonly string[];
+
+  /**
+   * The reference documents a person removed from a saved agent's form (row 41t). The documents
+   * stay beside the file; the next save writes the list without them, as a new version.
+   */
+  #removedReferences = $state<readonly string[]>([]);
 
   /** The tools a copy was seeded with, before the catalog's offer was applied. */
   #seededTools: readonly string[] = [];
@@ -569,6 +586,10 @@ export class AgentEditorState {
    * while it follows it, so what is wrong with that identifier is said at the name (rows 42m, 42n).
    */
   get nameError(): string {
+    // A saved agent's identifier is fixed, so only an emptied name is wrong (row 41s).
+    if (this.mode === 'edit') {
+      return this.name.trim() === '' ? AGENT_EDITOR_COPY.edit.nameRequired : '';
+    }
     if (!this.identifierFollowsName) return '';
     const copy = AGENT_EDITOR_COPY.newAgent;
     if (this.name.trim() === '') return copy.nameRequired;
@@ -605,7 +626,7 @@ export class AgentEditorState {
     const follows = this.identifierFollowsName;
     if (!this.#attempted && !this.#takenNow()) return { name: '', identifier: '', model: '' };
     return {
-      name: follows ? this.nameError : '',
+      name: follows || this.mode === 'edit' ? this.nameError : '',
       identifier: follows ? '' : this.identifierError,
       model: this.#attempted ? this.modelError : '',
     };
@@ -617,12 +638,13 @@ export class AgentEditorState {
    * 43s, W35).
    */
   get firstProblem(): string | undefined {
-    if (this.mode === 'create') {
-      const follows = this.identifierFollowsName;
-      if (follows && this.nameError !== '') return FIELD_IDS.name;
-      if (!follows && (this.identifierError !== '' || this.identifier === '')) {
-        return FIELD_IDS.identifier;
-      }
+    // A saved agent's form shows its model, effort and limits as read-only lines that the Settings
+    // and Access tabs change, so only its name can stop a save here; the Bureau judges the rest.
+    if (this.mode === 'edit') return this.nameError === '' ? undefined : FIELD_IDS.name;
+    const follows = this.identifierFollowsName;
+    if (follows && this.nameError !== '') return FIELD_IDS.name;
+    if (!follows && (this.identifierError !== '' || this.identifier === '')) {
+      return FIELD_IDS.identifier;
     }
     if (!this.hasModels || this.modelError !== '' || this.modelRefused) return FIELD_IDS.model;
     if (this.effortError !== '') return FIELD_IDS.effort;
@@ -639,6 +661,7 @@ export class AgentEditorState {
       description: this.description,
       model: `${this.model}\n${this.effort}`,
       instructions: this.instructions,
+      references: this.referencesKept.join('\n'),
       tools: JSON.stringify([
         [...this.tools].sort(),
         Object.entries(this.#approvals ?? {}).sort(([left], [right]) => left.localeCompare(right)),
@@ -694,6 +717,27 @@ export class AgentEditorState {
   get droppedTools(): readonly string[] {
     const offered = new Set(this.toolChoices.map((tool) => tool.name));
     return this.#seededTools.filter((tool) => !offered.has(tool));
+  }
+
+  /** The reference documents the form keeps, in the file's order: what a save of a saved agent writes (row 41t). */
+  get referencesKept(): readonly string[] {
+    return this.references.filter((path) => !this.#removedReferences.includes(path));
+  }
+
+  /**
+   * Removes a reference document from a saved agent (row 41t). The document stays beside the file;
+   * the save writes the list without it. A path the file does not list, a path already removed, and
+   * a new agent's form (whose documents are a copy's, kept whole) change nothing.
+   */
+  removeReference(path: string): void {
+    if (this.mode !== 'edit' || !this.references.includes(path)) return;
+    if (this.#removedReferences.includes(path)) return;
+    this.#removedReferences = [...this.#removedReferences, path];
+  }
+
+  /** The ids of the guardrails the form holds, in the order typed (the Edit form's read-only line, row 41w). */
+  get guardrailIds(): readonly string[] {
+    return parseGuardrails(this.guardrails);
   }
 
   /** Whether the catalog holds any model at all. */
@@ -772,9 +816,12 @@ export class AgentEditorState {
 
   /** Whether the form holds what a save needs. A save also waits for any request in flight. */
   get canSave(): boolean {
+    // See `firstProblem`: a saved agent's form cannot fix its model, effort or limits, so it does
+    // not hold the save back for them. The Bureau refuses what it cannot use and says why.
+    if (this.mode === 'edit') return this.nameError === '';
     if (!this.hasModels || this.model === '') return false;
     if (this.effortError !== '' || Object.keys(this.limitErrors).length > 0) return false;
-    return this.mode === 'edit' || (this.identifier !== '' && this.#identifierIsValid());
+    return this.identifier !== '' && this.#identifierIsValid();
   }
 
   /** Whether the agent's tool is ticked. */
@@ -837,13 +884,19 @@ export class AgentEditorState {
 
   /**
    * The definition to write: the form's fields and the carried skill descriptors and models. A copy
-   * carries the original's `references`; an update leaves them out, which keeps the file's.
+   * carries the original's `references`; an update leaves them out, which keeps the file's, unless
+   * a document was removed.
    */
   toDefinition(): AgentDefinitionInput {
     return {
       ...this.toTryDefinition(),
       ...(this.mode === 'create' && this.references.length > 0
         ? { references: this.references }
+        : {}),
+      // A saved agent leaves its documents to the file, unless one was removed: then the list
+      // without it is written, and `null` once none is left.
+      ...(this.mode === 'edit' && this.#removedReferences.length > 0
+        ? { references: this.referencesKept.length === 0 ? null : this.referencesKept }
         : {}),
     };
   }

@@ -450,9 +450,7 @@ describe('a new agent', () => {
     const { findByRole, getByTestId, queryByRole, queryByText } = mountEditor();
     await type(await findByRole('textbox', { name: /^Name/ }), 'Research Assistant');
 
-    expect(getByTestId('agent-file-path').textContent).toBe(
-      `${STUB_AGENT_DIRECTORY}/research-assistant.md`,
-    );
+    expect(getByTestId('agent-file-path').textContent).toBe('agents/research-assistant.md');
     expect(queryByText(AGENT_EDITOR_COPY.revisions.heading)).toBeNull();
     expect(queryByRole('button', { name: AGENT_EDITOR_COPY.deleteAction })).toBeNull();
   });
@@ -536,27 +534,25 @@ describe('a new agent', () => {
 });
 
 describe('an agent that exists', () => {
-  test('fills the form from its file, shows where the file is, and fixes the identifier', async () => {
+  test('fills the form from its file, shows where the file is, and shows the identifier as a line', async () => {
     bureau();
-    const { findByRole, getByRole, getByTestId } = mountEditor('researcher');
+    const { findByRole, getByRole, getByTestId, queryByRole } = mountEditor('researcher');
 
     expect(await findByRole('heading', { level: 1, name: 'Edit Researcher' })).not.toBeNull();
-    expect(getByTestId('agent-tool-count').textContent?.trim()).toBe('1 of 1 chosen');
+    expect(getByTestId('agent-tools-summary').textContent).toContain(
+      AGENT_EDITOR_COPY.edit.tools.count(1),
+    );
     expect(getByRole('textbox', { name: /^Name/ })).toHaveValue('Researcher');
     expect(getByRole('textbox', { name: /^Description/ })).toHaveValue('Finds and cites sources');
     expect(getByRole('textbox', { name: /^Instructions/ })).toHaveValue(
       'You are a careful researcher.',
     );
-    expect(getByRole('combobox', { name: 'Model' })).toHaveValue('anthropic/claude-sonnet-5');
-    expect(
-      within(getByRole('list', { name: AGENT_EDITOR_COPY.chosenToolsLabel })).getByText(
-        'lookup-order',
-      ),
-    ).not.toBeNull();
-    expect(getByRole('textbox', { name: /^Identifier/ })).toHaveAttribute('readonly');
-    expect(getByTestId('agent-file-path').textContent).toBe(
-      `${STUB_AGENT_DIRECTORY}/researcher.md`,
-    );
+    // The model is read-only text on a saved agent, and the identifier is a line, not a field.
+    expect(queryByRole('combobox', { name: 'Model' })).toBeNull();
+    expect(getByTestId('agent-saved-model-value').textContent).toContain('Claude Sonnet 5');
+    expect(queryByRole('textbox', { name: /^Identifier/ })).toBeNull();
+    expect(getByTestId('agent-identifier').textContent).toContain('researcher');
+    expect(getByTestId('agent-file-path').textContent).toBe('agents/researcher.md');
   });
 
   test('shows the file relative to the state directory when the host does not say where it is', async () => {
@@ -618,16 +614,15 @@ describe('an agent that exists', () => {
     expect(update?.params['definition']).toMatchObject({ card: [skill] });
   });
 
-  test('sends the model it was changed to, and only a model the catalog offers can be chosen', async () => {
+  test('writes the model back as the file wrote it, since the form shows no control to change it', async () => {
     const calls = bureau();
-    const { findByRole, getByRole } = mountEditor('researcher');
-    const select = await findByRole('combobox', { name: 'Model' });
-    expect(await openModelOptions(select)).toHaveLength(2);
-    await chooseModel(select, 'anthropic/claude-haiku-5');
+    const { findByRole, getByRole, queryByRole } = mountEditor('researcher');
+    await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
+    expect(queryByRole('combobox')).toBeNull();
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ model: 'anthropic/claude-haiku-5' });
+    expect(update?.params['definition']).toMatchObject({ model: 'anthropic/sonnet' });
   });
 
   test('saves the A2A switch with the rest of the definition, for an agent that exists', async () => {
@@ -682,69 +677,37 @@ describe('the default effort', () => {
   const optionsOf = (select: HTMLElement) =>
     [...select.querySelectorAll('option')].map((option) => option.textContent);
 
-  test('offers None and the tiers the model supports, and sends the one chosen with the save', async () => {
+  // The field is on a new agent's form. A saved agent's form shows no control for it: the Settings
+  // tab owns the model and what goes with it, and a save writes the file's effort back.
+  test('offers None and the tiers the model supports on a new agent, and sends the one chosen with the save', async () => {
     const calls = bureau({ catalog: catalog() });
-    const { findByLabelText, getByRole } = mountEditor('researcher');
+    const { findByLabelText, findByRole, getByRole } = mountEditor();
+    await type(await findByRole('textbox', { name: /^Name/ }), 'Researcher');
     const select = await findByLabelText(AGENT_EDITOR_COPY.effort.label);
     expect(optionsOf(select)).toEqual(['None', 'Low', 'Medium', 'High']);
     expect((select as HTMLSelectElement).value).toBe('');
 
     await fireEvent.change(select, { target: { value: 'medium' } });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
+    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
-    const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ effort: 'medium' });
+    const [create] = calls.callsTo('bureau.agents.definitions.create');
+    expect(create?.params['definition']).toMatchObject({ effort: 'medium' });
   });
 
-  test('shows the effort the file holds, and sends null once it is set back to None', async () => {
+  test('is not on a saved agent’s form, and its effort is written back unchanged', async () => {
     const calls = bureau({ catalog: catalog(), agent: agentWith('high') });
-    const { findByLabelText, getByRole } = mountEditor('researcher');
-    const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
-    expect(select.value).toBe('high');
-
-    await fireEvent.change(select, { target: { value: '' } });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
-    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
-    const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({ effort: null });
-  });
-
-  test('keeps the effort across an unrelated edit, and writes it back unchanged', async () => {
-    const calls = bureau({ catalog: catalog(), agent: agentWith('high') });
-    const { findByRole, getByRole } = mountEditor('researcher');
+    const { findByRole, getByRole, queryByLabelText } = mountEditor('researcher');
     await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
+    expect(queryByLabelText(AGENT_EDITOR_COPY.effort.label)).toBeNull();
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
     await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
     const [update] = calls.callsTo('bureau.agents.definitions.update');
     expect(update?.params['definition']).toMatchObject({ effort: 'high' });
   });
 
-  test('clears an effort the newly chosen model cannot do, says so, and sends null', async () => {
-    const calls = bureau({ catalog: catalog(), agent: agentWith('high') });
-    const { findByRole, findByLabelText, getByRole, getByTestId, queryByTestId } =
-      mountEditor('researcher');
-    const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
-    expect(queryByTestId('agent-effort-notice')).toBeNull();
-
-    await chooseModel(await findByRole('combobox', { name: 'Model' }), 'anthropic/claude-haiku-5');
-
-    expect(select.value).toBe('');
-    expect(optionsOf(select)).toEqual(['None', 'Low']);
-    expect(getByTestId('agent-effort-notice').textContent).toContain(
-      AGENT_EDITOR_COPY.effort.cleared('High', 'anthropic/claude-haiku-5'),
-    );
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
-    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
-    const [update] = calls.callsTo('bureau.agents.definitions.update');
-    expect(update?.params['definition']).toMatchObject({
-      model: 'anthropic/claude-haiku-5',
-      effort: null,
-    });
-  });
-
-  test('is disabled, and says why, for a model with no effort control', async () => {
+  test('is disabled, and says why, for a new agent’s model with no effort control', async () => {
     bureau({ catalog: catalog() });
-    const { findByRole, findByLabelText, getByText } = mountEditor('researcher');
+    const { findByRole, findByLabelText, getByText } = mountEditor();
     const select = (await findByLabelText(AGENT_EDITOR_COPY.effort.label)) as HTMLSelectElement;
     await chooseModel(await findByRole('combobox', { name: 'Model' }), 'openai/gpt-4.1');
     expect(optionsOf(select)).toEqual(['None']);
@@ -752,7 +715,7 @@ describe('the default effort', () => {
     expect(getByText(AGENT_EDITOR_COPY.effort.notSupportedByModel)).not.toBeNull();
   });
 
-  test('will not save an effort the file’s model does not support, and says so beside the field', async () => {
+  test('is sent as the file holds it, even one its model does not list, and the Bureau’s reason shows', async () => {
     const calls = bureau({
       catalog: catalog(),
       agent: {
@@ -764,30 +727,17 @@ describe('the default effort', () => {
         },
       },
     });
-    const { findByLabelText, findByText, getByRole } = mountEditor('researcher');
-    await findByLabelText(AGENT_EDITOR_COPY.effort.label);
-    expect(
-      await findByText(AGENT_EDITOR_COPY.effort.unsupported('High', 'anthropic/claude-haiku-5')),
-    ).not.toBeNull();
-    // Save stays enabled (W35); a submit focuses the effort and sends nothing.
+    calls.on('bureau.agents.definitions.update', () => {
+      throw faults.unprocessable('claude-haiku-5 does not support high effort.');
+    });
+    const { findByRole, findByText, getByRole } = mountEditor('researcher');
+    await findByRole('textbox', { name: /^Instructions/ });
+    // Save stays enabled (W35). The form cannot change the effort, so the save goes to the Bureau.
     const save = getByRole('button', { name: AGENT_EDITOR_COPY.saveAction });
     expect(save).not.toBeDisabled();
     await fireEvent.click(save);
-    await waitFor(() => expect(document.activeElement?.id).toBe('agent-default-effort'));
-    expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(0);
-  });
-
-  test('shows the Bureau’s reason when it refuses the effort at a save', async () => {
-    const calls = bureau({ catalog: catalog() });
-    calls.on('bureau.agents.definitions.update', () => {
-      throw faults.unprocessable('claude-sonnet-5 does not support high effort.');
-    });
-    const { findByLabelText, getByRole, findByText } = mountEditor('researcher');
-    await fireEvent.change(await findByLabelText(AGENT_EDITOR_COPY.effort.label), {
-      target: { value: 'high' },
-    });
-    await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
-    expect(await findByText('claude-sonnet-5 does not support high effort.')).not.toBeNull();
+    expect(await findByText('claude-haiku-5 does not support high effort.')).not.toBeNull();
+    expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1);
     expect(router.pathname).toBe('/');
   });
 });
@@ -903,7 +853,7 @@ describe('deleting an agent', () => {
 describe('the delete in the page header', () => {
   const deleteButton = { name: AGENT_EDITOR_COPY.deleteAction };
 
-  test('is not shown while the catalog is still being read, and the footer holds it once the form is built', async () => {
+  test('is not shown while the catalog is still being read, and the delete block holds it once the form is built', async () => {
     const calls = bureau();
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => (release = resolve));
@@ -923,9 +873,13 @@ describe('the delete in the page header', () => {
       release();
     }
     await findByRole('form', { name: AGENT_EDITOR_COPY.formLabel });
-    // One delete, in the form's footer, not a second one in the header.
+    // One delete, in the form's delete block (row 41x), not a second one in the header and not in
+    // the sticky bar.
     expect(queryAllByRole('button', deleteButton).length).toBe(1);
-    expect(container.querySelector('.weft-agent-form__footer')?.textContent).toContain(
+    expect(container.querySelector('.weft-agent-form__danger')?.textContent).toContain(
+      AGENT_EDITOR_COPY.deleteAction,
+    );
+    expect(container.querySelector('.weft-agent-form__footer')?.textContent).not.toContain(
       AGENT_EDITOR_COPY.deleteAction,
     );
   });
@@ -970,9 +924,7 @@ describe('a file the Bureau cannot use', () => {
     expect(container.textContent).toContain('The model "gpt-9" is not in the catalog.');
     expect(container.textContent).toContain('not offered');
     expect(container.querySelector('[data-editor]')?.getAttribute('data-editor')).toBe('invalid');
-    expect(getByTestId('agent-file-path').textContent).toBe(
-      `${STUB_AGENT_DIRECTORY}/researcher.md`,
-    );
+    expect(getByTestId('agent-file-path').textContent).toBe('agents/researcher.md');
     expect(queryByRole('textbox', { name: /^Instructions/ })).toBeNull();
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.invalid.action })).not.toBeNull();
   });
@@ -1047,15 +999,19 @@ describe.each(['local', 'remote'] as const)('the agent editor on a %s host', (mo
     },
   } as const;
 
-  test('labels an agent’s location with the words of its mode, and shows the host’s location verbatim', async () => {
+  test('labels an agent’s location with the words of its mode, and shows the host’s location verbatim on hover', async () => {
     bureau({ hostMode: mode });
-    const { findByTestId, container } = mountEditor('researcher');
+    const { findByTestId, findByRole, container } = mountEditor('researcher');
     const path = await findByTestId('agent-file-path');
 
     const label = container.querySelector('.weft-agent-editor__path span')?.textContent;
     expect(label).toBe(words[mode].label);
     expect(label).not.toBe(words[other].label);
-    expect(path.textContent).toBe(
+    // The line reads the same on every host; the host's own location is what the tooltip says.
+    expect(path.textContent).toBe('agents/researcher.md');
+    await fireEvent.focusIn(path);
+    const tooltip = await findByRole('tooltip');
+    expect(tooltip.textContent).toContain(
       mode === 'remote'
         ? `${STUB_REMOTE_AGENT_DIRECTORY}researcher.md`
         : `${STUB_AGENT_DIRECTORY}/researcher.md`,
@@ -1118,7 +1074,7 @@ describe('the Save in the sticky bar', () => {
     await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));
   });
 
-  test('says when the agent was last saved and links to its versions on the Settings tab', async () => {
+  test('says which version the agent is at, in the sticky bar', async () => {
     bureau({
       versions: [
         {
@@ -1132,34 +1088,10 @@ describe('the Save in the sticky bar', () => {
       ],
     });
     const { findByTestId } = mountEditor('researcher');
-    const saved = await findByTestId('agent-saved');
-    expect(saved.textContent).toContain(AGENT_EDITOR_COPY.saved);
-    expect(saved.textContent).toContain('2 min ago');
-    const link = saved.querySelector('a');
-    expect(link?.textContent).toBe(AGENT_EDITOR_COPY.version(4));
-    expect(link?.getAttribute('href')).toBe('/agents/researcher/settings');
-  });
-
-  test('opens the versions in the app, unless the click asks for a new tab', async () => {
-    bureau({
-      versions: [
-        {
-          revision: 2,
-          hash: 'hash-1',
-          savedAt: new Date().toISOString(),
-          savedBy: null,
-          definition: readyAgent().definition,
-          changedKeys: [],
-        },
-      ],
-    });
-    const { findByRole } = mountEditor('researcher');
-    const link = await findByRole('link', { name: AGENT_EDITOR_COPY.version(2) });
-
-    await fireEvent.click(link, { metaKey: true });
-    expect(router.pathname).not.toBe('/agents/researcher/settings');
-    await fireEvent.click(link);
-    await waitFor(() => expect(router.pathname).toBe('/agents/researcher/settings'));
+    const status = await findByTestId('agent-save-status');
+    await waitFor(() =>
+      expect(status.textContent?.trim()).toBe(AGENT_EDITOR_COPY.edit.saved(4)),
+    );
   });
 
   test('registers ⌘Enter, which saves from a field, and removes it when the page goes', async () => {
@@ -1184,26 +1116,35 @@ describe('the Save in the sticky bar', () => {
     expect(pressCommandEnter('/agents/:agent/edit')).toBe(false);
   });
 
-  test('does not save with ⌘Enter while a limit is wrong', async () => {
+  test('does not save with ⌘Enter while the name is emptied', async () => {
     const calls = bureau();
     const { findByRole, getByRole, findByText } = mountEditor('researcher');
-    await type(await findByRole('textbox', { name: /^Steps per run/ }), '5000');
-    await findByText(AGENT_EDITOR_COPY.limits.errors.stepLimit(1000));
+    const name = await findByRole('textbox', { name: /^Name/ });
+    await type(name, '');
 
     expect(pressCommandEnter('/agents/:agent/edit')).toBe(true);
-    // Save stays enabled (W35), and the submit focuses the field that stops it.
+    // Save stays enabled (W35), and the submit says what stops it at the field and focuses it.
     expect(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction })).not.toBeDisabled();
-    await waitFor(() => expect(document.activeElement?.id).toBe('agent-step-limit'));
+    expect(await findByText(AGENT_EDITOR_COPY.edit.nameRequired)).not.toBeNull();
+    await waitFor(() => expect(document.activeElement === name).toBe(true));
     expect(calls.callsTo('bureau.agents.definitions.update')).toEqual([]);
   });
 
-  test('sends the limits it was given', async () => {
-    const calls = bureau();
-    const { findByRole, getByRole } = mountEditor('researcher');
-    await type(await findByRole('textbox', { name: /^Steps per run/ }), '12');
-    await type(getByRole('textbox', { name: /^Spend per run/ }), '1.5');
-    await type(getByRole('textbox', { name: /^Tool calls per run/ }), '30');
-    await type(getByRole('textbox', { name: /^Guardrails/ }), 'acme:tripwire');
+  test('sends the guardrails and limits the file holds, since the form shows no field for them', async () => {
+    const detail = readyAgent();
+    const calls = bureau({
+      agent: {
+        ...detail,
+        definition: {
+          ...detail.definition!,
+          guardrails: ['acme:tripwire'],
+          limits: { steps: 12, cost: { run: 1.5 }, tools: { calls: 30 } },
+        },
+      },
+    });
+    const { findByRole, getByRole, queryByRole } = mountEditor('researcher');
+    await type(await findByRole('textbox', { name: /^Instructions/ }), 'Changed.');
+    expect(queryByRole('textbox', { name: /^Steps per run/ })).toBeNull();
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.saveAction }));
 
     await waitFor(() => expect(calls.callsTo('bureau.agents.definitions.update')).toHaveLength(1));

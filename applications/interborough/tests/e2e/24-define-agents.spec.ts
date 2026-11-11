@@ -433,13 +433,12 @@ test.describe('an agent that exists', () => {
         page.getByRole('heading', { level: 1, name: 'Edit End-to-end agent' }),
       ).toBeVisible();
 
-      // Where the file is, and that the identifier cannot change.
+      // Where the file is, relative to the home with the full path on hover, and that the
+      // identifier is one line of text, not a field, because it cannot change.
       const path = await agentFilePath(request, 'e2e-edit');
-      await expect(page.getByTestId('agent-file-path')).toHaveText(path);
-      await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveAttribute(
-        'readonly',
-        '',
-      );
+      await expect(page.getByTestId('agent-file-path')).toHaveText('agents/e2e-edit.md');
+      await expect(page.getByTestId('agent-identifier')).toContainText('e2e-edit');
+      await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveCount(0);
       await expect(
         page.getByRole('heading', { level: 2, name: copy.revisions.heading }),
       ).toBeVisible();
@@ -478,57 +477,31 @@ test.describe('an agent that exists', () => {
     });
   }
 
-  test('changes its model to another the catalog offers, and the file says so', async ({
-    page,
-    request,
-  }) => {
-    await makeAgent(request, 'e2e-model');
-    await page.goto('/agents/e2e-model/edit');
-    const select = page.getByRole('combobox', { name: 'Model' });
-    // The file wrote an alias, and the field shows the model it names.
-    await expect(select).toHaveValue('anthropic/claude-sonnet-5');
-
-    await select.fill('');
-    await page.getByRole('option', { name: /^anthropic\/claude-haiku-4-5/ }).click();
-    await page.getByRole('button', { name: copy.saveAction }).click();
-    await expect(page).toHaveURL(/\/agents\/e2e-model$/);
-
-    const agent = await readAgent(request, 'e2e-model');
-    expect(agent.definition?.model).toBe('anthropic/claude-haiku-4-5');
-    expect(await readFile(await agentFilePath(request, 'e2e-model'), 'utf8')).toContain(
-      'model: anthropic/claude-haiku-4-5',
-    );
-  });
-
-  test('sets, changes and clears the default effort, and the agent page says it', async ({
+  test('leaves its model and default effort to the Settings tab, and writes them back as the file had them', async ({
     page,
     request,
   }) => {
     await makeAgent(request, 'e2e-effort', { effort: 'high' });
+    const before = await readAgent(request, 'e2e-effort');
     await page.goto('/agents/e2e-effort/edit');
-    const effort = page.getByLabel(copy.effort.label);
-    await expect(effort).toHaveValue('high');
 
-    await effort.selectOption('low');
+    // The model is text that points to the Settings tab, and there is no field for the effort.
+    await expect(page.getByTestId('agent-saved-model-value')).toContainText('Claude Sonnet 5');
+    await expect(page.getByRole('combobox')).toHaveCount(0);
+    await expect(page.getByLabel(copy.effort.label)).toHaveCount(0);
+    await page.getByRole('link', { name: copy.edit.model.settingsTab }).click();
+    await expect(page).toHaveURL(/\/agents\/e2e-effort\/settings$/);
+
+    await page.goto('/agents/e2e-effort/edit');
+    await page.getByRole('textbox', { name: /^Instructions/ }).fill('Edited, nothing else.');
     await page.getByRole('button', { name: copy.saveAction }).click();
     await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
-    const changed = await readAgent(request, 'e2e-effort');
-    expect(changed.definition?.effort).toBe('low');
+    const after = await readAgent(request, 'e2e-effort');
+    expect(after.definition?.model).toBe(before.definition?.model);
+    expect(after.definition?.effort).toBe('high');
     expect(await readFile(await agentFilePath(request, 'e2e-effort'), 'utf8')).toContain(
-      'effort: low',
+      'effort: high',
     );
-
-    await page.goto('/agents/e2e-effort/settings');
-    await expect(page.getByTestId('agent-default-effort')).toHaveText('Low');
-
-    await page.goto('/agents/e2e-effort/edit');
-    await page.getByLabel(copy.effort.label).selectOption('');
-    await page.getByRole('button', { name: copy.saveAction }).click();
-    await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
-    const cleared = await readAgent(request, 'e2e-effort');
-    expect(cleared.definition?.effort).toBeNull();
-    await page.goto('/agents/e2e-effort/settings');
-    await expect(page.getByTestId('agent-default-effort')).toHaveText('Not set');
   });
 
   test('opts into and out of A2A with its switch, saved with the form', async ({
@@ -674,7 +647,7 @@ test.describe('a file that changed outside Interborough', () => {
       await page.getByRole('textbox', { name: /^Instructions/ }).fill('Typed in the browser.');
 
       // Someone edits the file on disk after the page loaded.
-      const path = await page.getByTestId('agent-file-path').innerText();
+      const path = await agentFilePath(request, 'e2e-stale');
       const original = await readFile(path, 'utf8');
       const onDisk = original.replace('You are an end-to-end agent.', 'Hand-edited on disk.');
       await writeFile(path, onDisk);
@@ -706,7 +679,7 @@ test.describe('a file that changed outside Interborough', () => {
   test('is the same state for a delete, which removes nothing', async ({ page, request }) => {
     await makeAgent(request, 'e2e-stale-delete');
     await page.goto('/agents/e2e-stale-delete/edit');
-    const path = await page.getByTestId('agent-file-path').innerText();
+    const path = await agentFilePath(request, 'e2e-stale-delete');
     const original = await readFile(path, 'utf8');
     const onDisk = original.replace('end-to-end agent.', 'edited agent.');
     await writeFile(path, onDisk);
@@ -730,7 +703,7 @@ test.describe('a file that changed outside Interborough', () => {
       await makeAgent(request, 'e2e-gone');
       await page.goto('/agents/e2e-gone/edit');
       await expect(editor(page)).toHaveAttribute('data-state', 'ready');
-      const path = await page.getByTestId('agent-file-path').innerText();
+      const path = await agentFilePath(request, 'e2e-gone');
       await rm(path);
 
       await page.getByRole('button', { name: copy.saveAction }).click();
@@ -768,7 +741,7 @@ test.describe('a file the Bureau cannot use', () => {
       await expect(panel).toBeVisible();
       await expect(page.getByText(copy.invalid.title)).toBeVisible();
       await expect(page.getByTestId('agent-problem')).toContainText('unknown-model');
-      await expect(page.getByTestId('agent-file-path')).toHaveText(path);
+      await expect(page.getByTestId('agent-file-path')).toHaveText('agents/e2e-invalid.md');
       await expect(page.getByRole('textbox', { name: /^Instructions/ })).toHaveCount(0);
       await checkA11y(`invalid file at ${width}px`);
 

@@ -7,7 +7,13 @@ import {
   stubHostPaths,
   urlOf,
 } from './bureau-stub.test-support.ts';
-import { agentFilePath, getHostPaths, HOST_PATHS_ROUTE, workflowFilePath } from './host-paths.ts';
+import {
+  agentFilePath,
+  agentRelativePath,
+  getHostPaths,
+  HOST_PATHS_ROUTE,
+  workflowFilePath,
+} from './host-paths.ts';
 import { installFetchImplementation } from './live-source/fetch.test-support.ts';
 
 describe('getHostPaths', () => {
@@ -110,6 +116,12 @@ describe('agentFilePath', () => {
 
   test('does not double a trailing slash', () => {
     expect(agentFilePath('/home/me/agents/', 'researcher')).toBe('/home/me/agents/researcher.md');
+  });
+});
+
+describe('agentRelativePath', () => {
+  test('is the identifier, with .md, under agents, whichever machine holds the home', () => {
+    expect(agentRelativePath('tool-runner')).toBe('agents/tool-runner.md');
   });
 });
 

@@ -164,6 +164,26 @@ describe('a new agent’s submit', () => {
   test('focuses the Model field for a model the Bureau will refuse, and still lets the save go (row 43s)', () => {
     const detail = readyAgent();
     if (detail.definition === null) throw new Error('expected a definition');
+    // A copy is a new agent's form, which has the Model field; a saved agent's model is read-only.
+    const form = AgentEditorState.copy(
+      { ...detail.definition, model: 'anthropic/claude-haiku-5' },
+      'researcher-copy',
+      catalogFixture(),
+      {
+        restrictions: restrictionsOf({
+          deployment: { deniedModels: ['claude-haiku-5'] },
+          policyRevision: 1,
+        }),
+      },
+    );
+    expect(form.modelRefused).toBe(true);
+    expect(form.canSave).toBe(true);
+    expect(form.firstProblem).toBe(FIELD_IDS.model);
+  });
+
+  test('has only a saved agent’s name to stop a save: its model, effort and limits are read-only lines the Bureau judges', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
     const form = AgentEditorState.edit(
       { ...detail, definition: { ...detail.definition, model: 'anthropic/claude-haiku-5' } },
       catalogFixture(),
@@ -176,7 +196,99 @@ describe('a new agent’s submit', () => {
     );
     expect(form.modelRefused).toBe(true);
     expect(form.canSave).toBe(true);
-    expect(form.firstProblem).toBe(FIELD_IDS.model);
+    // No field on the form has that id, so a submit has nothing to focus.
+    expect(form.firstProblem).toBeUndefined();
+  });
+});
+
+describe('a saved agent’s name (row 41s)', () => {
+  test('is required: an emptied name stops a save, and is said at the field once a submit was tried', () => {
+    const form = AgentEditorState.edit(readyAgent(), catalogFixture());
+    expect(form.nameError).toBe('');
+    form.name = '   ';
+    expect(form.nameError).toBe(AGENT_EDITOR_COPY.edit.nameRequired);
+    expect(form.canSave).toBe(false);
+    expect(form.firstProblem).toBe(FIELD_IDS.name);
+    // Nothing is said until a submit.
+    expect(form.shownErrors.name).toBe('');
+    form.attempt();
+    expect(form.shownErrors.name).toBe(AGENT_EDITOR_COPY.edit.nameRequired);
+    form.name = 'Researcher again';
+    expect(form.nameError).toBe('');
+    expect(form.canSave).toBe(true);
+    expect(form.firstProblem).toBeUndefined();
+  });
+});
+
+describe('the reference documents of a saved agent (row 41t)', () => {
+  const documents = ['references/refund-policy.md', 'references/shipping-zones.pdf'];
+  const withDocuments = (mode: 'edit' | 'copy' = 'edit') => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const definition = { ...detail.definition, references: documents };
+    return mode === 'edit'
+      ? AgentEditorState.edit({ ...detail, definition }, catalogFixture())
+      : AgentEditorState.copy(definition, 'researcher-copy', catalogFixture());
+  };
+
+  test('are the file’s, and a save that removes none leaves them to the file', () => {
+    const form = withDocuments();
+    expect(form.referencesKept).toEqual(documents);
+    expect('references' in form.toDefinition()).toBe(false);
+    expect(form.changed).toBe(false);
+  });
+
+  test('lose a removed document with the next save, and the leave question names the section', () => {
+    const form = withDocuments();
+    form.removeReference('references/refund-policy.md');
+    expect(form.referencesKept).toEqual(['references/shipping-zones.pdf']);
+    expect(form.toDefinition().references).toEqual(['references/shipping-zones.pdf']);
+    expect(form.changedParts).toEqual([AGENT_EDITOR_COPY.edit.references.heading]);
+    // A trial runs without documents whatever the form holds.
+    expect('references' in form.toTryDefinition()).toBe(false);
+  });
+
+  test('are sent as null once every one is removed, which removes the list', () => {
+    const form = withDocuments();
+    for (const path of documents) form.removeReference(path);
+    expect(form.referencesKept).toEqual([]);
+    expect(form.toDefinition().references).toBeNull();
+  });
+
+  test('ignore a path the file does not list and a path removed twice', () => {
+    const form = withDocuments();
+    form.removeReference('references/not-there.md');
+    expect(form.referencesKept).toEqual(documents);
+    expect(form.changed).toBe(false);
+    form.removeReference('references/refund-policy.md');
+    form.removeReference('references/refund-policy.md');
+    expect(form.referencesKept).toEqual(['references/shipping-zones.pdf']);
+  });
+
+  test('are not removed from a copy, which is created with the original’s documents whole', () => {
+    const form = withDocuments('copy');
+    form.removeReference('references/refund-policy.md');
+    expect(form.referencesKept).toEqual(documents);
+    expect(form.toDefinition().references).toEqual(documents);
+  });
+});
+
+describe('the guardrails of a saved agent’s read-only line (row 41w)', () => {
+  test('are the ids the file lists, a configured one by its id', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    const form = AgentEditorState.edit(
+      {
+        ...detail,
+        definition: {
+          ...detail.definition,
+          guardrails: ['acme:pii', { id: 'acme:refund-cap', configuration: { cap: 50 } }],
+        },
+      },
+      catalogFixture(),
+    );
+    expect(form.guardrailIds).toEqual(['acme:pii', 'acme:refund-cap']);
+    expect(AgentEditorState.edit(readyAgent(), catalogFixture()).guardrailIds).toEqual([]);
   });
 });
 
@@ -556,7 +668,7 @@ describe('the guardrails and limits', () => {
     expect(form.toDefinition().limits?.tools).toEqual({ calls: 5 });
   });
 
-  test('names each field that holds something the Bureau would refuse, and cannot save', () => {
+  test('names each field that holds something the Bureau would refuse, and cannot try them (a saved agent’s form shows no field for them, so a save goes to the Bureau)', () => {
     const form = withLimits();
     form.guardrails = 'tripwire';
     form.stepLimit = '1001';
@@ -572,7 +684,8 @@ describe('the guardrails and limits', () => {
       'toolCalls',
       'toolSeconds',
     ]);
-    expect(form.canSave).toBe(false);
+    expect(form.canTry).toBe(false);
+    expect(form.canSave).toBe(true);
   });
 
   // COR-2118 — the field edits ids; a guardrail the file configures keeps its configuration.
@@ -695,8 +808,15 @@ describe('the default effort', () => {
     expect(form.effortNotice).toBe('');
   });
 
-  test('refuses to save an effort the file’s own model does not support, and saves once another is chosen', () => {
-    const form = writing('max', 'anthropic/claude-sonnet-5');
+  test('refuses to save an effort the model of a new agent’s form does not support, and saves once another is chosen', () => {
+    const detail = readyAgent();
+    if (detail.definition === null) throw new Error('expected a definition');
+    // A copy is a new agent's form, whose effort field is on the page.
+    const form = AgentEditorState.copy(
+      { ...detail.definition, model: 'anthropic/claude-sonnet-5', effort: 'max' },
+      'researcher-copy',
+      catalog,
+    );
     expect(form.effort).toBe('max');
     expect(form.effortError).toBe(
       AGENT_EDITOR_COPY.effort.unsupported('Maximum', 'anthropic/claude-sonnet-5'),
@@ -706,6 +826,15 @@ describe('the default effort', () => {
     form.effort = 'high';
     expect(form.effortError).toBe('');
     expect(form.canSave).toBe(true);
+  });
+
+  test('leaves a saved agent’s effort the Bureau to judge: its form shows no field for it', () => {
+    const form = writing('max', 'anthropic/claude-sonnet-5');
+    expect(form.effortError).not.toBe('');
+    expect(form.canSave).toBe(true);
+    expect(form.canTry).toBe(false);
+    expect(form.firstProblem).toBeUndefined();
+    expect(form.toDefinition().effort).toBe('max');
   });
 
   test('leaves the effort of a model the catalog lacks as the file wrote it', () => {

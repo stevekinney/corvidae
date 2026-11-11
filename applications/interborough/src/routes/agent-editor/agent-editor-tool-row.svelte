@@ -5,7 +5,7 @@
    * coloured pill, S32), the line a person is shown
    * for it, and, when the model is told more than the line says, a disclosure with the full text.
    * The line is at most 120 characters (`lib/tool-line.ts`), so a tool whose description is a long
-   * prompt does not turn the list into a wall of text. A caller's `trailing` control (Remove) sits
+   * prompt does not turn the list into a wall of text. A caller's optional `trailing` control sits
    * at the end of the row.
    *
    * The disclosure is Cinder's flat `Collapsible`, shrunk below to a quiet text control that sits

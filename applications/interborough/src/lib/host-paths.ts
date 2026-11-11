@@ -79,6 +79,14 @@ export function agentFilePath(agentDirectory: string, id: string): string {
   return `${directory}/${id}.md`;
 }
 
+/**
+ * The path of one agent's file relative to the Interborough home, which is where a person looks
+ * for it whichever machine or bucket the home is on: `agents/tool-runner.md`.
+ */
+export function agentRelativePath(id: string): string {
+  return `agents/${id}.md`;
+}
+
 /** The path of one workflow's file: its identifier under the workflow directory, with `.json`. */
 export function workflowFilePath(workflowDirectory: string, id: string): string {
   const directory = workflowDirectory.endsWith('/')

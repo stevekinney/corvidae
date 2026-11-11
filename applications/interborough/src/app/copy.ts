@@ -614,6 +614,79 @@ export const AGENT_EDITOR_COPY = {
       discard: 'Discard and leave',
     },
   },
+  /**
+   * The Edit agent form (`/agents/:agent/edit`, board PageAgentEditor, rows 41q to 43k): the line
+   * under the heading, the read-only lines that stand for what the Settings and Access tabs own (the
+   * model, the tools, the guardrails and the spend limit), the reference documents, the block that
+   * holds the delete, the sticky bar's saved status, and what the form says while the agent loads.
+   * Every separator is a comma or a full stop, never a middle dot.
+   */
+  edit: {
+    /** The line under the heading (row 41q). */
+    subtitle:
+      'Changes are saved as a new version. Running chats keep the version they started with.',
+    /** The same line while a save is in flight, naming the version it makes (row 43k). */
+    subtitleSaving: (revision: number): string =>
+      `Changes are saved as a new version (Version ${String(revision)} once this finishes).`,
+    /** The message at Name when a saved agent's name is emptied and Save is pressed (row 41s). */
+    nameRequired: 'Enter a name.',
+    /** The label before the saved identifier, which is shown small and monospaced (row 41s). */
+    idLabel: 'ID',
+    /** The sticky bar's status for the version the agent is at (row 41y). */
+    saved: (revision: number): string => `Saved, Version ${String(revision)}`,
+    /** What the form announces and the sticky summary reads while the agent loads (rows 43h, 43i). */
+    loading: 'Loading agent',
+    /**
+     * The model of a saved agent (row 41u): read-only text, with where to change it. The model is
+     * saved on the Settings tab, so a person who cannot save here because of it is sent there.
+     */
+    model: {
+      /** The model's name and its provider's, as one line. */
+      value: (model: string, provider: string): string => `${model}, ${provider}`,
+      /** The note under the model: a link on "Settings tab" sits between these two halves. */
+      changeLead: 'Change it on the ',
+      settingsTab: 'Settings tab',
+      changeTail: '; a saved agent’s model is saved there.',
+      /** The notice when the agent's own model is only turned off: a save keeps it. */
+      keptNotice: (model: string, reason: string): string =>
+        `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it.`,
+      /** The notice when the model policy forbids it: a save is refused and a run fails. */
+      refusedNotice: (model: string, reason: string): string =>
+        `This agent’s model, ${model}, is not offered now. ${reason} Saving is refused and a run fails until another model is chosen on the Settings tab.`,
+      /** The notice when the model is retired or gone from the catalog: a save is refused. */
+      replacementNotice: (model: string, reason: string): string =>
+        `This agent’s model, ${model}, is not offered now. ${reason} Saving is refused until another model is chosen on the Settings tab.`,
+    },
+    /** The tools line (row 41v): the count, then a link on "Access tab" between these two halves. */
+    tools: {
+      count: (count: number): string => (count === 1 ? '1 tool.' : `${String(count)} tools.`),
+      changeLead: 'Change on the ',
+      accessTab: 'Access tab',
+      changeTail: '.',
+    },
+    /** The guardrails and spend line (row 41w), then a link on "Access tab" and what a change there does. */
+    guardrails: {
+      summary: (guardrails: readonly string[], spendLimit: string | null): string =>
+        `Guardrails: ${guardrails.length === 0 ? 'none' : guardrails.join(', ')}. Spend limit: ${spendLimit ?? 'none'}.`,
+      spendPerRun: (usd: string): string => `$${usd} per run`,
+      changeLead: 'Change on the ',
+      accessTab: 'Access tab',
+      changeTail: '. Changes there save a version on their own.',
+    },
+    /** The reference documents the file reads (row 41t); each can be removed with the next save. */
+    references: {
+      heading: 'Reference documents',
+      note: 'Read with every chat',
+      none: 'No reference documents',
+      removeLabel: (path: string): string => `Remove ${path}`,
+    },
+    /** The demoted block at the foot of the form that holds the delete (row 41x). */
+    deleteBlock: {
+      title: 'Delete this agent',
+      description: (name: string): string =>
+        `${name} is an agent you created, so it can be deleted. Chats that already happened keep the version they used.`,
+    },
+  },
   /** The name a copy of an agent starts with. */
   copyName: (name: string): string => `${name} copy`,
   /** Duplicate (`/agents/new?from=`): what the page says about the agent it copies. */
@@ -735,16 +808,12 @@ export const AGENT_EDITOR_COPY = {
         `Use a number of seconds above 0, up to ${String(maximum)}.`,
     },
   },
-  /** The line under the heading: when the agent was last saved, and the version that made. */
-  saved: 'Saved',
-  version: (revision: number): string => `Version ${String(revision)}`,
   /** The keyboard shortcut's group in the `?` map. */
   shortcutGroup: 'Agent editor',
   nameLabel: 'Name',
   nameDescription: 'What people see.',
   identifierLabel: 'Identifier',
   identifierCreateDescription: 'The file name, without .md. Fixed once saved.',
-  identifierEditDescription: 'The file name, without .md. It cannot change.',
   /** What an identifier that is not a file name gets at its field on submit (row 42y). */
   identifierInvalid: 'Use lowercase letters, numbers and hyphens, for example order-helper.',
   /** `new` is the address of the page that creates an agent, so an agent called `new` could never be opened. */
@@ -790,24 +859,6 @@ export const AGENT_EDITOR_COPY = {
       retired: 'Retired by its provider.',
       'not-in-catalog': 'This installation no longer offers this model.',
     },
-    /**
-     * What the field says about the agent's own model when it is only turned off in Settings ›
-     * Models: the Bureau does not judge availability at a save, so a save writes it back.
-     */
-    keptNotice: (model: string, reason: string): string =>
-      `This agent’s model, ${model}, is not offered now. ${reason} Saving keeps it unless you choose another.`,
-    /**
-     * What the field says when the model policy forbids the agent's own model: the Bureau refuses a
-     * save that keeps it, and a run of the agent fails until the policy or the model changes.
-     */
-    refusedNotice: (model: string, reason: string): string =>
-      `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model, and a run fails until you choose one.`,
-    /**
-     * What the field says when the agent's own model is retired or gone from the catalog: the
-     * Bureau resolves the model at every save and refuses one it cannot find (`unknown-model`).
-     */
-    replacementNotice: (model: string, reason: string): string =>
-      `This agent’s model, ${model}, is not offered now. ${reason} Saving needs another model.`,
     abilitiesLabel: 'Abilities of the chosen model',
     abilities: {
       tools: 'Tools',
@@ -860,20 +911,11 @@ export const AGENT_EDITOR_COPY = {
     /** What leads the steps for a person who would rather edit the files. */
     byHand: 'Or set it up by hand:',
   },
-  toolsDescription: 'The tools this agent may call.',
   noTools: 'This installation offers no tools.',
-  /** The count above the chosen tools, such as `2 of 48 chosen`. */
-  toolCount: (chosen: number, offered: number): string =>
-    `${String(chosen)} of ${String(offered)} chosen`,
-  /** The name of the list of the tools the agent has. */
-  chosenToolsLabel: 'Chosen tools',
   /** What the list says when the agent has no tool yet. */
   noToolsChosen: 'No tools chosen. The agent can reply, but it cannot call anything.',
   /** The action that opens the picker. */
   addToolsAction: 'Add tools',
-  /** The button that takes one tool away from the agent, and the name a screen reader hears for it. */
-  removeAction: 'Remove',
-  removeToolLabel: (tool: string): string => `Remove ${tool}`,
   /** The marker on a tool that asks before it runs, and on one that never runs. */
   toolStanding: {
     'asks-first': 'Asks first',
