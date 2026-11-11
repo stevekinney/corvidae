@@ -201,7 +201,10 @@ export function builtInLine(input: {
   return { id: 'built-in', parts };
 }
 
-type Described = { readonly kind: string; readonly [key: string]: unknown };
+/** A step as a file writes it: its `kind`, and whatever else that kind carries. */
+export type WorkflowStepSource = { readonly kind: string; readonly [key: string]: unknown };
+
+type Described = WorkflowStepSource;
 
 function text(value: unknown): string | undefined {
   return typeof value === 'string' ? value : typeof value === 'number' ? String(value) : undefined;

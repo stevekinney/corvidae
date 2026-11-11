@@ -1,40 +1,54 @@
 <script lang="ts">
   /**
-   * `/workflows/:workflow`: one workflow type, in four tabs. Overview leads with what a person acts
-   * on: what the workflow is for, what starts it and whether it is active, its steps (for a file),
-   * its input and output, and, for a file, send signal. Code is the file's source, or, for a type
-   * code defined, the description and contract it registered. Runs is its newest runs and a link to
-   * all of them. History is the versions that have run, each with whether it is compatible with the
-   * current one; a type the Bureau registers for itself has none. The header holds start run, which
-   * opens the run setup page and which every type but the Bureau's own has, and pause, resume, edit
-   * and delete, which only a file has.
+   * `/workflows/:workflow`: one workflow type, in four tabs. The header says whether it is healthy
+   * at a glance: its title with its identifier, a status only when it is paused or cannot load,
+   * what it is for, what starts it, when it last ran and how that ended, and its file and schedule.
+   * Overview leads with its steps (for a file) and its input and output. Code is the file's source,
+   * or, for a type code defined, the description and contract it registered. Runs is its newest
+   * runs and a link to all of them, with their number after the label. History is the versions that
+   * have run, each with whether it is compatible with the current one; a type the Bureau registers
+   * for itself has neither Code nor History, and says so on its Overview. The header holds start
+   * run, which opens the run setup page and which every type but the Bureau's own has; edit, pause,
+   * resume and delete, which only a file has; and a "⋯" menu, whose Send a signal opens a dialog.
+   * Its title, tabs and actions come from the route, so they show while the type is still loading.
    *
    * A write names the hash of the file the page read, so a file that changed on disk since is
    * refused instead of overwritten: the page says the workflow changed outside Interborough, with a
    * reload, and changes nothing. A write that succeeds takes the file's new hash at once, so the
    * next action is not stale against the page's own write. A file that is gone is the frame's
-   * not-found state, so the page asks the frame to look again. An invalid file shows its problem and
-   * path and offers only delete and edit, and has no steps, schemas or runs.
+   * not-found state, so the page asks the frame to look again. An invalid file shows a banner with
+   * its problem and the way to it, offers delete and edit (which opens the JSON), and has no
+   * schemas; Start run is off, and says why in the banner.
+   *
+   * The page draws the connection banner itself, under its header, and leaves Edit, Start run and
+   * Resume marked `data-changes`, so the shell turns them off while the server does not answer.
    */
   import {
     Alert,
-    Badge,
+    Banner,
     Button,
-    CodeLocation,
     ConfirmDialog,
     PageHeader,
     Skeleton,
+    StatusDot,
     Tabs,
   } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
+  import {
+    CONNECTION_MAX_ATTEMPTS,
+    connectionBannerPreset,
+    getConnection,
+  } from '../../app/connection.svelte.ts';
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { getClient } from '../../lib/client.ts';
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { queryKeys, workflowViewInstance } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import { router, scheduleDetailPath, workflowRunPath } from '../../lib/router.svelte.ts';
   import {
     availableActions,
     awaitedSignals,
@@ -44,33 +58,57 @@
     type WorkflowResolution,
   } from '../../lib/workflow-catalog.ts';
   import {
+    internalWorkflowsPath,
+    workflowEditJsonPath,
     workflowEditPath,
     workflowRunSetupPath,
     workflowTypePath,
   } from '../../lib/workflow-type-paths.ts';
   import {
     deleteWorkflowFile,
+    getLatestSavedSteps,
     isApplyFailure,
+    listWorkflowRevisions,
     parseWorkflowText,
     pauseWorkflowFile,
     resumeWorkflowFile,
   } from '../../lib/workflow-files.ts';
   import WorkflowRevisionsPanel from '../system/workflow-revisions-panel.svelte';
-  import FileProblem from './file-problem.svelte';
   import RecentRuns from './recent-runs.svelte';
   import RevisionHistory from './revision-history.svelte';
+  import SignalForm from './signal-form.svelte';
   import WorkflowCode from './workflow-code.svelte';
+  import WorkflowFileProblem from './workflow-file-problem.svelte';
+  import WorkflowHeaderLine from './workflow-header-line.svelte';
+  import WorkflowMoreMenu from './workflow-more-menu.svelte';
   import WorkflowOverview from './workflow-overview.svelte';
   import {
+    builtInLine,
+    lastRunLine,
+    scheduleLine,
+    startsLine,
+    type HeaderLine,
+    type HeaderSchedule,
+    type LastRun,
+    type WorkflowStepSource,
+  } from './workflow-page-presentation.ts';
+  import {
     definitionDetails,
+    internalWords,
+    scheduleLabel,
     schedulesSummary,
     schemaOf,
     triggerSummary,
   } from './workflow-presentation.ts';
+  import { locateJsonProblem } from './workflow-source.ts';
 
   const copy = WORKFLOW_COPY;
   const client = getClient();
   const queryClient = useQueryClient();
+  const connection = getConnection();
+
+  // The page draws the connection banner under its own header, so the shell leaves it to the page.
+  $effect(() => connection.claimBanner());
 
   // One page belongs to one type: the outlet mounts a new page when the path changes.
   const type = untrack(() => router.current.params['workflow'] ?? '');
@@ -98,6 +136,39 @@
   // Where the file is. A host that does not say shows the path relative to the state directory.
   const hostPaths = createQuery(
     () => ({ queryKey: queryKeys.hostPaths(), queryFn: ({ signal }) => getHostPaths({ signal }) }),
+    undefined,
+  );
+
+  // How many runs the type has and its newest, for the header's last-run line and the Runs tab's
+  // count. The engine counts every instance of a type, a file's included, by the type's name.
+  const headline = createQuery(
+    () => ({
+      queryKey: queryKeys.workflowCatalog.headline(type),
+      queryFn: async (): Promise<{ readonly total: number; readonly newest: LastRun | null }> => {
+        const page = await client.list({ type, limit: 1 });
+        const [newest] = page.items;
+        return {
+          total: page.total,
+          newest:
+            newest === undefined
+              ? null
+              : { id: newest.id, status: newest.status, createdAt: newest.createdAt },
+        };
+      },
+      retry: false,
+    }),
+    undefined,
+  );
+
+  // The versions that have run, for the History tab's count. The tab reads the same key, so the
+  // list is asked for once.
+  const revisions = createQuery(
+    () => ({
+      queryKey: queryKeys.workflowCatalog.revisions(type),
+      queryFn: ({ signal }) => listWorkflowRevisions(type, { signal }),
+      enabled: resolution.data?.kind === 'agent-authored',
+      retry: false,
+    }),
     undefined,
   );
 
@@ -252,6 +323,8 @@
   }
 
   const editPath = workflowEditPath(type);
+  const editJsonPath = workflowEditJsonPath(type);
+  const internalPath = internalWorkflowsPath();
   const condition = $derived(stale ? 'stale' : 'ready');
   const acceptedSignals = $derived(
     resolved?.kind === 'code' ? (resolved.definition.signals ?? []) : awaitedSignals(document),
@@ -264,10 +337,11 @@
       : (definition?.description ?? null),
   );
   const details = $derived(definitionDetails(definition, acceptedSignals));
-  // What starts the workflow: a file's trigger, or the schedules the engine has for a code type.
+  // What starts the workflow: a file's trigger (for a file that cannot load, the newest version that
+  // ran, which is the last the Bureau could read), or the schedules the engine has for a code type.
   const starts = $derived(
     file !== undefined
-      ? triggerSummary(document?.trigger ?? null)
+      ? triggerSummary(document?.trigger ?? revisions.data?.[0]?.document.trigger ?? null)
       : schedulesSummary(schedules.data ?? null),
   );
   const engineType = isEngineType(type);
@@ -286,14 +360,123 @@
   );
   const runSetupPath = workflowRunSetupPath(type);
 
+  // The steps of a file that cannot load are the last good version's, read from the Bureau's history.
+  const savedSteps = createQuery(
+    () => ({
+      queryKey: queryKeys.workflowCatalog.savedSteps(type),
+      queryFn: ({ signal }) => getLatestSavedSteps(type, { signal }),
+      enabled: invalidFile,
+      retry: false,
+    }),
+    undefined,
+  );
+  /** The steps the Overview lists: the file's, the last good version's for an invalid file, none for a code type. */
+  const overviewSteps = $derived<readonly WorkflowStepSource[] | undefined>(
+    document !== undefined
+      ? document.steps
+      : invalidFile
+        ? (savedSteps.data ?? []).flatMap((step) =>
+            typeof step['kind'] === 'string' ? [{ ...step, kind: step['kind'] }] : [],
+          )
+        : undefined,
+  );
+
+  const agentName = $derived(
+    file?.agent === null || file?.agent === undefined ? null : agentLabel(file.agent, undefined),
+  );
+  const internal = $derived(
+    engineType ? internalWords(type, definition?.description ?? null) : null,
+  );
+  /** What an internal workflow's Overview says in place of steps and a contract it does not show. */
+  const internalNote = $derived.by(() => {
+    if (!engineType) return undefined;
+    const known = copy.page.internalOverviewByType;
+    return Object.hasOwn(known, type)
+      ? known[type as keyof typeof known]
+      : copy.page.internalOverview;
+  });
+  /** What the workflow is for: an internal one in Interborough's words, else the file's or the engine's. */
+  const summary = $derived(internal?.description ?? description);
+  /** The title: an internal workflow's in words, a file's own, else the identifier. */
+  const ownTitle = $derived(file?.title?.trim() ?? '');
+  const heading = $derived(internal?.title ?? (ownTitle === '' ? type : ownTitle));
+  const titled = $derived(heading !== type);
+
+  /** The newest run, `undefined` until the engine has said. */
+  const lastRun = $derived(headline.data === undefined ? undefined : headline.data.newest);
+
+  const fileSchedule = $derived(document?.trigger.kind === 'schedule');
+  /** The name the file gives its schedule, when its trigger is one. */
+  const scheduleName = $derived.by(() => {
+    const named = fileSchedule ? document?.trigger['name'] : undefined;
+    return typeof named === 'string' ? named : undefined;
+  });
+  const headerSchedules = $derived<HeaderSchedule[]>(
+    (schedules.data ?? []).map((schedule) => ({
+      label: scheduleName ?? schedule.description ?? schedule.id,
+      href: scheduleDetailPath(schedule.id),
+      status: schedule.status === 'paused' ? 'paused' : 'active',
+      cadence: scheduleLabel(schedule),
+    })),
+  );
+
+  /** The lines under the title, in the order they are read. Offline, the file and schedule lines are left out. */
+  const lines = $derived.by<HeaderLine[]>(() => {
+    if (resolved === undefined) return [];
+    if (engineType) {
+      return [
+        builtInLine({
+          name: type,
+          lastRunAt: headline.data === undefined ? undefined : (lastRun?.createdAt ?? null),
+        }),
+      ];
+    }
+    const offline = connection.unreachable;
+    const found = [
+      startsLine({ trigger: starts, canStart, agent: agentName }),
+      lastRunLine({
+        lastRun,
+        fileName: file === undefined || offline ? null : `${type}.json`,
+        runHref: (runId) => workflowRunPath(type, runId),
+      }),
+      file === undefined || offline
+        ? null
+        : scheduleLine({ schedules: headerSchedules, definedInFile: fileSchedule }),
+    ];
+    return found.filter((line): line is HeaderLine => line !== null);
+  });
+
+  /** Where the JSON of a file that cannot load stops being JSON, so the banner can name the line. */
+  const located = $derived(
+    file?.problem?.code === 'invalid-json' && file.text !== null
+      ? locateJsonProblem(file.text)
+      : null,
+  );
+
   type TabValue = 'overview' | 'code' | 'runs' | 'history';
-  /** The tabs this workflow has: an invalid file has no runs, and a type the Bureau registers for itself has no history. */
+  /**
+   * The tabs this workflow has. A type the Bureau registers for itself has only Overview and Runs:
+   * there is no source to show and no version to install. An invalid file keeps all four.
+   */
   const tabs = $derived<readonly TabValue[]>([
     'overview',
-    'code',
-    ...(invalidFile ? [] : (['runs'] as const)),
+    ...(engineType ? [] : (['code'] as const)),
+    'runs',
     ...(engineType ? [] : (['history'] as const)),
   ]);
+  /** A tab's name, with its count after the label once the count is known. */
+  function tabName(tab: TabValue): string {
+    const label = copy.page.tabs[tab];
+    const count =
+      tab === 'runs'
+        ? headline.data?.total
+        : tab === 'history'
+          ? revisions.data?.length
+          : undefined;
+    return count === undefined ? label : copy.page.tabWithCount(label, count);
+  }
+
+  let signalOpen = $state(false);
 
   // The URL owns the tab, so a tab can be linked and the back button returns to it. `activeTab`
   // follows `?tab=`, and a tab the person picks writes the address from Tabs' `onValueChange`, so a
@@ -329,13 +512,39 @@
 </script>
 
 {#snippet headerActions()}
+  {#if engineType}
+    <Button
+      variant="secondary"
+      size="sm"
+      href={router.href(internalPath)}
+      onclick={(event) => go(event, internalPath)}>{copy.page.seeInternal}</Button
+    >
+  {:else if resolution.isPending}
+    <!-- The route says what the page is, so its actions are there at once, off until the type loads. -->
+    <Button variant="secondary" size="sm" disabled>{copy.editAction}</Button>
+    <Button variant="primary" size="sm" disabled>{copy.page.startAction}</Button>
+  {/if}
+  {#if file !== undefined && actions?.edit === true}
+    <Button
+      data-changes
+      href={router.href(invalidFile ? editJsonPath : editPath)}
+      variant="secondary"
+      size="sm"
+      onclick={(event) => go(event, invalidFile ? editJsonPath : editPath)}
+      >{copy.editAction}</Button
+    >
+  {/if}
   {#if canStart}
     <Button
+      data-changes
       variant="primary"
       size="sm"
       href={router.href(runSetupPath)}
       onclick={(event) => go(event, runSetupPath)}>{copy.page.startAction}</Button
     >
+  {:else if invalidFile}
+    <!-- Off until the file is fixed, and the banner under the tabs says why. -->
+    <Button variant="primary" size="sm" aria-disabled="true">{copy.page.startAction}</Button>
   {/if}
   {#if file !== undefined && actions !== undefined}
     {#if actions.pause && !file.paused}
@@ -356,14 +565,6 @@
         onclick={() => act(resume.mutate)}>{copy.resumeAction}</Button
       >
     {/if}
-    {#if actions.edit}
-      <Button
-        href={router.href(editPath)}
-        variant="secondary"
-        size="sm"
-        onclick={(event) => go(event, editPath)}>{copy.editAction}</Button
-      >
-    {/if}
     {#if actions.delete}
       <Button
         data-changes
@@ -374,43 +575,61 @@
       >
     {/if}
   {/if}
+  <WorkflowMoreMenu canSignal={actions?.signal === true} onSendSignal={() => (signalOpen = true)} />
+{/snippet}
+
+{#snippet headingText()}
+  {#if titled}
+    {heading}
+    {#if internal === null}
+      <code class="ib-identifier" data-testid="workflow-identifier">{type}</code>
+    {/if}
+  {:else if file !== undefined}
+    <code class="ib-workflow-row__id">{type}</code>
+  {:else}
+    {type}
+  {/if}
+{/snippet}
+
+{#snippet headingStatus()}
+  {#if invalidFile}
+    <StatusDot word="Can't load" data-testid="workflow-state" />
+  {:else if file?.paused === true}
+    <StatusDot word="Paused" data-testid="workflow-state" />
+  {/if}
 {/snippet}
 
 <article class="ib-workflow" data-page="workflow-detail" data-condition={condition}>
-  <PageHeader headingLevel={1} title={type} actions={headerActions} />
+  <PageHeader
+    headingLevel={1}
+    title={headingText}
+    titleText={heading}
+    actions={headerActions}
+    statusPlacement="inline"
+    {...invalidFile || file?.paused === true ? { status: headingStatus } : {}}
+  />
   <div class="ib-workflow__identity">
-    <div class="ib-workflow__heading">
-      {#if resolved !== undefined}
-        <Badge variant={file === undefined ? 'neutral' : 'accent'} size="sm"
-          >{file === undefined ? copy.codeBadge : copy.agentAuthoredBadge}</Badge
-        >
-      {/if}
-      {#if file !== undefined && file.state === 'invalid'}
-        <Badge variant="danger" size="sm">{copy.invalidBadge}</Badge>
-      {/if}
-      {#if file?.agent !== null && file?.agent !== undefined}
-        <code class="ib-workflow-agent" data-testid="workflow-agent">{file.agent}</code>
-      {/if}
-    </div>
-    {#if description}
-      <p class="ib-workflow__description" data-testid="workflow-description">{description}</p>
+    {#if summary}
+      <p class="ib-workflow__description" data-testid="workflow-description">{summary}</p>
     {/if}
-    {#if starts !== null || file?.state === 'ready'}
-      <p class="ib-workflow__status">
-        {#if starts !== null}
-          <span data-testid="workflow-trigger">
-            {#if starts.kind === 'signal'}{copy.list.onSignal}
-              <code>{starts.name}</code>{:else}{starts.words}{/if}
-          </span>
-        {/if}
-        {#if file?.state === 'ready'}
-          <span data-testid="workflow-state"
-            >{file.paused ? copy.page.statusPaused : copy.page.statusActive}</span
-          >
-        {/if}
-      </p>
-    {/if}
+    {#each lines as line (line.id)}
+      <WorkflowHeaderLine {line} />
+    {/each}
   </div>
+
+  {#if connection.unreachable && !restartActivity.active}
+    <Banner
+      preset={connectionBannerPreset(connection)}
+      subject={copy.page.offlineSubject}
+      dataUpdatedAt={connection.lastHealthyAt}
+      retryInSeconds={connection.retryInSeconds}
+      attempt={connection.browserOffline || connection.attempt === 0
+        ? undefined
+        : connection.attempt}
+      maxAttempts={CONNECTION_MAX_ATTEMPTS}
+      onRetry={() => void connection.retryNow()}
+    />
+  {/if}
 
   {#if stale}
     <Alert variant="warning">
@@ -444,49 +663,64 @@
         >{RETRY_LABEL}</Button
       >
     </Alert>
-  {:else if resolution.isPending}
-    <div role="status" aria-busy="true" aria-label={type}>
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="12rem" />
-    </div>
-  {:else if resolved !== undefined}
-    {#if file !== undefined && file.problem !== null}
-      <Alert variant="danger">
-        <FileProblem problem={file.problem} />
-        <CodeLocation class="weft-code-location" file={path} data-testid="workflow-file-path" />
-      </Alert>
-    {/if}
-
+  {:else}
+    <!-- The tabs come from the route, so they are here while the type loads; counts wait for data. -->
     <Tabs bind:value={activeTab} onValueChange={writeTab}>
       <Tabs.List label={copy.page.tabsLabel}>
-        <Tabs.Trigger value="overview">{copy.page.tabs.overview}</Tabs.Trigger>
-        <Tabs.Trigger value="code">{copy.page.tabs.code}</Tabs.Trigger>
-        {#if tabs.includes('runs')}
-          <Tabs.Trigger value="runs">{copy.page.tabs.runs}</Tabs.Trigger>
-        {/if}
-        {#if tabs.includes('history')}
-          <Tabs.Trigger value="history">{copy.page.tabs.history}</Tabs.Trigger>
-        {/if}
+        {#each tabs as tab (tab)}
+          <Tabs.Trigger value={tab} label={copy.page.tabs[tab]}>{tabName(tab)}</Tabs.Trigger>
+        {/each}
       </Tabs.List>
 
-      <Tabs.Panel value="overview">
-        <WorkflowOverview
-          {document}
-          {inputSchema}
-          {outputSchema}
-          {details}
-          filePath={file?.state === 'ready' ? path : undefined}
-          mode={hostPaths.data?.mode}
-          schedules={schedules.data}
-          schedulesFailed={schedules.isError}
-          canSignal={actions?.signal === true}
-          showSchemas={!invalidFile}
-        />
-      </Tabs.Panel>
-      <Tabs.Panel value="code">
-        <WorkflowCode {type} kind={resolved.kind} text={file?.text ?? null} {document} />
-      </Tabs.Panel>
-      {#if tabs.includes('runs')}
+      {#if resolved === undefined}
+        <!-- Nothing is drawn for the first 300 ms, then rows in the shape of the page. -->
+        {#each tabs as tab (tab)}
+          <Tabs.Panel value={tab}>
+            <Skeleton
+              variant="list"
+              rows={4}
+              statusColumn={false}
+              delay={300}
+              label={copy.page.loadingLabel}
+            />
+          </Tabs.Panel>
+        {/each}
+      {:else}
+        <Tabs.Panel value="overview">
+          {#if file !== undefined && file.problem !== null}
+            <WorkflowFileProblem
+              fileName={`${type}.json`}
+              problem={file.problem}
+              {located}
+              actionLabel={copy.page.problem.openCode}
+              onAction={() => writeTab('code')}
+            />
+          {/if}
+          <WorkflowOverview
+            steps={overviewSteps}
+            {inputSchema}
+            {outputSchema}
+            {details}
+            schedules={schedules.data}
+            schedulesFailed={schedules.isError}
+            showSchemas={!invalidFile}
+            listSchedules={file === undefined}
+            {internalNote}
+          />
+        </Tabs.Panel>
+        {#if tabs.includes('code')}
+          <Tabs.Panel value="code">
+            <WorkflowCode
+              {type}
+              kind={resolved.kind}
+              text={file?.text ?? null}
+              {document}
+              {path}
+              problem={file?.problem ?? null}
+              onEditAsJson={() => router.navigate(editJsonPath)}
+            />
+          </Tabs.Panel>
+        {/if}
         <Tabs.Panel value="runs">
           <RecentRuns
             {type}
@@ -499,15 +733,15 @@
               : undefined}
           />
         </Tabs.Panel>
-      {/if}
-      {#if tabs.includes('history')}
-        <Tabs.Panel value="history">
-          {#if resolved.kind === 'code'}
-            <WorkflowRevisionsPanel workflowName={type} />
-          {:else}
-            <RevisionHistory id={type} />
-          {/if}
-        </Tabs.Panel>
+        {#if tabs.includes('history')}
+          <Tabs.Panel value="history">
+            {#if resolved.kind === 'code'}
+              <WorkflowRevisionsPanel workflowName={type} />
+            {:else}
+              <RevisionHistory id={type} currentVersion={file?.version ?? null} />
+            {/if}
+          </Tabs.Panel>
+        {/if}
       {/if}
     </Tabs>
   {/if}
@@ -521,3 +755,7 @@
   destructive
   onConfirm={() => act(removal.mutate)}
 />
+
+{#if signalOpen}
+  <SignalForm {document} onClose={() => (signalOpen = false)} />
+{/if}

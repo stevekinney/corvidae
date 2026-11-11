@@ -886,8 +886,17 @@ export const WORKFLOW_COPY = {
     },
     /** The tab names with a count after the label, once the count is known. */
     tabWithCount: (label: string, count: number): string => `${label} ${String(count)}`,
+    /** What the offline banner says it is showing, and the name of the body while it loads. */
+    offlineSubject: 'this workflow',
+    loadingLabel: 'Loading this workflow',
     /** The button on an internal workflow's page that leads to the rest of them. */
     seeInternal: 'See all internal workflows',
+    /** The header's "⋯" menu, and the dialog its Send a signal item opens. */
+    menu: {
+      label: 'More actions',
+      sendSignal: 'Send a signal…',
+      closeSignal: 'Close',
+    },
     /** The body of an internal workflow's Overview. */
     internalOverview:
       'Interborough starts this workflow itself each time it is needed. You can watch its runs, but not start, edit or pause it.',
@@ -935,11 +944,10 @@ export const WORKFLOW_COPY = {
     /** The Code tab. */
     code: {
       /** The line above the file: what it is, where it is, and that it cannot be edited here. */
-      caption: (path: string): string => `JSON, ${path}, read-only`,
+      caption: { before: 'JSON, ', after: ', read-only' },
       /** The outline beside the file, and the select that stands in for it on a phone. */
       outlineTitle: 'Outline',
       outlineSelect: 'Jump to',
-      outlineSteps: 'steps',
       fileHeading: 'File source',
       outlineHeading: 'Step outline',
       noOutline: 'The file has no steps to outline.',
@@ -1141,6 +1149,8 @@ export const WORKFLOW_COPY = {
     /** One row's title: "Version 1.3.0, current version". */
     versionTitle: (version: string, current: boolean): string =>
       `Version ${version}, ${current ? 'current version' : 'older version'}`,
+    /** When the version last ran, after its verdict: "last run Thu, Oct 29, 9:15 AM". */
+    lastRun: (when: string): string => `last run ${when}`,
     /** The footnote under the list. */
     footnote:
       'Compatibility says whether a run started on one version can continue after the next is saved. Scheduled and chat runs always start on the current version.',

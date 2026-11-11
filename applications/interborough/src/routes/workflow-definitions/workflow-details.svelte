@@ -1,26 +1,18 @@
 <script lang="ts">
   /**
-   * What a workflow says beyond what a person acts on: where its file is, its trigger as written,
-   * and what the engine's contract declares (the signals, updates, and queries it accepts). Only what the workflow has is shown: a fact it does not have
-   * is no row. The schemas are not here: the Overview shows them as field lists.
+   * What the engine's contract declares of a workflow: the signals, updates, and queries it
+   * accepts. Only what the workflow has is shown: a fact it does not have is no row. The schemas
+   * are not here (the Overview shows them as field lists), and neither are the trigger and the
+   * file, which are the header's lines.
    */
-  import { CodeLocation } from '@lostgradient/cinder';
-
   import { WORKFLOW_COPY } from '../../app/copy.ts';
-  import type { WorkflowDocument } from '../../lib/workflow-files.ts';
-  import { triggerLabel, type DefinitionDetails } from './workflow-presentation.ts';
+  import type { DefinitionDetails } from './workflow-presentation.ts';
 
   interface Props {
     details: DefinitionDetails;
-    /** The workflow's file path, for an agent-authored workflow. */
-    filePath?: string | undefined;
-    /** The file's document, whose trigger is shown as written. */
-    document?: WorkflowDocument | undefined;
-    /** Whether the host keeps the file on this machine or in a bucket, which changes what the label says. */
-    mode?: 'local' | 'remote' | undefined;
   }
 
-  let { details, filePath, document, mode = 'local' }: Props = $props();
+  let { details }: Props = $props();
 
   const copy = WORKFLOW_COPY;
 </script>
@@ -36,16 +28,6 @@
 
 <div class="ib-workflow__section" data-testid="workflow-definition">
   <dl class="weft-workflow-facts">
-    {#if filePath !== undefined}
-      <dt>{mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</dt>
-      <dd>
-        <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
-      </dd>
-    {/if}
-    {#if document !== undefined}
-      <dt>{copy.page.trigger}</dt>
-      <dd data-testid="workflow-trigger-source">{triggerLabel(document.trigger)}</dd>
-    {/if}
     {@render identifiers(copy.page.signals, details.signals, 'workflow-accepted-signals')}
     {@render identifiers(copy.page.updates, details.updates)}
     {@render identifiers(copy.page.queries, details.queries)}

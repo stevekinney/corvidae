@@ -329,3 +329,154 @@
 .ib-workflow__alert-body {
   margin: var(--cinder-space-1) 0 var(--cinder-space-2);
 }
+
+/* ── A workflow's header lines, its numbered steps, and its Code tab ─────────── */
+
+/* A line under the title: its facts joined by commas, muted, wrapping as prose does. */
+.ib-workflow__line {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-workflow__line code {
+  font-family: var(--cinder-font-mono);
+}
+
+/* The steps are one bordered list of numbered rows, each a title, a kind line and a message. */
+.ib-workflow-steps {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--cinder-border);
+  border-radius: var(--cinder-radius-md);
+  list-style: none;
+}
+
+.ib-workflow-steps__row {
+  display: flex;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+  padding: var(--cinder-space-3);
+  border-block-end: 1px solid var(--cinder-border-faint);
+}
+
+.ib-workflow-steps__row:last-child {
+  border-block-end: 0;
+}
+
+.ib-workflow-steps__number {
+  flex: none;
+  inline-size: 1.5rem;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.ib-workflow-steps__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-workflow-steps__title,
+.ib-workflow-steps__kind,
+.ib-workflow-steps__description {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-workflow-steps__title {
+  font-weight: 600;
+}
+
+.ib-workflow-steps__kind {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflow-steps__kind code {
+  font-family: var(--cinder-font-mono);
+}
+
+/* A long message is two lines and an ellipsis; the whole of it is on the Code tab. */
+.ib-workflow-steps__description {
+  display: -webkit-box;
+  overflow: hidden;
+  font-size: var(--cinder-text-sm);
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+}
+
+/* The file beside its outline where there is room, and the outline's select above it where not. */
+.ib-workflow-source {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 14rem;
+  gap: var(--cinder-space-5);
+  align-items: start;
+  min-width: 0;
+}
+
+.ib-workflow-source__file {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-workflow-source__caption {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}
+
+.ib-workflow-source__caption code {
+  font-family: var(--cinder-font-mono);
+}
+
+.ib-workflow-source__outline {
+  position: sticky;
+  inset-block-start: var(--cinder-space-4);
+  min-width: 0;
+}
+
+.ib-workflow-source__outline-title {
+  margin: 0 0 var(--cinder-space-2);
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
+}
+
+@media (max-width: 640px) {
+  .ib-workflow-source {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* The banner of a file that cannot load: the sentence, its issues and the way to the problem. */
+.ib-workflow__problem {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  align-items: flex-start;
+}
+
+.ib-workflow__problem p {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-workflow__problem code {
+  font-family: var(--cinder-font-mono);
+}
+
+.ib-workflow__problem ul {
+  margin: 0;
+  padding-inline-start: var(--cinder-space-6);
+  font-size: var(--cinder-text-sm);
+  overflow-wrap: anywhere;
+}

@@ -1,13 +1,14 @@
 <script lang="ts">
   /**
-   * Send a signal (`bureau.workflows.signal`). A signal does two things: it is delivered to every
-   * running instance waiting at a step of that name, and it starts every workflow whose trigger is
-   * a signal of that name. The result says how many of each.
+   * Send a signal (`bureau.workflows.signal`), in a dialog the page's "⋯" menu opens. A signal does
+   * two things: it is delivered to every running instance waiting at a step of that name, and it
+   * starts every workflow whose trigger is a signal of that name. The result says how many of each,
+   * and the dialog stays open to say it.
    *
    * The name starts as the workflow's trigger's signal name, or else the first signal a step waits
    * for. The payload is JSON, and empty sends none.
    */
-  import { Alert, Button, Input, Textarea } from '@lostgradient/cinder';
+  import { Alert, Button, Input, Modal, Textarea } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
 
@@ -22,9 +23,11 @@
   interface Props {
     /** The workflow's document, which says what its trigger and its steps name. */
     document: WorkflowDocument | undefined;
+    /** Closes the dialog. The page mounts the dialog only while it is open, so a reopened one starts empty. */
+    onClose: () => void;
   }
 
-  let { document }: Props = $props();
+  let { document, onClose }: Props = $props();
 
   const copy = WORKFLOW_COPY.signal;
   const queryClient = useQueryClient();
@@ -61,8 +64,7 @@
 
   const canSend = $derived(name.trim() !== '' && !send.isPending);
 
-  function submit(event: SubmitEvent): void {
-    event.preventDefault();
+  function submit(): void {
     if (!canSend) return;
     const text = payload.trim();
     let parsed: unknown;
@@ -81,55 +83,52 @@
   }
 </script>
 
-<section class="weft-workflow-signal" data-testid="workflow-signal">
-  <h2 class="weft-workflow-section__heading">{copy.heading}</h2>
-  <p class="weft-workflow-signal__description">{copy.description}</p>
-  <form class="weft-workflow-signal__form" onsubmit={submit}>
-    <Input id="workflow-signal-name" label={copy.nameLabel} bind:value={name} />
-    <Textarea
-      id="workflow-signal-payload"
-      label={copy.payloadLabel}
-      description={copy.payloadDescription}
-      variant="code"
-      rows={4}
-      bind:value={payload}
-      error={payloadError}
-    />
-    <div>
-      <Button type="submit" variant="primary" disabled={!canSend}>{copy.sendAction}</Button>
-    </div>
-  </form>
-  {#if failure !== ''}
-    <Alert variant="danger">
-      <p class="weft-workflow-signal__failure-title">{copy.failed}</p>
-      <p class="weft-workflow-signal__failure-message">{failure}</p>
-    </Alert>
-  {/if}
-  {#if result !== undefined}
-    <p class="weft-workflow-signal__result" role="status" aria-label={copy.resultLabel}>
-      {copy.result(result.started.length, result.delivered.length)}
-    </p>
-  {/if}
-</section>
+<Modal open title={copy.heading} description={copy.description} onDismiss={onClose}>
+  {#snippet children()}
+    <form
+      class="weft-workflow-signal__form"
+      data-testid="workflow-signal"
+      onsubmit={(event) => {
+        event.preventDefault();
+        submit();
+      }}
+    >
+      <Input id="workflow-signal-name" label={copy.nameLabel} bind:value={name} />
+      <Textarea
+        id="workflow-signal-payload"
+        label={copy.payloadLabel}
+        description={copy.payloadDescription}
+        variant="code"
+        rows={4}
+        bind:value={payload}
+        error={payloadError}
+      />
+      {#if failure !== ''}
+        <Alert variant="danger">
+          <p class="weft-workflow-signal__failure-title">{copy.failed}</p>
+          <p class="weft-workflow-signal__failure-message">{failure}</p>
+        </Alert>
+      {/if}
+      {#if result !== undefined}
+        <p class="weft-workflow-signal__result" role="status" aria-label={copy.resultLabel}>
+          {copy.result(result.started.length, result.delivered.length)}
+        </p>
+      {/if}
+    </form>
+  {/snippet}
+  {#snippet footer()}
+    <Button variant="secondary" onclick={onClose}>{WORKFLOW_COPY.page.menu.closeSignal}</Button>
+    <Button data-changes variant="primary" disabled={!canSend} onclick={submit}
+      >{copy.sendAction}</Button
+    >
+  {/snippet}
+</Modal>
 
 <style>
-  .weft-workflow-signal {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .weft-workflow-signal__description {
-    margin: 0;
-    color: var(--cinder-text-muted);
-    font-size: var(--cinder-text-sm);
-  }
-
   .weft-workflow-signal__form {
     display: flex;
     flex-direction: column;
     gap: 12px;
-    max-width: 40rem;
   }
 
   .weft-workflow-signal__failure-title,

@@ -1,23 +1,25 @@
 <script lang="ts">
   /**
-   * The Overview tab of a workflow's page: its steps as compact rows (for a file), its input and
-   * output as two field lists side by side, what starts it (its schedules), the facts of its
-   * contract, and the form that sends a signal. Only what the workflow has is shown: a code-defined
-   * type has no steps, and a fact it does not have is no row.
+   * The Overview tab of a workflow's page: its steps as one numbered list (for a file), its input
+   * and output side by side as field lists, what starts it (the schedules of a type that code
+   * registered), and the facts of its contract. Only what the workflow has is shown: a code-defined
+   * type has no steps, a fact it does not have is no row, and a schema it does not declare is a
+   * sentence rather than an empty list with a disclosure. What starts the workflow, when it last ran
+   * and where its file is are the header's lines, so the page never repeats them below. A type
+   * Interborough runs itself says so here instead.
    */
   import { Alert, Badge, EmptyState, SchemaView, SectionHeading } from '@lostgradient/cinder';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { formatRelativeTime } from '../../lib/format/index.ts';
-  import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { router, scheduleDetailPath } from '../../lib/router.svelte.ts';
-  import type { WorkflowDocument } from '../../lib/workflow-files.ts';
-  import SignalForm from './signal-form.svelte';
+  import { stepRows, type WorkflowStepSource } from './workflow-page-presentation.ts';
   import WorkflowDetails from './workflow-details.svelte';
+  import WorkflowSteps from './workflow-steps.svelte';
   import {
     hasDefinitionDetails,
     scheduleLabel,
-    stepLabel,
     type DefinitionDetails,
   } from './workflow-presentation.ts';
 
@@ -30,39 +32,53 @@
   };
 
   interface Props {
-    /** The file's document, for an agent-authored workflow whose file loaded. */
-    document: WorkflowDocument | undefined;
+    /**
+     * The steps to list: the file's, or, for a file that cannot load, the last good version's.
+     * `undefined` for a type with no steps.
+     */
+    steps: readonly WorkflowStepSource[] | undefined;
     /** The JSON Schema an instance's input is held to, when the workflow declares one. */
     inputSchema: unknown;
     /** The JSON Schema an instance's result is held to, when the workflow declares one. */
     outputSchema: unknown;
     details: DefinitionDetails;
-    /** The workflow's file path, when its file loaded. */
-    filePath: string | undefined;
-    mode: 'local' | 'remote' | undefined;
     /** The schedules that start the type, or `undefined` until they have loaded. */
     schedules: readonly Schedule[] | undefined;
     schedulesFailed: boolean;
-    /** Whether the page offers to send a signal, which only a ready file does. */
-    canSignal: boolean;
     /** Whether the workflow has a contract to show: an invalid file has none. */
     showSchemas: boolean;
+    /** Words that say what an internal workflow is, in place of the contract it does not show. */
+    internalNote?: string | undefined;
+    /**
+     * Whether the Overview lists the schedules itself: a type that code registered, whose header
+     * has no schedule line. A file's header names its schedule, so its Overview does not repeat it.
+     */
+    listSchedules: boolean;
   }
 
   let {
-    document,
+    steps: sources,
     inputSchema,
     outputSchema,
     details,
-    filePath,
-    mode,
     schedules,
     schedulesFailed,
-    canSignal,
     showSchemas,
+    internalNote,
+    listSchedules,
   }: Props = $props();
 
   const copy = WORKFLOW_COPY;
+  const rows = $derived(
+    sources === undefined
+      ? []
+      : stepRows(sources, (identifier) => agentLabel(identifier, undefined)),
+  );
+
+  /** A schema the view can list: a JSON Schema object. Anything else is "declares no schema". */
+  function declares(schema: unknown): boolean {
+    return typeof schema === 'object' && schema !== null;
+  }
 
   function go(event: MouseEvent, target: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -73,11 +89,32 @@
   }
 </script>
 
+{#snippet schemaSection(label: string, schema: unknown, testId: string)}
+  <section class="ib-workflow__section" aria-label={label}>
+    <SectionHeading level={2} title={label} />
+    {#if declares(schema)}
+      <SchemaView
+        {schema}
+        {label}
+        rawLabel={copy.page.schemaRawLabel}
+        emptyLabel={copy.page.overview.noSchema}
+        data-testid={testId}
+      />
+    {:else}
+      <p class="ib-workflow__muted" data-testid={testId}>{copy.page.overview.noSchema}</p>
+    {/if}
+  </section>
+{/snippet}
+
 <div class="ib-workflow__overview" data-testid="workflow-overview">
-  {#if document !== undefined}
+  {#if internalNote !== undefined}
+    <p class="ib-workflow__description" data-testid="workflow-internal-note">{internalNote}</p>
+  {/if}
+
+  {#if sources !== undefined}
     <section class="ib-workflow__section" aria-label={copy.stepsLabel}>
-      <SectionHeading level={2} title={copy.stepsLabel} />
-      {#if document.steps.length === 0}
+      <SectionHeading level={2} title={`${copy.stepsLabel} ${String(rows.length)}`} />
+      {#if rows.length === 0}
         <EmptyState
           kind="first-use"
           size="compact"
@@ -86,41 +123,25 @@
           description={copy.page.overview.stepsEmptyDescription}
         />
       {:else}
-        <ol class="ib-workflow__steps" data-testid="workflow-steps">
-          {#each keyedByOccurrence( document.steps, (step) => stepLabel(step) ) as { key, item: step } (key)}
-            <li class="ib-workflow__step">{stepLabel(step)}</li>
-          {/each}
-        </ol>
+        <WorkflowSteps steps={rows} />
       {/if}
     </section>
   {/if}
 
   {#if showSchemas}
     <div class="ib-workflow__schemas" data-testid="workflow-schemas">
-      <section class="ib-workflow__section" aria-label={copy.page.overview.inputLabel}>
-        <SectionHeading level={2} title={copy.page.overview.inputLabel} />
-        <SchemaView
-          schema={inputSchema ?? null}
-          label={copy.page.overview.inputLabel}
-          emptyLabel={copy.page.overview.noSchema}
-          data-testid="workflow-input-schema"
-        />
-      </section>
-      <section class="ib-workflow__section" aria-label={copy.page.overview.outputLabel}>
-        <SectionHeading level={2} title={copy.page.overview.outputLabel} />
-        <SchemaView
-          schema={outputSchema ?? null}
-          label={copy.page.overview.outputLabel}
-          emptyLabel={copy.page.overview.noSchema}
-          data-testid="workflow-output-schema"
-        />
-      </section>
+      {@render schemaSection(copy.page.overview.inputLabel, inputSchema, 'workflow-input-schema')}
+      {@render schemaSection(
+        copy.page.overview.outputLabel,
+        outputSchema,
+        'workflow-output-schema',
+      )}
     </div>
   {/if}
 
   {#if schedulesFailed}
     <Alert variant="warning">{copy.page.schedulesFailed}</Alert>
-  {:else if schedules !== undefined && schedules.length > 0}
+  {:else if listSchedules && schedules !== undefined && schedules.length > 0}
     <section class="ib-workflow__section" data-testid="workflow-schedules">
       <SectionHeading level={2} title={copy.page.schedulesHeading} />
       <ul class="ib-workflow__list">
@@ -145,11 +166,7 @@
     </section>
   {/if}
 
-  {#if canSignal}
-    <SignalForm {document} />
-  {/if}
-
-  {#if filePath !== undefined || hasDefinitionDetails(details)}
-    <WorkflowDetails {details} {filePath} {document} {mode} />
+  {#if hasDefinitionDetails(details)}
+    <WorkflowDetails {details} />
   {/if}
 </div>

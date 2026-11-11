@@ -117,6 +117,8 @@ export const queryKeys = {
     /** The newest runs of one type, from the Bureau for a file and the engine for a code type. */
     recentRuns: (kind: 'code' | 'agent-authored', type: string) =>
       ['workflow-catalog', 'recent-runs', kind, type] as const,
+    /** How many runs one type has and its newest, which the page's header and its Runs tab say. */
+    headline: (type: string) => ['workflow-catalog', 'headline', type] as const,
     /** One type, and what each service says of it. */
     detail: (type: string) => ['workflow-catalog', 'detail', type] as const,
     /** One workflow file as `bureau.workflows.get` shows it, for the editor. */
@@ -125,6 +127,8 @@ export const queryKeys = {
     schedules: (type: string) => ['workflow-catalog', 'schedules', type] as const,
     /** A code-defined workflow's description and registered contract (`bureau.workflows.internal.get`). */
     codeSource: (type: string) => ['workflow-catalog', 'code-source', type] as const,
+    /** The steps of the newest version the Bureau saved of a file, for a file that cannot load (`bureau.workflows.history`). */
+    savedSteps: (type: string) => ['workflow-catalog', 'saved-steps', type] as const,
     /** The versions of one agent-authored workflow that have run (`bureau.workflows.revisions`). */
     revisions: (type: string) => ['workflow-catalog', 'revisions', type] as const,
   },

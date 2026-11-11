@@ -159,6 +159,37 @@ export function locateJsonProblem(text: string): JsonProblem | null {
   return { line, stoppedAt, kind: comma ? 'comma' : 'other' };
 }
 
+/**
+ * The sentence that opens the banner of a file that cannot load. A file whose JSON is broken and
+ * whose problem can be placed names the line the parser stopped at, and says "expected a comma"
+ * when a comma was left out; any other problem says the Bureau's own words after the file's name.
+ */
+export function problemSentence(
+  fileName: string,
+  problem: { readonly message: string },
+  located: JsonProblem | null,
+): string {
+  const copy = WORKFLOW_COPY.page.problem;
+  if (located === null) return copy.unlocated(fileName, problem.message);
+  const reason = located.kind === 'comma' ? copy.expectedComma : problem.message.replace(/\.$/, '');
+  return copy.located(fileName, located.stoppedAt, reason);
+}
+
+/** The note drawn under the line a broken file is marked on. */
+export function problemNote(located: JsonProblem): {
+  readonly line: number;
+  readonly message: string;
+} {
+  const copy = WORKFLOW_COPY.page.problem;
+  return {
+    line: located.line,
+    message:
+      located.kind === 'comma'
+        ? copy.missingComma(located.stoppedAt)
+        : copy.stopped(located.stoppedAt),
+  };
+}
+
 /** A part of the file the outline points at. */
 export type OutlineEntry = {
   /** The key as a person reads it: `inputSchema` is "input". */

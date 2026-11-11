@@ -45,6 +45,14 @@ export function workflowEditPath(type: string): string {
 }
 
 /**
+ * The editor for a file that cannot load, opened straight on its JSON tab: the builder has no
+ * steps to show for a file it cannot read, so the text is what there is to fix.
+ */
+export function workflowEditJsonPath(type: string): string {
+  return `${workflowEditPath(type)}?tab=json`;
+}
+
+/**
  * The engine's own run list, across every workflow type. It lives under `/health` because it reads
  * the engine's list and takes the engine's status words in its `status` query parameter; `/runs` is
  * the Bureau's task list and has no engine rows.
