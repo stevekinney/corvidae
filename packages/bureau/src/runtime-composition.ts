@@ -1,9 +1,7 @@
-import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule.ts';
 import { normalizeRunRequestContext } from './session-request-context.ts';
 import {
   createRunAuthorityValidator,
   guardWorkspaceRunOptions,
-  mayUseAutomationInput,
   recoverRunWorkspaceAuthority,
 } from './run-authority.ts';
 import type { RuntimeServices } from '@lostgradient/lifecycle';
@@ -16,31 +14,18 @@ import {
 import { composeRunHooks, pluginHookTier, type RunHookTiers } from './run-hook-tiers';
 import type { GovernedMemory } from '@lostgradient/memory';
 import type {
-  AgentSession,
   DurableRunDeps,
   GenerateFunction,
-  GenerationMode,
   BureauChildInvariants,
   GuardrailsOptions,
   JSONValue,
-  OnStepHook,
   OperativeHookMap,
-  RunOptions,
-  ScheduledAgentRunInput,
-  SessionStore,
-  SessionSummary,
   PersistedSessionTaint,
 } from '@lostgradient/operative';
 import {
-  appendAgentInput,
-  readBackendDescriptors,
-  withBackendDescriptors,
-  createAgentSession,
   createCheckpointStore,
   createDefaultGuardrailsPreset,
   createGuardrails,
-  createSessionTaintTracker,
-  DEFAULT_TAINT_THRESHOLD,
   withSessionTaint,
   createRunEngine,
   createRunWorkflow,
@@ -49,49 +34,38 @@ import {
   isAgentRunWorkflowInput,
   isFailureFinishReason,
   isScheduledAgentRunInput,
-  payloadText,
-  reservedIdentifierReason,
   ScheduleAttemptedEvent,
   ScheduleCompletedEvent,
   ScheduleFailedEvent,
   SCHEDULER_ORIGIN_TAG,
   SCHEDULER_RUN_ID_PREFIX,
   ScheduleSkippedEvent,
-  withActiveSkillToolPolicy,
   bureauInvariantsField,
   WorkflowVersionMismatchEvent,
-  SESSION_ORIGIN_METADATA_KEY,
-  SESSION_TAINT_METADATA_KEY,
-  readSessionTaint,
-  sessionOriginOf,
-  SESSION_OWNER_METADATA_KEY,
 } from '@lostgradient/operative';
 import {
-  createSkillArtifactLoader,
-  createSkillClient,
-  createSkillClientToolbox,
   DEFAULT_SOURCE_PRECEDENCE,
   discoverSkills,
-  renderActiveSkillInstructions,
-  renderClientCatalog,
-  type SkillActivationRecord,
   type SkillCatalogRevision,
   type SkillEventMap,
-  type ToolPolicy,
 } from './skills';
 import { fenceStorage } from './storage-fence';
 import type { CompositionCore } from './composition-seams/core';
 import {
+  createScheduledRunServices,
+  type ScheduledRunServicesPeers,
+} from './composition-seams/scheduled-run-services';
+import { createRunRuntimeSeam, type RunRuntimePeers } from './composition-seams/run-runtime';
+import {
+  createSessionAgentRuns,
+  type SessionAgentRunsPeers,
+} from './composition-seams/session-agent-runs';
+import {
   createCatalogRunRecovery,
   type CatalogRunRecoveryPeers,
 } from './composition-seams/catalog-run-recovery';
-import { withChatPermission } from './tool-approval';
-import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
   createWorkflowLogStore,
-  decode,
-  deserializeCheckpoint,
-  KEYS,
   type WorkflowLogRecord,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
@@ -105,117 +79,40 @@ import {
   type Storage,
   textValueStore,
 } from '@lostgradient/storage';
-import { type AnyToolbox, createToolbox, type ToolRequestContext } from 'armorer';
-import {
-  Conversation,
-  type ConversationHistory,
-  createConversationHistory,
-} from 'conversationalist';
-import { activeSkillToolPolicy, agentSkillsRun, createSkillGuardrailOptions } from './agent-skills';
+import { createToolbox, type ToolRequestContext } from 'armorer';
 import { isTryAgentName } from './agent-try';
 import { type GoalAttemptTarget, registerGoalAttemptFence } from './goal-attempt-fence';
 import { bufferMissedFires } from './bureau-event-forwarders';
 import { ownerOrLocal } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
-import {
-  isPlainAuthorityRecord,
-  isSessionAuthorityAuthorized,
-  resolveRunMemoryOwner,
-  resolveSessionOwner,
-  SessionOwnerConflictError,
-} from './session-authority';
-import { committedFireApprovalIds } from './scheduled-fire-review-state';
-import {
-  createSessionTaintSeam,
-  type SessionTaintSeam,
-  type SessionTaintSource,
-} from './session-taint-seam';
-import {
-  copyAgentOwnedRunOptions,
-  scheduledAgentRunOptions,
-  sessionExecuteOptions,
-} from './session-agent-options';
+import { createSessionTaintSeam, type SessionTaintSeam } from './session-taint-seam';
 import { DEFAULT_MAX_CONCURRENT_RUNS } from './settings/settings-options';
-import { holdGenerateToModelPolicy } from './code-agent-model-policy';
 import type {
   BureauInvariantOptions,
   BureauToolbox,
   CatalogAgentRunOptionsResolver,
-  CatalogRunRecordedDefinition,
   DurableComposition,
-  MediaRowHolder,
-  MediaRunOptions,
-  RunRuntimeRequest,
   RuntimeComposition,
   RuntimeCompositionDependencies,
   RuntimeCompositionOptions,
   ScheduleFireEventMap,
-  ScheduledFireServicesNotice,
   ScheduledFireSettlement,
-  ScheduledSessionNotice,
-  SessionAgentRun,
-  SessionAgentRunResolution,
-  SkillRecoveryOutcome,
-  SkillSnapshot,
 } from './runtime-composition-types';
 import { type CatalogRunRecoveryRecord } from './catalog-run-recovery-record';
 import {
-  type RunMemoryTarget,
-  createMemoryPersistHook,
-  createMemoryRecallHook,
-  createRunMemoryAuthority,
-} from './run-memory';
-import {
-  createSchedulerServiceRequestContext,
-  defaultBureauAgentName,
   grantedTools,
   hasDispatchEvent,
-  recoveredOwnerOf,
   recoveredRequestContext,
   wireDurableOptInTools,
-  withDefaultToolboxRequestContext,
 } from './run-request-context';
-import {
-  activeSkillSessionMetadataForStep,
-  activeSkillsFromStepMetadata,
-  activeSkillsStepMetadata,
-  activeSkillsStepMetadataKey,
-  createSkillRecordSnapshotHook,
-  createUnavailableToolbox,
-  describe,
-  isSkillActivationRecordArray,
-  recordRecoveredSkillPolicy,
-  recordedAgentStep,
-} from './skill-step-metadata';
-import {
-  appendConversationMessages,
-  applyCache,
-  sessionRunMediaOptions,
-  unsetMediaOptions,
-} from './provider-resolution';
+import { createUnavailableToolbox } from './skill-step-metadata';
+import { applyCache, unsetMediaOptions } from './provider-resolution';
 import {
   BUREAU_HOOK_TIER,
   registerGuardrailInvariants,
   registerIdentityInvariant,
-  registerTrailingOnStep,
-  scheduledFireApprovalMetadata,
 } from './bureau-invariant-hooks';
-import {
-  BUREAU_AGENT_NAME,
-  SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
-  SESSION_AGENT_PLACEHOLDER_INPUT,
-  SESSION_AGENT_REVISION_METADATA_KEY,
-  agentInstructionsFromRunOptions,
-  sessionRecordedRevision,
-} from './session-agent-revision';
-import {
-  type RecoveredScheduleMarker,
-  decodeScheduleRunMarker,
-  hasPersistedScheduleMarker,
-  persistedScheduleMarker,
-  recoveredMarkerSessionId,
-  removeLastScheduledFireTranscript,
-} from './schedule-run-marker';
+import { hasPersistedScheduleMarker, recoveredMarkerSessionId } from './schedule-run-marker';
 
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
   createSessionStore,
@@ -241,7 +138,10 @@ export async function createRuntimeComposition(
 }
 
 /** What the seams of `buildRuntimeComposition` read from one another, read at call time. */
-type CompositionPeers = CatalogRunRecoveryPeers;
+type CompositionPeers = CatalogRunRecoveryPeers &
+  SessionAgentRunsPeers &
+  RunRuntimePeers &
+  ScheduledRunServicesPeers;
 
 async function buildRuntimeComposition(
   options: RuntimeCompositionOptions,
@@ -308,43 +208,6 @@ async function buildRuntimeComposition(
   // terminal event dispatches, so it never grows past the count of in-flight
   // scheduled fires.
   const scheduledFireScheduleIds = new Map<string, string>();
-
-  /**
-   * COR-1482: tells the host which session incarnation a fire runs in. Binding a task to it is a
-   * record about the fire, so a host that cannot write it is diagnosed and the fire still runs.
-   */
-  async function reportScheduledSession(notice: ScheduledSessionNotice): Promise<void> {
-    try {
-      await dependencies.onScheduledSessionKnown?.(notice);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'task-registry',
-        message: `[bureau] Could not bind the task of schedule fire "${notice.runId}" to its session: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * COR-1596: hands the host a fire's services so it can register the fire's reviews. Registering
-   * them is a record about the fire, so a host that cannot is diagnosed and the fire still runs.
-   */
-  async function reportScheduledServices(
-    notice: ScheduledFireServicesNotice,
-    services: DurableRunDeps,
-  ): Promise<void> {
-    try {
-      await dependencies.onScheduledFireServices?.(notice, services);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'task-registry',
-        message: `[bureau] Could not register the reviews of schedule fire "${notice.runId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-  }
 
   // Declared before any await in composition: a schedule fire can settle while it is running.
   const pendingScheduledTaints = new Map<string, PersistedSessionTaint>();
@@ -763,45 +626,6 @@ async function buildRuntimeComposition(
   const configuredGenerate: GenerateFunction | undefined =
     options.generate === undefined ? undefined : applyCache(options.generate, options.cache, kv);
 
-  /** {@link RuntimeComposition.holdToModelPolicy}. */
-  function holdToModelPolicy<Options extends Pick<RunOptions, 'generate'>>(
-    resolved: Options,
-    generationMode: GenerationMode,
-  ): Options {
-    const generate = holdGenerateOfAgent(resolved.generate, generationMode);
-    return generate === resolved.generate ? resolved : { ...resolved, generate };
-  }
-
-  /** A catalog agent's `generate`, held to the model policy when this composition reads one. */
-  function holdGenerateOfAgent(
-    generate: GenerateFunction,
-    generationMode: GenerationMode,
-  ): GenerateFunction {
-    const policy = dependencies.modelPolicy;
-    return policy === undefined
-      ? generate
-      : holdGenerateToModelPolicy(generate, policy, generationMode);
-  }
-
-  /** {@link RuntimeComposition.withChatPermission}. */
-  function governedByChat(toolbox: BureauToolbox, runId: string): BureauToolbox {
-    const read = dependencies.permissionModeOfRun;
-    return read === undefined
-      ? toolbox
-      : withChatPermission(
-          toolbox,
-          () => read(runId),
-          // A chat whose mode cannot be read holds its runs to `read-only`: say so, once per call.
-          (error) =>
-            diagnose({
-              level: 'error',
-              scope: 'permission-mode',
-              message: `[bureau] The permission mode of the chat of run "${runId}" could not be read, so its tool calls are held to read-only: ${serializeUnknownError(error)}`,
-              cause: error,
-            }),
-        );
-  }
-
   /**
    * The guardrail configuration in force for this composition, with `false`
    * narrowed away so a caller sees a real configuration or nothing.
@@ -816,21 +640,6 @@ async function buildRuntimeComposition(
     const resolved =
       options.guardrails === undefined ? createDefaultGuardrailsPreset() : options.guardrails;
     return resolved === false ? undefined : resolved;
-  }
-
-  /** {@link RuntimeComposition.mediaOptionsFor}. */
-  function mediaOptionsFor(
-    principalId: string | undefined,
-    rowHolder: MediaRowHolder,
-  ): MediaRunOptions {
-    const resolver = dependencies.contentSourceResolverFor?.(principalId);
-    const admitter = dependencies.generatedMediaAdmitterFor?.(principalId, rowHolder);
-    const assetSafety = resolveGuardrailsConfiguration()?.input?.assetSafety;
-    return {
-      ...(resolver === undefined ? {} : { contentSourceResolver: resolver }),
-      ...(admitter === undefined ? {} : { generatedMediaAdmitter: admitter }),
-      ...(assetSafety === undefined ? {} : { assetSafety }),
-    };
   }
 
   /**
@@ -922,6 +731,8 @@ async function buildRuntimeComposition(
     unrebuildableRecoveredRuns,
     scheduledFireScheduleIds,
     catalogRunRecoveryCache,
+    pendingScheduledTaints,
+    pendingTaintKey,
     scheduleFireEvents,
     skillEvents,
     effectiveStorage,
@@ -935,6 +746,8 @@ async function buildRuntimeComposition(
     memory,
     memoryTenantId,
     skillCatalog,
+    skillsConfigured,
+    hasSkillTools,
     sessionStore,
     secretAnswers,
     baseToolbox,
@@ -957,7 +770,32 @@ async function buildRuntimeComposition(
       return catalogResolverAbandonedReason;
     },
   };
-  const peers: CompositionPeers = {};
+  const peers: CompositionPeers = {
+    get sessionTaintSeamFor() {
+      return sessionTaintSeamFor;
+    },
+    get composeHooks() {
+      return composeHooks;
+    },
+    get readSessionSkillSnapshot() {
+      return readSessionSkillSnapshot;
+    },
+    get createRunRuntime() {
+      return createRunRuntime;
+    },
+    get mediaOptionsFor() {
+      return mediaOptionsFor;
+    },
+    get resolveGuardrailsConfiguration() {
+      return resolveGuardrailsConfiguration;
+    },
+    get awaitCatalogAgentRunOptionsResolver() {
+      return awaitCatalogAgentRunOptionsResolver;
+    },
+    get resolveSessionAgentRun() {
+      return resolveSessionAgentRun;
+    },
+  };
   const {
     persistCatalogRunRecoveryRecord,
     claimCatalogRunRecoveryRecord,
@@ -968,1052 +806,17 @@ async function buildRuntimeComposition(
     classifyCatalogRecoveredRun,
     clearCatalogRunRecoveryCache,
   } = createCatalogRunRecovery(core, peers);
-
-  function createRunRuntime(
-    request: RunRuntimeRequest,
-    runtimeOptions?: {
-      /**
-       * Active-skill entries to seed the run's {@link SkillSession} with on
-       * construction. Used by the durable recovery path: when
-       * `buildRunDepsFromSession` rebuilds deps for a recovered run, it reads the
-       * `activeSkillRecords` snapshot from session metadata and passes it here so the
-       * recovered toolbox is aware of skills activated in completed pre-crash steps
-       * (those steps are memoized and do not re-run their `activate_skill` calls).
-       */
-
-      /**
-       * Provenance-carrying records for the catalog-backed path.
-       *
-       * Recovery
-       * re-validates these against the live catalog and re-checks each digest, so a skill whose
-       * source was revoked or whose content drifted does not come back.
-       */
-      initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
-
-      /**
-       * COR-1577 — the named catalog agent this session run executes. Its `generate` and toolbox
-       * replace the Bureau-wide ones; everything else the Bureau composes around a run still
-       * applies.
-       */
-      sessionAgent?: SessionAgentRun | undefined;
-
-      /**
-       * COR-1546 — the run's owner of record, which its memory is partitioned under: the session's
-       * owner for a chat run, the schedule's for a fire, `anonymous:local` for a run no principal started
-       * (the owner of anything created with none stated). A caller that omits it
-       * gets the request authority's `ownerId`; `createBureau` always states it.
-       */
-      memoryOwner?: string | undefined;
-      /**
-       * COR-2105 — the metadata of the session the run belongs to. The run's Bureau guardrails
-       * start tainted when it holds `guardrailTaint`, and write a taint they raise back to the
-       * session. Absent, the run starts untainted and still writes back.
-       */
-      sessionMetadata?: Readonly<Record<string, JSONValue>> | undefined;
-      skillPolicyUnverifiable?: boolean | undefined;
-      /**
-       * COR-1911 — the run neither recalls memory nor remembers its answers: no memory hook is
-       * registered. A run of an agent that is being tried is one; it is a throwaway, and leaves
-       * nothing in the memory its owner keeps.
-       */
-      withoutMemory?: boolean | undefined;
-      admitDispatch?: (() => Promise<boolean>) | undefined;
-    },
-  ) {
-    const sessionAgent = runtimeOptions?.sessionAgent;
-    const requestContext = request.requestContext;
-    // COR-1996: a catalog agent's generate is held to the model policy; the Bureau-wide one is the
-    // deployment's own and no agent's choice.
-    const underlyingGenerate =
-      sessionAgent !== undefined
-        ? holdGenerateOfAgent(sessionAgent.options.generate, sessionAgent.generationMode)
-        : configuredGenerate;
-
-    if (!underlyingGenerate) {
-      throw new Error('No generate function configured');
-    }
-    const validateDispatch = async (candidate: ToolRequestContext): Promise<boolean> => {
-      if (runtimeOptions?.admitDispatch !== undefined && !(await runtimeOptions.admitDispatch()))
-        return false;
-      return (
-        requestAuthorityValidator === undefined || (await requestAuthorityValidator(candidate))
-      );
-    };
-    const generate: GenerateFunction = withBackendDescriptors(async (context) => {
-      const revision = requestContext?.authority.authorizationRevision;
-      const required =
-        options.workspace !== undefined ||
-        (revision !== undefined && revision !== 'bureau:1' && revision !== 'bureau:scheduler:1');
-      if (
-        required &&
-        (!requestContext || !requestAuthorityValidator || !(await validateDispatch(requestContext)))
-      ) {
-        throw new Error('Request authority is no longer current.');
-      }
-      return underlyingGenerate(context);
-    }, readBackendDescriptors(underlyingGenerate));
-
-    // Clone the toolbox for this run so concurrent runs do not share a single
-    // CompletableEventTarget emitter. A shared emitter would route every tool.*
-    // event (execute-start, settled, …) to ALL runs that have subscribed, causing
-    // cross-run event pollution and shared budget/loop-detector state.
-    // `extend()` (no args) creates a fresh toolbox with a new emitter while
-    // preserving all tool configurations, context, and policy from the original.
-    // The unavailable-toolbox sentinel (no user toolbox, no skill tools) is
-    // structurally distinct (custom throwing execute) and must be freshly
-    // instantiated per-call via createUnavailableToolbox() instead.
-    //
-    // The skills path below adds the skill tools with withAddedTools, which
-    // keeps this clone's own wrappers — so the result is still based on a
-    // per-run clone, which is correct.
-    //
-    // COR-1577 — a named agent's resolved toolbox is its own: `createAgent` builds a fresh one
-    // per resolution unless the agent was handed a shared toolbox, which `extend()` clones for
-    // the same cross-run isolation the Bureau-wide toolbox gets.
-    let toolbox: AnyToolbox =
-      sessionAgent !== undefined
-        ? sessionAgent.options.toolbox.extend()
-        : options.toolbox !== undefined
-          ? baseToolbox.extend()
-          : hasSkillTools
-            ? fallbackToolbox.extend()
-            : createUnavailableToolbox();
-    // COR-567 — one registry per run. Per-run rather than per-composition
-    // because these hooks close over this run's session, memory and skill
-    // session; a registry shared across runs would leak one run's state into
-    // another exactly the way the per-run toolbox clone above exists to
-    // prevent.
-    //
-    // Registration order is the order the legacy arrays ran in, and every id
-    // below is explicit: a generated `<hookName>#<n>` would renumber whenever
-    // an earlier conditional block stops registering, so an observer
-    // correlating across runs would see the same hook under different names
-    // depending on whether memory or skills happened to be configured.
-    // COR-1265 — `source` names the owning tier once, and `on()` stamps it onto
-    // every entry. On the entry rather than only here because a merged plan has
-    // one registry and many tiers: afterwards this object can no longer say
-    // where an entry came from, but the entry still can.
-    const hooks = new HookRegistry<OperativeHookMap>({ source: BUREAU_HOOK_TIER });
-    let getActiveSkillRecords = (): readonly SkillActivationRecord[] => [];
-    let getActiveSkillToolPolicy: (() => ToolPolicy | undefined) | undefined;
-    // COR-1620: set when the policy that governs the run cannot be verified, from the start or
-    // once a stored skill is refused on recovery. The run then offers no tool and writes no
-    // skill snapshot, so what it persisted before is kept, and an approval it raises is refused
-    // at approve.
-    let skillPolicyUnverified = runtimeOptions?.skillPolicyUnverifiable === true;
-
-    if (options.identity) {
-      registerIdentityInvariant(hooks, options.identity);
-    }
-
-    // COR-41 — memory hooks run only under a persisted request authority. A
-    // recovered run whose authority could not be restored gets none: no
-    // conversation can reach memory outside the authority it was granted.
-    const memoryAuthority =
-      memory && requestContext && runtimeOptions?.withoutMemory !== true
-        ? createRunMemoryAuthority(
-            requestContext,
-            {
-              runId: request.runId ?? request.sessionId,
-              tenantId: memoryTenantId(),
-              // A caller that states no owner (a composition used directly) is partitioned by the request
-              // authority's own owner, so two requests never share one partition.
-              ownerId: ownerOrLocal(
-                runtimeOptions?.memoryOwner ?? requestContext.authority.ownerId,
-              ),
-            },
-            options.memoryAuthority,
-          )
-        : undefined;
-    // COR-1546 — an agent remembers across every chat its owner has with it, so the collection is
-    // the agent's identifier and never the session's.
-    const memoryTarget: RunMemoryTarget = {
-      collection: request.agentName ?? requestContext?.agentId ?? defaultBureauAgentName,
-      sessionId: request.sessionId,
-    };
-    // COR-1226 — resolved here rather than at the hook-registration site below,
-    // because the skill toolbox needs the same detectors and the same session
-    // taint tracker, and it is constructed before that point. `createGuardrails`
-    // is a pure function of its options, so calling it earlier changes nothing
-    // about what it returns.
-    const guardrailsConfig = resolveGuardrailsConfiguration();
-    // COR-2105 — a run of a session starts from the session's taint and writes a new one back,
-    // from this tracker as from the agent's own (`AgentRunContext.sessionTaint`).
-    const runIdOfTaint = request.runId ?? request.sessionId;
-    const taintSeam = sessionTaintSeamFor(
-      request.sessionId,
-      runIdOfTaint,
-      runtimeOptions?.sessionMetadata,
-    );
-    const guardrails = guardrailsConfig
-      ? createGuardrails(withSessionTaint(guardrailsConfig, taintSeam, runIdOfTaint))
-      : undefined;
-    // COR-2107 — the tracker a flagged recall taints. It is the Bureau's own tracker, seeded from
-    // the session and writing back through the same seam every other tracker of the run uses
-    // (COR-2105), so the taint it raises is stored whichever tier resolved the run's guardrails.
-    // Taint is a session fact (COR-2385): when the Bureau runs no guardrails, a tracker over the
-    // same seam stands in, for every kind of agent and for a run with none, so an opt-out of
-    // guardrails never decides whether a flagged recall taints the session.
-    const recallTaint =
-      guardrails?.taint ??
-      createSessionTaintTracker({
-        ...(taintSeam.initial === undefined ? {} : { initial: taintSeam.initial }),
-        onTainted: taintSeam.onTainted,
-        runId: runIdOfTaint,
-      });
-
-    if (memory && memoryAuthority) {
-      // COR-2107 — a recall a detector flagged at or above the run's taint threshold taints the
-      // session, as any other scan path does (COR-2102).
-      // The agent's own declared threshold judges its recall first (COR-2385), then the Bureau's.
-      const recallTaintThreshold =
-        sessionAgent?.agentTaintThreshold ??
-        guardrailsConfig?.taint?.taintThreshold ??
-        DEFAULT_TAINT_THRESHOLD;
-      hooks.on(
-        'prepareStep',
-        createMemoryRecallHook(memory, memoryAuthority, memoryTarget, (detection, step) => {
-          if (detection.confidence < recallTaintThreshold) return;
-          recallTaint.taint({
-            reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
-            detector: detection.detector,
-            category: detection.category,
-            confidence: detection.confidence,
-            step,
-            provenance: 'recalled-memory',
-          });
-          // The write that stores the taint completes before the recall hook returns, as
-          // the guardrail hooks' own does (COR-2105).
-          return recallTaint.settled();
-        }),
-        {
-          id: 'bureau:memory-recall',
-          // Recall admission records the read and can quarantine a poisoned
-          // record; both are idempotent on a replayed step.
-          replay: 'effectful',
-        },
-      );
-      hooks.on(
-        'onStep',
-        createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
-          diagnose({
-            level: 'warn',
-            scope: 'memory',
-            message:
-              `[bureau] Governed memory rejected the answer of run "${request.runId ?? request.sessionId}" ` +
-              `for agent "${memoryTarget.collection}" (${receipt.reason ?? 'no reason given'}), so it was not remembered.`,
-          }),
-        ),
-        {
-          id: 'bureau:memory-persist',
-          // Writes to the memory store, so a replayed step writes again. The
-          // classification records that at-least-once contract; it does not
-          // suppress the second write, which would drop the persistence for a
-          // step whose generation genuinely re-ran.
-          replay: 'effectful',
-        },
-      );
-    }
-
-    // COR-1226 — skill bodies and skill resources are untrusted instruction
-    // input and must pass the same detector pipeline as anything else entering
-    // context. `GuardrailHooks.taint`'s own doc comment names skill resources
-    // as one of the retrieval surfaces that cannot reach the model through
-    // `prepareStep`/`validateResponse` and so must scan directly and fold its
-    // detections back into the session-wide taint state. The wiring is
-    // `createSkillGuardrailOptions` from `./agent-skills`, which
-    // `createAgentSkills` uses for per-agent skills too (COR-1367), so the
-    // two paths cannot drift.
-    const skillGuardrail =
-      guardrails && guardrailsConfig
-        ? createSkillGuardrailOptions(guardrailsConfig, guardrails)
-        : undefined;
-
-    let skillRecovery: Promise<SkillRecoveryOutcome> | undefined;
-    // COR-323: the named agent's own skills. Its client already owns the run's toolbox and the
-    // catalog prompt, so Bureau adds only what the agent cannot see: the durable snapshot of the
-    // active set after every step, and the re-validation of a stored set on recovery.
-    const agentSkills = agentSkillsRun(sessionAgent?.options.hooks);
-    if (agentSkills !== undefined) {
-      const { client, catalog } = agentSkills;
-      const recoverable = runtimeOptions?.initialActiveSkillRecords;
-      if (recoverable !== undefined && recoverable.length > 0) {
-        skillRecovery = agentSkills.recover(recoverable).then((outcome) => {
-          if (outcome.refused.length > 0) skillPolicyUnverified = true;
-          return outcome;
-        });
-      }
-      getActiveSkillRecords = () => client.activationRecords();
-      getActiveSkillToolPolicy = () => activeSkillToolPolicy(client.narrowedTools());
-      if (sessionStore) {
-        const writeSkillSnapshot = createSkillRecordSnapshotHook(
-          client,
-          catalog,
-          request.sessionId,
-          sessionStore,
-          request.runId,
-        );
-        hooks.on(
-          'onStep',
-          async (context) => {
-            if (!skillPolicyUnverified) await writeSkillSnapshot(context);
-          },
-          { id: 'bureau:skill-record-snapshot', replay: 'effectful' },
-        );
-      }
-    } else if (options.skills && skillCatalog !== undefined) {
-      // COR-892 — the catalog-backed path. Bureau composes policy and durability *around*
-      // Agent-owned behaviour rather than reimplementing it: discovery, trust admission,
-      // digest-verified activation and the active set all live in `@lostgradient/bureau/skills`, and what
-      // Bureau adds here is the run and session correlation the client cannot see, plus durable
-      // persistence of what the client decided.
-      const skillClient = createSkillClient({
-        catalog: skillCatalog,
-        ...(options.skills.currentCatalog === undefined
-          ? {}
-          : { currentCatalog: options.skills.currentCatalog }),
-        // Routed by source kind rather than fixed to the filesystem: a catalog can mix a host's
-        // filesystem roots with the bureau's own store, and a `storage` record's `sourceLocation`
-        // is a store namespace that no filesystem read can follow.
-        loadArtifact: createSkillArtifactLoader(kv === undefined ? {} : { storage: kv }),
-        // COR-1226's scan, carried onto the client path. Migrating without it would have created
-        // the guardrail bypass COR-892 names: skill bodies are untrusted instruction input and
-        // pass the same detector pipeline as anything else entering context.
-        ...(skillGuardrail === undefined ? {} : { guardrail: skillGuardrail }),
-        ...(skillEvents === undefined ? {} : { events: skillEvents }),
-        correlation: {
-          ...(request.runId === undefined ? {} : { runId: request.runId }),
-          sessionId: request.sessionId,
-          ...(request.agentName === undefined ? {} : { agentName: request.agentName }),
-        },
-      });
-
-      // Recovery before anything else reads the active set: a resumed run must re-validate every
-      // stored record against the live catalog and re-check its digest, so a skill whose source
-      // was revoked or whose content drifted while the run was away does not come back.
-      const recoverable = runtimeOptions?.initialActiveSkillRecords;
-      if (recoverable !== undefined && recoverable.length > 0) {
-        // Detached deliberately: composition is synchronous, and recovery re-reads bundles. The
-        // first step's `prepareStep` awaits the same promise below, so nothing reads a half-filled
-        // active set.
-        skillRecovery = skillClient.recover(recoverable).then((outcome) => {
-          if (outcome.refused.length > 0) skillPolicyUnverified = true;
-          return outcome;
-        });
-      }
-
-      // The records verbatim, not a name-and-policy projection of them. The projection was what
-      // the provider-backed snapshot could carry; narrowing to it here would throw away the
-      // provenance every reader of this snapshot now depends on.
-      getActiveSkillRecords = () => skillClient.activationRecords();
-      getActiveSkillToolPolicy = () => activeSkillToolPolicy(skillClient.narrowedTools());
-
-      if (options.skills.includeTools !== false) {
-        const skillToolset = createSkillClientToolbox(
-          skillClient,
-          skillGuardrail === undefined ? undefined : { guardrail: skillGuardrail },
-        );
-        // `undefined` when the admitted catalog is empty, so no skill tool is exposed at all —
-        // a model handed `activate_skill` against an empty catalog invents a name to pass it.
-        if (skillToolset !== undefined) {
-          hooks.on(
-            'prepareStep',
-            (context) => {
-              if (context.step !== 0) return Promise.resolve();
-              const rendered = renderClientCatalog(skillClient);
-              if (rendered !== undefined) {
-                context.conversation.appendSystemMessage(rendered, {
-                  _skillCatalogInjected: true,
-                });
-              }
-              return Promise.resolve();
-            },
-            {
-              id: 'bureau:skill-client-catalog',
-              // Reads the client's frozen catalog revision and appends to the
-              // step's conversation; nothing outside it is touched.
-              replay: 'safe',
-            },
-          );
-
-          toolbox = withAddedTools(
-            toolbox,
-            createToolbox([
-              skillToolset.activateSkill,
-              skillToolset.loadSkillResource,
-              skillToolset.deactivateSkill,
-            ]) as AnyToolbox,
-          );
-        }
-      }
-
-      // Active instructions are re-rendered every step rather than left in the transcript, which
-      // is what makes them survive a compaction strategy that rewrote the whole history.
-      hooks.on(
-        'prepareStep',
-        async (context) => {
-          // Recovery settles before the first step reads the active set, so nothing renders a
-          // half-filled one.
-          if (skillRecovery !== undefined) await skillRecovery;
-          const instructions = renderActiveSkillInstructions(skillClient.active());
-          if (instructions !== undefined) {
-            context.conversation.appendSystemMessage(instructions, { _skillContentInjected: true });
-          }
-        },
-        {
-          id: 'bureau:skill-client-instructions',
-          // Renders the active set into the step's conversation. Re-rendering on
-          // a replayed step is the point — see the comment above — and reaches
-          // nothing outside that conversation.
-          replay: 'safe',
-        },
-      );
-
-      if (sessionStore) {
-        const writeSkillSnapshot = createSkillRecordSnapshotHook(
-          skillClient,
-          skillCatalog,
-          request.sessionId,
-          sessionStore,
-          request.runId,
-        );
-        hooks.on(
-          'onStep',
-          async (context) => {
-            // What an unverified policy persisted before is kept: a snapshot of the skills this
-            // run holds now would replace the one that governs the call.
-            if (!skillPolicyUnverified) await writeSkillSnapshot(context);
-          },
-          {
-            id: 'bureau:skill-record-snapshot',
-            // Writes the activation records to the session store.
-            replay: 'effectful',
-          },
-        );
-      }
-    }
-
-    // AB-40 — `undefined` (not configured) wires the enabled-by-default
-    // preset; `false` opts out entirely; anything else replaces the preset.
-    // COR-1577 — an agent that resolves its own guardrails was handed this bureau's policy as
-    // its inherited one and applies it in its own hook tier, exactly as a catalog dispatch does.
-    if (guardrails && sessionAgent?.agentResolvesGuardrails !== true) {
-      // Registered last on `prepareStep`, as the array push order had it, so
-      // the input guardrail scans a step context every earlier hook has
-      // already contributed to rather than one they then append to.
-      registerGuardrailInvariants(hooks, guardrails);
-    }
-
-    // Records the run was given but no skill client is configured to enforce cannot be honoured.
-    if (
-      !skillsConfigured &&
-      agentSkills === undefined &&
-      (runtimeOptions?.initialActiveSkillRecords?.length ?? 0) > 0
-    ) {
-      skillPolicyUnverified = true;
-    }
-    const skillToolPolicy: (() => ToolPolicy | undefined) | undefined =
-      getActiveSkillToolPolicy === undefined && !skillPolicyUnverified
-        ? undefined
-        : () => (skillPolicyUnverified ? { allowList: [] } : getActiveSkillToolPolicy?.());
-    // COR-1947 — nearest the tools: a layer, so what is added to the run later is held to it too.
-    const chatToolbox =
-      request.runId === undefined ? toolbox : governedByChat(toolbox, request.runId);
-    const runToolbox = withDefaultToolboxRequestContext(
-      // COR-1228 — narrow by active-skill policy first, then apply the request
-      // context. Order matters only for readability here: both are proxies and
-      // neither observes the other, but filtering nearest the toolbox keeps the
-      // request-context wrapper the outermost thing a caller sees.
-      skillToolPolicy
-        ? withToolboxLayer(chatToolbox, (rebuilt) =>
-            withActiveSkillToolPolicy(rebuilt, skillToolPolicy),
-          )
-        : chatToolbox,
-      requestContext,
-      () => validateDispatch,
-      runtimeServices,
-    );
-    return Promise.resolve({
-      generate,
-      toolbox: runToolbox,
-      hooks,
-      // COR-2387: where a scan outside the loop (a durable child wait's answer) stores its taint.
-      onToolResultTaint: taintSeam.onTainted,
-      getActiveSkillRecords,
-      // Records the run was given but no skill client is configured to enforce: all are refused.
-      skillPolicyUnverified: () => skillPolicyUnverified,
-      skillsRecovered:
-        skillRecovery ??
-        Promise.resolve({
-          recovered: [],
-          refused: (runtimeOptions?.initialActiveSkillRecords ?? []).map((record) => record.name),
-        }),
-    });
-  }
-
-  /**
-   * COR-1586 — the resolver a reader needs. The engine reclaims runs on its own interval from the
-   * moment it exists, which is before `createBureau` has built the catalog the resolver reads, so
-   * a reader that finds the resolver unset waits for it when the caller said one is coming (see
-   * `awaitsCatalogAgentRunOptionsResolver`), saying once, as a `warn`, which run it is holding.
-   * `absent` is the answer of a composition that was never told to expect one, or whose resolver
-   * was cleared again; `abandoned` is the answer once the caller gave up on wiring it.
-   */
-  async function awaitCatalogAgentRunOptionsResolver(
-    runId: string | undefined,
-  ): Promise<
-    | { status: 'wired'; resolver: CatalogAgentRunOptionsResolver }
-    | { status: 'absent' }
-    | { status: 'abandoned'; reason: string }
-  > {
-    // Abandonment is terminal: a composition whose Bureau failed to build answers every reader
-    // with the failure, even if a resolver was wired before it failed.
-    if (catalogResolverAbandonedReason !== undefined) {
-      return { status: 'abandoned', reason: catalogResolverAbandonedReason };
-    }
-    if (catalogAgentRunOptionsResolver) {
-      return { status: 'wired', resolver: catalogAgentRunOptionsResolver };
-    }
-    if (dependencies.awaitsCatalogAgentRunOptionsResolver !== true) return { status: 'absent' };
-    if (!catalogResolverGateOpen) {
-      diagnose({
-        level: 'warn',
-        scope: 'recovery',
-        message:
-          `[bureau] ${runId === undefined || runId === '' ? 'A run' : `Run "${runId}"`} needs the ` +
-          `agent run options resolver before the bureau has wired it; holding it until the ` +
-          `bureau finishes building its agent catalog.`,
-      });
-      await catalogResolverGate.promise;
-    }
-    // Re-read after the wait: the gate opened because the resolver was wired or abandoned.
-    if (catalogResolverAbandonedReason !== undefined) {
-      return { status: 'abandoned', reason: catalogResolverAbandonedReason };
-    }
-    return catalogAgentRunOptionsResolver
-      ? { status: 'wired', resolver: catalogAgentRunOptionsResolver }
-      : { status: 'absent' };
-  }
-
-  /**
-   * COR-1577 — resolve the catalog agent a session run names, through the resolver `createBureau`
-   * wires for catalog dispatch and boot recovery, so a session run and a catalog run of the same
-   * agent resolve identically. The placeholder input is discarded: only the run options and the
-   * system prompt the definition would seed are read from the result.
-   */
-  async function resolveSessionAgentRun(
-    agentName: string,
-    runId: string,
-    principal?: string,
-    recorded?: CatalogRunRecordedDefinition,
-    session?: SessionTaintSource,
-  ): Promise<SessionAgentRunResolution> {
-    const wired = await awaitCatalogAgentRunOptionsResolver(runId);
-    if (wired.status === 'absent') {
-      return { status: 'resolver-failed', error: new Error('No catalog agent resolver is wired.') };
-    }
-    if (wired.status === 'abandoned') {
-      return { status: 'resolver-failed', error: new Error(wired.reason) };
-    }
-    const resolution = await wired.resolver(
-      agentName,
-      SESSION_AGENT_PLACEHOLDER_INPUT,
-      {
-        agentName,
-        ...(principal === undefined ? {} : { principal }),
-        // COR-2105 — an agent that resolves its own guardrails seeds its tracker from the session's
-        // taint and writes a new one back. A run with no session has none to hand.
-        ...(session === undefined
-          ? {}
-          : {
-              sessionTaint: sessionTaintSeamFor(
-                session.sessionId,
-                runId === '' ? session.sessionId : runId,
-                session.metadata,
-              ),
-            }),
-      },
-      runId,
-      ...(recorded === undefined ? [] : [recorded]),
-    );
-    if (resolution.status !== 'resolved') return resolution;
-    return {
-      status: 'resolved',
-      run: {
-        agentName,
-        options: resolution.options,
-        definitionRevision: resolution.definitionRevision,
-        ...(resolution.agentBinding === undefined ? {} : { agentBinding: resolution.agentBinding }),
-        agentResolvesGuardrails: resolution.agentResolvesGuardrails === true,
-        ...(resolution.agentTaintThreshold === undefined
-          ? {}
-          : { agentTaintThreshold: resolution.agentTaintThreshold }),
-        generationMode: resolution.generationMode,
-        instructions: agentInstructionsFromRunOptions(resolution.options),
-      },
-    };
-  }
-
-  /**
-   * Rebuild a recovered run's non-serializable {@link DurableRunDeps} from durable
-   * config: reconstruct the run runtime from the owning session's persisted
-   * request — the same `createRunRuntime` a fresh run uses. Its one caller
-   * (`resolveRunServices`, below) already narrows `session` non-null before
-   * calling this, so the parameter is typed non-optional rather than
-   * defending an absent-session case nothing reaches — AB-260 removed the
-   * `null`-returning branch this used to have, which was covered only
-   * through the retired `setBuildRunDepsFromSession` override seam.
-   *
-   * The reconstructed `conversation` is a placeholder: a resumed run reads its
-   * transcript from the checkpoint, not from `options.conversation`. Weft's
-   * awaited recovery hook attaches the live emitter after these services are
-   * rebuilt and before resumed user code advances.
-   */
-  async function buildRunDepsFromSession(
-    session: AgentSession,
-    runId?: string,
-    agentName?: string,
-  ): Promise<DurableRunDeps> {
-    const message = session.metadata['lastUserMessage'];
-    // Rehydrate the active skill set from the last-written snapshot so the
-    // recovered toolbox is aware of skills activated in completed pre-crash steps.
-    // Completed steps are memoized by Weft and do not re-run their tool executions,
-    // so a fresh SkillSession would be unaware of any `activate_skill` calls made
-    // before the crash. `activeSkillRecords` is written by createSkillRecordSnapshotHook after
-    // each step boundary and is validated here before use (PRRT_kwDORvupsc6MZ1Md).
-    // COR-1620: the snapshot it can verify, or none and no tools: a reattached run whose policy
-    // cannot be verified, or whose stored skill the catalog refuses, is offered no tool, has its
-    // approvals refused at approve, and keeps the snapshot it has.
-    // COR-1577 — a recovered named run resumes under its agent, by the catalog path's policy: an
-    // agent gone from the catalog fails the run, and a definition that changed since the run
-    // started is logged and the current one runs.
-    const sessionAgent = await resolveRecoveredSessionAgent(session, runId, agentName);
-    const skillSnapshot: SkillSnapshot =
-      runId === undefined
-        ? { status: 'verified', records: undefined }
-        : readSessionSkillSnapshot(
-            session,
-            runId,
-            agentSkillsRun(sessionAgent?.options.hooks) !== undefined,
-          );
-    const initialActiveSkillRecords =
-      skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
-    let requestContext = recoveredRequestContext(
-      session.metadata,
-      runId,
-      session.id,
-      agentName,
-      runtimeServices.clock.now,
-    );
-    if (options.workspace !== undefined && requestContext?.authority.workspace === undefined) {
-      const owner = runId === undefined ? undefined : recoveredOwnerOf(session, runId);
-      const authority = await recoverRunWorkspaceAuthority(options.workspace, undefined, owner);
-      if (authority !== undefined) {
-        const context =
-          requestContext ??
-          normalizeRunRequestContext(
-            undefined,
-            runId ?? session.id,
-            session.id,
-            agentName ?? defaultBureauAgentName,
-            owner,
-          );
-        requestContext = { ...context, authority: { ...context.authority, workspace: authority } };
-      }
-    }
-    const runRuntime = await createRunRuntime(
-      {
-        message: typeof message === 'string' ? message : '',
-        sessionId: session.id,
-        // Thread the recovered run's id so the memory-persist hook's idempotency
-        // key (`${runId}:${step}`) matches the pre-crash execution — the durable
-        // recovery path is one place the at-least-once re-fire happens.
-        ...(runId !== undefined ? { runId } : {}),
-        ...(agentName !== undefined ? { agentName } : {}),
-        ...(requestContext ? { requestContext } : {}),
-      },
-      {
-        initialActiveSkillRecords,
-        skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
-        sessionAgent,
-        memoryOwner: resolveRunMemoryOwner(session.metadata, runId),
-        sessionMetadata: session.metadata,
-        // COR-1911 — a run of a tried agent resumes as it began, without memory.
-        withoutMemory: sessionOriginOf(session.metadata) === 'try',
-      },
-    );
-    const skillRecovery = await runRuntime.skillsRecovered;
-    if (skillSnapshot.status === 'unverifiable' || skillRecovery.refused.length > 0) {
-      options.onLog?.({
-        workflowId: runId ?? session.id,
-        workflowType: 'agentRun',
-        timestamp: runtimeServices.clock.now(),
-        level: 'warn',
-        message: `Session run "${runId ?? session.id}" is reattached without tools: its skill policy cannot be verified (${
-          skillSnapshot.status === 'unverifiable'
-            ? skillSnapshot.reason
-            : `a stored skill was refused on recovery: ${skillRecovery.refused.join(', ')}`
-        }).`,
-      });
-    }
-
-    // AB-336: wire `requestHumanInput`/`scheduleWakeup` in on the RECOVERY
-    // path too — see `wireDurableOptInTools`'s own doc comment for the root
-    // cause this closes. `servicesRef.current` is assigned to `services`
-    // itself, synchronously, below (no `onServices` hook needed here: unlike
-    // `createRunFromRequest`'s fresh dispatch, this function already holds
-    // the exact object Weft will hand back as `ctx.services` — it's what
-    // this function returns).
-    let runToolbox: BureauToolbox = runRuntime.toolbox;
-    const servicesRef: { current?: DurableRunDeps } = {};
-    // COR-1710 — the grant the task started with, not the settings of the moment.
-    const grant = grantedTools(
-      runId === undefined ? undefined : await dependencies.toolGrantFor?.(runId),
-      options,
-    );
-    const wantsHumanInput = grant.humanInput && runId !== undefined;
-    const wantsWakeup = grant.wakeup && runId !== undefined;
-    // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
-    const decide =
-      runId === undefined
-        ? undefined
-        : dependencies.decideToolFor?.(recoveredOwnerOf(session, runId), grant.decide);
-    if (wantsHumanInput || wantsWakeup || decide !== undefined) {
-      runToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
-        humanInput: wantsHumanInput,
-        inputSchemas: grant.inputSchemas,
-        wakeup: wantsWakeup,
-        ...(decide === undefined ? {} : { decide }),
-        // `runId` is non-undefined here (both `wantsHumanInput`/`wantsWakeup`
-        // require it); `?? ''` only satisfies the type checker.
-        runId: runId ?? '',
-        ...(wantsHumanInput
-          ? {
-              // `DurableRunDeps.emitter` isn't assigned until AFTER this
-              // function returns — `createRecoveredRunEventSurface` sets it
-              // on the SAME `services` object this closure is about to
-              // construct and hand back (see `onRecoveredWorkflow` in
-              // `create-bureau.ts`). This forwarder reads it lazily, at
-              // actual tool-call time, by which point it has settled;
-              // `hasDispatchEvent` narrows without a cast, since
-              // `DurableRunDeps.emitter`'s own `EventDispatcher` type
-              // declares only `dispatch`, not the DOM-style `dispatchEvent`
-              // every real emitter (a `CompletableEventTarget`) also has.
-              humanInputEmitter: {
-                dispatchEvent: (event: Event) => {
-                  const target = servicesRef.current?.emitter;
-                  return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
-                },
-              },
-            }
-          : {}),
-      });
-    }
-
-    const services: DurableRunDeps = {
-      toolbox: runToolbox,
-      getStepMetadata: () =>
-        runRuntime.skillPolicyUnverified()
-          ? {}
-          : {
-              [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(
-                runRuntime.getActiveSkillRecords(),
-              ),
-            },
-      options: {
-        generate: runRuntime.generate,
-        toolbox: runToolbox,
-        conversation: new Conversation(session.conversationHistory),
-        // COR-2106 — children this run dispatches carry Bureau's tier.
-        ...bureauInvariantsField(bureauChildInvariants),
-        ...copyAgentOwnedRunOptions(sessionAgent?.options),
-        // COR-1577 — the request's cap persisted at the start, then the named agent's, then the
-        // Bureau's default; a run with no named agent keeps the Bureau's.
-        // The run's owner of record, not its per-run service principal: a managed asset
-        // resolves for whoever owns the session, as it did before the crash.
-        ...sessionRunMediaOptions(
-          sessionAgent,
-          mediaOptionsFor(resolveSessionOwner(session.metadata), 'session'),
-        ),
-        // COR-1707: the caps are the named agent's, as when the run started; a run carries none of
-        // its own.
-        maximumSteps: sessionAgent?.options.maximumSteps ?? maximumSteps,
-        stopWhen: sessionAgent?.options.stopWhen ?? options.stopWhen,
-        // COR-1269 — stamped onto this run's hook-plan observations.
-        sessionId: session.id,
-        // COR-1265 — the completed Bureau tier, snapshotted. A single-tier
-        // merge still copies every entry into a fresh registry, so a
-        // registration added to `runRuntime.hooks` after this point cannot
-        // reach the run that already holds the copy. COR-1577 — a named agent's own tier
-        // follows it, as on a catalog dispatch.
-        hooks: composeHooks({ bureau: runRuntime.hooks, agent: sessionAgent?.options.hooks }),
-        onToolResultTaint: runRuntime.onToolResultTaint,
-        // AB-260: the bureau's single composed RuntimeServices instance,
-        // snapshotted into every run it starts — including a recovered run
-        // rebuilt here from a persisted session.
-        runtime: runtimeServices,
-        executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
-        // Thread agentName and runId so curated tool.* bubble events stamped by
-        // the resumed run carry the same {agentName, runId, step} metadata as the
-        // pre-crash run (C3 parity). Without them, recovered runs emit blank ids.
-        ...(agentName !== undefined ? { agentName } : {}),
-        ...(runId !== undefined ? { runId } : {}),
-        ...(sessionAgent?.options.maximumTokens !== undefined
-          ? { maximumTokens: sessionAgent.options.maximumTokens }
-          : {}),
-      },
-    };
-    if (runId !== undefined) {
-      dependencies.configureDurableRun?.(
-        runId,
-        services,
-        ownerOrLocal(recoveredOwnerOf(session, runId)),
-      );
-    }
-    if (wantsHumanInput || wantsWakeup) {
-      servicesRef.current = services;
-    }
-    recordRecoveredSkillPolicy(runToolbox, {
-      scheduledFire: false,
-      agentName: agentName ?? session.agentName,
-      sessionAgent,
-      recordsKey: JSON.stringify(initialActiveSkillRecords ?? []),
-      recoveredCleanly: skillSnapshot.status === 'verified' && skillRecovery.refused.length === 0,
-    });
-    return services;
-  }
-
-  /** The agent a recovered session run belongs to, or `undefined` for the default agent. */
-  async function resolveRecoveredSessionAgent(
-    session: AgentSession,
-    runId: string | undefined,
-    agentName: string | undefined,
-  ): Promise<SessionAgentRun | undefined> {
-    if (agentName === undefined) return undefined;
-    // A composition with no catalog wired (`createBureau` always wires one) has no named agents,
-    // so the name is only a label and the run is the Bureau-wide runtime's. A Bureau that is
-    // still being built has one coming, and the run waits for it (COR-1586): resuming it under the
-    // Bureau-wide runtime would be resuming it under the wrong agent.
-    const wired = await awaitCatalogAgentRunOptionsResolver(runId);
-    const label = runId === undefined ? 'a recovered run' : `run ${runId}`;
-    if (wired.status === 'absent') return undefined;
-    if (wired.status === 'abandoned') throw new Error(`${label}: ${wired.reason}`);
-    // COR-323 — the implicit Bureau-wide agent no longer exists, so a run stored under it names
-    // the cause instead of failing on a missing `generate`.
-    if (agentName === BUREAU_AGENT_NAME) {
-      throw new Error(
-        `${label}: it belongs to the implicit "${BUREAU_AGENT_NAME}" agent, which no longer ` +
-          'exists; it is not resumed',
-      );
-    }
-    const owner = resolveSessionOwner(session.metadata);
-    const recordedHash = session.metadata[SESSION_AGENT_DEFINITION_HASH_METADATA_KEY];
-    const resolution = await resolveSessionAgentRun(
-      agentName,
-      runId ?? '',
-      owner,
-      {
-        agentDefinitionHash: typeof recordedHash === 'string' ? recordedHash : undefined,
-        definitionRevision: sessionRecordedRevision(session.metadata, recordedHash),
-      },
-      { sessionId: session.id, metadata: session.metadata },
-    );
-    if (resolution.status === 'missing-agent') {
-      throw new Error(`${label}: catalog agent "${agentName}" is no longer in the catalog`);
-    }
-    if (resolution.status === 'not-durable-capable') {
-      throw new Error(
-        `${label}: catalog agent "${agentName}" no longer supports durable definition ` +
-          `resolution (OPERATIVE_RESOLVE_RUN_OPTIONS)`,
-      );
-    }
-    if (resolution.status === 'resolver-failed') {
-      throw new Error(
-        `${label}: catalog agent "${agentName}" could not resolve run options during ` +
-          `recovery: ${serializeUnknownError(resolution.error)}`,
-      );
-    }
-    const startedAt = session.metadata[SESSION_AGENT_REVISION_METADATA_KEY];
-    if (
-      resolution.run.agentBinding === undefined &&
-      typeof startedAt === 'number' &&
-      startedAt !== resolution.run.definitionRevision
-    ) {
-      diagnose({
-        level: 'warn',
-        scope: 'recovery',
-        message:
-          `[bureau] Catalog agent "${agentName}" definition revision changed since ${label} ` +
-          `started (was ${startedAt}, now ${resolution.run.definitionRevision}); ` +
-          `resuming with the current definition.`,
-      });
-    }
-    return resolution.run;
-  }
-
-  /**
-   * Persist a scheduled run's conversation back to its session after EVERY
-   * completed step (last-write-wins, idempotent). This is what makes the
-   * recurring-conversation pattern work: fire N+1 loads the session this hook
-   * last wrote, so the agent accumulates context across fires. For a
-   * fresh-per-fire (stateless cron) session it records the fire's transcript so
-   * the run is observable via `getSession`.
-   *
-   * Persisting on every step (not only `context.final`) is deliberate: a fire that
-   * ends on `maximum-steps` — or any other non-`final` terminal outcome — still did
-   * real work, but its last `StepResult.final` is `false`, so a final-only hook
-   * would silently drop the whole fire from a recurring digest (review: codex
-   * Mn69a). A step that throws before completing never reaches this hook, so a
-   * step-0 failure (no assistant turn produced) is correctly NOT persisted — we
-   * never seed a bare, reply-less user turn that the next fire would build on.
-   *
-   * Deliberately writes ONLY the conversation (no `lastRunStatus: 'running'`
-   * lifecycle metadata): scheduled fires recover through Weft's handle monitor
-   * rather than the bureau's interactive session ownership path, so a `running`
-   * marker would only race any interactive run sharing the session.
-   */
-  function createScheduledSessionPersistHook(
-    store: SessionStore,
-    sessionId: string,
-    agentName: string,
-    baseConversationHistory: ConversationHistory,
-    runId: string,
-    replaceCurrentFireTranscript: boolean,
-    getActiveSkillRecords: () => readonly SkillActivationRecord[],
-    skillPolicyUnverified: () => boolean,
-    owner: string,
-    requestContext: ToolRequestContext,
-  ): OnStepHook {
-    let bound = false;
-    return async (context) => {
-      // COR-1596: a fire replaying after a crash may have left an approval in its session that
-      // its checkpoint never held; only a replay can find one, so only a replay reads the
-      // checkpoint, and reads it before the atomic update, which cannot wait on a read.
-      let committedApprovals: ReadonlySet<string> | undefined;
-      if (replaceCurrentFireTranscript && durable !== undefined) {
-        try {
-          // Strict, as every reader of the checkpoint for this is: a step record skipped is a
-          // committed approval taken for an abandoned one.
-          committedApprovals = committedFireApprovalIds(
-            runId,
-            await durable.checkpointStore.loadSteps(runId, { strict: true }),
-          );
-        } catch (error) {
-          // A checkpoint that cannot be read drops nothing, and does not fail the fire's step:
-          // the approvals it holds are checked at the next boot and when the fire settles.
-          diagnose({
-            level: 'error',
-            scope: 'recovery',
-            message: `[bureau] Could not read the checkpoint of replaying schedule fire "${runId}", so its session keeps the approvals it holds: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        }
-      }
-      const heldTaintKey = pendingTaintKey(sessionId, runId);
-      const heldTaint = pendingScheduledTaints.get(heldTaintKey);
-      let taintWritten: PersistedSessionTaint | undefined;
-      const saved = await store.update(sessionId, (existing: AgentSession | undefined) => {
-        // The updater can run again after a lost race, so it decides every time.
-        taintWritten =
-          heldTaint !== undefined && readSessionTaint(existing?.metadata) === undefined
-            ? heldTaint
-            : undefined;
-        const activeSkillRecords = getActiveSkillRecords();
-        const sessionOwnedByAnotherRunningRun =
-          existing?.metadata['lastRunStatus'] === 'running' &&
-          typeof existing.metadata['lastRunId'] === 'string' &&
-          existing.metadata['lastRunId'] !== runId;
-        // Decided inside the atomic update: a fire that built its services while the
-        // session did not exist must not append to a session another owner has
-        // created since, or one that a concurrent fire created for another owner.
-        if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
-          throw new SessionOwnerConflictError(sessionId);
-        }
-        const next =
-          existing ??
-          createAgentSession({
-            id: sessionId,
-            agentName,
-            conversationHistory: context.conversation.current,
-          });
-        const existingConversationHistory =
-          replaceCurrentFireTranscript && existing
-            ? removeLastScheduledFireTranscript(existing.conversationHistory, runId)
-            : existing?.conversationHistory;
-        return {
-          ...next,
-          metadata: {
-            ...next.metadata,
-            lastScheduledFireRunId: runId,
-            // COR-718 — the fire's run is owned by the schedule's owner, recorded
-            // where a restart rehydrates run owners from, and a session this fire
-            // creates takes the same owner. An existing session keeps its own.
-            lastRunOwningPrincipals: {
-              ...(isPlainAuthorityRecord(next.metadata['lastRunOwningPrincipals'])
-                ? next.metadata['lastRunOwningPrincipals']
-                : {}),
-              [runId]: owner,
-            },
-            // COR-1645 — and its origin, written once with the owner: a session a fire creates is
-            // not a chat a person started, while one a fire continues keeps the origin it has.
-            ...(existing === undefined
-              ? { [SESSION_OWNER_METADATA_KEY]: owner, [SESSION_ORIGIN_METADATA_KEY]: 'schedule' }
-              : {}),
-            // COR-2105 — a taint the fire raised before its session existed is stored with it.
-            ...(taintWritten === undefined
-              ? {}
-              : { [SESSION_TAINT_METADATA_KEY]: { ...taintWritten } }),
-            ...(sessionOwnedByAnotherRunningRun || skillPolicyUnverified()
-              ? {}
-              : activeSkillSessionMetadataForStep(activeSkillRecords, context.step, runId)),
-            // COR-1596 — a tool call this step left awaiting approval is recorded with the
-            // conversation, so a restart can list it again.
-            ...scheduledFireApprovalMetadata(
-              next.metadata,
-              runId,
-              context.results,
-              requestContext,
-              committedApprovals,
-            ),
-          },
-          conversationHistory: existingConversationHistory
-            ? appendConversationMessages(
-                existingConversationHistory,
-                context.conversation.current,
-                baseConversationHistory,
-              )
-            : context.conversation.current,
-        };
-      });
-      if (heldTaint !== undefined) {
-        pendingScheduledTaints.delete(heldTaintKey);
-        if (taintWritten !== undefined && saved !== undefined) {
-          try {
-            dependencies.onSessionTainted?.({
-              sessionId,
-              runId: taintWritten.runId,
-              detector: taintWritten.detector,
-              provenance: taintWritten.provenance,
-              confidence: taintWritten.confidence,
-            });
-          } catch (error) {
-            diagnose({
-              level: 'warn',
-              scope: 'guardrails',
-              message: `[bureau] The taint of session "${sessionId}" could not be published: ${serializeUnknownError(error)}`,
-              cause: error,
-            });
-          }
-        }
-      }
-      // COR-1482: the first save of a fresh session gives it its incarnation, which the fire's
-      // task is bound to once, so `bureau.tasks.list({ contextId })` finds the fire.
-      if (!bound && saved !== undefined) {
-        bound = true;
-        await reportScheduledSession({ runId, sessionId, incarnation: saved.incarnation });
-      }
-    };
-  }
+  const {
+    loadScheduleIdForRecoveredRun,
+    loadExistingScheduledSessionId,
+    readCommittedScheduledSkillSnapshot,
+    readSessionSkillSnapshot,
+    buildScheduledRunServices,
+  } = createScheduledRunServices(core, peers);
+  const { holdToModelPolicy, governedByChat, mediaOptionsFor, createRunRuntime } =
+    createRunRuntimeSeam(core, peers);
+  const { awaitCatalogAgentRunOptionsResolver, resolveSessionAgentRun, buildRunDepsFromSession } =
+    createSessionAgentRuns(core, peers);
 
   /**
    * AB-240: `resolveRunServices`'s catalog branch — resolves a recovered
@@ -2218,583 +1021,6 @@ async function buildRuntimeComposition(
     };
     dependencies.configureDurableRun?.(runId, services, ownerOrLocal(record.principal));
     humanInputServices.current = services;
-    return { status: 'available', services };
-  }
-
-  async function loadScheduleIdForRecoveredRun(
-    workflowId: string,
-  ): Promise<RecoveredScheduleMarker> {
-    if (!durableStorage) return { status: 'missing' };
-    try {
-      const value = await durableStorage.get(KEYS.scheduleRun(workflowId));
-      if (!value) return { status: 'missing' };
-      const scheduleId = decodeScheduleRunMarker(decode(value));
-      return scheduleId !== undefined ? { status: 'found', scheduleId } : { status: 'missing' };
-    } catch (error) {
-      return { status: 'read-error', error };
-    }
-  }
-
-  async function loadExistingStatelessScheduledSessionId(
-    store: SessionStore,
-    runId: string,
-  ): Promise<string | undefined> {
-    const sessions = await store.list();
-    return sessions.find(
-      (session: SessionSummary) =>
-        session.id.startsWith('sched-') &&
-        session.id.endsWith(`-${runId}`) &&
-        session.metadata['lastScheduledFireRunId'] === runId,
-    )?.id;
-  }
-
-  async function loadExistingScheduledSessionId(
-    store: SessionStore,
-    input: ScheduledAgentRunInput,
-    runId: string,
-  ): Promise<string | undefined> {
-    if (input.sessionId !== undefined) {
-      const session = await store.load(input.sessionId);
-      return session?.metadata['lastScheduledFireRunId'] === runId ? input.sessionId : undefined;
-    }
-    return loadExistingStatelessScheduledSessionId(store, runId);
-  }
-
-  async function readCommittedScheduledSkillSnapshot(
-    session: { readonly metadata: Record<string, JSONValue> } | undefined,
-    runId: string,
-    recovering: boolean,
-    agentHasSkills = false,
-  ): Promise<SkillSnapshot> {
-    const none: SkillSnapshot = { status: 'verified', records: undefined };
-    if (!recovering || !session) return none;
-
-    const metadata = session.metadata;
-    const lastFireRunId = metadata['lastScheduledFireRunId'];
-    const recordsRunId = metadata['activeSkillRecordsRunId'];
-    // Without skills there is no policy to verify, and whatever the session holds is not it.
-    if (!skillsConfigured && !agentHasSkills && recordsRunId !== runId) return none;
-    // A fire writes its own run id with its snapshot, at every step. A session that names
-    // another fire, as a recurring schedule's newer fire leaves it, holds that fire's snapshot;
-    // one whose run id was cleared (null, as the start of a later run in the session does) or
-    // never written holds none of this fire's. Whether this fire had skills is not known.
-    if (lastFireRunId !== runId) {
-      return {
-        status: 'unverifiable',
-        reason: `its session names another fire, ${describe(lastFireRunId)}`,
-      };
-    }
-    if (recordsRunId !== runId) {
-      return {
-        status: 'unverifiable',
-        reason: `its snapshot names another run, ${describe(recordsRunId)}`,
-      };
-    }
-    const activeSkillRecordsRaw = metadata['activeSkillRecords'];
-    const activeSkillRecordsStep = metadata['activeSkillRecordsStep'];
-    if (
-      typeof activeSkillRecordsStep !== 'number' ||
-      !Number.isInteger(activeSkillRecordsStep) ||
-      activeSkillRecordsStep < 0
-    ) {
-      return { status: 'unverifiable', reason: 'its snapshot step does not deserialize' };
-    }
-
-    try {
-      const checkpoint = await durable?.checkpointStore.loadCheckpoint(runId);
-      const committedStepRecords = [...(checkpoint?.steps ?? [])];
-
-      const checkpointBytes = await durable?.engine.storage.get(KEYS.checkpoint(runId));
-      if (checkpointBytes) {
-        const weftCheckpoint = deserializeCheckpoint(checkpointBytes);
-        for (const [, value] of weftCheckpoint.accumulatedResults) {
-          const record = recordedAgentStep(value);
-          if (record) committedStepRecords.push(record);
-        }
-      }
-
-      const latestCommittedStep = committedStepRecords
-        .filter((step) => step.step <= activeSkillRecordsStep)
-        .toSorted((a, b) => b.step - a.step)
-        .find((step) => activeSkillsFromStepMetadata(step.metadata) !== undefined);
-
-      if (latestCommittedStep !== undefined) {
-        return {
-          status: 'verified',
-          records: activeSkillsFromStepMetadata(latestCommittedStep.metadata),
-        };
-      }
-
-      if (committedStepRecords.some((step) => step.step === activeSkillRecordsStep)) {
-        if (isSkillActivationRecordArray(activeSkillRecordsRaw)) {
-          return { status: 'verified', records: activeSkillRecordsRaw };
-        }
-        if (activeSkillRecordsRaw !== undefined && activeSkillRecordsRaw !== null) {
-          return { status: 'unverifiable', reason: 'its stored skill records do not deserialize' };
-        }
-      }
-
-      // No committed step activated a skill: a verified absence.
-      return none;
-    } catch (error) {
-      options.onLog?.({
-        workflowId: runId,
-        workflowType: 'agentRun',
-        timestamp: runtimeServices.clock.now(),
-        level: 'warn',
-        message: `Unable to verify scheduled fire skill snapshot checkpoint for run "${runId}": ${serializeUnknownError(error)}`,
-      });
-      return {
-        status: 'unverifiable',
-        reason: `its checkpoint could not be read: ${serializeUnknownError(error)}`,
-      };
-    }
-  }
-
-  function readSessionSkillSnapshot(
-    session: { readonly metadata: Record<string, JSONValue> } | undefined,
-    runId: string,
-    agentHasSkills = false,
-  ): SkillSnapshot {
-    if (session === undefined) {
-      return { status: 'unverifiable', reason: 'its session is not found' };
-    }
-    const metadata = session.metadata;
-    const recordsRunId = metadata['activeSkillRecordsRunId'];
-    const lastRunId = metadata['lastRunId'];
-    // Without skills there is no policy to verify, and whatever the session holds is not it.
-    if (!skillsConfigured && !agentHasSkills && recordsRunId !== runId)
-      return { status: 'verified', records: undefined };
-    if (typeof recordsRunId === 'string' && recordsRunId !== runId) {
-      return {
-        status: 'unverifiable',
-        reason: `its snapshot names another run, "${recordsRunId}"`,
-      };
-    }
-    // The start of a run clears the session's snapshot (a null run id), so a cleared one that a
-    // later run left is that run's reset, not a record that this run had no skills.
-    if (recordsRunId === null && typeof lastRunId === 'string' && lastRunId !== runId) {
-      return {
-        status: 'unverifiable',
-        reason: `a later run, "${lastRunId}", cleared its snapshot`,
-      };
-    }
-    const raw = metadata['activeSkillRecords'];
-    if (raw === undefined || raw === null) return { status: 'verified', records: undefined };
-    if (!isSkillActivationRecordArray(raw)) {
-      return { status: 'unverifiable', reason: 'its stored skill records do not deserialize' };
-    }
-    return { status: 'verified', records: raw };
-  }
-
-  /**
-   * Build fresh {@link DurableRunDeps} for a NATIVE WEFT SCHEDULE FIRE (#109).
-   *
-   * Reached whenever `resolveRunServices` classifies this run as scheduled — a
-   * live timer tick (`info.schedule` set), a recovered fire whose
-   * `resolveWorkflowServices` info now also carries `info.schedule` (Weft 0.10+
-   * derives it from durable schedule metadata on recovery, same as a live
-   * tick), or an older-store recovered fire identified only by the persisted
-   * `ScheduledAgentRunInput` / `KEYS.scheduleRun(...)` marker. `info.schedule`
-   * being set is therefore NOT a reliable live-vs-recovered signal — both cases
-   * populate it. Whether this is a *replay* of a fire that already persisted a
-   * partial session before crashing is instead read directly off the session:
-   * see `isRecoveredFireReplay` below. It builds deps exactly as a fresh
-   * `createRun` would, seeding the conversation with the scheduled prompt and
-   * using `info.workflowId` (the per-fire id Weft minted) as the runId. The
-   * workflow body reads that same id back as `ctx.workflowId`.
-   *
-   * Session semantics (D6): `sessionId` present → continue that session's
-   * conversation (recurring); absent → a fresh per-fire session (stateless cron).
-   */
-  async function buildScheduledRunServices(
-    info: WorkflowServicesResolverInfo,
-    store: SessionStore,
-    recoveredScheduleMarker?: RecoveredScheduleMarker,
-  ): Promise<WorkflowServicesResolution> {
-    if (info.workflowType !== 'agentRun' || !isScheduledAgentRunInput(info.input)) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} has an unrecognized workflow type or input`,
-      };
-    }
-
-    const scheduledInput: ScheduledAgentRunInput = info.input;
-    if (
-      info.schedule === undefined &&
-      !hasPersistedScheduleMarker(scheduledInput) &&
-      recoveredScheduleMarker?.status !== 'found' &&
-      recoveredMarkerSessionId(recoveredScheduleMarker) === undefined
-    ) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} is missing a persisted schedule marker`,
-      };
-    }
-
-    const runId = info.workflowId;
-    const agentName = scheduledInput.agentName;
-
-    // sessionId present → recurring conversation; absent → fresh per-fire session.
-    // The fresh id is derived from the schedule id + per-fire runId so each fire
-    // is observable as its own session and two fires never collide.
-    const recurring = scheduledInput.sessionId !== undefined;
-    const recoveredScheduleId =
-      persistedScheduleMarker(scheduledInput) ??
-      info.schedule?.id ??
-      (recoveredScheduleMarker?.status === 'found'
-        ? recoveredScheduleMarker.scheduleId
-        : undefined);
-    // AB-223: record the correlation the engine-level terminal listener needs
-    // to turn this fire's `workflow:completed`/`workflow:failed` into
-    // `schedule.completed`/`schedule.failed`. Every reachable branch above
-    // that resolves `{ status: 'available' }` has already confirmed a
-    // schedule marker exists (the `hasPersistedScheduleMarker`/`info.schedule`/
-    // `recoveredScheduleMarker` guard earlier in this function), so
-    // `recoveredScheduleId` is defined here in practice; the `undefined` guard
-    // is defensive, not a real branch this function's own preconditions
-    // permit — dropping the entry rather than recording a bogus correlation.
-    if (recoveredScheduleId !== undefined) {
-      scheduledFireScheduleIds.set(runId, recoveredScheduleId);
-    }
-    const existingStatelessSessionId =
-      !recurring && recoveredScheduleId === undefined
-        ? recoveredMarkerSessionId(recoveredScheduleMarker)
-        : undefined;
-    const sessionId =
-      scheduledInput.sessionId ??
-      existingStatelessSessionId ??
-      `sched-${recoveredScheduleId ?? 'unknown'}-${runId}`;
-
-    // COR-718 — the fire is recorded, with its owner and its `schedule.fired` entry,
-    // before any refusal below: a refused fire is still a fire, and its run is the
-    // schedule owner's.
-    const scheduleAuthority =
-      options.workspace === undefined
-        ? undefined
-        : await recoverRunWorkspaceAuthority(
-            options.workspace,
-            scheduledInput.workspaceAuthority,
-            scheduledInput.principal,
-          );
-    if (
-      options.workspace !== undefined &&
-      (scheduleAuthority === undefined || scheduledInput.authorityHold !== undefined)
-    ) {
-      if (recoveredScheduleId !== undefined)
-        dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
-      return { status: 'unavailable', reason: 'Workspace authority unavailable.' };
-    }
-    const owner = scheduleAuthority?.authorizingOwner ?? ownerOrLocal(scheduledInput.principal);
-    if (
-      options.workspace !== undefined &&
-      !(await mayUseAutomationInput(
-        scheduledInput.input,
-        mediaOptionsFor(owner, 'session').contentSourceResolver,
-      ))
-    ) {
-      if (recoveredScheduleId !== undefined)
-        dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
-      return { status: 'unavailable', reason: 'Automation input unavailable.' };
-    }
-    await dependencies.onScheduledFire?.({
-      runId,
-      scheduleId: recoveredScheduleId,
-      sessionId,
-      agentName,
-      owner,
-      message: payloadText(scheduledInput.input),
-      ...(info.schedule?.manual === true ? { manual: true as const } : {}),
-    });
-
-    // COR-323 — a fire runs as a named catalog agent: its own `generate`, tools, stop condition,
-    // and instructions. The implicit Bureau-wide agent no longer exists, so a schedule stored under
-    // it (or under an agent that has left the catalog) fails its fire with a diagnostic instead of
-    // running on something it never named.
-    // A composition with no catalog wired (only a direct `createRuntimeComposition` caller has
-    // none; `createBureau` always wires one) has no named agents, so the name is a label and the
-    // fire runs the composition's own `generate`, as a recovered session run does.
-    let fireAgent: SessionAgentRun | undefined;
-    // A recovered fire resolves the definition its first attempt recorded (COR-1524).
-    const firePriorReference = await dependencies.agentRunReferences?.reference(runId);
-    const catalogWiring = await awaitCatalogAgentRunOptionsResolver(runId);
-    if (catalogWiring.status !== 'absent') {
-      // COR-2105 — the session's taint seeds the agent's guardrails. A reserved id is refused below
-      // before anything is read, so it is not read here either.
-      const taintSession =
-        reservedIdentifierReason('scheduled session', sessionId) === undefined
-          ? await store.load(sessionId)
-          : undefined;
-      const agentResolution =
-        agentName === defaultBureauAgentName
-          ? undefined
-          : await resolveSessionAgentRun(
-              agentName,
-              runId,
-              owner,
-              firePriorReference === undefined || firePriorReference.id !== agentName
-                ? undefined
-                : {
-                    agentDefinitionHash: firePriorReference.hash,
-                    definitionRevision: firePriorReference.definitionRevision,
-                  },
-              { sessionId, metadata: taintSession?.metadata },
-            );
-      if (agentResolution?.status !== 'resolved') {
-        return {
-          status: 'unavailable',
-          reason:
-            agentResolution === undefined
-              ? `scheduled fire ${info.workflowId} names the implicit agent "${agentName}", which no longer runs: schedule it under a catalog agent`
-              : `scheduled fire ${info.workflowId} cannot run agent "${agentName}": ${agentResolution.status}`,
-        };
-      }
-      fireAgent = agentResolution.run;
-      if (fireAgent.agentBinding !== undefined && firePriorReference === undefined) {
-        await dependencies.agentRunReferences?.record(fireAgent.agentBinding, runId);
-      }
-    }
-
-    // COR-851: a goal's sessions are the goal's alone. A schedule can name any
-    // session (an agent registers one itself through `scheduleSelf`, and one
-    // persisted before the reservation existed is still live), and the fire
-    // would load that conversation, append to it, and write it back. The id is
-    // refused before anything is read.
-    const reservedSession = reservedIdentifierReason('scheduled session', sessionId);
-    if (reservedSession !== undefined) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which durable goals own: ${reservedSession}`,
-      };
-    }
-
-    // Always check for an existing session at this id. A recurring fire
-    // continues its stored session; a fresh-per-fire (stateless) session's id
-    // embeds this exact runId, so a live (never-before-run) fire finds nothing
-    // here and this load is a harmless no-op. It only finds something for a
-    // recurring schedule's later fires, or a REPLAY of a fire that already
-    // persisted (partially or fully) before this resume — which is exactly the
-    // case `isRecoveredFireReplay` below needs to detect.
-    const existing = await store.load(sessionId);
-    // Defence in depth behind the id check above: a session a goal wrote carries
-    // its `goalRunId`, whatever id it sits under, and no schedule fire reads it.
-    if (existing !== undefined && existing.metadata['goalRunId'] !== undefined) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which belongs to a durable goal`,
-      };
-    }
-    // COR-718 — a fire's run is owned by the schedule's owner, and so is the
-    // session it creates. A fire into a session another principal owns would write
-    // into a conversation its owner never shared, so it is refused, worded as a
-    // session that is not there so the schedule owner learns nothing about whose it is.
-    if (existing !== undefined && !isSessionAuthorityAuthorized(existing.metadata, owner)) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} names session "${sessionId}", which was not found`,
-      };
-    }
-    // COR-323 — a fire runs as its named agent, and a continued session keeps the system prompt
-    // of the agent that began it, so a session another agent owns is refused rather than run
-    // under instructions that are not the fire's own.
-    if (fireAgent !== undefined && existing !== undefined && existing.agentName !== agentName) {
-      return {
-        status: 'unavailable',
-        reason: `scheduled fire ${info.workflowId} runs agent "${agentName}" but session "${sessionId}" belongs to agent "${existing.agentName}"`,
-      };
-    }
-    // The session's own metadata — not `info.schedule` — is the source of
-    // truth for "have we already run this exact fire": `info.schedule` is
-    // populated on BOTH a live tick and a recovered one, so it cannot
-    // distinguish a fresh fire from a replay of one that crashed mid-flight.
-    // A match here means this runId already wrote to this session, so its
-    // transcript (and any committed active-skills snapshot) belongs to a
-    // stale, partial attempt that must be cleaned before replay re-appends.
-    const isRecoveredFireReplay = existing?.metadata['lastScheduledFireRunId'] === runId;
-    // COR-1482: a session that already exists has its incarnation now; a fresh one gets it when
-    // the fire first saves it (below).
-    if (existing !== undefined) {
-      await reportScheduledSession({ runId, sessionId, incarnation: existing.incarnation });
-    }
-    let conversation: Conversation;
-    if (existing) {
-      conversation = new Conversation(
-        isRecoveredFireReplay
-          ? removeLastScheduledFireTranscript(existing.conversationHistory, runId)
-          : existing.conversationHistory,
-      );
-    } else {
-      conversation = new Conversation(createConversationHistory({ id: sessionId }));
-      const firePrompt = fireAgent?.instructions ?? systemPrompt;
-      if (firePrompt) {
-        conversation.appendSystemMessage(firePrompt);
-      }
-    }
-    const baseConversationHistory = conversation.current;
-    appendAgentInput(conversation, scheduledInput.input, { scheduledFireRunId: runId });
-
-    // Same runtime a normal run builds (generate/toolbox/memory/skills/guardrails),
-    // wired to this fire's session + per-fire runId, with live streaming off (no
-    // ActiveRun surface for a scheduled fire).
-    // COR-1620: a replay is decided under the snapshot it can verify. One it cannot, and a stored
-    // skill the catalog refuses, leave the replay without tools and without a snapshot write.
-    const skillSnapshot = await readCommittedScheduledSkillSnapshot(
-      existing,
-      runId,
-      isRecoveredFireReplay,
-      agentSkillsRun(fireAgent?.options.hooks) !== undefined,
-    );
-    const initialActiveSkillRecords =
-      skillSnapshot.status === 'verified' ? skillSnapshot.records : undefined;
-    const schedulerContext = createSchedulerServiceRequestContext(runId, agentName, sessionId);
-    const requestContext: ToolRequestContext =
-      scheduleAuthority === undefined
-        ? schedulerContext
-        : {
-            ...schedulerContext,
-            authority: { ...schedulerContext.authority, workspace: scheduleAuthority },
-          };
-
-    // COR-1546 — the fire's run writes into the schedule owner's memory, not the scheduler's.
-    const runRuntime = await createRunRuntime(
-      { message: payloadText(scheduledInput.input), sessionId, runId, agentName, requestContext },
-      {
-        initialActiveSkillRecords,
-        skillPolicyUnverifiable: skillSnapshot.status === 'unverifiable',
-        memoryOwner: owner,
-        sessionMetadata: existing?.metadata,
-        sessionAgent: fireAgent,
-        admitDispatch:
-          options.workspace === undefined || recoveredScheduleId === undefined
-            ? undefined
-            : async () => {
-                let admitted = false;
-                try {
-                  const current = workflowScheduleBinding(
-                    await storedScheduleInput(durable!.engine, recoveredScheduleId),
-                  );
-                  admitted =
-                    current.authorityHold === undefined &&
-                    current.workspaceAuthority?.actorId === scheduleAuthority?.actorId;
-                } catch {
-                  // Unreadable or malformed durable authority must request the same pause.
-                }
-                if (!admitted) dependencies.onScheduleAuthorityDenied?.(recoveredScheduleId);
-                return admitted;
-              },
-      },
-    );
-    const skillRecovery = await runRuntime.skillsRecovered;
-    if (skillSnapshot.status === 'unverifiable' || skillRecovery.refused.length > 0) {
-      options.onLog?.({
-        workflowId: runId,
-        workflowType: 'agentRun',
-        timestamp: runtimeServices.clock.now(),
-        level: 'warn',
-        message: `Schedule fire "${runId}" replays without tools: its skill policy cannot be verified (${
-          skillSnapshot.status === 'unverifiable'
-            ? skillSnapshot.reason
-            : `a stored skill was refused on recovery: ${skillRecovery.refused.join(', ')}`
-        }).`,
-      });
-    }
-
-    // COR-1596: a fire is offered `requestHumanInput` exactly as a `bureau.run()` run is, so a
-    // scheduled agent can ask for an answer it will wait for. The tool parks through the services
-    // object returned below, so that object is captured once it exists, as the recovery of a
-    // catalog run captures it.
-    const humanInputServices: { current?: DurableRunDeps } = {};
-    // COR-1709: a fire is offered `decide` as it is offered `requestHumanInput`, as its owner.
-    // COR-1710 — the grant recorded on the fire's task when it was first admitted.
-    const fireGrant = grantedTools(await dependencies.toolGrantFor?.(runId), options);
-    const fireDecide =
-      durable === undefined ? undefined : dependencies.decideToolFor?.(owner, fireGrant.decide);
-    const fireToolbox =
-      (fireGrant.humanInput && durable !== undefined) || fireDecide !== undefined
-        ? wireDurableOptInTools(runRuntime.toolbox, humanInputServices, {
-            humanInput: fireGrant.humanInput && durable !== undefined,
-            inputSchemas: fireGrant.inputSchemas,
-            wakeup: false,
-            runId,
-            ...(fireDecide === undefined ? {} : { decide: fireDecide }),
-            humanInputEmitter: {
-              dispatchEvent: (event: Event) => {
-                const target = humanInputServices.current?.emitter;
-                return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
-              },
-            },
-          })
-        : runRuntime.toolbox;
-    if (isRecoveredFireReplay) {
-      recordRecoveredSkillPolicy(fireToolbox, {
-        scheduledFire: true,
-        agentName,
-        sessionAgent: fireAgent,
-        recordsKey: JSON.stringify(initialActiveSkillRecords ?? []),
-        recoveredCleanly: skillSnapshot.status === 'verified' && skillRecovery.refused.length === 0,
-      });
-    }
-    const services: DurableRunDeps = {
-      toolbox: fireToolbox,
-      // An unverified policy keeps the snapshot the committed steps already hold.
-      getStepMetadata: () =>
-        runRuntime.skillPolicyUnverified()
-          ? {}
-          : {
-              [activeSkillsStepMetadataKey]: activeSkillsStepMetadata(
-                runRuntime.getActiveSkillRecords(),
-              ),
-            },
-      options: {
-        generate: runRuntime.generate,
-        toolbox: fireToolbox,
-        conversation,
-        // COR-2106 — children this run dispatches carry Bureau's tier.
-        ...bureauInvariantsField(bureauChildInvariants),
-        ...scheduledAgentRunOptions(fireAgent?.options, requestContext),
-        ...sessionRunMediaOptions(fireAgent, mediaOptionsFor(owner, 'session')),
-        maximumSteps: fireAgent?.options.maximumSteps ?? maximumSteps,
-        stopWhen: fireAgent?.options.stopWhen ?? options.stopWhen,
-        // AB-260: the bureau's single composed RuntimeServices instance,
-        // snapshotted into every run it starts — including a scheduled fire.
-        runtime: runtimeServices,
-        // The session write-back runs AFTER the runtime's own onStep hooks so
-        // recurring fires accumulate and a stateless fire is observable.
-        // COR-1269 — stamped onto this run's hook-plan observations.
-        sessionId,
-        // COR-1265 criterion 8 — merged AFTER the trailing registration, so the
-        // Bureau tier is complete before it becomes the merge's `bureau` tier
-        // and the trailing hook is offset with every other Bureau entry rather
-        // than beside them at a raw priority.
-        hooks: composeHooks({
-          bureau: registerTrailingOnStep(
-            runRuntime.hooks,
-            'bureau:scheduled-session-write-back',
-            createScheduledSessionPersistHook(
-              store,
-              sessionId,
-              agentName,
-              baseConversationHistory,
-              runId,
-              isRecoveredFireReplay,
-              runRuntime.getActiveSkillRecords,
-              runRuntime.skillPolicyUnverified,
-              owner,
-              requestContext,
-            ),
-          ),
-          agent: fireAgent?.options.hooks,
-        }),
-        onToolResultTaint: runRuntime.onToolResultTaint,
-        agentName,
-        runId,
-      },
-    };
-
-    humanInputServices.current = services;
-    // Scheduled fires have no interactive ActiveRun surface. The recovery hook
-    // monitors them without attaching live event forwarding.
-    await reportScheduledServices({ runId, sessionId, agentName, requestContext }, services);
     return { status: 'available', services };
   }
 

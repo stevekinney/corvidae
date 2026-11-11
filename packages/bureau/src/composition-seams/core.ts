@@ -14,6 +14,7 @@
 import type {
   BureauChildInvariants,
   GenerateFunction,
+  PersistedSessionTaint,
   SessionStore,
 } from '@lostgradient/operative';
 import type { ConditionalTextValueStore, Storage } from '@lostgradient/storage';
@@ -64,6 +65,10 @@ export interface CompositionCore {
   readonly scheduledFireScheduleIds: Map<string, string>;
   /** AB-241: the catalog recovery records read during one boot recovery pass. */
   readonly catalogRunRecoveryCache: Map<string, CatalogRunRecoveryRecord>;
+  /** COR-2381: taints a scheduled fire's first step raised before its session existed. */
+  readonly pendingScheduledTaints: Map<string, PersistedSessionTaint>;
+  /** The key a held scheduled taint is stored under. */
+  readonly pendingTaintKey: (sessionId: string, runId: string) => string;
   /** The terminal events of scheduled fires. */
   readonly scheduleFireEvents: TypedEventTarget<ScheduleFireEventMap>;
   /** The skill events of this composition. */
@@ -90,6 +95,10 @@ export interface CompositionCore {
   readonly memoryTenantId: () => string;
   /** The skill catalog revision a run's skills come from. */
   readonly skillCatalog: SkillCatalogRevision | undefined;
+  /** Whether the composition has skills configured and a catalog revision to read them from. */
+  readonly skillsConfigured: boolean;
+  /** Whether the Bureau-built toolbox carries the skill tools. */
+  readonly hasSkillTools: boolean;
   /** The session store, when the composition has storage. */
   readonly sessionStore: SessionStore | undefined;
   /** COR-1920: the store of sealed secret answers. */

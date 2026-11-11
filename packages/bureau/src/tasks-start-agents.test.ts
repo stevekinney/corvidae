@@ -807,7 +807,13 @@ describe('every Bureau hook hand-off is a merge (COR-1265 criterion 3)', () => {
   // live registry. It is a source invariant rather than a behavior, and it is
   // stated as one rather than dressed up as coverage it is not.
   it('leaves no site handing a run the live runRuntime registry', async () => {
-    const sources = ['./create-bureau.ts', './runtime-composition.ts'];
+    const sources = [
+      './create-bureau.ts',
+      './runtime-composition.ts',
+      './composition-seams/session-agent-runs.ts',
+      './composition-seams/run-runtime.ts',
+      './composition-seams/scheduled-run-services.ts',
+    ];
     for (const source of sources) {
       const text = await Bun.file(new URL(source, import.meta.url).pathname).text();
       // The raw hand-off, in any whitespace shape. A match means a run received
