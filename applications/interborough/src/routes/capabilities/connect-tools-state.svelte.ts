@@ -129,21 +129,25 @@ function startConnect(state: ConnectState, signature: string, probe: PassedProbe
   return { ...state, attempt, phase: { kind: 'connecting', attempt, signature, probe } };
 }
 
-/** A form that changed: a result about the request it made before is stale. */
+/**
+ * A form that changed: a result about the request it made before is stale, and so is a test of it
+ * still running, whose answer (and the connect a pressed Connect would send after it) is about an
+ * address, name or token the form no longer holds. {@link ConnectFlow.edit} stops that test.
+ */
 function edited(state: ConnectState, signature: string, dirty: boolean): ConnectState {
   const phase = state.phase;
   const changed = signatureOf(phase) !== undefined && signatureOf(phase) !== signature;
   switch (phase.kind) {
+    case 'testing':
     case 'passed':
     case 'failed':
     case 'failed-connect':
       return { ...state, dirty, phase: changed ? { kind: 'idle' } : phase };
     case 'idle':
-    case 'testing':
     case 'connecting':
     case 'slow':
     case 'connected':
-      // A request in flight carries its own copy of the form; a connected source is done.
+      // The fields are disabled while a connect runs; a connected source is done.
       return { ...state, dirty };
     default:
       return assertNever(phase);
@@ -163,8 +167,11 @@ function connectPressed(state: ConnectState, signature: string): ConnectState {
     case 'failed':
       return startTest(state, signature, true);
     case 'testing':
-      // Connect stays enabled while the test runs, and connects once it passes (row 34j).
-      return { ...state, phase: { ...phase, thenConnect: true } };
+      // Connect stays enabled while the test runs, and connects once it passes (row 34j). A test of
+      // a request the form no longer makes is replaced by a test of the one it does.
+      return phase.signature === signature
+        ? { ...state, phase: { ...phase, thenConnect: true } }
+        : startTest(state, signature, true);
     case 'connecting':
     case 'slow':
     case 'connected':
@@ -174,7 +181,10 @@ function connectPressed(state: ConnectState, signature: string): ConnectState {
   }
 }
 
-/** Test connection pressed: a new test, unless one or a connect is in flight or the source is connected. */
+/**
+ * Test connection pressed: a new test, unless one of this request or a connect is in flight or the
+ * source is connected. A test of a request the form no longer makes is replaced.
+ */
 function testPressed(state: ConnectState, signature: string): ConnectState {
   const phase = state.phase;
   switch (phase.kind) {
@@ -184,6 +194,7 @@ function testPressed(state: ConnectState, signature: string): ConnectState {
     case 'failed-connect':
       return startTest(state, signature, false);
     case 'testing':
+      return phase.signature === signature ? state : startTest(state, signature, false);
     case 'connecting':
     case 'slow':
     case 'connected':
@@ -458,9 +469,11 @@ export class ConnectFlow {
     return isConnectBusy(this.state.phase);
   }
 
-  /** The form changed. */
+  /** The form changed: a test of the request it made before is stopped, and its answer dropped. */
   edit(signature: string, dirty: boolean): void {
+    const before = this.state.phase;
     this.#dispatch({ type: 'edit', signature, dirty });
+    if (isConnectBusy(before) && !isConnectBusy(this.state.phase)) this.#stop();
   }
 
   /** The server stopped or started answering. */

@@ -129,6 +129,45 @@ describe('connectTransition', () => {
     expect(step(from, { type: 'test', signature: SIGNATURE })).toBe(from);
   });
 
+  test('testing: a change to the form forgets the test, also one Connect was pressed for', () => {
+    for (const thenConnect of [false, true]) {
+      const next = step(state(testing(thenConnect)), {
+        type: 'edit',
+        signature: OTHER,
+        dirty: true,
+      });
+      expect(next.phase).toEqual({ kind: 'idle' });
+      expect(next.dirty).toBe(true);
+      // The answer to the forgotten test neither passes nor connects.
+      expect(step(next, { type: 'tested', attempt: 1, probe: LISTED })).toBe(next);
+    }
+  });
+
+  test('testing: an edit that leaves the request as it was keeps the test running', () => {
+    const from = state(testing(true));
+    const next = step(from, { type: 'edit', signature: SIGNATURE, dirty: true });
+    expect(next.phase).toBe(from.phase);
+  });
+
+  test('testing: Connect or Test connection for a request the test was not made for tests that one', () => {
+    const connect = step(state(testing()), { type: 'connect', signature: OTHER });
+    expect(connect.attempt).toBe(2);
+    expect(connect.phase).toEqual({
+      kind: 'testing',
+      attempt: 2,
+      signature: OTHER,
+      thenConnect: true,
+    });
+    const retest = step(state(testing(true)), { type: 'test', signature: OTHER });
+    expect(retest.attempt).toBe(2);
+    expect(retest.phase).toEqual({
+      kind: 'testing',
+      attempt: 2,
+      signature: OTHER,
+      thenConnect: false,
+    });
+  });
+
   test('testing: a test that lists tools passes', () => {
     expect(step(state(testing()), { type: 'tested', attempt: 1, probe: LISTED }).phase).toEqual(
       passed,
@@ -482,6 +521,29 @@ describe('ConnectFlow', () => {
     saved.resolve(CHANGE);
     await saved.promise;
     expect(flow.phase).toEqual(passed);
+  });
+
+  test('an edit during a test Connect was pressed for aborts it, and its late answer connects nothing', async () => {
+    const flow = new ConnectFlow(() => '');
+    const probe = Promise.withResolvers<ToolSourceProbe>();
+    const { request: ready, seen } = request({ probe: () => probe.promise });
+
+    flow.connect(ready);
+    expect(flow.phase).toMatchObject({ kind: 'testing', thenConnect: true });
+    flow.edit(OTHER, true);
+
+    expect(seen.probes[0]?.aborted).toBe(true);
+    expect(flow.phase).toEqual({ kind: 'idle' });
+    probe.resolve(LISTED);
+    await probe.promise;
+    expect(flow.phase).toEqual({ kind: 'idle' });
+    expect(seen.connects).toHaveLength(0);
+    expect(flow.choices).toEqual({});
+
+    // Connect for what the form holds now tests that request first.
+    flow.connect({ ...ready, signature: OTHER });
+    expect(flow.phase).toMatchObject({ kind: 'testing', signature: OTHER, thenConnect: true });
+    expect(seen.probes).toHaveLength(2);
   });
 
   test('Cancel with nothing in flight answers that there was nothing to stop', () => {
