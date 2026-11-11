@@ -42,6 +42,7 @@
     Textarea,
     Tooltip,
     Toggle,
+    type CitationSource,
   } from '@lostgradient/cinder';
   import { onDestroy, onMount } from 'svelte';
 
@@ -75,6 +76,9 @@
   let pendingHistoryRequest = $state<{ generation: number; resolve: () => void } | undefined>();
   let historyPage = 0;
   let readReceipts = $state<Map<string, ReadReceipt> | undefined>(undefined);
+  let sourcesByMessageId = $state<ReadonlyMap<string, readonly CitationSource[]> | undefined>(
+    undefined,
+  );
   let directTypingParticipants = $state<TypingParticipant[] | undefined>(undefined);
   let adapterEnabled = $state(false);
   let customMessageSnippets = $state(true);
@@ -456,11 +460,74 @@
     readReceipts = new Map([[message.id, { status: 'read', readBy: ['Avery'] }]]);
   }
 
+  // COR-2257: assistant A cites three sources (one with no address, one with a refused one),
+  // assistant B cites none, and the user's question is given sources it must never show.
+  const harnessSources: readonly CitationSource[] = [
+    {
+      label: 'Annual report 2025',
+      detail: 'Revenue rose 12% year over year, led by subscriptions.',
+      url: 'https://example.com/reports/annual-2025',
+    },
+    { label: 'Board minutes, March', detail: 'The board approved the new pricing.' },
+    { label: 'Pricing memo', url: 'javascript:alert(1)' },
+  ];
+
+  function harnessMessage(
+    id: string,
+    role: 'user' | 'assistant',
+    content: string,
+    position: number,
+  ): Message {
+    return {
+      id,
+      role,
+      content,
+      position,
+      createdAt: '2026-01-01T12:00:00Z',
+      metadata: {},
+      hidden: false,
+    };
+  }
+
+  function seedSourcedThread(): void {
+    cancelPending('discard');
+    cancelPendingHistoryRequest();
+    readReceipts = undefined;
+    directTypingParticipants = undefined;
+    const messages = [
+      harnessMessage('sources-user-1', 'user', 'How did revenue change this year?', 0),
+      harnessMessage(
+        'sources-assistant-a',
+        'assistant',
+        'Revenue rose 12%, led by subscriptions.',
+        1,
+      ),
+      harnessMessage('sources-user-2', 'user', 'Thanks. Anything else?', 2),
+      harnessMessage('sources-assistant-b', 'assistant', 'Nothing else changed this quarter.', 3),
+    ];
+    conversation = {
+      schemaVersion: 4,
+      id: 'harness-sources',
+      status: 'active',
+      metadata: {},
+      ids: messages.map((message) => message.id),
+      messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+      createdAt: '2026-01-01T12:00:00Z',
+      updatedAt: '2026-01-01T12:00:00Z',
+    };
+    sourcesByMessageId = new Map([
+      ['sources-assistant-a', harnessSources],
+      ['sources-assistant-b', []],
+      ['sources-user-1', harnessSources],
+    ]);
+  }
+
   function clearConversation(): void {
     cancelPending('discard');
     cancelPendingHistoryRequest();
     conversation = createConversation({ id: 'harness-cleared' });
     readReceipts = undefined;
+    sourcesByMessageId = undefined;
     directTypingParticipants = undefined;
     delayedHistory = false;
     historyPage = 0;
@@ -512,6 +579,8 @@
     corvidaeChatHarnessSetDirectTypingParticipants?: (
       participants: TypingParticipant[] | undefined,
     ) => void;
+    /** Takes every message's sources away, as a host's mapping update would, even while a modal sheet makes the controls inert. */
+    corvidaeChatHarnessRemoveSources?: () => void;
   };
 
   const harnessAdapter: ChatAdapter = {
@@ -755,6 +824,9 @@
     harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants = (participants) => {
       directTypingParticipants = participants;
     };
+    harnessWindow.corvidaeChatHarnessRemoveSources = () => {
+      sourcesByMessageId = new Map();
+    };
     return () => {
       delete harnessWindow.corvidaeChatHarnessAppendImages;
       delete harnessWindow.corvidaeChatHarnessAppendToolScenario;
@@ -764,6 +836,7 @@
       delete harnessWindow.corvidaeChatHarnessHoldStreamOpen;
       delete harnessWindow.corvidaeChatHarnessPushTypingSnapshot;
       delete harnessWindow.corvidaeChatHarnessSetDirectTypingParticipants;
+      delete harnessWindow.corvidaeChatHarnessRemoveSources;
     };
   });
 
@@ -848,6 +921,7 @@
     historyEnabled ? { moreHistoryAvailable: true, onLoadHistory: handleLoadHistory } : {},
   );
   const readReceiptProps = $derived(readReceipts ? { readReceipts } : {});
+  const sourcesProps = $derived(sourcesByMessageId ? { sourcesByMessageId } : {});
   const adapterProps = $derived(
     adapterEnabled
       ? {
@@ -1019,6 +1093,14 @@
         <Button data-testid="seed-metadata" variant="secondary" onclick={seedMetadataMessage}
           >Seed metadata message</Button
         >
+        <Button data-testid="seed-sources" variant="secondary" onclick={seedSourcedThread}
+          >Seed sourced thread</Button
+        >
+        <Button
+          data-testid="remove-sources"
+          variant="secondary"
+          onclick={() => (sourcesByMessageId = new Map())}>Remove sources</Button
+        >
         <Button data-testid="clear" variant="secondary" onclick={clearConversation}>Clear</Button>
         <Button data-testid="scroll-top" variant="ghost" onclick={() => chat?.scrollToTop()}
           >Scroll to top</Button
@@ -1079,6 +1161,7 @@
         {...emptyPromptsProp}
         {...historyProps}
         {...readReceiptProps}
+        {...sourcesProps}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
         onSubmit={handleSubmit}
@@ -1138,6 +1221,7 @@
         {...emptyPromptsProp}
         {...historyProps}
         {...readReceiptProps}
+        {...sourcesProps}
         typingParticipants={directTypingParticipants}
         {...adapterProps}
         onSubmit={handleSubmit}

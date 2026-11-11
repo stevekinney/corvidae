@@ -1,6 +1,6 @@
 <script lang="ts" module>
   import type { Snippet } from 'svelte';
-  import type { ApprovalResolution, ApprovalState } from '@lostgradient/cinder';
+  import type { ApprovalResolution, ApprovalState, CitationSource } from '@lostgradient/cinder';
   import type { HTMLAttributes } from 'svelte/elements';
   import type { Message, ToolCallPair } from '../conversation-model.ts';
   import type { MarkdownNodeOverride, MessagePartOverride } from './chat-message-parts.ts';
@@ -135,6 +135,12 @@
     suggestions?: ReadonlyArray<string> | undefined;
     /** Called when the user selects a suggestion chip. */
     onSuggestionSelect?: ((label: string) => void) | undefined;
+    /**
+     * The sources behind this message, in the order to show them. Only an assistant message with
+     * at least one source shows the Sources control; the sources are presentation only and never
+     * written to the transcript.
+     */
+    sources?: readonly CitationSource[] | undefined;
   };
 
   const escapeHtml = (value: string): string =>
@@ -142,7 +148,7 @@
 </script>
 
 <script lang="ts">
-  import { onDestroy } from 'svelte';
+  import { onDestroy, tick } from 'svelte';
   import { classNames } from '../../../utilities/class-names.ts';
   import { isStreamingMessage, mediaDisplayUrl } from '../builders.ts';
   import {
@@ -160,6 +166,7 @@
     RotateCcw,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
+  import MessageSources from './message-sources.svelte';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
   import { escapeClipboardHtmlAttribute } from '../../../utilities/clipboard.ts';
 
@@ -210,6 +217,7 @@
     toolCallExpanded = $bindable(false),
     ontoolcalltoggle,
     onSuggestionSelect,
+    sources,
     tabindex,
     ...rest
   }: ChatMessageProps = $props();
@@ -258,6 +266,47 @@
     );
     onQuote?.(selectionInside(sources) ?? renderedText(sources));
   }
+
+  // Sources. Only an assistant message shows them, and only when it has at least one; a user
+  // message given the same input never gains the control.
+  const shownSources = $derived(
+    message.role === 'assistant' && sources !== undefined && sources.length > 0
+      ? sources
+      : undefined,
+  );
+  let sourcesElement = $state<HTMLElement | null>(null);
+  let sourcesWereShown = false;
+
+  /**
+   * Whether focus is on the Sources control, inside it, or inside the panel or sheet it opened. The
+   * Citation panel is portaled out of this message, so it is found through the trigger's
+   * `aria-controls`; a narrow screen's sheet is the `<dialog>` around that panel.
+   */
+  function focusIsInSources(active: Element | null): boolean {
+    if (active === null || sourcesElement === null) return false;
+    if (sourcesElement.contains(active)) return true;
+    const panelId = sourcesElement.querySelector('[aria-controls]')?.getAttribute('aria-controls');
+    if (!panelId) return false;
+    const panel = document.getElementById(panelId);
+    const surface = panel?.closest('dialog') ?? panel;
+    return surface?.contains(active) === true;
+  }
+
+  // When the host takes the sources away, the control (and any panel it opened) unmounts with
+  // focus inside it, which would leave focus on the page body. This pre-effect runs before that
+  // removal, while focus can still be read, and hands focus to this message once it is gone.
+  $effect.pre(() => {
+    const shown = shownSources !== undefined;
+    if (sourcesWereShown && !shown && focusIsInSources(document.activeElement)) {
+      const article = articleElement;
+      void tick().then(() => {
+        const active = document.activeElement;
+        if (active !== null && active !== document.body && active.isConnected) return;
+        article?.focus({ preventScroll: true });
+      });
+    }
+    sourcesWereShown = shown;
+  });
 
   // Edit state
   let isEditing = $state(false);
@@ -709,6 +758,12 @@
       <ChatMessagePartsRenderer parts={imageParts} {messageId} />
     {/if}
 
+    {#if shownSources}
+      <div class="chat-message-sources" bind:this={sourcesElement}>
+        <MessageSources sources={shownSources} />
+      </div>
+    {/if}
+
     {#if isPending && !transcript}
       <div class="chat-message-pending-actions">
         <span class="chat-message-pending-label">Sending…</span>
@@ -1153,6 +1208,15 @@
 
   .chat-message-expand:hover {
     text-decoration: underline;
+  }
+
+  /* The Sources control sits under the body, on its own line, and never widens the message. */
+  .chat-message-sources {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    min-width: 0;
+    margin-block-start: var(--cinder-space-1);
   }
 
   .chat-message-expand:focus-visible {

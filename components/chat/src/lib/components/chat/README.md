@@ -542,6 +542,30 @@ The class is intentionally opt-in so consumers can use their own button componen
 
 A paired `tool-result` message does not render a second visible row and does not invoke the snippets separately. Chat folds that result into the corresponding tool-call row's `toolCallPair` and resolves `cinder:artifact` metadata from the folded result into `artifact`. Metadata on the visible message takes precedence. Ordinary rows and unpaired tool-result rows resolve their own artifact metadata, so consumers do not need an external message lookup or a hand-rolled type guard. Artifact identity always comes from the source message id, so duplicate titles and duplicate content remain independent.
 
+## Message sources
+
+Pass `sourcesByMessageId` to show the sources behind assistant messages. It maps an existing message id to Cinder `CitationSource` entries, in the order to show them:
+
+```ts
+import type { CitationSource } from '@lostgradient/cinder';
+
+const sourcesByMessageId = new Map<string, readonly CitationSource[]>([
+  [
+    'assistant-1',
+    [
+      { label: 'Annual report', url: 'https://example.com/annual', detail: 'Revenue rose 12%.' },
+      { label: 'Board minutes' },
+    ],
+  ],
+]);
+```
+
+```svelte
+<Chat id="assistant-chat" {conversation} {sourcesByMessageId} />
+```
+
+An assistant message with at least one source shows a Sources control with the count; an unknown id, an empty array and a user message show nothing, and a Chat given no map renders exactly as before. The control opens Cinder's `Citation`, which lists up to five sources together, links only a safe web address (any other address reads "Link hidden: the address isn't a safe web link"), and never fetches a source. Sources are presentation only: they are never written to the conversation or an export, and duplicates are kept as given. When the host removes a message's sources while focus is on its control or in its panel, focus moves to the message.
+
 ## Guidance
 
 ### Use When
@@ -666,6 +690,7 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `pausedReason` | `string` | no | — | Why the composer is paused, as muted text beside Send while `disabled` is set, such as "Off until it’s back" while the server is unreachable. Send's accessible description includes it. Without it the composer pauses with no visible reason. |
 | `readReceipts` | `(opaque)` | no | — | Per-message read receipt state. Out-of-band UI state — NOT stored on `Message`. Pass a `Map` keyed by message id with a {@link ReadReceipt} value; the component renders a receipt badge on USER messages only. While defined, including as an empty `Map`, this prop determines the visible receipts instead of adapter-derived state. Adapter events still call `onReadReceipt`, and their derived state may continue accumulating and become visible if this prop later becomes `undefined`. Omit the prop or pass `undefined` to show adapter-derived state. Default `undefined` (no receipts shown until adapter state is available). Not expressible in JSON Schema; see the component types for the signature. |
 | `row` | `(opaque)` | no | — | Full-row override. Renders an entire message row; receives the shared row context and a `renderDefault` snippet for the built-in row (inversion of control), so a consumer can wrap or fully replace specific rows. Paired tool results are folded into the visible tool-call row's `toolCallPair`, with validated `cinder:artifact` metadata available as `artifact`. Not expressible in JSON Schema; see the component types for the signature. |
+| `sourcesByMessageId` | `(opaque)` | no | — | The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. Not expressible in JSON Schema; see the component types for the signature. |
 | `trailing` | `(opaque)` | no | — | Content drawn as the last item of the transcript, after the final message and the typing indicator, such as the question a run is waiting on. It scrolls with the messages and is not part of the conversation. Not expressible in JSON Schema; see the component types for the signature. |
 | `typingParticipants` | `(opaque)` | no | — | Participants who are currently typing. Out-of-band UI state — NOT stored on `Message`. Pass an array of {@link TypingParticipant} objects; the component renders a per-participant typing indicator above the input. While defined, including as an empty array, this prop determines the visible indicator instead of adapter-derived state. Adapter events still call `onTypingChange`, and their derived state may continue updating and become visible if this prop later becomes `undefined`. Omit the prop or pass `undefined` to show adapter-derived state. Default `undefined` (indicator hidden until adapter state is available). Not expressible in JSON Schema; see the component types for the signature. |
 | `viewportAttachment` | `(opaque)` | no | — | A function or snippet prop. Its shape is not captured by the JSON schema; see the component types for the exact signature. |

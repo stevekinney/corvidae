@@ -1528,6 +1528,122 @@ test.describe('chat harness — wide Markdown tables (COR-2261)', () => {
   });
 });
 
+test.describe('chat harness — message sources (COR-2257)', () => {
+  const sourceTitles = ['Annual report 2025', 'Board minutes, March', 'Pricing memo'];
+
+  function sourcedMessage(harness: Locator, id: string): Locator {
+    return harness.locator(`article[data-message-id="${id}"]`);
+  }
+
+  /** Records every request that leaves the fixture's own origin. */
+  function recordOutboundRequests(page: Page): string[] {
+    const outbound: string[] = [];
+    const origin = new URL(environmentConfiguration().browserFixtureUrl ?? FIXTURE_ORIGIN).origin;
+    page.on('request', (request) => {
+      if (new URL(request.url()).origin !== origin) outbound.push(request.url());
+    });
+    return outbound;
+  }
+
+  async function removeSourcesFromHost(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const harnessWindow = window as Window & { corvidaeChatHarnessRemoveSources?: () => void };
+      if (harnessWindow.corvidaeChatHarnessRemoveSources === undefined) {
+        throw new Error('Chat harness remove-sources hook is unavailable.');
+      }
+      harnessWindow.corvidaeChatHarnessRemoveSources();
+    });
+  }
+
+  test('only the assistant message with sources shows a Sources control, opened from the keyboard', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'light',
+      viewport: { width: 1440, height: 900 },
+    });
+    try {
+      const outbound = recordOutboundRequests(page);
+      await harness.locator('[data-testid="seed-sources"]').click();
+
+      const messageA = sourcedMessage(harness, 'sources-assistant-a');
+      const control = messageA.getByRole('button', { name: 'Sources (3)' });
+      await expect(control).toBeVisible();
+      await expect(harness.locator('.chat-message-sources')).toHaveCount(1);
+      await expect(
+        sourcedMessage(harness, 'sources-assistant-b').locator('.chat-message-sources'),
+      ).toHaveCount(0);
+      await expect(
+        sourcedMessage(harness, 'sources-user-1').locator('.chat-message-sources'),
+      ).toHaveCount(0);
+
+      await control.focus();
+      await page.keyboard.press('Enter');
+      const panel = page.locator('.cinder-citation__panel');
+      await expect(panel.locator('ol > li strong')).toHaveText(sourceTitles);
+      await expect(panel.locator('.cinder-citation__detail')).toHaveText([
+        'Revenue rose 12% year over year, led by subscriptions.',
+        'The board approved the new pricing.',
+      ]);
+      // Only the safe address is a link; the others say why they have none.
+      await expect(panel.getByRole('link')).toHaveCount(1);
+      await expect(panel.getByRole('link')).toHaveAttribute(
+        'href',
+        'https://example.com/reports/annual-2025',
+      );
+      await expect(panel.locator('.cinder-citation__note')).toHaveText([
+        'Internal document, no public link',
+        "Link hidden: the address isn't a safe web link",
+      ]);
+
+      await page.keyboard.press('Escape');
+      await expect(panel).toHaveCount(0);
+      await expect(control).toBeFocused();
+
+      // The host's controlled mapping changes: A's sources go, and so does its control.
+      await harness.locator('[data-testid="remove-sources"]').click();
+      await expect(harness.locator('.chat-message-sources')).toHaveCount(0);
+      expect(outbound).toEqual([]);
+    } finally {
+      await dispose();
+    }
+  });
+
+  test('at 320px, removing the sources while their sheet is open moves focus to the message', async ({
+    browser,
+  }) => {
+    const { page, harness, dispose } = await openHarness(browser, {
+      colorScheme: 'dark',
+      viewport: { width: 320, height: 800 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    try {
+      await harness.locator('[data-testid="seed-sources"]').click();
+      const messageA = sourcedMessage(harness, 'sources-assistant-a');
+      const control = messageA.getByRole('button', { name: 'Sources (3)' });
+      await control.scrollIntoViewIfNeeded();
+      await control.click();
+
+      const panel = page.locator('.cinder-citation__panel');
+      await expect(panel.locator('ol > li strong')).toHaveText(sourceTitles);
+      // Focus is inside the open sheet, outside the message.
+      await expect
+        .poll(() => page.evaluate(() => document.activeElement?.closest('dialog') !== null))
+        .toBe(true);
+
+      await removeSourcesFromHost(page);
+
+      await expect(control).toHaveCount(0);
+      await expect(panel).toHaveCount(0);
+      await expect(messageA).toBeFocused();
+      expect(await page.evaluate(() => document.activeElement === document.body)).toBe(false);
+    } finally {
+      await dispose();
+    }
+  });
+});
+
 test.describe('chat harness — tool calls', () => {
   async function appendToolScenario(page: Page, scenario: string): Promise<void> {
     await page.evaluate((name) => {

@@ -1,4 +1,4 @@
-import type { ApprovalResolution } from '@lostgradient/cinder';
+import type { ApprovalResolution, CitationSource } from '@lostgradient/cinder';
 import type { Snippet } from 'svelte';
 import type { Attachment } from 'svelte/attachments';
 import type { HTMLAttributes } from 'svelte/elements';
@@ -289,6 +289,8 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * state. Default `undefined` (no receipts shown until adapter state is available).
    */
   readReceipts?: Map<string, ReadReceipt> | undefined;
+  /** The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link. */
+  sourcesByMessageId?: ReadonlyMap<string, readonly CitationSource[]> | undefined;
   /**
    * Optional command/transport boundary around `conversation`. Its methods take
    * precedence over the matching callback props (e.g. `sendMessage` over

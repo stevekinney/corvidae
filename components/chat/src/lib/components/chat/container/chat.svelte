@@ -148,6 +148,7 @@
     viewportAttachment,
     typingParticipants,
     readReceipts,
+    sourcesByMessageId,
     adapter,
     onAdapterError,
     onPushMessage,
@@ -1871,6 +1872,7 @@
           ontoolcalltoggle={() => toolCallState.toggle(message.id)}
           toolActivityActive={progressState === 'tool' && activeTurnMessageIds.has(message.id)}
           onSuggestionSelect={handleSuggestionSelect}
+          sources={message.role === 'assistant' ? sourcesByMessageId?.get(message.id) : undefined}
         >
           {#snippet actions()}
             {#if messageActions}

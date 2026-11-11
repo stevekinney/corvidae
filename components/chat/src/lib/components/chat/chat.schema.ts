@@ -455,6 +455,12 @@ const schema = {
           "Full-row override. Renders an entire message row; receives the shared row context and\na `renderDefault` snippet for the built-in row (inversion of control), so a\nconsumer can wrap or fully replace specific rows. Paired tool results are\nfolded into the visible tool-call row's `toolCallPair`, with validated\n`cinder:artifact` metadata available as `artifact`.",
       },
       {
+        name: 'sourcesByMessageId',
+        reason: 'unknown-shape',
+        description:
+          'The sources behind assistant messages, keyed by message id, as Cinder `CitationSource` entries in the order to show them. An assistant message with at least one source shows a Sources control; an unknown id, an empty array or a non-assistant message shows none. Sources are presentation only: Chat never writes them to the transcript or an export, never removes duplicates and never fetches them, and only a safe web address becomes a link.',
+      },
+      {
         name: 'typingParticipants',
         reason: 'unknown-shape',
         description:
