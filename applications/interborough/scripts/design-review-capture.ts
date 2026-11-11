@@ -40,6 +40,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { withHostSlots } from '../../../scripts/host-slots.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -272,4 +273,5 @@ export async function captureDesignReview(
   return captures > 0 ? 0 : 1;
 }
 
-if (import.meta.main) process.exitCode = await captureDesignReview();
+// The specifications run one Playwright worker, so one browser at a time: one host slot.
+if (import.meta.main) process.exitCode = await withHostSlots(1, () => captureDesignReview());

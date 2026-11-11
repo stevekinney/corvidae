@@ -45,6 +45,7 @@ import {
   type BaselineProvenance,
 } from './baseline-provenance.ts';
 import {
+  CONTAINER_CPUS,
   DOCKERFILE_PATH,
   applyBaselines,
   archiveCommit,
@@ -60,6 +61,7 @@ import {
   hostOwnershipEnvironment,
   parseWrapperArguments,
   readDockerArchitecture,
+  readDockerCpuCount,
   readHostLoad,
   resolveCommit,
   runContainerWithCleanup,
@@ -76,7 +78,11 @@ import {
 } from './suite-results.ts';
 import { provenanceComponentScope } from './update-snapshots.ts';
 
-/** Build the renderer image and start an archived container run, recording host load. Shared with the visual run. */
+/**
+ * Build the renderer image and start an archived container run, recording host load. Shared with
+ * the visual run. The container may use {@link CONTAINER_CPUS} processors, or the Docker VM's count
+ * when that is smaller, the host slots its `package.json` script holds (`scripts/host-slots.ts`).
+ */
 export async function startRendererRun(
   mode: 'update' | 'visual',
   dockerArguments: readonly string[],
@@ -123,6 +129,7 @@ export async function startRendererRun(
     docker,
     dockerRunArguments({
       containerName,
+      cpus: Math.min(CONTAINER_CPUS, readDockerCpuCount() ?? CONTAINER_CPUS),
       imageTag,
       outputDirectory,
       command: containerCommand(mode, options.forwarded),

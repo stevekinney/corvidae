@@ -27,6 +27,7 @@ import {
 import { join, relative, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
+import { withHostSlots } from '../../../../scripts/host-slots.ts';
 import { readArchetypePreviews } from './archetypes.ts';
 import { captureStaticSnapshots, checkArchetypeRenders, checkRenders } from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
@@ -88,8 +89,12 @@ function step(message: string): void {
   console.log(`- ${message}`);
 }
 
-/** Bundles the previews in parallel shard processes, one per shard, with ids as argv entries. */
-async function buildPreviews(plans: PreviewPlan[]): Promise<ShardReport> {
+/**
+ * Bundles the previews in parallel shard processes, one per shard, with ids as argv entries. The
+ * shards run at once, so the build holds one host slot per shard while they run
+ * (`scripts/host-slots.ts`), and runs no more shards than the slots it was granted.
+ */
+async function buildPreviews(plans: PreviewPlan[], shardCount: number): Promise<ShardReport> {
   // The entry modules live in the playground so `svelte` resolves to the same copy the examples
   // import; a second copy would mount the examples with a runtime they were not compiled for.
   const entryDirectory = join(playgroundRoot, '.tmp', `design-system-entries-${process.pid}`);
@@ -100,7 +105,7 @@ async function buildPreviews(plans: PreviewPlan[]): Promise<ShardReport> {
     writeFileSync(plansFile, JSON.stringify(plans, null, 2));
     const shards = partition(
       plans.map((plan) => plan.id),
-      SHARD_COUNT,
+      shardCount,
     );
     const shardScript = join(import.meta.dir, 'preview-shard.ts');
     const outcomes = await Promise.all(
@@ -202,7 +207,9 @@ async function main(): Promise<number> {
     if (plan) plans.set(component.id, plan);
   }
   step(`previews: bundling ${plans.size} in ${SHARD_COUNT} shards`);
-  const built = await buildPreviews([...plans.values()]);
+  const built = await withHostSlots(SHARD_COUNT, (slots) =>
+    buildPreviews([...plans.values()], slots.count),
+  );
   // A preview over the script cap was rebuilt with fewer examples; its card names only those.
   for (const [id, entry] of Object.entries(built.built)) {
     const plan = plans.get(id);
@@ -213,10 +220,9 @@ async function main(): Promise<number> {
     .map(([id]) => id);
 
   step(`static renditions: ${oversized.length}`);
-  const snapshots: Map<string, StaticSnapshot> = await captureStaticSnapshots(
-    previewsDirectory,
-    join(componentsDirectory, 'bundle.css'),
-    oversized,
+  // Each browser phase runs one headless Chromium, so it holds one host slot.
+  const snapshots: Map<string, StaticSnapshot> = await withHostSlots(1, () =>
+    captureStaticSnapshots(previewsDirectory, join(componentsDirectory, 'bundle.css'), oversized),
   );
 
   const live: string[] = [];
@@ -283,7 +289,9 @@ async function main(): Promise<number> {
 
   step(`render check: ${live.length + staticNames.length} cards in light and dark`);
   const cards = [...live, ...staticNames];
-  const check = await checkRenders(projectDirectory, join(workDirectory, 'check'), cards);
+  const check = await withHostSlots(1, () =>
+    checkRenders(projectDirectory, join(workDirectory, 'check'), cards),
+  );
   // The card heights come from the light render, so the live previews' cards are written again
   // with them; only the `@dsCard` line changes.
   live.length = 0;
@@ -292,10 +300,12 @@ async function main(): Promise<number> {
   writeComponents(check.results);
 
   step(`render check: ${archetypes.length} archetypes in light and dark, at phone and desktop`);
-  const archetypeProblems = await checkArchetypeRenders(
-    projectDirectory,
-    join(workDirectory, 'check-archetypes'),
-    archetypes.map((archetype) => archetype.exportName),
+  const archetypeProblems = await withHostSlots(1, () =>
+    checkArchetypeRenders(
+      projectDirectory,
+      join(workDirectory, 'check-archetypes'),
+      archetypes.map((archetype) => archetype.exportName),
+    ),
   );
 
   const problems = [

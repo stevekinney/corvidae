@@ -1,0 +1,191 @@
+/**
+ * Host slots for the heavy work that is not `bun test`: headless browsers, browser suites, the
+ * Docker renderer, and fan-outs of worker processes (`documentation/repository/host-admission.md`).
+ *
+ * Such work takes slots from the same host-wide pool every `bun test` worker does
+ * (`scripts/bun-test-pool.ts`), one per process it keeps busy at once, so the pool bounds both
+ * together. Nothing about the pool changes: the slots, the arrival-order queue, the owner record and
+ * its reclaim are the pool's own, and so is the nested-run rule.
+ *
+ * - {@link withHostSlots} holds `count` slots while an in-process `run` resolves, with this process
+ *   as the holder: a holder killed outright leaves slots that the next waiter reclaims, judged by
+ *   pid and start time.
+ * - {@link runWithHostSlots}, and the command line below, runs a command in a process group of its
+ *   own while holding the slots, and records the group in them, as a pooled `bun test` does: a
+ *   wrapper killed outright keeps its slots exactly as long as anything in the group lives.
+ *
+ * Nesting: a run started inside a run that holds slots finds the holder's token in
+ * `CORVIDAE_TEST_SLOTS_TOKEN` and runs inside the holder's slots instead of acquiring more, so it
+ * neither waits on its own parent nor counts twice. A command run under these slots gets the token,
+ * so a `bun test` or another wrapper it starts runs inside them too. The token is honoured only
+ * while a live slot names it.
+ *
+ * A request above the pool's size is clamped to it, and the run learns how many slots it holds, so
+ * it can bound its own fan-out to them. When the pool cannot be used at all (no Git checkout, as in
+ * the renderer's container), the run warns and runs without a slot.
+ *
+ * Usage: `bun scripts/host-slots.ts --slots=<n> -- <command> [arguments...]`, exiting with the
+ * command's exit code, or 64 on a usage error.
+ */
+
+import { join } from 'node:path';
+
+import {
+  acquireTestSlots,
+  heldSlotsTokenVariable,
+  poolDirectoryName,
+  poolSize,
+  readProcessTable,
+  slotsHeldUnderToken,
+  type HeldTestSlots,
+  type ProcessTable,
+} from './bun-test-pool.ts';
+import { rootScriptEnvironment } from './environment-configuration.ts';
+import { gitCommonDirectory, pidStartedAtField, runInProcessGroup } from './run-exclusively.ts';
+
+export type HostSlotsOptions = {
+  /** Where the holder's token is read from, and what a child inherits; defaults to this process's. */
+  readonly environment?: Readonly<Record<string, string | undefined>>;
+  /** Defaults to `corvidae-test-slots` in the Git common directory; a failed lookup runs unpooled. */
+  readonly poolDirectory?: string | Promise<string>;
+  /** Defaults to the pool's size for the environment. */
+  readonly size?: number;
+  /** What the owner record says is running; defaults to this process's command line. */
+  readonly command?: string;
+  readonly cwd?: string;
+  readonly pollIntervalMs?: number;
+  readonly readProcessTable?: () => ProcessTable | undefined;
+  /** Waits between looks while the slots are held by others. */
+  readonly sleep?: (milliseconds: number) => Promise<void>;
+  readonly report?: (line: string) => void;
+};
+
+/** What a run under host slots knows about them. */
+export type HostSlots = {
+  /**
+   * The slots the run may keep busy: those it holds, those of the run it is nested in when fewer
+   * than it asked for, or the count it asked for when it runs without the pool.
+   */
+  readonly count: number;
+  /** How the run is admitted. */
+  readonly admission: 'held' | 'nested' | 'unpooled';
+  /** The environment for a child process: the caller's, plus the token naming these slots. */
+  readonly environment: Record<string, string | undefined>;
+  /**
+   * Records a child's process group in the slots, so they outlive this process while the group
+   * lives. Does nothing when the run is nested or unpooled: the slots are not this run's to record.
+   */
+  readonly recordProcessGroup: (processGroup: number) => Promise<void>;
+};
+
+/** Holds `count` host slots while `run` resolves, and releases them however it settles. */
+export async function withHostSlots<T>(
+  count: number,
+  run: (slots: HostSlots) => Promise<T>,
+  input: HostSlotsOptions = {},
+): Promise<T> {
+  // Snapshotted, so a caller that changes its options after an await cannot change this run.
+  const options = { ...input };
+  const environment = { ...(options.environment ?? rootScriptEnvironment()) };
+  const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
+  const size = options.size ?? poolSize(environment);
+  const wanted = Number.isFinite(count) ? Math.max(1, Math.floor(count)) : 1;
+  const read = options.readProcessTable ?? readProcessTable;
+  let held: HeldTestSlots | undefined;
+  let slots: HostSlots = {
+    count: wanted,
+    admission: 'unpooled',
+    environment,
+    recordProcessGroup: async () => {},
+  };
+  try {
+    const poolDirectory = await (options.poolDirectory ??
+      gitCommonDirectory().then((directory) => join(directory, poolDirectoryName)));
+    const parentSlots = await slotsHeldUnderToken(
+      poolDirectory,
+      environment[heldSlotsTokenVariable],
+      read(),
+    );
+    if (parentSlots === undefined) {
+      held = await acquireTestSlots({
+        poolDirectory,
+        size,
+        slots: wanted,
+        holder: {
+          pid: process.pid,
+          ...pidStartedAtField(),
+          command: options.command ?? process.argv.slice(1).join(' '),
+          cwd: options.cwd ?? process.cwd(),
+          acquiredAt: new Date().toISOString(),
+        },
+        readProcessTable: read,
+        ...(options.sleep === undefined ? {} : { sleep: options.sleep }),
+        ...(options.pollIntervalMs === undefined ? {} : { pollIntervalMs: options.pollIntervalMs }),
+        onWait: (line) => report(`host-slots: ${line}`),
+      });
+      slots = {
+        count: held.slots.length,
+        admission: 'held',
+        environment: { ...environment, [heldSlotsTokenVariable]: held.token },
+        recordProcessGroup: held.recordProcessGroup,
+      };
+    } else {
+      slots = { ...slots, count: Math.min(wanted, parentSlots), admission: 'nested' };
+    }
+  } catch (error) {
+    report(`host-slots: running without a host slot: ${(error as Error).message}`);
+  }
+  try {
+    return await run(slots);
+  } finally {
+    await held?.release();
+  }
+}
+
+/**
+ * Runs `argv` in a process group of its own while holding `count` host slots, records the group in
+ * them, forwards SIGINT, SIGTERM and SIGHUP to it, and resolves to its exit code.
+ */
+export function runWithHostSlots(
+  count: number,
+  argv: readonly string[],
+  options: HostSlotsOptions = {},
+): Promise<number> {
+  const command = [...argv];
+  const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
+  return withHostSlots(
+    count,
+    (slots) =>
+      runInProcessGroup(command, {
+        environment: slots.environment,
+        ...(options.cwd === undefined ? {} : { cwd: options.cwd }),
+        recordProcessGroup: slots.recordProcessGroup,
+        report: (line) => report(`host-slots: ${line}`),
+      }),
+    { command: command.join(' '), ...options },
+  );
+}
+
+/** The slot count and the command from `--slots=<n> -- <command...>`, or the usage error. */
+export function parseHostSlotsArguments(
+  argumentsList: readonly string[],
+): { slots: number; command: string[] } | { error: string } {
+  const separator = argumentsList.indexOf('--');
+  const flags = separator === -1 ? argumentsList : argumentsList.slice(0, separator);
+  const command = separator === -1 ? [] : argumentsList.slice(separator + 1);
+  const match = flags.length === 1 ? /^--slots=([1-9]\d*)$/.exec(flags[0] ?? '') : null;
+  if (match?.[1] === undefined || command.length === 0) {
+    return { error: 'usage: bun scripts/host-slots.ts --slots=<n> -- <command> [arguments...]' };
+  }
+  return { slots: Number(match[1]), command };
+}
+
+if (import.meta.main) {
+  const parsed = parseHostSlotsArguments(Bun.argv.slice(2));
+  if ('error' in parsed) {
+    process.stderr.write(`${parsed.error}\n`);
+    process.exitCode = 64;
+  } else {
+    process.exitCode = await runWithHostSlots(parsed.slots, parsed.command);
+  }
+}
