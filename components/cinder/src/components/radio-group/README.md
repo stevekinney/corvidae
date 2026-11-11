@@ -16,6 +16,10 @@ Coordinates a set of radio buttons under a single name with shared validation st
 </RadioGroup>
 ```
 
+## Alignment with a wrapping label
+
+Each option's circle sits beside the first line of its label, never the middle of a label that wraps: the row aligns its items to the start and offsets the circle so its centre meets the centre of that first line. A one-line label looks the same as it did centred, and an option with a `description` follows the same rule.
+
 ## Props
 
 <!-- generated:props:start -->

@@ -9,10 +9,23 @@
  * ---------------------------------------- */
 
   .cinder-toggle-field {
+    /* The height of the switch's hit area, which is what the field's first line is centred on: the
+       18px track plus 3px above and below, or 44px under a coarse pointer (see .cinder-toggle). */
+    --_cinder-toggle-box: calc(var(--cinder-toggle-height, 1.125rem) + 0.375rem);
+
     position: relative; /* scope the position:absolute hidden label to the wrapper */
     display: inline-flex;
-    align-items: center;
+    /* The switch sits beside the first line of its label, not the middle of a label that wraps
+       (COR-2360). The text beside it takes the padding that centres its first line on the switch,
+       so a one-line label is centred exactly as before. */
+    align-items: flex-start;
     gap: var(--cinder-space-2);
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-toggle-field {
+      --_cinder-toggle-box: 2.75rem;
+    }
   }
 
   /* A label placed first spreads the label and the switch across the field's width, the way a list
@@ -36,6 +49,17 @@
     cursor: not-allowed;
   }
 
+  /* The label's line is 1 times its font size, and the description's is its leading-snug. */
+  .cinder-toggle-field > .cinder-toggle-field__label {
+    padding-block-start: calc((var(--_cinder-toggle-box) - var(--cinder-text-xs)) / 2);
+  }
+
+  .cinder-toggle-field > .cinder-toggle-field__description {
+    padding-block-start: calc(
+      (var(--_cinder-toggle-box) - var(--cinder-text-xs) * var(--cinder-leading-snug)) / 2
+    );
+  }
+
   /* The text that describes the switch, such as the file that defines it: muted, small, on the
  * label's line. It never takes the label's pointer cursor, because a press on it does nothing. */
   .cinder-toggle-field__description {
@@ -57,6 +81,10 @@
     flex-direction: column;
     gap: var(--cinder-space-0-5);
     min-inline-size: 0;
+    /* The label's first line (13px at snug leading) is centred on the switch. */
+    padding-block-start: calc(
+      (var(--_cinder-toggle-box) - var(--cinder-text-sm) * var(--cinder-leading-snug)) / 2
+    );
   }
 
   .cinder-toggle-field[data-cinder-description='below'] .cinder-toggle-field__label {

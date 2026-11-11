@@ -126,6 +126,17 @@ Pass `selected` for the row open in the detail beside the list (the worker list)
 
 Line two ends in an ellipsis when it is long. Pass `metaTooltip` with the same text to carry it in full as a tooltip over the line, as `tooltip` does for the title.
 
+### A leading checkbox
+
+A row that leads with a [`Checkbox`](../checkbox/README.md) in `leading` aligns the box to the first line of the title, not the row's top edge or its middle: the box's centre meets the centre of that line, whether the title takes one line or two, and the same rule holds for the two-line row. Pass the checkbox without a `label`, so the title is the row's text, and give it an `aria-label` that names the row. A checkbox that leads a task list can take `variant="task"`.
+
+```svelte
+<StackedListItem>
+  {#snippet leading()}<Checkbox variant="task" aria-label="Send the quarterly report" />{/snippet}
+  {#snippet title()}Send the quarterly report{/snippet}
+</StackedListItem>
+```
+
 ### Glyph tile
 
 Pass `leadingTone` to draw `leading` as a 32px rounded tile tinted with that tone, one glyph per kind (the needs-attention rows on Health use `warning`). The glyph is decoration and is hidden from assistive technology. Pass `lines` to take the two-line layout (bold title, one-line muted description, a trailing region beside both lines) on a row that has no status, time or details; add `actions` for a secondary button per action.

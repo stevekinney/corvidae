@@ -70,15 +70,20 @@
      addition does not touch that override. */
   .cinder-radio-row,
   .cinder-radio-row.cinder-form-field {
+    /* The label's line height: the box is centred on the label's first line, not on a label that
+       wraps (COR-2360). The control offsets itself by half of what the line has over the box. */
+    --_cinder-radio-line: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
+
     display: inline-flex;
     flex-direction: row;
-    align-items: center;
+    align-items: flex-start;
     gap: var(--cinder-space-2);
     inline-size: auto;
   }
 
   .cinder-radio-row > .cinder-radio-row__control {
     order: 1;
+    margin-block-start: calc((var(--_cinder-radio-line) - 1.125rem) / 2);
   }
 
   .cinder-radio-row > .cinder-radio-row__label {
@@ -254,10 +259,10 @@
     align-items: start;
   }
 
+  /* The control's first-line offset (margin-block-start) comes from the base row rule above. */
   .cinder-radio-row--has-description .cinder-radio-row__control {
     grid-row: 1;
     grid-column: 1;
-    margin-top: var(--cinder-space-0-5); /* align input with label's first cap-height line */
   }
 
   .cinder-radio-row--has-description .cinder-radio-row__label {

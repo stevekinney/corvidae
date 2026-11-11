@@ -20,6 +20,9 @@
   }
 
   .cinder-stacked-list-item__layout {
+    /* The line height of the title's first line, which a leading control centres itself on. */
+    --_cinder-first-line: calc(var(--cinder-text-sm) * var(--cinder-leading-snug));
+
     display: grid;
     align-items: center;
     column-gap: var(--cinder-space-3);
@@ -35,6 +38,17 @@
 
   .cinder-stacked-list-item--has-leading .cinder-stacked-list-item__leading {
     align-self: start;
+    /* A checkbox that leads the row sits beside the first line of the title, not the row's top
+       edge or its middle (COR-2360): Checkbox offsets its box by half of what this line has over
+       the box. */
+    --_cinder-checkbox-line: var(--_cinder-first-line);
+  }
+
+  /* A block-level field, so the leading cell's line box adds no strut above or below the box. */
+  .cinder-stacked-list-item--has-leading
+    .cinder-stacked-list-item__leading
+    > .cinder-checkbox-field {
+    display: flex;
   }
 
   .cinder-stacked-list-item--has-leading .cinder-stacked-list-item__body {
@@ -227,6 +241,7 @@
 
   .cinder-stacked-list-item.cinder-stacked-list-item--lines > .cinder-stacked-list-item__layout {
     --_cinder-line-one-height: calc(var(--cinder-text-base) * var(--cinder-leading-snug));
+    --_cinder-first-line: var(--_cinder-line-one-height);
     --_cinder-status-track: 0px;
     display: grid;
     align-items: start;

@@ -16,6 +16,10 @@ On/off switch input for binary settings, presented as a sliding pill control.
 
 `readonly` shows a setting that something else owns, such as a schedule defined in a file. The switch stays focusable, is announced as read-only (`aria-readonly="true"`), ignores a press on the track or the label, and still submits its value with a native form. `description` is short visible text beside the label ("Defined in workflows/release-notes.json") wired into `aria-describedby`. Set `descriptionVisible={false}` for a description only a screen reader needs, such as what flipping the switch would cause: it stays in `aria-describedby` and is visually hidden. `nameDetail` adds words after the visible label in the accessible name alone (`label="Active"` with `nameDetail="Daily summary schedule"` is named "Active, Daily summary schedule"), so the visible label stays first.
 
+## Alignment with a wrapping label
+
+The switch sits beside the first line of its label, never the middle of a label that wraps: the field aligns its items to the start, and the label (and an inline description) take the top padding that centres their first line on the switch's hit area. A one-line label is centred as it always was. With `descriptionPlacement="below"` the label and its description stack as one block, and the label's first line meets the switch's centre.
+
 ## Off track contrast
 
 The switch has no text, so its off track is the whole of its visible shape. The track reads `--cinder-toggle-track-off-resting`, which is the control tier (`--cinder-border-control`) in light and `oklch(58% 0.02 245)` in dark, and clears 3:1 against every surface in both themes; the `toggle:track-off:*` contrast pairings hold it there. A disabled switch is muted with a grayscale filter, never an opacity fade.
