@@ -37,6 +37,7 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/workflows/:workflow/edit': `/workflows/${workflow}/edit`,
     '/internal-workflows': '/internal-workflows',
     '/runs': '/runs',
+    '/runs/new': '/runs/new',
     '/runs/:run': `/runs/${encodeURIComponent(world.runs.done)}`,
     '/schedules': '/schedules',
     '/schedules/new': '/schedules/new',
