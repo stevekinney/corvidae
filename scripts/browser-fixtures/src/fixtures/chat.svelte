@@ -24,6 +24,12 @@
     ClaimStreamEvent,
   } from '../../../../components/chat/src/lib/components/chat/message/claim-source-fixture.ts';
 
+  // COR-2288: no other instance here turns attachments on, so the composer's Attach target is
+  // reachable only behind a query param (as the citation fixture gates its hierarchy scenario),
+  // which keeps the default fixture, its baselines and its axe sweep unchanged.
+  const attachmentsEnabled =
+    new URLSearchParams(globalThis.location.search).get('attachments') === '1';
+
   const adapter: ChatAdapter = {
     sendMessage: async () => {},
     describeToolCall: (_toolCall, result) => ({
@@ -499,6 +505,17 @@
       {selectedArtifact?.title ?? ''}
     </span>
   </div>
+
+  {#if attachmentsEnabled}
+    <div style="height: 34rem;" data-testid="chat-attachments-enabled">
+      <Chat
+        id="fixture-attachments-chat"
+        conversation={basicConversation}
+        capabilities={{ attachments: true }}
+        onSubmit={handleSubmit}
+      />
+    </div>
+  {/if}
 
   {#if claimProbe}
     <div data-testid="claim-source-probe">

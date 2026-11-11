@@ -38,8 +38,11 @@ test.describe('Phone run approval', () => {
     expect(title).not.toBeNull();
     expect(glyph!.x + glyph!.width).toBeLessThanOrEqual(title!.x + 0.5);
 
-    // A pending approval with a callback has no status badge, so the group draws no row.
-    await expect(card.locator('.cinder-approval-card__badges')).toBeHidden();
+    // A pending approval with a callback has no status badge, so the group draws no row and the
+    // question starts level with the top of the risk glyph. A zero-height group that kept its
+    // bottom margin would pass `toBeHidden()` yet push the question down, so compare positions.
+    await expect(card.locator('.cinder-approval-card__badges')).toHaveCSS('display', 'none');
+    expect(Math.abs(title!.y - glyph!.y)).toBeLessThanOrEqual(1);
   });
 
   test('draws Deny and Approve as equal 44px targets', async ({ componentPage }) => {
@@ -63,9 +66,17 @@ test.describe('Phone run composer', () => {
     componentPage,
   }) => {
     const page = await componentPage.open({ entry: chatEntry, theme: 'dark', viewport: phone });
+    // No default chat fixture enables attachments, so reload the entry with the gated instance.
+    await page.goto(`${chatEntry.route}?snapshot=1&attachments=1`, { waitUntil: 'load' });
+    const attachmentsChat = page.getByTestId('chat-attachments-enabled');
+    await expect(
+      attachmentsChat.getByRole('button', { name: 'Attach file', exact: true }),
+    ).toBeVisible();
 
-    const attach = await page.getByRole('button', { name: 'Attach file' }).first().boundingBox();
-    const send = await page.getByRole('button', { name: /^Send/ }).first().boundingBox();
+    const attach = await attachmentsChat
+      .getByRole('button', { name: 'Attach file', exact: true })
+      .boundingBox();
+    const send = await attachmentsChat.getByRole('button', { name: /^Send/ }).first().boundingBox();
     expect(attach).not.toBeNull();
     expect(send).not.toBeNull();
     for (const box of [attach!, send!]) {
@@ -75,7 +86,7 @@ test.describe('Phone run composer', () => {
 
     // Chromium reports no safe-area inset, so the area's bottom padding equals its top padding;
     // on a device with a home indicator it grows by the inset.
-    const padding = await page
+    const padding = await attachmentsChat
       .locator('.chat-input-area')
       .first()
       .evaluate((element) => {

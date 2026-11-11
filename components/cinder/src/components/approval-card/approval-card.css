@@ -1026,7 +1026,9 @@
       margin-block-end: var(--cinder-space-2);
     }
 
-    .cinder-approval-card__badges:empty {
+    /* The group holds two conditional children, so Svelte leaves whitespace text nodes between
+     * its anchors and `:empty` never matches; test for an element child instead. */
+    .cinder-approval-card__badges:not(:has(*)) {
       display: none;
     }
 

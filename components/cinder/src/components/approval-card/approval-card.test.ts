@@ -2508,7 +2508,7 @@ describe('ApprovalCard on a phone', () => {
       /@container \(inline-size < 32rem\) \{[^@]*__header \{\s*display: grid;[^}]*'icon badges'\s*'icon title';[^}]*row-gap: 0;/,
     );
     expect(css).toMatch(/__badges \{\s*grid-area: badges;/);
-    expect(css).toMatch(/__badges:empty \{\s*display: none;/);
+    expect(css).toMatch(/__badges:not\(:has\(\*\)\) \{\s*display: none;/);
     expect(css).toMatch(/__title-group \{\s*grid-area: title;/);
   });
 
