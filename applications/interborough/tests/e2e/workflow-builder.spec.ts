@@ -1,11 +1,13 @@
 /**
- * The workflow step builder against the real host, on `/workflows/new` and
- * `/workflows/:workflow/edit`: a workflow built from rows saves as a file the Bureau lists as ready
- * and runs, the JSON tab and the builder show each other's edits, ⌘Enter saves from a field, and a
- * file that changed on disk keeps the draft on the page. Each page meets axe at the two widths the
- * application is built for.
+ * The workflow builder against the real host, on `/workflows/new` and `/workflows/:workflow/edit`
+ * (board PageWorkflowBuilder): a workflow built from cards saves as a file the Bureau lists as ready
+ * and runs, a title makes the ID and is written as the file's `title`, a wait for a person is an
+ * `await-signal` with `review: true`, the JSON tab and the builder show each other's edits, ⌘Enter
+ * saves from a field, and a file that changed on disk keeps the draft on the page. Below 640 pixels
+ * the builder is read-only and says to open it on a larger screen (row 05n). Each page meets axe at
+ * the two widths the application is built for.
  */
-import type { Page } from '@playwright/test';
+import type { Locator, Page } from '@playwright/test';
 import { rm } from 'node:fs/promises';
 
 import { WORKFLOW_COPY } from '../../src/app/copy.ts';
@@ -26,12 +28,28 @@ import {
   workflowRunStatus,
 } from './workflow-support.ts';
 
-const WIDTHS = [375, 1280] as const;
 const BUILDER = WORKFLOW_COPY.builder;
+const DESKTOP = { width: 1280, height: 900 } as const;
+const PHONE = { width: 375, height: 900 } as const;
 
 const area = (page: Page) => page.locator('[data-view="workflows"]');
 const creator = (page: Page) => page.locator('[data-page="workflow-creator"]');
 const editor = (page: Page) => page.locator('[data-page="workflow-editor"]');
+
+/** A button under "Add a step", by its exact words: "Wait" is also the start of two others. */
+const addButton = (root: Locator, label: string) =>
+  root
+    .getByRole('group', { name: BUILDER.addLabel })
+    .getByRole('button', { name: label, exact: true });
+
+/**
+ * Replaces the new workflow's empty agent step with a wait, so an untouched form becomes a file
+ * the Bureau accepts without naming an agent.
+ */
+async function waitInsteadOfAgent(root: Locator): Promise<void> {
+  await addButton(root, BUILDER.add.wait).click();
+  await root.getByRole('button', { name: BUILDER.remove(1) }).click();
+}
 
 /** Identifiers this file's specs create, removed after each spec. */
 const created = new Set<string>();
@@ -44,64 +62,97 @@ test.afterEach(async ({ request }) => {
   created.clear();
 });
 
-test.describe('a workflow built from rows', () => {
-  for (const width of WIDTHS) {
-    test(`saves as a ready file and runs to the end, at ${width} pixels`, async ({
-      page,
-      request,
-      checkA11y,
-      pageErrors,
-    }) => {
-      expectEngineMissesForFileRuns(pageErrors);
-      const id = 'e2e-built';
-      created.add(id);
-      await page.setViewportSize({ width, height: 900 });
-      await page.goto('/workflows/new');
-      await expect(area(page)).toHaveAttribute('data-state', 'ready');
-      const root = creator(page);
-      await expectTabOpen(root, BUILDER.builderTab);
-      await checkA11y(`the builder at ${width}px`);
+test.describe('a workflow built from cards', () => {
+  test('saves as a ready file with its title, and runs to the end', async ({
+    page,
+    request,
+    checkA11y,
+    pageErrors,
+  }) => {
+    expectEngineMissesForFileRuns(pageErrors);
+    const id = 'e2e-built';
+    created.add(id);
+    await page.setViewportSize(DESKTOP);
+    await page.goto('/workflows/new');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = creator(page);
+    await expectTabOpen(root, BUILDER.builderTab);
+    await expect(root.getByRole('radio', { name: BUILDER.triggers.manual })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await checkA11y('the builder at 1280px');
 
-      await root.getByLabel(BUILDER.nameLabel, { exact: true }).fill(id);
-      await root.getByLabel(BUILDER.descriptionLabel, { exact: true }).fill('Built from rows.');
-      await root
-        .getByLabel(BUILDER.triggerKindLabel)
-        .selectOption({ label: BUILDER.triggers.signal });
-      await root.getByLabel(BUILDER.signalNameLabel).fill('e2e-built-go');
-      // The template's agent step goes, and a signal wait takes its place.
-      await root.getByRole('button', { name: BUILDER.addSignal }).click();
-      await root.getByRole('button', { name: BUILDER.remove(1) }).click();
-      await root.getByLabel(BUILDER.signalLabel(1)).fill('e2e-built-wait');
-      await expect(root.getByTestId('workflow-builder-summary')).toContainText(
-        WORKFLOW_COPY.steps.awaitSignal('e2e-built-wait'),
-      );
+    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('E2E built');
+    await expect(root.getByTestId('workflow-builder-id-line')).toContainText(id);
+    await root.getByLabel(BUILDER.descriptionLabel, { exact: true }).fill('Built from cards.');
+    await root.getByRole('radio', { name: BUILDER.triggers.signal }).click();
+    await root.getByLabel(BUILDER.signalNameLabel).fill('e2e-built-go');
+    // The empty agent step goes, and a signal wait takes its place.
+    await addButton(root, BUILDER.add.signal).click();
+    await root.getByRole('button', { name: BUILDER.remove(1) }).click();
+    await root.getByLabel(BUILDER.signalLabel(1)).fill('e2e-built-wait');
+    await root.getByLabel(BUILDER.stepName(1)).fill('Wait for the go-ahead');
+    await expect(root.getByTestId('workflow-builder-summary')).toContainText(
+      'Each time e2e-built-go is sent, wait for e2e-built-wait.',
+    );
 
-      await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
-      await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
-      const made = await readWorkflow(request, id);
-      expect(made.state).toBe('ready');
+    await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}$`));
+    const made = await readWorkflow(request, id);
+    expect(made.state).toBe('ready');
 
-      await page.getByRole('link', { name: WORKFLOW_COPY.page.startAction }).click();
-      await page.getByRole('button', { name: WORKFLOW_COPY.runSetup.startAction }).click();
-      await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
-      const [run] = await listWorkflowRuns(request, id);
-      expect(run?.status).toBe('running');
-      await expect
-        .poll(async () => {
-          await bureau(request, 'bureau.workflows.signal', { name: 'e2e-built-wait' });
-          return run === undefined ? undefined : workflowRunStatus(request, run.id);
-        })
-        .toBe('completed');
+    await page.getByRole('link', { name: WORKFLOW_COPY.page.startAction }).click();
+    await page.getByRole('button', { name: WORKFLOW_COPY.runSetup.startAction }).click();
+    await expect(page).toHaveURL(new RegExp(`/workflows/${id}/runs/[^/]+$`));
+    const [run] = await listWorkflowRuns(request, id);
+    expect(run?.status).toBe('running');
+    await expect
+      .poll(async () => {
+        await bureau(request, 'bureau.workflows.signal', { name: 'e2e-built-wait' });
+        return run === undefined ? undefined : workflowRunStatus(request, run.id);
+      })
+      .toBe('completed');
+  });
+
+  test('writes a title, a step name, and a wait for a person in the file format', async ({
+    page,
+  }) => {
+    await page.setViewportSize(DESKTOP);
+    await page.goto('/workflows/new');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = creator(page);
+    await root.getByLabel(BUILDER.titleLabel, { exact: true }).fill('Morning Briefing');
+    await addButton(root, BUILDER.add.person).click();
+    await root.getByLabel(BUILDER.stepName(2)).fill('Review the briefing');
+    await expect(root.locator('[data-step-kind="person"]')).toContainText(
+      BUILDER.personDescription,
+    );
+
+    await openJsonTab(root);
+    const json = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
+    const document = JSON.parse(await jsonEditorSource(json)) as Record<string, unknown>;
+    expect(document).toMatchObject({
+      name: 'morning-briefing',
+      title: 'Morning Briefing',
+      trigger: { kind: 'manual' },
     });
-  }
+    expect((document['steps'] as unknown[])[1]).toEqual({
+      title: 'Review the briefing',
+      kind: 'await-signal',
+      signal: 'review-1',
+      review: true,
+    });
+  });
 
   test('shows a JSON edit in the builder, and a builder edit in the JSON', async ({ page }) => {
+    await page.setViewportSize(DESKTOP);
     await page.goto('/workflows/new');
     const root = creator(page);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
 
-    await root.getByLabel(BUILDER.nameLabel, { exact: true }).fill('e2e-synced');
-    await root.getByRole('button', { name: BUILDER.addWait }).click();
+    await root.getByLabel(BUILDER.idLabel, { exact: true }).fill('e2e-synced');
+    await addButton(root, BUILDER.add.wait).click();
     await openJsonTab(root);
     const json = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
     const document = JSON.parse(await jsonEditorSource(json)) as {
@@ -114,16 +165,20 @@ test.describe('a workflow built from rows', () => {
     document.steps = [{ kind: 'sleep', duration: '45s' }];
     await json.fill(JSON.stringify(document, null, 2));
     await openTab(root, BUILDER.builderTab);
-    await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('45s');
+    await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('45');
+    await expect(root.getByLabel(BUILDER.unitLabel(1))).toHaveValue('seconds');
     await expect(root.getByLabel(BUILDER.agentLabel(1))).toHaveCount(0);
   });
 
   test('saves with ⌘Enter from a field', async ({ page, request }) => {
     const id = 'e2e-keyboard';
     created.add(id);
+    await page.setViewportSize(DESKTOP);
     await page.goto('/workflows/new');
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
-    const name = creator(page).getByLabel(BUILDER.nameLabel, { exact: true });
+    const root = creator(page);
+    await waitInsteadOfAgent(root);
+    const name = root.getByLabel(BUILDER.idLabel, { exact: true });
     await name.fill(id);
     await name.press('ControlOrMeta+Enter');
 
@@ -131,19 +186,39 @@ test.describe('a workflow built from rows', () => {
     const saved = await readWorkflow(request, id);
     expect(saved.state).toBe('ready');
   });
+
+  test('is read-only below 640 pixels, and links back to Workflows', async ({
+    page,
+    checkA11y,
+  }) => {
+    await page.setViewportSize(PHONE);
+    await page.goto('/workflows/new');
+    await expect(area(page)).toHaveAttribute('data-state', 'ready');
+    const root = creator(page);
+    const notice = root.getByTestId('workflow-builder-phone');
+    await expect(notice).toContainText(BUILDER.phone.message);
+    await expect(notice.getByRole('link', { name: BUILDER.phone.backToWorkflows })).toHaveAttribute(
+      'href',
+      '/workflows',
+    );
+    await expect(root.locator('.weft-workflow-builder__body')).toHaveAttribute('inert', '');
+    await checkA11y('the builder at 375px');
+  });
 });
 
 test.describe('the builder’s fields', () => {
   test('does not save on plain Enter in a field', async ({ page, request }) => {
     const id = 'e2e-plain-enter';
     created.add(id);
+    await page.setViewportSize(DESKTOP);
     await page.goto('/workflows/new');
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = creator(page);
-    const name = root.getByLabel(BUILDER.nameLabel, { exact: true });
+    await waitInsteadOfAgent(root);
+    const name = root.getByLabel(BUILDER.idLabel, { exact: true });
     await name.fill(id);
     await name.press('Enter');
-    await root.getByLabel(BUILDER.scheduleLabel).press('Enter');
+    await root.getByLabel(BUILDER.durationLabel(1)).press('Enter');
     await expect(
       root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }),
     ).toBeEnabled();
@@ -158,12 +233,15 @@ test.describe('the builder’s fields', () => {
     const id = 'e2e-multi-line';
     created.add(id);
     const message = 'First line.\n\nThird line.';
+    await page.setViewportSize(DESKTOP);
     await page.goto('/workflows/new');
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = creator(page);
-    await root.getByLabel(BUILDER.nameLabel, { exact: true }).fill(id);
+    await root.getByLabel(BUILDER.idLabel, { exact: true }).fill(id);
+    // The first agent the host lists, after the placeholder that chooses none.
+    await root.getByLabel(BUILDER.agentLabel(1)).selectOption({ index: 1 });
     await root.getByLabel(BUILDER.messageLabel(1)).fill(message);
-    await root.getByLabel(BUILDER.scheduleLabel).fill('2h');
+    await root.getByLabel(BUILDER.descriptionLabel, { exact: true }).fill('Multi-line.');
     await expect(root.getByLabel(BUILDER.messageLabel(1))).toHaveValue(message);
 
     await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
@@ -184,10 +262,11 @@ test.describe('the editor’s builder', () => {
       trigger: { kind: 'schedule', spec: '1h' },
       steps: [{ kind: 'sleep', duration: '1m' }],
     });
+    await page.setViewportSize(DESKTOP);
     await page.goto(`/workflows/${id}/edit`);
     await expect(area(page)).toHaveAttribute('data-state', 'ready');
     const root = editor(page);
-    const name = root.getByLabel(BUILDER.nameLabel, { exact: true });
+    const name = root.getByLabel(BUILDER.idLabel, { exact: true });
     await expect(name).toHaveValue(id);
     await expect(name).toHaveJSProperty('readOnly', true);
 
@@ -201,10 +280,10 @@ test.describe('the editor’s builder', () => {
       },
     });
 
-    await root.getByLabel(BUILDER.durationLabel(1)).fill('5m');
+    await root.getByLabel(BUILDER.durationLabel(1)).fill('5');
     await root.getByRole('button', { name: WORKFLOW_COPY.editor.saveAction }).click();
     await expect(root.getByText(WORKFLOW_COPY.stale.title)).toBeVisible();
-    await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('5m');
+    await expect(root.getByLabel(BUILDER.durationLabel(1))).toHaveValue('5');
     await expect(page).toHaveURL(new RegExp(`/workflows/${id}/edit$`));
   });
 });

@@ -87,7 +87,28 @@ function open(
 }
 
 const field = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLInputElement | HTMLSelectElement>(`#${id}`);
+  container.querySelector<HTMLElement>(`#${id}`);
+
+/** The choices under Starts, a segmented control whose segments carry their values. */
+const segments = (container: HTMLElement) => [
+  ...container.querySelectorAll<HTMLButtonElement>(
+    '#workflow-builder-trigger-kind [data-cinder-segment-value]',
+  ),
+];
+const startValues = (container: HTMLElement) =>
+  segments(container).map((segment) => segment.getAttribute('data-cinder-segment-value'));
+/** The start Starts has chosen, by its value. */
+const chosenStart = (container: HTMLElement) =>
+  segments(container)
+    .find((segment) => segment.getAttribute('aria-checked') === 'true')
+    ?.getAttribute('data-cinder-segment-value');
+async function chooseStart(container: HTMLElement, value: string): Promise<void> {
+  const segment = segments(container).find(
+    (candidate) => candidate.getAttribute('data-cinder-segment-value') === value,
+  );
+  expect(segment).toBeTruthy();
+  await fireEvent.click(segment as HTMLButtonElement);
+}
 
 async function builderReady(container: HTMLElement): Promise<void> {
   const tab = await waitFor(() => {
@@ -105,20 +126,15 @@ describe('a contributed trigger kind in the builder', () => {
   test('is offered under Starts beside the built-in triggers, and its schema fields render when chosen', async () => {
     const { container, getByLabelText } = open();
     await builderReady(container);
-    const select = field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement;
 
     await waitFor(() =>
-      expect([...select.options].map((option) => option.value)).toEqual([
-        'schedule',
-        'signal',
-        'inbox:message',
-      ]),
+      expect(startValues(container)).toEqual(['manual', 'schedule', 'signal', 'inbox:message']),
     );
-    expect([...select.options].map((option) => option.textContent?.trim())).toContain(
+    expect(segments(container).map((segment) => segment.textContent?.trim())).toContain(
       WORKFLOW_COPY.builder.contributedTrigger('inbox:message'),
     );
 
-    await fireEvent.change(select, { target: { value: 'inbox:message' } });
+    await chooseStart(container, 'inbox:message');
     await waitFor(() => expect(getByLabelText(/mailbox/i)).toBeTruthy());
     expect(container.querySelector('[data-testid="contributed-trigger"]')?.textContent).toContain(
       'A message arrives in a mailbox.',
@@ -128,9 +144,8 @@ describe('a contributed trigger kind in the builder', () => {
   test('writes the trigger the file holds, the kind and its fields, and saves it', async () => {
     const { container, getByLabelText, getByRole } = open();
     await builderReady(container);
-    const select = field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(3));
-    await fireEvent.change(select, { target: { value: 'inbox:message' } });
+    await waitFor(() => expect(segments(container)).toHaveLength(4));
+    await chooseStart(container, 'inbox:message');
     const mailbox = await waitFor(() => {
       const found = getByLabelText(/mailbox/i);
       expect(found).toBeTruthy();
@@ -155,9 +170,7 @@ describe('a contributed trigger kind in the builder', () => {
     await waitFor(() =>
       expect((getByLabelText(/mailbox/i) as HTMLInputElement).value).toBe('billing'),
     );
-    expect((field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement).value).toBe(
-      'inbox:message',
-    );
+    expect(chosenStart(container)).toBe('inbox:message');
   });
 
   test('leaves a trigger no running plugin contributes as the file has it, and says so', async () => {
@@ -171,8 +184,8 @@ describe('a contributed trigger kind in the builder', () => {
         WORKFLOW_COPY.builder.unavailableTrigger('inbox:message'),
       ),
     );
-    expect((field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement).disabled).toBe(
-      true,
+    expect(field(container, 'workflow-builder-trigger-kind')?.getAttribute('aria-disabled')).toBe(
+      'true',
     );
   });
 
@@ -182,8 +195,7 @@ describe('a contributed trigger kind in the builder', () => {
       throw new Error('down');
     });
     await builderReady(container);
-    const select = field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement;
-    expect([...select.options].map((option) => option.value)).toEqual(['schedule', 'signal']);
+    expect(startValues(container)).toEqual(['manual', 'schedule', 'signal']);
   });
 
   test('saves an untouched choice with the value it shows', async () => {
@@ -200,9 +212,8 @@ describe('a contributed trigger kind in the builder', () => {
       ],
     });
     await builderReady(container);
-    const select = field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement;
-    await waitFor(() => expect(select.options.length).toBe(3));
-    await fireEvent.change(select, { target: { value: 'inbox:message' } });
+    await waitFor(() => expect(segments(container)).toHaveLength(4));
+    await chooseStart(container, 'inbox:message');
     await waitFor(() =>
       expect(container.querySelector('[data-testid="contributed-trigger"]')).toBeTruthy(),
     );
@@ -232,9 +243,7 @@ describe('a contributed trigger kind in the builder', () => {
     expect(container.textContent).not.toContain(
       WORKFLOW_COPY.builder.unavailableTrigger('inbox:message'),
     );
-    expect((field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement).value).toBe(
-      'inbox:message',
-    );
+    expect(chosenStart(container)).toBe('inbox:message');
 
     release({ triggers: [INBOX_MESSAGE], reactions: [] });
     await waitFor(() =>
@@ -257,9 +266,7 @@ describe('a contributed trigger kind in the builder', () => {
     expect(container.textContent).not.toContain(
       WORKFLOW_COPY.builder.unavailableTrigger('inbox:message'),
     );
-    expect((field(container, 'workflow-builder-trigger-kind') as HTMLSelectElement).value).toBe(
-      'inbox:message',
-    );
+    expect(chosenStart(container)).toBe('inbox:message');
 
     stub?.on('bureau.plugins.contributions', () => ({
       triggers: [INBOX_MESSAGE],

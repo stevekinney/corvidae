@@ -185,6 +185,9 @@ export const queryKeys = {
     events: (id: string, cursor?: string) => ['workflows', 'events', id, cursor] as const,
     aggregate: (groupBy: WorkflowAggregateGroupBy, filter: WorkflowListQuery) =>
       ['workflows', 'aggregate', groupBy, filter] as const,
+    /** Which of the agents a workflow builder's steps name need a model while no provider is connected. */
+    builderBlockedAgents: (agentIds: readonly string[]) =>
+      ['workflows', 'builder', 'provider-blocked', agentIds] as const,
   },
   schedules: {
     list: (filter: ScheduleFilter) => ['schedules', 'list', filter] as const,

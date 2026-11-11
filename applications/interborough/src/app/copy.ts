@@ -1388,12 +1388,14 @@ export const WORKFLOW_COPY = {
     emptyDescription: 'Make a workflow, and it appears here to run.',
     emptyAction: 'New workflow',
   },
-  /** `/workflows/new`. */
+  /** `/workflows/new` (board PageWorkflowBuilder, "New workflow"). */
   creator: {
     heading: 'New workflow',
+    description: 'Say when it starts and what it does. The builder and the JSON file stay in sync.',
     textLabel: 'Workflow file',
+    /** The note under the JSON tab's editor (board PageWorkflowBuilder, "JSON tab"). */
     textDescription:
-      'The file’s JSON. Its name is the workflow’s identifier, and it cannot be changed after the first save.',
+      'The file the builder writes; while it is valid JSON it is the same as the builder. It uses the extended workflow file format: timezone and catchUp on a schedule trigger, a manual trigger kind, and a title on the workflow and on each step. Bureau strips title before Weft sees the document. Keys the builder doesn’t show are saved exactly as written.',
     saveAction: 'Create workflow',
     cancelAction: 'Cancel',
     saveFailed: 'The workflow was not created',
@@ -1404,26 +1406,50 @@ export const WORKFLOW_COPY = {
       'This name is reserved: /workflows/new is the page that creates a workflow, so a workflow called new could never be opened. Choose another.',
     taken: (name: string): string =>
       `A workflow called ${name} already exists. Choose another name.`,
-    /** What the editor starts with: a name, a description, a schedule trigger, and one agent step. */
-    templateName: 'my-workflow',
-    templateDescription: 'Says what this workflow is for in a sentence.',
-    templateSpec: '1h',
-    templateMessage: 'Say hello.',
   },
-  /** The step builder of `/workflows/new` and `/workflows/:workflow/edit`. */
+  /**
+   * The builder of `/workflows/new` and `/workflows/:workflow/edit` (board PageWorkflowBuilder):
+   * Title and ID, Description, Starts, the steps as numbered cards, Input and Output, and the
+   * read-back sentence in the footer.
+   */
   builder: {
     shortcutGroup: 'Workflow builder',
     tabsLabel: 'How to edit the workflow',
     builderTab: 'Builder',
     jsonTab: 'JSON',
-    detailsHeading: 'Details',
-    nameLabel: 'Name',
-    nameDescription: 'The workflow’s identifier. It cannot be changed after the first save.',
+    /** The workflow's `title`, the name a person reads. */
+    titleLabel: 'Title (optional)',
+    titlePlaceholder: 'e.g. Morning briefing',
+    /** The workflow's identifier, the file's `name`. */
+    idLabel: 'ID',
+    idPlaceholder: 'e.g. morning-briefing',
+    /** Under the ID while no title makes it (board PageWorkflowBuilder, "Pristine"). */
+    idDescription:
+      'Letters, numbers and dashes. It becomes the file name, and it can’t be changed after you create the workflow. Type a title and the ID is made from it.',
+    /** Under the ID opened with Change; the file path between the two parts is set in monospace. */
+    idChangedDescription: {
+      before: 'It becomes the file name,',
+      after: ', and can’t be changed after you create the workflow.',
+    },
+    /** The file a new workflow's ID names, relative to the home directory. */
+    idFile: (id: string): string => `workflows/${id}.json`,
+    idChange: 'Change',
+    /** Beside the ID a title made: it is fixed once the workflow is created. */
+    idFixedOnCreate: 'Can’t be changed after you create it.',
+    /** Beside an existing workflow's ID. */
+    idFixed: 'Can’t be changed',
+    useDerivedId: 'Use the ID made from the title',
     descriptionLabel: 'Description',
-    descriptionDescription: 'What this workflow is for, in a sentence.',
-    triggerHeading: 'Trigger',
+    descriptionPlaceholder: 'What does this workflow do?',
+    startsHeading: 'Starts',
     triggerKindLabel: 'Starts',
-    triggers: { schedule: 'On a schedule', signal: 'When a signal arrives' },
+    triggers: {
+      manual: 'When you run it',
+      schedule: 'On a schedule',
+      signal: 'When a signal arrives',
+    },
+    /** Under Starts while it is "When you run it". */
+    manualHint: 'A run starts when you press Start run.',
     /** A trigger kind a plugin contributes, named by its `plugin:name`. */
     contributedTrigger: (id: string): string => `When ${id} fires`,
     /** A trigger kind no running plugin contributes (the plugin is off, or the file is wrong). */
@@ -1438,33 +1464,111 @@ export const WORKFLOW_COPY = {
     scheduleLabel: 'Schedule',
     scheduleDescription: 'A duration such as 1h, or a cron expression.',
     signalNameLabel: 'Signal name',
+    /** Under the signal a "When a signal arrives" start waits for (board PageWorkflowBuilder, "Signal start"). */
+    signalNameDescription:
+      'A run starts each time this signal is sent, from an agent or the Start run page.',
     otherTrigger: 'This trigger is edited in the JSON tab.',
     stepsHeading: 'Steps',
-    stepsDescription:
-      'They run in order. An agent step gets the result of the step before it, except after a wait, which passes nothing on.',
-    afterWaitSummary: '(with no result from before the wait)',
+    stepsDescription: 'Steps run in order. Each agent step also gets the previous step’s result.',
     stepsUnreadable:
       'This file’s steps are not a list the builder can read. Fix them in the JSON tab.',
     notAnObject: 'This is not an object',
     otherStepNote: 'The builder cannot edit this step. Change it in the JSON tab.',
-    durationDescription: 'A bare number is milliseconds. Or write 30s, 5m, 1h.',
-    stepKinds: { agent: 'Agent', wait: 'Wait', signal: 'Signal', other: 'Other' },
+    /** What each card is, at its top beside its number. */
+    stepKinds: {
+      agent: 'Ask an agent',
+      person: 'Wait for a person',
+      signal: 'Wait for a signal',
+      wait: 'Wait',
+      other: 'Another kind of step',
+    },
+    /** A step's optional name, its `title`; empty, its placeholder is the step's kind. */
+    stepNameLabel: 'Step name',
+    stepName: (position: number): string => `Name of step ${String(position)}`,
+    agentFieldLabel: 'Agent',
+    agentPlaceholder: 'Choose an agent',
     agentLabel: (position: number): string => `Agent for step ${String(position)}`,
+    /** Under an agent that needs a model while no provider is connected. The workflow still saves. */
+    needsProvider: 'Won’t run until a provider is connected.',
+    messageFieldLabel: 'Message',
+    messagePlaceholder: 'What should the agent do?',
     messageLabel: (position: number): string => `Message for step ${String(position)}`,
-    durationLabel: (position: number): string => `How long step ${String(position)} waits`,
+    /** The one line a "Wait for a person" card shows under its name. */
+    personDescription:
+      'It shows in Reviews while it waits, titled with the step name, and the run reads Waiting on you.',
+    signalFieldLabel: 'Until someone sends',
+    signalPlaceholder: 'Signal name',
+    signalDescription:
+      'The run reads Waiting, with this signal named, until it arrives. It doesn’t show in Reviews.',
     signalLabel: (position: number): string => `Signal step ${String(position)} waits for`,
+    amountFieldLabel: 'For',
+    unitFieldLabel: 'Unit',
+    unitLabel: (position: number): string => `Unit of the wait in step ${String(position)}`,
+    units: { seconds: 'seconds', minutes: 'minutes', hours: 'hours', days: 'days' },
+    /** A wait whose duration For and Unit cannot say, such as a bare number of milliseconds. */
+    durationFieldLabel: 'How long',
+    durationDescription: 'A bare number is milliseconds. Or write 30s, 5m, 1h.',
+    /** The wait's For field, or its How long field when For and Unit cannot say its duration. */
+    durationLabel: (position: number): string => `How long step ${String(position)} waits`,
     moveEarlier: (position: number): string => `Move step ${String(position)} earlier`,
     moveLater: (position: number): string => `Move step ${String(position)} later`,
     remove: (position: number): string => `Remove step ${String(position)}`,
-    addAgent: 'Add an agent step',
-    addWait: 'Add a wait',
-    addSignal: 'Add a signal wait',
-    noSteps: {
-      title: 'No steps yet',
-      description: 'A workflow runs its steps in order. Add the first one.',
+    /** The row of buttons under the steps, one per kind of step. */
+    addLabel: 'Add a step',
+    add: {
+      agent: 'Ask an agent',
+      person: 'Wait for a person',
+      signal: 'Wait for a signal',
+      wait: 'Wait',
     },
-    summaryLabel: 'In plain words',
-    summaryEmpty: 'Nothing is set yet.',
+    noSteps: 'Add at least one step.',
+    inputHeading: 'Input',
+    inputDescription:
+      'What a run asks for when it starts. The Start run page draws its form from this.',
+    inputEmpty: 'No input. A run starts without asking for anything.',
+    outputHeading: 'Output',
+    outputDescription: 'What a finished run hands back.',
+    outputEmpty: 'No output. The run records its steps but hands nothing back.',
+    addField: 'Add a field',
+    schemaUnreadable: 'This schema isn’t a JSON object, so it is edited in the JSON tab.',
+    /**
+     * The footer's sentence that reads the whole workflow back: what starts it, then each step
+     * ("On weekdays at 9:00 AM CST, ask Assistant to summarize what happened yesterday, then wait
+     * 15 minutes.").
+     */
+    readBack: {
+      label: 'In plain words',
+      noSteps: 'Add a step to see what this workflow does.',
+      fillIn: (position: number): string =>
+        `Fill in step ${String(position)} to see what this workflow does.`,
+      manual: 'Run it when you press Start run',
+      signal: (name: string): string => `Each time ${name} is sent`,
+      anySignal: 'Each time a signal is sent',
+      contributed: (id: string): string => `When ${id} fires`,
+      everyDay: (at: string): string => `Every day at ${at}`,
+      weekdays: (at: string): string => `On weekdays at ${at}`,
+      weekends: (at: string): string => `On weekends at ${at}`,
+      weekly: (day: string, at: string): string => `Every ${day} at ${at}`,
+      /** An interval: "Every hour", "Every 15 minutes". */
+      every: (interval: string): string => `Every ${interval}`,
+      onSchedule: (spec: string): string => `On the schedule ${spec}`,
+      anySchedule: 'On a schedule',
+      ask: (agent: string, task: string): string =>
+        task === '' ? `ask ${agent}` : `ask ${agent} to ${task}`,
+      anAgent: 'an agent',
+      person: 'wait for a person to review it',
+      waitForSignal: (signal: string): string => `wait for ${signal}`,
+      anySignalWait: 'wait for a signal',
+      wait: (duration: string): string => `wait ${duration}`,
+      other: 'run a step the builder can’t describe',
+      then: 'then',
+    },
+    /** Below 640 pixels the builder is read-only (board ResponsiveAndDark, row 05n). */
+    phone: {
+      message: 'Open on a larger screen',
+      backToWorkflow: 'Back to the workflow',
+      backToWorkflows: 'Back to Workflows',
+    },
     unreadable: {
       title: 'The builder needs valid JSON',
       description: 'The JSON tab holds text that is not a workflow file yet. Fix it there.',

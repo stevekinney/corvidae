@@ -12,7 +12,7 @@
    * above it, so it can be fixed here; one with no hash has nothing to write against, so it has no
    * editor. A save lands on the workflow's page.
    */
-  import { Alert, Button, CodeLocation, Skeleton } from '@lostgradient/cinder';
+  import { Alert, Button, CodeLocation, PageHeader, Skeleton } from '@lostgradient/cinder';
   import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { onMount, untrack } from 'svelte';
 
@@ -216,7 +216,7 @@
 </script>
 
 <div class="weft-workflow-editor" data-page="workflow-editor" data-condition={condition}>
-  <h1 class="weft-workflow-editor__title">{copy.editor.heading(type)}</h1>
+  <PageHeader title={copy.editor.heading(type)} headingLevel={1} />
   <p class="weft-workflow-editor__path">
     <span>{hostPaths.data?.mode === 'remote' ? copy.remote.fileLabel : copy.fileLabel}</span>
     <CodeLocation class="weft-code-location" file={filePath} data-testid="workflow-file-path" />
@@ -281,23 +281,25 @@
           jsonId="workflow-editor-text"
           jsonLabel={copy.editor.textLabel}
           jsonDescription={copy.editor.textDescription}
+          backHref={workflowTypePath(type)}
           onTextChange={(next) => {
             text = next;
             validation = '';
           }}
-        />
-        <div class="weft-workflow-editor__actions">
-          <Button
-            data-changes
-            type="button"
-            onclick={() => submit()}
-            variant="primary"
-            disabled={save.isPending}>{copy.editor.saveAction}</Button
-          >
-          <Button variant="secondary" disabled={save.isPending} onclick={cancel}
-            >{copy.editor.cancelAction}</Button
-          >
-        </div>
+        >
+          {#snippet actions()}
+            <Button variant="secondary" disabled={save.isPending} onclick={cancel}
+              >{copy.editor.cancelAction}</Button
+            >
+            <Button
+              data-changes
+              type="button"
+              onclick={() => submit()}
+              variant="primary"
+              disabled={save.isPending}>{copy.editor.saveAction}</Button
+            >
+          {/snippet}
+        </WorkflowBuilder>
       </form>
     {/if}
   {/if}
@@ -308,13 +310,6 @@
     display: flex;
     flex-direction: column;
     gap: 16px;
-  }
-
-  .weft-workflow-editor__title {
-    margin: 0;
-    font-size: var(--cinder-text-xl);
-    font-weight: 600;
-    overflow-wrap: anywhere;
   }
 
   .weft-workflow-editor__path {
@@ -332,12 +327,6 @@
     display: flex;
     flex-direction: column;
     gap: 12px;
-  }
-
-  .weft-workflow-editor__actions {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
   }
 
   .weft-workflow-editor__alert-title {

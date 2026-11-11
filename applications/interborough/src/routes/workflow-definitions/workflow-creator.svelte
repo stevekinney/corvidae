@@ -1,20 +1,20 @@
 <script lang="ts">
   /**
-   * `/workflows/new`: a new workflow's file as JSON, in Cinder's editor, seeded with a template of
-   * a name, a description, a schedule trigger, and one agent step, and saved through
-   * `bureau.workflows.create`. The `name` in the text is the workflow's identifier, so it is read
-   * and not sent, as the edit page does not send it either. Text that is not JSON, a name that is
-   * not an identifier or is `new` (which is this page's address), and a document the Bureau
-   * refuses, show the error and save nothing; so does a name that is taken. A save lands on the
-   * new workflow's page.
+   * `/workflows/new` (board PageWorkflowBuilder, "New workflow" and "Pristine"): the builder over a
+   * new workflow's file, saved through `bureau.workflows.create`. On first open nothing is chosen
+   * for the person: it starts when someone runs it, with one empty agent step that names no agent,
+   * no title and no ID, and no Input or Output, so an untouched form cannot create a schedule. The
+   * `name` in the text is the workflow's identifier, so it is read and not sent, as the edit page
+   * does not send it either. Text that is not JSON, a name that is not an identifier or is `new`
+   * (which is this page's address), and a document the Bureau refuses, show the error and save
+   * nothing; so does a name that is taken. A save lands on the new workflow's page.
    */
-  import { Alert, Button } from '@lostgradient/cinder';
+  import { Alert, Button, PageHeader } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
   import { onMount } from 'svelte';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { agentFaultOf } from '../../lib/agent-definitions.ts';
-  import { defaultAgentQuery } from '../../lib/default-agent.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import {
@@ -31,30 +31,20 @@
   const queryClient = useQueryClient();
 
   /**
-   * What the editor starts with: the smallest file the Bureau accepts that does something. Its
-   * step names `agent`, the first agent that can run, or none (`''`) until one is known or when no
-   * agent can run.
+   * What the builder starts with: no ID yet, a `manual` trigger, and one agent step with no agent
+   * and no message, which the person fills in.
    */
-  function templateFor(agent: string): string {
-    return JSON.stringify(
-      {
-        name: creator.templateName,
-        description: creator.templateDescription,
-        trigger: { kind: 'schedule', spec: creator.templateSpec },
-        steps: [
-          {
-            kind: 'activity',
-            handler: 'agent',
-            input: { agent, message: creator.templateMessage },
-          },
-        ],
-      },
-      null,
-      2,
-    );
-  }
+  const TEMPLATE = JSON.stringify(
+    {
+      name: '',
+      trigger: { kind: 'manual' },
+      steps: [{ kind: 'activity', handler: 'agent', input: { agent: '', message: '' } }],
+    },
+    null,
+    2,
+  );
 
-  let text = $state(templateFor(''));
+  let text = $state(TEMPLATE);
   /** Why the text cannot be saved, or the Bureau's words for a document it refused. */
   let validation = $state('');
   let failure = $state<{ readonly title: string; readonly message: string } | null>(null);
@@ -120,23 +110,6 @@
     save.mutate({ id: parsed.id, definition: parsed.definition });
   }
 
-  // The step names the first agent that can run once the host says which, unless the person has
-  // already changed the text.
-  onMount(() => {
-    let cancelled = false;
-    void (async () => {
-      try {
-        const agent = await queryClient.fetchQuery(defaultAgentQuery());
-        if (!cancelled && agent !== null && text === templateFor('')) text = templateFor(agent);
-      } catch {
-        // The host did not say, so the step names no agent and the person chooses one.
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  });
-
   // ⌘Enter saves from anywhere on the page, a field included (`lib/shortcuts.ts`).
   onMount(() =>
     shortcuts.register({
@@ -155,7 +128,7 @@
 </script>
 
 <div class="ib-workflow" data-page="workflow-creator">
-  <h1 class="ib-workflows__title">{creator.heading}</h1>
+  <PageHeader title={creator.heading} headingLevel={1} description={creator.description} />
 
   {#if failure !== null}
     <Alert variant="danger" dismissible onDismiss={() => (failure = null)}>
@@ -172,23 +145,25 @@
       jsonId="workflow-creator-text"
       jsonLabel={creator.textLabel}
       jsonDescription={creator.textDescription}
+      backHref="/workflows"
       onTextChange={(next) => {
         text = next;
         validation = '';
       }}
-    />
-    <div class="ib-workflow__actions">
-      <Button
-        data-changes
-        type="button"
-        onclick={() => submit()}
-        variant="primary"
-        size="sm"
-        disabled={save.isPending}>{creator.saveAction}</Button
-      >
-      <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
-        >{creator.cancelAction}</Button
-      >
-    </div>
+    >
+      {#snippet actions()}
+        <Button variant="secondary" size="sm" disabled={save.isPending} onclick={cancel}
+          >{creator.cancelAction}</Button
+        >
+        <Button
+          data-changes
+          type="button"
+          onclick={() => submit()}
+          variant="primary"
+          size="sm"
+          disabled={save.isPending}>{creator.saveAction}</Button
+        >
+      {/snippet}
+    </WorkflowBuilder>
   </form>
 </div>

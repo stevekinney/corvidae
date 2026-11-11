@@ -292,15 +292,17 @@ test.describe('a new workflow', () => {
 
       const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
       const template = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
-      expect(template).toMatchObject({
-        name: WORKFLOW_COPY.creator.templateName,
-        trigger: { kind: 'schedule' },
-        steps: [{ kind: 'activity', handler: 'agent' }],
+      // Nothing is chosen for the person: no ID, a manual start, and one empty agent step.
+      expect(template).toEqual({
+        name: '',
+        trigger: { kind: 'manual' },
+        steps: [{ kind: 'activity', handler: 'agent', input: { agent: '', message: '' } }],
       });
       await checkA11y(`the new-workflow editor at ${width}px`);
 
       template['name'] = 'e2e-brand-new';
       template['description'] = 'Made from the template.';
+      template['steps'] = [{ kind: 'sleep', duration: '1m' }];
       await editor.fill(JSON.stringify(template, null, 2));
       await root.getByRole('button', { name: WORKFLOW_COPY.creator.saveAction }).click();
 
@@ -329,6 +331,8 @@ test.describe('a new workflow', () => {
     await openJsonTab(root);
     const editor = await jsonEditor(root, WORKFLOW_COPY.creator.textLabel);
     const template = JSON.parse(await jsonEditorSource(editor)) as Record<string, unknown>;
+    // A step the Bureau accepts, so the only thing wrong is the name.
+    template['steps'] = [{ kind: 'sleep', duration: '1m' }];
 
     template['name'] = SEEDED_WORKFLOWS.digest;
     await editor.fill(JSON.stringify(template));
