@@ -1,5 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { ATTENTION_INSET, findAttentionTarget, revealTopShift } from './attention-reveal.ts';
+import {
+  ATTENTION_INSET,
+  findAttentionTarget,
+  focusIsInside,
+  revealTopShift,
+} from './attention-reveal.ts';
 
 function root(html: string): HTMLElement {
   const element = document.createElement('div');
@@ -82,5 +87,24 @@ describe('revealTopShift', () => {
         ATTENTION_INSET,
       ),
     ).toBe(0);
+  });
+});
+
+describe('focusIsInside', () => {
+  const card = root('<button id="approve">Approve</button>');
+
+  test('holds the item still while focus is on a control inside it', () => {
+    expect(focusIsInside(card, card.querySelector('#approve'))).toBe(true);
+  });
+
+  // Interborough focuses the pending card itself when the chat opens; that must not stop the lift,
+  // or the phone opens on Deny and Approve with the question above the edge.
+  test('lifts an item that is itself focused', () => {
+    expect(focusIsInside(card, card)).toBe(false);
+  });
+
+  test('lifts when focus is elsewhere or nowhere', () => {
+    expect(focusIsInside(card, document.body)).toBe(false);
+    expect(focusIsInside(card, null)).toBe(false);
   });
 });

@@ -45,7 +45,12 @@
   import { ChatMessage, ChatDateSeparator } from '../message/index.ts';
   import { ChatInput } from '../input/index.ts';
   import { DEFAULT_SCROLL_CONFIGURATION, isAtBottom } from './scroll-utilities.ts';
-  import { ATTENTION_INSET, findAttentionTarget, revealTopShift } from './attention-reveal.ts';
+  import {
+    ATTENTION_INSET,
+    findAttentionTarget,
+    focusIsInside,
+    revealTopShift,
+  } from './attention-reveal.ts';
   import { useChatScrollState } from './use-chat-scroll-state.svelte.ts';
   import { useChatUnreadState } from './use-chat-unread-state.svelte.ts';
   import { useChatKeyboardNav } from './use-chat-keyboard-nav.svelte.ts';
@@ -1422,7 +1427,7 @@
         released = false;
       }
       if (target === null || released) return;
-      if (target.contains(scroller.ownerDocument.activeElement)) return;
+      if (focusIsInside(target, scroller.ownerDocument.activeElement)) return;
       const pinned = isAtBottom(
         {
           scrollTop: scroller.scrollTop,

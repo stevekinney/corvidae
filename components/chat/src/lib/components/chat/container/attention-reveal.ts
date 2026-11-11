@@ -32,6 +32,15 @@ export function findAttentionTarget(root: ParentNode): HTMLElement | null {
   return null;
 }
 
+/**
+ * Whether focus sits on a control inside `target`, such as its Approve button, so lifting the item
+ * would scroll the control a keyboard user is on out of view. Focus on the item itself (a card a
+ * host focuses when it opens, or that Review approval focuses) is not: its top is what to show.
+ */
+export function focusIsInside(target: Element, active: Element | null): boolean {
+  return active !== null && active !== target && target.contains(active);
+}
+
 /** Where the viewport and the item are, from their client rectangles, in CSS pixels. */
 export interface AttentionGeometry {
   readonly viewportTop: number;
