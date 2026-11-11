@@ -1,17 +1,25 @@
 /**
  * COR-2376 — a seam of `constructBureau` imports only leaf modules and `./core.ts`, never
- * `create-bureau.ts` and never another seam, so the seams cannot form an import cycle. The
- * `import/no-cycle` lint does not count type-only imports, so this guard reads every import form,
- * `import type` included.
+ * `create-bureau.ts` (directly or through the package barrel, which re-exports it) and never
+ * another seam, so the seams cannot form an import cycle. The `import/no-cycle` lint does not count
+ * type-only imports, so this guard reads every import form, `import type` included, in every file
+ * under `bureau-seams/`, subdirectories included.
  */
 import { readdir } from 'node:fs/promises';
-import { basename, dirname, join, resolve } from 'node:path';
+import { dirname, join, resolve, sep } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 import ts from 'typescript';
 
 const SEAMS_DIRECTORY = import.meta.dir;
-const CREATE_BUREAU = resolve(SEAMS_DIRECTORY, '..', 'create-bureau');
+const SOURCE_DIRECTORY = dirname(SEAMS_DIRECTORY);
+const CORE = join(SEAMS_DIRECTORY, 'core');
+/** `create-bureau.ts`, and the barrel (`src/index.ts`, also named by `'..'`) that re-exports it. */
+const COMPOSITION_MODULES = new Set([
+  join(SOURCE_DIRECTORY, 'create-bureau'),
+  join(SOURCE_DIRECTORY, 'index'),
+  SOURCE_DIRECTORY,
+]);
 
 /** Every module specifier `sourceText` names: static, type-only, re-export, and dynamic. */
 function moduleSpecifiers(sourceText: string): string[] {
@@ -44,35 +52,68 @@ function moduleSpecifiers(sourceText: string): string[] {
   return found;
 }
 
-/** The specifiers in `sourceText` that name `create-bureau.ts` or a seam other than `./core.ts`. */
-function forbiddenImports(sourceText: string): string[] {
+/**
+ * The specifiers in `sourceText`, a file in `directory`, that name `create-bureau.ts`, the barrel,
+ * or anything under `bureau-seams/` other than `core.ts`.
+ */
+function forbiddenImports(sourceText: string, directory = SEAMS_DIRECTORY): string[] {
   return moduleSpecifiers(sourceText).filter((specifier) => {
     if (!specifier.startsWith('.')) return false;
-    const target = resolve(SEAMS_DIRECTORY, specifier).replace(/\.ts$/, '');
-    if (target === CREATE_BUREAU) return true;
-    return dirname(target) === SEAMS_DIRECTORY && basename(target) !== 'core';
+    const target = resolve(directory, specifier).replace(/\.(ts|js)$/, '');
+    if (COMPOSITION_MODULES.has(target)) return true;
+    const inSeams = target === SEAMS_DIRECTORY || target.startsWith(`${SEAMS_DIRECTORY}${sep}`);
+    return inSeams && target !== CORE;
   });
 }
 
+/** Every non-test `.ts` file under `bureau-seams/`, as a path relative to it. */
+async function seamFiles(): Promise<string[]> {
+  const entries = await readdir(SEAMS_DIRECTORY, { recursive: true });
+  return entries.filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts')).toSorted();
+}
+
 describe('forbiddenImports', () => {
-  it('reports create-bureau and another seam in every import form', () => {
+  it('reports create-bureau, the barrel and another seam in every import form', () => {
     expect(
       forbiddenImports(`
         import { createBureau } from '../create-bureau';
         import type { Bureau } from '../create-bureau.ts';
+        import { createBureau as viaJs } from '../create-bureau.js';
+        import { createBureau as viaBarrel } from '..';
+        import type { BureauOptions } from '../index';
         import { createOther } from './other-seam';
         export { thing } from './other-seam.ts';
         type Lazy = import('./other-seam').Other;
         const later = () => import('../create-bureau');
+        import { nested } from './nested/seam';
+        import { all } from '.';
       `),
     ).toEqual([
       '../create-bureau',
       '../create-bureau.ts',
+      '../create-bureau.js',
+      '..',
+      '../index',
       './other-seam',
       './other-seam.ts',
       './other-seam',
       '../create-bureau',
+      './nested/seam',
+      '.',
     ]);
+  });
+
+  it('resolves a file in a subdirectory from its own directory', () => {
+    expect(
+      forbiddenImports(
+        `
+          import type { BureauCore } from '../core';
+          import { createBureau } from '../../create-bureau';
+          import { createOther } from '../other-seam';
+        `,
+        join(SEAMS_DIRECTORY, 'nested'),
+      ),
+    ).toEqual(['../../create-bureau', '../other-seam']);
   });
 
   it('allows the core and leaf modules', () => {
@@ -89,15 +130,20 @@ describe('forbiddenImports', () => {
 });
 
 describe('bureau-seams', () => {
-  it('imports neither create-bureau.ts nor another seam', async () => {
-    const entries = await readdir(SEAMS_DIRECTORY);
-    const files = entries.filter((name) => name.endsWith('.ts') && !name.endsWith('.test.ts'));
+  it('imports neither create-bureau.ts, the barrel, nor another seam', async () => {
+    const files = await seamFiles();
     expect(files).toContain('core.ts');
 
     const found: string[] = [];
-    for (const file of files.toSorted()) {
-      const text = await Bun.file(join(SEAMS_DIRECTORY, file)).text();
-      found.push(...forbiddenImports(text).map((specifier) => `${file}: ${specifier}`));
+    for (const file of files) {
+      const path = join(SEAMS_DIRECTORY, file);
+      const text = await Bun.file(path).text();
+      found.push(
+        ...forbiddenImports(text, dirname(path)).map(
+          (specifier) =>
+            `${file}: ${specifier} (import from a leaf module or ./core.ts instead; a seam reaches another seam only through \`peers\`)`,
+        ),
+      );
     }
 
     expect(found).toEqual([]);

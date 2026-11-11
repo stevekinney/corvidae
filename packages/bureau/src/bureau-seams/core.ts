@@ -109,6 +109,7 @@ import type { createWorkflowReviewWaits } from '../workflow-review-waits';
 
 /** How many times an append retries after losing a race to another process. */
 export const STEERING_APPEND_ATTEMPTS = 25;
+/** The session outbox namespace a review decision's audit record is attached under. */
 export const REVIEW_AUDIT_OUTBOX_NAMESPACE = 'audit-record';
 
 /**

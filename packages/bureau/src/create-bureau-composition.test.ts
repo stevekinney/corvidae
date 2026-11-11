@@ -143,11 +143,11 @@ describe('namespaceMethodDefinitions', () => {
 });
 
 /**
- * `create-bureau.ts` and every seam its closure moved into `bureau-seams/` (COR-2376), so code
- * that leaves the file for a seam stays under this guard.
+ * `create-bureau.ts` and every seam its closure moved into `bureau-seams/` (COR-2376),
+ * subdirectories included, so code that leaves the file for a seam stays under this guard.
  */
 async function compositionFiles(): Promise<string[]> {
-  const seams = await readdir(join(import.meta.dir, 'bureau-seams'));
+  const seams = await readdir(join(import.meta.dir, 'bureau-seams'), { recursive: true });
   return [
     'create-bureau.ts',
     ...seams
