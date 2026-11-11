@@ -20,6 +20,18 @@
       "renderedSourceSha": "246aaa3c12d03d54b00aa0fa6cd970ee260537c3",
       "suiteExitCode": 0
     },
+    "checkbox": {
+      "renderedSourceSha": "9a4e59d9f2fc9914fa8a892de0b48b68a5185d89",
+      "suiteExitCode": 0
+    },
+    "drawer": {
+      "renderedSourceSha": "9a4e59d9f2fc9914fa8a892de0b48b68a5185d89",
+      "suiteExitCode": 0
+    },
+    "multi-select": {
+      "renderedSourceSha": "9a4e59d9f2fc9914fa8a892de0b48b68a5185d89",
+      "suiteExitCode": 0
+    },
     "permission-matrix": {
       "renderedSourceSha": "75d559aeb1fa224c727980f7aeb7fc656461312e",
       "suiteExitCode": 1
@@ -27,6 +39,10 @@
     "schedule-builder": {
       "renderedSourceSha": "3d83c8730555a151f7268fdc8e6951236cc4f33b",
       "suiteExitCode": 1
+    },
+    "stacked-list-item": {
+      "renderedSourceSha": "9a4e59d9f2fc9914fa8a892de0b48b68a5185d89",
+      "suiteExitCode": 0
     },
     "timeline": {
       "renderedSourceSha": "75d559aeb1fa224c727980f7aeb7fc656461312e",
