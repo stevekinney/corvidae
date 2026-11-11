@@ -3,7 +3,8 @@
  * A goal runs a catalog agent on a prompt until a validator the Bureau was configured with passes,
  * within bounds. A goal belongs to the principal that created it, and its view leaves out the
  * prompt and instructions: it is the goal's control-plane state, where it stands and what it has
- * used.
+ * used. It does name the goal (`identity`) and its check (`validator`), which a list titles a row
+ * with and shows on line two.
  *
  * `cancel` names the revision of the goal the caller read. A goal's revision advances on every write
  * to its record, a controller transition included, so a goal that moved since is refused instead of
@@ -49,6 +50,10 @@ const goalSchema = z.object({
   goalRunId: z.string(),
   owner: z.string(),
   agentName: z.string(),
+  /** The goal's name and version, as it was created: what titles it in a list. */
+  identity: z.object({ name: z.string(), version: z.string() }),
+  /** The check the goal runs, by the exact name and version it holds now. */
+  validator: z.object({ name: z.string(), version: z.string() }),
   status: z.enum(GOAL_STATUSES),
   terminalReason: z.string().nullable(),
   revision: z.number().int(),

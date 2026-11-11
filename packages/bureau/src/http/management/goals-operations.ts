@@ -15,7 +15,9 @@
  *
  * What a goal's views leave out: its prompt and instructions (the objective's text, like a task's
  * message), each attempt's validator feedback and evidence, and its audit log. A view is the
- * goal's control-plane state: where it stands, what its attempts were, what it has used.
+ * goal's control-plane state: where it stands, what its attempts were, what it has used. It does
+ * name the goal (`identity`) and the check it runs (`validator`), the pinned name and version each
+ * was created with, so a list can title a goal and say what it is trying to make true (COR-2017).
  *
  * `fresh-from-artifact` is not offered over the management plane. That policy seeds a retry from a
  * validated handoff artifact the Bureau's own `resolveFreshAttemptSource` must vouch for, and a
@@ -75,6 +77,10 @@ const goalViewSchema = z.object({
   goalRunId: z.string(),
   owner: z.string(),
   agentName: z.string(),
+  /** The goal's name and version, as it was created with them: what titles it in a list. */
+  identity: z.object({ name: z.string(), version: z.string() }),
+  /** The check the goal runs, by the exact name and version it was created or last changed with. */
+  validator: z.object({ name: z.string(), version: z.string() }),
   status: goalStatus,
   terminalReason: z.string().nullable(),
   /** Advances on every write to the goal's record: pass it back as `expectedRevision`. */
@@ -115,6 +121,8 @@ function viewOf(goal: GoalState): GoalView {
     goalRunId: goal.goalRunId,
     owner: ownerOrLocal(goal.principal),
     agentName: goal.objective.agentName,
+    identity: { name: goal.identity.name, version: goal.identity.version },
+    validator: { name: goal.validator.name, version: goal.validator.version },
     status: goal.status,
     terminalReason: goal.terminalReason ?? null,
     revision: goal.revision,

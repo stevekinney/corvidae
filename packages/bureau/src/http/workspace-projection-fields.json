@@ -1007,6 +1007,9 @@
     "$.goal.closedAt",
     "$.goal.createdAt",
     "$.goal.goalRunId",
+    "$.goal.identity",
+    "$.goal.identity.name",
+    "$.goal.identity.version",
     "$.goal.owner",
     "$.goal.revision",
     "$.goal.status",
@@ -1018,6 +1021,9 @@
     "$.goal.usage.durationMs",
     "$.goal.usage.steps",
     "$.goal.usage.tokens",
+    "$.goal.validator",
+    "$.goal.validator.name",
+    "$.goal.validator.version",
     "$.outcome"
   ],
   "output:bureau.goals.get": [
@@ -1047,6 +1053,9 @@
     "$.closedAt",
     "$.createdAt",
     "$.goalRunId",
+    "$.identity",
+    "$.identity.name",
+    "$.identity.version",
     "$.owner",
     "$.revision",
     "$.status",
@@ -1057,7 +1066,10 @@
     "$.usage.costUsd",
     "$.usage.durationMs",
     "$.usage.steps",
-    "$.usage.tokens"
+    "$.usage.tokens",
+    "$.validator",
+    "$.validator.name",
+    "$.validator.version"
   ],
   "output:bureau.goals.list": [
     "$.goals",
@@ -1087,6 +1099,9 @@
     "$.goals[].closedAt",
     "$.goals[].createdAt",
     "$.goals[].goalRunId",
+    "$.goals[].identity",
+    "$.goals[].identity.name",
+    "$.goals[].identity.version",
     "$.goals[].owner",
     "$.goals[].revision",
     "$.goals[].status",
@@ -1098,6 +1113,9 @@
     "$.goals[].usage.durationMs",
     "$.goals[].usage.steps",
     "$.goals[].usage.tokens",
+    "$.goals[].validator",
+    "$.goals[].validator.name",
+    "$.goals[].validator.version",
     "$.nextOffset"
   ],
   "output:bureau.goals.update": ["$.goalRunId", "$.outcome", "$.revision", "$.status"],

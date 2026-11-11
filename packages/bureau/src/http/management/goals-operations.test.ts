@@ -185,6 +185,20 @@ describe('each goal operation, as the owner', () => {
     expect(idOf(bob)).not.toBe(alice);
   });
 
+  it('names the goal and its check in every view, so a list can title it', async () => {
+    const opened = await serve();
+    const gAlice = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
+    const named = {
+      identity: NEW_GOAL.identity,
+      validator: { name: CHECK.name, version: CHECK.version },
+    };
+
+    const read = await rpc(opened.handler, 'bureau.goals.get', { goalRunId: gAlice }, 'alice-key');
+    expect(read.result).toMatchObject(named);
+    const listed = await rpc(opened.handler, 'bureau.goals.list', {}, 'alice-key');
+    expect((listed.result!['goals'] as Array<Record<string, unknown>>)[0]).toMatchObject(named);
+  });
+
   it('reads and lists it, and leaves its prompt and instructions out of every view', async () => {
     const opened = await serve();
     const gAlice = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));

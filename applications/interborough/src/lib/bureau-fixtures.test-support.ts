@@ -113,6 +113,8 @@ export function goalFixture(id: string, overrides: Partial<Goal> = {}): Goal {
     goalRunId: id,
     owner: 'anonymous:local',
     agentName: 'assistant',
+    identity: { name: `Goal ${id}`, version: '1' },
+    validator: { name: 'reply-says-hello', version: '1' },
     status: 'running',
     terminalReason: null,
     revision: 2,
