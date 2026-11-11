@@ -48,10 +48,61 @@ const APPROVAL = {
   message: 'Refund order-1001?',
 };
 
+/**
+ * The thread as the Bureau opens an attach with it: the message the person sent and, for an
+ * approval, the call and its result waiting on a person, in the shape the Bureau writes. Try it
+ * joins the run the Bureau started, so its first stream is an attach, and an attach always opens
+ * with the thread.
+ */
+function thread(withCall: boolean): unknown {
+  return {
+    type: 'MESSAGES_SNAPSHOT',
+    messages: [
+      { id: 'user-1', role: 'user', content: 'Refund it' },
+      ...(withCall
+        ? [
+            {
+              id: 'step-1',
+              role: 'assistant',
+              toolCalls: [
+                {
+                  id: 'call-refund',
+                  type: 'function',
+                  function: { name: 'issue-refund', arguments: '{"cents":4200}' },
+                },
+              ],
+            },
+            {
+              id: 'result-1',
+              role: 'tool',
+              toolCallId: 'call-refund',
+              content: 'requires approval',
+              metadata: {
+                'conversationalist:toolResult': {
+                  outcome: 'action_required',
+                  action: {
+                    type: 'approval',
+                    message: APPROVAL.message,
+                    risk: 'high',
+                    operation: { argsPreview: { cents: 4200 }, kind: 'other' },
+                    policyVersion: 'policy:1',
+                    idempotencyKey: APPROVAL.id,
+                  },
+                  content: 'requires approval',
+                },
+              },
+            },
+          ]
+        : []),
+    ],
+  };
+}
+
 /** The events of the tried run, parked on `interrupt`; an approval comes with the call it is for. */
 function parkedRun(interrupt: unknown, withCall: boolean): readonly unknown[] {
   return [
     { type: 'RUN_STARTED', threadId: TRIED.contextId, runId: 'run-1' },
+    thread(withCall),
     ...(withCall
       ? [
           { type: 'TOOL_CALL_START', toolCallId: 'call-refund', toolCallName: 'issue-refund' },
@@ -178,12 +229,14 @@ describe('Try it, parked on an approval', () => {
     const view = mount();
     await startChat(view);
 
+    // Approve is offered once the run is parked, not while it is still being read.
+    await view.findByRole('button', { name: /^Approve\b/ });
     const approval = await view.findByTestId('agent-try-approval');
     expect(approval.textContent).toContain(copy.try.waitingOn('Issue refund'));
     expect(approval.textContent).toContain(copy.try.testChat);
     // The tool's own question, which differs from the reason its result row carries.
     expect(approval.textContent).toContain('Refund order-1001?');
-    expect(within(approval).getByRole('button', { name: /^Approve/ })).not.toBeNull();
+    expect(within(approval).getByRole('button', { name: /^Approve\b/ })).not.toBeNull();
     expect(within(approval).getByRole('button', { name: /^Deny/ })).not.toBeNull();
     // The trial goes on, and nothing is deleted.
     expect(view.getByRole('region', { name: copy.try.chatLabel })).not.toBeNull();
@@ -196,8 +249,11 @@ describe('Try it, parked on an approval', () => {
     const view = mount();
     await startChat(view);
 
-    const approval = await view.findByTestId('agent-try-approval');
-    await fireEvent.click(within(approval).getByRole('button', { name: /^Approve/ }));
+    // The approval is held while the run is still being read, and Approve is offered once it is
+    // parked; `Approving…` is the held button.
+    const approve = await view.findByRole('button', { name: /^Approve\b/ });
+    expect(approve.closest('[data-testid="agent-try-approval"]')).not.toBeNull();
+    await fireEvent.click(approve);
 
     await waitFor(() => expect(resumes).toHaveLength(1));
     const resume = JSON.stringify(resumes[0]?.resume);

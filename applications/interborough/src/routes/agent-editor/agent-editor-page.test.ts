@@ -1087,9 +1087,13 @@ describe('the Save in the sticky bar', () => {
         },
       ],
     });
-    const { findByTestId } = mountEditor('researcher');
-    const status = await findByTestId('agent-save-status');
-    await waitFor(() => expect(status.textContent?.trim()).toBe(AGENT_EDITOR_COPY.edit.saved(4)));
+    const { getByTestId } = mountEditor('researcher');
+    // The loading bar has its own status line, which the form's replaces, so read it each time.
+    await waitFor(() =>
+      expect(getByTestId('agent-save-status').textContent?.trim()).toBe(
+        AGENT_EDITOR_COPY.edit.saved(4),
+      ),
+    );
   });
 
   test('registers ⌘Enter, which saves from a field, and removes it when the page goes', async () => {

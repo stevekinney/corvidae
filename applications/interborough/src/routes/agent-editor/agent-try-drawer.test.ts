@@ -85,8 +85,9 @@ function bureau(
   return stub;
 }
 
-function mount(id: string | undefined = 'researcher') {
-  return render(Harness, { props: id === undefined ? {} : { id } } as never);
+/** Mounts the editor for the agent `id`, or for a new agent when `id` is `null`. */
+function mount(id: string | null = 'researcher') {
+  return render(Harness, { props: id === null ? {} : { id } } as never);
 }
 
 type View = ReturnType<typeof mount>;
@@ -137,7 +138,7 @@ describe('Try it', () => {
 
   test('tries a new agent before it is saved', async () => {
     const calls = bureau();
-    const view = mount(undefined);
+    const view = mount(null);
     await view.findByRole('textbox', { name: /^Name/ });
     await startChat(view);
     await view.findByRole('region', { name: copy.try.chatLabel });
@@ -298,9 +299,10 @@ describe('Try it', () => {
       }),
     });
     const blocked = mount();
+    // Chat holds an off composer read-only rather than disabled.
     await waitFor(() =>
       expect(
-        (blocked.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).disabled,
+        (blocked.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).readOnly,
       ).toBe(true),
     );
   });
@@ -456,7 +458,7 @@ describe('Try it', () => {
 describe('Try it, where it is drawn', () => {
   test('at desktop width it is a panel always open beside the form, titled Try it, with what it uses and Reset (row 41n)', async () => {
     bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
-    const view = mount(undefined);
+    const view = mount(null);
     const panel = await view.findByTestId('agent-try-panel');
 
     expect(within(panel).getByRole('heading', { name: copy.try.title })).not.toBeNull();
@@ -474,7 +476,7 @@ describe('Try it, where it is drawn', () => {
 
   test('says the provider is connected beside what it uses, with no separator glyph (row 43g)', async () => {
     bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
-    const view = mount(undefined);
+    const view = mount(null);
 
     const provider = await view.findByTestId('agent-try-provider');
     expect(provider.textContent?.trim()).toBe(copy.try.providerConnected);
@@ -485,7 +487,7 @@ describe('Try it, where it is drawn', () => {
 
   test('the new agent form says it is not saved yet in its sticky bar (rows 43w, 44b)', async () => {
     bureau();
-    const view = mount(undefined);
+    const view = mount(null);
     await view.findByRole('textbox', { name: /^Name/ });
     expect(view.getByTestId('agent-save-status').textContent?.trim()).toBe(copy.try.notSavedYet);
   });
@@ -493,7 +495,7 @@ describe('Try it, where it is drawn', () => {
   test('on a tablet it is a Try it button beside the title that opens a 360px right sheet (rows 43t, 44a)', async () => {
     viewport('tablet');
     bureau();
-    const view = mount(undefined);
+    const view = mount(null);
 
     const button = await view.findByRole('button', { name: copy.try.action });
     expect(view.queryByTestId('agent-try-panel')).toBeNull();
@@ -515,7 +517,7 @@ describe('Try it, where it is drawn', () => {
   test('on a phone the sheet rises from the bottom, and the subtitle drops the Try it clause (rows 43u, 43x)', async () => {
     viewport('phone');
     bureau();
-    const view = mount(undefined);
+    const view = mount(null);
 
     const subtitle = await view.findByTestId('agent-new-subtitle');
     expect(subtitle.textContent?.trim()).toBe(copy.try.subtitlePhone);

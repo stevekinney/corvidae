@@ -106,6 +106,18 @@
   }
 
   /** How risky a tool is, by the tier it declares. */
+  /**
+   * Holds the approval's buttons while an answer is on its way, and while the run is still
+   * streaming, as Chat does: the chat's controller refuses an answer while a turn reads the run.
+   */
+  function resolvingOf(
+    deciding: 'approve' | 'deny' | undefined,
+    streaming: boolean,
+  ): { resolving?: 'approve' | 'deny' } {
+    if (deciding !== undefined) return { resolving: deciding };
+    return streaming ? { resolving: 'approve' } : {};
+  }
+
   function riskOf(name: string): 'low' | 'medium' | 'high' {
     const tier = tools.get(name)?.tier;
     return tier === 'read-only' ? 'low' : tier === 'dangerous' ? 'high' : 'medium';
@@ -271,7 +283,7 @@
                   policyVersion="try"
                   idempotencyKey={call.id}
                   state="pending"
-                  {...trial.deciding === undefined ? {} : { resolving: trial.deciding }}
+                  {...resolvingOf(trial.deciding, chat.streaming)}
                   {...connection.unreachable
                     ? { disabledReason: CHAT_COPY.approval.unreachable }
                     : {}}
