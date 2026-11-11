@@ -25,6 +25,7 @@ import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
+import { BureauShuttingDownError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { digestCommandPayload } from './command-ledger';
 import {
@@ -548,6 +549,21 @@ describe('a regeneration refused before the model is asked', () => {
     expect(generations).toBe(1);
     expect(charges).toEqual([]);
     expect(await bureau.contexts.get(run.contextId)).toEqual(before);
+  });
+
+  it('refuses once the Bureau is shutting down, and asks no model', async () => {
+    const script = newScript();
+    const bureau = await openBureau(script);
+    await craft(bureau);
+    await bureau.shutdown();
+
+    const error = await regenerate(bureau, CRAFTED, ANSWER).then(
+      () => undefined,
+      (thrown: unknown) => thrown,
+    );
+
+    expect(error).toBeInstanceOf(BureauShuttingDownError);
+    expect(script.regenerations).toBe(0);
   });
 
   it('answers a context it does not hold as not found', async () => {
