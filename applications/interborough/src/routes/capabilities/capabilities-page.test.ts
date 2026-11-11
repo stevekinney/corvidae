@@ -127,12 +127,13 @@ describe('the Tools tab', () => {
     landAt('/capabilities');
     const { container, findByText } = mount();
 
-    await findByText('read-file');
+    await findByText('Read file');
     const sourceOf = (name: string) =>
       container
         .querySelector(`[data-tool-row="${name}"] [data-testid="tool-row-source"]`)
         ?.textContent?.trim();
-    expect(sourceOf('gemini:search')).toBe('Plugin gemini');
+    // The row says where a tool comes from by the name of its source: the plugin, Built in, or the server.
+    expect(sourceOf('gemini:search')).toBe('Gemini');
     expect(sourceOf('run-shell')).toBe('Built in');
     expect(sourceOf('read-file')).toBe('MCP server');
 
@@ -149,14 +150,29 @@ describe('the Tools tab', () => {
     landAt('/capabilities');
     const { container, findByText, getByRole } = mount();
 
-    await findByText('read-file');
-    expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe('3');
+    await findByText('Read file');
+    // The list shows no stray count (row 31c): the number is in the tab.
+    expect(container.querySelector('[data-testid="tools-count"]')).toBeNull();
     const row = (name: string) => container.querySelector(`[data-tool-row="${name}"]`);
-    expect(row('read-file')?.textContent).toContain('Reads only');
-    expect(row('read-file')?.textContent).toContain('Reads one file');
+    const part = (name: string, testId: string) =>
+      row(name)?.querySelector(`[data-testid="${testId}"]`)?.textContent?.trim();
+    // Two lines: the name for a person and the muted risk word, then the source and the sentence.
+    expect(part('read-file', 'tool-row-name')).toBe('Read file');
+    expect(part('read-file', 'tool-row-risk')).toBe('Reads');
+    expect(part('read-file', 'tool-row-source')).toBe('MCP server');
+    expect(part('read-file', 'tool-row-summary')).toBe('Reads one file');
     // A tool that declares no tier is not classified, which is never read as read-only.
-    expect(row('run-shell')?.textContent).toContain('Not classified');
-    expect(row('run-shell')?.textContent).toContain('Runs a shell command.');
+    expect(part('run-shell', 'tool-row-risk')).toBe('Not classified');
+    expect(part('run-shell', 'tool-row-summary')).toBe('Runs a shell command.');
+    expect(part('gemini:search', 'tool-row-name')).toBe('Search');
+    // Source, then sentence, in that order on the second line.
+    const line = row('read-file')?.querySelector('.ib-capabilities__row-line');
+    expect([...(line?.children ?? [])].map((child) => child.getAttribute('data-testid'))).toEqual([
+      'tool-row-source',
+      'tool-row-summary',
+    ]);
+    // The risk word is plain muted text: no badge, so Dangerous is never red.
+    expect(row('read-file')?.querySelector('[data-cinder-variant]')).toBeNull();
 
     await fireEvent.click(row('read-file')!);
     await waitFor(() =>
@@ -227,7 +243,7 @@ describe('the Tools tab', () => {
     restore = serve().restore;
     landAt('/capabilities');
     const { container, findByText, getByRole, findByRole } = mount();
-    await findByText('read-file');
+    await findByText('Read file');
 
     await fireEvent.input(getByRole('searchbox', { name: copy.filterLabel.tools }), {
       target: { value: 'nothing-like-this' },
@@ -235,13 +251,41 @@ describe('the Tools tab', () => {
     await findByText(copy.tool.filtered.title);
     const empty = container.querySelector('[data-cinder-kind="filtered"]');
     expect(empty).not.toBeNull();
+    // The field stays, with what was typed, and the count reads at its right (row 32b); the tabs keep theirs.
+    expect(
+      (getByRole('searchbox', { name: copy.filterLabel.tools }) as HTMLInputElement).value,
+    ).toBe('nothing-like-this');
     expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe(
-      '0 of 3',
+      '0 of 3 tools',
+    );
+    expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent?.trim()).toBe(
+      '3',
+    );
+    expect(container.querySelector('[data-testid="tab-count-skills"]')?.textContent?.trim()).toBe(
+      '2',
     );
 
     await fireEvent.click(await findByRole('button', { name: copy.tool.filtered.clear }));
-    await findByText('read-file');
-    expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe('3');
+    await findByText('Read file');
+    expect(container.querySelector('[data-testid="tools-count"]')).toBeNull();
+  });
+
+  test('filters by the name for a person as well as by the identifier', async () => {
+    restore = serve().restore;
+    landAt('/capabilities');
+    const { container, findByText, getByRole } = mount();
+    await findByText('Read file');
+
+    await fireEvent.input(getByRole('searchbox', { name: copy.filterLabel.tools }), {
+      target: { value: 'run shell' },
+    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="tools-count"]')?.textContent?.trim()).toBe(
+        '1 of 3 tools',
+      ),
+    );
+    expect(container.querySelector('[data-tool-row="run-shell"]')).not.toBeNull();
+    expect(container.querySelector('[data-tool-row="read-file"]')).toBeNull();
   });
 
   test('is a first-use empty state, with no list, when the catalog holds no tool', async () => {
@@ -266,7 +310,7 @@ describe('the Tools tab', () => {
     await findByText(copy.tool.loadFailed.title);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
-    await findByText('read-file');
+    await findByText('Read file');
   });
 });
 
@@ -425,9 +469,7 @@ describe('a tool’s page', () => {
       jest.useRealTimers();
     }
     release();
-    await waitFor(() =>
-      expect(container.querySelector('[data-testid="tools-count"]')).not.toBeNull(),
-    );
+    await waitFor(() => expect(container.querySelector('[data-tool-row]')).not.toBeNull());
     expect(container.querySelector('[data-testid="tool-loading"]')).toBeNull();
   });
 
@@ -459,7 +501,7 @@ describe('the Skills tab', () => {
     landAt('/capabilities?tab=skills&skill=workspace%2Fdeploy');
     const { container, findByText } = mount();
 
-    await findByText('summarize');
+    await findByText('Summarize');
     const row = (name: string) => container.querySelector(`[data-skill-row="${name}"]`);
     expect(row('deploy')?.getAttribute('data-trust')).toBe('untrusted');
     expect(row('deploy')?.textContent).toContain(copy.skill.untrustedBadge);
@@ -519,7 +561,7 @@ describe('the Skills tab', () => {
     restore = serve(TOOLS, [SKILLS[0], broken]).restore;
     landAt('/capabilities?tab=skills');
     const { container, findByText } = mount();
-    await findByText('broken');
+    await findByText('Broken');
     const row = (name: string) => container.querySelector(`[data-skill-row="${name}"]`);
     expect(row('broken')?.textContent).toContain(copy.skill.unavailableBadge);
     expect(row('summarize')?.textContent).not.toContain(copy.skill.unavailableBadge);
@@ -557,7 +599,9 @@ describe('the Skills tab', () => {
     };
     landAt('/capabilities?tab=skills&skill=home%2Fsummarize');
     const { container, findByText, findByRole } = mount();
-    await findByText(copy.skill.whatItDoes);
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="skill-detail"]')).not.toBeNull(),
+    );
     expect(container.textContent).not.toContain(copy.skill.noUsers.title);
     release?.();
     await findByRole('link', { name: 'assistant' });
@@ -594,7 +638,7 @@ describe('the Skills tab', () => {
     restore = serve().restore;
     landAt('/capabilities');
     const { container, findByText } = mount();
-    await findByText('read-file');
+    await findByText('Read file');
     await fireEvent.click(container.querySelector('[data-tool-row="read-file"]')!);
     await waitFor(() => expect(window.location.search).toContain('tool=read-file'));
     router.navigate('/agents');
@@ -606,22 +650,35 @@ describe('the Skills tab', () => {
   test('is a first-use empty state when the host discovered no skill', async () => {
     restore = serve(TOOLS, []).restore;
     landAt('/capabilities?tab=skills');
-    const { container, findByText } = mount();
+    const { container, findByText, getByRole } = mount();
     await findByText(copy.skill.empty.title);
     expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
+    expect(container.textContent).toContain(copy.skill.empty.description);
+    // No filter row; the one primary button adds a plugin (row 31y), and the tab says 0.
+    expect(container.querySelector('input[type="search"]')).toBeNull();
+    const add = getByRole('link', { name: copy.skill.empty.action.label });
+    expect(add.getAttribute('href')).toBe('/settings/plugins');
+    expect(add.getAttribute('data-cinder-variant')).toBe('primary');
+    expect(container.querySelector('[data-testid="tab-count-skills"]')?.textContent?.trim()).toBe(
+      '0',
+    );
+    await fireEvent.click(add);
+    expect(router.pathname).toBe('/settings/plugins');
   });
 
   test('says the skills could not be read, and filters when they can', async () => {
     restore = serve().restore;
     landAt('/capabilities?tab=skills');
     const { findByText, getByRole, container } = mount();
-    await findByText('deploy');
+    await findByText('Deploy');
+    // The list shows no stray count until something is typed.
+    expect(container.querySelector('[data-testid="skills-count"]')).toBeNull();
     await fireEvent.input(getByRole('searchbox', { name: copy.filterLabel.skills }), {
       target: { value: 'sum' },
     });
     await waitFor(() =>
       expect(container.querySelector('[data-testid="skills-count"]')?.textContent?.trim()).toBe(
-        '1 of 2',
+        '1 of 2 skills',
       ),
     );
     await fireEvent.input(getByRole('searchbox', { name: copy.filterLabel.skills }), {
@@ -648,17 +705,260 @@ describe('the tab', () => {
     restore = serve().restore;
     landAt('/capabilities?tab=nonsense');
     const { container, findByText, getByRole } = mount();
-    await findByText('read-file');
+    await findByText('Read file');
     expect(container.querySelector('[data-testid="tools-panel"]')).not.toBeNull();
 
-    await fireEvent.click(getByRole('tab', { name: copy.tabs.skills }));
-    await findByText('deploy');
+    // A tab's name carries its count, so it is found by the words that lead it.
+    await fireEvent.click(getByRole('tab', { name: /^Skills\b/ }));
+    await findByText('Deploy');
     expect(router.pathname).toBe('/capabilities');
     expect(router.search.get('tab')).toBe('skills');
 
-    await fireEvent.click(getByRole('tab', { name: copy.tabs.tools }));
-    await findByText('read-file');
+    await fireEvent.click(getByRole('tab', { name: /^Tools\b/ }));
+    await findByText('Read file');
     expect(router.search.get('tab')).toBeNull();
     expect(router.search.get('tool')).toBeNull();
+  });
+});
+
+describe('the tab counts and loading', () => {
+  test('carries the count of what each tab holds, and a dash for the one that did not arrive', async () => {
+    restore = serve().restore;
+    landAt('/capabilities');
+    const { container, getByRole } = mount();
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-testid="tab-count-tools"]')?.textContent?.trim()).toBe(
+        '3',
+      );
+    });
+    expect(container.querySelector('[data-testid="tab-count-skills"]')?.textContent?.trim()).toBe(
+      '2',
+    );
+    // This host answers no tool-source request, so the Sources tab has no count to give: a dash, never a zero.
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-testid="tab-count-sources"]')?.textContent?.trim(),
+      ).toBe(copy.tabCountPending);
+    });
+    expect(getByRole('tab', { name: 'Tools 3' })).not.toBeNull();
+    expect(getByRole('tab', { name: 'Skills 2' })).not.toBeNull();
+  });
+
+  test('shows dashes while the lists load, skeleton rows after 300 ms, and the slow line after 10 s', async () => {
+    let release: () => void = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const served = serve();
+    const answer = globalThis.fetch;
+    const holdBack = installFetchImplementation(async (input, init) => {
+      await released;
+      return answer(input, init);
+    });
+    restore = () => {
+      holdBack();
+      served.restore();
+    };
+    jest.useFakeTimers();
+    landAt('/capabilities');
+    const { container } = mount();
+    const count = (id: string) =>
+      container.querySelector(`[data-testid="tab-count-${id}"]`)?.textContent?.trim();
+    try {
+      flushSync();
+      expect([count('tools'), count('skills'), count('sources')]).toEqual(['–', '–', '–']);
+      // The header and the tabs are there at once; the placeholders wait 300 ms.
+      expect(container.querySelector('[role="tablist"]')).not.toBeNull();
+      expect(container.querySelector('.ib-capabilities__loading')).toBeNull();
+      jest.advanceTimersByTime(300);
+      flushSync();
+      expect(container.querySelectorAll('.ib-capabilities__loading-row')).toHaveLength(3);
+      expect(container.querySelector('.ib-capabilities__loading-detail')).not.toBeNull();
+      expect(container.textContent).not.toContain('Still loading');
+      jest.advanceTimersByTime(10_000);
+      flushSync();
+      expect(container.textContent).toContain('Still loading. This is taking longer than usual.');
+    } finally {
+      jest.useRealTimers();
+    }
+    release();
+    await waitFor(() => expect(count('tools')).toBe('3'));
+  });
+});
+
+/** A tool the catalog lists: Bureau's own, or an MCP server's. */
+function listedTool(name: string, source: 'bureau' | 'host'): Record<string, unknown> {
+  return {
+    name,
+    description: `Does ${name}.`,
+    shortDescription: `Does ${name}.`,
+    inputSchema: null,
+    tier: 'read-only',
+    defaultApproval: 'allow',
+    source,
+    plugin: null,
+    users: [],
+  };
+}
+
+describe('grouping the tools', () => {
+  const labels = (container: HTMLElement) =>
+    [...container.querySelectorAll('.cinder-data-list-group__label')].map((label) =>
+      label.textContent?.trim(),
+    );
+
+  test('groups the rows by source from 40 tools, Built in first, each row keeping its two lines', async () => {
+    // The server's tools come first in the catalog, so the order is the list's own.
+    const tools = [
+      ...Array.from({ length: 34 }, (_, index) => listedTool(`github__tool_${index}`, 'host')),
+      ...Array.from({ length: 6 }, (_, index) => listedTool(`built_in_${index}`, 'bureau')),
+    ];
+    restore = serve(tools).restore;
+    landAt('/capabilities');
+    const { container } = mount();
+
+    await waitFor(() => expect(labels(container)).toEqual(['Built in', 'Github']));
+    const row = container.querySelector('[data-tool-row="built_in_0"]')!;
+    expect(row.querySelector('[data-testid="tool-row-name"]')?.textContent?.trim()).toBe(
+      'Built in 0',
+    );
+    expect(row.querySelector('[data-testid="tool-row-source"]')?.textContent?.trim()).toBe(
+      'Built in',
+    );
+    expect(row.querySelector('[data-testid="tool-row-risk"]')?.textContent?.trim()).toBe('Reads');
+  });
+
+  test('keeps one flat list below 40 tools', async () => {
+    const tools = Array.from({ length: 39 }, (_, index) =>
+      listedTool(`built_in_${index}`, 'bureau'),
+    );
+    restore = serve(tools).restore;
+    landAt('/capabilities');
+    const { container } = mount();
+
+    await waitFor(() => expect(container.querySelector('[data-tool-row]')).not.toBeNull());
+    expect(labels(container)).toEqual([]);
+  });
+});
+
+/** A skill that ships two tools, and the catalog entries those tools have. */
+const CUSTOMER_LOOKUP = {
+  name: 'customer-lookup',
+  description: 'Finds a customer and merges duplicates.',
+  source: { id: 'built-in', kind: 'built-in', location: '/skills/built-in', plugin: null },
+  trust: 'trusted',
+  trustReason: 'Built in.',
+  available: true,
+  unavailableReason: null,
+  allowedTools: [],
+  tools: ['find_customer', 'merge_customers'],
+};
+const CUSTOMER_TOOLS = [
+  {
+    name: 'find_customer',
+    title: 'Find customer',
+    description: 'Finds a customer.',
+    shortDescription: 'Finds a customer.',
+    inputSchema: null,
+    tier: 'read-only',
+    defaultApproval: 'allow',
+    source: 'skill',
+    plugin: null,
+    skill: 'customer-lookup',
+    users: [],
+  },
+  {
+    name: 'merge_customers',
+    title: 'Merge customers',
+    description: 'Merges two customers.',
+    shortDescription: 'Merges two customers.',
+    inputSchema: null,
+    tier: 'dangerous',
+    defaultApproval: 'ask',
+    source: 'skill',
+    plugin: null,
+    skill: 'customer-lookup',
+    users: [],
+  },
+];
+
+const openSkill = async (path: string) => {
+  landAt(path);
+  const view = mount();
+  const detail = await waitFor(() => {
+    const found = view.container.querySelector('[data-testid="skill-detail"]');
+    if (found === null) throw new Error('the skill is not open yet');
+    return found;
+  });
+  return { ...view, detail };
+};
+
+const metaOf = (detail: Element) =>
+  [...detail.querySelectorAll('[data-testid="skill-meta"] li')].map((item) =>
+    item.textContent?.trim(),
+  );
+
+describe('a skill’s page', () => {
+  test('opens with its name for a person, its identifier beside it, the sentence and the muted line', async () => {
+    restore = serve().restore;
+    const { detail } = await openSkill('/capabilities?tab=skills&skill=home%2Fsummarize');
+
+    expect(detail.querySelector('h3')?.textContent).toBe('Summarize');
+    expect(detail.querySelector('[data-testid="skill-identifier"]')?.textContent).toBe(
+      'summarize',
+    );
+    expect(detail.querySelector('[data-testid="skill-summary"]')?.textContent).toBe(
+      'Summarizes a document.',
+    );
+    // A skill of instructions only says so, then where it is from and when it loads.
+    expect(metaOf(detail)).toEqual(['Instructions only', 'User', 'Loaded when relevant']);
+    expect(detail.querySelector('[data-testid="skill-brings"]')).toBeNull();
+    // No separator dot stands between the words of the line.
+    expect(detail.querySelector('[data-testid="skill-meta"]')?.textContent).not.toContain('·');
+  });
+
+  test('lists the tools a skill brings with what each may do and when it asks, and counts them in the line', async () => {
+    restore = serve([...TOOLS, ...CUSTOMER_TOOLS], [...SKILLS, CUSTOMER_LOOKUP]).restore;
+    const { detail } = await openSkill('/capabilities?tab=skills&skill=built-in%2Fcustomer-lookup');
+
+    expect(detail.querySelector('h3')?.textContent).toBe('Customer lookup');
+    expect(detail.querySelector('[data-testid="skill-identifier"]')?.textContent).toBe(
+      'customer-lookup',
+    );
+    expect(metaOf(detail)).toEqual(['Instructions and 2 tools', 'Built in', 'Loaded when relevant']);
+
+    const cells = (name: string) =>
+      [...detail.querySelectorAll(`[data-brought-tool="${name}"] td`)].map((cell) =>
+        cell.textContent?.replaceAll(/\s+/g, ' ').trim(),
+      );
+    await waitFor(() =>
+      expect(cells('find_customer')).toEqual(['Find customer find_customer', 'Reads', 'Never']),
+    );
+    expect(cells('merge_customers')).toEqual([
+      'Merge customers merge_customers',
+      'Dangerous',
+      'Always',
+    ]);
+    expect(detail.querySelector('[data-testid="skill-brings"] h4')?.textContent).toBe(
+      copy.skill.brings.heading,
+    );
+  });
+
+  test('shows a tool a skill brings on the Tools tab with the skill as its source', async () => {
+    restore = serve([...TOOLS, ...CUSTOMER_TOOLS], [...SKILLS, CUSTOMER_LOOKUP]).restore;
+    landAt('/capabilities');
+    const { container } = mount();
+
+    await waitFor(() =>
+      expect(container.querySelector('[data-tool-row="find_customer"]')).not.toBeNull(),
+    );
+    const row = container.querySelector('[data-tool-row="find_customer"]')!;
+    expect(row.querySelector('[data-testid="tool-row-source"]')?.textContent?.trim()).toBe(
+      'Customer lookup',
+    );
+    expect(row.querySelector('[data-testid="tool-row-name"]')?.textContent?.trim()).toBe(
+      'Find customer',
+    );
   });
 });

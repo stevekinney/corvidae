@@ -1,6 +1,7 @@
 /**
  * `/capabilities` against the real host (COR-1840): every tool of the catalog and every executable
- * skill the host discovered is listed with its tier, source and users, the open item is in the
+ * skill the host discovered is listed (a tool as two lines, with its risk word and its source),
+ * the tabs carry their counts, the open item is in the
  * address, a skill from a source the host does not trust is marked, and G P opens the page.
  * The host starts with three skills in two configured sources (`skills-support.ts`): two from a
  * trusted source, one of them with a long name and description, and one from a source it does not
@@ -21,7 +22,10 @@ const toolRows = (page: Page) => page.locator('[data-tool-row]');
 const skillRows = (page: Page) => page.locator('[data-skill-row]');
 
 test.describe('the Tools tab', () => {
-  test('lists every tool of the catalog, each with its tier', async ({ page, request }) => {
+  test('lists every tool of the catalog as two lines, and counts them in the tab', async ({
+    page,
+    request,
+  }) => {
     const { tools } = await readCatalog(request);
     expect(tools.length).toBeGreaterThan(0);
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -31,9 +35,17 @@ test.describe('the Tools tab', () => {
     for (const tool of tools) {
       const row = page.locator(`[data-tool-row="${tool.name}"]`);
       await expect(row).toHaveCount(1);
-      await expect(row).toContainText(/Reads only|Changes things|Dangerous|Not classified/);
+      // Line one: the name for a person and the muted risk word. Line two: the source, then the sentence.
+      await expect(row.getByTestId('tool-row-name')).not.toBeEmpty();
+      await expect(row.getByTestId('tool-row-risk')).toHaveText(
+        /^(Reads|Changes things|Dangerous|Not classified)$/,
+      );
+      await expect(row.getByTestId('tool-row-source')).not.toBeEmpty();
+      await expect(row.getByTestId('tool-row-summary')).not.toBeEmpty();
     }
-    await expect(page.getByTestId('tools-count')).toHaveText(String(tools.length));
+    // The count is in the tab, not in the list; the list shows one only while something is typed.
+    await expect(page.getByTestId('tab-count-tools')).toHaveText(String(tools.length));
+    await expect(page.getByTestId('tools-count')).toHaveCount(0);
   });
 
   for (const width of WIDTHS) {
@@ -74,6 +86,9 @@ test.describe('the Tools tab', () => {
     await expect(toolRows(page)).toHaveCount(total);
     await page.getByRole('searchbox', { name: copy.filterLabel.tools }).fill('zzz-no-such-tool');
     await expect(page.getByText(copy.tool.filtered.title)).toBeVisible();
+    // The field keeps its text and the count reads at its right; the tab keeps its count.
+    await expect(page.getByTestId('tools-count')).toHaveText(`0 of ${String(total)} tools`);
+    await expect(page.getByTestId('tab-count-tools')).toHaveText(String(total));
     await page.getByRole('button', { name: copy.tool.filtered.clear }).click();
     await expect(toolRows(page)).toHaveCount(total);
   });
@@ -89,6 +104,9 @@ test.describe('the Skills tab', () => {
       await page.goto('/capabilities?tab=skills');
       await expect(area(page)).toHaveAttribute('data-state', 'ready');
       await expect(skillRows(page)).toHaveCount(Object.keys(E2E_SKILLS).length);
+      await expect(page.getByTestId('tab-count-skills')).toHaveText(
+        String(Object.keys(E2E_SKILLS).length),
+      );
       const untrusted = page.locator(`[data-skill-row="${E2E_SKILLS.deploy.name}"]`);
       await expect(untrusted).toHaveAttribute('data-trust', 'untrusted');
       await expect(untrusted).toContainText(copy.skill.untrustedBadge);
@@ -108,6 +126,12 @@ test.describe('the Skills tab', () => {
     await page.locator(`[data-skill-row="${E2E_SKILLS.deploy.name}"]`).click();
     const detail = page.getByTestId('skill-detail');
     await expect(detail).toHaveAttribute('data-skill', E2E_SKILLS.deploy.name);
+    // The identifier sits beside the name for a person, and the muted line says what the skill holds.
+    await expect(detail.getByTestId('skill-identifier')).toHaveText(E2E_SKILLS.deploy.name);
+    await expect(detail.getByTestId('skill-meta')).toContainText(copy.skill.meta.instructionsOnly);
+    await expect(detail.getByTestId('skill-meta')).toContainText(
+      copy.skill.meta.loadedWhenRelevant,
+    );
     await expect(detail).toHaveAttribute('data-trust', 'untrusted');
     await expect(detail.getByTestId('skill-trust')).toContainText('Not trusted');
     await expect(detail.getByTestId('skill-unavailable')).toContainText(

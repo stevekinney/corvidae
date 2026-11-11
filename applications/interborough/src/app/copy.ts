@@ -5228,6 +5228,17 @@ export const CAPABILITIES_COPY = {
   listLabel: { tools: 'Tools', skills: 'Skills', sources: 'Sources' },
   count: (shown: number, total: number): string =>
     shown === total ? String(total) : `${String(shown)} of ${String(total)}`,
+  /**
+   * The count at the right of a filter field, drawn only while something is typed ("0 of 9 tools",
+   * row 32b): the list itself shows no stray count.
+   */
+  filteredCount: {
+    tools: (shown: number, total: number): string => `${String(shown)} of ${String(total)} tools`,
+    skills: (shown: number, total: number): string =>
+      `${String(shown)} of ${String(total)} skills`,
+  },
+  /** What a tab's count reads while its list has not arrived (rows 32f, 32t): a dash, never a zero. */
+  tabCountPending: '–',
   detailLabel: { tools: 'Tool details', skills: 'Skill details', sources: 'Source details' },
   emptyDetailTitle: 'Choose a capability',
   emptyDetailDescription: 'Pick one from the list to see what it does and who uses it.',
@@ -5329,10 +5340,11 @@ export const CAPABILITIES_COPY = {
   },
   skill: {
     loading: 'Loading skills',
+    /** First use (row 31y): no skill source is configured, and a plugin is how a skill arrives. */
     empty: {
       title: 'No skills yet',
-      description:
-        'Skills are folders with a SKILL.md file. Add a skills directory to the host configuration to see them here.',
+      description: 'A skill is instructions an agent loads when they apply. Plugins add them.',
+      action: { label: 'Add a plugin', href: '/settings/plugins' },
     },
     emptySources: {
       title: 'No skills found',
@@ -5345,7 +5357,20 @@ export const CAPABILITIES_COPY = {
       description: 'No skill name contains what you typed.',
       clear: 'Clear filter',
     },
-    whatItDoes: 'What it does',
+    /** The muted line under a skill's description (rows 31m, 32v): what it holds, where it is from, when it loads. */
+    meta: {
+      label: 'About this skill',
+      instructionsOnly: 'Instructions only',
+      instructionsAndTools: (count: number): string =>
+        `Instructions and ${String(count)} ${count === 1 ? 'tool' : 'tools'}`,
+      loadedWhenRelevant: 'Loaded when relevant',
+    },
+    /** The table of the tools a skill ships (row 32v). */
+    brings: {
+      heading: 'Tools it brings',
+      caption: (skill: string): string => `Tools the ${skill} skill brings`,
+      columns: { tool: 'Tool', risk: 'Risk', asks: 'Asks' },
+    },
     trust: 'Trust',
     source: 'Where it comes from',
     allowedTools: 'Asks to keep these tools',

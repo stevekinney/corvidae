@@ -1,18 +1,19 @@
 <script lang="ts">
   /**
    * The Tools tab: every tool in the catalog (`bureau.agents.catalog`) as a list with the open tool
-   * beside it. A tool's row shows its name, a line about it and its tier; its details show what it
-   * may do, how it is approved by default, where it comes from, its inputs and its users.
+   * beside it. A tool's row is two lines (board PageCapabilities, "Capabilities · Tools tab"): its
+   * name for a person at the left with the muted word for what it may do at the right, then where
+   * it comes from and a line about it, cut with an ellipsis. From 40 tools the rows are grouped by
+   * source. Its details show what it may do, how it is approved by default, where it comes from,
+   * its inputs and its users.
    */
   import {
     Alert,
-    Badge,
     Button,
     EmptyState,
     ListDetail,
     SearchField,
     SelectableRow,
-    Skeleton,
   } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
@@ -21,14 +22,18 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
-    matchesFilter,
-    tierLabel,
+    GROUP_TOOLS_FROM,
+    groupToolsBySource,
+    matchesToolFilter,
+    riskLabel,
     tierOf,
-    tierVariant,
-    toolSourceLabel,
+    toolGroup,
+    toolHeading,
+    toolRowSource,
     toolSummary,
   } from './capability-presentation.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
+  import CapabilitiesLoading from './capabilities-loading.svelte';
   import ToolDetail from './tool-detail.svelte';
   import ToolPageState from './tool-page-state.svelte';
 
@@ -47,7 +52,12 @@
 
   let filter = $state('');
   const tools = $derived(catalog.data?.tools ?? []);
-  const shown = $derived(tools.filter((tool) => matchesFilter(tool.name, filter)));
+  /** From 40 tools the rows are grouped by the source that brings them, so the list stays easy to scan. */
+  const grouped = $derived(tools.length >= GROUP_TOOLS_FROM);
+  const shown = $derived.by(() => {
+    const matching = tools.filter((tool) => matchesToolFilter(tool, filter));
+    return grouped ? groupToolsBySource(matching) : matching;
+  });
 
   /** The tool the address names (`?tool=`), which is a tool's own page while it loads, fails or is missing. */
   const requested = $derived(router.search.get('tool'));
@@ -70,10 +80,7 @@
   {#if catalog.isPending && asked}
     <ToolPageState kind="loading" onCancel={stopWaiting} />
   {:else if catalog.isPending}
-    <div role="status" aria-busy="true" aria-label={copy.tool.loading}>
-      <Skeleton height="1.5rem" width="40%" />
-      <Skeleton height="12rem" />
-    </div>
+    <CapabilitiesLoading label={copy.tool.loading} />
   {:else if catalog.isError && asked}
     <ToolPageState kind="failed" onRetry={() => void catalog.refetch()} />
   {:else if catalog.isError}
@@ -101,17 +108,25 @@
         selectionParameter="tool"
         {selectionLocation}
         storageKey="interborough-capabilities-tools"
+        {...grouped ? { groupBy: toolGroup } : {}}
       >
         {#snippet header()}
-          <p class="ib-capabilities__count" data-testid="tools-count">
-            {copy.count(shown.length, tools.length)}
-          </p>
-          <SearchField
-            aria-label={copy.filterLabel.tools}
-            placeholder={copy.filterPlaceholder}
-            bind:value={filter}
-            onClear={() => (filter = '')}
-          />
+          <!-- The list itself shows no count; one reads at the right of the field once something is typed (row 32b). -->
+          <div class="ib-capabilities__filter">
+            <div class="ib-capabilities__filter-field">
+              <SearchField
+                aria-label={copy.filterLabel.tools}
+                placeholder={copy.filterPlaceholder}
+                bind:value={filter}
+                onClear={() => (filter = '')}
+              />
+            </div>
+            {#if filter.trim() !== ''}
+              <p class="ib-capabilities__count" data-testid="tools-count">
+                {copy.filteredCount.tools(shown.length, tools.length)}
+              </p>
+            {/if}
+          </div>
         {/snippet}
         {#snippet list(tool, row)}
           <SelectableRow
@@ -120,13 +135,26 @@
             onclick={row.open}
             data-tool-row={tool.name}
           >
-            {#snippet title()}<span class="ib-capability__identifier">{tool.name}</span>{/snippet}
-            {#snippet description()}{toolSummary(tool)}{/snippet}
-            {#snippet meta()}
-              <Badge variant="neutral" size="sm" data-testid="tool-row-source"
-                >{toolSourceLabel(tool)}</Badge
-              >
-              <Badge variant={tierVariant(tierOf(tool))} size="sm">{tierLabel(tierOf(tool))}</Badge>
+            {#snippet title()}
+              <span class="ib-capabilities__row-title">
+                <span class="ib-capabilities__row-name" data-testid="tool-row-name"
+                  >{toolHeading(tool)}</span
+                >
+                <!-- A muted word, never a colour of its own: Dangerous is not red (row 31g). -->
+                <span class="ib-capabilities__row-risk" data-testid="tool-row-risk"
+                  >{riskLabel(tierOf(tool))}</span
+                >
+              </span>
+            {/snippet}
+            {#snippet description()}
+              <span class="ib-capabilities__row-line">
+                <span class="ib-capabilities__row-source" data-testid="tool-row-source"
+                  >{toolRowSource(tool)}</span
+                >
+                <span class="ib-capabilities__row-summary" data-testid="tool-row-summary"
+                  >{toolSummary(tool)}</span
+                >
+              </span>
             {/snippet}
           </SelectableRow>
         {/snippet}

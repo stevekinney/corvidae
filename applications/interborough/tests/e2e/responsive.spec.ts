@@ -112,8 +112,9 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/chats/:chat': /Say hello/,
   // The list prints each agent's identifier at every width; a phone row leaves the description to the agent's page.
   '/agents': /responsive-long-description/,
-  '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,
-  '/capabilities (skills tab)': /e2e-summarize/,
+  '/capabilities': /Reads|Changes things|Dangerous|Not classified/,
+  // A skill's row reads its identifier as words: "e2e-summarize" is "E2e summarize".
+  '/capabilities (skills tab)': /E2e summarize/,
   '/capabilities (sources tab)': /e2e-petstore/,
   // The open source prints its tools' switches and the saved setting that is the long word.
   '/capabilities (source open)': /uuuuuuuuuu/,

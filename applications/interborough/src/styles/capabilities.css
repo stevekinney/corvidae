@@ -35,6 +35,99 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* The count a tab carries ("Tools 9") is quiet, and does not shift the label when it arrives. */
+.ib-capabilities__tab-count {
+  color: var(--cinder-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* The filter field, with the count of what matched at its right once something is typed (row 32b). */
+.ib-capabilities__filter {
+  display: flex;
+  align-items: center;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-capabilities__filter-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.ib-capabilities__filter .ib-capabilities__count {
+  flex: none;
+  white-space: nowrap;
+}
+
+/* A row's first line: the name at the left, the muted word for what it may do at the right (rows 31e, 31g). */
+.ib-capabilities__row-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-capabilities__row-name {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.ib-capabilities__row-risk {
+  flex: none;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-xs);
+  font-weight: 400;
+}
+
+/* A row's second line: where it comes from, then a line about it that ends with an ellipsis, never wrapping. */
+.ib-capabilities__row-line {
+  display: flex;
+  align-items: baseline;
+  gap: var(--cinder-space-2);
+  min-width: 0;
+}
+
+.ib-capabilities__row-source {
+  flex: none;
+}
+
+.ib-capabilities__row-summary {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* What a tab holds while it loads (rows 32f, 32t): rows where the list will be, a title and two lines where the detail will be. */
+.ib-capabilities__loading {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cinder-space-4);
+  min-width: 0;
+}
+
+@media (min-width: 48rem) {
+  .ib-capabilities__loading {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  }
+}
+
+.ib-capabilities__loading-list,
+.ib-capabilities__loading-detail {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+.ib-capabilities__loading-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+}
+
 .ib-capabilities__alert-title {
   margin: 0;
   font-weight: 600;
@@ -71,6 +164,28 @@
   margin: 0;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
+}
+
+/* What a skill holds, where it is from and when it loads: muted words told apart by a rule between them. */
+.ib-capability__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-capability__meta > li {
+  padding-inline: var(--cinder-space-3);
+  border-inline-start: 1px solid var(--cinder-border-muted);
+}
+
+.ib-capability__meta > li:first-child {
+  padding-inline-start: 0;
+  border-inline-start: 0;
 }
 
 /* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. */

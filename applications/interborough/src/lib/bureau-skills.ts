@@ -26,6 +26,8 @@ const skillSchema = z.object({
   available: z.boolean(),
   unavailableReason: z.string().nullable(),
   allowedTools: z.array(z.string()),
+  // The tools the skill brings, by the name an agent file uses; a host that sends none brings none.
+  tools: z.array(z.string()).default([]),
 });
 
 const skillsSchema = z.object({
@@ -34,7 +36,7 @@ const skillsSchema = z.object({
   sources: z.array(z.unknown()),
 });
 
-/** One executable skill: its description, where it came from, whether that source is trusted, and the tools it asks to keep. */
+/** One executable skill: its description, where it came from, whether that source is trusted, the tools it asks to keep and the tools it brings. */
 export type Skill = z.infer<typeof skillSchema>;
 
 /** Whether the host trusts the source a skill came from. */

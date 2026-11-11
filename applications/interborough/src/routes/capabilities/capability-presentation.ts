@@ -99,6 +99,89 @@ export function toolHeading(tool: Pick<CatalogTool, 'name' | 'title'>): string {
   return identifier.trim() === '' ? tool.name : humanizeName(identifier);
 }
 
+/** The word of the asks level a tool defaults to, as the Access tab says it: "Never", "On changes", "Always". */
+export function asksWord(tool: Pick<CatalogTool, 'tier' | 'defaultApproval'>): string {
+  return AGENT_PAGE_COPY.access.approvals[defaultAsks(tool)];
+}
+
+/** The tools from which Capabilities groups its rows by source (row 32e, the "40 or more" frame). */
+export const GROUP_TOOLS_FROM = 40;
+
+/**
+ * Where a tool comes from, as its row says it (rows 31e, 31f): "Built in", or the name of the
+ * server, plugin or skill that brings it, read as words ("github" is "Github"), because the
+ * catalog carries no display name of a source.
+ */
+export function toolRowSource(tool: CatalogTool): string {
+  if (tool.source === 'bureau') return TOOL.chips.source.bureau;
+  if (tool.source === 'plugin') return humanizeName(tool.plugin ?? '');
+  if (tool.source === 'skill') return humanizeName(tool.skill ?? '');
+  const server = serverOf(tool);
+  return server === undefined ? TOOL.sources.host : humanizeName(server);
+}
+
+/** The key of the group of tools Bureau adds, which a grouped list shows first. */
+const BUILT_IN_GROUP = 'bureau:';
+
+/** The group a tool's row belongs to when the list is grouped by source: one key per source, labelled as its rows say it. */
+export function toolGroup(tool: CatalogTool): { readonly key: string; readonly label: string } {
+  const origin =
+    tool.source === 'plugin'
+      ? tool.plugin
+      : tool.source === 'skill'
+        ? tool.skill
+        : tool.source === 'host'
+          ? serverOf(tool)
+          : null;
+  return { key: `${tool.source}:${origin ?? ''}`, label: toolRowSource(tool) };
+}
+
+/**
+ * The tools put in the order a grouped list needs: the rows of one source together, Built in
+ * first and the other sources by name, each source's tools in the order the catalog gave them.
+ */
+export function groupToolsBySource(tools: readonly CatalogTool[]): CatalogTool[] {
+  const groups = new Map<string, { label: string; tools: CatalogTool[] }>();
+  for (const tool of tools) {
+    const { key, label } = toolGroup(tool);
+    const group = groups.get(key) ?? { label, tools: [] };
+    group.tools.push(tool);
+    groups.set(key, group);
+  }
+  return [...groups.entries()]
+    .sort(([leftKey, left], [rightKey, right]) => {
+      if (leftKey === BUILT_IN_GROUP) return rightKey === BUILT_IN_GROUP ? 0 : -1;
+      if (rightKey === BUILT_IN_GROUP) return 1;
+      return left.label.localeCompare(right.label);
+    })
+    .flatMap(([, group]) => group.tools);
+}
+
+/** Whether a tool matches what was typed: by its name for a person or its identifier. */
+export function matchesToolFilter(tool: CatalogTool, typed: string): boolean {
+  return matchesFilter(toolHeading(tool), typed) || matchesFilter(tool.name, typed);
+}
+
+/** The name a skill's page opens with: its identifier read as words ("release-notes" is "Release notes"). */
+export function skillHeading(skill: Pick<Skill, 'name'>): string {
+  return humanizeName(skill.name);
+}
+
+/** Whether a skill matches what was typed: by its name for a person or its identifier. */
+export function matchesSkillFilter(skill: Skill, typed: string): boolean {
+  return matchesFilter(skillHeading(skill), typed) || matchesFilter(skill.name, typed);
+}
+
+/** The words of a skill's muted meta line, in order: what it holds, where it is from, when it loads (rows 31m, 32v). */
+export function skillMeta(skill: Pick<Skill, 'tools' | 'source'>): string[] {
+  const meta = SKILL.meta;
+  return [
+    skill.tools.length === 0 ? meta.instructionsOnly : meta.instructionsAndTools(skill.tools.length),
+    SKILL.sourceKinds[skill.source.kind],
+    meta.loadedWhenRelevant,
+  ];
+}
+
 /** The words for where a tool comes from. */
 export function toolSourceLabel(tool: CatalogTool): string {
   if (tool.source === 'plugin') return TOOL.sources.plugin(tool.plugin ?? '');

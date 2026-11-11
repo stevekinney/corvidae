@@ -54,6 +54,7 @@ const SKILL: Skill = {
   available: true,
   unavailableReason: null,
   allowedTools: [],
+  tools: [],
 };
 
 describe('a tool’s tier', () => {
@@ -152,6 +153,74 @@ describe('a tool’s source and summary', () => {
     expect(toolSummary(TOOL)).toBe('Reads one file');
     expect(toolSummary({ ...TOOL, shortDescription: null })).toBe('Reads a file.');
     expect(toolSummary({ ...TOOL, shortDescription: '  ' })).toBe('Reads a file.');
+  });
+});
+
+describe('a tool’s row', () => {
+  test('names its source: Built in, or the server, plugin or skill read as words', () => {
+    expect(toolRowSource({ ...TOOL, source: 'bureau' })).toBe('Built in');
+    expect(toolRowSource({ ...TOOL, name: 'github__list_branches' })).toBe('Github');
+    expect(toolRowSource(TOOL)).toBe('MCP server');
+    expect(toolRowSource({ ...TOOL, source: 'plugin', plugin: 'gemini' })).toBe('Gemini');
+    expect(toolRowSource({ ...TOOL, source: 'skill', skill: 'customer-lookup' })).toBe(
+      'Customer lookup',
+    );
+  });
+
+  test('says the asks level in the one word the Access tab uses', () => {
+    expect(asksWord(TOOL)).toBe('Never');
+    expect(asksWord({ ...TOOL, tier: 'mutating', defaultApproval: 'ask' })).toBe('On changes');
+    expect(asksWord({ ...TOOL, tier: 'dangerous', defaultApproval: 'ask' })).toBe('Always');
+  });
+
+  test('matches what is typed against the name for a person and against the identifier', () => {
+    const tool = { ...TOOL, name: 'github__delete_branch', title: 'Delete branch' };
+    expect(matchesToolFilter(tool, 'delete branch')).toBe(true);
+    expect(matchesToolFilter(tool, 'github__del')).toBe(true);
+    expect(matchesToolFilter(tool, 'invoice')).toBe(false);
+  });
+
+  test('groups one key per source, and puts Built in first and the others by name', () => {
+    const github = { ...TOOL, name: 'github__list_branches' };
+    const notes = { ...TOOL, name: 'notes__lookup' };
+    const builtIn = { ...TOOL, name: 'discover-agents', source: 'bureau' as const };
+    expect(toolGroup(github)).toEqual({ key: 'host:github', label: 'Github' });
+    expect(toolGroup(builtIn)).toEqual({ key: 'bureau:', label: 'Built in' });
+    // Each source's tools stay in the catalog's order, and the sources are not interleaved.
+    const ordered = groupToolsBySource([
+      notes,
+      github,
+      { ...github, name: 'github__get_pull_request' },
+      builtIn,
+    ]);
+    expect(ordered.map((tool) => tool.name)).toEqual([
+      'discover-agents',
+      'github__list_branches',
+      'github__get_pull_request',
+      'notes__lookup',
+    ]);
+  });
+});
+
+describe('a skill’s name and line', () => {
+  test('reads the identifier as words, and matches by either', () => {
+    expect(skillHeading({ name: 'release-notes' })).toBe('Release notes');
+    expect(matchesSkillFilter({ ...SKILL, name: 'release-notes' }, 'release notes')).toBe(true);
+    expect(matchesSkillFilter({ ...SKILL, name: 'release-notes' }, 'release-')).toBe(true);
+    expect(matchesSkillFilter({ ...SKILL, name: 'release-notes' }, 'invoice')).toBe(false);
+  });
+
+  test('says what it holds, where it is from and when it loads, with no separator mark', () => {
+    expect(skillMeta({ ...SKILL, source: { ...SKILL.source, kind: 'built-in' } })).toEqual([
+      'Instructions only',
+      'Built in',
+      'Loaded when relevant',
+    ]);
+    expect(skillMeta({ ...SKILL, tools: ['find_customer', 'merge_customers'] })[0]).toBe(
+      'Instructions and 2 tools',
+    );
+    expect(skillMeta({ ...SKILL, tools: ['find_customer'] })[0]).toBe('Instructions and 1 tool');
+    expect(skillMeta(SKILL).join('')).not.toContain('·');
   });
 });
 
