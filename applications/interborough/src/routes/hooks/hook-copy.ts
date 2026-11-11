@@ -142,28 +142,73 @@ export const HOOKS_COPY = {
   /** The editor's page. */
   editor: {
     newTitle: 'New hook',
-    editTitle: 'Edit hook',
-    newDescription: 'Say when it should happen and what it should do.',
-    editDescription: 'Change when it happens or what it does.',
-    backToList: 'All hooks',
+    newDescription: 'Pick an event, then what should happen.',
     loadFailed: 'The hook could not be read.',
-    loading: 'Reading the hook.',
+    /** The accessible name of the placeholders while the hook is read. */
+    loadingLabel: 'Loading the hook',
+    /** The status line under the placeholders when the read is slow. */
+    stillLoading: 'Still loading. This is taking longer than usual.',
+    /** What the page says in place of the editor once Cancel stopped a slow read: nothing failed. */
+    stopped: {
+      title: 'Stopped loading the hook',
+      description: 'You stopped the read, so the hook is not shown. Nothing was changed by it.',
+    },
+    /** A hook that is not the caller's, or was deleted. */
+    notFound: {
+      title: 'That hook doesn’t exist',
+      description: 'It may have been deleted. Your other hooks are unchanged.',
+    },
     saved: 'Saved.',
-    saveFailed: 'The hook was not saved',
+    /** The bold lead of a failed save, then why, then that nothing typed is lost. */
+    saveFailed: 'Couldn’t save the hook.',
+    saveFailedKept: 'What you typed is still here.',
+    /** Why a write failed: the server's status when it answered with an error, else its own words. */
+    answeredWithError: (status: number): string =>
+      `The server answered with an error (${String(status)}).`,
+    noAnswer: 'The server didn’t answer.',
     staleTitle: 'This hook changed',
     changedDescription:
       'Someone else changed it since you opened it. Nothing was saved, and what you typed is still here. Reload to start from their version.',
     reload: 'Reload',
     staleDescription: 'Someone else changed it since you opened it. It has been read again.',
+    /** The header of a hook that is already saved: its switch, its menu, and its latest delivery. */
+    header: {
+      /** The visible label of the header's switch; the hook's title follows it in the accessible name. */
+      on: 'On',
+      /** The accessible name of the menu button that holds Delete hook. */
+      menuLabel: 'More actions for this hook',
+      /** What the latest delivery's line says for a hook that has sent nothing yet. */
+      nothingSent: 'Nothing sent yet',
+      jumpToLog: 'Jump to log',
+      /** The accessible name of the latest delivery's line. */
+      latestLabel: 'Latest delivery',
+    },
+    /** What the header's switch says in a toast once it has saved, with an Undo. */
+    toggled: {
+      off: (title: string): string => `${title} is off. It won’t run until you turn it on.`,
+      on: (title: string): string => `${title} is on.`,
+      failed: 'The hook was not changed',
+    },
     steps: {
       when: { number: '1', title: 'When' },
       what: { number: '2', title: 'Then' },
       check: { number: '3', title: 'Check' },
+      /** The phone's compact step opens its fields with this button. */
+      edit: 'Edit',
+      /** The compact summary of the When step: the events, then what the hook is limited to. */
+      whenSummary: (events: string, limit: string | undefined): string =>
+        limit === undefined ? events : `${events}, ${limit}`,
     },
     event: {
       label: 'Event',
-      placeholder: 'Search events',
+      placeholder: 'Pick an event',
       description: 'Choose an event to add. The hook runs for each one it lists.',
+      /** Why a hook that has no event yet cannot be saved. */
+      required: 'Pick an event.',
+      tooMany: 'Choose at most 64 events.',
+      /** Under the Event field of a hook that is saved. */
+      fixed:
+        'Can’t be changed after the hook is saved. Create a new hook to watch a different event.',
       chosenHeading: 'Events this hook listens to',
       none: 'No event is chosen yet.',
       loadFailed: 'The events could not be read.',
@@ -179,9 +224,17 @@ export const HOOKS_COPY = {
     onlyFor: {
       label: 'Only for',
       description: 'Run this hook for one of these, or for everything.',
+      /** Under Only for when the event belongs to a workflow and narrows by nothing else. */
+      workflowDescription:
+        'This event belongs to a workflow, so it narrows by workflow. System events have no narrowing.',
       everything: 'Everything',
+      anyWorkflow: 'Any workflow',
+      anyAgent: 'Any agent',
+      anySchedule: 'Any schedule',
       /** Why nothing is offered: the events chosen are about the whole system. */
       none: 'These events are about the whole system, so this hook runs for all of them.',
+      /** Why a hook limited to a kind of subject with none chosen cannot be saved. */
+      required: 'Choose one, or choose Everything.',
       /** Why a kind already on the hook cannot stay, once the events changed. */
       refused:
         'One of these events cannot tell what this is limited to. Remove the event, or choose Everything.',
@@ -203,56 +256,79 @@ export const HOOKS_COPY = {
       chooseRemote:
         'What the hook does for each event. This home keeps its secrets in its environment, so it cannot send a signed message.',
       fixed: 'The kind of action is fixed once a hook is made.',
-      webhook: 'Send a signed message to a web address',
+      webhook: 'Send a webhook',
       startWorkflow: 'Start a workflow',
       notify: 'Notify me',
+      /** What a hook that notifies says in place of fields. */
+      notifyNote: 'You get a notification in Interborough, in the bell at the top right.',
       plugin: 'Run an action from a plugin',
     },
     webhook: {
-      urlLabel: 'Web address',
+      urlLabel: 'URL',
+      urlPlaceholder: 'https://',
+      /** An address that does not start with a scheme the Bureau sends to, or that holds none. */
+      urlMissing: 'Enter a URL that starts with https://',
       urlInvalid: 'Use an HTTP or HTTPS address with no user name, password, or fragment.',
-      urlDescription: 'Each event is sent here as a POST, signed with the secret below.',
       secretLabel: 'Signing secret',
-      secretNewDescription:
-        'Between 16 and 256 characters. The receiver uses it to check the signature. It is never shown again.',
-      secretKeepDescription:
-        'Leave this empty to keep the current secret. A new one replaces it and is never shown again.',
-      secretTooShort: 'Use at least 16 characters.',
-      secretTooLong: 'Use at most 256 characters.',
+      secretHelp:
+        'Deliveries are signed with the secret above so the receiver can verify them. If a delivery fails, Interborough retries with backoff, up to 8 tries.',
+      /** What the masked secret reads to a screen reader, never the secret. */
+      secretMasked: 'Signing secret, masked',
+      secretReplace: 'Replace',
+      secretReplacing: 'Replacing',
+      /** Said beside a secret shown for the one time it can be seen. */
+      secretOnce: 'Copy this now. You won’t be able to see it again.',
+      secretReplaced: 'Replaced. The old secret stopped working.',
+      secretReplaceFailed: 'The signing secret was not replaced',
+      seePayload: 'See the payload',
     },
     workflow: {
       label: 'Workflow',
       placeholder: 'Choose a workflow',
-      description: 'It starts as you, once for each event.',
+      /** Under the picker: what the workflow receives. */
+      payload: 'The event’s payload is the workflow’s input.',
+      payloadEvent:
+        'It receives the details of the event, the kind of event, and when it happened.',
+      /** Why a workflow that was deleted cannot stay chosen, and what to do. */
+      deleted: 'That workflow was deleted. Pick another to keep this hook working.',
+      /** The old name, kept on the field and marked. */
+      deletedName: (id: string): string => `${id}, can’t find this workflow`,
+      required: 'Pick a workflow.',
       none: 'No workflow is ready to start',
       noneDescription: 'A workflow must be ready and not paused before a hook can start it.',
       create: 'New workflow',
-      inputLabel: 'What the workflow receives',
-      inputPayload: 'The details of the event',
-      inputEvent: 'The details, the kind of event, and when it happened',
-    },
-    notify: {
-      titleLabel: 'Title',
-      titleDescription: 'Leave this empty to use the name of the event.',
     },
     check: {
       sentenceLabel: 'This hook',
+      /** In the quiet box of a hook that is not saved yet and has no event. */
+      pickEvent: 'Pick an event to see what this hook does.',
+      /** In the quiet box of a hook that is not saved yet: the event it will watch. */
+      eventLine: 'Event',
+      saveToStart: 'Save hook to start watching.',
       nameLabel: 'Name',
       nameDescription: 'Optional. A label for the list.',
+      nameTooLong: 'Use at most 100 characters.',
       save: 'Save hook',
-      create: 'Create hook',
+      create: 'Save hook',
       test: 'Send a test event',
-      testNeedsSave: 'Save the hook first, then send a test event.',
       testWebhookOnly:
-        'A test event is sent only by a hook that sends a signed message. Other actions would start a real workflow or write a real notification.',
-      testReaches: (url: string): string =>
-        `Sends one signed test message to ${url}. It is a real request.`,
-      testFailed: 'The test event was not sent',
+        'A test event is sent only by a hook that sends a webhook. Other actions would start a real workflow or write a real notification.',
+      /** The result under the buttons: what answered, how, and that nothing was saved when it was not. */
+      testSent: (host: string, answer: string, milliseconds: number | undefined): string =>
+        `Test event sent. ${host} answered ${answer}${
+          milliseconds === undefined ? '' : ` in ${String(milliseconds)} ms`
+        }.`,
+      testSentUnsaved: 'Nothing was saved.',
+      testFailed: 'Test event failed.',
+      testFailedAnswered: (host: string, answer: string): string =>
+        `${host} answered ${answer}. Check the URL, then send another test.`,
+      testFailedNoAnswer: (host: string): string =>
+        `${host} didn’t answer. Check the URL, then send another test.`,
       delete: 'Delete hook',
-      deleteTitle: 'Delete this hook?',
-      deleteDescription: (sentence: string): string =>
-        `${sentence}. Its signing secret and its deliveries are deleted with it.`,
-      deleteConfirm: 'Delete',
+      deleteTitle: (name: string): string => `Delete “${name}”?`,
+      deleteDescription:
+        'The hook stops watching for events and its delivery log is removed. This can’t be undone. Turn it off instead to keep it.',
+      deleteConfirm: 'Delete hook',
       deleteFailed: 'The hook was not deleted',
     },
     deliveries: {

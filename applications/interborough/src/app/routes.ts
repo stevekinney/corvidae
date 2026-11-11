@@ -262,7 +262,9 @@ export const routes: readonly RouteDefinition[] = [
     load: () => import('../routes/reviews/index.svelte'),
   },
   // The caller's hooks, the page that makes one, and one hook's editor with its recent deliveries.
-  // `new` is a path segment, not a hook: its route comes before `/hooks/:hook`.
+  // `new` is a path segment, not a hook: its route comes before `/hooks/:hook`. The new hook page is
+  // a form at reading width (sweep S56); a saved hook is an editor, which has the delivery log beside
+  // its steps.
   {
     pattern: '/hooks',
     kind: 'table',
@@ -272,7 +274,7 @@ export const routes: readonly RouteDefinition[] = [
   },
   {
     pattern: '/hooks/new',
-    kind: 'editor',
+    kind: 'form',
     crumb: 'New hook',
     view: 'hooks',
     load: () => import('../routes/hooks/index.svelte'),

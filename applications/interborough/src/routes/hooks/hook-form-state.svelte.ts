@@ -4,8 +4,8 @@
  * notification). A plain rune-backed class, so validation and the request it makes are testable
  * without a DOM.
  *
- * The signing secret is write-only. It is never loaded into the form: an existing hook opens with
- * an empty secret field, and a field left empty keeps the secret the hook has.
+ * The signing secret is not part of the draft: the Bureau makes one for a new webhook and shows it
+ * once (`hook-secret-once.ts`), and Replace on a saved hook makes another, so no form field holds it.
  */
 import type {
   Hook,
@@ -18,16 +18,17 @@ import type {
 import { HOOKS_COPY } from './hook-copy.ts';
 import { isScopeKind, type DraftAction } from './hook-presentation.ts';
 
-/** The shortest and longest signing secret the Bureau accepts. */
-export const SECRET_MINIMUM_LENGTH = 16;
-export const SECRET_MAXIMUM_LENGTH = 256;
-
 /** The most events one hook may list. */
 export const EVENTS_MAXIMUM = 64;
 
-/** The longest hook name and notification title the Bureau accepts. */
+/** The longest hook name the Bureau accepts. */
 const NAME_MAXIMUM_LENGTH = 100;
-const TITLE_MAXIMUM_LENGTH = 200;
+
+/** The fields a problem can belong to, which the page maps to the control that holds each. */
+export type HookProblemField = 'event' | 'only-for' | 'url' | 'workflow' | 'name';
+
+/** One reason the hook cannot be saved yet, said beside the field it belongs to. */
+export type HookProblem = { readonly field: HookProblemField; readonly message: string };
 
 /** Whether `text` reads as a web address the Bureau could accept: http or https, no user name or password. */
 function isWebAddress(text: string): boolean {
@@ -52,7 +53,6 @@ export class HookFormState {
   scopeId = $state('');
   actionType = $state<HookActionType>('webhook');
   url = $state('');
-  signingSecret = $state('');
   workflowId = $state('');
   workflowInput = $state<'payload' | 'event'>('payload');
   title = $state('');
@@ -66,7 +66,7 @@ export class HookFormState {
   /** What the form held when it was last loaded from a hook, to tell whether anything was typed since. */
   private baseline = $state('');
 
-  /** Whether the hook is not yet written, so a webhook needs its secret. */
+  /** Whether the hook is not yet written. */
   readonly isNew: boolean;
 
   constructor(isNew: boolean) {
@@ -82,7 +82,6 @@ export class HookFormState {
       this.scopeId,
       this.actionType,
       this.url,
-      this.signingSecret,
       this.workflowId,
       this.workflowInput,
       this.title,
@@ -91,7 +90,7 @@ export class HookFormState {
     ]);
   }
 
-  /** Whether anything, a typed signing secret included, differs from the hook the form was loaded from. */
+  /** Whether anything differs from the hook the form was loaded from. */
   get dirty(): boolean {
     return this.fingerprint() !== this.baseline;
   }
@@ -102,7 +101,6 @@ export class HookFormState {
     this.events = [...hook.events];
     this.scopeKind = hook.scope?.kind ?? '';
     this.scopeId = hook.scope?.id ?? '';
-    this.signingSecret = '';
     switch (hook.action.type) {
       case 'webhook':
         this.actionType = 'webhook';
@@ -155,42 +153,55 @@ export class HookFormState {
     }
   }
 
-  /** Why the web address cannot be sent, or `undefined` when it can (or has not been typed yet). */
+  /**
+   * Why the web address cannot be sent, or `undefined` when it can (or has not been typed yet). Text
+   * that does not start with a scheme says how to start it; an address with a user name, a
+   * password or a fragment says which of those the Bureau refuses.
+   */
   get urlProblem(): string | undefined {
     const url = this.url.trim();
-    return url === '' || isWebAddress(url) ? undefined : HOOKS_COPY.editor.webhook.urlInvalid;
+    if (url === '') return undefined;
+    if (isWebAddress(url)) return undefined;
+    return /^https?:\/\//i.test(url)
+      ? HOOKS_COPY.editor.webhook.urlInvalid
+      : HOOKS_COPY.editor.webhook.urlMissing;
   }
 
-  /** Why the signing secret cannot be sent, or `undefined` when it can (or is left to keep). */
-  get secretProblem(): string | undefined {
-    if (this.signingSecret === '') return undefined;
-    if (this.signingSecret.length < SECRET_MINIMUM_LENGTH) {
-      return HOOKS_COPY.editor.webhook.secretTooShort;
+  /**
+   * What stops the hook being saved, in the order of the steps: each names the field it belongs to,
+   * so the page can say it beside that field and move focus to the first. Empty when the Bureau
+   * could accept the hook.
+   */
+  get problems(): HookProblem[] {
+    const copy = HOOKS_COPY.editor;
+    const found: HookProblem[] = [];
+    if (this.events.length === 0) found.push({ field: 'event', message: copy.event.required });
+    else if (this.events.length > EVENTS_MAXIMUM) {
+      found.push({ field: 'event', message: copy.event.tooMany });
     }
-    return this.signingSecret.length > SECRET_MAXIMUM_LENGTH
-      ? HOOKS_COPY.editor.webhook.secretTooLong
-      : undefined;
+    if (this.scopeKind !== '' && this.scopeId === '') {
+      found.push({ field: 'only-for', message: copy.onlyFor.required });
+    }
+    if (!this.pluginAction && this.contributedKind === null) {
+      if (this.actionType === 'webhook') {
+        const url = this.url.trim();
+        if (url === '') found.push({ field: 'url', message: copy.webhook.urlMissing });
+        else if (this.urlProblem !== undefined) {
+          found.push({ field: 'url', message: this.urlProblem });
+        }
+      } else if (this.actionType === 'start-workflow' && this.workflowId === '') {
+        found.push({ field: 'workflow', message: copy.workflow.required });
+      }
+    }
+    if (this.name.trim().length > NAME_MAXIMUM_LENGTH) {
+      found.push({ field: 'name', message: copy.check.nameTooLong });
+    }
+    return found;
   }
 
   /** Whether the form holds a hook the Bureau could accept. */
   get isValid(): boolean {
-    if (this.events.length === 0 || this.events.length > EVENTS_MAXIMUM) return false;
-    if (this.name.trim().length > NAME_MAXIMUM_LENGTH) return false;
-    if (this.scopeKind !== '' && this.scopeId === '') return false;
-    if (this.pluginAction || this.contributedKind !== null) return true;
-    switch (this.actionType) {
-      case 'webhook':
-        return (
-          this.url.trim() !== '' &&
-          this.urlProblem === undefined &&
-          this.secretProblem === undefined &&
-          (!this.isNew || this.signingSecret !== '')
-        );
-      case 'start-workflow':
-        return this.workflowId !== '';
-      case 'notify':
-        return this.title.trim().length <= TITLE_MAXIMUM_LENGTH;
-    }
+    return this.problems.length === 0;
   }
 
   /** The action as the Bureau takes it. */
@@ -255,13 +266,12 @@ export class HookFormState {
       action: this.action(),
       ...(scope === undefined ? {} : { scope }),
       ...(this.name.trim() === '' ? {} : { name: this.name.trim() }),
-      ...(this.effectiveType === 'webhook' ? { signingSecret: this.signingSecret } : {}),
     };
   }
 
   /**
    * What `bureau.hooks.update` changes. A hook whose action a plugin contributed keeps it: the
-   * editor changes its name and events only. The secret goes only when one was typed. The action goes
+   * editor changes its name and events only. The action goes
    * only when it differs from the hook's, because the Bureau asks again whether a workflow is
    * allowed whenever an action is sent, and a rename is never held up by a workflow since paused.
    * The scope goes only when it changed, so a kind this page does not know is left as it is, and the
@@ -281,9 +291,6 @@ export class HookFormState {
       ...(hook.action.type === 'plugin' || !this.actionChanged(hook)
         ? {}
         : { action: this.action() }),
-      ...(this.effectiveType === 'webhook' && this.signingSecret !== ''
-        ? { signingSecret: this.signingSecret }
-        : {}),
     };
   }
 }
