@@ -654,6 +654,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
       onValueChangeRequest: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       onValueChange: { optional: true, type_kind: 'TSFunctionType', default: NO_DEFAULT },
       labelVisible: { optional: true, type_kind: 'TSBooleanKeyword', default: L(true) },
+      stateText: { optional: true, type_kind: 'TSTypeLiteral', default: NO_DEFAULT },
       name: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
       value: { optional: true, type_kind: 'TSStringKeyword', default: L('on') },
       form: { optional: true, type_kind: 'TSStringKeyword', default: NO_DEFAULT },
