@@ -9,15 +9,46 @@
  * add an id to either set before the seam block ends. An `await` there would let other work run
  * mid-construction, and an eager call to a seam member would run it before the seam's own
  * dependencies are built. Nothing else enforces it, so this guard reads the syntax.
+ *
+ * `buildRuntimeComposition` has the same window, from its `core` literal to its last seam factory
+ * call. Its durable engine is live before the core exists and reclaims runs on its own (COR-1509,
+ * COR-1586), so an `await` there would let an engine callback or a reclaimed run reach a seam member
+ * before its factory has returned.
  */
 import { dirname, join } from 'node:path';
 
 import { describe, expect, it } from 'bun:test';
 import ts from 'typescript';
 
-const CREATE_BUREAU = join(dirname(import.meta.dir), 'create-bureau.ts');
-/** The first hoisted container: the window starts at its declaration. */
-const WINDOW_START = 'activeRuns';
+/** A parent function, where its construction window starts, and why the window matters. */
+interface WindowFamily {
+  readonly parent: string;
+  readonly parentFunction: string;
+  /** The first declaration in the window. */
+  readonly windowStart: string;
+  /** What the window starts at, in a message. */
+  readonly windowName: string;
+  readonly why: string;
+}
+
+const WHY =
+  'a callback of `resolvedReviewIds` or `invalidApprovalReviewIds` could run before `stopLazyExpirySweepWhenNoneHeld` exists';
+
+const BUREAU_WINDOW: WindowFamily = {
+  parent: join(dirname(import.meta.dir), 'create-bureau.ts'),
+  parentFunction: 'constructBureau',
+  windowStart: 'activeRuns',
+  windowName: 'the hoisted containers',
+  why: WHY,
+};
+
+const COMPOSITION_WINDOW: WindowFamily = {
+  parent: join(dirname(import.meta.dir), 'runtime-composition.ts'),
+  parentFunction: 'buildRuntimeComposition',
+  windowStart: 'core',
+  windowName: 'the core',
+  why: 'the durable engine, live since `createRunEngine`, could reach a seam member through a callback or a reclaimed run before its factory has returned (COR-1509, COR-1586)',
+};
 
 function parse(sourceText: string): ts.SourceFile {
   return ts.createSourceFile('source.ts', sourceText, ts.ScriptTarget.Latest, true);
@@ -86,27 +117,28 @@ function declaresName(statement: ts.Statement, name: string): boolean {
   );
 }
 
-const WHY =
-  'a callback of `resolvedReviewIds` or `invalidApprovalReviewIds` could run before `stopLazyExpirySweepWhenNoneHeld` exists';
-
 /**
- * Violations of the construction window in the `constructBureau` of `sourceText`: an `await`, or a
+ * Violations of the construction window in the parent function of `sourceText`: an `await`, or a
  * call to a name a seam factory returns, in a top-level statement from the declaration of
  * `windowStart` to the last seam factory call, outside the bodies of nested functions.
  */
-function constructionWindowViolations(sourceText: string, windowStart = WINDOW_START): string[] {
+function constructionWindowViolations(
+  sourceText: string,
+  family: Omit<WindowFamily, 'parent'> = BUREAU_WINDOW,
+): string[] {
+  const { parentFunction, windowStart, why } = family;
   const source = parse(sourceText);
   const constructor = source.statements.find(
     (statement): statement is ts.FunctionDeclaration =>
-      ts.isFunctionDeclaration(statement) && statement.name?.text === 'constructBureau',
+      ts.isFunctionDeclaration(statement) && statement.name?.text === parentFunction,
   );
   const statements = constructor?.body?.statements;
-  if (statements === undefined) throw new Error('create-bureau.ts declares no `constructBureau`');
+  if (statements === undefined) throw new Error(`the source declares no \`${parentFunction}\``);
 
   const start = statements.findIndex((statement) => declaresName(statement, windowStart));
   if (start === -1) {
     throw new Error(
-      `constructBureau declares no \`${windowStart}\`, the first hoisted container: update WINDOW_START in construction-window.test.ts`,
+      `${parentFunction} declares no \`${windowStart}\`, where its window starts: update its window family in construction-window.test.ts`,
     );
   }
   let end = -1;
@@ -119,7 +151,7 @@ function constructionWindowViolations(sourceText: string, windowStart = WINDOW_S
   });
   if (end < start) {
     throw new Error(
-      'constructBureau calls no seam factory after the hoisted containers: the construction window is empty, so check this guard still finds `create<Seam>(core, peers)` calls',
+      `${parentFunction} calls no seam factory after ${family.windowName}: the construction window is empty, so check this guard still finds \`create<Seam>(core, peers)\` calls`,
     );
   }
 
@@ -133,7 +165,7 @@ function constructionWindowViolations(sourceText: string, windowStart = WINDOW_S
     if (ts.isAwaitExpression(node)) {
       report(
         node,
-        `\`await\` between the hoisted containers and the end of the seam block: ${WHY}. Move the statement below the seam block, or make it run later (inside a function)`,
+        `\`await\` between ${family.windowName} and the end of the seam block: ${why}. Move the statement below the seam block, or make it run later (inside a function)`,
       );
     }
     if (
@@ -143,7 +175,7 @@ function constructionWindowViolations(sourceText: string, windowStart = WINDOW_S
     ) {
       report(
         node,
-        `\`${node.expression.text}\` is a seam member called while \`constructBureau\` is still building its seams: ${WHY}. Move the statement below the seam block, or make the reference lazy (call it inside a function that runs later)`,
+        `\`${node.expression.text}\` is a seam member called while \`${parentFunction}\` is still building its seams: ${why}. Move the statement below the seam block, or make the reference lazy (call it inside a function that runs later)`,
       );
     }
     ts.forEachChild(node, visit);
@@ -243,10 +275,41 @@ describe('constructionWindowViolations', () => {
       constructionWindowViolations('function constructBureau() { const activeRuns = 1; }'),
     ).toThrow('calls no seam factory');
   });
-});
 
-describe('the construction window of create-bureau.ts', () => {
-  it('has no await and no eager call to a seam member', async () => {
-    expect(constructionWindowViolations(await Bun.file(CREATE_BUREAU).text())).toEqual([]);
+  it('reads the window of buildRuntimeComposition from its core to its last seam call', () => {
+    const violations = constructionWindowViolations(
+      `
+        async function buildRuntimeComposition(options) {
+          const engine = await createRunEngine();
+          const core = {};
+          const settled = await settle();
+          const peers = {};
+          const { load } = createCatalogRunRecovery(core, peers);
+          load();
+          const later = async () => load();
+        }
+      `,
+      COMPOSITION_WINDOW,
+    );
+    expect(violations).toEqual([
+      expect.stringContaining('line 5: `await` between the core and the end of the seam block'),
+    ]);
+    expect(violations[0]).toContain('COR-1509');
+    expect(() =>
+      constructionWindowViolations(
+        'async function buildRuntimeComposition() { const ready = 1; }',
+        COMPOSITION_WINDOW,
+      ),
+    ).toThrow('declares no `core`');
   });
 });
+
+for (const family of [BUREAU_WINDOW, COMPOSITION_WINDOW]) {
+  describe(`the construction window of ${family.parentFunction}`, () => {
+    it('has no await and no eager call to a seam member', async () => {
+      expect(constructionWindowViolations(await Bun.file(family.parent).text(), family)).toEqual(
+        [],
+      );
+    });
+  });
+}
