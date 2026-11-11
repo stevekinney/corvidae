@@ -155,7 +155,25 @@ export type RunUsage = {
   readonly totalTokens?: number;
 };
 
+/**
+ * A tool approval the run waits on, and when it stops being answerable, as the Bureau's interrupt
+ * gave it (COR-2280): the earlier of its action's deadline and its signed binding's.
+ */
+export type ApprovalDeadline = {
+  /** The call the approval is for. */
+  readonly toolCallId: string;
+  /** The deadline, as the interrupt's ISO `expiresAt`. */
+  readonly expiresAt: string;
+};
+
 export type ChatRunWiringOptions = {
+  /**
+   * Told the deadlines of the tool approvals a run ended on, each time what the run waits on is
+   * read (COR-2280), and none when a run begins. A conversation the Bureau stored holds the action
+   * the tool asked with, which can lack a deadline only the signed binding set; these are what
+   * the page imports into it.
+   */
+  readonly onApprovalDeadlines?: (deadlines: readonly ApprovalDeadline[]) => void;
   readonly onFrame?: () => void;
   readonly onTerminal?: () => void;
   /**
@@ -607,6 +625,17 @@ function answerSchemaOf(interrupt: Interrupt): Record<string, unknown> | undefin
   return isRecord(rooted) ? rooted : undefined;
 }
 
+/** The deadlines of the tool approvals among `interrupts` that carry one (COR-2280). */
+function approvalDeadlinesOf(interrupts: readonly Interrupt[]): ApprovalDeadline[] {
+  return interrupts.flatMap((interrupt) =>
+    interrupt.reason === 'tool-approval' &&
+    interrupt.toolCallId !== undefined &&
+    interrupt.expiresAt !== undefined
+      ? [{ toolCallId: interrupt.toolCallId, expiresAt: interrupt.expiresAt }]
+      : [],
+  );
+}
+
 /** The questions among `interrupts`, as the page shows them. */
 function humanRequestsOf(interrupts: readonly Interrupt[]): HumanRequest[] {
   return interrupts
@@ -1055,6 +1084,7 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
     }
     if (decisions.size === 0 && answers.size === 0) refusedResume = false;
     options.onHumanRequests?.(unansweredRequests());
+    options.onApprovalDeadlines?.(approvalDeadlinesOf(next));
   }
 
   /** Notes that the row an answer was typed in is settled, when the answer was typed in one. */

@@ -23,6 +23,7 @@ import {
   countQueuedFollowUps,
   createChatSessionController,
   createConversationHistory,
+  findToolResultMessage,
   getUnresolvedToolApprovals,
   pairToolCallsWithResults,
   removeMessage,
@@ -52,6 +53,7 @@ import {
 import {
   createChatRunWiring,
   withAnnouncements,
+  type ApprovalDeadline,
   type ChatRunWiring,
   type GrantNotLoosened,
   type HumanRequest,
@@ -218,6 +220,11 @@ export class ChatSessionState {
   #attachedRun = false;
   /** The schema of each question the page has been shown, by the key its answer's row shares. */
   readonly #questionSchemas = new Map<string, Readonly<Record<string, unknown>>>();
+  /**
+   * The deadlines of the tool approvals the last run ended on, as its interrupts gave them
+   * (COR-2280), kept so a snapshot that restores the stored action without one gets it again.
+   */
+  #approvalDeadlines: readonly ApprovalDeadline[] = [];
   #readerAbort: AbortController | undefined;
   #activeTurn: Promise<unknown> = Promise.resolve();
   /**
@@ -271,6 +278,10 @@ export class ChatSessionState {
       },
       onSnapshot: (history) => {
         if (!this.#abort.signal.aborted) this.restore(history);
+      },
+      onApprovalDeadlines: (deadlines) => {
+        this.#approvalDeadlines = deadlines;
+        this.#reconcileApprovalDeadlines();
       },
       agentName: options.agentName,
       ...(options.fetch === undefined ? {} : { fetch: options.fetch }),
@@ -737,6 +748,22 @@ export class ChatSessionState {
     // What the stream told this page about the run (a wakeup, a child run), and why an earlier
     // attempt stopped, are not in the Bureau's thread, so the rows that are still there keep them.
     this.#setKeepingStopLines(carryLiveNotes(this.conversation, restored));
+    this.#reconcileApprovalDeadlines();
+  }
+
+  /**
+   * Imports each deadline the run's interrupts gave into the approval it is for (COR-2280), through
+   * the controller, which writes only a deadline that changed and only onto the approval action the
+   * transcript holds now: the action is read here, just before, so nothing older can land on it.
+   * An approval that is no longer waiting, or a call the transcript does not hold, is left alone.
+   */
+  #reconcileApprovalDeadlines(): void {
+    for (const { toolCallId, expiresAt } of this.#approvalDeadlines) {
+      const action = findToolResultMessage(this.conversation, toolCallId, { includeHidden: true })
+        ?.toolResult?.action;
+      if (action?.type !== 'approval') continue;
+      this.controller.reconcileApprovalExpiry({ toolCallId, expiresAt, expectedAction: action });
+    }
   }
 
   /** Every line this page was shown of why a run stopped, by its identity, at its row. */

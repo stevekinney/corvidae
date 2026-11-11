@@ -788,6 +788,42 @@ describe('several approvals', () => {
   });
 });
 
+describe('the deadlines of the approvals a run ends on (COR-2280)', () => {
+  test('tells the page each approval’s deadline, and none once the run goes on', async () => {
+    const deadlines: unknown[] = [];
+    const conversation = appendUserMessage(empty(), 'Refund it');
+    const stubbed = mount([
+      stream([
+        started(),
+        finished({
+          type: 'interrupt',
+          interrupts: [
+            { ...INTERRUPT, expiresAt: '2030-01-01T00:00:00.000Z' },
+            { ...INTERRUPT, id: 'approval:native-1:call-void', toolCallId: 'call-void' },
+          ],
+        }),
+      ]),
+      stream([started('run-2'), finished(undefined, 'run-2')]),
+    ]);
+    const wiring = createChatRunWiring({
+      agentName: () => 'tool-runner',
+      fetch: stubbed.fetch,
+      conversation: () => conversation,
+      onApprovalDeadlines: (next) => deadlines.push(next),
+    });
+
+    await frames(wiring, conversation);
+    expect(deadlines.at(-1)).toEqual([
+      { toolCallId: 'call-refund', expiresAt: '2030-01-01T00:00:00.000Z' },
+    ]);
+
+    await wiring.resolveToolApproval('call-refund', { decision: 'approve', remember: false });
+    await wiring.resolveToolApproval('call-void', { decision: 'approve', remember: false });
+    await frames(wiring, conversation);
+    expect(deadlines.at(-1)).toEqual([]);
+  });
+});
+
 describe('a request the mount has not acknowledged', () => {
   const unreachable = (): Response => {
     throw new TypeError('Failed to fetch');
