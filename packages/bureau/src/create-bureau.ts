@@ -60,17 +60,8 @@ import {
   SkillLoadedEvent,
   SkillRejectedEvent,
 } from './skills';
-import {
-  type ConditionalTextValueStore,
-  MemoryStorage,
-  textValueStore,
-} from '@lostgradient/storage';
-import {
-  type Engine,
-  Mailbox,
-  type RecoveredWorkflowInfo,
-  type WorkflowState,
-} from '@lostgradient/weft';
+import { MemoryStorage, textValueStore } from '@lostgradient/storage';
+import { type Engine, Mailbox, type RecoveredWorkflowInfo } from '@lostgradient/weft';
 import { type Tool, type ToolExecutionResult, type ToolRequestContext } from 'armorer';
 import { Conversation } from 'conversationalist';
 import type { PluginHost } from '@lostgradient/interborough-plugin';
@@ -298,34 +289,15 @@ import { createRunHumanWaits } from './run-human-waits';
 import { createWorkflowReviewWaits } from './workflow-review-waits';
 import { reviewCanceledDedupeKey } from './review-closing-events';
 import { createChatSpendLedger } from './chat-spend-ledger';
-import {
-  isSessionInputSessionIdAddressable,
-  createSessionInputMailbox,
-  SESSION_INPUT_DELIVERY_RETENTION_MS,
-} from './session-input-durability';
-import { createSessionInputDeliveryGate } from './session-input-delivery';
-import { createSessionInputSettlement, forEachOpenReceipt } from './session-input-settlement';
+import { SESSION_INPUT_DELIVERY_RETENTION_MS } from './session-input-durability';
+import { createSessionInputSettlement } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import { createForkLedger } from './session-fork';
 import {
   type BureauSteeringGate,
-  getSteeringLedgerEntry,
   createSteeringCommandLedger,
-  createSteeringGate,
-  type ImplementedSteeringCommand,
   type SteeringCommandAdmissionOutcome,
-  type SteeringRefusal,
 } from './steering';
-import {
-  appendSteeringLogEvent,
-  deleteSteeringLog,
-  listSteeringLogIncarnations,
-  readSteeringLogEntries,
-  readSteeringLogHead,
-  SteeringLogCorruptError,
-  steeringSessionRunTag,
-  type SteeringLogEvent,
-} from './steering-log';
 import type {
   Bureau,
   BureauOptions,
@@ -370,12 +342,7 @@ import {
   TaskRespondError,
   toBadRequest,
 } from './bureau-errors';
-import {
-  COMMITTED_ELSEWHERE,
-  isCommittedElsewhere,
-  endedElsewhereAs,
-  terminalActionTimestamp,
-} from './durable-run-waits';
+import { isCommittedElsewhere, terminalActionTimestamp } from './durable-run-waits';
 import {
   hasRecoverableTransportAuthority,
   dedupeRecoveryPerRunFailures,
@@ -393,9 +360,6 @@ import {
   createBureauMemoryTools,
   assertNoMemoryToolCollision,
   detachBestEffortPromise,
-  SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS,
-  SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS,
-  SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS,
   SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS,
   createSessionPersistenceSleep,
   createShutdownTimeoutSleep,
@@ -417,10 +381,8 @@ import {
 } from './approval-state-records';
 import { validateAgentRunInput, createTasksRespondLedger } from './run-request-validation';
 import {
-  STEERING_APPEND_ATTEMPTS,
   type BureauCore,
   type SteeringCursor,
-  type SteeringFoldHistory,
   type SteeringPoller,
   type SessionDeletionRecord,
   type ReviewAuditAttachment,
@@ -471,6 +433,11 @@ import {
   createFireApprovalRestore,
   type FireApprovalRestorePeers,
 } from './bureau-seams/fire-approval-restore';
+import { createSteeringLog, type SteeringLogPeers } from './bureau-seams/steering-log';
+import {
+  createSessionInputGates,
+  type SessionInputGatesPeers,
+} from './bureau-seams/session-input-gates';
 
 /**
  * The callables the seams of `constructBureau` read from one another and from the parent: the
@@ -498,7 +465,9 @@ type BureauPeers = EventHistoryPeers &
   ReviewAnnouncementsPeers &
   ApprovalPersistencePeers &
   ReviewResolutionPeers &
-  FireApprovalRestorePeers;
+  FireApprovalRestorePeers &
+  SteeringLogPeers &
+  SessionInputGatesPeers;
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -2295,6 +2264,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     get scanApprovedToolResult() {
       return scanApprovedToolResult;
     },
+    get abandonSessionInputGate() {
+      return abandonSessionInputGate;
+    },
   };
   // The seam block: synchronous, side-effect-free factories, called before anything can reach them.
   const { readEventHistory, subscribeToEventHistory } = createEventHistoryReads<D>(core, peers);
@@ -2497,6 +2469,36 @@ async function constructBureau<const D extends AgentDefinitions>(
     persistedApprovalRunIds,
     restorePendingApprovalStates,
   } = createFireApprovalRestore<D>(core, peers);
+  const {
+    settleAbandonedRun,
+    durableSteeringStore,
+    enqueueSteering,
+    getSessionSteeringGate,
+    applySteeringEvent,
+    createSteeringFoldHistory,
+    applyToCursor,
+    nestedSet,
+    asSubmittedRetry,
+    catchUpSteering,
+    pollSessionSteering,
+    forgetSessionSteering,
+    appendThenApplySteering,
+    logRunBoundarySteering,
+    recoverRunSteering,
+    sweepOrphanedSteeringLogs,
+    steeringContention,
+  } = createSteeringLog<D>(core, peers);
+  const {
+    tryGetSessionInputMailbox,
+    trackSessionInputSettlement,
+    sessionInputGateFor,
+    attachRecoveredSessionInput,
+    releaseSessionInputs,
+    settleSessionInputsAfterRunEnd,
+    abandonSessionInputGate,
+    isSessionInputClosed,
+    retireSessionInputs,
+  } = createSessionInputGates<D>(core, peers);
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -3246,41 +3248,6 @@ async function constructBureau<const D extends AgentDefinitions>(
           },
         });
 
-  /** `undefined` for a non-durable bureau — nothing to persist against. */
-  function getSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
-    const storage = runtime.durableStorage;
-    if (!runtime.durable || storage === undefined) return undefined;
-    const cacheKey = `${sessionId}\u0000${incarnation}`;
-    let mailbox = sessionInputMailboxes.get(cacheKey);
-    if (!mailbox) {
-      mailbox = createSessionInputMailbox(
-        storage,
-        sessionId,
-        incarnation,
-        sessionInputSessionBacklogLimit(),
-        runtimeServices.clock.now,
-      );
-      sessionInputMailboxes.set(cacheKey, mailbox);
-    }
-    return mailbox;
-  }
-
-  /**
-   * {@link getSessionInputMailbox}, or `undefined` when Weft could not carry
-   * this session id as a command's target (over its identity limit). Such a
-   * session still runs and steers, but admission has no mailbox to write to,
-   * so `submitSessionInput` answers it `unsupported-capability` and no input
-   * can ever be waiting for its runs.
-   */
-  function tryGetSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
-    if (!isSessionInputSessionIdAddressable(sessionId)) return undefined;
-    try {
-      return getSessionInputMailbox(sessionId, incarnation);
-    } catch {
-      return undefined;
-    }
-  }
-
   /**
    * COR-1476 — the per-session record of which run is delivering each admitted
    * input (`session-input-deliveries:v1:{sessionId}`), in the same text-value
@@ -3294,318 +3261,6 @@ async function constructBureau<const D extends AgentDefinitions>(
           nowMs: runtimeServices.clock.now,
         })
       : undefined;
-
-  /** The settlement in flight for each ended run: a run is settled once, however many paths report its end. */
-  const sessionInputSettlementsByRun = new Map<string, Promise<void>>();
-
-  /** Tracks a settlement, which never rejects, so shutdown lands it before it tears the stores down. */
-  function trackSessionInputSettlement(settling: Promise<void>): void {
-    inFlightSessionInputSettlements.add(settling);
-    void settling.finally(() => inFlightSessionInputSettlements.delete(settling));
-  }
-
-  /**
-   * Whether `runId` will still replay or re-run the step that appended its
-   * input: the run is live in some process, or is starting. A run that is not
-   * live has released its claims or will never resume.
-   */
-  async function isSessionRunLive(
-    sessionId: string,
-    incarnation: string,
-    runId: string,
-  ): Promise<boolean> {
-    const live = await liveSessionRunIdsEverywhere(sessionId, incarnation, runId);
-    return live.includes(runId);
-  }
-
-  /**
-   * COR-1476 — the gate through which one of this session's durable runs
-   * receives input `submitSessionInput` admitted while it is live. `undefined`
-   * when the bureau has no durable mailbox, or the run has no recorded
-   * incarnation, in which case there is nothing to deliver.
-   *
-   * The gate drains the mailbox of `incarnation`, the one the run started in
-   * (`runSessionIncarnations`, which its first save or its recovery records,
-   * or that same value read before the record is made). Each incarnation has
-   * its own mailbox, so a session deleted and recreated under the same id
-   * while the run is live leaves this gate draining the retired mailbox, which
-   * its session's deletion cancelled and the sweep retires, and never the
-   * recreated session's input: no reader checks an incarnation.
-   */
-  function sessionInputGateFor(
-    sessionId: string,
-    runId: string,
-    incarnation: string | undefined,
-  ): SessionInputGate | undefined {
-    if (incarnation === undefined || sessionInputDeliveryStore === undefined) return undefined;
-    const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
-    if (mailbox === undefined) return undefined;
-    const gate = createSessionInputDeliveryGate({
-      sessionId,
-      runId,
-      incarnation,
-      mailbox,
-      deliveryStore: sessionInputDeliveryStore,
-      isOwnerLive: (ownerRunId) => isSessionRunLive(sessionId, incarnation, ownerRunId),
-      now: runtimeServices.clock.now,
-      timers: runtimeServices.timers,
-      signal: backgroundShutdownController.signal,
-      onError: (error) =>
-        diagnose({
-          level: 'error',
-          scope: 'session-input',
-          message: `[bureau] A session-input lease of run "${runId}" in session "${sessionId}" could not be kept or retired: ${serializeUnknownError(error)}`,
-          cause: error,
-        }),
-    });
-    sessionInputGates.set(runId, { gate, sessionId });
-    return gate;
-  }
-
-  /**
-   * Hands a recovered durable run its session's input gate before replay
-   * resumes, the way {@link recoverRunSteering} hands it its steering gate.
-   */
-  async function attachRecoveredSessionInput(
-    sessionId: string,
-    runId: string,
-    services: DurableRunDeps,
-    incarnation: string | undefined,
-  ): Promise<void> {
-    const gate = sessionInputGateFor(
-      sessionId,
-      runId,
-      runSessionIncarnations.get(runId) ?? incarnation,
-    );
-    if (gate !== undefined) {
-      services.options = { ...services.options, sessionId, sessionInput: gate };
-    }
-  }
-
-  /**
-   * The release half of a run's termination: disposes its gate, which returns
-   * each lease it holds to the mailbox, and releases the run's unpromoted claims
-   * so the next run can deliver them. Safe whenever it runs: an unpromoted input
-   * is in no durable transcript. Needs no live bureau beyond its stores, so
-   * shutdown runs it too, and never starts a run.
-   */
-  async function releaseSessionInputs(sessionId: string, runId: string): Promise<void> {
-    const held = sessionInputGates.get(runId);
-    sessionInputGates.delete(runId);
-    try {
-      await held?.gate.dispose?.();
-      await sessionInputDeliveryStore?.release(sessionId, runId);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] Could not release the session input run "${runId}" held in session "${sessionId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * COR-1476 — a run has ended, however it ended: completed, failed, aborted by
-   * `abortRun`, cancelled by `cancelDurableRun`, or promoted but never started.
-   * A run is settled once: every path that reports its end shares the one
-   * settlement in flight. In this order, it
-   *
-   * 1. releases what it held (its gate's leases and its unpromoted claims),
-   *    which reads no mailbox and so keeps the ordering below;
-   * 2. writes its steering `run-ended` entry, the durable not-live write every
-   *    process's `liveSessionRunIdsEverywhere` honours over the engine's status,
-   *    retrying with a growing backoff until it is acknowledged, the bureau
-   *    closes, or the log proves corrupt;
-   * 3. catches up steering;
-   * 4. reads the session's liveness without itself;
-   * 5. cancels every open input whose turn is not in its checkpoint transcript,
-   *    in admission order, so the client learns it was not delivered and
-   *    resends it, unless another run of the session is live or starting, the
-   *    bureau is closing, the write was never acknowledged, or liveness could
-   *    not be read: that run's end, or the sweep, then decides. A turn the
-   *    transcript holds was promoted by the write that saved it, and stays
-   *    `promoted`.
-   *
-   * `submitSessionInput` orders itself the other way round, admission before
-   * liveness, so one side always sees the other: see
-   * `session-input-settlement.ts`.
-   */
-  function settleSessionInputsAfterRunEnd(sessionId: string, runId: string): Promise<void> {
-    const inFlight = sessionInputSettlementsByRun.get(runId);
-    if (inFlight !== undefined) return inFlight;
-    const settling = settleSessionInputsOnce(sessionId, runId).finally(() => {
-      sessionInputSettlementsByRun.delete(runId);
-    });
-    sessionInputSettlementsByRun.set(runId, settling);
-    return settling;
-  }
-
-  async function settleSessionInputsOnce(sessionId: string, runId: string): Promise<void> {
-    await releaseSessionInputs(sessionId, runId);
-    const acknowledged = await recordRunEnded(sessionId, runId);
-    if (!acknowledged || sessionInputSettlement === undefined || isSessionInputClosed()) return;
-    // The cancel pass is over the mailbox of the incarnation the run started
-    // in, like its gate and its terminal save; a run with no recorded
-    // incarnation drained no mailbox and has nothing to settle.
-    const incarnation = runSessionIncarnations.get(runId);
-    if (incarnation === undefined) return;
-    try {
-      const session = await runtime.sessionStore?.load(sessionId);
-      // A deleted or recreated session retired this incarnation: its mailbox
-      // is nobody's, so whatever is open in it is cancelled without a liveness
-      // read, which its steering log, gone with the incarnation, could not
-      // answer anyway. The sweep does the same for what this misses.
-      const retired = session === undefined || session.incarnation !== incarnation;
-      if (!retired) {
-        const steeringKv = durableSteeringStore();
-        if (steeringKv !== undefined) {
-          await enqueueSteering(sessionId, () =>
-            catchUpSteering(steeringKv, sessionId, incarnation),
-          );
-        }
-        const live = await liveSessionRunIdsEverywhere(sessionId, incarnation);
-        if (live.some((liveRunId) => liveRunId !== runId)) return;
-      }
-      const delivered = await sessionInputCommandsInTranscript(runId);
-      await sessionInputSettlement.cancelUndelivered(sessionId, incarnation, delivered);
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] Could not settle the open session input of session "${sessionId}" after run "${runId}" ended; the sweep will: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * Makes sure `runId`'s steering `run-ended` entry is in the log, retrying the
-   * write with a backoff that doubles from 10 ms to 2 s, and reports whether it
-   * is. A run the log never promoted, or whose session is gone or recreated, was
-   * never counted live from the log, so there is nothing to write and the answer
-   * is yes. The answer is no when the bureau closes first, or when the log
-   * proves corrupt, which no retry repairs: the input is left to the sweep. The
-   * first failure is reported at once and later ones at most once a minute.
-   */
-  async function recordRunEnded(sessionId: string, runId: string): Promise<boolean> {
-    const pending = steeringRunEndWrites.get(runId);
-    steeringRunEndWrites.delete(runId);
-    if (pending !== undefined) {
-      try {
-        await pending;
-        return true;
-      } catch {
-        // Rejected: retried below until it lands.
-      }
-    }
-    const steeringKv = durableSteeringStore();
-    if (steeringKv === undefined) return true;
-    let delay = SESSION_INPUT_RUN_END_RETRY_DELAY_MILLISECONDS;
-    let lastReportedAt: number | undefined;
-    for (let attempt = 1; ; attempt += 1) {
-      if (isSessionInputClosed()) return false;
-      try {
-        const session = await runtime.sessionStore?.load(sessionId);
-        // Gone, or recreated under the same id since the run started: the log
-        // that promoted the run went with its incarnation, so there is nothing
-        // to write, and the current incarnation's log never counted it live.
-        const started = runSessionIncarnations.get(runId);
-        if (session === undefined || (started !== undefined && session.incarnation !== started)) {
-          return true;
-        }
-        const cursor = await enqueueSteering(sessionId, () =>
-          catchUpSteering(steeringKv, sessionId, session.incarnation),
-        );
-        if (cursor.history.runs.get(runId) !== 'promoted') return true;
-        await enqueueSteering(sessionId, () =>
-          appendThenApplySteering(steeringKv, sessionId, session.incarnation, {
-            type: 'run-ended',
-            runId,
-            now: runtimeServices.clock.nowISO(),
-          }),
-        );
-        return true;
-      } catch (error) {
-        if (error instanceof SteeringLogCorruptError) {
-          diagnose({
-            level: 'error',
-            scope: 'session-input',
-            message: `[bureau] The end of run "${runId}" in session "${sessionId}" cannot be recorded in a corrupt steering log; its open session input is left to the sweep: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-          return false;
-        }
-        // Contention, a storage failure, or a session recreated under this
-        // read: the next attempt reloads the session and refolds its log, so a
-        // session that is gone or no longer promotes this run ends the loop.
-        const now = runtimeServices.clock.now();
-        if (
-          lastReportedAt === undefined ||
-          now - lastReportedAt >= SESSION_INPUT_RUN_END_DIAGNOSTIC_INTERVAL_MILLISECONDS
-        ) {
-          lastReportedAt = now;
-          diagnose({
-            level: 'error',
-            scope: 'session-input',
-            message: `[bureau] The end of run "${runId}" in session "${sessionId}" could not be recorded (attempt ${String(attempt)}); retrying before its session input is settled: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        }
-        // Shutdown ends the wait at once; the loop then sees the bureau closed.
-        await Promise.race([sessionPersistenceSleep(delay), sessionInputClosing.promise]);
-        delay = Math.min(delay * 2, SESSION_INPUT_RUN_END_RETRY_CAP_MILLISECONDS);
-      }
-    }
-  }
-
-  /** The mailbox commands whose user turns `runId`'s checkpoint transcript holds. */
-  async function sessionInputCommandsInTranscript(runId: string): Promise<Set<string>> {
-    const delivered = new Set<string>();
-    const snapshot = await runtime.durable?.checkpointStore.loadConversation(runId);
-    if (snapshot === undefined || snapshot === null) return delivered;
-    for (const message of Conversation.from(snapshot, { runtime: runtimeServices }).getMessages()) {
-      const commandId = message.metadata?.['sessionInputCommandId'];
-      if (typeof commandId === 'string') delivered.add(commandId);
-    }
-    return delivered;
-  }
-
-  /** A run abandoned to another owner: stop keeping its leases alive, but keep its claims. */
-  function abandonSessionInputGate(runId: string): void {
-    const held = sessionInputGates.get(runId);
-    sessionInputGates.delete(runId);
-    void Promise.resolve(held?.gate.dispose?.()).catch((error: unknown) => {
-      diagnose({
-        level: 'error',
-        scope: 'session-input',
-        message: `[bureau] Could not stop the leases of abandoned run "${runId}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    });
-  }
-
-  /** Whether the bureau is shutting down, when open input is released, never cancelled. */
-  function isSessionInputClosed(): boolean {
-    return runAdmissionClosed || maintenanceAdmissionClosed;
-  }
-
-  /**
-   * Retires the input a deleted session incarnation left pending: cancels what
-   * is open in that incarnation's mailbox, and marks the incarnation so the
-   * sweep keeps maintaining its mailbox until retention has emptied it, since
-   * no run will drain a retired mailbox and its terminal records would
-   * otherwise never retire. An admission that commits after this pass, under
-   * the same marker, is cancelled by the sweep.
-   */
-  async function retireSessionInputs(sessionId: string, incarnation: string): Promise<void> {
-    const mailbox = tryGetSessionInputMailbox(sessionId, incarnation);
-    if (mailbox === undefined) return;
-    await forEachOpenReceipt(mailbox, async (commandId) => {
-      await mailbox.requestCancellation({ commandId, reason: 'the session was deleted' });
-    });
-    await sessionInputSettlement?.markOpen(sessionId, incarnation);
-  }
 
   /**
    * COR-1476 — the marker index of sessions that may have open input, and the
@@ -3643,645 +3298,8 @@ async function constructBureau<const D extends AgentDefinitions>(
         })
       : undefined;
 
-  /**
-   * A run whose local handle settled with no terminal event while the store still says `running`:
-   * its engine lost a checkpoint race, was disposed, or saw another engine commit the run's
-   * outcome, and `driveDurableRun` stayed write-free in each case. This process no longer drives
-   * the run, so its liveness is the engine's, and it stops keeping the run's input leases alive
-   * (COR-1476); the claims stay, since the owner may yet replay the steps that hold them.
-   *
-   * COR-1614 — when the durable run is already over, the run's record here ends with that outcome
-   * as well ({@link settleRunEndedElsewhere}).
-   */
-  function settleAbandonedRun(sessionId: string, runId: string, activeRun: ActiveRun): void {
-    if (store.getRun(runId)?.status !== 'running') return;
-    settledLocalRunIds.add(runId);
-    releaseSessionSteeringPoll(sessionId, runId);
-    abandonSessionInputGate(runId);
-    detachBestEffortPromise(settleRunEndedElsewhere(runId, activeRun));
-  }
-
-  /**
-   * COR-1614 — ends this process's record of a run another process ended: another Bureau cancelled
-   * it (`cancelDurableRun`) or timed it out (`Engine.timeout`) while this one drove it. The run
-   * ends `aborted` or `error` on the store, so a stream a client opened here ends with the matching
-   * terminal, the run stops counting as live and frees its concurrency slot, and this process stops
-   * holding its `ActiveRun`.
-   *
-   * The end reaches the store only, never the run's emitter, and the store action it records is
-   * marked `committedElsewhere`, which keeps it to this process's live frames. So no run hook,
-   * terminal listener, session save, task record, audit record, or durable history entry comes
-   * from here: the process that committed the outcome publishes what it publishes (a cancel's
-   * session status), and an engine that reclaimed the run and ended it has its own driver for the
-   * rest. A run whose durable state is not over (a lost checkpoint race), or cannot be read (a
-   * disposed engine), stays as it was.
-   */
-  async function settleRunEndedElsewhere(runId: string, activeRun: ActiveRun): Promise<void> {
-    let state: WorkflowState | null | undefined;
-    try {
-      state = await runtime.durable?.engine.get(runId);
-    } catch {
-      return;
-    }
-    const ending = state === null || state === undefined ? undefined : endedElsewhereAs(state);
-    if (ending === undefined || store.getRun(runId)?.status !== 'running') return;
-    store.settleRun(runId, ending.type, { error: ending.error, [COMMITTED_ELSEWHERE]: true });
-    activeRuns.delete(activeRun);
-    flowController?.settle(runId);
-    queueMicrotask(() => releaseTerminalRunReviewState(runId));
-  }
-
-  /** `runtime.kv`, when this bureau keeps durable steering at all. */
-  function durableSteeringStore(): ConditionalTextValueStore | undefined {
-    return runtime.durable && runtime.durableStorage !== undefined ? runtime.kv : undefined;
-  }
-
-  /** Runs `operation` after every earlier log operation for `sessionId`. */
-  function enqueueSteering<T>(sessionId: string, operation: () => Promise<T>): Promise<T> {
-    const previous = steeringQueues.get(sessionId) ?? Promise.resolve();
-    const next = previous.then(operation, operation);
-    const settled = next.then(
-      () => undefined,
-      () => undefined,
-    );
-    steeringQueues.set(sessionId, settled);
-    void settled.then(() => {
-      if (steeringQueues.get(sessionId) === settled) steeringQueues.delete(sessionId);
-      return undefined;
-    });
-    return next;
-  }
-
-  /** The session's gate, created on first use (non-durable bureaus). */
-  function getSessionSteeringGate(sessionId: string): BureauSteeringGate {
-    let gate = steeringGates.get(sessionId);
-    if (gate === undefined) {
-      gate = createSteeringGate(sessionId, steeringCommandLedger, runtimeServices.clock);
-      steeringGates.set(sessionId, gate);
-    }
-    return gate;
-  }
-
-  /**
-   * Applies one logged event to `gate` through the same method the live
-   * path calls, with the inputs the event recorded. Deterministic: the same
-   * log folds to the same state in every process.
-   */
-  function applySteeringEvent(
-    gate: BureauSteeringGate,
-    refusals: Map<string, Map<string, SteeringRefusal>>,
-    event: SteeringLogEvent,
-    submitted?: Map<string, Map<string, SteeringRequestedValue>>,
-    // What the log so far established, when the whole log is being folded:
-    // events no process could have logged after it are corruption.
-    history?: SteeringFoldHistory,
-  ): SteeringCommandAdmissionOutcome | undefined {
-    if (history !== undefined) checkSteeringHistory(gate.sessionId, history, event);
-    switch (event.type) {
-      case 'admit': {
-        const outcome = gate.admit(event.command, {
-          liveRunIds: event.liveRunIds,
-          now: event.now,
-        });
-        const { principal, id } = event.command;
-        if (outcome.outcome === 'rejected' || outcome.outcome === 'unsupported-capability') {
-          // Stored as a copy: the returned outcome is the caller's to keep.
-          nestedSet(refusals, principal, id, {
-            command: event.command,
-            outcome: structuredClone(outcome),
-            refusedAt: event.now,
-          });
-        }
-        // Accepted or refused alike: an exact retry of the submission must
-        // be recognized whichever way the gate decided.
-        if (event.submittedValue !== undefined && submitted !== undefined) {
-          nestedSet(submitted, principal, id, structuredClone(event.submittedValue));
-        }
-        return outcome;
-      }
-      case 'refused': {
-        const { principal, id, requestedValue } = event.command;
-        nestedSet(refusals, principal, id, {
-          command: event.command,
-          outcome: structuredClone(event.outcome),
-          refusedAt: event.now,
-        });
-        // A refusal decided after Bureau resolved the caller's selector keeps
-        // that selector; one decided before resolution was logged exactly as
-        // submitted, so a `policyRef` in it is what an exact retry must match,
-        // even in a process that could now resolve that selector.
-        if (submitted !== undefined && event.submittedValue !== undefined) {
-          nestedSet(submitted, principal, id, structuredClone(event.submittedValue));
-        } else if (
-          submitted !== undefined &&
-          'policyRef' in requestedValue &&
-          requestedValue.policyRef !== undefined
-        ) {
-          nestedSet(submitted, principal, id, structuredClone(requestedValue));
-        }
-        return structuredClone(event.outcome);
-      }
-      case 'applied':
-        // A run observes only versions the fold so far made visible to it:
-        // not later ones, and not another run's run-scoped ones. Anything
-        // above that is corruption, never a floor.
-        if (
-          event.configVersion > gate.getRunVisibleVersion(event.runId) ||
-          // Nor below what it can report at all: a boundary reports a
-          // version only once there is one, and never below the version
-          // the run started at.
-          event.configVersion < Math.max(1, gate.getRunBaseline(event.runId))
-        ) {
-          throw new SteeringLogCorruptError(
-            `Steering log for session "${gate.sessionId}" records run "${event.runId}" applying version ${String(event.configVersion)}, which no admission before it issued to that run.`,
-          );
-        }
-        gate.recordApplied(event.runId, event.configVersion, event.now);
-        return undefined;
-      case 'promoted':
-        gate.promoteForNewRun(event.runId, event.now);
-        return undefined;
-      case 'run-ended':
-        gate.failAcceptedForRun(event.runId, event.now);
-        return undefined;
-    }
-  }
-
-  function createSteeringFoldHistory(): SteeringFoldHistory {
-    return { runs: new Map(), keys: new Set() };
-  }
-
-  /**
-   * Fails closed on history no process could have logged. A run is promoted
-   * once, observes versions (`applied`) only while promoted, and ends once
-   * after its promotion. A key is decided once: its binding is written in
-   * the same atomic batch as its decision, conditioned on there being none.
-   * Folding anything else would fail, apply, or release real commands for
-   * a run that never existed or already ended, or answer one key two ways.
-   */
-  function checkSteeringHistory(
-    sessionId: string,
-    history: SteeringFoldHistory,
-    event: SteeringLogEvent,
-  ): void {
-    const corrupt = (what: string) =>
-      new SteeringLogCorruptError(`Steering log for session "${sessionId}" records ${what}.`);
-    if (event.type === 'admit' || event.type === 'refused') {
-      const key = JSON.stringify([event.command.principal, event.command.id]);
-      if (history.keys.has(key)) {
-        throw corrupt(
-          `a second decision for steering key "${event.command.principal}"/"${event.command.id}"`,
-        );
-      }
-      history.keys.add(key);
-      return;
-    }
-    const stage = history.runs.get(event.runId);
-    if (event.type === 'promoted') {
-      if (stage !== undefined) throw corrupt(`run "${event.runId}" promoted again`);
-      history.runs.set(event.runId, 'promoted');
-      return;
-    }
-    if (stage !== 'promoted') {
-      const verb = event.type === 'applied' ? 'applying a version' : 'ending';
-      throw corrupt(
-        `run "${event.runId}" ${verb} ${stage === 'ended' ? 'after it ended' : 'without a promotion'}`,
-      );
-    }
-    if (event.type === 'run-ended') history.runs.set(event.runId, 'ended');
-  }
-
-  /** Applies a logged event to a cursor's gate and its launch markers. */
-  function applyToCursor(
-    cursor: SteeringCursor,
-    event: SteeringLogEvent,
-  ): SteeringCommandAdmissionOutcome | undefined {
-    if (event.type === 'promoted') cursor.starting.set(event.runId, event.now);
-    if (event.type === 'run-ended') cursor.starting.delete(event.runId);
-    return applySteeringEvent(
-      cursor.gate,
-      cursor.refusals,
-      event,
-      cursor.submitted,
-      cursor.history,
-    );
-  }
-
-  function nestedSet<T>(
-    map: Map<string, Map<string, T>>,
-    outer: string,
-    inner: string,
-    value: T,
-  ): void {
-    let byInner = map.get(outer);
-    if (byInner === undefined) {
-      byInner = new Map();
-      map.set(outer, byInner);
-    }
-    byInner.set(inner, value);
-  }
-
-  /**
-   * A retry of an accepted command, re-expressed as the command it retries
-   * when it repeats the caller's original submission exactly (a `policyRef`
-   * Bureau resolved at admission). Resolving the retry again could pick a
-   * different coordinate, or fail, after the policy or catalog changed;
-   * matching the submission keeps the retry an exact replay.
-   */
-  function asSubmittedRetry(
-    ledger: ReturnType<typeof createSteeringCommandLedger>,
-    refusals: Map<string, Map<string, SteeringRefusal>>,
-    submitted: Map<string, Map<string, SteeringRequestedValue>>,
-    command: ImplementedSteeringCommand,
-    rawSubmission: SteeringRequestedValue = command.requestedValue,
-  ): ImplementedSteeringCommand {
-    const original = submitted.get(command.principal)?.get(command.id);
-    if (original === undefined) return command;
-    const decided =
-      getSteeringLedgerEntry(ledger, command.principal, command.id)?.requestedValue ??
-      refusals.get(command.principal)?.get(command.id)?.command.requestedValue;
-    if (decided === undefined) return command;
-    // Compared against what the caller sent, never against a value resolved
-    // afresh: a changed policy must not turn an exact retry into a conflict.
-    const asked = rawSubmission as Record<string, unknown>;
-    const first = original as Record<string, unknown>;
-    const same =
-      asked['target'] === first['target'] &&
-      asked['override'] === first['override'] &&
-      asked['provider'] === first['provider'] &&
-      asked['policyRef'] === first['policyRef'];
-    return same ? { ...command, requestedValue: decided } : command;
-  }
-
-  /**
-   * Folds every entry this process has not yet applied into the session's
-   * gate. The fold starts over — a fresh gate and ledger, from entry one —
-   * only when the session's incarnation changed (deleted and recreated).
-   * The cursor advances per entry, so a failure partway through never
-   * re-applies what was already applied.
-   */
-  async function catchUpSteering(
-    kv: ConditionalTextValueStore,
-    sessionId: string,
-    incarnation: string,
-  ): Promise<SteeringCursor> {
-    let cursor = steeringCursors.get(sessionId);
-    if (cursor !== undefined && cursor.incarnation !== incarnation) {
-      // The cursor is replaced only for the session's current incarnation.
-      // A request for one since deleted (a boundary or poll queued before a
-      // recreation) must not discard the cursor and gate the new
-      // incarnation's runs read.
-      const current = await runtime.sessionStore?.load(sessionId);
-      if (current?.incarnation !== incarnation) {
-        throw new BureauError(
-          `Session "${sessionId}" no longer has incarnation "${incarnation}".`,
-          'CONFLICT',
-        );
-      }
-      forgetSessionSteering(sessionId);
-      cursor = undefined;
-    }
-    // Live runs hold this cursor's gate, so it is never replaced while its
-    // incarnation lives — only re-registered if something unmapped it.
-    if (cursor !== undefined && steeringGates.get(sessionId) !== cursor.gate) {
-      steeringGates.set(sessionId, cursor.gate);
-    }
-    if (cursor === undefined) {
-      const ledger = createSteeringCommandLedger();
-      const gate = createSteeringGate(sessionId, ledger, runtimeServices.clock);
-      steeringGates.set(sessionId, gate);
-      cursor = {
-        incarnation,
-        gate,
-        ledger,
-        refusals: new Map(),
-        submitted: new Map(),
-        starting: new Map(),
-        history: createSteeringFoldHistory(),
-        head: { raw: null, sequence: 0 },
-        applied: 0,
-      };
-      steeringCursors.set(sessionId, cursor);
-    }
-    const head = await readSteeringLogHead(kv, sessionId, incarnation);
-    if (head.sequence < cursor.applied) {
-      // Shorter than what this process already folded: the log was deleted
-      // with its session by another process, or lost entries. Nothing may be
-      // appended to it, and the cursor is kept, so every later read of this
-      // incarnation fails the same way rather than refolding a shortened log
-      // from zero as if it were whole. A deletion is told apart by the
-      // caller, which finds the incarnation gone; a recreated session has a
-      // new incarnation, which resets the cursor above.
-      throw new SteeringLogCorruptError(
-        `Steering log for session "${sessionId}" is shorter than the ${String(cursor.applied)} entries already folded from it.`,
-      );
-    }
-    const events = await readSteeringLogEntries(
-      kv,
-      sessionId,
-      incarnation,
-      cursor.applied,
-      head.sequence,
-    );
-    for (const event of events) {
-      applyToCursor(cursor, event);
-      cursor.applied += 1;
-    }
-    cursor.head = head;
-    return cursor;
-  }
-
-  /** How often a session with a live durable run here re-reads its log. */
-  const STEERING_POLL_MS = 2_000;
-
-  function pollSessionSteering(sessionId: string, incarnation: string, runId: string): void {
-    const kv = durableSteeringStore();
-    const gate = steeringCursors.get(sessionId)?.gate;
-    if (kv === undefined || gate === undefined) return;
-    const existing = steeringPollers.get(sessionId);
-    if (existing !== undefined && existing.incarnation === incarnation && existing.gate === gate) {
-      existing.runIds.add(runId);
-      return;
-    }
-    if (existing !== undefined) {
-      stopSessionSteeringPoll(sessionId);
-      // A new incarnation replaced the one it polled: that one was deleted.
-      // Its runs here settle as its own deletion poll would have settled
-      // them: one not paused is aborted, and the paused ones are released.
-      if (existing.incarnation !== incarnation) {
-        for (const displacedRunId of existing.runIds) {
-          if (!existing.gate.forRun(displacedRunId).getDesiredState().paused) {
-            abortRun(displacedRunId);
-          }
-        }
-        existing.gate.settleForDeletion(runtimeServices.clock.nowISO());
-      }
-    }
-    const timer = runtimeServices.timers.setInterval(() => {
-      // One poll per session at a time: a slow backend skips ticks instead
-      // of stacking reads behind one another.
-      const current = steeringPollers.get(sessionId);
-      if (current === undefined || current.inFlight !== undefined) return;
-      const poll = pollSteeringOnce(kv, sessionId);
-      current.inFlight = poll;
-      inFlightSteeringPolls.add(poll);
-      void poll.finally(() => {
-        inFlightSteeringPolls.delete(poll);
-        current.inFlight = undefined;
-      });
-    }, STEERING_POLL_MS);
-    steeringPollers.set(sessionId, { incarnation, gate, runIds: new Set([runId]), timer });
-  }
-
-  async function pollSteeringOnce(kv: ConditionalTextValueStore, sessionId: string): Promise<void> {
-    const poller = steeringPollers.get(sessionId);
-    if (poller === undefined) return;
-    try {
-      const current = await runtime.sessionStore?.load(sessionId);
-      if (current?.incarnation !== poller.incarnation) {
-        // Deleted, or recreated, by another process. This process's runs of
-        // it settle as a local deletion settles them: a run not paused is
-        // aborted, and a paused one is released, since nothing can resume
-        // it any more. Both finish without recreating the session: their
-        // terminal saves are fenced to its incarnation.
-        if (steeringPollers.get(sessionId) === poller) stopSessionSteeringPoll(sessionId);
-        for (const runId of poller.runIds) {
-          if (!poller.gate.forRun(runId).getDesiredState().paused) abortRun(runId);
-        }
-        poller.gate.settleForDeletion(runtimeServices.clock.nowISO());
-        return;
-      }
-      // Replaced while this poll read the session (deleted and recreated,
-      // with a new run polling it): folding the old incarnation now would
-      // replace the new cursor and gate the recreated run reads.
-      await enqueueSteering(sessionId, async () => {
-        if (steeringPollers.get(sessionId) !== poller) return;
-        await catchUpSteering(kv, sessionId, poller.incarnation);
-      });
-      poller.lastFailure = undefined;
-    } catch (error) {
-      const failure = serializeUnknownError(error);
-      if (failure === poller.lastFailure) return;
-      poller.lastFailure = failure;
-      diagnose({
-        level: 'warn',
-        scope: 'steering',
-        message: `[bureau] Could not read steering for session "${sessionId}"; its runs here will see commands from other processes once it can be read: ${failure}`,
-      });
-    }
-  }
-
-  /** Stops polling for `runId`, and for the session once no run is left. */
-  function releaseSessionSteeringPoll(sessionId: string, runId: string): void {
-    const poller = steeringPollers.get(sessionId);
-    if (poller === undefined) return;
-    poller.runIds.delete(runId);
-    if (poller.runIds.size === 0) stopSessionSteeringPoll(sessionId);
-  }
-
-  function stopSessionSteeringPoll(sessionId: string): void {
-    const poller = steeringPollers.get(sessionId);
-    if (poller === undefined) return;
-    runtimeServices.timers.clearInterval(poller.timer);
-    steeringPollers.delete(sessionId);
-  }
-
-  /** Drops this process's folded view of a session. */
-  function forgetSessionSteering(sessionId: string): void {
-    const cursor = steeringCursors.get(sessionId);
-    if (cursor !== undefined && steeringGates.get(sessionId) === cursor.gate) {
-      steeringGates.delete(sessionId);
-    }
-    steeringCursors.delete(sessionId);
-  }
-
-  /**
-   * Appends a non-admission event after catching up, then applies it. Every
-   * non-admission change to a durable gate goes through here, so the local
-   * gate only ever changes in log order.
-   */
-  async function appendThenApplySteering(
-    kv: ConditionalTextValueStore,
-    sessionId: string,
-    incarnation: string,
-    event: Exclude<SteeringLogEvent, { type: 'admit' | 'refused' }>,
-  ): Promise<void> {
-    for (let attempt = 0; attempt < STEERING_APPEND_ATTEMPTS; attempt += 1) {
-      const cursor = await catchUpSteering(kv, sessionId, incarnation);
-      // Refused before it is written, never after: history no process could
-      // log (a run's boundary outside its promotion, a version this gate
-      // never issued) would leave the log unfoldable everywhere.
-      if (event.type === 'promoted' && cursor.history.runs.has(event.runId)) {
-        throw new BureauError(
-          `Run "${event.runId}" is already in the steering log of session "${sessionId}"; a run is promoted once.`,
-          'CONFLICT',
-        );
-      }
-      // Another process ended the run first: one that adopted it after this
-      // process lost it, or ended its own view of it at the same moment. The
-      // log has settled the run, so this process's later boundary for it
-      // has nothing to record, and logging it would make the log unfoldable.
-      if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) === 'ended') return;
-      if (event.type !== 'promoted' && cursor.history.runs.get(event.runId) !== 'promoted') {
-        throw new BureauError(
-          `Run "${event.runId}" cannot log "${event.type}" in session "${sessionId}": the steering log has no live promotion of it.`,
-          'CONFLICT',
-        );
-      }
-      if (
-        event.type === 'applied' &&
-        (event.configVersion > cursor.gate.getRunVisibleVersion(event.runId) ||
-          event.configVersion < Math.max(1, cursor.gate.getRunBaseline(event.runId)))
-      ) {
-        throw new BureauError(
-          `Run "${event.runId}" cannot have applied steering version ${String(event.configVersion)}: session "${sessionId}" has made only ${String(cursor.gate.getRunVisibleVersion(event.runId))} visible to it.`,
-          'CONFLICT',
-        );
-      }
-      const appended = await appendSteeringLogEvent(kv, sessionId, incarnation, cursor.head, event);
-      if (appended.status === 'appended') {
-        applyToCursor(cursor, event);
-        cursor.applied += 1;
-        cursor.head = appended.head;
-        return;
-      }
-    }
-    throw steeringContention(sessionId);
-  }
-
-  /**
-   * Logs a run-boundary event (a run observed a version, or ended) and
-   * applies it once logged, in the session's queue. The run's own step does
-   * not wait on it: per-run applied tracking lives in the run's state, so a
-   * boundary event reaching the gate a moment later changes nothing the
-   * run itself reads. If logging fails for good, the event is dropped (never
-   * applied to a gate the log does not reflect) and a `steering` diagnostic
-   * reports it.
-   */
-  function logRunBoundarySteering(
-    sessionId: string,
-    gate: BureauSteeringGate,
-    event: Extract<SteeringLogEvent, { type: 'applied' | 'run-ended' }>,
-  ): void {
-    if (event.type === 'run-ended') {
-      steeringRunIncarnations.delete(event.runId);
-      releaseSessionSteeringPoll(sessionId, event.runId);
-    }
-    const kv = durableSteeringStore();
-    const cursor = steeringCursors.get(sessionId);
-    if (kv === undefined || cursor === undefined || cursor.gate !== gate) {
-      // Non-durable, or a gate no longer folded from the log (its session
-      // was deleted or recreated): apply directly, as an in-memory gate does.
-      applySteeringEvent(gate, new Map(), event);
-      return;
-    }
-    const { incarnation } = cursor;
-    const appended = enqueueSteering(sessionId, () =>
-      appendThenApplySteering(kv, sessionId, incarnation, event),
-    );
-    appended.catch((error: unknown) => {
-      // Not applied locally: the gate must never hold state the log lacks,
-      // or later admissions here would decide differently from every other
-      // process. Nothing waits on it — an ended run's pause waiters are
-      // released by the run's own abort — so the cost is a stale command
-      // state, which the diagnostic reports.
-      diagnose({
-        level: 'error',
-        scope: 'steering',
-        message: `[bureau] Could not log a steering "${event.type}" event for run "${event.runId}" in session "${sessionId}": ${serializeUnknownError(error)}`,
-      });
-    });
-    // COR-1476 — the `run-ended` entry is the durable write that makes the run
-    // not live to every process reading `liveSessionRunIdsEverywhere`. The run's
-    // session-input settlement awaits it, and retries it if it rejected, before
-    // it reads the session's mailbox: the ordering that keeps an admitted input
-    // from being left open.
-    if (event.type === 'run-ended') steeringRunEndWrites.set(event.runId, appended);
-  }
-
-  /**
-   * Folds a recovered durable run's session log and hands the run its view of
-   * the gate, before replay resumes. A failure fails the recovered workflow
-   * (the recovery hook rethrows), and is diagnosed.
-   */
-  async function recoverRunSteering(
-    sessionId: string,
-    session: AgentSession | undefined,
-    runId: string,
-    services: DurableRunDeps,
-  ): Promise<BureauSteeringGate | undefined> {
-    const kv = durableSteeringStore();
-    if (kv === undefined || session === undefined) return undefined;
-    try {
-      const cursor = await enqueueSteering(sessionId, () =>
-        catchUpSteering(kv, sessionId, session.incarnation),
-      );
-      // Ended in the log a moment before its workflow's terminal state was
-      // committed (the process died in between): it has nothing left to
-      // steer, and resumes without a gate rather than failing.
-      if (cursor.history.runs.get(runId) === 'ended') return undefined;
-      if (cursor.history.runs.get(runId) !== 'promoted') {
-        // A run `createRun` started durably is tagged with its session
-        // incarnation and promoted in its log before its workflow starts.
-        // Tagged but not promoted, the log no longer describes it (missing,
-        // emptied, or ended for it): resuming on a default gate would
-        // silently drop its steering, so it fails. A workflow without the
-        // tag was started elsewhere (catalog dispatch, a schedule) and never
-        // had steering; it resumes without a gate, as it always has.
-        const workflow = await runtime.durable?.engine.get(runId);
-        if (
-          workflow?.tags?.includes(steeringSessionRunTag(sessionId, session.incarnation)) !== true
-        ) {
-          return undefined;
-        }
-        throw new SteeringLogCorruptError(
-          `Steering log for session "${sessionId}" has no live promotion of recovered run "${runId}".`,
-        );
-      }
-      services.options = {
-        ...services.options,
-        runId,
-        steering: cursor.gate.forRun(runId),
-      };
-      return cursor.gate;
-    } catch (error) {
-      // Fails the recovered workflow rather than resuming it without its
-      // durable steering: the log is the only record of its desired model,
-      // pause, and identity, and running on defaults would ignore them.
-      diagnose({
-        level: 'error',
-        scope: 'steering',
-        message: `[bureau] Recovered run "${runId}" cannot resume: its session's steering log could not be folded: ${serializeUnknownError(error)}`,
-      });
-      throw error;
-    }
-  }
-
-  /**
-   * Removes steering logs whose session incarnation no longer exists — left
-   * behind when a process died after a session's deletion committed but
-   * before its log was deleted. Safe across processes: a log is keyed by
-   * incarnation, so a live session's log (any process's) is never touched,
-   * and a session recreated under the same id has a different incarnation.
-   */
-  async function sweepOrphanedSteeringLogs(): Promise<void> {
-    const kv = durableSteeringStore();
-    const sessionStore = runtime.sessionStore;
-    if (kv === undefined || sessionStore === undefined) return;
-    for (const { sessionId, incarnation } of await listSteeringLogIncarnations(kv)) {
-      const session = await sessionStore.load(sessionId);
-      if (session?.incarnation === incarnation) continue;
-      await enqueueSteering(sessionId, () => deleteSteeringLog(kv, sessionId, incarnation));
-    }
-  }
   let steeringSweep: Promise<void> = Promise.resolve();
 
-  function steeringContention(sessionId: string): BureauError {
-    return new BureauError(
-      `Steering log for session "${sessionId}" kept moving under ${String(STEERING_APPEND_ATTEMPTS)} consecutive append attempts.`,
-      'CONFLICT',
-    );
-  }
   let requestAuthorityValidator:
     ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined =
     createRunAuthorityValidator(workspace, options.requestAuthorityValidator);
