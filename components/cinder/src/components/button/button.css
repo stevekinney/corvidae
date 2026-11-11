@@ -126,6 +126,38 @@
   /* A button in a header's actions draws at xs but keeps a touch-sized hit area on coarse
      pointers: an invisible block-axis extension, never visual height. */
   @media (pointer: coarse) {
+    /* Keep the painted control compact while exposing its touch target as a stable, inspectable
+       surface. The pseudo-element extends only along the block axis; it never covers adjacent
+       controls in the inline axis and therefore does not create competing tap regions. */
+    .cinder-button[data-cinder-hit-target='44']:not([data-cinder-compact]) {
+      position: relative;
+      z-index: 0;
+    }
+
+    .cinder-button[data-cinder-hit-target='44']:not([data-cinder-compact])::before {
+      content: '';
+      position: absolute;
+      z-index: 0;
+      inset-inline: 0;
+      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
+    }
+
+    .cinder-button[data-cinder-size='xs']:not([data-cinder-compact]) {
+      min-height: var(--cinder-button-height-xs-fine, 1.5rem);
+    }
+
+    .cinder-button[data-cinder-size='sm']:not([data-cinder-compact]) {
+      min-height: var(--cinder-button-height-sm-fine, 1.75rem);
+    }
+
+    .cinder-button[data-cinder-size='md']:not([data-cinder-compact]) {
+      min-height: var(--cinder-button-height-md-fine, 2rem);
+    }
+
+    .cinder-button[data-cinder-size='lg']:not([data-cinder-compact]) {
+      min-height: var(--cinder-button-height-lg-fine, 2.5rem);
+    }
+
     .cinder-button[data-cinder-compact] {
       position: relative;
     }

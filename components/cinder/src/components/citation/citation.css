@@ -3,6 +3,7 @@
 @layer cinder.components {
   .cinder-citation {
     display: inline;
+    container-type: inline-size;
   }
   .cinder-citation__marker {
     border: 0;
@@ -23,6 +24,7 @@
     text-align: start;
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
+    padding: var(--cinder-space-1);
   }
   /* A title is clamped to two lines; its whole text stays in the DOM for assistive technology. */
   .cinder-citation__title {
@@ -69,7 +71,7 @@
   .cinder-citation__pagination {
     display: flex;
     flex-wrap: wrap;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
     align-items: center;
     justify-content: center;
   }
@@ -94,6 +96,16 @@
     }
     .cinder-citation__pagination button {
       inline-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  @container (inline-size < 30rem) {
+    .cinder-citation__panel {
+      gap: var(--cinder-space-1);
+    }
+
+    .cinder-citation__list {
+      gap: var(--cinder-space-2);
     }
   }
 }

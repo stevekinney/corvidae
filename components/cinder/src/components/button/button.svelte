@@ -330,6 +330,7 @@
     class={mergedClassName}
     {...dataAttributes}
     data-cinder-button-group-item={buttonGroupItemAttribute}
+    data-cinder-hit-target="44"
     style:inline-size={lockedInlineSize}
     aria-disabled={resolvedAriaDisabled}
     aria-busy={resolvedAriaBusy}
@@ -351,6 +352,7 @@
     class={mergedClassName}
     {...dataAttributes}
     data-cinder-button-group-item={buttonGroupItemAttribute}
+    data-cinder-hit-target="44"
     style:inline-size={lockedInlineSize}
     disabled={buttonDisabled}
     aria-disabled={resolvedAriaDisabled}
