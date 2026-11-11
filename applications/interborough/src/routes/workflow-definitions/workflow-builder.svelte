@@ -8,7 +8,8 @@
    * the JSON tab edits the same text, so each view shows the other's edits and neither can lose
    * what the other wrote (`workflow-builder-model.ts`). Text that is not a JSON object leaves the
    * builder with nothing to read, so it says so and points at the JSON tab. Below 640 pixels the
-   * Builder tab is read-only and says to open it on a larger screen (row 05n).
+   * builder is read-only (its fields, its JSON and its actions; the tabs still switch) and says to
+   * open it on a larger screen, beside a link back (row 05n).
    */
   import {
     Alert,
@@ -332,6 +333,19 @@
 {/snippet}
 
 <div class="weft-workflow-builder" data-testid="workflow-builder">
+  {#if readOnly}
+    <p class="weft-workflow-builder__phone" data-testid="workflow-builder-phone">
+      <span>{copy.phone.message}</span>
+      <Button
+        variant="ghost-accent"
+        size="sm"
+        href={router.href(backHref)}
+        onclick={(event) => go(event, backHref)}
+        >{mode === 'create' ? copy.phone.backToWorkflows : copy.phone.backToWorkflow}</Button
+      >
+    </p>
+  {/if}
+
   <Tabs bind:value={tab}>
     <Tabs.List label={copy.tabsLabel}>
       <Tabs.Trigger value="builder">{copy.builderTab}</Tabs.Trigger>
@@ -348,19 +362,6 @@
           >
         </Alert>
       {:else}
-        {#if readOnly}
-          <p class="weft-workflow-builder__phone" data-testid="workflow-builder-phone">
-            <span>{copy.phone.message}</span>
-            <Button
-              variant="ghost-accent"
-              size="sm"
-              href={router.href(backHref)}
-              onclick={(event) => go(event, backHref)}
-              >{mode === 'create' ? copy.phone.backToWorkflows : copy.phone.backToWorkflow}</Button
-            >
-          </p>
-        {/if}
-
         {#if error !== ''}
           <Alert variant="danger">{error}</Alert>
         {/if}
@@ -709,16 +710,18 @@
     </Tabs.Panel>
 
     <Tabs.Panel value="json">
-      <JsonEditor
-        id={jsonId}
-        label={jsonLabel}
-        description={jsonDescription}
-        rows={18}
-        value={text}
-        {error}
-        validFeedbackVisible={false}
-        onValueChange={onTextChange}
-      />
+      <div class="weft-workflow-builder__json" inert={readOnly}>
+        <JsonEditor
+          id={jsonId}
+          label={jsonLabel}
+          description={jsonDescription}
+          rows={18}
+          value={text}
+          {error}
+          validFeedbackVisible={false}
+          onValueChange={onTextChange}
+        />
+      </div>
     </Tabs.Panel>
   </Tabs>
 
@@ -731,7 +734,7 @@
       <span class="cinder-sr-only">{copy.readBack.label}: </span>{view?.readBack ?? ''}
     </p>
     {#if actions !== undefined}
-      <div class="weft-workflow-builder__actions">{@render actions()}</div>
+      <div class="weft-workflow-builder__actions" inert={readOnly}>{@render actions()}</div>
     {/if}
   </footer>
 </div>

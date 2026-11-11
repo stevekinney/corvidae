@@ -45,13 +45,6 @@
   min-width: 0;
 }
 
-.ib-workflows__title {
-  margin: 0;
-  font-size: var(--cinder-text-xl);
-  font-weight: 600;
-  overflow-wrap: anywhere;
-}
-
 .ib-workflows__list {
   display: flex;
   flex-direction: column;
@@ -222,13 +215,6 @@
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-1) var(--cinder-space-2);
-  align-items: center;
-}
-
-.ib-workflow__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2);
   align-items: center;
 }
 

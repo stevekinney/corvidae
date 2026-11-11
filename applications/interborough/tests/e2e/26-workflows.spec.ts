@@ -37,6 +37,11 @@ import {
 } from './workflow-support.ts';
 
 const WIDTHS = [375, 1280] as const;
+/**
+ * The widths a workflow is written at. Below 640 pixels the builder is read-only (board
+ * ResponsiveAndDark, row 05n), so `workflow-builder.spec.ts` checks the phone width says so.
+ */
+const BUILDER_WIDTHS = [1280] as const;
 
 /** A document needs at least one step. */
 const STEPS = [
@@ -271,7 +276,7 @@ test.describe('the list', () => {
 });
 
 test.describe('a new workflow', () => {
-  for (const width of WIDTHS) {
+  for (const width of BUILDER_WIDTHS) {
     test(`is written from the template, saved as a file the Bureau lists as ready, and opened, at ${width} pixels`, async ({
       page,
       request,
@@ -830,7 +835,7 @@ test.describe('the runs of a type', () => {
 });
 
 test.describe('the editor', () => {
-  for (const width of WIDTHS) {
+  for (const width of BUILDER_WIDTHS) {
     test(`saves the file’s JSON without its name, and lands on the workflow, at ${width} pixels`, async ({
       page,
       request,

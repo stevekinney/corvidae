@@ -140,7 +140,7 @@ test.describe('a workflow built from cards', () => {
     expect((document['steps'] as unknown[])[1]).toEqual({
       title: 'Review the briefing',
       kind: 'await-signal',
-      signal: 'review-1',
+      signal: expect.stringMatching(/^review-[0-9a-f]{8}$/),
       review: true,
     });
   });

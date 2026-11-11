@@ -444,7 +444,11 @@ describe('the builder', () => {
           },
           { kind: 'await-signal', signal: 'approved' },
           { kind: 'sleep', duration: '1m' },
-          { kind: 'await-signal', signal: 'review-1', review: true },
+          {
+            kind: 'await-signal',
+            signal: expect.stringMatching(/^review-[0-9a-f]{8}$/),
+            review: true,
+          },
         ],
       },
     });
@@ -695,6 +699,14 @@ describe('the builder', () => {
     expect(container.querySelector('.weft-workflow-builder__body')?.hasAttribute('inert')).toBe(
       true,
     );
+    expect(container.querySelector('.weft-workflow-builder__actions')?.hasAttribute('inert')).toBe(
+      true,
+    );
+    await openJson(container);
+    expect(container.querySelector('.weft-workflow-builder__json')?.hasAttribute('inert')).toBe(
+      true,
+    );
+    expect(container.textContent).toContain(BUILDER.phone.message);
   });
 
   test('says the builder needs valid JSON, and opens the JSON tab from there', async () => {

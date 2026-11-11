@@ -337,16 +337,16 @@ export function setTitle(text: string, value: string): string {
  * For a new workflow: `text` with `title` set to `value` and, while the identifier still follows
  * the title, `name` set to the identifier the new title makes. It follows while `name` is empty or
  * is the identifier the previous title made, so an identifier typed in the ID field or the JSON tab
- * is kept. A title that makes no identifier leaves `name` alone.
+ * is kept. A following identifier is emptied when the title is cleared or makes none, so a title
+ * typed again makes it afresh instead of leaving a stale one.
  */
 export function setTitleDerivingName(text: string, value: string): string {
   const document = parseObject(text);
   if (document === undefined) return text;
   const name = asText(document['name']);
   const follows = name === '' || name === identifierFromTitle(asText(document['title']));
-  const derived = identifierFromTitle(value);
   const titled = setTitle(text, value);
-  return follows && derived !== '' ? setName(titled, derived) : titled;
+  return follows ? setName(titled, identifierFromTitle(value)) : titled;
 }
 
 /** `text` with `description` set to `value`, or removed when it is empty. */
@@ -394,37 +394,57 @@ export function setContributedTrigger(
   });
 }
 
+/** Eight random hexadecimal digits, which make a new review signal unlike any other workflow's. */
+function randomSuffix(): string {
+  return globalThis.crypto.randomUUID().replaceAll('-', '').slice(0, 8);
+}
+
 /**
- * The signal a new "Wait for a person" step waits on: `review-1`, or the next number no step and no
- * trigger of the file already uses, so answering the review can only resume this step. It is
- * written once, when the step is added, and never derived again: changing a step's signal is a
- * breaking change, and renaming or moving the step must not be one.
+ * The signal a new "Wait for a person" step waits on: `review-` and eight random digits, so a
+ * signal sent by name to every waiting instance can only resume this step, with `-2`, `-3` and so on
+ * added in the unlikely case a step or the trigger of the file already uses it. It is written once,
+ * when the step is added, and never derived again: changing a step's signal is a breaking change,
+ * and renaming or moving the step must not be one.
  */
-function reviewSignalFor(document: Json, steps: readonly unknown[]): string {
+function reviewSignalFor(document: Json, steps: readonly unknown[], base: string): string {
   const taken = new Set<string>();
   for (const step of steps) {
     if (isRecord(step) && typeof step['signal'] === 'string') taken.add(step['signal']);
   }
   const trigger = document['trigger'];
   if (isRecord(trigger) && typeof trigger['name'] === 'string') taken.add(trigger['name']);
-  let count = 1;
-  while (taken.has(`review-${String(count)}`)) count += 1;
-  return `review-${String(count)}`;
+  let signal = base;
+  for (let count = 2; taken.has(signal); count += 1) signal = `${base}-${String(count)}`;
+  return signal;
 }
 
-/**
- * `text` with a new step of `kind` at the end. A new agent step names `agent`, or none (`''`), so
- * nothing is chosen for the person.
- */
-export function addStep(text: string, kind: BuilderStepKind, agent = ''): string {
+/** What a new step starts with besides its kind. */
+export interface AddStepOptions {
+  /** The agent a new agent step names. Defaults to none (`''`), so nothing is chosen for the person. */
+  readonly agent?: string;
+  /** The signal a new "Wait for a person" step waits on. Defaults to `review-` and random digits. */
+  readonly reviewSignal?: string;
+}
+
+/** `text` with a new step of `kind` at the end. */
+export function addStep(text: string, kind: BuilderStepKind, options: AddStepOptions = {}): string {
   return edit(text, (document) => {
     // A `steps` that is not a list stays as it is: adding would replace it.
     if (document['steps'] !== undefined && !Array.isArray(document['steps'])) return undefined;
     const steps = stepsOf(document);
     if (kind === 'agent') {
-      steps.push({ kind: 'activity', handler: 'agent', input: { agent, message: '' } });
+      steps.push({
+        kind: 'activity',
+        handler: 'agent',
+        input: { agent: options.agent ?? '', message: '' },
+      });
     } else if (kind === 'person') {
-      steps.push({ kind: 'await-signal', signal: reviewSignalFor(document, steps), review: true });
+      const base = options.reviewSignal ?? `review-${randomSuffix()}`;
+      steps.push({
+        kind: 'await-signal',
+        signal: reviewSignalFor(document, steps, base),
+        review: true,
+      });
     } else if (kind === 'signal') {
       steps.push({ kind: 'await-signal', signal: '' });
     } else {

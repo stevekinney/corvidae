@@ -190,6 +190,16 @@ describe('the title and the ID', () => {
     expect(parsed(setTitleDerivingName(fresh, '2024!'))['name']).toBe('');
   });
 
+  test('clearing a title the ID followed empties the ID, so the next title makes it afresh', () => {
+    const made = text({ name: 'morning-briefing', title: 'Morning briefing', steps: [] });
+    const cleared = setTitleDerivingName(made, '');
+    expect(parsed(cleared)).toEqual({ name: '', steps: [] });
+    expect(parsed(setTitleDerivingName(cleared, 'Evening briefing'))).toMatchObject({
+      name: 'evening-briefing',
+      title: 'Evening briefing',
+    });
+  });
+
   test('identifierFromTitle makes an identifier the Bureau accepts', () => {
     expect(identifierFromTitle('Morning Briefing')).toBe('morning-briefing');
     expect(identifierFromTitle('Release notes')).toBe('release-notes');
@@ -317,24 +327,30 @@ describe('the edits', () => {
     for (const kind of ['agent', 'person', 'signal', 'wait'] as const) next = addStep(next, kind);
     expect(parsed(next)['steps']).toEqual([
       { kind: 'activity', handler: 'agent', input: { agent: '', message: '' } },
-      { kind: 'await-signal', signal: 'review-1', review: true },
+      { kind: 'await-signal', signal: expect.stringMatching(/^review-[0-9a-f]{8}$/), review: true },
       { kind: 'await-signal', signal: '' },
       { kind: 'sleep', duration: '1m' },
     ]);
-    expect(parsed(addStep('{}', 'agent', 'notes'))['steps']).toEqual([
+    expect(parsed(addStep('{}', 'agent', { agent: 'notes' }))['steps']).toEqual([
       { kind: 'activity', handler: 'agent', input: { agent: 'notes', message: '' } },
     ]);
   });
 
+  test('two waits for a person never share a signal, so a signal sent by name resumes only one', () => {
+    const once = addStep('{}', 'person');
+    const twice = parsed(addStep(once, 'person'))['steps'] as { signal: string }[];
+    expect(twice[0]?.signal).not.toBe(twice[1]?.signal);
+  });
+
   test('a wait for a person waits on a signal no other step or the trigger uses, and keeps it', () => {
     const taken = text({
-      trigger: { kind: 'signal', name: 'review-2' },
-      steps: [{ kind: 'await-signal', signal: 'review-1', review: true }],
+      trigger: { kind: 'signal', name: 'review-x-2' },
+      steps: [{ kind: 'await-signal', signal: 'review-x', review: true }],
     });
-    const added = addStep(taken, 'person');
+    const added = addStep(taken, 'person', { reviewSignal: 'review-x' });
     expect((parsed(added)['steps'] as Record<string, unknown>[])[1]).toEqual({
       kind: 'await-signal',
-      signal: 'review-3',
+      signal: 'review-x-3',
       review: true,
     });
     // Renaming and moving never change it: a changed signal is a breaking change.
@@ -342,7 +358,7 @@ describe('the edits', () => {
     expect((parsed(renamed)['steps'] as Record<string, unknown>[])[0]).toEqual({
       title: 'Approve it',
       kind: 'await-signal',
-      signal: 'review-3',
+      signal: 'review-x-3',
       review: true,
     });
   });
