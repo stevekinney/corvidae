@@ -82,6 +82,22 @@ test.describe('the run setup page', () => {
   }) => {
     const id = 'e2e-setup-layout';
     await createWaiting(request, id);
+    // The footer says a run starts right away only while fewer runs are going than the engine runs
+    // at once. The host's console engine holds the fixtures' long-running instances, so the read of
+    // what is going answers none here; the at-the-limit footer is the run setup states' own case.
+    await page.route('**/jsonrpc', async (route) => {
+      const body = JSON.parse(route.request().postData() ?? '{}') as {
+        method?: string;
+        id?: unknown;
+      };
+      if (body.method !== 'weft.workflows.aggregate') {
+        await route.fallback();
+        return;
+      }
+      await route.fulfill({
+        json: { jsonrpc: '2.0', id: body.id, result: { total: 0, groups: [], truncated: false } },
+      });
+    });
     for (const width of WIDTHS) {
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`/workflows/${id}/run`);
@@ -193,8 +209,15 @@ test.describe('on a schedule', () => {
       .click();
     await setup(page).getByLabel('Repeats', { exact: true }).selectOption('daily');
     await setup(page).getByLabel('At', { exact: true }).fill('03:00');
-    await setup(page).getByRole('combobox', { name: 'Time zone' }).fill('America/Los_Angeles');
-    await page.getByRole('option', { name: 'America/Los Angeles', exact: true }).click();
+    // The zone is a picker: its trigger opens a list with its own search field.
+    await setup(page)
+      .getByRole('combobox', { name: /^Time zone/ })
+      .click();
+    await page.getByPlaceholder('Search time zones').fill('Los Angeles');
+    await page
+      .getByRole('option', { name: /Los Angeles/ })
+      .first()
+      .click();
     await expect(footer(page).getByTestId('run-setup-summary')).toContainText(
       'every day at 3:00 AM Pacific time',
     );
