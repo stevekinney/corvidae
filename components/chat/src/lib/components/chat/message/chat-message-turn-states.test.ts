@@ -11,6 +11,8 @@ import { tick } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
 
+import type { ChatTurnState } from './turn-state.ts';
+
 setupHappyDom();
 
 const { fireEvent, render, cleanup } = await import('@testing-library/svelte');
@@ -62,7 +64,13 @@ describe('R2: streaming', () => {
 });
 
 describe('R3: reconnecting', () => {
-  const reconnecting = { kind: 'reconnecting', attempt: 2, attempts: 5, nextTryIn: 8, wait: 10 };
+  const reconnecting: ChatTurnState = {
+    kind: 'reconnecting',
+    attempt: 2,
+    attempts: 5,
+    nextTryIn: 8,
+    wait: 10,
+  };
 
   test('the partial text is muted with no caret, and the turn has no line', () => {
     const { container } = mount({ streaming: true, turnState: reconnecting });

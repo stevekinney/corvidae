@@ -270,8 +270,7 @@ describe('turn labels', () => {
     expect(DEFAULT_TURN_LABELS.retryStep).toBe('Retry this step');
     expect(DEFAULT_TURN_LABELS.copyError).toBe('Copy error');
     for (const value of Object.values(DEFAULT_TURN_LABELS)) {
-      const text =
-        typeof value === 'function' ? (value as (...counts: number[]) => string)(1, 2, 3) : value;
+      const text = typeof value === 'function' ? value(1, 2, 3) : value;
       expect(text).not.toContain(String.fromCodePoint(0xb7));
     }
   });

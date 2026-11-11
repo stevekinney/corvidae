@@ -206,7 +206,7 @@ export function isChatTurnState(value: unknown): value is ChatTurnState {
       return (
         isCount(candidate['attempt'], 1) &&
         isCount(candidate['attempts'], 1) &&
-        (candidate['attempt'] as number) <= (candidate['attempts'] as number) &&
+        candidate['attempt'] <= candidate['attempts'] &&
         isCount(candidate['nextTryIn'], 0) &&
         (candidate['wait'] === undefined || isCount(candidate['wait'], 0))
       );
