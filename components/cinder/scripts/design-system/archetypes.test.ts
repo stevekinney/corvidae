@@ -12,8 +12,22 @@ import {
 import { buildBundleCss } from './css.ts';
 import { archetypesRoot, assetsRoot, cinderRoot } from './paths.ts';
 
-/** The pages the design system must publish: the six the issue names at minimum. */
-const REQUIRED_ARCHETYPES = ['browse', 'detail', 'form', 'map', 'queue', 'record'];
+/**
+ * The pages the design system must publish: the six the issue names at minimum, and the brand
+ * book's other archetypes except Conversation, whose composer is the mounted `MarkdownEditor`.
+ */
+const REQUIRED_ARCHETYPES = [
+  'browse',
+  'collection',
+  'detail',
+  'flow',
+  'focus-list',
+  'form',
+  'map',
+  'overview',
+  'queue',
+  'record',
+];
 
 /**
  * Classes a component renders as structural hooks with no rule of their own, so `bundle.css` has no
@@ -123,7 +137,7 @@ describe('archetypeExportName', () => {
 describe('the checked-in archetype pages', () => {
   const previews = readArchetypePreviews(archetypesRoot);
 
-  test('publish at least the six archetypes the issue names, each as one document', () => {
+  test('publish every required archetype, each as one document', () => {
     const ids = previews.map((preview) => preview.id);
     for (const required of REQUIRED_ARCHETYPES) expect(ids).toContain(required);
     for (const preview of previews) {
@@ -251,7 +265,7 @@ describe('the recipe', () => {
     expect(brandBook).toContain('`recipe.md`');
     expect(brandBook).toContain('never hand-building component classes');
     for (const id of REQUIRED_ARCHETYPES) {
-      expect(brandBook.toLowerCase()).toContain(id);
+      expect(brandBook.toLowerCase()).toContain(id.replace('-', ' '));
     }
   });
 });

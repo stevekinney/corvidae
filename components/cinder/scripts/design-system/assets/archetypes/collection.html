@@ -1,0 +1,195 @@
+<!-- @dsCard group="Page archetypes" height=760 subtitle="Collection: many like records to scan, filter and open, with one labelled primary action." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Collection archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Places</h1>
+              </div>
+            </div>
+            <div class="cinder-page-header__actions">
+              <a href="#" class="cinder-button" data-cinder-variant="primary" data-cinder-size="md"
+                >New place</a
+              >
+            </div>
+          </div>
+        </div>
+        <div class="arch__row">
+          <div class="cinder-search-field">
+            <div
+              class="cinder-form-field cinder-input-field"
+              data-cinder-variant="default"
+              data-cinder-full-width
+            >
+              <div
+                class="cinder-form-field__control cinder-input-group cinder-input-group--leading cinder-input-group--trailing"
+                data-cinder-full-width
+                data-leading
+                data-trailing
+              >
+                <span class="cinder-input-group__leading cinder-_truncate" aria-hidden="true"
+                  ><span class="cinder-search-field__leading" aria-hidden="true"
+                    ><svg
+                      class="cinder-search-field__icon"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="m21 21-4.34-4.34" />
+                      <circle cx="11" cy="11" r="8" /></svg></span
+                ></span>
+                <input
+                  class="cinder-input cinder-search-field__input"
+                  id="collection-search"
+                  type="search"
+                  placeholder="Search places"
+                  aria-label="Search places"
+                  data-cinder-full-width
+                  data-cinder-variant="default"
+                  data-cinder-size="md"
+                />
+                <span class="cinder-input-group__trailing"
+                  ><button
+                    type="button"
+                    class="cinder-search-field__clear"
+                    aria-label="Clear search"
+                    tabindex="-1"
+                    hidden
+                  >
+                    <svg
+                      class="cinder-search-field__icon"
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="16"
+                      height="16"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      stroke-width="2"
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      aria-hidden="true"
+                    >
+                      <path d="M18 6 6 18" />
+                      <path d="m6 6 12 12" />
+                    </svg></button
+                ></span>
+              </div>
+              <p
+                id="collection-search-error"
+                class="cinder-form-field__error"
+                aria-live="polite"
+              ></p>
+            </div>
+          </div>
+          <div class="cinder-segmented-control-container">
+            <span id="collection-filter-label" class="cinder-segmented-control-label cinder-sr-only"
+              >Show</span
+            >
+            <div
+              id="collection-filter"
+              role="radiogroup"
+              aria-labelledby="collection-filter-label"
+              aria-orientation="horizontal"
+              class="cinder-segmented-control"
+              data-cinder-orientation="horizontal"
+              data-cinder-size="md"
+              data-cinder-selection-mode="single"
+              data-cinder-variant="radiogroup"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked="true"
+                tabindex="0"
+                class="cinder-segmented-control-option"
+                data-cinder-segment-value="all"
+                data-cinder-selected
+              >
+                All<span class="cinder-segmented-control-option-count"
+                  ><span class="cinder-segmented-control-option-count-separator">, </span>38</span
+                >
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked="false"
+                tabindex="-1"
+                class="cinder-segmented-control-option"
+                data-cinder-segment-value="open"
+              >
+                Open now<span class="cinder-segmented-control-option-count"
+                  ><span class="cinder-segmented-control-option-count-separator">, </span>11</span
+                >
+              </button>
+            </div>
+          </div>
+        </div>
+        <div
+          class="cinder-table-scroll cinder-_scroll-fade-inline-end"
+          role="region"
+          aria-label="Places"
+          tabindex="0"
+        >
+          <table class="cinder-table" data-cinder-density="comfortable">
+            <thead class="cinder-table__header">
+              <tr class="cinder-table__row">
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Name</div>
+                </th>
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Neighbourhood</div>
+                </th>
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Happy hour</div>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="cinder-table__body">
+              <tr class="cinder-table__row">
+                <th scope="row" class="cinder-table__cell">Union Station Bar</th>
+                <td class="cinder-table__cell">LoDo</td>
+                <td class="cinder-table__cell">3 pm to 7 pm</td>
+              </tr>
+              <tr class="cinder-table__row">
+                <th scope="row" class="cinder-table__cell">The Cooper Lounge</th>
+                <td class="cinder-table__cell">LoDo</td>
+                <td class="cinder-table__cell">4 pm to 6 pm</td>
+              </tr>
+              <tr class="cinder-table__row">
+                <th scope="row" class="cinder-table__cell">Rioja Bar</th>
+                <td class="cinder-table__cell">Larimer Square</td>
+                <td class="cinder-table__cell">3 pm to 6 pm</td>
+              </tr>
+              <tr class="cinder-table__row">
+                <th scope="row" class="cinder-table__cell">Stoic Brewing</th>
+                <td class="cinder-table__cell">RiNo</td>
+                <td class="cinder-table__cell">5 pm to 8 pm</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="cinder-load-more" data-cinder-variant="footer">
+          <span class="cinder-load-more__summary">Showing 4 of 38</span>
+          <button type="button" class="cinder-load-more__button"><span>Load more</span></button>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

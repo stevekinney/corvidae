@@ -1,0 +1,87 @@
+<!-- @dsCard group="Page archetypes" height=640 subtitle="Overview: one Spotlight leads, and the statistic tiles stay secondary to it." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Overview archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Overview</h1>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cinder-spotlight">
+          <p class="cinder-spotlight__value">2 need you</p>
+          <p class="cinder-spotlight__caveat">Everything else is running as expected.</p>
+        </div>
+        <div
+          class="cinder-statistic-group"
+          role="group"
+          aria-label="Today"
+          data-cinder-variant="default"
+          data-cinder-columns="auto"
+        >
+          <div class="cinder-statistic-group__grid">
+            <div
+              id="overview-runs"
+              class="cinder-statistic"
+              role="group"
+              aria-labelledby="overview-runs-label overview-runs-value"
+            >
+              <span id="overview-runs-label" class="cinder-statistic__label">Runs today</span>
+              <span id="overview-runs-value" class="cinder-statistic__value">48</span>
+            </div>
+            <div
+              id="overview-workers"
+              class="cinder-statistic"
+              role="group"
+              aria-labelledby="overview-workers-label overview-workers-value"
+            >
+              <span id="overview-workers-label" class="cinder-statistic__label"
+                >Workers online</span
+              >
+              <span id="overview-workers-value" class="cinder-statistic__value">6</span>
+            </div>
+            <div
+              id="overview-failed"
+              class="cinder-statistic"
+              role="group"
+              aria-labelledby="overview-failed-label overview-failed-value"
+            >
+              <span id="overview-failed-label" class="cinder-statistic__label">Failed</span>
+              <span id="overview-failed-value" class="cinder-statistic__value">1</span>
+            </div>
+          </div>
+        </div>
+        <div
+          class="cinder-card"
+          data-cinder-variant="card"
+          data-cinder-tone="default"
+          data-cinder-padding="default"
+          data-cinder-edge="none"
+        >
+          <div class="cinder-card__header">
+            <div class="cinder-card__title-row">
+              <div class="cinder-card__title-group">
+                <h2 class="cinder-card__title">This week</h2>
+              </div>
+            </div>
+            <p class="cinder-card__description">Runs finished faster than last week.</p>
+          </div>
+          <div class="cinder-card__body" data-cinder-padding="default">
+            <p class="arch__prose">Median run time fell from 9 minutes to 7.</p>
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,139 @@
+<!-- @dsCard group="Page archetypes" height=760 subtitle="Flow: one task in steps, with the current step's one question." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Set up a worker</h1>
+              </div>
+            </div>
+          </div>
+        </div>
+        <nav class="cinder-steps" aria-label="Set up a worker" data-cinder-orientation="horizontal">
+          <ol class="cinder-steps__list">
+            <li class="cinder-steps__item" data-cinder-state="complete">
+              <span class="cinder-steps__marker" aria-hidden="true"
+                ><svg
+                  class="cinder-steps__check"
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="16"
+                  height="16"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  stroke-linecap="round"
+                  stroke-linejoin="round"
+                >
+                  <path d="M20 6 9 17l-5-5" /></svg
+              ></span>
+              <span class="cinder-steps__body"
+                ><span class="cinder-steps__body-content"
+                  ><span class="cinder-steps__sr-only">Completed</span
+                  ><span class="cinder-steps__sr-only-separator"> </span
+                  ><span class="cinder-steps__label">Name it</span></span
+                ></span
+              >
+              <span
+                class="cinder-steps__connector"
+                data-cinder-state="complete"
+                aria-hidden="true"
+              ></span>
+            </li>
+            <li class="cinder-steps__item" data-cinder-state="current" aria-current="step">
+              <span class="cinder-steps__marker" aria-hidden="true"
+                ><span class="cinder-steps__index">2</span></span
+              >
+              <span class="cinder-steps__body"
+                ><span class="cinder-steps__body-content"
+                  ><span class="cinder-steps__label">Choose a model</span></span
+                ></span
+              >
+              <span
+                class="cinder-steps__connector"
+                data-cinder-state="upcoming"
+                aria-hidden="true"
+              ></span>
+            </li>
+            <li class="cinder-steps__item" data-cinder-state="upcoming">
+              <span class="cinder-steps__marker" aria-hidden="true"
+                ><span class="cinder-steps__index">3</span></span
+              >
+              <span class="cinder-steps__body"
+                ><span class="cinder-steps__body-content"
+                  ><span class="cinder-steps__label">Check and create</span></span
+                ></span
+              >
+            </li>
+          </ol>
+        </nav>
+        <form class="arch__column arch__narrow" action="#">
+          <section class="cinder-form-section" data-columns="1">
+            <h2 class="cinder-form-section__heading">Choose a model</h2>
+            <p class="cinder-form-section__description">You can change this later.</p>
+            <div class="cinder-form-section__grid">
+              <div class="cinder-form-field cinder-select-field" data-cinder-variant="default">
+                <label
+                  id="flow-model-label"
+                  for="flow-model"
+                  class="cinder-form-field__label cinder-select-field__label"
+                  >Model</label
+                >
+                <span class="cinder-select-field__control">
+                  <select
+                    id="flow-model"
+                    class="cinder-_input-frame cinder-select"
+                    data-cinder-size="md"
+                    data-cinder-variant="default"
+                  >
+                    <option value="fast" selected>Fast</option>
+                    <option value="careful">Careful</option>
+                  </select>
+                  <span class="cinder-select-field__chevron" aria-hidden="true"></span>
+                </span>
+                <p
+                  id="flow-model-error"
+                  class="cinder-form-field__error cinder-select-field__error"
+                  aria-live="polite"
+                ></p>
+              </div>
+            </div>
+          </section>
+          <div class="cinder-form-actions" role="group" aria-label="Form actions">
+            <div class="cinder-form-actions__row">
+              <div class="cinder-form-actions__summary" role="status"></div>
+              <div class="cinder-form-actions__end">
+                <button
+                  type="button"
+                  class="cinder-button"
+                  data-cinder-variant="secondary"
+                  data-cinder-size="md"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  class="cinder-button"
+                  data-cinder-variant="primary"
+                  data-cinder-size="md"
+                >
+                  Continue
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </main>
+  </body>
+</html>
