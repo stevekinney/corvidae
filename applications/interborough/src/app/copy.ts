@@ -1,4 +1,5 @@
 import { formatBytes } from '../lib/format/index.ts';
+import { HOOKS_COPY } from '../routes/hooks/hook-copy.ts';
 import type { ViewName } from './views.ts';
 
 /** The words for one state of one view. */
@@ -5967,15 +5968,13 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   hooks: {
     label: 'Hooks',
     loading: { title: 'Loading hooks', description: 'Reading the hooks you have written.' },
-    empty: {
-      title: 'No hooks yet',
-      description:
-        'A hook does something when an event happens: it sends a signed message, starts a workflow, or notifies you.',
-      action: { label: 'New hook', href: '/hooks/new' },
-    },
+    // The list draws its own empty and failed states under its own header (`ownsStates` in
+    // `views.ts`) in the words `HOOKS_COPY.list` holds, so the frame and the page never say them two
+    // ways.
+    empty: { ...HOOKS_COPY.list.firstUse, action: { label: 'New hook', href: '/hooks/new' } },
     error: {
-      title: 'Hooks are unavailable',
-      description: 'The server did not answer. Check that the host is running, then try again.',
+      title: HOOKS_COPY.list.loadFailed.title,
+      description: HOOKS_COPY.list.loadFailed.noAnswer,
     },
     forbidden: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'bureau.hooks:read' },
     notFound: {

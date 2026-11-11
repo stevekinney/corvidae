@@ -282,7 +282,7 @@ describe('the Hooks tab', () => {
     const view = mount();
 
     await view.findByRole('link', {
-      name: 'When Review requested for the agent researcher, notify me',
+      name: 'When a review is waiting, notify me',
     });
     expect(served.calls.find((call) => call.method === 'bureau.hooks.list')?.params).toEqual({
       scope: { kind: 'agent', id: 'researcher' },
@@ -334,7 +334,7 @@ describe('the Hooks tab', () => {
     failing = false;
     await fireEvent.click(view.getByRole('button', { name: RETRY_LABEL }));
     await view.findByRole('link', {
-      name: 'When Review requested for the agent researcher, notify me',
+      name: 'When a review is waiting, notify me',
     });
   });
 });

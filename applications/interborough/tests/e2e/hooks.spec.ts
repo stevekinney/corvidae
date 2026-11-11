@@ -185,8 +185,8 @@ test('limits a hook to one agent with Only for: it fires for that agent, and its
   try {
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, thread, 'Say something');
     await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}?tab=hooks`);
-    const row = page.getByTestId('agent-hooks').getByRole('row', { name: new RegExp(name) });
-    await expect(row.getByText('Answered 200')).toBeVisible();
+    const row = page.getByTestId('agent-hooks').locator('li[data-hook]', { hasText: name });
+    await expect(row.locator('[data-status-word="Delivered"]')).toBeVisible();
 
     const { deliveries } = (await bureauCall(request, 'bureau.hooks.deliveries', {
       hookId: (other as { id: string }).id,
@@ -219,27 +219,31 @@ test('lists a failing hook first, reads each hook as a sentence, and turns one o
 
   await page.goto('/hooks');
   await expect(page.locator('[data-view="hooks"]')).toHaveAttribute('data-state', 'ready');
-  const brokenRow = page.locator(`tr[data-hook="${broken.id}"]`);
-  const goodRow = page.locator(`tr[data-hook="${good.id}"]`);
-  await expect(brokenRow.locator('[data-status-word="Failed"]')).toBeVisible();
-  await expect(goodRow.getByText('Answered 200')).toBeVisible();
+  const brokenRow = page.locator(`li[data-hook="${broken.id}"]`);
+  const goodRow = page.locator(`li[data-hook="${good.id}"]`);
+  // A delivery that ended without reaching its end reads Failed, or Gave up once it spent its tries.
+  await expect(brokenRow.locator('[data-status-word]')).toHaveAttribute(
+    'data-status-word',
+    /^(Failed|Gave up)$/,
+  );
+  await expect(goodRow.locator('[data-status-word="Delivered"]')).toBeVisible();
   // The failing hook comes before the one that delivered, though it was made after it.
   const order = await page
-    .locator('tr[data-hook]')
+    .locator('li[data-hook]')
     .evaluateAll((rows) => rows.map((row) => row.getAttribute('data-hook')));
   expect(order.indexOf(broken.id)).toBeLessThan(order.indexOf(good.id));
-  await expect(
-    brokenRow.getByRole('link', {
-      name: 'When Goal failed or Goal canceled, send a signed message to http://127.0.0.1:9/receive',
-    }),
-  ).toBeVisible();
+  // The hook's name is its title and its link; line two reads the hook as a sentence.
+  await expect(brokenRow.getByRole('link', { name: `${PREFIX} broken` })).toBeVisible();
+  await expect(brokenRow).toContainText(
+    'When a goal fails or a goal is canceled, send a webhook to 127.0.0.1:9',
+  );
 
   const toggle = goodRow.getByRole('switch');
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'false');
   await page.reload();
-  await expect(page.locator(`tr[data-hook="${good.id}"]`).getByRole('switch')).toHaveAttribute(
+  await expect(page.locator(`li[data-hook="${good.id}"]`).getByRole('switch')).toHaveAttribute(
     'aria-checked',
     'false',
   );
@@ -260,17 +264,17 @@ for (const width of WIDTHS) {
     await page.goto('/hooks');
 
     await expect(page.locator('[data-view="hooks"]')).toHaveAttribute('data-state', 'ready');
-    await expect(page.locator(`tr[data-hook="${hook.id}"]`)).toContainText(
-      'When Schedule missed, notify me',
+    await expect(page.locator(`li[data-hook="${hook.id}"]`)).toContainText(
+      'When a schedule misses a run, notify me',
     );
     await page.getByRole('searchbox', { name: HOOKS_COPY.searchLabel }).fill('schedule missed');
-    await expect(page.locator(`tr[data-hook="${hook.id}"]`)).toBeVisible();
+    await expect(page.locator(`li[data-hook="${hook.id}"]`)).toBeVisible();
     await page.getByRole('searchbox', { name: HOOKS_COPY.searchLabel }).fill('no hook says this');
     await expect(
-      page.getByRole('heading', { level: 2, name: HOOKS_COPY.noMatch.title }),
+      page.getByRole('heading', { level: 2, name: HOOKS_COPY.list.noMatch.title }),
     ).toBeVisible();
     await page.getByRole('button', { name: HOOKS_COPY.clearAction }).click();
-    await expect(page.locator(`tr[data-hook="${hook.id}"]`)).toBeVisible();
+    await expect(page.locator(`li[data-hook="${hook.id}"]`)).toBeVisible();
     await checkA11y(`hooks — the list at ${width}px`);
   });
 }

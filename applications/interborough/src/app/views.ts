@@ -183,8 +183,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   goals: { scopes: [], canBeEmpty: true },
   // In the sidebar after Capabilities. Holds no console scope: a caller sees the hooks it owns. A home that
   // keeps hooks off answers the page's own words, not the frame's. `/hooks/new` is where the first
-  // hook is made, so the frame never calls the view empty there.
-  hooks: { scopes: [], canBeEmpty: true },
+  // hook is made, so the frame never calls the view empty there. The list keeps its header in every
+  // state, so the page draws its own loading, empty, failed and refresh-failed states
+  // (`routes/hooks/hook-list.svelte`); the editor reads its own hook and says so when it cannot.
+  hooks: { scopes: [], canBeEmpty: true, ownsStates: true },
   // The operator's page: `system:read` alone reaches it, and so does `workflows:read` alone. Each
   // count and band that needs a scope the caller lacks shows a dash instead of failing the page.
   health: { scopes: ['system:read', 'workflows:read'], canBeEmpty: false },

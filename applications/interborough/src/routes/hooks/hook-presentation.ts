@@ -3,6 +3,10 @@
  * grouped under, which events an action may listen to, a hook as a sentence, and what a delivery
  * came to. Pure, so the pages and their tests share one reading.
  */
+import type { StatusDotWord } from '@lostgradient/cinder';
+import { HttpClientError } from '@lostgradient/weft';
+
+import { agentLabel } from '../../lib/agent-label.ts';
 import { agentPath } from '../../lib/agent-paths.ts';
 import {
   HOOK_SCOPE_KINDS,
@@ -13,9 +17,12 @@ import {
   type HookEventKind,
   type HookScope,
   type HookScopeKind,
+  type ListedHook,
 } from '../../lib/bureau-hooks.ts';
+import { isNetworkFailure } from '../../lib/faults.ts';
 import { scheduleDetailPath, workflowDetailPath } from '../../lib/router.svelte.ts';
 import type { StatusWord } from '../../lib/status.ts';
+import { activityTime } from '../health/health-times.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 
 const COPY = HOOKS_COPY.editor;
@@ -286,6 +293,166 @@ export function hookMatches(hook: Hook, query: string): boolean {
     .split(/\s+/)
     .filter((term) => term !== '');
   if (terms.length === 0) return true;
-  const haystack = [hookSentence(hook), hook.name ?? '', ...hook.events].join(' ').toLowerCase();
+  const haystack = [hookSentence(hook), hookRowSentence(hook), hook.name ?? '', ...hook.events]
+    .join(' ')
+    .toLowerCase();
   return terms.every((term) => haystack.includes(term));
+}
+
+/** An event kind as the clause a list row's sentence opens with: `schedule.missed` reads `a schedule misses a run`. */
+export function eventClause(kind: string): string {
+  const clauses = HOOKS_COPY.row.events;
+  return Object.hasOwn(clauses, kind) ? (clauses[kind] ?? eventWords(kind)) : eventWords(kind);
+}
+
+/** An event kind as a name for a filter option: the clause with its first letter raised, `A run fails`. */
+export function eventOptionLabel(kind: string): string {
+  const clause = eventClause(kind);
+  return `${clause.charAt(0).toUpperCase()}${clause.slice(1)}`;
+}
+
+/** The events of a hook as a clause: one, two joined by `or`, or the first and how many more. */
+function eventClauses(events: readonly string[]): string {
+  const clauses = events.map(eventClause);
+  const [first, second] = clauses;
+  if (first === undefined) return HOOKS_COPY.sentence.noEvent;
+  if (second === undefined) return first;
+  if (clauses.length === 2) return `${first} ${HOOKS_COPY.sentence.or} ${second}`;
+  return `${first} ${HOOKS_COPY.sentence.or} ${HOOKS_COPY.sentence.more(clauses.length - 1)}`;
+}
+
+/** The host of a web address, which is what a row says a webhook goes to; the whole text when it is not an address. */
+export function webhookHost(url: string): string {
+  try {
+    const host = new URL(url).host;
+    return host === '' ? url : host;
+  } catch {
+    return url;
+  }
+}
+
+/** The part of a hook a list row's sentence reads. */
+type RowHook = {
+  readonly events: readonly string[];
+  readonly action: Hook['action'];
+  readonly scope?: HookScope | null | undefined;
+};
+
+/** What a subject is called where a row says it: an identifier in words (`tool-runner` reads `Tool runner`). */
+function subjectName(id: string): string {
+  return agentLabel(id, undefined);
+}
+
+/** What a row's action says, with a webhook's whole address when `fullAddress` is set (for the tooltip). */
+function rowActionPhrase(action: Hook['action'], fullAddress: boolean): string {
+  const row = HOOKS_COPY.row;
+  switch (action.type) {
+    case 'webhook':
+      return row.webhook(fullAddress ? action.url : webhookHost(action.url));
+    case 'start-workflow':
+      return row.startWorkflow(subjectName(action.workflowId));
+    case 'notify':
+      return HOOKS_COPY.sentence.notify;
+    case 'plugin':
+      return HOOKS_COPY.sentence.plugin(action.plugin, action.kind);
+  }
+}
+
+/**
+ * A hook as the sentence on line two of its list row: `When a run fails, send a webhook to
+ * events.pagerduty.com`. A hook limited to a workflow reads it inside the sentence (`When a run
+ * finishes in Triage inbox, notify me`). The row says the host of a webhook; `fullAddress` says all of it.
+ */
+export function hookRowSentence(hook: RowHook, fullAddress = false): string {
+  const workflow =
+    hook.scope?.kind === 'workflow'
+      ? ` ${HOOKS_COPY.row.inWorkflow(subjectName(hook.scope.id))}`
+      : '';
+  return `${HOOKS_COPY.sentence.when} ${eventClauses(hook.events)}${workflow}, ${rowActionPhrase(hook.action, fullAddress)}`;
+}
+
+/** The two texts of a hook's list row: the bold title on line one and the muted line two. */
+export type HookRowText = {
+  readonly title: string;
+  /** Line two; empty when a hook with no name has said all of it in its title. */
+  readonly line: string;
+};
+
+/**
+ * What a hook's list row says. The title is the hook's name, or its sentence when it has none. Line
+ * two is the sentence (unless the title is it), then what else the hook is limited to, then, for a
+ * hook that is off, when it last delivered, which line one does not say. The parts are joined by
+ * commas. The row says the host of a webhook; `fullAddress` says all of it, for the tooltips.
+ */
+export function hookRowText(
+  hook: Pick<ListedHook, 'name' | 'events' | 'action' | 'scope' | 'enabled' | 'lastDelivery'>,
+  now: number,
+  fullAddress = false,
+): HookRowText {
+  const sentence = hookRowSentence(hook, fullAddress);
+  const parts = hook.name === null ? [] : [sentence];
+  if (hook.scope !== null && hook.scope.kind !== 'workflow') {
+    parts.push(HOOKS_COPY.row.onlyFor(subjectName(hook.scope.id)));
+  }
+  if (!hook.enabled && hook.lastDelivery !== null) {
+    parts.push(HOOKS_COPY.row.lastDelivery(activityTime(hook.lastDelivery.updatedAt, now)));
+  }
+  const line = parts.join(', ');
+  // With no sentence to lead it, the line starts with its own first word.
+  return {
+    title: hook.name ?? sentence,
+    line: hook.name === null ? `${line.charAt(0).toUpperCase()}${line.slice(1)}` : line,
+  };
+}
+
+/**
+ * What a read of the list that failed says: a server error names the status it answered with ("The
+ * server answered with an error (500)"), a read that got no answer says so, and anything else is
+ * said plainly. Each ends by saying nothing the person did caused it.
+ */
+export function hookListFailure(error: unknown): string {
+  const copy = HOOKS_COPY.list.loadFailed;
+  if (isNetworkFailure(error)) return copy.noAnswer;
+  if (error instanceof HttpClientError) return copy.answered(error.status);
+  return copy.unknown;
+}
+
+/** What a hook's row says in the status column, or `undefined` when it has had no delivery. */
+export function hookStatusWord(
+  hook: Pick<ListedHook, 'enabled' | 'lastDelivery'>,
+): StatusDotWord | undefined {
+  if (!hook.enabled) return 'Off';
+  const last = hook.lastDelivery;
+  if (last === null) return undefined;
+  switch (last.status) {
+    case 'delivered':
+      return 'Delivered';
+    case 'pending':
+      if (last.lastAttempt === null) return 'Waiting';
+      return last.lastAttempt.outcome === 'sending' ? 'Running' : 'Retrying';
+    case 'exhausted':
+      return 'Gave up';
+    case 'aborted':
+      return 'Canceled';
+    case 'failed':
+    case 'failed-secret':
+      return 'Failed';
+  }
+}
+
+/** The time at the end of line one: the last delivery's, and nothing for a hook that is off, whose line two says it. */
+export function hookTime(
+  hook: Pick<ListedHook, 'enabled' | 'lastDelivery'>,
+  now: number,
+): string | undefined {
+  if (!hook.enabled || hook.lastDelivery === null) return undefined;
+  return activityTime(hook.lastDelivery.updatedAt, now);
+}
+
+/**
+ * Whether a hook is failing and on: its last delivery ended without reaching its end, so it comes
+ * first in the list. A hook that is off is not failing, whatever its last delivery did.
+ */
+export function hookFailing(hook: Pick<ListedHook, 'enabled' | 'lastDelivery'>): boolean {
+  return hook.enabled && deliveryFailed(hook.lastDelivery);
 }

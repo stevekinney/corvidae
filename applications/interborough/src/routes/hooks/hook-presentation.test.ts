@@ -355,3 +355,182 @@ describe('what a hook is limited to', () => {
     expect(deliveryLine(summary)).toBe(HOOKS_COPY.attempt.notStarted);
   });
 });
+
+function summary(overrides: Partial<HookDeliverySummary> = {}): HookDeliverySummary {
+  return {
+    id: 'delivery-1',
+    kind: 'review.requested',
+    test: false,
+    status: 'delivered',
+    lastAttempt: null,
+    createdAt: 1,
+    updatedAt: 1,
+    ...overrides,
+  };
+}
+
+function listed(overrides: Partial<ListedHook> = {}): ListedHook {
+  return { ...hook(), lastDelivery: null, ...overrides };
+}
+
+describe('an event as a clause of a row’s sentence', () => {
+  test('reads the events a person knows in their own words, and the rest as plain words', () => {
+    expect(eventClause('schedule.missed')).toBe('a schedule misses a run');
+    expect(eventClause('review.requested')).toBe('a review is waiting');
+    expect(eventClause('goal.attempt.started')).toBe('Goal attempt started');
+    // A kind named like a property of every object is not a known event.
+    expect(eventClause('constructor')).toBe('Constructor');
+    expect(eventOptionLabel('schedule.missed')).toBe('A schedule misses a run');
+  });
+});
+
+describe('a hook as a row of the list', () => {
+  test('says a webhook goes to its host, and keeps the whole address for the tooltip', () => {
+    const webhook = listed({
+      action: { type: 'webhook', url: 'https://events.pagerduty.com/v2/q' },
+    });
+    expect(hookRowSentence(webhook)).toBe(
+      'When a review is waiting, send a webhook to events.pagerduty.com',
+    );
+    expect(hookRowSentence(webhook, true)).toBe(
+      'When a review is waiting, send a webhook to https://events.pagerduty.com/v2/q',
+    );
+    expect(hookRowSentence(listed({ action: { type: 'webhook', url: 'not an address' } }))).toBe(
+      'When a review is waiting, send a webhook to not an address',
+    );
+  });
+
+  test('reads each action, several events, and a workflow it is limited to inside the sentence', () => {
+    expect(hookRowSentence(listed({ action: { type: 'notify', title: null } }))).toBe(
+      'When a review is waiting, notify me',
+    );
+    expect(
+      hookRowSentence(
+        listed({
+          events: ['review.requested', 'schedule.missed'],
+          action: { type: 'start-workflow', workflowId: 'weekly-cleanup', input: 'payload' },
+        }),
+      ),
+    ).toBe(
+      'When a review is waiting or a schedule misses a run, start the Weekly cleanup workflow',
+    );
+    expect(
+      hookRowSentence(
+        listed({
+          events: ['schedule.completed'],
+          action: { type: 'notify', title: null },
+          scope: { kind: 'workflow', id: 'triage-inbox' },
+        }),
+      ),
+    ).toBe('When a run finishes in Triage inbox, notify me');
+    expect(
+      hookRowSentence(
+        listed({ events: ['a.b', 'c.d', 'e.f'], action: { type: 'notify', title: null } }),
+      ),
+    ).toBe('When A b or 2 more, notify me');
+  });
+
+  test('titles a named hook by its name and puts its sentence and limit on line two', () => {
+    const text = hookRowText(
+      listed({
+        name: 'Refund audit',
+        scope: { kind: 'agent', id: 'tool-runner' },
+        action: { type: 'webhook', url: 'https://audit.example.com/refunds' },
+      }),
+      1,
+    );
+    expect(text).toEqual({
+      title: 'Refund audit',
+      line: 'When a review is waiting, send a webhook to audit.example.com, only for Tool runner',
+    });
+  });
+
+  test('titles a hook with no name by its sentence, and leaves line two to what else it says', () => {
+    expect(hookRowText(listed({ action: { type: 'notify', title: null } }), 1)).toEqual({
+      title: 'When a review is waiting, notify me',
+      line: '',
+    });
+    expect(
+      hookRowText(
+        listed({
+          action: { type: 'notify', title: null },
+          scope: { kind: 'schedule', id: 'nightly' },
+        }),
+        1,
+      ),
+    ).toEqual({ title: 'When a review is waiting, notify me', line: 'Only for Nightly' });
+  });
+
+  test('moves the last delivery of a hook that is off to line two, joined by commas, never a middle dot', () => {
+    const off = listed({
+      name: 'Refund audit',
+      enabled: false,
+      scope: { kind: 'agent', id: 'tool-runner' },
+      lastDelivery: summary({ updatedAt: 5 }),
+    });
+    const { line } = hookRowText(off, 5);
+    expect(line).toBe(
+      `When a review is waiting, send a webhook to example.com, only for Tool runner, last delivery ${activityTime(5, 5)}`,
+    );
+    expect(line).not.toContain('·');
+    // A hook that is on says it at the end of line one instead.
+    expect(hookRowText({ ...off, enabled: true }, 5).line).not.toContain('last delivery');
+    expect(hookTime({ ...off, enabled: true }, 5)).toBe(activityTime(5, 5));
+    expect(hookTime(off, 5)).toBeUndefined();
+    expect(hookTime(listed(), 5)).toBeUndefined();
+  });
+});
+
+describe('the word a hook’s row leads with', () => {
+  test('is Off for a hook that is off, whatever its last delivery did', () => {
+    const failed = summary({ status: 'exhausted' });
+    expect(hookStatusWord(listed({ enabled: false, lastDelivery: failed }))).toBe('Off');
+    expect(hookFailing(listed({ enabled: false, lastDelivery: failed }))).toBe(false);
+  });
+
+  test('is nothing for a hook that has had no delivery', () => {
+    expect(hookStatusWord(listed())).toBeUndefined();
+  });
+
+  test.each([
+    ['delivered', null, 'Delivered'],
+    ['exhausted', null, 'Gave up'],
+    ['failed', null, 'Failed'],
+    ['failed-secret', null, 'Failed'],
+    ['aborted', null, 'Canceled'],
+    ['pending', null, 'Waiting'],
+    ['pending', 'sending', 'Running'],
+    ['pending', 'network-error', 'Retrying'],
+  ] as const)('reads a %s delivery whose last attempt is %s as %s', (status, outcome, word) => {
+    const lastAttempt =
+      outcome === null
+        ? null
+        : { number: 1, startedAt: 1, finishedAt: null, outcome, status: null, error: null };
+    expect(hookStatusWord(listed({ lastDelivery: summary({ status, lastAttempt }) }))).toBe(word);
+  });
+
+  test('calls a hook failing when it is on and its last delivery ended in failure', () => {
+    expect(hookFailing(listed({ lastDelivery: summary({ status: 'exhausted' }) }))).toBe(true);
+    expect(hookFailing(listed({ lastDelivery: summary({ status: 'failed' }) }))).toBe(true);
+    expect(hookFailing(listed({ lastDelivery: summary({ status: 'pending' }) }))).toBe(false);
+    expect(hookFailing(listed())).toBe(false);
+  });
+});
+
+describe('what a read of the list that failed says', () => {
+  test('names the status the server answered with, and says nothing the person did caused it', () => {
+    expect(hookListFailure(new HttpClientError(500, 'Broke.'))).toBe(
+      'The server answered with an error (500). Nothing you did caused it.',
+    );
+  });
+
+  test('says a read that got no answer, and one that failed some other way', () => {
+    expect(hookListFailure(new ServerUnreachableError())).toBe(HOOKS_COPY.list.loadFailed.noAnswer);
+    expect(hookListFailure(new Error('odd'))).toBe(HOOKS_COPY.list.loadFailed.unknown);
+  });
+
+  test('is found by the words a row says as well as the sentence of the editor', () => {
+    expect(hookMatches(hook({ name: null }), 'a review is waiting')).toBe(true);
+    expect(hookMatches(hook({ name: null }), 'signed message')).toBe(true);
+  });
+});

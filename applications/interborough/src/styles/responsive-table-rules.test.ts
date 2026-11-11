@@ -20,7 +20,6 @@ describe('the tables that hold long values', () => {
       /min-inline-size:\s*36rem/,
     );
     for (const path of [
-      '../routes/hooks/hook-table.svelte',
       '../routes/workflows/runs/run-list.svelte',
       '../routes/settings/models/models-section.svelte',
     ]) {

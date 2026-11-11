@@ -11,6 +11,7 @@ import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/sv
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { chooseFilterOption } from '../../../tests/dom.test-support.ts';
+import { RETRY_LABEL } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
 import {
   installBureauStub,
@@ -21,7 +22,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { AGENT, landAt } from '../chat/pages.test-support.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
-import { eventWords } from './hook-presentation.ts';
+import { eventOptionLabel } from './hook-presentation.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -273,19 +274,22 @@ function open(
 }
 
 const row = (container: HTMLElement, id: string) =>
-  container.querySelector<HTMLElement>(`tr[data-hook="${id}"]`);
+  container.querySelector<HTMLElement>(`li[data-hook="${id}"]`);
 const rowIds = (container: HTMLElement) =>
-  Array.from(container.querySelectorAll<HTMLElement>('tr[data-hook]')).map(
+  Array.from(container.querySelectorAll<HTMLElement>('li[data-hook]')).map(
     (element) => element.dataset['hook'],
   );
+/** Line two of a row: the hook's sentence, and what else it is limited to. */
+const lineTwo = (container: HTMLElement, id: string) =>
+  row(container, id)?.querySelector<HTMLElement>('.ib-hooks__line')?.textContent?.trim();
 
 describe('the hooks list', () => {
-  test('reads each hook as a sentence, with its last delivery, and puts a failing hook first', async () => {
+  test('reads each hook as a status word, a name and a sentence, and puts a failing hook first', async () => {
     const { view } = open(
       [
         hook('quiet', { events: ['review.requested'] }),
         hook('broken', {
-          events: ['goal.attempt.evaluating', 'schedule.missed'],
+          events: ['review.requested', 'schedule.missed'],
           name: 'Page the team',
         }),
         hook('fresh'),
@@ -300,23 +304,56 @@ describe('the hooks list', () => {
 
     await waitFor(() => expect(row(view.container, 'broken')).not.toBeNull());
     await waitFor(() =>
-      expect(within(row(view.container, 'broken')!).getByText('Failed')).not.toBeNull(),
+      expect(within(row(view.container, 'broken')!).getByText('Gave up')).not.toBeNull(),
     );
     await waitFor(() => expect(rowIds(view.container)).toEqual(['broken', 'quiet', 'fresh']));
 
+    // The name is the bold title and the link to the hook; line two is the sentence, in words.
     const broken = within(row(view.container, 'broken')!);
+    expect(broken.getByRole('link', { name: 'Page the team' })).not.toBeNull();
+    expect(lineTwo(view.container, 'broken')).toBe(
+      'When a review is waiting or a schedule misses a run, send a webhook to example.com',
+    );
+    // A hook with no name is titled by its sentence.
     expect(
-      broken.getByRole('link', {
-        name: 'When Goal attempt evaluating or Schedule missed, send a signed message to https://example.com/broken',
+      within(row(view.container, 'quiet')!).getByRole('link', {
+        name: 'When a review is waiting, send a webhook to example.com',
       }),
     ).not.toBeNull();
-    expect(broken.getByText('Page the team')).not.toBeNull();
-    expect(broken.getByText('No answer: connect refused')).not.toBeNull();
-    expect(within(row(view.container, 'quiet')!).getByText('Answered 200')).not.toBeNull();
-    expect(within(row(view.container, 'fresh')!).getByText(HOOKS_COPY.noDelivery)).not.toBeNull();
+    expect(within(row(view.container, 'quiet')!).getByText('Delivered')).not.toBeNull();
+    expect(
+      within(row(view.container, 'fresh')!).getByText(HOOKS_COPY.row.noDelivery),
+    ).not.toBeNull();
     expect(view.container.querySelector('[data-view="hooks"]')?.getAttribute('data-state')).toBe(
       'ready',
     );
+    // The count, the header and the one filter row are on the page.
+    expect(view.getByTestId('hooks-count').textContent?.trim()).toBe('3 hooks');
+    expect(view.getByRole('heading', { level: 1, name: 'Hooks' })).not.toBeNull();
+    expect(view.getByText(HOOKS_COPY.list.subtitle)).not.toBeNull();
+  });
+
+  test('leads a hook that is off with Off, says no time, and moves its last delivery to line two', async () => {
+    const { view } = open([hook('quiet', { enabled: false, name: 'Refund audit' })], {
+      deliveries: { quiet: [delivery('quiet', 'delivered')] },
+    });
+
+    await waitFor(() => expect(row(view.container, 'quiet')).not.toBeNull());
+    const quiet = row(view.container, 'quiet')!;
+    expect(within(quiet).getByText('Off')).not.toBeNull();
+    expect(quiet.querySelector('[data-last-delivery]')).toBeNull();
+    expect(lineTwo(view.container, 'quiet')).toMatch(/, last delivery /);
+    expect(within(quiet).getByRole('switch').getAttribute('aria-checked')).toBe('false');
+  });
+
+  test('labels each switch On, and names the hook’s sentence after it', async () => {
+    const { view } = open([hook('alpha')]);
+    await waitFor(() => expect(row(view.container, 'alpha')).not.toBeNull());
+    const toggle = within(row(view.container, 'alpha')!).getByRole('switch');
+    expect(toggle.getAttribute('aria-label')).toBe(
+      `${HOOKS_COPY.row.on}, When a review is waiting, send a webhook to example.com`,
+    );
+    expect(within(row(view.container, 'alpha')!).getByText(HOOKS_COPY.row.on)).not.toBeNull();
   });
 
   // COR-1978: the list carries each hook's newest delivery, so a page of hooks is one read and every
@@ -344,17 +381,20 @@ describe('the hooks list', () => {
     ]);
 
     await waitFor(() => expect(rowIds(view.container).length).toBe(4));
-    expect(view.getByRole('columnheader', { name: HOOKS_COPY.onlyForColumn })).not.toBeNull();
-    const cell = (id: string) => row(view.container, id)!.querySelector('[data-only-for]')!;
-    expect(cell('everyone').textContent?.trim()).toBe(HOOKS_COPY.onlyFor.everything);
-    expect(cell('nightly').querySelector('a')?.getAttribute('href')).toContain('nightly');
-    expect(cell('scoped').querySelector('a')?.textContent).toBe('Agent researcher');
-    expect(cell('future').textContent?.trim()).toBe('team blue');
+    const sentence = 'When a review is waiting, send a webhook to example.com';
+    // A hook for everything says no limit; a workflow reads inside the sentence; any other subject
+    // after it. Each row is the link to its hook.
+    expect(lineTwo(view.container, 'everyone')).toBe(sentence);
+    expect(lineTwo(view.container, 'nightly')).toBe(
+      'When a review is waiting in Nightly, send a webhook to example.com',
+    );
+    expect(lineTwo(view.container, 'scoped')).toBe(`${sentence}, only for Researcher`);
+    expect(lineTwo(view.container, 'future')).toBe(`${sentence}, only for Blue`);
     expect(
-      within(row(view.container, 'scoped')!).getByRole('link', {
-        name: 'When Review requested for the agent researcher, send a signed message to https://example.com/scoped',
-      }),
-    ).not.toBeNull();
+      within(row(view.container, 'scoped')!)
+        .getByRole('link', { name: sentence })
+        .getAttribute('href'),
+    ).toBe('/hooks/scoped');
   });
 
   test('filters by agent from the address, and clears it', async () => {
@@ -387,11 +427,14 @@ describe('the hooks list', () => {
     await fireEvent.input(view.getByRole('searchbox', { name: HOOKS_COPY.searchLabel }), {
       target: { value: 'zzz' },
     });
-    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.noMatch.title });
+    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.list.noMatch.title });
+    // The filter row stays over the state, and the state's only action is Clear filters.
+    expect(view.getByRole('searchbox', { name: HOOKS_COPY.searchLabel })).not.toBeNull();
+    expect(view.getByText(HOOKS_COPY.list.noMatch.description(false, 'zzz'))).not.toBeNull();
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.clearAction }));
     await waitFor(() => expect(rowIds(view.container)).toEqual(['alpha', 'beta']));
 
-    await chooseFilterOption(view, HOOKS_COPY.eventFilter, eventWords('review.requested'));
+    await chooseFilterOption(view, HOOKS_COPY.eventFilter, eventOptionLabel('review.requested'));
     await waitFor(() => expect(rowIds(view.container)).toEqual(['alpha']));
   });
 
@@ -429,12 +472,74 @@ describe('the hooks list', () => {
     expect(served.hooks[0]?.enabled).toBe(true);
   });
 
-  test('is empty with the frame’s first-use state and a New hook action', async () => {
+  test('is first use under its own header, with no filter row and one primary New hook', async () => {
     const { view } = open([]);
-    await view.findByRole('heading', { level: 1, name: 'No hooks yet' });
-    expect(view.getByRole('link', { name: HOOKS_COPY.newAction }).getAttribute('href')).toBe(
-      '/hooks/new',
+    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.list.firstUse.title });
+    expect(view.getByRole('heading', { level: 1, name: 'Hooks' })).not.toBeNull();
+    expect(view.getByText(HOOKS_COPY.list.subtitleShort)).not.toBeNull();
+    expect(view.getByText(HOOKS_COPY.list.firstUse.description)).not.toBeNull();
+    expect(view.queryByRole('searchbox')).toBeNull();
+    // The frame still says what its probe learned, though the page draws the state.
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-view="hooks"]')?.getAttribute('data-state')).toBe(
+        'empty',
+      ),
     );
+
+    // The header's secondary "+" and the state's primary button are both named New hook.
+    const buttons = view.getAllByRole('button', { name: HOOKS_COPY.newAction });
+    expect(buttons.length).toBe(2);
+    const primary = buttons.filter(
+      (button) => button.getAttribute('data-cinder-variant') === 'primary',
+    );
+    expect(primary.length).toBe(1);
+    await fireEvent.click(primary[0]!);
+    await waitFor(() => expect(router.pathname).toBe('/hooks/new'));
+  });
+
+  test('says a read that failed with nothing to show is an error under the header, with the plus off', async () => {
+    const { view } = open([], {
+      refuse: { 'bureau.hooks.list': new StubFault('EngineFailure', 500, 'It broke.') },
+    });
+    await view.findByRole('heading', { level: 2, name: HOOKS_COPY.list.loadFailed.title });
+    expect(view.getByRole('heading', { level: 1, name: 'Hooks' })).not.toBeNull();
+    expect(view.getByText(HOOKS_COPY.list.loadFailed.answered(500))).not.toBeNull();
+    expect(view.getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
+    expect(
+      view.getByRole('link', { name: HOOKS_COPY.list.loadFailed.openHealth }).getAttribute('href'),
+    ).toBe(HOOKS_COPY.list.loadFailed.openHealthPath);
+    const plus = view
+      .getAllByRole('button', { name: HOOKS_COPY.newAction })
+      .find((button) => button.getAttribute('aria-disabled') === 'true');
+    expect(plus).not.toBeUndefined();
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-view="hooks"]')?.getAttribute('data-state')).toBe(
+        'error',
+      ),
+    );
+  });
+
+  test('keeps the hooks it has under a refresh-failed banner, with the switches and New hook held', async () => {
+    const refuse: Record<string, StubFault> = {};
+    const { view } = open([hook('alpha')], { refuse });
+    await waitFor(() => expect(row(view.container, 'alpha')).not.toBeNull());
+
+    // The next read of the list fails, and a switch that saves makes the page read it.
+    refuse['bureau.hooks.list'] = new StubFault('EngineFailure', 500, 'It broke.');
+    await fireEvent.click(within(row(view.container, 'alpha')!).getByRole('switch'));
+
+    await view.findByText(/refresh this page/);
+    // The rows stay at full contrast, filters and links stay live, and what changes something is held.
+    expect(row(view.container, 'alpha')).not.toBeNull();
+    expect(view.getByRole('searchbox', { name: HOOKS_COPY.searchLabel })).not.toBeNull();
+    const toggle = within(row(view.container, 'alpha')!).getByRole('switch');
+    expect(toggle.getAttribute('aria-disabled')).toBe('true');
+    expect(toggle.getAttribute('aria-describedby')).not.toBeNull();
+    expect(
+      view
+        .getAllByRole('button', { name: HOOKS_COPY.newAction })
+        .every((button) => button.getAttribute('aria-disabled') === 'true'),
+    ).toBe(true);
   });
 
   test('says hooks are off on a home that keeps them off, with no action', async () => {

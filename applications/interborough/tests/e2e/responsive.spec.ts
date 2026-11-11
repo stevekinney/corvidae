@@ -330,10 +330,14 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
     await expect(page.locator(`.cinder-badge__label[title="${LONG_TAG}"]`).first()).toBeVisible();
   },
   '/hooks': async (page) => {
+    // A row says a webhook's host on line two and keeps the whole address in that line's tooltip.
+    await expect(page.locator('.ib-hooks__line').first()).toBeVisible();
+    await expect(page.locator(`li[data-hook] [title*="${LONG_HOOK_URL}"]`).first()).toBeAttached();
     await expect(
-      page.locator(`a.ib-hooks__sentence .cinder-text[title*="${LONG_HOOK_URL}"]`),
+      page
+        .locator(`li[data-hook] .cinder-stacked-list-item__title[title="${LONG_HOOK_NAME}"]`)
+        .first(),
     ).toBeVisible();
-    await expect(page.locator(`.ib-hooks__name[title="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
   },
   // The log loads a page of events at a time as it scrolls, and the seeded schedule's creation is
   // older than the first page once the earlier specifications have written their own events.

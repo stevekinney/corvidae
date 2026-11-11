@@ -1,28 +1,57 @@
 <script lang="ts">
   /**
-   * `/hooks`: the caller's hooks as one bordered table (`hook-table.svelte`): each read as a sentence
-   * ("When Review requested, send a signed message to ..."), beside what it is limited to, when it
-   * last sent something, and an On switch. The toolbar has the count, a search over the sentences,
-   * filters by event and by agent, and New hook.
+   * `/hooks`: the caller's hooks as Cinder's status-first two-line rows (`hook-rows.svelte`): a
+   * status word beside the hook's name and when it last delivered, the hook as a sentence on line
+   * two ("When a run fails, send a webhook to events.pagerduty.com"), and an On switch at the end.
+   * One filter row has a search over the sentences, an event filter, an agent filter and the count.
+   * The header's "+" makes a hook.
    *
-   * The list carries each hook's newest delivery, so every hook sorts by it. A home that keeps hooks
-   * off says so in place of the list (`hooks-unavailable.svelte`).
+   * The list carries each hook's newest delivery, so every hook sorts by it, a failing one first. A
+   * home that keeps hooks off says so in place of the page (`hooks-unavailable.svelte`).
+   *
+   * The page keeps its header in every state, so it draws its own (`ownsStates` in `app/views.ts`):
+   * nothing yet is an empty state that is the page, with no filter row and the one primary "New
+   * hook"; filters that match nothing keep the filter row over a "Clear filters" state; a read in
+   * progress shows placeholders after 300 ms, and after 10 s a status line with Cancel; a read that
+   * failed with nothing to show is a full error state with the header's "+" inert; and one that
+   * failed over hooks already on screen leaves them in place under the shared refresh-failed banner,
+   * with filters and links live and every control that changes something (the "+", New hook and each
+   * row's switch) held, described by why (`StaleRegion`). The frame still says whether the caller
+   * may see the view at all.
    */
-  import { Alert, Button, EmptyState, FilterBar, PageHeader } from '@lostgradient/cinder';
-  import { createQuery } from '@tanstack/svelte-query';
+  import {
+    Banner,
+    Button,
+    EmptyState,
+    ErrorState,
+    FilterBar,
+    PageHeader,
+    Skeleton,
+    StaleRegion,
+  } from '@lostgradient/cinder';
+  import { Plus, Search, Webhook } from '@lucide/svelte';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
-  import { RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
-  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
+  import { getConnection } from '../../app/connection.svelte.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY } from '../../app/copy.ts';
   import { listHooks } from '../../lib/bureau-hooks.ts';
   import { classifyFault } from '../../lib/faults.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from './hook-copy.ts';
-  import { eventWords, hookMatches } from './hook-presentation.ts';
-  import HookTable from './hook-table.svelte';
+  import { eventOptionLabel, hookListFailure, hookMatches } from './hook-presentation.ts';
+  import HookRows from './hook-rows.svelte';
   import HooksUnavailable from './hooks-unavailable.svelte';
 
   const NEW_HOOK_PATH = '/hooks/new';
+  /** How long a read is let to finish before anything is drawn for it, which is Cinder's loading rule. */
+  const LOADING_DELAY_MILLISECONDS = 300;
+  /** How long a read runs before the placeholders say it is taking longer than usual. */
+  const STILL_LOADING_MILLISECONDS = 10_000;
+
+  const copy = HOOKS_COPY.list;
+  const queryClient = useQueryClient();
+  const connection = getConnection();
 
   const hooks = createQuery(
     () => ({
@@ -37,6 +66,35 @@
     hooks.isError && classifyFault(hooks.error)?.kind === 'not-supported',
   );
 
+  // A read that failed with nothing to show is the page's error; one that failed over hooks already
+  // read leaves them in place under the refresh-failed banner. A server that gives no answer at all
+  // is the shell's to say, in its own banner, so the page adds none.
+  const failedFirstLoad = $derived(hooks.isError && hooks.data === undefined);
+  const refreshFailed = $derived(
+    hooks.isError && hooks.data !== undefined && !connection.unreachable,
+  );
+  // "Cancel" in the still-loading line stopped the first read, and "Try again" reads again.
+  let loadStopped = $state(false);
+  const stopped = $derived(hooks.isPending && loadStopped);
+  const loading = $derived(hooks.isPending && !loadStopped);
+  const nothingYet = $derived(!hooks.isPending && !hooks.isError && rows.length === 0);
+
+  function stopLoading(): void {
+    loadStopped = true;
+    void queryClient.cancelQueries({ queryKey: queryKeys.hooks.list() });
+  }
+
+  function readAgain(): void {
+    loadStopped = false;
+    void hooks.refetch();
+  }
+
+  /** Reads the list again, and the frame's own probe of it, so what the frame says follows. */
+  function retry(): void {
+    void hooks.refetch();
+    void queryClient.refetchQueries({ queryKey: queryKeys.view('hooks', null) });
+  }
+
   const search = $derived(router.current.search.get('q') ?? '');
   const eventFilter = $derived(router.current.search.get('event') ?? undefined);
   const agentFilter = $derived(router.current.search.get('agent') ?? undefined);
@@ -49,9 +107,6 @@
         (agentFilter === undefined ||
           (hook.scope?.kind === 'agent' && hook.scope.id === agentFilter)),
     ),
-  );
-  const filtered = $derived(
-    search !== '' || eventFilter !== undefined || agentFilter !== undefined,
   );
 
   const eventKinds = $derived(
@@ -73,7 +128,7 @@
       key: 'event',
       label: HOOKS_COPY.eventFilter,
       placeholder: HOOKS_COPY.anyEvent,
-      options: eventKinds.map((kind) => ({ value: kind, label: eventWords(kind) })),
+      options: eventKinds.map((kind) => ({ value: kind, label: eventOptionLabel(kind) })),
     },
     {
       type: 'select' as const,
@@ -86,22 +141,10 @@
   const appliedFilters = $derived([
     ...(eventFilter === undefined
       ? []
-      : [
-          {
-            key: 'event',
-            value: eventFilter,
-            label: HOOKS_COPY.eventFilter,
-          },
-        ]),
+      : [{ key: 'event', value: eventFilter, label: HOOKS_COPY.eventFilter }]),
     ...(agentFilter === undefined
       ? []
-      : [
-          {
-            key: 'agent',
-            value: agentFilter,
-            label: HOOKS_COPY.agentFilter,
-          },
-        ]),
+      : [{ key: 'agent', value: agentFilter, label: HOOKS_COPY.agentFilter }]),
   ]);
 
   function setParameter(key: string, value: string): void {
@@ -116,74 +159,151 @@
     router.navigate('/hooks', { replace: true });
   }
 
-  function go(event: MouseEvent, path: string): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(path);
-  }
+  /** The words of a held control: the connection's when the server does not answer, else the list's. */
+  const heldReason = $derived(
+    connection.unreachable ? CONNECTION_COPY.changesOff : copy.refreshOff,
+  );
 </script>
 
 {#if unavailable}
   <HooksUnavailable />
 {:else}
   <section class="ib-hooks ib-records" aria-label={VIEW_COPY.hooks.label} data-page="hooks">
-    <PageHeader title={VIEW_COPY.hooks.label} headingLevel={1} />
-
-    {#snippet filterBar()}
-      <FilterBar
-        aria-label={HOOKS_COPY.filtersLabel}
-        searchQuery={search}
-        searchPlaceholder={HOOKS_COPY.searchPlaceholder}
-        searchAriaLabel={HOOKS_COPY.searchLabel}
-        {facets}
-        {appliedFilters}
-        onSearchChange={(query) => setParameter('q', query)}
-        onFacetChange={setParameter}
-        onFilterRemove={(key) => setParameter(key, '')}
+    <!-- While the list on screen is old, the controls that change something are held, each described
+         by why; the hooks keep full contrast, and filters, search, rows and links stay live. -->
+    <StaleRegion stale={connection.unreachable || refreshFailed} reason={heldReason}>
+      <PageHeader
+        title={VIEW_COPY.hooks.label}
+        description={nothingYet ? copy.subtitleShort : copy.subtitle}
+        headingLevel={1}
+        error={failedFirstLoad}
+        createAction={{
+          label: HOOKS_COPY.newAction,
+          onclick: () => router.navigate(NEW_HOOK_PATH),
+          ...(failedFirstLoad ? { inertReason: copy.newActionOffReason } : {}),
+        }}
       />
-    {/snippet}
-    {#snippet newHook()}
-      <Button
-        href={router.href(NEW_HOOK_PATH)}
-        variant="primary"
-        size="sm"
-        onclick={(event) => go(event, NEW_HOOK_PATH)}>{HOOKS_COPY.newAction}</Button
-      >
-    {/snippet}
-    <RecordsToolbar count={HOOKS_COPY.count(visible.length)} filters={filterBar} action={newHook} />
 
-    {#if hooks.isError}
-      <Alert variant="danger">
-        <p class="ib-hooks__alert-title">{VIEW_COPY.hooks.error.title}</p>
-        <p class="ib-hooks__alert-body">{VIEW_COPY.hooks.error.description}</p>
-        <Button variant="secondary" size="sm" onclick={() => void hooks.refetch()}
-          >{RETRY_LABEL}</Button
+      {#if refreshFailed}
+        <Banner preset="refresh-failed" dataUpdatedAt={hooks.dataUpdatedAt} onRetry={retry} />
+      {/if}
+
+      {#if failedFirstLoad}
+        <ErrorState
+          bordered
+          title={copy.loadFailed.title}
+          description={hookListFailure(hooks.error)}
+          headingLevel={2}
+          retryLabel={RETRY_LABEL}
+          onRetry={retry}
         >
-      </Alert>
-    {:else if rows.length > 0 && visible.length === 0 && filtered}
-      <EmptyState
-        kind="filtered"
-        title={HOOKS_COPY.noMatch.title}
-        description={HOOKS_COPY.noMatch.description}
-        headingLevel={2}
-        clearFiltersLabel={HOOKS_COPY.clearAction}
-        onClearFilters={clearFilters}
-      />
-    {:else if visible.length > 0}
-      <HookTable hooks={visible} />
-    {/if}
+          {#snippet secondaryAction()}
+            <Button variant="secondary" href={router.href(copy.loadFailed.openHealthPath)}
+              >{copy.loadFailed.openHealth}</Button
+            >
+          {/snippet}
+        </ErrorState>
+      {:else if stopped}
+        <ErrorState
+          bordered
+          tone="neutral"
+          title={copy.stopped.title}
+          description={copy.stopped.description}
+          headingLevel={2}
+          retryLabel={RETRY_LABEL}
+          retryVariant="secondary"
+          onRetry={readAgain}
+        />
+      {:else if loading}
+        <div data-testid="hooks-loading" aria-busy="true">
+          <Skeleton
+            variant="list"
+            rows={4}
+            statusMarker="dot"
+            delay={LOADING_DELAY_MILLISECONDS}
+            stillLoadingAfter={STILL_LOADING_MILLISECONDS}
+            stillLoadingLabel={copy.stillLoading}
+            label={copy.loading}
+            onCancel={stopLoading}
+          />
+        </div>
+      {:else if nothingYet}
+        <EmptyState
+          bordered
+          kind="first-use"
+          title={copy.firstUse.title}
+          description={copy.firstUse.description}
+          headingLevel={2}
+        >
+          {#snippet icon()}<Webhook aria-hidden="true" />{/snippet}
+          {#snippet action()}
+            <Button
+              variant="primary"
+              label={HOOKS_COPY.newAction}
+              mutating
+              onclick={() => router.navigate(NEW_HOOK_PATH)}
+            >
+              {#snippet leadingIcon()}<Plus />{/snippet}
+            </Button>
+          {/snippet}
+        </EmptyState>
+      {:else}
+        <div class="ib-hooks__controls">
+          <FilterBar
+            aria-label={HOOKS_COPY.filtersLabel}
+            searchQuery={search}
+            searchPlaceholder={HOOKS_COPY.searchPlaceholder}
+            searchAriaLabel={HOOKS_COPY.searchLabel}
+            {facets}
+            {appliedFilters}
+            onSearchChange={(query) => setParameter('q', query)}
+            onFacetChange={setParameter}
+            onFilterRemove={(key) => setParameter(key, '')}
+          />
+          <p class="ib-hooks__count" role="status" data-testid="hooks-count">
+            {HOOKS_COPY.count(visible.length)}
+          </p>
+        </div>
+
+        {#if visible.length === 0}
+          <EmptyState
+            bordered
+            kind="filtered"
+            title={copy.noMatch.title}
+            description={copy.noMatch.description(eventFilter !== undefined, search)}
+            headingLevel={2}
+            clearFiltersLabel={HOOKS_COPY.clearAction}
+            onClearFilters={clearFilters}
+          >
+            {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+          </EmptyState>
+        {:else}
+          <HookRows hooks={visible} />
+        {/if}
+      {/if}
+    </StaleRegion>
   </section>
 {/if}
 
 <style>
-  .ib-hooks__alert-title {
-    margin: 0;
-    font-weight: 600;
+  .ib-hooks__controls {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    min-width: 0;
   }
 
-  .ib-hooks__alert-body {
-    margin: 4px 0 8px;
+  .ib-hooks__controls > :global(:first-child) {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
+
+  /* The count sits at the right end of the filter row. */
+  .ib-hooks__count {
+    flex: none;
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    white-space: nowrap;
   }
 </style>

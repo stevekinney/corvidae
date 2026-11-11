@@ -292,11 +292,11 @@ test.describe('requests that get no answer from the host', () => {
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     await stopHost(page);
-    // Hooks leaves its states to the frame. Schedules and Workers draw their own under their own
-    // headers (`ownsStates` in `views.ts`), so the frame's unreachable page is never theirs.
-    await page.getByRole('link', { name: 'Hooks' }).first().click();
+    // Goals leaves its states to the frame. Schedules, Hooks and Workers draw their own under their
+    // own headers (`ownsStates` in `views.ts`), so the frame's unreachable page is never theirs.
+    await page.getByRole('link', { name: 'Goals' }).first().click();
 
-    const frame = page.locator('[data-view="hooks"]');
+    const frame = page.locator('[data-view="goals"]');
     await expect(frame).toHaveAttribute('data-state', 'unreachable');
     await expect(
       frame.getByRole('heading', { level: 1, name: CONNECTION_COPY.page.title }),
@@ -308,7 +308,7 @@ test.describe('requests that get no answer from the host', () => {
     await page.getByRole('link', { name: 'Reviews' }).first().click();
     await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
     await expect(banner(page)).toBeVisible();
-    await page.getByRole('link', { name: 'Hooks' }).first().click();
+    await page.getByRole('link', { name: 'Goals' }).first().click();
     await expect(frame).toHaveAttribute('data-state', 'unreachable');
 
     // The host is back, and the probe finds it. Try again would only ask the view's own question.

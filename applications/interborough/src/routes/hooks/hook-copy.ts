@@ -10,16 +10,15 @@ export const HOOKS_COPY = {
   filtersLabel: 'Filter hooks',
   searchPlaceholder: 'Search hooks',
   searchLabel: 'Search hooks',
-  anyEvent: 'Any event',
+  anyEvent: 'All events',
   eventFilter: 'Event',
   anyAgent: 'Any agent',
   agentFilter: 'Agent',
   clearAction: 'Clear filters',
   /** How many hooks the page lists, as a sentence. */
   count: (count: number): string => `${String(count)} ${count === 1 ? 'hook' : 'hooks'}`,
-  caption: 'Hooks',
-  hookColumn: 'Hook',
-  onlyForColumn: 'Only for',
+  /** The accessible name of the list of hooks. */
+  rowsLabel: 'Hooks',
   /** The Only for cell of a hook. */
   onlyFor: {
     everything: 'Everything',
@@ -29,20 +28,88 @@ export const HOOKS_COPY = {
     /** A subject of a kind this page does not know: a home on a newer release can hold one. */
     other: (kind: string, id: string): string => `${kind} ${id}`.trim(),
   },
-  lastDeliveryColumn: 'Last delivery',
-  onColumn: 'On',
-  onState: 'On',
-  offState: 'Off',
-  /** The cell of a hook that has had no delivery. */
-  noDelivery: 'Nothing sent yet',
-  /** The accessible name of a hook's On switch. */
-  toggleLabel: (sentence: string): string => `On: ${sentence}`,
-  toggleFailed: 'The hook was not changed',
-  /** A filter that matches none of the hooks read. */
-  noMatch: {
-    title: 'No hook matches these filters',
-    description: 'Change the search or the filters to see more hooks.',
+  /**
+   * The list's rows: a status word, the hook's name and the time of its last delivery on line one,
+   * and the hook as a sentence on line two. Line two is joined by commas, never a middle dot.
+   */
+  row: {
+    /** The word a hook that has had no delivery reads, in the status column. */
+    noDelivery: 'Nothing sent',
+    /** The visible label of a row's switch; the hook's sentence follows it in the accessible name. */
+    on: 'On',
+    /** The clause a row's sentence opens with for an event, by the event's kind. */
+    events: {
+      'run.error': 'a run fails',
+      'run.settled': 'a run finishes',
+      'schedule.failed': 'a run fails',
+      'schedule.completed': 'a run finishes',
+      'schedule.missed': 'a schedule misses a run',
+      'review.requested': 'a review is waiting',
+      'review.approved': 'a review is approved',
+      'review.denied': 'a review is denied',
+      'session.created': 'a chat starts',
+      'goal.succeeded': 'a goal succeeds',
+      'goal.failed': 'a goal fails',
+      'goal.canceled': 'a goal is canceled',
+    } as Readonly<Record<string, string>>,
+    /** What a row's sentence says a webhook and a workflow action do. */
+    webhook: (host: string): string => `send a webhook to ${host}`,
+    startWorkflow: (workflow: string): string => `start the ${workflow} workflow`,
+    /** What a scope adds: a workflow reads inside the sentence, any other subject after it. */
+    inWorkflow: (workflow: string): string => `in ${workflow}`,
+    onlyFor: (subject: string): string => `only for ${subject}`,
+    lastDelivery: (when: string): string => `last delivery ${when}`,
   },
+  /** The list's own states, under a header that stays in every one of them. */
+  list: {
+    /** The line under the heading while there are hooks to list. */
+    subtitle:
+      'Run something when something happens: send a webhook, start a workflow, or notify you.',
+    /** The line under the heading in first use. */
+    subtitleShort: 'Run something when something happens.',
+    /** First use: the empty state that is the page. */
+    firstUse: {
+      title: 'No hooks yet',
+      description:
+        'A hook runs something when an event happens, for example sending a webhook when a run fails.',
+    },
+    /** Filters that match no hook. */
+    noMatch: {
+      title: 'No hooks match these filters',
+      description: (eventChosen: boolean, search: string): string => {
+        if (eventChosen && search !== '') {
+          return `No hook watches that event for ${search}. Try another event or search.`;
+        }
+        if (eventChosen) return 'No hook watches that event. Try another event.';
+        if (search !== '') return `No hook matches ${search}. Try another search.`;
+        return 'Change the filters to see more hooks.';
+      },
+    },
+    /** The accessible name of the placeholders. */
+    loading: 'Loading hooks',
+    /** The status line under the placeholders when the read is slow. */
+    stillLoading: 'Still loading. This is taking longer than usual.',
+    /** What the list says after Cancel in the still-loading line: nothing failed. */
+    stopped: {
+      title: 'Stopped loading hooks',
+      description: 'You stopped the read, so the hooks are not shown. Nothing was changed by it.',
+    },
+    /** A read that failed with nothing to show. */
+    loadFailed: {
+      title: 'Couldn’t load hooks',
+      answered: (status: number): string =>
+        `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+      noAnswer: 'The server didn’t answer. Nothing you did caused it.',
+      unknown: 'Something went wrong reading the hooks. Nothing you did caused it.',
+      openHealth: 'Open Health',
+      openHealthPath: '/health',
+    },
+    /** Why the switches and New hook are off while the list on screen is old. */
+    refreshOff: 'Off until Interborough answers.',
+    /** Why the header's "+" does nothing while the list could not be read at all. */
+    newActionOffReason: 'New hook is off until Interborough answers.',
+  },
+  toggleFailed: 'The hook was not changed',
   /** What a home that keeps hooks off says in place of the page. */
   unavailable: {
     title: 'Hooks are off on this home',

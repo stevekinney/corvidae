@@ -2,7 +2,8 @@
   /**
    * The Hooks tab of an agent's page: the hooks list, narrowed by the Bureau to the hooks limited to
    * this agent. New hook starts one already limited to it. A hook that runs for everything also runs
-   * for this agent, and is on the Hooks page; this tab holds what belongs to the agent alone.
+   * for this agent, and is on the Hooks page; this tab holds what belongs to the agent alone. Its
+   * rows are the Hooks page's (`hook-rows.svelte`).
    */
   import { Alert, Button, EmptyState, Skeleton } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
@@ -13,7 +14,7 @@
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { HOOKS_COPY } from '../hooks/hook-copy.ts';
-  import HookTable from '../hooks/hook-table.svelte';
+  import HookRows from '../hooks/hook-rows.svelte';
   import HooksUnavailable from '../hooks/hooks-unavailable.svelte';
 
   interface Props {
@@ -76,7 +77,7 @@
     />
   {:else if hooks.data !== undefined}
     <div class="ib-agent-hooks__actions">{@render newHook()}</div>
-    <HookTable hooks={hooks.data} />
+    <HookRows hooks={hooks.data} />
   {/if}
 </div>
 
