@@ -28,6 +28,10 @@ export async function bundleBrowserScript(entry: string): Promise<string | Error
       'process.env.NODE_ENV': '"production"',
       'import.meta.env.DEV': 'false',
       'import.meta.env.SSR': 'false',
+      // A classic script cannot say `import.meta` at all: it is a syntax error that stops the
+      // whole bundle. The one use is a module worker's address, which no base resolves here, so
+      // the caller's own fallback (render on the main thread) runs.
+      'import.meta.url': '"about:blank"',
     },
     plugins: [sveltePlugin({ generate: 'client', injectCss: true })],
     loader: { '.css': 'css' },
@@ -36,7 +40,11 @@ export async function bundleBrowserScript(entry: string): Promise<string | Error
   if (!result.success) return new Error(result.logs.map(String).join(' | ').slice(0, 400));
   const output = result.outputs.find((artifact) => artifact.path.endsWith('.js'));
   if (!output) return new Error('the bundle produced no script');
-  return output.text();
+  const script = await output.text();
+  if (script.includes('import.meta')) {
+    return new Error('the bundle still says import.meta, which a classic script cannot parse');
+  }
+  return script;
 }
 
 /**

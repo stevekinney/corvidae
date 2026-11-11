@@ -128,10 +128,28 @@ const CATEGORY_FAMILIES: Record<string, FamilyName> = {
   typography: 'typeMetrics',
 };
 
-const ROLE_WEIGHTS: Record<string, number> = { 'page-title': 600, 'section-title': 600 };
+const ROLE_WEIGHTS: Record<string, number> = {
+  'page-title': 600,
+  'page-title-large': 600,
+  display: 600,
+  heading: 650,
+  'section-title': 600,
+};
+
+/** The roles set as headings, which take the tighter line height. */
+const HEADING_ROLES: ReadonlySet<string> = new Set([
+  'page-title',
+  'page-title-large',
+  'display',
+  'heading',
+  'section-title',
+]);
 
 const ROLE_SAMPLES: Record<string, string> = {
   'page-title': 'Workers',
+  'page-title-large': 'Good morning',
+  display: '4 runs need you',
+  heading: 'Waiting on you',
   'section-title': 'Recent runs',
   body: 'Cinder is the component library behind Interborough.',
   secondary: 'Updated 4 minutes ago',
@@ -384,7 +402,7 @@ function typeSection(routed: Routed) {
     return {
       name: role,
       fontSize: value,
-      lineHeight: role.endsWith('title') ? 1.3 : 1.5,
+      lineHeight: HEADING_ROLES.has(role) ? 1.3 : 1.5,
       fontWeight: lookup(ROLE_WEIGHTS, role) ?? 400,
       usage: `${tokenUsage(token)} CSS: var(--${tokenName(token)}).`,
       ...(path.endsWith('code') ? { family: 'mono' } : {}),
