@@ -3,7 +3,11 @@ import type { Component } from 'svelte';
 export { default as ArrowDown } from '@lucide/svelte/icons/arrow-down';
 export { default as ArrowUp } from '@lucide/svelte/icons/arrow-up';
 export { default as Bold } from '@lucide/svelte/icons/bold';
+export { default as Bookmark } from '@lucide/svelte/icons/bookmark';
+export { default as Bot } from '@lucide/svelte/icons/bot';
 export { default as Brain } from '@lucide/svelte/icons/brain';
+export { default as CalendarIcon } from '@lucide/svelte/icons/calendar';
+export { default as CalendarClock } from '@lucide/svelte/icons/calendar-clock';
 export { default as Check } from '@lucide/svelte/icons/check';
 export { default as CheckCheck } from '@lucide/svelte/icons/check-check';
 export { default as ChevronDown } from '@lucide/svelte/icons/chevron-down';
@@ -12,28 +16,39 @@ export { default as ChevronRight } from '@lucide/svelte/icons/chevron-right';
 export { default as ChevronUp } from '@lucide/svelte/icons/chevron-up';
 export { default as CircleAlert } from '@lucide/svelte/icons/circle-alert';
 export { default as CircleDot } from '@lucide/svelte/icons/circle-dot';
+export { default as ClipboardCheck } from '@lucide/svelte/icons/clipboard-check';
+export { default as Clock } from '@lucide/svelte/icons/clock';
 export { default as Code } from '@lucide/svelte/icons/code';
 export { default as Copy } from '@lucide/svelte/icons/copy';
 export { default as MoreHorizontal } from '@lucide/svelte/icons/ellipsis';
 export { default as FileCode } from '@lucide/svelte/icons/file-code';
 export { default as FileText } from '@lucide/svelte/icons/file-text';
 export { default as FolderGit2 } from '@lucide/svelte/icons/folder-git-2';
+export { default as FolderKanban } from '@lucide/svelte/icons/folder-kanban';
+export { default as Funnel } from '@lucide/svelte/icons/funnel';
 export { default as GitBranch } from '@lucide/svelte/icons/git-branch';
 export { default as Globe } from '@lucide/svelte/icons/globe';
 export { default as Heading1 } from '@lucide/svelte/icons/heading-1';
 export { default as Heading2 } from '@lucide/svelte/icons/heading-2';
 export { default as Heading3 } from '@lucide/svelte/icons/heading-3';
+export { default as House } from '@lucide/svelte/icons/house';
+export { default as Inbox } from '@lucide/svelte/icons/inbox';
 export { default as Info } from '@lucide/svelte/icons/info';
 export { default as Italic } from '@lucide/svelte/icons/italic';
+export { default as Layers } from '@lucide/svelte/icons/layers';
 export { default as LinkIcon } from '@lucide/svelte/icons/link';
 export { default as List } from '@lucide/svelte/icons/list';
 export { default as ListOrdered } from '@lucide/svelte/icons/list-ordered';
+export { default as MapIcon } from '@lucide/svelte/icons/map';
+export { default as MapPin } from '@lucide/svelte/icons/map-pin';
 export { default as Maximize2 } from '@lucide/svelte/icons/maximize-2';
 export { default as MessageCircle } from '@lucide/svelte/icons/message-circle';
 export { default as MessageSquare } from '@lucide/svelte/icons/message-square';
+export { default as Navigation } from '@lucide/svelte/icons/navigation';
 export { default as Paperclip } from '@lucide/svelte/icons/paperclip';
 export { default as Pencil } from '@lucide/svelte/icons/pencil';
 export { default as Pilcrow } from '@lucide/svelte/icons/pilcrow';
+export { default as Play } from '@lucide/svelte/icons/play';
 export { default as Plus } from '@lucide/svelte/icons/plus';
 export { default as Quote } from '@lucide/svelte/icons/quote';
 export { default as Redo2 } from '@lucide/svelte/icons/redo-2';
@@ -41,15 +56,38 @@ export { default as RefreshCw } from '@lucide/svelte/icons/refresh-cw';
 export { default as RotateCcw } from '@lucide/svelte/icons/rotate-ccw';
 export { default as Search } from '@lucide/svelte/icons/search';
 export { default as SendHorizontal } from '@lucide/svelte/icons/send-horizontal';
+export { default as Settings } from '@lucide/svelte/icons/settings';
+export { default as Share } from '@lucide/svelte/icons/share';
 export { default as SlidersHorizontal } from '@lucide/svelte/icons/sliders-horizontal';
 export { default as Square } from '@lucide/svelte/icons/square';
 export { default as Strikethrough } from '@lucide/svelte/icons/strikethrough';
+export { default as Sun } from '@lucide/svelte/icons/sun';
 export { default as Terminal } from '@lucide/svelte/icons/terminal';
 export { default as Trash2 } from '@lucide/svelte/icons/trash';
 export { default as TriangleAlert } from '@lucide/svelte/icons/triangle-alert';
 export { default as Undo2 } from '@lucide/svelte/icons/undo-2';
 export { default as Unlink } from '@lucide/svelte/icons/unlink';
+export { default as User } from '@lucide/svelte/icons/user';
+export { default as WifiOff } from '@lucide/svelte/icons/wifi-off';
+export { default as Workflow } from '@lucide/svelte/icons/workflow';
 export { default as X } from '@lucide/svelte/icons/x';
+
+/*
+ * The product vocabulary: which export draws each noun a product's navigation, rows, facts and
+ * empty states name. Every value is an icon exported above, and every name is a Lucide glyph, so
+ * the set draws at one weight and the stroke follows the text beside it. Product-specific glyphs
+ * stay in the application that owns them.
+ *
+ * - navigation: `home` (`House`), `inbox` (`Inbox`), `today` (`Sun`), `search` (`Search`),
+ *   `settings` (`Settings`), `saved` (`Bookmark`), `map` (`MapIcon`), `list` (`List`)
+ * - entities: `person` (`User`), `project` (`FolderKanban`), `area` (`Layers`), `calendar`
+ *   (`CalendarIcon`), `place` (`MapPin`), `run` (`Play`), `agent` (`Bot`), `workflow`
+ *   (`Workflow`), `schedule` (`CalendarClock`), `review` (`ClipboardCheck`)
+ * - states: `clock` (`Clock`), `check` (`Check`), `warning` (`TriangleAlert`), `offline`
+ *   (`WifiOff`)
+ * - actions: `share` (`Share`), `directions` (`Navigation`), `more` (`MoreHorizontal`), `add`
+ *   (`Plus`), `filter` (`Funnel`)
+ */
 
 /**
  * The props every exported icon accepts: size, color, stroke width, and any SVG

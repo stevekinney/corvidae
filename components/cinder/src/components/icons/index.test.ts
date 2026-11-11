@@ -78,6 +78,84 @@ describe('icons/index', () => {
     }
   });
 
+  it('exports the product vocabulary, one distinct icon per noun, from the package root', async () => {
+    const root = (await import('@lostgradient/cinder')) as unknown as Record<string, unknown>;
+    // Each noun of the vocabulary and the export that draws it. A noun the library already drew
+    // before the vocabulary (search, list, check, warning, more, add) maps to its existing export.
+    const vocabulary = {
+      home: 'House',
+      inbox: 'Inbox',
+      today: 'Sun',
+      search: 'Search',
+      settings: 'Settings',
+      saved: 'Bookmark',
+      map: 'MapIcon',
+      list: 'List',
+      person: 'User',
+      project: 'FolderKanban',
+      area: 'Layers',
+      calendar: 'CalendarIcon',
+      place: 'MapPin',
+      run: 'Play',
+      agent: 'Bot',
+      workflow: 'Workflow',
+      schedule: 'CalendarClock',
+      review: 'ClipboardCheck',
+      clock: 'Clock',
+      check: 'Check',
+      warning: 'TriangleAlert',
+      offline: 'WifiOff',
+      share: 'Share',
+      directions: 'Navigation',
+      more: 'MoreHorizontal',
+      add: 'Plus',
+      filter: 'Funnel',
+    } as const;
+    const exported = icons as unknown as Record<string, unknown>;
+    const names = Object.values(vocabulary);
+    for (const [noun, name] of Object.entries(vocabulary)) {
+      expect(typeof exported[name], `${noun} (${name}) is exported from the icon set`).toBe(
+        'function',
+      );
+      expect(root[name], `${noun} (${name}) is exported from the package root`).toBe(
+        exported[name],
+      );
+    }
+    expect(new Set(names.map((name) => exported[name])).size, 'no noun shares a glyph').toBe(
+      names.length,
+    );
+    // The map and the calendar are named apart from the global `Map` and the Calendar component.
+    expect(root.Calendar).not.toBe(root.CalendarIcon);
+    expect(exported.Map).toBeUndefined();
+  });
+
+  it('is decorative by default and named when it is labelled', () => {
+    const decorative = render(icons.House);
+    try {
+      expect(decorative.container.querySelector('svg')?.getAttribute('aria-hidden')).toBe('true');
+    } finally {
+      cleanup();
+    }
+    const labelled = render(icons.House, { 'aria-label': 'Home' });
+    try {
+      const svg = labelled.container.querySelector('svg');
+      expect(svg?.getAttribute('aria-label')).toBe('Home');
+      expect(svg?.hasAttribute('aria-hidden')).toBe(false);
+    } finally {
+      cleanup();
+    }
+  });
+
+  it('sizes and strokes by the text it sits beside: 16, 20 and 24px', async () => {
+    const css = await Bun.file(new URL('../../styles/utilities.css', import.meta.url)).text();
+    expect(css).toMatch(/svg\.cinder-icon-sm\s*\{[^}]*width: 1rem;[^}]*height: 1rem;/);
+    expect(css).toMatch(/svg\.cinder-icon-md\s*\{[^}]*width: 1\.25rem;[^}]*height: 1\.25rem;/);
+    expect(css).toMatch(/svg\.cinder-icon-lg\s*\{[^}]*width: 1\.5rem;[^}]*height: 1\.5rem;/);
+    expect(css).toMatch(/svg\.cinder-icon-sm\s*\{\s*stroke-width: 2;/);
+    expect(css).toMatch(/svg\.cinder-icon-md\s*\{\s*stroke-width: 1\.75;/);
+    expect(css).toMatch(/svg\.cinder-icon-lg\s*\{\s*stroke-width: 1\.5;/);
+  });
+
   it('exports a non-empty set of distinct, function-shaped Svelte components', () => {
     const entries = Object.entries(icons);
 

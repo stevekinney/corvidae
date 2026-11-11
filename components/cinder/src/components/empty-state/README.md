@@ -102,7 +102,7 @@ Use `layout="row"` for a state that sits inside a card or a list in place of its
 </EmptyState>
 ```
 
-The `icon` snippet replaces the glyph in the disc. The description keeps a measure of 380px however wide the region is, and the action row wraps with even spacing.
+The `icon` snippet replaces the glyph in the disc. The `illustration` snippet draws a larger picture above the title in place of the disc, in the stacked layout only; it is decorative and sizes to its own content, so give it an `svg` or an `img` of the size you want. The description keeps a measure of 380px however wide the region is, and the action row wraps with even spacing.
 
 ## Props
 
@@ -122,6 +122,7 @@ The `icon` snippet replaces the glyph in the disc. The description keeps a measu
 | `title` | `string` | yes | — | Primary heading text rendered as a heading element at the configured `headingLevel`. |
 | `action` | `(opaque)` | no | — | Call-to-action content rendered below the description, after the "Clear filters" button when both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for done, and a secondary button for a not-found or blocked state. Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a default glyph. Decorative, so it is hidden from assistive technology. Not expressible in JSON Schema; see the component types for the signature. |
+| `illustration` | `(opaque)` | no | — | A larger picture drawn above the title in place of the disc, for a page-sized state that wants more than a glyph. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state keeps its disc and ignores it. Decorative, so it is hidden from assistive technology; say what is missing in the title. Not expressible in JSON Schema; see the component types for the signature. |
 | `onClearFilters` | `(opaque)` | no | — | Called when the "Clear filters" button of a `'filtered'` state is pressed. The button renders only when this is set. Not expressible in JSON Schema; see the component types for the signature. |
 
 <!-- generated:props:end -->

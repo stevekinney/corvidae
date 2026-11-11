@@ -94,6 +94,13 @@ export type EmptyStateProps = Omit<HTMLAttributes<HTMLDivElement>, 'class'> & {
    */
   icon?: Snippet;
   /**
+   * A larger picture drawn above the title in place of the disc, for a page-sized state that wants
+   * more than a glyph. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state keeps its
+   * disc and ignores it. Decorative, so it is hidden from assistive technology; say what is
+   * missing in the title.
+   */
+  illustration?: Snippet;
+  /**
    * Call-to-action content rendered below the description, after the "Clear filters" button when
    * both exist. A primary `Button` for first use, a `Link` (accent, underlined only on hover) for
    * done, and a secondary button for a not-found or blocked state.

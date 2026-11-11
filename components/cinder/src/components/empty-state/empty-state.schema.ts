@@ -75,6 +75,12 @@ const schema = {
           "Replaces the glyph in the disc. First use shows the view's own icon; every other kind has a\ndefault glyph. Decorative, so it is hidden from assistive technology.",
       },
       {
+        name: 'illustration',
+        reason: 'function-or-snippet',
+        description:
+          "A larger picture drawn above the title in place of the disc, for a page-sized state that wants\nmore than a glyph. Drawn only in the `'stacked'` layout; a `'row'` or `'inline'` state keeps its\ndisc and ignores it. Decorative, so it is hidden from assistive technology; say what is\nmissing in the title.",
+      },
+      {
         name: 'onClearFilters',
         reason: 'function-or-snippet',
         description:

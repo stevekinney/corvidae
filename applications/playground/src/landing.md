@@ -151,7 +151,7 @@ Cinder is a presentation library, not an application framework.
 - No application-wide toast singleton; use `ToastRegion` for scoped toast UI.
 - No data fetching layer.
 - No global state provider.
-- No general-purpose icon library for product-specific icons.
+- No icon library beyond Cinder's common vocabulary. Product-specific glyphs stay in the application that owns them.
 
 Wire those pieces with your application stack and pass the resulting state, callbacks, links, icons, and data into Cinder components.
 

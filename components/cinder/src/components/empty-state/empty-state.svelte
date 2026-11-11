@@ -44,6 +44,7 @@
     onClearFilters,
     clearFiltersLabel = 'Clear filters',
     icon,
+    illustration,
     action,
     ...rest
   }: EmptyStateProps = $props();
@@ -79,7 +80,10 @@
   const showAction = $derived(action !== undefined);
   // First use shows the view's own icon, so it has no default glyph; every other kind is a state
   // with a glyph of its own, used when the consumer does not pass one.
-  const hasDisc = $derived(icon !== undefined || safeKind !== 'first-use');
+  // An illustration is a larger picture that stands in for the disc, so it is drawn only in the
+  // stacked layout, where the state has the room; a row or an inline state keeps its disc.
+  const hasIllustration = $derived(illustration !== undefined && safeLayout === 'stacked');
+  const hasDisc = $derived(!hasIllustration && (icon !== undefined || safeKind !== 'first-use'));
 </script>
 
 <div
@@ -93,6 +97,11 @@
   data-cinder-bordered={bordered ? '' : undefined}
   aria-labelledby={titleId}
 >
+  {#if hasIllustration && illustration}
+    <div class="cinder-empty-state-illustration" aria-hidden="true">
+      {@render illustration()}
+    </div>
+  {/if}
   {#if hasDisc}
     <div class="cinder-empty-state-icon" aria-hidden="true">
       {#if icon}

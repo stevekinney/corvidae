@@ -145,6 +145,30 @@ bun run --filter=@lostgradient/cinder design-system:url
 
 On the first publish, create the artifact from the Design System type with Claude Code's Artifact tool, then save its URL with `design-system:url --set <url>` or by writing the file by hand. Later runs republish to that URL. First list the artifact's files (`action: "list"`, `scope: "files"`), because the tool refuses to overwrite files the session has not seen; an account that can't open the artifact can't republish it, and creates its own instead. Then publish once for each entry of `tmp/cinder-design-system/out/publish-batches.json`, in order. Each publish passes the artifact's `url`, `root` set to `tmp/cinder-design-system/out`, and that entry's paths as `files`. A batch holds at most 240 files, and the last one holds only the index, `project/design-system.json`, so the system never points at files that have not arrived. A publish keeps files it does not name, so when a component leaves Cinder, remove its paths with `null` entries.
 
+## Icons
+
+Cinder exports a curated product icon vocabulary from `@lostgradient/cinder`, drawn from Lucide so the set shares one weight and the stroke follows the text beside it. It covers the nouns a product's navigation, rows, facts and empty states name, next to the editor and developer glyphs the library already carried:
+
+| Group | Noun and export |
+| --- | --- |
+| Navigation | home `House`, inbox `Inbox`, today `Sun`, search `Search`, settings `Settings`, saved `Bookmark`, map `MapIcon`, list `List` |
+| Entities | person `User`, project `FolderKanban`, area `Layers`, calendar `CalendarIcon`, place `MapPin`, run `Play`, agent `Bot`, workflow `Workflow`, schedule `CalendarClock`, review `ClipboardCheck` |
+| States | clock `Clock`, check `Check`, warning `TriangleAlert`, offline `WifiOff` |
+| Actions | share `Share`, directions `Navigation`, more `MoreHorizontal`, add `Plus`, filter `Funnel` |
+
+`CalendarIcon` and `MapIcon` carry the suffix so they never shadow the `Calendar` component or the global `Map`.
+
+Size an icon with `cinder-icon-sm`, `cinder-icon-md` or `cinder-icon-lg` (16, 20 and 24px). Each class also sets the stroke for its size (2, 1.75 and 1.5), so the glyph keeps the visual weight of the text beside it. An icon is decorative by default and is hidden from assistive technology; give it an `aria-label` only when it stands alone without text.
+
+```svelte
+<script lang="ts">
+  import { House } from '@lostgradient/cinder';
+</script>
+
+<House class="cinder-icon-md" />
+<House class="cinder-icon-md" aria-label="Home" />
+```
+
 ## What Cinder Does Not Provide
 
 Cinder is a presentation library, not an application framework.
@@ -154,7 +178,7 @@ Cinder is a presentation library, not an application framework.
 - No application-wide toast singleton; use `ToastRegion` for scoped toast UI.
 - No data fetching layer.
 - No global state provider.
-- No general-purpose icon library for product-specific icons.
+- No icon library beyond Cinder's common vocabulary. Product-specific glyphs stay in the application that owns them.
 
 Wire those pieces with your application stack and pass the resulting state, callbacks, links, icons, and data into cinder components.
 

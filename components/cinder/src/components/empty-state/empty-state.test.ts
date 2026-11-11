@@ -542,3 +542,43 @@ describe('EmptyState inline layout (COR-2018, row 73b)', () => {
     );
   });
 });
+
+describe('EmptyState illustration slot (COR-2325)', () => {
+  const picture = createRawSnippet(() => ({
+    render: () => '<svg data-testid="picture" viewBox="0 0 120 80"></svg>',
+  }));
+
+  test('draws the picture above the title, hidden from assistive technology, in place of the disc', () => {
+    const { container } = render(EmptyState, {
+      props: { title: 'No runs yet', kind: 'done', illustration: picture },
+    });
+    const wrapper = container.querySelector('.cinder-empty-state-illustration');
+    expect(wrapper?.getAttribute('aria-hidden')).toBe('true');
+    expect(wrapper?.querySelector('[data-testid="picture"]')).not.toBeNull();
+    expect(container.querySelector('.cinder-empty-state-icon')).toBeNull();
+    const order = [...(rootOf(container)?.children ?? [])].map((child) => child.className);
+    expect(order).toEqual(['cinder-empty-state-illustration', 'cinder-empty-state-title']);
+  });
+
+  test('draws nothing extra without the slot', () => {
+    const { container } = render(EmptyState, { props: { title: 'No runs yet' } });
+    expect(container.querySelector('.cinder-empty-state-illustration')).toBeNull();
+  });
+
+  test('a row or an inline state keeps its disc and ignores the illustration', () => {
+    for (const layout of ['row', 'inline'] as const) {
+      const { container } = render(EmptyState, {
+        props: { title: 'No runs yet', kind: 'done', layout, illustration: picture },
+      });
+      expect(container.querySelector('.cinder-empty-state-illustration')).toBeNull();
+      expect(container.querySelector('.cinder-empty-state-icon')).not.toBeNull();
+      cleanup();
+    }
+  });
+
+  test('the stylesheet centres the picture and keeps it inside the region', () => {
+    const wrapper = declarationsFor(emptyStateCss, '.cinder-empty-state-illustration');
+    expect(wrapper.get('justify-content')).toBe('center');
+    expect(wrapper.get('max-inline-size')).toBe('100%');
+  });
+});

@@ -55,6 +55,28 @@
     block-size: 1.375rem;
   }
 
+  /* An illustration stands in for the disc in a stacked state: a picture the caller sizes, kept
+   * to the width of the region and centred above the title. */
+  .cinder-empty-state-illustration {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    max-inline-size: 100%;
+    margin-block-end: var(--cinder-space-3);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-empty-state-illustration > svg,
+  .cinder-empty-state-illustration > img {
+    max-inline-size: 100%;
+    block-size: auto;
+  }
+
+  .cinder-empty-state[data-cinder-align='start'] .cinder-empty-state-illustration {
+    justify-content: flex-start;
+  }
+
   .cinder-empty-state[data-cinder-kind='first-use'] .cinder-empty-state-icon {
     background: var(--cinder-accent-background);
     color: var(--cinder-accent-text);

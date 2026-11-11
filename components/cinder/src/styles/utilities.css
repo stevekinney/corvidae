@@ -108,6 +108,26 @@ svg.cinder-icon-lg {
   height: 1.5rem;
 }
 
+/* The stroke follows the size so an icon keeps the visual weight of the text beside it: 2 at
+ * 14px and 16px (body and caption text), 1.75 at 20px (a row or a tab), and 1.5 at 24px (a
+ * heading or a large title). */
+.cinder-icon-xs > svg,
+svg.cinder-icon-xs,
+.cinder-icon-sm > svg,
+svg.cinder-icon-sm {
+  stroke-width: 2;
+}
+
+.cinder-icon-md > svg,
+svg.cinder-icon-md {
+  stroke-width: 1.75;
+}
+
+.cinder-icon-lg > svg,
+svg.cinder-icon-lg {
+  stroke-width: 1.5;
+}
+
 /* Shared markdown rhythm for rendered markdown and rich editing surfaces. */
 .cinder-markdown-content {
   font-size: var(--cinder-text-base);
