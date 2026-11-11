@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { resetScrollLock } from '../../src/_internal/overlay.ts';
+import ButtonGroup from '../../src/components/button-group/index.ts';
 import Button from '../../src/components/button/index.ts';
 import Card from '../../src/components/card/index.ts';
 import Modal from '../../src/components/modal/index.ts';
@@ -107,6 +108,32 @@ describe('Cinder.mount', () => {
     expect(contextsFor(slot)).toBeInstanceOf(Map);
     track(cinder.mount('Button', slot, { label: 'Process inbox' }));
     expect(element.querySelector('button')?.textContent).toContain('Process inbox');
+  });
+
+  test('a Button mounted inside a ButtonGroup reads the group’s context', () => {
+    const cinder = createCinderGlobal({ Button, ButtonGroup });
+    const element = target();
+    const hosts: HTMLElement[] = [];
+    track(
+      cinder.mount('ButtonGroup', element, { label: 'List actions' }, (host) => {
+        hosts.push(host);
+      }),
+    );
+    const [host] = hosts;
+    if (host === undefined) throw new Error('ButtonGroup rendered no children host');
+    // The slot keeps the Button off the group's direct children, which the group tags itself,
+    // so only the context Button reads at initialization can set the attribute.
+    const slot = document.createElement('div');
+    host.append(slot);
+    track(cinder.mount('Button', slot, { label: 'Archive' }));
+    const button = slot.querySelector('button');
+    expect(button?.getAttribute('data-cinder-button-group-item')).toBeTruthy();
+
+    const standalone = target();
+    track(cinder.mount('Button', standalone, { label: 'Archive' }));
+    expect(standalone.querySelector('button')?.hasAttribute('data-cinder-button-group-item')).toBe(
+      false,
+    );
   });
 });
 

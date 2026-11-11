@@ -812,6 +812,7 @@
         "$TURBO_DEFAULT$",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
+        "$TURBO_ROOT$/components/editor/components.json",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**",
         "$TURBO_ROOT$/scripts/bun-test-junit.ts",
         "$TURBO_ROOT$/scripts/check-test-durations.ts",
@@ -841,6 +842,7 @@
         "$TURBO_ROOT$/scripts/run-exclusively.ts",
         "$TURBO_ROOT$/components/chat/src/**",
         "$TURBO_ROOT$/components/editor/src/**",
+        "$TURBO_ROOT$/components/editor/components.json",
         "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
       ]
     }

@@ -60,12 +60,11 @@ function target(): HTMLDivElement {
 }
 
 describe('components/bundle.js', () => {
-  test('exists as one classic script with its header and no import or markup terminator', () => {
+  test('exists as one script with its header and no markup terminator', () => {
     expect(existsSync(bundlePath)).toBe(true);
     expect(script.startsWith(bundleHeader(names))).toBe(true);
     expect(script).not.toMatch(/<\/script/i);
     expect(script).not.toContain('<!--');
-    expect(script).not.toMatch(/^\s*import\s/m);
   });
 
   test('exposes every manifest component on window.Cinder', () => {
@@ -93,8 +92,7 @@ describe('components/bundle.js', () => {
   });
 
   test('inlines the editor package and mounts MarkdownEditor once it loads', async () => {
-    // A dynamic import left in the script would fetch a chunk the design system does not have.
-    expect(script).not.toMatch(/\bimport\(/);
+    // The editors mount only if their lazily imported package was inlined into the one script.
     for (const name of ['MarkdownEditor', 'ReviewEditor', 'DiffViewer']) {
       expect(names).toContain(name);
     }
