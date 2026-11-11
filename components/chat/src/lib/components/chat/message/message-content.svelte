@@ -115,9 +115,12 @@
   const isTruncated = $derived(!streaming && !expanded && effectiveContent.length > threshold);
 </script>
 
+<!-- `dir="auto"` reads the direction from the text itself, so an Arabic reply or bubble reads right
+     to left while the message chrome around it keeps the page's direction. -->
 <div
   class={classNames('message-content', streaming && 'message-content-streaming', className)}
   data-streaming-tail={streaming && streamingTail ? '' : undefined}
+  dir="auto"
   {...rest}
 >
   {#if displayContent}
@@ -137,7 +140,7 @@
       />
     </div>
   {:else if streaming && streamingTail}
-    <span class="message-content-tail">{streamingTail}</span>
+    <span class="message-content-tail" dir="auto">{streamingTail}</span>
   {/if}
   {#if hasStreamingProgress}
     <span class="chat-message-streaming-progress" aria-hidden="true">
@@ -155,6 +158,15 @@
   .message-content {
     /* Typography inherited from MarkdownPreview component */
     display: block;
+    text-align: start;
+  }
+
+  /* Each block finds its own direction from its own text, so a reply that mixes an English
+     paragraph and an Arabic one sets each at its own start edge, with numbers and punctuation in
+     the right order. Code keeps its left-to-right layout. */
+  .message-content :global(:is(p, li, blockquote, h1, h2, h3, h4, h5, h6, dt, dd)) {
+    unicode-bidi: plaintext;
+    text-align: start;
   }
 
   .message-content-ellipsis {

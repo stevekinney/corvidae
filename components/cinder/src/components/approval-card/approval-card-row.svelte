@@ -196,7 +196,12 @@
     </span>
   {/if}
   <div class="cinder-approval-card__row-main">
-    <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__row-question">
+    <svelte:element
+      this={titleTag}
+      id={titleId}
+      class="cinder-approval-card__row-question"
+      dir="auto"
+    >
       {question}
     </svelte:element>
     {#if !collapsed}
@@ -239,7 +244,7 @@
       </p>
     {/if}
     {#if consequence !== undefined && !isDecided}
-      <p class="cinder-approval-card__consequence">{consequence}</p>
+      <p class="cinder-approval-card__consequence" dir="auto">{consequence}</p>
     {/if}
   </div>
   {#if isUnavailable || (isPending && !canAnswer)}
@@ -279,7 +284,7 @@
     </p>
   {/if}
   {#if notice !== undefined}
-    <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState}>
+    <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState} dir="auto">
       {notice}
     </p>
   {/if}
@@ -299,10 +304,14 @@
         </p>
       {/if}
       {#if unavailableReason !== undefined}
-        <p class="cinder-approval-card__reason">{unavailableReason}</p>
+        <p class="cinder-approval-card__reason" dir="auto">{unavailableReason}</p>
       {/if}
       {#if notice !== undefined}
-        <p class="cinder-approval-card__readonly-summary" data-cinder-state={approvalState}>
+        <p
+          class="cinder-approval-card__readonly-summary"
+          data-cinder-state={approvalState}
+          dir="auto"
+        >
           {notice}
         </p>
       {/if}
@@ -347,7 +356,9 @@
       {/if}
 
       {#if disabledReason !== undefined}
-        <p id={disabledReasonId} class="cinder-approval-card__reason">{disabledReason}</p>
+        <p id={disabledReasonId} class="cinder-approval-card__reason" dir="auto">
+          {disabledReason}
+        </p>
       {/if}
 
       {#if canAnswer && rememberScope !== undefined}
@@ -415,7 +426,7 @@
           </Button>
         </div>
         {#if footnote !== undefined}
-          <p class="cinder-approval-card__footnote">{footnote}</p>
+          <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
         {/if}
       {/if}
     {/if}

@@ -151,7 +151,7 @@
     </div>
   {/if}
   {#if disabledReason !== undefined}
-    <p id={disabledReasonId} class="cinder-approval-card__reason">{disabledReason}</p>
+    <p id={disabledReasonId} class="cinder-approval-card__reason" dir="auto">{disabledReason}</p>
   {/if}
   <div class="cinder-approval-card__action-row" role="group" aria-label="Approval actions">
     <div class="cinder-approval-card__action-buttons">

@@ -462,7 +462,7 @@
       <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__elsewhere-title">
         {outcomeText}
       </svelte:element>
-      <p class="cinder-approval-card__elsewhere-body">{elsewhereSentence}</p>
+      <p class="cinder-approval-card__elsewhere-body" dir="auto">{elsewhereSentence}</p>
     </div>
   </article>
 {:else if layout === 'row'}
@@ -530,7 +530,7 @@
         </span>
         <span>{eyebrow ?? 'Tool approval'}</span>
       </p>
-      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title">
+      <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title" dir="auto">
         {rowQuestion}
       </svelte:element>
       {#if showCardOutcome && isDecidedState && outcomeText !== undefined}
@@ -580,6 +580,7 @@
             <span
               id={saidId}
               class="cinder-approval-card__said-text"
+              dir="auto"
               data-cinder-open={saidOpen || undefined}>{said}</span
             >
           </button>
@@ -612,7 +613,8 @@
           <span>
             {#if tool.irreversible}<span class="cinder-approval-card__undone">Can't be undone.</span
               >{' '}{/if}{#if consequence !== undefined}<span
-                class="cinder-approval-card__consequence">{consequence}</span
+                class="cinder-approval-card__consequence"
+                dir="auto">{consequence}</span
               >{/if}
           </span>
         </p>
@@ -634,11 +636,15 @@
           resolve={resolveIfActionable}
         />
         {#if footnote !== undefined}
-          <p class="cinder-approval-card__footnote">{footnote}</p>
+          <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
         {/if}
       {:else}
         {#if resolvedNotice !== undefined || (effectiveState === 'unavailable' && unavailableReason !== undefined)}
-          <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
+          <p
+            class="cinder-approval-card__readonly-summary"
+            data-cinder-state={effectiveState}
+            dir="auto"
+          >
             {resolvedNotice ?? unavailableReason}
           </p>
         {/if}
@@ -690,7 +696,12 @@
                   >{/if}
               </p>
             {/if}
-            <svelte:element this={titleTag} id={titleId} class="cinder-approval-card__title">
+            <svelte:element
+              this={titleTag}
+              id={titleId}
+              class="cinder-approval-card__title"
+              dir="auto"
+            >
               {#if question !== undefined}
                 {question}
               {:else}
@@ -715,7 +726,7 @@
               {/if}
             </p>
             {#if consequence !== undefined}
-              <p class="cinder-approval-card__consequence">{consequence}</p>
+              <p class="cinder-approval-card__consequence" dir="auto">{consequence}</p>
             {/if}
           </div>
           <div class="cinder-approval-card__badges" role="group" aria-label="Approval status">
@@ -830,7 +841,7 @@
             resolve={resolveIfActionable}
           />
           {#if footnote !== undefined}
-            <p class="cinder-approval-card__footnote">{footnote}</p>
+            <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>
           {/if}
         {/if}
         {#if !isActionable}
@@ -844,7 +855,11 @@
             />
           {/if}
           {#if readonlySummary !== undefined}
-            <p class="cinder-approval-card__readonly-summary" data-cinder-state={effectiveState}>
+            <p
+              class="cinder-approval-card__readonly-summary"
+              data-cinder-state={effectiveState}
+              dir="auto"
+            >
               {readonlySummary}
             </p>
           {/if}

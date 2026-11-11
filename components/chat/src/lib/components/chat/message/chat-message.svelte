@@ -716,6 +716,7 @@
             class="chat-message-edit-textarea"
             bind:value={editContent}
             onkeydown={handleEditKeyDown}
+            dir="auto"
             autofocus
             aria-label="Edit message content"
             rows={Math.min(Math.max(editContent.split('\n').length, 2), 10)}></textarea>

@@ -16,6 +16,6 @@
 <!-- A tinted, bordered danger message that Alert announces, with the summary in bold and the reason after it. -->
 <Alert variant="danger" class="cinder-approval-card__failure">
   {#snippet icon()}<CircleAlert size={16} strokeWidth={2} />{/snippet}
-  <strong class="cinder-approval-card__failure-summary">{failure.summary}</strong>
+  <strong class="cinder-approval-card__failure-summary" dir="auto">{failure.summary}</strong>
   {#if failure.detail !== undefined}{' '}{failure.detail}{/if}
 </Alert>
