@@ -15,17 +15,19 @@
 //   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--head <sha>]
 //   bun scripts/chef/deliver.ts --branch <remote branch> --head <sha> --worktree <dir>
 //                               --message-file <md>
-// and, with either form:
 //                               [--issue <ID> --completion-file <md>]...
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
 //                               [--fixes-main] [--config <json>] [--json]
+// The options after the --branch form go with either form, except that `--fixes-main` goes with
+// `--pr` only: it records a pull request as a repair of a red `main`.
 //
 // The steps run in order and stop at the first failure, which is named:
 //   merge      with `--branch`, `direct-merge.ts`'s sequence under the merge lock a pull request
 //              merge takes, which names its own failures: `head` (the remote branch is exactly
 //              `--head`), `revert` (the revert check finds nothing), `conflict` (`git merge-tree`
-//              builds the merged tree), `guards` (each guard of `lint:guards` passes on that tree, in a temporary worktree), `merge`
+//              builds the merged tree), `guards` (each guard of `lint:guards` passes on that tree, in a temporary
+//              worktree, or fails only with findings `main` already has, which the report lists), `merge`
 //              (one squash commit made with `git commit-tree` from `--message-file` and pushed to
 //              the default branch; a rejected push changes nothing, so run it again) and `delete`
 //              (the remote branch). No checkout is changed. With `--pr`,
@@ -48,7 +50,7 @@
 //              `worktree` with `merged` still true.
 //
 // Output: at most five lines, or with `--json` one object: pr, branch, merged, mergeCommit,
-// mergeable, mainHealthWarning, guardWaiver, failedStep, detail and issues (each closed issue's identifier and
+// mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail and issues (each closed issue's identifier and
 // state). `pr` is null for a branch merge and `branch` null for a pull request merge. The
 // usage-log line of a branch merge holds `branch:<name>` where a pull request's holds its number.
 //
@@ -96,7 +98,7 @@ export interface DeliverOptions {
   removeWorktree?: { provider: string; name: string } | undefined;
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
-  /** Declares this change a repair of a red `main`; forwarded to the merge gate or direct merge. */
+  /** Declares this pull request a repair of a red `main`; forwarded to the merge gate. Refused with `branch`. */
   fixesMain?: boolean | undefined;
 }
 
@@ -111,8 +113,11 @@ export interface DeliverReport {
   mergeable: string | null;
   /** Set when `main`'s last batch validate failed: a warning, never a refusal. */
   mainHealthWarning: string | null;
-  /** Set when `--fixes-main` let failing text guards pass because their findings are `main`'s own. */
-  guardWaiver: string | null;
+  /**
+   * Text guards that fail on the merged tree with only findings `main` already has (a branch merge
+   * only): each guard and its finding count. Reported, not a refusal.
+   */
+  guardsAlreadyFailing: { guard: string; findings: number }[];
   failedStep: string | null;
   detail: string | null;
   /** The issues closed, in order, each with the Linear state it was left in. */
@@ -191,6 +196,10 @@ export async function deliver(
     if (options.expectedHead === undefined) throw new UsageError('--branch needs --head.');
     if (options.commentFile !== undefined)
       throw new UsageError('--comment-file applies only with --pr.');
+    if (options.fixesMain === true)
+      throw new UsageError(
+        '--fixes-main applies only with --pr: a branch merge compares every guard failure with origin/main on its own.',
+      );
     if (!existsSync(options.messageFile))
       throw new UsageError(`No such message file: ${options.messageFile}`);
   }
@@ -222,7 +231,7 @@ export async function deliver(
     mergeCommit: null,
     mergeable: null,
     mainHealthWarning: null,
-    guardWaiver: null,
+    guardsAlreadyFailing: [],
     failedStep: null,
     detail: null,
     issues: [],
@@ -248,13 +257,12 @@ export async function deliver(
       messageFile: options.messageFile ?? '',
       worktree: options.worktree,
       checkMainHealth: true,
-      fixesMain: options.fixesMain === true,
       ...usageFields,
     });
     report.merged = direct.merged;
     report.mergeCommit = direct.mergeCommit;
     report.mainHealthWarning = direct.mainHealthWarning ?? null;
-    report.guardWaiver = direct.guardWaiver ?? null;
+    report.guardsAlreadyFailing = direct.guardsAlreadyFailing ?? [];
     if (direct.failedStep !== null) return fail(direct.failedStep, direct.detail ?? '');
   } else {
     const merge = partial.merge;
@@ -320,7 +328,10 @@ export function renderDeliver(report: DeliverReport): string {
   ];
   if (report.mainHealthWarning !== null)
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
-  if (report.guardWaiver !== null) lines.push(`WARNING guards: ${report.guardWaiver}`);
+  if (report.guardsAlreadyFailing.length > 0)
+    lines.push(
+      `WARNING guards: already failing on main, with no finding of this change's own: ${report.guardsAlreadyFailing.map((one) => `${one.guard} (${one.findings} output lines)`).join(', ')}`,
+    );
   if (report.issues.length > 0)
     lines.push(
       `issues: ${report.issues.map((closed) => `${closed.identifier} ${closed.state}`).join(', ')}`,

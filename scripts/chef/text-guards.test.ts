@@ -4,12 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { Runner, RunnerResult } from './process-runner.ts';
 import {
+  alreadyFailingOnBase,
   findingsOf,
   GUARD_CLEANUP,
   GUARD_SETUP,
   parseGuardList,
   runTextGuards,
-  waivedBy,
   type GuardsResult,
 } from './text-guards.ts';
 
@@ -96,30 +96,31 @@ describe('findingsOf', () => {
   });
 });
 
-describe('waivedBy', () => {
+describe('alreadyFailingOnBase', () => {
   const result = (guard: string, findings: string[]): GuardsResult => ({
     ok: false,
     failures: [{ guard, findings, output: '' }],
   });
 
-  test('matches when each failing guard also fails on the base with a superset of its findings', () => {
-    expect(waivedBy(result('check-a', ['x', 'y']), result('check-a', ['x', 'y', 'z']))).toEqual({
-      guards: ['check-a'],
-      findings: 2,
-    });
+  test('names each failing guard that also fails on the base with a superset of its findings, with its count', () => {
+    expect(
+      alreadyFailingOnBase(result('check-a', ['x', 'y']), result('check-a', ['x', 'y', 'z'])),
+    ).toEqual([{ guard: 'check-a', findings: 2 }]);
   });
 
   test('does not match by guard name alone, an empty finding set, or an extra failing guard', () => {
-    expect(waivedBy(result('check-a', ['x', 'new']), result('check-a', ['x']))).toBeNull();
-    expect(waivedBy(result('check-a', ['x']), result('check-b', ['x']))).toBeNull();
-    expect(waivedBy(result('check-a', []), result('check-a', []))).toBeNull();
-    expect(waivedBy(result('check-a', ['x']), { ok: true, failures: [] })).toBeNull();
-    expect(waivedBy({ ok: true, failures: [] }, { ok: true, failures: [] })).toBeNull();
+    expect(
+      alreadyFailingOnBase(result('check-a', ['x', 'new']), result('check-a', ['x'])),
+    ).toBeNull();
+    expect(alreadyFailingOnBase(result('check-a', ['x']), result('check-b', ['x']))).toBeNull();
+    expect(alreadyFailingOnBase(result('check-a', []), result('check-a', []))).toBeNull();
+    expect(alreadyFailingOnBase(result('check-a', ['x']), { ok: true, failures: [] })).toBeNull();
+    expect(alreadyFailingOnBase({ ok: true, failures: [] }, { ok: true, failures: [] })).toBeNull();
     const two: GuardsResult = {
       ok: false,
       failures: [...result('check-a', ['x']).failures, ...result('check-b', ['y']).failures],
     };
-    expect(waivedBy(two, result('check-a', ['x']))).toBeNull();
+    expect(alreadyFailingOnBase(two, result('check-a', ['x']))).toBeNull();
     const leaked: GuardsResult = {
       ok: false,
       failures: [
@@ -127,7 +128,7 @@ describe('waivedBy', () => {
         { guard: GUARD_CLEANUP, findings: [], output: 'could not remove' },
       ],
     };
-    expect(waivedBy(result('check-a', ['x']), leaked)).toBeNull();
+    expect(alreadyFailingOnBase(result('check-a', ['x']), leaked)).toBeNull();
   });
 });
 

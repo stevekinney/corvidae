@@ -255,6 +255,54 @@ const deleteDenied = await outcomeOf(() => {
   expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
 });
 
+const guardsFail = (findings: string[]): GuardsResult => ({
+  ok: false,
+  failures: [{ guard: 'check-a', findings, output: findings.join(' | ') }],
+});
+
+// A guard that already fails on `origin/main` does not hold up a change that adds nothing to it: the
+// squash commit is merged, and the report names the guard and the count as already failing.
+const inheritedFailure = await outcomeOf(() => {
+  const w = world();
+  const mainBefore = refs(w.origin, 'refs/heads/main');
+  const seen: { revision: string; only: readonly string[] | undefined }[] = [];
+  const report = directMerge(w.options, {
+    runner: isolated,
+    guards: (revision, only) => {
+      seen.push({ revision, only });
+      return revision === mainBefore ? guardsFail(['x:1', 'y:2']) : guardsFail(['x:1']);
+    },
+  });
+  expect(report).toMatchObject({
+    merged: true,
+    failedStep: null,
+    guardsAlreadyFailing: [{ guard: 'check-a', findings: 1 }],
+  });
+  const merged = report.mergeCommit ?? '';
+  // The squash commit is checked first, then the base, limited to the guard that failed.
+  expect(seen).toEqual([
+    { revision: merged, only: undefined },
+    { revision: mainBefore, only: ['check-a'] },
+  ]);
+  expect(refs(w.origin, 'refs/heads/main')).toBe(merged);
+  expect(refs(w.origin, 'refs/heads/branch')).toBe('');
+});
+
+// The same guard failing with a finding the base lacks is the change's own: refused, nothing pushed.
+const newFinding = await outcomeOf(() => {
+  const w = world();
+  const mainBefore = refs(w.origin, 'refs/heads/main');
+  const report = directMerge(w.options, {
+    runner: isolated,
+    guards: (revision) =>
+      revision === mainBefore ? guardsFail(['x:1']) : guardsFail(['x:1', 'z:3']),
+  });
+  expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'guards' });
+  expect(report.guardsAlreadyFailing).toBeUndefined();
+  expect(refs(w.origin, 'refs/heads/main')).toBe(mainBefore);
+  expect(refs(w.origin, 'refs/heads/branch')).toBe(w.head);
+});
+
 // A pinned head that is not the branch's head is refused before anything else happens.
 const wrongHead = await outcomeOf(() => {
   const w = world();
@@ -304,6 +352,14 @@ describe('directMerge against real Git', () => {
 
   test('a branch delete the remote refuses is step delete with merged true', () => {
     rethrow(deleteDenied);
+  });
+
+  test('a guard failure with only findings origin/main already has merges and is reported', () => {
+    rethrow(inheritedFailure);
+  });
+
+  test('a guard failure with a finding origin/main lacks is refused at guards with nothing pushed', () => {
+    rethrow(newFinding);
   });
 
   test('a head that is not the pinned one is refused at head', () => {

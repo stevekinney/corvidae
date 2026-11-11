@@ -19,9 +19,13 @@
 //   4. guards     each guard of `lint:guards` runs as its own process on the tree that will be
 //                 pushed (the one squash commit, in a temporary detached Git worktree that is
 //                 always removed afterwards; `text-guards.ts` says why a worktree and not an
-//                 archive). A failure names the guard whose process failed and refuses, unless
-//                 `--fixes-main` is given and every failing guard's findings are a subset of that
-//                 guard's findings on `origin/<default>`;
+//                 archive). A failure names the guard whose process failed and refuses only when
+//                 the squash commit has a finding `origin/<default>` does not: the failing guards
+//                 are run on the base too, and a failure whose every finding the base's run of the
+//                 same guard also holds is the base's own. It does not refuse; the report lists
+//                 those guards and their finding counts as already failing on the base (this
+//                 repository's default branch can fail a guard for a while, because a run lands
+//                 code untested, and a change that adds nothing must not be held for it);
 //   5. merge      `git push origin <commit>:refs/heads/<default>`, where the commit is ONE squash
 //                 commit, `git commit-tree <tree> -p <base> -F <message file>`. A rejected push (the
 //                 default branch moved after the fetch) changes nothing; run it again;
@@ -33,8 +37,9 @@
 // merge (`withMergeLock`), from before step 1 to after step 7, so a direct merge and a pull request
 // merge never interleave their pushes.
 //
-// A red `main` is a warning in the report, never a refusal. `--fixes-main` is not recorded in the
-// health file, which keys its records by pull request number; here it only lets step 4 pass.
+// A red `main` is a warning in the report, never a refusal. A branch merge has no `--fixes-main`: that
+// flag records a pull request as a repair of a red `main` in the health file, which keys its records
+// by pull request number, and the baseline comparison in step 4 no longer needs a declaration.
 //
 // This module is a library; it has no command line.
 
@@ -47,7 +52,12 @@ import { withMergeLock } from './merge-gate.ts';
 import { defaultRunner, UsageError, type Runner } from './process-runner.ts';
 import { loadRepositoryConfig } from './repository-config.ts';
 import { revertCheck, RevertCheckError } from './revert-check.ts';
-import { runTextGuards, waivedBy, type GuardsResult } from './text-guards.ts';
+import {
+  alreadyFailingOnBase,
+  runTextGuards,
+  type AlreadyFailingGuard,
+  type GuardsResult,
+} from './text-guards.ts';
 import { totalUsage, type UsageTotals } from './transcript-usage.ts';
 
 export interface DirectMergeOptions {
@@ -60,8 +70,6 @@ export interface DirectMergeOptions {
   messageFile: string;
   /** A checkout of the repository, where the Git commands run; it is never modified. */
   worktree: string;
-  /** Lets step 4 pass when each failing guard's findings are already findings on the default branch. */
-  fixesMain?: boolean | undefined;
   /** Where the batch-validate record is read; defaults to the main checkout's. */
   healthFile?: string | undefined;
   /** Read the main-health record. Library callers opt in; the command line does. */
@@ -82,8 +90,11 @@ export interface DirectMergeReport {
   mergeCommit: string | null;
   /** Set when `main`'s last batch validate failed; a warning, never a refusal. */
   mainHealthWarning?: string;
-  /** Set when step 4 failed and `--fixes-main` let it pass because the base fails the same guard. */
-  guardWaiver?: string;
+  /**
+   * The guards that failed at step 4 with no finding the base lacks, each with its finding count:
+   * already failing on `origin/<default>`, reported and not a refusal. Absent when none did.
+   */
+  guardsAlreadyFailing?: AlreadyFailingGuard[];
   failedStep: string | null;
   detail: string | null;
   usage?: UsageTotals;
@@ -231,18 +242,15 @@ export function directMerge(
   // 4. guards, on the tree that will be pushed
   const checked = guards(commit);
   if (!checked.ok) {
-    // Only the guards that failed on the squash tree are run on the base; the failure is waived when
-    // every one of them fails there too, with no finding the base does not already have.
-    const onBase =
-      options.fixesMain === true
-        ? guards(
-            base,
-            checked.failures.map((failure) => failure.guard),
-          )
-        : undefined;
-    const waived = onBase === undefined ? null : waivedBy(checked, onBase);
-    if (waived === null) return fail('guards', guardsDetail(checked));
-    report.guardWaiver = `${waived.guards.join(', ')}: all ${waived.findings} output lines of the failure also appear in the same guard's run on origin/${defaultBranch}; merged as the declared fix.`;
+    // Only the guards that failed on the squash tree are run on the base. The change is refused
+    // when one of them has a finding the base does not, or does not fail there at all.
+    const onBase = guards(
+      base,
+      checked.failures.map((failure) => failure.guard),
+    );
+    const known = alreadyFailingOnBase(checked, onBase);
+    if (known === null) return fail('guards', guardsDetail(checked));
+    report.guardsAlreadyFailing = known;
   }
 
   // 5. merge

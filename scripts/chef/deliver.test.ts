@@ -170,7 +170,7 @@ describe('deliver', () => {
       mergeCommit: MERGE_COMMIT,
       mergeable: 'MERGEABLE',
       mainHealthWarning: null,
-      guardWaiver: null,
+      guardsAlreadyFailing: [],
       failedStep: null,
       detail: null,
       issues: [],
@@ -735,50 +735,55 @@ describe('deliver --branch', () => {
     expect(report.detail).toContain('changes nothing');
   });
 
-  test('a failing guard is refused at guards, with nothing pushed', async () => {
+  test('a guard that fails on the merged tree and passes on main is refused at guards, with nothing pushed', async () => {
     const world = branchWorld();
     const { report, record } = await deliverBranch(
       world,
-      () => guardsFail('check-middle-dot-separators'),
+      (revision) => (revision === BASE ? guardsPass() : guardsFail('check-middle-dot-separators')),
       { issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
     );
-    expect(report).toMatchObject({ merged: false, failedStep: 'guards' });
+    expect(report).toMatchObject({ merged: false, failedStep: 'guards', guardsAlreadyFailing: [] });
     expect(report.detail).toContain('check-middle-dot-separators');
     expect(world.calls.some((call) => call.startsWith('push'))).toBe(false);
     expect(record.requests).toEqual([]);
   });
 
-  test('--fixes-main waives a guard only when its findings are a subset of the same guard on main', async () => {
+  test('a guard failure refuses the merge only for a finding main does not have, with no declaration', async () => {
     const WAIT = 'check-wait-for-element-assertions';
     const onBranch = guardsFail(WAIT, ['a.test.ts:1 - absence']);
     const failing = (branch: GuardsResult, onBase: GuardsResult) => (revision: string) =>
       revision === BASE ? onBase : branch;
-    const deliverFixing = (branch: GuardsResult, onBase: GuardsResult) =>
-      deliverBranch(branchWorld(), failing(branch, onBase), { fixesMain: true });
+    const deliverFailing = (branch: GuardsResult, onBase: GuardsResult) =>
+      deliverBranch(branchWorld(), failing(branch, onBase));
 
-    const fixed = await deliverFixing(
+    // Every finding is main's own: merged, and reported as already failing on main, never silently.
+    const inherited = await deliverFailing(
       onBranch,
       guardsFail(WAIT, ['a.test.ts:1 - absence', 'b.test.ts:2 - identity']),
     );
-    expect(fixed.report).toMatchObject({ merged: true, failedStep: null });
-    expect(fixed.report.guardWaiver).toContain(WAIT);
-    expect(fixed.report.guardWaiver).toContain('all 1 output lines');
-    expect(renderDeliver(fixed.report)).toContain('WARNING guards:');
+    expect(inherited.report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      guardsAlreadyFailing: [{ guard: WAIT, findings: 1 }],
+    });
+    expect(renderDeliver(inherited.report)).toContain(
+      `WARNING guards: already failing on main, with no finding of this change's own: ${WAIT} (1 output lines)`,
+    );
 
-    // Same guard, but a finding main does not have: the branch's own, refused.
-    const newFinding = await deliverFixing(onBranch, guardsFail(WAIT, ['c.test.ts:3 - absence']));
+    // Same guard, but a finding main does not have: the change's own, refused.
+    const newFinding = await deliverFailing(onBranch, guardsFail(WAIT, ['c.test.ts:3 - absence']));
     expect(newFinding.report).toMatchObject({ merged: false, failedStep: 'guards' });
-    // A different guard failing on main, by name alone, waives nothing.
-    const otherGuard = await deliverFixing(onBranch, guardsFail('check-runtime-detection'));
+    // A different guard failing on main, by name alone, is no baseline.
+    const otherGuard = await deliverFailing(onBranch, guardsFail('check-runtime-detection'));
     expect(otherGuard.report).toMatchObject({ merged: false, failedStep: 'guards' });
     expect(otherGuard.report.detail).toContain(WAIT);
-    // Main passing the guard waives nothing.
-    const clean = await deliverFixing(onBranch, guardsPass());
+    // Main passing the guard is no baseline.
+    const clean = await deliverFailing(onBranch, guardsPass());
     expect(clean.report).toMatchObject({ merged: false, failedStep: 'guards' });
-    // A failure with no findings cannot match anything.
-    const silent = await deliverFixing(guardsFail(WAIT, []), guardsFail(WAIT, []));
+    // A failure with no findings cannot be matched against anything.
+    const silent = await deliverFailing(guardsFail(WAIT, []), guardsFail(WAIT, []));
     expect(silent.report).toMatchObject({ merged: false, failedStep: 'guards' });
-    // A second failing guard that main does not fail is the branch's own, even beside a waivable one.
+    // A second failing guard that main does not fail is the change's own, beside an inherited one.
     const both: GuardsResult = {
       ok: false,
       failures: [
@@ -786,28 +791,46 @@ describe('deliver --branch', () => {
         { guard: 'check-middle-dot-separators', findings: ['x:1 - dot'], output: 'x:1 - dot' },
       ],
     };
-    const mixed = await deliverFixing(both, guardsFail(WAIT, ['a.test.ts:1 - absence']));
+    const mixed = await deliverFailing(both, guardsFail(WAIT, ['a.test.ts:1 - absence']));
     expect(mixed.report).toMatchObject({ merged: false, failedStep: 'guards' });
     expect(mixed.report.detail).toContain(WAIT);
     expect(mixed.report.detail).toContain('check-middle-dot-separators');
+    // Two inherited guards are both reported.
+    const two: GuardsResult = {
+      ok: false,
+      failures: [
+        ...onBranch.failures,
+        ...guardsFail('check-runtime-detection', ['r:1 - x']).failures,
+      ],
+    };
+    const bothInherited = await deliverFailing(two, two);
+    expect(bothInherited.report.guardsAlreadyFailing).toEqual([
+      { guard: WAIT, findings: 1 },
+      { guard: 'check-runtime-detection', findings: 1 },
+    ]);
 
-    // The base run is limited to the guards that failed on the branch, and only with the declaration.
+    // The base run is limited to the guards that failed on the merged tree.
     const asked: (readonly string[] | undefined)[] = [];
-    await deliverBranch(
-      branchWorld(),
-      (revision, only) => {
-        if (revision === BASE) asked.push(only);
-        return onBranch;
-      },
-      { fixesMain: true },
-    );
+    await deliverBranch(branchWorld(), (revision, only) => {
+      if (revision === BASE) asked.push(only);
+      return onBranch;
+    });
     expect(asked).toEqual([[WAIT]]);
+    // A tree whose guards all pass never runs them on main.
     const revisions: string[] = [];
     await deliverBranch(branchWorld(), (revision) => {
       revisions.push(revision);
-      return onBranch;
+      return guardsPass();
     });
     expect(revisions).toEqual([SQUASH]);
+  });
+
+  test('--fixes-main is for a pull request: a branch merge refuses it before anything runs', async () => {
+    const world = branchWorld();
+    const error = await rejectionOf(deliverBranch(world, guardsPass, { fixesMain: true }));
+    expect(error).toBeInstanceOf(UsageError);
+    expect(String(error)).toContain('--fixes-main applies only with --pr');
+    expect(world.calls).toEqual([]);
   });
 
   test('a rejected push changes nothing: the branch is kept and no issue is closed', async () => {
@@ -949,7 +972,6 @@ describe('deliver --branch', () => {
         sandbox,
         '--message-file',
         join(sandbox, 'comment.md'),
-        '--fixes-main',
         '--json',
       ],
       {
@@ -969,6 +991,6 @@ describe('deliver --branch', () => {
     );
     expect(result.code).toBe(0);
     expect(JSON.parse(result.output)).toMatchObject({ pr: null, branch: BRANCH, merged: true });
-    expect(seen[0]).toMatchObject({ branch: BRANCH, head: HEAD, fixesMain: true });
+    expect(seen[0]).toMatchObject({ branch: BRANCH, head: HEAD });
   });
 });

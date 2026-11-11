@@ -16,9 +16,11 @@
 //
 // Each guard is its own process, in the order `lint:guards` lists them, and every one runs even
 // after a failure: the failing guard is known from which process exited non-zero, never from
-// parsed text, and `--fixes-main` can only waive a failure once every failing guard is accounted
-// for. The list is read from the `package.json` of the tree under test, so `lint:guards` stays the
-// single source and a branch that adds a guard is held to it.
+// parsed text, and a failure can be called the base's own only once every failing guard is
+// accounted for. The list is read from the `package.json` of the tree under test, so `lint:guards`
+// stays the single source and a branch that adds a guard is held to it. A guard that fails on the
+// tree is compared with the same guard on the base (`alreadyFailingOnBase`); only a finding the
+// base lacks is the change's own.
 //
 // This module is a library; it has no command line.
 
@@ -164,8 +166,8 @@ function runGuardsIn(runner: Runner, tree: string, only?: readonly string[]): Gu
 
 /**
  * Run the guards of `lint:guards` on the tree of `revision`, in a detached worktree of `worktree`'s
- * repository. `only` limits the run to the named guards (the `--fixes-main` comparison against the
- * base needs only the ones that failed on the branch).
+ * repository. `only` limits the run to the named guards (the comparison against the base needs only
+ * the ones that failed on the branch).
  */
 export function runTextGuards(
   runner: Runner,
@@ -211,26 +213,34 @@ export function runTextGuards(
   };
 }
 
+/** A guard that fails on the base and, on the change's tree, with nothing the base lacks. */
+export interface AlreadyFailingGuard {
+  guard: string;
+  /** How many output lines of the guard's failure on the change's tree the base's run also holds. */
+  findings: number;
+}
+
 /**
- * Whether every guard that failed on a branch's tree fails no worse on the base: it must also fail
+ * Whether every guard that failed on a change's tree fails no worse on the base: it must also fail
  * on the base, with findings (so a guard that fails with no output cannot match) that are a subset
- * of the base's. Returns the guards and the matched finding count, or `null` when a failure is the
- * branch's own.
+ * of the base's. Returns each such guard with its matched finding count, or `null` when a failure is
+ * the change's own: a finding the base does not have, a guard the base passes, or a run that could
+ * not be compared.
  */
-export function waivedBy(
-  branch: GuardsResult,
+export function alreadyFailingOnBase(
+  change: GuardsResult,
   base: GuardsResult,
-): { guards: string[]; findings: number } | null {
+): AlreadyFailingGuard[] | null {
   // A base run that could not clean up after itself is not a reliable comparison.
-  if (branch.failures.length === 0 || base.failures.some((one) => one.guard === GUARD_CLEANUP))
+  if (change.failures.length === 0 || base.failures.some((one) => one.guard === GUARD_CLEANUP))
     return null;
-  let findings = 0;
-  for (const failure of branch.failures) {
+  const matched: AlreadyFailingGuard[] = [];
+  for (const failure of change.failures) {
     const onBase = base.failures.find((candidate) => candidate.guard === failure.guard);
     if (onBase === undefined || failure.findings.length === 0) return null;
     const known = new Set(onBase.findings);
     if (!failure.findings.every((finding) => known.has(finding))) return null;
-    findings += failure.findings.length;
+    matched.push({ guard: failure.guard, findings: failure.findings.length });
   }
-  return { guards: branch.failures.map((failure) => failure.guard), findings };
+  return matched;
 }
