@@ -24,7 +24,7 @@ When `href` is set, the component renders as `<a>`; otherwise it renders as `<bu
 
 ## Disabled
 
-A disabled button looks the same in every variant: a neutral surface (or none, for `ghost` and `ghost-danger`), `--cinder-text-disabled` text, and the shared disabled opacity. It never keeps its tone while disabled, so a disabled `danger` or `ghost-danger` button does not read as a faded red button. A primary button also never takes a tone from its container: inside a danger `Card` it is still the primary button.
+A disabled button looks the same in every variant: a neutral surface (or none, for `ghost` and `ghost-danger`), `--cinder-text-disabled` text, and never an opacity fade (a fade would drop the label under 4.5:1). It never keeps its tone while disabled, so a disabled `danger` or `ghost-danger` button does not read as a faded red button. A primary button also never takes a tone from its container: inside a danger `Card` it is still the primary button.
 
 ## Props
 

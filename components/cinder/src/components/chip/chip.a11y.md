@@ -74,7 +74,7 @@ The icon slot wrapper (`.cinder-chip__icon`) carries `aria-hidden="true"`. The c
 ## Disabled state
 
 - **Toggle chips:** `disabled` on the root `<button>` — the browser blocks pointer/keyboard events and dims the whole chip via `:disabled` CSS selector.
-- **Removable chips:** `disabled` on the inner remove `<button>` (blocks removal) plus `data-cinder-disabled` on the outer `<span>` root (dims the entire chip including label to communicate that the chip as a whole is disabled, not just the remove action). `data-cinder-disabled` is not `aria-disabled` — the span has no interactive role, so `aria-disabled` would be meaningless. The visual treatment mirrors the toggle chip's `:disabled` opacity.
+- **Removable chips:** `disabled` on the inner remove `<button>` (blocks removal) plus `data-cinder-disabled` on the outer `<span>` root (mutes the entire chip, label included, with the disabled colour tokens to communicate that the chip as a whole is disabled, not just the remove action). `data-cinder-disabled` is not `aria-disabled` — the span has no interactive role, so `aria-disabled` would be meaningless. The visual treatment mirrors the toggle chip's `:disabled` colours; no opacity is involved.
 
 ## Empty label guidance
 

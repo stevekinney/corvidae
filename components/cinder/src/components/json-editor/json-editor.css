@@ -71,9 +71,12 @@
     border-color: var(--cinder-control-border-invalid);
   }
 
-  /* A disabled editor is dimmed whole; the JSON tag and the status stay, so it is still readable. */
+  /* A disabled editor takes the disabled control surface and loses its colour, never an opacity
+     fade: the highlighted code keeps its own contrast, and the JSON tag and the status stay
+     readable. */
   .cinder-json-editor__input--disabled {
-    opacity: var(--cinder-opacity-disabled);
+    background: var(--cinder-control-background-disabled);
+    filter: grayscale(0.8);
   }
 
   /* The quiet focus ring (2px, accent, no offset) wraps the whole control while the editor, or the

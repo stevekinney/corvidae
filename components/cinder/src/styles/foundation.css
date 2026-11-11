@@ -449,39 +449,20 @@
 }
 
 /* ----------------------------------------------------------------------------
- * Disabled visual treatment — VISUAL only, does NOT suppress interaction.
+ * Disabled visual treatment
  *
- * Centralizes `opacity: 0.6` for the components listed below. Interaction
- * suppression (`pointer-events`, `cursor`, `aria-disabled`) stays component-
- * local because it's behavior, not appearance.
+ * There is none here on purpose. A disabled control is repainted with colour
+ * tokens (`--cinder-text-disabled`, `--cinder-control-background-disabled`,
+ * `--cinder-fill-disabled`) in its own component stylesheet, never faded with
+ * `opacity`: an opacity fade composites the text through the surface behind
+ * it, so the one text colour that was chosen to clear 4.5:1 lands near 2:1,
+ * and a screen of disabled controls (the offline state) reads as broken
+ * rather than unavailable. `disabled-opacity.test.ts` fails on an `opacity`
+ * declaration in any disabled selector.
  *
- * `:where()` keeps specificity at 0 so consumers can override freely.
- *
- * Scope: only the selectors explicitly listed below. Other components with
- * disabled `opacity` (navigation-item, side-navigation-group, slider,
- * accordion-item, color-picker, and the button variant-
- * specific rules in button.css) still declare their own `opacity` locally —
- * they have higher-specificity selectors or distinct disabled shapes that
- * don't yet collapse into this list. Future audits can extend coverage.
+ * Interaction suppression (`pointer-events`, `cursor`, `aria-disabled`) stays
+ * component-local too, because it is behaviour, not appearance.
  * ---------------------------------------------------------------------------- */
-:where(
-  .cinder-button:disabled:not([data-cinder-loading]),
-  .cinder-button[aria-disabled='true']:not([data-cinder-loading]),
-  .cinder-dropdown-item[data-disabled],
-  .cinder-dropdown-trigger[aria-disabled='true'],
-  .cinder-toggle:disabled,
-  .cinder-toggle[aria-disabled='true'],
-  .cinder-segmented-control[aria-disabled='true'],
-  .cinder-segmented-control-option:disabled,
-  .cinder-segmented-control-option[aria-disabled='true']
-) {
-  opacity: 0.6;
-}
-
-/* Note: a previous attempt centralized `color: var(--cinder-text-disabled)` here
- * via :where(), but it was overridden by the higher-specificity (and
- * later-layer) base label rules in components.css. Field-component label and
- * description disabled colors stay component-local for now. */
 
 /* ----------------------------------------------------------------------------
  * Compact density

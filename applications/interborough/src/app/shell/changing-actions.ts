@@ -11,7 +11,7 @@
  * answers:
  *
  * - the shell's `data-connection="unreachable"` attribute, which one rule in `foundation.css`
- *   reads to dim `CHANGING_ACTION_SELECTOR`;
+ *   reads to mute `CHANGING_ACTION_SELECTOR` in the disabled text colour;
  * - a capture-phase `click` and `submit` handler on the document, which stops the activation
  *   before the page's own handler sees it, from a pointer, from Enter, and from Space alike;
  * - `aria-disabled="true"` and the reason as the title on a control that carries neither, so a

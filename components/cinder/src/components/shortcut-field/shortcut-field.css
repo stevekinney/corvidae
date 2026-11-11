@@ -25,9 +25,8 @@
   }
   .cinder-shortcut-field--disabled .cinder-shortcut-field__control {
     background: var(--cinder-surface-inset);
-    color: var(--cinder-text-muted);
+    color: var(--cinder-text-disabled);
     cursor: not-allowed;
-    opacity: 0.65;
   }
   .cinder-shortcut-field__control:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;

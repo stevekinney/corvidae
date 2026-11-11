@@ -140,6 +140,8 @@ Against WCAG 1.4.11's 3:1 floor for meaningful non-text graphics, measured acros
 
 A tier used as a border is normally the intended case and needs no entry here. The exception is an element that also carries a fractional `opacity`: that multiplies the tier's own alpha rather than replacing an opaque value, so composing the tier compounds with it.
 
+**Update (COR-2303).** The disabled states recorded below no longer carry an element `opacity`: a disabled control takes `--cinder-text-disabled` and its disabled surface, so its structural border is undiluted. The entries that say "disabled" are the history of what the fade did, and `disabled-opacity.test.ts` keeps it from coming back.
+
 **This section does not claim to enumerate every such site, and cannot.** Three successive attempts to list them exhaustively were each incomplete, because the tier and the opacity are related by the cascade rather than by proximity in the source. Review of this PR alone turned up five distinct arrangements, none of which a text scan can follow:
 
 | arrangement              | example                                              |
@@ -293,16 +295,14 @@ The grip's two halves sit on a parent and its child; the Button, Toggle and Segm
 
 | site | property | tier reference | how it was found |
 | --- | --- | --- | --- |
-| disabled icon-only ghost Button (`/page/button`) | `border-color` | `var(--cinder-border-muted)` | opacity compound: a variant-specific rule in `button.css` pairs `border-color` and `opacity: 0.6` in the SAME rule (also caught by the source-text scan), while `foundation.css`'s shared disabled-visual rule redundantly contributes the identical opacity from a second file; matched via CDP |
-| disabled secondary Button (`/page/button`) | `border-color` | `var(--cinder-border-muted)` | cross-file-only opacity compound: `button.css`'s base disabled rule sets `border-color: var(--cinder-border-muted)` alone (no same-rule `opacity`), and `opacity: 0.6` comes entirely from `foundation.css`'s shared disabled-visual rule -- the two declarations never appear together as literal text in any one file, matched on the same element via CDP |
 | resting Toggle track (`/page/toggle`) | `background` | `--cinder-toggle-track-off-resting` → `var(--cinder-border-control)` | one-hop alias: a non-border property's `var()` fallback names a custom property whose own declaration (inherited from the generated `:root` block) names the tier |
 
-Coverage note: this table currently audits, across three sites, the two shapes
-CIN-602 was scoped to prove (an opacity compound, and a corpus-alias area fill
-invisible to static source text) -- one of the three (the icon-only Button) is
-ALSO caught by the same-rule case in `border-tier-non-border-uses.test.ts`; the
-plain (secondary) disabled Button is the one the text scan cannot see even in
-principle. It is not yet a full replacement for the hand-maintained
+Coverage note: this table currently audits one site, a corpus-alias area fill
+invisible to static source text. The two opacity-compound rows (the disabled
+Buttons, whose opacity came from a shared rule in another file) were removed by
+COR-2303, which repaints every disabled state with colour tokens instead of an
+opacity fade; the opacity-compound mechanism stays in this file for a later
+site. It is not yet a full replacement for the hand-maintained
 tables elsewhere in this document -- extending `AUDITED_SITES` to the rest of the
 sites listed by hand above (SortableList, ResizablePanels, SegmentedControl, the
 disabled-state list, the fourteen-site area-fill table) has not been done.

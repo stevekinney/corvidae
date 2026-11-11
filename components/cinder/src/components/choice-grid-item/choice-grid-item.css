@@ -105,9 +105,16 @@
    * Disabled state
    * ---------------------------------------- */
 
+  .cinder-choice-grid-item[data-cinder-disabled],
+  .cinder-choice-grid-item[data-cinder-disabled] .cinder-choice-grid-item__icon,
+  .cinder-choice-grid-item[data-cinder-disabled] .cinder-choice-grid-item__description,
+  .cinder-choice-grid-item[data-cinder-variant='card'][data-cinder-selected][data-cinder-disabled]
+    .cinder-choice-grid-item__title {
+    color: var(--cinder-text-disabled);
+  }
+
   .cinder-choice-grid-item[data-cinder-disabled] {
     cursor: not-allowed;
-    opacity: 0.45;
   }
 
   /* ----------------------------------------

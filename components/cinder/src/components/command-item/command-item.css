@@ -54,8 +54,16 @@
     }
   }
 
+  .cinder-command-item[data-cinder-disabled],
+  .cinder-command-item[data-cinder-disabled] .cinder-command-item__leading,
+  .cinder-command-item[data-cinder-disabled] .cinder-command-item__description,
+  .cinder-command-item[data-cinder-disabled] .cinder-command-item__meta,
+  .cinder-command-item[data-cinder-disabled] .cinder-command-item__keys,
+  .cinder-command-item[data-cinder-disabled] .cinder-command-item__trailing {
+    color: var(--cinder-text-disabled);
+  }
+
   .cinder-command-item[data-cinder-disabled] {
-    opacity: 0.45;
     cursor: not-allowed;
     pointer-events: none;
   }

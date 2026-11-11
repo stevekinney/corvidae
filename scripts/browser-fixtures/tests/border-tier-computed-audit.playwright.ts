@@ -55,20 +55,7 @@ import {
   type MatchedDeclaration,
 } from '@lostgradient/testing';
 
-const ROUTE_BUTTON = tokenFixtureRoute;
 const ROUTE_TOGGLE = tokenFixtureRoute;
-const DISABLED_ICON_BUTTON = '[data-testid="button-ghost-icon-only-disabled"]';
-// A PLAIN (non-icon-only) disabled button, secondary variant. `button.css`'s
-// base disabled rule (`.cinder-button:disabled`) sets `border-color: var(
-// --cinder-border-muted)` alone and says so explicitly ("opacity centralized
-// in foundation.css disabled-visual rule") -- no rule in either file pairs a
-// border declaration with an `opacity` for this element. The icon-only ghost
-// site above additionally matches a variant-specific rule that pairs
-// `border-color` and `opacity: 0.6` in ONE rule body, which is a same-rule
-// case `border-tier-non-border-uses.test.ts` already catches; this site has
-// no such same-rule pairing anywhere, so it is the genuinely cross-file-only
-// case a source-text scan structurally cannot see.
-const DISABLED_PLAIN_BUTTON = '[data-testid="button-secondary-disabled"]';
 // The first unchecked, non-disabled toggle track on the page -- the "Basic
 // toggle" example, which starts `checked={false}`.
 const RESTING_TOGGLE_TRACK = '.cinder-toggle:not([data-cinder-checked]):not(:disabled)';
@@ -114,61 +101,6 @@ async function effectiveOpacityFor(page: Page, selector: string): Promise<number
 }
 
 test.describe('CIN-602/CIN-245: structural border tier uses, from the real cascade', () => {
-  test('the disabled Button: border.muted compounds with a cross-file opacity, with no hand-maintained entry', async ({
-    page,
-  }) => {
-    await page.goto(ROUTE_BUTTON, { waitUntil: 'load' });
-    await page.locator(DISABLED_ICON_BUTTON).waitFor({ state: 'visible' });
-
-    const declarations = await matchedDeclarationsFor(page, DISABLED_ICON_BUTTON);
-    expect(declarations, 'the disabled icon-only ghost Button was not found').not.toBeNull();
-
-    const opacity = await effectiveOpacityFor(page, DISABLED_ICON_BUTTON);
-    expect(opacity, 'the disabled Button is expected to render at reduced opacity').toBeLessThan(1);
-
-    const compounded = opacityCompoundedTierDeclarations(declarations!, opacity);
-    expect(
-      compounded.some(
-        (declaration) =>
-          isBorderProperty(declaration.property) &&
-          referencesBorderTier(declaration.resolvedValue ?? declaration.value),
-      ),
-      `expected a border declaration naming a structural tier to compound with opacity ${opacity}; ` +
-        `found: ${JSON.stringify(compounded)}`,
-    ).toBe(true);
-  });
-
-  test('the plain disabled Button: border.muted compounds with an opacity declared in an ENTIRELY DIFFERENT rule, in a different file, with no hand-maintained entry', async ({
-    page,
-  }) => {
-    // Unlike DISABLED_ICON_BUTTON, this element matches no variant-specific
-    // rule that pairs `border-color` and `opacity` in the same rule body --
-    // `button.css`'s base disabled rule sets `border-color` alone, and the
-    // ONLY rule that ever sets this element's `opacity` lives in
-    // `foundation.css`. This is the case a source-text scan cannot see even
-    // in principle, because the two declarations never appear together as
-    // literal text anywhere.
-    await page.goto(ROUTE_BUTTON, { waitUntil: 'load' });
-    await page.locator(DISABLED_PLAIN_BUTTON).waitFor({ state: 'visible' });
-
-    const declarations = await matchedDeclarationsFor(page, DISABLED_PLAIN_BUTTON);
-    expect(declarations, 'the disabled secondary Button was not found').not.toBeNull();
-
-    const opacity = await effectiveOpacityFor(page, DISABLED_PLAIN_BUTTON);
-    expect(opacity, 'the disabled Button is expected to render at reduced opacity').toBeLessThan(1);
-
-    const compounded = opacityCompoundedTierDeclarations(declarations!, opacity);
-    expect(
-      compounded.some(
-        (declaration) =>
-          isBorderProperty(declaration.property) &&
-          referencesBorderTier(declaration.resolvedValue ?? declaration.value),
-      ),
-      `expected a border declaration naming a structural tier to compound with opacity ${opacity}; ` +
-        `found: ${JSON.stringify(compounded)}`,
-    ).toBe(true);
-  });
-
   test('the Toggle track: a one-hop alias through the GENERATED :root reaches an area fill, with no hand-maintained entry', async ({
     page,
   }) => {
@@ -187,51 +119,6 @@ test.describe('CIN-602/CIN-245: structural border tier uses, from the real casca
       `expected a "background" use reached through one hop of a custom-property alias; ` +
         `found: ${JSON.stringify(uses)}`,
     ).toBe(true);
-  });
-
-  test('regression: the Button finding disappears if the cross-file opacity rule is removed', async ({
-    page,
-  }) => {
-    // Proves the mechanism actually depends on reading foundation.css's
-    // shared disabled-visual rule alongside button.css's border declaration
-    // -- not a coincidence of some OTHER opacity rule. Overriding the shared
-    // selector's opacity back to 1 removes exactly the fact this test exists
-    // to catch, and the assertion above must fail without it.
-    await page.goto(ROUTE_BUTTON, { waitUntil: 'load' });
-    await page.locator(DISABLED_ICON_BUTTON).waitFor({ state: 'visible' });
-    await page.addStyleTag({
-      content: `.cinder-button:disabled:not([data-cinder-loading]) { opacity: 1 !important; }`,
-    });
-
-    const opacity = await effectiveOpacityFor(page, DISABLED_ICON_BUTTON);
-    expect(opacity).toBe(1);
-
-    const declarations = await matchedDeclarationsFor(page, DISABLED_ICON_BUTTON);
-    const compounded = opacityCompoundedTierDeclarations(declarations!, opacity);
-    expect(compounded).toEqual([]);
-  });
-
-  test('regression: the plain-disabled-Button finding disappears if the SHARED foundation.css opacity rule is removed', async ({
-    page,
-  }) => {
-    // Proves the finding depends on the shared foundation.css rule: removing
-    // it removes the finding entirely. (That this is the ONLY source of this
-    // element's opacity is established statically -- no rule in button.css
-    // sets `opacity` for the secondary variant, unlike ghost/ghost-danger's
-    // icon-only disabled rule -- this override does not by itself prove that,
-    // since it targets the same selector both files match.)
-    await page.goto(ROUTE_BUTTON, { waitUntil: 'load' });
-    await page.locator(DISABLED_PLAIN_BUTTON).waitFor({ state: 'visible' });
-    await page.addStyleTag({
-      content: `.cinder-button:disabled:not([data-cinder-loading]) { opacity: 1 !important; }`,
-    });
-
-    const opacity = await effectiveOpacityFor(page, DISABLED_PLAIN_BUTTON);
-    expect(opacity).toBe(1);
-
-    const declarations = await matchedDeclarationsFor(page, DISABLED_PLAIN_BUTTON);
-    const compounded = opacityCompoundedTierDeclarations(declarations!, opacity);
-    expect(compounded).toEqual([]);
   });
 });
 
@@ -270,22 +157,6 @@ type AuditedSite = {
 };
 
 const AUDITED_SITES: readonly AuditedSite[] = [
-  {
-    kind: 'opacity-compound',
-    route: ROUTE_BUTTON,
-    selector: DISABLED_ICON_BUTTON,
-    displayName: 'disabled icon-only ghost Button (`/page/button`)',
-    howFound:
-      "opacity compound: a variant-specific rule in `button.css` pairs `border-color` and `opacity: 0.6` in the SAME rule (also caught by the source-text scan), while `foundation.css`'s shared disabled-visual rule redundantly contributes the identical opacity from a second file; matched via CDP",
-  },
-  {
-    kind: 'opacity-compound',
-    route: ROUTE_BUTTON,
-    selector: DISABLED_PLAIN_BUTTON,
-    displayName: 'disabled secondary Button (`/page/button`)',
-    howFound:
-      "cross-file-only opacity compound: `button.css`'s base disabled rule sets `border-color: var(--cinder-border-muted)` alone (no same-rule `opacity`), and `opacity: 0.6` comes entirely from `foundation.css`'s shared disabled-visual rule -- the two declarations never appear together as literal text in any one file, matched on the same element via CDP",
-  },
   {
     kind: 'alias-use',
     route: ROUTE_TOGGLE,
@@ -380,12 +251,12 @@ function renderGeneratedSection(rows: readonly GeneratedRow[]): string {
       (row) => `| ${row.site} | \`${row.property}\` | ${row.tierReference} | ${row.howFound} |`,
     ),
     '',
-    'Coverage note: this table currently audits, across three sites, the two shapes',
-    'CIN-602 was scoped to prove (an opacity compound, and a corpus-alias area fill',
-    'invisible to static source text) -- one of the three (the icon-only Button) is',
-    'ALSO caught by the same-rule case in `border-tier-non-border-uses.test.ts`; the',
-    'plain (secondary) disabled Button is the one the text scan cannot see even in',
-    'principle. It is not yet a full replacement for the hand-maintained',
+    'Coverage note: this table currently audits one site, a corpus-alias area fill',
+    'invisible to static source text. The two opacity-compound rows (the disabled',
+    'Buttons, whose opacity came from a shared rule in another file) were removed by',
+    'COR-2303, which repaints every disabled state with colour tokens instead of an',
+    'opacity fade; the opacity-compound mechanism stays in this file for a later',
+    'site. It is not yet a full replacement for the hand-maintained',
     'tables elsewhere in this document -- extending `AUDITED_SITES` to the rest of the',
     'sites listed by hand above (SortableList, ResizablePanels, SegmentedControl, the',
     'disabled-state list, the fourteen-site area-fill table) has not been done.',

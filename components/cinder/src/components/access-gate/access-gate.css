@@ -71,7 +71,6 @@
   .cinder-access-gate__inline-content [data-cinder-access-gate-control] {
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
-    opacity: 0.6;
   }
 
   .cinder-access-gate__inline-reason {

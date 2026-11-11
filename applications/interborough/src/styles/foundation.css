@@ -766,10 +766,13 @@
 /* While the server does not answer, a control that changes something reads as off. The shell sets
  * `data-connection` and holds the activation (`app/shell/changing-actions.ts`); this rule is only
  * the look, and it must name the same controls as `CHANGING_ACTION_SELECTOR`. It reads the shell
- * from the body so that a dialog, which renders outside the shell, is dimmed too. */
+ * from the body so that a dialog, which renders outside the shell, reads as off too. The control
+ * takes the disabled text colour and never an opacity fade (a fade drops its label under 4.5:1, so
+ * a whole screen of held controls reads as broken instead of offline); Cinder's own buttons paint
+ * their disabled surface from the `aria-disabled` the hold adds. */
 body:has(.weft-shell[data-connection='unreachable'])
   :is([data-changes], button[type='submit'], input[type='submit']) {
-  opacity: 0.5;
+  color: var(--cinder-text-disabled);
   cursor: not-allowed;
 }
 

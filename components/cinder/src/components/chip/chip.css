@@ -287,7 +287,6 @@
   .cinder-chip[data-cinder-disabled] .cinder-chip__remove,
   button.cinder-chip:disabled .cinder-chip__remove {
     color: var(--cinder-text-disabled);
-    opacity: 0.6;
   }
 
   /* ----------------------------------------

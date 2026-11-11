@@ -34,7 +34,7 @@
   }
 
   .cinder-color-picker[data-cinder-disabled] {
-    opacity: 0.6;
+    color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }
 
@@ -227,7 +227,7 @@
 
   .cinder-color-picker .cinder-color-picker__format:disabled {
     cursor: default;
-    opacity: 0.6;
+    color: var(--cinder-text-disabled);
   }
 
   .cinder-color-picker__hex-value {

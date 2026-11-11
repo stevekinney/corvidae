@@ -172,6 +172,14 @@ describe('holdChangingActions', () => {
     }
   });
 
+  test('the unreachable look is the disabled text colour, never an opacity fade', async () => {
+    const css = await Bun.file(new URL('../../styles/foundation.css', import.meta.url)).text();
+    const rule = css.slice(css.indexOf("body:has(.weft-shell[data-connection='unreachable'])"));
+    const body = rule.slice(rule.indexOf('{') + 1, rule.indexOf('}'));
+    expect(body).toContain('color: var(--cinder-text-disabled);');
+    expect(body).not.toContain('opacity');
+  });
+
   test('names the selector it matches', () => {
     expect(CHANGING_ACTION_SELECTOR).toContain('[data-changes]');
   });

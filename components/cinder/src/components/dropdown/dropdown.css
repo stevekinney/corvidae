@@ -34,6 +34,7 @@
   /* Inert (a stale region's mutating menu): muted like a disabled button, but it keeps focus. */
   .cinder-dropdown-trigger[aria-disabled='true'] {
     cursor: not-allowed;
+    color: var(--cinder-text-disabled);
   }
 
   .cinder-dropdown-trigger:focus-visible {
@@ -167,7 +168,7 @@
 
   .cinder-dropdown-item[data-disabled] {
     pointer-events: none;
-    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
+    color: var(--cinder-text-disabled);
   }
 
   .cinder-dropdown-item[data-cinder-variant='default']:focus-visible {
@@ -188,6 +189,12 @@
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: inset 0 0 0 var(--cinder-ring-width)
       var(--_cinder-dropdown-item-ring, var(--cinder-ring-color));
+  }
+
+  /* A disabled item reads as disabled in either variant: the danger colour above would
+     otherwise win now that the fade is gone. */
+  .cinder-dropdown-item[data-cinder-variant='danger'][data-disabled] {
+    color: var(--cinder-text-disabled);
   }
 
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't

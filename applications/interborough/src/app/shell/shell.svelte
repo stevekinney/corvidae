@@ -326,8 +326,9 @@
   // share it.
   provideShellNavigation(new ShellNavigation(layout));
 
-  // While the server does not answer, every control that changes something is held back: dimmed by
-  // the shell's `data-connection` attribute, refused on activation, and marked `aria-disabled`.
+  // While the server does not answer, every control that changes something is held back: muted by
+  // the shell's `data-connection` attribute (the disabled text colour, never a fade), refused on
+  // activation, and marked `aria-disabled`.
   // The page's own `disabled` state is never touched (`./changing-actions.ts`).
   // A dialog renders outside the shell, so the hold covers the whole document.
   $effect(() => {

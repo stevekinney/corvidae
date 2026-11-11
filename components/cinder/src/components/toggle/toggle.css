@@ -226,8 +226,8 @@
   .cinder-toggle:disabled,
   .cinder-toggle[aria-disabled='true'] {
     cursor: not-allowed;
-    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
-    /* Preserve the current track color via grayscale so on/off is still readable. */
+    /* Preserve the current track color via grayscale so on/off is still readable. The switch
+       carries no text, so it is muted with a filter, never `opacity`. */
     filter: grayscale(0.4);
   }
 

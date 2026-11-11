@@ -80,7 +80,6 @@
   /* ── Disabled group ─────────────────────────────────────────────────────── */
 
   .cinder-segmented-control[aria-disabled='true'] {
-    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
     pointer-events: none;
   }
 
@@ -274,7 +273,6 @@
   .cinder-segmented-control-option:disabled,
   .cinder-segmented-control-option[aria-disabled='true'] {
     cursor: not-allowed;
-    /* opacity centralized in foundation.css disabled-visual rule (0.6) */
   }
 
   /* ── Selected (single mode) ─────────────────────────────────────────────── */
@@ -471,5 +469,16 @@
     inset-block: 0;
     inline-size: 2px;
     block-size: auto;
+  }
+
+  /* ── Disabled text, last ────────────────────────────────────────────────── */
+
+  /* A disabled segment keeps its selected or pressed pill but its text takes the disabled colour
+     (never an opacity fade). Written after the selected and pressed rules, at a specificity that
+     beats the plain ones, so a selected-but-disabled segment still reads as disabled. */
+  .cinder-segmented-control .cinder-segmented-control-option:disabled,
+  .cinder-segmented-control .cinder-segmented-control-option[aria-disabled='true'],
+  .cinder-segmented-control[aria-disabled='true'] .cinder-segmented-control-option {
+    color: var(--cinder-text-disabled);
   }
 }

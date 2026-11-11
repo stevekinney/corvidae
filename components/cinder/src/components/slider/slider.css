@@ -63,8 +63,12 @@
   }
 
   .cinder-slider[data-cinder-disabled] .cinder-slider__track {
-    opacity: 0.55;
+    background: var(--cinder-fill-disabled);
     cursor: not-allowed;
+  }
+
+  .cinder-slider[data-cinder-disabled] .cinder-slider__range {
+    background: var(--cinder-text-disabled);
   }
 
   .cinder-slider__range {

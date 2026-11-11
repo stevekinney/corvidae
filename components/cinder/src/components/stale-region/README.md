@@ -8,6 +8,17 @@ A control opts in with `mutating`, on `Button`, `Toggle`, `Checkbox`, `Select` a
 
 The region takes no box of its own (`display: contents`), so wrapping a header, a banner and a list does not move any of them.
 
+## The offline pattern
+
+This is Cinder's app-level pattern for a page whose server cannot answer. It has four parts, and a page needs nothing else.
+
+- One `Banner` with the `unreachable` preset says it once, with the time the data is "as of". There is never a second notice per row or per section.
+- Navigation stays enabled. Links, tabs, filters, search, Retry now and Cancel keep working and show the cached views.
+- Only the actions that change data are off. Mark them `mutating`; they go inert together and keep focus.
+- Each inert action gives its reason: the region's reason is the control's description ("Off until it’s back"), and a page can also show that text inline or in a tooltip.
+
+A disabled control is never faded. It takes `--cinder-text-disabled` for its text and, where it has a surface, `--cinder-surface-inset`, so its label stays at least 4.5:1 against that surface in both themes. A screen of inert controls reads as unavailable, not broken. The token contrast-pairing tests hold the text colour to 4.5:1, and `disabled-opacity.test.ts` fails on any `opacity` declaration in a disabled selector.
+
 ## What it does not do
 
 - It does not draw the banner. Put a `Banner` with a connection preset inside the region; the banner names the "as of" time with its zone once, so no row repeats it.

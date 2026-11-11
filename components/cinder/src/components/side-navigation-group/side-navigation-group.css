@@ -84,7 +84,6 @@
   .cinder-side-navigation-group__trigger:disabled {
     color: var(--cinder-text-disabled);
     cursor: not-allowed;
-    opacity: 0.6;
   }
 
   /* ----------------------------------------

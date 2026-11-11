@@ -119,13 +119,14 @@
 
   .cinder-color-swatch-picker__swatch[data-cinder-disabled] {
     cursor: not-allowed;
-    opacity: 0.4;
+    filter: grayscale(0.6);
   }
 
   /* ── Disabled group ─────────────────────────────────────────────────────── */
 
   .cinder-color-swatch-picker[aria-disabled='true'] {
-    opacity: 0.6;
+    color: var(--cinder-text-disabled);
+    filter: grayscale(0.4);
     cursor: not-allowed;
   }
 

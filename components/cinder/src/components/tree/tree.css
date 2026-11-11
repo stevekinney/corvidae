@@ -99,7 +99,7 @@
   .cinder-tree-expand-all__button:disabled,
   .cinder-tree-select-all__button:disabled {
     cursor: not-allowed;
-    opacity: 0.5;
+    color: var(--cinder-text-disabled);
   }
 
   @media (hover: hover) {
@@ -284,7 +284,7 @@
   }
 
   .cinder-tree-item[data-cinder-disabled] {
-    opacity: 0.5;
+    color: var(--cinder-text-disabled);
     /* Use default cursor: disabled items can still be expanded/collapsed;
      only selection is blocked. not-allowed would mislead mouse users. */
     cursor: default;

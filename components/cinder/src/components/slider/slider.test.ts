@@ -299,15 +299,16 @@ describe('Slider (single)', () => {
     expect(thumb.getAttribute('tabindex')).toBe('-1');
   });
 
-  test('disabled state preserves text contrast and dims only the track', () => {
+  test('disabled state preserves text contrast and mutes only the track, without opacity', () => {
     const styles = readFileSync(new URL('./slider.css', import.meta.url), 'utf8');
 
     expect(styles).toMatch(
       /\.cinder-slider\[data-cinder-disabled\] \.cinder-slider__value\s*\{[^}]*color:\s*var\(--cinder-text-default\);/,
     );
     expect(styles).toMatch(
-      /\.cinder-slider\[data-cinder-disabled\] \.cinder-slider__track\s*\{[^}]*opacity:\s*0\.55;/,
+      /\.cinder-slider\[data-cinder-disabled\] \.cinder-slider__track\s*\{[^}]*background:\s*var\(--cinder-fill-disabled\);/,
     );
+    expect(styles).not.toMatch(/\.cinder-slider__track\s*\{[^}]*opacity:/);
     expect(styles).not.toMatch(/\.cinder-slider\[data-cinder-disabled\]\s*\{[^}]*opacity:/);
   });
 

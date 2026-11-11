@@ -114,12 +114,9 @@ export const CORPUS_TIER =
  * "Tier borders under an element opacity" section for the retuned values.
  */
 const OPACITY_COMPOUNDED: readonly string[] = [
-  // A disabled Button. The block scan straddles rules inside `@layer` and finds
-  // this one imprecisely, but it belongs here on the merits either way: the
-  // border comes from `button.css` and `opacity: 0.6` from `foundation.css`'s
-  // shared disabled-visual rule, so it is genuinely compounded -- just not by
-  // anything visible in a single rule body.
-  'components/cinder/src/components/button/button.css  border-color: var(--cinder-border-muted);',
+  // COR-2303 removed the last entry: a disabled Button no longer takes an opacity from
+  // `foundation.css`, so its `border.muted` is undiluted. A disabled state is never faded now
+  // (`disabled-opacity.test.ts`), so nothing new belongs here for a disabled control.
 ];
 
 type Classification = {
@@ -440,27 +437,10 @@ describe('CIN-245: structural border tiers used outside a border declaration', (
     // `opacity: 0.6`, whose real contrast is ~1.9 rather than the 3.1-3.6 the
     // tier measures undiluted.
     //
-    // This is meant to catch the same-rule shape only, and the Button entry in
-    // `OPACITY_COMPOUNDED` below is legitimately caught by it, but not for the
-    // reason its own comment gives. `button.css` has an icon-only-variant
-    // disabled rule that pairs `border-color: var(--cinder-border-muted)` and
-    // `opacity: 0.6` in ONE rule body -- a genuine same-rule match, which is
-    // what this scan actually finds. The disabled Button ALSO matches
-    // `foundation.css`'s broader shared disabled-visual rule at the same time
-    // (its selector list matches any disabled `.cinder-button`, icon-only
-    // variants included), which redundantly contributes the identical
-    // `opacity: 0.6` from a second file -- real, but not what this same-rule
-    // scan is seeing here. The shape this scan genuinely CANNOT see is the
-    // PLAIN (non-icon-only) disabled button: `button.css`'s base disabled rule
-    // sets `border-color` alone and says so explicitly ("opacity centralized
-    // in foundation.css disabled-visual rule"), relying entirely on that other
-    // file for its opacity -- no rule in either file pairs the two for that
-    // element. CIN-602's
-    // `scripts/browser-fixtures/tests/border-tier-computed-audit.playwright.ts` proves
-    // BOTH shapes from the real cascade via CDP's `CSS.getMatchedStylesForNode`:
-    // the icon-only Button's same-rule-plus-shared-rule compound, and the
-    // plain (secondary-variant) disabled Button's cross-file-only compound,
-    // each with its own `AUDITED_SITES` entry.
+    // This is meant to catch the same-rule shape only. The disabled Button was its cross-file
+    // example until COR-2303 removed the shared disabled opacity from `foundation.css`; a disabled
+    // state is now repainted with colour tokens, so no compound is left for the computed audit
+    // (`scripts/browser-fixtures/tests/border-tier-computed-audit.playwright.ts`) to prove there.
     const offenders: string[] = [];
     for (const [root, canonicalRoot] of SCAN_ROOTS) {
       const absoluteRoot = join(REPOSITORY_ROOT, root);

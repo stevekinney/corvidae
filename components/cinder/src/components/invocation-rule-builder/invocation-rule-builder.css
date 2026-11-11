@@ -318,7 +318,7 @@
   }
 
   .cinder-invocation-rule-builder__icon-btn:disabled {
-    opacity: 0.4;
+    color: var(--cinder-text-disabled);
     cursor: not-allowed;
   }
 

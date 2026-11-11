@@ -8,13 +8,14 @@
    * CHOICE GRID — parent container
    * ======================================== */
 
-  /* Disabled grid dims every item. Individual item disabled states also apply. */
+  /* A disabled grid leaves every item to its own disabled state (the disabled text colour), and
+     only switches off pointer events. */
   .cinder-choice-grid {
     inline-size: 100%;
   }
 
   .cinder-choice-grid[data-cinder-disabled] {
-    opacity: 0.6;
+    color: var(--cinder-text-disabled);
     pointer-events: none;
   }
 }

@@ -54,7 +54,7 @@
 
   .cinder-media-controls__button[aria-disabled='true'] {
     cursor: not-allowed;
-    opacity: 0.5;
+    color: var(--cinder-text-disabled);
   }
 
   .cinder-media-controls__button[data-cinder-state='playing'] {
@@ -132,7 +132,7 @@
 
   .cinder-media-controls__seek[aria-disabled='true'] {
     cursor: not-allowed;
-    opacity: 0.5;
+    filter: grayscale(0.6);
   }
 
   .cinder-media-controls__seek:focus-visible {
