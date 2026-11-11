@@ -121,29 +121,44 @@ const unsupportedTypes: ReadonlySet<EventType> = new Set(AG_UI_UNSUPPORTED_EVENT
  * parent (joining it, or being that message's first call), so it gets the row id
  * a snapshot of the same thread gives it; a call that names no parent is a
  * message of its own, and a snapshot's copy of it is skipped by call id.
+ *
+ * `options.onEventAccepted` is told of each source event the mapper accepts,
+ * once, after the event has passed validation and been reduced whole, and
+ * before any frame it produced reaches the consumer. An event that is skipped
+ * (a subagent's) or ignored (one of {@link AG_UI_UNSUPPORTED_EVENT_TYPES}) is
+ * accepted once that handling succeeds; an event that fails validation or the
+ * lifecycle is never accepted. The callback receives the very object the
+ * source yielded, so a reader can commit a resume cursor for exactly the events
+ * the transcript holds. If it throws, the error fails the stream and the
+ * event's frames are never yielded.
  */
 export async function* mapAGUIEventsToChatStream(
   events: AsyncIterable<unknown> | Iterable<unknown>,
-  options: { conversation: ConversationHistory },
+  options: {
+    conversation: ConversationHistory;
+    /**
+     * Told of each source event once it is accepted, before any of its frames
+     * is yielded. Rejected events never reach it, and an exception it throws
+     * fails the stream.
+     */
+    onEventAccepted?: (event: AGUIEvent) => void;
+  },
 ): AsyncGenerator<ChatStreamEvent> {
   const state = createMapperState(options.conversation);
   let index = 0;
   for await (const raw of events) {
     const eventIndex = index++;
+    // One event's output is finite and synchronous, so it is reduced whole
+    // before any of it is exposed: acceptance always precedes its frames.
+    const output: ChatStreamEvent[] = [];
     try {
       const event = parseEvent(raw, eventIndex);
-      if (isSubagentEvent(event)) continue;
-      // The lifecycle comes first: nothing, ignored or not, follows the end.
-      if (state.finished) throw protocolError(`${event.type} arrived after the run ended.`);
-      if (unsupportedTypes.has(event.type)) {
-        yield* closeLanes(state);
-        continue;
-      }
-      assertStarted(state, event);
-      yield* reduceEvent(state, event);
+      output.push(...reduceSourceEvent(state, event));
+      options.onEventAccepted?.(event);
     } catch (error) {
       throw error instanceof AGUIChatTransportError ? withIndex(error, eventIndex) : error;
     }
+    yield* output;
   }
   if (!state.finished)
     throw new AGUIChatTransportError(
@@ -202,6 +217,22 @@ function assertStarted(state: MapperState, event: AGUIEvent): void {
     state.runId === undefined
   )
     throw protocolError(`${event.type} arrived before RUN_STARTED.`);
+}
+
+/**
+ * The frames one validated source event produces, or a throw when the
+ * lifecycle rejects it. Returning normally is what accepting the event means.
+ */
+function* reduceSourceEvent(state: MapperState, event: AGUIEvent): Generator<ChatStreamEvent> {
+  if (isSubagentEvent(event)) return;
+  // The lifecycle comes first: nothing, ignored or not, follows the end.
+  if (state.finished) throw protocolError(`${event.type} arrived after the run ended.`);
+  if (unsupportedTypes.has(event.type)) {
+    yield* closeLanes(state);
+    return;
+  }
+  assertStarted(state, event);
+  yield* reduceEvent(state, event);
 }
 
 /** Ends every open chunk run: any event that is not a chunk of its own kind does. */
