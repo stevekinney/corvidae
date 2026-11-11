@@ -277,10 +277,13 @@ test.describe('Health › Audit log on the sample world', () => {
     await expect(pane).toContainText(
       /^You removed the Anthropic key\s*Today at 10:45:00 AM, from this browser/,
     );
-    await expect(pane.locator('dl').nth(0)).toContainText('Provider');
-    await expect(pane.locator('dl').nth(0)).toContainText('Anthropic');
-    await expect(pane.locator('dl').nth(1)).toContainText('Effect');
-    await expect(pane.locator('dl').nth(1)).toContainText(
+    // One flat list holds every fact, a row each, with no box around any of them.
+    await expect(pane.getByTestId('audit-facts').locator('dl')).toHaveCount(1);
+    const facts = pane.locator('.ib-audit-detail__fact');
+    await expect(facts.nth(0)).toContainText('Provider');
+    await expect(facts.nth(0)).toContainText('Anthropic');
+    await expect(facts.nth(1)).toContainText('Effect');
+    await expect(facts.nth(1)).toContainText(
       'Agents that use a model can’t run until a provider is connected',
     );
     await expect(pane.getByRole('link', { name: 'Open Providers ›' })).toHaveAttribute(
@@ -357,7 +360,8 @@ test.describe('Health › Audit log on the sample world', () => {
 
     // 82y: Tool with the small identifier, Risk as muted text, Amount, and Status in the warning
     // tone with the shared word; the agent and the chat repeat the title, so they are no rows.
-    const lists = pane.locator('dl');
+    await expect(pane.getByTestId('audit-facts').locator('dl')).toHaveCount(1);
+    const lists = pane.locator('.ib-audit-detail__fact');
     await expect(lists).toHaveCount(4);
     await expect(lists.nth(0)).toContainText('Tool');
     await expect(lists.nth(0)).toContainText('Issue refund');
@@ -470,14 +474,14 @@ test.describe('Health › Audit log on the sample world', () => {
     // 82p: the title, the line, and the rows Agent (a link), Version and Changed.
     await expect(pane.locator('h3')).toHaveText('You edited an agent');
     await expect(pane).toContainText('Thu Oct 29 at 7:40:12 AM, from this browser');
-    await expect(pane.locator('dl').nth(0)).toContainText('Agent');
-    await expect(
-      pane.locator('dl').nth(0).getByRole('link', { name: 'Tool runner' }),
-    ).toHaveAttribute('href', '/agents/tool-runner');
-    await expect(pane.locator('dl').nth(1)).toContainText('3 → 4');
-    await expect(pane.locator('dl').nth(2)).toContainText(
-      'Instructions, Tools, added Issue refund',
+    const rows = pane.locator('.ib-audit-detail__fact');
+    await expect(rows.nth(0)).toContainText('Agent');
+    await expect(rows.nth(0).getByRole('link', { name: 'Tool runner' })).toHaveAttribute(
+      'href',
+      '/agents/tool-runner',
     );
+    await expect(rows.nth(1)).toContainText('3 → 4');
+    await expect(rows.nth(2)).toContainText('Instructions, Tools, added Issue refund');
 
     // 82q: a diff clamped to a few lines, with a footer that counts and a Show all at its right.
     const diff = pane.getByTestId('audit-instruction-diff');

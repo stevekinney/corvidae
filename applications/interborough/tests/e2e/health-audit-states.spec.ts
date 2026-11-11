@@ -229,7 +229,7 @@ for (const width of WIDTHS) {
       await checkA11y(`health audit, first use at ${width}px`);
     });
 
-    test('a failed load is a full error state that names the status, with Try again and Open Health', async ({
+    test('a failed load is a full error state that names the status, with Try again', async ({
       page,
       pageErrors,
       checkA11y,

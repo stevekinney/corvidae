@@ -893,7 +893,7 @@ describe('who may see it', () => {
     expect(frameState(container)).toBe('forbidden');
   });
 
-  test('a read that fails when the log had nothing on screen is a full error state with Try again and Open Health', async () => {
+  test('a read that fails when the log had nothing on screen is a full error state with Try again', async () => {
     let failing = false;
     stub = installBureauStub({
       'bureau.audit.query': (params) => {
