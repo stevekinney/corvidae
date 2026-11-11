@@ -46,6 +46,7 @@
     getConnection,
   } from '../../app/connection.svelte.ts';
   import { RETRY_LABEL, WORKFLOW_COPY } from '../../app/copy.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
   import { agentFaultOf, type AgentFault } from '../../lib/agent-definitions.ts';
   import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
@@ -368,7 +369,8 @@
 {/snippet}
 
 <div class="weft-workflow-editor" data-page="workflow-editor" data-condition={condition}>
-  {#if connection.unreachable}
+  {#if connection.unreachable && !restartActivity.active}
+    <!-- While the host restarts, the restart dialog is the one account of it. -->
     <Banner
       preset={connectionBannerPreset(connection)}
       consequence={connection.browserOffline
@@ -454,6 +456,13 @@
           >{editor.changedOnDisk.reload}</Button
         >
       </Alert>
+      {#if failure !== null}
+        <!-- With no builder, there is no footer to say a failed Reload above. -->
+        <Alert variant="danger">
+          <p class="weft-workflow-editor__alert-title">{failure.title}</p>
+          <p class="weft-workflow-editor__alert-body">{failure.message}</p>
+        </Alert>
+      {/if}
     {/if}
     {#if editable}
       <form class="weft-workflow-editor__form" onsubmit={(event) => event.preventDefault()}>
@@ -464,7 +473,7 @@
           error=""
           saving={save.isPending}
           {failure}
-          initialTab={loaded.state === 'invalid' ? 'json' : 'builder'}
+          initialTab={loaded.state === 'invalid' ? 'json' : loadingTab}
           jsonId="workflow-editor-text"
           jsonLabel={editor.textLabel}
           jsonDescription={editor.textDescription}
