@@ -34,6 +34,8 @@ import {
 
 let stub: BureauWorldStub | undefined;
 let monitor: ConnectionMonitor | undefined;
+/** The fake clock when a read began, which the placeholders' timers are counted from. */
+let startedAt = 0;
 
 afterEach(() => {
   jest.useRealTimers();
@@ -166,6 +168,7 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
   /** Opens the list with the chats' read held, so it is loading until `release` is called. */
   function openLoading() {
     jest.useFakeTimers();
+    startedAt = Date.now();
     let release: () => void = () => undefined;
     const held = new Promise<void>((resolve) => {
       release = resolve;
@@ -174,8 +177,13 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
     return { view, release };
   }
 
-  function advance(milliseconds: number): void {
-    jest.advanceTimersByTime(milliseconds);
+  /**
+   * Moves the fake clock to this long after the read began. The clock is read, not counted from the
+   * last move, because it drifts by a millisecond while the page settles, and a placeholder's
+   * timer is due that long after it was set.
+   */
+  function advanceTo(elapsedMilliseconds: number): void {
+    jest.advanceTimersByTime(Math.max(0, startedAt + elapsedMilliseconds - Date.now()));
     flushSync();
   }
 
@@ -191,11 +199,11 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
     expect(view.container.querySelector('.cinder-skeleton-row')).toBeNull();
     expect(toolbar(view.container)).toBeNull();
 
-    advance(RUN_LIST_LOADING_DELAY_MILLISECONDS - 1);
+    advanceTo(RUN_LIST_LOADING_DELAY_MILLISECONDS - 1);
     expect(view.container.querySelector('.cinder-skeleton-row')).toBeNull();
     expect(toolbar(view.container)).toBeNull();
 
-    advance(1);
+    advanceTo(RUN_LIST_LOADING_DELAY_MILLISECONDS);
     await settle();
     // A day band, and rows with a status bar, title and meta bars and a time bar.
     expect(view.container.querySelector('.cinder-skeleton-day-band')).not.toBeNull();
@@ -227,9 +235,9 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
       expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull(),
     );
 
-    advance(RUN_LIST_STILL_LOADING_MILLISECONDS - 1);
+    advanceTo(RUN_LIST_STILL_LOADING_MILLISECONDS - 1);
     expect(view.container.textContent).not.toContain(TASK_COPY.list.stillLoading);
-    advance(1);
+    advanceTo(RUN_LIST_STILL_LOADING_MILLISECONDS);
     await settle();
     expect(view.container.textContent).toContain(TASK_COPY.list.stillLoading);
     const status = view.container.querySelector('.cinder-skeleton-status') as HTMLElement;
@@ -245,7 +253,7 @@ describe('a read in progress (rows 10k, 10l, 14m, 14n, 14p and 52z)', () => {
     await until(() =>
       expect(view.getAllByRole('heading', { level: 1, name: 'Runs' })[0]).not.toBeNull(),
     );
-    advance(RUN_LIST_STILL_LOADING_MILLISECONDS);
+    advanceTo(RUN_LIST_STILL_LOADING_MILLISECONDS);
     await settle();
 
     await fireEvent.click(

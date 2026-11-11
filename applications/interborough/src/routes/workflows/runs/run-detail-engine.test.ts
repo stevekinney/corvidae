@@ -104,6 +104,20 @@ function routeRun(id: string, overrides: Record<string, unknown> = {}): void {
   fetchScript.routeUrl(`/workflows/${id}`, baseWorkflow({ id, ...overrides }));
 }
 
+/**
+ * Opens the header's More menu once the run is loaded. While the run loads, the page draws a
+ * header of its own with a More menu that holds only Copy run ID, and the loaded page replaces it,
+ * so the menu is opened only after the run's status is there.
+ */
+async function openMoreActions(view: ReturnType<typeof mount>): Promise<void> {
+  await waitFor(() =>
+    expect(
+      view.container.querySelector('[data-run-header] [data-status-word]')?.outerHTML ?? null,
+    ).not.toBeNull(),
+  );
+  await fireEvent.click(view.getByRole('button', { name: 'More actions' }));
+}
+
 function jsonRpcMethodsCalled(): string[] {
   return fetchScript.calls.flatMap((call) => {
     if (typeof call.init?.body !== 'string') return [];
@@ -266,7 +280,7 @@ describe('a run the engine holds', () => {
     routeRun(id, { id, status: 'running' });
 
     const view = mount(id, principalWith('workflows:read'));
-    await fireEvent.click(await view.findByRole('button', { name: 'More actions' }));
+    await openMoreActions(view);
 
     const suspend = await view.findByRole('menuitem', { name: 'Suspend' });
     expect(
@@ -282,7 +296,7 @@ describe('a run the engine holds', () => {
     routeRun(id, { id, status: 'running' });
 
     const view = mount(id);
-    await fireEvent.click(await view.findByRole('button', { name: 'More actions' }));
+    await openMoreActions(view);
     await fireEvent.click(await view.findByRole('menuitem', { name: 'Suspend' }));
 
     await waitFor(() => {
@@ -316,7 +330,7 @@ describe('a run the engine holds', () => {
     routeRun(id, { id, status: 'running' });
 
     const view = mount(id);
-    await fireEvent.click(await view.findByRole('button', { name: 'More actions' }));
+    await openMoreActions(view);
     await fireEvent.click(await view.findByRole('menuitem', { name: 'Cancel' }));
 
     const cancels = () => fetchScript.calls.filter((call) => call.init?.method === 'DELETE');
@@ -332,7 +346,7 @@ describe('a run the engine holds', () => {
     routeRun(id, { id, status: 'failed' });
 
     const view = mount(id);
-    await fireEvent.click(await view.findByRole('button', { name: 'More actions' }));
+    await openMoreActions(view);
     await fireEvent.click(await view.findByRole('menuitem', { name: 'Restart' }));
 
     expect(await view.findByRole('dialog')).not.toBeNull();
@@ -434,7 +448,7 @@ describe('a run the Bureau describes', () => {
     expect(fetchScript.calls.some((call) => call.url.includes('/workflows/task-1'))).toBe(true);
     // The task's own Cancel run stands; the engine's cancel is not offered a second time.
     expect(view.getAllByRole('button', { name: 'Cancel run' })).toHaveLength(1);
-    await fireEvent.click(await view.findByRole('button', { name: 'More actions' }));
+    await openMoreActions(view);
     expect(view.queryByRole('menuitem', { name: 'Cancel' })).toBeNull();
     expect(await view.findByRole('menuitem', { name: 'Suspend' })).not.toBeNull();
   });

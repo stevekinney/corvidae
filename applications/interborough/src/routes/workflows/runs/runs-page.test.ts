@@ -51,8 +51,8 @@ function open(
     /** How many goals the Bureau puts on one page, however many are asked for. */
     goalsPageSize?: number;
     scopes?: readonly AuthorizationScope[];
-    /** Makes the Bureau fail to list goals for as long as this says so. */
-    goalsFail?: () => boolean;
+    /** Makes the Bureau fail to list goals for as long as this says so, given what the call asked. */
+    goalsFail?: (params: Readonly<Record<string, unknown>>) => boolean;
     /** The sessions the Bureau holds, and how many it puts on one page. */
     contexts?: readonly ChatContext[];
     contextsPageSize?: number;
@@ -63,7 +63,7 @@ function open(
   const goals = options.goals ?? [];
   const pageSize = options.goalsPageSize ?? 100;
   stub.on('bureau.goals.list', (params) => {
-    if (options.goalsFail?.()) throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
+    if (options.goalsFail?.(params)) throw new StubFault('EngineFailure', 500, 'The Bureau broke.');
     const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
     return {
       goals: goals.slice(offset, offset + pageSize),
@@ -190,8 +190,8 @@ describe('the runs list', () => {
   test('is an error with a retry when the goals could not be read, though the tasks were', async () => {
     const { container, findByRole } = open('/runs', {
       world: { tasks: [taskFixture({ id: 'run-1', status: 'completed' })] },
-      // The view's own probe asks first and is answered; the list's read after it fails.
-      goalsFail: () => (stub?.callsTo('bureau.goals.list').length ?? 0) > 1,
+      // The view's own probe asks for one goal and is answered; the list's read of every goal fails.
+      goalsFail: (params) => params['limit'] !== 1,
     });
 
     await findByRole('heading', { level: 2, name: TASK_COPY.list.loadFailed.title });
