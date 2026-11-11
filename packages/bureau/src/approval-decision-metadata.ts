@@ -49,6 +49,16 @@ export function isApprovalDecisionSurface(value: unknown): value is ApprovalDeci
 }
 
 /**
+ * COR-2292 — the surface as the field a record or request carries: absent when there is none, so a
+ * spread never writes `decisionSurface: undefined`.
+ */
+export function decisionSurfaceField(surface: ApprovalDecisionSurface | undefined): {
+  readonly decisionSurface?: ApprovalDecisionSurface;
+} {
+  return surface === undefined ? {} : { decisionSurface: surface };
+}
+
+/**
  * COR-2292 — the surface a resolution records: the caller's, for a tool approval only. A human
  * wait's answer keeps none, whatever its caller said.
  */
@@ -71,7 +81,7 @@ export function withFirstDecisionSurface(
 ): ApprovalDecisionRecord {
   if (typeof held !== 'object' || held === null || Array.isArray(held)) return record;
   const { decisionSurface: _offered, ...rest } = record;
-  const first = Object.hasOwn(held, 'decisionSurface') ? held['decisionSurface'] : undefined;
+  const first = new Map(Object.entries(held)).get('decisionSurface');
   return isApprovalDecisionSurface(first) ? { ...rest, decisionSurface: first } : rest;
 }
 

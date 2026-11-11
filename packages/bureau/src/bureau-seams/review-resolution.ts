@@ -9,6 +9,7 @@ import {
   APPROVAL_DECISION_METADATA_KEY,
   type ApprovalDecisionRecord,
   approvalDecisionMetadata,
+  decisionSurfaceField,
   decisionSurfaceOf,
   withFirstDecisionSurface,
 } from '../approval-decision-metadata';
@@ -1080,9 +1081,7 @@ export function createReviewResolution<D extends AgentDefinitions>(
                     principal: cleanup.principal,
                     ...(cleanup.reason !== undefined ? { reason: cleanup.reason } : {}),
                     // COR-2292: the first attempt's surface, never this retry's.
-                    ...(cleanup.decisionSurface === undefined
-                      ? {}
-                      : { decisionSurface: cleanup.decisionSurface }),
+                    ...decisionSurfaceField(cleanup.decisionSurface),
                   },
                   cleanup.result,
                 )
