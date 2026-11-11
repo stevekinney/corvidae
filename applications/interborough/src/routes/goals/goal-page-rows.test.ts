@@ -35,7 +35,7 @@ import {
 const ZONE = 'America/Chicago';
 const copy = GOALS_COPY.detail;
 
-/** Draft release notes: five attempts two minutes apart from 8:13 AM, none of which met the check. */
+/** Draft release notes: five attempts two minutes apart from 8:13 AM, none met the check. */
 function draftReleaseNotes(): Goal {
   const took = [8, 6, 5, 7, 6];
   return goalFixture('draft-release-notes', {
@@ -58,7 +58,7 @@ function draftReleaseNotes(): Goal {
   });
 }
 
-/** Summarize open refunds: attempt 1 missed the check, attempt 2 was running when it was stopped. */
+/** Summarize open refunds: attempt 1 missed the check, attempt 2 ran when it was stopped. */
 function summarizeRefunds(): Goal {
   return goalFixture('summarize-open-refunds', {
     agentName: 'tool-runner',
@@ -115,6 +115,8 @@ function checkingRefunds(finishReason: string | null = null): Goal {
     identity: { name: 'Summarize open refunds', version: '1' },
     status: 'evaluating',
     createdAt: '2026-11-02T16:41:00.000Z',
+    // The move to checking attempt 2 is the goal's last write: the agent's part ended then.
+    updatedAt: '2026-11-02T16:45:12.000Z',
     bounds: { ...goalFixture('x').bounds, maximumAttempts: 5 },
     usage: { attempts: 2, steps: 2, tokens: 20, costUsd: null, durationMs: 197_000 },
     attempts: [
@@ -128,7 +130,8 @@ function checkingRefunds(finishReason: string | null = null): Goal {
         attemptIndex: 1,
         status: 'evaluating',
         startedAt: '2026-11-02T16:44:00.000Z',
-        completedAt: '2026-11-02T16:45:12.000Z',
+        // The Bureau records when an attempt completed only once its check has answered.
+        completedAt: null,
         finishReason,
       }),
     ],

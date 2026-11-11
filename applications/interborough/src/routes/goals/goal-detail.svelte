@@ -8,8 +8,8 @@
    * in `goal-page-rows.ts`; the goal's view carries neither its prompt nor its check's feedback, so
    * the page says neither.
    *
-   * The header's actions follow the goal: Edit on every goal; Stop goal, the page's main action,
-   * while it works, behind a confirmation; and Start again on a goal that ended without meeting its
+   * The header's actions follow the goal, all secondary: Edit on every goal; Stop goal, the page's
+   * main action, while it works, behind a confirmation; and Start again on a goal that ended without meeting its
    * check, which opens New goal prefilled from it. Start again is off for a model agent while no
    * provider holds a key, with "Connect a provider" under it. While the server gives no answer, Edit
    * and Stop goal are inert and say why beside them; Start again only opens a page, so it stays.
@@ -52,7 +52,7 @@
   import { getProviders } from '../../lib/host-providers.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router, workflowDetailPath } from '../../lib/router.svelte.ts';
-  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import { getPrincipalStore, hasPrincipalStore } from '../../lib/scopes.svelte.ts';
   import GoalAttempts from './goal-attempts.svelte';
   import {
     attemptRows,
@@ -79,7 +79,8 @@
 
   const queryClient = useQueryClient();
   const connection = getConnection();
-  const principalStore = getPrincipalStore();
+  // Who the caller is, so a goal it made reads "by you"; with no principal the owner is named.
+  const principalStore = hasPrincipalStore() ? getPrincipalStore() : undefined;
   const zone = viewerTimeZone();
   const uid = $props.id();
   const offlineReasonId = `${uid}-offline`;
@@ -212,7 +213,7 @@
 
   async function stopGoal(found: Goal): Promise<void> {
     if (stopping) return;
-    // What is stopped is read once, before the first await: the goal is read again under the dialog.
+    // What is stopped is read once, before the first await: the goal is read again under it.
     const { goalRunId: id, revision } = found;
     stopping = true;
     stopFailure = undefined;
@@ -249,7 +250,7 @@
     {@const facts = goalFacts(found, {
       agent,
       zone,
-      viewer: principalStore.principal?.subject,
+      viewer: principalStore?.principal?.subject,
     })}
     <!-- While the server gives no answer the shell holds every control that changes something; this
          region is how Edit and Stop goal join them, with the reason drawn beside them. -->
@@ -280,14 +281,13 @@
                   class="ib-goal__reason"
                   id={providerReasonId}
                   href={router.href(copy.connectProviderPath)}
-                  onclick={(event) => go(event, copy.connectProviderPath)}
-                  >{copy.connectProvider}</a
+                  onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
                 >
               {/if}
             </span>
           {/if}
           {#if actions.stop}
-            <Button variant="primary" onclick={() => (confirmingStop = true)} mutating>
+            <Button variant="secondary" onclick={() => (confirmingStop = true)} mutating>
               {#snippet leadingIcon()}<Square size={16} />{/snippet}
               {copy.stopAction}
             </Button>
@@ -326,9 +326,7 @@
           {#snippet action()}
             {#if note.link !== undefined}
               {@const path = notePath(note.link.target)}
-              <a href={router.href(path)} onclick={(event) => go(event, path)}
-                >{note.link.label}</a
-              >
+              <a href={router.href(path)} onclick={(event) => go(event, path)}>{note.link.label}</a>
             {/if}
           {/snippet}
         </Callout>

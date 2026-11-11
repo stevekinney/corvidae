@@ -634,14 +634,14 @@ describe('a goal’s page', () => {
     ).toBe(`/reviews?review=${encodeURIComponent(`bureau:${approval.id}`)}`);
   });
 
-  test('says the goal could not be loaded when the Bureau stops answering after the page opened, and tries again', async () => {
-    const { view, served } = open([goal('goal-1')]);
+  test('says the goal could not be loaded under its own heading when the Bureau stops answering, and tries again', async () => {
+    const { view } = open([goal('goal-1')]);
     await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
-    // The frame's probe is told the goal exists; the page that follows finds the Bureau down.
+    // From here the Bureau is down for the goal: the frame's probe fails, and the page, which owns
+    // its states on a goal's address, says so under its own header in place of the frame.
     let asked = 0;
     stub?.on('bureau.goals.get', () => {
       asked += 1;
-      if (asked === 1) return served.goals[0];
       throw new StubFault('Unavailable', 503, 'The Bureau is down.');
     });
     router.navigate('/goals/goal-1');
@@ -651,6 +651,7 @@ describe('a goal’s page', () => {
     expect(
       view.getByRole('heading', { level: 1, name: GOALS_COPY.detail.loadingTitle }),
     ).not.toBeNull();
+    await waitFor(() => expect(frameState(view.container)).toBe('error'));
     const before = asked;
     await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(asked).toBeGreaterThan(before));

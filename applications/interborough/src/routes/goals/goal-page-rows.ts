@@ -128,6 +128,12 @@ export type AttemptLineContext = {
   readonly now: number;
   /** What the attempt waits on, when it does. */
   readonly wait: AttemptWait | undefined;
+  /**
+   * When the agent's part of an attempt whose result is being checked ended. The Bureau records an
+   * attempt's `completedAt` only once its check has answered, and the move to checking is the
+   * goal's last write, so this is the goal's `updatedAt` while it is `evaluating`.
+   */
+  readonly agentEndedAt?: string | undefined;
 };
 
 /** Why the agent stopped, in words, for the finish reasons that are not the agent's normal end. */
@@ -163,7 +169,8 @@ export function attemptLineTwo(attempt: GoalAttempt, context: AttemptLineContext
       break;
     }
     case 'evaluating': {
-      if (took !== undefined) parts.push(copy.line.agentTook(took));
+      const agentTook = took ?? between(attempt.startedAt, context.agentEndedAt ?? null);
+      if (agentTook !== undefined) parts.push(copy.line.agentTook(agentTook));
       const stopped = agentStopWords(attempt.finishReason);
       if (stopped !== undefined) parts.push(copy.line.agentStopped(stopped));
       break;
@@ -205,13 +212,15 @@ export type AttemptRow = {
  * waits on, when it does; only that attempt's run is read for it.
  */
 export function attemptRows(
-  goal: Pick<Goal, 'attempts'>,
+  goal: Pick<Goal, 'attempts' | 'status' | 'updatedAt'>,
   context: Omit<AttemptLineContext, 'wait'> & { readonly liveWait: AttemptWait | undefined },
 ): AttemptRow[] {
   return goal.attempts
     .toSorted((left, right) => right.attemptIndex - left.attemptIndex)
     .map((attempt) => {
       const wait = attempt.status === 'running' ? context.liveWait : undefined;
+      const checking = attempt.status === 'evaluating' && goal.status === 'evaluating';
+      const agentEndedAt = checking ? goal.updatedAt : undefined;
       const number = attempt.attemptIndex + 1;
       return {
         id: attempt.attemptId,
@@ -220,7 +229,7 @@ export function attemptRows(
         title: copy.attemptTitle(number),
         word: attemptWord(attempt, wait),
         startedAt: instant(attempt.startedAt),
-        lineTwo: attemptLineTwo(attempt, { ...context, wait }),
+        lineTwo: attemptLineTwo(attempt, { ...context, wait, agentEndedAt }),
       };
     });
 }
