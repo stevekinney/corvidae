@@ -28,7 +28,6 @@
   import type { HTMLAnchorAttributes, HTMLAttributes, HTMLButtonAttributes } from 'svelte/elements';
 
   import type { CardProps } from './card.types.ts';
-  import CompactActions from '../../_internal/compact-actions.svelte';
   import { composeDescribedBy } from '../../_internal/field-control.ts';
   import { classNames } from '../../utilities/class-names.ts';
 
@@ -42,7 +41,6 @@
     headingLevel = 3,
     description,
     footer,
-    actions,
     variant = 'card',
     tone = 'default',
     bodyTone = 'default',
@@ -101,24 +99,6 @@
   }
 </script>
 
-{#snippet titleRow(showActions: boolean)}
-  <div class="cinder-card__title-row">
-    <div class="cinder-card__title-group">
-      {#if tone === 'danger'}
-        <span class="cinder-card__risk-icon" aria-hidden="true">
-          <CircleAlert size={18} strokeWidth={2.25} />
-        </span>
-      {/if}
-      <svelte:element this={titleTag} id={titleId} class="cinder-card__title"
-        >{title}</svelte:element
-      >
-    </div>
-    {#if showActions && actions}
-      <div class="cinder-card__actions"><CompactActions>{@render actions()}</CompactActions></div>
-    {/if}
-  </div>
-{/snippet}
-
 {#if isLink}
   <a
     {...anchorAttributes}
@@ -139,7 +119,7 @@
         data-cinder-divider={headerDivider ? '' : undefined}
         data-cinder-tone={headerTone}
       >
-        <CompactActions>{@render header()}</CompactActions>
+        {@render header()}
       </div>
     {:else if title}
       <div
@@ -147,7 +127,16 @@
         data-cinder-divider={headerDivider ? '' : undefined}
         data-cinder-tone={headerTone}
       >
-        {@render titleRow(false)}
+        <div class="cinder-card__title-row">
+          {#if tone === 'danger'}
+            <span class="cinder-card__risk-icon" aria-hidden="true">
+              <CircleAlert size={18} strokeWidth={2.25} />
+            </span>
+          {/if}
+          <svelte:element this={titleTag} id={titleId} class="cinder-card__title"
+            >{title}</svelte:element
+          >
+        </div>
         {#if description}
           <p id={descriptionId} class="cinder-card__description">{description}</p>
         {/if}
@@ -181,13 +170,19 @@
         data-cinder-divider={headerDivider ? '' : undefined}
         data-cinder-tone={headerTone}
       >
-        <CompactActions>{@render header()}</CompactActions>
+        {@render header()}
       </div>{:else if title}<div
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}
         data-cinder-tone={headerTone}
       >
-        {@render titleRow(false)}
+        <div class="cinder-card__title-row">
+          {#if tone === 'danger'}<span class="cinder-card__risk-icon" aria-hidden="true"
+              ><CircleAlert size={18} strokeWidth={2.25} /></span
+            >{/if}<svelte:element this={titleTag} id={titleId} class="cinder-card__title"
+            >{title}</svelte:element
+          >
+        </div>
         {#if description}<p id={descriptionId} class="cinder-card__description">
             {description}
           </p>{/if}
@@ -227,13 +222,19 @@
         data-cinder-divider={headerDivider ? '' : undefined}
         data-cinder-tone={headerTone}
       >
-        <CompactActions>{@render header()}</CompactActions>
+        {@render header()}
       </div>{:else if title}<div
         class="cinder-card__header"
         data-cinder-divider={headerDivider ? '' : undefined}
         data-cinder-tone={headerTone}
       >
-        {@render titleRow(true)}
+        <div class="cinder-card__title-row">
+          {#if tone === 'danger'}<span class="cinder-card__risk-icon" aria-hidden="true"
+              ><CircleAlert size={18} strokeWidth={2.25} /></span
+            >{/if}<svelte:element this={titleTag} id={titleId} class="cinder-card__title"
+            >{title}</svelte:element
+          >
+        </div>
         {#if description}<p id={descriptionId} class="cinder-card__description">
             {description}
           </p>{/if}

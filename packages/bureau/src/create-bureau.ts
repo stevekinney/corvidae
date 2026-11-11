@@ -5,7 +5,6 @@ import {
 import {
   CompletableEventTarget,
   createDefaultRuntimeServices,
-  type HookRegistry,
   type RuntimeServices,
   type RuntimeTimeoutHandle,
 } from '@lostgradient/lifecycle';
@@ -106,11 +105,7 @@ import {
   type ToolTiming,
   bureauInvariantsField,
   runScopedExecutionContextOf,
-  scanToolResult,
-  type GuardrailFiring,
-  type OperativeHookMap,
 } from '@lostgradient/operative';
-import type { SessionTaintSeam } from './session-taint-seam';
 import {
   approvalDecisionMetadata,
   type ApprovalDecisionRecord,
@@ -2077,15 +2072,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * Released wherever `runToolboxesByRunId` releases the run.
    */
   const runScopedContexts = new Map<string, Record<string, unknown>>();
-  /**
-   * COR-2299 — the hook plan of each live run (Bureau, plugin and agent tiers), which an approved
-   * call's result is scanned with outside the run's step. Released with `runScopedContexts`.
-   */
-  const runHookPlans = new Map<string, HookRegistry<OperativeHookMap>>();
-  const releaseRunScope = (runId: string): void => {
-    runScopedContexts.delete(runId);
-    runHookPlans.delete(runId);
-  };
   let shutdownPromise: Promise<BureauShutdownReport> | undefined;
   // COR-690: flipped synchronously the moment `shutdown()` starts, before it
   // snapshots the runs and toolboxes it drains, so an API or scheduler run
@@ -4504,7 +4490,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         runRequestContexts.delete(removedRunId);
         recoveredRunIds.delete(removedRunId);
         runToolboxesByRunId.delete(removedRunId);
-        releaseRunScope(removedRunId);
+        runScopedContexts.delete(removedRunId);
         terminalReviewSessions.delete(removedRunId);
         announcedReviewRequests.delete(removedRunId);
         fireReviewSeeds.release(removedRunId);
@@ -6158,7 +6144,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     if (!scheduledFireApprovalRuns.has(runId) || holdsFireApproval(runId)) return;
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
-    releaseRunScope(runId);
+    runScopedContexts.delete(runId);
     if (releaseScheduledFireReviews(scheduledFireReviewState, runId)) {
       detachBestEffortPromise(tasks.announceChanged(runId));
     }
@@ -6647,10 +6633,8 @@ async function constructBureau<const D extends AgentDefinitions>(
               ? {}
               : { reason: currentRecovery.request.reason }),
           };
-          // COR-2299: scanned as the other approved-call write is, before the row is committed.
-          const scannedResult = await scanApprovedToolResult(review, result);
-          const materialized = await materializeToolResultAsync(scannedResult);
-          const admitted = await admitApprovedToolResultMedia(review, scannedResult, materialized);
+          const materialized = await materializeToolResultAsync(result);
+          const admitted = await admitApprovedToolResultMedia(review, result, materialized);
           const auditAttachment = buildReviewDecisionAuditRecord(
             review,
             'approve',
@@ -7183,7 +7167,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       terminalReviewSessions.delete(runId);
       runRequestContexts.delete(runId);
       runToolboxesByRunId.delete(runId);
-      releaseRunScope(runId);
+      runScopedContexts.delete(runId);
       releaseScheduledFireReviews(scheduledFireReviewState, runId);
       unfollowFireReviewsWhenNoneRemain(runId);
     } else if (scheduledFire) {
@@ -8169,7 +8153,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       // COR-2106 — what the run gives its tool calls, kept for the approved call that resumes later.
       const startedScope = runScopedExecutionContextOf(startedRunOptions);
       if (startedScope !== undefined) runScopedContexts.set(runId, startedScope);
-      if (startedRunOptions.hooks !== undefined) runHookPlans.set(runId, startedRunOptions.hooks);
       // AB-96 — the versioned run-lifecycle frame stream. Registered before
       // `store.register` so `run-started` is the first frame a live subscriber
       // ever sees for this run.
@@ -8817,9 +8800,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       runToolboxesByRunId.set(runId, recoveredServices.toolbox);
       const recoveredScope = runScopedExecutionContextOf(recoveredServices.options);
       if (recoveredScope !== undefined) runScopedContexts.set(runId, recoveredScope);
-      if (recoveredServices.options.hooks !== undefined) {
-        runHookPlans.set(runId, recoveredServices.options.hooks);
-      }
     }
     // AB-359 — rehydrate `runAttribution`'s `principal` from the durably
     // persisted `lastRunOwningPrincipals` map so a recovered run's REAL owner
@@ -10969,7 +10949,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       }
     }
     runToolboxesByRunId.delete(id);
-    releaseRunScope(id);
+    runScopedContexts.delete(id);
     humanWaitParkBaseline.delete(id);
     store.removeRun(id);
     // A task record that cannot be removed is diagnosed, like every step after the run has left
@@ -14786,7 +14766,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       for (const runId of sessionRunIds) {
         runRequestContexts.delete(runId);
         runToolboxesByRunId.delete(runId);
-        releaseRunScope(runId);
+        runScopedContexts.delete(runId);
         terminalReviewSessions.delete(runId);
         for (const [reviewId, cleanup] of reviewResolutionCleanupPending) {
           if (cleanup.runId === runId) reviewResolutionCleanupPending.delete(reviewId);
@@ -17049,7 +17029,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     runRequestContexts.delete(runId);
     runToolboxesByRunId.delete(runId);
-    releaseRunScope(runId);
+    runScopedContexts.delete(runId);
     recoveredRunIds.delete(runId);
   }
 
@@ -17118,116 +17098,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       : message.trim();
   }
 
-  /**
-   * COR-2299 — the hook plan a catalog agent's run this process does not hold would run with:
-   * Bureau's tier for the agent, the plugin tier, and the agent's own hooks, as a dispatch composes
-   * them, each tracker seeded from the session's taint (`sessionTaint`) and writing a new one back.
-   * An agent that cannot be resolved falls back to Bureau's own guardrails alone, so the result is
-   * still scanned.
-   */
-  async function catalogRunHookPlan(
-    runId: string,
-    sessionTaint: SessionTaintSeam,
-    reviewedAgentName: string | undefined,
-  ): Promise<HookRegistry<OperativeHookMap>> {
-    // A run this process restarted into has no attribution; its review still names the agent.
-    const agentName = runAttribution.get(runId)?.agentName ?? reviewedAgentName;
-    const agent = agentName === undefined ? undefined : agentCatalog.find(agentName);
-    if (agent !== undefined && hasDefinitionResolver(agent)) {
-      try {
-        const resolved = await agent[OPERATIVE_RESOLVE_RUN_OPTIONS]('', {
-          runId,
-          sessionTaint,
-          ...(agentName === undefined ? {} : { agentName }),
-          ...catalogRunGuardrailsContext(agent),
-        });
-        return runtime.composeRunHooks({
-          bureau: runtime.createBureauInvariantHooks(undefined, {
-            agentResolvesGuardrails: resolvesOwnGuardrails(agent),
-            sessionTaint,
-          }),
-          agent: resolved.hooks,
-        });
-      } catch {
-        // Falls through to Bureau's own guardrails, which still scan the result.
-      }
-    }
-    return runtime.composeRunHooks({
-      bureau: runtime.createBureauInvariantHooks(undefined, { sessionTaint }),
-      agent: undefined,
-    });
-  }
-
-  /**
-   * COR-2299 — an approved call runs outside the run's step, so its result reaches the session
-   * without the run loop's `validateToolResult` scan. Scanned here with the run's own hook plan (a
-   * run this process does not hold has one built from its agent, seeded from the session's
-   * persisted taint), a hit writes the blocked result in its place, as the loop does, and taints
-   * the session; the taint is stored before this returns. A scan that fails does the same
-   * (COR-2300).
-   */
-  async function scanApprovedToolResult(
-    review: Extract<PendingReview, { kind: 'tool-approval' }>,
-    executed: ToolExecutionResult,
-  ): Promise<ToolExecutionResult> {
-    let conversation = new Conversation(undefined, { runtime: runtimeServices });
-    let metadata: Record<string, JSONValue> | undefined;
-    try {
-      const stored = await runtime.sessionStore?.load(review.sessionId);
-      if (stored !== undefined) {
-        conversation = new Conversation(stored.conversationHistory, { runtime: runtimeServices });
-        metadata = stored.metadata;
-      }
-    } catch {
-      // The conversation only gives a detector its length; an unreadable session is scanned empty,
-      // and starts untainted in memory (a taint it raises is still stored).
-    }
-    const seam = runtime.sessionTaintSeam(review.sessionId, review.runId, metadata);
-    const hooks =
-      runHookPlans.get(review.runId) ??
-      (await catalogRunHookPlan(review.runId, seam, review.agentName));
-    const firings: GuardrailFiring[] = [];
-    const scanned = await scanToolResult(executed, {
-      hooks,
-      conversation,
-      step: 0,
-      reportGuardrail: (firing) => firings.push(firing),
-    });
-    if (scanned.blocked) {
-      // A result a guardrail refused taints the session. The tracker that refused it stores the
-      // taint when it holds the seam, which every agent tier does; a tier built without one (a
-      // hand-written agent under Bureau's guardrails), a tripwire below the taint threshold, and a
-      // scan that failed before a tracker could are stored here. A session that already holds a
-      // taint keeps it (the write is compare-and-set), so this never publishes twice.
-      const firing = firings[0];
-      await seam.onTainted({
-        reason: 'A guardrail refused the result of an approved call',
-        detector: scanned.tripwire?.guardrailName ?? firing?.guardrailName ?? 'tool-result-scan',
-        category:
-          scanned.tripwire?.category ??
-          firing?.category ??
-          (scanned.failed === true ? 'detector-failure' : 'blocked-tool-result'),
-        confidence: scanned.tripwire?.confidence ?? firing?.confidence ?? 1,
-        step: 0,
-        provenance: 'tool-result',
-      });
-      diagnose({
-        level: 'warn',
-        scope: 'guardrails',
-        message: `[bureau] A guardrail blocked the result of the approved call "${review.approval.callId}" of run "${review.runId}"${scanned.tripwire === undefined ? '' : ' (tripwire)'}; the session holds the blocked result.`,
-      });
-    }
-    return scanned.result;
-  }
-
-  /** {@link scanApprovedToolResult} for a result of unknown shape: only a tool's own is scanned. */
-  async function scannedApprovedOutcome(
-    review: Extract<PendingReview, { kind: 'tool-approval' }>,
-    result: unknown,
-  ): Promise<ToolExecutionResult> {
-    return await scanApprovedToolResult(review, result as ToolExecutionResult);
-  }
-
   async function writeApprovalOutcomeToSession(
     review: Extract<PendingReview, { kind: 'tool-approval' }>,
     input: ResolveReviewInput,
@@ -17242,7 +17112,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     const asked = askedOf(review);
     const outcome =
       input.decision === 'approve'
-        ? await scannedApprovedOutcome(review, result)
+        ? (result as Parameters<typeof materializeToolResultAsync>[0])
         : {
             callId,
             toolCallId: callId,
@@ -17257,7 +17127,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       const materialized = await materializeToolResultAsync(outcome);
       const toolResult =
         input.decision === 'approve'
-          ? await admitApprovedToolResultMedia(review, outcome, materialized)
+          ? await admitApprovedToolResultMedia(review, outcome as ToolExecutionResult, materialized)
           : materialized;
       // The run's own terminal save is in flight when its approval is resolved
       // at once; the row to replace is not stored until it lands.

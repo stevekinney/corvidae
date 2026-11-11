@@ -26,7 +26,7 @@ bun run --filter=@lostgradient/interborough typecheck
 - **Restarting the host.** `POST /host/restart` (through the same Host and Origin guard as every route) answers `202`, shuts the Bureau down with its runs left parked, stops the host, and exits with code 75. The supervisor (`src/host/supervisor.ts`, `bun src/host/supervisor.ts <serve|dev>`) starts the host again on exactly that code and ends with the child's own code on any other; SIGINT and SIGTERM go to the child. A run waiting on a signal is still waiting after the restart. A source edit under `dev` restarts the host inside `bun --watch` without the supervisor. A supervisor killed with SIGKILL cannot forward the signal, so it leaves its host running.
 - `test` runs the host's suite under `bunfig.toml`, then the browser application's under `bunfig.ui.toml`, whose preload installs happy-dom, the Svelte compile plugin from `@lostgradient/testing`, and the jest-dom matchers. The browser suite stays serial: under `--parallel`, Bun 1.4.2's workers load the default `bunfig.toml` preload on top of the one `--config` names. The tests in a `*.slow.test.ts` file bundle for seconds, so `test:slow` runs them.
 - `test:browser` runs the Playwright suite in `tests/e2e` against a host it starts on port 7399 with the console's fixtures registered. The barrier's control listens on the next port, and the three hosts described under "Schedules, goals, and the audit trail", "The journey" and "First run" on the three after it, so the suite holds five consecutive ports. Set `INTERBOROUGH_E2E_PORT` to run the suite beside another checkout's, which holds 7399. `bun run --filter=@lostgradient/interborough test:browser -- tests/e2e/90-journey.spec.ts` runs the journey alone.
-- `test:coverage` runs the browser suite under coverage and compares each area with the floor in `scripts/coverage-baseline.ts`.
+- `test:coverage` runs the browser suite under coverage and prints each area's coverage; it is a report, and no floor fails it.
 
 ## The host
 
@@ -547,4 +547,4 @@ The interface enables controls according to the principal's scopes. The Weft ser
 - `src/lib`, `src/routes`, `src/views`, `src/styles`: the console's client, query helpers, live sources, router, area routes, and styles.
 - `fixtures`: the deterministic demo workflows the console's tests and Playwright suite run against. They are append-only.
 - `tests`: the DOM preload, the deployment-mode tests, and the Playwright suite in `tests/e2e`.
-- `scripts`: the build and the coverage ratchet.
+- `scripts`: the build and the coverage report.

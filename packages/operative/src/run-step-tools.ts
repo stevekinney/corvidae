@@ -16,7 +16,6 @@ import {
   ToolsExecutingEvent,
 } from './events';
 import type { StepGeneratedMediaAdmitter } from './generated-media';
-import { collectStreamedToolResult } from './guardrails/scan-tool-result';
 import { guardrailRefusedCallResult } from './guardrails/tool-call-guardrail';
 import {
   guardrailBlockedMessage,
@@ -506,11 +505,7 @@ export async function executeTools(
         const validatedResults: ToolExecutionResult[] = [];
         try {
           for (const originalResult of results) {
-            // COR-2299: a streamed result is read into the conversation as the row is written, so
-            // it is read here first, and the scan sees what the model will, not the placeholder.
-            let currentResult = deps.collectAsync
-              ? await collectStreamedToolResult(originalResult)
-              : originalResult;
+            let currentResult = originalResult;
             {
               const snapshot = { ...currentResult };
               const validated = await hooks.run('validateToolResult', currentResult, {

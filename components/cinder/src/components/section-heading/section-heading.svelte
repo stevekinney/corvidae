@@ -17,7 +17,6 @@
 
 <script lang="ts">
   import type { SectionHeadingLevel, SectionHeadingProps } from './section-heading.types.ts';
-  import CompactActions from '../../_internal/compact-actions.svelte';
   import { classNames } from '../../utilities/class-names.ts';
 
   let {
@@ -56,9 +55,7 @@
       {/if}
     </div>
     {#if actions}
-      <div class="cinder-section-heading__actions">
-        <CompactActions>{@render actions()}</CompactActions>
-      </div>
+      <div class="cinder-section-heading__actions">{@render actions()}</div>
     {/if}
   </div>
   {#if tabs}

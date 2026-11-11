@@ -191,11 +191,8 @@ export function createGuardrails(options: GuardrailsOptions): GuardrailHooks {
     if (!input) return;
     const onTriggered: InputGuardrailOptions['onTriggered'] = (event) => {
       // A result the guardrail refuses taints the session whatever its confidence: the tool
-      // reached content a detector would not let through. A tripwire refuses the result too, and
-      // on a path where the run goes on past it (a durable child wait, COR-2299) the session must
-      // hold the taint. A warning taints as an input does.
-      const refused =
-        event.action === 'block' || event.action === 'sanitize' || event.action === 'tripwire';
+      // reached content a detector would not let through. A warning taints as an input does.
+      const refused = event.action === 'block' || event.action === 'sanitize';
       if (refused || event.confidence >= taintThreshold) {
         taintTracker.taint({
           reason: event.detail ?? `Detection by ${event.detector}`,

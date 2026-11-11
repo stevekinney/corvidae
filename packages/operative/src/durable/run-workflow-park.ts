@@ -6,7 +6,6 @@ import { Conversation, withMessageId } from 'conversationalist';
 import type { GuardrailPhase } from '../errors';
 import { ToolSettledBubbleEvent } from '../events';
 import { isFailureFinishReason } from '../finish-reason';
-import { scanToolResult } from '../guardrails/scan-tool-result';
 import { signalMessageIdentifier } from '../message-identifiers';
 import type { FinishReason } from '../types';
 import {
@@ -98,7 +97,7 @@ export function* runWorkflowPark(
     const tool = state.pendingChildStepRecord?.toolCalls.find(
       (call) => call.id === request.toolCallId,
     );
-    const answered = {
+    const result = {
       callId: request.toolCallId,
       toolCallId: request.toolCallId,
       toolName: tool?.name ?? 'durable-child-wait',
@@ -109,18 +108,6 @@ export function* runWorkflowPark(
     const conversation = Conversation.from(state.snapshot, {
       runtime: runDepsFrom(ctx.services).options.runtime ?? createDefaultRuntimeServices(),
     });
-    // COR-2299: the child's answer reaches the model without the run loop's scan, so the run's
-    // own `validateToolResult` hooks read it here, as they would an in-loop result. Journaled, so
-    // a replay writes the verdict the first pass reached.
-    const scanHooks = runDepsFrom(ctx.services).options.hooks;
-    const step = state.pendingChildStepRecord?.step ?? state.cursor.step;
-    const result: ToolExecutionResult = yield* ctx.memo(
-      `child-wait-scan-${step}-${request.toolCallId}`,
-      async () => {
-        const scanned = await scanToolResult(answered, { hooks: scanHooks, conversation, step });
-        return scanned.result;
-      },
-    );
     conversation.appendToolResults([result]);
     state.snapshot = conversation.snapshot();
     yield* ctx.run('saveConversation', { runId: state.runId, snapshot: state.snapshot });

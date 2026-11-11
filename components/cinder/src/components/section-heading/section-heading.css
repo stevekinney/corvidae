@@ -58,11 +58,6 @@
     align-items: center;
     gap: var(--cinder-space-2);
     flex-shrink: 0;
-    /* Actions are xs controls centered on the title's line box, so they never make the heading
-       taller than its title. */
-    font-size: var(--cinder-text-lg);
-    line-height: var(--cinder-leading-tight);
-    margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
 
   .cinder-section-heading__tabs {

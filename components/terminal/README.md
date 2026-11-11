@@ -201,7 +201,7 @@ The import check compiles this package's own Svelte components for the server an
 - `bun run test:transport`: the WebSocket client under `src/lib/transport`: connecting and refusal, operations and results, output acknowledgement, backpressure with the terminal's input path, ending and stopping, and a loopback suite that runs the client against the real server from `@lostgradient/ventriloquist/websocket`. Only test files import that subpath; the boundary check covers source. An empty selection fails.
 - `bun run test:boundaries`: the boundary tests and the boundary check described above.
 - `bun run test:browser:terminal` (from the Corvidae root): the real-browser proof in Chromium, Firefox and WebKit, through the browser-fixtures harness. The `terminal-*.playwright.ts` specs drive the component against a deterministic in-page session and assert exact bytes; `terminal-visual.playwright.ts` sweeps the visual fixtures of `documentation/terminal/experience.md` in both themes at three viewports, and their Chromium baselines live under `scripts/browser-fixtures/snapshots/chromium/linux/terminal/` (see `scripts/browser-fixtures/visual-baselines.md`). The command lists its selection first and fails when a browser, a spec in one browser, or a baseline cell is absent. It is not part of `bun run validate`.
-- `bun run test:coverage`: the tests with LCOV output, then the ratchet in `coverage-ratchet.json` through `@lostgradient/testing/coverage-ratchet`. TypeScript lines and functions are held at 100 percent. The `svelte` ratchet was seeded from the first measurement of the renderer suite and is never lowered.
+- `bun run test:coverage`: the tests with a coverage table and LCOV output. It is a report: no floor fails it.
 
 ## Testing
 

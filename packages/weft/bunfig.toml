@@ -6,7 +6,6 @@ bun = true
 
 [test]
 coveragePathIgnorePatterns = [
-  "scripts/check-coverage.ts",
   # Static fixture trees under src/cli/__fixtures__/validation/** are fixed
   # test input fed to CLI validation tests (src/cli/*.test.ts), not code
   # under test — instrumenting them just adds unowned lines/functions no

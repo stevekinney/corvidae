@@ -10,12 +10,6 @@
       "code": "<script lang=\"ts\">\n  import { Card } from '@lostgradient/cinder';\n</script>\n\n<Card>\n  <div\n    style=\"min-block-size: 8rem; border: 1px dashed var(--cinder-border-muted); border-radius: var(--cinder-radius-sm); background: repeating-linear-gradient(-45deg, transparent, transparent 0.5rem, color-mix(in oklch, var(--cinder-border-muted), transparent 70%) 0.5rem, color-mix(in oklch, var(--cinder-border-muted), transparent 70%) 0.5625rem);\"\n  ></div>\n</Card>\n"
     },
     {
-      "id": "header-actions",
-      "title": "Header actions",
-      "description": "An actions snippet sits on the title's baseline. Buttons in it draw at the xs control height, so the header is the same height with or without them.",
-      "code": "<script lang=\"ts\">\n  import { Button, Card } from '@lostgradient/cinder';\n</script>\n\n{#snippet actions()}\n  <Button>Edit</Button>\n{/snippet}\n\n<Card title=\"Billing\" description=\"Plan and payment method.\" {actions}>\n  <p>Team plan, billed monthly.</p>\n</Card>\n"
-    },
-    {
       "id": "blog-post-grid",
       "title": "Blog post grid",
       "description": "An article-listing section recipe: Cards carry post image, category metadata, linked title, excerpt, and an Avatar author byline.",

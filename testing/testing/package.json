@@ -4,7 +4,6 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./coverage-ratchet": "./src/coverage-ratchet/index.ts",
     "./browser-smoke-gate": "./src/browser-smoke-gate.ts",
     "./fake-timers": "./src/fake-timers.ts",
     "./hang-guard": "./src/hang-guard.ts",

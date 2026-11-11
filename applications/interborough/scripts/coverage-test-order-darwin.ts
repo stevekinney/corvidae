@@ -124,8 +124,7 @@ export const DARWIN_BASELINE_COVERAGE_TEST_ORDER = [
   // WFC-10 (PR #14): freezes these 10 new test files in the exact lexical
   // order `discoverCoverageTestFiles`/`selectCoverageTestFiles` already ran
   // them in when the recorded Darwin/Linux baselines were measured (`bun
-  // run scripts/run-coverage.ts` in one shared process, no --parallel —
-  // see the fix documented on `DARWIN_BASELINE` in coverage-baseline.ts).
+  // run scripts/run-coverage.ts` in one shared process, no --parallel).
   // Without pinning them here, they sit in the lexical "new files" tail
   // this module's own doc comment describes: appended after the versioned
   // order in path-sort order. Adding a later test whose path sorts among
