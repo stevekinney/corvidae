@@ -7,6 +7,7 @@
  */
 import { createAgent, stopWhen, type Toolbox } from '@lostgradient/operative';
 import { MemoryStorage } from '@lostgradient/storage';
+import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
@@ -200,14 +201,16 @@ describe('the decision surface of a tool approval (COR-2292)', () => {
         decisionSurface: 'chat',
       });
 
-      await expect(
-        bureau.reviews.resolve({
-          id: review.id,
-          decision: 'approve',
-          principal: 'alice',
-          decisionSurface: 'reviews',
-        }),
-      ).rejects.toBeInstanceOf(BureauError);
+      expect(
+        await rejectionOf(
+          bureau.reviews.resolve({
+            id: review.id,
+            decision: 'approve',
+            principal: 'alice',
+            decisionSurface: 'reviews',
+          }),
+        ),
+      ).toBeInstanceOf(BureauError);
 
       expect(await decisionStamp(bureau, run.contextId)).toMatchObject({
         decisionSurface: 'chat',
@@ -226,14 +229,16 @@ describe('the decision surface of a tool approval (COR-2292)', () => {
     try {
       await bureau.reviews.resolve({ id: review.id, decision: 'approve', principal: 'alice' });
 
-      await expect(
-        bureau.reviews.resolve({
-          id: review.id,
-          decision: 'approve',
-          principal: 'alice',
-          decisionSurface: 'reviews',
-        }),
-      ).rejects.toBeInstanceOf(BureauError);
+      expect(
+        await rejectionOf(
+          bureau.reviews.resolve({
+            id: review.id,
+            decision: 'approve',
+            principal: 'alice',
+            decisionSurface: 'reviews',
+          }),
+        ),
+      ).toBeInstanceOf(BureauError);
 
       expect(await decisionStamp(bureau, run.contextId)).not.toHaveProperty('decisionSurface');
       const [record] = await bureau.reviews.listResolved();
@@ -324,7 +329,12 @@ describe('the decision surface helpers (COR-2292)', () => {
       type: 'review.tool-approval.approved',
       principal: 'alice',
       detail: {
-        review: { id: 'approval:run-1:call-1', kind: 'tool-approval', runId: 'run-1' },
+        review: {
+          id: 'approval:run-1:call-1',
+          kind: 'tool-approval',
+          runId: 'run-1',
+          approval: { callId: 'call-1', toolName: 'refund', arguments: {} },
+        },
         decision: 'approve',
         ...detail,
       },

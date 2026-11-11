@@ -474,7 +474,9 @@ describe('Try it, where it is drawn', () => {
 
     const provider = await view.findByTestId('agent-try-provider');
     expect(provider.textContent?.trim()).toBe(copy.try.providerConnected);
-    expect(view.getByTestId('agent-try-note').textContent).not.toContain('·');
+    expect(view.getByTestId('agent-try-note').textContent).not.toContain(
+      String.fromCodePoint(0xb7),
+    );
   });
 
   test('the new agent form says it is not saved yet in its sticky bar (rows 43w, 44b)', async () => {
@@ -532,7 +534,9 @@ describe('Try it, where it is drawn', () => {
     await view.findByRole('region', { name: copy.try.chatLabel });
 
     await fireEvent.click(view.getByRole('button', { name: copy.try.closeSheet }));
-    await waitFor(() => expect(view.queryByRole('dialog', { name: copy.try.title })).toBeNull());
+    await waitFor(() =>
+      expect(view.queryByRole('dialog', { name: copy.try.title })?.outerHTML ?? null).toBeNull(),
+    );
     // Back at the form with nothing lost, and the chat is still there.
     expect(
       (view.getByRole('textbox', { name: /^Instructions/ }) as HTMLTextAreaElement).value,
