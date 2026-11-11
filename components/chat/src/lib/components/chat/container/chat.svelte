@@ -1426,6 +1426,9 @@
   // transcript, or jumps to the latest message, that item is theirs to move, until another waits.
   // Nothing moves while focus is inside the item, so a keyboard user's control stays in view.
   let releaseAttention = (): void => {};
+  // Whether the transcript sits where a waiting item's lift put it, and not where the person did.
+  // Jump to latest stays hidden then: the lift is the end of what there is to read (C#7).
+  let attentionLifted = $state(false);
   $effect(() => {
     const scroller = viewport;
     if (scroller === null || typeof ResizeObserver === 'undefined') return undefined;
@@ -1438,6 +1441,7 @@
       if (next !== target) {
         target = next;
         released = false;
+        attentionLifted = false;
       }
       if (target === null || released) return;
       if (focusIsInside(target, scroller.ownerDocument.activeElement)) return;
@@ -1459,13 +1463,17 @@
         },
         ATTENTION_INSET,
       );
-      if (shift !== 0) scroller.scrollTop += shift;
+      if (shift !== 0) {
+        scroller.scrollTop += shift;
+        attentionLifted = true;
+      }
     };
     const schedule = (): void => {
       if (frame === 0) frame = requestAnimationFrame(reveal);
     };
     const release = (): void => {
       released = target !== null;
+      attentionLifted = false;
     };
     releaseAttention = release;
     const resizes = new ResizeObserver(schedule);
@@ -1489,6 +1497,7 @@
       for (const type of inputs) scroller.removeEventListener(type, release);
       scroller.removeEventListener('scroll', schedule);
       releaseAttention = () => {};
+      attentionLifted = false;
     };
   });
 
@@ -2388,7 +2397,7 @@
     <!-- Input Area with Jump Buttons -->
     <div class="chat-input-wrapper" style:display={composerHidden ? 'none' : undefined}>
       <ChatJumpControls
-        showJumpButton={scrollState.showJumpButton}
+        showJumpButton={scrollState.showJumpButton && !attentionLifted}
         hasNewMessageIndicator={unreadState.newMessageIndicatorVisible}
         unreadCount={unreadState.unreadCount}
         displayUnreadCount={unreadState.displayUnreadCount}

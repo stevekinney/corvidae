@@ -1969,6 +1969,15 @@
     text-decoration: none;
   }
 
+  /* On a touch screen each action is a full touch target, grown into the line's own space with a
+   * negative block margin, so the line keeps its height and its rhythm (C#3). */
+  @media (any-pointer: coarse) {
+    .chat-message-line :global(.chat-message-action-button) {
+      min-block-size: var(--cinder-touch-target-min);
+      margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2);
+    }
+  }
+
   .chat-message-line :global(.chat-message-action-button:focus-visible),
   .chat-message-not-sent-icon:focus-visible {
     outline: var(--cinder-ring-width) solid transparent;

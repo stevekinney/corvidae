@@ -111,6 +111,43 @@ describe('an approval with a deadline (COR-2280)', () => {
     expect(toolCallApprovalDeadline(approvalPair('a', 'soon'))).toBeUndefined();
   });
 
+  test('an approval the person approved reads approved, resuming, never waiting (C#2)', () => {
+    const pair = approvalPair('a', at(60_000));
+    expect(toolCallRowStatus(pair, 'approved', NOW)).toBe('approved');
+    expect(toolCallRowStatus(pair, 'approved_with_edits', NOW)).toBe('approved');
+    expect(toolCallStatusText('approved')).toBe('Approved, resuming');
+    const parts = toolCallSummaryParts([pair], ['approved'], [undefined]);
+    expect(parts.problems).toEqual(['1 approved, resuming']);
+  });
+
+  test('a question the person answered reads answered, never waiting for input (C#2)', () => {
+    const question = {
+      call: { id: 'q', name: 'requestHumanInput' },
+      result: { callId: 'q', outcome: 'action_required', action: { type: 'input' } },
+    } as unknown as ToolCallPair;
+    expect(toolCallRowStatus(question, undefined, NOW)).toBe('waiting-input');
+    expect(toolCallRowStatus(question, undefined, NOW, true)).toBe('answered');
+    expect(toolCallStatusText('answered')).toBe('Answered');
+    const parts = toolCallSummaryParts([question], ['answered'], [undefined]);
+    expect(parts.problems).toEqual(['1 answered']);
+  });
+
+  test('leaves a call that asks the person out of the tools (C#15)', () => {
+    const question = {
+      call: { id: 'q', name: 'requestHumanInput' },
+      result: { callId: 'q', outcome: 'action_required', action: { type: 'input' } },
+    } as unknown as ToolCallPair;
+    const lookup = {
+      call: { id: 'l', name: 'lookup_order' },
+      result: { callId: 'l', outcome: 'success', content: 'ok' },
+    } as unknown as ToolCallPair;
+    expect(
+      toolCallSummaryParts([question, lookup], ['waiting-input', 'succeeded'], [undefined, 1])
+        .tools,
+    ).toBe('lookup_order');
+    expect(toolCallSummaryParts([question], ['answered'], [undefined]).tools).toBe('');
+  });
+
   test('counts an expired approval as expired, never as waiting', () => {
     const pairs = [approvalPair('a', at(-1_000)), approvalPair('b', at(60_000))];
     const statuses = pairs.map((pair) => toolCallRowStatus(pair, undefined, NOW));

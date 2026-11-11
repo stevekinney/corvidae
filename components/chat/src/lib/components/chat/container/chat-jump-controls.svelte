@@ -218,4 +218,27 @@
       right: var(--cinder-space-3);
     }
   }
+
+  /* On a phone the controls never float over the transcript, where they would cover the end of a
+   * waiting approval's buttons: each takes its own line at the composer's top edge, outside the
+   * transcript (C#7). */
+  @container (max-width: 30rem) {
+    .chat-jump-button {
+      position: relative;
+      bottom: auto;
+      right: auto;
+      margin: 0 var(--cinder-space-3) var(--cinder-space-1) auto;
+    }
+
+    .chat-new-indicator {
+      position: relative;
+      bottom: auto;
+      left: auto;
+      display: flex;
+      inline-size: fit-content;
+      margin: 0 auto var(--cinder-space-1);
+      transform: none;
+      animation: none;
+    }
+  }
 </style>

@@ -19,12 +19,34 @@
   const labelId = $derived(`reasoning-label-${part.key.replace(/[^a-z0-9-]/gi, '-')}`);
   const contentId = $derived(`reasoning-content-${part.key.replace(/[^a-z0-9-]/gi, '-')}`);
 
-  // Approximate token count — 1 token ≈ 4 characters (rough heuristic for display).
-  const approximateTokenCount = $derived(Math.round(part.content.length / 4));
-  const tokenDisplay = $derived(
-    approximateTokenCount > 0
-      ? ` (${approximateTokenCount.toLocaleString()} ${approximateTokenCount === 1 ? 'token' : 'tokens'})`
-      : '',
+  // The label is in the person's terms, never tokens (C#10): "Thinking…" with the seconds so far
+  // while the reasoning streams, then "Thought for 4 s" once it ends. A block that never streamed
+  // here has no time this page saw, and reads "Thought process".
+  let streamStartedAt = $state<number | undefined>(undefined);
+  let thoughtMilliseconds = $state<number | undefined>(undefined);
+  let clock = $state(Date.now());
+  $effect(() => {
+    if (!part.streaming) return;
+    const start = Date.now();
+    streamStartedAt = start;
+    clock = start;
+    const timer = setInterval(() => {
+      clock = Date.now();
+    }, 1000);
+    return () => {
+      clearInterval(timer);
+      thoughtMilliseconds = Date.now() - start;
+    };
+  });
+  const elapsedSeconds = $derived(
+    streamStartedAt === undefined ? 0 : Math.max(0, Math.floor((clock - streamStartedAt) / 1000)),
+  );
+  const label = $derived(
+    part.streaming
+      ? 'Thinking…'
+      : thoughtMilliseconds === undefined
+        ? 'Thought process'
+        : `Thought for ${Math.max(1, Math.round(thoughtMilliseconds / 1000))} s`,
   );
 
   // The polite "Reasoning complete." announcement fires ONLY on a streaming
@@ -69,9 +91,9 @@
 >
   <EntryFrame
     id={labelId}
-    label={`Thinking${tokenDisplay}`}
+    {label}
     labelClass="chat-reasoning-label"
-    status={part.streaming ? 'In progress' : undefined}
+    status={part.streaming ? `${elapsedSeconds} s` : undefined}
     triggerClass="chat-reasoning-toggle"
     busy={part.streaming}
     open={expanded}

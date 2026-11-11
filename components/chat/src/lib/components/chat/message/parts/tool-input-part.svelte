@@ -49,6 +49,10 @@
       onInputSubmit !== undefined &&
       !sharedStore.isDockDismissed(part.toolCallId),
   );
+  // The dock asks one question at a time: the first of the open docked questions.
+  const currentlyDocked = $derived(
+    docked && sharedStore?.dockedQuestions[0]?.toolCallId === part.toolCallId,
+  );
   const heading = $derived(
     part.message !== undefined && part.message !== ''
       ? part.message
@@ -149,7 +153,11 @@
 <section class="chat-tool-input" aria-labelledby={headingId} data-cinder-tool-input>
   <h4 id={headingId} class="chat-tool-input-heading" dir="auto">{heading}</h4>
   {#if docked}
-    <p class="chat-tool-input-waiting">Waiting for your answer below</p>
+    <!-- Only the question the dock asks now says to answer below; a question queued behind it
+         says it comes next, so three rows never all claim the one dock (C#8). -->
+    <p class="chat-tool-input-waiting" data-question-current={currentlyDocked ? '' : undefined}>
+      {currentlyDocked ? 'Waiting for your answer below' : 'Asked below after the current question'}
+    </p>
   {:else if answered || onInputSubmit !== undefined}
     <ChatQuestion
       schema={part.schema}

@@ -52,6 +52,16 @@ describe('chat message action buttons', () => {
     expect(buttonRule).toContain('padding: 0;');
   });
 
+  test('on a touch screen each line action is a full touch target that keeps the line height (C#3)', () => {
+    const coarse = extractMediaBlock(
+      source,
+      '@media (any-pointer: coarse) {',
+      '.chat-message-line :global(.chat-message-action-button)',
+    );
+    expect(coarse).toContain('min-block-size: var(--cinder-touch-target-min)');
+    expect(coarse).toContain('margin-block: calc((1.5rem - var(--cinder-touch-target-min)) / 2)');
+  });
+
   test('Regenerate is an optional action that follows Quote, in both presentations', () => {
     expect(source).toContain('onRegenerate?: ((messageId: string) => void | Promise<void>)');
     expect(source).toContain('chat-message-action-button chat-message-regenerate-button');

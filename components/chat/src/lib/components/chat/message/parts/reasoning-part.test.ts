@@ -12,7 +12,7 @@
  *   8. While streaming, the content region has aria-live="off".
  *   9. While streaming=false and expanded=true, a "Reasoning complete." polite region is present.
  *  10. Empty content edge case: still renders (caller is responsible for guarding).
- *  11. Token count is shown in the label.
+ *  11. The label reads Thinking… with the seconds so far, then Thought for N s; never tokens.
  *  12. data-cinder-reasoning attribute is present.
  *  13. data-cinder-streaming is set/absent based on streaming prop.
  *  14. data-cinder-expanded is set/absent based on expanded prop.
@@ -21,7 +21,7 @@
  */
 
 /// <reference lib="dom" />
-import { afterEach, describe, expect, mock, test } from 'bun:test';
+import { afterEach, describe, expect, jest, mock, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -47,10 +47,39 @@ function makePart(overrides?: Partial<ReasoningMessagePart>): ReasoningMessagePa
   };
 }
 
-describe('ReasoningPart — label', () => {
-  test('reads Thinking, with the approximate token count', () => {
+describe('ReasoningPart — label (C#10)', () => {
+  test('a block that never streamed here reads Thought process, with no token count', () => {
     const { container } = render(ReasoningPart, { props: { part: makePart() } });
-    expect(container.querySelector('.chat-reasoning-label')?.textContent).toMatch(/^Thinking/);
+    expect(container.querySelector('.chat-reasoning-label')?.textContent?.trim()).toBe(
+      'Thought process',
+    );
+    expect(container.textContent).not.toContain('token');
+  });
+
+  test('reads Thinking… with the seconds so far while it streams, then Thought for N s', () => {
+    jest.useFakeTimers({ now: new Date('2026-11-11T12:00:00.000Z') });
+    try {
+      const { container, rerender } = render(ReasoningPart, {
+        props: { part: makePart({ streaming: true }) },
+      });
+      flushSync();
+      const label = () => container.querySelector('.chat-reasoning-label')?.textContent?.trim();
+      const status = () => container.querySelector('.chat-entry-frame__status')?.textContent;
+      expect(label()).toBe('Thinking…');
+      expect(status()).toBe('0 s');
+
+      jest.advanceTimersByTime(4_000);
+      flushSync();
+      expect(status()).toBe('4 s');
+
+      rerender({ part: makePart({ streaming: false }) });
+      flushSync();
+      expect(label()).toBe('Thought for 4 s');
+      expect(container.querySelector('.chat-entry-frame__status')).toBeNull();
+      expect(container.textContent).not.toContain('token');
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });
 
@@ -245,29 +274,6 @@ describe('ReasoningPart — streaming state', () => {
       props: { part: makePart({ streaming: false }) },
     });
     expect(container.querySelector('.chat-entry-frame__busy')).toBeNull();
-  });
-});
-
-describe('ReasoningPart — token count display', () => {
-  test('shows approximate token count in the label for non-empty content', () => {
-    // 40 chars → ~10 tokens
-    const part = makePart({ content: 'a'.repeat(40) });
-    const { container } = render(ReasoningPart, { props: { part } });
-    const label = container.querySelector('.chat-reasoning-label');
-    // Should contain the approximate token count (10)
-    expect(label?.textContent).toContain('10');
-    expect(label?.textContent).toContain('tokens');
-  });
-
-  test('says "1 token" when the estimate rounds to one', () => {
-    // 4 chars → 1 token, at the heuristic's own boundary. Reachable in
-    // practice: a reasoning block that has streamed only its first few
-    // characters passes through this count.
-    const part = makePart({ content: 'a'.repeat(4) });
-    const { container } = render(ReasoningPart, { props: { part } });
-    const label = container.querySelector('.chat-reasoning-label');
-    expect(label?.textContent).toContain('(1 token)');
-    expect(label?.textContent).not.toContain('1 tokens');
   });
 });
 

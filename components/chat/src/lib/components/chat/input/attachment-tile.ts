@@ -2,10 +2,11 @@ import type { AttachmentKind } from './attachment-kind.ts';
 import type { ChatAttachment } from './chat-attachment.ts';
 
 /**
- * How many attachment tiles the composer shows before it caps the list: the rest wait behind a
- * count under it, and the last tile shown fades, so a pile of files never pushes Send off a phone.
+ * How many attachment tiles the composer shows before it caps the list: exactly these show, each
+ * whole, and the rest wait behind a count under it, so a pile of files never pushes Send off a
+ * phone.
  */
-export const ATTACHMENT_LIST_CAP = 4;
+export const ATTACHMENT_LIST_CAP = 3;
 
 /** The longest extension kept whole beside a truncated name, dot included. */
 const MAXIMUM_EXTENSION_LENGTH = 10;
@@ -55,13 +56,6 @@ export function attachmentCountText(count: number): string {
   return count === 1 ? '1 file' : `${count} files`;
 }
 
-/** The summary's second part while files block Send: `2 need attention before you can send`. */
-export function attachmentAttentionText(count: number): string {
-  return count === 1
-    ? '1 needs attention before you can send'
-    : `${count} need attention before you can send`;
-}
-
 /** Why Send is off while files need attention, shown under the composer and named by Send. */
 export function attachmentBlockingReason(count: number): string {
   return count === 1 ? 'Retry or remove 1 file to send' : `Retry or remove ${count} files to send`;
@@ -71,4 +65,49 @@ export function attachmentBlockingReason(count: number): string {
 export function uploadPercent(progress: number | undefined): number | undefined {
   if (progress === undefined || !Number.isFinite(progress)) return undefined;
   return Math.round(Math.min(1, Math.max(0, progress)) * 100);
+}
+
+/**
+ * The kinds of file an accept list takes, in the person's words: `image/*`, `application/pdf` and
+ * `text/plain` read "an image, a PDF or a text file". A type with no common name reads as its
+ * subtype in capitals ("a JSON file"), and an extension as itself (".csv" reads "a CSV file").
+ */
+export function acceptedKindsText(acceptedTypes: readonly string[]): string {
+  const kinds: string[] = [];
+  for (const type of acceptedTypes) {
+    const kind = acceptedKind(type.trim().toLowerCase());
+    if (kind !== undefined && !kinds.includes(kind)) kinds.push(kind);
+  }
+  if (kinds.length <= 1) return kinds[0] ?? 'another kind of file';
+  return `${kinds.slice(0, -1).join(', ')} or ${kinds.at(-1)}`;
+}
+
+const NAMED_TYPES: Readonly<Record<string, string>> = {
+  'image/*': 'an image',
+  'audio/*': 'an audio file',
+  'video/*': 'a video',
+  'text/*': 'a text file',
+  'text/plain': 'a text file',
+  'text/markdown': 'a Markdown file',
+  'text/csv': 'a CSV file',
+  'application/pdf': 'a PDF',
+  'application/json': 'a JSON file',
+};
+
+function acceptedKind(type: string): string | undefined {
+  if (type === '') return undefined;
+  if (Object.hasOwn(NAMED_TYPES, type)) return NAMED_TYPES[type];
+  if (type.startsWith('.')) return `a ${type.slice(1).toUpperCase()} file`;
+  const [major, minor] = type.split('/');
+  if (major === 'image') return 'an image';
+  if (major === 'audio') return 'an audio file';
+  if (major === 'video') return 'a video';
+  if (minor === undefined || minor === '' || minor === '*') return undefined;
+  const name = minor.replace(/^(?:x-|vnd\.)/u, '').split(/[.+]/u)[0] ?? minor;
+  return `a ${name.toUpperCase()} file`;
+}
+
+/** Why a file the composer does not take was refused, and what it does take. */
+export function typeNotAcceptedText(acceptedTypes: readonly string[]): string {
+  return `This file type can’t be attached. Attach ${acceptedKindsText(acceptedTypes)}.`;
 }

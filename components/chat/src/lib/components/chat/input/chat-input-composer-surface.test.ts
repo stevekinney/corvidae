@@ -255,6 +255,17 @@ describe('the controls snippet is told when the composer is narrow', () => {
     );
   });
 
+  test('a capped attachment list is no scroll box, and on a phone each file is a full-width row (C#4)', async () => {
+    const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
+    expect(source).toMatch(
+      /\.chat-input-attachments:not\(\[data-capped\]\)\s*\{\s*max-block-size: 12rem;\s*overflow-y: auto;/,
+    );
+    expect(source).not.toContain('mask-image');
+    expect(source).toMatch(
+      /@container \(max-inline-size: 30rem\)\s*\{\s*\.chat-input-attachments\s*\{\s*align-items: stretch;/,
+    );
+  });
+
   test('Attach and Send are at least 44px on both sides on a phone-width composer and a touch screen', async () => {
     const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
     const touchSized =
@@ -360,17 +371,18 @@ describe('attachments', () => {
     unmount(instance);
   });
 
-  test('the count over the tiles says how many files need attention', async () => {
+  test('the count over the tiles names the files, and only the line under the composer says what blocks Send (C#16)', async () => {
     const { target, instance } = mountInput({ maxFileSize: 1024 });
     instance.addFiles([png('small.png', 10), png('big.png'), png('bigger.png')]);
     await tick();
 
     const summary = target.querySelector('[data-chat-attachment-summary]')!;
-    expect(summary.querySelector('.chat-input-attachment-count')?.textContent).toBe('3 files');
-    expect(summary.querySelector('.chat-input-attachment-attention')?.textContent).toBe(
-      '2 need attention before you can send',
-    );
+    expect(summary.textContent?.trim()).toBe('3 files');
     expect(summary.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(target.querySelector('.chat-input-attachment-reason')?.textContent?.trim()).toBe(
+      'Retry or remove 2 files to send',
+    );
+    expect(target.textContent).not.toContain('need attention');
     unmount(instance);
   });
 
@@ -383,9 +395,10 @@ describe('attachments', () => {
 
     const list = target.querySelector<HTMLElement>('[aria-label="Attached files"]')!;
     expect(list.hasAttribute('data-capped')).toBe(true);
-    expect(list.querySelectorAll('li')).toHaveLength(4);
+    // Exactly the tiles shown are drawn, so the count under them is the rest of the files (C#4).
+    expect(list.querySelectorAll('li')).toHaveLength(3);
     const more = target.querySelector<HTMLButtonElement>('.chat-input-attachment-more')!;
-    expect(more.textContent?.trim()).toBe('10 more');
+    expect(more.textContent?.trim()).toBe('11 more');
     expect(more.getAttribute('aria-controls')).toBe(list.id);
 
     await fireEvent.click(more);

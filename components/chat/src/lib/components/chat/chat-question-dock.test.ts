@@ -422,6 +422,12 @@ describe('several docked questions', () => {
     expect(container.querySelector('[data-chat-question-progress]')?.textContent?.trim()).toBe(
       'Question 1 of 2',
     );
+    // Only the question the dock asks says to answer below; the next one says it comes after (C#8).
+    expect(
+      [...container.querySelectorAll('.chat-tool-input-waiting')].map((line) =>
+        line.textContent?.trim(),
+      ),
+    ).toEqual(['Waiting for your answer below', 'Asked below after the current question']);
 
     await fireEvent.click(radiosOf(container)[0]!);
     sendDock(container);

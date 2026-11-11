@@ -473,6 +473,40 @@ describe('Chat — sourcePresentation="inline"', () => {
     expect(panel.querySelector('a')?.getAttribute('href')).toBe('https://example.com/annual');
   });
 
+  test('withdrawing the source of an open chip closes its panel, moves focus to the next chip and says so once (C#11)', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inline-withdraw',
+      conversation: sourcedConversation(),
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcePresentation: 'inline',
+    });
+    await tick();
+    const minutes = chips(container, 'assistant-a')[1]!;
+    minutes.focus();
+    await fireEvent.click(minutes);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    const withdrawn = sourcesForA.filter((_source, index) => index !== 1);
+    await rerender({ sourcesByMessageId: new Map([['assistant-a', withdrawn]]) });
+
+    // The panel goes with its chip; it is never handed to the source after it.
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-citation__panel')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(minutes.isConnected).toBe(false);
+    const remaining = chips(container, 'assistant-a');
+    expect(remaining.map((chip) => chip.textContent?.trim())).toEqual([
+      'example.com',
+      'example.com',
+      'Unsafe source',
+    ]);
+    await waitFor(() => expect(document.activeElement === remaining[1]).toBe(true));
+    const said = [
+      ...messageArticle(container, 'assistant-a').querySelectorAll('[aria-live="polite"]'),
+    ].map((region) => region.textContent?.trim());
+    expect(said.filter((text) => text === 'A source was withdrawn.')).toHaveLength(1);
+  });
+
   test('removing the sources while a chip has focus moves focus to the message', async () => {
     const { container, rerender } = render(Chat, {
       id: 'sources-inline-focus',

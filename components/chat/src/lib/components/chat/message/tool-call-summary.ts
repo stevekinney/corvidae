@@ -5,10 +5,20 @@ import type { ToolCallPair } from '../conversation-model.ts';
 
 /**
  * Where one tool call stands, as the quiet timeline shows it. `expired` is an approval whose
- * deadline passed before anyone decided it (COR-2280): it no longer waits.
+ * deadline passed before anyone decided it (COR-2280): it no longer waits. `approved` and
+ * `answered` are a call the person settled here whose run has not reported back yet: it no
+ * longer waits on them either.
  */
 export type ToolCallRowStatus =
-  'pending' | 'succeeded' | 'failed' | 'denied' | 'expired' | 'waiting' | 'waiting-input';
+  | 'pending'
+  | 'succeeded'
+  | 'failed'
+  | 'denied'
+  | 'expired'
+  | 'waiting'
+  | 'waiting-input'
+  | 'approved'
+  | 'answered';
 
 const STATUS_TEXT: Record<ToolCallRowStatus, string> = {
   pending: 'Pending',
@@ -18,6 +28,8 @@ const STATUS_TEXT: Record<ToolCallRowStatus, string> = {
   expired: 'Expired',
   waiting: 'Waiting for approval',
   'waiting-input': 'Waiting for input',
+  approved: 'Approved, resuming',
+  answered: 'Answered',
 };
 
 /**
@@ -62,18 +74,22 @@ const ONE_LINE_LIMIT = 80;
  * the run reports the denial as the pending approval or as an error result.
  * An approval nobody settled reads `expired` from its deadline on, measured
  * against `now` (COR-2280); a state the host settled wins over the deadline.
+ * An approval the person approved reads `approved`, and a question they
+ * `answered` reads `answered`, until the run reports what happened next.
  */
 export function toolCallRowStatus(
   pair: ToolCallPair,
   approvalState: ApprovalState | undefined,
   now: number = Date.now(),
+  answered = false,
 ): ToolCallRowStatus {
   if (approvalState === 'denied') return 'denied';
   if (approvalState === 'expired') return 'expired';
   const outcome = pair.result?.outcome;
   if (outcome === 'error') return 'failed';
   if (outcome === 'action_required') {
-    if (pair.result?.action?.type !== 'approval') return 'waiting-input';
+    if (pair.result?.action?.type !== 'approval') return answered ? 'answered' : 'waiting-input';
+    if (approvalState === 'approved' || approvalState === 'approved_with_edits') return 'approved';
     if (approvalState !== undefined && approvalState !== 'pending') return 'waiting';
     const deadline = toolCallApprovalDeadline(pair);
     return deadline !== undefined && now >= deadline ? 'expired' : 'waiting';
@@ -213,11 +229,16 @@ export function totalToolCallDuration(
 
 /** What the group's header says after its step count, one phrase to a field. */
 export type ToolCallSummaryParts = {
-  /** The tools in first-use order, with a count when one ran more than once ("lookup-order ×2"). */
+  /**
+   * The tools in first-use order, with a count when one ran more than once ("lookup-order ×2").
+   * A call that asks the person a question is left out: the question says what it is, and its
+   * tool is the run's own machinery (`requestHumanInput`), not work the agent did.
+   */
   tools: string;
   /**
-   * Any failed, denied, expired or waiting counts ("1 failed"), in that order. An expired approval
-   * counts as expired and never as waiting (COR-2280).
+   * Any failed, denied, expired, waiting, approved or answered counts ("1 failed"), in that order.
+   * An expired approval counts as expired and never as waiting (COR-2280), and an approval or a
+   * question the person settled counts as approved or answered, never as waiting.
    */
   problems: string[];
   /** The total time, when every call has one ("0.7s"). */
@@ -242,9 +263,15 @@ export function toolCallSummaryParts(
   if (expired > 0) problems.push(`${expired} expired`);
   if (waiting > 0) problems.push(`${waiting} waiting for approval`);
   if (waitingInput > 0) problems.push(`${waitingInput} waiting for input`);
+  const approved = count('approved');
+  const answered = count('answered');
+  if (approved > 0) problems.push(`${approved} approved, resuming`);
+  if (answered > 0) problems.push(`${answered} answered`);
   const total = totalToolCallDuration(durations);
+  const asking = (status: ToolCallRowStatus | undefined) =>
+    status === 'waiting-input' || status === 'answered';
   return {
-    tools: toolNamesSegment(pairs),
+    tools: toolNamesSegment(pairs.filter((_pair, index) => !asking(statuses[index]))),
     problems,
     duration: total === undefined ? undefined : formatToolCallDuration(total),
   };

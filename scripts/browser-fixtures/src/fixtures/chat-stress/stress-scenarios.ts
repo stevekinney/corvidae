@@ -100,19 +100,55 @@ function baseSetup(conversation: ConversationHistory): StressSetup {
 
 const CALL_WORDS: Record<
   string,
-  { present: string; past: string; detail: string; kind: ToolCallKind }
+  { present: string; past: string; base: string; detail: string; kind: ToolCallKind }
 > = {
-  lookup_order: { present: 'Comparing', past: 'Compared', detail: 'recent orders', kind: 'search' },
-  read_policy: { present: 'Reading', past: 'Read', detail: 'the refund policy', kind: 'fetch' },
-  list_orders: { present: 'Listing', past: 'Listed', detail: 'recent orders', kind: 'search' },
-  read_audit_log: { present: 'Reading', past: 'Read', detail: 'the audit log', kind: 'fetch' },
-  read_ledger: { present: 'Reading', past: 'Read', detail: 'the October ledger', kind: 'fetch' },
-  fetch_source: { present: 'Fetching', past: 'Fetched', detail: 'a source', kind: 'fetch' },
+  lookup_order: {
+    present: 'Comparing',
+    past: 'Compared',
+    base: 'compare',
+    detail: 'recent orders',
+    kind: 'search',
+  },
+  read_policy: {
+    present: 'Reading',
+    past: 'Read',
+    base: 'read',
+    detail: 'the refund policy',
+    kind: 'fetch',
+  },
+  list_orders: {
+    present: 'Listing',
+    past: 'Listed',
+    base: 'list',
+    detail: 'recent orders',
+    kind: 'search',
+  },
+  read_audit_log: {
+    present: 'Reading',
+    past: 'Read',
+    base: 'read',
+    detail: 'the audit log',
+    kind: 'fetch',
+  },
+  read_ledger: {
+    present: 'Reading',
+    past: 'Read',
+    base: 'read',
+    detail: 'the October ledger',
+    kind: 'fetch',
+  },
+  fetch_source: {
+    present: 'Fetching',
+    past: 'Fetched',
+    base: 'fetch',
+    detail: 'a source',
+    kind: 'fetch',
+  },
 };
 
 /**
  * How a host words a tool call in its step row, for the adapter's `describeToolCall`: a present
- * tense verb until the call has a result, a past tense one after. A tool the cases do not use has
+ * tense verb until the call has a result, a past tense one after, and the base form for a failure. A tool the cases do not use has
  * no wording, so Chat draws it as it would without a host.
  */
 export function describeStressCall(
@@ -128,7 +164,8 @@ export function describeStressCall(
         ? 'failed'
         : 'past';
   return {
-    verb: tense === 'present' ? words.present : words.past,
+    // A failed call reads "Failed to fetch a source", so its verb is the base form.
+    verb: tense === 'present' ? words.present : tense === 'failed' ? words.base : words.past,
     tense,
     detail: words.detail,
     kind: words.kind,

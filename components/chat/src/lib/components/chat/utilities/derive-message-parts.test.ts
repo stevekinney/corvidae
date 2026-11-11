@@ -18,8 +18,17 @@ describe('formatToolCallProse', () => {
       'Searching the index',
     );
     expect(formatToolCallProse({ verb: 'Fetched', tense: 'past' })).toBe('Fetched');
-    expect(formatToolCallProse({ verb: 'Write', tense: 'failed', detail: 'the file' })).toBe(
-      'Failed to Write the file',
+    expect(formatToolCallProse({ verb: 'write', tense: 'failed', detail: 'the file' })).toBe(
+      'Failed to write the file',
+    );
+  });
+
+  it('reads a failed verb inside the sentence: a leading capital is lowered, an acronym kept (C#13)', () => {
+    expect(formatToolCallProse({ verb: 'Fetch', tense: 'failed', detail: 'a source' })).toBe(
+      'Failed to fetch a source',
+    );
+    expect(formatToolCallProse({ verb: 'SSH', tense: 'failed', detail: 'into db-1' })).toBe(
+      'Failed to SSH into db-1',
     );
   });
 });

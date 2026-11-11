@@ -32,12 +32,21 @@ export const CINDER_STEPS_METADATA_KEY = 'cinder:steps';
 export const CINDER_SUGGESTIONS_METADATA_KEY = 'cinder:suggestions';
 export const CINDER_ARTIFACT_METADATA_KEY = 'cinder:artifact';
 
+/** A verb that starts a sentence, lowered to sit inside one; an acronym ("SSH") keeps its case. */
+function midSentenceVerb(verb: string): string {
+  const [first, second] = verb;
+  if (first === undefined || second === undefined) return verb;
+  return second === second.toLowerCase() && second !== second.toUpperCase()
+    ? `${first.toLowerCase()}${verb.slice(1)}`
+    : verb;
+}
+
 /** Formats adapter-supplied tool activity without knowing connector names. */
 export function formatToolCallProse(presentation: ToolCallPresentation): string {
   const verb = presentation.verb.trim();
   // Adapters own grammar: verbs may be irregular, multi-word, or already
   // inflected. Never guess English morphology in the shared package.
-  const phrase = presentation.tense === 'failed' ? `Failed to ${verb}` : verb;
+  const phrase = presentation.tense === 'failed' ? `Failed to ${midSentenceVerb(verb)}` : verb;
   return presentation.detail ? `${phrase} ${presentation.detail}` : phrase;
 }
 

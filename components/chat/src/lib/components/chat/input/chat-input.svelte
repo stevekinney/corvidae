@@ -251,8 +251,8 @@
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import {
     ATTACHMENT_LIST_CAP,
-    attachmentAttentionText,
     attachmentBlockingReason,
+    typeNotAcceptedText,
     attachmentCountText,
     canRetry,
     needsAttention,
@@ -756,7 +756,7 @@
   function describeFailure(failure: ChatAttachmentFailure): string {
     if (formatAttachmentError) return formatAttachmentError(failure);
     if (failure.kind === 'type-not-accepted') {
-      return `Invalid file type: ${failure.file.type}. Accepted types: ${failure.acceptedTypes.join(', ')}.`;
+      return typeNotAcceptedText(failure.acceptedTypes);
     }
     if (failure.kind === 'too-large') {
       return `File exceeds ${Math.round(failure.maxFileSize / (1024 * 1024))}MB limit`;
@@ -1674,11 +1674,6 @@
             <span class="chat-input-attachment-count"
               >{attachmentCountText(attachments.length)}</span
             >
-            {#if attentionCount > 0}
-              <span class="chat-input-attachment-attention"
-                >{attachmentAttentionText(attentionCount)}</span
-              >
-            {/if}
           </p>
           <ul
             id={attachmentListId}
@@ -2061,26 +2056,38 @@
     text-align: start;
   }
 
-  .chat-input-attachment-attention {
-    color: var(--cinder-status-danger-text);
-  }
-
-  /* The list is bounded, so a pile of files scrolls inside it and Send stays in the pane. */
+  /* A capped list shows exactly its first tiles, each whole with its reason, and the count under it
+   * says how many more there are. Only the whole list, once opened, is bounded and scrolls, so a
+   * pile of files keeps Send in the pane (C#4). */
   .chat-input-attachments {
     display: flex;
     flex-direction: column;
     align-items: flex-start;
     gap: var(--cinder-space-2);
-    max-block-size: 12rem;
     margin: 0;
     padding: 0;
-    overflow-y: auto;
     list-style: none;
   }
 
-  /* A capped list fades its last tile into the count under it. */
-  .chat-input-attachments[data-capped] > :last-child {
-    mask-image: linear-gradient(to bottom, black 45%, transparent);
+  .chat-input-attachments:not([data-capped]) {
+    max-block-size: 12rem;
+    overflow-y: auto;
+  }
+
+  /* On a phone each file is a row the width of the composer, so its name has all the room there
+   * is and is cut only when it is longer than that. */
+  @container (max-inline-size: 30rem) {
+    .chat-input-attachments {
+      align-items: stretch;
+    }
+
+    .chat-input-attachment-wrapper > :global(.chat-attachment-preview) {
+      flex: 1 1 auto;
+    }
+
+    .chat-input-attachment-wrapper :global(.chat-attachment-preview-name) {
+      flex: 1 1 auto;
+    }
   }
 
   .chat-input-attachment-more {

@@ -1,13 +1,14 @@
 import { describe, expect, test } from 'bun:test';
 
 import {
-  attachmentAttentionText,
+  acceptedKindsText,
   attachmentBlockingReason,
   attachmentCountText,
   canRetry,
   fileTypeBadge,
   needsAttention,
   splitFileName,
+  typeNotAcceptedText,
   uploadPercent,
 } from './attachment-tile.ts';
 
@@ -48,14 +49,20 @@ describe('fileTypeBadge', () => {
 });
 
 describe('the attention summary', () => {
-  test('counts files, and those that block Send, in words without a separator glyph', () => {
+  test('counts files in words without a separator glyph', () => {
     expect(attachmentCountText(1)).toBe('1 file');
     expect(attachmentCountText(14)).toBe('14 files');
-    expect(attachmentAttentionText(1)).toBe('1 needs attention before you can send');
-    expect(attachmentAttentionText(2)).toBe('2 need attention before you can send');
-    for (const text of [attachmentCountText(3), attachmentAttentionText(2)]) {
-      expect(text).not.toContain(String.fromCodePoint(0xb7));
-    }
+    expect(attachmentCountText(3)).not.toContain(String.fromCodePoint(0xb7));
+  });
+
+  test('a refused type says so in the person’s words, and names what the composer takes (C#16)', () => {
+    expect(typeNotAcceptedText(['image/*', 'application/pdf', 'text/plain'])).toBe(
+      'This file type can’t be attached. Attach an image, a PDF or a text file.',
+    );
+    expect(acceptedKindsText(['image/png', 'image/jpeg'])).toBe('an image');
+    expect(acceptedKindsText(['.csv', 'application/zip'])).toBe('a CSV file or a ZIP file');
+    expect(acceptedKindsText([])).toBe('another kind of file');
+    expect(typeNotAcceptedText(['image/*'])).not.toMatch(/\/|application|\*/);
   });
 
   test('says how to unblock Send', () => {

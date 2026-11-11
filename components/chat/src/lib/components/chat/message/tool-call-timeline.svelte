@@ -24,6 +24,7 @@
   import { formatToolCallProse } from '../utilities/utilities.ts';
   import ToolPayloadCode from './tool-payload-code.svelte';
   import { resolveTurnLabels, type ChatTurnLabels } from './turn-labels.ts';
+  import { useQuestionStore } from '../question/question-store.svelte.ts';
   import {
     foldRepeatedSteps,
     formatToolCallDuration,
@@ -102,10 +103,17 @@
     return () => clearTimeout(timer);
   });
 
+  // The questions answered here, so a call whose question the person answered stops waiting.
+  const questionStore = useQuestionStore();
   const rows = $derived(
     pairs.map((pair, index) => {
       const presentation = describeToolCall?.(pair);
-      const status = toolCallRowStatus(pair, approvalStates?.get(pair.call.id), currentTime);
+      const status = toolCallRowStatus(
+        pair,
+        approvalStates?.get(pair.call.id),
+        currentTime,
+        questionStore?.answers.has(pair.call.id) ?? false,
+      );
       const duration = durations?.get(pair.call.id);
       // A call the host words in the present tense and that has no answer yet is the one running.
       const active = activityActive && presentation?.tense === 'present' && !pair.result;
@@ -327,7 +335,7 @@
       <span class="chat-tool-call-row-spinner" aria-hidden="true">
         <Spinner size="sm" variant="arc" label="" />
       </span>
-    {:else if status === 'succeeded'}
+    {:else if status === 'succeeded' || status === 'approved' || status === 'answered'}
       <Check aria-hidden="true" />
     {:else if status === 'failed' || status === 'denied' || status === 'expired'}
       <X aria-hidden="true" />
@@ -388,7 +396,9 @@
     {@render payload('Error', pair.result.error?.message ?? pair.result.content)}
   {:else if pair.result?.parts !== undefined && pair.result}
     {@render payload('Output', toolResultText(pair.result))}
-  {:else if pair.result}
+  {:else if pair.result && pair.result.content !== null && pair.result.content !== undefined}
+    <!-- A result with nothing in it (an approval still pending, a decision the run has not
+         answered yet) has no Output to show: "null" says nothing to the person. -->
     {@render payload('Output', pair.result.content)}
   {/if}
 {/snippet}
@@ -441,7 +451,9 @@
             >{countText}{#if summary.problems.length > 0},{/if}</span
           >
           {#each summary.problems as problem, index (index)}
-            <span class="chat-tool-call-summary-segment" data-problem>{problem}</span>
+            <span class="chat-tool-call-summary-segment" data-problem
+              >{problem}{#if index < summary.problems.length - 1},{/if}</span
+            >
           {/each}
           {#if summary.tools}
             <span class="chat-tool-call-summary-tools">{summary.tools}</span>
@@ -616,7 +628,9 @@
     flex: 1 1 auto;
     flex-wrap: wrap;
     align-items: baseline;
-    column-gap: var(--cinder-space-2);
+    /* The count and its phrases read as one sentence, "2 of 3 steps, 1 failed, 1 denied": each
+     * phrase carries its comma and the next starts one space on. */
+    column-gap: 0.3em;
     min-inline-size: 0;
   }
 
@@ -651,6 +665,7 @@
    * zero keeps it on the line it starts. */
   .chat-tool-call-summary-tools {
     flex: 1 1 0;
+    margin-inline-start: var(--cinder-space-1);
     min-inline-size: 0;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -884,7 +899,11 @@
     padding-inline: var(--cinder-space-2);
   }
 
-  @media (pointer: coarse) {
+  /* On a touch screen the group's summary line, each step's row and a failed step's controls are
+   * full touch targets (C#3). */
+  @media (any-pointer: coarse) {
+    .chat-tool-call-toggle,
+    .chat-tool-call-row,
     .chat-tool-call-failure-actions :global(.chat-tool-call-failure-action) {
       min-block-size: var(--cinder-touch-target-min);
     }

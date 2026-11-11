@@ -454,7 +454,7 @@ describe('ChatMessage — tool-call rendering', () => {
     ).not.toBeNull();
   });
 
-  test('grouped action-required results render null payloads explicitly', async () => {
+  test('an action-required result with null content shows its Input and no Output (C#6)', async () => {
     const { container } = render(ToolCallTimeline, {
       props: {
         pairs: [
@@ -467,7 +467,10 @@ describe('ChatMessage — tool-call rendering', () => {
     });
 
     await openCall(container);
-    expect(container.querySelector('.chat-tool-call-details')?.textContent).toContain('null');
+    const details = container.querySelector('.chat-tool-call-details')?.textContent ?? '';
+    expect(details).toContain('Input');
+    expect(details).not.toContain('Output');
+    expect(details).not.toContain('null');
   });
 
   test('tool-call card is collapsed by default (payload bodies hidden)', () => {
@@ -792,6 +795,38 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(summaryOf(container)).not.toContain('waiting for approval');
     });
 
+    test('says approved, resuming once the person approved, not that it still waits (C#2)', async () => {
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [waitingPair('refund-1', 60_000)],
+          approvalStates: new Map([['refund-1', 'approved' as const]]),
+        },
+      });
+      await tick();
+
+      expect(summaryOf(container)).toContain('1 approved, resuming');
+      expect(summaryOf(container)).not.toContain('waiting');
+    });
+
+    test('joins the header phrases with a comma each, so they read as one sentence (C#15)', async () => {
+      const failed: ToolCallPair = {
+        call: { id: 'refund-2', name: 'issue-refund', arguments: {} },
+        result: { callId: 'refund-2', outcome: 'error', content: null },
+      };
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [waitingPair('refund-1', 60_000), failed],
+          approvalStates: new Map([['refund-1', 'denied' as const]]),
+        },
+      });
+      await tick();
+
+      const phrases = [
+        ...container.querySelectorAll('.chat-tool-call-summary-count, [data-problem]'),
+      ].map((element) => element.textContent);
+      expect(phrases).toEqual(['0 of 2 steps,', '1 failed,', '1 denied']);
+    });
+
     test('counts only the calls still waiting in a group with an expired one', async () => {
       jest.useFakeTimers({ now: NOW });
       const { container } = render(ToolCallTimeline, {
@@ -929,6 +964,13 @@ describe('ChatMessage — tool-call rendering', () => {
           .querySelector('.chat-tool-call-row .chat-tool-call-status-icon')
           ?.hasAttribute('data-cinder-tool-activity-active'),
       ).toBe(false);
+    });
+
+    test('on a touch screen the summary line and each step row are full touch targets (C#3)', () => {
+      const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+      expect(source).toMatch(
+        /@media \(any-pointer: coarse\) \{\s*\.chat-tool-call-toggle,\s*\.chat-tool-call-row,[^{]*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
+      );
     });
 
     test('the group is bordered and its header carries the count, the tools and the time', () => {

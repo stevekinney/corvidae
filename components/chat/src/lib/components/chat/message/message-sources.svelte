@@ -20,6 +20,7 @@
 </script>
 
 <script lang="ts">
+  import { tick } from 'svelte';
   import { ChevronRight, Citation, resolveCitationLink } from '@lostgradient/cinder';
   import { sourceChipLabel } from './source-chip-label.ts';
 
@@ -30,6 +31,52 @@
     ontoggle,
     listId,
   }: MessageSourcesProps = $props();
+
+  // Each inline chip is keyed by the source it stands for (its address and label, and which copy
+  // of a duplicate it is), so a withdrawn source takes its own chip and open panel with it rather
+  // than handing them to the source after it (C#11).
+  const chipKeys = $derived.by(() => {
+    const seen = new Map<string, number>();
+    return sources.map((source) => {
+      const identity = `${source.url ?? ''}\u0000${source.label}`;
+      const copy = seen.get(identity) ?? 0;
+      seen.set(identity, copy + 1);
+      return `${identity}\u0000${copy}`;
+    });
+  });
+  const chipEntries = $derived(
+    sources.map((source, index) => ({ source, key: chipKeys[index] ?? String(index) })),
+  );
+  let chipGroup = $state<HTMLElement | null>(null);
+  let withdrawal = $state('');
+  let shownKeys: readonly string[] = [];
+
+  async function moveFocusAfterWithdrawal(group: HTMLElement, position: number): Promise<void> {
+    await tick();
+    const remaining = group.querySelectorAll<HTMLElement>('.cinder-citation__marker');
+    remaining[Math.min(position, remaining.length - 1)]?.focus();
+  }
+
+  // A source withdrawn while its chip has focus or its panel is open: the panel goes with it, focus
+  // moves to the chip that takes its place (or the last one), and the change is said once.
+  $effect.pre(() => {
+    const keys = chipKeys;
+    const previous = shownKeys;
+    shownKeys = keys;
+    const group = chipGroup;
+    if (group === null || presentation !== 'inline') return;
+    const markers = [...group.querySelectorAll<HTMLElement>('.cinder-citation__marker')];
+    const active = group.ownerDocument.activeElement;
+    const held = previous.findIndex((key, index) => {
+      if (keys.includes(key)) return false;
+      const marker = markers[index];
+      return marker === active || marker?.getAttribute('aria-expanded') === 'true';
+    });
+    if (held === -1) return;
+    const before = previous.slice(0, held).filter((key) => keys.includes(key)).length;
+    withdrawal = 'A source was withdrawn.';
+    void moveFocusAfterWithdrawal(group, before);
+  });
 </script>
 
 <!--
@@ -79,14 +126,16 @@
 {:else if presentation === 'inline'}
   <!-- One chip per source, in the order given and with duplicates kept, as everywhere else. Each
        chip is Citation's own marker, so its panel, URL policy and focus return are unchanged. -->
-  <span class="chat-message-source-chips" role="group" aria-label="Sources">
-    {#each sources as source, index (index)}
+  <span class="chat-message-source-chips" role="group" aria-label="Sources" bind:this={chipGroup}>
+    {#each chipEntries as entry (entry.key)}
+      {@const source = entry.source}
       {@const chip = sourceChipLabel(source)}
       <Citation sources={[source]} label={chip} class="chat-message-source-chip"
         ><span class="chat-message-source-chip-text" dir="auto">{chip}</span></Citation
       >
     {/each}
   </span>
+  <span class="cinder-sr-only" aria-live="polite" aria-atomic="true">{withdrawal}</span>
 {:else}
   <Citation {sources} label="Sources" class="chat-message-sources-citation"
     >Sources <span class="chat-message-sources-count">{sources.length}</span></Citation

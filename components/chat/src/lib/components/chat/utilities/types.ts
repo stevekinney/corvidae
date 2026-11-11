@@ -74,10 +74,23 @@ export type ToolCallMessagePart = {
 
 export type ToolCallKind = 'search' | 'fetch' | 'write' | 'execute' | 'reason' | 'other';
 export type ToolCallTense = 'present' | 'past' | 'failed';
+/**
+ * How a host words one tool call: a verb in the form its tense needs, and what the call acted on.
+ * Chat puts the two together as written and never inflects the verb.
+ */
 export type ToolCallPresentation = {
+  /**
+   * The verb, in the form `tense` reads it in: the present participle while the call runs
+   * ("Fetching"), the past tense once it worked ("Fetched"), and the base form when it failed
+   * ("fetch"), which Chat reads as "Failed to fetch". A failed verb's first capital is lowered
+   * when the next letter is lowercase, so "Fetch" reads "Failed to fetch" and "SSH" stays.
+   */
   verb: string;
+  /** Whether the call is running (`present`), worked (`past`) or `failed`. */
   tense: ToolCallTense;
+  /** What the call acted on, after the verb ("a source"). */
   detail?: string;
+  /** What kind of work the call does, which picks its icon. */
   kind?: ToolCallKind;
 };
 
