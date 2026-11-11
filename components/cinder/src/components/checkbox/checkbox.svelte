@@ -42,6 +42,7 @@
     error,
     disabled,
     mutating = false,
+    variant = 'default',
     required,
     class: className,
     'aria-describedby': consumerDescribedBy,
@@ -82,6 +83,9 @@
     }),
   );
   const renderInlineLabel = $derived(!!label && (!context || !context.labelId));
+  const fieldClass = $derived(
+    classNames('cinder-checkbox-field', variant === 'task' && 'cinder-checkbox-field--task'),
+  );
 
   // Dev-mode guard (matches Input/Autocomplete): inside a FormField, a consumer `id`
   // that disagrees with the FormField's controlId means the FormField's <label for>
@@ -129,6 +133,14 @@
     };
   });
 
+  // The row pads the box out to the hit area (24px, 44px under a coarse pointer) without changing
+  // its painted size. A press on that padding lands on the row, not the input, so it is passed on:
+  // the input stays the one keyboard and assistive-technology target, and a press on the box itself
+  // is the browser's own (its target is the input, not the row).
+  function forwardRowPress(event: MouseEvent): void {
+    if (event.target === event.currentTarget) inputElement?.click();
+  }
+
   function handleChange(event: Event & { currentTarget: EventTarget & HTMLInputElement }): void {
     const target = event.currentTarget;
     if (staleInert) {
@@ -156,7 +168,12 @@
 </script>
 
 {#snippet control()}
-  <div class="cinder-checkbox-row">
+  <!-- The input inside is the keyboard and assistive-technology target; the row only extends where a pointer press lands. -->
+  <!-- svelte-ignore a11y_click_events_have_key_events, a11y_no_static_element_interactions -->
+  <div
+    class={classNames('cinder-checkbox-row', variant === 'task' && 'cinder-checkbox-row--task')}
+    onclick={forwardRowPress}
+  >
     <CheckboxIndicatorShell>
       {#snippet control()}
         <input
@@ -168,7 +185,11 @@
           required={field.required}
           {checked}
           onchange={handleChange}
-          class={classNames('cinder-checkbox', className)}
+          class={classNames(
+            'cinder-checkbox',
+            variant === 'task' && 'cinder-checkbox--task',
+            className,
+          )}
           aria-invalid={field.ariaInvalid}
           aria-describedby={field.describedBy}
           aria-disabled={staleInert ? 'true' : undefined}
@@ -189,7 +210,7 @@
       errorId={field.ownErrorId}
       required={field.required}
       disabled={field.disabled}
-      class="cinder-checkbox-field"
+      class={fieldClass}
       {control}
     ></FormFieldFrame>
   {:else}
@@ -203,7 +224,7 @@
     {error}
     required={field.required}
     disabled={field.disabled}
-    class="cinder-checkbox-field"
+    class={fieldClass}
   >
     {@render control()}
   </FormField>

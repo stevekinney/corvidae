@@ -41,6 +41,13 @@ export type CheckboxProps = Omit<HTMLInputAttributes, 'class'> & {
    * @default false
    */
   mutating?: boolean;
+  /**
+   * Drawing of the control. `default` is the square 18px box; `task` is the round 20px control
+   * of a task list, with the same checked fill and check glyph. Either way the hit area is at
+   * least 24px, and at least 44px under a coarse pointer, without changing the drawn size.
+   * @default 'default'
+   */
+  variant?: 'default' | 'task';
   /** Extra class names merged with `.cinder-checkbox`. */
   class?: string;
 };

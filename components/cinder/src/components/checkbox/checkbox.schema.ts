@@ -39,6 +39,12 @@ const schema = {
         "Marks a checkbox that changes something. Inside a stale `<StaleRegion>` it goes inert:\n`aria-disabled`, still focusable, a press is undone, and the region's reason describes it.\nIt returns by itself when the region stops being stale.",
       default: false,
     },
+    variant: {
+      enum: ['default', 'task'],
+      description:
+        'Drawing of the control. `default` is the square 18px box; `task` is the round 20px control\nof a task list, with the same checked fill and check glyph. Either way the hit area is at\nleast 24px, and at least 44px under a coarse pointer, without changing the drawn size.',
+      default: 'default',
+    },
     class: {
       type: 'string',
       description: 'Extra class names merged with `.cinder-checkbox`.',

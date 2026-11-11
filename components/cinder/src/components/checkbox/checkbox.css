@@ -10,12 +10,28 @@
     display: inline-flex;
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: center;
+    /* The box belongs beside the first line of the label, not the middle of a label that wraps
+       (COR-2360). The row below offsets the box so its centre meets that first line's centre. */
+    align-items: flex-start;
     gap: var(--cinder-space-1-5);
     inline-size: auto;
   }
 
+  /* A labelled field knows the label's line height, so the row can centre the box on the first
+     line. A field with no label (a bare box in a table cell) leaves the property unset and the
+     row adds no offset. A list row that leads with a bare checkbox sets the property itself (see
+     stacked-list-item.css). */
+  .cinder-checkbox-field:has(> .cinder-form-field__label) {
+    --_cinder-checkbox-line: calc(var(--cinder-text-sm) * var(--cinder-leading-normal));
+  }
+
+  /* The label takes the rest of the line and wraps inside it. Without this a long label's
+     max-content width does not fit beside the box, flex-wrap moves the whole label to a second
+     line, and the box is left alone above it. The description and error keep their own full-width
+     lines through their 100% flex basis. */
   .cinder-checkbox-field > .cinder-form-field__label {
+    flex: 1 1 0%;
+    min-inline-size: 0;
     order: 2;
   }
 
@@ -29,18 +45,55 @@
     order: 3;
   }
 
+  /* The row is the hit area. The painted box is 18px (20px for the task variant); the row pads it
+     out to 24px, and to 44px under a coarse pointer (WCAG 2.5.8 and 2.5.5). Equal negative margins
+     take the padding back, so the row occupies exactly the box in layout and only the area that
+     answers a press grows. A press on the padding is forwarded to the input by the component. */
   .cinder-checkbox-row {
+    --_cinder-checkbox-size: 1.125rem;
+    --_cinder-checkbox-glyph: 0.875rem;
+    --_cinder-checkbox-hit: 1.5rem;
+    --_cinder-checkbox-led: var(--_cinder-checkbox-line, var(--_cinder-checkbox-size));
+    --_cinder-checkbox-pad: calc((var(--_cinder-checkbox-hit) - var(--_cinder-checkbox-size)) / 2);
+    --_cinder-checkbox-lift: calc((var(--_cinder-checkbox-led) - var(--_cinder-checkbox-size)) / 2);
+
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-2);
+    justify-content: center;
+    box-sizing: border-box;
+    flex-shrink: 0;
+    padding: var(--_cinder-checkbox-pad);
+    margin-inline: calc(-1 * var(--_cinder-checkbox-pad));
+    /* The start margin also carries the first-line offset: half of what the label's line has over
+       the box. It is zero when the field has no label, and a negative half when the box is taller
+       than the line. */
+    margin-block-start: calc(var(--_cinder-checkbox-lift) - var(--_cinder-checkbox-pad));
+    margin-block-end: calc(-1 * var(--_cinder-checkbox-pad));
+    cursor: pointer;
+  }
+
+  .cinder-checkbox-row:has(.cinder-checkbox:disabled, .cinder-checkbox[aria-disabled='true']) {
+    cursor: not-allowed;
+  }
+
+  /* The task variant: a round 20px control for task lists. */
+  .cinder-checkbox-row--task {
+    --_cinder-checkbox-size: 1.25rem;
+    --_cinder-checkbox-glyph: 1rem;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-checkbox-row {
+      --_cinder-checkbox-hit: 2.75rem;
+    }
   }
 
   .cinder-checkbox {
     /* Custom-painted but native: keep the input in the layout so screen readers
    * and form submission see it; restyle via appearance:none. */
     appearance: none;
-    width: 1.125rem;
-    height: 1.125rem;
+    width: var(--_cinder-checkbox-size, 1.125rem);
+    height: var(--_cinder-checkbox-size, 1.125rem);
     margin: 0;
     border: 1px solid var(--cinder-control-border);
     border-radius: var(--cinder-radius-sm);
@@ -54,6 +107,13 @@
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard),
       background var(--cinder-duration-fast) var(--cinder-ease-standard),
       box-shadow var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* The task variant is a circle. It reuses the checked fill, the check glyph and every state rule
+     below, so its checked state is the same accent fill as the square box (checkbox-task.test.ts
+     holds it to 3:1 against the surface) and the unchecked ring keeps the control border tier. */
+  .cinder-checkbox.cinder-checkbox--task {
+    border-radius: var(--cinder-radius-full);
   }
 
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't
@@ -95,8 +155,8 @@
   .cinder-checkbox-field__control {
     position: relative;
     display: inline-flex;
-    inline-size: 1.125rem;
-    block-size: 1.125rem;
+    inline-size: var(--_cinder-checkbox-size, 1.125rem);
+    block-size: var(--_cinder-checkbox-size, 1.125rem);
     flex-shrink: 0;
   }
 
@@ -106,8 +166,8 @@
     position: absolute;
     inset-block-start: 50%;
     inset-inline-start: 50%;
-    inline-size: 0.875rem;
-    block-size: 0.875rem;
+    inline-size: var(--_cinder-checkbox-glyph, 0.875rem);
+    block-size: var(--_cinder-checkbox-glyph, 0.875rem);
     transform: translate(-50%, -50%);
     pointer-events: none;
     z-index: 1;
@@ -118,8 +178,8 @@
     mask-repeat: no-repeat;
     -webkit-mask-position: center;
     mask-position: center;
-    -webkit-mask-size: 0.875rem 0.875rem;
-    mask-size: 0.875rem 0.875rem;
+    -webkit-mask-size: 100% 100%;
+    mask-size: 100% 100%;
   }
 
   .cinder-checkbox:checked + .cinder-checkbox-field__indicator,
@@ -252,5 +312,13 @@
     color: var(--cinder-status-danger-text);
     margin: 0;
     padding-inline-start: calc(1.125rem + var(--cinder-space-2));
+  }
+
+  /* The task variant's box is 20px, so supporting text indents by that. */
+  .cinder-checkbox-field--task .cinder-checkbox-field__description,
+  .cinder-checkbox-field--task .cinder-form-field__description,
+  .cinder-checkbox-field--task .cinder-checkbox-field__error,
+  .cinder-checkbox-field--task .cinder-form-field__error {
+    padding-inline-start: calc(1.25rem + var(--cinder-space-2));
   }
 }

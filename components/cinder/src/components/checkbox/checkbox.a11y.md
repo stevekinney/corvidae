@@ -37,6 +37,10 @@ The checkbox is a real `<input>` element, so it participates in:
 
 Cinder does not customize any of these — they work as the platform defines them.
 
+## Target size
+
+The painted box is 18px (20px for `variant="task"`), and the row around it is the hit area: at least 24px square, and at least 44px square under `any-pointer: coarse`. The row is not a label and adds no name; it only forwards a pointer press on its padding to the input, which stays the one keyboard and assistive-technology target. This meets WCAG 2.5.8 (24px) everywhere and 2.5.5 (44px) on touch.
+
 ## Disabled
 
 `disabled` sets the native attribute. The label receives `data-disabled` for visual treatment.
