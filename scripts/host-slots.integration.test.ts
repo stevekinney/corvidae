@@ -280,7 +280,8 @@ const inProcessHolderRecordsItsOwnGroup = await inScratchPool(async (pool) => {
   await withHostSlots(
     2,
     async () => {
-      expect((await slotOwner(pool, 0))?.processGroup).toBeUndefined();
+      const owner = await slotOwner(pool, 0);
+      expect(owner?.processGroup).toBeUndefined();
     },
     poolOptions(pool, 2, { readProcessTable: () => tableWith(process.pid + 4_000_000) }),
   );

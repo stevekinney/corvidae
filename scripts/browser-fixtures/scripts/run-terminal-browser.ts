@@ -104,7 +104,9 @@ async function main(): Promise<number> {
     const ran = flattenReport(JSON.parse(await readFile(reportPath, 'utf8')) as PlaywrightReport);
     // Extra arguments, but a worker count, narrow the run; what ran must still be part of the
     // selection and pass.
-    const problems = resultProblems(selected, ran, { subset: narrowingArguments(extra).length > 0 });
+    const problems = resultProblems(selected, ran, {
+      subset: narrowingArguments(extra).length > 0,
+    });
     if (problems.length > 0) {
       process.stderr.write(
         `The terminal browser run did not match its selection:\n- ${problems.join('\n- ')}\n`,
