@@ -540,8 +540,9 @@ export function createBureauGoals<TName extends string = string>(
     // Untyped input, like `cancel`'s: every field is read defensively. A principal that is not
     // text names no one, so it may change nothing (answered as no goal); any other field of the
     // wrong type is a typed rejection, and nothing is read or written for it.
+    const untyped: unknown = given;
     const supplied: Record<string, unknown> =
-      typeof given === 'object' && given !== null ? (given as Record<string, unknown>) : {};
+      typeof untyped === 'object' && untyped !== null ? (untyped as Record<string, unknown>) : {};
     const { principal, expectedRevision, prompt, agentName, validator, maximumAttempts } = supplied;
     if (!isOptionalText(principal)) return { outcome: 'not-found' };
     if (

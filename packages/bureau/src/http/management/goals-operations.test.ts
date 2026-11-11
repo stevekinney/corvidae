@@ -379,7 +379,10 @@ describe('bureau.goals.update', () => {
   /** A goal of alice's whose first attempt is in flight. */
   async function runningGoalOfAlice(opened: OpenedBureau): Promise<string> {
     const goalRunId = idOf(await createdBy(opened, 'alice-key', 'alice-goal'));
-    await pollUntil(async () => (await opened.bureau.goals.get(goalRunId))?.status === 'running');
+    await pollUntil(async () => {
+      const goal = await opened.bureau.goals.get(goalRunId);
+      return goal?.status === 'running';
+    });
     return goalRunId;
   }
 
@@ -425,7 +428,7 @@ describe('bureau.goals.update', () => {
       expectedRevision: revision + 1_000,
       currentRevision: expect.any(Number),
     });
-    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(SECRET_PROMPT);
+    expect(await opened.bureau.goals.get(gAlice)).toHaveProperty('objective.prompt', SECRET_PROMPT);
   });
 
   it('answers what the goal rules refuse as the typed fault', async () => {
@@ -441,7 +444,7 @@ describe('bureau.goals.update', () => {
     const tooLow = await call({ maximumAttempts: 1 });
     expect(status(tooLow)).toBe(409);
     expect(tooLow.error?.data).toMatchObject({ reason: 'attempt-limit-too-low' });
-    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(SECRET_PROMPT);
+    expect(await opened.bureau.goals.get(gAlice)).toHaveProperty('objective.prompt', SECRET_PROMPT);
 
     await opened.bureau.goals.cancel(gAlice);
     const ended = await call({ prompt: NEW_PROMPT });
@@ -459,13 +462,13 @@ describe('bureau.goals.update', () => {
       const denied = await updateAtCurrentRevision(opened, key, gAlice, { prompt: NEW_PROMPT });
       expect([key, status(denied)]).toEqual([key, 404]);
     }
-    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(SECRET_PROMPT);
+    expect(await opened.bureau.goals.get(gAlice)).toHaveProperty('objective.prompt', SECRET_PROMPT);
 
     const changed = await updateAtCurrentRevision(opened, 'goals-writer-key', gAlice, {
       prompt: NEW_PROMPT,
     });
     expect(changed.error).toBeUndefined();
-    expect((await opened.bureau.goals.get(gAlice))?.objective.prompt).toBe(NEW_PROMPT);
+    expect(await opened.bureau.goals.get(gAlice)).toHaveProperty('objective.prompt', NEW_PROMPT);
   });
 });
 

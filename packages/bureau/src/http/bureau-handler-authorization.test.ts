@@ -165,10 +165,12 @@ const DEPLOYMENT_PARAMETERS = {
 
 /**
  * What the hook operations (COR-1939) need beside an identifier: a complete request, so a probe
- * reaches its own check instead of failing validation.
+ * reaches its own check instead of failing validation. A retry (COR-2022) also names a
+ * delivery, one nothing holds.
  */
 const HOOK_PARAMETERS = {
   hookId: 'x',
+  deliveryId: 'x',
   url: 'https://example.invalid/hook',
   events: ['run.settled'],
   signingSecret: 'probe-secret-0123456789',

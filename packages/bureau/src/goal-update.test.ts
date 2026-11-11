@@ -44,7 +44,10 @@ const GOAL_BOUNDS = { maximumAttempts: 3, maximumTotalSteps: 100 };
 /** A goal whose first attempt is in flight and never ends on its own. */
 async function runningGoal(bureau: Bureau, goalRunId = 'g1', bounds = GOAL_BOUNDS) {
   await bureau.goals.create(goalRequest({ goalRunId, bounds }));
-  await pollUntil(async () => (await bureau.goals.get(goalRunId))?.status === 'running');
+  await pollUntil(async () => {
+    const goal = await bureau.goals.get(goalRunId);
+    return goal?.status === 'running';
+  });
   return (await bureau.goals.get(goalRunId))!;
 }
 
@@ -186,7 +189,7 @@ describe('the goal store’s configuration update', () => {
     );
 
     expect(refused).toMatchObject({ status: 'rejected', reason: 'cancellation-requested' });
-    expect((await store.get('g'))?.objective.prompt).toBe(state.objective.prompt);
+    expect(await store.get('g')).toHaveProperty('objective.prompt', state.objective.prompt);
   });
 });
 
@@ -224,7 +227,7 @@ describe('bureau.goals.update on a running goal', () => {
     });
 
     expect(stale).toMatchObject({ outcome: 'stale-revision', goal: { revision: before.revision } });
-    expect((await bureau.goals.get('g1'))?.objective.prompt).toBe('work');
+    expect(await bureau.goals.get('g1')).toHaveProperty('objective.prompt', 'work');
   });
 
   it('refuses a change that names no field', async () => {
@@ -258,7 +261,7 @@ describe('bureau.goals.update on a running goal', () => {
       outcome: 'rejected',
       code: 'agent-fixed',
     });
-    expect((await bureau.goals.get('g1'))?.objective.agentName).toBe('worker');
+    expect(await bureau.goals.get('g1')).toHaveProperty('objective.agentName', 'worker');
     expect(
       await updateNow(bureau, 'g1', { agentName: 'worker', prompt: 'work harder' }),
     ).toMatchObject({ outcome: 'updated', goal: { objective: { agentName: 'worker' } } });
@@ -283,7 +286,7 @@ describe('bureau.goals.update on a running goal', () => {
       outcome: 'rejected',
       code: 'attempt-limit-fixed',
     });
-    expect((await bureau.goals.get('g-last'))?.bounds.maximumAttempts).toBe(1);
+    expect(await bureau.goals.get('g-last')).toHaveProperty('bounds.maximumAttempts', 1);
     expect(await updateNow(bureau, 'g1', { maximumAttempts: 257 })).toMatchObject({
       outcome: 'rejected',
       code: 'invalid-configuration',
@@ -299,7 +302,10 @@ describe('bureau.goals.update on a running goal', () => {
       ],
     });
     await bureau.goals.create(goalRequest({ requireDeterministicValidation: true }));
-    await pollUntil(async () => (await bureau.goals.get('g1'))?.status === 'running');
+    await pollUntil(async () => {
+      const goal = await bureau.goals.get('g1');
+      return goal?.status === 'running';
+    });
 
     expect(
       await updateNow(bureau, 'g1', { validator: { name: 'absent', version: '1' } }),
@@ -314,7 +320,7 @@ describe('bureau.goals.update on a running goal', () => {
     expect(
       await updateNow(bureau, 'g1', { validator: { name: 'check', version: '2' } }),
     ).toMatchObject({ outcome: 'rejected', code: 'unsupported-validation' });
-    expect((await bureau.goals.get('g1'))?.validator).toEqual(CHECK);
+    expect(await bureau.goals.get('g1')).toHaveProperty('validator', CHECK);
   });
 
   it('answers a goal another principal owns as one that does not exist', async () => {
