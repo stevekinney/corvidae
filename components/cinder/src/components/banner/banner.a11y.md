@@ -16,6 +16,7 @@ The root element is a `<div>` with:
 | `success` | `Success`            |
 | `warning` | `Warning`            |
 | `danger`  | `Error`              |
+| `feature` | `Announcement`       |
 
 `danger` maps to `"Error"` (not `"Danger"`) because screen-reader users hear a semantically meaningful word. The variant token name remains `danger` to match `--cinder-status-danger-solid`.
 
@@ -49,6 +50,10 @@ The Retry now button is a native `<button>` placed first in the actions region s
 Without a preset, `dataUpdatedAt` adds a stale-data notice: plain text with a `<time>` element carrying the ISO `datetime`, so the age reads as "Showing data from 2 minutes ago".
 
 The `neutral` variant is named `Notice`.
+
+## Feature banner
+
+A `feature` banner announces something new; it is not a status, so it keeps `role="region"` and never becomes a `status`, an `alert` or a live region. With a `title` and no `aria-label` or `aria-labelledby` of the page's own, the region is named by its title through `aria-labelledby`; without a title it is named `Announcement`. The `art` glyph and its disc are `aria-hidden`: the title and the words carry the meaning. The title is a `<strong>`, like every banner title, so the page's own heading outline is unchanged.
 
 ## Why not `role="alert"`?
 

@@ -73,6 +73,36 @@ Passing `children` replaces the generated words and keeps everything else; with 
 
 The actions stack under the message at every width, in a row that wraps, and the message is capped at 68 characters wide; a button label never wraps. Below 640px, and on a touch pointer, each action is 44px tall. `stackActions` goes further below 640px: the actions take a row of their own, one above the next, each a full-width button, which is how a phone's restart notice offers Revert and Restart now.
 
+### Feature
+
+`variant="feature"` announces something new or invites the person to try a feature. It is calm and has no images: the flair comes from an indigo wash over the surface, a soft glow at the inline end, glyph art and type. It draws a rounded block with no border and no status colour. `art` holds one icon, drawn in a 48px accent disc with an 8px translucent halo and hidden from assistive technology. The `title` is 16px bold, with one muted line of words under it, and the actions trail at the inline end. A feature banner is dismissible like any other, through `dismissible` and `onDismiss`.
+
+```svelte
+<script lang="ts">
+  import { Banner, Button } from '@lostgradient/cinder';
+  import Sparkles from '@lucide/svelte/icons/sparkles';
+</script>
+
+<Banner variant="feature" title="Plan a night out with friends">
+  Pick three bars and share one link; everyone votes before you go.
+  {#snippet art()}
+    <Sparkles aria-hidden="true" />
+  {/snippet}
+  {#snippet actions()}
+    <Button variant="primary" size="sm" label="Start a plan" />
+    <Button variant="ghost" size="sm" label="Not now" />
+  {/snippet}
+</Banner>
+```
+
+The banner reads its own width, not the viewport's: below 560px the actions drop under the words in the body column, and a button label never wraps. It is a `region` named by its title ("Announcement" when it has none), never a `status` or an `alert`, so nothing is announced as it appears.
+
+When to show one:
+
+- At most one feature banner on a screen.
+- Never for an error or a system state. A status belongs in an `info`, `success`, `warning` or `danger` banner, or a connection preset.
+- Never alongside a hero that already carries an accent tone, such as a page header with the `accent` or `night` tone. One accent moment per screen is enough.
+
 ## Props
 
 <!-- generated:props:start -->
@@ -96,8 +126,9 @@ The actions stack under the message at every width, in a row that wraps, and the
 | `timeZone` | `string` | no | — | IANA time zone of the preset's "as of" time. Defaults to the viewer's zone. |
 | `title` | `string` | no | — | A bold lead for the banner, such as "1 change waits for a restart". With a `preset` it replaces the preset's lead and sits inline before the words; otherwise it sits on its own line above them. |
 | `titleLayout` | `"inline"` \| `"stacked"` | no | — | Where the title sits. A preset runs it inline, as the first words of its sentence; a banner without a preset puts it on its own line above the message. |
-| `variant` | `"neutral"` \| `"info"` \| `"success"` \| `"warning"` \| `"danger"` | no | `"info"` | Visual + semantic variant. Default `'info'`. |
+| `variant` | `"neutral"` \| `"info"` \| `"success"` \| `"warning"` \| `"danger"` \| `"feature"` | no | `"info"` | Visual + semantic variant. Default `'info'`. |
 | `actions` | `(opaque)` | no | — | Optional trailing CTA region (e.g., "Renew now" button). Not expressible in JSON Schema; see the component types for the signature. |
+| `art` | `(opaque)` | no | — | The glyph art of a `feature` banner: one icon, drawn in a 48px accent disc with an 8px translucent halo at the start of the banner. It is decorative (`aria-hidden`). Other variants ignore it. Not expressible in JSON Schema; see the component types for the signature. |
 | `children` | `(opaque)` | no | — | Banner body content. Optional with a `preset`, which writes its own words. Not expressible in JSON Schema; see the component types for the signature. |
 | `dataUpdatedAt` | `(opaque)` | no | — | When the data still on screen was last loaded. With a `preset` and no `children` the copy names it as an absolute time with its zone ("as of 10:44 AM CST"). Otherwise it adds a stale-data notice that reads "Showing data from" followed by a live relative time such as "2 minutes ago". Not expressible in JSON Schema; see the component types for the signature. |
 | `icon` | `(opaque)` | no | — | A glyph at the start of the banner, drawn decoratively (`aria-hidden`). The `offline`, `unreachable` and `stopped` presets supply their own connection glyph, and a `success` banner leads with a check-circle unless this draws another. Not expressible in JSON Schema; see the component types for the signature. |

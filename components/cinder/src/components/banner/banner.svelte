@@ -9,6 +9,7 @@
    * @useWhen Communicating a persistent page-level status the user can dismiss, such as a maintenance window or trial expiry.
    * @useWhen Reporting that the browser is offline, the server is unreachable, a refresh failed or a restart is running, using a connection preset.
    * @useWhen Pinning a non-urgent message above page content that should remain readable until acknowledged.
+   * @useWhen Announcing something new or inviting the person to try a feature, with the feature variant and its glyph art.
    * @avoidWhen Announcing an urgent, time-sensitive message — use alert so assistive tech reads it immediately.
    * @avoidWhen Highlighting an inline aside next to related prose — use callout instead.
    * @related alert, callout, toast-region
@@ -19,6 +20,7 @@
     success: 'Success',
     warning: 'Warning',
     danger: 'Error',
+    feature: 'Announcement',
   } as const;
 
   export type { BannerPreset, BannerProps, BannerVariant } from './banner.types.ts';
@@ -92,6 +94,7 @@
     title,
     titleLayout,
     icon,
+    art,
     sticky = false,
     stackActions = false,
     onRestart,
@@ -102,6 +105,9 @@
     actions,
     ...rest
   }: BannerProps = $props();
+
+  const generatedId = $props.id();
+  const titleId = `${generatedId}-title`;
 
   let visible = $state(true);
   let rootElement: HTMLDivElement | undefined = $state();
@@ -168,8 +174,12 @@
 
   const presetConfiguration = $derived(preset ? PRESETS[preset] : undefined);
   const resolvedVariant = $derived(presetConfiguration?.variant ?? variant);
+  const isFeature = $derived(resolvedVariant === 'feature');
+  // A feature banner is named by its own title, unless the page names it another way.
+  const namedByTitle = $derived(isFeature && Boolean(title) && !rest['aria-label']);
+  const ariaLabelledBy = $derived(rest['aria-labelledby'] ?? (namedByTitle ? titleId : undefined));
   const ariaLabel = $derived(
-    rest['aria-labelledby']
+    ariaLabelledBy
       ? undefined
       : (rest['aria-label'] ??
           presetConfiguration?.label ??
@@ -218,8 +228,8 @@
     {...restWithoutLiveRegion}
     class={classNames(
       'cinder-banner',
-      resolvedVariant !== 'neutral' && 'cinder-_status-surface',
-      resolvedVariant !== 'neutral' && 'cinder-_status-surface-border',
+      resolvedVariant !== 'neutral' && !isFeature && 'cinder-_status-surface',
+      resolvedVariant !== 'neutral' && !isFeature && 'cinder-_status-surface-border',
       className,
     )}
     data-cinder-variant={resolvedVariant}
@@ -227,8 +237,11 @@
     data-cinder-sticky={sticky ? 'true' : undefined}
     role="region"
     aria-label={ariaLabel}
+    aria-labelledby={ariaLabelledBy}
   >
-    {#if icon || presetConfiguration?.glyph || resolvedVariant === 'success'}
+    {#if isFeature && art}
+      <span class="cinder-banner__art" aria-hidden="true">{@render art()}</span>
+    {:else if icon || presetConfiguration?.glyph || resolvedVariant === 'success'}
       <span class="cinder-banner__icon" aria-hidden="true">
         {#if icon}
           {@render icon()}
@@ -244,8 +257,10 @@
 
     <div class="cinder-banner__content">
       {#if resolvedTitle}
-        <strong class="cinder-banner__title" data-cinder-title-layout={resolvedTitleLayout}
-          >{resolvedTitle}</strong
+        <strong
+          id={isFeature ? titleId : undefined}
+          class="cinder-banner__title"
+          data-cinder-title-layout={resolvedTitleLayout}>{resolvedTitle}</strong
         >{' '}
       {/if}
       {#if generated}

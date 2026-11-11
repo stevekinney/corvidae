@@ -6,11 +6,13 @@ import type { BannerPreset, BannerPresetFacts } from './banner-presets.ts';
  * Visual + semantic variants for {@link Banner}.
  *
  * `neutral` is a plain notice that is not a problem and not a status, such as a setting the
- * person chose. Note: `banner.svelte` uses `danger` (matching the semantic token
+ * person chose. `feature` announces something new or invites the person to try a feature: a
+ * rounded block with an indigo wash, glyph art from `art`, a 16px bold title and a muted line,
+ * with no border and no status colour. Note: `banner.svelte` uses `danger` (matching the semantic token
  * `--cinder-status-danger-solid`) where `alert.svelte` uses `error`. The divergence is
  * intentional and tracked in `banner.a11y.md`.
  */
-export type BannerVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger';
+export type BannerVariant = 'neutral' | 'info' | 'success' | 'warning' | 'danger' | 'feature';
 export type { BannerPreset } from './banner-presets.ts';
 /**
  * Props for the page-level {@link Banner} component.
@@ -115,6 +117,12 @@ export type BannerProps = Omit<HTMLAttributes<HTMLDivElement>, 'children' | 'cla
    * leads with a check-circle unless this draws another.
    */
   icon?: Snippet;
+  /**
+   * The glyph art of a `feature` banner: one icon, drawn in a 48px accent disc with an 8px
+   * translucent halo at the start of the banner. It is decorative (`aria-hidden`). Other variants
+   * ignore it.
+   */
+  art?: Snippet;
   /** Keeps the banner at the top of its scroll container while the page scrolls under it. */
   sticky?: boolean;
   /**

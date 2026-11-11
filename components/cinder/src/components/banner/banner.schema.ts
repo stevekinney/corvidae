@@ -10,7 +10,7 @@ const schema = {
         'A bold lead for the banner, such as "1 change waits for a restart". With a `preset` it\nreplaces the preset\'s lead and sits inline before the words; otherwise it sits on its own line\nabove them.',
     },
     variant: {
-      enum: ['neutral', 'info', 'success', 'warning', 'danger'],
+      enum: ['neutral', 'info', 'success', 'warning', 'danger', 'feature'],
       description: "Visual + semantic variant. Default `'info'`.",
       default: 'info',
     },
@@ -119,6 +119,12 @@ const schema = {
         name: 'actions',
         reason: 'function-or-snippet',
         description: 'Optional trailing CTA region (e.g., "Renew now" button).',
+      },
+      {
+        name: 'art',
+        reason: 'function-or-snippet',
+        description:
+          'The glyph art of a `feature` banner: one icon, drawn in a 48px accent disc with an 8px\ntranslucent halo at the start of the banner. It is decorative (`aria-hidden`). Other variants\nignore it.',
       },
       {
         name: 'children',

@@ -250,12 +250,126 @@
   }
 
   /* ----------------------------------------
+ * Feature
+ *
+ * An announcement, not a status (COR-2363): a rounded block with an indigo wash (the accent mixed
+ * 9% over the surface) and a soft radial glow at the inline end, with no border and no status
+ * colour. The glyph art sits in a 48px accent disc with an 8px translucent halo, the title is
+ * 16px bold over one muted line, and the actions trail at the inline end. The banner is its own
+ * inline-size container, so below 560px of its own width the actions drop under the words in
+ * the body column, whatever the viewport.
+ * ---------------------------------------- */
+
+  .cinder-banner[data-cinder-variant='feature'] {
+    --_cinder-banner-ring: var(--cinder-ring-color);
+    --_cinder-banner-glow-at: 100% 50%;
+    container-type: inline-size;
+    container-name: cinder-banner;
+    /* The art, the words, the trailing actions and the dismiss button. Below 560px the actions
+     * move to the second row of the words' column and their own track collapses to nothing. */
+    grid-template-columns: auto minmax(0, 1fr) auto auto;
+    align-items: center;
+    padding-block: var(--cinder-space-4);
+    padding-inline: var(--cinder-space-5);
+    border: 0;
+    border-radius: var(--cinder-radius-surface);
+    background:
+      radial-gradient(
+        ellipse 45% 140% at var(--_cinder-banner-glow-at),
+        color-mix(in oklch, var(--cinder-accent-solid) 18%, transparent),
+        transparent 70%
+      ),
+      color-mix(in oklch, var(--cinder-surface), var(--cinder-accent-solid) 9%);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-banner[data-cinder-variant='feature']:dir(rtl) {
+    --_cinder-banner-glow-at: 0% 50%;
+  }
+
+  /* One icon in a 48px accent disc, with an 8px translucent halo the margin leaves room for. */
+  .cinder-banner__art {
+    display: inline-flex;
+    grid-column: 1;
+    grid-row: 1;
+    align-items: center;
+    justify-content: center;
+    inline-size: 3rem;
+    block-size: 3rem;
+    margin: var(--cinder-space-2);
+    margin-inline-end: calc(var(--cinder-space-2) + var(--cinder-space-4));
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-accent-solid);
+    color: var(--cinder-accent-contrast);
+    box-shadow: 0 0 0 var(--cinder-space-2)
+      color-mix(in oklch, var(--cinder-accent-solid) 16%, transparent);
+  }
+
+  .cinder-banner__art > :where(svg) {
+    inline-size: 1.5rem;
+    block-size: 1.5rem;
+  }
+
+  /* The words read muted under a 16px bold title in the default text colour. */
+  .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__content {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-banner[data-cinder-variant='feature'] .cinder-banner__title {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-lg);
+    font-weight: var(--cinder-font-bold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-banner[data-cinder-variant='feature'] .cinder-banner__text {
+    color: var(--cinder-text-muted);
+  }
+
+  /* The actions trail on the inline end of the first row, on one line. */
+  .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__actions {
+    grid-column: 3;
+    grid-row: 1;
+    flex-wrap: nowrap;
+    justify-self: end;
+    margin-inline-start: var(--cinder-space-4);
+  }
+
+  .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__dismiss {
+    grid-column: 4;
+  }
+
+  /* Below 560px of the banner's own width, the actions drop under the words in the body column,
+   * and wrap between buttons (never inside one). */
+  @container cinder-banner (max-width: 34.99rem) {
+    .cinder-banner[data-cinder-variant='feature'] > .cinder-banner__actions {
+      grid-column: 2;
+      grid-row: 2;
+      flex-wrap: wrap;
+      justify-self: start;
+      margin-inline-start: 0;
+    }
+  }
+
+  /* ----------------------------------------
  * Forced-colors / high-contrast
  * ---------------------------------------- */
 
   @media (forced-colors: active) {
     .cinder-banner {
       border-block: 1px solid CanvasText;
+    }
+
+    /* The feature banner draws no border and paints its wash with color-mix, which forced colours
+     * drop; give it the system edge and canvas instead. */
+    .cinder-banner[data-cinder-variant='feature'] {
+      border: 1px solid CanvasText;
+      background: Canvas;
+    }
+
+    .cinder-banner__art {
+      border: 1px solid CanvasText;
+      box-shadow: none;
     }
 
     /* `color-mix` against transparent is unreliable in forced-colors mode; pin to ButtonFace.

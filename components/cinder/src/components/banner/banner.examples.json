@@ -38,6 +38,12 @@
       "title": "Neutral banner",
       "description": "The neutral variant for a page-wide note that is not a warning or a success: a stacked bold title over the sentence, with no status colour.",
       "code": "<script lang=\"ts\">\n  import { Banner } from '@lostgradient/cinder';\n</script>\n\n<Banner variant=\"neutral\" dismissible={false} title=\"This agent has no memory yet\">\n  Memory is written when the agent learns a fact about you. Nothing has been written.\n</Banner>\n"
+    },
+    {
+      "id": "feature",
+      "title": "Feature banner",
+      "description": "An announcement with glyph art, an indigo wash, a bold title, one muted line and trailing actions. It is a labelled region, not a status, and below 560px of its own width the actions drop under the words.",
+      "code": "<script lang=\"ts\">\n  import { Banner, Button } from '@lostgradient/cinder';\n  import Sparkles from '@lucide/svelte/icons/sparkles';\n</script>\n\n<Banner variant=\"feature\" title=\"Plan a night out with friends\">\n  Pick three bars and share one link; everyone votes before you go.\n  {#snippet art()}\n    <Sparkles aria-hidden=\"true\" />\n  {/snippet}\n  {#snippet actions()}\n    <Button variant=\"primary\" size=\"sm\" label=\"Start a plan\" />\n    <Button variant=\"ghost\" size=\"sm\" label=\"Not now\" />\n  {/snippet}\n</Banner>\n"
     }
   ]
 }
