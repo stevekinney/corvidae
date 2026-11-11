@@ -36,6 +36,7 @@ export {
 export { assertRunInputAccepted } from './session/session-controller-run-input-receipt.ts';
 export {
   ChatRunFailureError,
+  type ChatApprovalExpiryObservation,
   type ChatElicitationActivity,
   type ChatExecutionOwner,
   type ChatHistoryToken,

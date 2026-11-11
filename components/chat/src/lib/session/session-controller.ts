@@ -21,8 +21,12 @@ import type {
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
 import { getOwn } from '../utilities/get-own.ts';
 import {
+  approvalClock,
+  isPendingApprovalResult,
   latestResolvedApprovalOwner,
   rebuildApprovalState,
+  retireSettledApprovals,
+  toolResultOf,
 } from './session-controller-approval-state.ts';
 import { createFollowUpQueue, type RunOutcome } from './session-controller-follow-ups.ts';
 import {
@@ -215,6 +219,7 @@ export function createChatSessionController(
       toolOwners,
       pendingApprovals,
       lifecycle.activeUserMessageId,
+      approvalClock(options),
     );
     if (pendingApprovals.size > 0) {
       throw new Error('Cannot start a new turn while tool approval is pending');
@@ -233,6 +238,9 @@ export function createChatSessionController(
     pendingApprovals.delete(id);
     if (owner) resolvedApprovalOwners.add(owner);
     update(replaceToolResult(options.getConversation(), id, result));
+    // COR-2280: an approval that expired since it was admitted no longer holds the turn back. Only
+    // calls whose current result does not wait at this moment leave; a genuine one still blocks.
+    retireSettledApprovals(options.getConversation(), pendingApprovals, approvalClock(options));
     if (pendingApprovals.size === 0) {
       const continuationOwner = latestResolvedApprovalOwner(
         options.getConversation(),
@@ -262,6 +270,7 @@ export function createChatSessionController(
       toolOwners,
       pendingApprovals,
       lifecycle.activeUserMessageId,
+      approvalClock(options),
     );
     return pendingApprovals.size > 0;
   };
@@ -405,6 +414,7 @@ export function createChatSessionController(
               toolOwners,
               pendingApprovals,
               lifecycle.activeUserMessageId,
+              approvalClock(options),
             );
             if (!pendingApprovals.has(id)) {
               throw new Error('Cannot resolve a tool approval that is not pending');
@@ -459,9 +469,42 @@ export function createChatSessionController(
         }
       : {}),
   };
+  const reconcileApprovalExpiry: ChatSessionController['reconcileApprovalExpiry'] = ({
+    toolCallId,
+    expiresAt,
+    expectedAction,
+  }) => {
+    if (lifecycle.disposed) return false;
+    const instant = Date.parse(expiresAt);
+    if (!Number.isFinite(instant)) return false;
+    const expected = fingerprintApprovalAction(expectedAction);
+    const history = options.getConversation();
+    const current = toolResultOf(history, toolCallId);
+    if (
+      expected === undefined ||
+      current?.outcome !== 'action_required' ||
+      current.action?.type !== 'approval' ||
+      fingerprintApprovalAction(current.action) !== expected
+    ) {
+      return false;
+    }
+    const canonical = new Date(instant).toISOString();
+    const reconciled: ToolResult =
+      current.action.expiresAt === canonical
+        ? current
+        : { ...current, action: { ...current.action, expiresAt: canonical } };
+    // An identical observation writes nothing, so a host that reconciles on every render
+    // publishes no history and wakes nothing.
+    if (reconciled !== current) update(replaceToolResult(history, toolCallId, reconciled));
+    const waits = isPendingApprovalResult(reconciled, approvalClock(options));
+    if (waits) pendingApprovals.add(toolCallId);
+    else pendingApprovals.delete(toolCallId);
+    return true;
+  };
   return {
     adapter,
     stop: stopActiveRun,
+    reconcileApprovalExpiry,
     captureHistoryToken,
     isHistoryTokenCurrent,
     adoptHistory,

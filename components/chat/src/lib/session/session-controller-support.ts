@@ -5,6 +5,7 @@ import { isFollowUpMessage, removeMessage } from '../components/chat/builders.ts
 import type {
   ConversationHistory,
   MessageInput,
+  ToolAction,
   ToolResult,
 } from '../components/chat/conversation-model.ts';
 import type { ChatAttachment } from '../components/chat/input/chat-attachment.ts';
@@ -284,9 +285,36 @@ export function ownRowEnvironment(
   return options.now === undefined ? undefined : { now: options.now };
 }
 
+/**
+ * What a host learned about one approval's deadline from an authority the transcript does not
+ * carry, such as the server's review of it (COR-2280). `expectedAction` is the approval action the
+ * host read from the controller's own result before it asked, so an answer that comes back after
+ * the approval changed cannot land on the new one.
+ */
+export type ChatApprovalExpiryObservation = {
+  /** The call whose approval the observation is about. */
+  toolCallId: string;
+  /** When the approval stops being answerable, as an ISO 8601 time or anything `Date.parse` reads. */
+  expiresAt: string;
+  /** The approval action the observation was asked about, exactly as the transcript held it. */
+  expectedAction: Extract<ToolAction, { type: 'approval' }>;
+};
+
 export type ChatSessionController = {
   adapter: ChatAdapter;
   stop: () => Promise<void>;
+  /**
+   * Imports an approval's deadline the host learned elsewhere (COR-2280). It applies only to a call
+   * whose current result is an `action_required` approval whose action is structurally the
+   * `expectedAction`, and only for a valid instant; anything else returns `false` and changes
+   * nothing. An accepted observation rewrites the action's `expiresAt` as a canonical ISO time, in
+   * place (the row keeps its id, order and metadata, and every other field), writes nothing when it
+   * already reads so, and updates whether that one call still holds the next turn back, read on the
+   * host's clock (`now`). It returns `true` then, an unchanged deadline included. It never decides
+   * an approval, grants nothing, and leaves every other call's prepared decision and owner alone.
+   * It fences the action, not a server round: a host checks its own round and generation first.
+   */
+  reconcileApprovalExpiry: (observation: ChatApprovalExpiryObservation) => boolean;
   /** The session's position right now, to carry across an asynchronous read. */
   captureHistoryToken: () => ChatHistoryToken;
   /** Whether a token still describes the session its holder last saw. */

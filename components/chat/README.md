@@ -260,6 +260,38 @@ The client's rows are authoritative. The terminal `run.completed` frame carries 
 
 The transport does not read `ACTIVITY_SNAPSHOT`, so an A2UI surface a Bureau streams as one (activity type `a2ui-surface`) never reaches the chat history. A host that wants the surface reads those events from the same stream itself and renders them with [`A2uiSurface`](#a2ui-surfaces-experimental); [Bureau's interactive-surface contract](../../packages/bureau/documentation/interactive-surface.md#reconnecting-and-reconstructing-a-surface) shows the fold. The transport also has no path for a surface action: it sends nothing back to the backend, and Bureau serves no AG-UI route that takes one.
 
+### Approval deadlines
+
+A pending tool approval stops holding the next turn back once its action's `expiresAt` passes, read on the host's clock (`now`) when it gave one; the expired row stays in the transcript. When the host learns a deadline the transcript does not carry, such as the server's review of an approval whose only deadline is its signed binding, it hands it to `reconcileApprovalExpiry`. The observation lands only on the call's current `action_required` approval whose action is structurally the one the host read before it asked, and only as a valid instant; it is rewritten in place as a canonical ISO time, and an identical one writes nothing. It returns whether the observation was accepted. It never decides the approval, and it fences the action, not a server round: check your own round and generation before calling it.
+
+```ts
+import {
+  createChatSessionController,
+  type ChatApprovalExpiryObservation,
+  type ChatSessionTransport,
+  type ConversationHistory,
+} from '@lostgradient/chat';
+
+declare function getConversation(): ConversationHistory;
+declare function setConversation(conversation: ConversationHistory): void;
+declare const transport: ChatSessionTransport;
+// The approval action read from the controller's own result before the review was asked.
+declare const expectedAction: ChatApprovalExpiryObservation['expectedAction'];
+
+const controller = createChatSessionController({
+  executionOwner: 'server',
+  getConversation,
+  setConversation,
+  transport,
+});
+
+const accepted: boolean = controller.reconcileApprovalExpiry({
+  toolCallId: 'call-1',
+  expiresAt: '2026-11-02T16:46:00.000Z',
+  expectedAction,
+});
+```
+
 ## Questions
 
 A tool result with `outcome: 'action_required'` and an `input` action that carries a JSON Schema renders as a question, not as a plain result. Chat derives a `tool-input` message part from it, shows the action's `message` as the prompt, and draws the control the schema asks for in place (COR-1309, COR-1836). The part is titled "Input requested by" the tool's name. The schema is the answer's schema (draft 2020-12); the `x-` keywords are the ones Operative's `requestHumanInput` documents.

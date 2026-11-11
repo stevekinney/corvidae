@@ -8,6 +8,7 @@ import type { ChatPushHandlers } from '../components/chat/adapter/chat-adapter.t
 import { appendToolCall, appendToolResult } from '../components/chat/builders.ts';
 import type { ConversationHistory, ToolResult } from '../components/chat/conversation-model.ts';
 import { getOwn } from '../utilities/get-own.ts';
+import { approvalClock, isPendingApprovalResult } from './session-controller-approval-state.ts';
 import { remapMessageId } from './session-controller-rows.ts';
 import type { TurnState } from './session-controller-run.ts';
 import {
@@ -343,7 +344,8 @@ function applyToolResult(
   state.toolResults.add(callId);
   const requiresApproval = result.outcome === 'action_required' && result.action !== undefined;
   state.approvalRequired ||= requiresApproval;
-  if (requiresApproval) pendingApprovals.add(callId);
+  // COR-2280: an approval admitted after its deadline, on the host's clock, holds no turn back.
+  if (isPendingApprovalResult(result, approvalClock(options))) pendingApprovals.add(callId);
   else pendingApprovals.delete(callId);
   const next = appendToolResult(options.getConversation(), result);
   update(next);
