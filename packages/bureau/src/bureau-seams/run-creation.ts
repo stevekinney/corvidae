@@ -29,14 +29,13 @@ import type { BureauCore, ChatRunSpend } from './core';
 import { BureauError, toBadRequest } from '../bureau-errors';
 import type { BureauSteeringGate } from '../steering';
 import {
-  type BureauToolbox,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
   SESSION_AGENT_REVISION_METADATA_KEY,
-  type SessionAgentRun,
   registerTrailingOnStep,
   sessionRunMediaOptions,
-  wireDurableOptInTools,
 } from '../runtime-composition';
+import { type BureauToolbox, type SessionAgentRun } from '../runtime-composition-types';
+import { wireDurableOptInTools } from '../run-request-context';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { Conversation, ConversationHistory } from 'conversationalist';

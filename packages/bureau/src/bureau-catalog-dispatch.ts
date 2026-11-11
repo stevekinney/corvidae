@@ -37,11 +37,9 @@ import {
 } from './goal-cost-estimation';
 import { goalAttemptId } from './goal-state';
 import { ownerOrLocal } from './owner-of-record';
-import {
-  type RuntimeComposition,
-  unsetMediaOptions,
-  wireDurableOptInTools,
-} from './runtime-composition';
+import { unsetMediaOptions } from './runtime-composition';
+import { type RuntimeComposition } from './runtime-composition-types';
+import { wireDurableOptInTools } from './run-request-context';
 import type { RunAttribution } from './serialization';
 import type { DecideToolWiring } from './decisions/decide-tool';
 import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';

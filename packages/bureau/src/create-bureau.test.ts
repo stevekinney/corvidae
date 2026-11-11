@@ -119,13 +119,9 @@ import { createAgentSkills } from './agent-skills';
 import { createCatalogSettlementTracker, type DurableEnd } from './catalog-run-settlement';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { agentFileDirectory } from './sources/agent-file-directory';
-import {
-  createHumanWaitContext,
-  createMemoryPersistHook,
-  createRunMemoryAuthority,
-  createRuntimeComposition,
-  createWakeupContext,
-} from './runtime-composition';
+import { createRuntimeComposition } from './runtime-composition';
+import { createHumanWaitContext, createWakeupContext } from './run-request-context';
+import { createMemoryPersistHook, createRunMemoryAuthority } from './run-memory';
 import { listHeldTasks, waitForCondition, waitForRunState, waitForTaskState } from './test';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { type Bureau, type BureauContexts, type BureauDiagnostic, type ServerFrame } from './types';

@@ -188,8 +188,9 @@ import type {
   ScheduledFireServicesNotice,
   ScheduledFireSettlement,
   ScheduledSessionNotice,
-} from './runtime-composition';
-import { createMaintenanceMemoryAuthority, createRuntimeComposition } from './runtime-composition';
+} from './runtime-composition-types';
+import { createRuntimeComposition } from './runtime-composition';
+import { createMaintenanceMemoryAuthority } from './run-memory';
 import {
   resolveDiagnosticSink,
   type RunAttribution,

@@ -31,7 +31,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import { createMemoryRecallHook, createRunMemoryAuthority } from './runtime-composition';
+import { createMemoryRecallHook, createRunMemoryAuthority } from './run-memory';
 import { waitForCondition, waitForTaskState } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Bureau } from './types';

@@ -49,7 +49,7 @@ import {
 } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
-import type { CatalogRunRecoveryRecord } from './runtime-composition';
+import type { CatalogRunRecoveryRecord } from './catalog-run-recovery-record';
 import { isSessionAuthorityAuthorized } from './session-authority';
 import { freshHandoff, pollUntil, transcriptOf } from './testing/goal-fixtures.test-support';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';

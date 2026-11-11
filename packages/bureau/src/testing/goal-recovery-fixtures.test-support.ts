@@ -34,7 +34,8 @@ import {
 import { createGoalStore, type GoalStore } from '../goal-store';
 import type { BureauGoalRequest } from '../goal-types';
 import { ownerOrLocal } from '../owner-of-record';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX, createRuntimeComposition } from '../runtime-composition';
+import { createRuntimeComposition } from '../runtime-composition';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from '../catalog-run-recovery-record';
 import type { Bureau } from '../types';
 import { createDiagnostics, goalRequest } from './goal-fixtures.test-support';
 

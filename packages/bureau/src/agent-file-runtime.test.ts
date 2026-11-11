@@ -18,7 +18,7 @@ import {
   AGENT_SNAPSHOT_KEY_PREFIX,
   createAgentSnapshotStore,
 } from './agent-snapshot-store';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './catalog-run-recovery-record';
 import {
   type AgentFileFixture,
   agentFileText,

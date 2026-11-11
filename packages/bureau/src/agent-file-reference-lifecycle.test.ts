@@ -27,7 +27,8 @@ import {
   GoalAttemptInvalidCostEstimationError,
   GoalAttemptTombstonedError,
 } from './bureau-catalog-dispatch';
-import type { CatalogRunRecoveryLoad, RuntimeComposition } from './runtime-composition';
+import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
+import type { RuntimeComposition } from './runtime-composition-types';
 import type { RunAttribution } from './serialization';
 import {
   type AgentFileFixture,

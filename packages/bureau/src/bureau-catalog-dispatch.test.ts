@@ -32,7 +32,7 @@ import {
   GoalAttemptTombstonedError,
 } from './bureau-catalog-dispatch';
 import { registerGoalAttemptFence } from './goal-attempt-fence';
-import type { RuntimeComposition } from './runtime-composition';
+import type { RuntimeComposition } from './runtime-composition-types';
 import type { RunAttribution } from './serialization';
 import { lastPromptOf } from './testing/goal-fixtures.test-support';
 

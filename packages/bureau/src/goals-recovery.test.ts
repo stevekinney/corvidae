@@ -20,7 +20,7 @@ import { commitCancellation } from './goal-controller';
 import { MAXIMUM_CONTROLLER_RESTARTS } from './goal-recovery';
 import { goalRecordKey, type GoalState, goalTransitionId } from './goal-state';
 import { createGoalStore } from './goal-store';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './catalog-run-recovery-record';
 import {
   cancelUntilSettled,
   CHECK,

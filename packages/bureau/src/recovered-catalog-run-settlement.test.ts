@@ -18,7 +18,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import { AGENT_RUN_REFERENCE_KEY_PREFIX } from './agent-snapshot-store';
-import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './runtime-composition';
+import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from './catalog-run-recovery-record';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';

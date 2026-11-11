@@ -25,7 +25,8 @@ import type {
   SessionPendingReview,
 } from '../types';
 import type { BureauCore, ReviewAuditAttachment, ScheduledFireApprovalEnding } from './core';
-import { type BureauToolbox, isScheduledFireAuthority } from '../runtime-composition';
+import { isScheduledFireAuthority } from '../runtime-composition';
+import { type BureauToolbox } from '../runtime-composition-types';
 import type { JSONValue, PeerCallJournalEntry } from '@lostgradient/operative';
 import { PinnedToolUnavailableError, pinnedToolUnavailable } from '../bureau-errors';
 import { ReviewCanceledEvent } from '../events';

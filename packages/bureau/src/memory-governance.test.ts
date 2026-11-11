@@ -26,7 +26,7 @@ import {
   createToolMemoryAuthority,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
   type RunMemoryIdentity,
-} from './runtime-composition';
+} from './run-memory';
 import { waitForTaskState } from './test';
 import type { AgentDefinitions } from './agent-catalog';
 

@@ -1,6 +1,6 @@
 import type { RuntimeServices } from '@lostgradient/lifecycle';
 
-import type { RuntimeComposition } from './runtime-composition';
+import type { RuntimeComposition } from './runtime-composition-types';
 import type { BureauOptions } from './types';
 
 declare const runtime: RuntimeComposition;

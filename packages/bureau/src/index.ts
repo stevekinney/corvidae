@@ -615,18 +615,24 @@ export type {
 } from './task-origin';
 export type { ScorerSampler, ScorerSamplerOptions } from './scorers';
 export { createScorerSampler } from './scorers';
-export type { BureauToolbox, DurableComposition, RuntimeComposition } from './runtime-composition';
+export type {
+  BureauToolbox,
+  DurableComposition,
+  RuntimeComposition,
+} from './runtime-composition-types';
+export {
+  createRuntimeComposition,
+  resolveProviderGenerate,
+  resolveProviderDecide,
+} from './runtime-composition';
 export {
   createMemoryPersistHook,
   createMemoryRecallHook,
   createRunMemoryAuthority,
   createToolMemoryAuthority,
-  createRuntimeComposition,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
   DEFAULT_TOOL_MEMORY_CAPABILITIES,
-  resolveProviderGenerate,
-  resolveProviderDecide,
-} from './runtime-composition';
+} from './run-memory';
 export {
   serializeActionDetail,
   serializeRunDetail,

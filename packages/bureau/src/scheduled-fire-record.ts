@@ -11,7 +11,7 @@
 
 import type { AuditTrail } from './audit-trail';
 import { SCHEDULER_ACTOR } from './owner-of-record';
-import type { ScheduledFireNotice } from './runtime-composition';
+import type { ScheduledFireNotice } from './runtime-composition-types';
 import type { RunAttribution } from './serialization';
 
 /**

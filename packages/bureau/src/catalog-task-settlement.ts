@@ -19,7 +19,10 @@
  * @module catalog-task-settlement
  */
 import type { CatalogRunSettlement } from './catalog-run-settlement';
-import type { CatalogRunRecoveryLoad, CatalogRunRecoveryRecord } from './runtime-composition';
+import type {
+  CatalogRunRecoveryLoad,
+  CatalogRunRecoveryRecord,
+} from './catalog-run-recovery-record';
 import type { StoredTaskOrigin } from './task-origin';
 import { TASK_ARTIFACT_TEXT_LIMIT, type TaskAdmission, type TaskRegistry } from './task-registry';
 import type { AgentInput } from '@lostgradient/operative';

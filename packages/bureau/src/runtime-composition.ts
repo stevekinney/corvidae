@@ -6,12 +6,8 @@ import {
   mayUseAutomationInput,
   recoverRunWorkspaceAuthority,
 } from './run-authority.ts';
-import type { EventMap, HookReplayPolicy, RuntimeServices } from '@lostgradient/lifecycle';
-import {
-  createSecretAnswerStore,
-  type SecretAnswerStore,
-  secretResolverOf,
-} from './secret-answers';
+import type { RuntimeServices } from '@lostgradient/lifecycle';
+import { createSecretAnswerStore, secretResolverOf } from './secret-answers';
 import {
   createDefaultRuntimeServices,
   HOOK_TIER_PRIORITY_BANDS,
@@ -19,22 +15,9 @@ import {
   TypedEventTarget,
 } from '@lostgradient/lifecycle';
 import { composeRunHooks, pluginHookTier, type RunHookTiers } from './run-hook-tiers';
+import type { GovernedMemory } from '@lostgradient/memory';
 import type {
-  GovernedMemory,
-  MemoryAuthority,
-  MemoryCapability,
-  MemoryEvidenceBundle,
-  MemoryRecallDetection,
-  MemoryWriteReceipt,
-} from '@lostgradient/memory';
-import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
-import type {
-  AgentInput,
-  AgentRunContext,
   AgentSession,
-  CheckpointStore,
-  ContentSourceResolver,
-  GeneratedMediaAdmitter,
   DurableRunDeps,
   GenerateFunction,
   DecisionModel,
@@ -45,29 +28,19 @@ import type {
   JSONValue,
   OnStepHook,
   OperativeHookMap,
-  PrepareStepHook,
   ProviderDefinition,
-  RegistryAgnosticEngine,
-  RequestHumanInputContext,
-  RequestHumanInputInput,
-  RunEngineObservability,
   RunOptions,
   ScheduledAgentRunInput,
-  ScheduleWakeupContext,
-  ScheduleWakeupInput,
   SessionStore,
   SessionSummary,
   StepRecord,
-  StopCondition,
   StreamEventMap,
-  HumanInputSchema,
   PersistedSessionTaint,
 } from '@lostgradient/operative';
 import {
   appendAgentInput,
   readBackendDescriptors,
   withBackendDescriptors,
-  MEMORY_EVIDENCE_METADATA_KEY,
   createAgentSession,
   createCheckpointStore,
   createDefaultGuardrailsPreset,
@@ -76,16 +49,13 @@ import {
   DEFAULT_TAINT_THRESHOLD,
   withSessionTaint,
   createIdentityHook,
-  createRequestHumanInputTool,
   createRunEngine,
   createRunWorkflow,
-  createScheduleWakeupTool,
   createSessionStore,
   DEFAULT_MAXIMUM_STEPS,
   isAgentRunWorkflowInput,
   isFailureFinishReason,
   isScheduledAgentRunInput,
-  isSessionInputPayload,
   payloadText,
   reservedIdentifierReason,
   ScheduleAttemptedEvent,
@@ -119,26 +89,15 @@ import {
   type ToolPolicy,
 } from './skills';
 import { fenceStorage } from './storage-fence';
-import { createDecideToolbox, type DecideToolWiring } from './decisions/decide-tool';
-import { humanInputEnabled, humanInputSchemasOf } from './human-input-option';
-import { isStoredTaskOrigin, type StoredTaskOrigin } from './task-origin';
-import type { TaskToolGrant } from './task-registry';
-import {
-  type ChatPermissionReading,
-  withChatPermission,
-  withChatPermissionStanding,
-} from './tool-approval';
+import { withChatPermission } from './tool-approval';
 import { withAddedTools, withToolboxLayer } from './toolbox-additions';
 import {
-  type AnyWorkflowDefinition,
   createWorkflowLogStore,
   decode,
   deserializeCheckpoint,
   encode,
   KEYS,
-  type RecoverAllOptions,
   type WorkflowLogRecord,
-  type WorkflowLogStore,
   WorkflowCancelledEvent,
   WorkflowTimedOutEvent,
   WorkflowCompletedEvent,
@@ -155,36 +114,22 @@ import {
 } from '@lostgradient/storage';
 import {
   type AnyToolbox,
-  createTool,
   createToolbox,
-  type ToolboxExecuteOptions,
   type ToolCallInput,
   type ToolRequestContext,
-  readRunWorkspaceAuthority,
 } from 'armorer';
 import {
   Conversation,
   type ConversationHistory,
   createConversationHistory,
   getFirstSystemMessage,
-  messageText,
   getOwn,
 } from 'conversationalist';
-
-import type { FileAgentBinding } from './agent-file-catalog';
 import { activeSkillToolPolicy, agentSkillsRun, createSkillGuardrailOptions } from './agent-skills';
 import { isTryAgentName } from './agent-try';
-import {
-  type GoalAttemptFence,
-  type GoalAttemptTarget,
-  registerGoalAttemptFence,
-} from './goal-attempt-fence';
-import {
-  type GoalAttemptCostEstimation,
-  isGoalAttemptCostEstimation,
-} from './goal-cost-estimation';
-import { type MissedFireBuffer, bufferMissedFires } from './bureau-event-forwarders';
-import { ownerOrLocal, SCHEDULER_ACTOR } from './owner-of-record';
+import { type GoalAttemptTarget, registerGoalAttemptFence } from './goal-attempt-fence';
+import { bufferMissedFires } from './bureau-event-forwarders';
+import { ownerOrLocal } from './owner-of-record';
 import { resolveDiagnosticSink, serializeUnknownError } from './serialization';
 import {
   isPlainAuthorityRecord,
@@ -196,7 +141,6 @@ import {
 import { committedFireApprovalIds } from './scheduled-fire-review-state';
 import {
   createSessionTaintSeam,
-  type SessionTaintPublication,
   type SessionTaintSeam,
   type SessionTaintSource,
 } from './session-taint-seam';
@@ -205,695 +149,57 @@ import {
   scheduledAgentRunOptions,
   sessionExecuteOptions,
 } from './session-agent-options';
-import type {
-  BureauMemoryAuthorityOptions,
-  BureauOptions,
-  CacheConfiguration,
-  CreateRunRequest,
-  ProviderConfiguration,
-  StreamingConfiguration,
-  SkillRuntimeConfiguration,
-} from './types';
+import type { CacheConfiguration, ProviderConfiguration, StreamingConfiguration } from './types';
 import { ownEntry } from './own-entry';
 import { DEFAULT_MAX_CONCURRENT_RUNS } from './settings/settings-options';
-import { holdGenerateToModelPolicy, type ModelPolicySource } from './code-agent-model-policy';
-
-export type BureauToolbox = AnyToolbox;
-
-export function createHumanWaitContext(
-  servicesRef: { current?: DurableRunDeps },
-  runId: string,
-): RequestHumanInputContext {
-  return {
-    get pendingHumanWait() {
-      return servicesRef.current?.pendingHumanWait;
-    },
-    set pendingHumanWait(value) {
-      if (servicesRef.current) {
-        servicesRef.current.pendingHumanWait = value;
-      }
-    },
-    // COR-1578 — read-only: a wakeup already requested in this step refuses a human-input request.
-    get pendingWakeup() {
-      return servicesRef.current?.pendingWakeup;
-    },
-    get pendingChildWait() {
-      return servicesRef.current?.pendingChildWait;
-    },
-    runId,
-    // Only ever constructed inside the `options.humanInput && runtime.durable`
-    // guard below, so this context always backs a real durable run
-    // (AB-41 / AB-43 — the durability signal threaded into the tool's context).
-    durable: true,
-  };
-}
-
-/**
- * AB-201 — the `scheduleWakeup` analog of {@link createHumanWaitContext}: forwards
- * reads/writes onto the run's REAL `ctx.services` object (via the same
- * `servicesRef` capture) rather than spreading it, so the tool's `pendingWakeup`
- * writes land where the durable `agentRun` workflow actually reads them.
- * `ScheduleWakeupContext` carries no `runId` field (unlike
- * `RequestHumanInputContext`), so this takes only the shared `servicesRef`. It also forwards a
- * read-only view of the human-wait slot, so a wakeup request made after a human-input request in the
- * same step is refused (COR-1578).
- */
-export function createWakeupContext(servicesRef: {
-  current?: DurableRunDeps;
-}): ScheduleWakeupContext {
-  return {
-    get pendingWakeup() {
-      return servicesRef.current?.pendingWakeup;
-    },
-    set pendingWakeup(value) {
-      if (servicesRef.current) {
-        servicesRef.current.pendingWakeup = value;
-      }
-    },
-    // COR-1578 — read-only: a human-input request already made in this step refuses a wakeup.
-    get pendingHumanWait() {
-      return servicesRef.current?.pendingHumanWait;
-    },
-    get pendingChildWait() {
-      return servicesRef.current?.pendingChildWait;
-    },
-    // Only ever constructed inside the `options.wakeup && runtime.durable`
-    // guard (below, in `createBureau`'s run composition — same placement as
-    // `createHumanWaitContext`'s own guard), so this context always backs a
-    // real durable run (AB-41 / AB-43 — the durability signal threaded into
-    // the tool's context).
-    durable: true,
-  };
-}
-
-/**
- * The narrow surface `requestHumanInput` needs to dispatch its
- * `HumanWaitParkedEvent` (matches `create-request-human-input-tool.ts`'s own
- * private `HumanInputEventDispatcher` structurally, without importing it).
- */
-export interface HumanWaitEventDispatcher {
-  dispatchEvent(event: Event): boolean;
-}
-
-/**
- * Type guard, not a cast: `DurableRunDeps.emitter`'s own `EventDispatcher`
- * type declares only `dispatch`, never the DOM-style `dispatchEvent` every
- * real emitter (a `CompletableEventTarget`) also carries — see
- * `buildRunDepsFromSession`'s lazy `humanInputEmitter` forwarder.
- */
-export function hasDispatchEvent(value: unknown): value is HumanWaitEventDispatcher {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as { dispatchEvent?: unknown }).dispatchEvent === 'function'
-  );
-}
-
-export interface WireDurableOptInToolsOptions {
-  /** Wires `requestHumanInput` in when true (AB-13/AB-41/AB-43). */
-  readonly humanInput?: boolean;
-  /**
-   * COR-1709 — wires the `decide` tool in when present. It needs no durable services, but the
-   * callers offer it to exactly the runs that are offered `requestHumanInput`.
-   */
-  readonly decide?: DecideToolWiring | undefined;
-  /**
-   * COR-1674 — per-signal answer schemas handed to `requestHumanInput`. Ignored when `humanInput`
-   * is falsy. Every wiring site, fresh and recovered, passes the same map.
-   */
-  readonly inputSchemas?: Readonly<Record<string, HumanInputSchema>> | undefined;
-  /** Wires `scheduleWakeup` in when true (AB-201). */
-  readonly wakeup?: boolean;
-  readonly runId: string;
-  /**
-   * Where `requestHumanInput`'s `HumanWaitParkedEvent` dispatches. Ignored
-   * when `humanInput` is falsy. A caller whose real emitter is not yet
-   * assigned at wiring time (AB-336 — recovery's `services.emitter` is set
-   * by `createRecoveredRunEventSurface` AFTER `buildRunDepsFromSession`
-   * returns, but this wiring happens INSIDE it) passes a lazy forwarder
-   * instead of the emitter itself; the tool only calls `dispatchEvent` at
-   * actual tool-call time, by which point a lazy forwarder's target has
-   * settled.
-   */
-  readonly humanInputEmitter?: HumanWaitEventDispatcher;
-}
-
-/**
- * AB-336 — the ONE place both the fresh-dispatch (`createRunFromRequest`)
- * and recovery (`buildRunDepsFromSession`) paths wire `requestHumanInput`/
- * `scheduleWakeup` into a run's toolbox, per the repository's No Duplicated
- * Code rule. Root cause this closes: `buildRunDepsFromSession` used to
- * return `runRuntime.toolbox` bare — the opt-in durable-park tools existed
- * ONLY on the fresh path. A run recovered mid-step whose replay reached a
- * `requestHumanInput` call found no such tool: armorer settled the call
- * with a tool-not-found error result, `pendingHumanWait` never got set, the
- * durable park never fired, and the step loop simply continued to the next
- * step — the exact "looped instead of parking" symptom this issue names,
- * observable only on a RECOVERED run whose replay reaches the call (a run
- * killed AFTER the call's step already committed is a different case,
- * covered by `create-bureau.ts`'s `reconstructHumanWaitReviewIfParked`).
- *
- * `servicesRef` is supplied by the caller, not created here: the tools'
- * mutable `pendingHumanWait`/`pendingWakeup` slots must be the EXACT
- * `ctx.services` object Weft hands back, and each caller has a different
- * point at which that object becomes available (a later `onServices` hook
- * for a fresh run; the object under construction, synchronously, for a
- * recovered one) — see each call site's own comment.
- */
-export function wireDurableOptInTools(
-  baseToolbox: BureauToolbox,
-  servicesRef: { current?: DurableRunDeps },
-  options: WireDurableOptInToolsOptions,
-): BureauToolbox {
-  let toolbox = baseToolbox;
-
-  if (options.humanInput) {
-    const humanWaitContext = createHumanWaitContext(servicesRef, options.runId);
-    const rawHumanInputTool = createRequestHumanInputTool({
-      context: humanWaitContext,
-      ...(options.inputSchemas ? { inputSchemas: options.inputSchemas } : {}),
-      ...(options.humanInputEmitter ? { emitter: options.humanInputEmitter } : {}),
-    });
-    const humanInputToolbox = createToolbox([
-      createTool({
-        ...rawHumanInputTool,
-        // armorer's `execute` contract is async; the raw tool factory's
-        // `execute` is synchronous (it only mutates `context` and returns a
-        // plain result), so wrap it rather than changing its public shape.
-        // Must stay `async` so a synchronous throw from `execute` is
-        // converted into a rejected Promise instead of escaping
-        // synchronously (Copilot review PRRT_kwDORvupsc6P7_8H) — awaiting
-        // `Promise.resolve(...)` (a genuine thenable) keeps both
-        // require-await and await-thenable satisfied.
-        //
-        // COR-1947: it only asks a person, so no permission mode stands in front of it.
-        execute: withChatPermissionStanding(
-          async (input: RequestHumanInputInput) =>
-            await Promise.resolve(rawHumanInputTool.execute(input)),
-          'outside-the-mode',
-        ),
-      }),
-    ]);
-    toolbox = withAddedTools(toolbox, humanInputToolbox);
-  }
-
-  if (options.decide !== undefined) {
-    toolbox = withAddedTools(
-      toolbox,
-      createDecideToolbox({ ...options.decide, taskId: options.runId }),
-    );
-  }
-
-  if (options.wakeup) {
-    // `ctx.sleep` is itself the durable checkpoint, and recovery re-arms it with no live wiring
-    // needed (AB-41's decision record). The tool announces the request it accepted (COR-1806) on
-    // the run's own emitter, read lazily from `ctx.services` as `requestHumanInput`'s recovery
-    // forwarder reads it: the run's `services.emitter` settles after this wiring but before any
-    // tool call. A recovered run whose replay re-executes the call announces it again, as it
-    // would announce a human wait.
-    const wakeupContext = createWakeupContext(servicesRef);
-    const rawWakeupTool = createScheduleWakeupTool({
-      context: wakeupContext,
-      emitter: {
-        dispatchEvent: (event: Event) => {
-          const target = servicesRef.current?.emitter;
-          return hasDispatchEvent(target) ? target.dispatchEvent(event) : false;
-        },
-      },
-      now: () =>
-        (servicesRef.current?.options.runtime ?? createDefaultRuntimeServices()).clock.now(),
-    });
-    const wakeupToolbox = createToolbox([
-      createTool({
-        ...rawWakeupTool,
-        // COR-1947: it schedules work, so `read-only` denies it. It parks the step that called it,
-        // and an approved call runs after that step, so `always` denies it too: the call could
-        // only say it scheduled a wakeup that never comes. No version, for the same reason:
-        // Armorer can raise no approval for it.
-        metadata: { mutates: true },
-        // Same async-wrap rationale as `requestHumanInput` above: the raw
-        // tool's `execute` is synchronous and can throw synchronously
-        // (`DurableCapabilityUnavailableError`); armorer's contract is
-        // async, so wrapping converts a synchronous throw into a rejected
-        // Promise instead of letting it escape synchronously.
-        execute: withChatPermissionStanding(
-          async (input: ScheduleWakeupInput) => await Promise.resolve(rawWakeupTool.execute(input)),
-          'cannot-wait-for-approval',
-        ),
-      }),
-    ]);
-    toolbox = withAddedTools(toolbox, wakeupToolbox);
-  }
-
-  return toolbox;
-}
-
-/**
- * COR-1709 — the owner of record of a recovered session run: the owner recorded for the run, else
- * the session's, else none.
- */
-function recoveredOwnerOf(session: AgentSession, runId: string): string | undefined {
-  const owners = session.metadata['lastRunOwningPrincipals'];
-  const runOwner = isPlainAuthorityRecord(owners) ? ownEntry(owners, runId) : undefined;
-  if (typeof runOwner === 'string') return runOwner;
-  const sessionOwner = session.metadata[SESSION_OWNER_METADATA_KEY];
-  return typeof sessionOwner === 'string' ? sessionOwner : undefined;
-}
-
-const requestAuthorityMetadataKey = 'lastRequestAuthority';
-const requestAuthoritiesMetadataKey = 'lastRequestAuthorities';
-const defaultBureauAgentName = 'bureau';
-
-/**
- * What a run's runtime is composed from. `agentName` stays optional here: a recovered run with no
- * stored agent is an internal caller that name none, and the memory
- * collection falls back through the request context to the implicit Bureau agent.
- */
-type RunRuntimeRequest = Omit<CreateRunRequest, 'agentName'> & {
-  agentName?: string;
-  sessionId: string;
-  runId?: string;
-};
-const schedulerServicePrincipalId = SCHEDULER_ACTOR;
-const schedulerServiceAuthorizationRevision = 'bureau:scheduler:1';
-const toolExecutionCapability = 'tools:execute';
-
-function isJsonRecord(value: JSONValue | undefined): value is Record<string, JSONValue> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function requestContextFromAuthorityValue(
-  value: JSONValue | undefined,
-  runId: string | undefined,
-  sessionId: string | undefined,
-  agentName: string | undefined,
-  now: () => number,
-): ToolRequestContext | undefined {
-  if (typeof value !== 'object' || value === null || Array.isArray(value)) return undefined;
-  const authority = value as Record<string, JSONValue>;
-  const capabilities = authority['capabilities'];
-  const workspace = readRunWorkspaceAuthority(authority['workspace']);
-  if (authority['workspace'] !== undefined && workspace === undefined) return undefined;
-  const audience = authority['audience'];
-  const deadline = authority['deadline'];
-  if (
-    typeof authority['principalId'] !== 'string' ||
-    typeof authority['tenantId'] !== 'string' ||
-    typeof authority['ownerId'] !== 'string' ||
-    typeof authority['authorizationRevision'] !== 'string' ||
-    !Array.isArray(capabilities) ||
-    !capabilities.every((capability) => typeof capability === 'string') ||
-    (audience !== undefined &&
-      audience !== 'public' &&
-      audience !== 'tenant' &&
-      audience !== 'operator') ||
-    (deadline !== undefined && (typeof deadline !== 'number' || !Number.isFinite(deadline)))
-  ) {
-    return undefined;
-  }
-  if (typeof deadline === 'number' && deadline <= now()) return undefined;
-  return {
-    authority: {
-      principalId: authority['principalId'],
-      tenantId: authority['tenantId'],
-      ownerId: authority['ownerId'],
-      capabilities: Object.freeze([...capabilities] as string[]),
-      authorizationRevision: authority['authorizationRevision'],
-      ...(workspace === undefined ? {} : { workspace }),
-    },
-    ...(audience !== undefined ? { audience } : {}),
-    ...(typeof deadline === 'number' ? { deadline } : {}),
-    ...(agentName !== undefined ? { agentId: agentName } : {}),
-    ...(runId !== undefined ? { runId } : {}),
-    ...(sessionId !== undefined ? { sessionId } : {}),
-  };
-}
-
-/**
- * AB-260: exported directly rather than through the retired
- * `RuntimeCompositionTestingSeams` grouping — a genuine injection seam, not
- * introspection, since its only non-pure dependency was the wall clock
- * consulted for `requestContextFromAuthorityValue`'s deadline check. A test
- * calls this directly with a manual `now`, exactly as `createRuntimeComposition`
- * itself does with the bureau's composed `RuntimeServices.clock.now`.
- */
-export function recoveredRequestContext(
-  metadata: Record<string, JSONValue>,
-  runId: string | undefined,
-  sessionId: string | undefined,
-  agentName: string | undefined,
-  now: () => number,
-): ToolRequestContext | undefined {
-  const authorities = metadata[requestAuthoritiesMetadataKey];
-  if (isJsonRecord(authorities)) {
-    return requestContextFromAuthorityValue(
-      runId === undefined ? undefined : ownEntry(authorities, runId),
-      runId,
-      sessionId,
-      agentName,
-      now,
-    );
-  }
-  return requestContextFromAuthorityValue(
-    metadata[requestAuthorityMetadataKey],
-    runId,
-    sessionId,
-    agentName,
-    now,
-  );
-}
-
-function normalizedServiceAgentName(agentName: string | undefined): string {
-  const trimmed = agentName?.trim();
-  return trimmed && trimmed.length > 0 ? trimmed : defaultBureauAgentName;
-}
-
-export function createSchedulerServiceRequestContext(
-  runId: string,
-  agentName: string | undefined,
-  sessionId?: string,
-) {
-  const ownerId = normalizedServiceAgentName(agentName);
-  return {
-    authority: {
-      principalId: schedulerServicePrincipalId,
-      tenantId: 'bureau',
-      ownerId,
-      capabilities: Object.freeze([toolExecutionCapability]),
-      authorizationRevision: schedulerServiceAuthorizationRevision,
-    },
-    audience: 'operator',
-    agentId: ownerId,
-    runId,
-    // AB-364 review finding (chatgpt-codex-connector): stamped for
-    // consistency with every other request context this module builds —
-    // NOT a fix for scheduled-fire grant matching, which the fixed
-    // `principalId` above (always `schedulerServicePrincipalId`, never the
-    // triggering user's own principal) already blocks unconditionally,
-    // independent of scope or sessionId.
-    ...(sessionId !== undefined ? { sessionId } : {}),
-  } satisfies ToolRequestContext;
-}
-
-function withDefaultToolboxRequestContext(
-  toolbox: AnyToolbox,
-  requestContext: ToolRequestContext | undefined,
-  requestAuthorityValidator: () =>
-    ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined,
-  runtimeServices: RuntimeServices,
-): AnyToolbox {
-  if (!requestContext) return toolbox;
-
-  // A layer, so that adding a tool to the toolbox puts this binding back around the result.
-  return withToolboxLayer(toolbox, (inner) => {
-    const executeWithDefaultRequestContext = (async (
-      input: ToolCallInput | ToolCallInput[],
-      executeOptions?: ToolboxExecuteOptions,
-    ) => {
-      const options: ToolboxExecuteOptions = {
-        ...executeOptions,
-        requestContext: executeOptions?.requestContext ?? requestContext,
-      };
-      const inheritedValidation = options.revalidateAuthority;
-      const revision = options.requestContext!.authority.authorizationRevision;
-      const requiresValidation =
-        options.requestContext!.authority.workspace !== undefined ||
-        (revision !== 'bureau:1' && revision !== 'bureau:scheduler:1');
-      if (requiresValidation) {
-        options.revalidateAuthority = async (candidate) => {
-          const inherited =
-            inheritedValidation === undefined ? candidate : await inheritedValidation(candidate);
-          if (inherited === undefined) return undefined;
-          const validator = requestAuthorityValidator();
-          if (
-            !validator ||
-            !(await raceRequestAuthorityValidation(validator(inherited), options, runtimeServices))
-          )
-            return undefined;
-          return inherited;
-        };
-        if ((await options.revalidateAuthority(options.requestContext!)) === undefined)
-          throw new Error('Request authority is no longer current.');
-      }
-      return Array.isArray(input) ? inner.execute(input, options) : inner.execute(input, options);
-    }) as AnyToolbox['execute'];
-
-    return new Proxy(inner, {
-      get(target, property, receiver) {
-        if (property === 'execute') return executeWithDefaultRequestContext;
-        return Reflect.get(target, property, receiver) as unknown;
-      },
-    });
-  });
-}
-
-function raceRequestAuthorityValidation(
-  validation: boolean | Promise<boolean>,
-  options: ToolboxExecuteOptions,
-  runtimeServices: RuntimeServices,
-): Promise<boolean> {
-  const signal = options.signal;
-  const deadline = options.requestContext?.deadline;
-  const now = options.now ?? runtimeServices.clock.now;
-  if (signal?.aborted) {
-    return Promise.reject(new Error(String(signal.reason ?? 'Cancelled')));
-  }
-  if (deadline !== undefined && deadline <= now()) {
-    return Promise.reject(new Error('Execution deadline exceeded'));
-  }
-  if (!signal && deadline === undefined) return Promise.resolve(validation);
-
-  const maximumTimerDelay = 2_147_483_647;
-  // AB-260: the timer-scheduling/clearing members are destructured once so
-  // the call sites below read `scheduleTimeout(...)`/`clearTimeoutFunction(...)`
-  // rather than a literal `timers` method call — see `create-bureau.ts`'s
-  // equivalent pattern for why.
-  const { setTimeout: defaultScheduleTimeout, clearTimeout: defaultCancelTimeout } =
-    runtimeServices.timers;
-  const setTimeoutFunction =
-    options.setTimeoutFunction ??
-    ((callback: () => void, milliseconds: number) =>
-      defaultScheduleTimeout(callback, milliseconds));
-  const clearTimeoutFunction = options.clearTimeoutFunction ?? defaultCancelTimeout;
-  let timer: unknown;
-  let onAbort: (() => void) | undefined;
-  const interruption = new Promise<boolean>((_resolve, reject) => {
-    onAbort = () => reject(new Error(String(signal?.reason ?? 'Cancelled')));
-    signal?.addEventListener('abort', onAbort, { once: true });
-    const scheduleDeadline = () => {
-      if (deadline === undefined) return;
-      const remaining = deadline - now();
-      if (remaining <= 0) {
-        reject(new Error('Execution deadline exceeded'));
-        return;
-      }
-      timer = setTimeoutFunction(scheduleDeadline, Math.min(remaining, maximumTimerDelay));
-    };
-    scheduleDeadline();
-  });
-  return Promise.race([Promise.resolve(validation), interruption]).finally(() => {
-    if (onAbort) signal?.removeEventListener('abort', onAbort);
-    if (timer !== undefined) clearTimeoutFunction(timer);
-  });
-}
-
-/**
- * COR-1710 — what a task's tool grant offers it. Without a grant (a composition with no settings
- * wired), the options decide, as they did before grants were recorded.
- */
-export function grantedTools(
-  grant: TaskToolGrant | undefined,
-  options: Pick<RuntimeCompositionOptions, 'humanInput' | 'wakeup'>,
-): {
-  readonly humanInput: boolean;
-  readonly inputSchemas: Readonly<Record<string, HumanInputSchema>> | undefined;
-  readonly wakeup: boolean;
-  readonly decide: boolean;
-} {
-  if (grant === undefined) {
-    return {
-      humanInput: humanInputEnabled(options.humanInput),
-      inputSchemas: humanInputSchemasOf(options.humanInput),
-      wakeup: options.wakeup !== false,
-      decide: true,
-    };
-  }
-  return {
-    humanInput: grant.humanInput !== false,
-    inputSchemas: humanInputSchemasOf(grant.humanInput),
-    wakeup: grant.wakeup,
-    decide: grant.decide,
-  };
-}
-
-/** COR-41 — what Bureau delegates to a run when the deployment configures nothing else. */
-export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Object.freeze([
-  'memory:search',
-  'memory:write',
-]);
-
-/** The default ceiling for memory tools listed by an agent file. */
-export const DEFAULT_TOOL_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Object.freeze([
-  'memory:search',
-  'memory:write',
-  'memory:get',
-  'memory:delete',
-]);
-
-const MEMORY_TOOL_CAPABILITIES: Readonly<Record<string, readonly MemoryCapability[]>> =
-  Object.freeze({
-    memory_recall: ['memory:search'],
-    memory_store: ['memory:write'],
-    memory_correct: ['memory:get', 'memory:write'],
-    memory_forget: ['memory:delete'],
-  });
-
-/**
- * COR-1546 — who a run's memory belongs to. Memory is partitioned by the Bureau's deployment
- * (`tenantId`) and the run's owner of record (`ownerId`), the same pair `bureau.memory.*` builds
- * its authority from, so what a chat run remembers is what its owner's own operations list. It is
- * never the request authority's `tenantId` and `ownerId`: those are the tool-execution authority,
- * and a run that states none gets the agent's name as its owner (`normalizeRunRequestContext`).
- */
-export type RunMemoryIdentity = {
-  readonly runId: string;
-  /** The Bureau's identifier, which is the tenant memory is partitioned under. */
-  readonly tenantId: string;
-  /** The run's owner of record: `anonymous:local` when none was recorded. */
-  readonly ownerId: string;
-};
-
-/**
- * COR-1546 — where a run's memory is kept: the agent's identifier is the collection, so an agent
- * remembers across every chat its owner has with it, and the session that produced a record is
- * written into the record's `metadata`.
- */
-export type RunMemoryTarget = {
-  /** The agent's identifier. */
-  readonly collection: string;
-  readonly sessionId: string;
-};
-
-/**
- * COR-41 — the memory authority a run acts under, derived from its persisted
- * request authority. The delegation chain runs from Bureau (holding the
- * deployment's `runCapabilities`) through the request principal to the run, so
- * every memory record and receipt names who acted, for whom, and under which
- * authorization revision. Explicit `memory:*` capabilities on the request can
- * only narrow the deployment grant; a request that names none receives it.
- */
-export function createRunMemoryAuthority(
-  requestContext: ToolRequestContext,
-  run: RunMemoryIdentity,
-  options: BureauMemoryAuthorityOptions = {},
-): MemoryAuthority {
-  const deployment = options.runCapabilities ?? DEFAULT_RUN_MEMORY_CAPABILITIES;
-  const known = new Set<string>(MEMORY_CAPABILITIES);
-  const requested = requestContext.authority.capabilities.filter((capability) =>
-    known.has(capability),
-  );
-  const granted =
-    requested.length === 0
-      ? deployment
-      : deployment.filter((capability) => requested.includes(capability));
-  return createMemoryAuthority({
-    principal: { kind: 'run', id: run.runId },
-    tenantId: run.tenantId,
-    ownerId: run.ownerId,
-    purpose: options.purpose ?? 'conversation-memory',
-    capabilities: granted,
-    policyRevision: requestContext.authority.authorizationRevision,
-    projection: 'bureau',
-    delegatedBy: [
-      { principal: { kind: 'service', id: 'bureau' }, capabilities: deployment },
-      {
-        principal: memoryPrincipalFor(requestContext.authority.principalId),
-        capabilities: granted,
-      },
-    ],
-  });
-}
-
-/** Builds the authority a listed memory tool uses for one call. */
-export function createToolMemoryAuthority(
-  requestContext: ToolRequestContext,
-  toolName: string,
-  options: BureauMemoryAuthorityOptions = {},
-  identity?: Pick<MemoryAuthority, 'tenantId' | 'ownerId'>,
-): MemoryAuthority {
-  const deployment = options.toolCapabilities ?? DEFAULT_TOOL_MEMORY_CAPABILITIES;
-  const known = new Set<string>(MEMORY_CAPABILITIES);
-  const requested = requestContext.authority.capabilities.filter((capability) =>
-    known.has(capability),
-  );
-  const ceiling =
-    requested.length === 0
-      ? deployment
-      : deployment.filter((capability) => requested.includes(capability));
-  const required = Object.hasOwn(MEMORY_TOOL_CAPABILITIES, toolName)
-    ? (MEMORY_TOOL_CAPABILITIES[toolName] ?? [])
-    : [];
-  const granted = ceiling.filter((capability) => required.includes(capability));
-  return createMemoryAuthority({
-    principal: { kind: 'tool', id: toolName },
-    tenantId: identity?.tenantId ?? requestContext.authority.tenantId,
-    ownerId: identity?.ownerId ?? requestContext.authority.ownerId,
-    purpose: 'tool',
-    capabilities: granted,
-    policyRevision: requestContext.authority.authorizationRevision,
-    projection: 'tool',
-    delegatedBy: [
-      {
-        principal: memoryPrincipalFor(requestContext.authority.principalId),
-        capabilities: granted,
-      },
-    ],
-  });
-}
-
-/** The authorization revision of Bureau's own maintenance authority, recorded on what a sweep writes. */
-export const BUREAU_MAINTENANCE_POLICY_REVISION = 'bureau:maintenance';
-
-/** The only capabilities Bureau's maintenance authority holds: a retention sweep and the deletions it opens. */
-export const BUREAU_MAINTENANCE_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Object.freeze([
-  'memory:retention',
-  'memory:delete',
-]);
-
-/**
- * COR-1629 — the authority Bureau's maintenance pass sweeps governed memory's retention under: a
- * one-link `service:bureau` chain, the principal every run chain starts from, holding exactly the
- * two capabilities a sweep needs. The sweep walks every scope of the tenant, so `ownerId` only
- * names who acted. No run authority gains a capability from it. A Bureau without governed memory
- * has nothing to sweep, so it gets no authority.
- */
-export function createMaintenanceMemoryAuthority(
-  memory: GovernedMemory | undefined,
-  tenantId: string,
-): MemoryAuthority | undefined {
-  if (memory === undefined) return undefined;
-  return createMemoryAuthority({
-    principal: { kind: 'service', id: 'bureau' },
-    tenantId,
-    ownerId: tenantId,
-    purpose: 'retention',
-    capabilities: BUREAU_MAINTENANCE_MEMORY_CAPABILITIES,
-    policyRevision: BUREAU_MAINTENANCE_POLICY_REVISION,
-    projection: 'bureau',
-  });
-}
-
-/**
- * The memory principal behind a request authority's `principalId`. Memory
- * classifies a `service:` identity as a service, but Bureau's own service
- * principals (`system:scheduler`) live in the reserved `system:` namespace, so
- * they are named here rather than read as users.
- */
-function memoryPrincipalFor(principalId: string) {
-  return principalId.startsWith('system:')
-    ? ({ kind: 'service', id: principalId } as const)
-    : requestPrincipal(principalId);
-}
+import { holdGenerateToModelPolicy } from './code-agent-model-policy';
+import { type RecoveredScheduleMarker, isRecord } from './schedule-run-marker';
+import type {
+  BureauInvariantOptions,
+  BureauToolbox,
+  CatalogAgentRunOptionsResolver,
+  CatalogRunRecordedDefinition,
+  DurableComposition,
+  MediaRowHolder,
+  MediaRunOptions,
+  RecoveredSkillPolicy,
+  RunRuntimeRequest,
+  RuntimeComposition,
+  RuntimeCompositionDependencies,
+  RuntimeCompositionOptions,
+  ScheduleFireEventMap,
+  ScheduledFireServicesNotice,
+  ScheduledFireSettlement,
+  ScheduledSessionNotice,
+  SessionAgentRun,
+  SessionAgentRunResolution,
+  SkillRecoveryOutcome,
+  SkillSnapshot,
+} from './runtime-composition-types';
+import {
+  type CatalogRunRecoveryLoad,
+  type CatalogRunRecoveryRecord,
+  type GoalAttemptClaimFence,
+  type GoalAttemptClaimOwner,
+  catalogRunRecoveryKey,
+  isCatalogRunRecoveryRecord,
+} from './catalog-run-recovery-record';
+import {
+  type RunMemoryTarget,
+  createMemoryPersistHook,
+  createMemoryRecallHook,
+  createRunMemoryAuthority,
+} from './run-memory';
+import {
+  createSchedulerServiceRequestContext,
+  defaultBureauAgentName,
+  grantedTools,
+  hasDispatchEvent,
+  recoveredOwnerOf,
+  recoveredRequestContext,
+  wireDurableOptInTools,
+  withDefaultToolboxRequestContext,
+} from './run-request-context';
 
 function persistedScheduleMarker(input: ScheduledAgentRunInput): string | undefined {
   if (typeof input.scheduleId !== 'string') return undefined;
@@ -903,10 +209,6 @@ function persistedScheduleMarker(input: ScheduledAgentRunInput): string | undefi
 
 function hasPersistedScheduleMarker(input: ScheduledAgentRunInput): boolean {
   return persistedScheduleMarker(input) !== undefined;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null;
 }
 
 /**
@@ -942,328 +244,6 @@ export function decodeScheduleRunMarker(decoded: unknown): string | undefined {
   return undefined;
 }
 
-/**
- * AB-240: the recovery record `bureau.run()`'s durable catalog dispatch
- * persists BEFORE starting the durable engine, keyed by the run's workflow
- * id — a marker entirely separate from (and never correlated with)
- * `sessionStore`'s `lastRunId`/`lastRunStatus`, because a catalog run never
- * owns a bureau session. `definitionRevision` is `AgentGenerationProfile.revision`
- * (operative's existing per-agent stable-revision field, read via
- * `readGenerationProfile`) at dispatch time — the closest existing "has this
- * catalog agent's definition changed" signal, reused rather than inventing a
- * new one. `input` is the ORIGINAL `AgentInput` `bureau.run(name, input)` was
- * called with: `AgentRunWorkflowInput.prompt` is NOT a substitute (it is a
- * seed-only field the durable workflow itself ignores on resume — see its own
- * doc comment), and `OPERATIVE_RESOLVE_RUN_OPTIONS` must be re-invoked with the
- * real input to rebuild `RunOptions` fresh each boot, the same way
- * `buildRunDepsFromSession` rebuilds session-owned deps from config rather
- * than a stored blob.
- */
-export type CatalogRunRecoveryLoad =
-  | { status: 'found'; record: CatalogRunRecoveryRecord }
-  | { status: 'missing' }
-  /**
-   * A value is stored at the key but is not a recovery record (it does not
-   * decodes but fails shape validation). It is present, so goal ownership must
-   * never read it as absent; every other consumer treats it as it always did,
-   * as `missing`.
-   */
-  | { status: 'corrupt' }
-  | { status: 'read-error'; error: unknown };
-
-/** Who a goal attempt's claim must belong to for the goal to tombstone it. */
-export interface GoalAttemptClaimOwner {
-  readonly goalRunId: string;
-  readonly attemptIndex: number;
-  readonly agentName: string;
-  readonly principal: string | undefined;
-}
-
-export type GoalAttemptClaimFence = 'fenced' | 'foreign';
-
-export interface CatalogRunRecoveryRecord {
-  /** Original authorizing actor; never reconstructed from historic owner on recovery. */
-  readonly workspaceAuthority?: import('armorer').RunWorkspaceAuthority;
-  readonly schemaVersion: 1;
-  /**
-   * COR-1710 — the tools the task was granted when it started, so its recovery offers the same
-   * ones. Absent in a record written before grants were recorded.
-   */
-  readonly tools?: TaskToolGrant | undefined;
-  readonly agentName: string;
-  readonly definitionRevision: number;
-  readonly input: AgentInput;
-  /**
-   * AB-241 review finding: the attributing principal `bureau.run(name, input,
-   * { principal })` recorded in the live, pre-crash `runAttribution` map —
-   * persisted here too so a durable catalog run that crosses a process
-   * restart keeps its attribution. Without this, a resumed run's rebuilt
-   * `AgentRunContext` carried no `principal` at all, so `eventHistory`'s
-   * principal gate would fail closed for a run recovery re-resolves.
-   * Absent when the original dispatch supplied no principal.
-   */
-  readonly principal?: string;
-  /**
-   * COR-851 — set only on the run a durable goal started for one of its
-   * attempts: which goal and which attempt it was started for. A goal's run id
-   * is a deterministic function of the goal, so the id alone does not prove the
-   * run is the goal's; this marker, written by the goal's own start, does. A
-   * goal adopts or stops an existing run only when it carries its own marker.
-   */
-  readonly goalAttempt?: {
-    readonly goalRunId: string;
-    readonly attemptIndex: number;
-    /**
-     * COR-851 — set when the goal ended, closed, or was canceled over this
-     * attempt: the claim is tombstoned and no run may start from it or take a
-     * step under it. Written only by compare-and-swap from the claim's exact
-     * bytes (or created whole, where no claim existed), so a start that races
-     * the tombstone either wins the claim first, and is stopped by the run's own
-     * fence, or finds the tombstone and starts nothing. See `goal-attempt-fence.ts`.
-     */
-    readonly tombstonedAt?: string;
-  };
-  /**
-   * COR-851 — set with `goalAttempt` and only then: the cost estimator the
-   * attempt's run was started with (`null` when it declared none), written in
-   * the same conditional batch as the claim. A completed attempt is priced from
-   * this alone, never by resolving the agent again, so a catalog that has since
-   * moved to another revision or dropped the agent cannot change what the run
-   * cost. See `goal-cost-estimation.ts`.
-   */
-  readonly costEstimation?: GoalAttemptCostEstimation;
-  /**
-   * COR-1527 — set only on the run an `agent` step of a workflow file started: which instance and
-   * which step it was started for. The run's id is a function of the pair, so the id alone does
-   * not prove the run is the step's; this marker, written by the step's own start, does.
-   */
-  readonly workflowStep?: {
-    readonly workflowId: string;
-    readonly step: number;
-    readonly stepAddress?: string;
-  };
-  /**
-   * COR-1524 — set only when the run is of a file-based agent: the SHA-256 of the agent file's
-   * bytes the run started with. Recovery builds the agent from the snapshot stored under that
-   * hash (`agent-snapshot-store.ts`), never from the file, so a run resumed after the file was
-   * edited or deleted is the run that began. Absent for a code-defined agent.
-   *
-   * The record stays at `schemaVersion` 1, the way COR-716 widened its input: the field is
-   * additive, a reader that predates it ignores it, and nothing is deployed.
-   */
-  readonly agentDefinitionHash?: string;
-  /**
-   * COR-1481 — set only when the dispatch named a context (`bureau.run(..., { sessionId })`): the
-   * task's `contextId`, so a task rebuilt from this record after a crash that lost its admission
-   * write is in the context the live admission would have put it in. Absent for a dispatch that
-   * named none, and for a record written before the field existed; the task is then in its own
-   * run's context.
-   *
-   * The record stays at `schemaVersion` 1, as `agentDefinitionHash` did: additive, and a reader
-   * that predates it ignores it.
-   */
-  readonly contextId?: string;
-  /**
-   * COR-1868 — set only on the run a child dispatch, a goal attempt, or a workflow `agent` step
-   * started, by that start and by nothing else: the origin its task record carries. The run is a
-   * task exactly when its claim holds this, so a task record lost in a crash is rebuilt from it
-   * rather than from a recomputation, and a run claimed before the field existed stays a non-task
-   * for its whole life. Read with {@link isStoredTaskOrigin}, not {@link isTaskOrigin}: a claim a
-   * newer release wrote with a kind this one does not know must stay readable, or that run could
-   * never be recovered or adopted. Admission stores such an origin as written, and the view shows
-   * it as `null`.
-   *
-   * The record stays at `schemaVersion` 1, as `contextId` did: additive, and a reader that
-   * predates it ignores it.
-   */
-  readonly taskOrigin?: StoredTaskOrigin;
-}
-
-// Exported for tests only — lets `runtime-composition.test.ts` construct the
-// exact storage key to exercise `loadCatalogRunRecoveryRecord`'s read-error
-// branch by writing malformed raw bytes directly through the durable engine's
-// own `Storage` (`runtime.durable.engine.storage`), the only way to inject a
-// genuine decode failure rather than a merely-absent or malformed-but-decodable
-// record.
-export const CATALOG_RUN_RECOVERY_KEY_PREFIX = 'bureau-catalog-run:';
-
-function catalogRunRecoveryKey(runId: string): string {
-  return `${CATALOG_RUN_RECOVERY_KEY_PREFIX}${runId}`;
-}
-
-/**
- * The input a catalog run's recovery record may hold: text, a non-empty list of
- * user text and media parts (checked with the media schemas), or `{ conversation }`.
- *
- * COR-716 widened this from text and `{ conversation }` without changing the
- * record's `schemaVersion`. The decision is that the record stays at version 1: its
- * writer and reader ship together, nothing is deployed, the project is pre-release,
- * and a widened input is additive for a reader (every record an earlier writer made
- * still passes).
- */
-function isCatalogAgentInput(value: unknown): value is AgentInput {
-  if (typeof value === 'string') return true;
-  if (Array.isArray(value)) return isSessionInputPayload(value);
-  return isRecord(value) && isRecord(value['conversation']);
-}
-
-function isCatalogRunRecoveryRecord(value: unknown): value is CatalogRunRecoveryRecord {
-  if (!isRecord(value)) return false;
-  if (value['schemaVersion'] !== 1) return false;
-  if (
-    value['workspaceAuthority'] !== undefined &&
-    readRunWorkspaceAuthority(value['workspaceAuthority']) === undefined
-  )
-    return false;
-  const agentName = value['agentName'];
-  if (typeof agentName !== 'string' || agentName.length === 0) return false;
-  if (typeof value['definitionRevision'] !== 'number') return false;
-  const principal = value['principal'];
-  if (principal !== undefined && typeof principal !== 'string') return false;
-  const agentDefinitionHash = value['agentDefinitionHash'];
-  if (agentDefinitionHash !== undefined && typeof agentDefinitionHash !== 'string') return false;
-  const contextId = value['contextId'];
-  if (contextId !== undefined && typeof contextId !== 'string') return false;
-  const taskOrigin = value['taskOrigin'];
-  if (taskOrigin !== undefined && !isStoredTaskOrigin(taskOrigin)) return false;
-  const goalAttempt = value['goalAttempt'];
-  if (
-    goalAttempt !== undefined &&
-    !(
-      isRecord(goalAttempt) &&
-      typeof goalAttempt['goalRunId'] === 'string' &&
-      typeof goalAttempt['attemptIndex'] === 'number' &&
-      Number.isSafeInteger(goalAttempt['attemptIndex']) &&
-      goalAttempt['attemptIndex'] >= 0 &&
-      (goalAttempt['tombstonedAt'] === undefined || typeof goalAttempt['tombstonedAt'] === 'string')
-    )
-  ) {
-    return false;
-  }
-  const workflowStep = value['workflowStep'];
-  if (
-    workflowStep !== undefined &&
-    !(
-      isRecord(workflowStep) &&
-      typeof workflowStep['workflowId'] === 'string' &&
-      typeof workflowStep['step'] === 'number' &&
-      Number.isSafeInteger(workflowStep['step']) &&
-      workflowStep['step'] >= 0 &&
-      (workflowStep['stepAddress'] === undefined || typeof workflowStep['stepAddress'] === 'string')
-    )
-  ) {
-    return false;
-  }
-  // The estimator selection belongs to a goal attempt's record and to nothing
-  // else; a goal attempt's record without one cannot be priced, so it is not valid.
-  const costEstimation = value['costEstimation'];
-  if (
-    goalAttempt === undefined
-      ? costEstimation !== undefined
-      : !isGoalAttemptCostEstimation(costEstimation)
-  ) {
-    return false;
-  }
-  return isCatalogAgentInput(value['input']);
-}
-
-/**
- * The outcome of re-resolving a catalog agent's `RunOptions` during boot
- * recovery — `resolveRunServices`'s catalog branch consults
- * `catalogAgentRunOptionsResolver` (wired by `createBureau` from its own
- * agent catalog, which `createRuntimeComposition` deliberately does not know
- * about — see this file's own `RuntimeCompositionOptions` doc comment) rather
- * than reaching into the catalog directly.
- */
-export type CatalogAgentRunOptionsResolution =
-  | {
-      status: 'resolved';
-      options: RunOptions;
-      definitionRevision: number;
-      /**
-       * COR-1367 — the agent resolved its own guardrails (`resolvesOwnGuardrails`),
-       * so recovery registers no Bureau guardrail invariant on top, exactly as
-       * the run's fresh dispatch did not.
-       */
-      agentResolvesGuardrails?: boolean;
-      /** COR-2385 — the `taintThreshold` the agent declares in its own guardrails, when it does. */
-      agentTaintThreshold?: number;
-      /**
-       * COR-1996 — the agent's generation mode (`readGenerationProfile`), which the model policy
-       * reads to tell a fixed agent, whose provider ignores a steered model, from a selectable
-       * one. Required, so a resolver cannot leave an agent out of the policy by omitting it.
-       */
-      generationMode: GenerationMode;
-      /**
-       * COR-1577 — the run is a recovered child of another run (its resolver found a topology
-       * record), which is never offered `requestHumanInput`.
-       */
-      recoveredChild?: boolean;
-      /**
-       * COR-1524 — set when the agent is file-based: the definition the options were resolved
-       * from, which is the snapshot a recorded run asked for, or the file's current definition
-       * for a run that is starting.
-       */
-      agentBinding?: FileAgentBinding;
-    }
-  | { status: 'missing-agent' }
-  /**
-   * The named agent exists in the catalog but does not (or no longer)
-   * expose AB-21's `OPERATIVE_RESOLVE_RUN_OPTIONS` — distinct from
-   * `'missing-agent'` (review finding: conflating the two produced the
-   * misleading "is no longer in the catalog" reason for an agent that
-   * genuinely IS still there, just not durable-resolution-capable). This is
-   * reachable at recovery even though live dispatch only reaches the
-   * durable branch for a resolver-exposing agent: the catalog can be
-   * reconfigured between restarts to swap the same name to a different
-   * `RunnableAgent` that lacks the capability.
-   */
-  | { status: 'not-durable-capable' }
-  | { status: 'resolver-failed'; error: unknown };
-
-export type CatalogAgentRunOptionsResolver = (
-  agentName: string,
-  input: AgentInput,
-  context: AgentRunContext,
-  /**
-   * COR-772 — the recovered workflow's run identifier, so a resolver can
-   * restore run-scoped context the recovery record does not carry (a
-   * recovered child's parent-signal port and correlation).
-   */
-  runId: string,
-  /**
-   * COR-1524 — present when the run already started and is being resumed: the definition hash it
-   * recorded, or `undefined` for a code-defined agent. A hash makes the resolver build the agent
-   * from the run's snapshot; absent altogether means a run that is starting, which resolves the
-   * agent as it is now.
-   */
-  recorded?: CatalogRunRecordedDefinition,
-) => Promise<CatalogAgentRunOptionsResolution>;
-
-/**
- * COR-1577 — a catalog agent resolved for a session run: the run options its own definition
- * resolves, which a session run reads its `generate`, toolbox, hooks, stop conditions and step
- * and token caps from, and the system prompt its definition would seed a new conversation with.
- */
-export interface SessionAgentRun {
-  readonly agentName: string;
-  readonly options: RunOptions;
-  readonly definitionRevision: number;
-  /** COR-1524 — the file definition the run is built from, when the agent is file-based. */
-  readonly agentBinding?: FileAgentBinding;
-  readonly agentResolvesGuardrails: boolean;
-  /** COR-2385 — the `taintThreshold` the agent declares in its own guardrails, when it does. */
-  readonly agentTaintThreshold?: number;
-  /** COR-1996 — the agent's generation mode, which the model policy judges its steps by. */
-  readonly generationMode: GenerationMode;
-  /** The agent's own system prompt, or `undefined` when its definition declares none. */
-  readonly instructions: string | undefined;
-}
-
-export type SessionAgentRunResolution =
-  | { status: 'resolved'; run: SessionAgentRun }
-  | Exclude<CatalogAgentRunOptionsResolution, { status: 'resolved' }>;
-
 /** The text of the first system message `options.conversation` carries, or `undefined`. */
 function agentInstructionsFromRunOptions(options: RunOptions): string | undefined {
   const history =
@@ -1296,18 +276,6 @@ export const SESSION_AGENT_REVISION_METADATA_KEY = 'lastAgentRevision';
 export const SESSION_AGENT_DEFINITION_HASH_METADATA_KEY = 'lastAgentDefinitionHash';
 
 /**
- * COR-1524, COR-1584 — the definition a run being resumed recorded: the hash of the agent file it
- * started with (`undefined` for a code-defined agent), and the definition revision it started at
- * (`undefined` when its record names none). The resolver rebuilds a file agent from the snapshot
- * under the hash, and the rebuilt agent reports the revision, not the revision the file has
- * reached since: one snapshot is keyed by content, so it can have been several revisions.
- */
-export interface CatalogRunRecordedDefinition {
-  readonly agentDefinitionHash: string | undefined;
-  readonly definitionRevision?: number | undefined;
-}
-
-/**
  * COR-1584 — the definition revision a session's metadata recorded for the definition at `hash`.
  * A session's metadata names its latest run's definition only, so the revision is the run's own
  * only when the hash is the one the metadata names; any other run's revision is not recorded
@@ -1324,11 +292,6 @@ export function sessionRecordedRevision(
     ? revision
     : undefined;
 }
-
-type RecoveredScheduleMarker =
-  | { status: 'found'; scheduleId: string }
-  | { status: 'missing'; sessionId?: string }
-  | { status: 'read-error'; error: unknown; sessionId?: string };
 
 function recoveredMarkerSessionId(marker: RecoveredScheduleMarker | undefined): string | undefined {
   return marker?.status === 'found' ? undefined : marker?.sessionId;
@@ -1370,207 +333,6 @@ export function removeLastScheduledFireTranscript(
   });
   const endIndex = nextUserIndex === -1 ? history.ids.length - 1 : nextUserIndex - 1;
   return removeConversationIndexRange(history, promptIndex, endIndex);
-}
-
-/** What a withdrawn evidence row reads as once a newer bundle replaced it. */
-const WITHDRAWN_MEMORY_EVIDENCE = '[memory evidence withdrawn: the memory policy changed]';
-
-function appendMemoryEvidence(
-  conversation: Conversation,
-  target: RunMemoryTarget,
-  bundle: MemoryEvidenceBundle,
-): void {
-  if (bundle.evidence.length === 0) {
-    return;
-  }
-  // The bundle's identity rides on the row it renders into: Operative's epoch
-  // sealer reads `bundleRevision` and `contentDigest` here and checks the
-  // digest against the row, so the epoch names exactly the bundle the model
-  // sees (COR-771).
-  conversation.appendSystemMessage(bundle.rendered, {
-    [MEMORY_EVIDENCE_METADATA_KEY]: {
-      sessionId: target.sessionId,
-      recordIds: bundle.evidence.map((item) => item.id),
-      withheld: bundle.withheld,
-      bundleRevision: bundle.revision,
-      contentDigest: bundle.contentDigest,
-      policyRevision: bundle.policyRevision,
-    },
-  });
-}
-
-/** Positions of the evidence rows recalled under a memory policy that is no longer in force. */
-function staleEvidencePositions(conversation: Conversation, policyRevision: string): number[] {
-  const { ids, messages } = conversation.current;
-  return ids.flatMap((id, position) => {
-    const entry = getOwn(messages, id)?.metadata?.[MEMORY_EVIDENCE_METADATA_KEY];
-    if (entry === null || typeof entry !== 'object' || Array.isArray(entry)) return [];
-    const recalledUnder = (entry as Record<string, unknown>)['policyRevision'];
-    if (typeof recalledUnder !== 'string' || recalledUnder === policyRevision) return [];
-    return getOwn(messages, id)?.content === WITHDRAWN_MEMORY_EVIDENCE ? [] : [position];
-  });
-}
-
-/**
- * Inject recalled memory on step 0 through governed memory's mandatory recall
- * admission (COR-41). Only records the run's authority may search, whose trust
- * meets the policy minimum for their class, and that pass the recall detectors
- * reach the conversation, and they arrive inside a labeled evidence envelope
- * whose content cannot close the envelope or claim authority. A record a
- * detector trips on is quarantined instead.
- *
- * A bundle never outlives the memory policy it was recalled under (COR-771).
- * On every step, including step 0 of a session's next run and the first step
- * of a recovered run, an evidence row recalled under an older policy revision
- * is withdrawn and the prompt is recalled again, so the next epoch records the new bundle rather
- * than carrying the stale one as current. Compaction and steering never
- * recall: a compaction that rewrites the row breaks its digest, which the
- * epoch flags, and steering does not change what memory returns.
- *
- * Replay classification (seam #11): `effectful`, because recall admission
- * writes to the governance ledger and can quarantine a poisoned record. Both
- * effects are idempotent under a recovery re-fire: the durable workflow
- * rehydrates a fresh `Conversation.from(snapshot)` per step, so the re-fire
- * re-injects into that step's conversation, a record quarantined the first
- * time is simply absent the second, and the ledger records the second recall
- * that genuinely happened.
- */
-export function createMemoryRecallHook(
-  memory: GovernedMemory,
-  authority: MemoryAuthority,
-  target: RunMemoryTarget,
-  onDetection?: (detection: MemoryRecallDetection, step: number) => void | Promise<void>,
-): PrepareStepHook {
-  return async (context) => {
-    // The current prompt, whatever its shape: a string, or the text parts of a
-    // part array (COR-716). Recall never runs against an older message because
-    // the current one carries media, and a prompt with no text recalls nothing.
-    const messages = context.conversation.getMessages();
-    const latestUserMessage = messages.findLast((message) => message.role === 'user');
-    const query = latestUserMessage === undefined ? '' : messageText(latestUserMessage);
-
-    // Stale rows are withdrawn on every step, step 0 included: a session's
-    // next run starts at step 0 with the rows its earlier runs recalled.
-    const withdrawStale = (): number => {
-      const stale = staleEvidencePositions(context.conversation, memory.policyRevision);
-      for (const position of stale) {
-        context.conversation.redactMessageAtPosition(position, WITHDRAWN_MEMORY_EVIDENCE);
-      }
-      return stale.length;
-    };
-    if (withdrawStale() === 0 && context.step !== 0) {
-      return;
-    }
-
-    if (query.trim() === '') {
-      return;
-    }
-
-    const recall = () =>
-      memory.recallForModel(authority, query, {
-        collection: target.collection,
-        limit: 5,
-        contextId: authority.principal.id,
-      });
-    // A policy change that lands while recall runs leaves the bundle admitted
-    // under the old policy, so it is recalled once more; if the policy moves
-    // again, nothing is appended rather than evidence no current policy admitted.
-    // Every recall's detections are reported, including one the policy change below discards: the
-    // content was read, and a detector flagged it.
-    const recallReporting = async () => {
-      const recalled = await recall();
-      for (const { detection } of recalled.exclusions) {
-        if (detection !== undefined) await onDetection?.(detection, context.step);
-      }
-      return recalled;
-    };
-    let bundle = await recallReporting();
-    if (bundle.policyRevision !== memory.policyRevision) bundle = await recallReporting();
-    // The scan above ran under the policy recall started with; rows it kept
-    // may be stale under the one in force now, so scan again either way.
-    withdrawStale();
-    if (bundle.policyRevision !== memory.policyRevision) return;
-    appendMemoryEvidence(context.conversation, target, bundle);
-  };
-}
-
-/**
- * Persist the final assistant content of a step as governed memory (COR-41).
- * Assistant output is ordinary conversation, so it is admitted as an untrusted
- * `conversation` write under the run's memory authority: it is scanned, quota
- * checked, and quarantined when poisoned, and its record carries the run's full
- * attribution. A refused or quarantined write is recorded in the governance
- * ledger, not surfaced to the run.
- *
- * EFFECTFUL hook (seam #11): a step can run more than once, so this hook can
- * fire AGAIN for the same step. A durable recovery re-runs the crashed in-flight
- * step from its boundary, and a requeued run either resumes from its
- * last completed step (durable engine) or starts again (no engine). The
- * mitigation is IDEMPOTENCY, not suppression-on-replay — suppressing the hook
- * would drop the write for a step whose work (generate + tools) did re-execute,
- * leaving memory out of sync with a step that ran.
- *
- * Idempotency is enforced by a DETERMINISTIC operation key, not by content: a
- * replayed step may produce non-byte-identical content (its `generate` re-runs).
- * The write uses a stable `dedupeKey` of `${runId}:${step}` (the operation's
- * identity — same run, same step index across a replay), so a re-fire is an
- * atomic no-op regardless of content drift.
- *
- * Every run Bureau composes passes a `runId`: the run id for `createRun` runs,
- * schedule fires, and recovered runs. Without a `runId` the write carries no dedupe key and a repeated step
- * stores its answer again, so omit it only for a step that cannot run twice.
- *
- * `replay: 'effectful'` ({@link HookReplayPolicy}) is recorded on the write for
- * diagnostics; it documents the contract and never gates execution.
- */
-export function createMemoryPersistHook(
-  memory: GovernedMemory,
-  authority: MemoryAuthority,
-  target: RunMemoryTarget,
-  runId?: string,
-  /**
-   * Told of a write governed memory rejected (a quota, a content rule, a missing capability), which
-   * stores no record and so leaves nothing else to say the answer was not remembered (COR-1546).
-   * Receives the receipt, which names a reason and never the content.
-   */
-  onRejected?: (receipt: MemoryWriteReceipt) => void,
-): OnStepHook {
-  return async (context) => {
-    if (!context.final || !context.content.trim()) {
-      return;
-    }
-
-    // Deterministic identity of THIS durable operation: same run + same step
-    // index on a replay. Content-independent, so a divergent regenerate cannot
-    // produce a second record.
-    const dedupeKey = runId === undefined ? undefined : `${runId}:${context.step}`;
-
-    const receipt = await memory.write(authority, context.content, {
-      collection: target.collection,
-      source: 'conversation',
-      memoryClass: 'episodic',
-      // Replay classification (seam #11): an external write → `effectful`, kept
-      // safe across a recovery re-fire by the atomic dedupeKey write. Metadata
-      // only; never gates execution. The collection is the agent, so no record or
-      // event names the chat that produced it any more (COR-1546): `sessionId` is how
-      // the Memory page shows where a memory came from.
-      metadata: {
-        step: context.step,
-        replay: 'effectful' satisfies HookReplayPolicy,
-        sessionId: target.sessionId,
-      },
-      ...(dedupeKey === undefined ? {} : { dedupeKey }),
-      ...(runId === undefined ? {} : { runId }),
-      // COR-768: every notification of this write names the run, the chat, and, when the run
-      // seals effective-context epochs, the epoch of the attempt that produced the answer.
-      correlation: {
-        ...(runId === undefined ? {} : { runId }),
-        sessionId: target.sessionId,
-        ...(context.contextEpochId === undefined ? {} : { contextEpochId: context.contextEpochId }),
-      },
-    });
-    if (receipt.status === 'rejected') onRejected?.(receipt);
-  };
 }
 
 /**
@@ -1662,234 +424,9 @@ export function applyCache(
   });
 }
 
-/**
- * Who keeps the managed assets a run's rows reference (COR-1581): the session the run writes into,
- * or, for a run with no session, the run itself.
- */
-export type MediaRowHolder = 'session' | 'run';
-
-export type RuntimeCompositionDependencies = {
-  /** Configures live and recovered durable catalog-run services. */
-  configureDurableRun?:
-    ((runId: string, services: DurableRunDeps, principal: string) => void) | undefined;
-  /**
-   * Builds the session store this composition uses over its resolved KV
-   * view. Defaults to operative's own `createSessionStore` — the real
-   * production wiring. A caller (test or platform package) that supplies a
-   * different `SessionStore` implementation here does so through this
-   * non-test-gated dependency-injection parameter, not a retired test-only
-   * seam: this package's own test suite uses it to exercise `resolveRunServices`' failure-handling
-   * branches (a store whose `load`/`updateMetadata` fails) without a
-   * private mutation backdoor.
-   */
-  createSessionStore?: typeof createSessionStore;
-  /**
-   * COR-718 — `CreateSessionStoreOptions.beforeCleanup` for the session store this
-   * composition builds: told which sessions `cleanup()` is about to expire, before
-   * they are removed, and able to keep them by rejecting. `createBureau` records
-   * each one's owner for its deletion's audit entry.
-   */
-  beforeSessionCleanup?: ((sessions: readonly AgentSession[]) => Promise<void>) | undefined;
-  /**
-   * COR-851 — the durable `goalRun` workflow, registered on the durable engine
-   * beside `agentRun`. `createBureau` supplies it; the engine is built before
-   * the goal store and the agent catalog exist, so the workflow's ports are
-   * bound after composition (see `createGoalWorkflowHost`).
-   */
-  goalWorkflow?: AnyWorkflowDefinition;
-  /**
-   * COR-851 — the self-fence a goal attempt's run is registered with, on a fresh
-   * start and on recovery alike. `createBureau` supplies a late-bound one, since
-   * the goal store it reads does not exist yet; a composition with none runs
-   * goal attempts unfenced and has no goals to overtake them.
-   */
-  goalAttemptFence?: GoalAttemptFence;
-  /**
-   * COR-1586 — the caller will wire the catalog agent run options resolver
-   * (`setCatalogAgentRunOptionsResolver`) once it has built the catalog the resolver reads, which
-   * is after this composition exists and after the engine has started reclaiming runs. Set, every
-   * reader of the resolver waits while it is unset, instead of answering that it is not
-   * configured: that answer is a terminal failure for a run, or a resume under the wrong agent.
-   * A caller that wires the resolver itself, or none, leaves this unset and gets the answer at once.
-   * `createBureau` sets it, and calls `abandonCatalogAgentRunOptionsResolver` if it will never wire
-   * the resolver.
-   */
-  awaitsCatalogAgentRunOptionsResolver?: boolean;
-  /**
-   * COR-1510 — the engine's recovery hook, installed when the engine is created. The engine
-   * reclaims and resumes runs whose claim has lapsed on its own interval, which can be before
-   * `createBureau` calls `recoverAll()` with its hook; a run resumed that way must reach the same
-   * hook before its first step, or the bureau never sees that step. `createBureau` supplies a
-   * late-bound one that waits until its recovery has started.
-   */
-  onRecoveredWorkflow?: RecoverAllOptions['onRecoveredWorkflow'];
-  /**
-   * COR-718 — called when a schedule fire's services are built, with the fire's
-   * run, its schedule, and the schedule's owner. `createBureau` records the
-   * fire's owner and its `schedule.fired` audit entry here. A fire is rebuilt on
-   * recovery, so this can run more than once for one fire; the hook is
-   * responsible for recording once.
-   */
-  onScheduledFire?: (fire: ScheduledFireNotice) => void | Promise<void>;
-  /** Queue a durable pause without blocking the scheduler's own serialized fire. */
-  onScheduleAuthorityDenied?: (scheduleId: string) => void;
-  /**
-   * COR-2105 — called once a session's taint is first stored, after the write commits.
-   * `createBureau` publishes `session.tainted` from it.
-   */
-  onSessionTainted?: (publication: SessionTaintPublication) => void;
-  /**
-   * COR-1482 — called once a schedule fire's run has ended, however it ended: completed, failed,
-   * or canceled. `createBureau` settles the fire's task here.
-   */
-  onScheduledFireSettled?: (settlement: ScheduledFireSettlement) => void | Promise<void>;
-  /**
-   * COR-1482 — called when a fire's session is known: found when the fire's services are built,
-   * or saved by the fire's first step, which is when a fresh session first gets its incarnation.
-   * `createBureau` binds the fire's task to it, so the task is found by its context.
-   */
-  onScheduledSessionKnown?: (session: ScheduledSessionNotice) => void | Promise<void>;
-  /**
-   * COR-1596 — called once a schedule fire's services are built and before the fire runs, with
-   * the services themselves: on a live tick and on a recovered fire alike, because the engine
-   * rebuilds a fire's services the same way for both. `createBureau` registers the fire's human
-   * waits and tool approvals as pending reviews here, which needs the services' emitter and
-   * toolbox. A host that cannot register them is diagnosed and the fire still runs.
-   */
-  onScheduledFireServices?: (
-    fire: ScheduledFireServicesNotice,
-    services: DurableRunDeps,
-  ) => void | Promise<void>;
-  /**
-   * COR-1527 — whether `type` is a workflow Bureau registered from a workflow file. An instance of
-   * one needs no services: its steps are the host's activities, and its fire or its recovery must
-   * not be answered "unrecognized workflow type". Late-bound by the caller, since the workflow
-   * files are read after the composition exists.
-   */
-  isWorkflowFileType?: (type: string) => boolean;
-  /**
-   * COR-716 — the {@link ContentSourceResolver} a run owned by `principalId` is
-   * given, so a managed asset in its input reaches a provider as bytes or a
-   * provider-fetched URL. `createBureau` supplies one over its asset service; a
-   * composition with none leaves such a part to fail admission, typed, before any
-   * provider call. Late-bound by the caller: the asset service is built after this
-   * composition, and a run resolves it only when it starts.
-   */
-  contentSourceResolverFor?: (principalId: string | undefined) => ContentSourceResolver | undefined;
-  /**
-   * COR-1709 — what a run owned by `principalId` needs to be offered the `decide` tool, or
-   * `undefined` when the tool is not offered (`decide: false`, or nothing can answer). Late-bound
-   * by `createBureau`: the decisions are built after this composition.
-   */
-  decideToolFor?: (
-    principalId: string | undefined,
-    offered: boolean,
-  ) => DecideToolWiring | undefined;
-  /**
-   * COR-1936 — the permission mode of the chat a run belongs to, read when each of the run's tool
-   * calls is decided, so a steer applies from the next call; `undefined` for a run that belongs to
-   * no chat. A rejection is read as `read-only`. Late-bound by `createBureau`, which holds the
-   * steering.
-   */
-  permissionModeOfRun?: (runId: string) => Promise<ChatPermissionReading | undefined>;
-  /**
-   * COR-1996 — the model policy now in force and the model catalog, read at every step of a
-   * catalog agent's run so that a plugin code agent's generate is held to the policy as a file
-   * agent's is. `createBureau` supplies it from its settings and catalog. Without it no code
-   * agent's model is judged.
-   */
-  modelPolicy?: ModelPolicySource;
-  /**
-   * COR-1710 — the tools task `taskId` was granted when it started, from its admission record;
-   * for a task recorded before grants were, the settings now, recorded on it once. Without this,
-   * a resumed task is offered what the options say, as before grants existed.
-   */
-  toolGrantFor?: (taskId: string) => Promise<TaskToolGrant>;
-  /**
-   * COR-1524 — the definition a file-backed agent's run started with. A scheduled fire records its
-   * binding here as a session run does, so recovering it resolves the agent it started with, not the
-   * file as it is now. Settlement and release follow the run's store actions. Absent when no agent
-   * files are wired.
-   */
-  agentRunReferences?: {
-    reference(
-      runId: string,
-    ): Promise<{ id: string; hash: string; definitionRevision?: number } | undefined>;
-    record(binding: FileAgentBinding, runId: string): Promise<void>;
-  };
-  /**
-   * COR-713: the media-admission port of a run's owning principal, built from the asset service
-   * like {@link RuntimeCompositionDependencies.contentSourceResolverFor}. Without an asset service
-   * a run has no port, and a generated media part fails typed at its admission point.
-   */
-  generatedMediaAdmitterFor?: (
-    principalId: string | undefined,
-    rowHolder: MediaRowHolder,
-  ) => GeneratedMediaAdmitter | undefined;
-  /**
-   * COR-1811 — persist the `ctx.log` lines of durable workflows. Set, the composition creates a Weft
-   * log store over the durable storage, feeds it every line the engine emits (the human-wait park
-   * marker excepted, and `BureauOptions.onLog` still receives each), and hands it to the engine
-   * to serve, flush on shutdown, and clear with a purged run. `maximumLinesPerRun` is read on every
-   * line, so a host can change the cap while the engine runs; `undefined` is Weft's default of
-   * 500. `onError` is told about a write that failed.
-   */
-  workflowLogs?: {
-    maximumLinesPerRun(): number | undefined;
-    onError(error: unknown): void;
-  };
-};
-
-/** What {@link RuntimeCompositionDependencies.onScheduledFire} is told about one fire. */
-export type ScheduledFireNotice = {
-  readonly runId: string;
-  readonly scheduleId: string | undefined;
-  readonly sessionId: string;
-  readonly agentName: string;
-  /** The schedule's owner of record, which also owns this fire's run and, if it creates one, its session. */
-  readonly owner: string;
-  /** The text the fire delivers to its agent: the originating message of the fire's task. */
-  readonly message: string;
-  /** `true` when a person started this fire with `schedules.runNow` instead of the cadence (COR-1829). */
-  readonly manual?: true | undefined;
-};
-
-/** What {@link RuntimeCompositionDependencies.onScheduledFireSettled} is told about one fire. */
-export type ScheduledFireSettlement = {
-  readonly runId: string;
-  readonly status: 'completed' | 'failed' | 'canceled';
-  readonly finishReason: string | undefined;
-  /** Why the fire failed, when it did and the engine said. */
-  readonly error: string | undefined;
-  /** The fire's answer, when it completed with one. */
-  readonly content: string | undefined;
-};
-
-/** What {@link RuntimeCompositionDependencies.onScheduledFireServices} is told about one fire. */
-export type ScheduledFireServicesNotice = {
-  readonly runId: string;
-  readonly sessionId: string;
-  readonly agentName: string;
-  /** The request context the fire runs under, which a later approval of its tool resumes under. */
-  readonly requestContext: ToolRequestContext;
-};
-
-/** What {@link RuntimeCompositionDependencies.onScheduledSessionKnown} is told. */
-export type ScheduledSessionNotice = {
-  readonly runId: string;
-  readonly sessionId: string;
-  readonly incarnation: string;
-};
-
 const defaultRuntimeCompositionDependencies: RuntimeCompositionDependencies = {
   createSessionStore,
 };
-
-/** The run options through which Bureau governs the media a run carries (COR-716). */
-export type MediaRunOptions = Pick<
-  RunOptions,
-  'contentSourceResolver' | 'assetSafety' | 'generatedMediaAdmitter'
->;
 
 /**
  * The media options Bureau contributes to a run that already has its own: whichever of
@@ -2052,40 +589,9 @@ function activeSkillSessionMetadataForStep(
   };
 }
 
-/**
- * What the active-skill snapshot of a run says (COR-1620). `verified` with no records is a
- * verified absence of skills. `unverifiable` is the snapshot failing to be read or deserialized,
- * or naming another run: the policy that governed the run is not known.
- */
-export type SkillSnapshot =
-  | { readonly status: 'verified'; readonly records: SkillActivationRecord[] | undefined }
-  | { readonly status: 'unverifiable'; readonly reason: string };
-
-/** The outcome of re-validating stored skill records against the live catalog. */
-export interface SkillRecoveryOutcome {
-  readonly recovered: readonly string[];
-  readonly refused: readonly string[];
-}
-
 /** A snapshot field named in a reason: its string, or what the field holds instead. */
 function describe(value: unknown): string {
   return typeof value === 'string' ? `"${value}"` : value === null ? 'null' : 'nothing';
-}
-
-/**
- * What a recovered run's toolbox was rebuilt with (COR-1620), kept with the toolbox that was
- * built. A restored approval, a replayed fire and a reattached session run are all built by
- * recovery, and each is decided under the snapshot read again at approve time, never under the
- * toolbox as it was built.
- */
-export interface RecoveredSkillPolicy {
-  readonly scheduledFire: boolean;
-  readonly agentName: string;
-  readonly sessionAgent: SessionAgentRun | undefined;
-  /** The records the toolbox was built with, as JSON. */
-  readonly recordsKey: string;
-  /** Whether the snapshot was verified and every stored skill recovered. */
-  readonly recoveredCleanly: boolean;
 }
 
 const recoveredSkillPolicies = new WeakMap<object, RecoveredSkillPolicy>();
@@ -2200,449 +706,6 @@ function createUnavailableToolbox(): BureauToolbox {
     ...emptyToolbox,
     execute,
   };
-}
-
-/**
- * The durable run engine + checkpoint store, plus the optional observability
- * handle. `observability` is present only when `BureauOptions.observability` was
- * enabled; its `dispose` MUST be called before `engine[Symbol.dispose]()` so the
- * engine's terminal lifecycle events still reach the span-closing listeners.
- */
-export interface DurableComposition {
-  engine: RegistryAgnosticEngine;
-  checkpointStore: CheckpointStore;
-  observability?: RunEngineObservability | undefined;
-  /**
-   * The engine's `schedule:missed-fire` signal, listened to from the moment the engine exists and
-   * replayed to the first listener added. Weft's scheduler starts inside `Engine.create`, so a
-   * listener added to `engine` once the composition returns can miss a signal raised while the
-   * rest of the composition was still being built.
-   */
-  missedFires: MissedFireBuffer;
-  /**
-   * COR-1811 — the Weft log store behind the engine's persisted `ctx.log` lines, present only when
-   * the composition was asked for one (`RuntimeCompositionDependencies.workflowLogs`).
-   * `createBureau` prunes it on each maintenance pass.
-   */
-  workflowLogs?: WorkflowLogStore | undefined;
-}
-
-/**
- * The schedule-fire events dispatched onto
- * {@link RuntimeComposition.scheduleFireEvents}: the two fire-terminal
- * outcomes (AB-223) and the two per-tick observation signals (COR-660) that
- * report an occurrence the overlap policy attempted and, when it collided,
- * dropped.
- */
-export interface ScheduleFireEventMap extends EventMap {
-  [ScheduleCompletedEvent.type]: ScheduleCompletedEvent;
-  [ScheduleFailedEvent.type]: ScheduleFailedEvent;
-  [ScheduleAttemptedEvent.type]: ScheduleAttemptedEvent;
-  [ScheduleSkippedEvent.type]: ScheduleSkippedEvent;
-}
-
-export interface RuntimeComposition {
-  kv: ConditionalTextValueStore | undefined;
-  /**
-   * COR-1920 — the stored secret answers, present when there is a `kv` and the Bureau was given
-   * `answerEncryption`. Without it a secret answer is refused before anything holds it.
-   */
-  secretAnswers: SecretAnswerStore | undefined;
-  /**
-   * The durable run engine + checkpoint store, present whenever durable
-   * execution resolves on (by default: a persistent `storage` backend is
-   * configured and `durable` is not explicitly `false`). When present,
-   * `createBureau` routes every `createRun()` through it transparently — the run
-   * surface is unchanged, but the run is checkpointed and resumes after a crash.
-   */
-  durable: DurableComposition | undefined;
-  /**
-   * Dispatches `ScheduleCompletedEvent`/`ScheduleFailedEvent` (AB-223) for
-   * every scheduled fire's terminal outcome, live or recovered. Populated by a
-   * `durable.engine` `workflow:completed`/`workflow:failed` listener,
-   * correlated against the `scheduleId` recorded in `buildScheduledRunServices`
-   * when that fire's deps were built — the map entry it reads is deleted the
-   * instant this fires, so exactly one event dispatches per fire regardless of
-   * whether it settled as a live tick or was recovered on boot (both routes
-   * settle through this same Weft engine terminal event). `createBureau`
-   * forwards each event onto the bureau's own `emitter` (scheduled fires are
-   * headless — there is no per-run emitter to dispatch onto instead). A run
-   * with no correlated `scheduleId` (every ordinary, non-scheduled run) is
-   * silently ignored.
-   */
-  scheduleFireEvents: TypedEventTarget<ScheduleFireEventMap>;
-  /**
-   * Skill lifecycle events (COR-767), dispatched by the `@lostgradient/bureau/skills`
-   * tool factories each run's toolbox is built from. One bureau-level target
-   * rather than one per run, matching `scheduleFireEvents`: each event carries
-   * its own `runId`/`sessionId` correlation, so a shared target loses nothing
-   * and `createBureau` forwards from exactly one place.
-   */
-  skillEvents: TypedEventTarget<SkillEventMap>;
-  /**
-   * Run ids the durable engine flagged, during boot recovery, as resuming
-   * under a DIFFERENT workflow version than the one they were checkpointed
-   * with (AB-10 — workflow versioning for in-flight durable runs). Populated
-   * by the `onWorkflowVersionMismatch` callback wired into `createRunEngine`,
-   * which fires once per recovered run BEFORE `engine.recoverAll()` returns —
-   * so this map is fully populated by the time the bureau's recovery loop
-   * calls `classifyRecoveredRun`. Never cleared: entries are read exactly once
-   * per boot recovery pass and the map is rebuilt fresh on the next boot.
-   *
-   * Keyed by runId, valued with the stored/registered version strings (AB-12
-   * run inspector — `reattachRecoveredRun` reads these to stamp a
-   * `workflow.reattached` timeline marker with the mismatch detail, not just
-   * the boolean `classifyRecoveredRun` needs).
-   */
-  workflowVersionMismatches: Map<string, { storedVersion: string; registeredVersion: string }>;
-  /**
-   * COR-1916 — run ids this process's own recovery resolver ended because their deps could not be
-   * rebuilt here (their session is reconciled to `error` and Weft fails the record). Boot recovery
-   * reads it to tell a run this boot ended, which it reports, from one a peer finished, which it
-   * leaves alone.
-   */
-  unrebuildableRecoveredRuns: Set<string>;
-  /**
-   * Stops this composition's writes to the caller's `options.storage` (COR-1767): every later
-   * write through `kv`, the checkpoint store, the engine, or `durableStorage` throws; reads still
-   * pass. It never closes the caller's storage, which stays the caller's to close. A no-op
-   * without storage.
-   */
-  stopUsingStorage(): void;
-  /**
-   * The resolved durable `Storage` backend itself, when one exists.
-   *
-   * Distinct from `kv`, which is a `ConditionalTextValueStore` *view* over
-   * this same backend: a `Mailbox` needs the raw `Storage` because it
-   * commits its own state transitions through `conditionalBatch`, which
-   * the text-value view does not expose.
-   *
-   * `undefined` when no persistent backend resolved — the caller is then
-   * genuinely non-durable and must not pretend otherwise.
-   *
-   * This is the fenced view of the caller's `options.storage`, which
-   * `stopUsingStorage` closes. Neither this composition nor a borrower disposes
-   * the caller's adapter.
-   */
-  durableStorage: Storage | undefined;
-  memory: GovernedMemory | undefined;
-  sessionStore: SessionStore | undefined;
-  /**
-   * The bureau's canonical toolbox (`options.toolbox`, or an internally
-   * created one). `reviews.resolve` calls `resumeApproval()` on this instance to
-   * resume a signed pending tool approval — `resumeApproval` re-invokes the
-   * tool by name/callId, so any toolbox sharing the original `approvalSecret`
-   * and tool set can resume it, not only the specific per-run `.extend()` clone
-   * that produced the pending approval.
-   */
-  baseToolbox: BureauToolbox;
-  /**
-   * COR-1947 — `toolbox` with every tool held to the permission mode of the chat `runId` belongs
-   * to. Every toolbox a run calls goes through this once, whatever kind of agent built it.
-   */
-  withChatPermission(toolbox: BureauToolbox, runId: string): BureauToolbox;
-  /**
-   * COR-1996 — `options` with its `generate` held to the model policy: a step whose catalog rows
-   * the policy forbids fails with a `ModelPolicyDeniedError` before the provider is called. Every
-   * `RunOptions` a catalog agent resolves goes through this once, whatever path starts the run.
-   * `generationMode` is the agent's own (`readGenerationProfile`): a fixed agent is judged by its
-   * one row whatever model a session carries as a steer, a selectable one by the model it names.
-   */
-  holdToModelPolicy<Options extends Pick<RunOptions, 'generate'>>(
-    options: Options,
-    generationMode: GenerationMode,
-  ): Options;
-  setRequestAuthorityValidator(
-    validator: ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined,
-  ): void;
-  /**
-   * AB-240: wired by `createBureau` once its agent catalog exists, so boot
-   * recovery can resolve a catalog-dispatched run's deps through the
-   * catalog agent's OWN `OPERATIVE_RESOLVE_RUN_OPTIONS` rather than the
-   * Bureau's default runtime composition.
-   */
-  setCatalogAgentRunOptionsResolver(resolver: CatalogAgentRunOptionsResolver | undefined): void;
-  /**
-   * COR-1586 — the resolver will never be wired, because the Bureau failed while it was being
-   * built. Every reader waiting for it, and every later one, is answered as unavailable with
-   * `reason`. A no-op for a composition built without `awaitsCatalogAgentRunOptionsResolver`.
-   */
-  abandonCatalogAgentRunOptionsResolver(reason: string): void;
-  /**
-   * Persist the catalog-run recovery record `resolveRunServices` consults
-   * on the next boot. Called from `bureau.run()`'s durable dispatch branch
-   * before the durable engine starts. A no-op when this composition has no
-   * durable storage.
-   */
-  persistCatalogRunRecoveryRecord(
-    runId: string,
-    record: Omit<CatalogRunRecoveryRecord, 'schemaVersion'>,
-  ): Promise<void>;
-  /**
-   * COR-772 — {@link persistCatalogRunRecoveryRecord}, but create-if-absent:
-   * `false`, writing nothing, when a record already exists for `runId`. A
-   * child run's identifier is chosen by its caller rather than minted here,
-   * so its record must never replace the one another run already holds.
-   * `true` with no durable storage, where there is nothing to claim.
-   */
-  claimCatalogRunRecoveryRecord(
-    runId: string,
-    record: Omit<CatalogRunRecoveryRecord, 'schemaVersion'>,
-  ): Promise<boolean>;
-  /**
-   * COR-851 — the persisted catalog-run recovery record for `runId`, as
-   * stored. A goal reads it to verify that a run at one of its deterministic
-   * ids is the goal's own before adopting or stopping it.
-   */
-  loadCatalogRunRecoveryRecord(runId: string): Promise<CatalogRunRecoveryLoad>;
-  /**
-   * COR-1934 — deletes a run's recovery record, which holds the run's `input`. For a run whose
-   * content is being purged and that nothing will recover or claim again. Idempotent.
-   */
-  deleteCatalogRunRecoveryRecord(runId: string): Promise<void>;
-  /**
-   * COR-851 — tombstones the claim of a goal attempt's run, so that no start can
-   * begin from it and no run under it takes a step (see `goal-attempt-fence.ts`).
-   * The claim the goal's own start wrote is changed by compare-and-swap from the
-   * exact bytes read; where no claim exists a tombstoned one is created
-   * whole, create-if-absent, so a start that claims later finds it. `'fenced'`
-   * once the claim is tombstoned (by this call or an earlier one), `'foreign'`
-   * when the record at the id is not this goal attempt's, which is left alone.
-   * Rejects when the record cannot be read or is not valid, or when concurrent
-   * writers keep winning; the caller treats that as work still owed.
-   */
-  fenceGoalAttemptRecoveryRecord(
-    runId: string,
-    owner: GoalAttemptClaimOwner,
-    tombstonedAt: string,
-  ): Promise<GoalAttemptClaimFence>;
-  /**
-   * Whether `runId` has a persisted catalog-run recovery record — used by
-   * `createBureau`'s boot-recovery classification to route a catalog run to
-   * a headless monitor instead of the session-ownership classification.
-   */
-  isCatalogRecoveredRun(runId: string): Promise<boolean>;
-  /**
-   * AB-241 review finding: the combined catalog-run classification AND
-   * attribution read `createBureau`'s `onRecoveredWorkflow` uses, backed by
-   * exactly ONE `loadCatalogRunRecoveryRecord` call — deliberately NOT two
-   * separate calls (one to `isCatalogRecoveredRun`, one to a
-   * would-be `getCatalogRunAttribution`), because a transient storage read
-   * failure on a SECOND, independent read could then classify a workflow as
-   * catalog territory (the first read succeeded) while losing its
-   * attribution (the second read hit the transient failure) — silently
-   * demoting an attributed run to unattributed for the rest of this
-   * process's lifetime, since `eventHistory`'s principal gate fails closed
-   * on an absent `runAttribution` entry. `isCatalogRun` is `true` for
-   * `'read-error'` as well as `'found'` (matching `isCatalogRecoveredRun`'s
-   * own read-error handling), so a corrupt (not absent) record still routes
-   * to the headless catalog monitor rather than falling through to the
-   * session-ownership classification; `attribution` is populated only for
-   * `'found'`, since a corrupt record has nothing decoded to offer.
-   */
-  classifyCatalogRecoveredRun(runId: string): Promise<{
-    isCatalogRun: boolean;
-    attribution?: { agentName: string; principal?: string };
-  }>;
-  /**
-   * AB-241 review finding: releases every entry `catalogRunRecoveryCache`
-   * accumulated during the current boot recovery pass. `createBureau`'s
-   * `recoverDurableRuns` calls this exactly once, after its post-recovery
-   * loop (the last consumer of the cache) has finished — see the cache's
-   * own doc comment for why entries are retained rather than evicted
-   * per-read.
-   */
-  clearCatalogRunRecoveryCache(): void;
-  /**
-   * COR-1577 — resolve the catalog agent a session run names, through the same resolver a
-   * catalog dispatch and boot recovery use. The caller checks `agentName` is not the default
-   * agent first: `bureau` has no catalog entry and runs the Bureau-wide runtime.
-   */
-  resolveSessionAgentRun(
-    agentName: string,
-    runId: string,
-    principal?: string,
-    recorded?: CatalogRunRecordedDefinition,
-    session?: SessionTaintSource,
-  ): Promise<SessionAgentRunResolution>;
-  /**
-   * COR-716 — how a run owned by `principalId` handles the media it carries: the
-   * resolver that projects a managed asset to something a provider takes (absent when no
-   * asset service is composed), and the policy for an asset no safety gate verified,
-   * taken from this bureau's input guardrail. Every path that starts or resumes a run
-   * spreads it into the run's options, so a managed-asset part resolves, and is judged,
-   * the same on a fresh start, a recovery, and a scheduled fire.
-   *
-   * `rowHolder` says who keeps the managed assets the run's rows reference (COR-1581): `'session'`
-   * for a run that writes into a session, whose claim pass takes them, and `'run'` for a run with
-   * no session, which holds them itself. A catalog dispatch (`bureau.run()`, a child, a goal
-   * attempt, a workflow step) and its recovery have no session.
-   */
-  mediaOptionsFor(principalId: string | undefined, rowHolder: MediaRowHolder): MediaRunOptions;
-  ready: boolean;
-  maximumSteps: number;
-  systemPrompt: string | undefined;
-  createRunRuntime(
-    request: RunRuntimeRequest,
-    options?: {
-      /**
-       * The pre-crash active set, as provenance-carrying activation records.
-       *
-       * Recovery re-validates these against the live catalog and re-checks each digest, so a skill
-       * whose source was revoked or whose content drifted while the run was away does not come
-       * back under a name somebody once reviewed.
-       */
-      initialActiveSkillRecords?: ReadonlyArray<SkillActivationRecord> | undefined;
-      /**
-       * COR-1577 — run the named catalog agent's `generate` and toolbox in place of the
-       * Bureau-wide ones. The Bureau tier (memory, skills, identity, guardrails, opt-in tools)
-       * is composed around them exactly as it is around the Bureau-wide runtime.
-       */
-      sessionAgent?: SessionAgentRun | undefined;
-      /** COR-1546 — the run's owner of record, which its memory is partitioned under. */
-      memoryOwner?: string | undefined;
-      /**
-       * COR-2105 — the metadata of the session the run belongs to. The run's Bureau guardrails
-       * start tainted when it holds `guardrailTaint`, and write a taint they raise back to the
-       * session. Absent, the run starts untainted and still writes back.
-       */
-      sessionMetadata?: Readonly<Record<string, JSONValue>> | undefined;
-      /**
-       * COR-1620 — the skill policy that governs the run cannot be verified, so the run is
-       * offered no tool and writes no skill snapshot. This is a filter on what the model sees, not
-       * a gate on what runs: a call the model makes anyway still reaches its approval, which is
-       * refused at approve under the snapshot read again.
-       */
-      skillPolicyUnverifiable?: boolean | undefined;
-      /** COR-1911 — the run neither recalls nor remembers: no memory hook is registered. */
-      withoutMemory?: boolean | undefined;
-      admitDispatch?: (() => Promise<boolean>) | undefined;
-    },
-  ): Promise<{
-    generate: GenerateFunction;
-    toolbox: AnyToolbox;
-    /**
-     * The run's hook plan (COR-567). Bureau's own hooks were seven pushes into
-     * three legacy arrays until this became a registry; they are registered
-     * here, under stable ids, in the order those arrays ran.
-     *
-     * A registry rather than arrays because `RunOptions.hooks` is the only
-     * hook surface that carries registration identity, priority and plan
-     * observation — and bureau composing one is what makes those real for a
-     * production run instead of a capability nothing reaches.
-     */
-    hooks: HookRegistry<OperativeHookMap>;
-    getActiveSkillRecords: () => readonly SkillActivationRecord[];
-    /**
-     * Settles once the active skills the run was given have been re-validated against the live
-     * catalog (COR-1613). A run waits for it before its first step; a caller that decides a tool
-     * call outside a step, as the restore of a pending approval does, waits for it itself.
-     */
-    skillsRecovered: Promise<SkillRecoveryOutcome>;
-    /**
-     * COR-1620 — whether the skill policy is held unverified: the snapshot could not be
-     * verified, or a stored skill was refused on recovery. Such a run is offered no tool and
-     * writes no skill snapshot, so what it persisted before is kept. Settles with
-     * {@link skillsRecovered}.
-     */
-    skillPolicyUnverified: () => boolean;
-  }>;
-  /**
-   * AB-260 — folded onto this interface directly rather than reached through
-   * the retired `RuntimeCompositionTestingSeams` WeakMap: this is Weft's
-   * literal `resolveWorkflowServices` resolver, already wired into
-   * `durable.engine` at construction whenever one is composed (production
-   * invokes it automatically on every recovered run) — a genuine capability
-   * of this returned object, not a test-only backdoor, so every caller (test
-   * or production) reaches it the same way. Callable even without a durable
-   * engine composed — it resolves `{ status: 'unavailable' }` for every
-   * input in that case, matching what an uncomposed resolver would report.
-   */
-  resolveRunServices(info: WorkflowServicesResolverInfo): Promise<WorkflowServicesResolution>;
-  /**
-   * AB-260 — folded onto this interface directly for the same reason as
-   * {@link RuntimeComposition.resolveRunServices}: the native-scheduled-fire
-   * branch of that same resolver, callable standalone for a caller (test or
-   * production) that already holds a `SessionStore` and wants to build a
-   * scheduled fire's deps without going through the full resolver dispatch.
-   */
-  buildScheduledRunServices(
-    info: WorkflowServicesResolverInfo,
-    store: SessionStore,
-    recoveredScheduleMarker?: RecoveredScheduleMarker,
-  ): Promise<WorkflowServicesResolution>;
-  /**
-   * COR-1620 — the active-skill snapshot of a scheduled fire under recovery, which a restored
-   * approval and a replayed fire are decided under. It tells a verified absence of skills from a
-   * snapshot that cannot be verified: the read or deserialization failed, or the session names
-   * another fire.
-   */
-  readCommittedScheduledSkillSnapshot(
-    session: { readonly metadata: Record<string, JSONValue> } | undefined,
-    runId: string,
-    recovering: boolean,
-    agentHasSkills?: boolean,
-  ): Promise<SkillSnapshot>;
-  /**
-   * COR-1620 — the same for a session run: the records its session holds, a verified absence
-   * when the Bureau has no skills, and unverifiable when they do not deserialize or a later run
-   * cleared or replaced them.
-   */
-  readSessionSkillSnapshot(
-    session: { readonly metadata: Record<string, JSONValue> } | undefined,
-    runId: string,
-    agentHasSkills?: boolean,
-  ): SkillSnapshot;
-  /**
-   * COR-1265 criterion 3b — a fresh registry holding only the Bureau invariants
-   * that close over nothing run-specific, for a dispatch path that resolves its
-   * run options through a catalog agent rather than through
-   * {@link RuntimeComposition.createRunRuntime}. Merged as the first tier so
-   * Bureau's policy still applies to those runs.
-   */
-  createBureauInvariantHooks(
-    goalAttempt?: GoalAttemptTarget,
-    options?: BureauInvariantOptions,
-  ): HookRegistry<OperativeHookMap>;
-  /**
-   * COR-2106 — {@link RuntimeComposition.createBureauInvariantHooks} as a child-run factory: what a
-   * run Bureau owns attaches (`bureauInvariantsField`) so that the children it dispatches carry
-   * Bureau's identity and guardrails, and (COR-2127) the plugin tier.
-   */
-  readonly bureauChildInvariants: BureauChildInvariants;
-  /**
-   * COR-2127 — one run's hook plan: the Bureau tier and the agent tier given, with the plugin tier
-   * (every interceptor a plugin applies to every agent) between them. Every Bureau site that hands a
-   * run its hooks composes them here (`run-hook-tiers.ts`).
-   */
-  composeRunHooks(tiers: RunHookTiers): HookRegistry<OperativeHookMap>;
-  /**
-   * COR-2299 — the taint seam of one run of `sessionId`: the taint `metadata` holds, and an
-   * `onTainted` that stores a new one. For a caller that builds a hook plan outside a run's start,
-   * as the scan of an approved call's result does.
-   */
-  sessionTaintSeam(
-    sessionId: string,
-    runId: string,
-    metadata: Readonly<Record<string, JSONValue>> | undefined,
-  ): SessionTaintSeam;
-  /** COR-2381 — how many taints a scheduled fire holds for a session it has not yet created. */
-  pendingScheduledTaintCount(): number;
-}
-
-/** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
-export interface BureauInvariantOptions {
-  /**
-   * The dispatched agent resolves its own guardrails from its declaration and
-   * its inherited policy (`resolvesOwnGuardrails`), so Bureau registers no
-   * guardrail invariant of its own for the run.
-   */
-  agentResolvesGuardrails?: boolean;
-  /**
-   * COR-2299 — the session taint the Bureau guardrails start from and write back to, for a plan
-   * built outside a run's start (an approved call's result scan). Absent, they start untainted.
-   */
-  sessionTaint?: SessionTaintSeam | undefined;
 }
 
 /**
@@ -2895,26 +958,6 @@ export function scheduledFireApprovalMetadata(
       : otherAuthorities,
   };
 }
-
-/**
- * The Bureau-wide run configuration a composition itself can carry. `createBureau` supplies none of
- * it (COR-323: every run belongs to a catalog agent, which owns its own `generate`, tools, stop
- * condition, and instructions), so a Bureau-composed `RuntimeComposition` is never `ready`; a
- * caller composing the runtime directly, as the composition's own tests do, may still set it.
- */
-export interface CompositionRunOptions {
-  generate?: GenerateFunction;
-  toolbox?: AnyToolbox;
-  guardrails?: GuardrailsOptions | false;
-  skills?: SkillRuntimeConfiguration;
-  stopWhen?: StopCondition | StopCondition[];
-  maximumSteps?: number;
-  systemPrompt?: string;
-  /** Response caching over the composition's own `generate`; a Bureau composes none. */
-  cache?: CacheConfiguration;
-}
-
-export type RuntimeCompositionOptions = Omit<BureauOptions, 'agents'> & CompositionRunOptions;
 
 export async function createRuntimeComposition(
   options: RuntimeCompositionOptions,

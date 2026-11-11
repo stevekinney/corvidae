@@ -39,7 +39,8 @@ import {
 } from './goal-attempt-fence';
 import { createGoalState, goalAttemptId, goalSessionId } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
-import { type CatalogRunRecoveryLoad, createRuntimeComposition } from './runtime-composition';
+import { createRuntimeComposition } from './runtime-composition';
+import { type CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 
 const NOW = '2026-10-02T12:00:00.000Z';
 const RUN: GoalAttemptVerdict = { status: 'run' };

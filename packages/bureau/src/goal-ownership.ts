@@ -40,7 +40,10 @@ import { GOAL_WORKFLOW_TYPE } from '@lostgradient/operative';
 
 import { goalAttemptRunId } from './goal-state';
 import type { GoalEngine } from './goal-types';
-import type { CatalogRunRecoveryLoad, CatalogRunRecoveryRecord } from './runtime-composition';
+import type {
+  CatalogRunRecoveryLoad,
+  CatalogRunRecoveryRecord,
+} from './catalog-run-recovery-record';
 import type { CancelDurableRunOutcome } from './types';
 
 /** An id a goal tried to use belongs to something that is not the goal. */

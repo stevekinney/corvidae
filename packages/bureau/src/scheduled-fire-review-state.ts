@@ -21,7 +21,7 @@ import {
 } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 
-import type { BureauToolbox } from './runtime-composition';
+import type { BureauToolbox } from './runtime-composition-types';
 import { isPlainAuthorityRecord } from './session-authority';
 import type { PendingReview } from './types';
 

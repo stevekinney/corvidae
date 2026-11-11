@@ -10,7 +10,7 @@ import type { AgentSession, JSONValue, RunOptions, SessionStore } from '@lostgra
 import type { BureauCore, ChatRunSpend } from './core';
 import { BureauError, TerminalSessionRecordAbandonedError } from '../bureau-errors';
 import type { Conversation, ConversationHistory } from 'conversationalist';
-import type { SessionAgentRun } from '../runtime-composition';
+import type { SessionAgentRun } from '../runtime-composition-types';
 import type { createSessionPersistence } from '../bureau-session-persistence';
 import { serializeUnknownError } from '../serialization';
 

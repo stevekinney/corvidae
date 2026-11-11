@@ -26,7 +26,7 @@ import { createMemoryAssetStorage } from './assets/storage';
 import type { AssetService } from './assets/types';
 import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import type { DurableEnd } from './catalog-run-settlement';
-import type { CatalogRunRecoveryLoad } from './runtime-composition';
+import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
 import type { BureauDiagnostic } from './types';
 

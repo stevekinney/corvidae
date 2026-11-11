@@ -24,7 +24,7 @@ import { goalAttemptRunId } from './goal-state';
 import type { GoalEngine } from './goal-types';
 import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals } from './goals-composition';
-import type { CatalogRunRecoveryLoad } from './runtime-composition';
+import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import { CHECK, goalRequest } from './testing/goal-fixtures.test-support';
 
 interface FakeWorkflow {

@@ -57,7 +57,7 @@ import { createGoalStore } from './goal-store';
 import type { BureauGoalRecoveryReport, BureauGoals, GoalEngine } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
 import { type BureauGoalsDependencies, createBureauGoals } from './goals';
-import type { GoalAttemptClaimFence, GoalAttemptClaimOwner } from './runtime-composition';
+import type { GoalAttemptClaimFence, GoalAttemptClaimOwner } from './catalog-run-recovery-record';
 import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
 
 export interface GoalsCompositionDependencies {

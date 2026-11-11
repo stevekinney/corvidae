@@ -43,7 +43,7 @@ import type {
 } from '../types';
 import { type ApprovedCallAudit, isJsonObject } from '../approval-state-records';
 import type { BureauCore, ReviewAuditAttachment, ScheduledFireApprovalEnding } from './core';
-import type { BureauToolbox } from '../runtime-composition';
+import type { BureauToolbox } from '../runtime-composition-types';
 import {
   DURABLE_FORCIBLY_TERMINABLE_STATUSES,
   terminalActionTimestamp,

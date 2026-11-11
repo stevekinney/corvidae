@@ -5,7 +5,7 @@ import { describe, expect, it } from 'bun:test';
 import type { CatalogRunSettlement } from './catalog-run-settlement';
 import { createCatalogTaskSettler } from './catalog-task-settlement';
 import { createTaskRegistry } from './task-registry';
-import type { CatalogRunRecoveryLoad } from './runtime-composition';
+import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 
 const settlement: CatalogRunSettlement = {
   runId: 'agent-run-1',

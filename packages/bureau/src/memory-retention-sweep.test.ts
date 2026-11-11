@@ -36,7 +36,7 @@ import {
   BUREAU_MAINTENANCE_POLICY_REVISION,
   createRunMemoryAuthority,
   DEFAULT_RUN_MEMORY_CAPABILITIES,
-} from './runtime-composition';
+} from './run-memory';
 import { waitForTaskState } from './test';
 import type { Bureau } from './types';
 

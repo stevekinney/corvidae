@@ -2,7 +2,7 @@ import { stopWhen, type GenerateFunction, createAgent } from '@lostgradient/oper
 import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
-import type { ScheduledFireNotice } from './runtime-composition';
+import type { ScheduledFireNotice } from './runtime-composition-types';
 import type { RunAttribution } from './serialization';
 import {
   attributeScheduledFire,

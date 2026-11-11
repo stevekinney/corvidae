@@ -33,7 +33,7 @@ import { heldClaimsOf } from './assets/internal-access';
 import { releaseHeldClaims, runIdOfRowHolder, sessionOfRowHolder } from './assets/row-asset-claims';
 import type { AssetHeldClaim, AssetService } from './assets/types';
 import type { DurableEnd, DurableEndReader } from './catalog-run-settlement';
-import type { CatalogRunRecoveryLoad } from './runtime-composition';
+import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import { serializeUnknownError } from './serialization';
 import type { DiagnosticSink } from './types';
 

@@ -22,7 +22,7 @@ import * as agentFileCatalogModule from './agent-file-catalog';
 import * as assetServiceModule from './assets/asset-service';
 import { createBureau } from './create-bureau';
 import * as runtimeCompositionModule from './runtime-composition';
-import type { RuntimeComposition } from './runtime-composition';
+import type { RuntimeComposition } from './runtime-composition-types';
 import * as settingsToolsModule from './settings/settings-tools';
 import {
   createConstructionWindowFixtures,

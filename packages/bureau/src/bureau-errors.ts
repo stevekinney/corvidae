@@ -1,5 +1,5 @@
 import { type SignedPendingToolApproval } from 'armorer';
-import type { BureauToolbox } from './runtime-composition';
+import type { BureauToolbox } from './runtime-composition-types';
 import { formatReviewAnswerIssues, type ReviewAnswerIssue } from './review-answer';
 import { type TaskRespondRefusal } from './tasks/respond-to-task';
 

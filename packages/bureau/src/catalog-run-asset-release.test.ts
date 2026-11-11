@@ -30,7 +30,7 @@ import {
   type EndedRunConversation,
 } from './catalog-run-asset-release';
 import type { CatalogRunSettlement } from './catalog-run-settlement';
-import type { CatalogRunRecoveryLoad } from './runtime-composition';
+import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import type { BureauDiagnostic } from './types';
 
 const RUN = 'agent-run-1';

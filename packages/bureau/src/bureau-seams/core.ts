@@ -42,11 +42,8 @@ import type {
   SteeringRefusal,
   createSteeringCommandLedger,
 } from '../steering';
-import type {
-  BureauToolbox,
-  RuntimeComposition,
-  createMaintenanceMemoryAuthority,
-} from '../runtime-composition';
+import type { BureauToolbox, RuntimeComposition } from '../runtime-composition-types';
+import type { createMaintenanceMemoryAuthority } from '../run-memory';
 import type { ChildTopology } from '../child-topology';
 import type {
   CompletableEventTarget,

@@ -16,7 +16,7 @@ import {
   type ScheduledFireReviewState,
   scheduledFireHoldings,
 } from './scheduled-fire-review-state';
-import type { BureauToolbox } from './runtime-composition';
+import type { BureauToolbox } from './runtime-composition-types';
 
 function newState(now: () => number = () => 1_000): ScheduledFireReviewState {
   return {

@@ -31,7 +31,7 @@ import {
 } from '../bureau-construction-support';
 import type { BureauCore, ChatRunSpend } from './core';
 import type { BureauSteeringGate } from '../steering';
-import type { BureauToolbox } from '../runtime-composition';
+import type { BureauToolbox } from '../runtime-composition-types';
 import {
   type ClassifyRecoveredRunArgs,
   RECOVERED_RUN_TERMINAL_STATUSES,

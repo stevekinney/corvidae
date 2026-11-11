@@ -12,7 +12,7 @@ import type { DefinitionScannerHealth } from './definition-scanner';
 import { type AuditTrail } from './audit-trail';
 import { DEFAULT_TASK_RETENTION_MS } from './settings/setting-defaults';
 import type { SettingsValues } from './settings/settings-schema';
-import { createToolMemoryAuthority } from './runtime-composition';
+import { createToolMemoryAuthority } from './run-memory';
 import { type BureauWorkflows } from './workflow-runtime';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';

@@ -11,15 +11,17 @@ import { BUREAU_AGENT_NAME } from '../bureau-construction-support';
 import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
 import {
-  type BureauToolbox,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
-  type SessionAgentRun,
-  type SkillSnapshot,
   isScheduledFireAuthority,
   recordRecoveredSkillPolicy,
   recoveredSkillPolicyOf,
   sessionRecordedRevision,
 } from '../runtime-composition';
+import {
+  type BureauToolbox,
+  type SessionAgentRun,
+  type SkillSnapshot,
+} from '../runtime-composition-types';
 import type { PendingReview } from '../types';
 import {
   adoptRestoredScheduledFire,
