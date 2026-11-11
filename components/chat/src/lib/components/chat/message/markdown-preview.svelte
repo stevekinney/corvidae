@@ -273,7 +273,9 @@
     {:else if node.kind === 'table'}
       <MarkdownTableScroller html={node.html} />
     {:else}
-      {@html node.html}
+      {#key node.html}
+        {@html node.html}
+      {/key}
     {/if}
   </div>
 {/snippet}
@@ -292,7 +294,12 @@
       {/each}
     </svelte:element>
   {:else}
-    {@html segment.html}
+    <!-- A newer render replaces this segment's markup in place while the block keeps its key.
+         Keying on the markup replaces the nodes whole, so an `{@html}` change between two
+         non-empty strings cannot leave the previous nodes behind. -->
+    {#key segment.html}
+      {@html segment.html}
+    {/key}
   {/if}
 {/snippet}
 

@@ -112,11 +112,16 @@ describe('markdown preview streamed appends', () => {
     expect(preview?.getAttribute('data-state')).toBe('pending');
 
     await waitFor(() => expect(pending.some((entry) => entry.content === appended)).toBe(true));
+    // The newer render changes the first block's markup in place; its previous nodes must go.
     renderFor(pending, appended).resolve(
-      '<p>Intro <strong>bold</strong></p><pre><code>const a = 1;</code></pre><p>More text</p>',
+      '<p>Intro <strong>bolder</strong></p><pre><code>const a = 1;</code></pre><p>More text</p>',
     );
     await waitFor(() => expect(preview?.getAttribute('data-state')).toBe('rendered'));
     expect(preview?.textContent).toContain('More text');
+    expect(preview?.querySelectorAll('strong')).toHaveLength(1);
+    expect(preview?.querySelector('strong')?.textContent).toBe('bolder');
+    expect(preview?.querySelectorAll('p')).toHaveLength(2);
+    expect(preview?.querySelectorAll('pre')).toHaveLength(1);
   });
 
   test('a slower earlier render never replaces a newer one', async () => {
