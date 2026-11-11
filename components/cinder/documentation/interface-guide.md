@@ -4,6 +4,27 @@ Cinder gives an application the pieces to render a useful interface; it does not
 
 This guide collects the patterns that are easy to miss when you read one component at a time. The generated README beside each component remains the source of truth for its complete prop table, CSS variables, and examples.
 
+## Composing a page
+
+Cinder's identity is calm and content-first. The content of a page is its focal element, space separates before tone or a border does, and one accent colour is kept for the thing that needs action. A page that starts from a sidebar, a title with buttons at the right and a grid of bordered panels has already lost that, however good its components are. Pick the page's archetype first, then compose it from the components it names.
+
+The binding rules (one focal element, the emphasis order, at most one tinted box and one line of explanation, no nested inset boxes, a row that is a link, actions that a badge never moves) are in the [brand book's Composition section](../scripts/design-system/assets/brand-book.md#composition), each with a do and a don't. The README's [Composition](../README.md#composition) section states the two rules that most often go wrong: record metadata is label and value rather than pills, and an inline choice stays out of a tinted callout.
+
+There are eight archetypes. Each names its components and its focal element; the [brand book](../scripts/design-system/assets/brand-book.md#page-archetypes) carries the same list for design canvases.
+
+| Archetype | Components | Focal element |
+| --- | --- | --- |
+| Focus list: the few things that need a person now | [`Section`](../src/components/section/README.md), [`GroupedList`](../src/components/grouped-list/README.md) or [`DataList`](../src/components/data-list/README.md) with [`StackedListItem`](../src/components/stacked-list-item/README.md), optionally one [`Spotlight`](../src/components/spotlight/README.md) | The first row, or the `Spotlight` value above the list |
+| Collection: many like records to scan, filter and open | [`FilterBar`](../src/components/filter-bar/README.md), `DataList` with `StackedListItem` (or [`DataTable`](../src/components/data-table/README.md)), [`LoadMore`](../src/components/load-more/README.md) or [`Pagination`](../src/components/pagination/README.md), [`EmptyState`](../src/components/empty-state/README.md) | The list, with one labelled primary action |
+| Detail with inspector: one record, read and edited in place | [`PageHeader`](../src/components/page-header/README.md), `Section`, [`Inspector`](../src/components/inspector/README.md), [`DescriptionList`](../src/components/description-list/README.md), [`Timeline`](../src/components/timeline/README.md) | The record's title and content, with the inspector kept quiet |
+| Conversation: a turn-by-turn exchange | [`Message`](../src/components/message/README.md), [`ToolCallPanel`](../src/components/tool-call-panel/README.md), [`ApprovalCard`](../src/components/approval-card/README.md), [`MarkdownEditor`](../../editor/src/lib/components/markdown-editor/README.md) as the composer | The latest message, then the composer |
+| Flow: one task in steps | [`Steps`](../src/components/steps/README.md), [`FormSection`](../src/components/form-section/README.md), [`FormField`](../src/components/form-field/README.md), [`FormActions`](../src/components/form-actions/README.md) or [`DockedActionBar`](../src/components/docked-action-bar/README.md) | The current step's one question |
+| Queue: items that each need a decision | [`SegmentedControl`](../src/components/segmented-control/README.md) for the filter, `DataList` with status-first `StackedListItem` rows, `ApprovalCard` | The item at the head of the queue and its decision buttons |
+| Overview: a whole system at a glance | `Spotlight`, [`StatisticGroup`](../src/components/statistic-group/README.md) of [`Statistic`](../src/components/statistic/README.md) tiles, [`Card`](../src/components/card/README.md), [`Sparkbar`](../src/components/sparkbar/README.md), [`Meter`](../src/components/meter/README.md) | The `Spotlight`; it is the only archetype with stat tiles or cards |
+| Browse: finding and reading records | [`SearchField`](../src/components/search-field/README.md), `SegmentedControl`, `GroupedList` rows with an optional photo at the end, [`KeyFacts`](../src/components/key-facts/README.md), [`WeekSchedule`](../src/components/week-schedule/README.md), [`Image`](../src/components/image/README.md) | The record being read, or the results while searching; rows, not a grid of cards |
+
+Two choices recur across them. History and audit lists are a `Timeline`, not a hand-drawn list. Prototype text entry is a `MarkdownEditor`, not a textarea.
+
 ## Operational surfaces
 
 Use [`ApprovalCard`](../src/components/approval-card/README.md) for a pending operation that needs a human decision. It is controlled and deliberately has no execution authority: the host records the resolution and performs the operation.
