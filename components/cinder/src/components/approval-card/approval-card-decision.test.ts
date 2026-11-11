@@ -66,7 +66,7 @@ function squash(text: string | null | undefined): string {
 
 function pressEscape(): KeyboardEvent {
   const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true, bubbles: true });
-  window.dispatchEvent(event);
+  document.dispatchEvent(event);
   return event;
 }
 
