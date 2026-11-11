@@ -220,7 +220,8 @@ describe('a source’s name and description, and each tool’s Default asks leve
     expect(tierApproval('dangerous')).toBe('always');
     // A tool that declares nothing asks on changes: Armorer never lets it through unclassified.
     expect(tierApproval(null)).toBe('on-changes');
-    expect(SOURCE_TOOL_APPROVALS).not.toContain('blocked');
+    // Blocked is not a level a source can give: it is a per-agent override.
+    expect([...SOURCE_TOOL_APPROVALS]).toEqual(['never', 'on-changes', 'always']);
   });
 });
 
