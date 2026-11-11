@@ -26,7 +26,6 @@
     SideNavigationGroup,
     SideNavigationItem,
   } from '@lostgradient/cinder';
-  import type { HttpClient } from '@lostgradient/weft';
   import { PanelLeftClose, PanelLeftOpen } from '@lucide/svelte';
 
   import { router } from '../../lib/router.svelte.ts';
@@ -50,19 +49,13 @@
     ShellNavigation,
   } from './shell-navigation.svelte.ts';
 
-  interface SidebarNavProps {
-    client: HttpClient;
-  }
-
-  let { client }: SidebarNavProps = $props();
-
   // The shell provides one object that the top bar's menu button shares. A sidebar mounted without
   // the shell, as the standalone views and most tests are, keeps its own.
   const shell: ShellNavigation =
     getShellNavigation() ?? new ShellNavigation(getLayoutPreferences() ?? new LayoutPreferences());
 
   // What is waiting on the caller: the same number the Health overview shows as Needs you.
-  const reviewsPending = usePendingReviewsCount(() => client);
+  const reviewsPending = usePendingReviewsCount();
   // What needs attention: system problems, never reviews.
   const attention = useAttentionCount();
 

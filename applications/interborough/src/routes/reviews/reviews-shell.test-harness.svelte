@@ -44,7 +44,7 @@
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <Sidebar client={initialClient} />
+  <Sidebar />
   <RouteOutlet />
   <ToastHost />
 </QueryClientProvider>

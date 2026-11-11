@@ -104,30 +104,17 @@ describe('the count in the navigation', () => {
   test('is the Bureau’s alone when the principal lacks reviews:read, and asks the engine nothing', async () => {
     const { container } = open(
       '/chats',
-      { reviews: [approval('a')], weftReviews: [weft('w1'), weft('w2')] },
+      { reviews: [approval('a')] },
       AUTHORIZATION_SCOPES.filter((scope) => scope !== 'reviews:read'),
     );
     await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
     expect(stub?.weftRequests).toEqual([]);
   });
 
-  test('leaves out an engine review whose deadline has passed, as the page files it under Timed out', async () => {
-    const late: PendingReviewEntry = {
-      status: 'pending',
-      reviewId: 'late',
-      workflowId: 'wf_late',
-      artifact: {},
-      reviewType: 'Contract approval',
-      reviewers: [],
-      allowPartial: false,
-      createdAt: Date.now() - 120_000,
-      timeout: 60_000,
-    };
-    const { container } = open('/chats', {
-      reviews: [approval('a')],
-      weftReviews: [late, weft('w1')],
-    });
-    await until(() => expect(navigationLabel(container)).toBe('Reviews 2'));
+  test('counts a review once when the list holds it twice, as the page lists it', async () => {
+    const { container } = open('/reviews', { reviews: [approval('a'), approval('a')] });
+    await until(() => expect(navigationLabel(container)).toBe('Reviews 1'));
+    await until(() => expect(tabLabel(container)).toBe('Waiting, 1'));
   });
 
   test('has no number when nothing is waiting', async () => {

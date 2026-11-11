@@ -46,7 +46,7 @@
       ),
     enabled: canReadRuns,
   }));
-  const waiting = usePendingReviewsCount(() => client);
+  const waiting = usePendingReviewsCount();
   const attention = useAttentionCountItems();
 
   /** What one count shows: its number, or the dash where it is not read at all. */

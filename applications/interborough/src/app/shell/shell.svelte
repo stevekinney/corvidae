@@ -338,7 +338,7 @@
 </script>
 
 <div class="weft-shell" data-connection={connection.unreachable ? 'unreachable' : 'reachable'}>
-  <Sidebar {client} />
+  <Sidebar />
   <div class="weft-shell-main">
     <Topbar {notifications} {theme} {layout} bind:paletteOpen />
     {#if connection.unreachable && !connection.shownInPlace && !restartActivity.active && !connection.bannerDrawnByPage}

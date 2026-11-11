@@ -17,14 +17,15 @@
   import Sidebar from './sidebar.svelte';
 
   interface SidebarHarnessProps {
-    client: HttpClient;
+    /** Unused: the sidebar reads the Bureau, not the engine's client. Tests still pass one. */
+    client?: HttpClient;
     /** The scopes the principal holds; every scope by default. */
     scopes?: readonly AuthorizationScope[];
     /** The shell's navigation state, which a test drives; the sidebar keeps its own without it. */
     navigation?: ShellNavigation;
   }
 
-  let { client, scopes = AUTHORIZATION_SCOPES, navigation }: SidebarHarnessProps = $props();
+  let { scopes = AUTHORIZATION_SCOPES, navigation }: SidebarHarnessProps = $props();
 
   const providedNavigation = untrack(() => navigation);
   if (providedNavigation !== undefined) provideShellNavigation(providedNavigation);
@@ -35,10 +36,9 @@
     unauthenticatedAccess: null,
   });
 
-  const initialClient = untrack(() => client);
   const queryClient = createQueryClient();
 </script>
 
 <QueryClientProvider client={queryClient}>
-  <Sidebar client={initialClient} />
+  <Sidebar />
 </QueryClientProvider>
