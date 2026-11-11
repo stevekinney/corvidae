@@ -84,7 +84,7 @@ describe('Home’s sections', () => {
       expect(section.classList.contains('cinder-section')).toBe(true);
       const heading = section.querySelector('h2');
       expect(heading?.classList.contains('cinder-section__title')).toBe(true);
-      expect(heading?.textContent?.trim()).toBe(title);
+      expect(heading?.textContent?.trim()).toBe(title ?? undefined);
     }
     const page = container.querySelector('[data-page="home"]');
     expect(page).not.toBeNull();
