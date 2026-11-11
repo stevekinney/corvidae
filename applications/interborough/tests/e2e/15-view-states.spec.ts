@@ -260,6 +260,9 @@ function statesOf(view: ViewName): Outcome[] {
   // A view that owns its states keeps its header in each, so its page says them and not the frame:
   // its own specification drives them (`schedules-states.spec.ts`). The frame still refuses it.
   if (VIEWS[view].ownsStates === true) return ['forbidden', 'ready'];
+  // The Goals list owns its states on its own address (`ownsStatesOnPatterns`), which this spec
+  // visits, so its page says them under its header and not the frame: `goal-list.test.ts` drives them.
+  if (view === 'goals') return ['forbidden', 'ready'];
   // The reviews probe swallows a Bureau failure such as a 5xx, and the page shows it in a banner
   // beside the engine's reviews (`31-reviews.spec.ts`), so the view is not in the error state for
   // it. A 401 does reach the error state (`view-frame.test.ts`, "the Reviews view").

@@ -14,7 +14,7 @@
    * `bureau.events` reports a goal event, so a goal ends on screen as the Bureau ends it; while that
    * feed is not live and a goal has not ended, it reads itself again on a timer instead.
    *
-   * The page keeps its header in every state, so it draws its own (`ownsStates` in `app/views.ts`):
+   * The page keeps its header in every state, so it draws its own (`ownsStatesOnPatterns` in `app/views.ts`):
    * nothing yet is an empty state that is the page, with no filter bar and the one primary "New
    * goal"; filters that match nothing keep the filter bar over a "Clear filters" state; a read in
    * progress shows placeholders after 300 ms, and "Cancel" in its slow-load line stops it; a read

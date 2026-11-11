@@ -2977,7 +2977,8 @@ export const SETTINGS_COPY = {
 
 /**
  * The words the goals list (`/goals`) uses. The list draws its own empty, loading and failed states
- * under its own header (`ownsStates` in `views.ts`), so `VIEW_COPY.goals` takes its words from here.
+ * under its own header (`ownsStatesOnPatterns` in `views.ts`), so `VIEW_COPY.goals` takes its empty
+ * words from here.
  */
 export const GOALS_COPY = {
   newAction: 'New goal',
