@@ -101,6 +101,9 @@
 @import '../components/kanban-board/kanban-board.css';
 @import '../components/kbd/kbd.css';
 @import '../components/key-facts/key-facts.css';
+@import '../components/week-schedule/week-schedule.css';
+@import '../components/map-marker/map-marker.css';
+@import '../components/map-legend/map-legend.css';
 @import '../components/key-value-editor/key-value-editor.css';
 @import '../components/keyboard-shortcuts/keyboard-shortcuts.css';
 @import '../components/label/label.css';

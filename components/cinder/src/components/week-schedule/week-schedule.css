@@ -1,0 +1,87 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * WEEK SCHEDULE
+ *
+ * One row per day: a 56px day column, an unbroken time range and a description. Today's row carries a
+ * tonal fill and a stronger day name. A live window carries an inverted "On now" pill, with no accent colour.
+ * ======================================== */
+
+  .cinder-week-schedule {
+    display: grid;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    container-type: inline-size;
+    font-size: var(--cinder-text-base);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-week-schedule__row {
+    display: grid;
+    grid-template-columns: 3.5rem max-content minmax(0, 1fr);
+    align-items: baseline;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border-radius: var(--cinder-radius-sm);
+  }
+
+  .cinder-week-schedule__row[data-today] {
+    background: var(--cinder-week-schedule-today-background);
+  }
+
+  .cinder-week-schedule__day {
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-subtle);
+  }
+
+  .cinder-week-schedule__row[data-today] .cinder-week-schedule__day {
+    color: var(--cinder-text-default);
+  }
+
+  /* The range never breaks inside: it stays on one line and the row wraps around it. */
+  .cinder-week-schedule__times {
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-week-schedule__next-day {
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-week-schedule__description {
+    min-inline-size: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-week-schedule__live {
+    display: inline-block;
+    margin-inline-end: var(--cinder-space-2);
+    padding: 0 var(--cinder-space-2);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-inverse);
+    color: var(--cinder-text-inverse);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    white-space: nowrap;
+  }
+
+  /* In a narrow container the description drops under the day and range instead of squeezing them. */
+  @container (max-inline-size: 26rem) {
+    .cinder-week-schedule__row {
+      grid-template-columns: 3.5rem minmax(0, 1fr);
+    }
+
+    .cinder-week-schedule__description {
+      grid-column: 2;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-week-schedule__row[data-today],
+    .cinder-week-schedule__live {
+      border: 1px solid CanvasText;
+    }
+  }
+}

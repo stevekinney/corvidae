@@ -4437,5 +4437,19 @@
         "cssRecipe": null
       }
     }
+  },
+  "week-schedule.today.background": {
+    "$value": { "colorSpace": "oklch", "components": [0.2, 0.018, 245], "alpha": 0.08 },
+    "$extensions": {
+      "com.lostgradient.cinder": {
+        "cssRecipe": "color-mix(in oklch, var(--cinder-text-default), transparent 92%)",
+        "cssProperty": "--cinder-week-schedule-today-background",
+        "public": true,
+        "category": "color",
+        "component": "week-schedule"
+      }
+    },
+    "$type": "color",
+    "$description": "Today's row fill -- `text-default` at 8% opacity, so the row stays visibly separate on a raised card and on the page canvas in both themes."
   }
 }

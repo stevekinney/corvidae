@@ -93,6 +93,8 @@ import lineChartExamplesJson from '../components/line-chart/line-chart.examples.
 import linkExamplesJson from '../components/link/link.examples.json' with { type: 'json' };
 import listDetailExamplesJson from '../components/list-detail/list-detail.examples.json' with { type: 'json' };
 import loadMoreExamplesJson from '../components/load-more/load-more.examples.json' with { type: 'json' };
+import mapLegendExamplesJson from '../components/map-legend/map-legend.examples.json' with { type: 'json' };
+import mapMarkerExamplesJson from '../components/map-marker/map-marker.examples.json' with { type: 'json' };
 import marqueeExamplesJson from '../components/marquee/marquee.examples.json' with { type: 'json' };
 import masonryExamplesJson from '../components/masonry/masonry.examples.json' with { type: 'json' };
 import matrixChartExamplesJson from '../components/matrix-chart/matrix-chart.examples.json' with { type: 'json' };
@@ -290,6 +292,10 @@ export const linkExamples = linkExamplesJson;
 export const listDetailExamples = listDetailExamplesJson;
 /** Code examples for this component. */
 export const loadMoreExamples = loadMoreExamplesJson;
+/** Code examples for this component. */
+export const mapLegendExamples = mapLegendExamplesJson;
+/** Code examples for this component. */
+export const mapMarkerExamples = mapMarkerExamplesJson;
 /** Code examples for this component. */
 export const marqueeExamples = marqueeExamplesJson;
 /** Code examples for this component. */

@@ -82,6 +82,7 @@ import videoPlayerExamplesJson from '../components/video-player/video-player.exa
 import virtualListExamplesJson from '../components/virtual-list/virtual-list.examples.json' with { type: 'json' };
 import visuallyHiddenExamplesJson from '../components/visually-hidden/visually-hidden.examples.json' with { type: 'json' };
 import waveformExamplesJson from '../components/waveform/waveform.examples.json' with { type: 'json' };
+import weekScheduleExamplesJson from '../components/week-schedule/week-schedule.examples.json' with { type: 'json' };
 import zoomPanViewerExamplesJson from '../components/zoom-pan-viewer/zoom-pan-viewer.examples.json' with { type: 'json' };
 /** Code examples for this component. */
 export const navigationBarExamples = navigationBarExamplesJson;
@@ -247,5 +248,7 @@ export const virtualListExamples = virtualListExamplesJson;
 export const visuallyHiddenExamples = visuallyHiddenExamplesJson;
 /** Code examples for this component. */
 export const waveformExamples = waveformExamplesJson;
+/** Code examples for this component. */
+export const weekScheduleExamples = weekScheduleExamplesJson;
 /** Code examples for this component. */
 export const zoomPanViewerExamples = zoomPanViewerExamplesJson;

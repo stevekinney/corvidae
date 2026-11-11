@@ -20534,5 +20534,101 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
         },
       ],
     },
+    {
+      path: 'week-schedule.today.background',
+      cssProperty: '--cinder-week-schedule-today-background',
+      category: 'color',
+      component: 'week-schedule',
+      description:
+        "Today's row fill -- `text-default` at 8% opacity, so the row stays visibly separate on a raised card and on the page canvas in both themes.",
+      themeAware: true,
+      deprecated: false,
+      profile: 'color',
+      palette: { family: 'unknown', role: 'unknown', anchor: 'unknown' },
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: ['light/default', 'light/reduced', 'light/forced-reduced-motion'],
+          provenance: {
+            winner: {
+              document: 'themes/light.tokens.json',
+              path: 'week-schedule.today.background',
+            },
+            layers: [
+              {
+                document: 'sets/components.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'week-schedule.today.background',
+                via: 'declared',
+              },
+              {
+                document: 'themes/light.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.light',
+                path: 'week-schedule.today.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: {
+                document: 'sets/components.tokens.json',
+                path: 'week-schedule.today.background',
+              },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-text-default', path: 'text.default' }],
+            },
+          },
+        },
+        {
+          contexts: ['dark/default', 'dark/reduced', 'dark/forced-reduced-motion'],
+          provenance: {
+            winner: { document: 'themes/dark.tokens.json', path: 'week-schedule.today.background' },
+            layers: [
+              {
+                document: 'sets/components.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'week-schedule.today.background',
+                via: 'declared',
+              },
+              {
+                document: 'themes/dark.tokens.json',
+                kind: 'modifier',
+                layer: 'theme.dark',
+                path: 'week-schedule.today.background',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'color',
+              origin: 'local',
+              declaredAt: {
+                document: 'sets/components.tokens.json',
+                path: 'week-schedule.today.background',
+              },
+            },
+            inputs: {
+              aliases: [],
+              refs: [],
+              extends: [],
+              recipes: [{ cssProperty: '--cinder-text-default', path: 'text.default' }],
+            },
+          },
+        },
+      ],
+    },
   ],
 };

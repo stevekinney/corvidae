@@ -610,6 +610,15 @@ export type {
 export { default as KeyFacts } from './components/key-facts/index.ts';
 export type { KeyFact, KeyFactsProps } from './components/key-facts/index.ts';
 
+export { default as WeekSchedule } from './components/week-schedule/index.ts';
+export type { WeekScheduleDay, WeekScheduleProps } from './components/week-schedule/index.ts';
+
+export { default as MapMarker } from './components/map-marker/index.ts';
+export type { MapMarkerProps, MapMarkerState } from './components/map-marker/index.ts';
+
+export { default as MapLegend } from './components/map-legend/index.ts';
+export type { MapLegendItem, MapLegendProps } from './components/map-legend/index.ts';
+
 export { default as Kbd } from './components/kbd/index.ts';
 export type { KbdProps } from './components/kbd/index.ts';
 

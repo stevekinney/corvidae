@@ -1,0 +1,67 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * MAP LEGEND
+ *
+ * A key to marker states, each drawn in the marker's own shape so colour is never the only
+ * signal, with the map attribution under it.
+ * ======================================== */
+
+  .cinder-map-legend {
+    display: grid;
+    gap: var(--cinder-space-2);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-map-legend__items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--cinder-space-1-5) var(--cinder-space-4);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+
+  .cinder-map-legend__item {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+    white-space: nowrap;
+  }
+
+  .cinder-map-legend__swatch {
+    flex: none;
+    inline-size: 1rem;
+    block-size: 0.75rem;
+    border: 1px solid var(--cinder-border-control);
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-surface-raised);
+  }
+
+  .cinder-map-legend__swatch[data-state='live'] {
+    border-color: var(--cinder-surface-inverse);
+    background: var(--cinder-surface-inverse);
+  }
+
+  .cinder-map-legend__swatch[data-state='selected'] {
+    border-color: var(--cinder-border-strong);
+    box-shadow: 0 0 0 2px var(--cinder-ring-color);
+  }
+
+  .cinder-map-legend__swatch[data-state='cluster'] {
+    inline-size: 1rem;
+    block-size: 1rem;
+  }
+
+  .cinder-map-legend__attribution {
+    margin: 0;
+    font-size: var(--cinder-text-xs);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-map-legend__swatch {
+      border-color: CanvasText;
+    }
+  }
+}

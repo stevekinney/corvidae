@@ -108,6 +108,8 @@ export { default as linkSchema } from '../components/link/link.schema.ts';
 export { default as listDetailSchema } from '../components/list-detail/list-detail.schema.ts';
 export { default as loadMoreSchema } from '../components/load-more/load-more.schema.ts';
 export { default as localeProviderSchema } from '../components/locale-provider/locale-provider.schema.ts';
+export { default as mapLegendSchema } from '../components/map-legend/map-legend.schema.ts';
+export { default as mapMarkerSchema } from '../components/map-marker/map-marker.schema.ts';
 export { default as marqueeSchema } from '../components/marquee/marquee.schema.ts';
 export { default as masonrySchema } from '../components/masonry/masonry.schema.ts';
 export { default as matrixChartSchema } from '../components/matrix-chart/matrix-chart.schema.ts';
@@ -216,4 +218,5 @@ export { default as videoPlayerSchema } from '../components/video-player/video-p
 export { default as virtualListSchema } from '../components/virtual-list/virtual-list.schema.ts';
 export { default as visuallyHiddenSchema } from '../components/visually-hidden/visually-hidden.schema.ts';
 export { default as waveformSchema } from '../components/waveform/waveform.schema.ts';
+export { default as weekScheduleSchema } from '../components/week-schedule/week-schedule.schema.ts';
 export { default as zoomPanViewerSchema } from '../components/zoom-pan-viewer/zoom-pan-viewer.schema.ts';

@@ -108,6 +108,8 @@ export { default as linkVariables } from '../components/link/link.variables.ts';
 export { default as listDetailVariables } from '../components/list-detail/list-detail.variables.ts';
 export { default as loadMoreVariables } from '../components/load-more/load-more.variables.ts';
 export { default as localeProviderVariables } from '../components/locale-provider/locale-provider.variables.ts';
+export { default as mapLegendVariables } from '../components/map-legend/map-legend.variables.ts';
+export { default as mapMarkerVariables } from '../components/map-marker/map-marker.variables.ts';
 export { default as marqueeVariables } from '../components/marquee/marquee.variables.ts';
 export { default as masonryVariables } from '../components/masonry/masonry.variables.ts';
 export { default as matrixChartVariables } from '../components/matrix-chart/matrix-chart.variables.ts';
@@ -216,4 +218,5 @@ export { default as videoPlayerVariables } from '../components/video-player/vide
 export { default as virtualListVariables } from '../components/virtual-list/virtual-list.variables.ts';
 export { default as visuallyHiddenVariables } from '../components/visually-hidden/visually-hidden.variables.ts';
 export { default as waveformVariables } from '../components/waveform/waveform.variables.ts';
+export { default as weekScheduleVariables } from '../components/week-schedule/week-schedule.variables.ts';
 export { default as zoomPanViewerVariables } from '../components/zoom-pan-viewer/zoom-pan-viewer.variables.ts';
