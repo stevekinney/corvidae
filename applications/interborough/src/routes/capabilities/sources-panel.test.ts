@@ -88,7 +88,8 @@ describe('the Sources tab', () => {
     expect(stateOf('petstore')).toBe('pending-restart');
     expect(stateOf('gone')).toBe('failed');
     expect(stateOf('ledger')).toBe('needs-authorization');
-    expect(container.querySelector('[data-testid="sources-count"]')?.textContent?.trim()).toBe('4');
+    // The tab already counts the sources; the pane shows no bare number until a filter narrows it.
+    expect(container.querySelector('[data-testid="sources-count"]')).toBeNull();
 
     await fireEvent.click(container.querySelector('[data-source-row="notes"]')!);
     await waitFor(() =>

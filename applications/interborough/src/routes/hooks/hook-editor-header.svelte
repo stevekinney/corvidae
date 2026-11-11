@@ -54,7 +54,7 @@
         <Toggle
           {...{ 'data-changes': true }}
           id="ib-hook-on"
-          label={copy.on}
+          label={hook.enabled ? copy.on : copy.off}
           nameDetail={title}
           mutating
           checked={hook.enabled}

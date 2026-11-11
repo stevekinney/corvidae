@@ -36,11 +36,9 @@
   interface Props {
     /** The hooks to show, each with its newest delivery. */
     hooks: readonly ListedHook[];
-    /** The visible label of each row's switch; the Hooks page words it On and an agent's tab words it Active. */
-    switchLabel?: string;
   }
 
-  let { hooks, switchLabel = HOOKS_COPY.row.on }: Props = $props();
+  let { hooks }: Props = $props();
 
   const queryClient = useQueryClient();
 
@@ -118,7 +116,7 @@
           <Toggle
             {...{ 'data-changes': true }}
             id={`hook-${hook.id}-on`}
-            label={switchLabel}
+            label={hook.enabled ? HOOKS_COPY.row.on : HOOKS_COPY.row.off}
             nameDetail={hookRowSentence(hook)}
             mutating
             checked={hook.enabled}

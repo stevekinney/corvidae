@@ -87,7 +87,7 @@
       <p class="ib-agent-hooks__line">{copy.intro(name)}</p>
       {@render newHook()}
     </div>
-    <HookRows hooks={hooks.data} switchLabel={copy.active} />
+    <HookRows hooks={hooks.data} />
   {/if}
 </div>
 

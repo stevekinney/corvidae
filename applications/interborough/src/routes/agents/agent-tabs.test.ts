@@ -385,7 +385,7 @@ describe('the Hooks tab', () => {
     expect(action.getAttribute('href')).toContain('/hooks/new?agent=researcher');
   });
 
-  test('says what the list is, with a secondary New hook, and words each row’s switch Active', async () => {
+  test('says what the list is, with a secondary New hook, and words each row’s switch by its state', async () => {
     serve({ 'bureau.hooks.list': () => ({ hooks: [HOOK] }) });
     landAt('/agents/researcher/hooks');
     const view = mount();
@@ -396,7 +396,7 @@ describe('the Hooks tab', () => {
     expect(
       view.getByRole('link', { name: HOOKS_COPY.newAction }).getAttribute('data-cinder-variant'),
     ).toBe('secondary');
-    expect(view.getByText(HOOKS_COPY.agentTab.active)).not.toBeNull();
+    expect(view.getByText(HOOKS_COPY.row.on)).not.toBeNull();
     expect(view.getByRole('switch').getAttribute('aria-checked')).toBe('true');
   });
 

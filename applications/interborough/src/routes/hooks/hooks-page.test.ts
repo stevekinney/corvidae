@@ -418,10 +418,15 @@ describe('the hooks list', () => {
 
     await waitFor(() => expect(row(view.container, 'quiet')).not.toBeNull());
     const quiet = row(view.container, 'quiet')!;
-    expect(within(quiet).getByText('Off')).not.toBeNull();
+    expect(quiet.querySelector('[data-status-word]')?.textContent?.trim()).toBe('Off');
     expect(quiet.querySelector('[data-last-delivery]')).toBeNull();
     expect(lineTwo(view.container, 'quiet')).toMatch(/, last delivery /);
     expect(within(quiet).getByRole('switch').getAttribute('aria-checked')).toBe('false');
+    // The switch's label follows its state: a hook that is off never reads On.
+    expect(within(quiet).getByRole('switch').getAttribute('aria-label')).toStartWith(
+      `${HOOKS_COPY.row.off}, `,
+    );
+    expect(within(quiet).queryByText(HOOKS_COPY.row.on)).toBeNull();
   });
 
   test('labels each switch On, and names the hook’s sentence after it', async () => {
@@ -1372,6 +1377,8 @@ describe('a saved hook’s header', () => {
     await waitFor(() =>
       expect(within(header).getByRole('switch').getAttribute('aria-checked')).toBe('false'),
     );
+    expect(within(header).getByText(HOOKS_COPY.editor.header.off)).not.toBeNull();
+    expect(within(header).queryByText(HOOKS_COPY.editor.header.on)).toBeNull();
 
     await fireEvent.click(await view.findByRole('button', { name: 'Undo' }));
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(2));

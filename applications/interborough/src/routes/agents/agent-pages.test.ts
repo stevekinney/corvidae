@@ -568,7 +568,7 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('anthropic/sonnet');
+    await findByText('Sonnet, Anthropic');
     expect(container.textContent).toContain('lookup-order');
     expect(container.textContent).toContain('Cite');
     // The header names no file version: the versions live in the Settings tab.
@@ -597,7 +597,7 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('anthropic/sonnet');
+    await findByText('Sonnet, Anthropic');
     expect(container.textContent).not.toContain('Something went wrong');
     expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
   });
@@ -625,7 +625,7 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('anthropic/sonnet');
+    await findByText('Sonnet, Anthropic');
     expect(container.textContent).not.toContain('Something went wrong');
     expect(container.querySelectorAll('ul[aria-label="Tools"] li')).toHaveLength(2);
     expect(container.querySelectorAll('ul[aria-label="Skills"] li')).toHaveLength(2);
@@ -665,7 +665,7 @@ describe('one agent’s page', () => {
 
     const { container, findByText } = mount(AgentDetail);
 
-    await findByText('anthropic/sonnet');
+    await findByText('Sonnet, Anthropic');
     expect(container.querySelector('[data-testid="agent-facts"]')?.textContent).toContain(
       'No tools',
     );

@@ -10,7 +10,6 @@
    * shows none, never "no tools". Both queries share their keys with the agent's page, so a row and
    * the page it opens read one cache.
    */
-  import { Badge } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENTS_COPY } from '../../app/copy.ts';
@@ -19,6 +18,7 @@
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { agentFacts, toolCountText } from './agent-presentation.ts';
+  import { modelLineOf } from './agent-settings.ts';
 
   interface AgentFactsProps {
     agent: AgentSummary;
@@ -56,8 +56,8 @@
   {#if facts.model.kind === 'model'}
     <div class="ib-agent-fact">
       <span class="ib-agent-fact__label">{AGENTS_COPY.modelLabel}</span>
-      <Badge class="ib-agent-fact__badge" variant="neutral" size="sm" monospace
-        >{facts.model.name}</Badge
+      <span class="ib-agent-fact__value" title={facts.model.name} data-testid="agent-fact-model"
+        >{modelLineOf(facts.model.name)}</span
       >
     </div>
   {/if}
@@ -68,9 +68,7 @@
         <ul class="ib-agent-chips" aria-label={AGENTS_COPY.toolsLabel}>
           {#each keyedByOccurrence(facts.tools, (tool) => tool) as { key, item: tool } (key)}
             <li>
-              <Badge class="ib-agent-fact__badge" variant="neutral" size="sm" monospace
-                >{tool}</Badge
-              >
+              <code class="ib-agent-fact__value">{tool}</code>
             </li>
           {/each}
         </ul>
@@ -85,7 +83,7 @@
       <ul class="ib-agent-chips" aria-label={AGENTS_COPY.skillsLabel}>
         {#each keyedByOccurrence(facts.skills, (skill) => skill.id) as { key, item: skill } (key)}
           <li>
-            <Badge class="ib-agent-fact__badge" variant="neutral" size="sm">{skill.name}</Badge>
+            <span class="ib-agent-fact__value">{skill.name}</span>
           </li>
         {/each}
       </ul>

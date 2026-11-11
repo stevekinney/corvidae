@@ -381,7 +381,7 @@
       >
         <!-- A table of controls: it fits its pane, so a long tool name wraps in its column, and
         below 640px Cinder stacks each tool into a card with On and Asks on lines of their own. -->
-        <Table caption={copy.tools.caption(heading)} density="comfortable" fit>
+        <Table caption={copy.tools.caption(heading)} density="comfortable" fit frameless>
           <Table.Header>
             <Table.Row>
               <Table.HeaderCell class="ib-source__column-on"

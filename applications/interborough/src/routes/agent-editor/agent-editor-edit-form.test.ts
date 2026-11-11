@@ -500,3 +500,11 @@ describe('the agent loading (rows 43h, 43i)', () => {
     expect(router.pathname).toBe('/agents/researcher');
   });
 });
+
+describe('the spend limit line', () => {
+  test('groups the digits of a read-only amount and keeps what is not a number as typed', () => {
+    expect(editCopy.guardrails.spendPerRun('1000000')).toBe('$1,000,000 per run');
+    expect(editCopy.guardrails.spendPerRun('1.5')).toBe('$1.5 per run');
+    expect(editCopy.guardrails.spendPerRun('lots')).toBe('$lots per run');
+  });
+});

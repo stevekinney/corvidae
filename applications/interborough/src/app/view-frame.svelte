@@ -36,7 +36,14 @@
    */
   import { untrack, type Snippet } from 'svelte';
 
-  import { Button, EmptyState, ErrorState, RelativeTime, Skeleton } from '@lostgradient/cinder';
+  import {
+    Button,
+    EmptyState,
+    ErrorState,
+    PageHeader,
+    RelativeTime,
+    Skeleton,
+  } from '@lostgradient/cinder';
   import { Bot, Inbox, Plus } from '@lucide/svelte';
   import { createQuery, useQueryClient } from '@tanstack/svelte-query';
 
@@ -83,6 +90,10 @@
   const loadingCopy = copy.loadingByPattern?.[initial.pattern ?? ''] ?? copy.loading;
   const errorCopy = copy.errorByPattern?.[initial.pattern ?? ''] ?? copy.error;
   const forbiddenCopy = copy.forbiddenByPattern?.[initial.pattern ?? ''];
+  /** The page heading kept above the loading and failed states, when the view's page has one. */
+  const frameHeader = copy.headerByPattern?.[initial.pattern ?? ''] ?? copy.header;
+  /** The state's own heading drops to level two under a page heading. */
+  const stateHeadingLevel = frameHeader === undefined ? 1 : 2;
   const definition = VIEWS[initial.view];
   /** Whether this frame holds New chat, whose loading, empty and error states are drawn as its own page (design rows 24o to 24q). */
   const startsNewChat = initial.view === 'chat' && initial.pattern === '/chats/new';
@@ -280,8 +291,11 @@
       <!-- New chat's own layout in placeholders, with the composer already there (design row 24o). -->
       <NewChatLoading onCancel={() => router.navigate('/chats')} />
     {:else}
+      {#if frameHeader !== undefined}<PageHeader title={frameHeader} headingLevel={1} />{/if}
       <div class="weft-view__loading" role="status" aria-busy="true">
-        <h1 class="weft-view__loading-title">{loadingCopy.title}</h1>
+        <svelte:element this={`h${String(stateHeadingLevel)}`} class="weft-view__loading-title"
+          >{loadingCopy.title}</svelte:element
+        >
         <p class="weft-view__loading-description">{loadingCopy.description}</p>
         <Skeleton height="1.5rem" width="40%" />
         <Skeleton height="10rem" />
@@ -353,21 +367,23 @@
       search={notFoundCopy.searchHidden !== true}
     />
   {:else if state === 'error'}
+    {#if frameHeader !== undefined}<PageHeader title={frameHeader} headingLevel={1} />{/if}
     <!-- New chat's error is the page with its disc, because it replaces a greeting and a composer. -->
     <ErrorState
       variant={startsNewChat ? 'default' : 'flat'}
       title={errorCopy.title}
       description={errorCopy.description}
-      headingLevel={1}
+      headingLevel={stateHeadingLevel}
       retryLabel={RETRY_LABEL}
       onRetry={() => void probeQuery.refetch()}
     />
   {:else if state === 'unreachable'}
+    {#if frameHeader !== undefined}<PageHeader title={frameHeader} headingLevel={1} />{/if}
     <ErrorState
       variant="flat"
       title={CONNECTION_COPY.page.title}
       description={CONNECTION_COPY.page.description}
-      headingLevel={1}
+      headingLevel={stateHeadingLevel}
       retryLabel={RETRY_LABEL}
       onRetry={() => void probeQuery.refetch()}
     />

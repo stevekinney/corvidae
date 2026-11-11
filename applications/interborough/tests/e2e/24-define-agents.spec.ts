@@ -510,7 +510,7 @@ test.describe('an agent that exists', () => {
     // Its page offers a chat with it and carries no badge, and shows the file's own model and
     // tools. Its versions are on the Settings tab, not in the header.
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
-    await expect(page.getByTestId('agent-facts')).toContainText('anthropic/sonnet');
+    await expect(page.getByTestId('agent-facts')).toContainText('Sonnet, Anthropic');
     await expect(page.getByTestId('agent-file-version')).toHaveCount(0);
 
     await page.goto('/agents/e2e-a2a/edit');

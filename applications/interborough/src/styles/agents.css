@@ -100,14 +100,15 @@
 .ib-agent-title,
 .ib-agent-fact,
 .ib-agent-chips > li,
-.ib-agent-fact__badge,
+.ib-agent-fact__value,
 .ib-agent__version code {
   min-inline-size: 0;
   max-inline-size: 100%;
   overflow-wrap: anywhere;
 }
 
-.ib-agent-fact__badge {
+.ib-agent-fact__value {
+  color: var(--cinder-text-default);
   white-space: normal;
   text-align: start;
 }
@@ -190,7 +191,7 @@
 .ib-agent-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cinder-space-1);
+  gap: var(--cinder-space-1) var(--cinder-space-3);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -516,7 +517,7 @@
 }
 
 .ib-access-table__asks {
-  inline-size: 11rem;
+  inline-size: 12.5rem;
 }
 
 /* Risk, a skill's kind and what a tool does: muted words in the body face, never a colour of their own (S32). */

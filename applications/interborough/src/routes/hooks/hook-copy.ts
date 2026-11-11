@@ -35,8 +35,9 @@ export const HOOKS_COPY = {
   row: {
     /** The word a hook that has had no delivery reads, in the status column. */
     noDelivery: 'Nothing sent',
-    /** The visible label of a row's switch; the hook's sentence follows it in the accessible name. */
+    /** The visible label of a row's switch, by its state; the hook's sentence follows it in the accessible name. */
     on: 'On',
+    off: 'Off',
     /** The clause a row's sentence opens with for an event, by the event's kind. */
     events: {
       'run.error': 'a run fails',
@@ -123,8 +124,6 @@ export const HOOKS_COPY = {
       `Hooks that run for ${agent}. This is the Hooks list filtered to this agent.`,
     emptyTitle: (agent: string): string => `No hooks for ${agent}`,
     emptyDescription: 'A hook sends a webhook when something happens to this agent’s runs.',
-    /** The label of each row's switch on this tab; the Hooks page words it On. */
-    active: 'Active',
   },
   /** The pieces a hook is read from, as a sentence: "When X, send a signed message to Y". */
   sentence: {
@@ -180,6 +179,7 @@ export const HOOKS_COPY = {
     header: {
       /** The visible label of the header's switch; the hook's title follows it in the accessible name. */
       on: 'On',
+      off: 'Off',
       /** The accessible name of the menu button that holds Delete hook. */
       menuLabel: 'More actions for this hook',
       /** What the latest delivery's line says for a hook that has sent nothing yet. */

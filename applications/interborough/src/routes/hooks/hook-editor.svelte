@@ -1067,15 +1067,14 @@
     overflow-wrap: anywhere;
   }
 
-  /* The hook as a sentence, in a quiet box: Save hook and Send a test event sit directly under it. */
+  /* The hook as a sentence, in plain muted text with no box: Save hook and Send a test event sit directly under it. */
   .ib-hook-editor__quiet {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-1);
     margin: 0;
-    padding: var(--cinder-space-3);
-    border-radius: var(--cinder-radius-md);
-    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
     overflow-wrap: anywhere;
   }
 

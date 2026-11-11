@@ -312,6 +312,23 @@ describe('the page of an agent a disabled plugin ships', () => {
     await findByRole('tab', { name: 'Chats 1' });
   });
 
+  test('offers no New chat in the empty state of a held-back agent, and says what to enable', async () => {
+    landAt('/agents/demo%3Arelease-helper');
+    serve({
+      'bureau.agents.list': () => ({ agents: [FILE_AGENT] }),
+      'bureau.agents.definitions.get': () => RELEASE_HELPER,
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+      'bureau.hooks.list': () => ({ hooks: [] }),
+    });
+    const { findByRole, findByText, getAllByRole } = mount();
+
+    await findByRole('heading', { name: AGENT_PAGE_COPY.chats.emptyTitle });
+    await findByText(AGENT_PAGE_COPY.chats.unavailableDescription('Demo'));
+    // Only the header's held New chat remains: a button, never a live link.
+    expect(getAllByRole('button', { name: 'New chat' }).length).toBe(1);
+    expect(document.querySelector('a[href*="/chats/new"]')).toBeNull();
+  });
+
   for (const [tab, path] of [
     ['Chats', '/agents/demo%3Arelease-helper'],
     ['Settings', '/agents/demo%3Arelease-helper/settings'],

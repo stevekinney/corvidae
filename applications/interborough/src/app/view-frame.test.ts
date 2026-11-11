@@ -285,12 +285,32 @@ describe('every view whose probe fails the page, when its probe fails', () => {
     test(`${view} is failing when its probe fails`, async () => {
       stub(view, 'error');
       const { container, findByRole, getByRole } = mountWithProbe(view);
-      expect(await findByRole('heading', { level: 1, name: words.title })).not.toBeNull();
+      // A view whose page has a header keeps it above the failure, so the failure's own heading is level two.
+      expect(
+        await findByRole('heading', {
+          level: copy.header === undefined ? 1 : 2,
+          name: words.title,
+        }),
+      ).not.toBeNull();
+      if (copy.header !== undefined) {
+        expect(getByRole('heading', { level: 1, name: copy.header })).not.toBeNull();
+      }
       expect(frame(container).dataset['state']).toBe('error');
       expect(container.textContent).toContain(words.description);
       expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
     });
   }
+});
+
+describe('the New agent page while it loads', () => {
+  test('keeps its page heading above the loading state', async () => {
+    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
+    const { findByRole, getByRole } = mount('agent-editor', { pattern: '/agents/new' });
+    expect(
+      await findByRole('heading', { level: 2, name: VIEW_COPY['agent-editor'].loading.title }),
+    ).not.toBeNull();
+    expect(getByRole('heading', { level: 1, name: 'New agent' })).not.toBeNull();
+  });
 });
 
 describe('every view, in every state', () => {
@@ -329,12 +349,20 @@ describe('every view, in every state', () => {
         expect(queryByRole('heading', { level: 1, name: copy.loading.title })).toBeNull();
         return;
       }
-      const { container, findByRole, findByTestId } = mountWithProbe(view);
+      const { container, findByRole, findByTestId, getByRole } = mountWithProbe(view);
       // A new chat is drawn as its own page in placeholders, with the composer already there.
       if (view === 'chat') {
         expect(await findByTestId('new-chat-loading')).not.toBeNull();
       } else {
-        expect(await findByRole('heading', { level: 1, name: copy.loading.title })).not.toBeNull();
+        expect(
+          await findByRole('heading', {
+            level: copy.header === undefined ? 1 : 2,
+            name: copy.loading.title,
+          }),
+        ).not.toBeNull();
+        if (copy.header !== undefined) {
+          expect(getByRole('heading', { level: 1, name: copy.header })).not.toBeNull();
+        }
         expect(container.querySelector('[role="status"][aria-busy="true"]')).not.toBeNull();
       }
       expect(frame(container).dataset['state']).toBe('loading');

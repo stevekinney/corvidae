@@ -159,26 +159,17 @@
   font-size: var(--cinder-text-sm);
 }
 
-/* What a skill holds, where it is from and when it loads: muted words told apart by a rule between them. */
+/* What a skill holds, where it is from and when it loads: muted words told apart by space alone, so a
+ * wrapped line never starts with a divider. */
 .ib-capability__meta {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--cinder-space-1) 0;
+  gap: var(--cinder-space-1) var(--cinder-space-4);
   margin: 0;
   padding: 0;
   list-style: none;
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
-}
-
-.ib-capability__meta > li {
-  padding-inline: var(--cinder-space-3);
-  border-inline-start: 1px solid var(--cinder-border-muted);
-}
-
-.ib-capability__meta > li:first-child {
-  padding-inline-start: 0;
-  border-inline-start: 0;
 }
 
 /* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. A

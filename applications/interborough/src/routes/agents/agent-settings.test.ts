@@ -150,7 +150,7 @@ describe('the Settings form (rows 38u to 38w)', () => {
     });
     const { findByRole, findByLabelText } = mount();
 
-    await fireEvent.click(await findByRole('radio', { name: 'High' }));
+    await fireEvent.change(await findByLabelText('Effort'), { target: { value: 'high' } });
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '20' } });
     await fireEvent.click(await findByRole('button', { name: copy.save }));
 
@@ -202,7 +202,7 @@ describe('leaving the Settings tab with changes (row 39b)', () => {
     serve();
     const { findByRole, findByLabelText } = mount();
 
-    await fireEvent.click(await findByRole('radio', { name: 'High' }));
+    await fireEvent.change(await findByLabelText('Effort'), { target: { value: 'high' } });
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '20' } });
 
     await fireEvent.click(await findByRole('tab', { name: /^Instructions/ }));

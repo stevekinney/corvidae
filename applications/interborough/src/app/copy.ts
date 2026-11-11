@@ -63,6 +63,13 @@ export type ViewCopy = {
    * said no, and says in these words why.
    */
   readonly forbiddenByPattern?: Readonly<Record<string, ViewForbiddenCopy>>;
+  /**
+   * The page heading the frame keeps above its loading and failed states, for a view whose page
+   * has a header of its own, so a person sees which page is loading or failed.
+   */
+  readonly header?: string;
+  /** The heading for a route of the view whose heading is not the one `header` names. */
+  readonly headerByPattern?: Readonly<Record<string, string>>;
 };
 
 /** The words the run page uses for its steps, and for the lines the run logged. */
@@ -668,7 +675,14 @@ export const AGENT_EDITOR_COPY = {
     guardrails: {
       summary: (guardrails: readonly string[], spendLimit: string | null): string =>
         `Guardrails: ${guardrails.length === 0 ? 'none' : guardrails.join(', ')}. Spend limit: ${spendLimit ?? 'none'}.`,
-      spendPerRun: (usd: string): string => `$${usd} per run`,
+      /** Read-only money carries digit grouping ("$1,000,000"); an amount that is not a number reads as typed. */
+      spendPerRun: (usd: string): string => {
+        const amount = Number(usd);
+        const text = Number.isFinite(amount)
+          ? amount.toLocaleString('en-US', { maximumFractionDigits: 6 })
+          : usd;
+        return `$${text} per run`;
+      },
       changeLead: 'Change on the ',
       accessTab: 'Access tab',
       changeTail: '. Changes there save a version on their own.',
@@ -4469,6 +4483,8 @@ export const AGENT_PAGE_COPY = {
     sorts: { newest: 'Newest started', oldest: 'Oldest first' },
     emptyTitle: 'No chats yet',
     emptyDescription: (agent: string): string => `Chats with ${agent} appear here, newest first.`,
+    /** The empty state of an agent whose plugin is disabled: no chat can start, so it names the way back. */
+    unavailableDescription: (plugin: string): string => `Enable ${plugin} to start a chat.`,
     filteredTitle: 'No chats match',
     filteredDescription: 'None of this agent’s chats match these filters.',
     clearFilters: 'Clear filters',
@@ -6563,8 +6579,6 @@ export const CAPABILITIES_COPY = {
   filterLabel: { tools: 'Filter tools', skills: 'Filter skills', sources: 'Filter sources' },
   filterPlaceholder: 'Filter by name',
   listLabel: { tools: 'Tools', skills: 'Skills', sources: 'Sources' },
-  count: (shown: number, total: number): string =>
-    shown === total ? String(total) : `${String(shown)} of ${String(total)}`,
   /**
    * The count at the right of a filter field, drawn only while something is typed ("0 of 9 tools",
    * row 32b): the list itself shows no stray count.
@@ -6572,6 +6586,8 @@ export const CAPABILITIES_COPY = {
   filteredCount: {
     tools: (shown: number, total: number): string => `${String(shown)} of ${String(total)} tools`,
     skills: (shown: number, total: number): string => `${String(shown)} of ${String(total)} skills`,
+    sources: (shown: number, total: number): string =>
+      `${String(shown)} of ${String(total)} sources`,
   },
   /** What a tab's count reads while its list has not arrived (rows 32f, 32t): a dash, never a zero. */
   tabCountPending: '–',
@@ -7281,6 +7297,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   },
   'agent-editor': {
     label: 'Agent editor',
+    headerByPattern: { '/agents/new': 'New agent' },
     loading: {
       title: 'Loading the agent editor',
       description: 'Reading the agent’s file and the models and tools an agent may use.',
@@ -7420,6 +7437,7 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
   },
   capabilities: {
     label: 'Capabilities',
+    header: 'Capabilities',
     loading: {
       title: 'Loading capabilities',
       description: 'Reading the tools and skills agents can use.',

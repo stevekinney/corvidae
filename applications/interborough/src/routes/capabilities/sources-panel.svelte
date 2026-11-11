@@ -117,9 +117,11 @@
         storageKey="interborough-capabilities-sources"
       >
         {#snippet header()}
-          <p class="ib-capabilities__count" data-testid="sources-count">
-            {copy.count(shown.length, all.length)}
-          </p>
+          {#if filter.trim() !== ''}
+            <p class="ib-capabilities__count" data-testid="sources-count">
+              {copy.filteredCount.sources(shown.length, all.length)}
+            </p>
+          {/if}
           <SearchField
             aria-label={copy.filterLabel.sources}
             placeholder={copy.filterPlaceholder}

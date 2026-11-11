@@ -73,9 +73,20 @@
     counts: ChatCounts | undefined;
     /** Whether the tab is its empty state: the agent has no chat and no filter is on. */
     empty?: boolean;
+    /** The agent's plugin is disabled: the empty state offers no New chat and says what to enable. */
+    unavailable?: boolean;
+    /** The disabled plugin's title, which the empty state names. */
+    pluginTitle?: string;
   }
 
-  let { id, name, counts, empty = $bindable(false) }: Props = $props();
+  let {
+    id,
+    name,
+    counts,
+    empty = $bindable(false),
+    unavailable = false,
+    pluginTitle = '',
+  }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.chats;
   const PAGE_SIZE = 20;
@@ -234,18 +245,22 @@
           size="compact"
           headingLevel={3}
           title={copy.emptyTitle}
-          description={copy.emptyDescription(name)}
+          description={unavailable
+            ? copy.unavailableDescription(pluginTitle)
+            : copy.emptyDescription(name)}
         >
           {#snippet action()}
-            <Button
-              href={router.href(newChatPath(id))}
-              variant="primary"
-              size="sm"
-              onclick={(event) => {
-                event.preventDefault();
-                router.navigate(newChatPath(id));
-              }}>{CHAT_COPY.newChat}</Button
-            >
+            {#if !unavailable}
+              <Button
+                href={router.href(newChatPath(id))}
+                variant="primary"
+                size="sm"
+                onclick={(event) => {
+                  event.preventDefault();
+                  router.navigate(newChatPath(id));
+                }}>{CHAT_COPY.newChat}</Button
+              >
+            {/if}
           {/snippet}
         </EmptyState>
       {/if}

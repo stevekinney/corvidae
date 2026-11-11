@@ -39,8 +39,6 @@
     ConfirmDialog,
     Input,
     SectionHeading,
-    Segment,
-    SegmentedControl,
     Select,
     Skeleton,
     type SelectOption,
@@ -272,6 +270,11 @@
   }
 
   const efforts = $derived(effortChoices(modelRow?.effort.portable, effort));
+  /** None, then the tiers the model supports, as the agent editor's select lists them. */
+  const effortOptions = $derived([
+    { value: '', label: AGENT_EDITOR_COPY.effort.none },
+    ...efforts.map((choice) => ({ value: choice, label: EFFORT_LABELS[choice] })),
+  ]);
 
   function chooseEffort(next: string): void {
     effort = EFFORTS.find((entry) => entry === next) ?? '';
@@ -435,7 +438,9 @@
           <div class="ib-agent-settings__row">
             <dt>{copy.modelLabel}</dt>
             <dd>
-              {#if settings.model === null}{copy.notSet}{:else}<code>{settings.model}</code>{/if}
+              {#if settings.model === null}{copy.notSet}{:else}<span title={settings.model}
+                  >{modelLineOf(settings.model)}</span
+                >{/if}
             </dd>
           </div>
           <div class="ib-agent-settings__row">
@@ -542,18 +547,15 @@
               <p class="ib-agent-note">{copy.modelsNote}</p>
             </div>
 
-            <SegmentedControl
+            <!-- The same control the agent editor uses for the default effort: a select that shows its value. -->
+            <Select
               id="agent-settings-effort"
               label={copy.effortLabel}
-              size="sm"
-              value={effort === '' ? undefined : effort}
+              options={effortOptions}
+              value={effort}
               disabled={save.isPending}
-              onValueChange={chooseEffort}
-            >
-              {#each efforts as choice (choice)}
-                <Segment value={choice}>{EFFORT_LABELS[choice]}</Segment>
-              {/each}
-            </SegmentedControl>
+              onchange={(event) => chooseEffort(event.currentTarget.value)}
+            />
 
             <Input
               id={STEP_LIMIT_ID}

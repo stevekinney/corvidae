@@ -458,7 +458,14 @@
         </Tabs.List>
         <Tabs.Panel value="chats">
           {@render unavailableBanner()}
-          <AgentChats {id} name={name ?? id} counts={chatCounts} bind:empty={chatsEmpty} />
+          <AgentChats
+            {id}
+            name={name ?? id}
+            counts={chatCounts}
+            bind:empty={chatsEmpty}
+            {unavailable}
+            {pluginTitle}
+          />
         </Tabs.Panel>
         <Tabs.Panel value="instructions">
           {@render unavailableBanner()}
