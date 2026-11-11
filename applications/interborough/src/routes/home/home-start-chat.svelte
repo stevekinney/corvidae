@@ -3,7 +3,7 @@
    * Home's Start a chat card: a message box, the agent the chat is with, and Send. It starts as
    * Assistant, which is scripted and needs no model, so Send is live with no provider connected.
    * Choosing a model agent while no provider holds a key replaces the box with the composer's one
-   * blocked row ("Connect a model provider", with a way to Assistant), because that is what
+   * blocked row ("Connect a model provider to chat", with a way to Assistant), because that is what
    * the chat would do. Send opens New chat with the agent and hands it the message, which the chat
    * sends there as its first (`new-chat-handoff.ts`); with nothing typed it opens New chat with the
    * agent alone.

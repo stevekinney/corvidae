@@ -91,7 +91,7 @@ export function composerStatusOf(facts: ComposerFacts): ChatComposerStatus | und
     return {
       kind: 'blocked',
       reason: COPY.noProvider,
-      action: { label: COPY.connectProvider, href: facts.connectHref, primary: true },
+      action: { label: COPY.connectProvider, href: facts.connectHref },
       ...(facts.useAssistant === undefined
         ? {}
         : { link: { label: COPY.useAssistant, onclick: facts.useAssistant } }),

@@ -5169,8 +5169,8 @@ export const CHAT_COPY = {
     newChat: 'New chat',
     /** The composer's placeholder while a question that draws choices waits. */
     answerPlaceholder: 'Choose an answer above, or type your own…',
-    noProvider: 'Connect a model provider',
-    connectProvider: 'Connect provider',
+    noProvider: 'Connect a model provider to chat',
+    connectProvider: 'Connect a provider',
     useAssistant: 'Use Assistant',
     /** Said in the blocked row of a chat started from Workflows when no agent has the tool. */
     noWorkflowAgent:
