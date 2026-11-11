@@ -12,6 +12,7 @@
     margin: 0;
     padding: 0;
     list-style: none;
+    container-type: inline-size;
     font-size: var(--cinder-text-base);
     color: var(--cinder-text-default);
   }
@@ -59,6 +60,17 @@
     font-size: var(--cinder-text-sm);
     font-weight: var(--cinder-font-semibold);
     white-space: nowrap;
+  }
+
+  /* In a narrow container the description drops under the day and range instead of squeezing them. */
+  @container (max-inline-size: 26rem) {
+    .cinder-week-schedule__row {
+      grid-template-columns: 3.5rem minmax(0, 1fr);
+    }
+
+    .cinder-week-schedule__description {
+      grid-column: 2;
+    }
   }
 
   @media (forced-colors: active) {
