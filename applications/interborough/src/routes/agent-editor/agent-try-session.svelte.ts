@@ -18,6 +18,8 @@
  * (`resolveApproval`, rows 43d, 43e), and the answer resumes this test run only.
  */
 
+import type { ApprovalResolution } from '@lostgradient/cinder';
+
 import { AGENT_EDITOR_COPY } from '../../app/copy.ts';
 import { agentFaultOf, tryAgent, type AgentDefinitionInput } from '../../lib/agent-definitions.ts';
 import { deleteContext, wireCodeOf, type Fetcher } from '../../lib/bureau-client.ts';
