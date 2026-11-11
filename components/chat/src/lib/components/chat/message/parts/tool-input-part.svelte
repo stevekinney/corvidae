@@ -114,14 +114,21 @@
     });
   });
 
-  // The dock reads the question's state through these getters, so it stays current as the answer is
-  // sent, refused or fails.
+  // The dock reads the question through getters, so it stays current as the part is derived again
+  // (a new `part` object with the same content) and as the answer is sent, refused or fails. The
+  // effect depends only on whether the question is docked and on its call id, so a new part never
+  // unregisters and registers it again, which would move it behind the questions asked after it.
+  const toolCallId = $derived(part.toolCallId);
   $effect(() => {
     if (!docked || sharedStore === undefined) return;
     return sharedStore.registerDockedQuestion({
-      toolCallId: part.toolCallId,
-      schema: part.schema,
-      message: part.message,
+      toolCallId,
+      get schema() {
+        return part.schema;
+      },
+      get message() {
+        return part.message;
+      },
       submit: (value) => submitAnswer(value),
       get busy() {
         return busy;

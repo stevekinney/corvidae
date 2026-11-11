@@ -418,7 +418,14 @@
             return reference.id;
           },
     () => maxFileSize,
-    () => questionPlacement,
+    // A composer that is replaced (blocked, archived, read only, or hidden by an availability state)
+    // has nothing to give back, so a question then stays in its row rather than docking over it.
+    () =>
+      composerStatus?.kind === 'blocked' ||
+      isComposerNoticeStatus(composerStatus) ||
+      availabilityReplacesComposer(availability)
+        ? 'inline'
+        : questionPlacement,
   );
   provideQuestionStore(questions);
 

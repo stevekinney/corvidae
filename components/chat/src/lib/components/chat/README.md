@@ -614,7 +614,7 @@ A question that has choices (a choice, a choice with Something else, a yes or no
 - A choice only selects. The primary Answer on the right sends it, and stays off, with its reason in view and named by `aria-describedby`, until something is chosen (or typed). The secondary Reply in chat instead on the left gives the composer back and returns the question to its row, where it can still be answered.
 - Once answered, the transcript row reads You answered, with Change, as it does for any question. The composer stays mounted while the dock shows, so a draft and its attachments survive.
 
-`questionLabels` (`ChatQuestionDockLabels`) replaces any of the words. Every other kind of question stays in its row.
+`questionLabels` (`ChatQuestionDockLabels`) replaces any of the words. Every other kind of question stays in its row. A question also stays in its row while the composer is replaced by a `blocked`, `archived` or `read-only` bar, or by an `error` or `deleted` availability state, because there is no composer to give back.
 
 ## Availability
 

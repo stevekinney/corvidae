@@ -460,3 +460,32 @@ describe('several docked questions', () => {
     expect(container.querySelector('[data-chat-question-progress]')).toBeNull();
   });
 });
+
+describe('a composer that is replaced', () => {
+  test('keeps a question in its row rather than docking it over a blocked bar', async () => {
+    const { container } = render(Chat, {
+      id: 'dock-blocked',
+      conversation: single('dock-blocked', ENVIRONMENT),
+      questionPlacement: 'docked',
+      composerStatus: { kind: 'blocked', reason: 'Connect a model provider to chat' },
+      onInputSubmit: () => undefined,
+    });
+    await settle();
+
+    expect(dockOf(container)).toBeNull();
+    expect(container.querySelector('[data-cinder-tool-input] .chat-question-choices')).not.toBeNull();
+  });
+
+  test('keeps a question in its row for a read-only chat', async () => {
+    const { container } = render(Chat, {
+      id: 'dock-read-only',
+      conversation: single('dock-read-only', ENVIRONMENT),
+      questionPlacement: 'docked',
+      composerStatus: { kind: 'read-only' },
+      onInputSubmit: () => undefined,
+    });
+    await settle();
+
+    expect(dockOf(container)).toBeNull();
+  });
+});

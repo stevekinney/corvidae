@@ -26,7 +26,7 @@ import type {
 import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
-import type { ChatQuestionDockLabels } from './question/chat-question-dock.svelte';
+import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
 import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
