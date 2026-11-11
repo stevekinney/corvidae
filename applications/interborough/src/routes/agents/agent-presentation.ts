@@ -1,7 +1,6 @@
 import { AGENTS_COPY, MEMORY_COPY } from '../../app/copy.ts';
 import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentModels, AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
-import { formatRelativeTime } from '../../lib/format/index.ts';
 
 /** The path that opens a new chat with `agent`. */
 export function newChatPath(agent: string): string {
@@ -50,15 +49,6 @@ export function chatUsageByAgent(
 /** The words for how many chats an agent has had, whatever the usage says (none when it has no entry). */
 export function chatCountText(usage: AgentChatUsage | undefined): string {
   return usage === undefined ? AGENTS_COPY.noChats : AGENTS_COPY.chatCount(usage.count);
-}
-
-/** "Last chat 3m ago", or `undefined` when the agent has had no chat whose time is known. */
-export function lastChatText(
-  usage: AgentChatUsage | undefined,
-  now: number = Date.now(),
-): string | undefined {
-  if (usage === undefined || usage.lastChatAt === null) return undefined;
-  return AGENTS_COPY.lastChat(formatRelativeTime(usage.lastChatAt, now));
 }
 
 /**

@@ -26,7 +26,9 @@
    * A view that `ownsStates` (`views.ts`) keeps its header in every state, so the frame renders it
    * while it is loading, empty, failing or unreachable and draws no refresh error above it: the page
    * says each of those itself, in the words `copy.ts` holds. `data-state` and `data-stale` stay
-   * true to what the probe learned, and forbidden and not found are still the frame's.
+   * true to what the probe learned, and forbidden and not found are still the frame's. A view can
+   * own its states on some routes only (`ownsStatesOnPatterns`): the Agents list does, an agent's
+   * page does not.
    *
    * Only the frame writes the words for the non-ready states, and it reads them from `copy.ts`.
    * A view with no probe, such as one run's detail page, is ready unless its scopes are missing:
@@ -90,7 +92,10 @@
   const definition = VIEWS[initial.view];
   /** Whether this frame holds New chat, whose loading, empty and error states are drawn as its own page (design rows 24o to 24q). */
   const startsNewChat = initial.view === 'chat' && initial.pattern === '/chats/new';
-  const ownsStates = definition.ownsStates === true;
+  const ownsStates =
+    definition.ownsStates === true ||
+    (initial.pattern !== undefined &&
+      definition.ownsStatesOnPatterns?.includes(initial.pattern) === true);
   /** Whether this route's page draws its own empty state under its own header (`pageOwnsEmptyOn` in `views.ts`). */
   const pageOwnsEmpty = definition.pageOwnsEmptyOn?.includes(initial.pattern ?? '') === true;
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);

@@ -40,10 +40,14 @@ test.describe('the list of agents', () => {
     // The row is compact: what an agent is made of is on its page, so no tool count is here.
     await expect(row(page, 'demo:tool-runner')).not.toContainText(/\d+ tools?/);
     await expect(row(page, 'demo:assistant')).not.toContainText('No tools');
-    await expect(row(page, 'demo:assistant').getByRole('link', { name: 'New chat' })).toBeVisible();
-    await expect(row(page, 'demo:assistant').getByRole('link', { name: 'Memory' })).toBeVisible();
+    await expect(
+      row(page, 'demo:assistant').getByRole('link', { name: /^New chat with/ }),
+    ).toBeVisible();
+    await expect(row(page, 'demo:assistant').getByRole('link', { name: /^Memory of/ })).toBeVisible();
     // The seeded agent the host once kept private takes a chat as the others do.
-    await expect(row(page, 'demo:internal').getByRole('link', { name: 'New chat' })).toBeVisible();
+    await expect(
+      row(page, 'demo:internal').getByRole('link', { name: /^New chat with/ }),
+    ).toBeVisible();
   });
 
   test('counts each agent’s chats and dates the last, and shows a chat had since on the next visit', async ({
@@ -60,18 +64,21 @@ test.describe('the list of agents', () => {
     await expect(chatCount(page, TEXT_ECHO_AGENT_NAME)).toHaveText(
       `${before + 1} ${before + 1 === 1 ? 'chat' : 'chats'}`,
     );
+    // A chat had just now is today's, said as the clock.
     await expect(row(page, TEXT_ECHO_AGENT_NAME).getByTestId('agent-last-chat')).toHaveText(
-      /^Last chat (just now|\d+[smhd] ago)$/,
+      /^\d{1,2}:\d{2} [AP]M$/,
     );
-    // An agent nobody has chatted with says so, and has no last chat to date.
+    // An agent nobody has chatted with says so, and has no activity to date.
     await expect(chatCount(page, 'demo:internal')).toHaveText('No chats yet');
-    await expect(row(page, 'demo:internal').getByTestId('agent-last-chat')).toHaveCount(0);
+    await expect(row(page, 'demo:internal').getByTestId('agent-last-chat')).toHaveText(
+      'No activity yet',
+    );
   });
 
   test('opens an agent’s memory from its row', async ({ page }) => {
     await page.goto('/agents');
 
-    await row(page, 'demo:tool-runner').getByRole('link', { name: 'Memory' }).click();
+    await row(page, 'demo:tool-runner').getByRole('link', { name: /^Memory of/ }).click();
 
     await expect(page).toHaveURL(/\/agents\/demo%3Atool-runner\/memories$/);
   });
@@ -79,7 +86,7 @@ test.describe('the list of agents', () => {
   test('New chat opens a working new chat with that agent', async ({ page }) => {
     await page.goto('/agents');
 
-    await row(page, 'demo:tool-runner').getByRole('link', { name: 'New chat' }).click();
+    await row(page, 'demo:tool-runner').getByRole('link', { name: /^New chat with/ }).click();
 
     await expect(page).toHaveURL(/\/chats\/new\?agent=demo%3Atool-runner$/);
     await expect(page.getByRole('combobox', { name: 'Agent' })).toContainText(/tool-runner/i);

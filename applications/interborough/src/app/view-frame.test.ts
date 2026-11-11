@@ -446,6 +446,42 @@ describe('a view that owns its states', () => {
   }
 });
 
+describe('a view that owns its states on some routes only', () => {
+  test('is the Agents view, on the address of its list', () => {
+    expect(VIEW_NAMES.filter((view) => VIEWS[view].ownsStatesOnPatterns !== undefined)).toEqual([
+      'agents',
+    ]);
+    expect(VIEWS.agents.ownsStatesOnPatterns).toEqual(['/agents']);
+  });
+
+  test('renders the Agents list, and says error in data-state, when its probe fails', async () => {
+    stub('agents', 'error');
+    const { container, findByTestId, queryByRole } = mount('agents', { pattern: '/agents' });
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+    expect(queryByRole('heading', { name: VIEW_COPY.agents.error.title })).toBeNull();
+    expect(queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  test('renders the Agents list, and says empty in data-state, when its probe finds nothing', async () => {
+    stub('agents', 'empty');
+    const { container, findByTestId, queryByRole } = mount('agents', { pattern: '/agents' });
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('empty'));
+    expect(queryByRole('heading', { level: 1, name: VIEW_COPY.agents.empty.title })).toBeNull();
+  });
+
+  test('leaves an agent’s page its failure from the frame', async () => {
+    stub('agents', 'error');
+    const { container, findByRole } = mount('agents', {
+      parameters: { agent: 'assistant' },
+      pattern: '/agents/:agent',
+    });
+    await findByRole('heading', { level: 1, name: VIEW_COPY.agents.error.title });
+    expect(frame(container).dataset['state']).toBe('error');
+  });
+});
+
 describe('a refused probe', () => {
   test('tells the principal store the scope is gone', async () => {
     stub('schedules', 'forbidden');

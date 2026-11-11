@@ -9,17 +9,79 @@
   min-width: 0;
 }
 
-.ib-agent-row__actions {
+/* The cards below the segments: each draws its own border, so the rows inside draw only the rule. */
+.ib-agents__body {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-2);
-  align-items: center;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
 }
 
-/* Compact rows in one bordered list: the list draws the border, the rows only the rule between. */
-.ib-agents__list {
+.ib-agents__sorted {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* A phone has no group header, so the held-back rows are one bordered list of their own. */
+.ib-agents__plain {
   border: 1px solid var(--cinder-border-muted);
   border-radius: var(--cinder-radius-md);
+  overflow: hidden;
+}
+
+/* The fixed action slot: three icon buttons wide on every available row, so the times line up. */
+.ib-agent-row__actions {
+  display: inline-flex;
+  gap: var(--cinder-space-1);
+  align-items: center;
+  justify-content: flex-end;
+  inline-size: calc(3 * var(--ib-agent-icon-size, 2rem) + 2 * var(--cinder-space-1));
+}
+
+/* Where Edit is not offered (the host's own agents) the slot keeps its place. */
+.ib-agent-row__no-edit {
+  flex: none;
+  inline-size: var(--ib-agent-icon-size, 2rem);
+  block-size: var(--ib-agent-icon-size, 2rem);
+}
+
+/* What stands in the slot of an agent a disabled plugin holds back. */
+.ib-agent-row__held {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* On a phone the reason and the Enable and restart link share a third line. */
+.ib-agent-row__held-line {
+  display: flex;
+  gap: var(--cinder-space-3);
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Line two: the description on one line, then the chat count at the right. The parts are separate
+ * elements, spaced by the gap, so nothing is joined by a separator character. */
+.ib-agent-row__line-two {
+  display: flex;
+  gap: var(--cinder-space-3);
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.ib-agent-row__line-two .ib-agent-row__description {
+  flex: 1 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  color: inherit;
+  font-size: inherit;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ib-agent-row__count {
+  display: inline-flex;
+  flex: none;
+  gap: var(--cinder-space-2);
 }
 
 .ib-agent-row__title {
@@ -83,7 +145,6 @@
   font-size: var(--cinder-text-base);
 }
 
-.ib-agent-row__meta,
 .ib-agent-facts {
   display: flex;
   flex-wrap: wrap;

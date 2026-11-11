@@ -4,7 +4,6 @@ import {
   agentFacts,
   chatCountText,
   chatUsageByAgent,
-  lastChatText,
   memoryTabText,
   newChatPath,
   shortVersion,
@@ -129,22 +128,18 @@ describe('what an agent’s chats say of its use', () => {
       waiting: 0,
     });
     expect(
-      lastChatText(
-        chatUsageByAgent([
-          { id: 'session-8', agentName: 'echo', updatedAt: 'nope', activity: 'idle' as const },
-        ]).get('echo'),
-      ),
-    ).toBe(undefined);
+      chatUsageByAgent([
+        { id: 'session-8', agentName: 'echo', updatedAt: 'nope', activity: 'idle' as const },
+      ]).get('echo')?.lastChatAt,
+    ).toBeNull();
   });
 
-  test('words the count and the last chat, and says nothing of the last chat of an agent that has had none', () => {
+  test('words the count of chats, and says none yet for an agent that has had none', () => {
     const usage = { count: 1, lastChatAt: NOW - 3 * 60_000, waiting: 0 };
 
     expect(chatCountText(usage)).toBe('1 chat');
     expect(chatCountText({ ...usage, count: 12 })).toBe('12 chats');
     expect(chatCountText(undefined)).toBe('No chats yet');
-    expect(lastChatText(usage, NOW)).toBe('Last chat 3m ago');
-    expect(lastChatText(undefined, NOW)).toBeUndefined();
   });
 });
 

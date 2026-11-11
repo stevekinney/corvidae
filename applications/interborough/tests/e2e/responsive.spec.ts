@@ -110,7 +110,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The list prints the seeded chats' titles, among them the memory thread's 300-character one.
   '/chats': /Say hello/,
   '/chats/:chat': /Say hello/,
-  '/agents': /An agent description that keeps going/,
+  // The list prints each agent's identifier at every width; a phone row leaves the description to the agent's page.
+  '/agents': /responsive-long-description/,
   '/capabilities': /Reads only|Changes things|Dangerous|Not classified/,
   '/capabilities (skills tab)': /e2e-summarize/,
   '/capabilities (sources tab)': /e2e-petstore/,

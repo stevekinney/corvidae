@@ -120,6 +120,13 @@ export type ViewDefinition = {
    * frame and the page never say them two ways.
    */
   readonly ownsStates?: boolean;
+  /**
+   * The route patterns of this view that own their states, as {@link ViewDefinition.ownsStates}
+   * says for the whole view. A view whose routes are not all list pages (the Agents list, an agent's
+   * page and its memory) names only the list's pattern here, so the other routes keep the frame's
+   * loading, empty and failed states.
+   */
+  readonly ownsStatesOnPatterns?: readonly string[];
 };
 
 export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
@@ -127,7 +134,9 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // the view itself has nothing to probe and is never empty.
   home: { scopes: [], canBeEmpty: false },
   chat: { scopes: [], canBeEmpty: true },
-  agents: { scopes: [], canBeEmpty: true },
+  // The list at `/agents` keeps its header, segments and "+" in every state, so it draws its own
+  // loading, empty and failed states; an agent's page and its memory leave them to the frame.
+  agents: { scopes: [], canBeEmpty: true, ownsStatesOnPatterns: ['/agents'] },
   // `/agents/new` and `/agents/:agent/edit`. Never empty: it is where an agent is made.
   'agent-editor': { scopes: [], canBeEmpty: false },
   // The tools and skills agents can use. Never empty as a view: each tab says its own nothing.

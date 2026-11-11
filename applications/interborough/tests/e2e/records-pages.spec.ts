@@ -157,14 +157,14 @@ test.describe('the records pages', () => {
     await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
     const row = page.locator('[data-agent="demo:assistant"]');
     await expect(row).toBeVisible();
-    await expect(row.getByRole('link', { name: 'Memory' })).toBeVisible();
-    await expect(row.getByRole('link', { name: 'New chat' })).toBeVisible();
+    await expect(row.getByRole('link', { name: /^Memory of/ })).toBeVisible();
+    await expect(row.getByRole('link', { name: /^New chat with/ })).toBeVisible();
     await expect(page.locator('main')).not.toContainText(/\d+ tools?/);
-    await expect(page.getByTestId('records-toolbar')).toBeVisible();
+    await expect(page.getByRole('radio', { name: /^All/ })).toBeVisible();
     await checkA11y('records — agents');
   });
 
-  test('Agents says Needs you for an agent with a chat that waits on the person, and its chat count opens the agent', async ({
+  test('Agents says Waiting on you for an agent with a chat that waits on the person, and its chat count opens the agent', async ({
     page,
     request,
   }) => {
@@ -173,7 +173,7 @@ test.describe('the records pages', () => {
     await page.goto('/agents');
 
     const row = page.locator(`[data-agent="${TWO_QUESTIONS_AGENT_NAME}"]`);
-    await expect(row.getByTestId('agent-needs-you')).toHaveText('Needs you');
+    await expect(row.getByTestId('agent-needs-you')).toHaveText('Waiting on you');
     await expect(
       page.locator('[data-agent="demo:assistant"]').getByTestId('agent-needs-you'),
     ).toHaveCount(0);

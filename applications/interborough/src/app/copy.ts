@@ -3352,29 +3352,94 @@ export const AGENTS_COPY = {
   toolCount: (count: number): string => (count === 1 ? '1 tool' : `${count} tools`),
   chatCount: (count: number): string => (count === 1 ? '1 chat' : `${count} chats`),
   noChats: 'No chats yet',
-  /** The marker on an agent with a chat that waits on the person. */
-  needsYou: 'Needs you',
-  /** How many agents the page lists, as a sentence. */
-  count: (count: number): string => `${String(count)} ${count === 1 ? 'agent' : 'agents'}`,
+  /** The line under the heading of the list (rows 12d and 36r). */
+  subtitle: 'Agents run your chats, goals and schedules.',
   filtersLabel: 'Filter agents',
   searchLabel: 'Search agents',
   searchPlaceholder: 'Search agents',
   clearAction: 'Clear filters',
+  /** The segments of the list: every agent, and the ones that can run (row 11c). */
+  segments: { all: 'All', available: 'Available' },
+  /** The card of the agents that can run, and the card of the ones a disabled plugin holds back (rows 36d and 36j). */
+  groups: {
+    availableCount: (count: number): string => `Available ${String(count)}`,
+    sortedBy: 'Sorted by last activity',
+    unavailableCount: (count: number): string => `Unavailable ${String(count)}`,
+    /** Why the agents of the second card cannot run, and what brings them back. */
+    held: (plugins: readonly string[], agents: number): string =>
+      `${agents === 1 ? 'Its plugin' : plugins.length === 1 ? 'Their plugin' : 'Their plugins'}, ${nameList(plugins)}, ${plugins.length === 1 ? 'is' : 'are'} disabled. ${agents === 1 ? 'Chats with this agent are' : 'Chats with these agents are'} read-only until you enable ${plugins.length === 1 ? 'it' : 'them'} and restart.`,
+    availableLabel: 'Available agents',
+    unavailableLabel: 'Unavailable agents',
+  },
+  /** A row of the list (rows 36f to 36k, 37d and 37f). */
+  row: {
+    /** The words after the chat count of an agent the host ships itself (row 36g). */
+    builtIn: 'Built in',
+    noActivity: 'No activity yet',
+    yesterday: 'Yesterday',
+    /** In the action slot of an agent a disabled plugin holds back, when the host gives no reason. */
+    pluginDisabled: (plugin: string): string => `Plugin ${plugin} is disabled`,
+    memoryOf: (agent: string): string => `Memory of ${agent}`,
+    newChatWith: (agent: string): string => `New chat with ${agent}`,
+    editAgent: (agent: string): string => `Edit ${agent}`,
+    /** Why New chat is held while no provider can answer (row 11e). */
+    connectToChat: 'Connect a provider to start a chat',
+  },
+  /** Nothing has been created, and no plugin holds any agent back (row 36m). */
+  empty: {
+    title: 'No agents yet',
+    description: 'An agent is a model with instructions and tools. Create one to chat with it.',
+    addPlugin: 'Add a plugin',
+  },
+  /** Every agent is held back by a disabled plugin (row 36o). */
+  onlyUnavailable: {
+    title: 'No agent can run yet',
+    description: (agents: readonly string[], plugins: readonly string[]): string =>
+      `${nameList(agents)} ${agents.length === 1 ? 'is' : 'are'} held back while ${nameList(plugins)} ${plugins.length === 1 ? 'is' : 'are'} disabled.`,
+  },
+  /** Only the host's own agents exist (row 12c): a compact line beneath them. */
+  noneOfYours: {
+    title: 'No agents of your own yet',
+    description: 'Built-in agents are ready; add your own for work they don’t cover.',
+  },
   noMatch: {
     title: 'No agent matches this search',
     description: 'Change the search to see more agents.',
   },
-  empty: {
-    title: 'No agents yet',
-    description: 'An agent is a model with instructions and tools. Create one to chat with it.',
-  },
+  loading: 'Loading agents',
+  stillLoading: 'Still loading agents. This is taking longer than usual.',
   /** The accessible name of the list of agent files the Bureau cannot use. */
   invalidListLabel: 'Agent files with a problem',
-  lastChat: (when: string): string => `Last chat ${when}`,
   /** The Memory tab with the agent's memory count; `more` is true when pages of it are unread. */
   memoryWithCount: (shown: number, more: boolean): string => `Memory ${shown}${more ? '+' : ''}`,
   fileVersion: 'File version',
   history: 'History',
+  /**
+   * Enabling the plugin behind the unavailable agents, from the list (rows 36x, 36y, 37g and 37h):
+   * the question Settings › Plugins asks, with the effect on running work in an inset note.
+   */
+  enable: {
+    action: 'Enable and restart',
+    title: (plugins: readonly string[]): string => `Enable ${nameList(plugins)} and restart?`,
+    description: (plugins: readonly string[], agents: readonly string[]): string =>
+      `Plugins load at startup, so Interborough restarts to load ${nameList(plugins)}.${agents.length === 0 ? '' : ` ${nameList(agents)} ${agents.length === 1 ? 'becomes' : 'become'} available afterwards.`}`,
+    /** The runs going now, said first when there are any; the note never says that nothing is running. */
+    running: (runs: number): string =>
+      runs === 1 ? '1 run is running now.' : `${String(runs)} runs are running now.`,
+    /** What a restart does to work in flight: running work resumes and reviews keep waiting. */
+    work: (waiting: number): string =>
+      `Running work picks up where it stopped; reviews stay waiting${waiting === 0 ? '' : ` (${String(waiting)} ${waiting === 1 ? 'is' : 'are'} waiting on you)`}. Interborough reconnects on its own when it is back.`,
+    confirm: 'Enable and restart',
+    /** The bold lead of the failure callout, and what it says when nothing was restarted. */
+    failedTitle: (plugin: string): string => `Couldn’t enable ${plugin}.`,
+    failedReason: (reason: string): string =>
+      `${reason.endsWith('.') ? reason : `${reason}.`} Nothing was restarted and nothing changed.`,
+    unknownReason: 'The host did not accept the change.',
+    openPlugins: 'Open Plugins',
+    /** The success banner after the host is back; Settings › Plugins draws the steps of the restart (row 37a). */
+    back: (plugins: readonly string[], agents: readonly string[]): string =>
+      `${nameList(plugins)} ${plugins.length === 1 ? 'is' : 'are'} on.${agents.length === 0 ? '' : ` ${nameList(agents)} ${agents.length === 1 ? 'is' : 'are'} available again.`}`,
+  },
 } as const;
 
 /** The words of an agent's page: its tabs, the controls over its chats, its instructions and its settings. */

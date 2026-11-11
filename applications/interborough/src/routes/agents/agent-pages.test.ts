@@ -49,30 +49,13 @@ describe('the list of agents', () => {
     updatedAt,
     origin: 'chat' as 'chat' | 'goal' | 'schedule',
   });
+  // The clock of today, "Yesterday" or a day: the words a row says when an agent was last used.
+  const WHEN = /^(\d{1,2}:\d{2} [AP]M|Yesterday|[A-Z][a-z]{2} \d{1,2})$/;
 
-  test('shows each agent’s use and what waits on the person, drops the tool count, and offers New chat for every agent', async () => {
+  test('shows each agent as a status-first row: its name, identifier and last use, its chats, what waits on the person, and a fixed slot of icon buttons', async () => {
     const recently = new Date(Date.now() - 3 * 60_000).toISOString();
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [ASSISTANT, FILE_AGENT, INTERNAL] }),
-      'bureau.agents.definitions.get': (params) => ({
-        id: params['id'],
-        source: 'file',
-        state: 'ready',
-        name: 'Researcher',
-        description: null,
-        a2a: true,
-        hash: 'hash-1',
-        problem: null,
-        definition: {
-          name: 'Researcher',
-          description: null,
-          a2a: true,
-          model: 'anthropic/sonnet',
-          tools: ['lookup-order', 'issue-refund'],
-          card: [],
-          instructions: '',
-        },
-      }),
       // The Bureau filters by origin before it pages, so a goal's or a schedule's session is in
       // the count only when the request asks for them.
       'bureau.contexts.list': (params) => ({
@@ -93,63 +76,69 @@ describe('the list of agents', () => {
 
     const { container, findByRole } = mount(AgentList);
 
-    await findByRole('link', { name: 'Assistant' });
+    await findByRole('link', { name: /^Assistant/ });
     const rows = (name: string) => container.querySelector(`[data-agent="${name}"]`);
-    const text = (name: string) => rows(name)?.textContent ?? '';
-    // Where an agent is defined is not worded, and no badge is.
+    const part = (name: string, testId: string) =>
+      rows(name)?.querySelector(`[data-testid="${testId}"]`);
+    await waitFor(() => expect(part('assistant', 'agent-chat-count')?.textContent).toBe('2 chats'));
+
+    // Where an agent is defined is not worded, no tool count is drawn, and no avatar leads a row.
     expect(container.textContent).not.toContain('Defined in');
-    // The generator behind `assistant` is opaque to the Bureau (`media` is null): it may be a script
-    // or a model, and the listing does not say, so no model line is claimed for it.
-    expect(text('assistant')).not.toContain('Scripted');
-    expect(rows('assistant')?.textContent).not.toContain('Model');
-    // The row is compact: no model, no tools, so no count of them either.
-    expect(text('researcher')).not.toContain('tools');
-    expect(text('researcher')).not.toContain('anthropic/sonnet');
-    await waitFor(() =>
-      expect(
-        rows('assistant')?.querySelector('[data-testid="agent-chat-count"]')?.textContent,
-      ).toBe('2 chats'),
-    );
-    expect(rows('assistant')?.querySelector('[data-testid="agent-last-chat"]')?.textContent).toBe(
-      'Last chat 3m ago',
-    );
-    expect(text('researcher')).toContain('1 chat');
-    // The chat count is a link to the agent's page, and an agent with a waiting chat says so.
-    const count = rows('assistant')?.querySelector<HTMLAnchorElement>(
-      '[data-testid="agent-chat-count"]',
-    );
-    expect(count?.getAttribute('href')).toBe('/agents/assistant');
-    count?.dispatchEvent(
-      new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }),
-    );
+    expect(rows('researcher')?.textContent).not.toContain('tools');
+    expect(rows('researcher')?.textContent).not.toContain('anthropic/sonnet');
+    expect(container.querySelector('[class*="avatar"]')).toBeNull();
+
+    // Line one: the human name, the identifier once, and when the agent was last used.
+    expect(rows('assistant')?.querySelector('.ib-agent-name')?.textContent).toBe('Assistant');
+    expect(part('assistant', 'agent-identifier')?.textContent).toBe('assistant');
+    expect(rows('internal')?.querySelector('.ib-agent-name')?.textContent).toBe('Internal');
+    expect(part('internal', 'agent-identifier')?.textContent).toBe('internal');
+    expect(part('assistant', 'agent-last-chat')?.textContent).toMatch(WHEN);
+    expect(part('researcher', 'agent-last-chat')?.textContent).toMatch(WHEN);
+    expect(part('internal', 'agent-last-chat')?.textContent).toBe('No activity yet');
+
+    // Line two: the description, then the count, with "Built in" after it for the host's own agents.
+    expect(part('assistant', 'agent-description')?.textContent).toBe('Answers every message.');
+    expect(part('researcher', 'agent-chat-count')?.textContent).toBe('1 chat');
+    expect(part('internal', 'agent-chat-count')?.textContent).toBe('No chats yet');
+    expect(part('assistant', 'agent-built-in')?.textContent).toBe('Built in');
+    expect(part('researcher', 'agent-built-in')).toBeNull();
+
+    // An agent with a chat that waits on the person says so in the status column, in words.
+    expect(part('assistant', 'agent-needs-you')?.textContent).toContain('Waiting on you');
+    expect(part('researcher', 'agent-needs-you')).toBeNull();
+    expect(part('internal', 'agent-needs-you')).toBeNull();
+
+    // The row is one link to the agent's page, and a modified click is left to the browser.
+    const link = rows('assistant')?.querySelector<HTMLAnchorElement>('a[href="/agents/assistant"]');
+    expect(link).not.toBeNull();
+    link?.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
     expect(router.pathname).toBe('/agents');
-    count?.click();
+    link?.click();
     expect(router.pathname).toBe('/agents/assistant');
-    expect(rows('assistant')?.querySelector('[data-testid="agent-needs-you"]')?.textContent).toBe(
-      'Needs you',
-    );
-    expect(rows('researcher')?.querySelector('[data-testid="agent-needs-you"]')).toBeNull();
-    expect(rows('internal')?.querySelector('[data-testid="agent-needs-you"]')).toBeNull();
+
     // Only the chats a person started are counted, asked of the Bureau so it filters before paging.
     const listed = served.calls.filter((call) => call.method === 'bureau.contexts.list');
     expect(listed.length).toBeGreaterThan(0);
     for (const call of listed) expect(call.params).toMatchObject({ origin: 'chat' });
-    expect(rows('internal')?.querySelector('[data-testid="agent-chat-count"]')?.textContent).toBe(
-      'No chats yet',
-    );
-    expect(rows('internal')?.querySelector('[data-testid="agent-last-chat"]')).toBeNull();
-    // Every agent offers a chat, whether or not it opts into A2A.
-    expect(rows('internal')?.querySelector('a[href="/chats/new?agent=internal"]')).not.toBeNull();
-    expect(rows('assistant')?.querySelector('a[href="/chats/new?agent=assistant"]')).not.toBeNull();
-    // Edit for a file agent only, Memory for every agent.
-    expect(rows('researcher')?.querySelector('a[href="/agents/researcher/edit"]')).not.toBeNull();
-    expect(rows('assistant')?.querySelector('a[href="/agents/assistant/edit"]')).toBeNull();
+
+    // Every agent offers Memory and New chat, each named for the agent; Edit is for a file agent
+    // only, and the slot keeps its place where there is none.
     for (const name of ['assistant', 'researcher', 'internal']) {
       expect(rows(name)?.querySelector(`a[href="/agents/${name}/memories"]`)).not.toBeNull();
+      expect(rows(name)?.querySelector(`a[href="/chats/new?agent=${name}"]`)).not.toBeNull();
     }
+    expect(rows('assistant')?.querySelector('[aria-label="Memory of Assistant"]')).not.toBeNull();
+    expect(
+      rows('assistant')?.querySelector('[aria-label="New chat with Assistant"]'),
+    ).not.toBeNull();
+    expect(rows('researcher')?.querySelector('a[href="/agents/researcher/edit"]')).not.toBeNull();
+    expect(rows('researcher')?.querySelector('[aria-label="Edit Researcher"]')).not.toBeNull();
+    expect(rows('assistant')?.querySelector('a[href="/agents/assistant/edit"]')).toBeNull();
+    expect(rows('assistant')?.querySelector('.ib-agent-row__no-edit')).not.toBeNull();
   });
 
-  test('says nothing of chat counts when the Bureau cannot list the chats, rather than that there are none', async () => {
+  test('says nothing of chat counts or times when the Bureau cannot list the chats, rather than that there are none', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT] }),
       'bureau.contexts.list': () => {
@@ -163,16 +152,47 @@ describe('the list of agents', () => {
       props: { page: AgentList, client },
     } as never);
 
-    await findByRole('link', { name: 'Assistant' });
+    await findByRole('link', { name: /^Assistant/ });
     // The read has failed before anything is asserted about what it left out.
     await waitFor(() =>
       expect(client.getQueryState(queryKeys.contexts.usage())?.status).toBe('error'),
     );
     expect(container.querySelectorAll('[data-testid="agent-chat-count"]')).toHaveLength(0);
+    expect(container.querySelectorAll('[data-testid="agent-last-chat"]')).toHaveLength(0);
     expect(container.textContent).not.toContain('No chats yet');
+    expect(container.textContent).not.toContain('No activity yet');
   });
 
-  test('puts the identifier beside a name that differs from it, and shows an identifier once', async () => {
+  test('lists the agents that can run in one card, most recently used first and never used last, under the words that say so', async () => {
+    const minutesAgo = (minutes: number) => new Date(Date.now() - minutes * 60_000).toISOString();
+    restore = bureau({
+      'bureau.agents.list': () => ({ agents: [INTERNAL, ASSISTANT, FILE_AGENT] }),
+      'bureau.contexts.list': () => ({
+        contexts: [
+          chat('session-1', 'assistant', minutesAgo(60)),
+          chat('session-2', 'researcher', minutesAgo(1)),
+        ],
+        nextOffset: null,
+      }),
+    }).restore;
+    landAt('/agents');
+    const { container, findByRole, findByText } = mount(AgentList);
+
+    await findByRole('heading', { level: 2, name: 'Available 3' });
+    await findByText('Sorted by last activity');
+    const card = container.querySelector('[data-testid="agents-available"]');
+    await waitFor(() =>
+      expect(
+        [...(card?.querySelectorAll('[data-agent]') ?? [])].map((row) =>
+          row.getAttribute('data-agent'),
+        ),
+      ).toEqual(['researcher', 'assistant', 'internal']),
+    );
+    // Nothing is held back, so there is no second card.
+    expect(container.querySelector('[data-testid="agents-unavailable"]')).toBeNull();
+  });
+
+  test('puts the identifier once beside the name, and an agent with no other name reads its identifier in words', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT, INTERNAL] }),
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
@@ -181,15 +201,15 @@ describe('the list of agents', () => {
 
     const { container, findByRole } = mount(AgentList);
 
-    await findByRole('link', { name: 'Assistant' });
-    const assistant = container.querySelector('[data-agent="assistant"]');
-    expect(assistant?.querySelector('.ib-agent-id')?.textContent).toBe('assistant');
-    const internal = container.querySelector('[data-agent="internal"]');
-    expect(internal?.querySelector('.ib-agent-id')).toBeNull();
-    expect(internal?.querySelector('.ib-agent-name')?.hasAttribute('data-identifier')).toBe(true);
+    await findByRole('link', { name: /^Assistant/ });
+    for (const name of ['assistant', 'internal']) {
+      const row = container.querySelector(`[data-agent="${name}"]`);
+      expect(row?.querySelectorAll('.ib-agent-id')).toHaveLength(1);
+      expect(row?.querySelector('.ib-agent-id')?.textContent).toBe(name);
+    }
   });
 
-  test('counts the agents, narrows them by a search, and offers Clear filters when none matches', async () => {
+  test('counts the agents in segments, narrows them by a search, and offers Clear filters when none matches', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT, INTERNAL] }),
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
@@ -197,8 +217,9 @@ describe('the list of agents', () => {
     landAt('/agents');
     const { container, findByRole, findByLabelText } = mount(AgentList);
 
-    await findByRole('link', { name: 'Assistant' });
-    expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe('2 agents');
+    await findByRole('link', { name: /^Assistant/ });
+    await findByRole('radio', { name: /^All\s*,\s*2$/ });
+    await findByRole('radio', { name: /^Available\s*,\s*2$/ });
 
     const search = await findByLabelText('Search agents');
     await fireEvent.input(search, { target: { value: 'intern' } });
@@ -206,7 +227,7 @@ describe('the list of agents', () => {
       expect(container.querySelector('[data-agent="assistant"]') === null).toBe(true),
     );
     expect(container.querySelector('[data-agent="internal"]')).not.toBeNull();
-    expect(container.querySelector('[data-testid="records-count"]')?.textContent).toBe('1 agent');
+    await findByRole('radio', { name: /^All\s*,\s*1$/ });
 
     // Emptying the search takes it out again.
     await fireEvent.input(search, { target: { value: '' } });
@@ -219,6 +240,8 @@ describe('the list of agents', () => {
     await fireEvent.input(search, { target: { value: 'nothing like this' } });
     await findByRole('heading', { level: 2, name: 'No agent matches this search' });
     expect(container.querySelector('[data-cinder-kind="filtered"]')).not.toBeNull();
+    // The header keeps its "+", and Clear filters is the state's only action.
+    expect(container.querySelector('a[href="/agents/new"]')).not.toBeNull();
     const clear = container.querySelector<HTMLButtonElement>(
       '[data-cinder-kind="filtered"] button',
     );
@@ -227,7 +250,7 @@ describe('the list of agents', () => {
     await waitFor(() => expect(container.querySelector('[data-agent="assistant"]')).not.toBeNull());
   });
 
-  test('says there are no agents, with New agent to make the first, when the Bureau lists none', async () => {
+  test('says there are no agents, with New agent as the one primary button and Add a plugin beside it, when the Bureau lists none', async () => {
     restore = bureau({
       'bureau.agents.list': () => ({ agents: [] }),
       'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
@@ -241,6 +264,41 @@ describe('the list of agents', () => {
       '[data-cinder-kind="first-use"] a[href="/agents/new"]',
     );
     expect(action).not.toBeNull();
+    expect(
+      container.querySelector('[data-cinder-kind="first-use"] a[href="/settings/plugins"]')
+        ?.textContent,
+    ).toContain('Add a plugin');
+    // The header keeps its subtitle and its secondary "+".
+    expect(container.textContent).toContain('Agents run your chats, goals and schedules.');
+    expect(container.querySelector('a[aria-label="New agent"]')).not.toBeNull();
+  });
+
+  test('offers a compact line for the first agent of your own when only the host’s agents exist', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({ agents: [AGENT, INTERNAL] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    }).restore;
+    landAt('/agents');
+    const { container, findByText } = mount(AgentList);
+
+    await findByText('No agents of your own yet');
+    const compact = container.querySelector('[data-testid="agents-none-of-yours"]');
+    expect(compact?.textContent).toContain(
+      'Built-in agents are ready; add your own for work they don’t cover.',
+    );
+    expect(compact?.querySelector('a[href="/agents/new"]')).not.toBeNull();
+  });
+
+  test('says nothing of your own agents once one exists', async () => {
+    restore = bureau({
+      'bureau.agents.list': () => ({ agents: [AGENT, FILE_AGENT] }),
+      'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
+    }).restore;
+    landAt('/agents');
+    const { container, findByRole } = mount(AgentList);
+
+    await findByRole('link', { name: /^Researcher/ });
+    expect(container.querySelector('[data-testid="agents-none-of-yours"]')).toBeNull();
   });
 
   test('opens an agent’s page and a new chat with it, and leaves a modified click to the browser', async () => {
@@ -249,14 +307,14 @@ describe('the list of agents', () => {
     landAt('/agents');
     const { findByRole } = mount(AgentList);
 
-    const name = await findByRole('link', { name: 'Assistant' });
+    const name = await findByRole('link', { name: /^Assistant/ });
     name.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
     expect(router.pathname).toBe('/agents');
     name.click();
     expect(router.pathname).toBe('/agents/assistant');
 
     landAt('/agents');
-    const action = await findByRole('link', { name: 'New chat' });
+    const action = await findByRole('link', { name: 'New chat with Assistant' });
     action.click();
     expect(router.current.search.get('agent')).toBe('assistant');
     expect(router.pathname).toBe('/chats/new');
@@ -268,12 +326,12 @@ describe('the list of agents', () => {
     landAt('/agents');
     const { findByRole } = mount(AgentList);
 
-    const editLink = await findByRole('link', { name: 'Edit' });
+    const editLink = await findByRole('link', { name: 'Edit Researcher' });
     editLink.click();
     expect(router.pathname).toBe('/agents/researcher/edit');
 
     landAt('/agents');
-    const memoryLink = await findByRole('link', { name: 'Memory' });
+    const memoryLink = await findByRole('link', { name: 'Memory of Researcher' });
     memoryLink.click();
     expect(router.pathname).toBe('/agents/researcher/memories');
 
@@ -312,7 +370,7 @@ const hostPaths = (url: string) =>
 
 describe('the list of agents, and the agent editor', () => {
   test('offers New agent, which opens the form for a new agent', async () => {
-    restore = bureau({ 'bureau.agents.list': () => ({ agents: [AGENT] }) }).restore;
+    restore = bureau({ 'bureau.agents.list': () => ({ agents: [FILE_AGENT] }) }).restore;
     landAt('/agents');
     const { findByRole } = mount(AgentList);
 
@@ -351,9 +409,9 @@ describe('the list of agents, and the agent editor', () => {
     );
     // A file that loaded is listed once, by `bureau.agents.list`, and never as invalid.
     expect(container.querySelectorAll('[data-agent="researcher"]')).toHaveLength(1);
-    expect(
-      container.querySelector('[data-agent="researcher"]')?.getAttribute('data-state'),
-    ).toBeNull();
+    expect(container.querySelector('[data-agent="researcher"]')?.getAttribute('data-state')).toBe(
+      'available',
+    );
     // The search narrows the files with a problem as it narrows the agents.
     const search = getByLabelText('Search agents');
     await fireEvent.input(search, { target: { value: 'brok' } });
