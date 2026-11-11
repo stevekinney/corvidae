@@ -234,7 +234,9 @@ async function lockState(
   }
   try {
     const { mtimeMs } = await stat(lockDirectory);
-    return Date.now() - mtimeMs >= ownerlessGraceMs ? 'abandoned' : 'held';
+    // Whole milliseconds on both sides: `mtimeMs` keeps a fraction `Date.now()` drops, so a
+    // directory written earlier in this millisecond would otherwise read as written in the future.
+    return Date.now() - Math.floor(mtimeMs) >= ownerlessGraceMs ? 'abandoned' : 'held';
   } catch {
     return 'released';
   }
