@@ -5,8 +5,15 @@
 import { HttpClientError } from '@lostgradient/weft';
 import { describe, expect, test } from 'bun:test';
 
-import type { Hook, HookDelivery, HookEventKind } from '../../lib/bureau-hooks.ts';
+import type {
+  Hook,
+  HookDelivery,
+  HookDeliverySummary,
+  HookEventKind,
+  ListedHook,
+} from '../../lib/bureau-hooks.ts';
 import { ServerUnreachableError } from '../../lib/faults.ts';
+import { activityTime } from '../health/health-times.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
 import {
   deliveryFailed,
@@ -14,13 +21,21 @@ import {
   deliveryWord,
   eventArea,
   eventChoices,
+  eventClause,
   eventMatches,
+  eventOptionLabel,
   eventPhrase,
   eventRefusal,
   eventWords,
   failingFirst,
+  hookFailing,
+  hookListFailure,
   hookMatches,
+  hookRowSentence,
+  hookRowText,
   hookSentence,
+  hookStatusWord,
+  hookTime,
   onlyForWords,
   scopeKindsFor,
   scopePath,
