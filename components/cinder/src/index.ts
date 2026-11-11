@@ -1346,8 +1346,13 @@ export type {
   WaveformSchemaProps,
 } from './components/waveform/index.ts';
 
-export { default as Citation } from './components/citation/index.ts';
-export type { CitationProps, CitationSource } from './components/citation/index.ts';
+export { default as Citation, resolveCitationLink } from './components/citation/index.ts';
+export type {
+  CitationLabels,
+  CitationLink,
+  CitationProps,
+  CitationSource,
+} from './components/citation/index.ts';
 
 export { default as CodeLocation } from './components/code-location/index.ts';
 export type { CodeLocationProps } from './components/code-location/index.ts';

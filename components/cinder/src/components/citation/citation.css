@@ -24,14 +24,47 @@
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
   }
+  /* A title is clamped to two lines; its whole text stays in the DOM for assistive technology. */
   .cinder-citation__title {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    overflow: hidden;
     font-weight: var(--cinder-font-semibold);
     color: var(--cinder-text-default);
   }
+  /* An excerpt reads as a quotation: the language's own quotation marks wrap it. */
   .cinder-citation__detail {
     margin: 0;
     font-weight: var(--cinder-font-normal);
     color: var(--cinder-text-muted);
+  }
+  .cinder-citation__detail::before {
+    content: open-quote;
+  }
+  .cinder-citation__detail::after {
+    content: close-quote;
+  }
+  /* The note that stands in for a link a source has none of, or one that was refused. */
+  .cinder-citation__note {
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+  /* Five or fewer sources are one list of flat rows, each its own title, excerpt and link. */
+  .cinder-citation__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .cinder-citation__item {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-width: 0;
   }
   .cinder-citation__pagination {
     display: flex;

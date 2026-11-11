@@ -8,7 +8,7 @@ This record documents the design and accessibility review for the inline source 
 - Review outcome: Approved.
 - Nearest neighbours: Popover and Pagination.
 - Why this component exists: It combines an inline source marker with paginated source disclosure, which neither neighbour provides alone.
-- Findings and resolutions: The marker is a keyboard-focusable native button; each source keeps a native link when a URL is supplied; pagination exposes its current position and disables unavailable directions.
+- Findings and resolutions: The marker is a keyboard-focusable native button; up to five sources are one ordered list, so a reader compares them without paging; each source keeps a native link only for a safe web address, and otherwise a text note says it has no public link or that its address was hidden; more than five sources are paged, and the pager exposes its current position and disables unavailable directions.
 
 ## Novel interaction accessibility review
 
@@ -27,10 +27,10 @@ Focus enters the marker through normal document order. Popover opens on activati
 | Key or gesture | Context            | Expected behavior                                    |
 | -------------- | ------------------ | ---------------------------------------------------- |
 | Enter or Space | Citation marker    | Open the source Popover.                             |
-| Tab            | Open card          | Reach source links and pagination controls in order. |
+| Tab            | Open card          | Reach source links, then pagination controls, in order. |
 | Escape         | Open card          | Dismiss the Popover and restore trigger context.     |
 | Shift+Tab      | Pagination control | Move backward through the normal focus order.        |
 
 ### Assistive-technology announcements
 
-The marker is a button named “Sources (N)” and exposes the Popover through the existing Popover trigger semantics. Source details use native headings, paragraphs, and links. The current-page text is polite live text (“N of M”); disabled previous/next buttons communicate pagination bounds. Verified against keyboard navigation and the browser accessibility tree in Chromium with the default light and dark themes.
+The marker is a button named “Sources (N)” and exposes the Popover through the existing Popover trigger semantics. Source details use a native ordered list for two to five sources, with strong titles, paragraphs and links; the arrow after a link's text is hidden from assistive technology. With more than five, the current-page text is polite live text (“N of M”); disabled previous/next buttons communicate pagination bounds. Verified against keyboard navigation and the browser accessibility tree in Chromium with the default light and dark themes.

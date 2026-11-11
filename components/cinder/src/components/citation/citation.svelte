@@ -10,18 +10,23 @@
    * @related popover
    * @rationale Nearest alternative: Popover — Citation adds source pagination and an inline marker.
    */
-  export type { CitationProps, CitationSource } from './citation.types.ts';
+  export type { CitationLabels, CitationProps, CitationSource } from './citation.types.ts';
+
+  /** Up to this many sources are listed together; more are paged one at a time. */
+  const LIST_LIMIT = 5;
 </script>
 
 <script lang="ts">
   import { classNames } from '../../utilities/class-names.ts';
   import { default as Popover } from '../popover/index.ts';
 
-  import type { CitationProps } from './citation.types.ts';
+  import { resolveCitationLink } from './citation-link.ts';
+  import type { CitationProps, CitationSource } from './citation.types.ts';
 
   let {
     sources = [],
     label = 'Sources',
+    labels,
     children,
     class: customClassName,
     ...rest
@@ -32,31 +37,17 @@
   let preserveMarkerForClose = $state(false);
   const markerDisabled = $derived(sources.length === 0 && !preserveMarkerForClose);
   const source = $derived(sources[page]);
+  // Five or fewer sources read as one list; more are paged so the panel stays short.
+  const listed = $derived(sources.length <= LIST_LIMIT);
+  const noLinkText = $derived(labels?.noLink ?? 'Internal document, no public link');
+  const unsafeLinkText = $derived(
+    labels?.unsafeLink ?? "Link hidden: the address isn't a safe web link",
+  );
 
-  function hasUnsafeUrlCharacter(url: string): boolean {
-    for (const character of url) {
-      if (character === '\\') return true;
-      const codePoint = character.charCodeAt(0);
-      if (codePoint <= 0x1f || codePoint === 0x7f) return true;
-    }
-    return false;
+  function openText(host: string | undefined): string {
+    return labels?.open?.(host) ?? (host === undefined ? 'Open source' : `Open ${host}`);
   }
 
-  const safeSourceUrl = $derived.by(() => {
-    const url = source?.url?.trim();
-    if (!url || hasUnsafeUrlCharacter(url) || /^[\\/]{2}/.test(url)) return undefined;
-
-    if (/^[A-Za-z][A-Za-z\d+.-]*:/.test(url)) {
-      try {
-        const protocol = new URL(url).protocol;
-        return protocol === 'http:' || protocol === 'https:' ? url : undefined;
-      } catch {
-        return undefined;
-      }
-    }
-
-    return url;
-  });
   $effect(() => {
     if (sources.length === 0) {
       page = 0;
@@ -72,6 +63,22 @@
     }
   });
 </script>
+
+{#snippet sourceRows(entry: CitationSource)}
+  {@const link = resolveCitationLink(entry.url)}
+  <strong class="cinder-citation__title" dir="auto">{entry.label}</strong>{#if entry.detail}<p
+      class="cinder-citation__detail"
+      dir="auto"
+    >
+      {entry.detail}
+    </p>{/if}{#if link.kind === 'link'}<a class="cinder-citation__link" href={link.href}
+      >{openText(link.host)}<span class="cinder-citation__link-arrow" aria-hidden="true">
+        ↗</span
+      ></a
+    >{:else if link.kind === 'none'}<span class="cinder-citation__note">{noLinkText}</span
+    >{:else}<span class="cinder-citation__note" data-cinder-link="rejected">{unsafeLinkText}</span
+    >{/if}
+{/snippet}
 
 <span class={classNames('cinder-citation', customClassName)} {...rest}
   ><Popover
@@ -90,27 +97,32 @@
         onclick={() => {
           if (sources.length > 0) open = !open;
         }}
-        aria-label={sources.length > 0 ? `${label} (${sources.length})` : `${label} (no sources)`}
+        aria-label={sources.length > 0
+          ? `${label} (${sources.length})`
+          : `${label} (${labels?.noSources ?? 'no sources'})`}
         >{#if children}{@render children()}{:else}[{sources.length}]{/if}</button
       >{/snippet}
     <section class="cinder-citation__panel" aria-label={label}>
-      <strong class="cinder-citation__title" dir="auto">{source?.label}</strong
-      >{#if source?.detail}<p class="cinder-citation__detail" dir="auto">
-          {source.detail}
-        </p>{/if}{#if safeSourceUrl}<a class="cinder-citation__link" href={safeSourceUrl}
-          >Open source</a
-        >{/if}
-      {#if sources.length > 1}<div class="cinder-citation__pagination">
+      {#if listed && sources.length > 1}<ol class="cinder-citation__list">
+          {#each sources as entry, index (index)}<li class="cinder-citation__item">
+              {@render sourceRows(entry)}
+            </li>{/each}
+        </ol>{:else if source}{@render sourceRows(source)}{/if}
+      {#if !listed}<div class="cinder-citation__pagination">
           <button
             type="button"
             onclick={() => (page = Math.max(0, page - 1))}
             disabled={page === 0}
-            aria-label="Previous source">Previous</button
-          ><span aria-live="polite">{page + 1} of {sources.length}</span><button
+            aria-label={labels?.previousSource ?? 'Previous source'}
+            >{labels?.previous ?? 'Previous'}</button
+          ><span aria-live="polite"
+            >{labels?.position?.(page + 1, sources.length) ??
+              `${page + 1} of ${sources.length}`}</span
+          ><button
             type="button"
             onclick={() => (page = Math.min(sources.length - 1, page + 1))}
             disabled={page === sources.length - 1}
-            aria-label="Next source">Next</button
+            aria-label={labels?.nextSource ?? 'Next source'}>{labels?.next ?? 'Next'}</button
           >
         </div>{/if}
     </section>

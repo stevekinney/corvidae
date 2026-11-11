@@ -26,6 +26,11 @@ function textSnippet(text: string) {
   }));
 }
 
+/** `count` text-only sources named "Source 1" to "Source <count>". */
+function numberedSources(count: number) {
+  return Array.from({ length: count }, (_, index) => ({ label: `Source ${index + 1}` }));
+}
+
 describe('Citation', () => {
   test('renders custom marker children inside the trigger without the default marker', () => {
     const { container } = render(Citation, { sources: [], children: textSnippet('content') });
@@ -87,16 +92,147 @@ describe('Citation', () => {
   });
 
   test('clamps the current page when sources are removed', async () => {
-    const { container, rerender } = render(Citation, {
-      sources: [{ label: 'One' }, { label: 'Two' }],
-    });
+    const { container, rerender } = render(Citation, { sources: numberedSources(7) });
     await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
     await waitFor(() =>
       expect(document.querySelector('[aria-label="Next source"]')).not.toBeNull(),
     );
+    for (let step = 0; step < 6; step += 1) {
+      await fireEvent.click(document.querySelector('[aria-label="Next source"]')!);
+    }
+    await waitFor(() =>
+      expect(document.querySelector('section strong')?.textContent).toBe('Source 7'),
+    );
+    await rerender({ sources: numberedSources(6) });
+    await waitFor(() =>
+      expect(document.querySelector('section strong')?.textContent).toBe('Source 6'),
+    );
+  });
+
+  test('lists up to five sources together in the supplied order, with no pager', async () => {
+    const sources = [
+      { label: 'Second report', url: 'https://example.com/two', detail: 'Revenue rose.' },
+      { label: 'First report' },
+      { label: 'Second report', url: 'javascript:alert(1)' },
+      { label: 'Fourth report', url: '/reports/four' },
+      { label: 'Fifth report', detail: 'Costs fell.' },
+    ];
+    const { container } = render(Citation, { sources });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() => expect(document.querySelector('section ol')).not.toBeNull());
+
+    const items = Array.from(document.querySelectorAll('section ol > li'));
+    expect(items.map((item) => item.querySelector('strong')?.textContent)).toEqual([
+      'Second report',
+      'First report',
+      'Second report',
+      'Fourth report',
+      'Fifth report',
+    ]);
+    expect(document.querySelector('.cinder-citation__pagination')).toBeNull();
+    expect(document.querySelector('[aria-label="Next source"]')).toBeNull();
+    expect(
+      Array.from(document.querySelectorAll('section a')).map((link) => link.getAttribute('href')),
+    ).toEqual(['https://example.com/two', '/reports/four']);
+  });
+
+  test('pages more than five sources one at a time', async () => {
+    const { container } = render(Citation, { sources: numberedSources(6) });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-citation__pagination')).not.toBeNull(),
+    );
+    expect(document.querySelector('section ol')).toBeNull();
+    expect(document.querySelectorAll('section strong')).toHaveLength(1);
+    expect(document.querySelector('.cinder-citation__pagination [aria-live]')?.textContent).toBe(
+      '1 of 6',
+    );
     await fireEvent.click(document.querySelector('[aria-label="Next source"]')!);
-    await rerender({ sources: [{ label: 'One' }] });
-    await waitFor(() => expect(document.querySelector('section strong')?.textContent).toBe('One'));
+    await waitFor(() =>
+      expect(document.querySelector('section strong')?.textContent).toBe('Source 2'),
+    );
+  });
+
+  test('names a link by its host and says why a source has no link', async () => {
+    const { container } = render(Citation, {
+      sources: [
+        { label: 'Hosted', url: 'https://docs.example.com/guide' },
+        { label: 'Internal' },
+        { label: 'Refused', url: 'data:text/html,hello' },
+      ],
+    });
+    await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
+    await waitFor(() => expect(document.querySelector('section ol')).not.toBeNull());
+
+    const items = Array.from(document.querySelectorAll('section ol > li'));
+    const link = items[0]?.querySelector('a');
+    expect(link?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Open docs.example.com ↗');
+    expect(link?.querySelector('[aria-hidden="true"]')?.textContent?.trim()).toBe('↗');
+    expect(items[1]?.querySelector('a')).toBeNull();
+    expect(items[1]?.querySelector('.cinder-citation__note')?.textContent).toBe(
+      'Internal document, no public link',
+    );
+    expect(items[2]?.querySelector('a')).toBeNull();
+    expect(items[2]?.querySelector('.cinder-citation__note')?.textContent).toBe(
+      "Link hidden: the address isn't a safe web link",
+    );
+  });
+
+  test('draws the words a host passes in labels in place of its own', async () => {
+    const { container } = render(Citation, {
+      label: 'Quellen',
+      labels: {
+        open: (host: string | undefined) => `${host ?? 'Quelle'} öffnen`,
+        noLink: 'Internes Dokument',
+        unsafeLink: 'Link verborgen',
+        previousSource: 'Vorherige Quelle',
+        nextSource: 'Nächste Quelle',
+        previous: 'Zurück',
+        next: 'Weiter',
+        position: (page: number, total: number) => `${page} von ${total}`,
+      },
+      sources: [
+        { label: 'Eins', url: 'https://example.de/eins' },
+        { label: 'Zwei' },
+        { label: 'Drei', url: 'javascript:alert(1)' },
+        ...numberedSources(3),
+      ],
+    });
+    const marker = container.querySelector('.cinder-citation__marker')!;
+    expect(marker.getAttribute('aria-label')).toBe('Quellen (6)');
+    await fireEvent.click(marker);
+    await waitFor(() =>
+      expect(document.querySelector('[aria-label="Nächste Quelle"]')).not.toBeNull(),
+    );
+    expect(document.querySelector('[aria-label="Nächste Quelle"]')?.textContent).toBe('Weiter');
+    expect(document.querySelector('[aria-label="Vorherige Quelle"]')?.textContent).toBe('Zurück');
+    expect(document.querySelector('.cinder-citation__pagination [aria-live]')?.textContent).toBe(
+      '1 von 6',
+    );
+    expect(document.querySelector('section a')?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      'example.de öffnen ↗',
+    );
+    await fireEvent.click(document.querySelector('[aria-label="Nächste Quelle"]')!);
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-citation__note')?.textContent).toBe(
+        'Internes Dokument',
+      ),
+    );
+    await fireEvent.click(document.querySelector('[aria-label="Nächste Quelle"]')!);
+    await waitFor(() =>
+      expect(document.querySelector('.cinder-citation__note')?.textContent).toBe('Link verborgen'),
+    );
+  });
+
+  test('names an empty marker with the translated no-sources word', () => {
+    const { container } = render(Citation, {
+      label: 'Quellen',
+      labels: { noSources: 'keine Quellen' },
+      sources: [],
+    });
+    expect(container.querySelector('.cinder-citation__marker')?.getAttribute('aria-label')).toBe(
+      'Quellen (keine Quellen)',
+    );
   });
 
   test('closes when sources become empty and stays closed when replenished', async () => {
@@ -137,11 +273,14 @@ describe('Citation', () => {
     const panel = document.querySelector('section')!;
     expect(panel.classList.contains('cinder-citation__panel')).toBe(true);
     expect(
-      Array.from(panel.children).map((child) => [child.tagName, child.textContent?.trim()]),
+      Array.from(panel.children).map((child) => [
+        child.tagName,
+        child.textContent?.replace(/\s+/g, ' ').trim(),
+      ]),
     ).toEqual([
       ['STRONG', 'Title'],
       ['P', 'Excerpt'],
-      ['A', 'Open source'],
+      ['A', 'Open source ↗'],
     ]);
     expect(panel.querySelector('strong')?.getAttribute('dir')).toBe('auto');
     expect(panel.querySelector('p')?.getAttribute('dir')).toBe('auto');
@@ -152,7 +291,20 @@ describe('Citation', () => {
     await fireEvent.click(container.querySelector('.cinder-citation__marker')!);
     await waitFor(() => expect(document.querySelector('section')).not.toBeNull());
     expect(document.querySelector('section p')).toBeNull();
-    expect(document.querySelector('section')?.children).toHaveLength(1);
+    // The title, then the note that the source has no public link: no excerpt box between them.
+    expect(
+      Array.from(document.querySelector('section')?.children ?? []).map((child) => child.className),
+    ).toEqual(['cinder-citation__title', 'cinder-citation__note']);
+  });
+
+  test('clamps a title to two lines and wraps an excerpt in quotation marks', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const title = /\.cinder-citation__title \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+    expect(title).toContain('-webkit-line-clamp: 2;');
+    expect(title).toContain('line-clamp: 2;');
+    expect(title).toContain('overflow: hidden;');
+    expect(stylesheet).toContain('.cinder-citation__detail::before {\n    content: open-quote;');
+    expect(stylesheet).toContain('.cinder-citation__detail::after {\n    content: close-quote;');
   });
 
   test('spaces the panel rows with a space token and wraps long strings', () => {

@@ -10,6 +10,8 @@ const schema = {
     },
     label: {
       type: 'string',
+      description:
+        'Names the marker and the panel, such as `Sources`. The marker reads it with the source count.',
     },
   },
   additionalProperties: false,
@@ -20,9 +22,17 @@ const schema = {
         reason: 'function-or-snippet',
       },
       {
+        name: 'labels',
+        reason: 'unknown-shape',
+        description:
+          'The words Citation draws itself, for a host that translates them. Each one left out keeps its English default.',
+      },
+      {
         name: 'sources',
         reason: 'unknown-shape',
         required: true,
+        description:
+          'The sources behind the claim, in the order to show them. Up to five are listed together; more are paged one at a time.',
       },
     ],
   },
