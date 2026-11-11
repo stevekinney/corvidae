@@ -29,9 +29,18 @@ const createButton = (page: Page) => page.getByRole('button', { name: /^Create s
 const cancelLink = (page: Page) => page.getByRole('link', { name: 'Cancel' });
 const footer = (page: Page) => page.getByTestId('new-schedule-summary');
 
-/** Opens the picker and chooses the option with this name. */
-async function choose(page: Page, name: RegExp): Promise<void> {
+/** Opens the Workflow picker once it has stopped loading. */
+async function openWorkflowPicker(page: Page): Promise<void> {
+  await expect(workflowField(page)).not.toHaveAttribute('aria-busy', 'true');
   await workflowField(page).click();
+}
+
+/**
+ * Opens the picker once its workflows have loaded (a loading picker ignores a press, so a click
+ * that lands while it reads would be lost), and chooses the option with this name.
+ */
+async function choose(page: Page, name: RegExp): Promise<void> {
+  await openWorkflowPicker(page);
   await page.getByRole('option', { name }).click();
 }
 
@@ -111,7 +120,7 @@ for (const width of [1280, 375] as const) {
   }) => {
     await page.setViewportSize({ width, height: 900 });
     await page.goto(ROUTE);
-    await workflowField(page).click();
+    await openWorkflowPicker(page);
 
     const panel = page.locator('.cinder-combobox__panel');
     await expect(panel.getByPlaceholder('Search workflows')).toBeVisible();

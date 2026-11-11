@@ -195,6 +195,11 @@ test('a schedule made on the new schedule page fires in the zone that was chosen
   ).toBeVisible();
 
   // Chosen from the picker, which shows the workflow's name and, under it, what it says it is for.
+  // A loading picker ignores a press, so it is opened once its workflows are read.
+  await expect(page.getByRole('combobox', { name: /^Workflow/ })).not.toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
   await page.getByRole('combobox', { name: /^Workflow/ }).click();
   await page.getByRole('option', { name: /Inventory sync sweep/ }).click();
   await expect(page.getByRole('combobox', { name: /^Workflow/ })).toContainText(
@@ -229,6 +234,11 @@ test('an invalid custom cron field moves focus to it on Create, and nothing is m
   request,
 }) => {
   await page.goto('/schedules/new');
+  // A loading picker ignores a press, so it is opened once its workflows are read.
+  await expect(page.getByRole('combobox', { name: /^Workflow/ })).not.toHaveAttribute(
+    'aria-busy',
+    'true',
+  );
   await page.getByRole('combobox', { name: /^Workflow/ }).click();
   await page.getByRole('option', { name: /Inventory sync sweep/ }).click();
   await page.getByLabel('Repeats', { exact: true }).selectOption('cron');

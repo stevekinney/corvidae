@@ -86,7 +86,7 @@ test('creates a goal that names the check that never passes, lands on its page, 
   await page.getByRole('button', { name: GOALS_COPY.newAction }).click();
   await expect(page).toHaveURL(/\/goals\/new$/);
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
-  await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
+  await page.getByLabel(GOALS_COPY.form.agentLabel, { exact: true }).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello, and keep trying.');
   // The check is the validator's name, which the host seeds as one that never passes.
   await page.getByLabel(GOALS_COPY.form.checkLabel).fill('demo:never-passes');
@@ -131,7 +131,9 @@ test('opens Edit goal from a goal’s page with its check and limit in the field
     page.getByRole('heading', { level: 1, name: GOALS_COPY.form.edit.title }),
   ).toBeVisible();
   await expect(page.getByLabel(GOALS_COPY.form.checkLabel)).not.toHaveValue('');
-  await expect(page.getByLabel(GOALS_COPY.form.maximumAttemptsLabel)).not.toHaveValue('');
+  await expect(
+    page.getByLabel(GOALS_COPY.form.maximumAttemptsLabel, { exact: true }),
+  ).not.toHaveValue('');
   await checkA11y('goals — the edit goal page');
 
   await page.getByRole('link', { name: GOALS_COPY.form.cancelAction }).click();
@@ -143,7 +145,7 @@ test('says Unprocessable on the page for a validator the Bureau does not have', 
 }) => {
   await page.goto('/goals/new');
   await expect(page.getByRole('heading', { level: 1, name: GOALS_COPY.form.title })).toBeVisible();
-  await page.getByLabel(GOALS_COPY.form.agentLabel).selectOption('demo:assistant');
+  await page.getByLabel(GOALS_COPY.form.agentLabel, { exact: true }).selectOption('demo:assistant');
   await page.getByLabel(GOALS_COPY.form.promptLabel).fill('Say hello.');
   await page.getByLabel(GOALS_COPY.form.checkLabel).fill('no-such-validator');
 
