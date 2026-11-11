@@ -9,6 +9,7 @@ import { buildRelease } from './build-release.ts';
 import { validateInspection, validateInstalledUi } from './test-installed-release-browser.ts';
 import { mcp, runFixtureAgent } from './test-installed-release-transport.ts';
 import {
+  defaultRunInstalledCliCommand,
   parseInstalledReleaseArguments,
   parseRunStartedRunId,
   referencedAssets,
@@ -18,6 +19,24 @@ import {
   waitForHttp,
   waitForListening,
 } from './test-installed-release.ts';
+
+const earlyInputExit = await outcomeOf(async () => {
+  const failure = await rejectionOf(
+    defaultRunInstalledCliCommand(
+      '/bin/sh',
+      ['-c', 'printf input-rejected >&2; exit 9'],
+      tmpdir(),
+      tmpdir(),
+      'http://127.0.0.1:9',
+      'x'.repeat(8 * 1024 * 1024),
+    ),
+  );
+  expect(failure).toBeInstanceOf(Error);
+  expect(String(failure)).toContain('exit 9');
+  expect(String(failure)).toContain('input-rejected');
+});
+test('settles a child that exits before accepting stdin and preserves its diagnostics', () =>
+  rethrow(earlyInputExit));
 
 const spawnedChild = await (async () => {
   const probe = spawn(

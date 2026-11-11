@@ -784,3 +784,44 @@ test('rejects an unreadable archive instead of recording successful extraction',
     await rm(root, { recursive: true, force: true });
   }
 });
+
+test('retains initial and relocated command traces when the relocated journey fails', async () => {
+  const evidenceDirectory = await mkdtemp(join(tmpdir(), 'installed-relocation-failure-'));
+  const initialTrace = [{ arguments: ['doctor'], exitCode: 0 }];
+  const relocatedTrace = [{ arguments: ['whoami'], exitCode: 9 }];
+  try {
+    const failure = await rejectionOf(
+      runInstalledRelease(['--archive', './fixture.tar.gz', '--evidence', evidenceDirectory], {
+        unpack: async (_archive, prefix) => {
+          const executable = join(prefix, 'interborough/bin/interborough');
+          await mkdir(join(prefix, 'interborough/bin'), { recursive: true });
+          await mkdir(join(prefix, 'interborough/share/interborough/plugin-runtime/node_modules'), {
+            recursive: true,
+          });
+          await writeFile(executable, 'fixture');
+          return { executable, sha256: 'fixture-hash', manifest: { sourceSha: 'fixture-source' } };
+        },
+        runInstalled: async (_executable, prefix, relocated) => {
+          await mkdir(join(prefix, 'home/plugins'), { recursive: true });
+          await writeFile(
+            join(
+              prefix,
+              relocated ? 'installed-command-trace-relocated.json' : 'installed-command-trace.json',
+            ),
+            JSON.stringify(relocated ? relocatedTrace : initialTrace),
+          );
+          if (relocated) throw new Error('relocated command failed');
+          return [];
+        },
+      }),
+    );
+    expect(String(failure)).toContain('relocated command failed');
+    const files = await readdir(evidenceDirectory);
+    expect(files).toHaveLength(1);
+    const evidence = await Bun.file(join(evidenceDirectory, files[0]!)).json();
+    expect(evidence.commandTrace).toEqual(initialTrace);
+    expect(evidence.relocatedCommandTrace).toEqual(relocatedTrace);
+  } finally {
+    await rm(evidenceDirectory, { recursive: true, force: true });
+  }
+});

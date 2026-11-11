@@ -176,7 +176,8 @@ export type InstalledJourneyOperations = {
   readonly isProcessAlive?: (pid: number) => boolean;
 };
 
-async function defaultRunInstalledCliCommand(
+/** Run an installed command and collect its input, output, and exit settlement. */
+export async function defaultRunInstalledCliCommand(
   executable: string,
   arguments_: readonly string[],
   home: string,
@@ -199,14 +200,20 @@ async function defaultRunInstalledCliCommand(
     stderr: 'pipe',
     ...(input === undefined ? {} : { stdin: 'pipe' as const }),
   });
-  if (input !== undefined) {
-    void child.stdin.write(input);
-    void child.stdin.end();
-  }
-  const [stdout, stderr, exitCode] = await Promise.all([
+  const inputCompletion = (async () => {
+    if (input !== undefined) {
+      await child.stdin.write(input);
+      await child.stdin.end();
+    }
+  })().then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const [stdout, stderr, exitCode, inputResult] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
     child.exited,
+    inputCompletion,
   ]);
   installedCommandTrace.push({
     arguments: arguments_,
@@ -219,6 +226,10 @@ async function defaultRunInstalledCliCommand(
       installedCommandTracePath,
       `${JSON.stringify(installedCommandTrace, null, 2)}\n`,
     );
+  if (!inputResult.ok)
+    throw new Error(`Installed CLI stdin failed (exit ${exitCode}): ${stderr}`, {
+      cause: inputResult.error,
+    });
   return { exitCode, stdout, stderr };
 }
 
@@ -1278,6 +1289,10 @@ export async function runInstalledRelease(
     const trace = (await Bun.file(tracePath).exists())
       ? await readFile(tracePath, 'utf8')
       : undefined;
+    const relocatedTracePath = join(root, 'relocated', 'installed-command-trace-relocated.json');
+    const relocatedTrace = (await Bun.file(relocatedTracePath).exists())
+      ? await readFile(relocatedTracePath, 'utf8')
+      : undefined;
     await writeFile(
       evidence,
       `${JSON.stringify(
@@ -1289,6 +1304,8 @@ export async function runInstalledRelease(
               : String(error),
           source: pluginIdentityBase(),
           commandTrace: trace === undefined ? undefined : JSON.parse(trace),
+          relocatedCommandTrace:
+            relocatedTrace === undefined ? undefined : JSON.parse(relocatedTrace),
         },
         null,
         2,
