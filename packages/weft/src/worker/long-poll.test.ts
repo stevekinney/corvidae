@@ -1,6 +1,6 @@
 import { createDeferred, waitForCondition } from '@lostgradient/testing/fake-timers';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import { afterEach, describe, expect, it } from 'bun:test';
+import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 import type { ActivityInterceptor } from '../core/interceptor.ts';
 import { LongPollWorker, type LongPollWorkerOptions } from './long-poll.ts';
 import type { RemoteWorkerActivityFunction } from './workflow-activity-binding.ts';
@@ -1845,6 +1845,8 @@ describe('LongPollWorker', () => {
   it("clears a cancelled attempt's automatic heartbeat interval while its activity ignores the signal", async () => {
     using setIntervalSpy = spyOn(globalThis, 'setInterval');
     using clearIntervalSpy = spyOn(globalThis, 'clearInterval');
+    // Compared by identity: two timers are deep-equal, so `toHaveBeenCalledWith` cannot tell them apart.
+    const clearedTimers = () => clearIntervalSpy.mock.calls.map((call) => call[0] as unknown);
     // A delay no other worker or helper timer uses, so it picks out the automatic heartbeats.
     const heartbeatIntervalMs = 23;
     const release = createDeferred();
@@ -1900,8 +1902,8 @@ describe('LongPollWorker', () => {
     const [canceledTimer, liveTimer] = heartbeatTimers;
     expect(signals.get('op-canceled')?.reason).toBe('Task cancelled');
     expect(signals.get('op-live')?.aborted).toBe(false);
-    expect(clearIntervalSpy).toHaveBeenCalledWith(canceledTimer);
-    expect(clearIntervalSpy).not.toHaveBeenCalledWith(liveTimer);
+    expect(clearedTimers()).toContain(canceledTimer);
+    expect(clearedTimers()).not.toContain(liveTimer);
     // Both attempts are still unsettled; the cancelled one keeps its controller for the late result.
     expect(worker.inFlight).toBe(2);
 
@@ -1917,7 +1919,7 @@ describe('LongPollWorker', () => {
       status: 'failed',
       error: 'settled late',
     });
-    expect(clearIntervalSpy).toHaveBeenCalledWith(liveTimer);
+    expect(clearedTimers()).toContain(liveTimer);
   });
 
   describe('the scripted session server fixture', () => {
