@@ -285,20 +285,20 @@
     void onRegenerate?.(message.id);
   }
 
-  function selectionInside(sources: readonly Element[]): string | undefined {
+  function selectionInside(elements: readonly Element[]): string | undefined {
     const selection = document.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return undefined;
     const range = selection.getRangeAt(0);
-    const insideOneSource = sources.some(
+    const insideOneSource = elements.some(
       (source) => source.contains(range.startContainer) && source.contains(range.endContainer),
     );
     return insideOneSource ? selection.toString() : undefined;
   }
 
   /** What selecting all of the sources would give, leaving the reader's selection as it was. */
-  function renderedText(sources: readonly Element[]): string {
-    const first = sources[0];
-    const last = sources.at(-1);
+  function renderedText(elements: readonly Element[]): string {
+    const first = elements[0];
+    const last = elements.at(-1);
     const selection = document.getSelection();
     if (!first || !last || !selection) return getMessageText(message);
     const saved = Array.from({ length: selection.rangeCount }, (_, index) =>
@@ -316,10 +316,10 @@
   }
 
   function quoteMessage(): void {
-    const sources = Array.from(
+    const quoteSources = Array.from(
       articleElement?.querySelectorAll<Element>('[data-quote-source]') ?? [],
     );
-    onQuote?.(selectionInside(sources) ?? renderedText(sources));
+    onQuote?.(selectionInside(quoteSources) ?? renderedText(quoteSources));
   }
 
   // Sources. Only an assistant message shows them, and only when it has at least one; a user
@@ -358,11 +358,12 @@
     const shown = shownSources !== undefined;
     if (sourcesWereShown && !shown && focusIsInSources(document.activeElement)) {
       const article = articleElement;
-      void tick().then(() => {
+      void (async () => {
+        await tick();
         const active = document.activeElement;
         if (active !== null && active !== document.body && active.isConnected) return;
         article?.focus({ preventScroll: true });
-      });
+      })();
     }
     sourcesWereShown = shown;
   });

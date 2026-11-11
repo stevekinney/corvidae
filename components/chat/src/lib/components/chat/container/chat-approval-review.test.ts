@@ -10,6 +10,7 @@ import {
   createConversationHistory,
 } from '../builders.ts';
 import type { Message } from '../conversation-model.ts';
+import { getMessages } from '../utilities/index.ts';
 import {
   APPROVAL_DRAWER_ACTION,
   APPROVAL_DRAWER_TEXT,
@@ -31,9 +32,9 @@ function conversationWith(
 ): readonly Message[] {
   let history = appendUserMessage(createConversationHistory({ id: 'review' }), 'go');
   for (const callId of callIds) {
-    if (paired) {
-      history = appendToolCall(history, { id: callId, name: 'tool', arguments: {} });
-    }
+    // The conversation model rejects a result with no call, so an unpaired row is made by
+    // dropping the call row from the finished history below.
+    history = appendToolCall(history, { id: callId, name: 'tool', arguments: {} });
     history = appendToolResult(history, {
       callId,
       outcome: 'action_required',
@@ -48,7 +49,17 @@ function conversationWith(
       },
     });
   }
-  return history.messages;
+  const messages = getMessages(history);
+  return paired ? messages : messages.filter((message) => message.role !== 'tool-call');
+}
+
+/** Gives every waiting approval a deadline the conversation model would refuse to store. */
+function withDeadline(messages: readonly Message[], expiresAt: string): readonly Message[] {
+  return messages.map((message) => {
+    const action = message.toolResult?.action;
+    if (message.toolResult === undefined || action === undefined) return message;
+    return { ...message, toolResult: { ...message.toolResult, action: { ...action, expiresAt } } };
+  });
 }
 
 describe('approval drawer words', () => {
@@ -86,7 +97,9 @@ describe('findPendingApprovalMessageId', () => {
       (message) => message.role === 'tool-call' && message.toolCall?.id === 'b',
     );
 
-    expect(findPendingApprovalMessageId(messages, new Map<string, ApprovalState>([['a', 'approved']]))).toBe(callRowB?.id);
+    expect(
+      findPendingApprovalMessageId(messages, new Map<string, ApprovalState>([['a', 'approved']])),
+    ).toBe(callRowB?.id);
     expect(
       findPendingApprovalMessageId(
         messages,
@@ -101,7 +114,9 @@ describe('findPendingApprovalMessageId', () => {
   test('keeps finding an approval whose state reads pending while its answer is on the way', () => {
     const messages = conversationWith(['a'], true);
 
-    expect(findPendingApprovalMessageId(messages, new Map<string, ApprovalState>([['a', 'pending']]))).toBeDefined();
+    expect(
+      findPendingApprovalMessageId(messages, new Map<string, ApprovalState>([['a', 'pending']])),
+    ).toBeDefined();
   });
 });
 
@@ -134,7 +149,7 @@ describe('an approval with a deadline', () => {
   });
 
   test('reads an unparseable deadline as none', () => {
-    const odd = conversationWith(['a'], true, 'not a time');
+    const odd = withDeadline(conversationWith(['a'], true), 'not a time');
 
     expect(nextPendingApprovalDeadline(odd, undefined, deadline)).toBeUndefined();
     expect(findPendingApprovalMessageId(odd, undefined, deadline)).toBeDefined();

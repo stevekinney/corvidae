@@ -219,22 +219,27 @@ export function foldRepeatedSteps<Row>(
   repeatKey: (row: Row) => string | undefined,
 ): ToolCallStep<Row>[] {
   const steps: ToolCallStep<Row>[] = [];
-  let start = 0;
-  while (start < rows.length) {
-    const first = rows[start] as Row;
-    const key = repeatKey(first);
-    let end = start + 1;
-    if (key !== undefined) {
-      while (end < rows.length && repeatKey(rows[end] as Row) === key) end += 1;
-    }
-    if (end - start >= REPEATED_STEP_MINIMUM) {
-      steps.push({ kind: 'repeated', rows: [first, ...rows.slice(start + 1, end)] });
+  let run: [Row, ...Row[]] | undefined;
+  let runKey: string | undefined;
+  const flush = (): void => {
+    if (run === undefined) return;
+    if (run.length >= REPEATED_STEP_MINIMUM) {
+      steps.push({ kind: 'repeated', rows: run });
     } else {
-      for (let index = start; index < end; index += 1) {
-        steps.push({ kind: 'single', row: rows[index] as Row });
-      }
+      for (const row of run) steps.push({ kind: 'single', row });
     }
-    start = end;
+    run = undefined;
+  };
+  for (const row of rows) {
+    const key = repeatKey(row);
+    if (run !== undefined && key !== undefined && key === runKey) {
+      run.push(row);
+    } else {
+      flush();
+      run = [row];
+      runKey = key;
+    }
   }
+  flush();
   return steps;
 }

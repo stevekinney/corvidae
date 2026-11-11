@@ -116,6 +116,7 @@ describe('an approval whose deadline passed (COR-2280)', () => {
     ).toBe(true);
     const resolved = await session.controller.adapter.resolveToolApproval?.('fresh', {
       decision: 'approve',
+      remember: false,
     });
 
     expect(resolved).toBe('resolved');
@@ -134,7 +135,10 @@ describe('an approval whose deadline passed (COR-2280)', () => {
       { now: HOST_NOW },
     );
 
-    await session.controller.adapter.resolveToolApproval?.('fresh', { decision: 'approve' });
+    await session.controller.adapter.resolveToolApproval?.('fresh', {
+      decision: 'approve',
+      remember: false,
+    });
 
     expect(session.turns()).toBe(0);
   });
@@ -148,7 +152,10 @@ describe('an approval whose deadline passed (COR-2280)', () => {
       { now: HOST_NOW },
     );
 
-    await session.controller.adapter.resolveToolApproval?.('fresh', { decision: 'approve' });
+    await session.controller.adapter.resolveToolApproval?.('fresh', {
+      decision: 'approve',
+      remember: false,
+    });
 
     expect(session.turns()).toBe(0);
   });
@@ -166,7 +173,10 @@ describe('an approval whose deadline passed (COR-2280)', () => {
       }),
     ).toBe(true);
     clock.now = HOST_NOW + 1_000;
-    await session.controller.adapter.resolveToolApproval?.('fresh', { decision: 'approve' });
+    await session.controller.adapter.resolveToolApproval?.('fresh', {
+      decision: 'approve',
+      remember: false,
+    });
 
     expect(session.turns()).toBe(1);
   });
@@ -182,6 +192,7 @@ describe('an approval whose deadline passed (COR-2280)', () => {
     );
     await expiredForHost.controller.adapter.resolveToolApproval?.('fresh', {
       decision: 'approve',
+      remember: false,
     });
     expect(expiredForHost.turns()).toBe(1);
 
@@ -195,6 +206,7 @@ describe('an approval whose deadline passed (COR-2280)', () => {
     );
     await pendingForHost.controller.adapter.resolveToolApproval?.('fresh', {
       decision: 'approve',
+      remember: false,
     });
     expect(pendingForHost.turns()).toBe(0);
   });
@@ -275,7 +287,10 @@ describe('reconcileApprovalExpiry (COR-2280)', () => {
 
   test('refuses a call that is already decided', async () => {
     const session = harness(twoApprovals(oldAction, approvalAction()), { now: HOST_NOW });
-    await session.controller.adapter.resolveToolApproval?.('fresh', { decision: 'approve' });
+    await session.controller.adapter.resolveToolApproval?.('fresh', {
+      decision: 'approve',
+      remember: false,
+    });
     const writes = session.writes();
 
     expect(

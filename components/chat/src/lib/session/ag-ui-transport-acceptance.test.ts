@@ -164,9 +164,11 @@ describe('semantic acceptance of AG-UI events', () => {
       },
     });
 
-    expect((await iterator.next()).value).toMatchObject({ type: 'run.started' });
+    const first = await iterator.next();
+    expect(first.value).toMatchObject({ type: 'run.started' });
     expect(seen).toEqual([runStarted]);
-    expect((await iterator.next()).value).toMatchObject({ type: 'run.completed' });
+    const second = await iterator.next();
+    expect(second.value).toMatchObject({ type: 'run.completed' });
     expect(seen).toEqual([runStarted, runFinished]);
     await iterator.return(undefined);
   });
