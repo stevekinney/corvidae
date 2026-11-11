@@ -27,6 +27,10 @@ const handlerCalls: string[] = [];
 const traces: { input: unknown; trigger: unknown; previous: unknown; signal: unknown }[] = [];
 const identities: { workflowId: string; step: number; stepAddress?: string }[] = [];
 let hangIdentify = false;
+let mapActive = 0;
+let mapMaximum = 0;
+const retryMapAttempts: number[] = [];
+let validationMapAttempts = 0;
 
 const host: DocumentWorkflowHost = {
   activities: {
@@ -48,6 +52,49 @@ const host: DocumentWorkflowHost = {
     trace: ({ input, trigger, previous, signal }) => {
       traces.push({ input, trigger, previous, signal });
       return input;
+    },
+    mapWork: async ({ input, previous, stepAddress }) => {
+      mapActive++;
+      mapMaximum = Math.max(mapMaximum, mapActive);
+      await Bun.sleep(2);
+      mapActive--;
+      return { input, previous, stepAddress };
+    },
+    mapAfter: ({ previous, stepAddress }) => ({ previous, stepAddress }),
+    mapUndefined: () => undefined,
+    retryMap: {
+      retry: { maxAttempts: 2, initialBackoff: 0, backoffMultiplier: 1, maxBackoff: 0 },
+      execute: ({ previous }) => {
+        const item = previous as number;
+        retryMapAttempts.push(item);
+        if (item === 1 && retryMapAttempts.filter((value) => value === 1).length === 1) {
+          throw new Error('retry mapped item');
+        }
+        return item * 10;
+      },
+    },
+    validationMap: {
+      retry: {
+        maxAttempts: 3,
+        initialBackoff: 0,
+        backoffMultiplier: 1,
+        maxBackoff: 0,
+        nonRetryableErrors: ['ValidationError'],
+      },
+      execute: () => {
+        validationMapAttempts++;
+        const error = new Error('invalid mapped item');
+        error.name = 'ValidationError';
+        throw error;
+      },
+    },
+    mapFail: async ({ previous }) => {
+      mapActive++;
+      mapMaximum = Math.max(mapMaximum, mapActive);
+      await Bun.sleep(2);
+      mapActive--;
+      if (previous === 3) throw new Error('map item failed');
+      return previous;
     },
   },
   triggerKinds: { manual: () => undefined },
@@ -78,6 +125,313 @@ async function fileWorkflowEvents(engine: Engine, workflowId: string) {
 }
 
 describe('registerWorkflowDocuments()', () => {
+  it('maps in order with per-item previous values and bounded concurrency', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-document', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2, 3, 4, 5] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 2,
+        steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-document', null, { id: 'map-run' });
+    expect(await run.result()).toEqual([
+      { input: 'work', previous: 1, stepAddress: '2#0' },
+      { input: 'work', previous: 2, stepAddress: '2#1' },
+      { input: 'work', previous: 3, stepAddress: '2#2' },
+      { input: 'work', previous: 4, stepAddress: '2#3' },
+      { input: 'work', previous: 5, stepAddress: '2#4' },
+    ]);
+    expect(mapMaximum).toBe(2);
+    const events = await fileWorkflowEvents(engine, 'map-run');
+    expect(
+      events
+        .filter((event) => event.type === 'file-workflow:activity-started')
+        .map((event) => event.data),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepAddress: '2#0' }),
+        expect.objectContaining({ stepAddress: '2#1' }),
+      ]),
+    );
+    expect(
+      events
+        .filter((event) => event.type === 'file-workflow:activity-completed')
+        .map((event) => event.data),
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ stepAddress: '2#0' }),
+        expect.objectContaining({ stepAddress: '2#1' }),
+      ]),
+    );
+  });
+
+  it('defaults map concurrency to four iterations', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-default-concurrency', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2, 3, 4, 5] } },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [{ kind: 'activity', handler: 'mapWork', input: 'work' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-default-concurrency', null, {
+      id: 'map-default-concurrency-run',
+    });
+    await run.result();
+    expect(mapMaximum).toBe(4);
+  });
+
+  it('runs every step in a mapped item before collecting its result', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-multi-step', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2] } },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [
+          { kind: 'activity', handler: 'mapWork', input: 'work' },
+          { kind: 'activity', handler: 'mapAfter' },
+        ],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-multi-step', null, { id: 'map-multi-step-run' });
+    expect(await run.result()).toEqual([
+      { previous: { input: 'work', previous: 1, stepAddress: '2#0' }, stepAddress: '3#0' },
+      { previous: { input: 'work', previous: 2, stepAddress: '2#1' }, stepAddress: '3#1' },
+    ]);
+    expect(mapMaximum).toBe(2);
+  });
+
+  it('preserves an undefined result from a mapped item', async () => {
+    const document = createDocument('map-undefined', [
+      { kind: 'activity', handler: 'version', input: { items: [1] } },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'mapUndefined' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-undefined', null, { id: 'map-undefined-run' });
+    expect(await run.result()).toEqual([undefined]);
+  });
+
+  it('retries a mapped activity through its originating item and does not duplicate siblings', async () => {
+    retryMapAttempts.length = 0;
+    const document = createDocument('map-retry', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 2,
+        steps: [{ kind: 'activity', handler: 'retryMap' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-retry', null, { id: 'map-retry-run' });
+    expect(await run.result()).toEqual([10, 20]);
+    expect(retryMapAttempts).toEqual([1, 2, 1]);
+  });
+
+  it('fails a mapped activity on a non-retryable error without retrying it', async () => {
+    validationMapAttempts = 0;
+    const document = createDocument('map-non-retryable', [
+      { kind: 'activity', handler: 'version', input: { items: [1] } },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'validationMap' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-non-retryable', null, { id: 'map-non-retryable-run' });
+    expect(await throwingRejectionOf(run.result())).toThrow('invalid mapped item');
+    expect(validationMapAttempts).toBe(1);
+  });
+
+  it('retries a nested mapped activity through its originating item', async () => {
+    retryMapAttempts.length = 0;
+    const document = createDocument('nested-map-retry', [
+      { kind: 'activity', handler: 'version', input: { groups: [{ items: [1, 2] }] } },
+      {
+        kind: 'map',
+        over: 'groups',
+        steps: [
+          {
+            kind: 'map',
+            over: 'items',
+            concurrency: 2,
+            steps: [{ kind: 'activity', handler: 'retryMap' }],
+          },
+        ],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('nested-map-retry', null, { id: 'nested-map-retry-run' });
+    expect(await run.result()).toEqual([[10, 20]]);
+    expect(retryMapAttempts).toEqual([1, 2, 1]);
+  });
+
+  it('restarts a non-waiting map before a wait without moving the wait address', async () => {
+    const storage = new MemoryStorage();
+    const document = createDocument('map-before-wait', [
+      { kind: 'activity', handler: 'version', input: { items: ['a'] } },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'identify' }] },
+      { kind: 'await-signal', signal: 'continue' },
+      { kind: 'activity', handler: 'identify' },
+    ]);
+    let addressBeforeRestart: string | undefined;
+    let stepIndexBeforeRestart: number | undefined;
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      const run = await original.start('map-before-wait', null, { id: 'map-before-wait-run' });
+      await waitForParkedOnSignal(original, run.id);
+      const timelineBeforeRestart = await original.getTimeline(run.id);
+      const waiting = timelineBeforeRestart.find((entry) => entry.operationType === 'wait-signal');
+      addressBeforeRestart = waiting?.documentStepAddress;
+      stepIndexBeforeRestart = waiting?.stepIndex;
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [run] = await restarted.recoverAll();
+    expect(run?.id).toBe('map-before-wait-run');
+    const timelineAfterRestart = await restarted.getTimeline(run!.id);
+    const waitingAfterRestart = timelineAfterRestart.find(
+      (entry) => entry.operationType === 'wait-signal',
+    );
+    const addressAfterRestart = waitingAfterRestart?.documentStepAddress;
+    expect(addressAfterRestart).toBe(addressBeforeRestart);
+    expect(addressAfterRestart).toBe('3');
+    expect(waitingAfterRestart?.stepIndex).toBe(stepIndexBeforeRestart);
+    expect(waitingAfterRestart?.stepIndex).toBe(3);
+    await run!.signal('continue', null);
+    await run!.result();
+  });
+
+  it('rejects non-array and over-limit map inputs with named errors', async () => {
+    const nonArray = createDocument('map-not-array', [
+      { kind: 'activity', handler: 'version', input: 'nope' },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'version' }] },
+    ]);
+    const tooMany = createDocument('map-too-many', [
+      {
+        kind: 'activity',
+        handler: 'version',
+        input: { items: Array.from({ length: 1001 }, () => null) },
+      },
+      { kind: 'map', over: 'items', steps: [{ kind: 'activity', handler: 'version' }] },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [nonArray, tooMany] });
+    const nonArrayRun = await engine.start('map-not-array', null, { id: 'map-not-array-run' });
+    const tooManyRun = await engine.start('map-too-many', null, { id: 'map-too-many-run' });
+    expect(await throwingRejectionOf(nonArrayRun.result())).toThrow(
+      'requires field "items" of the previous result to be an array',
+    );
+    expect(await throwingRejectionOf(tooManyRun.result())).toThrow(
+      'cannot iterate more than 1000 items',
+    );
+  });
+
+  it('cleans up sibling iterations when one map item fails', async () => {
+    mapActive = 0;
+    mapMaximum = 0;
+    const document = createDocument('map-cleanup', [
+      { kind: 'activity', handler: 'version', input: { items: [1, 2, 3, 4] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 4,
+        steps: [{ kind: 'activity', handler: 'mapFail' }],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-cleanup', null, { id: 'map-cleanup-run' });
+    expect(await throwingRejectionOf(run.result())).toThrow('map item failed');
+    expect(mapActive).toBe(0);
+  });
+
+  it('runs wait-bearing map steps through the normal parent run with stable iteration addresses', async () => {
+    identities.length = 0;
+    const document = createDocument('map-wait', [
+      { kind: 'activity', handler: 'version', input: { items: ['a', 'b'] } },
+      {
+        kind: 'map',
+        over: 'items',
+        concurrency: 2,
+        steps: [
+          { kind: 'await-signal', signal: 'continue' },
+          { kind: 'activity', handler: 'identify' },
+        ],
+      },
+    ]);
+    await using engine = new Engine({ storage: new MemoryStorage(), backgroundTasks: 'manual' });
+    await registerWorkflowDocuments(engine, host, { active: [document] });
+    const run = await engine.start('map-wait', null, { id: 'map-wait-run' });
+    await run.signal('continue', { ok: true });
+    await waitForCondition(async () => identities.length === 1, {
+      label: 'first wait-bearing map iteration to complete',
+    });
+    const waiting = await engine.getTimeline(run.id);
+    expect(
+      waiting.filter((entry) => entry.operationType === 'wait-signal').length,
+    ).toBeGreaterThanOrEqual(2);
+    await run.signal('continue', { ok: true });
+    await run.result();
+    expect(identities.map(({ stepAddress }) => stepAddress)).toEqual(['3#0', '3#1']);
+  });
+
+  it('recovers a partially completed map without replaying effects, then cancels cleanly', async () => {
+    identities.length = 0;
+    const storage = new MemoryStorage();
+    const document = createDocument('map-restart-cancel', [
+      { kind: 'activity', handler: 'version', input: { items: ['a', 'b'] } },
+      {
+        kind: 'map',
+        over: 'items',
+        steps: [
+          { kind: 'await-signal', signal: 'continue' },
+          { kind: 'activity', handler: 'identify' },
+        ],
+      },
+    ]);
+    {
+      await using original = new Engine({ storage });
+      await registerWorkflowDocuments(original, host, { active: [document] });
+      const run = await original.start('map-restart-cancel', null, {
+        id: 'map-restart-cancel-run',
+      });
+      await run.signal('continue', { item: 'a' });
+      await waitForCondition(async () => identities.length === 1, {
+        label: 'partial map result to commit before restart',
+      });
+    }
+
+    await using restarted = new Engine({ storage });
+    await registerWorkflowDocuments(restarted, host, { active: [document] });
+    const [run] = await restarted.recoverAll();
+    expect(run?.id).toBe('map-restart-cancel-run');
+    await run!.cancel();
+    expect(identities.map(({ stepAddress }) => stepAddress)).toEqual(['3#0']);
+    const state = await restarted.get('map-restart-cancel-run');
+    const timeline = await restarted.getTimeline('map-restart-cancel-run');
+    expect(state?.status).toBe('cancelled');
+    expect(
+      timeline.some((entry) => entry.operationType === 'activity' && entry.status === 'running'),
+    ).toBe(false);
+  });
   it('runs only the matching branch case and continues with its result', async () => {
     traces.length = 0;
     const document = createDocument('branch-document', [

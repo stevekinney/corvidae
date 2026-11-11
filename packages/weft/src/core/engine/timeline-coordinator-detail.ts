@@ -164,6 +164,21 @@ export function operationTimelineDetail(
     operationType: operation.type,
     operationLabel: boundedString(getTimelineOperationLabel(operation)),
     outcome,
+    ...((operation as ContextOperationRequest & { documentStep?: number }).documentStep ===
+    undefined
+      ? {}
+      : {
+          documentStep: (operation as ContextOperationRequest & { documentStep: number })
+            .documentStep,
+        }),
+    ...((operation as ContextOperationRequest & { documentStepAddress?: string })
+      .documentStepAddress === undefined
+      ? {}
+      : {
+          documentStepAddress: (
+            operation as ContextOperationRequest & { documentStepAddress: string }
+          ).documentStepAddress,
+        }),
     ...(options.error === undefined ? {} : { errorSummary: boundedErrorSummary(options.error) }),
   };
 }

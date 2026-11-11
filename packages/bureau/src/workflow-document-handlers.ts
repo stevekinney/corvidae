@@ -34,6 +34,7 @@ function renameSteps(
 ): WorkflowDocumentStep[] {
   return steps.map((step) => {
     if (step.kind === 'activity') return { ...step, handler: rename(step.handler) };
+    if (step.kind === 'map') return { ...step, steps: renameSteps(step.steps, rename) };
     if (step.kind !== 'branch') return step;
     return {
       ...step,
@@ -105,6 +106,14 @@ function renameInputSteps(
     if (step['kind'] === 'activity' && typeof step['handler'] === 'string') {
       onActivity?.(step, stepPath);
       return { ...step, handler: rename(step['handler']) };
+    }
+    if (step['kind'] === 'map') {
+      return {
+        ...step,
+        steps: Array.isArray(step['steps'])
+          ? renameInputSteps(step['steps'], rename, onActivity, `${stepPath}.steps`)
+          : step['steps'],
+      };
     }
     if (step['kind'] !== 'branch') return step;
     const cases = isRecord(step['cases'])

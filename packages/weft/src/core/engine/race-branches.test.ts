@@ -979,6 +979,50 @@ describe('#456 nested wait-signal branches (envelope propagation through nested 
     expect(result.second).toBe('late-ev');
   });
 
+  it('nested ctx.allSettled under ctx.all finalizes its signal envelope into the outcome', async () => {
+    // all([ allSettled([ waitForSignal ]) ]). The nested settled executor wraps the
+    // fulfilled envelope in an outcome; the outer coordinator must walk into it,
+    // consume the signal once, and hand the workflow the payload.
+    await using engine = new Engine();
+    engine.register(
+      workflow({ name: 'nested-settled-signal' }).execute(async function* (ctx: WorkflowContext) {
+        return yield* ctx.all([ctx.allSettled([ctx.waitForSignal<string>('ev')])]);
+      }),
+    );
+
+    const handle = await engine.start('nested-settled-signal', null, { id: 'nss' });
+    await waitForCondition(() => getInternals(engine).signalWaiters.has('nss:ev'), {
+      label: 'nested settled wait-signal registered',
+    });
+    await engine.signal('nss', 'ev', 'ev-payload');
+    expect(await handle.result()).toEqual([[{ status: 'fulfilled', value: 'ev-payload' }]]);
+    const after = await peekSignal(getInternals(engine), 'nss', 'ev');
+    expect(after.found).toBe(false);
+  });
+
+  it('nested ctx.allSettled that LOSES the outer race consumes nothing', async () => {
+    await using engine = new Engine();
+    engine.register(
+      workflow({ name: 'nested-settled-loses' })
+        .activities({ fast: async () => 'fast-won' })
+        .execute(async function* (ctx: WorkflowContext) {
+          const first = yield* ctx.race([
+            ctx.run('fast'),
+            ctx.allSettled([ctx.waitForSignal<string>('ev'), ctx.sleep('30s')]),
+          ]);
+          const second = yield* ctx.waitForSignal<string>('ev');
+          return { first, second };
+        }),
+    );
+
+    const handle = await engine.start('nested-settled-loses', null, { id: 'nsl' });
+    await engine[ENGINE_WAIT_FOR_PARKED_WORKFLOW_FOR_TESTING]('nsl');
+    expect(getInternals(engine).signalWaiters.size).toBe(0);
+    await engine.signal('nsl', 'ev', 'late-ev');
+
+    expect(await handle.result()).toEqual({ first: 'fast-won', second: 'late-ev' });
+  });
+
   it('nested ctx.race that LOSES the outer race with late delivery does not orphan the signal', async () => {
     // race([ run(fast), race([ waitForSignal, sleep ]) ]). run(fast) wins; the
     // nested race's wait-signal loses. A signal delivered AFTER the outer race

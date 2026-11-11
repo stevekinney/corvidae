@@ -297,7 +297,36 @@ function completionEvents(
   return events.get(pending.operationType) ?? [];
 }
 
+function parallelBranchCompletionEvents(pending: {
+  operationType: string;
+  status: string;
+  branches?: readonly {
+    operationType: string;
+    operationLabel: string;
+    outcome: string;
+    documentStep?: number;
+    documentStepAddress?: string;
+  }[];
+}): FileWorkflowEvent[] {
+  if (pending.operationType !== 'parallel' || pending.status !== 'completed') return [];
+  return (pending.branches ?? []).flatMap((branch) => {
+    if (branch.outcome !== 'fulfilled' || branch.operationType !== 'activity') return [];
+    return completionEvents({
+      operationType: branch.operationType,
+      operationLabel: branch.operationLabel,
+      ...(branch.documentStep === undefined ? {} : { documentStep: branch.documentStep }),
+      ...(branch.documentStepAddress === undefined
+        ? {}
+        : { documentStepAddress: branch.documentStepAddress }),
+      status: 'completed',
+    });
+  });
+}
+
 function startEvents(operation: ContextOperationRequest, step: number): FileWorkflowEvent[] {
+  if (operation.type === 'parallel') {
+    return operation.operations.flatMap((child) => startEvents(child, step));
+  }
   const documentStep = (operation as ContextOperationRequest & { documentStep?: number })
     .documentStep;
   if (documentStep === undefined && operation.type !== 'activity') return [];
@@ -344,6 +373,7 @@ export async function appendFileWorkflowCheckpointEvents(
   const pending = internals.pendingTimelineEntries.get(workflowId)?.entry;
   const events = [
     ...completionEvents(pending),
+    ...(pending === undefined ? [] : parallelBranchCompletionEvents(pending)),
     ...startEvents(operation, stepIndex(operation, pendingStepIndex)),
   ];
   return appendEvents(internals, workflowId, operations, events, existing, initialHead);

@@ -122,6 +122,7 @@ export type ContextOperationRequest =
     }
   | {
       type: 'parallel';
+      settle?: 'all' | 'settled';
       operationId: string;
       operations: ContextOperationRequest[];
       /**

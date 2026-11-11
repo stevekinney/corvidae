@@ -137,7 +137,7 @@ export async function processParallelOperation(
     // operation never consumes a durable signal it could never checkpoint.
     // `canPersistPartialEntry` is finalize-independent and side-effect-free, so
     // probing it early does not perturb the slots.
-    if (hasFirstError) {
+    if (hasFirstError && operation.settle !== 'settled') {
       assertPartialFailurePersistenceSupported(
         canPersistPartialEntry(internals, workflowId),
         slots,
@@ -163,12 +163,24 @@ export async function processParallelOperation(
       parallelTimelineDetails(operation.operations, slots),
     );
 
-    if (hasFirstError) {
+    if (hasFirstError && operation.settle !== 'settled') {
       // Rethrow the original reason as-is (could be a string, number,
       // undefined, or any non-Error value) to mirror Promise.all.
       throw firstError;
     }
-    return valuesFromSlots(slots);
+    return operation.settle === 'settled'
+      ? slots.map((slot) =>
+          slot.status === 'fulfilled'
+            ? { status: 'fulfilled', value: slot.value }
+            : {
+                status: 'rejected',
+                reason:
+                  slot.status === 'rejected'
+                    ? slot.reason
+                    : { name: 'UnsettledBranch', message: 'Branch did not settle' },
+              },
+        )
+      : valuesFromSlots(slots);
   });
 }
 

@@ -53,7 +53,6 @@ export function documentStepAddress(
   if (iteration === undefined || iteration.length === 0) return String(step);
   return `${String(step)}#${iteration.map((segment) => encodeURIComponent(String(segment)).replaceAll('.', '%2E')).join('.')}`;
 }
-
 /**
  * A host-registered activity handler a document names by key. A thrown error
  * fails the instance with that error. The optional `context` is the activity's
@@ -86,7 +85,6 @@ export type DocumentActivityDefinition = Omit<
   /** Runs the step. */
   execute: DocumentActivityHandler;
 };
-
 /** What a host registers under a handler key: a bare handler, or a definition with settings. */
 export type DocumentActivity = DocumentActivityHandler | DocumentActivityDefinition;
 
@@ -149,6 +147,12 @@ export type WorkflowDocumentStep =
       on: string;
       cases: Readonly<Record<string, readonly WorkflowDocumentStep[]>>;
       otherwise?: readonly WorkflowDocumentStep[] | undefined;
+    }>
+  | Readonly<{
+      kind: 'map';
+      over: string;
+      steps: readonly WorkflowDocumentStep[];
+      concurrency?: number | undefined;
     }>;
 
 /** A declarative workflow: a name, an opaque trigger, and ordered steps. */
@@ -213,6 +217,8 @@ const durationSchema = z.union([z.string(), z.number()]).superRefine((duration, 
   }
 });
 
+const mapConcurrencySchema = z.number().int().positive().optional();
+
 /** The schema of one document step, exposed so workflow editors can derive its field catalog. */
 export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.lazy(() =>
   z.discriminatedUnion('kind', [
@@ -234,6 +240,12 @@ export const workflowDocumentStepSchema: z.ZodType<WorkflowDocumentStep> = z.laz
           }
         }),
       otherwise: z.array(workflowDocumentStepSchema).optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('map'),
+      over: z.string().min(1),
+      steps: z.array(workflowDocumentStepSchema).min(1),
+      concurrency: mapConcurrencySchema,
     }),
   ]),
 );
@@ -272,7 +284,6 @@ export class WorkflowDocumentValidationError extends Error {
     this.issues = issues;
   }
 }
-
 /** Thrown when a branch has no matching case and no `otherwise` steps. */
 export class WorkflowDocumentBranchError extends Error {
   constructor(field: string, value: unknown) {
@@ -280,7 +291,17 @@ export class WorkflowDocumentBranchError extends Error {
     this.name = 'WorkflowDocumentBranchError';
   }
 }
+/** Thrown when a map step cannot iterate its previous result. */
+export class WorkflowDocumentMapError extends Error {
+  /** Why the map source could not be iterated. */
+  readonly code: 'not-array' | 'too-many';
 
+  constructor(code: 'not-array' | 'too-many', message: string) {
+    super(message);
+    this.name = 'WorkflowDocumentMapError';
+    this.code = code;
+  }
+}
 /**
  * A run ended because its input or output did not satisfy the document's schema. The message
  * begins with `code`, then `: `, then each issue as `path: message` joined by `; `, so a host that
@@ -302,7 +323,6 @@ export class WorkflowDocumentSchemaError extends Error {
     this.issues = issues;
   }
 }
-
 function formatPath(path: readonly PropertyKey[]): string {
   let formatted = '';
   for (const segment of path) {
@@ -371,7 +391,6 @@ function hostIssues(
   issues.push(...pinIssues(document, host));
   return issues;
 }
-
 function visitSteps(
   steps: readonly WorkflowDocumentStep[],
   path: string,
@@ -380,14 +399,16 @@ function visitSteps(
   for (const [index, step] of steps.entries()) {
     const stepPath = `${path}[${String(index)}]`;
     visit(step, stepPath);
-    if (step.kind !== 'branch') continue;
-    for (const [literal, nested] of Object.entries(step.cases)) {
-      visitSteps(nested, `${stepPath}.cases.${literal}`, visit);
+    if (step.kind === 'branch') {
+      for (const [literal, nested] of Object.entries(step.cases)) {
+        visitSteps(nested, `${stepPath}.cases.${literal}`, visit);
+      }
+      if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
+    } else if (step.kind === 'map') {
+      visitSteps(step.steps, `${stepPath}.steps`, visit);
     }
-    if (step.otherwise !== undefined) visitSteps(step.otherwise, `${stepPath}.otherwise`, visit);
   }
 }
-
 /** The issues with a document's `activityVersions`: a pin for a handler no step uses, or one the host cannot honor. */
 function pinIssues(
   document: WorkflowDocument,
@@ -421,7 +442,6 @@ function pinIssues(
   }
   return issues;
 }
-
 /**
  * Validate `input` as a {@link WorkflowDocument} against what `host` has
  * registered, and return a detached copy. Call it when a document is written:

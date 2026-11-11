@@ -193,6 +193,32 @@ describe('a workflow file that uses a contributed activity and trigger kind', ()
     expect(stored.document.steps[0].version).toBeUndefined();
   });
 
+  it('pins contributed handlers nested in a map body', async () => {
+    const harness = await start({ ticker: createTickerController() });
+    await harness.put(
+      'pipeline.json',
+      workflowFileText(
+        'pipeline',
+        ticking({
+          steps: [
+            {
+              kind: 'map',
+              over: 'items',
+              steps: [{ kind: 'activity', handler: 'x:y', input: 'nested' }],
+            },
+          ],
+        }),
+      ),
+    );
+    const file = await listing(harness, 'pipeline');
+    const kv = harness.bureau.internals.kv!;
+    const [key] = await kv.list('bureau-workflow-snapshot:v1:pipeline:');
+    const stored = JSON.parse((await kv.get(key!)) ?? '{}');
+    expect(file?.state).toBe('ready');
+    expect(stored.document.activityVersions).toEqual({ 'x:y': '1' });
+    expect(stored.document.steps[0].steps[0].handler).toBe('x:y');
+  });
+
   it('is another revision when the activity is loaded at another version', async () => {
     const first = await start({ ticker: createTickerController(), version: '1' });
     await first.put('pipeline.json', workflowFileText('pipeline', ticking()));

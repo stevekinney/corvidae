@@ -203,5 +203,6 @@ These classes are exported from the package root but extend plain `Error`, so `i
 | `WeftWorkflowClaimLostWarning`          | `core/engine/lease-deposition.ts`          |
 | `WeftWorkflowWakeDiscardedWarning`      | `core/engine/lease-deposition.ts`          |
 | `WorkflowDocumentBranchError`           | `document-workflow/document.ts`            |
+| `WorkflowDocumentMapError`              | `document-workflow/document.ts`            |
 | `WorkflowDocumentSchemaError`           | `document-workflow/document.ts`            |
 | `WorkflowDocumentValidationError`       | `document-workflow/document.ts`            |

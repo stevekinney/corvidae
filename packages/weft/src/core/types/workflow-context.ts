@@ -53,6 +53,10 @@ export type WorkflowOperationTupleResult<
   -readonly [TIndex in keyof TOperations]: WorkflowOperationResult<TOperations[TIndex]>;
 };
 
+export type WorkflowOperationSettledResult<T> =
+  | { status: 'fulfilled'; value: T }
+  | { status: 'rejected'; reason: { name: string; message: string } };
+
 /**
  * Discriminated winner returned by {@link WorkflowContext.raceKeyed}. Checking
  * `key` narrows `value` to the result type of that named workflow operation.
@@ -310,6 +314,14 @@ export interface WorkflowContext<
   all<const TOperations extends readonly WorkflowOperation<unknown>[]>(
     operations: TOperations,
   ): WorkflowOperation<WorkflowOperationTupleResult<TOperations>>;
+  /** Runs operations concurrently and returns indexed fulfilled or rejected outcomes. */
+  allSettled<const TOperations extends readonly WorkflowOperation<unknown>[]>(
+    operations: TOperations,
+  ): WorkflowOperation<{
+    [TIndex in keyof TOperations]: WorkflowOperationSettledResult<
+      WorkflowOperationResult<TOperations[TIndex]>
+    >;
+  }>;
   race<const TOperations extends readonly WorkflowOperation<unknown>[]>(
     operations: TOperations,
   ): WorkflowOperation<WorkflowOperationTupleResult<TOperations>[number]>;

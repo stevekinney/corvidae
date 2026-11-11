@@ -162,6 +162,27 @@ describe('reading the extended format', () => {
     expect(JSON.stringify(file.document)).not.toContain('Ready');
   });
 
+  it('orders map-body annotations by canonical preorder and strips extensions recursively', () => {
+    const file = contentsOf({
+      ...MORNING_BRIEFING_PLAIN,
+      steps: [
+        {
+          kind: 'map',
+          over: 'items',
+          title: 'Fan out',
+          steps: [{ kind: 'await-signal', signal: 'item', title: 'Item review', review: true }],
+        },
+      ],
+    });
+    expect(file.stepAnnotations).toEqual([
+      { title: 'Fan out', review: false },
+      { title: 'Item review', review: true },
+    ]);
+    expect(file.document.steps).toEqual([
+      { kind: 'map', over: 'items', steps: [{ kind: 'await-signal', signal: 'item' }] },
+    ]);
+  });
+
   it('reads a file without any extended key as before, with no title and no annotations set', () => {
     const file = contentsOf(MORNING_BRIEFING_PLAIN);
     expect(file.title).toBeNull();

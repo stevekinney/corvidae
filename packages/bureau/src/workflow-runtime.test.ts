@@ -22,7 +22,11 @@ import {
   type WorkflowRuntimeOptions,
   WorkflowApplyError,
 } from './workflow-runtime';
-import { createWorkflowDocumentHost, type AgentStepRequest } from './workflow-host';
+import {
+  createWorkflowDocumentHost,
+  type AgentStepRequest,
+  type AgentStepResult,
+} from './workflow-host';
 import { createWorkflowSnapshotStore } from './workflow-snapshot-store';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { awakeTurns, waitUntil } from '@lostgradient/testing/wait-until';
@@ -33,6 +37,9 @@ import {
   createTickerController,
 } from './testing/workflow-contributions.test-support';
 import { createWorkflowContributions, type WorkflowContributions } from './workflow-contributions';
+import { workflowStepRunId } from './workflow-agent-step';
+import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
+import { z } from 'zod';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {
@@ -67,6 +74,7 @@ interface World {
     prepare?: (engine: Engine) => void;
     /** The contributed activities and trigger kinds the files may use (COR-1874). */
     contributions?: WorkflowContributions;
+    runAgentStep?: (request: AgentStepRequest) => Promise<AgentStepResult>;
   }): Promise<{
     readonly engine: Engine;
     readonly runtime: WorkflowRuntime;
@@ -103,7 +111,13 @@ async function world(): Promise<World> {
           contributions: options.contributions,
           runAgentStep: async (request) => {
             requests.push(request);
-            return { content: request.message, output: null, finishReason: 'stop-condition' };
+            return (
+              options.runAgentStep?.(request) ?? {
+                content: request.message,
+                output: null,
+                finishReason: 'stop-condition',
+              }
+            );
           },
         }),
         snapshotStore: createWorkflowSnapshotStore({
@@ -120,6 +134,55 @@ async function world(): Promise<World> {
     },
   };
 }
+
+describe('mapped agent steps', () => {
+  it('creates distinct durable Bureau agent runs for each parent-run iteration', async () => {
+    const harness = await startWorkflowBureau({
+      output: z.array(z.string()),
+      replies: {
+        writer: (call) => (call.message.includes('seed') ? '["one","two"]' : '["done"]'),
+      },
+    });
+    try {
+      await harness.put(
+        'mapped.json',
+        JSON.stringify({
+          name: 'mapped',
+          trigger: { kind: 'manual' },
+          steps: [
+            { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'seed' } },
+            {
+              kind: 'map',
+              over: 'output',
+              concurrency: 2,
+              steps: [
+                { kind: 'activity', handler: 'agent', input: { agent: 'writer', message: 'item' } },
+              ],
+            },
+          ],
+        }),
+      );
+      await harness.bureau.workflows?.refresh();
+      const engine = harness.bureau.durableEngine()!;
+      const parent = await engine.start('mapped', null, { id: 'mapped-run' });
+      const result = (await parent.result()) as AgentStepResult[];
+      const expected = [0, 1].map((offset) => workflowStepRunId('mapped-run', `2#${offset}`));
+      expect(result).toHaveLength(2);
+      expect(await engine.get(expected[0]!)).toMatchObject({
+        id: expected[0],
+        status: 'completed',
+      });
+      expect(await engine.get(expected[1]!)).toMatchObject({
+        id: expected[1],
+        status: 'completed',
+      });
+      expect(expected[0]).not.toBe(expected[1]);
+      expect(harness.calls.filter((call) => call.message.includes('item'))).toHaveLength(2);
+    } finally {
+      await harness.dispose();
+    }
+  });
+});
 
 async function versionOf(engine: Engine, workflowId: string): Promise<string | undefined> {
   const state = await engine.get(workflowId);

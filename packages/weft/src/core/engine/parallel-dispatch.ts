@@ -51,6 +51,16 @@ export type ParallelDispatchResult = {
 };
 
 /**
+ * The durable, replay-stable form of a rejection reason: `Error` objects do not
+ * round-trip through MessagePack, and a string or number reason would fail the
+ * cache-entry validator, so every persisted or settled reason is `{ name, message }`.
+ */
+export function normalizeRejectionReason(error: unknown): { name: string; message: string } {
+  const reasonError = error instanceof Error ? error : new Error(String(error));
+  return { name: reasonError.name, message: reasonError.message };
+}
+
+/**
  * Mutable accumulator for the first rejection observed across a fan-out
  * dispatch. Shared by `dispatchBranchesAllSettled` here and by
  * `executeRunAllBranchesSettled` in `engine-helpers.ts` so both
@@ -121,12 +131,7 @@ export async function dispatchBranchesAllSettled(
         // Persist normalized name/message because Error objects don't
         // round-trip through MessagePack, but capture the original
         // reason to rethrow.
-        const reasonError = error instanceof Error ? error : new Error(String(error));
-        slots[index] = {
-          status: 'rejected',
-          reason: { name: reasonError.name, message: reasonError.message },
-          operationId,
-        };
+        slots[index] = { status: 'rejected', reason: normalizeRejectionReason(error), operationId };
         captureFirstRejection(capture, error);
       }
     }),

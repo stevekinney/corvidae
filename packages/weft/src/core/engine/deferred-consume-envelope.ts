@@ -27,6 +27,7 @@
 
 const DEFERRED_CONSUME_BRAND: unique symbol = Symbol('weft.deferredConsume');
 const KEYED_RACE_RESULT_BRAND: unique symbol = Symbol('weft.keyedRaceResult');
+const SETTLED_FULFILLED_BRAND: unique symbol = Symbol('weft.settledFulfilled');
 
 /**
  * A branch result whose real value is produced by a single deferred consume that
@@ -49,6 +50,29 @@ export function createKeyedRaceResultEnvelope(
   value: unknown,
 ): KeyedRaceResultEnvelope {
   return { [KEYED_RACE_RESULT_BRAND]: true, key, value };
+}
+
+type SettledFulfilledEnvelope = {
+  readonly [SETTLED_FULFILLED_BRAND]: true;
+  readonly value: unknown;
+};
+
+/**
+ * Wrap the value of a fulfilled branch of a nested `ctx.allSettled` so the winning
+ * coordinator can finalize a deferred consume held inside it. The envelope is
+ * unwrapped to a plain `{ status: 'fulfilled', value }` outcome by
+ * {@link finalizeAndUnwrap}.
+ */
+export function createSettledFulfilledEnvelope(value: unknown): SettledFulfilledEnvelope {
+  return { [SETTLED_FULFILLED_BRAND]: true, value };
+}
+
+function isSettledFulfilledEnvelope(value: unknown): value is SettledFulfilledEnvelope {
+  return (
+    typeof value === 'object' &&
+    value !== null &&
+    (value as Record<PropertyKey, unknown>)[SETTLED_FULFILLED_BRAND] === true
+  );
 }
 
 function isKeyedRaceResultEnvelope(value: unknown): value is KeyedRaceResultEnvelope {
@@ -81,7 +105,8 @@ export function isDeferredConsumeEnvelope(value: unknown): value is DeferredCons
  * whose `finalize()` performs the single consume; a nested `ctx.all` branch
  * surfaces an ARRAY that may hold envelopes at arbitrary positions, so arrays are
  * walked and each element finalized. A nested `ctx.raceKeyed()` winner is walked
- * through its value while retaining its key. Any other value passes through
+ * through its value while retaining its key, and a nested `ctx.allSettled()`
+ * fulfilled outcome is walked through its value. Any other value passes through
  * untouched.
  *
  * This runs only on the WINNING path (race winner, or every branch of a settled
@@ -103,6 +128,9 @@ export async function finalizeAndUnwrap(value: unknown): Promise<unknown> {
   }
   if (isKeyedRaceResultEnvelope(value)) {
     return { key: value.key, value: await finalizeAndUnwrap(value.value) };
+  }
+  if (isSettledFulfilledEnvelope(value)) {
+    return { status: 'fulfilled', value: await finalizeAndUnwrap(value.value) };
   }
   return value;
 }
