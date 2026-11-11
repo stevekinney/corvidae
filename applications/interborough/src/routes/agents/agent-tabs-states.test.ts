@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
+import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { flushSync } from 'svelte';
 
@@ -55,6 +55,16 @@ async function choose(container: HTMLElement, place: number, option: string): Pr
   if (found === undefined) throw new Error(`expected an option ${option}`);
   await fireEvent.click(found);
   flushSync();
+}
+
+/** Opens the delete question, types the agent's identifier to arm it, and confirms (row 39a). */
+async function confirmDelete(findByRole: ReturnType<typeof mount>['findByRole']): Promise<void> {
+  await fireEvent.click(await findByRole('button', { name: 'Delete agent' }));
+  const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+  await fireEvent.input(within(dialog).getByLabelText('Type researcher to confirm'), {
+    target: { value: 'researcher' },
+  });
+  await fireEvent.click(within(dialog).getByRole('button', { name: 'Delete agent' }));
 }
 
 const lastListed = (served: ReturnType<typeof serve>) =>
@@ -281,25 +291,26 @@ describe('the Settings tab, when something goes wrong', () => {
         return readyAgent({ id: 'researcher' });
       },
     });
-    const { findByRole, findByText, findAllByText } = mount();
+    const { findByRole, findByText, findByTestId } = mount();
 
     await findByText(AGENT_PAGE_COPY.tabState.failedTitle);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
 
-    const models = await findAllByText('anthropic/sonnet');
-    expect(models.length).toBeGreaterThan(0);
+    const model = await findByTestId('agent-settings-model');
+    await waitFor(() => expect(model.textContent?.trim()).toBe('Sonnet, Anthropic'));
   });
 
   test('shows a file with no step limit as running the default of 25 steps', async () => {
     landAt('/agents/researcher/settings');
     serve();
-    const { findByTestId } = mount();
+    const { findByTestId, findByLabelText } = mount();
 
     const settings = await findByTestId('agent-settings');
+    const steps = (await findByLabelText('Step limit')) as HTMLInputElement;
 
-    await waitFor(() => expect(settings.textContent).toContain('anthropic/sonnet'));
-    expect(settings.textContent).toContain('Default (25 steps)');
+    expect(steps.value).toBe('');
+    expect(steps.placeholder).toBe('25 (default)');
     // Guardrails and the spend and tool limits are on the Access tab.
     expect(settings.textContent).not.toContain('Spend limit');
   });
@@ -355,8 +366,7 @@ describe('the Settings tab, when something goes wrong', () => {
       });
       const { findByRole, findByText } = mount();
 
-      await fireEvent.click(await findByRole('button', { name: 'Delete agent' }));
-      await fireEvent.click(await findByRole('button', { name: 'Delete' }));
+      await confirmDelete(findByRole);
 
       await findByText(new RegExp(message));
       expect(router.pathname).toBe('/agents/researcher/settings');
@@ -372,8 +382,7 @@ describe('the Settings tab, when something goes wrong', () => {
     });
     const { findByRole, findByText } = mount();
 
-    await fireEvent.click(await findByRole('button', { name: 'Delete agent' }));
-    await fireEvent.click(await findByRole('button', { name: 'Delete' }));
+    await confirmDelete(findByRole);
 
     await findByText('You may not change this agent.');
     await fireEvent.click(await findByRole('button', { name: /dismiss/i }));
@@ -447,7 +456,9 @@ describe('the versions of an agent', () => {
       });
       const { findByRole, container } = mount();
 
-      await fireEvent.click(await findByRole('button', { name: 'Restore version 1' }));
+      await fireEvent.click(await findByRole('button', { name: 'Restore Version 1' }));
+      const dialog = await findByRole('dialog', { name: 'Restore Version 1?' });
+      await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Version 1' }));
 
       await waitFor(() => expect(container.querySelector('[role="alert"]') !== null).toBe(true));
       await fireEvent.click(await findByRole('button', { name: /dismiss/i }));

@@ -458,22 +458,25 @@ describe('the Settings tab', () => {
     changedKeys,
   });
 
-  test('shows the model, the models to switch to and the step limit, and leaves access to its own tab', async () => {
+  test('shows the model and its provider, the models to switch to and the step limit as a form, and leaves access to its own tab', async () => {
     landAt('/agents/researcher/settings');
     serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
-    const { findByTestId, container } = mount();
+    const { findByTestId, findByLabelText, container } = mount();
+
+    const model = await findByTestId('agent-settings-model');
+    await waitFor(() => expect(model.textContent?.trim()).toBe('Sonnet, Anthropic'));
+    expect((await findByTestId('agent-settings-models')).textContent).toContain('Haiku');
+    const steps = (await findByLabelText('Step limit')) as HTMLInputElement;
+    await waitFor(() => expect(steps.value).toBe('12'));
 
     const settings = await findByTestId('agent-settings');
-    await waitFor(() => expect(settings.textContent).toContain('anthropic/haiku'));
-
-    expect(settings.textContent).toContain('12');
     for (const text of ['acme:tripwire', '$1.50', '90 seconds']) {
       expect(settings.textContent).not.toContain(text);
     }
     expect(container.querySelector('[data-testid="agent-versions"]')).not.toBeNull();
   });
 
-  test('says the default effort a chat starts at, and Not set when the file sets none', async () => {
+  test('marks the effort a chat starts at, and none when the file sets none', async () => {
     landAt('/agents/researcher/settings');
     const agent = withSettings();
     serve(
@@ -483,21 +486,21 @@ describe('the Settings tab', () => {
         definition: { ...agent.definition, effort: 'high' },
       },
     );
-    const { findByTestId } = mount();
-    const shown = await findByTestId('agent-default-effort');
-    expect(shown.textContent).toBe('High');
-    expect(shown.closest('div')?.textContent).toContain('Default effort');
+    const { findByRole } = mount();
+    const high = await findByRole('radio', { name: 'High' });
+    expect(high.getAttribute('aria-checked')).toBe('true');
   });
 
-  test('says Not set for an agent whose file sets no default effort', async () => {
+  test('marks no effort for an agent whose file sets none', async () => {
     landAt('/agents/researcher/settings');
     serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
-    const { findByTestId } = mount();
-    const shown = await findByTestId('agent-default-effort');
-    expect(shown.textContent).toBe('Not set');
+    const { findAllByRole } = mount();
+    const efforts = await findAllByRole('radio');
+    expect(efforts.map((effort) => effort.textContent?.trim())).toEqual(['Low', 'Medium', 'High']);
+    expect(efforts.some((effort) => effort.getAttribute('aria-checked') === 'true')).toBe(false);
   });
 
-  test('restores an older version over the hash of the file as read, and lists the result', async () => {
+  test('restores an older version over the hash of the file as read, once confirmed, and lists the result', async () => {
     landAt('/agents/researcher/settings');
     let versions = [version(2, 'identity-2', ['instructions']), version(1, 'identity-1', ALL_KEYS)];
     const served = serve(
@@ -514,10 +517,17 @@ describe('the Settings tab', () => {
 
     // The newest version is the one the file holds, so only the older one offers Restore.
     await findByText('Version 2');
-    expect(queryByRole('button', { name: 'Restore version 2' })).toBeNull();
-    const restoreButton = await findByRole('button', { name: 'Restore version 1' });
+    expect(queryByRole('button', { name: 'Restore Version 2' })).toBeNull();
+    const restoreButton = await findByRole('button', { name: 'Restore Version 1' });
     expect(restoreButton.hasAttribute('data-changes')).toBe(true);
     await fireEvent.click(restoreButton);
+
+    // Nothing is written until the question is answered.
+    const dialog = await findByRole('dialog', { name: 'Restore Version 1?' });
+    expect(served.calls.some((call) => call.method === 'bureau.agents.versions.restore')).toBe(
+      false,
+    );
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Version 1' }));
 
     await findByText('Version 3');
     expect(
@@ -540,9 +550,11 @@ describe('the Settings tab', () => {
     );
     const { findByRole, findByText } = mount();
 
-    await fireEvent.click(await findByRole('button', { name: 'Restore version 1' }));
+    await fireEvent.click(await findByRole('button', { name: 'Restore Version 1' }));
+    const dialog = await findByRole('dialog', { name: 'Restore Version 1?' });
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Version 1' }));
 
-    await findByText(/./, { selector: '[role="alert"] p' });
+    await findByText('The model is gone.', { selector: '[role="alert"] p' });
   });
 
   test('names a first version and a later save that changed nothing apart', async () => {
@@ -557,9 +569,9 @@ describe('the Settings tab', () => {
     );
     const { findByText, queryByText } = mount();
 
-    await findByText('Saved with no change to the settings');
-    await findByText('First version');
-    expect(queryByText(/Changed/)).toBeNull();
+    await findByText('Saved with no change');
+    await findByText('Created');
+    expect(queryByText(/: changed/)).toBeNull();
   });
 
   test('says the agent changed and refetches the versions when a restore is stale', async () => {
@@ -579,27 +591,41 @@ describe('the Settings tab', () => {
     );
     const { findByRole, findByText } = mount();
 
-    await fireEvent.click(await findByRole('button', { name: 'Restore version 1' }));
+    await fireEvent.click(await findByRole('button', { name: 'Restore Version 1' }));
+    const dialog = await findByRole('dialog', { name: 'Restore Version 1?' });
+    await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Version 1' }));
 
     await findByText(/changed after the page loaded/);
     await waitFor(() => expect(listed).toBeGreaterThan(1));
   });
 
-  test('deletes the agent over the hash of the file as read and returns to the list', async () => {
+  test('deletes the agent over the hash of the file as read, once its identifier is typed, and returns to the list', async () => {
     landAt('/agents/researcher/settings');
     const served = serve(
       {
         'bureau.agents.versions.list': () => ({ versions: [] }),
+        'bureau.agents.references': () => ({
+          agentName: 'researcher',
+          schedules: [],
+          workflows: [],
+          hooks: [],
+        }),
         'bureau.agents.definitions.delete': () => ({ id: 'researcher', hash: 'hash-1' }),
       },
       withSettings(),
     );
-    const { findByRole } = mount();
+    const { findByRole, findByLabelText } = mount();
 
     const remove = await findByRole('button', { name: 'Delete agent' });
     expect(remove.hasAttribute('data-changes')).toBe(true);
     await fireEvent.click(remove);
-    await fireEvent.click(await findByRole('button', { name: 'Delete' }));
+    const dialog = await findByRole('dialog', { name: 'Delete Researcher?' });
+    const confirm = within(dialog).getByRole('button', { name: 'Delete agent' });
+    expect(confirm.hasAttribute('disabled')).toBe(true);
+    await fireEvent.input(await findByLabelText('Type researcher to confirm'), {
+      target: { value: 'researcher' },
+    });
+    await fireEvent.click(confirm);
 
     await waitFor(() => expect(router.pathname).toBe('/agents'));
     expect(

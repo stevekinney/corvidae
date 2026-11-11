@@ -292,7 +292,37 @@
 
 .ib-agent-settings__actions {
   display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: center;
   justify-content: flex-start;
+}
+
+/* The Settings form (rows 38u to 38w): the Model section's fields stacked, one width. */
+.ib-agent-settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-4);
+  max-inline-size: 40rem;
+  min-inline-size: 0;
+}
+
+.ib-agent-settings__model {
+  margin: 0;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-settings__switch {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-2);
+  min-inline-size: 0;
+}
+
+.ib-agent-settings__label {
+  font-size: var(--cinder-text-sm);
+  font-weight: 600;
 }
 
 .ib-agent-versions {
@@ -328,6 +358,53 @@
 .ib-agent-version__changed {
   color: var(--cinder-text-muted);
   font-size: var(--cinder-text-sm);
+}
+
+/* The hash a version was saved at, small beside when (sweep W60). */
+.ib-agent-version__hash {
+  margin-inline-start: var(--cinder-space-2);
+  font-family: var(--cinder-font-mono);
+  font-size: var(--cinder-text-xs);
+}
+
+.ib-agent-version__actions {
+  display: flex;
+  gap: var(--cinder-space-2);
+}
+
+/* One version opened read-only (rows 39t, 39u). */
+.ib-agent-version-view {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-inline-size: 0;
+}
+
+.ib-agent-version-view__header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-3);
+  align-items: flex-start;
+  justify-content: space-between;
+}
+
+.ib-agent-version-view__title h2,
+.ib-agent-version-view h3 {
+  margin: 0;
+}
+
+.ib-agent-version-view__instructions {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.ib-agent-version-view__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding-inline-start: var(--cinder-space-4);
 }
 
 @media (width <= 40rem) {

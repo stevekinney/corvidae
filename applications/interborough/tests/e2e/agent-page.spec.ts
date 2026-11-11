@@ -191,7 +191,12 @@ test.describe('the Settings tab', () => {
 
     const versions = page.getByTestId('agent-versions');
     await expect(versions.locator('[data-revision]')).toHaveCount(2);
-    await versions.getByRole('button', { name: 'Restore version 1' }).click();
+    // Restore asks first, then saves the old version again as the next one (row 38z).
+    await versions.getByRole('button', { name: 'Restore Version 1' }).click();
+    await page
+      .getByRole('dialog', { name: 'Restore Version 1?' })
+      .getByRole('button', { name: 'Restore Version 1' })
+      .click();
     await expect(versions.locator('[data-revision]')).toHaveCount(3);
     const restored = await readAgent(request, id);
     expect(restored.definition?.instructions).toBe('First instructions.');
@@ -204,8 +209,10 @@ test.describe('the Settings tab', () => {
 
     await page.goto(`/agents/${id}/settings`);
     await page.getByRole('button', { name: AGENT_PAGE_COPY.settings.deleteAction }).click();
-    await page
-      .getByRole('dialog')
+    // The identifier typed arms the delete (row 39a).
+    const dialog = page.getByRole('dialog');
+    await dialog.getByLabel(AGENT_PAGE_COPY.settings.deleteDialog.typeLabel(id)).fill(id);
+    await dialog
       .getByRole('button', { name: AGENT_PAGE_COPY.settings.deleteDialog.confirm })
       .click();
 

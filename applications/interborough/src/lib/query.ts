@@ -89,6 +89,8 @@ export const queryKeys = {
     revisions: (id: string) => ['agents', 'revisions', id] as const,
     /** The saved versions of one agent (`bureau.agents.versions.list`). */
     versions: (id: string) => ['agents', 'versions', id] as const,
+    /** What finds one agent by its identifier: schedules, workflows and hooks (`bureau.agents.references`). */
+    references: (id: string) => ['agents', 'references', id] as const,
     /** The models and tools an agent may name (`bureau.agents.catalog`). */
     catalog: () => ['agents', 'catalog'] as const,
     /** The models a session of one agent may be switched to (`bureau.agents.models`). */

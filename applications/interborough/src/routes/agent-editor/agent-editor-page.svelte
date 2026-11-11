@@ -91,7 +91,6 @@
   import AgentEditorForm from './agent-editor-form.svelte';
   import AgentEditorLoading from './agent-editor-loading.svelte';
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
-  import AgentRevisionHistory from './agent-revision-history.svelte';
   import AgentTryDrawer from './agent-try-drawer.svelte';
   import {
     TRY_BOTTOM_SHEET_QUERY,
@@ -719,12 +718,6 @@
       />
     </div>
   {/if}
-
-  {#if agentId !== undefined && !loadFailed}
-    <div class="weft-agent-editor__history">
-      <AgentRevisionHistory id={agentId} />
-    </div>
-  {/if}
 </div>
 
 <ConfirmDialog
@@ -752,15 +745,6 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-4);
-  }
-
-  /*
-   * The form's footer reaches down through the outlet's bottom padding (`--cinder-space-6`) so it
-   * can sit on the outlet's edge. What follows the form starts that far lower, which leaves the
-   * page's own gap between the footer and the history instead of the history under the footer.
-   */
-  .weft-agent-editor__history {
-    margin-block-start: var(--cinder-space-6);
   }
 
   /*

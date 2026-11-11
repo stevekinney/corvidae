@@ -220,8 +220,8 @@ describe('a tab’s body while it loads, fails or holds old data', () => {
 
     failing = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
-    const settings = await findByTestId('agent-settings');
-    await waitFor(() => expect(settings.textContent).toContain('anthropic/sonnet'));
+    const model = await findByTestId('agent-settings-model');
+    await waitFor(() => expect(model.textContent?.trim()).toBe('Sonnet, Anthropic'));
   });
 
   test('keeps the old data under a banner that says when it was read, holds Edit, and never shows the error too', async () => {

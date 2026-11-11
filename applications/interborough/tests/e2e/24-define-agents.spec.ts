@@ -439,25 +439,7 @@ test.describe('an agent that exists', () => {
       await expect(page.getByTestId('agent-file-path')).toHaveText('agents/e2e-edit.md');
       await expect(page.getByTestId('agent-identifier')).toContainText('e2e-edit');
       await expect(page.getByRole('textbox', { name: /^Identifier/ })).toHaveCount(0);
-      await expect(
-        page.getByRole('heading', { level: 2, name: copy.revisions.heading }),
-      ).toBeVisible();
-      await expect(page.getByTestId('agent-revisions-empty')).toContainText(copy.revisions.empty);
       await expectNoSidewaysScroll(page, 'the edit page');
-
-      // The footer sticks to the foot of the outlet, so scrolled all the way down the revision
-      // history must start below it, not under its last pixels.
-      await page
-        .locator('main.weft-shell-outlet')
-        .evaluate((element) => void (element.scrollTop = element.scrollHeight));
-      const footer = await page.locator('.weft-agent-form__footer').boundingBox();
-      const history = await page.locator('.weft-agent-revisions').boundingBox();
-      expect(footer, 'the footer is on the page').not.toBeNull();
-      expect(history, 'the revision history is on the page').not.toBeNull();
-      expect(
-        history?.y ?? 0,
-        'the revision history starts below the footer, not under it',
-      ).toBeGreaterThanOrEqual((footer?.y ?? 0) + (footer?.height ?? 0));
       await checkA11y(`edit agent at ${width}px`);
 
       await page.getByRole('textbox', { name: /^Instructions/ }).fill('Edited in the browser.');
@@ -542,40 +524,32 @@ test.describe('an agent that exists', () => {
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
   });
 
-  test('shows the revision that has run, by its short hash, once the agent has been used', async ({
+  test('marks the version that has run in the Settings tab’s one Versions list, by its short hash', async ({
     page,
     request,
   }) => {
     await makeAgent(request, 'e2e-history');
-    await page.goto('/agents/e2e-history/edit');
-    await expect(page.getByTestId('agent-revisions-empty')).toBeVisible();
     const first = await readAgent(request, 'e2e-history');
     const hash = first.hash ?? '';
+
+    // The editor keeps no second list of the versions that ran (sweep W60).
+    await page.goto('/agents/e2e-history/edit');
+    await expect(editor(page)).toHaveAttribute('data-state', 'ready');
+    await expect(page.getByTestId('agent-revision')).toHaveCount(0);
+
+    await page.goto('/agents/e2e-history/settings');
+    const versions = page.getByTestId('agent-versions');
+    await expect(versions.locator('[data-revision]')).toHaveCount(1);
+    await expect(versions.locator('[data-ran]')).toHaveCount(0);
+    await expect(versions.locator('.ib-agent-version__hash')).toHaveText(hash.slice(0, 8));
 
     // A client other than the page starts a run through the AG-UI mount, which a save never does.
     const stream = await runToEnd(request, 'e2e-history', newThreadId('history'), 'Hello');
     expect(stream).toContain('This reply comes from the end-to-end provider stub.');
 
-    await page.goto('/agents/e2e-history/edit');
-    const rows = page.getByTestId('agent-revision');
-    await expect(rows).toHaveCount(1);
-    await expect(rows.first().locator('code')).toHaveText(hash.slice(0, 8));
-    await expect(rows.first().locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}T/);
-
-    // Editing it makes a new file version, which is a revision only once it has run.
-    await page.getByRole('textbox', { name: /^Instructions/ }).fill('A second version.');
-    await page.getByRole('button', { name: copy.saveAction }).click();
-    await expect(page).toHaveURL(/\/agents\/e2e-history$/);
-    await page.goto('/agents/e2e-history/edit');
-    await expect(page.getByTestId('agent-revision')).toHaveCount(1);
-    const second = await readAgent(request, 'e2e-history');
-    await runToEnd(request, 'e2e-history', newThreadId('history'), 'Hello again');
     await page.reload();
-    const both = page.getByTestId('agent-revision');
-    await expect(both).toHaveCount(2);
-    // Most recently run first.
-    await expect(both.first().locator('code')).toHaveText((second.hash ?? '').slice(0, 8));
-    await expect(both.nth(1).locator('code')).toHaveText(hash.slice(0, 8));
+    await expect(versions.locator('[data-ran]')).toHaveCount(1);
+    await expect(versions.locator('[data-ran]')).toContainText('Ran');
   });
 
   test('is deleted only after a confirmation, and its file goes', async ({ page, request }) => {

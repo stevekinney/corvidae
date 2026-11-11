@@ -382,13 +382,26 @@ export class LeaveGuard {
     this.#released = true;
   }
 
-  /** The person chose to discard their work: goes where the refused navigation was going. */
-  leave(): void {
+  /** Where the refused navigation was going, while the page asks; `undefined` otherwise. */
+  get destination(): string | undefined {
+    return this.#destination;
+  }
+
+  /**
+   * The person chose to discard their work: goes where the refused navigation was going. With
+   * `keep`, the mounted route stays mounted, for a destination that names the same thing the page
+   * shows (another tab of the same agent's page, row 39b).
+   */
+  leave(options?: { readonly keep?: boolean }): void {
     const destination = this.#destination;
     this.#released = true;
     this.asking = false;
     this.#destination = undefined;
-    if (destination !== undefined) router.navigate(destination, { force: true });
+    if (destination === undefined) return;
+    router.navigate(
+      destination,
+      options?.keep === true ? { force: true, keep: true } : { force: true },
+    );
   }
 
   /** The person chose to keep editing: the page stays, and the next navigation is asked again. */

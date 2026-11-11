@@ -523,6 +523,12 @@ export const FORBIDDEN_COPY = {
   home: 'Back to Home',
 } as const;
 
+/** Words joined as a sentence says them, the last pair with "and" and no comma before it: "A, B and C". */
+function joinedWithAnd(words: readonly string[]): string {
+  if (words.length <= 1) return words.join('');
+  return `${words.slice(0, -1).join(', ')} and ${words.at(-1) ?? ''}`;
+}
+
 /** The words for a reasoning effort, from least to most: the agent editor, the agent page and Model policy say them alike. */
 export const EFFORT_LABELS = {
   low: 'Low',
@@ -980,16 +986,6 @@ export const AGENT_EDITOR_COPY = {
   loadFailed: {
     title: 'The agent could not be loaded',
     description: 'The server did not answer. Check that the host is running, then try again.',
-  },
-  revisions: {
-    heading: 'Revision history',
-    description: 'The versions of this agent that have run, most recently run first.',
-    caption: 'Versions of this agent that have run',
-    versionColumn: 'Version',
-    lastRunColumn: 'Last run',
-    emptyTitle: 'No version has run yet',
-    empty: 'A version appears here once the agent runs on it.',
-    failedTitle: 'The revision history could not be loaded',
   },
 } as const;
 
@@ -4445,37 +4441,168 @@ export const AGENT_PAGE_COPY = {
   settings: {
     heading: 'Settings',
     modelLabel: 'Model',
-    modelsLabel: 'Models it can be switched to',
+    /** The model a chat starts on and its provider, as the Model section names them (row 38u). */
+    modelLine: (model: string, provider: string): string => `${model}, ${provider}`,
+    /** The models a chat may change to (row 38v). */
+    modelsLabel: 'Can switch to',
+    modelsNote: 'Models a chat may change to.',
+    addModel: 'Add a model',
+    removeModel: (model: string): string => `Remove ${model}`,
+    /** The provider of the agent's model holds no key (row 38u). */
+    noProvider: {
+      title: (provider: string): string => `${provider} isn’t connected`,
+      description: (agent: string): string =>
+        `${agent} can’t answer until a provider is connected. Connect one in Settings › Models.`,
+      action: 'Connect a provider',
+    },
+    effortLabel: 'Effort',
     stepLimitLabel: 'Step limit',
+    stepLimitNote: 'Most steps one run may take.',
+    /** What an empty Step limit runs at: Operative's default. */
+    stepLimitPlaceholder: (steps: number): string => `${String(steps)} (default)`,
+    /** What a Step limit that is not a whole number from 1 to the bound says at the field (row 39s). */
+    stepLimitError: (maximum: number): string =>
+      `Enter a whole number from 1 to ${String(maximum)}. A run stops after this many steps.`,
     /** The step limit of an agent whose file sets none: Operative's default applies. */
     stepLimitDefault: (steps: number): string => `Default (${String(steps)} steps)`,
     defaultEffortLabel: 'Default effort',
     none: 'No limit',
     notSet: 'Not set',
     builtIn: 'This agent is built in, so its settings cannot be changed here.',
+    /** The form's actions and what a save makes (row 38w). */
+    save: 'Save changes',
+    discard: 'Discard',
+    saveNote: (next: number | null): string =>
+      next === null ? 'Saving makes a new version.' : `Saving makes Version ${String(next)}.`,
+    saved: (revision: number | null): string =>
+      revision === null ? 'Saved' : `Saved as Version ${String(revision)}`,
+    saveFailed: 'The settings could not be saved.',
+    /** What the leave question calls each part of the form. */
+    parts: {
+      model: 'Model',
+      models: 'Can switch to',
+      effort: 'Effort',
+      stepLimit: 'Step limit',
+    },
+    /** The question a tab switch asks while the form holds changes (row 39b). */
+    leave: {
+      title: 'Leave without saving?',
+      description: (parts: readonly string[]): string =>
+        `Settings has changes that aren’t saved: ${joinedWithAnd(parts)}. Leaving this tab discards them.`,
+      stay: 'Stay on Settings',
+      confirm: 'Discard and leave',
+    },
+    /** The block at the end of an agent the owner keeps (row 39a). */
+    deleteHeading: 'Delete this agent',
+    deleteNote: 'Its chats stay, read-only. Its versions and memories are deleted.',
     deleteAction: 'Delete agent',
     deleteFailed: 'The agent could not be deleted.',
     deleteDialog: {
-      title: 'Delete this agent?',
-      description: (name: string): string =>
-        `${name} is removed along with its file. Chats already held with it stay.`,
-      confirm: 'Delete',
+      title: (name: string): string => `Delete ${name}?`,
+      description: (chats: number | undefined, dependents: string): string => {
+        const kept =
+          chats === undefined || chats === 0
+            ? 'Its chats stay, read-only.'
+            : chats === 1
+              ? 'Its 1 chat stays, read-only.'
+              : `Its ${String(chats)} chats stay, read-only.`;
+        const lost = 'Its versions and memories are deleted, and this can’t be undone.';
+        return dependents === ''
+          ? `${kept} ${lost}`
+          : `${kept} ${lost} ${dependents} will stop finding it.`;
+      },
+      typeLabel: (id: string): string => `Type ${id} to confirm`,
+      confirm: 'Delete agent',
+    },
+    /** What finds the agent, as the delete question names it: "1 workflow (Order refund)". */
+    dependents: {
+      schedule: (count: number): string =>
+        count === 1 ? '1 schedule' : `${String(count)} schedules`,
+      workflow: (count: number): string =>
+        count === 1 ? '1 workflow' : `${String(count)} workflows`,
+      hook: (count: number): string =>
+        count === 1 ? '1 hook' : `${String(count)} hooks`,
+      named: (counted: string, names: readonly string[]): string =>
+        `${counted} (${names.join(', ')})`,
+      joined: (groups: readonly string[]): string => joinedWithAnd(groups),
     },
     stale: 'This agent changed after the page loaded. Reload to see its current settings.',
     forbidden: 'You may not change this agent.',
   },
   versions: {
     heading: 'Versions',
-    description:
-      'Every save of this agent, newest first. Restoring writes an old version as a new one.',
+    description: 'Every save keeps a version; running chats keep theirs.',
     revision: (revision: number): string => `Version ${String(revision)}`,
-    changed: 'Changed',
-    savedByHand: 'Edited in the file',
-    firstVersion: 'First version',
-    nothingChanged: 'Saved with no change to the settings',
-    restoreAction: 'Restore',
-    restoreLabel: (revision: number): string => `Restore version ${String(revision)}`,
     current: 'Current',
+    /** A version a run started on (sweep W60). */
+    ran: 'Ran',
+    /** When a version was saved and by whom: "Oct 29, 11:38 AM, you". */
+    saved: (when: string, byHand: boolean): string =>
+      `${when}, ${byHand ? 'edited in the file' : 'you'}`,
+    created: 'Created',
+    nothingChanged: 'Saved with no change',
+    /** What a version changed, by part: "Model: Haiku 5.5 to Sonnet 5.5", "Tools: added Issue refund". */
+    change: {
+      fromTo: (part: string, from: string, to: string): string => `${part}: ${from} to ${to}`,
+      edited: (part: string): string => `${part}: changed`,
+      tools: (added: readonly string[], removed: readonly string[]): string =>
+        [
+          ...(added.length === 0 ? [] : [`added ${added.join(', ')}`]),
+          ...(removed.length === 0 ? [] : [`removed ${removed.join(', ')}`]),
+        ].join(', '),
+      none: 'None',
+    },
+    /** What each changed key of a version is called. A key not named here is shown as it is. */
+    keys: {
+      name: 'Name',
+      description: 'Description',
+      model: 'Model',
+      models: 'Can switch to',
+      effort: 'Effort',
+      tools: 'Tools',
+      instructions: 'Instructions',
+      limits: 'Limits',
+      approvals: 'Asks',
+      guardrails: 'Guardrails',
+      skills: 'Skills',
+      references: 'Reference documents',
+      a2a: 'A2A',
+    },
+    viewAction: 'View',
+    viewLabel: (revision: number): string => `View Version ${String(revision)}`,
+    restoreAction: 'Restore',
+    restoreLabel: (revision: number): string => `Restore Version ${String(revision)}`,
+    /** The confirmation a restore asks first (row 38z). */
+    restoreDialog: {
+      title: (revision: number): string => `Restore Version ${String(revision)}?`,
+      description: (revision: number, current: number, changes: string): string => {
+        const removed =
+          current === revision + 1
+            ? `Version ${String(current)}’s changes`
+            : `the changes of Versions ${String(revision + 1)} to ${String(current)}`;
+        const what = changes === '' ? '' : `: ${changes}`;
+        return `Restoring Version ${String(revision)} removes ${removed}${what}. This makes Version ${String(current + 1)}, and Version ${String(current)} stays in the list. Running chats keep the version they started with.`;
+      },
+      confirm: (revision: number): string => `Restore Version ${String(revision)}`,
+    },
+    /** One version opened read-only (rows 39t, 39u). */
+    view: {
+      back: 'Versions',
+      readOnly: (saved: string): string => `${saved}, read-only`,
+      changedFrom: (revision: number, summary: string): string =>
+        `Changed from Version ${String(revision)}: ${summary}`,
+      note: (current: number): string =>
+        `Instructions, tools and guardrails are shown as they were; nothing here can be edited. Version ${String(current)} is the current version.`,
+      instructions: 'Instructions',
+      tools: 'Tools',
+      /** A tool the version allows, with when it asks first: "Lookup order (Never)". */
+      tool: (tool: string, asks: string): string => `${tool} (${asks})`,
+      notAllowed: (tool: string): string => `${tool} is not allowed in this version`,
+      noTools: 'No tools',
+      guardrails: 'Guardrails',
+      noGuardrails: 'Only the default guardrails',
+      noDefinition: 'This version holds no definition to show.',
+    },
     restoreFailed: 'That version could not be restored.',
     restoreStale:
       'This agent changed after the page loaded. The versions below are up to date; restore again if you still want that version.',

@@ -287,12 +287,15 @@
   }
 
   // The address owns the tab, so a tab can be linked and the back button returns to it:
-  // `activeTab` follows the route, and a tab the person picks writes the address from Tabs'
-  // `onValueChange`, so a jump through history to an older tab is only read, never written back
-  // over. Choosing a tab keeps the page mounted: the address names the same agent.
-  function writeTab(next: string): void {
-    if (!isAgentTab(next) || tabOfRoute() === next) return;
+  // `activeTab` follows the route, and a tab the person picks writes the address before Tabs
+  // commits it (`onValueChangeRequest`), so a jump through history to an older tab is only read,
+  // never written back over. Choosing a tab keeps the page mounted: the address names the same
+  // agent. A tab holding changes that are not saved may refuse the move and ask first (row 39b);
+  // the tab the address still names is then the one Tabs keeps, so the asking tab stays mounted.
+  function requestTab(next: string): string {
+    if (!isAgentTab(next) || tabOfRoute() === next) return next;
     router.navigate(agentTabPath(id, next), { keep: true });
+    return tabOfRoute();
   }
 
   $effect(() => {
@@ -432,7 +435,7 @@
         <AgentFacts agent={listed} detailed />
       {/if}
 
-      <Tabs bind:value={activeTab} onValueChange={writeTab} activateOnFocus={false}>
+      <Tabs bind:value={activeTab} onValueChangeRequest={requestTab} activateOnFocus={false}>
         <Tabs.List label={copy.tabsLabel}>
           <Tabs.Trigger value="chats" label={copy.tabs.chats}
             >{@render counted(copy.tabs.chats, counts.chats)}</Tabs.Trigger
@@ -501,7 +504,12 @@
             updatedAt={definition.dataUpdatedAt}
             onRetry={() => void definition.refetch()}
           >
-            <AgentSettings {id} detail={definition.data} />
+            <AgentSettings
+              {id}
+              detail={definition.data}
+              name={name ?? id}
+              chats={chats.data === undefined ? undefined : (usage?.count ?? 0)}
+            />
           </AgentTabState>
         </Tabs.Panel>
       </Tabs>

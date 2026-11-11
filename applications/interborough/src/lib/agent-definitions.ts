@@ -447,6 +447,26 @@ export async function listAgentRevisions(
   return result.revisions;
 }
 
+const referencesSchema = z.object({
+  schedules: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
+  workflows: z.array(z.object({ id: z.string(), title: z.string().nullable() })),
+  hooks: z.array(z.object({ id: z.string(), name: z.string().nullable() })),
+});
+
+/**
+ * What finds an agent by its identifier (`bureau.agents.references`): the schedules that run it, the
+ * workflows with a step that calls it, and the hooks scoped to it, each with its name or title
+ * (`null` when it has none). Each stops finding the agent once it is deleted.
+ */
+export type AgentReferences = z.infer<typeof referencesSchema>;
+
+/** What finds the agent by its identifier, and so stops finding it once it is deleted. */
+export async function listAgentReferences(id: string, options?: Options): Promise<AgentReferences> {
+  return referencesSchema.parse(
+    await callBureau('bureau.agents.references', { agentName: id }, options),
+  );
+}
+
 const listingSchema = z.object({
   id: z.string(),
   source: z.enum(['code', 'file']),
