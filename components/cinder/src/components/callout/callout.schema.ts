@@ -32,7 +32,7 @@ const schema = {
         name: 'action',
         reason: 'function-or-snippet',
         description:
-          'Optional action rendered at the inline end of the row, usually one `Link` or `Button`, such\nas "Open attempt 5". It is interactive content, so it is the one part of a callout a person\ncan act on; the callout itself stays static.',
+          'Optional action rendered under the message, usually one `Link` or `Button`, such as "Open\nattempt 5". Several actions sit in a row that wraps, and a button label never wraps. It is\ninteractive content, so it is the one part of a callout a person can act on; the callout\nitself stays static.',
       },
       {
         name: 'children',

@@ -1,7 +1,7 @@
 <script lang="ts" module>
   export const title = 'Neutral note with an action';
   export const description =
-    'A plain note that explains a state, with an icon and one link at the inline end.';
+    'A plain note that explains a state, with an icon and one link under the message.';
 </script>
 
 <script lang="ts">
