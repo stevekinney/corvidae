@@ -247,6 +247,7 @@ describe('a run’s page', () => {
       without.queryByRole('button', { name: RUN_DETAIL_COPY.howItRan.heading }),
     ).not.toBeNull();
     for (const name of ['Input and output', 'Details']) {
+      // The sections a finished run shows without opening How it ran.
       expect(without.queryByRole('heading', { level: 2, name })).not.toBeNull();
     }
   });

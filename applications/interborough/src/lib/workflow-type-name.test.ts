@@ -2,7 +2,7 @@
 import { describe, expect, test } from 'bun:test';
 
 import { RUN_DETAIL_COPY } from '../app/copy.ts';
-import { builtInWorkflowName, workflowTypeName } from './workflow-type-name.ts';
+import { builtInWorkflowName, isBuiltInWorkflow, workflowTypeName } from './workflow-type-name.ts';
 
 describe('workflowTypeName', () => {
   test('names the three built-in types as the design records them', () => {
@@ -22,5 +22,17 @@ describe('workflowTypeName', () => {
     expect(builtInWorkflowName('release-notes')).toBeUndefined();
     expect(builtInWorkflowName('toString')).toBeUndefined();
     expect(builtInWorkflowName('constructor')).toBeUndefined();
+  });
+});
+
+describe('isBuiltInWorkflow', () => {
+  test('is true for every type Interborough registers, whether or not the run page has a name for it', () => {
+    expect(isBuiltInWorkflow('agentRun')).toBe(true);
+    expect(isBuiltInWorkflow('scheduleTick')).toBe(true);
+  });
+
+  test('is false for a workflow somebody built, and for a name every object inherits', () => {
+    expect(isBuiltInWorkflow('release-notes')).toBe(false);
+    expect(isBuiltInWorkflow('toString')).toBe(false);
   });
 });

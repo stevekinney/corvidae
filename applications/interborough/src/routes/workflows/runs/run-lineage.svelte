@@ -9,7 +9,7 @@
    * The page has already read this run, its goal and its chat. The runs above it are read here, one
    * after another, because each names the next; a run that cannot be read ends the list there: the
    * origin line above it is still true, and an ancestor the caller may not read says nothing it
-   * should not. It draws list items, for the Details rail's list to hold.
+   * should not. It draws list items, which the Details rail's list holds.
    */
   import { createQuery } from '@tanstack/svelte-query';
 

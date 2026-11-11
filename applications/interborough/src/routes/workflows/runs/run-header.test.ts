@@ -1,5 +1,5 @@
 /**
- * The run page's one header: what ran, the one status, Open chat, Cancel run, and a More menu with
+ * The run page's one header: what ran, one status, Open chat, Cancel run, and a More menu with
  * the actions on a run the workflow engine holds, the two that cannot be undone behind a
  * confirmation.
  */

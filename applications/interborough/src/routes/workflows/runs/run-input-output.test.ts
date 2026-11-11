@@ -1,5 +1,5 @@
 /**
- * Input and output: the message in and the reply out of a chat run, a schedule run's prompt and
+ * Input and output: the message in and the reply out of a chat run, the prompt and
  * result, and a workflow's input and output as payload cards that share one Fields or JSON choice,
  * with a value that names a chat, an agent or a run linked under its own name.
  */

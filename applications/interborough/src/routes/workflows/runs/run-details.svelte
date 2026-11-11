@@ -4,7 +4,7 @@
    * has the whole width of the rail to wrap in. What started the run leads (the lineage list), then
    * what ran, the run's ID, when it started and changed, and, for a run the workflow engine holds,
    * its deadline, version, revision, cleanup and tags. Under the facts are the runs related to this
-   * one (with a topology that opens in a drawer) and every line the run logged. The run's status is
+   * one (with a topology that opens in a drawer), and every line the run logged. The run's status is
    * not here: it is in the header, once.
    */
   import { DescriptionList, type DescriptionListItem } from '@lostgradient/cinder';
@@ -21,7 +21,7 @@
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
-  import { builtInWorkflowName, workflowTypeName } from '../../../lib/workflow-type-name.ts';
+  import { isBuiltInWorkflow, workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import { finalizerStatusPresentation } from '../detail/workflow-status.ts';
   import RunChatRelated from './run-chat-related.svelte';
@@ -234,7 +234,7 @@
     <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
       >{workflowTypeName(workflowType)}</a
     >
-    {#if builtInWorkflowName(workflowType) !== undefined}
+    {#if isBuiltInWorkflow(workflowType)}
       <small class="ib-run-value"
         ><code class="ib-identifier">{workflowType}</code> {RUN_DETAIL_COPY.builtIn}</small
       >

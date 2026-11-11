@@ -3,7 +3,7 @@
    * How the run ran: the disclosure under what happened that holds what only an operator reads, the
    * steps and tool calls, the raw payloads, the change or ask forms, the events and the panels
    * plugins add. The page gives it closed for a finished run of the Bureau's and open for a run that
-   * is still going, because a person watching a run answers its approvals there. A person can open
+   * is still going, because a person who watches a run answers its approvals there. A person can open
    * or close it either way, and the link under a reply that says Show raw payloads opens it.
    */
   import { Collapsible } from '@lostgradient/cinder';

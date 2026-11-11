@@ -112,8 +112,6 @@
     answerHtml !== undefined && answerHtml.replace(/<[^>]*>/g, '').length > CLAMP_ABOVE,
   );
   let replyOpen = $state(false);
-
-
 </script>
 
 <section class="ib-run__section" aria-labelledby="ib-run-io" data-section="input-output">
@@ -179,7 +177,12 @@
           <p class="ib-run__note">
             {copy.deliveredToChat}
             {#if onShowRaw !== undefined}
-              <Button variant="ghost-accent" size="sm" label={copy.showRawPayloads} onclick={onShowRaw} />
+              <Button
+                variant="ghost-accent"
+                size="sm"
+                label={copy.showRawPayloads}
+                onclick={onShowRaw}
+              />
             {/if}
           </p>
         {/if}

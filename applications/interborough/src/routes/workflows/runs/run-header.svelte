@@ -7,7 +7,7 @@
    * everything else a person does to a run: copy its ID, and, for a run the workflow engine holds,
    * suspend, resume, force a timeout, cancel, or restart it.
    *
-   * It draws what it is given and owns nothing but the confirmation of the two actions that cannot
+   * It draws what it is given, and owns nothing but the confirmation of the two actions that cannot
    * be undone. The page owns the queries and the mutations (`run-engine.svelte.ts`), and passes
    * `onAction` and `onRestart` in.
    */
@@ -158,9 +158,8 @@
 {#snippet summary()}
   {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <time
       datetime={new Date(startedAt).toISOString()}>{dayStamp(startedAt)}</time
-    >{/if}{#if tookMilliseconds !== undefined}, {tookWord} {durationWords(
-      tookMilliseconds,
-    )}{/if}{#if note !== undefined}, {note}{/if}
+    >{/if}{#if tookMilliseconds !== undefined}, {tookWord}
+    {durationWords(tookMilliseconds)}{/if}{#if note !== undefined}, {note}{/if}
 {/snippet}
 
 {#snippet actions()}

@@ -55,7 +55,7 @@
     type StatusWord,
   } from '../../../lib/status.ts';
   import { getWorkflowFileRun } from '../../../lib/workflow-files.ts';
-  import { builtInWorkflowName } from '../../../lib/workflow-type-name.ts';
+  import { builtInWorkflowName, isBuiltInWorkflow } from '../../../lib/workflow-type-name.ts';
   import { workflowRunSetupPath } from '../../../lib/workflow-type-paths.ts';
   import '../detail/workflow-detail.css';
   import { isTerminalStatus } from '../detail/workflow-status.ts';
@@ -326,7 +326,7 @@
       : undefined;
   });
 
-  // A note for the run's Activity when there is no task to read tool calls from.
+  // A note for the run's Activity, under How it ran, when there is no task to read tool calls from.
   const activityNote = $derived(
     task.data !== undefined
       ? undefined
@@ -429,7 +429,10 @@
       : builtInWorkflowName(summary.title ?? ''),
   );
   const displayTitle = $derived(runTitle ?? builtInName);
-  usePageLabel(() => ({ path: router.pathname, label: displayTitle }));
+  // The label belongs to this run's own address, which is read once so that it never labels the next
+  // page while a navigation is under way.
+  const crumbPath = untrack(() => router.pathname);
+  usePageLabel(() => ({ path: crumbPath, label: displayTitle }));
 
   // The page the header's second link opens: the goal an attempt belongs to, or the schedule.
   const ownerLink = $derived.by(() => {
@@ -443,11 +446,10 @@
   // Run again sets up another run of a workflow somebody built; the Bureau's own workflows (a chat,
   // a goal's attempt, the heartbeat) start themselves, and no page re-runs a chat or a fire.
   const runAgainPath = $derived.by((): string | undefined => {
-    if (task.data !== undefined || attempt !== undefined) return undefined;
+    if (task.data !== undefined || attempt !== undefined || summary?.over !== true)
+      return undefined;
     const type = workflow?.type ?? record?.workflow;
-    return type === undefined || builtInWorkflowName(type) !== undefined
-      ? undefined
-      : workflowRunSetupPath(type);
+    return type === undefined || isBuiltInWorkflow(type) ? undefined : workflowRunSetupPath(type);
   });
 
   // How it ran is closed for a finished run of the Bureau's, which a person reads for what happened,

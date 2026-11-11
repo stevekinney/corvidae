@@ -147,7 +147,7 @@ test.describe('the runs of a chat', () => {
 
     await expect(page).toHaveURL(new RegExp(`/runs/${task.id}$`));
     await expect(page.locator('[data-view="runs"]')).toHaveAttribute('data-state', 'ready');
-    // The run is called what its chat is called.
+    // A run is called what its chat is called.
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Say hello');
     await expect(heading(page).getByText('Done', { exact: true })).toBeVisible();
     // Open chat is the first action, and the answer is the stream's: the task view has none.
@@ -228,7 +228,7 @@ test.describe('the runs of a caller who may not read the engine', () => {
     await expect(row).toBeVisible();
     await row.getByRole('link').first().click();
 
-    // The run is called what its chat is called.
+    // A run is called what its chat is called.
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Say hello');
     await expect(page.getByText(ASSISTANT_REPLY)).toBeVisible();
     // The whole page is there without the workflow's sections, and it has no tabs at all.

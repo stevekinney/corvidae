@@ -19,7 +19,7 @@
 
   let { origin, attempt = null }: RunOriginProps = $props();
 
-  /** Opens a link in place, leaving a modified click to the browser. */
+  /** Opens a link in place, and leaves a modified click to the browser. */
   function open(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
       return;

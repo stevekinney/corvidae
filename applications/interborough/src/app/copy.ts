@@ -301,7 +301,7 @@ export const RUN_PAGE_COPY = {
 /**
  * The words a run's page uses for what the redesign of its layout added (COR-2017): the names of
  * the workflows Interborough runs itself, and the lines of the finished, failed, canceled and
- * schedule-started runs. Kept apart from `RUN_PAGE_COPY` so that the slices that change the page's
+ * schedule-started runs. Kept apart from `RUN_PAGE_COPY`, so the slices that change the page's
  * other states do not edit the same block.
  */
 export const RUN_DETAIL_COPY = {

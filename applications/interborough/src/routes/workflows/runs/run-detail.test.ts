@@ -377,7 +377,7 @@ describe('the related runs of a chat run', () => {
   });
 });
 
-describe('how it ran', () => {
+describe('How it ran', () => {
   test('is folded up for a finished run and opens for the activity, and stays open while a run goes', async () => {
     const done = open('/runs/run-1', {
       tasks: [taskFixture({ id: 'run-1', status: 'completed' })],
