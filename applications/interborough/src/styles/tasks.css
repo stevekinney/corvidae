@@ -204,6 +204,17 @@
   color: var(--cinder-text-muted);
 }
 
+/* The other runs of a chat, in the rail: one a line, with no markers. */
+.ib-run-related__list {
+  display: grid;
+  gap: var(--cinder-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .ib-run-tags__label {
   margin-block-end: var(--cinder-space-1);
   color: var(--cinder-text-subtle);

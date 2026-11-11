@@ -24,6 +24,7 @@
   import { builtInWorkflowName, workflowTypeName } from '../../../lib/workflow-type-name.ts';
   import { workflowTypePath } from '../../../lib/workflow-type-paths.ts';
   import { finalizerStatusPresentation } from '../detail/workflow-status.ts';
+  import RunChatRelated from './run-chat-related.svelte';
   import RunLineage from './run-lineage.svelte';
   import RunLogs from './run-logs.svelte';
   import RunRelated from './run-related.svelte';
@@ -266,5 +267,8 @@
     <RunTags client={engine.client} {workflow} {tagGate} />
     <RunRelated client={engine.client} {workflow} />
     <RunLogs client={engine.client} workflowId={workflow.id} />
+  {/if}
+  {#if task !== undefined && workflow === undefined && task.kind === 'chat'}
+    <RunChatRelated runId={task.id} contextId={task.contextId} title={chat?.title ?? undefined} />
   {/if}
 </aside>

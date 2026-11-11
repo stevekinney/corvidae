@@ -320,6 +320,11 @@ export const RUN_DETAIL_COPY = {
   /** The header's links to the goal or the schedule a run belongs to, and to set up another run. */
   /** The disclosure under what happened, for what only an operator reads. */
   howItRan: { heading: 'How it ran', caption: 'For operators', rawPayloads: 'Raw payloads' },
+  /** Related runs in the rail of a run that is only the Bureau's: the other runs of its chat. */
+  related: {
+    heading: 'Related runs',
+    noneInChat: 'No other runs came from this chat.',
+  },
   /** Labels the Details rail adds for a run a goal made. */
   facts: { goal: 'Goal' },
   /** The last row of the Started by chain: the run itself, one level in from what started it. */

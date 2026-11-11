@@ -349,6 +349,34 @@ describe('a run that cannot be followed live', () => {
   });
 });
 
+describe('the related runs of a chat run', () => {
+  test('lists the other runs of the chat, each a link to its page, and says when there is none', async () => {
+    const view = open('/runs/run-1', {
+      tasks: [
+        taskFixture({ id: 'run-1', contextId: 'session-1', status: 'completed' }),
+        taskFixture({ id: 'run-2', contextId: 'session-1', status: 'input-required' }),
+      ],
+      scopes: BUREAU_ONLY,
+    });
+
+    const section = await waitFor(() => {
+      const found = view.container.querySelector('[data-section="related-chat"]');
+      expect(found).not.toBeNull();
+      return found as HTMLElement;
+    });
+    const hrefs = [...section.querySelectorAll('a')].map((link) => link.getAttribute('href'));
+    expect(hrefs).toEqual(['/runs/run-2']);
+    cleanup();
+    stub?.restore();
+
+    const alone = open('/runs/run-1', {
+      tasks: [taskFixture({ id: 'run-1', contextId: 'session-1', status: 'completed' })],
+      scopes: BUREAU_ONLY,
+    });
+    expect(await alone.findByText(RUN_DETAIL_COPY.related.noneInChat)).not.toBeNull();
+  });
+});
+
 describe('how it ran', () => {
   test('is folded up for a finished run and opens for the activity, and stays open while a run goes', async () => {
     const done = open('/runs/run-1', {
