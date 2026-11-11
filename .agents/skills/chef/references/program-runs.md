@@ -33,9 +33,7 @@ The script adds no scheduler. GitHub Actions runs the full suite on every push t
 - **Claude Code scheduled task:** create one that runs `bun scripts/chef/batch-validate.ts --max-load 8 --json` from the main checkout every 20 to 30 minutes, with a prompt that reads the one-line result, and on a failure (exit 1) runs `bun scripts/chef/gate-run.ts triage <log> --base <last green head>` and routes each mapped task to the pull request's owner as a fix forward.
 - **`/loop`:** `/loop 30m bun scripts/chef/batch-validate.ts --max-load 8 --json`, ended with the run.
 
-The same timer runs `bun scripts/chef/drift.ts --team COR --json` (add `--project <id>` in a program run). Once a day, or before a release, the coordinator also launches `bun run harden` in the background (never per pull request): it runs the isolated lanes repeatedly under generated load, and a failure follows AGENTS.md "Test tiers", a control against the base and a COR issue for the flake's mechanism, never a rerun until green.
-
-`drift.ts` only reads: on exit 1 it lists each issue whose Linear state disagrees with GitHub (`merged-open`, `review-without-pr`, `stale-in-progress`), and the coordinator reconciles each one, closing it with an execution report, moving it, or recording a blocker. It is not a substitute for reading back each write.
+Once a day, or before a release, the coordinator also launches `bun run harden` in the background (never per pull request): it runs the isolated lanes repeatedly under generated load, and a failure follows AGENTS.md "Test tiers", a control against the base and a COR issue for the flake's mechanism, never a rerun until green.
 
 A skipped run costs nothing but the tick, so a short interval is fine; do not start a second timer while one is live. When a run fails, route the fix forward: merges are not blocked on a red `main` and their reports warn while it stays red, and a pull request that repairs `main` carries `--fixes-main` on `merge-gate.ts` or `deliver.ts` so the health file records it. The next scheduled batch validate clears the record once it passes at a later head.
 
@@ -43,7 +41,7 @@ A skipped run costs nothing but the tick, so a short interval is fine; do not st
 
 - Before claiming an issue, check it against the Definition of Ready in [the Linear policy](linear-policy.md). When it holds, move it to Ready with a comment naming what was checked, then claim it (In Progress). In a program run, chef promotes issues itself; a separate draining workflow, such as the `drain-linear-project` skill where it is installed, only drains issues that are already Ready and keeps its own rule.
 - A revision is material when it changes the outcome, an acceptance criterion, the scope or affected surfaces, the delivery boundary, or the team. A material revision clears the intake gate before the issue is claimed: the `intake-curmudgeon` agent where it is installed, otherwise the coordinator's own check of the revised text against the Definition of Ready, recorded in the note. Correcting a file path, naming a verification command the criteria already imply, or a routine status or evidence update is not material and needs no gate.
-- A choice that is genuinely the owner's (product, architecture, or scope) follows [decisions](decisions.md): Jev decides at 0.9 or above, and otherwise it goes to the owner as a question with a recommended option. Never park it in a decision ticket. Keep working on batches that don't depend on the answer.
+- A choice that is genuinely the owner's (product, architecture, or scope) follows [decisions](decisions.md): it goes to the owner as a question with a recommended option. Never park it in a decision ticket. Keep working on batches that don't depend on the answer.
 - When implementation shows an issue's text is wrong, append a dated revision to its description instead of rewriting history. The intake gate applies when the revision is material.
 
 ## Combined pull requests

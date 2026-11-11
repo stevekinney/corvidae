@@ -1,5 +1,7 @@
 # Chef assessment
 
+The `cut` rows below were deleted by COR-2377 stage (b) on 2026-11-11; the table is left as the record.
+
 An evidence-backed account of what each part of the chef process is used for, made for COR-2377 stage (a) on 2026-11-11. It deletes nothing: stage (b) deletes the `cut` rows after the owner or coordinator confirms this table. The measurements cover the 14 days to 2026-11-11 unless a column says otherwise.
 
 ## How to read the columns

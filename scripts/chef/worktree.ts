@@ -8,20 +8,22 @@
 // Usage:
 //   bun scripts/chef/worktree.ts create [--config <json>] --provider claude|codex --name <name>
 //       --branch <branch> [--base <ref>] [--install-log <file>]
-//       [--scope-paths <p,p> --scope-output <json>] [--json]
+//       [--json]
 //   bun scripts/chef/worktree.ts remove [--config <json>] --provider claude|codex --name <name>
 //       [--keep-remote] [--retired] [--json]
+// `--name` on `remove` is a worktree name or an absolute path.
 //
 // `create` runs the default-branch ownership preflight (it never attaches the default branch),
 // fetches the default branch, adds the worktree on a new branch from `--base` (default
 // `origin/<default>`), checks the new worktree's `package.json` name equals `manifestName` before
-// it installs, runs the install command into a log (default `<root>/<name>-install.log`), and, when
-// scope paths are given, captures a `worktree-scope.ts` baseline. It prints the path, HEAD, install
-// exit code and `captureId`.
+// it installs, and runs the install command into a log (default `<root>/<name>-install.log`). It
+// prints the path, HEAD and install exit code.
 //
 // `remove` refuses, changing nothing, when the worktree has uncommitted or untracked changes, when
-// any process has its working directory or open files inside it, or when it is not a worktree
-// under the provider's root. It also refuses, because the branch is deleted with `git branch -D` and
+// any process has its working directory or open files inside it, when Git reports the worktree
+// locked, or when it is not a worktree under the provider's root (`~/.agent-worktrees/<provider>/corvidae`)
+// or under `<main checkout>/.claude/worktrees`, where Claude Code's Agent tool makes them. It also
+// refuses, because the branch is deleted with `git branch -D` and
 // the remote branch with `git push --delete`, unless the branch's work is delivered: its tip is an
 // ancestor of `origin/<default branch>` (after a fetch), or `gh pr view <branch>` reports `MERGED`
 // with a `headRefOid` equal to the local tip (a squash merge leaves the tip outside the default
@@ -34,17 +36,8 @@
 //
 // Exit codes: 0 done, 1 refused or a step failed, 2 invalid CLI usage.
 
-import {
-  existsSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  realpathSync,
-  rmSync,
-  writeFileSync,
-} from 'node:fs';
-import { tmpdir } from 'node:os';
-import { dirname, join, resolve, sep } from 'node:path';
+import { existsSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, isAbsolute, join, resolve, sep } from 'node:path';
 import { findWorktreeProcesses, ProbeError } from './leftovers.ts';
 import {
   defaultRunner,
@@ -76,6 +69,8 @@ export interface WorktreeEntry {
   branch: string | undefined;
   detached: boolean;
   bare: boolean;
+  /** Git reports the worktree locked (`git worktree lock`), with or without a reason. */
+  locked: boolean;
 }
 
 /**
@@ -95,12 +90,14 @@ export function parseWorktreeList(text: string): WorktreeEntry[] {
           branch: undefined,
           detached: false,
           bare: false,
+          locked: false,
         };
       } else if (entry !== undefined) {
         if (line.startsWith('HEAD ')) entry.head = line.slice('HEAD '.length);
         else if (line.startsWith('branch ')) entry.branch = line.slice('branch '.length);
         else if (line === 'detached') entry.detached = true;
         else if (line === 'bare') entry.bare = true;
+        else if (line === 'locked' || line.startsWith('locked ')) entry.locked = true;
       }
     }
     if (entry !== undefined) entries.push(entry);
@@ -117,8 +114,6 @@ export interface WorktreeDependencies {
   runner: Runner;
   /** The main checkout where branch and worktree commands run; resolved from Git when absent. */
   checkout?: string;
-  /** Where `worktree-scope.ts` lives. */
-  scriptDirectory: string;
 }
 
 function resolveDependencies(
@@ -128,7 +123,6 @@ function resolveDependencies(
   return {
     runner,
     checkout: partial.checkout ?? resolveMainCheckout(runner),
-    scriptDirectory: partial.scriptDirectory ?? import.meta.dir,
   };
 }
 
@@ -174,8 +168,6 @@ export interface CreateOptions {
   branch: string;
   base?: string | undefined;
   installLog?: string | undefined;
-  scopePaths?: string[] | undefined;
-  scopeOutput?: string | undefined;
 }
 
 export interface CreateResult {
@@ -183,7 +175,6 @@ export interface CreateResult {
   head: string;
   installCode: number;
   installLog: string;
-  captureId: string | undefined;
 }
 
 /** Create a worktree; throws `Refusal` for a refused or failed step, `UsageError` for bad input. */
@@ -191,13 +182,11 @@ export function createWorktree(
   options: CreateOptions,
   partial: Partial<WorktreeDependencies> = {},
 ): CreateResult {
-  const { runner, scriptDirectory, checkout } = resolveDependencies(partial);
+  const { runner, checkout } = resolveDependencies(partial);
   const config = loadRepositoryConfig(options.configPath);
   const root = providerRoot(config, options.provider);
   const name = validateName(options.name, 'name', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
   const branch = validateName(options.branch, 'branch', /^[A-Za-z0-9][A-Za-z0-9._/-]*$/);
-  if ((options.scopePaths === undefined) !== (options.scopeOutput === undefined))
-    throw new UsageError('--scope-paths and --scope-output go together.');
   const base = options.base ?? `origin/${config.defaultBranch}`;
   const path = join(root, name);
   // Main-branch ownership preflight: a new worktree never gets the default branch.
@@ -255,32 +244,7 @@ export function createWorktree(
     { cwd: path },
   );
 
-  let captureId: string | undefined;
-  if (options.scopePaths !== undefined && options.scopeOutput !== undefined) {
-    const temporary = mkdtempSync(join(tmpdir(), 'worktree-scope-'));
-    try {
-      const configuration = join(temporary, 'configuration.json');
-      writeFileSync(configuration, JSON.stringify({ root: path, paths: options.scopePaths }));
-      const capture = runner([
-        'bun',
-        join(scriptDirectory, 'worktree-scope.ts'),
-        'capture',
-        '--configuration',
-        configuration,
-        '--output',
-        options.scopeOutput,
-      ]);
-      if (capture.code !== 0) throw failure('worktree-scope capture', capture);
-      try {
-        captureId = (JSON.parse(capture.stdout) as { captureId?: string }).captureId;
-      } catch {
-        throw new Refusal('worktree-scope capture printed output that is not JSON.');
-      }
-    } finally {
-      rmSync(temporary, { recursive: true, force: true });
-    }
-  }
-  return { path, head, installCode: install.code, installLog, captureId };
+  return { path, head, installCode: install.code, installLog };
 }
 
 export interface RemoveOptions {
@@ -350,19 +314,37 @@ export function removeWorktree(
   const { runner, checkout } = resolveDependencies(partial);
   const config = loadRepositoryConfig(options.configPath);
   const root = providerRoot(config, options.provider);
-  const name = validateName(options.name, 'name', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-  const path = join(root, name);
+  const agentRoot = join(checkout, '.claude', 'worktrees');
 
   const listing = git(runner, checkout, 'worktree', 'list', '--porcelain');
   if (listing.code !== 0) throw failure('git worktree list', listing);
-  const resolvedPath = realpath(path);
-  const entry = parseWorktreeList(listing.stdout).find(
-    (item) => realpath(item.path) === resolvedPath,
-  );
-  const reasons: string[] = [];
-  if (entry === undefined || !isUnder(root, resolvedPath)) {
-    throw new Refusal(`${path} is not a worktree under the ${options.provider} root ${root}.`);
+  const entries = parseWorktreeList(listing.stdout);
+  // A name is looked up under the provider's root, then under the Agent tool's directory; an
+  // absolute path is taken as given. Either way it must be a registered worktree under one of them.
+  const candidates = isAbsolute(options.name)
+    ? [options.name]
+    : (() => {
+        const name = validateName(options.name, 'name', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
+        return [join(root, name), join(agentRoot, name)];
+      })();
+  let path = candidates[0] ?? options.name;
+  let entry: WorktreeEntry | undefined;
+  for (const candidate of candidates) {
+    const listed = entries.find((item) => realpath(item.path) === realpath(candidate));
+    const resolved = realpath(candidate);
+    if (listed !== undefined && (isUnder(root, resolved) || isUnder(agentRoot, resolved))) {
+      path = candidate;
+      entry = listed;
+      break;
+    }
   }
+  const reasons: string[] = [];
+  if (entry === undefined) {
+    throw new Refusal(
+      `${path} is not a worktree under the ${options.provider} root ${root} or under ${agentRoot}.`,
+    );
+  }
+  if (entry.locked) reasons.push('Git reports it locked (git worktree unlock it first)');
   const branch = entry.branch?.replace(/^refs\/heads\//, '');
   if (branch === config.defaultBranch)
     reasons.push(`it has the default branch "${branch}" checked out`);
@@ -417,16 +399,7 @@ export function run(
   if (command !== 'create' && command !== 'remove')
     throw new UsageError('Usage: worktree.ts create|remove ...');
   const parsed = parseOptions(rest, {
-    values: [
-      'config',
-      'provider',
-      'name',
-      'branch',
-      'base',
-      'install-log',
-      'scope-paths',
-      'scope-output',
-    ],
+    values: ['config', 'provider', 'name', 'branch', 'base', 'install-log'],
     flags: ['keep-remote', 'retired', 'json'],
   });
   if (parsed.positionals.length > 0)
@@ -445,8 +418,6 @@ export function run(
           branch: requireOption(parsed, 'branch'),
           base: parsed.values['base'],
           installLog: parsed.values['install-log'],
-          scopePaths: parsed.values['scope-paths']?.split(',').filter((item) => item !== ''),
-          scopeOutput: parsed.values['scope-output'],
         },
         dependencies,
       );
@@ -458,7 +429,6 @@ export function run(
               `worktree: ${result.path}`,
               `head: ${result.head}`,
               `install: exit ${result.installCode} (log ${result.installLog})`,
-              ...(result.captureId === undefined ? [] : [`captureId: ${result.captureId}`]),
             ].join('\n'),
       };
     }

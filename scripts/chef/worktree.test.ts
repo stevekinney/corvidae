@@ -440,3 +440,79 @@ describe('removeWorktree delivery guard with a fake runner', () => {
     });
   });
 });
+
+describe('removeWorktree under the Agent tool directory and a locked worktree', () => {
+  const TIP = 'a'.repeat(40);
+  const CHECKOUT = '/home/dev/corvidae';
+  const agentPath = `${CHECKOUT}/.claude/worktrees/agent-1`;
+
+  function removal(
+    listed: string,
+    name: string,
+    locked: boolean,
+    body: (remove: () => { path: string }, calls: string[][]) => void,
+  ): void {
+    const calls: string[][] = [];
+    const runner: Runner = (command) => {
+      calls.push(command);
+      const [program, ...rest] = command;
+      if (program === 'lsof') return { code: 1, stdout: '', stderr: '' };
+      if (rest[0] === 'worktree' && rest[1] === 'list')
+        return {
+          code: 0,
+          stdout: `worktree ${listed}\nHEAD ${TIP}\nbranch refs/heads/feature/one\n${locked ? 'locked claude agent\n' : ''}\n`,
+          stderr: '',
+        };
+      if (rest[0] === 'rev-parse') return { code: 0, stdout: `${TIP}\n`, stderr: '' };
+      return { code: 0, stdout: '', stderr: '' };
+    };
+    withConfiguration((configPath) =>
+      body(
+        () =>
+          removeWorktree(
+            { configPath, provider: 'claude', name, keepRemote: true },
+            { runner, checkout: CHECKOUT },
+          ),
+        calls,
+      ),
+    );
+  }
+
+  const removed = (calls: string[][]) =>
+    calls.some((command) => command[1] === 'worktree' && command[2] === 'remove');
+
+  test('parseWorktreeList marks a locked worktree, with or without a reason', () => {
+    const entries = parseWorktreeList(
+      'worktree /a\nHEAD 1\nlocked\n\nworktree /b\nHEAD 2\nlocked because\n\nworktree /c\nHEAD 3\n\n',
+    );
+    expect(entries.map((entry) => entry.locked)).toEqual([true, true, false]);
+  });
+
+  test('removes a worktree the Agent tool made, by name', () => {
+    removal(agentPath, 'agent-1', false, (remove, calls) => {
+      expect(remove().path).toBe(agentPath);
+      expect(removed(calls)).toBe(true);
+    });
+  });
+
+  test('removes it by absolute path too', () => {
+    removal(agentPath, agentPath, false, (remove, calls) => {
+      expect(remove().path).toBe(agentPath);
+      expect(removed(calls)).toBe(true);
+    });
+  });
+
+  test('refuses a locked worktree and changes nothing', () => {
+    removal(agentPath, 'agent-1', true, (remove, calls) => {
+      expect(() => remove()).toThrow('locked');
+      expect(removed(calls)).toBe(false);
+    });
+  });
+
+  test('still refuses a path under neither root', () => {
+    removal('/elsewhere/agent-1', '/elsewhere/agent-1', false, (remove, calls) => {
+      expect(() => remove()).toThrow('is not a worktree under');
+      expect(removed(calls)).toBe(false);
+    });
+  });
+});

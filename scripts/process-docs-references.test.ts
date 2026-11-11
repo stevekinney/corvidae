@@ -26,6 +26,14 @@ const documentGlobs = [
  */
 const notPaths = new Map<string, string>([]);
 
+/** Documents that record deleted scripts by name; each needs a reason. */
+const historicalDocuments = new Map<string, string>([
+  [
+    'documentation/repository/chef-assessment.md',
+    'The assessment is the record of the scripts COR-2377 deleted.',
+  ],
+]);
+
 /** Every workspace directory, so a `scripts/...` path inside a workspace resolves there too. */
 const workspaceRoots = [
   ...workspaceParentDirectories.flatMap((parent) =>
@@ -178,6 +186,7 @@ describe('the process documents', () => {
     const missing: string[] = [];
     let checked = 0;
     for (const document of paths) {
+      if (historicalDocuments.has(document)) continue;
       const text = readFileSync(join(root, document), 'utf8');
       for (const path of scriptPathsIn(text)) {
         checked += 1;

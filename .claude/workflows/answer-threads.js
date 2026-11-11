@@ -23,7 +23,6 @@ const TRIAGE_SCHEMA = {
           line: { type: 'string' },
           body: { type: 'string' },
           triage: { type: 'string', enum: ['fix', 'decline', 'track'] },
-          shadowId: { type: 'string' },
         },
         required: ['id', 'triage'],
       },
@@ -63,10 +62,8 @@ log(`PR ${pr}: reading unresolved threads for round ${round}`);
 const triaged = await agent(
   [
     `Read the unresolved review threads of pull request ${pr} with \`bun scripts/chef/review-threads.ts list --pr ${pr} --unresolved --json\`, run from ${worktree}. Invoke no skills. Make no GitHub or Linear writes.`,
-    'For every thread, write evidence JSON under tmp/chef/ ({"path", "line", "author", "inDiff", "corIds", "body"}) and run ' +
-      '`bun scripts/chef/jev-predicates.ts shadow thread-triage --evidence-file <file> --json`. Shadow mode is measurement only: keep the id, and set "triage" to your own judgment, never from Jev.',
     'Triage: fix (a real defect in a line this pull request changed, or a one-way-door defect), decline (nit, out of scope, contrived, or contradicts a recorded decision), track (real but belongs to another issue).',
-    'Return every thread with id, path, line, body, triage, shadowId.',
+    'Return every thread with id, path, line, body, triage.',
   ].join('\n'),
   {
     label: `triage PR ${pr}`,

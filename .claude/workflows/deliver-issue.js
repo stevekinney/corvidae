@@ -13,31 +13,13 @@ export const meta = {
 // This workflow never merges. The coordinator moves each returned issue to In Review and runs
 // scripts/chef/deliver.ts in its main loop.
 
-const SHADOW_EVIDENCE_NOTE =
-  'Shadow predicates are measurement only: record the call, never change what you do because of it. ' +
-  'Write the evidence JSON under tmp/chef/, then run ' +
-  '`bun scripts/chef/jev-predicates.ts shadow <predicate> --evidence-file <file> --json` and keep the id it returns. ' +
-  'If the call fails or Jev is unavailable, continue and report no id.';
-
 const PREPARE_SCHEMA = {
   type: 'object',
   properties: {
     briefPath: { type: 'string' },
     blockers: { type: 'array', items: { type: 'string' } },
-    shadow: {
-      type: 'array',
-      items: {
-        type: 'object',
-        properties: {
-          predicate: { type: 'string' },
-          id: { type: 'string' },
-          decision: { type: 'string' },
-        },
-        required: ['predicate'],
-      },
-    },
   },
-  required: ['briefPath', 'blockers', 'shadow'],
+  required: ['briefPath', 'blockers'],
 };
 
 const IMPLEMENT_SCHEMA = {
@@ -72,12 +54,6 @@ const CORRECTION_SCHEMA = {
   required: ['status', 'head', 'report'],
 };
 
-const ESCALATE_SCHEMA = {
-  type: 'object',
-  properties: { id: { type: 'string' }, decision: { type: 'string' } },
-  required: [],
-};
-
 const NO_MERGE = 'Never merge the pull request and never run deliver.ts; the coordinator delivers.';
 
 function failure(issue, status, reason, extra) {
@@ -88,7 +64,6 @@ function failure(issue, status, reason, extra) {
     head: null,
     worktree: null,
     review: null,
-    shadowIds: [],
     reason,
     ...extra,
   };
@@ -96,14 +71,12 @@ function failure(issue, status, reason, extra) {
 
 function prepare(issue) {
   phase('prepare');
-  log(`${issue}: preparing brief and shadow predicates`);
+  log(`${issue}: preparing the brief`);
   return agent(
     [
       `Prepare chef delivery of ${issue}. Invoke no skills. Make no Linear or GitHub writes.`,
-      `1. Run \`bun scripts/chef/brief.ts ${issue} --json\`. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
-      '2. From the brief, write evidence JSON to tmp/chef/ for the shadow predicates `dispatch-plan` and `split-before-dispatch`: {"criteria": [...], "files": [...], "estimatedLines": <number>, "oneWayDoor": <true|false>}.',
-      `3. ${SHADOW_EVIDENCE_NOTE} Run it for both predicates.`,
-      'Return briefPath, blockers, and shadow as [{predicate, id, decision}].',
+      `Run \`bun scripts/chef/brief.ts ${issue} --json\`. The brief path is \`path\` in its output (tmp/chef/briefs/${issue}.md). Read the brief's open-blockers section and list each open blocker identifier in "blockers" (empty when it says None).`,
+      'Return briefPath and blockers.',
     ].join('\n'),
     {
       label: `prepare ${issue}`,
@@ -121,27 +94,21 @@ function review(issue, pr, head) {
   return agent(
     [
       `Review pull request ${pr} of ${issue} at head ${head}, against the diff of exactly that head (fetch the head if needed; check \`git rev-parse HEAD\` matches).`,
-      'First run the shadow predicate `review-tier`: write evidence {"files": <n>, "additions": <n>, "deletions": <n>, "oneWayDoor": <bool>, "paths": [...]} under tmp/chef/. ' +
-        SHADOW_EVIDENCE_NOTE,
-      'Then review per your charter and AGENTS.md "Review guidelines". Return verdict approve or blocked, the blocking findings, and the evidence path.',
+      'Review per your charter and AGENTS.md "Review guidelines". Return verdict approve or blocked, the blocking findings, and the evidence path.',
     ].join('\n'),
     { label: `review ${issue}`, phase: 'review', schema: VERDICT, agentType: 'chef-reviewer' },
   );
 }
 
 async function deliverOne(issue) {
-  const shadowIds = [];
   const prepared = await prepare(issue);
   if (prepared === null) {
     log(`${issue}: prepare failed`);
     return failure(issue, 'blocked', 'prepare failed', {});
   }
-  for (const entry of prepared.shadow) if (entry.id) shadowIds.push(entry.id);
   if (prepared.blockers.length > 0) {
     log(`${issue}: blocked by open blockers ${prepared.blockers.join(', ')}`);
-    return failure(issue, 'blocked', `open blockers: ${prepared.blockers.join(', ')}`, {
-      shadowIds,
-    });
+    return failure(issue, 'blocked', `open blockers: ${prepared.blockers.join(', ')}`, {});
   }
 
   phase('implement');
@@ -159,7 +126,7 @@ async function deliverOne(issue) {
   );
   if (built === null) {
     log(`${issue}: implementation failed`);
-    return failure(issue, 'blocked', 'implementation failed', { shadowIds });
+    return failure(issue, 'blocked', 'implementation failed', {});
   }
   if (built.status !== 'ready-for-review') {
     log(`${issue}: worker returned ${built.status}`);
@@ -167,7 +134,6 @@ async function deliverOne(issue) {
       pr: built.pr,
       head: built.head,
       worktree: built.worktree,
-      shadowIds,
     });
   }
 
@@ -179,7 +145,6 @@ async function deliverOne(issue) {
       pr: built.pr,
       head,
       worktree: built.worktree,
-      shadowIds,
     });
   }
   if (verdict.verdict === 'approve') {
@@ -191,27 +156,11 @@ async function deliverOne(issue) {
       head,
       worktree: built.worktree,
       review: verdict,
-      shadowIds,
     };
   }
 
   phase('correct');
-  log(`${issue}: blocked by review; one correction (shadow escalate first)`);
-  const escalation = await agent(
-    [
-      `Run the shadow predicate \`escalate\` for ${issue}. Write evidence {"corrections": 0, "lastFailure": ${JSON.stringify(verdict.findings.join(' | ').slice(0, 800))}} under tmp/chef/. ${SHADOW_EVIDENCE_NOTE}`,
-      'Return the id and decision.',
-    ].join('\n'),
-    {
-      label: `escalate ${issue}`,
-      phase: 'correct',
-      schema: ESCALATE_SCHEMA,
-      model: 'haiku',
-      effort: 'low',
-    },
-  );
-  if (escalation !== null && escalation.id) shadowIds.push(escalation.id);
-
+  log(`${issue}: blocked by review; one correction`);
   const fixed = await agent(
     [
       `cd into ${built.worktree}, the worktree of pull request ${built.pr}, and fix these blocking review findings, and only these:`,
@@ -232,7 +181,6 @@ async function deliverOne(issue) {
       head,
       worktree: built.worktree,
       review: verdict,
-      shadowIds,
     });
   }
   head = fixed.head;
@@ -244,7 +192,6 @@ async function deliverOne(issue) {
       head,
       worktree: built.worktree,
       review: verdict,
-      shadowIds,
     });
   }
   log(`${issue}: approved after one correction at ${head}`);
@@ -255,7 +202,6 @@ async function deliverOne(issue) {
     head,
     worktree: built.worktree,
     review: verdict,
-    shadowIds,
   };
 }
 

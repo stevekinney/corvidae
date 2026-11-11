@@ -2,7 +2,7 @@
 // Chef repository locations: where the current worktree and the main checkout are, asked of Git
 // rather than written into a configuration file, so the same scripts work for every teammate and
 // every worktree. The main checkout matters because a worktree's own `tmp/` and `.env` disappear
-// with the worktree, while the main checkout's survive: run notes, the Jev decision record and the
+// with the worktree, while the main checkout's survive: run notes and the
 // shared `.env` all live there.
 //
 // This module is a library; it has no command line.

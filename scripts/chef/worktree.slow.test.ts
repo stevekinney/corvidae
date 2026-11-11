@@ -105,7 +105,6 @@ scenarios.describe('createWorktree', () => {
     expect(readFileSync(result.installLog, 'utf8')).toContain('installed');
     expect(existsSync(join(result.path, 'installed.flag'))).toBe(true);
     expect(git(result.path, 'branch', '--show-current')).toBe('feature/alpha');
-    expect(result.captureId).toBeUndefined();
   });
 
   scenarios.scenario('never attaches the default branch', () => {
@@ -159,24 +158,13 @@ scenarios.describe('createWorktree', () => {
     expect(existsSync(log)).toBe(true);
   });
 
-  scenarios.scenario('captures a scope baseline when scope paths are given', () => {
-    const output = join(sandbox, 'scope.json');
-    const result = create('alpha', 'feature/alpha', { scopePaths: ['src'], scopeOutput: output });
-    expect(result.captureId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(JSON.parse(readFileSync(output, 'utf8')).captureId).toBe(result.captureId);
+  scenarios.scenario('a bad name or provider is a usage error', () => {
+    expect(() => create('../escape')).toThrow(UsageError);
+    expect(() => create('alpha', '--bad')).toThrow(UsageError);
+    expect(() =>
+      createWorktree({ configPath, provider: 'other', name: 'a', branch: 'b' }, { checkout }),
+    ).toThrow(UsageError);
   });
-
-  scenarios.scenario(
-    'scope paths and output must come together, and a bad name or provider is a usage error',
-    () => {
-      expect(() => create('alpha', 'feature/alpha', { scopePaths: ['src'] })).toThrow(UsageError);
-      expect(() => create('../escape')).toThrow(UsageError);
-      expect(() => create('alpha', '--bad')).toThrow(UsageError);
-      expect(() =>
-        createWorktree({ configPath, provider: 'other', name: 'a', branch: 'b' }, { checkout }),
-      ).toThrow(UsageError);
-    },
-  );
 
   scenarios.scenario('refuses an existing path and an existing branch', () => {
     create();

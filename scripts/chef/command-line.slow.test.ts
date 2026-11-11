@@ -1,5 +1,5 @@
 import { expect } from 'bun:test';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runWithHangGuard } from '../../testing/testing/src/hang-guard.ts';
@@ -41,11 +41,9 @@ async function invoke(
 for (const script of [
   'note.ts',
   'linear.ts',
-  'mutation-check.ts',
   'review-threads.ts',
   'transcript-usage.ts',
   'credentials.ts',
-  'jev.ts',
   'merge-gate.ts',
   'repository-config.ts',
   'worktree.ts',
@@ -91,27 +89,6 @@ scenarios.scenario('transcript-usage.ts exits 0 on a transcript directory', asyn
   const result = await invoke('transcript-usage.ts', [sandbox]);
   expect(result.exitCode).toBe(0);
   expect(result.stdout).toContain('Totals by provider and model:');
-});
-
-scenarios.scenario('mutation-check.ts exits 1 on a survivor and restores the file', async () => {
-  const source = 'export const x = 1;\n';
-  const target = join(sandbox, 'target.ts');
-  writeFileSync(target, source);
-  const result = await invoke('mutation-check.ts', [
-    '--file',
-    'target.ts',
-    '--from',
-    'x = 1',
-    '--to',
-    'x = 2',
-    '--command',
-    'true',
-    '--cwd',
-    sandbox,
-  ]);
-  expect(result.exitCode).toBe(1);
-  expect(result.stderr).toContain('SURVIVED');
-  expect(readFileSync(target, 'utf8')).toBe(source);
 });
 
 /**
@@ -193,30 +170,6 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
     expect(result['found']).toBe(true);
   });
 
-  scenarios.scenario('jev.ts decide', async () => {
-    const result = await expectJsonFailure(
-      invoke(
-        'jev.ts',
-        [
-          'decide',
-          '--question',
-          'Is this shared?',
-          '--state',
-          'A state.',
-          '--yes-no',
-          '--record',
-          join(sandbox, 'jev.jsonl'),
-          '--json',
-        ],
-        sandbox,
-        hermetic(),
-      ),
-      3,
-    );
-    expect(result['outcome']).toBe('unavailable');
-    expect(result['cleared']).toBe(false);
-  });
-
   scenarios.scenario('linear.ts read', async () => {
     const result = await expectJsonFailure(
       invoke('linear.ts', ['read', 'COR-1', '--json'], sandbox, {
@@ -249,27 +202,6 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
     );
     // The sandbox is not a Git repository, so the first step fails before any network call.
     expect(result['failedStep']).toBe('fetch');
-  });
-
-  scenarios.scenario('mutation-check.ts', async () => {
-    writeFileSync(join(sandbox, 'target.ts'), 'export const x = 1;\n');
-    const result = await expectJsonFailure(
-      invoke('mutation-check.ts', [
-        '--file',
-        'target.ts',
-        '--from',
-        'x = 1',
-        '--to',
-        'x = 2',
-        '--command',
-        'true',
-        '--cwd',
-        sandbox,
-        '--json',
-      ]),
-      1,
-    );
-    expect(result['ok']).toBe(false);
   });
 
   scenarios.scenario('note.ts row', async () => {
@@ -315,36 +247,6 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
     expect(result['ok']).toBe(false);
     expect(String(result['error'])).toContain('is not a worktree under the claude root');
   });
-});
-
-scenarios.describe('review-boundary.ts and worktree-scope.ts reject bad usage with exit 2', () => {
-  for (const script of ['review-boundary.ts', 'worktree-scope.ts']) {
-    scenarios.scenario(
-      `${script}: an unknown option, a boolean-looking flag and a missing option`,
-      async () => {
-        const output = join(sandbox, 'evidence.json');
-        const configuration = join(sandbox, 'configuration.json');
-        writeFileSync(
-          configuration,
-          JSON.stringify({ root: sandbox, directories: ['.'], exclusions: [], paths: ['.'] }),
-        );
-        const attempts = [
-          ['capture', '--configuration', configuration, '--output', output, '--bogus', 'x'],
-          ['capture', '--configuration', configuration, '--output', output, '--json'],
-          ['capture', '--configuration', configuration],
-          ['verify', '--configuration', configuration],
-          ['bogus'],
-        ];
-        for (const attempt of attempts) {
-          const result = await invoke(script, attempt);
-          expect(result.exitCode, `${script} ${attempt.join(' ')}`).toBe(2);
-          expect(result.stderr).toContain('usage error');
-        }
-        // None of them got far enough to write the evidence file.
-        expect(existsSync(output)).toBe(false);
-      },
-    );
-  }
 });
 
 await scenarios.settled();

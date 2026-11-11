@@ -13,7 +13,6 @@ import {
 import { run as runLinear } from './linear.ts';
 import { run as runNote } from './note.ts';
 import { run as runReviewThreads } from './review-threads.ts';
-import { parseCommandLine } from './worktree-scope.ts';
 
 const repositoryRoot = join(import.meta.dir, '../..');
 const skillFiles = [
@@ -30,14 +29,14 @@ const skillFiles = [
 ];
 
 const minimumInvocations: Record<string, number> = {
-  '.agents/skills/chef/references/coordination.md': 5,
-  '.agents/skills/chef/references/execution-record.md': 8,
+  '.agents/skills/chef/references/coordination.md': 4,
+  '.agents/skills/chef/references/execution-record.md': 7,
   '.agents/skills/chef/references/execution-report.md': 3,
   '.agents/skills/chef/references/linear-policy.md': 5,
   '.agents/skills/chef/references/planning-and-routing.md': 1,
   '.agents/skills/chef/references/program-runs.md': 6,
   '.agents/skills/chef/references/review-and-deliver.md': 8,
-  '.agents/skills/chef/SKILL.md': 10,
+  '.agents/skills/chef/SKILL.md': 9,
   '.agents/skills/create-project/SKILL.md': 3,
   '.agents/skills/create-task/SKILL.md': 4,
 };
@@ -48,7 +47,6 @@ describe('the spelling checker', () => {
     const list = statements.filter((statement) => statement.subcommand === 'list');
     expect(list.length).toBeGreaterThan(0);
     expect(list.some((statement) => statement.options.has('--pr'))).toBe(true);
-    expect(usageStatements('worktree-scope').some((s) => s.options.has('--capture'))).toBe(true);
   });
 
   test('accepts the spellings the scripts take', () => {
@@ -56,8 +54,6 @@ describe('the spelling checker', () => {
       'bun scripts/chef/review-threads.ts list --pr <n>',
       'bun scripts/chef/review-threads.ts list <owner/repo> <pr> --unresolved',
       'bun scripts/chef/review-threads.ts classes --pr <n>',
-      'bun scripts/chef/worktree-scope.ts verify --capture <json>',
-      'bun scripts/chef/worktree-scope.ts verify --configuration <json> --before <json>',
       'bun scripts/chef/linear.ts read <ID> --json',
       'bun scripts/chef/note.ts row <note> --key <k> --column <c> --value <v>',
       'scripts/chef/leftovers.ts',
@@ -68,10 +64,6 @@ describe('the spelling checker', () => {
 
   test('flags the spellings workers and coordinators guessed', () => {
     const guesses: [string, RegExp][] = [
-      [
-        'bun scripts/chef/worktree-scope.ts verify --worktree <dir> --baseline <json>',
-        /--worktree/,
-      ],
       ['bun scripts/chef/review-threads.ts list --repo <r> --pr <n>', /--repo/],
       ['bun scripts/chef/review-threads.ts show --pr <n>', /unknown subcommand show/],
       ['bun scripts/chef/linear.ts read <ID> --description', /--description/],
@@ -125,7 +117,6 @@ describe('Usage headers match the parsers of the scripts they document', () => {
       runReviewThreads([subcommand!, '--pr', '7', '--repository', 'a/b', ...argv], {
         runner: failingRunner,
       }),
-    'worktree-scope': (subcommand, argv) => parseCommandLine([subcommand!, ...argv]),
     note: (subcommand, argv) => runNote([subcommand!, 'note.md', ...argv]),
     linear: (subcommand, argv) => runLinear([subcommand!, 'COR-1', ...argv], noNetwork),
     brief: (_subcommand, argv) => runBrief(['COR-1', ...argv], noNetwork),

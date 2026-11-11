@@ -1,8 +1,8 @@
 // Chef command-spelling checker: finds every `bun scripts/chef/<script>.ts <arguments>` invocation
 // in prose (the charter rules in `brief.ts`, the chef skill's Markdown) and checks it against the
 // script's own `Usage:` header, which is each script's contract for the subcommands and options it
-// accepts. A guessed subcommand or option (`review-threads.ts list --repo x`, `worktree-scope.ts
-// verify --baseline x`) is reported instead of surviving until a worker types it.
+// accepts. A guessed subcommand or option (`review-threads.ts list --repo x`, `note.ts state
+// --capture x`) is reported instead of surviving until a worker types it.
 //
 // The checker reads only; it runs no script.
 
