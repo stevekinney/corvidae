@@ -11,6 +11,9 @@
  *   4. Wired to the session controller, a follow-up renders pending until the
  *      transport acknowledges it, and a rejection marks it failed with a retry
  *      that resends it.
+ *
+ * Since COR-2284 a follow-up typed during a run waits in the composer's Up next drawer until the
+ * run finishes, and only Send now instead hands it to `sendRunInput`; these tests take that path.
  */
 
 /// <reference lib="dom" />
@@ -72,6 +75,24 @@ async function submit(container: HTMLElement, text: string): Promise<void> {
   const composer = composerOf(container);
   await fireEvent.input(composer, { target: { value: text } });
   await fireEvent.keyDown(composer, { key: 'Enter' });
+  await tick();
+}
+
+function sendNowButton(container: HTMLElement): HTMLButtonElement | undefined {
+  return [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (button) => button.textContent?.trim() === 'Send now instead',
+  );
+}
+
+/**
+ * Submits a follow-up during a run and hands it to the run at once with Send now instead: a
+ * follow-up otherwise waits in the Up next drawer until the run finishes (COR-2284).
+ */
+async function submitNow(container: HTMLElement, text: string): Promise<void> {
+  await submit(container, text);
+  const sendNow = sendNowButton(container);
+  expect(sendNow).toBeDefined();
+  await fireEvent.click(sendNow!);
   await tick();
 }
 
@@ -156,7 +177,7 @@ describe('Chat follow-ups during a run', () => {
     const stop = container.querySelector<HTMLButtonElement>('button[aria-label="Stop generating"]');
     expect(stop).not.toBeNull();
 
-    await submit(container, 'one more thing');
+    await submitNow(container, 'one more thing');
 
     expect(runInput).toEqual([{ id: 'live', content: 'one more thing' }]);
     expect(sent).toEqual([]);
@@ -201,7 +222,7 @@ describe('Chat follow-ups during a run', () => {
       adapter,
     });
 
-    await submit(container, 'actually, hold on');
+    await submitNow(container, 'actually, hold on');
 
     expect(runInput).toEqual(['actually, hold on']);
     expect(sent).toEqual([]);
@@ -225,8 +246,8 @@ describe('Chat follow-ups during a run', () => {
       adapter,
     });
 
-    await submit(container, 'first');
-    await submit(container, 'second');
+    await submitNow(container, 'first');
+    await submitNow(container, 'second');
     await tick();
 
     // The first acknowledgement is slow, so the second has not been handed over.
@@ -254,13 +275,13 @@ describe('Chat follow-ups during a run', () => {
       streaming: true,
       adapter,
     });
-    await submit(rendered.container, 'stuck');
-    await submit(rendered.container, 'behind it');
+    await submitNow(rendered.container, 'stuck');
+    await submitNow(rendered.container, 'behind it');
     expect(seen).toEqual(['stuck']);
 
     await rendered.rerender({ conversation: createConversationHistory({ id: 'after' }) });
     await tick();
-    await submit(rendered.container, 'fresh');
+    await submitNow(rendered.container, 'fresh');
     // load-proof: Svelte effects, event handlers and promise continuations settle in the microtask queue, so this turn only drains them and awaits no timer or IO
     await new Promise<void>((resolve) => setTimeout(resolve, 0));
 
@@ -354,7 +375,7 @@ describe('Chat follow-ups wired to the session controller', () => {
     await settle();
     expect(composerOf(rendered.container).disabled).toBe(false);
 
-    await submit(rendered.container, 'a follow-up');
+    await submitNow(rendered.container, 'a follow-up');
     await settle();
 
     expect(rendered.container.textContent).toContain('a follow-up');
@@ -387,8 +408,8 @@ describe('Chat follow-ups wired to the session controller', () => {
     await settle();
 
     expect(controller.adapter.ordersRunInput).toBe(true);
-    await submit(rendered.container, 'first');
-    await submit(rendered.container, 'second');
+    await submitNow(rendered.container, 'first');
+    await submitNow(rendered.container, 'second');
     await settle();
 
     // The controller orders its own input, so Chat does not hold the second
@@ -414,7 +435,7 @@ describe('Chat follow-ups wired to the session controller', () => {
     const run = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
     await settle();
 
-    await submit(rendered.container, 'try this');
+    await submitNow(rendered.container, 'try this');
     await settle();
 
     expect(adaptersErrors).toHaveLength(1);
@@ -498,7 +519,7 @@ describe('Chat Remove on a queued follow-up (B06, row 18k)', () => {
     const run = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
     await settle();
 
-    await submit(rendered.container, 'Then look up order 4476.');
+    await submitNow(rendered.container, 'Then look up order 4476.');
     await settle();
 
     expect(queuedRow(rendered.container)?.textContent).toContain(
@@ -520,7 +541,7 @@ describe('Chat Remove on a queued follow-up (B06, row 18k)', () => {
     );
     const run = controller.adapter.sendMessage({ role: 'user', content: 'start' }, []);
     await settle();
-    await submit(rendered.container, 'Then look up order 4476.');
+    await submitNow(rendered.container, 'Then look up order 4476.');
     await settle();
 
     controller.markFollowUpsDelivered([conversation().ids.at(-1)!]);

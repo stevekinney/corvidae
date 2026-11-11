@@ -22,6 +22,11 @@
     value?: string;
     /** Placeholder text */
     placeholder?: string | undefined;
+    /**
+     * The placeholder while a run is working and the composer takes follow-ups (`sending` with
+     * `allowFollowUp`), where what is typed waits for the run. Default `Add another follow-up…`.
+     */
+    followUpPlaceholder?: string | undefined;
     /** Accessible label passed to the inner message editor */
     composerLabel?: string;
     /** Explicit role for the inner message editor, for overlay patterns such as ARIA comboboxes. */
@@ -60,8 +65,8 @@
      */
     allowFollowUp?: boolean;
     /**
-     * Whether anything sent now waits behind a decision, such as a tool approval. While a draft is
-     * present, Send reads Queue with the queue icon. Default `false`.
+     * Whether anything sent now waits, behind a decision such as a tool approval or for a run to
+     * finish. While a draft is present, Send reads Queue with the queue icon. Default `false`.
      */
     queueing?: boolean;
     /** Error message to display */
@@ -145,7 +150,9 @@
     /**
      * The line under the composer (a reconnect, queued follow-ups, a note of the host's own), or,
      * with `kind: 'blocked'`, the whole composer: sending is not possible, so one compact row says
-     * why in place of the text box and the controls.
+     * why in place of the text box and the controls. `offline` and `draft-restored` are drawers
+     * above the composer: offline keeps the draft and turns Send off, naming the drawer as the
+     * reason; a restored draft says when it is from, with Discard draft.
      */
     status?: ChatComposerStatus | undefined;
     /**
@@ -211,6 +218,7 @@
     Bold,
     Button,
     Code,
+    Info,
     Italic,
     LinkIcon,
     List,
@@ -220,6 +228,7 @@
     Square,
     Tooltip,
     TriangleAlert,
+    WifiOff,
     X,
   } from '@lostgradient/cinder';
   import {
@@ -228,7 +237,16 @@
     highlightComposerMarkdown,
   } from './composer-markdown.ts';
   import { COMPOSER_FOLD_WIDTH } from './composer-controls.ts';
-  import { composerStatusText } from './composer-status.ts';
+  import {
+    COMPOSER_DISCARD_DRAFT_LABEL,
+    composerStatusText,
+    isComposerDrawerStatus,
+  } from './composer-status.ts';
+  import {
+    COMPOSER_FOLLOW_UP_PLACEHOLDER,
+    COMPOSER_RUNNING_LABEL,
+    formatRunElapsed,
+  } from './composer-run-clock.ts';
   import { deriveAttachmentKind } from './attachment-kind.ts';
   import ChatAttachmentPreview from './chat-attachment-preview.svelte';
 
@@ -259,6 +277,7 @@
     id,
     value = $bindable(''),
     placeholder = 'Type a message...',
+    followUpPlaceholder = COMPOSER_FOLLOW_UP_PLACEHOLDER,
     composerLabel = 'Message',
     composerRole,
     composerAriaExpanded,
@@ -324,6 +343,10 @@
 
   const markdownSegments = $derived(markdownStyling ? highlightComposerMarkdown(value) : []);
   const statusText = $derived(status ? composerStatusText(status) : undefined);
+  /** A status drawn as a drawer above the composer (offline, a restored draft), not the line. */
+  const drawerStatus = $derived(isComposerDrawerStatus(status) ? status : undefined);
+  /** The browser has no connection: the draft stays, and Send waits for it to come back. */
+  const offline = $derived(status?.kind === 'offline');
   const toolbarContext: ChatComposerToolbarContext = { format: applyFormat };
   let markdownBackdrop = $state<HTMLDivElement | null>(null);
 
@@ -339,6 +362,32 @@
   });
 
   const showSendingSpinner = $derived((sending && !allowFollowUp) || starting !== undefined);
+  // While a run works and the composer takes follow-ups, the placeholder says what typing does now.
+  const resolvedPlaceholder = $derived(
+    sending && allowFollowUp && !answering && starting === undefined
+      ? followUpPlaceholder
+      : placeholder,
+  );
+
+  // The run toolbar's clock: how long the run has been working, from when `sending` turned on.
+  let runStartedAt = $state<number | undefined>(undefined);
+  let runNow = $state(0);
+  $effect(() => {
+    if (!sending || starting !== undefined) {
+      runStartedAt = undefined;
+      return undefined;
+    }
+    const startedAt = Date.now();
+    runStartedAt = startedAt;
+    runNow = startedAt;
+    const timer = setInterval(() => {
+      runNow = Date.now();
+    }, 1000);
+    return () => clearInterval(timer);
+  });
+  const runElapsed = $derived(
+    runStartedAt === undefined ? undefined : formatRunElapsed(runNow - runStartedAt),
+  );
   const sendBlocked = $derived((sending && !allowFollowUp) || starting !== undefined);
   // Names the key the composer's `submitOn` actually listens for, so a
   // modifier-enter composer never announces a bare Enter.
@@ -452,6 +501,7 @@
   const errorId = $derived(`${id}-error`);
   const shortcutDescriptionId = $derived(`${id}-shortcut-description`);
   const pausedReasonId = $derived(`${id}-paused-reason`);
+  const drawerId = $derived(`${id}-drawer`);
   /** The reason Send is off, while the host has paused the composer and said why. */
   const shownPausedReason = $derived(paused && pausedReason ? pausedReason : undefined);
   const isWhitespaceOnly = $derived(value.trim().length === 0);
@@ -475,6 +525,7 @@
     (!isWhitespaceOnly || hasReadyAttachments || hasReadyPromotedPaste) &&
       !disabled &&
       !paused &&
+      !offline &&
       !sendBlocked &&
       !hasPendingAttachments,
   );
@@ -482,6 +533,7 @@
   const queued = $derived(queueing && !answering && canSubmit);
   const sendTooltipText = $derived.by(() => {
     if (starting !== undefined) return starting;
+    if (offline) return 'Send comes back when you reconnect';
     if (hasPendingAttachments) return 'Wait for attachments';
     if (showStopButton) return 'Stop generating';
     if (isWhitespaceOnly && !hasReadyAttachments && !hasReadyPromotedPaste) {
@@ -545,6 +597,23 @@
     return 'Enter to send · Shift and Enter for a new line';
   });
   const blocked = $derived(status?.kind === 'blocked' ? status : undefined);
+  // Send is filled with the accent only while it would send: an empty or held composer leaves it
+  // outlined and quiet, and Stop stays outlined.
+  const sendVariant = $derived<'primary' | 'secondary'>(
+    !showStopButton && canSubmit ? 'primary' : 'secondary',
+  );
+  /** What Send's `aria-describedby` names besides the shortcut description: each visible reason. */
+  const sendReasonIds = $derived([
+    ...(offline ? [drawerId] : []),
+    ...(shownPausedReason === undefined ? [] : [pausedReasonId]),
+  ]);
+
+  function discardRestoredDraft(): void {
+    const restored = status?.kind === 'draft-restored' ? status : undefined;
+    clear();
+    editorElement?.focus();
+    restored?.ondiscard?.();
+  }
 
   // Determine if we're in form action mode
   const isFormActionMode = $derived(!!action);
@@ -1293,10 +1362,39 @@
       {/if}
     </div>
   {:else}
+    {#if drawerStatus !== undefined}
+      <!-- A drawer above the box: it pushes the transcript up and leaves the composer's bottom
+           edge where it was. -->
+      <div
+        id={drawerId}
+        class="chat-input-drawer"
+        data-chat-composer-drawer={drawerStatus.kind}
+        role="group"
+        aria-label={drawerStatus.kind === 'offline' ? 'Offline' : 'Draft restored'}
+      >
+        {#if drawerStatus.kind === 'offline'}
+          <WifiOff class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
+        {:else}
+          <Info class="chat-input-drawer-glyph cinder-icon-sm" aria-hidden="true" />
+        {/if}
+        <p class="chat-input-drawer-text" dir="auto">{statusText}</p>
+        {#if drawerStatus.kind === 'draft-restored'}
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            class="chat-input-drawer-action"
+            label={COMPOSER_DISCARD_DRAFT_LABEL}
+            onclick={discardRestoredDraft}
+          />
+        {/if}
+      </div>
+    {/if}
     <form
       bind:this={formElement}
       class={classNames('chat-input', isDragOver && 'chat-input-dragover', className)}
       data-compact={compact || undefined}
+      data-ready={(canSubmit && !showStopButton) || undefined}
       method="POST"
       {action}
       onsubmit={handleSubmit}
@@ -1371,7 +1469,7 @@
           onselect={oncomposerselectionchange}
           onblur={oncomposerblur}
           onscroll={syncBackdropScroll}
-          {placeholder}
+          placeholder={resolvedPlaceholder}
           role={composerRole}
           aria-label={resolvedComposerLabel}
           aria-expanded={composerAriaExpanded}
@@ -1459,6 +1557,15 @@
             {@render controls(controlsContext)}
           {/if}
 
+          {#if runElapsed !== undefined}
+            <!-- The run toolbar: the word and the clock are their own elements, never joined by a
+                 separator glyph. -->
+            <span class="chat-input-running" data-chat-running="">
+              <span class="chat-input-running-label">{COMPOSER_RUNNING_LABEL}</span>
+              <span class="chat-input-running-time">{runElapsed}</span>
+            </span>
+          {/if}
+
           <!-- Visually hidden shortcut description: always in the accessibility tree even when hint is container-queried away -->
           <span id={shortcutDescriptionId} class="cinder-sr-only">
             {#if showStopButton && !allowFollowUp}
@@ -1514,7 +1621,7 @@
           <!-- One Send/Stop/Answer button stays mounted, so focus is never dropped as the run starts and ends. -->
           <Button
             type={showStopButton ? 'button' : 'submit'}
-            variant="secondary"
+            variant={sendVariant}
             size="sm"
             class="chat-input-send"
             data-chat-send=""
@@ -1523,9 +1630,7 @@
             disabled={showStopButton ? false : !canSubmit}
             label={showStopButton ? 'Stop' : sendLabel}
             aria-label={sendAccessibleName}
-            aria-describedby={shownPausedReason === undefined
-              ? shortcutDescriptionId
-              : `${shortcutDescriptionId} ${pausedReasonId}`}
+            aria-describedby={[shortcutDescriptionId, ...sendReasonIds].join(' ')}
             onclick={handleSendButtonClick}
           >
             {#snippet leadingIcon()}
@@ -1578,7 +1683,7 @@
     </form>
   {/if}
   {#if blocked === undefined}
-    {#if statusText}
+    {#if statusText && drawerStatus === undefined}
       <p class="chat-input-status" data-chat-composer-status={status?.kind}>{statusText}</p>
     {:else if hintText !== undefined}
       <p class="chat-input-hint" aria-hidden="true">{hintText}</p>
@@ -1625,6 +1730,66 @@
 
   .chat-input:focus-within {
     border-color: var(--cinder-accent-solid);
+  }
+
+  /* Ready to send: the accent border with a 3 px ring around it, and Send filled with the accent. */
+  .chat-input[data-ready] {
+    border-color: var(--cinder-accent-solid);
+    box-shadow: 0 0 0 3px color-mix(in oklch, var(--cinder-accent-solid) 25%, transparent);
+  }
+
+  /* A drawer above the box (offline, a restored draft): it takes its height from the transcript
+   * above, so the composer's bottom edge stays where it was. */
+  .chat-input-drawer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-lg);
+    background: var(--cinder-surface-raised);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-sm);
+  }
+
+  .chat-input-drawer[data-chat-composer-drawer='offline'] {
+    border-color: var(--cinder-status-warning-border);
+    background: var(--cinder-status-warning-background);
+    color: var(--cinder-status-warning-text);
+  }
+
+  .chat-input-drawer :global(.chat-input-drawer-glyph) {
+    flex: none;
+  }
+
+  .chat-input-drawer-text {
+    flex: 1 1 14rem;
+    min-inline-size: 0;
+    margin: 0;
+    line-height: var(--cinder-leading-snug);
+    text-align: start;
+  }
+
+  @media (pointer: coarse) {
+    .chat-input-drawer :global(.chat-input-drawer-action) {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  /* The run toolbar: Running and the clock, each its own element, in muted text. */
+  .chat-input-running {
+    display: inline-flex;
+    flex: none;
+    align-items: baseline;
+    gap: var(--cinder-space-1-5);
+    font-size: var(--cinder-text-xs);
+    color: var(--cinder-text-muted);
+    white-space: nowrap;
+  }
+
+  .chat-input-running-time {
+    font-variant-numeric: tabular-nums;
   }
 
   .chat-input-dragover {
@@ -2033,6 +2198,18 @@
    * Cinder's own quiet look; Stop keeps a faint danger border so it reads as the one way out. */
   .chat-input-footer-right :global(.chat-input-send[data-stop]) {
     border-color: var(--cinder-status-danger-border);
+  }
+
+  /* Stop is outlined, with a filled square beside its word. */
+  .chat-input-footer-right :global(.chat-input-send[data-stop] svg) {
+    fill: currentColor;
+  }
+
+  /* An empty composer's Send is outlined and muted, with no grey fill. */
+  .chat-input-footer-right :global(.chat-input-send:disabled) {
+    border-color: var(--cinder-control-border);
+    background: transparent;
+    color: var(--cinder-text-muted);
   }
 
   /* On a phone-width composer, and wherever the primary pointer is a finger, the footer's controls

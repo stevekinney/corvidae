@@ -6,8 +6,8 @@
  *      line, and one blank line precedes the typed text.
  *   2. A long quote is cut to 3,999 characters plus an ellipsis.
  *   3. The content goes through `ChatAdapter.sendMessage`, through
- *      `sendRunInput` while a run is active, and through `onSubmit` with no
- *      adapter.
+ *      `sendRunInput` when Send now instead hands a follow-up to the active
+ *      run, and through `onSubmit` with no adapter.
  *   4. A successful send clears the chips; a failed one keeps them.
  *   5. A quote added while a send is in flight survives that send's success.
  *   6. A reply without quotes is sent exactly as typed.
@@ -83,6 +83,19 @@ async function send(container: HTMLElement, text: string): Promise<void> {
   const composer = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
   await fireEvent.input(composer, { target: { value: text } });
   await fireEvent.keyDown(composer, { key: 'Enter' });
+  await tick();
+}
+
+/**
+ * Hands the follow-ups waiting in the Up next drawer to the running run. A message sent during a
+ * run waits there until the run finishes, unless Send now instead is used (COR-2284).
+ */
+async function sendNow(container: HTMLElement): Promise<void> {
+  const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
+    (candidate) => candidate.textContent?.trim() === 'Send now instead',
+  );
+  expect(button).toBeDefined();
+  await fireEvent.click(button!);
   await tick();
 }
 
@@ -290,6 +303,7 @@ describe('Chat sending quoted excerpts', () => {
     await quote(container, 0);
 
     await send(container, 'Actually, wait');
+    await sendNow(container);
     await settle();
 
     expect(sent).toEqual([]);
@@ -316,6 +330,7 @@ describe('Chat sending quoted excerpts', () => {
     await quote(container, 0);
 
     await send(container, 'Actually, wait');
+    await sendNow(container);
     await settle();
 
     expect(quoteChips(container)).toHaveLength(1);
@@ -372,6 +387,7 @@ describe('Chat sending quoted excerpts', () => {
     expect(quoteChips(container)).toHaveLength(0);
 
     await send(container, 'Shorter, please.');
+    await sendNow(container);
     await settle();
     endRun();
     await settle();

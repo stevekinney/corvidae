@@ -20,6 +20,11 @@ export interface ChatComposerBlockedAction {
  * - `note`: a sentence of the host's own, such as when a changed setting applies.
  * - `reconnecting`: the transport lost the run's stream and is trying again.
  * - `queued`: follow-ups the user sent are waiting for the run to take them.
+ * - `offline`: the browser has no connection. A warning drawer above the composer says the draft is
+ *   kept, and Send is off (and names the drawer through `aria-describedby`) until it clears.
+ * - `draft-restored`: the host put back a draft the person had not sent. A neutral drawer above the
+ *   composer says when it is from, with Discard draft, which empties the composer and calls
+ *   `ondiscard`.
  * - `blocked`: sending is not possible, so the composer is replaced by one compact row that says
  *   why, with an optional button and an optional quiet link beside it. There is no text box.
  */
@@ -29,6 +34,14 @@ export type ChatComposerStatus =
   | { kind: 'note'; text: string }
   | { kind: 'reconnecting'; attempt: number }
   | { kind: 'queued'; count?: number }
+  | { kind: 'offline' }
+  | {
+      kind: 'draft-restored';
+      /** When the draft was written, in words, such as `yesterday at 4:12 PM`. */
+      when: string;
+      /** Called after Discard draft has emptied the composer, so the host can forget the draft. */
+      ondiscard?: (() => void) | undefined;
+    }
   | {
       kind: 'blocked';
       /** Why the composer is replaced, in a sentence: `Connect a model provider to chat`. */
@@ -39,9 +52,25 @@ export type ChatComposerStatus =
       link?: ChatComposerBlockedAction | undefined;
     };
 
-/** The words the status line shows for a status. */
+/** What the offline drawer says: the draft is kept, and Send comes back with the connection. */
+export const COMPOSER_OFFLINE_TEXT =
+  "You're offline. Your draft is saved here, and Send comes back when you reconnect.";
+
+/** The action of the draft-restored drawer: it empties the composer. */
+export const COMPOSER_DISCARD_DRAFT_LABEL = 'Discard draft';
+
+/** Whether a status is drawn as a drawer above the composer rather than the line under it. */
+export function isComposerDrawerStatus(
+  status: ChatComposerStatus | undefined,
+): status is Extract<ChatComposerStatus, { kind: 'offline' | 'draft-restored' }> {
+  return status?.kind === 'offline' || status?.kind === 'draft-restored';
+}
+
+/** The words a status shows: on the line under the composer, or in its drawer. */
 export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'blocked') return status.reason;
+  if (status.kind === 'offline') return COMPOSER_OFFLINE_TEXT;
+  if (status.kind === 'draft-restored') return `Restored your unsent draft from ${status.when}.`;
   if (status.kind === 'steering') return 'A message now steers the run.';
   if (status.kind === 'note') return status.text;
   if (status.kind === 'waiting') {

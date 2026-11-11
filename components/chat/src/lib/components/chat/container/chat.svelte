@@ -51,6 +51,10 @@
   import { useChatSearch } from './use-chat-search.svelte.ts';
   import { useIntersection } from '../../../utilities/use-intersection.svelte.ts';
   import ChatApprovalDrawer from './chat-approval-drawer.svelte';
+  import ChatFollowUpDiscardDrawer from './chat-follow-up-discard-drawer.svelte';
+  import ChatFollowUpDrawer from './chat-follow-up-drawer.svelte';
+  import { appendToDraft, followUpText, type QueuedFollowUp } from './chat-follow-up-queue.ts';
+  import { useChatFollowUpQueue } from './use-chat-follow-up-queue.svelte.ts';
   import { useChatApprovalWait } from './use-chat-approval-wait.svelte.ts';
   import { focusPendingApproval } from './chat-approval-review.ts';
   import ChatJumpControls from './chat-jump-controls.svelte';
@@ -1272,7 +1276,7 @@
     }
     const carried = quotes.quotes;
     if (carried.length === 0) {
-      handleSubmit(message, attachments);
+      submitOrQueue(message, attachments);
       return;
     }
     const content = composeQuotedContent(
@@ -1281,7 +1285,7 @@
     );
     const origin = conversationId;
     quotes.removeAll(carried.map((quote) => quote.id));
-    handleSubmit({ ...message, content }, attachments, (succeeded) => {
+    submitOrQueue({ ...message, content }, attachments, (succeeded) => {
       // Quotes belong to the conversation they were taken from, and are not
       // brought back once the host has turned quoting off.
       if (succeeded || conversationId !== origin || !allowQuote) return;
@@ -1322,6 +1326,61 @@
     getApprovalStates: () => commandActions.approvalStates,
   });
   const approvalWaiting = $derived(approvalWait.waiting && composerStatus?.kind !== 'blocked');
+
+  // Follow-ups typed while a run works wait in the Up next drawer, on this page, until the run
+  // finishes; only Send now instead hands them to the run as live input (owner decision, COR-2289).
+  const followUps = useChatFollowUpQueue({
+    isEnabled: () => followUpsEnabled && !composerCompact,
+    isRunActive: () => composerSending || approvalWaiting,
+    getConversationIdentity: () => conversationId,
+    submit: (message, attachments, onOutcome) => handleSubmit(message, attachments, onOutcome),
+  });
+
+  /** Sends the composed message now, or holds it in the Up next drawer while a run works. */
+  function submitOrQueue(
+    message: MessageInput,
+    attachments: ChatAttachment[],
+    onOutcome?: (succeeded: boolean) => void,
+  ): void {
+    if (followUps.holding) {
+      followUps.enqueue(message, attachments, onOutcome);
+      announcements.announce('Follow-up queued. It sends when this run finishes.');
+      return;
+    }
+    handleSubmit(message, attachments, onOutcome);
+  }
+
+  /** Stopping the run sets the waiting follow-ups aside, so they are not sent behind it. */
+  function stopGenerating(): void {
+    followUps.discard('stopped');
+    handleStopGenerating();
+  }
+
+  /** Puts follow-ups back in the composer: their words after the draft, their files attached. */
+  function returnToComposer(items: readonly QueuedFollowUp[]): void {
+    if (items.length === 0 || inputRef === undefined) return;
+    const draft = inputRef.getValue();
+    const next = appendToDraft(draft, items.map(followUpText));
+    if (next !== draft) inputRef.insertAtRange({ start: 0, end: draft.length }, next);
+    const files = items.flatMap((item) => item.attachments.map((attachment) => attachment.file));
+    if (files.length > 0) inputRef.addFiles(files);
+    inputRef.focus();
+  }
+
+  function editQueuedFollowUp(followUpId: string): void {
+    const followUp = followUps.take(followUpId);
+    if (followUp !== undefined) returnToComposer([followUp]);
+  }
+
+  function removeQueuedFollowUp(followUpId: string): void {
+    if (followUps.take(followUpId) === undefined) return;
+    announcements.announce('Queued follow-up removed');
+    if (followUps.items.length === 0) inputRef?.focus();
+  }
+
+  function restoreDiscardedFollowUps(): void {
+    returnToComposer(followUps.restore());
+  }
 
   /** Takes the person to the approval that waits: scrolls to it, then focuses its card. */
   async function reviewPendingApproval(): Promise<void> {
@@ -2160,6 +2219,23 @@
         {#if approvalWaiting}
           <ChatApprovalDrawer onreview={reviewPendingApproval} />
         {/if}
+        {#if followUps.discarded !== undefined}
+          <ChatFollowUpDiscardDrawer
+            discarded={followUps.discarded}
+            onrestore={restoreDiscardedFollowUps}
+            ondismiss={followUps.dismiss}
+          />
+        {/if}
+        {#if followUps.items.length > 0}
+          <ChatFollowUpDrawer
+            id={inputId}
+            items={followUps.items}
+            canSendNow={followUps.canSendNow}
+            onsendnow={followUps.sendNow}
+            onedit={editQueuedFollowUp}
+            onremove={removeQueuedFollowUp}
+          />
+        {/if}
         <ChatInput
           id={inputId}
           bind:this={inputRef}
@@ -2176,7 +2252,7 @@
           starting={composerStarting}
           clearOnSubmit={clearComposerOnSubmit}
           allowFollowUp={followUpsEnabled && !composerCompact}
-          queueing={approvalWaiting}
+          queueing={approvalWaiting || followUps.holding}
           compact={composerCompact}
           actions={composerActions}
           toolbar={composerToolbar}
@@ -2184,7 +2260,7 @@
           markdownStyling={composerMarkdownStyling}
           status={resolvedComposerStatus}
           {allowAttachments}
-          onstop={composerSending ? handleStopGenerating : undefined}
+          onstop={composerSending ? stopGenerating : undefined}
           {onComposerInput}
           {oncomposerkeydown}
           {oncomposerselectionchange}
