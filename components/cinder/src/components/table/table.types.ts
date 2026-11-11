@@ -107,6 +107,11 @@ export type TableProps = Omit<HTMLTableAttributes, 'class'> & {
    */
   scrollable?: boolean;
   /**
+   * Draw no outline, radius or fill around the table, for a queue or list that sits on the page.
+   * Rows keep their hairlines. @default false
+   */
+  frameless?: boolean;
+  /**
    * Fits the table to its container's width so a long value never makes it scroll sideways. The
    * columns share the width (a fixed table layout: set a column's width on its header cell or a
    * `<col>`), a `truncate` cell ends its text with an ellipsis at its column's width with the full

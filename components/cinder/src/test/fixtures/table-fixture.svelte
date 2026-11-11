@@ -13,6 +13,7 @@
     density?: TableDensity;
     selectable?: boolean;
     scrollable?: boolean;
+    frameless?: boolean;
     scrollContainerProps?: TableScrollContainerProps;
     stackBelow?: string | false;
     fit?: boolean;
@@ -49,6 +50,7 @@
     density,
     selectable = false,
     scrollable = true,
+    frameless = false,
     scrollContainerProps,
     stackBelow,
     fit = false,
@@ -96,6 +98,7 @@
   {stickyHeader}
   {selectable}
   {scrollable}
+  {frameless}
   {fit}
   {...scrollContainerProps !== undefined ? { scrollContainerProps } : {}}
   {...stackBelow !== undefined ? { stackBelow } : {}}

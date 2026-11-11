@@ -5,14 +5,15 @@ import type {
   PadUnion,
   WithoutDataAttributes,
 } from '../../_internal/union-props.ts';
-export type CardVariant = 'card' | 'well';
+export type CardVariant = 'card' | 'well' | 'plain';
 export type CardTone = 'default' | 'muted';
 export type CardSurfaceTone = 'default' | 'danger';
 /**
- * The one edge a card draws. `border` is a hairline outline with no shadow; `shadow` is a soft
- * shadow with no visible border. A card never draws both, so there is no way to ask for both.
+ * The one edge a card draws. `none` (the default) draws neither: the surface step separates the
+ * card. `border` is a hairline outline for a real panel; `shadow` is a soft shadow for a floating
+ * card. A card never draws both, so there is no way to ask for both.
  */
-export type CardEdge = 'border' | 'shadow';
+export type CardEdge = 'none' | 'border' | 'shadow';
 /** Controls body padding. `none` removes only body padding for flush/full-bleed content. */
 export type CardPadding = 'default' | 'none';
 /** Heading level for the generated card title, so the document outline stays correct. */
@@ -106,10 +107,10 @@ export type CardProps = SharedHtmlAttributes &
   PadUnion<CardDiscriminant> & {
     /** Custom class merged with `.cinder-card`. */
     class?: string;
-    /** Visual container style. `card` is raised; `well` is flatter and inset. */
+    /** Visual container style. `card` is raised; `well` is flatter and inset; `plain` is a heading on the page with no box. */
     variant?: CardVariant;
     /**
-     * The one edge the card draws: a `border` (default) or a `shadow`, never both. An interactive
+     * The one edge the card draws: `none` (default), a `border`, or a `shadow`, never both. An interactive
      * card strengthens whichever edge it has on hover.
      */
     edge?: CardEdge;

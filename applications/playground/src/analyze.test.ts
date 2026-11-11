@@ -481,7 +481,7 @@ describe('analyzeComponent — card.svelte (discriminated union Props)', () => {
     const footerTone = manifest.props.find((p) => p.name === 'footerTone');
     const edgeToEdgeOnMobile = manifest.props.find((p) => p.name === 'edgeToEdgeOnMobile');
 
-    expect(variant?.control).toEqual({ kind: 'select', options: ['card', 'well'] });
+    expect(variant?.control).toEqual({ kind: 'select', options: ['card', 'well', 'plain'] });
     expect(variant?.defaultValue).toBe('card');
     expect(bodyTone?.control).toEqual({ kind: 'select', options: ['default', 'muted'] });
     expect(footerTone?.control).toEqual({ kind: 'select', options: ['default', 'muted'] });

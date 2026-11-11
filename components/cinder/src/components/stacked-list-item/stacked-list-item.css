@@ -13,7 +13,6 @@
     padding: var(--cinder-space-3) var(--cinder-space-4);
     /* 0 by default; 44px under a coarse pointer (foundation.css). */
     min-block-size: var(--cinder-list-row-min-height);
-    border-bottom: 1px solid var(--cinder-border-muted);
   }
 
   .cinder-stacked-list-item[data-cinder-density='condensed'] {
@@ -500,7 +499,6 @@
   .cinder-stacked-list-item--band.cinder-stacked-list-item--group {
     padding-block: var(--cinder-space-1);
     padding-inline: 0;
-    border-bottom: 0;
     background: transparent;
   }
 

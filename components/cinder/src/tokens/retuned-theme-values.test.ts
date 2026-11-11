@@ -49,7 +49,7 @@ function expectColor(arm: 'light' | 'dark', [property, components, alpha]: Expec
 // issue's 0 because `hue-travel.test.ts` fails any OKLCH mix whose operands are more than 40° apart,
 // and the hover and pressed washes mix these tiers toward the accent at hue 272.
 const LIGHT_VALUES: readonly ExpectedColor[] = [
-  ['--cinder-surface-canvas', [0.995, 0, 255]],
+  ['--cinder-surface-canvas', [0.975, 0, 255]],
   ['--cinder-surface', [0.998, 0, 255]],
   ['--cinder-surface-raised', [1, 0, 255]],
   ['--cinder-surface-inset', [0.96, 0.008, 270]],

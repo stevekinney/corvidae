@@ -22,7 +22,13 @@ const schema = {
     flush: {
       type: 'boolean',
       description:
-        'Draws the header with no rule under it and no padding around it, so its title lines up with the\ncontent beneath it. A page that lays out its own column, such as a page of settings with a\nsection navigation beside it, uses this; a header across the top of a page keeps its rule.',
+        'Draws the header with no padding around it, so its title lines up with the content beneath\nit. A page that lays out its own column, such as a page of settings with a section navigation\nbeside it, uses this.',
+      default: false,
+    },
+    divider: {
+      type: 'boolean',
+      description:
+        'Draws a rule under the header. Off by default: space separates the header from the page, and\nthe rule is opt-in. A flush header never draws one.',
       default: false,
     },
     error: {
