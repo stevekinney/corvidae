@@ -65,47 +65,6 @@ export type ViewCopy = {
   readonly forbiddenByPattern?: Readonly<Record<string, ViewForbiddenCopy>>;
 };
 
-/** The words the run detail page (`/runs/:run`) uses for its attributes, streams and updates. */
-export const RUN_DETAIL_COPY = {
-  attributes: {
-    heading: 'Search attributes',
-    loading: 'Loading search attributes',
-    empty: 'This run has no search attributes.',
-    engineOwned: 'Set by the system. It cannot be edited here.',
-    edit: (key: string): string => `Edit ${key}`,
-    save: (key: string): string => `Save ${key}`,
-    cancel: (key: string): string => `Cancel editing ${key}`,
-    invalidNumber: 'Enter a number.',
-    invalidDate: 'Enter a date and time, such as 2026-07-01T09:00:00Z.',
-  },
-  streams: {
-    /** A stream key longer than this is shown cut off, with the whole key in its `title`. */
-    keyDisplayLimit: 48,
-    viewChunks: (key: string): string => `View chunks of ${key}`,
-    heading: 'Stream chunks',
-    close: 'Close',
-    loading: 'Loading chunks',
-    noChunksTitle: 'No chunks yet',
-    noChunks: 'This stream has no chunks.',
-    sweptTitle: 'Chunks no longer kept',
-    swept: 'This run was cancelled or timed out, so its stream chunks are no longer kept.',
-    liveNote: 'New chunks appear here every 2 seconds while the run is active.',
-    chunkLabel: (sequence: number): string => `Chunk ${sequence}`,
-  },
-  updates: {
-    heading: 'Update history',
-    loading: 'Loading updates',
-    empty: 'This run has received no updates.',
-    awaiting: 'awaiting result',
-    neverAnswered: 'never answered',
-    resultSwept: 'result no longer kept',
-    loadingResult: 'loading result',
-    loadMore: 'Load older updates',
-    timedOut: (name: string): string =>
-      `${name} had not answered when the wait ended. It stays queued, and its result appears here once it is answered.`,
-  },
-} as const;
-
 /** The words the run page uses for its steps, and for the lines the run logged. */
 export const RUN_STEPS_COPY = {
   heading: 'Steps',
@@ -299,12 +258,50 @@ export const RUN_PAGE_COPY = {
 } as const;
 
 /**
- * The words a run's page uses for what the redesign of its layout added (COR-2017): the names of
- * the workflows Interborough runs itself, and the lines of the finished, failed, canceled and
+ * The words a run's page uses beyond its sections: the attributes, streams and updates of a run the
+ * workflow engine holds, and what the redesign of its layout added (COR-2017): the names of the
+ * workflows Interborough runs itself, and the lines of the finished, failed, canceled and
  * schedule-started runs. Kept apart from `RUN_PAGE_COPY`, so the slices that change the page's
  * other states do not edit the same block.
  */
 export const RUN_DETAIL_COPY = {
+  attributes: {
+    heading: 'Search attributes',
+    loading: 'Loading search attributes',
+    empty: 'This run has no search attributes.',
+    engineOwned: 'Set by the system. It cannot be edited here.',
+    edit: (key: string): string => `Edit ${key}`,
+    save: (key: string): string => `Save ${key}`,
+    cancel: (key: string): string => `Cancel editing ${key}`,
+    invalidNumber: 'Enter a number.',
+    invalidDate: 'Enter a date and time, such as 2026-07-01T09:00:00Z.',
+  },
+  streams: {
+    /** A stream key longer than this is shown cut off, with the whole key in its `title`. */
+    keyDisplayLimit: 48,
+    viewChunks: (key: string): string => `View chunks of ${key}`,
+    heading: 'Stream chunks',
+    close: 'Close',
+    loading: 'Loading chunks',
+    noChunksTitle: 'No chunks yet',
+    noChunks: 'This stream has no chunks.',
+    sweptTitle: 'Chunks no longer kept',
+    swept: 'This run was cancelled or timed out, so its stream chunks are no longer kept.',
+    liveNote: 'New chunks appear here every 2 seconds while the run is active.',
+    chunkLabel: (sequence: number): string => `Chunk ${sequence}`,
+  },
+  updates: {
+    heading: 'Update history',
+    loading: 'Loading updates',
+    empty: 'This run has received no updates.',
+    awaiting: 'awaiting result',
+    neverAnswered: 'never answered',
+    resultSwept: 'result no longer kept',
+    loadingResult: 'loading result',
+    loadMore: 'Load older updates',
+    timedOut: (name: string): string =>
+      `${name} had not answered when the wait ended. It stays queued, and its result appears here once it is answered.`,
+  },
   /**
    * What a person calls each workflow type Interborough registers (the names the design records),
    * set in the interface font; the type's identifier follows it, small, with `builtIn`. A type this
