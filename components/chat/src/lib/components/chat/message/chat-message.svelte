@@ -108,6 +108,8 @@
     approvalReceipts?: ReadonlyMap<string, ToolApprovalReceiptRecord> | undefined;
     /** Describes a tool approval beyond its action; `undefined` adds nothing to what the action carries. */
     describeApproval?: MessagePartDerivationContext['describeApproval'];
+    /** Requests a fresh approval after this tool call expires. */
+    onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
     /** Called when the user resolves an action-required approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
@@ -225,7 +227,6 @@
     Button,
     Callout,
     CircleAlert,
-    Copy,
     CopyButton,
     Pencil,
     Popover,
@@ -234,10 +235,13 @@
     ChevronRight,
     RefreshCw,
     RotateCcw,
+    Tooltip,
+    TriangleAlert,
     WifiOff,
   } from '@lostgradient/cinder';
   import ChatMessagePartsRenderer from './chat-message-parts-renderer.svelte';
   import MessageSources from './message-sources.svelte';
+  import { sourceChipKeys } from './source-chip-label.ts';
   import { resolveTurnLabels } from './turn-labels.ts';
   import { effectiveTurnState, presentTurnState, reconnectWaitFraction } from './turn-state.ts';
   import { useQuestionStore } from '../question/question-store.svelte.ts';
@@ -279,6 +283,7 @@
     approvalReceipts,
     describeApproval,
     onApprovalResolve,
+    onApprovalRequestAgain,
     onInputSubmit,
     toolCallPresentation,
     reasoning,
@@ -397,47 +402,74 @@
   );
   let sourcesElement = $state<HTMLElement | null>(null);
   let sourcesWereShown = false;
+  let previousChipKeys: string[] = [];
+  let sourceAnnouncement = $state('');
 
-  /**
-   * Whether focus is on the Sources control, inside it, or inside the panel or sheet it opened. The
-   * Citation panel is portaled out of this message, so it is found through the trigger's
-   * `aria-controls`; a narrow screen's sheet is the `<dialog>` around that panel.
-   */
-  function focusIsInSources(active: Element | null): boolean {
-    if (active === null || sourcesElement === null) return false;
-    if (sourcesElement.contains(active)) return true;
-    // Inline chips are one control each, and any of them can be the one whose panel is open.
-    for (const control of sourcesElement.querySelectorAll('[aria-controls]')) {
+  /** A trigger owns both its local focus and focus inside its portaled panel or sheet. */
+  function sourceOwnsFocus(container: Element, active: Element | null): boolean {
+    if (active === null) return false;
+    if (container.contains(active)) return true;
+    for (const control of container.querySelectorAll('[aria-controls]')) {
       const panelId = control.getAttribute('aria-controls');
       if (!panelId) continue;
       const panel = document.getElementById(panelId);
-      const surface = panel?.closest('dialog') ?? panel;
-      if (surface?.contains(active) === true) return true;
+      if ((panel?.closest('dialog') ?? panel)?.contains(active) === true) return true;
     }
     return false;
   }
 
-  // When the host takes the sources away, the control (and any panel it opened) unmounts with
-  // focus inside it, which would leave focus on the page body. This pre-effect runs before that
-  // removal, while focus can still be read, and hands focus to this message at once, so focus never
-  // falls to the body: a container that reclaims focus orphaned by a removal (Chat moves it to its
-  // timeline) would otherwise take it first. That first call does nothing while a narrow screen's
-  // sources sheet is open, because a modal `<dialog>` makes this message inert, and the container's
-  // backstop then takes focus when the sheet unmounts. So once the update has removed the sources,
-  // the message takes focus from wherever it went, unless it already holds it.
+  function returnSourceFocus(article: HTMLElement, preferAction: boolean): void {
+    const target =
+      (preferAction &&
+        article.parentElement?.querySelector<HTMLElement>(
+          '.chat-message-action-button:not(:disabled)',
+        )) ||
+      article;
+    target.focus({ preventScroll: true });
+    if (document.activeElement === target && preferAction) {
+      target.setAttribute('data-citation-focus', '');
+      target.addEventListener('blur', () => target.removeAttribute('data-citation-focus'), {
+        once: true,
+      });
+    }
+  }
+
+  // Read the old triggers before Svelte removes them. Retry after the update because an open
+  // mobile sheet makes the underlying message inert until the dialog is removed.
   $effect.pre(() => {
     const shown = shownSources !== undefined;
-    if (sourcesWereShown && !shown && focusIsInSources(document.activeElement)) {
-      const article = articleElement;
-      article?.focus({ preventScroll: true });
-      void (async () => {
-        await tick();
-        if (!article?.isConnected) return;
-        if (article.contains(document.activeElement)) return;
-        article.focus({ preventScroll: true });
-      })();
+    const inline = sourcePresentation === 'inline';
+    const currentKeys = inline && shownSources !== undefined ? sourceChipKeys(shownSources) : [];
+    const active = document.activeElement;
+    const article = articleElement;
+    if (article !== null && sourcesElement !== null && sourcesWereShown) {
+      const sourceChips = sourcesElement.querySelectorAll('[data-chat-source-index]');
+      const withdrawnOpenChip =
+        inline &&
+        Array.from(sourceChips).some((chip, index) => {
+          const key = previousChipKeys[index];
+          return (
+            key !== undefined &&
+            !currentKeys.includes(key) &&
+            chip.querySelector('[aria-expanded="true"]') !== null &&
+            sourceOwnsFocus(chip, active)
+          );
+        });
+      if (withdrawnOpenChip || (!shown && sourceOwnsFocus(sourcesElement, active))) {
+        sourceAnnouncement = 'Sources were removed';
+        returnSourceFocus(article, withdrawnOpenChip);
+        void (async () => {
+          await tick();
+          if (article.isConnected && !article.parentElement?.contains(document.activeElement)) {
+            returnSourceFocus(article, withdrawnOpenChip);
+          }
+        })();
+      } else if (shown && currentKeys.some((key) => !previousChipKeys.includes(key))) {
+        sourceAnnouncement = '';
+      }
     }
     sourcesWereShown = shown;
+    previousChipKeys = currentKeys;
   });
 
   // Edit state
@@ -749,46 +781,8 @@
       <time datetime={createdAtValue}>{formattedCreatedAt}</time>
     {/if}
     {#if !isPending && !streaming}
-      <!-- The line reads in one order: the time, then Copy, Quote and Regenerate as an icon and a
-           word each, then whatever the host adds. -->
       <span class="chat-message-line-actions">
-        {#if showDefaultActions && copyValue}
-          <CopyButton
-            value={copyValue}
-            html={copyHtml}
-            {...copyImage ? { image: copyImage } : {}}
-            label="Copy"
-            copiedLabel="Copied"
-            confirmDuration={2000}
-            class="chat-message-action-button chat-message-copy"
-          >
-            <Copy class="cinder-icon-xs" aria-hidden="true" />
-            Copy
-          </CopyButton>
-        {/if}
-        {#if canQuote && !isFailed}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-quote-button"
-            onclick={quoteMessage}
-            disabled={quoteDisabled}
-            aria-label="Quote message"
-            aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
-          >
-            <Quote class="cinder-icon-xs" aria-hidden="true" />
-            Quote
-          </button>
-        {/if}
-        {#if canRegenerate && !isFailed}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-regenerate-button"
-            onclick={regenerateMessage}
-          >
-            <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
-            Regenerate
-          </button>
-        {/if}
+        {@render messageIconActions()}
         {#if actions}
           {@render actions()}
         {/if}
@@ -798,6 +792,49 @@
       </span>
     {/if}
   </div>
+{/snippet}
+
+{#snippet messageIconActions()}
+  {#if showDefaultActions && copyValue}
+    <Tooltip text="Copy" describe={false}>
+      <CopyButton
+        value={copyValue}
+        html={copyHtml}
+        {...copyImage ? { image: copyImage } : {}}
+        label={transcript ? 'Copy' : 'Copy message'}
+        iconOnly
+        copiedLabel="Copied"
+        confirmDuration={2000}
+        class="chat-message-action-button chat-message-copy"
+      />
+    </Tooltip>
+  {/if}
+  {#if canQuote && (!transcript || !isFailed)}
+    <Tooltip text="Quote" describe={false}>
+      <button
+        type="button"
+        class="chat-message-action-button chat-message-quote-button"
+        onclick={quoteMessage}
+        disabled={quoteDisabled}
+        aria-label="Quote message"
+        aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
+      >
+        <Quote class="cinder-icon-xs" aria-hidden="true" />
+      </button>
+    </Tooltip>
+  {/if}
+  {#if canRegenerate && (!transcript || !isFailed)}
+    <Tooltip text="Regenerate" describe={false}>
+      <button
+        type="button"
+        class="chat-message-action-button chat-message-regenerate-button"
+        onclick={regenerateMessage}
+        aria-label={transcript ? 'Regenerate' : 'Regenerate response'}
+      >
+        <RefreshCw class="cinder-icon-xs" aria-hidden="true" />
+      </button>
+    </Tooltip>
+  {/if}
 {/snippet}
 
 {#snippet retryConnectionAction()}
@@ -812,22 +849,6 @@
   </Button>
 {/snippet}
 
-{#snippet retryTurnAction()}
-  <Button
-    type="button"
-    class="chat-turn-action"
-    size="xs"
-    variant="secondary"
-    onclick={() => onRetryTurn?.(message.id)}
-  >
-    {turnWords.retry}
-  </Button>
-{/snippet}
-
-{#snippet reconnectingIcon()}
-  <WifiOff aria-hidden="true" />
-{/snippet}
-
 <!-- What a turn that has not simply finished says on itself (COR-2283), with the controls that
      recover it. A streaming or complete turn draws nothing here. -->
 {#snippet turnOutcome()}
@@ -837,12 +858,12 @@
         variant="warning"
         semantic="note"
         class="chat-turn-callout"
-        icon={reconnectingIcon}
         {...onRetryConnection ? { action: retryConnectionAction } : {}}
       >
-        <span class="chat-turn-text" dir="auto">
+        <p class="chat-turn-text" dir="auto">
+          <WifiOff class="chat-turn-inline-icon" aria-hidden="true" />
           {turnWords.reconnecting(turn.attempt, turn.attempts, turn.nextTryIn)}
-        </span>
+        </p>
         <Progress
           class="chat-turn-wait"
           value={Math.round(reconnectWaitFraction(turn) * 100)}
@@ -886,16 +907,28 @@
     </div>
   {:else if turn.kind === 'failed'}
     <div class="chat-turn-outcome" data-kind="failed">
-      <Alert
-        variant="danger"
-        heading={turnWords.incomplete}
-        class="chat-turn-alert"
-        {...onRetryTurn ? { actions: retryTurnAction } : {}}
-      >
-        <span class="chat-turn-text chat-turn-cause" dir="auto">{turn.cause}</span>
-        <span class="chat-turn-text chat-turn-keeps" dir="auto">
+      <Alert variant="danger" class="chat-turn-alert">
+        <div class="chat-turn-alert-header">
+          <p class="chat-turn-alert-title" dir="auto">
+            <TriangleAlert class="chat-turn-inline-icon" aria-hidden="true" />
+            {turnWords.incomplete}
+          </p>
+          {#if onRetryTurn}
+            <Button
+              type="button"
+              class="chat-turn-action"
+              size="sm"
+              variant="ghost-danger"
+              onclick={() => onRetryTurn?.(message.id)}
+            >
+              {turnWords.retry}
+            </Button>
+          {/if}
+        </div>
+        <p class="chat-turn-text chat-turn-failure-body" dir="auto">
+          {turn.cause}
           {turn.keeps ?? turnWords.retryKeeps}
-        </span>
+        </p>
       </Alert>
     </div>
   {:else if turn.kind === 'empty'}
@@ -935,6 +968,9 @@
   data-cinder-rollback-discarded={rollbackDiscarded || undefined}
   {...rest}
 >
+  {#if message.role === 'assistant'}
+    <span class="cinder-sr-only" role="status">{sourceAnnouncement}</span>
+  {/if}
   <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
   <article
     bind:this={articleElement}
@@ -1020,6 +1056,7 @@
           expanded={toolCallExpanded}
           onToggle={toggleToolCallExpanded}
           {onApprovalResolve}
+          {onApprovalRequestAgain}
           {onInputSubmit}
           {reasoningExpanded}
           {onreasoning}
@@ -1125,40 +1162,7 @@
         {#if actions}
           {@render actions()}
         {/if}
-        {#if showDefaultActions && copyValue}
-          <CopyButton
-            value={copyValue}
-            html={copyHtml}
-            {...copyImage ? { image: copyImage } : {}}
-            label="Copy message"
-            copiedLabel="Copied!"
-            iconOnly
-            confirmDuration={2000}
-            class="chat-message-action-button chat-message-copy"
-          />
-        {/if}
-        {#if canQuote}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-quote-button"
-            onclick={quoteMessage}
-            disabled={quoteDisabled}
-            aria-label="Quote message"
-            aria-describedby={quoteDisabled ? quoteDisabledDescriptionId : undefined}
-          >
-            <Quote class="cinder-icon-xs" />
-          </button>
-        {/if}
-        {#if canRegenerate}
-          <button
-            type="button"
-            class="chat-message-action-button chat-message-regenerate-button"
-            onclick={regenerateMessage}
-            aria-label="Regenerate response"
-          >
-            <RefreshCw class="cinder-icon-xs" />
-          </button>
-        {/if}
+        {@render messageIconActions()}
         {#if canEdit}
           <button
             type="button"
@@ -1341,6 +1345,12 @@
    * from horizontal room without stretching across the entire timeline. */
   .chat-message-wrapper[data-tool-pair] {
     width: min(80%, var(--cinder-chat-message-max-width, 48rem));
+  }
+
+  @container (max-width: 480px) {
+    .chat-message-wrapper[data-tool-pair] {
+      width: 100%;
+    }
   }
 
   .chat-message-wrapper[data-tool-pair] .chat-message {
@@ -1759,7 +1769,9 @@
     }
   }
 
-  :global(.chat-message-action-button:focus-visible) {
+  :global(.chat-message-action-button:focus-visible),
+  :global(.chat-message-action-button[data-citation-focus]:focus),
+  .chat-message[data-citation-focus]:focus {
     outline: var(--cinder-ring-width) solid transparent;
     box-shadow: var(--_cinder-focus-ring-shadow);
   }
@@ -1876,7 +1888,7 @@
    *
    * A reply is plain text on the page, with no card and no role label; a person's message keeps its
    * tinted bubble. One muted line under each message carries its time, the host's actions, Copy and
-   * Quote, always visible, as words. A message that was not sent keeps its bubble under a red icon;
+   * Quote, always visible. A message that was not sent keeps its bubble under a red icon;
    * a queued follow-up is a dashed, pale bubble. A run's notes sit outside the bubble, full width.
    * ---------------------------------------- */
   .chat-message-wrapper[data-presentation='transcript'] {
@@ -1927,7 +1939,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
+    gap: var(--cinder-space-1);
     min-block-size: 1.5rem;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
@@ -1942,17 +1954,16 @@
     display: inline-flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: var(--cinder-space-1) var(--cinder-space-3);
+    gap: var(--cinder-space-1);
   }
 
-  /* Actions are an icon and a word in this line, not icon buttons in a hover footer. The time and
-   * each action are the same distance apart, and with no inline padding the first one starts on the
-   * same edge as the message's own text. */
+  /* Message actions stay visible beside the timestamp. */
   .chat-message-line :global(.chat-message-action-button) {
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-1);
+    justify-content: center;
     min-block-size: 1.5rem;
+    min-inline-size: 1.5rem;
     padding: 0;
     border: none;
     border-radius: var(--cinder-radius-sm);
@@ -1960,6 +1971,13 @@
     color: var(--cinder-text-muted);
     font: inherit;
     cursor: pointer;
+  }
+
+  @media (any-pointer: coarse) {
+    .chat-message-line :global(.chat-message-action-button) {
+      min-inline-size: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+    }
   }
 
   .chat-message-line :global(.chat-message-action-button:hover) {
@@ -2226,6 +2244,42 @@
     min-inline-size: 0;
     max-inline-size: none;
     padding-inline: var(--cinder-space-3);
+  }
+
+  .chat-turn-text,
+  .chat-turn-alert-title {
+    margin: 0;
+  }
+
+  .chat-turn-alert-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2);
+  }
+
+  .chat-turn-alert-title {
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .chat-turn-failure-body {
+    color: var(--cinder-text-default);
+  }
+
+  .chat-turn-outcome :global(.chat-turn-inline-icon) {
+    display: inline-block;
+    inline-size: 1em;
+    block-size: 1em;
+    margin-inline-end: var(--cinder-space-1);
+    vertical-align: -0.125em;
+  }
+
+  .chat-turn-outcome :global(.chat-turn-alert) {
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .chat-turn-alert-header :global(.chat-turn-action) {
+    flex: none;
   }
 
   /* An empty answer is a dashed, neutral row in the transcript: the words, the turn's time and

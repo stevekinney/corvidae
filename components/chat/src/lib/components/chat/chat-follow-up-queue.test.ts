@@ -148,7 +148,8 @@ describe('Chat queued follow-ups (COR-2284, row C3)', () => {
     expect(drawer.querySelector('.chat-follow-up-ghost-index')?.textContent).toBe('1');
     expect(buttonNamed(container, 'Edit queued follow-up 1')).toBeDefined();
     expect(buttonNamed(container, 'Remove queued follow-up 1')).toBeDefined();
-    expect(buttonNamed(container, 'Send now instead')).toBeDefined();
+    const sendNow = buttonNamed(container, 'Send now instead');
+    expect(sendNow?.closest('.chat-follow-up-drawer-header')).not.toBeNull();
     expect(composerOf(container).value).toBe('');
   });
 

@@ -408,6 +408,42 @@ describe('Chat — sourcePresentation="inline"', () => {
     );
   }
 
+  test('withdrawing an open inline source closes its panel and focuses a message action', async () => {
+    const { container, rerender } = render(Chat, {
+      id: 'sources-inline-withdrawal',
+      conversation: sourcedConversation(),
+      sourcePresentation: 'inline',
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(0, 2)]]),
+    });
+    await tick();
+    const article = messageArticle(container, 'assistant-a');
+    const markers = article.querySelectorAll<HTMLButtonElement>('.cinder-citation__marker');
+    const removed = markers[0]!;
+    const remaining = markers[1]!;
+    removed.focus();
+    await fireEvent.click(removed);
+    await waitFor(() => expect(document.querySelector('.cinder-citation__panel')).not.toBeNull());
+
+    await rerender({
+      sourcesByMessageId: new Map([['assistant-a', sourcesForA.slice(1, 2)]]),
+    });
+
+    await waitFor(() =>
+      expect(document.activeElement === container.querySelector('[data-citation-focus]')).toBe(
+        true,
+      ),
+    );
+    expect(document.activeElement?.classList.contains('chat-message-copy')).toBe(true);
+    expect(removed.isConnected).toBe(false);
+    expect(remaining.isConnected).toBe(true);
+    expect(document.querySelector('.cinder-citation__panel')).toBeNull();
+    expect(
+      Array.from(container.querySelectorAll('[role="status"]')).filter(
+        (region) => region.textContent?.trim() === 'Sources were removed',
+      ),
+    ).toHaveLength(1);
+  });
+
   test('only the assistant message with sources shows chips, and no Sources control', async () => {
     const { container } = render(Chat, {
       id: 'sources-inline-only',

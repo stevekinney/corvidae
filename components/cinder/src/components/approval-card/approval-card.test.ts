@@ -94,6 +94,7 @@ describe('ApprovalCard', () => {
     expect(approvalCardSchema.properties).toHaveProperty('operation');
     expect(approvalCardSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
       'context',
+      'onAskAgain',
       'onResolve',
     ]);
   });

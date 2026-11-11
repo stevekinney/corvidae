@@ -111,10 +111,11 @@ describe('the committed Chat stress cases', () => {
     ]);
   });
 
-  it('defers the one row this fixture cannot draw, with a reason', () => {
-    const deferred = cases.filter((stressCase) => stressCase.deferred !== undefined);
-    expect(deferred.map((stressCase) => stressCase.id)).toEqual([55]);
-    expect(deferred[0]?.deferred).toContain('A5');
+  it('witnesses the host-supplied A5 approval receipt in case 55', () => {
+    const receipt = cases.find((stressCase) => stressCase.id === 55);
+    expect(receipt?.rows).toContain('A5');
+    expect(receipt?.deferred).toBeUndefined();
+    expect(receipt?.steps).toContainEqual({ action: 'expect', role: 'link', name: 'Reviews' });
   });
 
   it('keeps the middle dot out of every title and source', () => {

@@ -776,6 +776,24 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(summaryOf(container)).toContain('1 expired');
     });
 
+    test('shows denied approvals as a summary without duplicating their receipt details', async () => {
+      const { container } = render(ToolCallTimeline, {
+        props: {
+          pairs: [waitingPair('refund-1', 60_000)],
+          approvalStates: new Map([['refund-1', 'denied' as const]]),
+        },
+      });
+      await tick();
+      const toggle = container.querySelector<HTMLButtonElement>('.chat-tool-call-toggle')!;
+      expect(toggle.getAttribute('aria-expanded')).toBe('false');
+      toggle.click();
+      await tick();
+      expect(container.querySelector('.chat-tool-call-row-summary')?.textContent).toContain(
+        'Denied',
+      );
+      expect(container.querySelector('.chat-tool-call-details')).toBeNull();
+    });
+
     test('lets a state the host settled win over the deadline', async () => {
       jest.useFakeTimers({ now: NOW });
       const settled: ToolCallPair = {
@@ -981,10 +999,10 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).not.toContain(String.fromCodePoint(0xb7));
     });
 
-    test('a narrow header drops the raw tool names and each phrase stays on one line', () => {
+    test('a narrow header truncates long tool names and keeps its count and duration readable', () => {
       const source = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
       expect(source).toMatch(
-        /@container \(max-width: 21\.99rem\)\s*\{\s*\.chat-tool-call-summary-tools\s*\{\s*display:\s*none;/,
+        /\.chat-tool-call-summary-tools\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/s,
       );
       expect(source).toMatch(
         /\.chat-tool-call-summary-count,\s*\.chat-tool-call-summary-segment,\s*\.chat-tool-call-summary-duration\s*\{\s*white-space:\s*nowrap;/,
@@ -997,7 +1015,7 @@ describe('ChatMessage — tool-call rendering', () => {
       expect(source).toMatch(/\.chat-tool-call-running\s*\{[^}]*overflow-wrap:\s*anywhere/s);
       // A row wraps between its parts in a narrow chat, so a tool's name is never clipped there.
       expect(source).toMatch(
-        /@container \(max-width: 21\.99rem\)\s*\{[^@]*\.chat-tool-call-row\s*\{\s*flex-wrap:\s*wrap;/s,
+        /@container \(max-width: 21\.99rem\)\s*\{[^@]*\.chat-tool-call-row\s*\{\s*display:\s*grid;/s,
       );
       // A long result line takes only what is left, so it never squeezes the title.
       expect(source).toMatch(/\.chat-tool-call-result\s*\{\s*flex:\s*1 1 0;/);

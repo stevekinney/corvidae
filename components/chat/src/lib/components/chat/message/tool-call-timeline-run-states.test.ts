@@ -245,8 +245,14 @@ describe('R7: a failed step', () => {
     await tick();
     const actions = container.querySelector('.chat-tool-call-failure-actions');
     expect(
-      Array.from(actions?.querySelectorAll('button') ?? [], (button) => button.textContent?.trim()),
+      Array.from(
+        actions?.querySelectorAll('button') ?? [],
+        (button) => button.getAttribute('aria-label') ?? button.textContent?.trim(),
+      ),
     ).toEqual(['Copy error', 'Retry this step']);
+    expect(getByRole('button', { name: 'Copy error' }).hasAttribute('data-cinder-icon-only')).toBe(
+      true,
+    );
     await fireEvent.click(getByRole('button', { name: 'Retry this step' }));
     expect(retryStep).toHaveBeenCalledWith('s3');
   });

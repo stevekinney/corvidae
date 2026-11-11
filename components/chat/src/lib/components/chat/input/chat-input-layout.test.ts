@@ -54,7 +54,7 @@ describe('ChatInput layout CSS', () => {
     const editorBlocks = cssBlocks(chatInputSource, '.chat-input-editor {');
 
     expectDeclaration(
-      editorBlocks.at(-1) ?? '',
+      editorBlocks.find((block) => block.includes('padding:')) ?? '',
       'padding',
       'var(--cinder-space-1) var(--cinder-space-3)',
     );

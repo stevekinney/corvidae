@@ -142,7 +142,8 @@ describe('an attachment with an upload hook', () => {
     const send = target.querySelector<HTMLButtonElement>('.chat-input-send')!;
     expect(send.disabled).toBe(true);
     const retry = target.querySelector<HTMLButtonElement>('button[aria-label="Retry photo.png"]')!;
-    expect(retry.textContent?.trim()).toBe('Retry');
+    expect(retry.textContent?.trim()).toBe('');
+    expect(retry.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
     expect(retry.nextElementSibling?.getAttribute('aria-label')).toBe('Remove photo.png');
 
     await fireEvent.click(retry);

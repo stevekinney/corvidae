@@ -26,6 +26,7 @@
     expanded = false,
     onToggle,
     onApprovalResolve,
+    onApprovalRequestAgain,
     onInputSubmit,
     reasoningExpanded = false,
     onreasoning,
@@ -106,7 +107,7 @@
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}
-    <ToolApprovalPart {part} {onApprovalResolve} />
+    <ToolApprovalPart {part} {onApprovalResolve} {onApprovalRequestAgain} />
   {:else if part.type === 'tool-input'}
     <ToolInputPart {part} {onInputSubmit} />
   {:else if part.type === 'reasoning'}

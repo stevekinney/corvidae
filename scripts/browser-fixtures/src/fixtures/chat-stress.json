@@ -145,15 +145,16 @@
   {
     "id": 7,
     "slug": "connect-provider",
-    "title": "With no model provider the composer is one row with a primary Connect provider.",
+    "title": "With no model provider a centered empty state names the fix and offers Connect provider.",
     "provenance": "derived",
     "source": "Derived from design row V4; the original definition of this number was lost.",
     "rows": ["V4"],
-    "scenario": "composer-status",
+    "scenario": "availability",
     "params": {
-      "kind": "blocked"
+      "kind": "unconfigured"
     },
     "steps": [
+      { "action": "expect", "role": "heading", "name": "Connect a model provider" },
       {
         "action": "expect",
         "role": "button",
@@ -259,11 +260,15 @@
       {
         "action": "hook",
         "name": "pushToken",
-        "argument": "Run this query:\n\n```sql\nSELECT id, total\nFROM orders\nWHERE total > 4000"
+        "argument": "```sql\nSELECT id, total\nFROM orders\nWHERE total > 4000"
       },
       {
         "action": "expect-text",
         "text": "SELECT id, total"
+      },
+      {
+        "action": "expect-text",
+        "text": "Writing…"
       }
     ],
     "variants": [],
@@ -550,9 +555,10 @@
       "shape": "expired"
     },
     "steps": [
+      { "action": "expect", "role": "button", "name": "Ask again" },
       {
         "action": "expect-text",
-        "text": "Expired"
+        "text": "1 expired"
       }
     ],
     "variants": [],
@@ -597,8 +603,9 @@
     },
     "steps": [
       {
-        "action": "expect-text",
-        "text": "Which environment?"
+        "action": "expect",
+        "role": "heading",
+        "name": "Which environment?"
       }
     ],
     "variants": [],
@@ -945,7 +952,7 @@
   {
     "id": 40,
     "slug": "message-actions",
-    "title": "The line under a reply carries its time, Copy, Quote and Regenerate as an icon and a word each.",
+    "title": "The line under a reply carries its time, icon-only Copy and Quote, and labeled Regenerate.",
     "provenance": "derived",
     "source": "Derived from design row M5; the original definition of this number was lost.",
     "rows": ["M5"],
@@ -1060,7 +1067,7 @@
     "slug": "citation-withdrawal",
     "title": "Withdrawing the source of an open inline citation announces once and leaves focus on a visible action.",
     "provenance": "issue-named",
-    "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus. It depends on the withdrawal behaviour of the integration candidate, which is not on main.",
+    "source": "COR-2289 acceptance: 45 is an actual withdrawal with one announcement and visible action focus. The fixture opens a real citation and withdraws its source through the host update.",
     "rows": ["M4"],
     "scenario": "citations",
     "params": {
@@ -1286,8 +1293,9 @@
     },
     "steps": [
       {
-        "action": "expect-text",
-        "text": "Which ledger should"
+        "action": "expect",
+        "role": "heading",
+        "name": "Which ledger should"
       }
     ],
     "variants": [],
@@ -1308,7 +1316,9 @@
       {
         "action": "expect-text",
         "text": "2 approvals"
-      }
+      },
+      { "action": "expect", "role": "button", "name": "Refund $42.00" },
+      { "action": "expect", "role": "button", "name": "Refund $18.00" }
     ],
     "variants": [],
     "focusSweep": false
@@ -1347,18 +1357,17 @@
     "rows": ["A5"],
     "scenario": "approval",
     "params": {
-      "shape": "reversible"
+      "shape": "elsewhere"
     },
     "steps": [
       {
         "action": "expect",
-        "role": "button",
-        "name": "Approve"
+        "role": "link",
+        "name": "Reviews"
       }
     ],
     "variants": [],
-    "focusSweep": false,
-    "deferred": "A5 is drawn from a receipt the host supplies (who, which surface, when); Chat's tool approval part knows only a decision made here, so this fixture cannot decide an approval elsewhere. The case is captured as the pending approval and reported as deferred."
+    "focusSweep": false
   },
   {
     "id": 56,
@@ -1764,8 +1773,9 @@
       },
       {
         "action": "expect-text",
-        "text": "Staging"
-      }
+        "text": "You answered"
+      },
+      { "action": "expect-text", "text": "1 answered" }
     ],
     "variants": [],
     "focusSweep": false
@@ -1811,7 +1821,7 @@
           {
             "action": "expect",
             "role": "textbox",
-            "name": "Something else"
+            "name": "Your own answer"
           }
         ]
       }
@@ -1905,7 +1915,7 @@
     "steps": [
       {
         "action": "expect-text",
-        "text": "Two captures"
+        "text": "Thinking"
       }
     ],
     "variants": [
@@ -1914,7 +1924,7 @@
         "steps": [
           {
             "action": "expect-text",
-            "text": "Two captures"
+            "text": "Thinking"
           }
         ]
       },
@@ -1952,7 +1962,8 @@
           {
             "action": "scroll",
             "to": "top"
-          }
+          },
+          { "action": "expect", "role": "button", "name": "Jump to latest" }
         ]
       }
     ],

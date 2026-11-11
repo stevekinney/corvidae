@@ -75,10 +75,14 @@ type Role = Parameters<Page['getByRole']>[0];
 type Hooks = Record<string, (...argumentsList: unknown[]) => void>;
 
 /** What the page measures about itself; the plan turns it into problems. */
-type InPageMeasurement = Omit<PageMeasurement, 'pageErrors' | 'withdrawal'>;
+type InPageMeasurement = Omit<PageMeasurement, 'pageErrors' | 'withdrawal' | 'approvalReceiptFits'>;
 
 /** Runs in the page: the geometry the plan checks. */
-function measureInPage(options: { coarse: boolean; rtl: boolean }): InPageMeasurement {
+function measureInPage(options: {
+  coarse: boolean;
+  rtl: boolean;
+  settledApproval: boolean;
+}): InPageMeasurement {
   const shell = document.querySelector('[data-testid="chat-stress-shell"]') ?? document.body;
   const isVisible = (element: Element): boolean => {
     const box = element.getBoundingClientRect();
@@ -147,6 +151,8 @@ function measureInPage(options: { coarse: boolean; rtl: boolean }): InPageMeasur
   const composer =
     shell.querySelector('.chat-input-area > .chat-input-shell') ??
     shell.querySelector('.chat-input-area');
+  const transcript = shell.querySelector('.chat-timeline');
+  const jump = shell.querySelector('.chat-jump-button, .chat-new-indicator');
   return {
     documentWidth: {
       scroll: document.documentElement.scrollWidth,
@@ -155,37 +161,78 @@ function measureInPage(options: { coarse: boolean; rtl: boolean }): InPageMeasur
     smallTargets,
     clippedStatuses,
     directions,
+    jumpOverlapsTranscript:
+      transcript !== null &&
+      jump !== null &&
+      isVisible(jump) &&
+      jump.getBoundingClientRect().top < transcript.getBoundingClientRect().bottom,
+    approvalStillWaiting:
+      options.settledApproval &&
+      (shell.querySelector('[data-chat-approval-drawer]') !== null ||
+        [...shell.querySelectorAll('.chat-tool-call-summary')].some((summary) =>
+          summary.textContent.includes('waiting for approval'),
+        )),
     composerEdge:
       composer === null ? null : Math.round(composer.getBoundingClientRect().bottom * 100) / 100,
   };
 }
 
-/** Runs in the page: starts counting what the live regions announce from now on. */
+type WithdrawalWindow = Window & { stressAnnouncements?: number };
+
+/** Runs in the page: observes changes to live regions after a source is withdrawn. */
 function observeAnnouncements(): void {
-  const host = window as Window & { stressAnnouncements?: string[] };
-  const announced: string[] = [];
-  host.stressAnnouncements = announced;
-  new MutationObserver(() => {
+  const host = window as WithdrawalWindow;
+  const regions = new Map<Element, string>();
+  const scan = (): void => {
     for (const region of document.querySelectorAll(
       '[aria-live], [role="status"], [role="alert"]',
     )) {
-      const text = (region.textContent ?? '').replace(/\s+/g, ' ').trim();
-      if (text !== '' && announced.at(-1) !== text) announced.push(text);
+      const message = (region.textContent ?? '').trim();
+      if (message === 'Sources were removed' && regions.get(region) !== message) {
+        host.stressAnnouncements = (host.stressAnnouncements ?? 0) + 1;
+      }
+      regions.set(region, message);
     }
-  }).observe(document.body, { subtree: true, childList: true, characterData: true });
+  };
+  scan();
+  host.stressAnnouncements = 0;
+  new MutationObserver(scan).observe(document.body, {
+    subtree: true,
+    childList: true,
+    characterData: true,
+  });
 }
 
-/** Runs in the page: how many announcements followed and whether the focused control shows its ring. */
+/** Runs in the page: checks that the action has a rendered focus ring and the citation closed. */
 function readWithdrawal(): { announcements: number; focusVisible: boolean } {
-  const host = window as Window & { stressAnnouncements?: string[] };
+  const host = window as WithdrawalWindow;
   const active = document.activeElement;
   const shell = document.querySelector('[data-testid="chat-stress-shell"]');
+  const style = active === null ? undefined : getComputedStyle(active);
+  const box = active?.getBoundingClientRect();
   const focusVisible =
-    active !== null &&
+    active?.matches('.chat-message-action-button') === true &&
     shell?.contains(active) === true &&
-    active.matches(':focus-visible') &&
-    active.getBoundingClientRect().width > 0;
-  return { announcements: host.stressAnnouncements?.length ?? 0, focusVisible };
+    style?.boxShadow !== 'none' &&
+    box !== undefined &&
+    box.width > 0 &&
+    box.bottom > 0 &&
+    box.top < innerHeight &&
+    document.querySelector('.cinder-citation__panel') === null;
+  return { announcements: host.stressAnnouncements ?? 0, focusVisible };
+}
+
+function readApprovalReceiptFits(): boolean {
+  const receipt = document.querySelector('.chat-message-status .cinder-approval-card__receipt');
+  const card = receipt?.closest('.cinder-approval-card');
+  const slot = receipt?.closest('.chat-message-status');
+  return (
+    card !== null &&
+    card !== undefined &&
+    slot !== null &&
+    slot !== undefined &&
+    card.getBoundingClientRect().width >= slot.getBoundingClientRect().width - 1
+  );
 }
 
 /** Runs in the page: scrolls the transcript, the first scrolling box inside the shell, to an end. */
@@ -301,6 +348,11 @@ async function openCase(
   origin: string,
   stressCase: StressCase,
 ): Promise<OpenCase> {
+  const startTime = new Date(STRESS_NOW);
+  // Expiry needs both the clock and the deadline callbacks to advance. Its isolated context
+  // leaves the ordinary captures on a fixed instant with real browser timers.
+  if (stressCase.slug === 'approval-expired') await context.clock.install({ time: startTime });
+  else await context.clock.setFixedTime(startTime);
   const page = await context.newPage();
   page.setDefaultTimeout(DEADLINE);
   page.setDefaultNavigationTimeout(DEADLINE);
@@ -324,12 +376,29 @@ async function openCase(
 }
 
 async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonly StressStep[]) {
+  if (stressCase.slug === 'approval-expired') {
+    await opened.page
+      .getByText('1 waiting for approval', { exact: false })
+      .first()
+      .waitFor({ state: 'visible', timeout: DEADLINE });
+    await opened.page.locator('[data-chat-approval-drawer]').waitFor({
+      state: 'visible',
+      timeout: DEADLINE,
+    });
+    await opened.page.clock.fastForward(31_000);
+  }
   for (const step of steps) {
     // Count announcements from the moment the host withdraws the source, not before.
     if (stressCase.id === 45 && step.action === 'hook' && step.name === 'withdrawSource') {
       await opened.page.evaluate(observeAnnouncements);
     }
     await runStep(opened.page, step);
+  }
+  if (stressCase.slug === 'approval-expired') {
+    await opened.page.locator('[data-chat-approval-drawer]').waitFor({
+      state: 'hidden',
+      timeout: DEADLINE,
+    });
   }
 }
 
@@ -341,12 +410,17 @@ async function measure(
   const inPage = await opened.page.evaluate(measureInPage, {
     coarse: profile.coarse,
     rtl: stressCase.direction === 'rtl',
+    settledApproval:
+      stressCase.slug === 'approval-expired' || stressCase.slug === 'approval-receipt',
   });
   const withdrawal = stressCase.id === 45 ? await opened.page.evaluate(readWithdrawal) : undefined;
   const measurement: PageMeasurement = {
     ...inPage,
     pageErrors: opened.errors,
     ...(withdrawal === undefined ? {} : { withdrawal }),
+    ...(stressCase.id === 55
+      ? { approvalReceiptFits: await opened.page.evaluate(readApprovalReceiptFits) }
+      : {}),
   };
   return { measurement, problems: measurementProblems(measurement, profile, stressCase) };
 }
@@ -465,18 +539,18 @@ async function captureProfile(
   profile: StressProfile,
   cases: readonly StressCase[],
 ): Promise<void> {
-  const context = await browser.newContext({
-    viewport: { width: profile.width, height: profile.height },
-    deviceScaleFactor: 1,
-    colorScheme: profile.theme,
-    reducedMotion: 'reduce',
-    hasTouch: profile.coarse,
-    isMobile: profile.coarse,
-    locale: 'en-US',
-    timezoneId: 'America/Chicago',
-    baseURL: state.origin,
-  });
-  try {
+  async function openContext() {
+    const context = await browser.newContext({
+      viewport: { width: profile.width, height: profile.height },
+      deviceScaleFactor: 1,
+      colorScheme: profile.theme,
+      reducedMotion: 'reduce',
+      hasTouch: profile.coarse,
+      isMobile: profile.coarse,
+      locale: 'en-US',
+      timezoneId: 'America/Chicago',
+      baseURL: state.origin,
+    });
     await context.addInitScript(
       ([key, value]) => {
         try {
@@ -487,25 +561,32 @@ async function captureProfile(
       },
       [THEME_STORAGE_KEY, profile.theme] as const,
     );
-    // Fix the clock so a date separator reads Today; timers keep running, so nothing waits on it.
-    await context.clock.setFixedTime(new Date(STRESS_NOW));
+    return context;
+  }
+  const context = await openContext();
+  try {
     const edges = new Map<number, number | null>();
     for (const stressCase of cases) {
-      edges.set(
-        stressCase.id,
-        await captureImage(state, context, profile, stressCase, {
-          kind: 'primary',
-          steps: stressCase.steps,
-        }),
-      );
-      for (const variant of stressCase.variants) {
-        await captureImage(state, context, profile, stressCase, {
-          kind: 'variant',
-          variant: variant.name,
-          steps: variant.steps,
-        });
+      const caseContext = stressCase.slug === 'approval-expired' ? await openContext() : context;
+      try {
+        edges.set(
+          stressCase.id,
+          await captureImage(state, caseContext, profile, stressCase, {
+            kind: 'primary',
+            steps: stressCase.steps,
+          }),
+        );
+        for (const variant of stressCase.variants) {
+          await captureImage(state, caseContext, profile, stressCase, {
+            kind: 'variant',
+            variant: variant.name,
+            steps: variant.steps,
+          });
+        }
+        if (stressCase.focusSweep) await captureFocusSweep(state, caseContext, profile, stressCase);
+      } finally {
+        if (caseContext !== context) await caseContext.close();
       }
-      if (stressCase.focusSweep) await captureFocusSweep(state, context, profile, stressCase);
     }
     state.errors.push(...composerEdgeProblems(cases, profile, edges));
   } finally {

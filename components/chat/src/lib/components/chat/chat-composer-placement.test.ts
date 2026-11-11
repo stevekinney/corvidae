@@ -99,6 +99,7 @@ describe('Chat composer placement and footer', () => {
       conversation: createConversationHistory({ id: 'footer' }),
       composerPlacement: 'centered',
       composerFooter: footer,
+      composerHint: 'Use the shortcut to send',
     });
 
     const area = container.querySelector('.chat-input-area')!;

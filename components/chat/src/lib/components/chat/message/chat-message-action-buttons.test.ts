@@ -42,14 +42,16 @@ describe('chat message action buttons', () => {
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
     const lineRule = extractRule(source, /(?:^|\n)\s*\.chat-message-line\s*\{/);
-    expect(lineRule).toContain('gap: var(--cinder-space-1) var(--cinder-space-3)');
+    expect(lineRule).toContain('gap: var(--cinder-space-1)');
     const actionsRule = extractRule(source, '.chat-message-line-actions {');
-    expect(actionsRule).toContain('gap: var(--cinder-space-1) var(--cinder-space-3)');
+    expect(actionsRule).toContain('gap: var(--cinder-space-1)');
     const buttonRule = extractRule(
       source,
       '.chat-message-line :global(.chat-message-action-button) {',
     );
     expect(buttonRule).toContain('padding: 0;');
+    expect(buttonRule).toContain('justify-content: center;');
+    expect(buttonRule).toContain('min-inline-size: 1.5rem;');
   });
 
   test('on a touch screen each line action is a full touch target that keeps the line height (C#3)', () => {

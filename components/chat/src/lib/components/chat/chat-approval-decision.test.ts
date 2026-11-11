@@ -283,7 +283,7 @@ describe('Chat approval decision surface', () => {
 
     expect(card.getAttribute('data-cinder-layout')).toBe('decision');
     expect(card.querySelector('.cinder-approval-card__irreversible')?.textContent?.trim()).toBe(
-      'Irreversible',
+      "Can't be undone",
     );
     expect(card.querySelector('.cinder-approval-card__pause')?.textContent?.trim()).toBe(
       'The agent is paused until you decide.',

@@ -130,6 +130,11 @@ describe('Chat — run outcomes on the turn', () => {
     await view.rerender({ messageTurnState: () => state });
     await tick();
     expect(kindOf()).toBe('reconnecting');
+    const reconnecting = view.container.querySelector('.chat-turn-callout')!;
+    expect(reconnecting.querySelector('.cinder-callout__icon')).toBeNull();
+    expect(reconnecting.querySelector('.chat-turn-text svg')?.getAttribute('aria-hidden')).toBe(
+      'true',
+    );
     expect(view.container.textContent).toContain(
       'Connection lost. Reconnecting, attempt 1 of 3. Next try in 4 s.',
     );
@@ -138,6 +143,13 @@ describe('Chat — run outcomes on the turn', () => {
     await view.rerender({ messageTurnState: () => state });
     await tick();
     expect(kindOf()).toBe('failed');
+    const failed = view.container.querySelector('.chat-turn-alert')!;
+    expect(failed.querySelector('.chat-turn-alert-header button')?.textContent?.trim()).toBe(
+      'Retry',
+    );
+    expect(failed.querySelector('.chat-turn-failure-body')?.textContent).toContain(
+      'Three tries failed.',
+    );
     expect(view.container.textContent).toContain('Three tries failed.');
 
     state = advanceTurnState(state, { type: 'retry' });

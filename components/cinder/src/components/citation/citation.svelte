@@ -17,6 +17,9 @@
 </script>
 
 <script lang="ts">
+  import ChevronLeft from '@lucide/svelte/icons/chevron-left';
+  import ChevronRight from '@lucide/svelte/icons/chevron-right';
+
   import { classNames } from '../../utilities/class-names.ts';
   import { default as Popover } from '../popover/index.ts';
 
@@ -114,7 +117,7 @@
             onclick={() => (page = Math.max(0, page - 1))}
             disabled={page === 0}
             aria-label={labels?.previousSource ?? 'Previous source'}
-            >{labels?.previous ?? 'Previous'}</button
+            title={labels?.previous ?? 'Previous'}><ChevronLeft aria-hidden="true" /></button
           ><span aria-live="polite"
             >{labels?.position?.(page + 1, sources.length) ??
               `${page + 1} of ${sources.length}`}</span
@@ -122,7 +125,8 @@
             type="button"
             onclick={() => (page = Math.min(sources.length - 1, page + 1))}
             disabled={page === sources.length - 1}
-            aria-label={labels?.nextSource ?? 'Next source'}>{labels?.next ?? 'Next'}</button
+            aria-label={labels?.nextSource ?? 'Next source'}
+            title={labels?.next ?? 'Next'}><ChevronRight aria-hidden="true" /></button
           >
         </div>{/if}
     </section>

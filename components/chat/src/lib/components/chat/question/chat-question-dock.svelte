@@ -260,13 +260,15 @@
   }
 
   .chat-question-dock-legend {
+    margin-block-end: var(--cinder-space-1);
     padding: 0;
     color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
   .chat-question-dock-question {
-    margin: 0;
+    margin: 0 0 var(--cinder-space-1);
+    line-height: var(--cinder-leading-snug);
     font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     font-weight: var(--cinder-font-semibold);
     overflow-wrap: anywhere;

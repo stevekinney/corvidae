@@ -144,8 +144,14 @@ export interface PageMeasurement {
   }[];
   /** The composer's bottom edge in CSS pixels, or `null` when no composer is drawn. */
   readonly composerEdge: number | null;
+  /** A jump control uses its own row outside the transcript's scrollport. */
+  readonly jumpOverlapsTranscript?: boolean;
+  /** The composer or step summary still asks for approval after its decision. */
+  readonly approvalStillWaiting?: boolean;
   /** For a withdrawal case: how many announcements followed and whether the focused control shows a ring. */
   readonly withdrawal?: { readonly announcements: number; readonly focusVisible: boolean };
+  /** The host-supplied approval receipt uses the available width in the message status slot. */
+  readonly approvalReceiptFits?: boolean;
 }
 
 /** Everything wrong with one page's measurement; an empty list means it passed. */
@@ -169,6 +175,9 @@ export function measurementProblems(
     }
   }
   for (const status of measurement.clippedStatuses) problems.push(`clipped status: ${status}`);
+  if (measurement.jumpOverlapsTranscript) problems.push('jump control overlaps the transcript');
+  if (measurement.approvalStillWaiting)
+    problems.push('approval still waits after its receipt appears');
   if (stressCase.direction === 'rtl') {
     if (measurement.directions.length === 0) problems.push('no right-to-left text was measured');
     for (const block of measurement.directions) {
@@ -190,6 +199,9 @@ export function measurementProblems(
       }
       if (!measurement.withdrawal.focusVisible) problems.push('withdrawal left no visible focus');
     }
+  }
+  if (stressCase.id === 55 && measurement.approvalReceiptFits !== true) {
+    problems.push('the external approval receipt did not fill its message status slot');
   }
   return problems;
 }

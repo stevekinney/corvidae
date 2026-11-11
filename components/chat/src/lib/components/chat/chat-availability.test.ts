@@ -79,6 +79,23 @@ function composerWrapperOf(container: HTMLElement): HTMLElement {
   return container.querySelector<HTMLElement>('.chat-input-wrapper')!;
 }
 
+test('an unconfigured chat centers a provider action in place of the conversation', async () => {
+  let connected = 0;
+  const { container } = mountWith('availability-unconfigured', {
+    kind: 'unconfigured',
+    onConnect: () => (connected += 1),
+  });
+  expect(container.querySelector('.cinder-empty-state')?.textContent).toContain(
+    'Connect a model provider',
+  );
+  expect(timelineOf(container).style.display).toBe('none');
+  expect(composerWrapperOf(container).style.display).toBe('none');
+  const connect = buttonNamed(container, 'Connect provider')!;
+  expect(connect.getAttribute('data-cinder-variant')).toBe('primary');
+  await fireEvent.click(connect);
+  expect(connected).toBe(1);
+});
+
 describe('a conversation that is loading', () => {
   test('draws skeleton turns and a status line with the seconds so far, in the transcript place', () => {
     const { container } = mountWith('availability-loading', { kind: 'loading' });

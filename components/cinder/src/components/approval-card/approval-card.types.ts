@@ -183,6 +183,8 @@ export type ApprovalFact = {
 export type ApprovalCardCallbacks = {
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
+  /** Requests a fresh approval after this one has expired in the decision layout. */
+  onAskAgain?: () => void;
 };
 
 /** Props for the ApprovalCard component. */
@@ -397,6 +399,8 @@ export type ApprovalCardSchemaProps = {
   view?: PayloadInspectorView;
   /** Called for approve, approve-with-edits, and deny with the complete resolution payload. */
   onResolve?: (resolution: ApprovalResolution) => void;
+  /** Requests a fresh approval after this one has expired in the decision layout. */
+  onAskAgain?: () => void;
   /** Additional CSS classes applied to the root element. */
   class?: string;
 };

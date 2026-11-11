@@ -407,6 +407,11 @@ const schema = {
           'A line of context written above the question, such as "Test chat, this runs for real".',
       },
       {
+        name: 'onAskAgain',
+        reason: 'function-or-snippet',
+        description: 'Requests a fresh approval after this one has expired in the decision layout.',
+      },
+      {
         name: 'onResolve',
         reason: 'function-or-snippet',
         description:

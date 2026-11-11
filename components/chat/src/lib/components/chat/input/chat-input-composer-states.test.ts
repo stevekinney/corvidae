@@ -61,7 +61,7 @@ describe('empty and ready (C1, C2)', () => {
 });
 
 describe('the run toolbar (C4)', () => {
-  test('a working run shows Running and its clock, Stop with its word, and the follow-up placeholder', () => {
+  test('a working run shows Running and its clock, icon-only Stop, and the follow-up placeholder', () => {
     const { container } = render(ChatInput, {
       id: 'state-running',
       placeholder: 'Message the agent',
@@ -78,7 +78,7 @@ describe('the run toolbar (C4)', () => {
     const stop = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Stop generating"]',
     )!;
-    expect(stop.textContent?.trim()).toBe('Stop');
+    expect(stop.textContent?.trim()).toBe('');
     expect(stop.getAttribute('data-cinder-variant')).toBe('secondary');
     expect(stop.querySelector('svg')).not.toBeNull();
 

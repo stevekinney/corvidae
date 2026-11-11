@@ -1,15 +1,19 @@
 <script lang="ts" module>
+  import type { Snippet } from 'svelte';
+
   export type ChatApprovalDrawerProps = {
     /** Called when Review approval is activated: take the person to the approval that waits. */
     onreview: () => void;
+    /** Transcript navigation shares the action row when present. */
+    navigation?: Snippet;
   };
 </script>
 
 <script lang="ts">
-  import { Button, Info } from '@lostgradient/cinder';
+  import { ArrowUp, Button, Info } from '@lostgradient/cinder';
   import { APPROVAL_DRAWER_ACTION, APPROVAL_DRAWER_TEXT } from './chat-approval-review.ts';
 
-  let { onreview }: ChatApprovalDrawerProps = $props();
+  let { onreview, navigation }: ChatApprovalDrawerProps = $props();
 </script>
 
 <!-- An information drawer above the composer while an approval waits. It pushes the transcript up
@@ -22,14 +26,19 @@
 >
   <Info class="chat-approval-drawer-glyph cinder-icon-sm" aria-hidden="true" />
   <p class="chat-approval-drawer-text" dir="auto">{APPROVAL_DRAWER_TEXT}</p>
-  <Button
-    type="button"
-    variant="secondary"
-    size="sm"
-    class="chat-approval-drawer-action"
-    label={APPROVAL_DRAWER_ACTION}
-    onclick={onreview}
-  />
+  <div class="chat-approval-drawer-actions">
+    <Button
+      type="button"
+      variant="secondary"
+      size="sm"
+      class="chat-approval-drawer-action"
+      label={APPROVAL_DRAWER_ACTION}
+      onclick={onreview}
+    >
+      {#snippet leadingIcon()}<ArrowUp class="cinder-icon-xs" aria-hidden="true" />{/snippet}
+    </Button>
+    {@render navigation?.()}
+  </div>
 </div>
 
 <style>
@@ -38,7 +47,7 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-2) var(--cinder-space-3);
-    margin-block-end: var(--cinder-space-2);
+    margin-block: var(--cinder-space-3);
     padding: var(--cinder-space-2) var(--cinder-space-3);
     border: 1px solid var(--cinder-status-info-border);
     border-radius: var(--cinder-radius-lg);
@@ -59,10 +68,28 @@
     text-align: start;
   }
 
+  .chat-approval-drawer-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  @container (max-width: 480px) {
+    .chat-approval-drawer-actions {
+      inline-size: 100%;
+      justify-content: space-between;
+    }
+  }
+
   /* Coarse pointers get a target of at least 44 px. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
+    .chat-approval-drawer :global(.chat-approval-drawer-glyph) {
+      display: none;
+    }
+
     .chat-approval-drawer :global(.chat-approval-drawer-action) {
       min-block-size: var(--cinder-touch-target-min);
+      padding-inline: var(--cinder-space-3);
     }
   }
 </style>

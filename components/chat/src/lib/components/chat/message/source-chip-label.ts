@@ -10,3 +10,14 @@ export function sourceChipLabel(source: CitationSource): string {
   const link = resolveCitationLink(source.url);
   return link.kind === 'link' && link.host !== undefined ? link.host : source.label;
 }
+
+/** Stable keys keep an open chip attached to its own source even when an earlier source is removed. */
+export function sourceChipKeys(sources: readonly CitationSource[]): string[] {
+  const occurrences = new Map<string, number>();
+  return sources.map(({ label, url, detail }) => {
+    const signature = JSON.stringify([label, url, detail]);
+    const occurrence = occurrences.get(signature) ?? 0;
+    occurrences.set(signature, occurrence + 1);
+    return `${occurrence}:${signature}`;
+  });
+}

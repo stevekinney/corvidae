@@ -204,8 +204,15 @@ describe('Citation', () => {
     await waitFor(() =>
       expect(document.querySelector('[aria-label="Nächste Quelle"]')).not.toBeNull(),
     );
-    expect(document.querySelector('[aria-label="Nächste Quelle"]')?.textContent).toBe('Weiter');
-    expect(document.querySelector('[aria-label="Vorherige Quelle"]')?.textContent).toBe('Zurück');
+    expect(document.querySelector('[aria-label="Nächste Quelle"]')?.getAttribute('title')).toBe(
+      'Weiter',
+    );
+    expect(document.querySelector('[aria-label="Vorherige Quelle"]')?.getAttribute('title')).toBe(
+      'Zurück',
+    );
+    expect(
+      document.querySelector('[aria-label="Nächste Quelle"] svg')?.getAttribute('aria-hidden'),
+    ).toBe('true');
     expect(document.querySelector('.cinder-citation__pagination [aria-live]')?.textContent).toBe(
       '1 von 6',
     );

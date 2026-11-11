@@ -150,7 +150,7 @@
             type="button"
             class="message-attachment-retry"
             size="xs"
-            variant="secondary"
+            variant="ghost-accent"
             aria-label={`Retry loading ${alt}`}
             onclick={() => retryImage(url)}
           >

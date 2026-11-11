@@ -15,7 +15,14 @@
    * deleted. The ticking number is never in a live region: a screen reader hears the status line
    * once, and again when the read turns slow.
    */
-  import { Button, ChevronLeft, ErrorState, Skeleton, Spinner } from '@lostgradient/cinder';
+  import {
+    Button,
+    ChevronLeft,
+    EmptyState,
+    ErrorState,
+    Skeleton,
+    Spinner,
+  } from '@lostgradient/cinder';
 
   import {
     availabilityLabels,
@@ -117,6 +124,23 @@
       {...allConversations === undefined ? {} : { secondaryAction: allConversationsButton }}
     />
   </div>
+{:else if availability.kind === 'unconfigured'}
+  {@const connect = availability.onConnect}
+  <div class="chat-availability">
+    <EmptyState
+      data-chat-availability="unconfigured"
+      kind="disabled"
+      headingLevel={2}
+      title={labels.unconfiguredTitle}
+      description={labels.unconfiguredDescription}
+    >
+      {#snippet action()}
+        <Button variant="primary" class="chat-availability-connect" onclick={connect}>
+          {labels.connectProvider}
+        </Button>
+      {/snippet}
+    </EmptyState>
+  </div>
 {:else}
   <div class="chat-availability">
     <ErrorState
@@ -144,6 +168,13 @@
 {/snippet}
 
 <style>
+  @media (any-pointer: coarse) {
+    :global(.chat-availability-connect) {
+      min-block-size: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
+    }
+  }
+
   .chat-availability {
     display: flex;
     flex: 1;

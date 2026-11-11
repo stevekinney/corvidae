@@ -134,6 +134,19 @@ describe('measurementProblems', () => {
     ]);
   });
 
+  it('flags a jump control that covers the transcript and a receipt that still waits', () => {
+    expect(
+      measurementProblems(
+        { ...CLEAN, jumpOverlapsTranscript: true, approvalStillWaiting: true },
+        narrow,
+        caseNumbered(23),
+      ),
+    ).toEqual([
+      'jump control overlaps the transcript',
+      'approval still waits after its receipt appears',
+    ]);
+  });
+
   it('checks Arabic direction and alignment, and refuses a case that measured no text', () => {
     const rtl = caseNumbered(38);
     expect(measurementProblems(CLEAN, narrow, rtl)).toEqual(['no right-to-left text was measured']);
@@ -149,6 +162,16 @@ describe('measurementProblems', () => {
       directions: [{ text: 'استرداد', direction: 'rtl', textAlign: 'start' }],
     };
     expect(measurementProblems(right, narrow, rtl)).toEqual([]);
+  });
+
+  it('checks the external approval receipt uses the available message width', () => {
+    const receipt = caseNumbered(55);
+    expect(measurementProblems({ ...CLEAN, approvalReceiptFits: false }, narrow, receipt)).toEqual([
+      'the external approval receipt did not fill its message status slot',
+    ]);
+    expect(measurementProblems({ ...CLEAN, approvalReceiptFits: true }, narrow, receipt)).toEqual(
+      [],
+    );
   });
 
   it('requires exactly one announcement and a visible focus for the withdrawal of case 45', () => {
@@ -352,7 +375,15 @@ describe('renderGallery', () => {
     );
     expect(galleryImageFiles(html)).toEqual(['1440-light-55.png']);
     expect(html).toContain('Chat stress gallery: Passed');
-    expect(html).toContain('Deferred: A5 is drawn from a receipt');
+  });
+
+  it('shows a deferred reason next to a case when one is supplied', () => {
+    const html = renderGallery(
+      [record('1440-light-55.png', { caseId: 55 })],
+      [{ ...caseNumbered(55), deferred: 'The host must supply the decision.' }],
+      summary({}),
+    );
+    expect(html).toContain('Deferred: The host must supply the decision.');
   });
 
   it('says Failed at the top and lists every error and the problem at its image', () => {

@@ -763,6 +763,8 @@
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
+    inline-size: 100%;
+    min-inline-size: 0;
     box-sizing: border-box;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
@@ -771,10 +773,59 @@
     font-size: var(--cinder-text-sm);
   }
 
+  .cinder-approval-card--decision[data-cinder-state='expired'] {
+    border-style: dashed;
+    background: transparent;
+  }
+
+  .cinder-approval-card__expired-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
+    font-size: var(--cinder-text-sm);
+  }
+
+  .cinder-approval-card__expiry-actions {
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-3);
+    margin-inline-start: auto;
+  }
+
+  .cinder-approval-card__expiry-actions .cinder-button {
+    padding-inline: var(--cinder-space-4);
+  }
+
+  @container (inline-size < 24rem) {
+    .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
+      flex-basis: 100%;
+    }
+
+    .cinder-approval-card__expiry-actions {
+      inline-size: 100%;
+      justify-content: space-between;
+    }
+
+    .cinder-approval-card__expiry-actions .cinder-button {
+      margin-inline-start: auto;
+    }
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-approval-card__expired-row .cinder-button {
+      min-block-size: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
+    }
+  }
+
   /* No glyph gutter: the action is the first thing on the row, and a badge beside it says when it
      cannot be undone. The title may wrap, so a long action never truncates. */
   .cinder-approval-card__decision-head,
-  .cinder-approval-card__receipt-head {
+  .cinder-approval-card__receipt-meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -793,18 +844,23 @@
     text-align: start;
   }
 
+  .cinder-approval-card__receipt .cinder-approval-card__input-toggle {
+    align-items: center;
+    align-self: flex-start;
+    line-height: var(--cinder-leading-tight);
+  }
+
   .cinder-approval-card__receipt-head .cinder-approval-card__decision-title {
-    flex: 1 1 8rem;
     font-size: var(--cinder-text-sm);
   }
 
-  .cinder-approval-card__receipt-head .cinder-badge,
+  .cinder-approval-card__receipt-meta .cinder-badge,
   .cinder-approval-card__irreversible {
     flex: none;
     white-space: nowrap;
   }
 
-  .cinder-approval-card__receipt-head .cinder-badge svg {
+  .cinder-approval-card__receipt-meta .cinder-badge svg {
     flex: none;
   }
 
@@ -854,6 +910,54 @@
     text-align: start;
   }
 
+  .cinder-approval-card__decision-tools {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-1) var(--cinder-space-3);
+    margin-block-end: calc(-1 * var(--cinder-space-1));
+  }
+
+  .cinder-approval-card__decision-tools .cinder-approval-card__note-toggle {
+    flex: none;
+    margin-inline-start: auto;
+  }
+
+  @container (inline-size < 24rem) {
+    .cinder-approval-card__decision-head:has(.cinder-approval-card__irreversible) {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--cinder-space-1);
+    }
+
+    .cinder-approval-card__decision-head .cinder-approval-card__decision-title {
+      flex: initial;
+    }
+
+    .cinder-approval-card__decision-head .cinder-approval-card__irreversible {
+      order: -1;
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
+      white-space: normal;
+      overflow-wrap: anywhere;
+      line-height: var(--cinder-leading-tight);
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__facts {
+      gap: var(--cinder-space-0-5);
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__fact--command {
+      grid-template-columns: minmax(0, 1fr);
+      row-gap: var(--cinder-space-0-5);
+    }
+
+    .cinder-approval-card--decision .cinder-approval-card__command {
+      --cinder-code-block-padding: var(--cinder-space-1-5);
+    }
+  }
+
   .cinder-approval-card__countdown,
   .cinder-approval-card__arm-hint {
     margin: 0;
@@ -885,6 +989,10 @@
   .cinder-approval-card--decision:has(> .cinder-approval-card__receipt) {
     gap: 0;
     padding-block: var(--cinder-space-2);
+  }
+
+  .cinder-approval-card__receipt-meta {
+    gap: var(--cinder-space-1) var(--cinder-space-2);
   }
 
   .cinder-approval-card__receipt-by,
@@ -1209,10 +1317,19 @@
     }
   }
 
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
+    .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
+      padding-inline: var(--cinder-space-3);
+    }
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-approval-card--decision .cinder-approval-card__input-toggle,
+    .cinder-approval-card__decision-tools .cinder-approval-card__note-toggle,
     .cinder-approval-card__row-actions .cinder-button[data-cinder-size],
     .cinder-approval-card__action-buttons .cinder-button[data-cinder-size] {
-      min-height: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
     }
 
     /* The disclosures (Input, Details, Why the agent wants to do this, what the source said) and

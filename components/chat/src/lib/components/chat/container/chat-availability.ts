@@ -1,7 +1,7 @@
 /**
  * What Chat draws in place of a conversation that is not available yet (COR-2285, rows V2 and V3):
  * a conversation that is still being read, one whose read was canceled, one that could not be read
- * and one that was deleted. The host says which one applies with the `availability` prop; Chat owns
+ * one that was deleted, and one without a model provider. The host says which one applies with the `availability` prop; Chat owns
  * the placeholders, the elapsed time and the words.
  */
 
@@ -35,6 +35,12 @@ export interface ChatAvailabilityLabels {
   readonly deletedTitle: string;
   /** The sentence under that title. Default `It no longer exists, so nothing more can be sent here.`. */
   readonly deletedDescription: string;
+  /** The title when a model provider is missing. Default `Connect a model provider`. */
+  readonly unconfiguredTitle: string;
+  /** The description under the missing-provider title. */
+  readonly unconfiguredDescription: string;
+  /** The button that opens provider settings. Default `Connect provider`. */
+  readonly connectProvider: string;
   /** What Send reads while the conversation loads and Send waits for it. Default `Loading…`. */
   readonly sendWaits: string;
   /** The unit that follows the elapsed number. Default `s`. */
@@ -53,6 +59,9 @@ export const DEFAULT_CHAT_AVAILABILITY_LABELS: ChatAvailabilityLabels = {
   tryAgain: 'Try again',
   deletedTitle: 'This conversation was deleted',
   deletedDescription: 'It no longer exists, so nothing more can be sent here.',
+  unconfiguredTitle: 'Connect a model provider',
+  unconfiguredDescription: 'The agent needs a model to answer. An admin adds one in Settings.',
+  connectProvider: 'Connect provider',
   sendWaits: 'Loading…',
   secondsUnit: 's',
 };
@@ -72,6 +81,7 @@ export const DEFAULT_SLOW_AFTER_SECONDS = 10;
  *   the `cause`, with a primary Try again (`onRetry`) and a secondary `allConversations`.
  * - `deleted`: the conversation no longer exists. A neutral `ErrorState` replaces the transcript and
  *   the composer, with `allConversations` as its primary button.
+ * - `unconfigured`: a model provider is missing. An EmptyState offers `onConnect` as its primary action.
  */
 export type ChatAvailability =
   | {
@@ -111,11 +121,22 @@ export type ChatAvailability =
       allConversations: ChatAvailabilityAction;
       /** The words, any of which the host can replace. */
       labels?: Partial<ChatAvailabilityLabels> | undefined;
+    }
+  | {
+      kind: 'unconfigured';
+      /** Opens the model provider settings. */
+      onConnect: () => void;
+      /** The words, any of which the host can replace. */
+      labels?: Partial<ChatAvailabilityLabels> | undefined;
     };
 
 /** Whether the state replaces the composer too: a conversation that failed or is gone has nothing to send to. */
 export function availabilityReplacesComposer(availability: ChatAvailability | undefined): boolean {
-  return availability?.kind === 'error' || availability?.kind === 'deleted';
+  return (
+    availability?.kind === 'error' ||
+    availability?.kind === 'deleted' ||
+    availability?.kind === 'unconfigured'
+  );
 }
 
 /** The words for `availability`, with the host's own over the defaults. */

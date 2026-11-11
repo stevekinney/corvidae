@@ -57,6 +57,16 @@ export function findPendingApprovalMessageId(
   approvalStates: ReadonlyMap<string, ApprovalState> | undefined,
   now: number = Date.now(),
 ): string | undefined {
+  return pendingApprovalMessageIds(messages, approvalStates, now)[0];
+}
+
+/** Message ids of the cards that are waiting for a decision, in transcript order. */
+export function pendingApprovalMessageIds(
+  messages: readonly Message[],
+  approvalStates: ReadonlyMap<string, ApprovalState> | undefined,
+  now: number,
+): string[] {
+  const ids: string[] = [];
   for (const message of messages) {
     const result = message.toolResult;
     if (
@@ -73,9 +83,9 @@ export function findPendingApprovalMessageId(
     const callRow = messages.find(
       (candidate) => candidate.role === 'tool-call' && candidate.toolCall?.id === result.callId,
     );
-    return callRow?.id ?? message.id;
+    ids.push(callRow?.id ?? message.id);
   }
-  return undefined;
+  return ids;
 }
 
 /**

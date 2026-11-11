@@ -67,6 +67,17 @@
     overflow-x: visible;
   }
 
+  /* Rendered fences are wrappers rather than pre elements in the Markdown flow. */
+  .cinder-chat .message-content-preview [data-cinder-markdown-node='code-block']:not(:last-child) {
+    margin-block-end: var(--cinder-space-3);
+  }
+
+  .cinder-chat
+    .message-content-preview
+    + .message-content-wide[data-cinder-markdown-node='code-block'] {
+    margin-block-start: var(--cinder-space-3);
+  }
+
   /* One hairline frames Chat's code; an open fence keeps its dashed bottom edge. */
   .cinder-chat .message-content-wide[data-cinder-markdown-node='code-block'] .cinder-code-block {
     border: 1px solid var(--cinder-border-muted);

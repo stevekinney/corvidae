@@ -116,6 +116,8 @@ describe('free text answered through the composer', () => {
     expect(messages).toEqual([]);
     expect(container.textContent).toContain('You answered');
     expect(container.textContent).toContain('staging please');
+    expect(container.querySelector('.chat-tool-call-summary')?.textContent).toContain('1 answered');
+    expect(container.textContent).not.toContain('waiting for input');
     // With nothing left to answer, the composer sends messages again.
     expect(composerOf(container).placeholder).not.toBe('Answer');
   });

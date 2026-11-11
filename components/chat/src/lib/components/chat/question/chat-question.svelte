@@ -374,13 +374,15 @@
   bind:this={root}
 >
   {#if answer !== undefined}
-    <p class="chat-question-answer" role="status">
-      <span class="chat-question-answer-label">You answered</span>
-      <span class="chat-question-answer-value" data-question-answer>{answer.summary}</span>
-    </p>
-    {#if onChange !== undefined}
-      <Button type="button" variant="ghost" size="sm" onclick={onChange}>Change</Button>
-    {/if}
+    <div class="chat-question-receipt">
+      <p class="chat-question-answer" role="status">
+        <span class="chat-question-answer-label">You answered</span>
+        <span class="chat-question-answer-value" data-question-answer>{answer.summary}</span>
+      </p>
+      {#if onChange !== undefined}
+        <Button type="button" variant="ghost" size="sm" onclick={onChange}>Change</Button>
+      {/if}
+    </div>
   {:else}
     {#if kind === 'choice' || kind === 'choice-other'}
       <div class="chat-question-choices" role="group" aria-label={title}>
@@ -716,6 +718,15 @@
     text-align: start;
   }
 
+  @media (any-pointer: coarse) {
+    .chat-question-choices :global(.chat-question-choice) {
+      flex-basis: 100%;
+      min-block-size: var(--cinder-touch-target-min);
+      padding: var(--cinder-space-2) var(--cinder-space-3);
+      border-radius: var(--cinder-radius-md);
+    }
+  }
+
   /* The pick of a held or sent answer: an accent edge and tint; the others stand back. The pick is
    * aria-pressed, which Cinder's button draws as a filled accent face with its on-fill label, so
    * the tint has the page's own text colour with it, or the label would be white on a pale tint.
@@ -761,7 +772,7 @@
   }
 
   .chat-question-choice-description {
-    color: var(--cinder-text-secondary, inherit);
+    color: var(--cinder-text-muted);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
     font-weight: var(--cinder-font-normal, normal);
   }
@@ -791,6 +802,13 @@
     display: grid;
     gap: var(--cinder-space-2);
     justify-items: start;
+  }
+
+  .chat-question-receipt {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    column-gap: var(--cinder-space-2);
   }
 
   .chat-question-answer {

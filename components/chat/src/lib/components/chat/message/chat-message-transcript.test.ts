@@ -41,7 +41,7 @@ function mount(props: Record<string, unknown>) {
 }
 
 describe('transcript presentation', () => {
-  test('a sent message has one line with its time, Copy and, on a reply, Quote as words', () => {
+  test('a sent message puts its time next to named icon-only Copy and Quote actions', () => {
     const { container, getByRole } = mount({
       message: message({ role: 'assistant', content: 'Order 4398 is $27.25.' }),
       onQuote: () => undefined,
@@ -49,8 +49,8 @@ describe('transcript presentation', () => {
     const line = container.querySelector('.chat-message-line');
     expect(line?.getAttribute('data-state')).toBe('sent');
     expect(line?.querySelector('time')).not.toBeNull();
-    expect(line?.textContent).toContain('Copy');
-    expect(getByRole('button', { name: 'Quote message' }).textContent?.trim()).toBe('Quote');
+    expect(getByRole('button', { name: 'Copy' }).textContent?.trim()).toBe('');
+    expect(getByRole('button', { name: 'Quote message' }).textContent?.trim()).toBe('');
     // A reply is not a card: the role label is read but not drawn.
     expect(
       container.querySelector('[data-presentation="transcript"][data-role="assistant"]'),
@@ -111,8 +111,8 @@ describe('transcript presentation', () => {
   });
 
   test("a person's own message offers Copy and no Quote", () => {
-    const { container, queryByRole } = mount({ onQuote: () => undefined });
-    expect(container.querySelector('.chat-message-line')?.textContent).toContain('Copy');
+    const { queryByRole } = mount({ onQuote: () => undefined });
+    expect(queryByRole('button', { name: 'Copy' })).not.toBeNull();
     expect(queryByRole('button', { name: 'Quote message' })).toBeNull();
   });
 
@@ -125,13 +125,13 @@ describe('transcript presentation', () => {
     });
     // Copy brings a hidden live region that says nothing until something is copied; leave it out.
     const labels = Array.from(
-      container.querySelectorAll('.chat-message-line-actions > *'),
-      (node) => node.textContent?.trim(),
+      container.querySelectorAll('.chat-message-line-actions button'),
+      (node) => node.getAttribute('aria-label') ?? node.textContent?.trim(),
     ).filter((text) => text);
-    expect(labels).toEqual(['Copy', 'Quote', 'Regenerate', 'Branch']);
+    expect(labels).toEqual(['Copy', 'Quote message', 'Regenerate', 'Branch']);
   });
 
-  test('the line reads time, Copy, Quote, Regenerate, each action an icon and a word', () => {
+  test('the line orders the time and three named icon-only actions with tooltips', () => {
     const { container } = mount({
       message: message({ role: 'assistant', content: 'Order 4398 is $27.25.' }),
       onQuote: () => undefined,
@@ -142,11 +142,15 @@ describe('transcript presentation', () => {
     expect(line.firstElementChild?.tagName).toBe('TIME');
     expect(line.lastElementChild?.classList.contains('chat-message-line-actions')).toBe(true);
     const buttons = Array.from(line.querySelectorAll<HTMLElement>('.chat-message-action-button'));
-    expect(buttons.map((button) => button.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
+    expect(buttons.map((button) => button.textContent?.trim())).toEqual(['', '', '']);
+    expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual([
       'Copy',
-      'Quote',
+      'Quote message',
       'Regenerate',
     ]);
+    expect(buttons.every((button) => button.closest('.cinder-tooltip-wrapper') !== null)).toBe(
+      true,
+    );
     for (const button of buttons) {
       // An icon before the word, drawn for the eye only.
       expect(button.querySelector('svg')).not.toBeNull();
@@ -196,7 +200,7 @@ describe('transcript presentation', () => {
     expect(icon.tabIndex).toBeGreaterThanOrEqual(0);
     expect(getByText('Not sent')).not.toBeNull();
     expect(container.querySelector('.chat-message-line time')).not.toBeNull();
-    expect(container.querySelector('.chat-message-line')?.textContent).toContain('Copy');
+    expect(container.querySelector('.chat-message-line button[aria-label="Copy"]')).not.toBeNull();
     expect(container.querySelector('.chat-message')?.textContent).toContain('order 4398');
     // The old inline label and icon-only retry are gone.
     expect(container.querySelector('.chat-message-failed-actions')).toBeNull();

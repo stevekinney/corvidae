@@ -104,7 +104,8 @@ describe('Chat composerStarting', () => {
       conversation: createConversationHistory({ id: 'send' }),
     });
 
-    expect(sendButton(container).textContent).toContain('Send');
+    expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
+    expect(sendButton(container).textContent?.trim()).toBe('');
     expect(container.querySelector('.chat-input-spinner')).toBeNull();
     expect(container.querySelector('form.chat-input')?.getAttribute('aria-busy')).toBeNull();
   });

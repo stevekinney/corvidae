@@ -17,6 +17,7 @@ import {
   findPendingApprovalMessageId,
   focusPendingApproval,
   nextPendingApprovalDeadline,
+  pendingApprovalMessageIds,
 } from './chat-approval-review.ts';
 
 setupHappyDom();
@@ -109,6 +110,17 @@ describe('findPendingApprovalMessageId', () => {
         ]),
       ),
     ).toBeUndefined();
+  });
+
+  test('lists both pending card rows and drops either row once decided', () => {
+    const messages = conversationWith(['a', 'b'], true);
+    const calls = messages.filter((message) => message.role === 'tool-call');
+    expect(pendingApprovalMessageIds(messages, undefined, 0)).toEqual(
+      calls.map((message) => message.id),
+    );
+    expect(
+      pendingApprovalMessageIds(messages, new Map<string, ApprovalState>([['b', 'denied']]), 0),
+    ).toEqual(calls.slice(0, 1).map((message) => message.id));
   });
 
   test('keeps finding an approval whose state reads pending while its answer is on the way', () => {

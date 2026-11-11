@@ -96,6 +96,8 @@ export type ChatMessagePartsRendererProps = {
   onToggle?: (() => void) | undefined;
   /** Drawn at the end of a run's note line, such as a Retry beside a failed run's stop note. Receives the note. */
   noteAction?: Snippet<[note: MessageNoteInfo]> | undefined;
+  /** Requests a fresh approval after this tool call expires. */
+  onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
   /** Called when the user resolves an action-required approval. */
   onApprovalResolve?:
     ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;

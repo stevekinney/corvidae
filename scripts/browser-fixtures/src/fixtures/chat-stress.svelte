@@ -13,13 +13,14 @@
     type ChatAttachmentUpload,
     type ChatAvailability,
     type ChatComposerStatus,
+    type ChatRowContext,
     type ChatTurnEvent,
     type ChatTurnState,
     type ConversationHistory,
     type Message,
     type ReasoningInfo,
   } from '@lostgradient/chat';
-  import type { ApprovalResolution, CitationSource } from '@lostgradient/cinder';
+  import { ApprovalCard, type ApprovalResolution, type CitationSource } from '@lostgradient/cinder';
   import { untrack } from 'svelte';
 
   import casesData from './chat-stress.json';
@@ -71,9 +72,7 @@
   let streaming = $state(setup.streaming);
   let turnStates = $state<Record<number, ChatTurnState>>({ ...setup.turnStates });
   let online = $state(true);
-  let availabilityKind = $state<'loading' | 'canceled' | 'error' | 'deleted' | undefined>(
-    setup.availability?.kind,
-  );
+  let availabilityKind = $state<ChatAvailability['kind'] | undefined>(setup.availability?.kind);
   let statusCleared = $state(false);
   let sources = $state.raw<Record<number, CitationSource[]>>({ ...setup.sources });
   let streamMessageId: string | undefined;
@@ -140,7 +139,10 @@
       applyTurnEvent({ type: 'stop' });
       streaming = false;
     },
-    describeApproval: (toolCall) => setup.approvalDetails[toolCall.name],
+    describeApproval: (toolCall) =>
+      Object.hasOwn(setup.approvalDetails, toolCall.id)
+        ? setup.approvalDetails[toolCall.id]
+        : setup.approvalDetails[toolCall.name],
     describeToolCall: (toolCall, result) => describeStressCall(toolCall.name, result?.outcome),
     resolveToolApproval: async (toolCallId, resolution: ApprovalResolution) => {
       approvals = [...approvals, { toolCallId, decision: resolution.decision }];
@@ -226,6 +228,9 @@
         onRetry: () => (availabilityKind = 'loading'),
         allConversations,
       };
+    }
+    if (availabilityKind === 'unconfigured') {
+      return { kind: 'unconfigured', onConnect: () => {} };
     }
     return { kind: 'deleted', allConversations };
   });
@@ -314,6 +319,24 @@
   });
 </script>
 
+{#snippet externalApprovalStatus(context: ChatRowContext)}
+  {#if context.message.role === 'assistant' && setup.externalApproval}
+    <ApprovalCard
+      layout="decision"
+      tool={{ name: 'issue_refund', risk: 'high' }}
+      operation={{ kind: 'command', command: setup.externalApproval.command }}
+      state="approved"
+      question={setup.externalApproval.action}
+      policyVersion="stress-policy-v1"
+      idempotencyKey="stress-refund-4471-external"
+      decidedBy={setup.externalApproval.actor}
+      decidedIn="Reviews"
+      decidedInHref="/reviews"
+      decidedAt={setup.externalApproval.decidedAt}
+    />
+  {/if}
+{/snippet}
+
 {#if failure !== undefined}
   <p data-chat-stress-error role="alert">{failure}</p>
 {:else}
@@ -340,7 +363,7 @@
         {composerStatus}
         {availability}
         messageTurnState={turnStateFor}
-        messageReasoning={reasoningFor}
+        {...Object.keys(setup.reasoning).length > 0 ? { messageReasoning: reasoningFor } : {}}
         questionPlacement={setup.questionPlacement}
         onInputSubmit={handleInputSubmit}
         emptyPrompts={setup.emptyPrompts}
@@ -365,8 +388,10 @@
           streaming = true;
         }}
         onRetryStep={(toolCallId) => recordTurnAction('retry-step', toolCallId)}
+        onApprovalRequestAgain={(toolCallId) => recordTurnAction('ask-again', toolCallId)}
         {uploadAttachment}
         acceptedTypes={setup.uploads === 'none' ? undefined : ACCEPTED_TYPES}
+        {...setup.externalApproval === undefined ? {} : { messageStatus: externalApprovalStatus }}
       />
     </div>
     {#if setup.secondChat}
@@ -400,6 +425,10 @@
 {/if}
 
 <style>
+  :global(body:has(.stress-page)) {
+    padding: 0;
+  }
+
   .stress-page {
     display: grid;
     grid-auto-rows: minmax(0, 1fr);

@@ -105,6 +105,14 @@ describe('an approval with a deadline (COR-2280)', () => {
     expect(toolCallRowStatus(answered, undefined, NOW)).toBe('succeeded');
   });
 
+  test('shows an approval decision while the tool has yet to return its result', () => {
+    const pair = approvalPair('a', at(1_000));
+    const status = toolCallRowStatus(pair, 'approved', NOW);
+    expect(status).toBe('approved');
+    expect(toolCallRowStatus(pair, 'approved_with_edits', NOW)).toBe('approved');
+    expect(toolCallSummaryParts([pair], [status], [undefined]).problems).toEqual(['1 approved']);
+  });
+
   test('waits on an approval with no valid deadline', () => {
     expect(toolCallRowStatus(approvalPair('a', undefined), undefined, NOW)).toBe('waiting');
     expect(toolCallRowStatus(approvalPair('a', 'soon'), undefined, NOW)).toBe('waiting');

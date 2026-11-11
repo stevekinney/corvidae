@@ -143,8 +143,8 @@
   }
 
   .chat-attachment-preview[data-error] .chat-attachment-preview-badge {
-    background: var(--cinder-status-danger-background);
-    color: var(--cinder-status-danger-text);
+    background: var(--cinder-surface-inset);
+    color: var(--cinder-text-muted);
   }
 
   .chat-attachment-preview-loading {

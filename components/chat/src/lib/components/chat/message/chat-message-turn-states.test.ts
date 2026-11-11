@@ -190,11 +190,10 @@ describe('R5: failed partway', () => {
     const alert = block?.querySelector('[role="alert"]');
     expect(alert?.getAttribute('data-cinder-variant')).toBe('danger');
     expect(alert?.textContent).toContain('This answer is incomplete.');
-    expect(block?.querySelector('.chat-turn-cause')?.textContent).toBe(
-      'The model provider dropped the connection.',
-    );
-    expect(block?.querySelector('.chat-turn-keeps')?.textContent?.trim()).toBe(
-      'Retry keeps the text above and the 2 steps that finished.',
+    expect(
+      block?.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
+    ).toBe(
+      'The model provider dropped the connection. Retry keeps the text above and the 2 steps that finished.',
     );
     await fireEvent.click(getByRole('button', { name: 'Retry' }));
     expect(retryTurn).toHaveBeenCalledWith('a1');
@@ -204,9 +203,9 @@ describe('R5: failed partway', () => {
 
   test('without a host sentence, the alert says what Retry keeps in Chat’s words', () => {
     const { container } = mount({ turnState: { kind: 'failed', cause: 'Timed out.' } });
-    expect(container.querySelector('.chat-turn-keeps')?.textContent?.trim()).toBe(
-      'Retry keeps what was written so far.',
-    );
+    expect(
+      container.querySelector('.chat-turn-failure-body')?.textContent?.replace(/\s+/gu, ' ').trim(),
+    ).toBe('Timed out. Retry keeps what was written so far.');
   });
 
   test('a failed stop note is not drawn beside the alert', () => {

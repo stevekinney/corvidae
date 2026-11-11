@@ -43,7 +43,7 @@
     {#if canSendNow}
       <Button
         type="button"
-        variant="secondary"
+        variant="ghost-accent"
         size="sm"
         class="chat-follow-up-drawer-action"
         label={FOLLOW_UP_SEND_NOW_LABEL}
@@ -86,29 +86,22 @@
   .chat-follow-up-drawer {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
     margin-block-end: var(--cinder-space-2);
-    padding: var(--cinder-space-2) var(--cinder-space-3);
-    border: 1px solid var(--cinder-border-muted);
-    border-radius: var(--cinder-radius-lg);
-    background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
   }
 
   .chat-follow-up-drawer-header {
     display: flex;
-    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: var(--cinder-space-2) var(--cinder-space-3);
+    gap: var(--cinder-space-2);
+    padding-inline-start: var(--cinder-space-2);
   }
 
   /* The title and the summary are their own elements, never joined by a separator glyph. */
   .chat-follow-up-drawer-heading {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    gap: var(--cinder-space-1) var(--cinder-space-2);
+    line-height: var(--cinder-leading-tight);
     min-inline-size: 0;
     margin: 0;
     text-align: start;
@@ -120,14 +113,20 @@
   }
 
   .chat-follow-up-drawer-summary {
+    margin-inline-start: var(--cinder-space-1);
     color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+  }
+
+  .chat-follow-up-drawer :global(.chat-follow-up-drawer-action) {
+    flex: none;
   }
 
   /* Many follow-ups scroll inside the drawer, so the composer is never pushed off the pane. */
   .chat-follow-up-drawer-list {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1-5);
+    gap: var(--cinder-space-1);
     max-block-size: 12rem;
     margin: 0;
     padding: 0;
@@ -140,7 +139,7 @@
     align-items: center;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
-    padding: var(--cinder-space-1) var(--cinder-space-2);
+    padding-inline-start: var(--cinder-space-2);
     border: 1px dashed var(--cinder-border-control);
     border-radius: var(--cinder-radius-md);
     color: var(--cinder-text-muted);
@@ -148,7 +147,7 @@
 
   .chat-follow-up-ghost-index {
     flex: none;
-    min-inline-size: 1.25rem;
+    min-inline-size: 1rem;
     color: var(--cinder-text-subtle);
     font-variant-numeric: tabular-nums;
     text-align: center;
@@ -168,11 +167,10 @@
     display: flex;
     flex: none;
     align-items: center;
-    gap: var(--cinder-space-1);
   }
 
   /* Coarse pointers get targets of at least 44 px. */
-  @media (pointer: coarse) {
+  @media (any-pointer: coarse) {
     .chat-follow-up-drawer :global(.chat-follow-up-drawer-action),
     .chat-follow-up-drawer :global(.chat-follow-up-ghost-action) {
       min-block-size: var(--cinder-touch-target-min);

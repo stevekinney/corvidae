@@ -71,6 +71,19 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
     align-items: center;
+    justify-content: center;
+  }
+  .cinder-citation__pagination button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 2rem;
+    block-size: 2rem;
+    padding: 0;
+  }
+  .cinder-citation__pagination button svg {
+    inline-size: 1rem;
+    block-size: 1rem;
   }
   @media (pointer: coarse) {
     .cinder-citation__pagination button,
@@ -78,6 +91,9 @@
       display: inline-flex;
       align-items: center;
       min-height: var(--cinder-touch-target-min);
+    }
+    .cinder-citation__pagination button {
+      inline-size: var(--cinder-touch-target-min);
     }
   }
 }

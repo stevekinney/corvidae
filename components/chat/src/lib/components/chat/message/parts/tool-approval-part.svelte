@@ -5,6 +5,8 @@
   export type ToolApprovalPartProps = {
     /** The tool-approval render part. */
     part: ToolApprovalMessagePart;
+    /** Requests a fresh approval after this tool call expires. */
+    onApprovalRequestAgain?: ((toolCallId: string) => void) | undefined;
     /** Called when the user resolves the approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
@@ -15,7 +17,7 @@
   import { ApprovalCard } from '@lostgradient/cinder';
   import type { ApprovalCardProps } from '@lostgradient/cinder';
 
-  let { part, onApprovalResolve }: ToolApprovalPartProps = $props();
+  let { part, onApprovalResolve, onApprovalRequestAgain }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
     part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
@@ -51,6 +53,9 @@
       if (part.receipt.reason !== undefined) props.decisionNote = part.receipt.reason;
     }
 
+    if (onApprovalRequestAgain !== undefined) {
+      props.onAskAgain = () => onApprovalRequestAgain?.(part.toolCallId);
+    }
     if (part.action.message !== undefined) props.question = part.action.message;
     if (part.action.sandbox !== undefined) props.sandbox = part.action.sandbox;
     if (part.action.env !== undefined) props.env = part.action.env;
