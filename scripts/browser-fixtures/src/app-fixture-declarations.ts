@@ -159,6 +159,7 @@ export const appFixtureDeclarations = {
   'media-controls': ['assertion'],
   message: ['assertion'],
   'page-header': ['assertion'],
+  'app-bar': ['assertion'],
   pagination: ['assertion'],
   'payload-inspector': ['assertion'],
   'permission-matrix': ['assertion'],

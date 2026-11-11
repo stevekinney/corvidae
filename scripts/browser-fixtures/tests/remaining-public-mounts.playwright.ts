@@ -132,6 +132,7 @@ const remainingSlugs = [
   'media-controls',
   'message',
   'page-header',
+  'app-bar',
   'pagination',
   'payload-inspector',
   'permission-matrix',

@@ -1,0 +1,102 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+@layer cinder.components {
+  /* ========================================
+ * APP BAR
+ *
+ * A sticky top bar of material over the page: Back and leading content, the page's title, and
+ * trailing icon actions. It is 56px tall, draws no rule, and is the canvas mixed at 82% with a 16px
+ * backdrop blur, so what scrolls under it shows through softly. It is opaque where the platform
+ * cannot blur and when the person asks for less transparency. Not a Toolbar (the WAI-ARIA control
+ * group) and not a NavigationBar (a bar of navigation items).
+ * ======================================== */
+
+  .cinder-app-bar {
+    --_cinder-app-bar-height: 3.5rem;
+    --_cinder-app-bar-mix: 82%;
+    --_cinder-app-bar-blur: 16px;
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 2;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    min-block-size: var(--_cinder-app-bar-height);
+    padding-inline: var(--cinder-space-2);
+    border: 0;
+    background: var(--cinder-surface-canvas);
+    color: var(--cinder-text-default);
+  }
+
+  @supports (backdrop-filter: blur(1px)) {
+    .cinder-app-bar {
+      background: color-mix(
+        in oklch,
+        var(--cinder-surface-canvas) var(--_cinder-app-bar-mix),
+        transparent
+      );
+      backdrop-filter: blur(var(--_cinder-app-bar-blur));
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .cinder-app-bar {
+      background: var(--cinder-surface-canvas);
+      backdrop-filter: none;
+    }
+  }
+
+  .cinder-app-bar__leading,
+  .cinder-app-bar__trailing {
+    display: flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-1);
+  }
+
+  .cinder-app-bar__trailing {
+    margin-inline-start: auto;
+  }
+
+  /* The title takes the room between the two ends and ends in an ellipsis on one line. */
+  .cinder-app-bar__title {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    transition: opacity var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-app-bar:not([data-cinder-title-visible]) .cinder-app-bar__title {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .cinder-app-bar__title-text {
+    display: block;
+    margin: 0;
+    overflow: hidden;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-2xl);
+    font-weight: var(--cinder-font-bold);
+    letter-spacing: var(--cinder-tracking-tight);
+    line-height: var(--cinder-leading-tight);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* A touch-sized target under a coarse pointer. The extra classes outrank Button's own icon-only
+     size rules, which the cascade reads after this file. */
+  @media (pointer: coarse) {
+    .cinder-app-bar .cinder-app-bar__action.cinder-button[data-cinder-icon-only] {
+      min-inline-size: var(--cinder-touch-target-min);
+      min-block-size: var(--cinder-touch-target-min);
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-app-bar {
+      background: Canvas;
+      border-block-end: 1px solid CanvasText;
+      backdrop-filter: none;
+    }
+  }
+}

@@ -185,6 +185,7 @@ const SIDEBAR_BASELINE = [
   'action-row',
   'alert',
   'alert-dialog',
+  'app-bar',
   'approval-card',
   'area-chart',
   'aspect-ratio',

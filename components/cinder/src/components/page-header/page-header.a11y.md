@@ -51,4 +51,4 @@ The caller owns semantics inside PageHeader's named snippets. Keep title and des
 - Inspect the accessible name, role, and state in browser accessibility tools.
 - Check forced-colors mode when the component adds borders, focus rings, selected state, or status color.
 
-Related components: `section-heading`, `container`.
+Related components: `section-heading`, `container`, `app-bar`.

@@ -121,6 +121,8 @@ export const alertExamples = alertExamplesJson;
 /** Code examples for this component. */
 export const alertDialogExamples = alertDialogExamplesJson;
 /** Code examples for this component. */
+export const appBarExamples = appBarExamplesJson;
+/** Code examples for this component. */
 export const approvalCardExamples = approvalCardExamplesJson;
 /** Code examples for this component. */
 export const areaChartExamples = areaChartExamplesJson;

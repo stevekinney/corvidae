@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "app-bar",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "A phone detail page",
+      "description": "Back, the page title at 20px bold, then icon actions with tooltips, pinned over the content as it scrolls. The bar is translucent and draws no rule.",
+      "code": "<script lang=\"ts\">\n  import { AppBar } from '@lostgradient/cinder';\n  import Share from '@lucide/svelte/icons/share';\n  import Star from '@lucide/svelte/icons/star';\n</script>\n\n{#snippet shareIcon()}<Share class=\"cinder-icon-md\" aria-hidden=\"true\" />{/snippet}\n{#snippet saveIcon()}<Star class=\"cinder-icon-md\" aria-hidden=\"true\" />{/snippet}\n\n<div style=\"max-inline-size: 375px; block-size: 20rem; overflow: auto;\">\n  <AppBar\n    title=\"Death & Co\"\n    headingLevel={2}\n    back={{ onclick: () => {} }}\n    actions={[\n      { label: 'Share', icon: shareIcon, onclick: () => {} },\n      { label: 'Save', icon: saveIcon, onclick: () => {} },\n    ]}\n  />\n  <p style=\"padding: 1rem;\">\n    Cocktail bar in LoDo. Happy hour runs from four to six on weekdays, with half-price classics and\n    a short bar menu. Scroll to see the content pass under the bar.\n  </p>\n  <p style=\"padding: 1rem;\">\n    The bar stays pinned at the top of the scrolling area while the page moves under it.\n  </p>\n  <p style=\"padding: 1rem;\">It is opaque when the person asks for less transparency.</p>\n</div>\n"
+    }
+  ]
+}

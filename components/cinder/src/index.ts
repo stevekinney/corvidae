@@ -27,6 +27,14 @@ export type { AlertProps, AlertVariant } from './components/alert/index.ts';
 export { default as AlertDialog } from './components/alert-dialog/index.ts';
 export type { AlertDialogProps } from './components/alert-dialog/index.ts';
 
+export { default as AppBar } from './components/app-bar/index.ts';
+export type {
+  AppBarAction,
+  AppBarBackAction,
+  AppBarHeadingLevel,
+  AppBarProps,
+} from './components/app-bar/index.ts';
+
 export { default as ApprovalCard } from './components/approval-card/index.ts';
 export type {
   ApprovalCardCallbacks,

@@ -1,0 +1,38 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "properties": {
+    "title": {
+      "type": "string",
+      "description": "The page's title, 20px bold on one line that ends in an ellipsis; the runtime API also accepts a template-only snippet."
+    },
+    "titleVisible": {
+      "type": "boolean",
+      "description": "Draws the title. Bind a large PageHeader's `collapsed` here so the title appears once the large\ntitle scrolls away; while it is hidden the title is also hidden from assistive technology.",
+      "default": true
+    },
+    "headingLevel": {
+      "enum": [1, 2, 3, 4, 5, 6],
+      "description": "Makes the title the page's heading at this level, for a page whose identity lives in the bar.\nLeave it unset when a PageHeader carries the page's heading."
+    },
+    "class": {
+      "type": "string",
+      "description": "Additional class names merged with `.cinder-app-bar`."
+    }
+  },
+  "additionalProperties": false,
+  "metadata": {
+    "unsupportedProps": [
+      {
+        "name": "leading",
+        "reason": "function-or-snippet",
+        "description": "Content at the start of the bar, after Back."
+      },
+      {
+        "name": "trailing",
+        "reason": "function-or-snippet",
+        "description": "Content at the end of the bar, before the icon actions."
+      }
+    ]
+  }
+}

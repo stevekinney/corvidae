@@ -12,7 +12,7 @@
    * @useWhen Opening an overview page with a full-bleed hero band: an eyebrow, a display title, facts and one focal value.
    * @avoidWhen Rendering section-scoped headings within page content — use section-heading.
    * @avoidWhen Building a marketing page with photography and several columns of copy — compose container (see its hero-section example).
-   * @related section-heading, container
+   * @related section-heading, container, app-bar
    */
   export type {
     PageHeaderCreateAction,

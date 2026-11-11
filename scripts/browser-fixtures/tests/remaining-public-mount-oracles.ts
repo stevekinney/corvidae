@@ -128,6 +128,7 @@ export const productOracles: Record<string, ProductOracle> = {
   'media-controls': { selector: `[class*="cinder-media-controls"]`, descendant: 'button' },
   message: { selector: `[class*="cinder-message"]`, text: 'Ada Lovelace' },
   'page-header': { selector: `[class*="cinder-page-header"]`, text: 'Approvals' },
+  'app-bar': { selector: `[class*="cinder-app-bar"]`, text: 'Death & Co' },
   pagination: { selector: `[class*="cinder-pagination"]`, descendant: 'button' },
   'payload-inspector': {
     selector: `[class*="cinder-payload-inspector"]`,

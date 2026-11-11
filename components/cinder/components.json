@@ -333,6 +333,36 @@
       }
     },
     {
+      "name": "AppBar",
+      "id": "app-bar",
+      "import": "@lostgradient/cinder",
+      "exportName": "AppBar",
+      "category": "navigation",
+      "status": "beta",
+      "purpose": "Sticky translucent top bar for a page: Back and leading content, the page's title, and trailing icon actions that each carry a name and a tooltip.",
+      "tags": ["app-bar", "header", "chrome"],
+      "useWhen": [
+        "Pinning a page's identity while it scrolls: Back, the title, then icon actions, as a phone detail page does.",
+        "Showing a large page title in the bar once it scrolls away, paired with the large variant of page-header."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Grouping controls with arrow-key navigation between them — use toolbar."
+        },
+        {
+          "reason": "Switching between an app's top-level sections — use navigation-bar."
+        }
+      ],
+      "related": ["page-header", "toolbar", "navigation-bar"],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/app-bar/app-bar.schema.json",
+        "variables": "src/components/app-bar/app-bar.variables.json",
+        "examples": "src/components/app-bar/app-bar.examples.json"
+      }
+    },
+    {
       "name": "ApprovalCard",
       "id": "approval-card",
       "import": "@lostgradient/cinder",
@@ -3998,7 +4028,7 @@
           "reason": "Building a marketing page with photography and several columns of copy — compose container (see its hero-section example)."
         }
       ],
-      "related": ["section-heading", "container"],
+      "related": ["section-heading", "container", "app-bar"],
       "hasConstraints": false,
       "hasExamples": true,
       "artifacts": {
