@@ -115,6 +115,17 @@ export function createClickOutside(options: ClickOutsideOptions): Attachment<HTM
   };
 }
 
+/** Options for {@link overflowFade}. */
+export type OverflowFadeOptions = {
+  /**
+   * Puts the container in the tab order (`tabindex="0"`) while its content overflows, and takes it
+   * out (`tabindex="-1"`, still focusable from script) while it fits. A scroll container whose
+   * content holds no focusable element is otherwise unreachable from the keyboard, so its overflow
+   * cannot be scrolled without a pointer (WCAG 2.1.1; axe `scrollable-region-focusable`).
+   */
+  keyboardScrollable?: boolean;
+};
+
 /**
  * Marks scroll containers that have more content below the visible area.
  * Intended for overlay bodies that show a bottom fade (opaque overlay, never
@@ -145,7 +156,7 @@ export function createClickOutside(options: ClickOutsideOptions): Attachment<HTM
  * (content added/removed, text/attribute changes, scrolling, container
  * resize) is still covered.
  */
-export function overflowFade(): Attachment<HTMLElement> {
+export function overflowFade(options: OverflowFadeOptions = {}): Attachment<HTMLElement> {
   return (node) => {
     if (typeof ResizeObserver === 'undefined') {
       node.removeAttribute('data-cinder-overflows');
@@ -156,6 +167,9 @@ export function overflowFade(): Attachment<HTMLElement> {
       const overflows = node.scrollHeight - node.clientHeight > 1;
       const atBottom = node.scrollTop + node.clientHeight >= node.scrollHeight - 1;
       node.toggleAttribute('data-cinder-overflows', overflows && !atBottom);
+      if (options.keyboardScrollable === true) {
+        node.setAttribute('tabindex', overflows ? '0' : '-1');
+      }
     };
 
     const requestFrame =

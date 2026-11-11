@@ -36,6 +36,7 @@ The native `<dialog showModal()>` plus the shared focus-trap attachment provide 
 
 - **Capture on open**: `captureFocus()` records the element that held focus before the drawer opened.
 - **Initial focus on open**: Focus is moved to the body container (`tabindex="-1"`, outline suppressed for programmatic focus) unless a child element carries `[autofocus]`. This avoids landing initial focus on the close button and gives screen-reader users a contextually appropriate starting point.
+- **Scrolling body is a tab stop**: While the body's content overflows it, the body is in the tab order (`tabindex="0"`), so a sheet of rows with nothing focusable in them can still be scrolled with the arrow keys (WCAG 2.1.1). Keyboard focus on it paints the inset ring. While the content fits, it returns to `tabindex="-1"`.
 - **Restore on close**: All close paths (close button, backdrop click, ESC, programmatic `open = false`, component unmount) restore focus to the element identified by `triggerRef` if provided, otherwise to the captured focus element.
 - **`triggerRef` precedence**: When both `triggerRef` and a captured focus element are available, `triggerRef` always wins. This precedence holds on unmount-while-open as well.
 

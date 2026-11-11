@@ -39,6 +39,36 @@ describe('overflowFade', () => {
     expect(node.hasAttribute('data-cinder-overflows')).toBe(false);
   });
 
+  test('keyboardScrollable makes the container a tab stop only while it overflows', () => {
+    const node = document.createElement('div');
+    node.setAttribute('tabindex', '-1');
+    setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160, scrollTop: 0 });
+
+    overflowFade({ keyboardScrollable: true })(node);
+    expect(node.getAttribute('tabindex')).toBe('0');
+
+    // Scrolled to the bottom it still scrolls back up, so it stays a tab stop.
+    setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160, scrollTop: 60 });
+    node.dispatchEvent(new Event('scroll'));
+    flushAnimationFrames();
+    expect(node.getAttribute('tabindex')).toBe('0');
+
+    setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 100, scrollTop: 0 });
+    FakeResizeObserver.instances[0]?.trigger();
+    flushAnimationFrames();
+    expect(node.getAttribute('tabindex')).toBe('-1');
+  });
+
+  test('without keyboardScrollable the tabindex is left alone', () => {
+    const node = document.createElement('div');
+    node.setAttribute('tabindex', '-1');
+    setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160 });
+
+    overflowFade()(node);
+
+    expect(node.getAttribute('tabindex')).toBe('-1');
+  });
+
   test('removes data-cinder-overflows when scrolled to the bottom', () => {
     const node = document.createElement('div');
     setScrollMeasurements(node, { clientHeight: 100, scrollHeight: 160, scrollTop: 0 });

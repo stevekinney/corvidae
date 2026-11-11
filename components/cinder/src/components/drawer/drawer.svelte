@@ -129,7 +129,9 @@
   }
 
   const reducedMotion = useReducedMotion();
-  const bodyOverflowFade = overflowFade();
+  // The body joins the tab order only while it scrolls, so a sheet of rows with nothing focusable
+  // in them can still be scrolled from the keyboard.
+  const bodyOverflowFade = overflowFade({ keyboardScrollable: true });
   const dialogState = createSlidingDialogState({
     getOpen: () => open,
     setOpen: (nextOpen) => {
