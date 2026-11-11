@@ -9,6 +9,13 @@
  * `failed`, with a retry that applies the change again; no version is saved. A queued change that a
  * write before it already carried is not written again.
  *
+ * Only a row's latest change is undone. When a write fails while a later change of the same row
+ * still waits, the row keeps that later value for the later write to carry, and the failed change
+ * is undone only if that later write fails too, so a late failure never overwrites a newer choice.
+ *
+ * The spend limit is written as last applied (`spendApplied`), never as the field's text, so an
+ * amount typed and refused is never written by another row's save.
+ *
  * Every write sends a whole definition, because `bureau.agents.definitions.update` removes `tools`
  * and `models` when they are left out. The keys the tab does not edit (`limits.steps`,
  * `limits.tools`, `references`, `retry`, `compaction`, `hooks`) are left out of the write, which
@@ -186,6 +193,11 @@ export class AgentAccessState {
   #queue: Promise<unknown> = Promise.resolve();
   /** How many changes of each row wait on their write. */
   readonly #waiting = new Map<string, number>();
+  /**
+   * Each row's changes whose writes failed while a later change of the row still waited, oldest
+   * first: undone only if the row's latest write fails too.
+   */
+  readonly #superseded = new Map<string, AccessChange[]>();
   #pending = $state(0);
 
   /** The tools the agent may call, in the order the file lists them and then the order they were allowed. */
@@ -198,7 +210,10 @@ export class AgentAccessState {
   guardrails = $state<string[]>([]);
   /** The spend limit per chat as typed, in US dollars; empty for none. */
   spendPerChat = $state('');
-  /** The spend limit as last applied, which a failed save of a typed one goes back to. */
+  /**
+   * The spend limit as last applied, which every write carries and a failed save of a typed one
+   * goes back to.
+   */
   spendApplied = $state('');
   /** Each row's own save, by the row's key; a row with no entry is at rest. */
   readonly saves = new SvelteMap<string, RowSave>();
@@ -370,8 +385,9 @@ export class AgentAccessState {
 
   /**
    * Applies one change and saves it at once, after any write already waiting. The row reads
-   * `saving` until its write answers, and `failed`, with its change undone, when it fails. The
-   * promise never rejects: it resolves with what the write came to.
+   * `saving` until its write answers, and `failed`, with its change undone, when it fails and no
+   * later change of the row waits. The promise never rejects: it resolves with what the write came
+   * to.
    */
   change(change: AccessChange): Promise<SaveOutcome> {
     change.apply();
@@ -401,15 +417,7 @@ export class AgentAccessState {
         this.#settle(change.key);
         return { kind: 'saved', hash: result.hash };
       } catch (error) {
-        change.undo();
-        this.#settle(change.key);
-        this.saves.set(change.key, {
-          kind: 'failed',
-          subject: change.subject,
-          restored: change.restored,
-          error,
-          retry: () => void this.change(change),
-        });
+        this.#fail(change, error);
         return { kind: 'failed', error };
       }
     } finally {
@@ -417,7 +425,40 @@ export class AgentAccessState {
     }
   }
 
-  /** One of a row's waiting changes has its answer: the row is at rest once none waits. */
+  /**
+   * A change's write failed. While a later change of the same row waits, the row keeps that later
+   * value and the failed change is set aside. Otherwise the change is undone, then the row's
+   * set-aside changes newest first, so the row goes back to what it was before the first of them,
+   * and the row is marked `failed`, saying that value. Its retry sets those changes aside again, so
+   * a retry that fails too goes back to the same value.
+   */
+  #fail(change: AccessChange, error: unknown): void {
+    const { key } = change;
+    const earlier = this.#superseded.get(key) ?? [];
+    if ((this.#waiting.get(key) ?? 1) > 1) {
+      this.#superseded.set(key, [...earlier, change]);
+      this.#settle(key);
+      return;
+    }
+    this.#settle(key);
+    change.undo();
+    for (const undone of [...earlier].reverse()) undone.undo();
+    this.saves.set(key, {
+      kind: 'failed',
+      subject: change.subject,
+      restored: earlier[0]?.restored ?? change.restored,
+      error,
+      retry: () => {
+        if (earlier.length > 0) this.#superseded.set(key, earlier);
+        void this.change(change);
+      },
+    });
+  }
+
+  /**
+   * One of a row's waiting changes has its answer: the row is at rest once none waits, and the
+   * changes it set aside are dropped, because its latest write saved or had nothing to save.
+   */
   #settle(key: string): void {
     const left = (this.#waiting.get(key) ?? 1) - 1;
     if (left > 0) {
@@ -425,6 +466,7 @@ export class AgentAccessState {
       return;
     }
     this.#waiting.delete(key);
+    this.#superseded.delete(key);
     this.saves.delete(key);
   }
 
@@ -438,11 +480,15 @@ export class AgentAccessState {
    * The spend limits to write. A chat limit sits on a run limit in the file, so one set where the
    * file has no run limit writes the run limit at the same amount, which a run inside that chat can
    * never pass anyway. Clearing the chat limit keeps the file's run limit.
+   *
+   * The chat limit is the one last applied, never the field's text, which may hold an amount the
+   * Bureau would refuse; an applied text the tab cannot read keeps the file's own chat limit.
    */
   #costToWrite(file: Definition): AgentLimitsInput['cost'] {
     const kept = file.limits.cost;
     const warn = kept?.warn === undefined ? {} : { warn: kept.warn };
-    const chat = this.spendLimit ?? null;
+    const applied = parseLimit(this.spendApplied, false, LIMIT_BOUNDS.spendUsd);
+    const chat = applied === undefined ? (kept?.chat ?? null) : applied;
     if (chat === null) return kept === null ? null : { run: kept.run, ...warn };
     return { run: kept?.run ?? chat, chat, ...warn };
   }

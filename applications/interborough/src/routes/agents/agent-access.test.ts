@@ -10,7 +10,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { AGENT_PAGE_COPY } from '../../app/copy.ts';
-import type { AgentDefinitionInput } from '../../lib/agent-definitions.ts';
+import type { AgentDefinitionInput, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {
   catalogFixture,
@@ -866,6 +866,37 @@ describe('the state', () => {
     });
   }
 
+  /** Picks a tool's Asks level, as the row's select does. */
+  function ask(state: AgentAccessState, name: string, next: ToolApproval) {
+    const before = state.approvalOf(name);
+    return state.change({
+      key: `tool:${name}`,
+      subject: name,
+      restored: before,
+      apply: () => state.setApproval(name, next),
+      undo: () => state.setApproval(name, before),
+    });
+  }
+
+  /** Applies a typed spend limit, as leaving the field does. */
+  function spend(state: AgentAccessState, next: string) {
+    const before = state.spendApplied;
+    state.spendPerChat = next;
+    return state.change({
+      key: 'spend',
+      subject: 'the spend limit',
+      restored: before,
+      apply: () => {
+        state.spendPerChat = next;
+        state.spendApplied = next;
+      },
+      undo: () => {
+        state.spendPerChat = before;
+        state.spendApplied = before;
+      },
+    });
+  }
+
   test('marks a row saving until its write answers, and names the hash the last write returned', async () => {
     const { state, writes } = stateWith();
     const first = allow(state, 'triage-refunds', true);
@@ -957,7 +988,7 @@ describe('the state', () => {
       models: ['anthropic/haiku'],
       limits: { steps: 9, cost: { run: 2, warn: [0.5] }, tools: null },
     });
-    state.spendPerChat = '5';
+    state.spendApplied = '5';
     const written = state.toDefinition();
     expect(written).toMatchObject({
       models: ['anthropic/haiku'],
@@ -966,10 +997,99 @@ describe('the state', () => {
     // Left out, the Bureau keeps the file’s step limit and tool limits.
     expect(written.limits).not.toHaveProperty('steps');
     expect(written.limits).not.toHaveProperty('tools');
-    state.spendPerChat = '';
+    state.spendApplied = '';
     expect(state.toDefinition().limits).toEqual({ cost: { run: 2, warn: [0.5] } });
     state.spendPerChat = 'lots';
     expect(state.spendLimit).toBeUndefined();
+  });
+
+  test('writes the spend limit as last applied, never an amount typed and refused', async () => {
+    const { state, writes } = stateWith({
+      limits: { steps: null, cost: { run: 10, chat: 5 }, tools: null },
+    });
+    // The field holds an amount the Bureau would refuse, which the tab does not apply.
+    state.spendPerChat = 'abc';
+    expect(state.spendLimit).toBeUndefined();
+    const toggled = allow(state, 'triage-refunds', true);
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]?.definition.limits).toEqual({ cost: { run: 10, chat: 5 } });
+    writes[0]?.answer('hash-2');
+    expect(await toggled).toEqual({ kind: 'saved', hash: 'hash-2' });
+    expect(state.spendApplied).toBe('5');
+  });
+
+  test('a failed write leaves a later change of the same row in place, for its own write to carry', async () => {
+    const { state, writes } = stateWith();
+    expect(state.approvalOf('lookup-order')).toBe('never');
+    const first = ask(state, 'lookup-order', 'always');
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]?.definition.approvals).toEqual({ 'lookup-order': 'always' });
+    const second = ask(state, 'lookup-order', 'blocked');
+
+    writes[0]?.fail(new Error('down'));
+    expect((await first).kind).toBe('failed');
+    // The later choice stands and still waits on its write: no failure line, no undo.
+    expect(state.approvalOf('lookup-order')).toBe('blocked');
+    expect(state.saves.get('tool:lookup-order')).toEqual({ kind: 'saving' });
+
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]?.definition.approvals).toEqual({ 'lookup-order': 'blocked' });
+    writes[1]?.answer('hash-2');
+    expect(await second).toEqual({ kind: 'saved', hash: 'hash-2' });
+    expect(state.approvalOf('lookup-order')).toBe('blocked');
+    expect(state.saves.size).toBe(0);
+  });
+
+  test('when both writes of one row fail, goes back to the value on disk and says so', async () => {
+    const { state, writes } = stateWith();
+    const first = ask(state, 'lookup-order', 'always');
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const second = ask(state, 'lookup-order', 'blocked');
+
+    writes[0]?.fail(new Error('down'));
+    expect((await first).kind).toBe('failed');
+    await waitFor(() => expect(writes).toHaveLength(2));
+    writes[1]?.fail(new Error('down'));
+    expect((await second).kind).toBe('failed');
+
+    // Not Always, which the first change chose and no write saved.
+    expect(state.approvalOf('lookup-order')).toBe('never');
+    const save = state.saves.get('tool:lookup-order');
+    if (save?.kind !== 'failed') throw new Error('expected a failed row');
+    expect(save.restored).toBe('never');
+
+    // A retry applies the latest choice; failing again, it goes back to the value on disk too.
+    save.retry();
+    expect(state.approvalOf('lookup-order')).toBe('blocked');
+    await waitFor(() => expect(writes).toHaveLength(3));
+    writes[2]?.fail(new Error('down'));
+    await waitFor(() => expect(state.saves.get('tool:lookup-order')?.kind).toBe('failed'));
+    expect(state.approvalOf('lookup-order')).toBe('never');
+  });
+
+  test('a failed spend limit leaves a later amount in place, and both failing go back to the first', async () => {
+    const { state, writes } = stateWith({
+      limits: { steps: null, cost: { run: 10, chat: 5 }, tools: null },
+    });
+    const first = spend(state, '7');
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const second = spend(state, '9');
+
+    writes[0]?.fail(new Error('down'));
+    expect((await first).kind).toBe('failed');
+    expect(state.spendApplied).toBe('9');
+    expect(state.spendPerChat).toBe('9');
+
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]?.definition.limits).toEqual({ cost: { run: 10, chat: 9 } });
+    writes[1]?.fail(new Error('down'));
+    expect((await second).kind).toBe('failed');
+    expect(state.spendApplied).toBe('5');
+    expect(state.spendPerChat).toBe('5');
+    const save = state.saves.get('spend');
+    if (save?.kind !== 'failed') throw new Error('expected a failed row');
+    expect(save.restored).toBe('5');
   });
 
   test('keeps a configured guardrail’s configuration (COR-2118)', () => {
