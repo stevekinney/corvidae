@@ -63,6 +63,7 @@ Cinder ships no general-purpose icon set. Icons come from Lucide (`@lucide/svelt
 - In a Corvidae workspace, depend on `"@lostgradient/cinder": "workspace:*"` and import everything from that entry: `import { Button } from '@lostgradient/cinder'`. Compound components keep their namespace, as in `Tabs.List`, `Tabs.Trigger` and `Tabs.Panel`.
 - Retheme by overriding public `--cinder-*` tokens in the same `[data-theme]` scope that sets the theme. Never redefine internal `--_cinder-*` variables.
 - Cinder provides no router, form-state manager, global toast singleton, data fetching or global state. Wire those in the application and pass the results into the components.
+- `MarkdownEditor`, the rich Markdown editor from `@lostgradient/editor`, is the default for any multi-line text entry in a prototype: capture fields, notes, descriptions, comments and prompts. Don't draw a plain textarea or a look-alike editor. Reach for `Textarea` only where the text is plain by definition, such as a raw log line or a JSON value.
 - A design built with this system should use these components and tokens as they are. A finding a component, default or token can absorb belongs in Cinder, not in a one-off page fix.
 - This system is generated from the repository and is read-only here. To change it, change Cinder and regenerate.
 
@@ -74,16 +75,21 @@ Cinder ships no general-purpose icon set. Icons come from Lucide (`@lucide/svelt
 - A component mounted inside another one's content joins it as it would in Svelte, so `Cinder.TabList` inside `Cinder.Tabs` works.
 - Props update in place: a changed prop re-renders the component and keeps its state. Callbacks are the component's own props, such as `onclick`.
 - A prop that takes a Svelte snippet other than `children`, such as a button's `leadingIcon`, takes no canvas content. Use the component's string props, such as `label`, `title` and `description`, instead.
+- The editors from `@lostgradient/editor` (`Cinder.MarkdownEditor`, `Cinder.ReviewEditor`, `Cinder.DiffViewer`, `Cinder.DiffReview` and `Cinder.DiffReviewComments`) are in the bundle too, but their code runs only when the first one mounts, so a board without an editor never starts Milkdown or ProseMirror. An editor appears a moment after the rest of the board.
 - Without React, `Cinder.mount('Button', element, { label: 'Save' })` mounts a component into a DOM element and returns `update(props)` and `destroy()`. `Cinder.componentNames` lists every name.
 
 A canvas artboard with Cinder installed under `ds/cinder/`:
 
 ```html
-<link rel="stylesheet" href="ds/cinder/tokens.css">
-<link rel="stylesheet" href="ds/cinder/components/bundle.css">
+<link rel="stylesheet" href="ds/cinder/tokens.css" />
+<link rel="stylesheet" href="ds/cinder/components/bundle.css" />
 <script src="ds/cinder/components/bundle.js"></script>
 
-<x-import component-from-global-scope="Cinder.Card" title="Inbox" description="Three items to process">
+<x-import
+  component-from-global-scope="Cinder.Card"
+  title="Inbox"
+  description="Three items to process"
+>
   <x-import component-from-global-scope="Cinder.Button" variant="primary">Process inbox</x-import>
 </x-import>
 ```

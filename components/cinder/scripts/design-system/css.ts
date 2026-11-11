@@ -1,13 +1,13 @@
 /**
  * Builds the design system's `components/bundle.css`: Cinder's `all.css` with every `@import`
- * inlined exactly, plus the layout the preview cards use.
+ * inlined exactly, the editor components' own stylesheets, and the layout the preview cards use.
  *
  * Bun's CSS bundler is deliberately not used: it lowers `light-dark()`, which breaks switching
  * themes with `data-theme`.
  */
 
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { existsSync, readdirSync, readFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
 
 const IMPORT = /^@import\s+'([^']+)'(?:\s+layer\(([^)]+)\))?\s*;\s*$/gm;
 
@@ -40,9 +40,31 @@ export const PREVIEW_LAYOUT_CSS = `
 .example-preview .example-preview-column { display: flex; flex-direction: column; align-items: flex-start; gap: var(--cinder-space-4); }
 `;
 
-/** Builds the bundle from a stylesheet entry, failing on an unresolved import or a `</style`. */
-export function buildBundleCss(entry: string): string {
-  const css = inlineImports(entry) + PREVIEW_LAYOUT_CSS;
+/**
+ * The stylesheets in each listed component's folder, in id order and then file-name order: the
+ * styles a library's components import from their scripts, which a bundled preview drops.
+ */
+export function componentStylesheets(componentsDirectory: string, ids: string[]): string[] {
+  return ids.flatMap((id) => {
+    const directory = join(componentsDirectory, id);
+    if (!existsSync(directory)) return [];
+    return readdirSync(directory)
+      .filter((file) => file.endsWith('.css'))
+      .toSorted()
+      .map((file) => join(directory, file));
+  });
+}
+
+/**
+ * Builds the bundle from a stylesheet entry and any further stylesheets, each inlined after it,
+ * failing on an unresolved import or a `</style`.
+ */
+export function buildBundleCss(entry: string, stylesheets: string[] = []): string {
+  const seen = new Set<string>();
+  const css =
+    inlineImports(entry, seen) +
+    stylesheets.map((stylesheet) => inlineImports(stylesheet, seen)).join('') +
+    PREVIEW_LAYOUT_CSS;
   if (/^\s*@import\s/m.test(css)) throw new Error('bundle.css still holds an @import');
   if (/<\/style/i.test(css)) throw new Error('bundle.css holds a </style');
   return css;

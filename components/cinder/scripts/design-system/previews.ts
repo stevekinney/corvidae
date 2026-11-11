@@ -38,11 +38,15 @@ export function orderExamples(files: string[], metadata: ExampleMetadata[]): Pla
   return ordered.map((id) => ({ id, title: titles.get(id) ?? id }));
 }
 
-/** Plans a component's preview from its playground examples, or returns nothing without any. */
+/**
+ * Plans a component's preview from its playground examples, or returns nothing without any. The
+ * examples' titles and order come from `<componentsDirectory>/<id>/<id>.examples.json`, the
+ * component's folder in its own workspace.
+ */
 export function planPreview(
   id: string,
   examplesRoot: string,
-  cinderRoot: string,
+  componentsDirectory: string,
 ): PreviewPlan | undefined {
   const directory = join(examplesRoot, id);
   if (!existsSync(directory)) return undefined;
@@ -50,7 +54,7 @@ export function planPreview(
   const files = readdirSync(directory)
     .filter((file) => file.endsWith(suffix))
     .map((file) => file.slice(0, -suffix.length));
-  const metadataPath = join(cinderRoot, 'src/components', id, `${id}.examples.json`);
+  const metadataPath = join(componentsDirectory, id, `${id}.examples.json`);
   const metadata: ExampleMetadata[] = existsSync(metadataPath)
     ? (JSON.parse(readFileSync(metadataPath, 'utf8')) as { examples: ExampleMetadata[] }).examples
     : [];

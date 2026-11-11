@@ -1,30 +1,28 @@
 /**
- * Builds the real `components/bundle.js` and runs it in the test's DOM, in the slow lane: bundling
- * every Cinder component takes longer than the fast lane's budget. The entry, header and runtime
- * are covered quickly in `bundle.test.ts` and `bundle-runtime.test.ts`.
+ * Builds the real `components/bundle.js`, Cinder's components and the editor's, and runs it in the
+ * test's DOM, in the slow lane: bundling every component takes longer than the fast lane's
+ * budget. The entry, header and runtime are covered quickly in `bundle.test.ts` and
+ * `bundle-runtime.test.ts`.
  */
 import {
   createTemporaryDirectory,
   removeTemporaryPath,
 } from '@lostgradient/testing/temporary-path';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterAll, afterEach, beforeAll, describe, expect, test } from 'bun:test';
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { installModalDialogStubs } from '../../src/components/modal/modal-test-helpers.ts';
 import { buildComponentBundle } from './bundle-build.ts';
 import type { CinderGlobal, MountedCinder } from './bundle-runtime.svelte.ts';
-import { bundleHeader, type BundleSource } from './bundle.ts';
-import type { ComponentManifest } from './manifest.ts';
-import { cinderRoot } from './paths.ts';
+import { bundleHeader } from './bundle.ts';
+import { bundleSources, readManifestSources } from './sources.ts';
 
 installModalDialogStubs();
 
-const manifest = JSON.parse(
-  readFileSync(join(cinderRoot, 'components.json'), 'utf8'),
-) as ComponentManifest;
-const names = manifest.components.map((component) => component.exportName);
-const sources: BundleSource[] = [{ entry: join(cinderRoot, 'src/index.ts'), names, lazy: false }];
+const sources = bundleSources(readManifestSources());
+const names = sources.flatMap((source) => source.names);
 
 let directory: string | undefined;
 let bundlePath = '';
@@ -92,5 +90,20 @@ describe('components/bundle.js', () => {
     const dialog = document.body.querySelector('dialog');
     expect(dialog?.textContent).toContain('Rename list');
     expect(dialog?.textContent).toContain('Body');
+  });
+
+  test('inlines the editor package and mounts MarkdownEditor once it loads', async () => {
+    // A dynamic import left in the script would fetch a chunk the design system does not have.
+    expect(script).not.toMatch(/\bimport\(/);
+    for (const name of ['MarkdownEditor', 'ReviewEditor', 'DiffViewer']) {
+      expect(names).toContain(name);
+    }
+    const editor = target();
+    mounted.push(
+      exposedCinder().mount('MarkdownEditor', editor, { id: 'notes', value: '# Notes' }),
+    );
+    await waitUntil(() => editor.querySelector('.markdown-editor') !== null, {
+      message: 'MarkdownEditor to mount from the lazily loaded editor package',
+    });
   });
 });

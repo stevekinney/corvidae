@@ -27,7 +27,6 @@ import { parseArgs } from 'node:util';
 
 import { captureStaticSnapshots, checkRenders } from './browser.ts';
 import { buildComponentBundle } from './bundle-build.ts';
-import type { BundleSource } from './bundle.ts';
 import {
   componentReadme,
   livePreviewHtml,
@@ -35,8 +34,8 @@ import {
   staticPreviewHtml,
   type StaticSnapshot,
 } from './components.ts';
-import { buildBundleCss } from './css.ts';
-import type { ComponentManifest } from './manifest.ts';
+import { buildBundleCss, componentStylesheets } from './css.ts';
+import { type ManifestSource, mergeManifests } from './manifest.ts';
 import {
   assetsRoot,
   cinderRoot,
@@ -53,6 +52,7 @@ import {
   type ShardReport,
 } from './previews.ts';
 import { designSystemIndex, fillBrandBook, planPublishBatches } from './publish.ts';
+import { bundleSources, readManifestSources } from './sources.ts';
 import { buildTokens, type ResolvedContext } from './tokens.ts';
 
 const { values: options } = parseArgs({
@@ -139,7 +139,12 @@ async function main(): Promise<number> {
   mkdirSync(componentsDirectory, { recursive: true });
   mkdirSync(previewsDirectory, { recursive: true });
 
-  const manifest = readJson<ComponentManifest>(join(cinderRoot, 'components.json'));
+  const manifestSources = readManifestSources();
+  const [cinderSource] = manifestSources;
+  if (cinderSource === undefined) throw new Error('no Cinder manifest');
+  // Cinder's components and the editor's, in that order; each keeps its own folder and module.
+  const { manifest, sources } = mergeManifests(manifestSources);
+  const sourceOf = (id: string): ManifestSource => sources.get(id) ?? cinderSource;
   const sha = git('rev-parse', '--short=9', 'HEAD');
   if (!sha) throw new Error('could not read the current commit');
 
@@ -147,7 +152,8 @@ async function main(): Promise<number> {
   const tokens = buildTokens({
     light: readJson<ResolvedContext>(join(cinderRoot, 'src/tokens/resolved/light.json')),
     dark: readJson<ResolvedContext>(join(cinderRoot, 'src/tokens/resolved/dark.json')),
-    manifest,
+    // The tokens are Cinder's, so their component namespaces come from Cinder's manifest alone.
+    manifest: cinderSource.manifest,
     sha,
     synced: new Date().toLocaleDateString('sv'),
   });
@@ -156,27 +162,34 @@ async function main(): Promise<number> {
   for (const skipped of tokens.skipped) console.log(`  skipped token ${skipped}`);
 
   step('bundle.css');
+  // Cinder's `all.css` carries every Cinder component's styles; the other libraries' components
+  // import theirs from script, which a bundled preview drops, so they are inlined after it.
+  const componentStyles = manifestSources
+    .filter((source) => source !== cinderSource)
+    .flatMap((source) =>
+      componentStylesheets(
+        source.componentsDirectory,
+        source.manifest.components.map((component) => component.id),
+      ),
+    );
   writeFileSync(
     join(componentsDirectory, 'bundle.css'),
-    buildBundleCss(join(cinderRoot, 'src/styles/all.css')),
+    buildBundleCss(join(cinderRoot, 'src/styles/all.css'), componentStyles),
   );
 
   step('bundle.js');
-  const bundleSources: BundleSource[] = [
-    {
-      entry: join(cinderRoot, 'src/index.ts'),
-      names: manifest.components.map((component) => component.exportName),
-      lazy: false,
-    },
-  ];
   writeFileSync(
     join(componentsDirectory, 'bundle.js'),
-    await buildComponentBundle(bundleSources, join(workDirectory, 'bundle')),
+    await buildComponentBundle(bundleSources(manifestSources), join(workDirectory, 'bundle')),
   );
 
   const plans = new Map<string, PreviewPlan>();
   for (const component of manifest.components) {
-    const plan = planPreview(component.id, examplesRoot, cinderRoot);
+    const plan = planPreview(
+      component.id,
+      examplesRoot,
+      sourceOf(component.id).componentsDirectory,
+    );
     if (plan) plans.set(component.id, plan);
   }
   step(`previews: bundling ${plans.size} in ${SHARD_COUNT} shards`);
@@ -206,9 +219,12 @@ async function main(): Promise<number> {
       if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name)) throw new Error(`bad export name ${name}`);
       const directory = join(componentsDirectory, name);
       mkdirSync(directory, { recursive: true });
-      const leaf = join(cinderRoot, 'src/components', component.id, 'README.md');
+      const leaf = join(sourceOf(component.id).componentsDirectory, component.id, 'README.md');
       const leafReadme = existsSync(leaf) ? readFileSync(leaf, 'utf8') : undefined;
-      writeFileSync(join(directory, 'README.md'), componentReadme(component, manifest, leafReadme));
+      writeFileSync(
+        join(directory, 'README.md'),
+        componentReadme(component, manifest, leafReadme, relative(repositoryRoot, leaf)),
+      );
       const plan = plans.get(component.id);
       const script = join(previewsDirectory, component.id, 'preview.js');
       const snapshot = snapshots.get(component.id);

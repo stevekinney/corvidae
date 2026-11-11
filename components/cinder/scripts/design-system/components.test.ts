@@ -100,6 +100,19 @@ describe('componentReadme', () => {
       '\n\n_Reference truncated; the full README is in the repository at `components/cinder/src/components/tabs/README.md`._\n',
     );
   });
+
+  test('points a truncated README at its own workspace', () => {
+    const line = `${'a'.repeat(99)}\n`;
+    const readme = componentReadme(
+      tabs,
+      manifest,
+      `# Tabs\n\n${line.repeat(700)}`,
+      'components/editor/src/lib/components/markdown-editor/README.md',
+    );
+    expect(readme).toEndWith(
+      '\n\n_Reference truncated; the full README is in the repository at `components/editor/src/lib/components/markdown-editor/README.md`._\n',
+    );
+  });
 });
 
 describe('preview documents', () => {

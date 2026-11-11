@@ -6,7 +6,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
-import { buildBundleCss, inlineImports, PREVIEW_LAYOUT_CSS } from './css.ts';
+import { buildBundleCss, componentStylesheets, inlineImports, PREVIEW_LAYOUT_CSS } from './css.ts';
 
 let directory: string | undefined;
 
@@ -45,5 +45,40 @@ describe('buildBundleCss', () => {
     expect(buildBundleCss(entry)).toBe(`.a {}\n${PREVIEW_LAYOUT_CSS}`);
     writeFileSync(entry, '.a { content: "</style>"; }\n');
     expect(() => buildBundleCss(entry)).toThrow('</style');
+  });
+
+  test('inlines further stylesheets after the entry, each once', () => {
+    const entry = stylesheets({
+      'all.css': "@import './shared.css';\n.a {}\n",
+      'shared.css': '.shared {}',
+      'editor/markdown-editor/prosemirror.css': '.prose {}\n',
+    });
+    const root = join(entry, '..');
+    expect(
+      buildBundleCss(entry, [
+        join(root, 'editor/markdown-editor/prosemirror.css'),
+        join(root, 'shared.css'),
+      ]),
+    ).toBe(`.shared {}\n.a {}\n.prose {}\n${PREVIEW_LAYOUT_CSS}`);
+  });
+});
+
+describe('componentStylesheets', () => {
+  test('lists each component folder’s stylesheets in id order, skipping a missing folder', () => {
+    const entry = stylesheets({
+      'all.css': '',
+      'components/review-editor/review-editor.css': '',
+      'components/review-editor/index.ts': '',
+      'components/markdown-editor/prosemirror.css': '',
+      'components/markdown-editor/b.css': '',
+    });
+    const components = join(entry, '..', 'components');
+    expect(
+      componentStylesheets(components, ['markdown-editor', 'diff-viewer', 'review-editor']),
+    ).toEqual([
+      join(components, 'markdown-editor/b.css'),
+      join(components, 'markdown-editor/prosemirror.css'),
+      join(components, 'review-editor/review-editor.css'),
+    ]);
   });
 });

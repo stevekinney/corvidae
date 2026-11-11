@@ -9,6 +9,8 @@ import { join, resolve } from 'node:path';
 export const repositoryRoot = resolve(import.meta.dir, '../../../..');
 /** The Cinder workspace. */
 export const cinderRoot = join(repositoryRoot, 'components/cinder');
+/** The editor workspace, whose components the design system documents and bundles with Cinder's. */
+export const editorRoot = join(repositoryRoot, 'components/editor');
 /** The playground workspace, whose examples the previews mount. */
 export const playgroundRoot = join(repositoryRoot, 'applications/playground');
 /** One directory per component id, holding its `*.example.svelte` files. */
@@ -25,6 +27,6 @@ export const sourcePaths = {
     'components/cinder/src/tokens/resolved/dark.json',
   ],
   styles: ['components/cinder/src/styles/all.css'],
-  components: ['components/cinder/components.json'],
+  components: ['components/cinder/components.json', 'components/editor/components.json'],
   examples: ['applications/playground/src/examples'],
 };

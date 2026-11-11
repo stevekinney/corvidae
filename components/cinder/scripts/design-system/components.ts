@@ -55,11 +55,15 @@ function truncateUtf8(text: string, bytes: number): string {
   return encoded.subarray(0, end).toString('utf8');
 }
 
-/** Writes a component's guideline page. */
+/**
+ * Writes a component's guideline page. `readmePath` is the repository-relative path of the
+ * component's own README, which a truncated page points to; it defaults to Cinder's layout.
+ */
 export function componentReadme(
   component: ManifestComponent,
   manifest: ComponentManifest,
   leafReadme: string | undefined,
+  readmePath = `components/cinder/src/components/${component.id}/README.md`,
 ): string {
   const name = component.exportName;
   const exports = new Map(manifest.components.map((entry) => [entry.id, entry.exportName]));
@@ -97,7 +101,7 @@ export function componentReadme(
   if (Buffer.byteLength(text) <= README_CAP) return text;
   const kept = truncateUtf8(text, README_TRUNCATE_AT);
   const cut = kept.lastIndexOf('\n');
-  return `${cut === -1 ? kept : kept.slice(0, cut)}\n\n_Reference truncated; the full README is in the repository at \`components/cinder/src/components/${component.id}/README.md\`._\n`;
+  return `${cut === -1 ? kept : kept.slice(0, cut)}\n\n_Reference truncated; the full README is in the repository at \`${readmePath}\`._\n`;
 }
 
 function exampleTitles(plan: PreviewPlan, limit: number): string {
