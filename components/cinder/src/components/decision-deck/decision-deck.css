@@ -1,0 +1,313 @@
+@layer cinder.tokens, cinder.foundation, cinder.components, cinder.utilities;
+/* Compound composition aggregation: DecisionDeck renders Button for its round actions and Undo, so
+ * `cinder/decision-deck/styles` must include its styling when a consumer imports the
+ * component-specific style sidecar. */
+@import '../button/button.css';
+
+@layer cinder.components {
+  /* ========================================
+ * DECISION DECK
+ *
+ * A stack of decision cards. The top card is dragged sideways: past the threshold it decides,
+ * short of it the card springs back. A stamp fades in while it is dragged. Under the card sit
+ * equal round buttons for reject, later and accept, then an Undo bar, and a progress bar above.
+ * ======================================== */
+
+  .cinder-decision-deck {
+    display: grid;
+    gap: var(--cinder-space-4);
+    inline-size: 100%;
+    max-inline-size: 26rem;
+    margin-inline: auto;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+  }
+
+  /* ----------------------------------------
+   * Progress
+   * ---------------------------------------- */
+
+  .cinder-decision-deck__progress {
+    display: grid;
+    gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-decision-deck__progress-text {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-decision-deck__progress-track {
+    block-size: 4px;
+    border-radius: var(--cinder-radius-full);
+    background: var(--cinder-border-muted);
+    overflow: hidden;
+  }
+
+  .cinder-decision-deck__progress-fill {
+    display: block;
+    block-size: 100%;
+    border-radius: inherit;
+    background: var(--cinder-accent-solid);
+    transition: inline-size var(--cinder-duration-normal) var(--cinder-ease-standard);
+  }
+
+  /* ----------------------------------------
+   * Card stack
+   * ---------------------------------------- */
+
+  /* Every card sits in the same grid cell; the cards under the top one peek out below it. */
+  .cinder-decision-deck__stack {
+    display: grid;
+    padding-block-end: var(--cinder-space-4);
+  }
+
+  .cinder-decision-card {
+    grid-area: 1 / 1;
+    position: relative;
+    z-index: 3;
+    display: grid;
+    align-content: start;
+    gap: var(--cinder-space-2);
+    min-block-size: 12rem;
+    padding: var(--cinder-space-5);
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-surface);
+    background: var(--cinder-surface-raised);
+    box-shadow: var(--cinder-shadow-md);
+    transform-origin: 50% 100%;
+    /* The spring: a released card eases back to rest. The drag itself switches it off. */
+    transition: transform var(--cinder-duration-normal) var(--cinder-ease-spring);
+    /* A horizontal drag is ours; a vertical one still scrolls the page. */
+    touch-action: pan-y;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  .cinder-decision-card[data-depth='0'] {
+    cursor: grab;
+  }
+
+  .cinder-decision-card[data-depth='1'] {
+    z-index: 2;
+    transform: translateY(var(--cinder-space-2)) scale(0.96);
+  }
+
+  .cinder-decision-card[data-depth='2'] {
+    z-index: 1;
+    transform: translateY(var(--cinder-space-4)) scale(0.92);
+  }
+
+  .cinder-decision-card[data-dragging] {
+    transition: none;
+    cursor: grabbing;
+  }
+
+  .cinder-decision-card[data-depth='0']:focus-visible {
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow:
+      var(--cinder-shadow-md),
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--cinder-ring-color);
+  }
+
+  .cinder-decision-card__eyebrow {
+    margin: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-decision-card__title {
+    margin: 0;
+    font-size: var(--cinder-text-xl);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-decision-card__description {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    line-height: var(--cinder-leading-normal);
+    overflow-wrap: anywhere;
+  }
+
+  /* The stamps fade in with the drag (their opacity is set from the card's offset). Each carries
+     its word, so the outcome is never colour alone. */
+  .cinder-decision-card__stamp {
+    position: absolute;
+    inset-block-start: var(--cinder-space-4);
+    padding: var(--cinder-space-1) var(--cinder-space-3);
+    border: 3px solid currentColor;
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
+    font-size: var(--cinder-text-lg);
+    font-weight: var(--cinder-font-bold);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .cinder-decision-card__stamp[data-stamp='accept'] {
+    inset-inline-start: var(--cinder-space-4);
+    color: var(--cinder-accent-text);
+    transform: rotate(-8deg);
+  }
+
+  .cinder-decision-card__stamp[data-stamp='reject'] {
+    inset-inline-end: var(--cinder-space-4);
+    color: var(--cinder-status-warning-text);
+    transform: rotate(8deg);
+  }
+
+  /* ----------------------------------------
+   * Round actions: reject and accept are the same size and weight; later is smaller
+   * ---------------------------------------- */
+
+  .cinder-decision-deck__actions {
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    gap: var(--cinder-space-6);
+  }
+
+  .cinder-decision-deck__action-cell {
+    display: grid;
+    grid-template-rows: 4.25rem auto;
+    justify-items: center;
+    align-items: center;
+    gap: var(--cinder-space-1-5);
+  }
+
+  .cinder-decision-deck__action-caption {
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    color: var(--cinder-text-muted);
+  }
+
+  /* Button draws its own focus ring, so the box-shadow stays untouched here. The extra
+     specificity outranks Button's own size and icon-only rules whatever the stylesheet order. */
+  .cinder-decision-deck .cinder-decision-deck__action.cinder-button[data-cinder-icon-only] {
+    inline-size: 4.25rem;
+    block-size: 4.25rem;
+    min-inline-size: 4.25rem;
+    min-block-size: 4.25rem;
+    padding: 0;
+    border-radius: var(--cinder-radius-full);
+  }
+
+  .cinder-decision-deck
+    .cinder-decision-deck__action.cinder-button[data-cinder-icon-only][data-decision-action='later'] {
+    inline-size: 3rem;
+    block-size: 3rem;
+    min-inline-size: 3rem;
+    min-block-size: 3rem;
+  }
+
+  .cinder-decision-deck
+    .cinder-decision-deck__action.cinder-button[data-cinder-icon-only][data-decision-action='accept'] {
+    color: var(--cinder-accent-text);
+  }
+
+  .cinder-decision-deck
+    .cinder-decision-deck__action.cinder-button[data-cinder-icon-only][data-decision-action='reject'] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  /* ----------------------------------------
+   * Undo bar and empty state
+   * ---------------------------------------- */
+
+  .cinder-decision-deck__undo {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-3);
+    padding-inline: var(--cinder-space-1);
+  }
+
+  .cinder-decision-deck__undo-text {
+    margin: 0;
+    min-inline-size: 0;
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
+    overflow-wrap: anywhere;
+  }
+
+  .cinder-decision-deck__empty {
+    display: grid;
+    justify-items: center;
+    gap: var(--cinder-space-1-5);
+    padding-block: var(--cinder-space-8);
+    text-align: center;
+  }
+
+  .cinder-decision-deck__empty-title {
+    margin: 0;
+    font-size: var(--cinder-text-xl);
+    font-weight: var(--cinder-font-semibold);
+  }
+
+  .cinder-decision-deck__empty-description {
+    margin: 0;
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-decision-deck__sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    border: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+  }
+
+  /* ----------------------------------------
+   * Reduced motion: no spring and no easing; a short release snaps back at once
+   * ---------------------------------------- */
+
+  @media (prefers-reduced-motion: reduce) {
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-decision-card,
+    :root:not([data-cinder-reduced-motion='false']):not([data-reduced-motion='off'])
+      .cinder-decision-deck__progress-fill {
+      transition: none;
+    }
+  }
+
+  :root[data-cinder-reduced-motion='true'] .cinder-decision-card,
+  :root[data-cinder-reduced-motion='true'] .cinder-decision-deck__progress-fill {
+    transition: none;
+  }
+
+  @media (forced-colors: active) {
+    .cinder-decision-card,
+    .cinder-decision-card__stamp {
+      border-color: CanvasText;
+    }
+
+    .cinder-decision-card__stamp {
+      color: CanvasText;
+    }
+
+    .cinder-decision-card[data-depth='0']:focus-visible {
+      outline: var(--cinder-ring-width) solid Highlight;
+      outline-offset: 3px;
+    }
+
+    .cinder-decision-deck__progress-track {
+      border: 1px solid CanvasText;
+    }
+
+    .cinder-decision-deck__progress-fill {
+      forced-color-adjust: none;
+      background: Highlight;
+    }
+  }
+}

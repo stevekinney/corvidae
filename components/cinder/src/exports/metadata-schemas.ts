@@ -55,6 +55,7 @@ export { default as dataListSchema } from '../components/data-list/data-list.sch
 export { default as dataTableSchema } from '../components/data-table/data-table.schema.ts';
 export { default as datePickerSchema } from '../components/date-picker/date-picker.schema.ts';
 export { default as dateRangeFieldSchema } from '../components/date-range-field/date-range-field.schema.ts';
+export { default as decisionDeckSchema } from '../components/decision-deck/decision-deck.schema.ts';
 export { default as descriptionListSchema } from '../components/description-list/description-list.schema.ts';
 export { default as diffStatisticsSchema } from '../components/diff-statistics/diff-statistics.schema.ts';
 export { default as dividerSchema } from '../components/divider/divider.schema.ts';

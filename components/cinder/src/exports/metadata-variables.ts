@@ -55,6 +55,7 @@ export { default as dataListVariables } from '../components/data-list/data-list.
 export { default as dataTableVariables } from '../components/data-table/data-table.variables.ts';
 export { default as datePickerVariables } from '../components/date-picker/date-picker.variables.ts';
 export { default as dateRangeFieldVariables } from '../components/date-range-field/date-range-field.variables.ts';
+export { default as decisionDeckVariables } from '../components/decision-deck/decision-deck.variables.ts';
 export { default as descriptionListVariables } from '../components/description-list/description-list.variables.ts';
 export { default as diffStatisticsVariables } from '../components/diff-statistics/diff-statistics.variables.ts';
 export { default as dividerVariables } from '../components/divider/divider.variables.ts';

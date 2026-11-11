@@ -214,6 +214,8 @@ export const datePickerExamples = datePickerExamplesJson;
 /** Code examples for this component. */
 export const dateRangeFieldExamples = dateRangeFieldExamplesJson;
 /** Code examples for this component. */
+export const decisionDeckExamples = decisionDeckExamplesJson;
+/** Code examples for this component. */
 export const descriptionListExamples = descriptionListExamplesJson;
 /** Code examples for this component. */
 export const diffStatisticsExamples = diffStatisticsExamplesJson;

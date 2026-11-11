@@ -1,0 +1,19 @@
+{
+  "$schema": "../../schemas/examples.schema.json",
+  "component": "decision-deck",
+  "import": "@lostgradient/cinder",
+  "examples": [
+    {
+      "id": "basic",
+      "title": "A review queue",
+      "description": "Drag the top card right to accept and left to reject, or press the round buttons. Each decision shows an Undo, and the deck shows progress and an All caught up state.",
+      "code": "<script lang=\"ts\">\n  import { DecisionDeck } from '@lostgradient/cinder';\n\n  const items = [\n    {\n      id: 'receipts',\n      eyebrow: 'Receipts',\n      title: 'Archive receipts',\n      description: 'Move mail from receipts@shop.example to the Receipts label.',\n    },\n    {\n      id: 'digest',\n      eyebrow: 'News Weekly',\n      title: 'Label the weekly digest',\n      description: 'Add the Reading label to mail from digest@news.example.',\n    },\n    {\n      id: 'invoices',\n      eyebrow: 'Billing',\n      title: 'Star invoices',\n      description: 'Star mail whose subject starts with Invoice.',\n    },\n  ];\n</script>\n\n<DecisionDeck label=\"Review queue\" {items} />\n"
+    },
+    {
+      "id": "decisions",
+      "title": "Reacting to decisions",
+      "description": "onDecision fires as soon as a decision is made, and onUndo when it is reversed, so the page can keep its own record in step with the deck.",
+      "code": "<script lang=\"ts\">\n  import { DecisionDeck } from '@lostgradient/cinder';\n  import type { DecisionDeckOutcome } from '@lostgradient/cinder';\n\n  const items = [\n    { id: 'one', title: 'Archive receipts' },\n    { id: 'two', title: 'Label the weekly digest' },\n  ];\n\n  let decided = $state<Record<string, DecisionDeckOutcome>>({});\n</script>\n\n<DecisionDeck\n  label=\"Review queue\"\n  {items}\n  onDecision={({ item, outcome }) => (decided[item.id] = outcome)}\n  onUndo={({ item }) => delete decided[item.id]}\n/>\n<p>{Object.keys(decided).length} decided</p>\n"
+    }
+  ]
+}

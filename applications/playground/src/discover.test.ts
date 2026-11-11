@@ -237,6 +237,7 @@ const SIDEBAR_BASELINE = [
   'data-table',
   'date-picker',
   'date-range-field',
+  'decision-deck',
   'description-list',
   'diff-review',
   'diff-review-comments',

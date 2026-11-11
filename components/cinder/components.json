@@ -1803,6 +1803,57 @@
       }
     },
     {
+      "name": "DecisionDeck",
+      "id": "decision-deck",
+      "import": "@lostgradient/cinder",
+      "exportName": "DecisionDeck",
+      "category": "action",
+      "status": "beta",
+      "purpose": "Stack of decision cards for working through a review queue on a phone: drag a card to accept or reject it, or press the equal round buttons, with Undo, progress and an all-caught-up state.",
+      "tags": ["review", "queue", "swipe", "decision"],
+      "useWhen": [
+        "Working through a queue of items one at a time on a phone, where each item gets an accept, reject or later decision.",
+        "Offering a swipe as a shortcut for decisions that also have buttons and keys, with a visible Undo after each one."
+      ],
+      "avoidWhen": [
+        {
+          "reason": "Reviewing one pending tool call with its full detail and an audit trail.",
+          "alternative": "approval-card"
+        },
+        {
+          "reason": "Deciding many items at once from a table, where rows need sorting and bulk actions.",
+          "alternative": "data-table"
+        }
+      ],
+      "related": [],
+      "hasConstraints": false,
+      "hasExamples": true,
+      "artifacts": {
+        "schema": "src/components/decision-deck/decision-deck.schema.json",
+        "variables": "src/components/decision-deck/decision-deck.variables.json",
+        "examples": "src/components/decision-deck/decision-deck.examples.json"
+      },
+      "a11y": {
+        "keyboard": [
+          {
+            "keys": "ArrowRight",
+            "action": "Accepts the focused top card."
+          },
+          {
+            "keys": "ArrowLeft",
+            "action": "Rejects the focused top card."
+          },
+          {
+            "keys": "ArrowDown",
+            "action": "Sets the focused top card aside for later."
+          }
+        ],
+        "notes": [
+          "Every swipe decision is also a labelled button and an arrow key, and each decision is announced and can be undone."
+        ]
+      }
+    },
+    {
       "name": "DescriptionList",
       "id": "description-list",
       "import": "@lostgradient/cinder",

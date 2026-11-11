@@ -385,6 +385,14 @@ export type {
   DateRangeValue,
 } from './components/date-range-field/index.ts';
 
+export { default as DecisionDeck } from './components/decision-deck/index.ts';
+export type {
+  DecisionDeckDecision,
+  DecisionDeckItem,
+  DecisionDeckOutcome,
+  DecisionDeckProps,
+} from './components/decision-deck/index.ts';
+
 export { default as DescriptionList } from './components/description-list/index.ts';
 export type {
   DescriptionListItem,
