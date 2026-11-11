@@ -396,6 +396,19 @@ export function useChatCommandActions(options: CommandActionsOptions) {
     };
     const flightToken = Symbol(toolCallId);
     approvalStates = setApprovalState(approvalStates, toolCallId, 'pending');
+    // The receipt belongs to the decision, not to its settlement: a controller that resumes the run
+    // before it acknowledges stops the result asking first, and the flight is gone by then. It is
+    // dropped only when the decision does not go through (rollback).
+    if (action?.type === 'approval') {
+      const receipt: ToolApprovalReceiptRecord['receipt'] = { decidedAt: Date.now() };
+      if (resolution.reason !== undefined) receipt.reason = resolution.reason;
+      approvalReceipts = new Map(approvalReceipts).set(toolCallId, {
+        toolName: findToolName(options.getMessages(), toolCallId),
+        action,
+        state: stateForResolution(resolution),
+        receipt,
+      });
+    }
     approvalResolutionInFlightIds = new Set([...approvalResolutionInFlightIds, toolCallId]);
     approvalResolutionFlightTokens = new Map(approvalResolutionFlightTokens).set(
       toolCallId,
@@ -434,6 +447,9 @@ export function useChatCommandActions(options: CommandActionsOptions) {
       const nextTokens = new Map(approvalResolutionFlightTokens);
       nextTokens.delete(toolCallId);
       approvalResolutionFlightTokens = nextTokens;
+      const nextReceipts = new Map(approvalReceipts);
+      nextReceipts.delete(toolCallId);
+      approvalReceipts = nextReceipts;
     };
 
     const acceptResolution = (acknowledgement: void | ChatToolApprovalResolution): void => {
@@ -442,18 +458,7 @@ export function useChatCommandActions(options: CommandActionsOptions) {
         rollback();
         return;
       }
-      const decidedState = stateForResolution(resolution);
-      approvalStates = setApprovalState(approvalStates, toolCallId, decidedState);
-      if (action?.type === 'approval') {
-        const receipt: ToolApprovalReceiptRecord['receipt'] = { decidedAt: Date.now() };
-        if (resolution.reason !== undefined) receipt.reason = resolution.reason;
-        approvalReceipts = new Map(approvalReceipts).set(toolCallId, {
-          toolName: findToolName(options.getMessages(), toolCallId),
-          action,
-          state: decidedState,
-          receipt,
-        });
-      }
+      approvalStates = setApprovalState(approvalStates, toolCallId, stateForResolution(resolution));
       clearFlight();
     };
 

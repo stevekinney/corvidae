@@ -439,6 +439,35 @@ describe('Chat approval receipt', () => {
     expect(drawerOf(view.container)).toBeNull();
   });
 
+  test('the receipt stays when the run resumes and the result stops asking before the adapter acknowledges', async () => {
+    // The session controller replaces the result and resumes the run, and only then returns.
+    let resumeRun: () => Promise<void> = async () => undefined;
+    const adapter: ChatAdapter = {
+      sendMessage: async () => undefined,
+      describeApproval: refundDetails,
+      resolveToolApproval: async () => {
+        await resumeRun();
+      },
+    };
+    const view = render(Chat, {
+      id: 'chat-receipt-resumed-first',
+      conversation: approvalConversation('receipt-resumed-first'),
+      adapter,
+    });
+    resumeRun = () => view.rerender({ conversation: resumedConversation('receipt-resumed-first') });
+
+    await fireEvent.click(getByRole(view.container, 'button', { name: 'Refund $42.00' }));
+    await fireEvent.click(
+      getByRole(view.container, 'button', { name: 'Press again to refund $42.00' }),
+    );
+    await tick();
+    await tick();
+
+    const receipt = getByRole(view.container, 'article', { name: QUESTION });
+    expect(receipt.getAttribute('data-cinder-state')).toBe('approved');
+    expect(receipt.querySelector('.cinder-badge')?.textContent?.trim()).toBe('Approved');
+  });
+
   test('a decided call keeps its own row beside a neighbouring completed call, so the receipt is not folded into a group', async () => {
     const withNeighbour = (id: string, asking: boolean): ConversationHistory => {
       const first = appendToolCall(appendUserMessage(createConversationHistory({ id }), 'go'), {

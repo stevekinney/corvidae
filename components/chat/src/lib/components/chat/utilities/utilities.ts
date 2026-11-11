@@ -467,8 +467,10 @@ function deriveToolApprovalPart(
   };
   const details = describeApprovalSafely(context, result.callId, toolName, action);
   if (details !== undefined) part.details = details;
+  // The receipt is recorded when the decision is made, so the row still asking, with its
+  // resolution in flight, is not yet a decided one.
   const held = context.approvalReceipts?.get(result.callId);
-  if (held !== undefined) part.receipt = held.receipt;
+  if (held !== undefined && !part.resolutionInFlight) part.receipt = held.receipt;
   return part;
 }
 
