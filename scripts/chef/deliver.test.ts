@@ -17,7 +17,7 @@ import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
 import { UsageError, type Runner, type RunnerResult } from './process-runner.ts';
 import type { GuardsResult } from './text-guards.ts';
 import type { UsageTotals } from './transcript-usage.ts';
-import { Refusal } from './worktree.ts';
+import { Refusal, type RemoveOptions } from './worktree.ts';
 
 const HEAD = 'a'.repeat(40);
 const BASE = 'c'.repeat(40);
@@ -84,6 +84,7 @@ function seams(
   const record = {
     merges: [] as MergeGateOptions[],
     removals: [] as string[],
+    removeCalls: [] as RemoveOptions[],
     requests: [] as string[],
     /** The identifier each comment and state change was made on, in order. */
     writes: [] as string[],
@@ -145,8 +146,9 @@ function seams(
         record.merges.push(mergeOptions);
         return overrides.merge ?? mergedReport();
       },
-      remove: (removeOptions: { name: string }) => {
+      remove: (removeOptions: RemoveOptions) => {
         record.removals.push(removeOptions.name);
+        record.removeCalls.push(removeOptions);
         if (overrides.refusal !== undefined) throw new Refusal(overrides.refusal);
         if (overrides.usageError !== undefined) throw new UsageError(overrides.usageError);
         return { path: '/c/alpha', branch: 'b', remoteDeleted: true };
@@ -176,6 +178,7 @@ describe('deliver', () => {
       issues: [],
       leftOpen: [],
       acceptedReverts: [],
+      worktree: { removed: true, detail: '/c/alpha' },
     });
     expect(record.merges).toHaveLength(1);
     expect(record.merges[0]).toMatchObject({ pr: 12, dryRun: false, checkMainHealth: true });
@@ -373,7 +376,6 @@ describe('deliver', () => {
         issues: ['COR-9', 'COR-10', 'COR-11'],
         completionFiles: [join(sandbox, 'done.md'), second, second],
         closes: ['COR-9', 'COR-10', 'COR-11'],
-        removeWorktree: { provider: 'claude', name: 'alpha' },
       },
       partial,
     );
@@ -403,7 +405,6 @@ describe('deliver', () => {
         ...options,
         issues: ['COR-9'],
         completionFiles: [join(sandbox, 'done.md')],
-        removeWorktree: { provider: 'claude', name: 'alpha' },
       },
       { ...partial, client: broken },
     );
@@ -413,26 +414,56 @@ describe('deliver', () => {
     expect(record.removals).toEqual([]);
   });
 
-  test('a usage error at the worktree step is step worktree with merged true', async () => {
-    const { partial } = seams({ usageError: '--name "x" is not a safe name.' });
-    const report = await deliver(
-      { ...options, removeWorktree: { provider: 'claude', name: 'x' } },
-      partial,
-    );
-    expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
+  test('removes the delivered worktree by default, naming its path and the delivered tip', async () => {
+    const { partial, record } = seams();
+    const report = await deliver({ ...options, expectedHead: HEAD }, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: null });
+    expect(report.worktree).toEqual({ removed: true, detail: '/c/alpha' });
+    expect(record.removeCalls).toEqual([
+      { configPath: options.configPath, name: sandbox, keepRemote: false, deliveredTip: HEAD },
+    ]);
+    expect(renderDeliver(report).split('\n')[1]).toBe('worktree removed: /c/alpha');
   });
 
-  test('a worktree-removal refusal is reported with merged true', async () => {
+  test('a pull request delivery with no --head names the pull request head as the delivered tip', async () => {
+    const { partial, record } = seams();
+    await deliver(options, partial);
+    expect(record.removeCalls[0]?.deliveredTip).toBe(HEAD);
+  });
+
+  test('--keep-worktree removes nothing and says so', async () => {
+    const { partial, record } = seams();
+    const report = await deliver({ ...options, keepWorktree: true }, partial);
+    expect(record.removals).toEqual([]);
+    expect(report.worktree).toEqual({ removed: false, detail: 'kept by --keep-worktree' });
+    expect(renderDeliver(report).split('\n')[1]).toBe('worktree kept: kept by --keep-worktree');
+  });
+
+  test('a worktree the removal refuses is kept with its reason and the delivery still succeeds', async () => {
     const { partial, record } = seams({
-      refusal: 'Refusing to remove /c/alpha: it has 2 paths',
+      refusal: 'Refusing to remove /c/alpha: Git reports it locked',
     });
-    const report = await deliver(
-      { ...options, removeWorktree: { provider: 'claude', name: 'alpha' } },
-      partial,
-    );
-    expect(report).toMatchObject({ merged: true, failedStep: 'worktree' });
-    expect(report.detail).toContain('Refusing to remove');
-    expect(record.removals).toEqual(['alpha']);
+    const report = await deliver(options, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: null });
+    expect(report.worktree?.removed).toBe(false);
+    expect(report.worktree?.detail).toContain('locked');
+    expect(record.removals).toEqual([sandbox]);
+    expect(renderDeliver(report)).toContain('worktree kept: Refusing to remove /c/alpha');
+    expect(renderDeliver(report)).not.toContain('FAILED');
+  });
+
+  test('a usage error from the removal is kept too, never a failed step', async () => {
+    const { partial } = seams({ usageError: 'not a safe name.' });
+    const report = await deliver(options, partial);
+    expect(report).toMatchObject({ merged: true, failedStep: null });
+    expect(report.worktree).toEqual({ removed: false, detail: 'not a safe name.' });
+  });
+
+  test('a delivery that did not merge touches no worktree', async () => {
+    const { partial, record } = seams({ merge: refusal('conflict', 'x') });
+    const report = await deliver(options, partial);
+    expect(report.worktree).toBeNull();
+    expect(record.removals).toEqual([]);
   });
 });
 
@@ -563,8 +594,10 @@ describe('run', () => {
         'a.md',
       ),
     ).toBeInstanceOf(UsageError);
+    // The old spelling is gone: removal is the default, and `--keep-worktree` opts out.
     expect(await usage('--pr', '1', ...base, '--remove-worktree')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--name', 'x')).toBeInstanceOf(UsageError);
+    expect(await usage('--pr', '1', ...base, '--provider', 'claude')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--bogus')).toBeInstanceOf(UsageError);
     // A pull request and a branch are exclusive, and one of them is required.
     expect(await usage('--worktree', sandbox)).toBeInstanceOf(UsageError);
@@ -578,21 +611,6 @@ describe('run', () => {
     for (const removed of ['--gate-log', '--max-attempts', '--removed-names', '--log-dir'])
       expect(await usage('--pr', '1', ...base, removed, 'x')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--waive-main-health')).toBeInstanceOf(UsageError);
-    expect(
-      await usage('--pr', '1', ...base, '--remove-worktree', '--provider', 'nobody', '--name', 'a'),
-    ).toBeInstanceOf(UsageError);
-    expect(
-      await usage(
-        '--pr',
-        '1',
-        ...base,
-        '--remove-worktree',
-        '--provider',
-        'claude',
-        '--name',
-        '../x',
-      ),
-    ).toBeInstanceOf(UsageError);
   });
 
   test('--head, --fixes-main and the spend flags reach the merge gate', async () => {
@@ -989,7 +1007,6 @@ describe('deliver --branch', () => {
       issues: ['COR-9', 'COR-10'],
       completionFiles: [join(sandbox, 'done.md'), second],
       closes: ['COR-9', 'COR-10'],
-      removeWorktree: { provider: 'claude', name: 'alpha' },
     });
     expect(report).toMatchObject({
       merged: true,
@@ -1005,7 +1022,7 @@ describe('deliver --branch', () => {
       'comment COR-10',
       'state COR-10',
     ]);
-    expect(record.removals).toEqual(['alpha']);
+    expect(record.removals).toEqual([sandbox]);
   });
 
   test('unpaired issues, an unsafe branch or a bad head are refused before anything runs', async () => {

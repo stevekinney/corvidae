@@ -435,7 +435,7 @@ describe('removeWorktree delivery guard with a fake runner', () => {
       expect(result.code).toBe(1);
       expect(JSON.parse(result.output)).toEqual({
         ok: false,
-        error: expect.stringContaining('is not a worktree under the claude root'),
+        error: expect.stringContaining('is not a worktree under'),
       });
     });
   });

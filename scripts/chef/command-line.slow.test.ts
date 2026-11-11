@@ -245,7 +245,7 @@ scenarios.describe('a non-zero result with --json goes to standard output', () =
       1,
     );
     expect(result['ok']).toBe(false);
-    expect(String(result['error'])).toContain('is not a worktree under the claude root');
+    expect(String(result['error'])).toContain('is not a worktree under');
   });
 });
 

@@ -23,3 +23,14 @@ The full rules behind AGENTS.md "Workspace and dependencies", "Release intent" a
 - Never copy `.env`, credentials, `node_modules`, caches, generated artifacts, or other ignored local state between worktrees. Do not add `.worktreeinclude` unless a specific non-secret ignored file is required.
 - The design review of an Interborough interface or Cinder change gets its implementation-review verdict against the agreed design when there is one; the `design-review` skill also sweeps the existing interface and critiques a proposed design before it is built. Interborough is Cinder's only consumer, so a finding a Cinder component, default, or token can carry lands in Cinder.
 - A "Design source" list is context, never a substitute for design rows as acceptance criteria, and a design programme closes only after a full drift audit of the canvas against the shipped interface.
+
+### Worktree accumulation and Spotlight
+
+Merged worktrees left in place keep `fseventsd` and Spotlight busy (COR-2398): one development host showed 332 worktrees and about 175% of a core between the two daemons. `bun scripts/chef/deliver.ts` removes the delivered worktree by default (`--keep-worktree` opts out), and `bun scripts/chef/worktree.ts stale` lists every worktree under the accepted roots with its branch, age, cleanliness, lock, live processes and delivered state; `stale --remove` removes the clean, unlocked, idle, delivered ones and never the main checkout or the worktree it runs from.
+
+The two worktree roots are:
+
+- `<main checkout>/.claude/worktrees`, where Claude Code's Agent tool makes worktrees.
+- `~/.agent-worktrees`, which holds the `claude` and `codex` provider roots (`~/.agent-worktrees/<provider>/corvidae`).
+
+To stop Spotlight indexing them on macOS, open System Settings, Spotlight, Search Privacy and add both folders. An empty file named `.metadata_never_index` in a folder also stops Spotlight indexing that folder. This is the owner's machine setting: no script or agent creates that file or changes a Spotlight setting, and a session that finds indexing slow reports it rather than changing it.

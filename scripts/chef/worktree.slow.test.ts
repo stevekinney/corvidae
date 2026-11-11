@@ -277,7 +277,7 @@ scenarios.describe('removeWorktree', () => {
   });
 
   scenarios.scenario('refuses a name that is not a worktree', () => {
-    expect(() => remove('ghost')).toThrow('is not a worktree under the claude root');
+    expect(() => remove('ghost')).toThrow('is not a worktree under');
   });
 
   scenarios.scenario(
@@ -287,7 +287,7 @@ scenarios.describe('removeWorktree', () => {
       git(checkout, 'worktree', 'add', '-q', '-b', 'outside-branch', outside, 'origin/main');
       mkdirSync(roots.claude, { recursive: true });
       symlinkSync(outside, join(roots.claude, 'linked'));
-      expect(() => remove('linked')).toThrow('is not a worktree under the claude root');
+      expect(() => remove('linked')).toThrow('is not a worktree under');
       expect(existsSync(outside)).toBe(true);
       expect(git(checkout, 'branch', '--list', 'outside-branch')).not.toBe('');
     },

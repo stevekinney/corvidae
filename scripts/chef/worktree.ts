@@ -9,9 +9,18 @@
 //   bun scripts/chef/worktree.ts create [--config <json>] --provider claude|codex --name <name>
 //       --branch <branch> [--base <ref>] [--install-log <file>]
 //       [--json]
-//   bun scripts/chef/worktree.ts remove [--config <json>] --provider claude|codex --name <name>
+//   bun scripts/chef/worktree.ts remove [--config <json>] [--provider claude|codex] --name <name>
 //       [--keep-remote] [--retired] [--json]
-// `--name` on `remove` is a worktree name or an absolute path.
+//   bun scripts/chef/worktree.ts stale [--config <json>] [--remove] [--json]
+// `--name` on `remove` is a worktree name or an absolute path. `--provider` is optional on `remove`:
+// without it every provider's root is accepted. `stale` lists, read-only, every worktree under the
+// accepted roots with its branch, age, cleanliness, lock, live processes and delivered state (the
+// two tests, and their limits, are on `classifyDelivered`); `--remove` removes those that are clean,
+// unlocked, free of processes and delivered, never the main checkout or the worktree it runs from,
+// and keeps the remote branches. It reads `origin/<default>` as last fetched (`--remove` fetches
+// first). A live process in the listing is one whose working directory is inside the worktree, seen
+// by one host-wide `lsof` that shows only the running user's processes; `--remove` re-checks open
+// files. A branch with no commit of its own counts as delivered (its tip is in `origin/<default>`).
 //
 // `create` runs the default-branch ownership preflight (it never attaches the default branch),
 // fetches the default branch, adds the worktree on a new branch from `--base` (default
@@ -27,7 +36,8 @@
 // the remote branch with `git push --delete`, unless the branch's work is delivered: its tip is an
 // ancestor of `origin/<default branch>` (after a fetch), or `gh pr view <branch>` reports `MERGED`
 // with a `headRefOid` equal to the local tip (a squash merge leaves the tip outside the default
-// branch's history, so the pull request is the evidence). A branch with an open pull request, an
+// branch's history, so the pull request is the evidence), or the caller (`deliver.ts`) has just
+// delivered exactly that tip (`deliveredTip`). A branch with an open pull request, an
 // unpushed commit or a tip that differs from the merged head is refused. `--retired` states that the
 // branch is deliberately abandoned and skips that check; nothing else does. Otherwise it removes the
 // worktree, deletes its branch, and unless `--keep-remote` deletes the remote branch when one exists.
@@ -152,6 +162,19 @@ function providerRoot(config: RepositoryConfig, provider: string): string {
   return config.worktreeRoots[provider as Provider];
 }
 
+/** The roots a worktree may be removed from: the provider's (every provider's when none) and the Agent tool's. */
+function acceptedRoots(
+  config: RepositoryConfig,
+  checkout: string,
+  provider: string | undefined,
+): string[] {
+  const providerRoots =
+    provider === undefined
+      ? providers.map((item) => config.worktreeRoots[item])
+      : [providerRoot(config, provider)];
+  return [...providerRoots, join(checkout, '.claude', 'worktrees')];
+}
+
 function realpath(path: string): string {
   return existsSync(path) ? realpathSync(path) : path;
 }
@@ -249,11 +272,18 @@ export function createWorktree(
 
 export interface RemoveOptions {
   configPath: string;
-  provider: string;
+  /** Restricts the accepted roots to this provider's (plus the Agent tool's); absent accepts every root. */
+  provider?: string | undefined;
   name: string;
   keepRemote: boolean;
   /** The branch is deliberately abandoned: skip the check that its work was delivered. */
   retired?: boolean;
+  /**
+   * The caller has just delivered exactly this commit (a squash or direct merge leaves the tip
+   * outside the default branch's history). The delivered-branch check passes only while the local
+   * tip still equals it; any other tip goes through the ordinary check.
+   */
+  deliveredTip?: string | undefined;
 }
 
 export interface RemoveResult {
@@ -313,9 +343,7 @@ export function removeWorktree(
 ): RemoveResult {
   const { runner, checkout } = resolveDependencies(partial);
   const config = loadRepositoryConfig(options.configPath);
-  const root = providerRoot(config, options.provider);
-  const agentRoot = join(checkout, '.claude', 'worktrees');
-
+  const roots = acceptedRoots(config, checkout, options.provider);
   const listing = git(runner, checkout, 'worktree', 'list', '--porcelain');
   if (listing.code !== 0) throw failure('git worktree list', listing);
   const entries = parseWorktreeList(listing.stdout);
@@ -325,14 +353,14 @@ export function removeWorktree(
     ? [options.name]
     : (() => {
         const name = validateName(options.name, 'name', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-        return [join(root, name), join(agentRoot, name)];
+        return roots.map((root) => join(root, name));
       })();
   let path = candidates[0] ?? options.name;
   let entry: WorktreeEntry | undefined;
   for (const candidate of candidates) {
     const listed = entries.find((item) => realpath(item.path) === realpath(candidate));
     const resolved = realpath(candidate);
-    if (listed !== undefined && (isUnder(root, resolved) || isUnder(agentRoot, resolved))) {
+    if (listed !== undefined && roots.some((root) => isUnder(root, resolved))) {
       path = candidate;
       entry = listed;
       break;
@@ -340,9 +368,7 @@ export function removeWorktree(
   }
   const reasons: string[] = [];
   if (entry === undefined) {
-    throw new Refusal(
-      `${path} is not a worktree under the ${options.provider} root ${root} or under ${agentRoot}.`,
-    );
+    throw new Refusal(`${path} is not a worktree under ${roots.join(' or ')}.`);
   }
   if (entry.locked) reasons.push('Git reports it locked (git worktree unlock it first)');
   const branch = entry.branch?.replace(/^refs\/heads\//, '');
@@ -367,7 +393,17 @@ export function removeWorktree(
     if (!(error instanceof ProbeError)) throw error;
     reasons.push(`it could not be checked for processes (${error.message})`);
   }
-  if (branch !== undefined && branch !== config.defaultBranch && options.retired !== true) {
+  const tipDelivered =
+    options.deliveredTip !== undefined &&
+    branch !== undefined &&
+    git(runner, checkout, 'rev-parse', '--verify', `refs/heads/${branch}`).stdout.trim() ===
+      options.deliveredTip;
+  if (
+    branch !== undefined &&
+    branch !== config.defaultBranch &&
+    options.retired !== true &&
+    !tipDelivered
+  ) {
     const undelivered = undeliveredReason(runner, checkout, config, branch);
     if (undelivered !== undefined) reasons.push(undelivered);
   }
@@ -391,29 +427,277 @@ export function removeWorktree(
   return { path, branch, remoteDeleted };
 }
 
+/** How a worktree's branch was shown to be delivered: see `classifyDelivered`. */
+export type DeliveredBy = 'ancestor' | 'changes-in-default' | 'none';
+
+export interface StaleEntry {
+  path: string;
+  branch: string | undefined;
+  tip: string | undefined;
+  /** The committer date of the worktree's HEAD, ISO 8601; the worktree's age. */
+  lastCommit: string | undefined;
+  ageDays: number | undefined;
+  /** `undefined` when `git status` failed. */
+  clean: boolean | undefined;
+  locked: boolean;
+  /** Processes whose working directory is inside it; `undefined` when `lsof` could not answer. */
+  processes: number | undefined;
+  delivered: boolean;
+  deliveredBy: DeliveredBy;
+  /** The worktree this command runs from: never removed. */
+  current: boolean;
+  /** Why it is not removable; empty when `--remove` would remove it. */
+  keep: string[];
+}
+
+export interface StaleOptions {
+  configPath: string;
+  remove: boolean;
+  /** The directory the command runs from; its worktree is never removed. Defaults to the cwd. */
+  currentDirectory?: string | undefined;
+}
+
+export interface StaleResult {
+  entries: StaleEntry[];
+  /** Filled only with `remove`: the worktrees removed, then those a re-check refused. */
+  removed: { path: string; branch: string | undefined }[];
+  refused: { path: string; reason: string }[];
+}
+
+/** Every `n` (file name) line of an `lsof -F pcn` listing, with the pid and command that opened it. */
+function* lsofOpenFiles(stdout: string): Generator<{ pid: number; command: string; name: string }> {
+  let pid = 0;
+  let command = '';
+  for (const line of stdout.split('\n')) {
+    if (line.startsWith('p')) pid = Number(line.slice(1));
+    else if (line.startsWith('c')) command = line.slice(1);
+    else if (line.startsWith('n')) yield { pid, command, name: line.slice(1) };
+  }
+}
+
+/**
+ * Whether `tip` is delivered into `base` (`origin/<default>`), by one of two tests and no other:
+ *
+ * - `ancestor`: `tip` is an ancestor of `base`. A branch with no commit of its own passes it.
+ * - `changes-in-default`: a local branch whose `origin/<branch>` tracking ref is absent (it was
+ *   never pushed, or its remote branch was deleted and pruned) and for which `git merge-tree
+ *   --write-tree base tip` merges cleanly into exactly `base`'s own tree: merging the branch would
+ *   change nothing, which is what a squash or direct merge leaves behind. It is a content test, not
+ *   proof of provenance: a branch whose changes were also made independently counts. It is
+ *   conservative the other way: a change `main` later reverted, or a conflict, reads as undelivered.
+ *
+ * Both read the local `origin/<default>` ref, which is as old as the last fetch.
+ */
+function classifyDelivered(
+  runner: Runner,
+  checkout: string,
+  config: RepositoryConfig,
+  tip: string,
+  branch: string | undefined,
+): DeliveredBy {
+  const base = `origin/${config.defaultBranch}`;
+  if (git(runner, checkout, 'merge-base', '--is-ancestor', tip, base).code === 0) return 'ancestor';
+  if (branch === undefined) return 'none';
+  const tracking = git(
+    runner,
+    checkout,
+    'rev-parse',
+    '--verify',
+    '--quiet',
+    `refs/remotes/origin/${branch}`,
+  );
+  if (tracking.code === 0) return 'none';
+  const merged = git(runner, checkout, 'merge-tree', '--write-tree', base, tip);
+  const baseTree = git(runner, checkout, 'rev-parse', `${base}^{tree}`);
+  if (merged.code !== 0 || baseTree.code !== 0) return 'none';
+  return merged.stdout.trim().split('\n')[0] === baseTree.stdout.trim()
+    ? 'changes-in-default'
+    : 'none';
+}
+
+/**
+ * Every worktree under the accepted roots (every provider's and `<main checkout>/.claude/worktrees`)
+ * with its branch, age, cleanliness, lock, live processes and whether its branch is delivered. The
+ * listing changes nothing. With `remove`, it first runs `git fetch --prune origin`, then removes
+ * those that are clean, unlocked, without a process, delivered, not the current worktree and not the
+ * main checkout, through `removeWorktree` (which checks each again) with `keepRemote`, so a bulk
+ * removal never deletes a remote branch.
+ */
+export function staleWorktrees(
+  options: StaleOptions,
+  partial: Partial<WorktreeDependencies> = {},
+): StaleResult {
+  const { runner, checkout } = resolveDependencies(partial);
+  const config = loadRepositoryConfig(options.configPath);
+  const roots = acceptedRoots(config, checkout, undefined);
+  if (options.remove) {
+    const fetched = git(runner, checkout, 'fetch', '--prune', 'origin');
+    if (fetched.code !== 0) throw failure('git fetch --prune origin', fetched);
+  }
+  const listing = git(runner, checkout, 'worktree', 'list', '--porcelain');
+  if (listing.code !== 0) throw failure('git worktree list', listing);
+  const here = realpath(options.currentDirectory ?? process.cwd());
+  const candidates = parseWorktreeList(listing.stdout).filter(
+    (entry) =>
+      !entry.bare &&
+      realpath(entry.path) !== realpath(checkout) &&
+      roots.some((root) => isUnder(root, realpath(entry.path))),
+  );
+
+  // One `lsof` for the host, for working directories only, rather than one per worktree: a
+  // directory scan of each worktree's `node_modules` takes minutes across hundreds of them, and a
+  // host-wide listing of every open file about twenty seconds on a loaded host. `remove` re-checks
+  // each candidate for open files with its own `+D` scan.
+  const open = runner(['lsof', '-w', '-a', '-d', 'cwd', '-F', 'pcn']);
+  const probed = open.code === 0 || open.stdout.trim() !== '';
+  const holders = new Map<string, Set<number>>();
+  if (probed) {
+    const resolved = candidates.map((entry) => ({ entry, root: realpath(entry.path) }));
+    for (const file of lsofOpenFiles(open.stdout)) {
+      if (file.pid === process.pid) continue;
+      for (const { entry, root } of resolved) {
+        if (file.name === root || file.name.startsWith(root + sep)) {
+          holders.set(entry.path, (holders.get(entry.path) ?? new Set()).add(file.pid));
+          break;
+        }
+      }
+    }
+  }
+
+  const now = Date.now();
+  const entries = candidates.map((entry): StaleEntry => {
+    const root = realpath(entry.path);
+    const branch = entry.branch?.replace(/^refs\/heads\//, '');
+    const date = git(runner, entry.path, 'log', '-1', '--format=%cI').stdout.trim();
+    const status = git(runner, entry.path, 'status', '--porcelain');
+    const deliveredBy =
+      entry.head === undefined
+        ? 'none'
+        : classifyDelivered(runner, checkout, config, entry.head, branch);
+    const stale: StaleEntry = {
+      path: entry.path,
+      branch,
+      tip: entry.head,
+      lastCommit: date === '' ? undefined : date,
+      ageDays:
+        date === '' || Number.isNaN(Date.parse(date))
+          ? undefined
+          : Math.floor((now - Date.parse(date)) / 86_400_000),
+      clean: status.code === 0 ? status.stdout.trim() === '' : undefined,
+      locked: entry.locked,
+      processes: probed ? (holders.get(entry.path)?.size ?? 0) : undefined,
+      delivered: deliveredBy !== 'none',
+      deliveredBy,
+      current: here === root || here.startsWith(root + sep),
+      keep: [],
+    };
+    if (stale.current) stale.keep.push('it is the worktree this command runs from');
+    if (stale.locked) stale.keep.push('locked');
+    if (stale.clean === undefined) stale.keep.push('git status failed');
+    else if (!stale.clean) stale.keep.push('uncommitted or untracked changes');
+    if (stale.processes === undefined) stale.keep.push('processes could not be checked');
+    else if (stale.processes > 0) stale.keep.push(`${stale.processes} live process(es)`);
+    if (!stale.delivered) stale.keep.push('branch not delivered');
+    if (branch === config.defaultBranch) stale.keep.push('default branch checked out');
+    return stale;
+  });
+
+  const result: StaleResult = { entries, removed: [], refused: [] };
+  if (!options.remove) return result;
+  for (const entry of entries.filter((item) => item.keep.length === 0)) {
+    try {
+      const removed = removeWorktree(
+        {
+          configPath: options.configPath,
+          name: entry.path,
+          keepRemote: true,
+          deliveredTip: entry.tip,
+        },
+        partial,
+      );
+      result.removed.push({ path: removed.path, branch: removed.branch });
+    } catch (error) {
+      if (!(error instanceof Refusal)) throw error;
+      result.refused.push({ path: entry.path, reason: error.message });
+    }
+  }
+  return result;
+}
+
+export function renderStale(result: StaleResult, remove: boolean): string {
+  const lines = result.entries.map((entry) => {
+    const facts = [
+      entry.branch ?? '(detached)',
+      entry.ageDays === undefined ? 'age unknown' : `${entry.ageDays}d`,
+      entry.clean === undefined ? 'status unknown' : entry.clean ? 'clean' : 'dirty',
+      entry.locked ? 'locked' : 'unlocked',
+      entry.processes === undefined ? 'processes unknown' : `${entry.processes} process(es)`,
+      entry.delivered ? `delivered (${entry.deliveredBy})` : 'not delivered',
+    ].join(', ');
+    const outcome =
+      entry.keep.length === 0
+        ? remove
+          ? ''
+          : ' -> removable'
+        : ` -> kept: ${entry.keep.join('; ')}`;
+    return `${entry.path}: ${facts}${outcome}`;
+  });
+  const removable = result.entries.filter((entry) => entry.keep.length === 0).length;
+  lines.push(
+    `${result.entries.length} worktree(s): ${result.entries.filter((entry) => entry.delivered).length} delivered, ${removable} removable, ${result.entries.filter((entry) => entry.locked).length} locked`,
+  );
+  if (remove) {
+    for (const item of result.removed)
+      lines.push(`removed ${item.path}${item.branch === undefined ? '' : ` (${item.branch})`}`);
+    for (const item of result.refused) lines.push(`kept ${item.path}: ${item.reason}`);
+    lines.push(
+      `removed ${result.removed.length}, kept ${result.entries.length - result.removed.length}`,
+    );
+  }
+  return lines.join('\n');
+}
+
 export function run(
   argv: string[],
   dependencies: Partial<WorktreeDependencies> = {},
 ): { code: number; output: string } {
   const [command, ...rest] = argv;
-  if (command !== 'create' && command !== 'remove')
-    throw new UsageError('Usage: worktree.ts create|remove ...');
+  if (command !== 'create' && command !== 'remove' && command !== 'stale')
+    throw new UsageError('Usage: worktree.ts create|remove|stale ...');
   const parsed = parseOptions(rest, {
     values: ['config', 'provider', 'name', 'branch', 'base', 'install-log'],
-    flags: ['keep-remote', 'retired', 'json'],
+    flags: ['keep-remote', 'retired', 'json', 'remove'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
   const json = parsed.flags.has('json');
   const configPath = parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH;
-  const provider = requireOption(parsed, 'provider');
+  if (command === 'stale') {
+    for (const option of ['provider', 'name', 'branch', 'base', 'install-log'])
+      if (parsed.values[option] !== undefined)
+        throw new UsageError(`--${option} does not apply to stale.`);
+    const remove = parsed.flags.has('remove');
+    try {
+      const result = staleWorktrees({ configPath, remove }, dependencies);
+      return { code: 0, output: json ? JSON.stringify(result) : renderStale(result, remove) };
+    } catch (error) {
+      if (error instanceof Refusal)
+        return {
+          code: 1,
+          output: json ? JSON.stringify({ ok: false, error: error.message }) : error.message,
+        };
+      throw error;
+    }
+  }
+  if (parsed.flags.has('remove')) throw new UsageError('--remove applies only to stale.');
+  const provider = parsed.values['provider'];
   const name = requireOption(parsed, 'name');
   try {
     if (command === 'create') {
       const result = createWorktree(
         {
           configPath,
-          provider,
+          provider: requireOption(parsed, 'provider'),
           name,
           branch: requireOption(parsed, 'branch'),
           base: parsed.values['base'],

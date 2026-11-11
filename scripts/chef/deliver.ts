@@ -17,7 +17,7 @@
 //                               --message-file <md>
 //                               [--intended <path>]...
 //                               [--issue <ID> --completion-file <md>]... [--closes <ID>]...
-//                               [--remove-worktree --provider claude|codex --name <name>]
+//                               [--keep-worktree]
 //                               [--usage-log <file> --transcript <path>...]
 //                               [--fixes-main] [--config <json>] [--json]
 //   bun scripts/chef/deliver.ts --help
@@ -59,12 +59,16 @@
 //              must match: anything else is refused as invalid usage before the merge. Nothing here
 //              stops Linear's own GitHub integration from moving an issue whose identifier a pull
 //              request title or branch carries; that is outside the script;
-//   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
-//              `worktree` with `merged` still true.
+//   worktree   unless `--keep-worktree`: `worktree.ts remove` of `--worktree` (its path, under any
+//              root `remove` accepts), told that the worktree's tip is the commit just delivered
+//              (the pinned `--head`, else the pull request's head), because a squash
+//              or direct merge leaves that tip outside the default branch's history. A worktree it
+//              refuses (locked by a live session, uncommitted changes, a process inside it, outside
+//              the roots) is kept and the line says why; that never fails the delivery.
 //
-// Output: at most five lines, or with `--json` one object: pr, branch, merged, mergeCommit,
-// mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, issues (each closed
-// issue's identifier and state) and leftOpen (the commented issues whose state was not touched).
+// Output: at most six lines, or with `--json` one object: pr, branch, merged, mergeCommit,
+// mergeable, mainHealthWarning, guardsAlreadyFailing, failedStep, detail, worktree (`removed` and
+// a `detail`), issues (each closed issue's identifier and state) and leftOpen (the commented issues whose state was not touched).
 // The text output's last line before any failure says which issues were closed and which were left
 // open, or that none was named. `pr` is null for a branch merge and `branch` null for a pull request merge. The
 // usage-log line of a branch merge holds `branch:<name>` where a pull request's holds its number.
@@ -73,6 +77,7 @@
 // invalid CLI usage.
 
 import { existsSync, readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   directMergeExclusively,
   type DirectMergeOptions,
@@ -82,14 +87,7 @@ import { createClient, LinearError, postComment, setState, type LinearClient } f
 import { mergeGateExclusively, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
 import { DEFAULT_CONFIGURATION_PATH, loadRepositoryConfig } from './repository-config.ts';
-import {
-  Refusal,
-  removeWorktree,
-  validateName,
-  validateProvider,
-  type RemoveOptions,
-  type RemoveResult,
-} from './worktree.ts';
+import { Refusal, removeWorktree, type RemoveOptions, type RemoveResult } from './worktree.ts';
 
 export { UsageError };
 
@@ -114,7 +112,8 @@ export interface DeliverOptions {
   closes?: string[] | undefined;
   /** Paths whose `revert` finding is intended; `branch` only. */
   intended?: string[] | undefined;
-  removeWorktree?: { provider: string; name: string } | undefined;
+  /** Keep the delivered worktree instead of removing it. */
+  keepWorktree?: boolean | undefined;
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
   /** Declares this pull request a repair of a red `main`; forwarded to the merge gate. Refused with `branch`. */
@@ -145,6 +144,8 @@ export interface DeliverReport {
   acceptedReverts: string[];
   /** The issues commented on whose state was left alone, in order. */
   leftOpen: string[];
+  /** What happened to the delivered worktree; `null` when the step did not run. */
+  worktree: { removed: boolean; detail: string } | null;
 }
 
 export interface DeliverDependencies {
@@ -268,12 +269,17 @@ export async function deliver(
     issues: [],
     acceptedReverts: [],
     leftOpen: [],
+    worktree: null,
   };
   const fail = (step: string, detail: string): DeliverReport => {
     report.failedStep = step;
     report.detail = detail;
     return report;
   };
+
+  // The commit this delivery lands: the pinned head, else the pull request's head, which the merge
+  // gate requires to equal the worktree's HEAD. With neither, the ordinary delivered check applies.
+  let deliveredTip: string | undefined = options.expectedHead;
 
   // merge
   const usageFields =
@@ -316,6 +322,7 @@ export async function deliver(
     report.merged = merged.merged;
     report.mergeCommit = merged.mergeCommit;
     report.mergeable = merged.mergeable;
+    deliveredTip ??= merged.head ?? undefined;
     report.mainHealthWarning = merged.mainHealthWarning ?? null;
     if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
   }
@@ -340,20 +347,27 @@ export async function deliver(
     }
   }
 
-  // worktree
-  if (options.removeWorktree !== undefined) {
+  // worktree: removed by default; a worktree the removal refuses is kept, never a failed delivery.
+  if (options.keepWorktree === true) {
+    report.worktree = { removed: false, detail: 'kept by --keep-worktree' };
+  } else {
     const remove = partial.remove;
-    if (remove === undefined) return fail('worktree', 'no worktree remover was provided.');
-    try {
-      remove({
-        configPath: options.configPath,
-        provider: options.removeWorktree.provider,
-        name: options.removeWorktree.name,
-        keepRemote: false,
-      });
-    } catch (error) {
-      if (!(error instanceof Refusal) && !(error instanceof UsageError)) throw error;
-      return fail('worktree', error.message);
+    const path = resolve(options.worktree);
+    if (remove === undefined) {
+      report.worktree = { removed: false, detail: 'no worktree remover was provided.' };
+    } else {
+      try {
+        const removed = remove({
+          configPath: options.configPath,
+          name: path,
+          keepRemote: false,
+          deliveredTip,
+        });
+        report.worktree = { removed: true, detail: removed.path };
+      } catch (error) {
+        if (!(error instanceof Refusal) && !(error instanceof UsageError)) throw error;
+        report.worktree = { removed: false, detail: error.message };
+      }
     }
   }
   return report;
@@ -365,6 +379,10 @@ export function renderDeliver(report: DeliverReport): string {
   const lines = [
     `${subject} merged=${report.merged} mergeCommit=${report.mergeCommit?.slice(0, 12) ?? 'none'}${mergeable}`,
   ];
+  if (report.worktree !== null)
+    lines.push(
+      `worktree ${report.worktree.removed ? 'removed' : 'kept'}: ${report.worktree.detail}`,
+    );
   if (report.mainHealthWarning !== null)
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
   if (report.acceptedReverts.length > 0)
@@ -411,11 +429,9 @@ export async function run(
       'message-file',
       'head',
       'usage-log',
-      'provider',
-      'name',
     ],
     repeated: ['transcript', 'issue', 'completion-file', 'closes', 'intended'],
-    flags: ['remove-worktree', 'fixes-main', 'json', 'help'],
+    flags: ['keep-worktree', 'fixes-main', 'json', 'help'],
   });
   if (parsed.flags.has('help')) return { code: 0, output: usageText() };
   if (parsed.positionals.length > 0)
@@ -440,15 +456,6 @@ export async function run(
   const transcripts = parsed.repeated['transcript'] ?? [];
   if ((usageLog === undefined) !== (transcripts.length === 0))
     throw new UsageError('--usage-log and --transcript go together.');
-  const remove = parsed.flags.has('remove-worktree');
-  const provider = parsed.values['provider'];
-  const name = parsed.values['name'];
-  if (provider !== undefined) validateProvider(provider);
-  if (name !== undefined) validateName(name, 'name', /^[A-Za-z0-9][A-Za-z0-9._-]*$/);
-  if (remove && (provider === undefined || name === undefined))
-    throw new UsageError('--remove-worktree needs --provider and --name.');
-  if (!remove && (provider !== undefined || name !== undefined))
-    throw new UsageError('--provider and --name apply only with --remove-worktree.');
   const report = await deliver(
     {
       configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
@@ -465,8 +472,7 @@ export async function run(
       usageLog,
       transcripts,
       fixesMain: parsed.flags.has('fixes-main'),
-      removeWorktree:
-        remove && provider !== undefined && name !== undefined ? { provider, name } : undefined,
+      keepWorktree: parsed.flags.has('keep-worktree'),
     },
     dependencies,
   );
