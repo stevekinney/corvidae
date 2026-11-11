@@ -135,7 +135,8 @@
  * `validate`. Interborough's own (`applications/interborough/tests/e2e` and `tests/panels`) follow
  * the hang guard all the same, and two rules read them: `playwright-configuration` (the lane's
  * `playwright.config.ts`, Interborough's and `scripts/browser-fixtures`', names
- * `timeout: TEST_TIMEOUT_MILLISECONDS` and `expect: { timeout: HANG_GUARD_MILLISECONDS }`) and
+ * `timeout: TEST_TIMEOUT_MILLISECONDS` and `expect: { timeout: HANG_GUARD_MILLISECONDS }`, and
+ * gives each `webServer` a `timeout` no shorter than the hang guard, never a startup deadline) and
  * `playwright-timeout` (a spec names a shorter `timeout` on a matcher, poll, `toPass`, `waitFor*`,
  * action, `test.setTimeout`, `describe.configure` or `expect.configure`, or one it cannot resolve;
  * the exemptions are the two comments above, and a short per-attempt bound inside a `toPass` block
@@ -2126,9 +2127,46 @@ export function findPlaywrightDeadlineViolations(sourceFile: ts.SourceFile): Dea
 }
 
 /**
+ * Each `webServer` entry of a Playwright configuration whose startup `timeout` is missing
+ * (Playwright then waits its own 60 seconds) or below the hang guard (COR-2305). A server that
+ * starts slowly on a busy host is still starting, so its readiness wait is bounded by the hang
+ * guard alone.
+ */
+function webServerTimeoutViolations(
+  sourceFile: ts.SourceFile,
+  configuration: ts.ObjectLiteralExpression,
+): DeadlineViolation[] {
+  const webServer = propertyNamed(configuration, new Set(['webServer']));
+  if (webServer === undefined) return [];
+  const value = unwrap(webServer.initializer);
+  const servers = ts.isArrayLiteralExpression(value) ? [...value.elements] : [value];
+  const constants = collectConstants(sourceFile);
+  return servers.flatMap((server): DeadlineViolation[] => {
+    const entry = unwrap(server);
+    if (!ts.isObjectLiteralExpression(entry)) return [];
+    const timeout = propertyNamed(entry, new Set(['timeout']));
+    if (
+      timeout !== undefined &&
+      !isShort(timeout.initializer, constants, { unresolvedIsShort: true, allowZero: false })
+    ) {
+      return [];
+    }
+    const anchor = timeout ?? webServer;
+    return [
+      {
+        rule: 'playwright-configuration',
+        line: sourceFile.getLineAndCharacterOfPosition(anchor.getStart(sourceFile)).line + 1,
+        text: 'webServer.timeout must be HANG_GUARD_MILLISECONDS (testing/testing/src/hang-guard.ts), never a startup deadline below it',
+      },
+    ];
+  });
+}
+
+/**
  * The Playwright configuration of a lane that follows the hang guard (`playwright-configuration`):
  * the object `defineConfig` receives names `timeout: TEST_TIMEOUT_MILLISECONDS` and
- * `expect: { timeout: HANG_GUARD_MILLISECONDS }`, so the number lives in one place.
+ * `expect: { timeout: HANG_GUARD_MILLISECONDS }`, so the number lives in one place, and gives every
+ * `webServer` a startup `timeout` no shorter than the hang guard.
  */
 export function findPlaywrightConfigurationViolations(
   sourceFile: ts.SourceFile,
@@ -2167,6 +2205,7 @@ export function findPlaywrightConfigurationViolations(
         text: 'expect.timeout must be HANG_GUARD_MILLISECONDS (testing/testing/src/hang-guard.ts)',
       });
     }
+    violations.push(...webServerTimeoutViolations(sourceFile, configuration));
   });
   if (!found) {
     violations.push({

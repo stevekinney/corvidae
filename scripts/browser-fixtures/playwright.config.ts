@@ -32,7 +32,9 @@ export default defineConfig({
     cwd: import.meta.dirname,
     url: `${FIXTURE_ORIGIN}/ready`,
     reuseExistingServer: false,
-    timeout: 30_000,
+    // Readiness is `/ready` answering, bounded only by the hang guard: a busy host starts the
+    // fixture server slowly, never wrongly (COR-2305).
+    timeout: HANG_GUARD_MILLISECONDS,
   },
   projects: [
     { name: 'chromium', use: { ...devices['Desktop Chrome'] } },

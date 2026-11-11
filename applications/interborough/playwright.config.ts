@@ -40,6 +40,9 @@ export default defineConfig({
     // after that and prints this line only once every seed has settled. Readiness is that line
     // alone, not a URL that answers earlier, so a spec never reads a half-seeded server.
     wait: { stdout: /Interborough E2E host listening/ },
+    // Bounded only by the hang guard, never Playwright's 60-second default: on a busy host the
+    // seeds settle slowly, not wrongly (COR-2305).
+    timeout: HANG_GUARD_MILLISECONDS,
     // The batch validate (`scripts/run-gated-browser-suite.ts`) never reuses a server: a leftover
     // one on the port is another checkout's build, and the gate must test this tree.
     reuseExistingServer: !continuousIntegration && !requiresFreshServer(),

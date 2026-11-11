@@ -1254,4 +1254,32 @@ describe('a Playwright configuration that follows the hang guard', () => {
       'no defineConfig({ ... }) call to read',
     ]);
   });
+
+  // COR-2305: a fixed startup deadline failed whole runs on a busy host before a test ran.
+  const sharedDeadlines =
+    'timeout: TEST_TIMEOUT_MILLISECONDS, expect: { timeout: HANG_GUARD_MILLISECONDS }';
+  const webServerViolation =
+    'webServer.timeout must be HANG_GUARD_MILLISECONDS (testing/testing/src/hang-guard.ts), never a startup deadline below it';
+
+  test.each([
+    ['the hang guard', '{ command: "serve", timeout: HANG_GUARD_MILLISECONDS }'],
+    ['a longer literal', '{ command: "serve", timeout: 360_000 }'],
+    ['an array of servers that all wait long enough', '[{ timeout: HANG_GUARD_MILLISECONDS }]'],
+  ])('accepts a webServer timeout of %s', (_name, webServer) => {
+    expect(
+      inspectConfiguration(`defineConfig({ ${sharedDeadlines}, webServer: ${webServer} })`),
+    ).toEqual([]);
+  });
+
+  test.each([
+    ['a 30-second literal', '{ command: "serve", timeout: 30_000 }'],
+    ['a 60-second product', '{ command: "serve", timeout: 60 * 1000 }'],
+    ['no timeout, which is Playwright’s 60 seconds', '{ command: "serve" }'],
+    ['an unresolvable budget', '{ command: "serve", timeout: startupBudget }'],
+    ['one short server in an array', '[{ timeout: HANG_GUARD_MILLISECONDS }, { timeout: 45_000 }]'],
+  ])('reports a webServer timeout of %s', (_name, webServer) => {
+    expect(
+      inspectConfiguration(`defineConfig({ ${sharedDeadlines}, webServer: ${webServer} })`),
+    ).toEqual([webServerViolation]);
+  });
 });
