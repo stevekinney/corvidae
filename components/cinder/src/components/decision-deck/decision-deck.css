@@ -42,7 +42,8 @@
   .cinder-decision-deck__progress-track {
     block-size: 4px;
     border-radius: var(--cinder-radius-full);
-    background: var(--cinder-border-muted);
+    /* The same track fill as Progress: a border tier here would be a translucent area, not a rule. */
+    background: var(--cinder-surface-inset);
     overflow: hidden;
   }
 
@@ -145,8 +146,6 @@
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-lg);
     font-weight: var(--cinder-font-bold);
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
     opacity: 0;
     pointer-events: none;
   }

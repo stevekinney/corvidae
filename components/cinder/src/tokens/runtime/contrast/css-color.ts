@@ -1,7 +1,8 @@
 /**
  * A deliberately small evaluator for the CSS color syntax the token projection emits:
  * literals (`oklch()`, hex, `rgb()`, `transparent`), `var()` aliases resolved through the same
- * property map, `light-dark()`, `color-mix(in oklch, ...)` and relative `oklch(from ...)`.
+ * property map, `light-dark()`, `color-mix(in oklch, ...)`, `color-mix(in oklab, ...)` and
+ * relative `oklch(from ...)`.
  *
  * Anything else (another interpolation space, a gradient, an image, an unsupported function) is
  * returned as a typed failure so the caller reports Needs review. It never guesses a color.
@@ -176,6 +177,40 @@ function mixColors(
   return { l, c, h: ((hue % 360) + 360) % 360, alpha };
 }
 
+/**
+ * `color-mix(in oklab, ...)`: the same premultiplied mix as {@link mixColors}, but over the
+ * rectangular a and b axes, so the hue follows the more chromatic color instead of travelling
+ * around the hue circle toward the other one. A color with a missing hue has a = b = 0.
+ */
+function mixColorsOklab(
+  first: { color: CssColor; weight: number },
+  second: { color: CssColor; weight: number },
+): CssColor {
+  const total = first.weight + second.weight;
+  if (total <= 0) return { ...first.color, alpha: 0 };
+  const a = first.weight / total;
+  const b = second.weight / total;
+  const multiplier = Math.min(1, total / 100);
+  const alpha = (first.color.alpha * a + second.color.alpha * b) * multiplier;
+  const premultiplied = (x: number, y: number) =>
+    alpha === 0
+      ? 0
+      : (x * first.color.alpha * a + y * second.color.alpha * b) / (alpha / multiplier);
+  const axes = ({ c, h }: CssColor) => {
+    const radians = ((h ?? 0) * Math.PI) / 180;
+    return { a: c * Math.cos(radians), b: c * Math.sin(radians) };
+  };
+  const firstAxes = axes(first.color);
+  const secondAxes = axes(second.color);
+  const l = premultiplied(first.color.l, second.color.l);
+  const mixedA = premultiplied(firstAxes.a, secondAxes.a);
+  const mixedB = premultiplied(firstAxes.b, secondAxes.b);
+  const c = Math.hypot(mixedA, mixedB);
+  const h =
+    c === 0 ? undefined : ((((Math.atan2(mixedB, mixedA) * 180) / Math.PI) % 360) + 360) % 360;
+  return { l, c, h, alpha };
+}
+
 function fromCulori(parsed: ReturnType<typeof parse>): CssColor | null {
   if (parsed === undefined) return null;
   const oklch: Oklch = toOklch(parsed);
@@ -231,8 +266,12 @@ function evaluate(
   const mix = callArguments(source, 'color-mix');
   if (mix !== null) {
     const [space, ...rest] = splitTopLevel(mix, 'comma');
-    if (space?.replace(/\s+/g, ' ').toLowerCase() !== 'in oklch' || rest.length !== 2) {
-      return fail('unsupported-syntax', `${value} mixes outside oklch or has not two colors.`);
+    const interpolation = space?.replace(/\s+/g, ' ').toLowerCase();
+    if ((interpolation !== 'in oklch' && interpolation !== 'in oklab') || rest.length !== 2) {
+      return fail(
+        'unsupported-syntax',
+        `${value} mixes outside oklch or oklab or has not two colors.`,
+      );
     }
     const mixArguments = rest.map(mixArgument);
     const [firstArgument, secondArgument] = mixArguments;
@@ -254,7 +293,7 @@ function evaluate(
     else if (secondWeight === null) secondWeight = 100 - firstWeight;
     return {
       ok: true,
-      color: mixColors(
+      color: (interpolation === 'in oklab' ? mixColorsOklab : mixColors)(
         { color: first.color, weight: firstWeight },
         { color: second.color, weight: secondWeight ?? 0 },
       ),

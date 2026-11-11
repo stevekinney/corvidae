@@ -27,7 +27,6 @@ describe('COR-2311: container roots draw no structural border unless allowlisted
     footer: 'page chrome; the rule separates it from content',
     'form-actions': 'a docked action row; the rule separates it from the form',
     'navigation-bar': 'page chrome; the rule separates it from content',
-    sidebar: 'page chrome; the rule separates it from content',
     'accordion-item': 'the rule between items is its structure',
     avatar: 'a small identity chip, not a container',
     badge: 'a small label chip, not a container',

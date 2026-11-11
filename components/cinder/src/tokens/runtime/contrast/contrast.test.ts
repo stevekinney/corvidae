@@ -214,6 +214,34 @@ describe('CSS color evaluation edge cases', () => {
     expect(result.ok && result.color.l).toBeCloseTo(0.5, 6);
   });
 
+  // COR-2308 mixes the dark status backgrounds in oklab, so the evaluator has to measure them.
+  it('mixes in oklab over the a and b axes, keeping the chromatic hue', () => {
+    const result = evaluateCssColor(
+      'color-mix(in oklab, oklch(70% 0.1 230) 14%, oklch(18.5% 0.01 265))',
+      properties,
+      { theme: 'dark' },
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const radians = (degrees: number) => (degrees * Math.PI) / 180;
+    const a = 0.14 * 0.1 * Math.cos(radians(230)) + 0.86 * 0.01 * Math.cos(radians(265));
+    const b = 0.14 * 0.1 * Math.sin(radians(230)) + 0.86 * 0.01 * Math.sin(radians(265));
+    expect(result.color.l).toBeCloseTo(0.14 * 0.7 + 0.86 * 0.185, 6);
+    expect(result.color.c).toBeCloseTo(Math.hypot(a, b), 6);
+    expect(result.color.h).toBeCloseTo((Math.atan2(b, a) * 180) / Math.PI + 360, 6);
+    expect(result.color.alpha).toBe(1);
+  });
+
+  it('gives an oklab mix of two grays no hue', () => {
+    const result = evaluateCssColor(
+      'color-mix(in oklab, oklch(20% 0 0), oklch(60% 0 0))',
+      properties,
+      light,
+    );
+    expect(result.ok && result.color.l).toBeCloseTo(0.4, 6);
+    expect(result.ok && result.color.h).toBeUndefined();
+  });
+
   it('reads a mix of two fully transparent colors as transparent', () => {
     const result = evaluateCssColor(
       'color-mix(in oklch, rgb(0 0 0 / 0), rgb(255 255 255 / 0))',
