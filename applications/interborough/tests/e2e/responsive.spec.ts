@@ -126,19 +126,25 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/agents/:agent/instructions': /iiiiiiiiii/,
   // The skills load last, and the seeded long-named one is among them.
   '/agents/:agent/access': /responsive-skill-kkkkkkkk/,
-  '/agents/:agent/hooks': /for the agent/,
+  // The line over the rows names the filter only once the agent's hooks have loaded.
+  '/agents/:agent/hooks': /filtered to this agent/,
   '/agents/:agent/settings': /Version 1/,
-  // Only the form prints this heading; the long word is in the textarea, which the text does not include.
-  '/agents/:agent/edit': /Guardrails and limits/,
+  // Only the loaded form prints the read-only guardrails line; the long word is in the textarea,
+  // which the text does not include.
+  '/agents/:agent/edit': /Spend limit:/,
   '/agents/:agent/memory': /mmmmmmmmmm/,
-  // The open memory prints its text and the facts under it; the row's text is clamped.
-  '/agents/:agent/memory (memory open)': /Where it came from/,
+  // The open memory prints its text and the facts under it, among them where an agent's memory came
+  // from; the row's text is clamped.
+  '/agents/:agent/memory (memory open)': /Came from/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
   '/workflows/:workflow (file)': /Writes the daily digest/,
   '/workflows/:workflow (file, code tab)': /Write the digest/,
-  '/workflows/:workflow (file, runs tab)': /Recent runs/,
-  '/workflows/:workflow (file, history tab)': /Revisions that have run/,
+  // Only the Runs tab prints its link to the whole Runs list; its rows or its empty state follow.
+  '/workflows/:workflow (file, runs tab)': /All runs/,
+  // The History tab prints its versions with the footnote under them, or says none has run.
+  '/workflows/:workflow (file, history tab)':
+    /Compatibility says whether|No version of this workflow has run yet/,
   '/workflows/:workflow/runs/:run': /Input and output/,
   // The builder's summary prints the file's trigger and steps; the JSON tab's editor text does not count.
   '/workflows/new': /In plain words/,
@@ -146,7 +152,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // The form prints the field's description, which is the long word.
   '/workflows/:workflow/run': /dddddddddd/,
   // Before the page is opened on a schedule, which `reveal` does, the page prints its choices.
-  '/workflows/:workflow/run (code, on a schedule)': /Starts a run as soon as you confirm/,
+  '/workflows/:workflow/run (code, on a schedule)': /Starts a run each time the schedule fires/,
   '/runs (start picker)': /Choose the workflow to run/,
   // The applied filter prints the agent's name, which the address names.
   '/runs (long agent filter)': /aaaaaaaaaa/,
@@ -174,10 +180,11 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/goals/:goal': /say-hello/,
   // The Edit page prints its heading's line, whatever the goal's name.
   '/goals/:goal/edit': /Changes apply to future attempts only/,
-  // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
-  '/hooks': /No answer/,
+  // A row's status is what the seeded hook's failed test delivery came to.
+  '/hooks': /Retrying|Gave up/,
   '/hooks/new': /Pick an event to see what this hook does/,
-  '/hooks/:hook': /No answer/,
+  // The delivery log lists the test delivery, which `reveal` opens to its tries.
+  '/hooks/:hook': /Test event/,
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
   '/health/runs': /order-processing/,
@@ -186,8 +193,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/workers (worker open)': /Last heard from/,
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
-  // The newest events are the hooks the seed made last; `reveal` loads back to the schedule's creation.
-  '/health/audit': /Created a hook/,
+  // The address searches the log for schedule creations, among them the seeded long-named one.
+  '/health/audit': /Created a schedule/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
   // The agent that opts in is listed by its name as a person says it.
@@ -334,6 +341,13 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
   '/health/runs': async (page) => {
     await expect(page.locator(`.cinder-badge__label[title="${LONG_TAG}"]`).first()).toBeVisible();
   },
+  // The test delivery's line opens to the tries, each of which got no answer from the address.
+  '/hooks/:hook': async (page) => {
+    const delivery = page.getByRole('button', { name: /^Test event/ }).first();
+    await delivery.click();
+    await expect(delivery).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByText('No answer').first()).toBeVisible();
+  },
   '/hooks': async (page) => {
     // A row says a webhook's host on line two and keeps the whole address in that line's tooltip.
     await expect(page.locator('.ib-hooks__line').first()).toBeVisible();
@@ -343,18 +357,6 @@ const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
         .locator(`li[data-hook] .cinder-stacked-list-item__title[title="${LONG_HOOK_NAME}"]`)
         .first(),
     ).toBeVisible();
-  },
-  // The log loads a page of events at a time as it scrolls, and the seeded schedule's creation is
-  // older than the first page once the earlier specifications have written their own events.
-  '/health/audit': async (page) => {
-    const created = page.getByText('Created a schedule').first();
-    await expect
-      .poll(async () => {
-        if ((await created.count()) > 0) return true;
-        await page.locator('main.weft-shell-outlet tbody tr').last().scrollIntoViewIfNeeded();
-        return false;
-      })
-      .toBe(true);
   },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {

@@ -181,7 +181,9 @@
   border-inline-start: 0;
 }
 
-/* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. */
+/* Names, paths and tool identifiers are unbroken strings of any length: they wrap, never scroll. A
+ * name read as words can still hold one long word, since a skill's identifier is up to 64 characters. */
+.ib-capability__name,
 .ib-capability__identifier,
 .ib-capability__location,
 .ib-capability__prose {
@@ -286,6 +288,20 @@
 .ib-source__table[data-paused] td,
 .ib-source__table[data-paused] a {
   color: var(--cinder-text-muted);
+}
+
+/* The fitted tool table's columns: On holds its checkbox, Risk its word and Asks its select; the
+ * tool's cell takes the rest. */
+.ib-source__column-on {
+  inline-size: 3.5rem;
+}
+
+.ib-source__column-risk {
+  inline-size: 8rem;
+}
+
+.ib-source__column-asks {
+  inline-size: 11rem;
 }
 
 /* A tool's cell: its name with the identifier beside it, then its Accepts secrets switch. */

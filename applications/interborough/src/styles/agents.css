@@ -491,14 +491,32 @@
 }
 
 .ib-access-row__name {
+  min-inline-size: 0;
   font-weight: var(--cinder-font-medium);
+  /* A skill's name read as words keeps its identifier's long runs, so it breaks where it must. */
+  overflow-wrap: anywhere;
 }
 
 .ib-access-row__identifier {
+  min-inline-size: 0;
   font-family: var(--cinder-font-mono);
   font-size: var(--cinder-text-xs);
   color: var(--cinder-text-muted);
   overflow-wrap: anywhere;
+}
+
+/* The fitted table's columns: the checkbox and the Asks select hold their controls, Risk its word,
+ * and the tool's name and what it does share the rest equally. */
+.ib-access-table__allow {
+  inline-size: 2.75rem;
+}
+
+.ib-access-table__risk {
+  inline-size: 7rem;
+}
+
+.ib-access-table__asks {
+  inline-size: 11rem;
 }
 
 /* Risk, a skill's kind and what a tool does: muted words in the body face, never a colour of their own (S32). */

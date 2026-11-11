@@ -45,3 +45,9 @@ describe('DescriptionList record-details anatomy (fields variant)', () => {
     );
   });
 });
+
+describe('DescriptionList values', () => {
+  test('a value breaks inside an unbroken word, so a long one never widens the list', () => {
+    expect(css).toMatch(/\.cinder-description-list__definition\s*\{[^}]*overflow-wrap: anywhere/s);
+  });
+});

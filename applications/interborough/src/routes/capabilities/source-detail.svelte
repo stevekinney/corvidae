@@ -379,13 +379,21 @@
         data-testid="source-tool-table"
         bind:this={toolTable}
       >
-        <Table caption={copy.tools.caption(heading)} density="comfortable">
+        <!-- A table of controls: it fits its pane, so a long tool name wraps in its column, and
+        below 640px Cinder stacks each tool into a card with On and Asks on lines of their own. -->
+        <Table caption={copy.tools.caption(heading)} density="comfortable" fit>
           <Table.Header>
             <Table.Row>
-              <Table.HeaderCell>{copy.tools.columns.on}</Table.HeaderCell>
+              <Table.HeaderCell class="ib-source__column-on"
+                >{copy.tools.columns.on}</Table.HeaderCell
+              >
               <Table.HeaderCell>{copy.tools.columns.tool}</Table.HeaderCell>
-              <Table.HeaderCell>{copy.tools.columns.risk}</Table.HeaderCell>
-              <Table.HeaderCell>{copy.tools.columns.asks}</Table.HeaderCell>
+              <Table.HeaderCell class="ib-source__column-risk"
+                >{copy.tools.columns.risk}</Table.HeaderCell
+              >
+              <Table.HeaderCell class="ib-source__column-asks"
+                >{copy.tools.columns.asks}</Table.HeaderCell
+              >
             </Table.Row>
           </Table.Header>
           <Table.Body>
@@ -394,7 +402,7 @@
               {@const asks = sourceToolApproval(tool)}
               {@const busy = locked || paused || saving.has(tool.tool)}
               <Table.Row data-source-tool={tool.name}>
-                <Table.Cell>
+                <Table.Cell controls="fit">
                   <Checkbox
                     {...{ 'data-changes': true }}
                     id={`source-${source.id}-${tool.name}-on`}
@@ -457,7 +465,7 @@
                   </div>
                 </Table.Cell>
                 <Table.Cell data-testid="tool-risk">{riskLabel(tier)}</Table.Cell>
-                <Table.Cell>
+                <Table.Cell controls>
                   <Select
                     {...{ 'data-changes': true }}
                     id={`source-${source.id}-${tool.name}-asks`}

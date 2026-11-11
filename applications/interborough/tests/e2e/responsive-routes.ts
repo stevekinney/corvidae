@@ -103,10 +103,14 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/hooks/new': '/hooks/new',
     '/hooks/:hook': `/hooks/${encodeURIComponent(seed.hook)}`,
     '/health': '/health',
-    '/health/runs': '/health/runs',
+    // Filtered to the seeded run's type: the list shows 50 runs a page, newest first, and the runs
+    // the earlier specifications start push the tagged order-processing run off the first page.
+    '/health/runs': `/health/runs?type=${encodeURIComponent(seed.workflow)}`,
     '/health/workers': '/health/workers',
     '/health/storage': '/health/storage',
-    '/health/audit': '/health/audit',
+    // Searched for schedule creations: the log reads up to twenty pages for a search on its own,
+    // and in a full run the seeded schedule's creation is pages behind the events written since.
+    '/health/audit': `/health/audit?q=${encodeURIComponent('Created a schedule')}`,
     '/settings': '/settings',
     '/settings/models': '/settings/models',
     '/settings/allowed-models': '/settings/allowed-models',

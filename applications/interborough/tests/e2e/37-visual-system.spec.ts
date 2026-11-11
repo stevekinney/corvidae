@@ -224,10 +224,18 @@ test.describe('the agent form', () => {
   }) => {
     await page.setViewportSize(DESKTOP);
     await page.goto('/agents/new');
-    for (const id of ['agent-name', 'agent-identifier', 'agent-description', 'agent-model']) {
-      const box = await page.locator(`#${id}`).boundingBox();
-      expect(box, id).not.toBeNull();
-      expect((box?.y ?? 0) + (box?.height ?? 0), id).toBeLessThanOrEqual(DESKTOP.height);
+    // A new agent's ID follows its name as a line with Change (S7), not a field of its own until
+    // Change is pressed, so the line is what has to fit.
+    for (const field of [
+      page.locator('#agent-name'),
+      page.getByTestId('agent-identifier'),
+      page.locator('#agent-description'),
+      page.locator('#agent-model'),
+    ]) {
+      await expect(field).toBeVisible();
+      const box = await field.boundingBox();
+      expect(box, String(field)).not.toBeNull();
+      expect((box?.y ?? 0) + (box?.height ?? 0), String(field)).toBeLessThanOrEqual(DESKTOP.height);
     }
     const instructions = page.locator('#agent-instructions');
     await expect(instructions).toBeInViewport({ ratio: 1 });

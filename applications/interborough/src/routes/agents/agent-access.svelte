@@ -369,19 +369,24 @@
     />
   {/if}
 
+  <!-- The table fits its pane: a skill's description or name can be one long word, which wraps in
+  its column instead of widening the table. Below 640px Cinder stacks each row into a card. -->
   <Table
     caption={copy.tableCaption}
     density="condensed"
+    fit
     class="ib-access-table"
     data-testid="agent-access-table"
   >
     <Table.Header>
       <Table.Row>
-        <Table.HeaderCell><VisuallyHidden>{copy.columns.allow}</VisuallyHidden></Table.HeaderCell>
+        <Table.HeaderCell class="ib-access-table__allow"
+          ><VisuallyHidden>{copy.columns.allow}</VisuallyHidden></Table.HeaderCell
+        >
         <Table.HeaderCell>{copy.columns.tool}</Table.HeaderCell>
         <Table.HeaderCell>{copy.columns.does}</Table.HeaderCell>
-        <Table.HeaderCell>{copy.columns.risk}</Table.HeaderCell>
-        <Table.HeaderCell>{copy.columns.asks}</Table.HeaderCell>
+        <Table.HeaderCell class="ib-access-table__risk">{copy.columns.risk}</Table.HeaderCell>
+        <Table.HeaderCell class="ib-access-table__asks">{copy.columns.asks}</Table.HeaderCell>
       </Table.Row>
     </Table.Header>
     {#each shown as group (group.key)}

@@ -260,20 +260,28 @@ test.describe('the server stops answering while a page with data is open', () =>
     await page.goto(`/chats/new?agent=${TEXT_ECHO_AGENT_NAME}`);
     const composer = page.getByRole('textbox');
     await expect(composer).toBeVisible();
+    await composer.fill('Sent after the host is back');
 
     await stopHost(page);
     await refocus(page);
     await expect(banner(page)).toBeVisible();
 
-    // The composer stops while the host is down, and nothing leaves.
-    await expect(composer).not.toBeEditable();
+    // While the host is down the composer gives way to the blocked row (COR-2014 row 17b): there is
+    // no field to press Enter in and no Send button, so nothing leaves.
+    const blocked = page.getByRole('group', { name: 'Composer unavailable' });
+    await expect(blocked).toContainText('Sending is off until Interborough is reachable');
+    await expect(composer).toHaveCount(0);
+    await expect(page.getByRole('button', { name: 'Send message' })).toHaveCount(0);
+    await page.keyboard.press('Enter');
     expect(starts).toEqual([]);
 
     await startHost(page);
 
+    // The composer comes back with what was typed, and Enter sends it.
     await expect(banner(page)).toHaveCount(0);
+    await expect(blocked).toHaveCount(0);
     await expect(composer).toBeEditable();
-    await composer.fill('Sent after the host is back');
+    await expect(composer).toHaveValue('Sent after the host is back');
     await composer.press('Enter');
     await expect(page.getByText('Sent after the host is back').first()).toBeVisible();
     expect(starts).toHaveLength(1);
@@ -292,11 +300,12 @@ test.describe('requests that get no answer from the host', () => {
     await expect(page.locator('[data-view="chat"]')).toBeVisible();
 
     await stopHost(page);
-    // Goals leaves its states to the frame. Schedules, Hooks and Workers draw their own under their
-    // own headers (`ownsStates` in `views.ts`), so the frame's unreachable page is never theirs.
-    await page.getByRole('link', { name: 'Goals' }).first().click();
+    // Workflows leaves its loading and failure to the frame. Goals, Schedules, Hooks and Workers draw
+    // their own under their own headers (`ownsStates` and `ownsStatesOnPatterns` in `views.ts`), so
+    // the frame's unreachable page is never theirs.
+    await page.getByRole('link', { name: 'Workflows' }).first().click();
 
-    const frame = page.locator('[data-view="goals"]');
+    const frame = page.locator('[data-view="workflows"]');
     await expect(frame).toHaveAttribute('data-state', 'unreachable');
     await expect(
       frame.getByRole('heading', { level: 1, name: CONNECTION_COPY.page.title }),
@@ -308,7 +317,7 @@ test.describe('requests that get no answer from the host', () => {
     await page.getByRole('link', { name: 'Reviews' }).first().click();
     await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
     await expect(banner(page)).toBeVisible();
-    await page.getByRole('link', { name: 'Goals' }).first().click();
+    await page.getByRole('link', { name: 'Workflows' }).first().click();
     await expect(frame).toHaveAttribute('data-state', 'unreachable');
 
     // The host is back, and the probe finds it. Try again would only ask the view's own question.

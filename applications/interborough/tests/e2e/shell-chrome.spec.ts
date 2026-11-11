@@ -195,8 +195,14 @@ test.describe('on a desktop', () => {
 
     // The group labels give way to hairlines: the words stay in the accessibility tree.
     const reviews = navigation(page).getByRole('link', { name: REVIEWS });
+    // On the rail Reviews' count is a small round warning dot on the icon's corner (COR-2315: a
+    // count is plain text, never a badge, and the rail has no room for the figure); the figure
+    // stays in the element, and the accessible name and tooltip say it.
     const count = reviews.locator('.cinder-side-navigation-item__count');
-    expect(await widthOf(count)).toBeGreaterThan(8);
+    const countBox = await boxOf(count);
+    expect(countBox.width).toBeGreaterThan(4);
+    expect(countBox.height).toBe(countBox.width);
+    await expect(count).toHaveCSS('font-size', '0px');
     await expect(count).toHaveText('2');
     const health = navigation(page).getByRole('link', { name: HEALTH });
     expect(await widthOf(health.locator('.cinder-status-dot'))).toBeGreaterThan(4);
@@ -409,8 +415,14 @@ test.describe('on a phone', () => {
     page,
   }) => {
     await open(page, '/runs', 768);
-    // A run's identifier is long, so its page has the trail's longest leaf.
-    const href = await page.locator('main a[href^="/runs/run-"]').first().getAttribute('href');
+    // A run's identifier is long, so its page has the trail's longest leaf. The run is the sample
+    // world's own refund, never the newest row: a specification before this one may leave a run on
+    // the showcase host whose chat it has since deleted, and that run's page reads 404s.
+    const href = await page
+      .locator('main a[href^="/runs/run-"]')
+      .filter({ hasText: 'Please refund order 4471' })
+      .first()
+      .getAttribute('href');
     await page.goto(href ?? '/runs');
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
     const runs = trail.getByRole('link', { name: 'Runs' });

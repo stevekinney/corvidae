@@ -40,9 +40,12 @@
     gap: var(--cinder-space-2);
   }
 
+  /* A value can be any string a record holds (an identifier, an address, a chat's title), and one
+   * unbroken word of it must break inside the list rather than widen every variant's columns. */
   .cinder-description-list__definition {
     flex: 1 1 auto;
     min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .cinder-description-list__actions {
