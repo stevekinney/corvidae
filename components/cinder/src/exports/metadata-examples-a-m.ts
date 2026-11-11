@@ -5,6 +5,7 @@ import accordionExamplesJson from '../components/accordion/accordion.examples.js
 import actionRowExamplesJson from '../components/action-row/action-row.examples.json' with { type: 'json' };
 import alertDialogExamplesJson from '../components/alert-dialog/alert-dialog.examples.json' with { type: 'json' };
 import alertExamplesJson from '../components/alert/alert.examples.json' with { type: 'json' };
+import appBarExamplesJson from '../components/app-bar/app-bar.examples.json' with { type: 'json' };
 import approvalCardExamplesJson from '../components/approval-card/approval-card.examples.json' with { type: 'json' };
 import areaChartExamplesJson from '../components/area-chart/area-chart.examples.json' with { type: 'json' };
 import aspectRatioExamplesJson from '../components/aspect-ratio/aspect-ratio.examples.json' with { type: 'json' };
