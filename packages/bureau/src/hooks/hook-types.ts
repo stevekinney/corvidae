@@ -288,7 +288,7 @@ export interface HookDelivery {
   readonly attempts: readonly HookDeliveryAttempt[];
   /**
    * How many attempts the delivery may make. A retry of a settled delivery
-   * (`hooks.retryDelivery`) raises it by a new round of tries.
+   * (`hooks.retryDelivery`) raises it by one, for the attempt the retry makes.
    */
   readonly maxAttempts: number;
   /**
