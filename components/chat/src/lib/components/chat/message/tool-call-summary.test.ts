@@ -4,9 +4,12 @@ import type { ToolCallPair } from '../conversation-model.ts';
 import {
   foldRepeatedSteps,
   formatToolCallDuration,
+  formatToolCallElapsed,
   nextToolCallApprovalDeadline,
   REPEATED_STEP_MINIMUM,
+  runningStepTitle,
   toolCallApprovalDeadline,
+  toolCallFailure,
   toolCallKeyArgument,
   toolCallResultLine,
   toolCallRowStatus,
