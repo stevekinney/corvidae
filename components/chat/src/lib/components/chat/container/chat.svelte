@@ -2134,6 +2134,16 @@
       {/if}
     {/snippet}
 
+    {#snippet emptyPromptButtons()}
+      <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
+        {#each emptyPrompts ?? [] as prompt, index (index)}
+          <button type="button" class="chat-empty-prompt" onclick={() => handlePromptClick(prompt)}>
+            {prompt}
+          </button>
+        {/each}
+      </div>
+    {/snippet}
+
     {#key timelineResetIdentity}
       <!-- svelte-ignore a11y_no_noninteractive_tabindex -->
       <div
@@ -2395,16 +2405,6 @@
       {typingIndicatorState.announcedLabel}
     </div>
   </div>
-
-  {#snippet emptyPromptButtons()}
-    <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
-      {#each emptyPrompts ?? [] as prompt, index (index)}
-        <button type="button" class="chat-empty-prompt" onclick={() => handlePromptClick(prompt)}>
-          {prompt}
-        </button>
-      {/each}
-    </div>
-  {/snippet}
 
   {#snippet panel()}
     {#if selectedArtifact}
