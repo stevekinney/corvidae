@@ -36,6 +36,11 @@
   const answered = $derived(answer !== undefined && (!changing || resolved));
   const kind = $derived(classifyQuestion(part.schema));
   const answerInComposer = $derived(sharedStore?.answerInComposer ?? false);
+  const heading = $derived(
+    part.message !== undefined && part.message !== ''
+      ? part.message
+      : `Input requested by ${part.toolName}`,
+  );
 
   // Sends an answer. Resolves true when the host accepted it. A refusal that names fields keeps
   // the question open with the issues on those fields; any other rejection reads as "try again".
@@ -95,11 +100,11 @@
   });
 </script>
 
+<!-- The question is the one visible heading and names the region; the tool's identifier is not
+     said here, because the expanded tool activity already carries it. A request with no question
+     falls back to naming the tool. -->
 <section class="chat-tool-input" aria-labelledby={headingId} data-cinder-tool-input>
-  <h4 id={headingId} class="chat-tool-input-heading">Input requested by {part.toolName}</h4>
-  {#if part.message}
-    <p class="chat-tool-input-message">{part.message}</p>
-  {/if}
+  <h4 id={headingId} class="chat-tool-input-heading" dir="auto">{heading}</h4>
   {#if answered || onInputSubmit !== undefined}
     <ChatQuestion
       schema={part.schema}
@@ -125,13 +130,11 @@
     inline-size: 100%;
   }
 
+  /* The question: the one heading of the request, in the reading size and weight. */
   .chat-tool-input-heading {
     margin: 0;
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
     font-weight: var(--cinder-font-semibold);
-  }
-
-  .chat-tool-input-message {
-    margin: 0;
+    overflow-wrap: anywhere;
   }
 </style>

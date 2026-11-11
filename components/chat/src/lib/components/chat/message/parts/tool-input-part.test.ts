@@ -62,7 +62,7 @@ describe('ToolInputPart', () => {
     });
     await flush();
 
-    const section = getByRole('region', { name: 'Input requested by book_meeting' });
+    const section = getByRole('region', { name: 'Which room should I book?' });
     expect(section.hasAttribute('data-cinder-tool-input')).toBe(true);
     expect(container.querySelector('form.cinder-schema-form')).not.toBeNull();
     expect(getByLabelText(/Room/)).toBeInstanceOf(HTMLInputElement);
@@ -140,6 +140,48 @@ describe('ToolInputPart', () => {
 
     expect(attempts).toBe(1);
     expect(container.querySelector('form')).not.toBeNull();
+  });
+
+  test('uses the question as its one visible heading and the name of its region, and hides the tool identifier', async () => {
+    const { container, getByRole } = render(ToolInputPart, {
+      props: { part: inputPart(), onInputSubmit: () => undefined },
+    });
+    await flush();
+
+    const headings = container.querySelectorAll('.chat-tool-input-heading');
+    expect(headings).toHaveLength(1);
+    expect(headings[0]!.textContent?.trim()).toBe('Which room should I book?');
+    // The question is said once, so a screen reader does not hear it twice.
+    expect(container.textContent?.split('Which room should I book?').length).toBe(2);
+    expect(container.textContent).not.toContain('book_meeting');
+    expect(container.textContent).not.toContain('Input requested by');
+    const region = getByRole('region', { name: 'Which room should I book?' });
+    expect(region.getAttribute('aria-labelledby')).toBe(headings[0]!.id);
+  });
+
+  test('puts the question before the controls', async () => {
+    const { container } = render(ToolInputPart, {
+      props: { part: inputPart(), onInputSubmit: () => undefined },
+    });
+    await flush();
+
+    const heading = container.querySelector('.chat-tool-input-heading')!;
+    const form = container.querySelector('form')!;
+    expect(
+      heading.compareDocumentPosition(form) & Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
+
+  test('names the tool when the request has no question', async () => {
+    const { getByRole } = render(ToolInputPart, {
+      props: {
+        part: inputPart({ message: undefined }),
+        onInputSubmit: () => undefined,
+      },
+    });
+    await flush();
+
+    expect(getByRole('region', { name: 'Input requested by book_meeting' })).not.toBeNull();
   });
 
   test('omits the form when no submission callback is available', () => {
