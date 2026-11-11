@@ -1075,6 +1075,7 @@ export function createMaintenance<D extends AgentDefinitions>(
       try {
         await core.runCreationLedger?.prune();
         await core.forkLedger.prune();
+        await core.regenerateLedger.prune();
       } catch (error: unknown) {
         diagnose({
           level: 'error',
@@ -1400,6 +1401,7 @@ export function createMaintenance<D extends AgentDefinitions>(
         try {
           await core.runCreationLedger?.prune();
           await core.forkLedger.prune();
+          await core.regenerateLedger.prune();
         } catch (error: unknown) {
           diagnose({
             level: 'error',

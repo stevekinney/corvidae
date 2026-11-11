@@ -640,6 +640,12 @@ export type {
   ForkSessionResult,
   SessionForkRefusalReason,
 } from './session-fork';
+export { SessionRegenerateRefusedError } from './session-regenerate';
+export type {
+  RegenerateSessionRequest,
+  RegenerateSessionResult,
+  SessionRegenerateRefusalReason,
+} from './session-regenerate';
 export type {
   BureauSteeringGate,
   ImplementedSteeringCommand,

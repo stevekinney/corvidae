@@ -116,6 +116,9 @@ export type InternalsAreDeclared = Bureau['internals'] extends BureauInternals ?
 // `internals` carries every moved member under its new name.
 export type InternalsMembers = AssertNever<
   Exclude<
+    | 'fork'
+    | 'regenerate'
+    | 'events'
     | 'eventFeed'
     | 'runEventFeeds'
     | 'kv'
@@ -166,7 +169,7 @@ export type SchedulesMembers = AssertNever<
   >
 >;
 
-// `contexts` has exactly the fourteen operations.
+// `contexts` has exactly the sixteen operations.
 export type ContextsMembers = AssertNever<
   Exclude<
     keyof BureauContexts,
@@ -183,6 +186,7 @@ export type ContextsMembers = AssertNever<
     | 'steering'
     | 'window'
     | 'fork'
+    | 'regenerate'
     | 'events'
     | 'subscribeEvents'
   >

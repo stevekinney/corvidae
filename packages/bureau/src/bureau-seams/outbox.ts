@@ -22,6 +22,11 @@ import type { DurableEventProducer } from '../durable-event-history';
 import type { ReviewDecisionAuditPayload } from '../resolved-review-record';
 import { auditTrailSessionOwnerId } from '../audit-trail';
 import { serializeUnknownError } from '../serialization';
+import {
+  REGENERATE_RECEIPT_OUTBOX_NAMESPACE,
+  parseRegenerateReceipt,
+  receiptAnswersClaim,
+} from '../session-regenerate';
 
 /** The callables the outbox reads from elsewhere in `constructBureau`. */
 export interface OutboxPeers {
@@ -224,7 +229,8 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
         // own next tick, or a peer's) gets a fresh look at it.
         if (
           entry.kind === 'session.attachment' &&
-          entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE
+          entry.namespace !== REVIEW_AUDIT_OUTBOX_NAMESPACE &&
+          entry.namespace !== REGENERATE_RECEIPT_OUTBOX_NAMESPACE
         ) {
           diagnose({
             level: 'error',
@@ -437,6 +443,62 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
     return acknowledge();
   }
 
+  /**
+   * COR-2296: settles one regeneration receipt, which a replacement of a context's answer committed
+   * beside itself. The command ledger is completed from the receipt first, and the entry is
+   * acknowledged only after that, so a regeneration whose process stopped between its commit and
+   * its own completion is answered from the receipt, and never asks the model again.
+   *
+   * The receipt completes only the pending claim it answers: the same command, the same payload
+   * digest, this entry's context and incarnation, and the fence the claim recorded. A receipt that
+   * does not (malformed, or naming another command or fence) completes nothing; it is diagnosed and
+   * acknowledged, because this namespace is this Bureau's own and has no later version to wait for,
+   * and leaving it pending would hold back every later entry. A claim already completed, released,
+   * or pruned needs nothing from it.
+   */
+  async function drainRegenerateReceiptEntry(
+    entry: Extract<SessionOutboxEntry, { kind: 'session.attachment' }>,
+    outboxSessionStore: SessionStore,
+  ): Promise<'stop' | 'continue'> {
+    const answersNothing = (): void =>
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Regeneration receipt outbox entry ${entry.ordinal} (session "${entry.sessionId}") answers no pending command; acknowledging it without completing one.`,
+      });
+    const receipt = parseRegenerateReceipt(entry.payload);
+    // The receipt must name the context and the incarnation the commit it rode on wrote.
+    if (
+      receipt === undefined ||
+      receipt.identity.target !== entry.sessionId ||
+      receipt.result.incarnation !== entry.incarnation
+    ) {
+      answersNothing();
+    } else {
+      const stored = await core.regenerateLedger.read(receipt.identity);
+      if (stored?.state === 'pending') {
+        if (receiptAnswersClaim(receipt, stored.identity, stored.payloadDigest, stored.claim)) {
+          await core.regenerateLedger.complete(stored, receipt.result);
+        } else {
+          answersNothing();
+        }
+      }
+    }
+    const acknowledged = await outboxSessionStore.outbox.acknowledge(
+      entry.ordinal,
+      core.outboxDrainOwner,
+    );
+    if (!acknowledged) {
+      diagnose({
+        level: 'error',
+        scope: 'durable-maintenance',
+        message: `[bureau] Lost the claim on outbox entry ${entry.ordinal} (regeneration receipt for session "${entry.sessionId}") before acknowledging it; a different drainer reclaimed and will retire it.`,
+      });
+      return 'stop';
+    }
+    return 'continue';
+  }
+
   /** Releases an expired session's asset claims once its `session.deleted` entry drains; never rejects. */
   async function releaseExpiredSessionAssetClaims(entry: SessionOutboxEntry): Promise<void> {
     const key = `${entry.sessionId}\u0000${entry.incarnation}`;
@@ -462,7 +524,9 @@ export function createOutbox<D extends AgentDefinitions>(core: BureauCore<D>, pe
     producer: DurableEventProducer | undefined,
   ): Promise<'stop' | 'continue'> {
     if (entry.kind === 'session.attachment') {
-      return drainOutboxAttachmentEntry(entry, outboxSessionStore);
+      return entry.namespace === REGENERATE_RECEIPT_OUTBOX_NAMESPACE
+        ? drainRegenerateReceiptEntry(entry, outboxSessionStore)
+        : drainOutboxAttachmentEntry(entry, outboxSessionStore);
     }
     // COR-718 — the deletion's audit entry carries the owner the session had, which
     // the audit listener reads synchronously, so it is loaded before the dispatch.

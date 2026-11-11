@@ -293,6 +293,7 @@ import { SESSION_INPUT_DELIVERY_RETENTION_MS } from './session-input-durability'
 import { createSessionInputSettlement } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
 import { createForkLedger } from './session-fork';
+import { createRegenerateLedger } from './session-regenerate';
 import {
   type BureauSteeringGate,
   createSteeringCommandLedger,
@@ -402,6 +403,10 @@ import {
 } from './bureau-seams/session-input-admission';
 import { createSessionForks, type SessionForksPeers } from './bureau-seams/session-forks';
 import {
+  createSessionRegeneration,
+  type SessionRegenerationPeers,
+} from './bureau-seams/session-regeneration';
+import {
   createSteeringAdmission,
   type SteeringAdmissionPeers,
 } from './bureau-seams/steering-admission';
@@ -452,6 +457,7 @@ type BureauPeers = EventHistoryPeers &
   ScheduleOperationsPeers &
   SessionInputAdmissionPeers &
   SessionForksPeers &
+  SessionRegenerationPeers &
   SteeringAdmissionPeers &
   RecoveredRunsPeers &
   SessionsPeers &
@@ -1768,6 +1774,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     get forkLedger() {
       return forkLedger;
     },
+    get regenerateLedger() {
+      return regenerateLedger;
+    },
     get persistentDurableStorage() {
       return persistentDurableStorage;
     },
@@ -2317,6 +2326,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     getSessionSteering,
     getContextWindow,
   } = createSessionForks<D>(core, peers);
+  const { regenerateSession } = createSessionRegeneration<D>(core, peers);
   const { admitSteeringRequest, resolveLiveSessionPreAdmission, liveSessionRunIdsEverywhere } =
     createSteeringAdmission<D>(core, peers);
   const {
@@ -4414,6 +4424,12 @@ async function constructBureau<const D extends AgentDefinitions>(
   const forkLedger = createForkLedger(runtime.kv, runtimeServices);
 
   /**
+   * COR-2296 — the regeneration command ledger: a duplicate of `regenerateSession`, even after a
+   * restart, never asks the model twice. It keeps its entries beside the fork ledger's, under a key
+   * prefix of its own.
+   */
+  const regenerateLedger = createRegenerateLedger(runtime.kv, runtimeServices);
+  /**
    * COR-2299 — the hook plan a catalog agent's run this process does not hold would run with:
    * Bureau's tier for the agent, the plugin tier, and the agent's own hooks, as a dispatch composes
    * them, each tracker seeded from the session's taint (`sessionTaint`) and writing a new one back.
@@ -5901,6 +5917,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     steer: submitSteeringCommand,
     steering: getSessionSteering,
     fork: forkSession,
+    regenerate: regenerateSession,
     window: getContextWindow,
     eventHistory: readEventHistory,
     subscribeEventHistory: subscribeToEventHistory,
