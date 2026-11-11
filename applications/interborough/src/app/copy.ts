@@ -317,7 +317,6 @@ export const RUN_DETAIL_COPY = {
   },
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',
-  /** The header's links to the goal or the schedule a run belongs to, and to set up another run. */
   /** The disclosure under what happened, for what only an operator reads. */
   howItRan: { heading: 'How it ran', caption: 'For operators', rawPayloads: 'Raw payloads' },
   /** Related runs in the rail of a run that is only the Bureau's: the other runs of its chat. */
@@ -329,6 +328,7 @@ export const RUN_DETAIL_COPY = {
   facts: { goal: 'Goal' },
   /** The last row of the Started by chain: the run itself, one level in from what started it. */
   lineage: { run: 'Run', thisRun: 'This run' },
+  /** The header's links to the goal or the schedule a run belongs to, and to set up another run. */
   openGoal: 'Open goal',
   openSchedule: 'Open schedule',
   runAgain: 'Run again',
