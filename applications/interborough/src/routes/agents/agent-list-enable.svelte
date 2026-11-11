@@ -24,6 +24,7 @@
   import { listBureauReviews } from '../../lib/bureau-reviews.ts';
   import { listRunningTasks } from '../../lib/bureau-tasks.ts';
   import { queryKeys } from '../../lib/query.ts';
+  import type { RestartRefusal } from '../../app/restart/host-restart-flow.svelte.ts';
   import { RestartFlow } from '../settings/plugins/restart-flow.svelte.ts';
 
   interface Props {
@@ -92,6 +93,11 @@
     return RESTART_COPY.refusal[refusal];
   });
 
+  // Why the host was not asked to restart after the switch was saved. The dialog has closed by
+  // then (the restart was under way), so the banner above the list says it: the plugin is on and
+  // the person has to restart the host where it runs.
+  let notRestarted = $state<Exclude<RestartRefusal, 'save-failed'> | undefined>(undefined);
+
   // A refusal is the last attempt's: it is cleared when the question is asked again.
   let wasOpen = false;
   $effect(() => {
@@ -100,14 +106,30 @@
       if (now && !wasOpen) {
         flow.refusal = undefined;
         flow.rejection = undefined;
+        notRestarted = undefined;
       }
       wasOpen = now;
     });
   });
 
-  // Once the restart is under way, the banner and the shared dialog account for it.
+  // Once the restart is under way, the banner and the shared dialog account for it. A refusal
+  // while the restart is being asked for (`requesting` back to `idle`) leaves the question closed
+  // and lands in `notRestarted`; a write that was refused keeps the question open with its callout.
+  let previousPhase = 'idle';
   $effect(() => {
     const phase = flow.phase;
+    const refusal = flow.refusal;
+    untrack(() => {
+      if (phase === 'idle' && previousPhase === 'requesting' && refusal !== undefined) {
+        if (refusal !== 'save-failed') notRestarted = refusal;
+      }
+      previousPhase = phase;
+      // The host applied every write at once: nothing restarts, so the question has nothing to wait for.
+      if (phase === 'idle' && flow.saved) {
+        open = false;
+        void queryClient.invalidateQueries();
+      }
+    });
     if (phase === 'saving' || phase === 'idle') return;
     untrack(() => {
       open = false;
@@ -121,6 +143,7 @@
   });
 
   function confirm(): void {
+    notRestarted = undefined;
     applied = { plugins: titles, agents: [...agents] };
     void flow.run(
       plugins.map((plugin) => ({ name: plugin.name, enabled: true })),
@@ -161,6 +184,31 @@
       >
       <Button variant="secondary" size="sm" onclick={() => flow.close()}
         >{RESTART_COPY.back.dismiss}</Button
+      >
+    {/snippet}
+  </Banner>
+{:else if flow.phase === 'unconfirmed'}
+  <Banner
+    variant="warning"
+    dismissible
+    onDismiss={() => flow.close()}
+    title={RESTART_COPY.unconfirmed.title}
+    data-testid="agents-restart-unconfirmed"
+  >
+    {RESTART_COPY.unconfirmed.description}
+  </Banner>
+{:else if notRestarted !== undefined}
+  <Banner
+    variant="danger"
+    dismissible
+    onDismiss={() => (notRestarted = undefined)}
+    title={AGENTS_COPY.enable.notRestartedTitle(applied.plugins)}
+    data-testid="agents-restart-refused"
+  >
+    {RESTART_COPY.refusal[notRestarted]}
+    {#snippet actions()}
+      <Button variant="secondary" size="sm" href={router.href(PLUGINS_PATH)} onclick={openPlugins}
+        >{AGENTS_COPY.enable.openPlugins}</Button
       >
     {/snippet}
   </Banner>

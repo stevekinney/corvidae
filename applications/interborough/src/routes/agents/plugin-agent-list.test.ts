@@ -372,6 +372,72 @@ describe('Enable and restart, from the list', () => {
   });
 });
 
+describe('the agents list, when the host will not restart after the switch was saved', () => {
+  test('says the host refused, in a banner above the list, with a link to Plugins', async () => {
+    landAt('/agents');
+    serve();
+    const host = installFakePluginHost([
+      { name: 'demo', title: 'Demo', enabled: false, contributions: [] },
+    ]);
+    host.refuseRestart = Response.json({ error: 'failed', message: '' }, { status: 404 });
+    try {
+      const { container, findByRole, findByTestId } = mount();
+      await findByRole('heading', { level: 2, name: 'Unavailable 2' });
+      await fireEvent.click(
+        container.querySelector<HTMLElement>('[data-testid="agents-enable"]') as HTMLElement,
+      );
+      const dialog = await findByRole('dialog');
+      await fireEvent.click(confirmButton(dialog) as HTMLElement);
+
+      const banner = await findByTestId('agents-restart-refused');
+      expect(banner.textContent).toContain(
+        'Demo is switched on, but Interborough has not restarted.',
+      );
+      expect(banner.textContent).toContain(
+        'This host cannot restart itself. Restart it where it runs.',
+      );
+      expect(
+        [...banner.querySelectorAll('a')].some(
+          (anchor) => anchor.textContent?.trim() === 'Open Plugins',
+        ),
+      ).toBe(true);
+      // The switch was saved before the restart was asked for, and the dialog is closed.
+      expect(host.requests.some((request) => request.method === 'PUT')).toBe(true);
+      expect(host.requests.some((request) => request.path === '/host/restart')).toBe(true);
+      expect(container.querySelector('[data-testid="agents-restart-banner"]')).toBeNull();
+      // The agents stay held back: nothing was restarted.
+      expect(row(container, 'demo:release-helper')).not.toBeNull();
+    } finally {
+      host.restore();
+    }
+  });
+
+  test('says the same when the restart request gets no answer', async () => {
+    landAt('/agents');
+    serve();
+    const host = installFakePluginHost([
+      { name: 'demo', title: 'Demo', enabled: false, contributions: [] },
+    ]);
+    host.failRestartRequest = true;
+    try {
+      const { container, findByRole, findByTestId } = mount();
+      await findByRole('heading', { level: 2, name: 'Unavailable 2' });
+      await fireEvent.click(
+        container.querySelector<HTMLElement>('[data-testid="agents-enable"]') as HTMLElement,
+      );
+      const dialog = await findByRole('dialog');
+      await fireEvent.click(confirmButton(dialog) as HTMLElement);
+
+      const banner = await findByTestId('agents-restart-refused');
+      expect(banner.textContent).toContain(
+        'Interborough did not answer, so it was not asked to restart. Try again.',
+      );
+    } finally {
+      host.restore();
+    }
+  });
+});
+
 describe('the agents list on a phone', () => {
   test('draws no icon buttons, puts the status and identifier on line two, and gives each held-back agent its own Enable and restart in place of the group header', async () => {
     phone();

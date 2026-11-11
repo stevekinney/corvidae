@@ -3435,6 +3435,12 @@ export const AGENTS_COPY = {
     failedReason: (reason: string): string =>
       `${reason.endsWith('.') ? reason : `${reason}.`} Nothing was restarted and nothing changed.`,
     unknownReason: 'The host did not accept the change.',
+    /**
+     * The lead of the banner when the switch was saved and the host would not restart: the reason
+     * after it is `RESTART_COPY.refusal`, which says to restart it where it runs.
+     */
+    notRestartedTitle: (plugins: readonly string[]): string =>
+      `${nameList(plugins)} ${plugins.length === 1 ? 'is' : 'are'} switched on, but Interborough has not restarted.`,
     openPlugins: 'Open Plugins',
     /** The success banner after the host is back; Settings › Plugins draws the steps of the restart (row 37a). */
     back: (plugins: readonly string[], agents: readonly string[]): string =>
