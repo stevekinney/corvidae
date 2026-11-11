@@ -69,16 +69,48 @@ export async function* readEventFrames(
   }
 }
 
+/**
+ * The cursor commit each event {@link readEvents} yielded is owed, keyed by the event object
+ * itself: the event passes through the page's generators to Chat's mapper unchanged, and only the
+ * mapper knows when it has been accepted. An event that is never acknowledged is simply collected.
+ */
+const pendingCursors = new WeakMap<object, () => void>();
+
+/**
+ * Commits the resume cursor `event` carried, if {@link readEvents} yielded it with one and it has
+ * not been acknowledged yet. Call it once Chat's mapper has accepted the event (and, for a
+ * `MESSAGES_SNAPSHOT`, once the transcript has been replaced with it), so a reattach resumes after
+ * the last event the transcript holds: never past one it lost, never before one it has. A second
+ * call for the same event does nothing.
+ */
+export function acknowledgeEvent(event: unknown): void {
+  if (typeof event !== 'object' || event === null) return;
+  const commit = pendingCursors.get(event);
+  if (commit === undefined) return;
+  pendingCursors.delete(event);
+  commit();
+}
+
+/**
+ * Reads the AG-UI events of a response. `options.onCursor` is not told of a frame's cursor when the
+ * frame is read: it is told when the event is passed to {@link acknowledgeEvent}, so the callback's
+ * own ownership checks run at acknowledgment.
+ */
 export async function* readEvents(
   open: () => Promise<Response>,
   options: ReadEventsOptions = {},
 ): AsyncGenerator<unknown> {
+  const { onCursor } = options;
   for await (const frame of readEventFrames(open)) {
     options.onFrame?.();
     // Replacing the transcript invalidates the old cursor until the complete
     // snapshot/checkpoint opening has supplied its new cut ID.
-    if (frame.event.type === EventType.MESSAGES_SNAPSHOT || frame.id !== undefined) {
-      options.onCursor?.(frame.id || undefined);
+    if (
+      onCursor !== undefined &&
+      (frame.event.type === EventType.MESSAGES_SNAPSHOT || frame.id !== undefined)
+    ) {
+      const cursor = frame.id || undefined;
+      pendingCursors.set(frame.event, () => onCursor(cursor));
     }
     yield frame.event;
   }

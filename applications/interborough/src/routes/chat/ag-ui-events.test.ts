@@ -1,7 +1,7 @@
 import { EventType } from '@ag-ui/core';
 import { expect, test } from 'bun:test';
 
-import { readEventFrames, readEvents } from './ag-ui-events.ts';
+import { acknowledgeEvent, readEventFrames, readEvents } from './ag-ui-events.ts';
 
 test('preserves SSE cursors while validating AG-UI events', async () => {
   const frames = await Array.fromAsync(
@@ -40,8 +40,44 @@ test('snapshot replacement clears the old cursor until reconstruction supplies t
   const response = new Response(
     'id: old\ndata: {"type":"STATE_SNAPSHOT","snapshot":{}}\n\ndata: {"type":"MESSAGES_SNAPSHOT","messages":[]}\n\nid: new\ndata: {"type":"STEP_STARTED","stepName":"step-0"}\n\n',
   );
-  await Array.fromAsync(
-    readEvents(async () => response, { onCursor: (cursor) => cursors.push(cursor) }),
-  );
+  for await (const event of readEvents(async () => response, {
+    onCursor: (cursor) => cursors.push(cursor),
+  }))
+    acknowledgeEvent(event);
   expect(cursors).toEqual(['old', undefined, 'new']);
+});
+
+test('a cursor is committed when its event is acknowledged, not when it is read, and only once', async () => {
+  const cursors: Array<string | undefined> = [];
+  const response = new Response(
+    'id: first\ndata: {"type":"STEP_STARTED","stepName":"step-0"}\n\nid: second\ndata: {"type":"STEP_FINISHED","stepName":"step-0"}\n\n',
+  );
+  const read: unknown[] = [];
+  for await (const event of readEvents(async () => response, {
+    onCursor: (cursor) => cursors.push(cursor),
+  }))
+    read.push(event);
+
+  // Both events were read, and neither was accepted yet.
+  expect(read).toHaveLength(2);
+  expect(cursors).toEqual([]);
+
+  acknowledgeEvent(read[0]);
+  acknowledgeEvent(read[0]);
+  expect(cursors).toEqual(['first']);
+
+  acknowledgeEvent(read[1]);
+  expect(cursors).toEqual(['first', 'second']);
+});
+
+test('acknowledging an event that carried no cursor, or was never read, commits nothing', async () => {
+  const cursors: Array<string | undefined> = [];
+  const response = new Response('data: {"type":"STEP_STARTED","stepName":"step-0"}\n\n');
+  for await (const event of readEvents(async () => response, {
+    onCursor: (cursor) => cursors.push(cursor),
+  }))
+    acknowledgeEvent(event);
+  acknowledgeEvent({ type: EventType.STEP_STARTED, stepName: 'step-0' });
+  acknowledgeEvent(undefined);
+  expect(cursors).toEqual([]);
 });

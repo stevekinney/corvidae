@@ -53,12 +53,20 @@ export class ResumableMapper {
     } else this.journal.push(event);
   }
 
+  /**
+   * Maps one attachment's events onto Chat frames, primed with the semantic prefix earlier
+   * attachments of the same run were accepted with. `acknowledge` is told of each event this
+   * attachment read, once Chat's mapper has accepted it, and of a `MESSAGES_SNAPSHOT` once the
+   * transcript has been replaced with it. It is never told of an event replayed from the journal,
+   * of one the mapper rejected, or of one that was read and not yet accepted.
+   */
   async *map(
     events: AsyncIterable<unknown>,
     conversation: ConversationHistory,
+    acknowledge: (event: Event) => void = () => undefined,
   ): AsyncGenerator<ChatStreamEvent> {
     let sequence = 0;
-    for await (const frame of this.segments(events, conversation)) {
+    for await (const frame of this.segments(events, conversation, acknowledge)) {
       yield { ...frame, sequence: sequence++ };
     }
   }
@@ -66,6 +74,7 @@ export class ResumableMapper {
   private async *segments(
     events: AsyncIterable<unknown>,
     conversation: ConversationHistory,
+    acknowledge: (event: Event) => void,
   ): AsyncGenerator<ChatStreamEvent> {
     const iterator = events[Symbol.asyncIterator]();
     try {
@@ -85,34 +94,49 @@ export class ResumableMapper {
               yield next.value;
             }
           })(),
-          { conversation },
+          { conversation, onEventAccepted: acknowledge },
         );
         return;
       }
       const previous = this.journal[0];
-      if (
+      const fresh =
         this.completed ||
         previous?.type !== EventType.RUN_STARTED ||
-        identity(previous) !== identity(parsed)
-      ) {
-        this.base = conversation;
-        this.journal = [parsed];
-        this.completed = false;
-      } else this.journal[0] = parsed;
+        identity(previous) !== identity(parsed);
+      // Nothing is recorded until the mapper accepts this attachment's start: a read cancelled
+      // before then leaves the journal as the last accepted event left it.
+      let base = fresh ? conversation : this.base;
+      let prefix: Event[] = fresh ? [parsed] : [parsed, ...this.journal.slice(1)];
+      let adopted = false;
       // A new HTTP attachment repeats RUN_STARTED. Prime a fresh mapper with the
       // already consumed semantic prefix, suppressing its old message outputs.
       let emittedStart = false;
       for (;;) {
         let priming = true;
         let snapshot: MessagesSnapshotEvent | undefined;
-        const prefix = this.journal.slice();
-        const remember = (event: Event): void => {
+        const primed = prefix;
+        const primedBase = base;
+        const accept = (event: Event): void => {
+          if (priming) {
+            // The journal already holds what priming replays. Only this attachment's own start
+            // is new, and accepting it makes the primed prefix this run's journal.
+            if (event !== parsed) return;
+            if (!adopted) {
+              adopted = true;
+              this.base = primedBase;
+              this.journal = primed.slice();
+              this.completed = false;
+            }
+            acknowledge(event);
+            return;
+          }
           this.remember(event);
           if (event.type === EventType.RUN_FINISHED || event.type === EventType.RUN_ERROR)
             this.completed = true;
+          acknowledge(event);
         };
         const segment = (async function* () {
-          yield* prefix;
+          yield* primed;
           priming = false;
           for (;;) {
             const next = await iterator.next();
@@ -122,13 +146,13 @@ export class ResumableMapper {
               snapshot = event;
               return;
             }
-            remember(event);
             yield event;
           }
         })();
         try {
           for await (const frame of mapAGUIEventsToChatStream(segment, {
-            conversation: this.base ?? conversation,
+            conversation: primedBase ?? conversation,
+            onEventAccepted: accept,
           })) {
             if (!priming || (!emittedStart && frame.type === 'run.started')) {
               if (frame.type === 'run.started') emittedStart = true;
@@ -141,12 +165,18 @@ export class ResumableMapper {
           if (snapshot === undefined) throw error;
         }
         if (snapshot === undefined) return;
-        this.base = mergeAGUIMessages(
+        const replacement = mergeAGUIMessages(
           createConversationHistory({ id: parsed.threadId }),
           snapshot.messages,
         );
+        // The snapshot is accepted only once the transcript has been replaced with it: a
+        // replacement that throws leaves the journal and the cursor where they were.
+        this.replace(replacement);
+        base = replacement;
+        prefix = [parsed];
+        this.base = replacement;
         this.journal = [parsed];
-        this.replace(this.base);
+        acknowledge(snapshot);
       }
     } finally {
       await iterator.return?.();

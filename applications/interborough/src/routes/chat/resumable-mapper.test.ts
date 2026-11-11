@@ -5,7 +5,8 @@ import {
   type ChatStreamEvent,
 } from '@lostgradient/chat';
 import { rejectionOf } from '@lostgradient/testing';
-import { expect, test } from 'bun:test';
+import { describe, expect, test } from 'bun:test';
+import { acknowledgeEvent, readEvents } from './ag-ui-events.ts';
 import { ResumableMapper } from './resumable-mapper.ts';
 
 const started = { type: 'RUN_STARTED', threadId: 'thread', runId: 'run' };
@@ -320,4 +321,246 @@ test('a stream that ends before its first event is the transport’s incomplete 
   const mapper = new ResumableMapper(() => undefined);
   const failure = await rejectionOf(Array.fromAsync(mapper.map(source([]), empty())));
   expect(failure).toMatchObject({ kind: 'incomplete-stream' });
+});
+
+describe('resume cursors committed through the real reader and Chat mapper (COR-2293)', () => {
+  /** An SSE response whose frames carry the given cursors, as the Bureau writes them. */
+  const sse = (frames: ReadonlyArray<readonly [unknown, string?]>): Response =>
+    new Response(
+      frames
+        .map(
+          ([event, id]) =>
+            `${id === undefined ? '' : `id: ${id}\n`}data: ${JSON.stringify(event)}\n\n`,
+        )
+        .join(''),
+      { headers: { 'content-type': 'text/event-stream' } },
+    );
+  const stepStarted = { type: 'STEP_STARTED', stepName: 'plan' };
+  const stepFinished = { type: 'STEP_FINISHED', stepName: 'plan' };
+
+  /** The events of `response`, read as the wiring reads them, with every cursor commit recorded. */
+  function read(response: Response, cursors: Array<string | undefined>): AsyncGenerator<unknown> {
+    return readEvents(async () => response, { onCursor: (cursor) => cursors.push(cursor) });
+  }
+
+  /** The events of `events` up to, and not including, the first one `stop` matches, which is read. */
+  async function* until(
+    events: AsyncIterable<unknown>,
+    stop: (event: unknown) => boolean,
+  ): AsyncGenerator<unknown> {
+    for await (const event of events) {
+      if (stop(event)) return;
+      yield event;
+    }
+  }
+
+  const isStepFinished = (event: unknown): boolean =>
+    typeof event === 'object' &&
+    event !== null &&
+    'type' in event &&
+    event.type === 'STEP_FINISHED';
+
+  /** The resumed suffix of the run: no snapshot and no step start, as a valid cursor resume is. */
+  const resumedSuffix = (): Response =>
+    sse([[started], [stepFinished, 'c-plan-done'], [finished, 'c-end']]);
+
+  test('cancelling after an event is accepted, before the next pull, keeps its cursor and journal', async () => {
+    const cursors: Array<string | undefined> = [];
+    const mapper = new ResumableMapper(() => undefined);
+    const first = mapper.map(
+      read(sse([[started], [stepStarted, 'c-plan'], [stepFinished, 'c-plan-done']]), cursors),
+      empty(),
+      acknowledgeEvent,
+    );
+
+    expect((await first.next()).value).toMatchObject({ type: 'run.started' });
+    expect((await first.next()).value).toMatchObject({ type: 'stream:block-start' });
+    // The step's start was accepted before its frame was handed over, and nothing more is pulled.
+    expect(cursors).toEqual(['c-plan']);
+    await first.return(undefined);
+    expect(cursors).toEqual(['c-plan']);
+
+    const resumed = await Array.fromAsync(
+      mapper.map(read(resumedSuffix(), cursors), empty(), acknowledgeEvent),
+    );
+
+    expect(resumed.map((frame) => frame.type)).toEqual([
+      'run.started',
+      'stream:block-complete',
+      'run.completed',
+    ]);
+    // Priming the journal acknowledged nothing a second time.
+    expect(cursors).toEqual(['c-plan', 'c-plan-done', 'c-end']);
+  });
+
+  test('cancelling after an event is read, before it is accepted, keeps the old cursor and journal', async () => {
+    const cursors: Array<string | undefined> = [];
+    const mapper = new ResumableMapper(() => undefined);
+
+    const failure = await rejectionOf(
+      Array.fromAsync(
+        mapper.map(
+          until(
+            read(sse([[started], [stepStarted, 'c-plan'], [stepFinished, 'c-plan-done']]), cursors),
+            isStepFinished,
+          ),
+          empty(),
+          acknowledgeEvent,
+        ),
+      ),
+    );
+
+    expect(failure).toMatchObject({ kind: 'incomplete-stream' });
+    // The step's end was read and never accepted, so the cursor still points before it.
+    expect(cursors).toEqual(['c-plan']);
+
+    // Resuming from that cursor replays the step's end, whose start the journal holds: no start is
+    // skipped and none is repeated.
+    const resumed = await Array.fromAsync(
+      mapper.map(read(resumedSuffix(), cursors), empty(), acknowledgeEvent),
+    );
+    expect(resumed.filter((frame) => frame.type === 'stream:block-start')).toEqual([]);
+    expect(resumed.filter((frame) => frame.type === 'stream:block-complete')).toHaveLength(1);
+    expect(resumed.at(-1)).toMatchObject({ type: 'run.completed' });
+    expect(cursors).toEqual(['c-plan', 'c-plan-done', 'c-end']);
+  });
+
+  const rejected: Array<[string, ReadonlyArray<readonly [unknown, string?]>, string[], RegExp]> = [
+    [
+      'an unknown STEP_FINISHED',
+      [
+        [started],
+        [stepStarted, 'c-plan'],
+        [{ type: 'STEP_FINISHED', stepName: 'ghost' }, 'c-ghost'],
+      ],
+      ['c-plan'],
+      /finished without starting/,
+    ],
+    [
+      'a duplicate STEP_STARTED',
+      [
+        [started],
+        [stepStarted, 'c-plan'],
+        [{ type: 'STEP_STARTED', stepName: 'plan' }, 'c-duplicate'],
+      ],
+      ['c-plan'],
+      /started twice/,
+    ],
+    [
+      'an event after the terminal',
+      [
+        [started],
+        [stepStarted, 'c-plan'],
+        [stepFinished, 'c-plan-done'],
+        [finished, 'c-end'],
+        [{ type: 'STEP_STARTED', stepName: 'late' }, 'c-late'],
+      ],
+      ['c-plan', 'c-plan-done', 'c-end'],
+      /after the run ended/,
+    ],
+  ];
+
+  for (const [label, frames, committed, message] of rejected) {
+    test(`${label} keeps its strict error and never moves the cursor`, async () => {
+      const cursors: Array<string | undefined> = [];
+      const mapper = new ResumableMapper(() => undefined);
+
+      const failure = await rejectionOf(
+        Array.fromAsync(mapper.map(read(sse(frames), cursors), empty(), acknowledgeEvent)),
+      );
+
+      expect(failure).toMatchObject({ kind: 'protocol' });
+      expect((failure as Error).message).toMatch(message);
+      expect(cursors).toEqual(committed);
+    });
+  }
+
+  test('a snapshot cursor is committed only after the transcript has been replaced with it', async () => {
+    const log: string[] = [];
+    const cursors: Array<string | undefined> = [];
+    const mapper = new ResumableMapper(() => {
+      log.push('replaced');
+    });
+
+    await Array.fromAsync(
+      mapper.map(
+        readEvents(
+          async () =>
+            sse([
+              [started],
+              [stepStarted, 'c-plan'],
+              [{ type: 'MESSAGES_SNAPSHOT', messages: [] }, 'c-snapshot'],
+              [finished, 'c-end'],
+            ]),
+          {
+            onCursor: (cursor) => {
+              cursors.push(cursor);
+              log.push(`cursor:${cursor}`);
+            },
+          },
+        ),
+        empty(),
+        acknowledgeEvent,
+      ),
+    );
+
+    expect(log).toEqual(['cursor:c-plan', 'replaced', 'cursor:c-snapshot', 'cursor:c-end']);
+    expect(cursors).toEqual(['c-plan', 'c-snapshot', 'c-end']);
+  });
+
+  test('a snapshot whose replacement fails commits no cursor for it and fails the stream', async () => {
+    const cursors: Array<string | undefined> = [];
+    const refusal = new Error('the transcript could not be replaced');
+    const mapper = new ResumableMapper(() => {
+      throw refusal;
+    });
+
+    const failure = await rejectionOf(
+      Array.fromAsync(
+        mapper.map(
+          read(
+            sse([
+              [started],
+              [stepStarted, 'c-plan'],
+              [{ type: 'MESSAGES_SNAPSHOT', messages: [] }, 'c-snapshot'],
+              [finished, 'c-end'],
+            ]),
+            cursors,
+          ),
+          empty(),
+          acknowledgeEvent,
+        ),
+      ),
+    );
+
+    expect(failure).toBe(refusal);
+    expect(cursors).toEqual(['c-plan']);
+  });
+
+  test('a terminal event commits its cursor before its frame, with no later pull', async () => {
+    const cursors: Array<string | undefined> = [];
+    const mapper = new ResumableMapper(() => undefined);
+    const frames = mapper.map(
+      read(
+        sse([
+          [started],
+          [stepStarted, 'c-plan'],
+          [stepFinished, 'c-plan-done'],
+          [finished, 'c-end'],
+        ]),
+        cursors,
+      ),
+      empty(),
+      acknowledgeEvent,
+    );
+
+    for (;;) {
+      const next = await frames.next();
+      if (next.done === true) throw new Error('The stream ended before its terminal.');
+      if (next.value.type === 'run.completed') break;
+    }
+
+    expect(cursors).toEqual(['c-plan', 'c-plan-done', 'c-end']);
+    await frames.return(undefined);
+  });
 });

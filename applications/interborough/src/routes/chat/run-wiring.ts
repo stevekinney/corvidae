@@ -74,7 +74,7 @@ import {
 import { BUREAU_PATH, getThreadMessages, type Fetcher } from '../../lib/bureau-client.ts';
 import type { BureauClock } from '../../lib/bureau-clock.ts';
 import { getLastRun, getTask, listChildRuns, type TaskView } from '../../lib/bureau-tasks.ts';
-import { readEvents } from './ag-ui-events.ts';
+import { acknowledgeEvent, readEvents } from './ag-ui-events.ts';
 import {
   FOLLOW_UP_METADATA_KEY,
   INPUTS_DELIVERED_EVENT_NAME,
@@ -1509,6 +1509,12 @@ export function createChatRunWiring(options: ChatRunWiringOptions): ChatRunWirin
         generation,
       ),
       withoutHiddenRows(request.conversation),
+      // A cursor is committed only for an event Chat's mapper accepted, and only while this is
+      // still the current transport: an older one cannot move the cursor a newer one resumes from.
+      // The reader's own signal and attachment checks run at this moment too.
+      (event) => {
+        if (generation === transportGeneration) acknowledgeEvent(event);
+      },
     );
     return parkApprovals(
       frames,
