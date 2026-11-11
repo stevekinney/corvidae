@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';
 import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
 import { linkPluginRuntime, writeFixture } from './test-installed-release-fixture.ts';
 import { mcp, runFixtureAgent, type InstalledFetch } from './test-installed-release-transport.ts';
@@ -148,6 +149,41 @@ export type InstalledJourneyOperations = {
   readonly isProcessAlive?: (pid: number) => boolean;
 };
 
+async function runInstalledCliCommand(
+  executable: string,
+  arguments_: readonly string[],
+  home: string,
+  cwd: string,
+  registryUrl: string,
+  input?: string,
+  extraEnvironment: Record<string, string> = {},
+): Promise<{ exitCode: number; stdout: string; stderr: string }> {
+  const child = Bun.spawn([executable, ...arguments_], {
+    cwd,
+    env: {
+      PATH: '/usr/bin:/bin',
+      HOME: home,
+      INTERBOROUGH_HOME: home,
+      npm_config_registry: registryUrl,
+      BUN_CONFIG_REGISTRY: registryUrl,
+      ...extraEnvironment,
+    },
+    stdout: 'pipe',
+    stderr: 'pipe',
+    ...(input === undefined ? {} : { stdin: 'pipe' as const }),
+  });
+  if (input !== undefined) {
+    await child.stdin.write(input);
+    await child.stdin.end();
+  }
+  const [stdout, stderr, exitCode] = await Promise.all([
+    new Response(child.stdout).text(),
+    new Response(child.stderr).text(),
+    child.exited,
+  ]);
+  return { exitCode, stdout, stderr };
+}
+
 export async function runInstalled(
   executable: string,
   prefix: string,
@@ -178,6 +214,7 @@ export async function runInstalled(
   if (existingHome === undefined) {
     await writeFile(join(home, 'deployment-id'), '01ARZ3NDEKTSV4RRFFQ69G5FAV\n');
     await writeFixture(home, executable, marker);
+    await enableDemoPlugin(home);
   }
   console.info(`starting ${executable} home=${home}`);
   const probes: Probe[] = [];
@@ -214,6 +251,285 @@ export async function runInstalled(
       port: listening.port,
       sanitizedPath: '/usr/bin:/bin',
     });
+    if (operations.spawn === undefined && executable.endsWith('/interborough')) {
+      const definitionFile = join(cwd, 'installed-cli-agent.json');
+      const providerFile = join(cwd, 'installed-cli-provider.json');
+      const scheduleFile = join(cwd, 'installed-cli-schedule.json');
+      await writeFile(
+        definitionFile,
+        JSON.stringify({ model: 'installed-fixture/scripted', instructions: 'Use the fixture.' }),
+      );
+      await writeFile(providerFile, JSON.stringify({ configuration: {} }));
+      await writeFile(
+        scheduleFile,
+        JSON.stringify({
+          agentName: 'installed-cli-agent',
+          spec: '* * * * *',
+          input: 'hello',
+          timeZone: 'UTC',
+        }),
+      );
+      const cliJourneyResults: Record<string, unknown> = {};
+      const commands: Array<{ args: string[]; json: boolean; input?: string }> = [
+        { args: ['status'], json: true },
+        { args: ['doctor'], json: true },
+        { args: ['providers', 'list'], json: true },
+        { args: ['agents', 'list'], json: true },
+        { args: ['workflows', 'list'], json: true },
+        { args: ['schedules', 'list'], json: true },
+        { args: ['completion', 'bash'], json: false },
+      ];
+      if (existingHome === undefined) {
+        commands.push(
+          {
+            args: [
+              'providers',
+              'connect',
+              'installed-fixture',
+              '--input-file',
+              providerFile,
+              '--secret-stdin',
+            ],
+            json: true,
+            input: 'installed-fixture-secret\n',
+          },
+          {
+            args: ['agents', 'create', 'installed-cli-agent', '--file', definitionFile],
+            json: true,
+          },
+          { args: ['workflows', 'start', 'installed-cli-workflow', '--wait'], json: true },
+          { args: ['schedules', 'create', '--file', scheduleFile], json: true },
+          {
+            args: ['schedules', 'create', '--file', scheduleFile],
+            json: true,
+          },
+          {
+            args: ['chat', '--agent', 'installed-cli-agent', '--message', 'hello', '--no-input'],
+            json: true,
+          },
+        );
+      }
+      if (existingHome === undefined) {
+        const tlsDirectory = join(prefix, 'authority-tls');
+        await mkdir(tlsDirectory, { recursive: true });
+        const keyPath = join(tlsDirectory, 'key.pem');
+        const certificatePath = join(tlsDirectory, 'certificate.pem');
+        const certificate = Bun.spawnSync([
+          'openssl',
+          'req',
+          '-x509',
+          '-newkey',
+          'rsa:2048',
+          '-nodes',
+          '-keyout',
+          keyPath,
+          '-out',
+          certificatePath,
+          '-days',
+          '1',
+          '-subj',
+          '/CN=localhost',
+        ]);
+        if (certificate.exitCode !== 0)
+          throw new Error(
+            `Could not create authority fixture certificate: ${String(certificate.stderr)}`,
+          );
+        const authorityServer = Bun.serve({
+          hostname: '127.0.0.1',
+          port: 0,
+          tls: { key: await readFile(keyPath), cert: await readFile(certificatePath) },
+          async fetch(request) {
+            const key = request.headers.get('x-api-key');
+            if (key !== 'alice' && key !== 'bob')
+              return Response.json({ message: 'unauthorized' }, { status: 401 });
+            const pathname = new URL(request.url).pathname;
+            if (pathname === '/api/v1/principal')
+              return Response.json({
+                result: {
+                  workspace: {
+                    actorId: key,
+                    workspaceId: `workspace-${key}`,
+                    capabilities: ['workspace:use'],
+                  },
+                },
+              });
+            if (pathname === '/host/status')
+              return Response.json({ deploymentId: `deployment-${key}` });
+            if (pathname === '/bureau/jsonrpc') {
+              const body = (await request.json()) as { method?: string };
+              if (body.method === 'bureau.tasks.get')
+                return Response.json({ result: { id: 'terminal', status: 'running' } });
+              return Response.json({
+                error: { message: 'read-only workspace fixture', data: { httpStatus: 403 } },
+              });
+            }
+            if (pathname === '/bureau/v1/subscriptions/bureau.tasks.events') {
+              const taskId = new URL(request.url).searchParams.get('taskId');
+              const stream = new TransformStream<Uint8Array, Uint8Array>();
+              const writer = stream.writable.getWriter();
+              const encoder = new TextEncoder();
+              const events =
+                taskId === 'dropped'
+                  ? [{ kind: 'task.status', status: 'running' }]
+                  : [
+                      { kind: 'task.status', status: 'running' },
+                      { kind: 'task.status', status: 'completed' },
+                    ];
+              void (async () => {
+                for (const [index, event] of events.entries())
+                  await writer.write(
+                    encoder.encode(`id: event-${index}\ndata: ${JSON.stringify(event)}\n\n`),
+                  );
+                await writer.close();
+              })();
+              return new Response(stream.readable, {
+                headers: { 'content-type': 'text/event-stream' },
+              });
+            }
+            return Response.json({ ok: true });
+          },
+        });
+        const authorityUrl = `https://localhost:${authorityServer.port}`;
+        const connection = await runInstalledCliCommand(
+          executable,
+          [
+            'connection',
+            'add',
+            'authority',
+            '--url',
+            authorityUrl,
+            '--credential-reference',
+            'TOKEN',
+          ],
+          home,
+          cwd,
+          registryUrl,
+        );
+        if (connection.exitCode !== 0)
+          throw new Error(
+            `Could not configure installed authority connection: ${connection.stderr}`,
+          );
+        const untrusted = await runInstalledCliCommand(
+          executable,
+          ['whoami', '--connection', 'authority'],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice' },
+        );
+        if (untrusted.exitCode !== 1 || !untrusted.stderr.includes('certificate'))
+          throw new Error(
+            `Untrusted authority request did not fail closed: ${untrusted.exitCode} ${untrusted.stderr}`,
+          );
+        const trusted = await runInstalledCliCommand(
+          executable,
+          ['whoami', '--connection', 'authority', '--workspace', 'workspace-alice'],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (trusted.exitCode !== 0 || !trusted.stdout.includes('workspace-alice'))
+          throw new Error(
+            `Trusted authority request failed: ${trusted.exitCode} ${trusted.stderr}`,
+          );
+        const wrongWorkspace = await runInstalledCliCommand(
+          executable,
+          ['whoami', '--connection', 'authority', '--workspace', 'workspace-bob'],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (wrongWorkspace.exitCode !== 3 || !wrongWorkspace.stderr.includes('workspace'))
+          throw new Error(
+            `Wrong workspace was not refused: ${wrongWorkspace.exitCode} ${wrongWorkspace.stderr}`,
+          );
+        const terminalWatch = await runInstalledCliCommand(
+          executable,
+          [
+            'runs',
+            'watch',
+            '--kind',
+            'task',
+            'terminal',
+            '--output',
+            'jsonl',
+            '--connection',
+            'authority',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (terminalWatch.exitCode !== 0 || !terminalWatch.stdout.includes('completed'))
+          throw new Error(
+            `Terminal installed watch failed: ${terminalWatch.exitCode} ${terminalWatch.stderr}`,
+          );
+        const droppedWatch = await runInstalledCliCommand(
+          executable,
+          [
+            'runs',
+            'watch',
+            '--kind',
+            'task',
+            'dropped',
+            '--output',
+            'jsonl',
+            '--connection',
+            'authority',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (droppedWatch.exitCode !== 1 || !droppedWatch.stderr.includes('terminal'))
+          throw new Error(
+            `Dropped installed watch did not fail closed: ${droppedWatch.exitCode} ${droppedWatch.stderr}`,
+          );
+        await authorityServer.stop(true);
+        pass(
+          'authenticated TLS authority handshake and wrong-workspace refusal',
+          'interborough whoami over TLS',
+          {
+            trustedWorkspace: 'workspace-alice',
+            refusedWorkspace: 'workspace-bob',
+          },
+        );
+      }
+      for (const command of commands) {
+        const result = await runInstalledCliCommand(
+          executable,
+          [...command.args, ...(command.json ? ['--url', url, '--output', 'json'] : [])],
+          home,
+          cwd,
+          registryUrl,
+          command.input,
+        );
+        if (result.exitCode !== 0)
+          throw new Error(
+            `Installed CLI ${command.args.join(' ')} exited ${result.exitCode}: ${result.stderr}`,
+          );
+        if (command.json) {
+          const payload = JSON.parse(result.stdout) as { schemaVersion?: number; data?: unknown };
+          cliJourneyResults[command.args.join(' ')] = payload.data;
+          if (payload.schemaVersion !== 1)
+            throw new Error(`Installed CLI ${command.args.join(' ')} returned an invalid envelope`);
+        }
+      }
+      pass(
+        'installed CLI status, diagnosis, provider, definition, workflow, and schedule journeys',
+        'interborough CLI JSON commands',
+        { commands: Object.keys(cliJourneyResults), results: cliJourneyResults },
+      );
+    }
     const pluginResponse = await processOperations.fetch(`${url}/host/plugins`);
     const plugins = (await pluginResponse.json()) as {
       plugins: Array<Record<string, unknown>>;

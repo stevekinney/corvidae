@@ -4,6 +4,12 @@ Interborough is Corvidae's main application. One process on one loopback origin 
 
 The browser application is the Weft operator console, moved here from `packages/weft/src/ui` (Weft no longer exports `./ui`, `dashboard()`, or a UI of any kind), with a new shell around it. The Weft console's coverage of Weft's operations is recorded in [`documentation/weft-console/coverage-matrix.md`](documentation/weft-console/coverage-matrix.md).
 
+## Installed CLI contract
+
+The installed `interborough` executable exposes its command registry in `src/host/cli-client.ts`. The registry is the single source for command help, accepted flags, shell completion, and the coverage test that maps public operations to commands. Internal supervisor commands are deliberately absent. Generate and install completion source with `interborough completion bash`, `interborough completion zsh`, or `interborough completion fish`; completion output contains command-scoped option names only and never reads connection credentials or workspace data.
+
+Every command accepts `--help`; other flags are command-specific and are listed by `interborough <command> --help`. For example, `status` accepts endpoint, connection, timeout, workspace, and output flags, while `connection` has only profile and pagination flags. The registry coverage test requires every listed command and flag to have help and completion metadata, and the operation coverage map requires every catalog operation to name its CLI action or an explicit transport exclusion reason.
+
 ## Running it
 
 Run every command from the repository root.
