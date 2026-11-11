@@ -523,12 +523,6 @@ export const FORBIDDEN_COPY = {
   home: 'Back to Home',
 } as const;
 
-/** Words joined as a sentence says them, the last pair with "and" and no comma before it: "A, B and C". */
-function joinedWithAnd(words: readonly string[]): string {
-  if (words.length <= 1) return words.join('');
-  return `${words.slice(0, -1).join(', ')} and ${words.at(-1) ?? ''}`;
-}
-
 /** The words for a reasoning effort, from least to most: the agent editor, the agent page and Model policy say them alike. */
 export const EFFORT_LABELS = {
   low: 'Low',
@@ -986,6 +980,16 @@ export const AGENT_EDITOR_COPY = {
   loadFailed: {
     title: 'The agent could not be loaded',
     description: 'The server did not answer. Check that the host is running, then try again.',
+  },
+  revisions: {
+    heading: 'Revision history',
+    description: 'The versions of this agent that have run, most recently run first.',
+    caption: 'Versions of this agent that have run',
+    versionColumn: 'Version',
+    lastRunColumn: 'Last run',
+    emptyTitle: 'No version has run yet',
+    empty: 'A version appears here once the agent runs on it.',
+    failedTitle: 'The revision history could not be loaded',
   },
 } as const;
 
@@ -4215,6 +4219,12 @@ export const AGENTS_COPY = {
       `${nameList(plugins)} ${plugins.length === 1 ? 'is' : 'are'} on.${agents.length === 0 ? '' : ` ${nameList(agents)} ${agents.length === 1 ? 'is' : 'are'} available again.`}`,
   },
 } as const;
+
+/** Words joined as a sentence says them, the last pair with "and" and no comma before it: "A, B and C". */
+function joinedWithAnd(words: readonly string[]): string {
+  if (words.length <= 1) return words.join('');
+  return `${words.slice(0, -1).join(', ')} and ${words.at(-1) ?? ''}`;
+}
 
 /** The words of an agent's page: its tabs, the controls over its chats, its instructions and its settings. */
 export const AGENT_PAGE_COPY = {

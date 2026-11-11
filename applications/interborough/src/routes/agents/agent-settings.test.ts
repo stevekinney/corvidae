@@ -205,7 +205,7 @@ describe('leaving the Settings tab with changes (row 39b)', () => {
     await fireEvent.click(await findByRole('radio', { name: 'High' }));
     await fireEvent.input(await findByLabelText('Step limit'), { target: { value: '20' } });
 
-    await fireEvent.click(await findByRole('tab', { name: /^Access/ }));
+    await fireEvent.click(await findByRole('tab', { name: /^Instructions/ }));
     let dialog = await findByRole('dialog', { name: copy.leave.title });
     expect(dialog.textContent).toContain(copy.leave.description(['Effort', 'Step limit']));
     expect(router.pathname).toBe('/agents/researcher/settings');
@@ -215,10 +215,10 @@ describe('leaving the Settings tab with changes (row 39b)', () => {
     const kept = (await findByLabelText('Step limit')) as HTMLInputElement;
     expect(kept.value).toBe('20');
 
-    await fireEvent.click(await findByRole('tab', { name: /^Access/ }));
+    await fireEvent.click(await findByRole('tab', { name: /^Instructions/ }));
     dialog = await findByRole('dialog', { name: copy.leave.title });
     await fireEvent.click(within(dialog).getByRole('button', { name: copy.leave.confirm }));
-    await waitFor(() => expect(router.pathname).toBe('/agents/researcher/access'));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher/instructions'));
   });
 
   test('switches tabs without asking while nothing has changed', async () => {
@@ -335,20 +335,44 @@ describe('what the Settings tab words and writes', () => {
     ]);
   });
 
-  test('writes the file’s definition with the settings, an empty list and no effort as null', () => {
+  test('writes the file’s definition with the settings, an empty list as null and no effort left out', () => {
     const form = { ...settingsFormOf(DEFINITION), stepLimit: '' };
     expect(settingsDefinition(DEFINITION, form)).toEqual({
       name: DEFINITION.name,
       description: DEFINITION.description,
       model: 'anthropic/sonnet',
       models: null,
-      effort: null,
       tools: DEFINITION.tools,
       card: DEFINITION.card,
       a2a: DEFINITION.a2a,
       limits: { steps: null },
       instructions: DEFINITION.instructions,
     });
+  });
+
+  test('carries back what the tab does not edit, and keeps a step limit past 100 the file already has', () => {
+    const file = {
+      ...DEFINITION,
+      effort: 'low' as const,
+      skills: ['summarize'],
+      children: ['helper'],
+      guardrails: ['acme:tripwire'],
+      approvals: { 'lookup-order': 'always' as const },
+      limits: { steps: 200, cost: null, tools: null },
+    };
+    const form = settingsFormOf(file);
+    expect(stepLimitError(form.stepLimit, form.stepLimit)).toBe('');
+    expect(stepLimitError('300', form.stepLimit)).toBe(copy.stepLimitError(100));
+    const written = settingsDefinition(file, form);
+    expect(written).toMatchObject({
+      effort: 'low',
+      skills: ['summarize'],
+      children: ['helper'],
+      guardrails: ['acme:tripwire'],
+      approvals: { 'lookup-order': 'always' },
+      limits: { steps: 200 },
+    });
+    expect(settingsDefinition({ ...file }, { ...form, effort: '' }).effort).toBeNull();
   });
 
   test('offers Low, Medium and High when the model’s efforts are not known, and always the one held', () => {

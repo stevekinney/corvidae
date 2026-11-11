@@ -554,7 +554,7 @@ describe('the Settings tab', () => {
     const dialog = await findByRole('dialog', { name: 'Restore Version 1?' });
     await fireEvent.click(within(dialog).getByRole('button', { name: 'Restore Version 1' }));
 
-    await findByText('The model is gone.', { selector: '[role="alert"] p' });
+    await findByText(/The model is gone/, { selector: '[role="alert"] p' });
   });
 
   test('names a first version and a later save that changed nothing apart', async () => {

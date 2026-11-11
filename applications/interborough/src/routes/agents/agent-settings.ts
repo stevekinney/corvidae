@@ -8,9 +8,10 @@
  * still stops at that default.
  *
  * A save sends a whole definition (`settingsDefinition`), because `bureau.agents.definitions.update`
- * removes `tools` and `models` when they are left out. The keys the tab does not edit are the
- * file's own, or left out where leaving them out keeps the file's (`skills`, `guardrails`,
- * `approvals`, the other limits, `references`, `retry`, `compaction` and `interceptors`).
+ * removes `tools` and `models` when they are left out. The keys the tab does not edit are carried
+ * back as the file has them, as the editor carries them (`skills`, `children`, `guardrails`,
+ * `approvals`, `retry`, `compaction` and `interceptors`), or left out where leaving them out keeps
+ * the file's (the spend and tool limits, and `references`).
  *
  * The rest words the versions list and the delete question: what each version changed
  * (`versionChanges`), the changes a restore removes (`restoredChanges`), and what stops finding an
@@ -87,8 +88,13 @@ export function settingsFormOf(definition: FileDefinition): SettingsForm {
   };
 }
 
-/** Why the step limit cannot be saved as typed (row 39s), or `''` when it can. Empty is the default. */
-export function stepLimitError(text: string): string {
+/**
+ * Why the step limit cannot be saved as typed (row 39s), or `''` when it can. Empty is the default.
+ * The limit the file already has (`kept`) is never refused, even past the bound the tab offers, so
+ * a file written by hand with a larger limit can still save its other settings.
+ */
+export function stepLimitError(text: string, kept = ''): string {
+  if (text.trim() !== '' && text.trim() === kept.trim()) return '';
   return parseLimit(text, true, STEP_LIMIT_MAXIMUM) === undefined
     ? AGENT_PAGE_COPY.settings.stepLimitError(STEP_LIMIT_MAXIMUM)
     : '';
@@ -112,16 +118,36 @@ export function settingsDefinition(
   definition: FileDefinition,
   form: SettingsForm,
 ): AgentDefinitionInput {
-  const steps = parseLimit(form.stepLimit, true, STEP_LIMIT_MAXIMUM) ?? null;
+  // A step limit left as the file has it is written as the file has it, even past the bound the
+  // tab offers, so saving another setting never changes it.
+  const written = definition.limits.steps;
+  const steps =
+    form.stepLimit.trim() === (written === null ? '' : String(written))
+      ? written
+      : (parseLimit(form.stepLimit, true, STEP_LIMIT_MAXIMUM) ?? null);
   return {
     name: definition.name,
     description: definition.description,
     model: form.model,
     models: form.models.length === 0 ? null : [...form.models],
-    effort: form.effort === '' ? null : form.effort,
+    // An effort is written when one is chosen, and `null` removes one the file had; a file that
+    // never had one is left without.
+    ...(form.effort === ''
+      ? definition.effort === null
+        ? {}
+        : { effort: null }
+      : { effort: form.effort }),
     tools: definition.tools,
     card: definition.card,
+    // The keys the tab does not edit are carried back as the file has them, as the editor does.
+    ...(definition.skills === null ? {} : { skills: definition.skills }),
+    ...(definition.children == null ? {} : { children: definition.children }),
     a2a: definition.a2a,
+    ...(definition.retry === null ? {} : { retry: definition.retry }),
+    ...(definition.compaction === null ? {} : { compaction: definition.compaction }),
+    ...(definition.interceptors === null ? {} : { interceptors: definition.interceptors }),
+    ...(definition.guardrails === null ? {} : { guardrails: definition.guardrails }),
+    ...(definition.approvals === null ? {} : { approvals: definition.approvals }),
     // Only the step limit: a limit left out of `limits` keeps the file's.
     limits: { steps },
     instructions: definition.instructions,

@@ -169,7 +169,7 @@
   const form = $derived<SettingsForm>({ model, models, effort, stepLimit });
   const changed = $derived(baseline === undefined ? [] : changedParts(baseline, form));
   const dirty = $derived(changed.length > 0);
-  const stepError = $derived(attempted ? stepLimitError(stepLimit) : '');
+  const stepError = $derived(attempted ? stepLimitError(stepLimit, baseline?.stepLimit) : '');
 
   function fill(next: SettingsForm, at: string | null): void {
     baseline = next;
@@ -334,13 +334,18 @@
     onError: (error) => refuse(agentFaultOf(error), copy.saveFailed),
   }));
 
-  async function submit(event: SubmitEvent): Promise<void> {
+  /** Moves focus to the step limit, once the message a submit shows is on the page. */
+  async function focusStepLimit(): Promise<void> {
+    await tick();
+    document.getElementById(STEP_LIMIT_ID)?.focus();
+  }
+
+  function submit(event: SubmitEvent): void {
     event.preventDefault();
     attempted = true;
-    if (stepLimitError(stepLimit) !== '') {
+    if (stepLimitError(stepLimit, baseline?.stepLimit) !== '') {
       // Nothing is written; the field says why and takes focus (row 39s).
-      await tick();
-      document.getElementById(STEP_LIMIT_ID)?.focus();
+      void focusStepLimit();
       return;
     }
     // The write names the hash the form was filled from, so a file that moved while the form held
