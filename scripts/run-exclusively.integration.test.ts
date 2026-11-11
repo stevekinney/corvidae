@@ -1,6 +1,6 @@
 import type { Subprocess } from 'bun';
-import { describe, expect, test } from 'bun:test';
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { describe, expect, setSystemTime, test } from 'bun:test';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -329,7 +329,33 @@ const removesStillAbandonedLock = await inScratchDirectory(async (scratch) => {
   expect(guard).toBeUndefined();
 });
 
+/**
+ * `Date.now()` counts whole milliseconds and `mtimeMs` keeps the fraction, so a directory written
+ * earlier in the current millisecond has an `mtimeMs` above `Date.now()`. With no grace it must
+ * still read as abandoned (COR-2397). The clock is pinned to the start of that millisecond.
+ */
+const reclaimsOwnerlessDirectoryWrittenThisMillisecond = await inScratchDirectory(
+  async (scratch) => {
+    const { lockDirectory } = scratch;
+    await mkdir(lockDirectory);
+    await writeFile(join(lockDirectory, 'stray'), '');
+    const now = Date.now();
+    await utimes(lockDirectory, (now + 0.5) / 1000, (now + 0.5) / 1000);
+    expect((await stat(lockDirectory)).mtimeMs).toBeGreaterThan(now);
+    setSystemTime(new Date(now));
+    try {
+      await reclaimAbandoned(lockDirectory, 0);
+    } finally {
+      setSystemTime();
+    }
+    expect(await stat(lockDirectory).catch(() => undefined)).toBeUndefined();
+  },
+);
+
 describe('reclaimAbandoned', () => {
+  test('reclaims an ownerless lock written earlier in the current millisecond when there is no grace', () =>
+    rethrow(reclaimsOwnerlessDirectoryWrittenThisMillisecond));
+
   test('leaves a lock that is live by the time the guard is held', () =>
     rethrow(leavesLockLiveByTheTimeGuardIsHeld));
 
