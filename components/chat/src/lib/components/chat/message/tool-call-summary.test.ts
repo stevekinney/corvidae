@@ -214,3 +214,102 @@ describe('foldRepeatedSteps', () => {
     expect(foldRepeatedSteps([], sameName)).toEqual([]);
   });
 });
+
+describe('toolCallFailure (COR-2283, R7)', () => {
+  test('a call that did not fail has none', () => {
+    expect(toolCallFailure(pairWithResult({ outcome: 'success', content: 'ok' }), 'x')).toBe(
+      undefined,
+    );
+    expect(toolCallFailure({ call: { id: 'c', name: 'read' } } as ToolCallPair, 'x')).toBe(
+      undefined,
+    );
+  });
+
+  test('the error message is the summary and its details are the diagnostic', () => {
+    const failure = toolCallFailure(
+      pairWithResult({
+        outcome: 'error',
+        content: null,
+        error: {
+          code: 'timeout',
+          category: 'timeout',
+          retryable: true,
+          message: 'parcelly.example did not answer within 10 s.',
+          details: { url: 'https://parcelly.example/track/4471', attempts: 3 },
+        },
+      }),
+      'This step failed.',
+    );
+    expect(failure?.summary).toBe('parcelly.example did not answer within 10 s.');
+    expect(failure?.diagnostic).toContain('"attempts": 3');
+    expect(failure?.copy).toBe(`${failure?.summary}\n\n${failure?.diagnostic}`);
+  });
+
+  test('a short result with no error object is the summary alone, not repeated as a diagnostic', () => {
+    const failure = toolCallFailure(
+      pairWithResult({ outcome: 'error', content: 'Network unavailable' }),
+      'This step failed.',
+    );
+    expect(failure).toEqual({
+      summary: 'Network unavailable',
+      diagnostic: undefined,
+      copy: 'Network unavailable',
+    });
+  });
+
+  test('a long result with no error object is cut for the summary and kept whole as the diagnostic', () => {
+    const long = `Traceback: ${'frame '.repeat(30)}end`;
+    const failure = toolCallFailure(
+      pairWithResult({ outcome: 'error', content: long }),
+      'This step failed.',
+    );
+    expect(failure?.summary.endsWith('…')).toBe(true);
+    expect(failure?.diagnostic).toBe(long);
+  });
+
+  test('a result with parts is read through its text and media labels, never their addresses', () => {
+    const failure = toolCallFailure(
+      pairWithResult({
+        outcome: 'error',
+        content: null,
+        error: { code: 'E', category: 'internal', retryable: false, message: 'Render failed.' },
+        parts: [
+          { type: 'text', text: 'The chart could not be drawn.' },
+          {
+            type: 'image',
+            mimeType: 'image/png',
+            name: 'chart.png',
+            source: { kind: 'remote-url', url: 'https://tracker.example/pixel.png' },
+          },
+        ],
+      }),
+      'This step failed.',
+    );
+    expect(failure?.diagnostic).toContain('The chart could not be drawn.');
+    expect(failure?.diagnostic).not.toContain('tracker.example');
+  });
+
+  test('a failure that says nothing reads the fallback', () => {
+    expect(
+      toolCallFailure(pairWithResult({ outcome: 'error', content: null }), 'This step failed.')
+        ?.summary,
+    ).toBe('This step failed.');
+  });
+});
+
+describe('formatToolCallElapsed (COR-2283, R1)', () => {
+  test('counts whole seconds, then minutes and seconds', () => {
+    expect(formatToolCallElapsed(0)).toBe('0s');
+    expect(formatToolCallElapsed(4_900)).toBe('4s');
+    expect(formatToolCallElapsed(65_000)).toBe('1m 5s');
+    expect(formatToolCallElapsed(-20)).toBe('0s');
+  });
+});
+
+describe('runningStepTitle (COR-2283, R1)', () => {
+  test('a running step’s title ends in one ellipsis', () => {
+    expect(runningStepTitle('Searching sources')).toBe('Searching sources…');
+    expect(runningStepTitle('Searching sources…')).toBe('Searching sources…');
+    expect(runningStepTitle('Searching sources...')).toBe('Searching sources…');
+  });
+});

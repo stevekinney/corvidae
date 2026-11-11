@@ -134,6 +134,55 @@ export function toolCallResultLine(pair: ToolCallPair): string | undefined {
   return oneLine(text) || undefined;
 }
 
+/**
+ * What a failed step says under its row (COR-2283, R7): a one-line `summary` of what went wrong, a
+ * `diagnostic` with the rest when there is more to say, and `copy`, the text Copy error puts on
+ * the clipboard.
+ */
+export type ToolCallFailure = {
+  /** What went wrong, in one line: the error's message, or the start of what came back. */
+  summary: string;
+  /** The rest of what came back, when it says more than the summary: the error's details, or the whole result. */
+  diagnostic: string | undefined;
+  /** The summary and the diagnostic together, for Copy error. */
+  copy: string;
+};
+
+/**
+ * What a failed call says under its row, or `undefined` for a call that did not fail. The result's
+ * parts are read through their text and media labels, never their addresses, and a result with no
+ * error object is not repeated as both the summary and the diagnostic. `fallback` is the summary of
+ * a failure that says nothing at all.
+ */
+export function toolCallFailure(pair: ToolCallPair, fallback: string): ToolCallFailure | undefined {
+  const result = pair.result;
+  if (result?.outcome !== 'error') return undefined;
+  const body = toolResultText(result).trim();
+  const message = result.error?.message.trim() ?? '';
+  const summary = message !== '' ? message : oneLine(body) || fallback;
+  const details = result.error?.details === undefined ? '' : stringify(result.error.details).trim();
+  const rest = details !== '' ? details : body;
+  const diagnostic = rest !== '' && rest !== summary ? rest : undefined;
+  return {
+    summary,
+    diagnostic,
+    copy: diagnostic === undefined ? summary : `${summary}\n\n${diagnostic}`,
+  };
+}
+
+/** Formats the time a step has been running, in whole seconds: `0s`, `12s`, or `1m 5s`. */
+export function formatToolCallElapsed(milliseconds: number): string {
+  const seconds = Math.floor(Math.max(0, milliseconds) / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+}
+
+/** A running step's title ends in an ellipsis, as a sentence still under way does. */
+export function runningStepTitle(title: string): string {
+  const trimmed = title.trimEnd();
+  return trimmed.endsWith('…') ? trimmed : `${trimmed.replace(/\.+$/u, '')}…`;
+}
+
 /** Formats a duration in milliseconds as `0.4s`, `12s`, or `1m 5s`. */
 export function formatToolCallDuration(milliseconds: number): string {
   if (milliseconds < 10_000) return `${(Math.max(0, milliseconds) / 1000).toFixed(1)}s`;
