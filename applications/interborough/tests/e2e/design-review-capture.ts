@@ -8,17 +8,19 @@
  *
  * Each capture writes the viewport as the person first sees it and, when the shell's outlet scrolls,
  * the whole page with the viewport stretched to the outlet's height. Each appends one line to
- * `manifest.jsonl` in the directory. The suite runs one worker (`playwright.config.ts`), so the
+ * `manifest.jsonl` in the directory, and writes what the page measures (`design-review-geometry-probe.ts`)
+ * to `geometry/<slug>.json` for the geometry audit. The suite runs one worker (`playwright.config.ts`), so the
  * appends never interleave.
  */
 import type { Page } from '@playwright/test';
-import { appendFile, mkdir } from 'node:fs/promises';
+import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
 } from '../../scripts/environment-configuration.ts';
+import { measureGeometry } from './design-review-geometry-probe.ts';
 
 /** The tallest the viewport is stretched to for a whole-page capture, so a runaway list stays readable. */
 const MAXIMUM_FULL_HEIGHT = 8000;
@@ -45,6 +47,10 @@ export interface DesignReviewManifestEntry extends DesignReviewCapture {
   readonly viewport: string;
   /** The whole-page capture, relative to the capture directory, when the outlet scrolls. */
   readonly full?: string;
+  /** What the page measures, relative to the capture directory, for `scripts/design-review-geometry.ts`. */
+  readonly geometry?: string;
+  /** Why the page could not be measured, when the probe threw; the screenshots are still there. */
+  readonly geometryError?: string;
 }
 
 /** A file-name-safe slug of a capture's route, state, tab, width and scheme. */
@@ -86,6 +92,19 @@ export async function captureForDesignReview(
     caret: 'hide',
   });
 
+  // Measured after the screenshot, so a probe that throws costs the measurement and not the capture.
+  let geometry: string | undefined;
+  let geometryError: string | undefined;
+  try {
+    const facts = await measureGeometry(page);
+    await mkdir(join(directory, 'geometry'), { recursive: true });
+    geometry = `geometry/${slug}.json`;
+    await writeFile(join(directory, geometry), `${JSON.stringify(facts)}\n`);
+  } catch (error) {
+    geometry = undefined;
+    geometryError = error instanceof Error ? error.message : String(error);
+  }
+
   // The shell clips the document, so the outlet is what scrolls: stretch the viewport to hold it.
   const overflow = await page
     .locator('main.weft-shell-outlet')
@@ -107,6 +126,8 @@ export async function captureForDesignReview(
     colorScheme,
     viewport,
     ...(full === undefined ? {} : { full }),
+    ...(geometry === undefined ? {} : { geometry }),
+    ...(geometryError === undefined ? {} : { geometryError }),
   };
   await appendFile(join(directory, 'manifest.jsonl'), `${JSON.stringify(entry)}\n`);
 }

@@ -12,7 +12,9 @@
  * It runs those three Playwright specifications with `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` set, so they
  * screenshot each page once it holds its content (`tests/e2e/design-review-capture.ts`), and writes
  * `manifest.jsonl` (one line per capture) and `summary.json` (what ran and how it exited) beside
- * the screenshots. Every page of a capture runs at the sample world's "now", Monday, Nov 2, 2026,
+ * the screenshots, then holds what each page measured to the rubric's thresholds
+ * (`scripts/design-review-geometry.ts`) and writes `geometry-report.md` and `geometry-findings.json`
+ * there too. Every page of a capture runs at the sample world's "now", Monday, Nov 2, 2026,
  * 10:46 AM in America/Chicago (`fixtures/sample-now.ts`): the specifications' shared fixture
  * (`tests/e2e/fixtures.ts`) fixes the browser's `Date` there and sets its time zone while
  * `INTERBOROUGH_DESIGN_REVIEW_CAPTURE` is set. A specification's own assertion failing does not
@@ -41,6 +43,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { withHostSlots } from '../../../scripts/host-slots.ts';
+import { auditGeometry } from './design-review-geometry.ts';
 import { endToEndPort } from './environment-configuration.ts';
 
 const applicationDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -258,6 +261,7 @@ export async function captureDesignReview(
     });
   }
   const captures = await captureCount(options.out);
+  const geometry = await auditGeometry(options.out);
   const summary = {
     out: options.out,
     captures,
@@ -265,8 +269,14 @@ export async function captureDesignReview(
     grep: options.grep ?? null,
     runs,
     clean: runs.every((run) => run.exitCode === 0),
+    geometry,
   };
   await writeFile(join(options.out, 'summary.json'), `${JSON.stringify(summary, null, 2)}\n`);
+  if (geometry.measured > 0) {
+    environment.standardOutput(
+      `design review: ${geometry.findings} geometry findings from ${geometry.measured} measured captures: ${join(options.out, 'geometry-report.md')}\n`,
+    );
+  }
   environment.standardOutput(
     `design review: ${captures} captures in ${options.out}${summary.clean ? '' : ' (a specification failed; see summary.json)'}\n`,
   );

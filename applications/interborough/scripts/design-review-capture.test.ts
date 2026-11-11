@@ -5,7 +5,7 @@
  */
 import { afterAll, afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -252,7 +252,12 @@ describe('captureDesignReview', () => {
   }
 
   /** A host whose Playwright runs write `manifestLines` captures and exit with the given codes. */
-  function standIn(options: { free?: boolean; exitCodes?: number[]; manifestLines?: number }): {
+  function standIn(options: {
+    free?: boolean;
+    exitCodes?: number[];
+    manifestLines?: number;
+    manifest?: string;
+  }): {
     calls: Calls;
     environment: CaptureEnvironment;
   } {
@@ -271,7 +276,9 @@ describe('captureDesignReview', () => {
       },
       async run(command, variables) {
         calls.commands.push({ command, variables });
-        const lines = Array.from({ length: options.manifestLines ?? 0 }, () => '{}').join('\n');
+        const lines =
+          options.manifest ??
+          Array.from({ length: options.manifestLines ?? 0 }, () => '{}').join('\n');
         await writeFile(
           join(variables['INTERBOROUGH_DESIGN_REVIEW_CAPTURE'] ?? '', 'manifest.jsonl'),
           lines,
@@ -337,7 +344,56 @@ describe('captureDesignReview', () => {
         { scheme: 'dark', exitCode: 0 },
       ],
       clean: true,
+      geometry: { captures: 3, measured: 0, coarse: 0, unscaled: 0, findings: 0 },
     });
+    expect(calls.out).not.toContain('geometry findings');
+  });
+
+  test('audits what the captures measured and names the geometry report', async () => {
+    await mkdir(join(directory, 'geometry'), { recursive: true });
+    await writeFile(
+      join(directory, 'geometry', 'agents.json'),
+      JSON.stringify({
+        viewport: { width: 1280, height: 800 },
+        pointerCoarse: false,
+        spaceScale: [],
+        controls: [],
+        textStyles: [
+          { fontSize: 9, lineHeight: 12, fontWeight: 400, count: 1, multiline: false, sample: 'x' },
+        ],
+        borders: [],
+        edges: [],
+        stacks: [],
+        leadingSpace: [],
+      }),
+    );
+    const manifest = JSON.stringify({
+      route: '/agents',
+      state: 'ready',
+      source: '00-showcase.spec.ts',
+      width: 1280,
+      colorScheme: 'light',
+      viewport: 'screens/agents.png',
+      geometry: 'geometry/agents.json',
+    });
+    const { calls, environment } = standIn({ manifest });
+    expect(await captureDesignReview(['--out', directory, '--scheme', 'light'], environment)).toBe(
+      0,
+    );
+    expect(calls.out).toContain(
+      `design review: 1 geometry findings from 1 measured captures: ${join(directory, 'geometry-report.md')}\n`,
+    );
+    const summary = JSON.parse(await readFile(join(directory, 'summary.json'), 'utf8'));
+    expect(summary.geometry).toEqual({
+      captures: 1,
+      measured: 1,
+      coarse: 0,
+      unscaled: 1,
+      findings: 1,
+    });
+    expect(await readFile(join(directory, 'geometry-report.md'), 'utf8')).toContain(
+      'Text too small',
+    );
   });
 
   test('keeps the captures of a run whose specification failed, and says so', async () => {

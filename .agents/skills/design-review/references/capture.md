@@ -37,7 +37,18 @@ The same showcase content loads into a running development host with `bun run de
 | the same | `/health` | refused reads, locked reads, waiting on the engine | 375, 1280 |
 | the same | an unknown address | not found | 375, 1280 |
 
-Each manifest line carries `route`, `state`, `tab`, `width`, `height`, `colorScheme`, `address`, `source`, `viewport` (the above-the-fold image) and `full` (the whole outlet, present only when the page scrolls).
+Each manifest line carries `route`, `state`, `tab`, `width`, `height`, `colorScheme`, `address`, `source`, `viewport` (the above-the-fold image), `full` (the whole outlet, present only when the page scrolls) and `geometry` (what the page measured; `geometryError` instead when the probe threw).
+
+## The geometry audit
+
+After each screenshot the capture measures the page (`tests/e2e/design-review-geometry-probe.ts`) and writes the facts to `geometry/<slug>.json`: each control's box and the box of the label and icons inside it, the sizes and line heights text is set in, each border's width and its contrast against the surface outside it, the left edges text starts on, the gaps between stacked siblings, and wide rows whose content starts far from their leading edge. When the run ends, `scripts/design-review-geometry.ts` holds those facts to `GEOMETRY_THRESHOLDS` and writes two files beside the manifest:
+
+- `geometry-report.md`: one section per rule that was broken, one line per defect, with what was measured, how many captures show it, at which widths and routes, and up to five screenshots. One defect on forty captures is one line.
+- `geometry-findings.json`: the same lines as data, with the thresholds they were held to.
+
+`summary.json` carries the counts under `geometry`. To hold an existing capture to changed thresholds without capturing again, run `bun scripts/design-review-geometry.ts --capture <capture directory>` (exit 1 when the directory holds no measured capture).
+
+The stress captures are measured too, but the rules that read content (`button-wordy`, `leading-space`) skip them. The left-edge rule counts blocks of text, not controls or icons, and the leading-side rule looks only at rows at least 60% of the outlet's width and at most 240 pixels tall.
 
 ## Known gaps
 
@@ -47,6 +58,7 @@ Tell the reviewer about these, and do not let a sweep claim coverage it lacks:
 - The showcase content is what the seed creates, nothing more. The e2e host has no connected tool sources or live workers of its own beyond the suite's fixtures, and the model provider is a stub that gives every model call one fixed reply, so a chat with a file agent shows the same sentence each turn.
 - Item routes (`/agents/:agent`, `/runs/:run`, …) are captured ready only. Their loading, error and not-found states are not.
 - Transient states (a toast, a dialog mid-confirmation, streaming chat output, an offline banner) are not in the sweep. Capture them by hand for an implementation review that changes them: `tests/e2e/states-offline.spec.ts` and the chat specifications show how to reach them, and Chrome on `bun run dev` (port 7234) works for a quick look.
+- Most captures run Desktop Chrome at a narrow width, without touch, so styles under `@media (pointer: coarse)` (touch-sized rows, extended hit areas) do not apply to them. The geometry report says when no capture emulated a coarse pointer; phone target sizes are then the mouse layout's, and a touch-only defect needs a spec that sets `hasTouch`.
 - Hover and focus states are not captured. Focus rings matter to the owner, so a change to them is shown with hand-taken captures.
 
 ## A one-page look
