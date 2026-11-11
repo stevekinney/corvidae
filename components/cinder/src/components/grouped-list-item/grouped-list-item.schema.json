@@ -7,6 +7,41 @@
       "description": "What the leading slot holds.",
       "default": "icon"
     },
+    "leadValue": {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        }
+      ],
+      "description": "The number or word of a time-led row's lead, such as `45` or `9:30`, drawn large. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here."
+    },
+    "leadUnit": {
+      "enum": [
+        "min left",
+        "left",
+        "min to go",
+        "starts",
+        "Mon",
+        "Tue",
+        "Wed",
+        "Thu",
+        "Fri",
+        "Sat",
+        "Sun"
+      ],
+      "description": "The small unit under the lead number, from a closed vocabulary. Used with `leadValue`."
+    },
+    "urgency": {
+      "enum": ["urgent", "soon"],
+      "description": "How pressing the lead is. `urgent` uses the warning text colour and `soon` is muted; left unset, the lead uses the default text colour. Used with `leadValue`."
+    },
+    "staleAge": {
+      "type": "string",
+      "description": "A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker."
+    },
     "chevron": {
       "type": "boolean",
       "description": "Draws a trailing chevron. Left unset, a row with `href` draws one."
@@ -54,7 +89,7 @@
       {
         "name": "photo",
         "reason": "function-or-snippet",
-        "description": "A trailing photo. It reserves no space when absent."
+        "description": "A trailing 56px photo. It reserves no space when absent."
       },
       {
         "name": "subtitle",

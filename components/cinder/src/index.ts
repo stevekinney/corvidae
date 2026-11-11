@@ -541,7 +541,9 @@ export type { GroupedListProps } from './components/grouped-list/index.ts';
 export { default as GroupedListItem } from './components/grouped-list-item/index.ts';
 export type {
   GroupedListItemLeadingKind,
+  GroupedListItemLeadUnit,
   GroupedListItemProps,
+  GroupedListItemUrgency,
 } from './components/grouped-list-item/index.ts';
 
 export { default as GridList } from './components/grid-list/index.ts';

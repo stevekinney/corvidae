@@ -110,13 +110,86 @@
     color: var(--cinder-text-muted);
   }
 
-  /* A trailing photo takes no space when the row has none, since the slot is not rendered. */
+  /* A trailing photo is a 56px column that takes no space when the row has none, since the slot is
+     not rendered. It crops its image to fill. */
   .cinder-grouped-list-item__photo {
     display: flex;
     flex: none;
     align-items: center;
+    inline-size: 3.5rem;
+    block-size: 3.5rem;
     overflow: hidden;
     border-radius: var(--cinder-radius-md);
+  }
+
+  .cinder-grouped-list-item__photo > :where(img, picture, svg) {
+    inline-size: 100%;
+    block-size: 100%;
+    object-fit: cover;
+  }
+
+  /* ----------------------------------------
+ * Time-led row: a number and a unit lead, then the name and one line of content
+ * ---------------------------------------- */
+
+  /* The lead is a fixed 72px column, right-aligned, so the numbers of every row line up on their
+     last digit. It aligns to the first line of a wrapping name. */
+  .cinder-grouped-list-item__lead.cinder-grouped-list-item__lead--timed {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    align-self: flex-start;
+    inline-size: 4.5rem;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    text-align: end;
+  }
+
+  .cinder-grouped-list-item__lead-value {
+    font-size: var(--cinder-text-3xl);
+    font-weight: 750;
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .cinder-grouped-list-item__lead-unit {
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug, 1.35);
+    color: var(--cinder-text-muted);
+  }
+
+  /* Urgent reads loudest, in the warning text colour; soon is quiet, so urgent always stands out. */
+  .cinder-grouped-list-item__lead[data-cinder-urgency='urgent'] {
+    color: var(--cinder-status-warning-text);
+  }
+
+  .cinder-grouped-list-item__lead[data-cinder-urgency='urgent']
+    > .cinder-grouped-list-item__lead-unit {
+    color: inherit;
+  }
+
+  .cinder-grouped-list-item__lead[data-cinder-urgency='soon'] {
+    color: var(--cinder-text-muted);
+  }
+
+  .cinder-grouped-list-item--timed .cinder-grouped-list-item__title {
+    font-size: 1.0625rem;
+    font-weight: var(--cinder-font-heading);
+  }
+
+  .cinder-grouped-list-item--timed .cinder-grouped-list-item__subtitle {
+    font-size: var(--cinder-text-md);
+  }
+
+  /* A stale marker is a gray clock and a short age. A fresh row renders none. */
+  .cinder-grouped-list-item__stale {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    gap: var(--cinder-space-1);
+    font-size: var(--cinder-text-xs);
+    font-variant-numeric: tabular-nums;
+    color: var(--cinder-text-muted);
   }
 
   .cinder-grouped-list-item__trailing {

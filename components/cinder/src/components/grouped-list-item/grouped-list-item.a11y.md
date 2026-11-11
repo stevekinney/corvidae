@@ -31,7 +31,7 @@ Not applicable; the link and any action are focusable in document order, and the
 
 ### Assistive-technology announcements
 
-A selected row without a link carries aria-current. A linked row is announced as a link with its title text.
+A selected row without a link carries aria-current. A linked row is announced as a link with its title text. A time-led row's lead is plain text, so its number and unit read in order ("45 min left"); urgency is carried by position and wording as well as by colour, never by colour alone. A stale marker draws a decorative clock and its age, with a visually hidden "Stale" before the age.
 
 ## Forced colors
 

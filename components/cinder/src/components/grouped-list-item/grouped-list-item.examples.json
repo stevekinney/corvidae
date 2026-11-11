@@ -8,6 +8,12 @@
       "title": "Leading slots",
       "description": "The leading slot holds an icon, an avatar, a 56px thumbnail or a control, each sized for its kind.",
       "code": "<script lang=\"ts\">\n  import { Avatar, GroupedList, GroupedListItem } from '@lostgradient/cinder';\n</script>\n\n<GroupedList header=\"People\">\n  <GroupedListItem href=\"/people/ada\">\n    {#snippet leading()}<Avatar name=\"Ada Lovelace\" />{/snippet}\n    {#snippet title()}Ada Lovelace{/snippet}\n    {#snippet subtitle()}Engineer{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/people/grace\">\n    {#snippet leading()}<Avatar name=\"Grace Hopper\" />{/snippet}\n    {#snippet title()}Grace Hopper{/snippet}\n    {#snippet subtitle()}Admiral{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
+    },
+    {
+      "id": "time-led",
+      "title": "Time-led rows",
+      "description": "A fixed 72px lead holds a number and a unit from a closed vocabulary. Urgent uses the warning text colour, soon is muted, and a stale row draws a gray clock and a short age.",
+      "code": "<script lang=\"ts\">\n  import { GroupedList, GroupedListItem } from '@lostgradient/cinder';\n</script>\n\n<GroupedList header=\"Open now\">\n  <GroupedListItem href=\"/places/rooftop\" leadValue={45} leadUnit=\"min left\" urgency=\"urgent\">\n    {#snippet title()}The Rooftop{/snippet}\n    {#snippet subtitle()}Half-price wells until 8:00 pm{/snippet}\n    {#snippet trailing()}0.4 mi{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/places/lantern\" leadValue=\"4:30\" leadUnit=\"starts\" urgency=\"soon\">\n    {#snippet title()}Lantern Room, which has a much longer name that wraps onto a second line{/snippet}\n    {#snippet subtitle()}Two-dollar drafts{/snippet}\n    {#snippet trailing()}1.2 mi{/snippet}\n  </GroupedListItem>\n  <GroupedListItem href=\"/places/pier\" leadValue=\"Fri\" staleAge=\"3d\">\n    {#snippet title()}The Pier{/snippet}\n    {#snippet subtitle()}Oysters and rosé{/snippet}\n    {#snippet trailing()}2.8 mi{/snippet}\n  </GroupedListItem>\n</GroupedList>\n"
     }
   ]
 }

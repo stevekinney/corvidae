@@ -8,6 +8,27 @@ import type { HTMLLiAttributes } from 'svelte/elements';
  */
 export type GroupedListItemLeadingKind = 'icon' | 'avatar' | 'media' | 'control';
 
+/**
+ * The closed vocabulary of a time-led row's lead unit: how much time is left (`min left`, `left`),
+ * how long until it begins (`min to go`, `starts`), or the weekday it falls on. A range of times
+ * never goes in the lead; it belongs in the content.
+ */
+export type GroupedListItemLeadUnit =
+  | 'min left'
+  | 'left'
+  | 'min to go'
+  | 'starts'
+  | 'Mon'
+  | 'Tue'
+  | 'Wed'
+  | 'Thu'
+  | 'Fri'
+  | 'Sat'
+  | 'Sun';
+
+/** How pressing a time-led row's lead is: `urgent` reads loudest, in the warning colour; `soon` is muted. */
+export type GroupedListItemUrgency = 'urgent' | 'soon';
+
 /** Props for the GroupedListItem component. */
 export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' | 'title'> & {
   /** The row's main text. With `href`, it becomes the link and the whole row is its target. */
@@ -23,7 +44,15 @@ export type GroupedListItemProps = Omit<HTMLLiAttributes, 'class' | 'children' |
   leadingKind?: GroupedListItemLeadingKind;
   /** A fixed-width column for a time or number, such as "45 min left", drawn before the title. Rows in one list line up. */
   lead?: Snippet;
-  /** A trailing photo. It reserves no space when absent. */
+  /** The number or word of a time-led row's lead, such as `45` or `9:30`, drawn large. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. */
+  leadValue?: string | number;
+  /** The small unit under the lead number, from a closed vocabulary. Used with `leadValue`. */
+  leadUnit?: GroupedListItemLeadUnit;
+  /** How pressing the lead is. `urgent` uses the warning text colour and `soon` is muted; left unset, the lead uses the default text colour. Used with `leadValue`. */
+  urgency?: GroupedListItemUrgency;
+  /** A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. */
+  staleAge?: string;
+  /** A trailing 56px photo. It reserves no space when absent. */
   photo?: Snippet;
   /** A trailing value, such as a count or a short status. It is right-aligned and never moves the action column. */
   trailing?: Snippet;

@@ -15,12 +15,15 @@
    */
   export type {
     GroupedListItemLeadingKind,
+    GroupedListItemLeadUnit,
     GroupedListItemProps,
+    GroupedListItemUrgency,
   } from './grouped-list-item.types.ts';
 </script>
 
 <script lang="ts">
   import { ChevronRight } from '@lucide/svelte';
+  import Clock from '@lucide/svelte/icons/clock';
   import { classNames } from '../../utilities/class-names.ts';
   import type { GroupedListItemProps } from './grouped-list-item.types.ts';
 
@@ -30,6 +33,10 @@
     leading,
     leadingKind = 'icon',
     lead,
+    leadValue,
+    leadUnit,
+    urgency,
+    staleAge,
     photo,
     trailing,
     action,
@@ -43,6 +50,9 @@
   }: GroupedListItemProps = $props();
 
   const showChevron = $derived(chevron ?? href !== undefined);
+
+  // A `lead` snippet wins; otherwise a lead value makes the row time-led.
+  const timed = $derived(!lead && leadValue !== undefined);
 
   // `_blank` links always carry noopener and noreferrer, merged into the consumer's tokens.
   const resolvedRel = $derived.by(() => {
@@ -60,6 +70,7 @@
     'cinder-grouped-list-item',
     href !== undefined && 'cinder-grouped-list-item--linked',
     selected && 'cinder-grouped-list-item--selected',
+    timed && 'cinder-grouped-list-item--timed',
     className,
   )}
   data-cinder-selected={selected ? '' : undefined}
@@ -73,6 +84,16 @@
   <div class="cinder-grouped-list-item__content">
     {#if lead}
       <div class="cinder-grouped-list-item__lead">{@render lead()}</div>
+    {:else if timed}
+      <div
+        class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
+        data-cinder-urgency={urgency}
+      >
+        <span class="cinder-grouped-list-item__lead-value">{leadValue}</span>
+        {#if leadUnit}
+          <span class="cinder-grouped-list-item__lead-unit">{leadUnit}</span>
+        {/if}
+      </div>
     {/if}
     <div class="cinder-grouped-list-item__text">
       <div class="cinder-grouped-list-item__title">
@@ -92,6 +113,12 @@
         <div class="cinder-grouped-list-item__subtitle">{@render subtitle()}</div>
       {/if}
     </div>
+    {#if staleAge}
+      <span class="cinder-grouped-list-item__stale">
+        <Clock size={12} aria-hidden="true" />
+        <span class="cinder-sr-only">Stale, </span>{staleAge}
+      </span>
+    {/if}
     {#if photo}
       <div class="cinder-grouped-list-item__photo">{@render photo()}</div>
     {/if}
