@@ -16,6 +16,10 @@ import {
   type RunEvent,
   type RunResult,
   type ChildSignalContract,
+  // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
+  // import because `./types` exports an unrelated string-union type under
+  // the same name (armorer's shutdown-owner outcome vocabulary). The two are
+  // genuinely different values and must not shadow each other here.
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
   appendAgentInput,
   type BackendDescriptor,
@@ -30,10 +34,7 @@ import {
   createRunStartedFrame,
   createSessionInputDeliveryStore,
   createStore,
-  type DurableEventEnvelope,
-  type DurableEventGap,
   type DurableEventOwner,
-  type DurableEventPage,
   type DurableRunDeps,
   type Effort,
   type FlowController,
@@ -287,11 +288,7 @@ import {
 import {
   createDurableEventHistory,
   createDurableEventProducer,
-  deletionMarkerKindFor,
-  DURABLE_HISTORY_GAP_KIND,
   type DurableEventHistory,
-  type DurableEventHistoryPageOptions,
-  type DurableEventHistorySubscribeOptions,
   type DurableEventProducer,
 } from './durable-event-history';
 import { createEventTimestampResolver } from './event-timestamp';
@@ -497,7 +494,6 @@ import {
 import {
   isPlainAuthorityRecord,
   isSessionAuthorityAuthorized,
-  isSessionHistoryReadAuthorized,
   resolvePersistedRunOwningPrincipal,
   resolveRunMemoryOwner,
   resolveSessionOwner,
@@ -612,7 +608,6 @@ import {
   steeringSessionRunTag,
   type SteeringKeyBinding,
   type SteeringLogEvent,
-  type SteeringLogHead,
 } from './steering-log';
 import type {
   AbortingRun,
@@ -639,9 +634,6 @@ import type {
   DurableScheduleDefinition,
   DurableScheduleUpdate,
   ScheduleRevisionGuard,
-  EventHistoryDeletedAggregateOutcome,
-  EventHistoryNotFoundOutcome,
-  EventHistoryUnsupportedOutcome,
   PendingHumanWaitReview,
   PendingReview,
   SessionPendingReview,
@@ -806,6 +798,24 @@ import {
   validateAgentRunInput,
   createTasksRespondLedger,
 } from './run-request-validation';
+import {
+  STEERING_APPEND_ATTEMPTS,
+  REVIEW_AUDIT_OUTBOX_NAMESPACE,
+  type BureauCore,
+  type SteeringCursor,
+  type SteeringFoldHistory,
+  type SteeringPoller,
+  type SessionDeletionRecord,
+  type ReviewAuditAttachment,
+} from './bureau-seams/core';
+import { createEventHistoryReads, type EventHistoryPeers } from './bureau-seams/event-history';
+
+/**
+ * The callables the seams of `constructBureau` read from one another and from the parent: the
+ * intersection of every seam's peers. The annotation on `peers` is required: without it, a getter
+ * that returns a factory's member makes that factory's inferred type circular (TS7022).
+ */
+type BureauPeers = EventHistoryPeers;
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -1387,6 +1397,752 @@ async function constructBureau<const D extends AgentDefinitions>(
       },
     );
   }
+  // COR-2376: the containers the core holds, hoisted here as pure allocations in their original order.
+  const activeRuns = new Set<ActiveRun>();
+  /**
+   * Runs that reported `run.error` and have not yet dispatched the `run.completed` Operative
+   * follows it with. `run.error` takes a run out of `activeRuns`, but its terminal session save
+   * happens only on `run.completed`, which a durable run dispatches once its workflow's result
+   * settles: `shutdown()` waits for these, without aborting them, before it disposes the engine,
+   * or a dispose in that gap rejects the result and leaves the session saying `running` over a
+   * durable run that completed (COR-1580).
+   */
+  const erroredActiveRuns = new Set<ActiveRun>();
+  /**
+   * Runs this process recovered from the durable engine instead of starting them. A graceful
+   * `'abort'` shutdown leaves these running for the next process to recover, as `'detach'` leaves
+   * every durable run: only the tasks a process started are its own to cancel (COR-1707).
+   */
+  const recoveredActiveRuns = new WeakSet<ActiveRun>();
+  /**
+   * COR-2009 — the runs a shutdown aborted. Their session records why the run ended
+   * (`lastRunEndReason: 'host-stopped'`), so a chat the host stopped reads as ended by it.
+   */
+  const runsStoppedByShutdown = new WeakSet<ActiveRun>();
+  // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
+  // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
+  // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
+  // direct/non-durable dispatch path). `dispose()` aborts every entry here
+  // the same way it aborts `activeRuns`, so a catalog run in flight cannot
+  // outlive the bureau that started it.
+  const catalogRuns = new Set<AgentRun<unknown, boolean>>();
+  // COR-1302: the ids of `bureau.run()` runs registered on `store` (see
+  // `registerCatalogRun`), so the reads that enumerate `createRun`'s
+  // session-owned runs — `listRuns`, `listPendingReviews`,
+  // `sweepExpiredReviews` — keep enumerating only those, and the store
+  // subscription keeps their actions, registration, and release off this
+  // bureau's event streams. Released with the rest of a run's per-run state
+  // when the run leaves `store` as it settles.
+  const catalogRunIds = new Set<string>();
+  const runToolboxes = new Set<BureauToolbox>();
+  const runToolboxesByRunId = new Map<string, BureauToolbox>();
+  /**
+   * COR-2106 — the run-scoped `executionContext` of each live run, from the options it was built
+   * with (`runScopedExecutionContextOf`), for the approved call that resumes outside the run's step.
+   * Released wherever `runToolboxesByRunId` releases the run.
+   */
+  const runScopedContexts = new Map<string, Record<string, unknown>>();
+  /**
+   * COR-2299 — the hook plan of each live run (Bureau, plugin and agent tiers), which an approved
+   * call's result is scanned with outside the run's step. Released with `runScopedContexts`.
+   */
+  const runHookPlans = new Map<string, HookRegistry<OperativeHookMap>>();
+  const releaseRunScope = (runId: string): void => {
+    runScopedContexts.delete(runId);
+    runHookPlans.delete(runId);
+  };
+  // AB-207: Bureau-owned background work (scheduler, online-evals, webhook
+  // notifier, audit trail) shares this signal so `shutdown()` can tell an
+  // in-flight judge invocation / webhook delivery to hurry up and settle
+  // instead of stalling the awaited drain. Threaded into each subsystem at
+  // construction time (merged with any caller-supplied signal via
+  // `AbortSignal.any`), aborted at the top of `shutdown()` under BOTH
+  // policies — Bureau-owned work is stopped identically under `'drain'`
+  // (only caller-owned runs get the drain treatment).
+  const backgroundShutdownController = new AbortController();
+  // AB-67/AB-199 review finding (PR #430 — Codex P1, "Prevent released runs
+  // from recreating deleted sessions"): `deleteSession` releases a paused
+  // run rather than aborting it (see `settleForDeletion`'s own doc
+  // comment), so that run keeps executing with no session left to write
+  // to; its terminal `run.completed`/`run.aborted` listener's `saveSession`
+  // call would otherwise recreate the just-deleted record via its own
+  // `existingSession ?? createAgentSession(...)` fallback. Every runId
+  // still live at the moment its session is deleted, or expired through the
+  // store's own `cleanup()` (COR-718), is marked here;
+  // `saveSession` below checks this set (via `metadata['lastRunId']`, the
+  // field every terminal listener already passes) and skips the write
+  // entirely for an orphaned run's own terminal transition. Consumed
+  // (deleted) exactly once, by whichever terminal listener observes the
+  // run first, so a session id legitimately reused later is never blocked
+  // by a stale entry.
+  const orphanedRunIds = new Set<string>();
+  // Ids of PendingReview items already resolved via resolveReview() (AB-20).
+  // Neither resolution path (resumeApproval, signalSession) mutates the live
+  // store in a way listPendingReviews() can detect on its own — resumeApproval
+  // re-invokes the tool directly (no run/step event), and a signalled human-wait
+  // run may take a moment to produce its next action. This set is the
+  // authoritative "already handled" marker so a resolved review disappears
+  // from the queue immediately, and is never accidentally resolved twice.
+  // COR-1622: the expiry sweep's own timer. Declared ahead of the id sets whose additions check
+  // whether it is still needed, so no order of construction can read it before it exists.
+  // `RuntimeTimeoutHandle` is opaque, so a flag tracks whether the timer is armed.
+  let lazyExpirySweepTimer: RuntimeTimeoutHandle;
+  let lazyExpirySweepArmed = false;
+  let lazyExpirySweepPass: Promise<void> | undefined;
+  const resolvedReviewIds = new NotifyingReviewIdSet(() => stopLazyExpirySweepWhenNoneHeld());
+  const resolvingReviewIds = new Set<string>();
+  const reviewResolutionCleanupPending = new Map<
+    string,
+    {
+      sessionId: string;
+      runId: string;
+      kind: PendingReview['kind'];
+      decision: 'approve' | 'deny' | 'reject';
+      review: PendingReview;
+      principal: string;
+      reason?: string;
+      /** What the approved tool returned, so a retry can still write the outcome into the conversation. */
+      result?: unknown;
+      /** COR-1920: what the decision's audit entry says of each secret answer it delivered. */
+      secretAnswers?: readonly SecretAnswerAuditEntry[];
+      /** COR-1828: the digest of the approved answer, which the resolved-review record keeps. */
+      answerDigest?: string | undefined;
+      /** COR-1828: the tool the decision asked to remember, stored with the decision's commit. */
+      rememberTool?: string | undefined;
+      /** COR-1828: the owner of record of the run, for the resolved-review record. */
+      owner?: string | undefined;
+    }
+  >();
+  const pendingApprovalOverrides = new Map<
+    string,
+    Extract<PendingReview, { kind: 'tool-approval' }>['approval']
+  >();
+  // COR-855: how many times each review's approval has been superseded (the
+  // policy gated the resumed call again), by review id. Absent means round 0.
+  // Persisted beside the override so it survives a restart.
+  const pendingApprovalRounds = new Map<string, number>();
+  // COR-1717: approvals restored at boot whose resolution had started but never committed, by
+  // review id, with the epoch-ms the resolution started (undefined for a legacy marker).
+  const interruptedApprovals = new Map<string, number | undefined>();
+  // COR-1596: when each fire approval was requested; see `ScheduledFireReviewState`.
+  const approvalRequestedAt = new Map<string, number>();
+  const terminalReviewSessions = new Map<
+    string,
+    { sessionId: string; agentName: string; requestedAt: number }
+  >();
+  /**
+   * COR-1596 — the runs of schedule fires that hold a tool approval, registered or restored. It
+   * does not gate the terminal-run loop in `listPendingReviews`, which reads
+   * `terminalReviewSessions`: it marks the runs whose per-run state is a fire's, which ends only
+   * through `releaseScheduledFireApproval` and `releaseScheduledFire`, whichever way an approval or
+   * the fire ends.
+   */
+  const scheduledFireApprovalRuns = new Set<string>();
+  // COR-1596: the fires that take another step with an approval pending; see
+  // `ScheduledFireReviewState.continuingScheduledFires`.
+  const continuingScheduledFires = new Set<string>();
+  // A persisted approval can be stale by the time a process restarts. Keep
+  // that failure scoped to its review rather than preventing the bureau from
+  // recovering unrelated runs.
+  const invalidApprovalReviewIds = new NotifyingReviewIdSet(() =>
+    stopLazyExpirySweepWhenNoneHeld(),
+  );
+  // AB-54 usage analytics: agentName/principal resolved deterministically at
+  // `createRun` time, keyed by runId. Layer A only (in-memory, like the rest
+  // of RunSummary) — a durably recovered run (process restart) has no entry
+  // here and `serializeRunState` falls back to the `findRunAgentName`
+  // heuristic for `agentName`; `principal` has no such fallback since it is
+  // never persisted durably. Entries for a `createRun`-dispatched run are
+  // removed on `deleteRun` so this map does not outlive the run it
+  // describes. A `bureau.run()` durable catalog dispatch's entry (AB-241)
+  // has no `deleteRun` equivalent and is never removed, exactly like
+  // `createRun`'s own entry for a run nobody ever calls `deleteRun` on: the
+  // run leaves `store` on its own as it settles (COR-1302), and its
+  // attribution deliberately outlives that release, since `eventHistory`'s
+  // principal gate reads it.
+  const runAttribution = new Map<string, RunAttribution>();
+  // AB-67/AB-199 — one SteeringGate per session, created (or reused)
+  // EAGERLY by `createRunFromRequest` at the start of every in-memory run —
+  // NOT lazily on the first `submitSteeringCommand` call, which would miss
+  // every run already in flight by the time a caller first pauses it (see
+  // the identical note at `createRunFromRequest`'s own gate lookup, and
+  // `steering.ts`'s `createSteeringGate` doc comment). `submitSteeringCommand`
+  // also creates one on demand for the (rare) case a caller pauses a session
+  // whose current run started before this map existed at all (recovery
+  // paths), but in ordinary operation the run-start path always wins the
+  // race. Held for the bureau's lifetime, like the other per-session maps
+  // above, EXCEPT this one is explicitly cleaned up on `deleteSession` (see
+  // `deleteSession` below) so a reused session id never inherits a deleted
+  // session's pause state / command history / applied floor.
+  const steeringGates = new Map<string, BureauSteeringGate>();
+  /**
+   * COR-435 — one session-input mailbox per session incarnation (COR-1476),
+   * for a durably-configured bureau. See `session-input-durability.ts`'s
+   * module doc: the cross-session identity index lives in `runtime.kv`
+   * directly, not in a second `Mailbox`. Cached for the same reason
+   * `steeringMailboxes` is: constructing a second `Mailbox` for the same
+   * `(namespace, resourceId)` would defeat the FIFO ordering that is the
+   * point of using one.
+   */
+  const sessionInputMailboxes = new Map<string, Mailbox>();
+  /**
+   * The pending `run-ended` steering write of each run that is ending (COR-1476).
+   * It is the durable not-live write the run's session-input settlement waits
+   * for, and rejects when the write failed, so the settlement retries it.
+   */
+  const steeringRunEndWrites = new Map<string, Promise<void>>();
+  /** The session-input settlements of runs that have ended and have not finished (COR-1476). */
+  const inFlightSessionInputSettlements = new Set<Promise<void>>();
+  /**
+   * The save that records a run's end in its session, while it is in flight, by run id. A reader
+   * that needs the session as the run left it (`Bureau.whenRunRecorded`) waits on this promise,
+   * not on a count of turns of the event loop, so however slow or retried the save is, it is waited
+   * for.
+   */
+  const terminalSessionRecords = new Map<string, Promise<void>>();
+  const terminalSessionRecordSettlers = new Map<
+    string,
+    { resolve: () => void; reject: (reason: unknown) => void }
+  >();
+  /**
+   * Resolves the moment shutdown begins, so a settlement waiting out a retry
+   * backoff ends its wait at once instead of after the whole delay.
+   */
+  const sessionInputClosing = Promise.withResolvers<void>();
+  /** The gate of each durable run that has one, disposed when the run ends however it ends. */
+  const sessionInputGates = new Map<
+    string,
+    { readonly gate: SessionInputGate; readonly sessionId: string }
+  >();
+  const steeringCursors = new Map<string, SteeringCursor>();
+  /**
+   * The session incarnation each of this process's durably steered runs
+   * belongs to, until its `run-ended` is logged. A session deleted and
+   * recreated under the same id while an old run is still settling must
+   * not count that run as live for the new incarnation.
+   */
+  const steeringRunIncarnations = new Map<string, string>();
+  /**
+   * Runs whose local handle has settled. A durable run abandoned to another
+   * owner (a lost checkpoint race, a disposed engine) settles with no
+   * terminal event and stays `running` in the store, so the store alone
+   * cannot say whether this process still drives it.
+   */
+  const settledLocalRunIds = new Set<string>();
+  /** One log operation at a time per session, in this process. */
+  const steeringQueues = new Map<string, Promise<unknown>>();
+  /**
+   * One poller per session while this process drives any of its durable
+   * runs. A command admitted in another process reaches these runs only
+   * through the log, so the poller folds it here every
+   * {@link STEERING_POLL_MS}: a remote pause, resume, or configuration
+   * change takes effect at the run's next boundary, and a remote resume
+   * releases a run waiting on its pause. A session deleted elsewhere is
+   * seen here too: that deletion settles only its own process's gate, so
+   * the poller releases this gate's paused runs the same way.
+   */
+  const steeringPollers = new Map<string, SteeringPoller>();
+  // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
+  // every session's gate shares (see `steering.ts`'s `createSteeringGate`
+  // `ledger` parameter doc comment): a same-`(principal, id)` retry against
+  // a DIFFERENT session must resolve to `session-mismatch`, not be silently
+  // admitted as an unrelated command in that other session's own ledger.
+  const steeringCommandLedger = createSteeringCommandLedger();
+  /**
+   * The `policyRef` a caller submitted for an in-process model command Bureau resolved, by the
+   * session's steering gate and then `principal -> id`: the in-process counterpart of a cursor's
+   * `submitted`, which a fork reads to carry the request as the parent made it. Keyed by the gate,
+   * the entries leave with it when the session is deleted or expires, as its ledger entries do, so
+   * a command id reused afterwards, or a session recreated under the same id, never reads them.
+   */
+  const submittedSteeringValues = new WeakMap<
+    BureauSteeringGate,
+    Map<string, Map<string, SteeringRequestedValue>>
+  >();
+  // Keep the exact host-supplied (or bureau-derived) context for approval
+  // resumption. Approval bindings identify the original caller, but are not a
+  // substitute for the complete request context and must not mint authority.
+  const runRequestContexts = new Map<string, ToolRequestContext>();
+  const recoveredRunIds = new Set<string>();
+  const scheduledFireReviewState: ScheduledFireReviewState = {
+    pendingApprovalOverrides,
+    pendingApprovalRounds,
+    terminalReviewSessions,
+    approvalRequestedAt,
+    runRequestContexts,
+    runToolboxesByRunId,
+    resolvedReviewIds,
+    invalidApprovalReviewIds,
+    scheduledFireApprovalRuns,
+    continuingScheduledFires,
+    now: runtimeServices.clock.now,
+  };
+  const isTransportIssuedAuthority = (context: ToolRequestContext): boolean =>
+    workspace !== undefined ||
+    (context.authority.authorizationRevision !== 'bureau:1' &&
+      context.authority.authorizationRevision !== 'bureau:scheduler:1');
+  const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
+  const bootFrameRunIds = new Set<string>();
+  const bootFrameBuffer: ServerFrame[] = [];
+  // COR-625: one memoized terminal-cleanup step per run id. Every trigger
+  // MUST route through `runTerminalCheckpointCleanup` rather than calling the
+  // step directly — the exactly-once guarantee is the memo, not the triggers.
+  // Entries are released only by `deleteRun`, which a caller can reach only
+  // for an already-terminal run, so a released entry cannot be re-created by
+  // any of today's three triggers. A future API that can re-fire a terminal
+  // transition for one run id would break that and must be routed here too. This is what
+  // makes the step exactly-once across its three independent triggers — the
+  // live run's terminal listeners, a recovered run's terminal listeners, and
+  // `cancelDurableRun` on a run this process holds no `ActiveRun` for. Its
+  // entries are released when the run is deleted (`deleteRun`), so
+  // a long-lived bureau does not retain one promise per run forever.
+  const terminalCheckpointCleanups = new Map<string, Promise<RunCleanupAcknowledgement>>();
+  // AB-205/AB-37 — ids `abortRun` has already requested cancellation for
+  // (`ActiveRun.abort()` called) but whose teardown has not yet genuinely
+  // settled. Guards `abortRun` itself against re-calling `abort()` (and
+  // re-chaining a `closed()` continuation) on a same-run repeat call while
+  // it is still `'running'`; NOT surfaced through `getRun`/`listRuns` — see
+  // the doc comment on `abortRun` below for why those two deliberately keep
+  // reporting the real, unmodified `'running'` status for a run in this
+  // window rather than the transitional `'aborting'` value `abortRun`'s own
+  // return reports. An entry is removed once `ActiveRun.closed()` genuinely
+  // settles (AB-204); `Store` itself never writes `'aborting'` (see
+  // `RunStatus`'s doc comment in `operative/src/store/types.ts`).
+  //
+  // AB-369: the value is the `runtimeServices.clock.now()` timestamp
+  // recorded when `abortRun` first requested cancellation for that run —
+  // exposed publicly via `listAbortingRuns()` so a regression in the
+  // `closed().then(() => abortingRunIds.delete(id))` cleanup below surfaces
+  // as a genuinely observable leak (`BureauQuiescenceReport`, `bureau/test`)
+  // instead of an invisible, unbounded-growth bookkeeping mutation.
+  const abortingRunIds = new Map<string, number>();
+  // AB-15: per-run monotonic sequence counter for run-scoped live frames
+  // (`event` and `stream:*`). Stamped once here — the single point where
+  // frames reach `emitLiveFrame` — so the store action listener never has to
+  // coordinate on sequencing itself.
+  // Cleared on `run.removed` (see the store subscription below) so the map
+  // does not grow unbounded across a long-lived bureau.
+  const runSequenceCounters = new Map<string, number>();
+  const sessionPersistenceRetryDelayMilliseconds = SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS;
+  const sessionPersistenceSleep = createSessionPersistenceSleep(runtimeServices.timers);
+  const shutdownTimeoutSleep = createShutdownTimeoutSleep(runtimeServices.timers);
+  /**
+   * COR-1481 — the review ids already announced with `review.requested`, per run,
+   * so a review is announced once however many actions follow it. Dropped with the
+   * run.
+   */
+  const announcedReviewRequests = new Map<string, Set<string>>();
+  /**
+   * Per run: parks already committed to the durable checkpoint by a previous
+   * process, seeded by `reconstructHumanWaitReviewIfParked` on recovery. The
+   * live action log only holds this process's parks, so the ordinal of the
+   * first live park starts here.
+   */
+  const humanWaitParkBaseline = new Map<string, number>();
+  /**
+   * AB-388 (Codex review, PR #597, "Run audit retention for KV-backed
+   * non-durable bureaus" / "Isolate the manual audit-retention sub-pass"):
+   * `auditTrailInstance` is built whenever `runtime.kv` exists — a
+   * storage backend with `durable: false` gives it a `kv`
+   * without ever giving `runtime.durable` a durable engine. Gating this whole
+   * function's body on `!runtime.durable` (the ORIGINAL shape) made a
+   * configured `retention.audit` policy unreachable for exactly that
+   * configuration — a manual host's own alarm/Cron trigger calling this
+   * got an early `undefined` and never pruned anything, growing the
+   * durable audit keys without bound. `runtime.durable.engine.runMaintenance()`
+   * is still SKIPPED when there is no durable engine (nothing to
+   * maintain), but `pruneStaleRunOwnership()`/`pruneAuditTrail()` are
+   * unconditional — both already self-guard on their own preconditions
+   * (`eventHistoryInstance`/`sessionStore` and `auditTrailInstance`
+   * respectively) and no-op harmlessly when those are absent.
+   *
+   * Each sub-pass runs under its OWN try/catch, mirroring the automatic
+   * timer's identical isolation further below: a `pruneStaleRunOwnership()`
+   * rejection (e.g. `sessionStore.list()` failing) must never prevent
+   * `pruneAuditTrail()` from running this same call — the two are
+   * documented (`packages/bureau/README.md`) as independent sub-passes,
+   * and before this fix a manual host's own call here contradicted that
+   * for exactly the case a rejection actually happens.
+   */
+  // AB-388 (Codex review, PR #597, "Await manual pruning before storage
+  // teardown"): `automaticRunOwnershipPruneCurrentPass` below only tracks
+  // the AUTOMATIC-profile timer's own tick. A caller invoking
+  // `maintain()` directly (the manual/serverless profile's own
+  // alarm/Cron trigger) has no equivalent tracking, so `shutdown()` could
+  // dispose storage while such a call's `pruneStaleRunOwnership()`/
+  // `pruneAuditTrail()` sub-passes were still listing, deleting, or writing
+  // a watermark/summary. Every in-flight manual call registers its pass
+  // here; `shutdown()` drains the set (`Promise.allSettled`, since a
+  // rejection is already diagnosed by each sub-pass's own try/catch, or is
+  // this function's own re-thrown `engineMaintenanceError`) before backend
+  // teardown, alongside the automatic timer's own await.
+  const manualDurableMaintenancePasses = new Set<Promise<void>>();
+  const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
+  const sessionDeletionOwners = new Map<string, SessionDeletionRecord>();
+  /** Sessions the store is about to expire, held until their `session.deleted` entry drains. */
+  const expiringSessions = new Map<string, AgentSession>();
+  const core: BureauCore<D> = {
+    options,
+    workspace,
+    assetServiceHolder,
+    assetServiceInstance,
+    pluginRegistry,
+    ownsStore,
+    runtimeServices,
+    constructedAtMilliseconds,
+    store,
+    emitter,
+    bureauId,
+    eventFeed,
+    eventFeedSubscription,
+    stopForwarding,
+    runEventFeeds,
+    agentsSnapshot,
+    goalWorkflowHost,
+    goalAttemptFenceHost,
+    lateDecisions,
+    goalValidatorCatalog,
+    recoveredWorkflowHandler,
+    runSessionIdentifiers,
+    runSessionIncarnations,
+    runtime,
+    diagnose,
+    diagnoseSettings,
+    currentSettings,
+    settingsOf,
+    toolGrantNow,
+    sessionInputSessionBacklogLimit,
+    sessionInputPrincipalBacklogLimit,
+    configureChildWaitServices,
+    assertRunAdmissionOpen,
+    releaseRunToolboxWhenIdle,
+    withBackgroundShutdownSignal,
+    interruptedFields,
+    dropPendingApprovalOverride,
+    activeRuns,
+    erroredActiveRuns,
+    recoveredActiveRuns,
+    runsStoppedByShutdown,
+    catalogRuns,
+    catalogRunIds,
+    runToolboxes,
+    runToolboxesByRunId,
+    runScopedContexts,
+    runHookPlans,
+    releaseRunScope,
+    backgroundShutdownController,
+    orphanedRunIds,
+    resolvedReviewIds,
+    resolvingReviewIds,
+    reviewResolutionCleanupPending,
+    pendingApprovalOverrides,
+    pendingApprovalRounds,
+    interruptedApprovals,
+    approvalRequestedAt,
+    terminalReviewSessions,
+    scheduledFireApprovalRuns,
+    continuingScheduledFires,
+    invalidApprovalReviewIds,
+    runAttribution,
+    steeringGates,
+    sessionInputMailboxes,
+    steeringRunEndWrites,
+    inFlightSessionInputSettlements,
+    terminalSessionRecords,
+    terminalSessionRecordSettlers,
+    sessionInputClosing,
+    sessionInputGates,
+    steeringCursors,
+    steeringRunIncarnations,
+    settledLocalRunIds,
+    steeringQueues,
+    steeringPollers,
+    steeringCommandLedger,
+    submittedSteeringValues,
+    runRequestContexts,
+    recoveredRunIds,
+    scheduledFireReviewState,
+    isTransportIssuedAuthority,
+    liveFrameListeners,
+    bootFrameRunIds,
+    bootFrameBuffer,
+    terminalCheckpointCleanups,
+    abortingRunIds,
+    runSequenceCounters,
+    sessionPersistenceRetryDelayMilliseconds,
+    sessionPersistenceSleep,
+    shutdownTimeoutSleep,
+    announcedReviewRequests,
+    humanWaitParkBaseline,
+    manualDurableMaintenancePasses,
+    inFlightSessionDeletions,
+    sessionDeletionOwners,
+    expiringSessions,
+    get settingsComposition() {
+      return settingsComposition;
+    },
+    get memoryEmbedder() {
+      return memoryEmbedder;
+    },
+    get hooksInstance() {
+      return hooksInstance;
+    },
+    get models() {
+      return models;
+    },
+    get agentToolCatalog() {
+      return agentToolCatalog;
+    },
+    get fileAgents() {
+      return fileAgents;
+    },
+    get agentCatalog() {
+      return agentCatalog;
+    },
+    get workflowRuntime() {
+      return workflowRuntime;
+    },
+    get steeringSweep() {
+      return steeringSweep;
+    },
+    get requestAuthorityValidator() {
+      return requestAuthorityValidator;
+    },
+    get durableRecoveryStarted() {
+      return durableRecoveryStarted;
+    },
+    get liveFramesSubscribed() {
+      return liveFramesSubscribed;
+    },
+    get frameReplayQueue() {
+      return frameReplayQueue;
+    },
+    get fireReviewFollower() {
+      return fireReviewFollower;
+    },
+    get auditTrailInstance() {
+      return auditTrailInstance;
+    },
+    get webhookNotifierInstance() {
+      return webhookNotifierInstance;
+    },
+    get scorerSamplerInstance() {
+      return scorerSamplerInstance;
+    },
+    get durableEventProducerInstance() {
+      return durableEventProducerInstance;
+    },
+    get taskResyncInstance() {
+      return taskResyncInstance;
+    },
+    get shutdownPromise() {
+      return shutdownPromise;
+    },
+    set shutdownPromise(value) {
+      shutdownPromise = value;
+    },
+    get runAdmissionClosed() {
+      return runAdmissionClosed;
+    },
+    set runAdmissionClosed(value) {
+      runAdmissionClosed = value;
+    },
+    get lazyExpirySweepPass() {
+      return lazyExpirySweepPass;
+    },
+    set lazyExpirySweepPass(value) {
+      lazyExpirySweepPass = value;
+    },
+    get currentRecoveryPerRunFailures() {
+      return currentRecoveryPerRunFailures;
+    },
+    set currentRecoveryPerRunFailures(value) {
+      currentRecoveryPerRunFailures = value;
+    },
+    get currentRecoverySweepFailure() {
+      return currentRecoverySweepFailure;
+    },
+    set currentRecoverySweepFailure(value) {
+      currentRecoverySweepFailure = value;
+    },
+    get currentRecoverySkippedRuns() {
+      return currentRecoverySkippedRuns;
+    },
+    set currentRecoverySkippedRuns(value) {
+      currentRecoverySkippedRuns = value;
+    },
+    get recoveryPassActive() {
+      return recoveryPassActive;
+    },
+    set recoveryPassActive(value) {
+      recoveryPassActive = value;
+    },
+    get taskResyncBootPass() {
+      return taskResyncBootPass;
+    },
+    set taskResyncBootPass(value) {
+      taskResyncBootPass = value;
+    },
+    get outboxRetryTimerHandle() {
+      return outboxRetryTimerHandle;
+    },
+    set outboxRetryTimerHandle(value) {
+      outboxRetryTimerHandle = value;
+    },
+    get outboxRetryTimerArmedForMs() {
+      return outboxRetryTimerArmedForMs;
+    },
+    set outboxRetryTimerArmedForMs(value) {
+      outboxRetryTimerArmedForMs = value;
+    },
+    get outboxDrainInFlight() {
+      return outboxDrainInFlight;
+    },
+    set outboxDrainInFlight(value) {
+      outboxDrainInFlight = value;
+    },
+    get maintenanceAdmissionClosed() {
+      return maintenanceAdmissionClosed;
+    },
+    set maintenanceAdmissionClosed(value) {
+      maintenanceAdmissionClosed = value;
+    },
+    get automaticRunOwnershipPruneTimer() {
+      return automaticRunOwnershipPruneTimer;
+    },
+    set automaticRunOwnershipPruneTimer(value) {
+      automaticRunOwnershipPruneTimer = value;
+    },
+    get automaticRunOwnershipPruneTimerStarted() {
+      return automaticRunOwnershipPruneTimerStarted;
+    },
+    set automaticRunOwnershipPruneTimerStarted(value) {
+      automaticRunOwnershipPruneTimerStarted = value;
+    },
+    get automaticRunOwnershipPruneCurrentPass() {
+      return automaticRunOwnershipPruneCurrentPass;
+    },
+    set automaticRunOwnershipPruneCurrentPass(value) {
+      automaticRunOwnershipPruneCurrentPass = value;
+    },
+    get tryAgents() {
+      return tryAgents;
+    },
+    get flowController() {
+      return flowController;
+    },
+    get scheduleHookOrigins() {
+      return scheduleHookOrigins;
+    },
+    get runCreationLedger() {
+      return runCreationLedger;
+    },
+    get sessionInputDeliveryStore() {
+      return sessionInputDeliveryStore;
+    },
+    get sessionInputSettlement() {
+      return sessionInputSettlement;
+    },
+    get chatSpendLedger() {
+      return chatSpendLedger;
+    },
+    get processLease() {
+      return processLease;
+    },
+    get tasks() {
+      return tasks;
+    },
+    get notificationsComposition() {
+      return notificationsComposition;
+    },
+    get catalogRunSettlements() {
+      return catalogRunSettlements;
+    },
+    get catalogSettlements() {
+      return catalogSettlements;
+    },
+    get catalogAssetReleases() {
+      return catalogAssetReleases;
+    },
+    get catalogRunAssets() {
+      return catalogRunAssets;
+    },
+    get fireReviewSeeds() {
+      return fireReviewSeeds;
+    },
+    get storeSubscription() {
+      return storeSubscription;
+    },
+    get sessionPersistence() {
+      return sessionPersistence;
+    },
+    get abandonedTaskSweeper() {
+      return abandonedTaskSweeper;
+    },
+    get outboxDrainOwner() {
+      return outboxDrainOwner;
+    },
+    get maintenanceMemoryAuthority() {
+      return maintenanceMemoryAuthority;
+    },
+    get chatContentPurge() {
+      return chatContentPurge;
+    },
+    get assetClaimReconciler() {
+      return assetClaimReconciler;
+    },
+    get forkLedger() {
+      return forkLedger;
+    },
+    get persistentDurableStorage() {
+      return persistentDurableStorage;
+    },
+    get eventHistoryInstance() {
+      return eventHistoryInstance;
+    },
+    get surfaces() {
+      return surfaces;
+    },
+    get reviewDecisions() {
+      return reviewDecisions;
+    },
+    get resolvedReviewStore() {
+      return resolvedReviewStore;
+    },
+    get runHumanWaits() {
+      return runHumanWaits;
+    },
+    get workflowReviewWaits() {
+      return workflowReviewWaits;
+    },
+    get childTopologyStore() {
+      return childTopologyStore;
+    },
+    get childTopology() {
+      return childTopology;
+    },
+    get peerCalls() {
+      return peerCalls;
+    },
+    get goalsComposition() {
+      return goalsComposition;
+    },
+    get bureau() {
+      return bureau;
+    },
+  };
+  // Every peer is read through a getter, at call time, so the order of the factory calls below does
+  // not matter and a peer may be declared after them.
+  const peers: BureauPeers = {
+    get runOwner() {
+      return runOwner;
+    },
+    get scheduleOwner() {
+      return scheduleOwner;
+    },
+  };
+  // The seam block: synchronous, side-effect-free factories, called before anything can reach them.
+  const { readEventHistory, subscribeToEventHistory } = createEventHistoryReads<D>(core, peers);
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -2033,59 +2789,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   const flowController: FlowController | undefined = options.flowControl
     ? createFlowController(options.flowControl)
     : undefined;
-  const activeRuns = new Set<ActiveRun>();
-  /**
-   * Runs that reported `run.error` and have not yet dispatched the `run.completed` Operative
-   * follows it with. `run.error` takes a run out of `activeRuns`, but its terminal session save
-   * happens only on `run.completed`, which a durable run dispatches once its workflow's result
-   * settles: `shutdown()` waits for these, without aborting them, before it disposes the engine,
-   * or a dispose in that gap rejects the result and leaves the session saying `running` over a
-   * durable run that completed (COR-1580).
-   */
-  const erroredActiveRuns = new Set<ActiveRun>();
-  /**
-   * Runs this process recovered from the durable engine instead of starting them. A graceful
-   * `'abort'` shutdown leaves these running for the next process to recover, as `'detach'` leaves
-   * every durable run: only the tasks a process started are its own to cancel (COR-1707).
-   */
-  const recoveredActiveRuns = new WeakSet<ActiveRun>();
-  /**
-   * COR-2009 — the runs a shutdown aborted. Their session records why the run ended
-   * (`lastRunEndReason: 'host-stopped'`), so a chat the host stopped reads as ended by it.
-   */
-  const runsStoppedByShutdown = new WeakSet<ActiveRun>();
-  // AB-22: runs dispatched through `bureau.run(...)`, tracked separately from
-  // `activeRuns` above (which holds only bureau-owned `ActiveRun` internals,
-  // not the arbitrary `AgentRun` a catalog `RunnableAgent` may return on the
-  // direct/non-durable dispatch path). `dispose()` aborts every entry here
-  // the same way it aborts `activeRuns`, so a catalog run in flight cannot
-  // outlive the bureau that started it.
-  const catalogRuns = new Set<AgentRun<unknown, boolean>>();
-  // COR-1302: the ids of `bureau.run()` runs registered on `store` (see
-  // `registerCatalogRun`), so the reads that enumerate `createRun`'s
-  // session-owned runs — `listRuns`, `listPendingReviews`,
-  // `sweepExpiredReviews` — keep enumerating only those, and the store
-  // subscription keeps their actions, registration, and release off this
-  // bureau's event streams. Released with the rest of a run's per-run state
-  // when the run leaves `store` as it settles.
-  const catalogRunIds = new Set<string>();
-  const runToolboxes = new Set<BureauToolbox>();
-  const runToolboxesByRunId = new Map<string, BureauToolbox>();
-  /**
-   * COR-2106 — the run-scoped `executionContext` of each live run, from the options it was built
-   * with (`runScopedExecutionContextOf`), for the approved call that resumes outside the run's step.
-   * Released wherever `runToolboxesByRunId` releases the run.
-   */
-  const runScopedContexts = new Map<string, Record<string, unknown>>();
-  /**
-   * COR-2299 — the hook plan of each live run (Bureau, plugin and agent tiers), which an approved
-   * call's result is scanned with outside the run's step. Released with `runScopedContexts`.
-   */
-  const runHookPlans = new Map<string, HookRegistry<OperativeHookMap>>();
-  const releaseRunScope = (runId: string): void => {
-    runScopedContexts.delete(runId);
-    runHookPlans.delete(runId);
-  };
   let shutdownPromise: Promise<BureauShutdownReport> | undefined;
   // COR-690: flipped synchronously the moment `shutdown()` starts, before it
   // snapshots the runs and toolboxes it drains, so an API or scheduler run
@@ -2102,86 +2805,11 @@ async function constructBureau<const D extends AgentDefinitions>(
   function releaseRunToolboxWhenIdle(runToolbox: BureauToolbox): void {
     detachBestEffortPromise(runToolbox.whenIdle().then(() => runToolboxes.delete(runToolbox)));
   }
-  // AB-207: Bureau-owned background work (scheduler, online-evals, webhook
-  // notifier, audit trail) shares this signal so `shutdown()` can tell an
-  // in-flight judge invocation / webhook delivery to hurry up and settle
-  // instead of stalling the awaited drain. Threaded into each subsystem at
-  // construction time (merged with any caller-supplied signal via
-  // `AbortSignal.any`), aborted at the top of `shutdown()` under BOTH
-  // policies — Bureau-owned work is stopped identically under `'drain'`
-  // (only caller-owned runs get the drain treatment).
-  const backgroundShutdownController = new AbortController();
   function withBackgroundShutdownSignal(callerSignal: AbortSignal | undefined): AbortSignal {
     return callerSignal
       ? AbortSignal.any([callerSignal, backgroundShutdownController.signal])
       : backgroundShutdownController.signal;
   }
-  // AB-67/AB-199 review finding (PR #430 — Codex P1, "Prevent released runs
-  // from recreating deleted sessions"): `deleteSession` releases a paused
-  // run rather than aborting it (see `settleForDeletion`'s own doc
-  // comment), so that run keeps executing with no session left to write
-  // to; its terminal `run.completed`/`run.aborted` listener's `saveSession`
-  // call would otherwise recreate the just-deleted record via its own
-  // `existingSession ?? createAgentSession(...)` fallback. Every runId
-  // still live at the moment its session is deleted, or expired through the
-  // store's own `cleanup()` (COR-718), is marked here;
-  // `saveSession` below checks this set (via `metadata['lastRunId']`, the
-  // field every terminal listener already passes) and skips the write
-  // entirely for an orphaned run's own terminal transition. Consumed
-  // (deleted) exactly once, by whichever terminal listener observes the
-  // run first, so a session id legitimately reused later is never blocked
-  // by a stale entry.
-  const orphanedRunIds = new Set<string>();
-  // Ids of PendingReview items already resolved via resolveReview() (AB-20).
-  // Neither resolution path (resumeApproval, signalSession) mutates the live
-  // store in a way listPendingReviews() can detect on its own — resumeApproval
-  // re-invokes the tool directly (no run/step event), and a signalled human-wait
-  // run may take a moment to produce its next action. This set is the
-  // authoritative "already handled" marker so a resolved review disappears
-  // from the queue immediately, and is never accidentally resolved twice.
-  // COR-1622: the expiry sweep's own timer. Declared ahead of the id sets whose additions check
-  // whether it is still needed, so no order of construction can read it before it exists.
-  // `RuntimeTimeoutHandle` is opaque, so a flag tracks whether the timer is armed.
-  let lazyExpirySweepTimer: RuntimeTimeoutHandle;
-  let lazyExpirySweepArmed = false;
-  let lazyExpirySweepPass: Promise<void> | undefined;
-  const resolvedReviewIds = new NotifyingReviewIdSet(() => stopLazyExpirySweepWhenNoneHeld());
-  const resolvingReviewIds = new Set<string>();
-  const reviewResolutionCleanupPending = new Map<
-    string,
-    {
-      sessionId: string;
-      runId: string;
-      kind: PendingReview['kind'];
-      decision: 'approve' | 'deny' | 'reject';
-      review: PendingReview;
-      principal: string;
-      reason?: string;
-      /** What the approved tool returned, so a retry can still write the outcome into the conversation. */
-      result?: unknown;
-      /** COR-1920: what the decision's audit entry says of each secret answer it delivered. */
-      secretAnswers?: readonly SecretAnswerAuditEntry[];
-      /** COR-1828: the digest of the approved answer, which the resolved-review record keeps. */
-      answerDigest?: string | undefined;
-      /** COR-1828: the tool the decision asked to remember, stored with the decision's commit. */
-      rememberTool?: string | undefined;
-      /** COR-1828: the owner of record of the run, for the resolved-review record. */
-      owner?: string | undefined;
-    }
-  >();
-  const pendingApprovalOverrides = new Map<
-    string,
-    Extract<PendingReview, { kind: 'tool-approval' }>['approval']
-  >();
-  // COR-855: how many times each review's approval has been superseded (the
-  // policy gated the resumed call again), by review id. Absent means round 0.
-  // Persisted beside the override so it survives a restart.
-  const pendingApprovalRounds = new Map<string, number>();
-  // COR-1717: approvals restored at boot whose resolution had started but never committed, by
-  // review id, with the epoch-ms the resolution started (undefined for a legacy marker).
-  const interruptedApprovals = new Map<string, number | undefined>();
-  // COR-1596: when each fire approval was requested; see `ScheduledFireReviewState`.
-  const approvalRequestedAt = new Map<string, number>();
   function interruptedFields(
     reviewId: string,
   ): { interrupted: true; resolutionStartedAt: number | undefined } | Record<never, never> {
@@ -2196,42 +2824,7 @@ async function constructBureau<const D extends AgentDefinitions>(
     approvalRequestedAt.delete(reviewId);
     stopLazyExpirySweepWhenNoneHeld();
   }
-  const terminalReviewSessions = new Map<
-    string,
-    { sessionId: string; agentName: string; requestedAt: number }
-  >();
-  /**
-   * COR-1596 — the runs of schedule fires that hold a tool approval, registered or restored. It
-   * does not gate the terminal-run loop in `listPendingReviews`, which reads
-   * `terminalReviewSessions`: it marks the runs whose per-run state is a fire's, which ends only
-   * through `releaseScheduledFireApproval` and `releaseScheduledFire`, whichever way an approval or
-   * the fire ends.
-   */
-  const scheduledFireApprovalRuns = new Set<string>();
-  // COR-1596: the fires that take another step with an approval pending; see
-  // `ScheduledFireReviewState.continuingScheduledFires`.
-  const continuingScheduledFires = new Set<string>();
 
-  // A persisted approval can be stale by the time a process restarts. Keep
-  // that failure scoped to its review rather than preventing the bureau from
-  // recovering unrelated runs.
-  const invalidApprovalReviewIds = new NotifyingReviewIdSet(() =>
-    stopLazyExpirySweepWhenNoneHeld(),
-  );
-  // AB-54 usage analytics: agentName/principal resolved deterministically at
-  // `createRun` time, keyed by runId. Layer A only (in-memory, like the rest
-  // of RunSummary) — a durably recovered run (process restart) has no entry
-  // here and `serializeRunState` falls back to the `findRunAgentName`
-  // heuristic for `agentName`; `principal` has no such fallback since it is
-  // never persisted durably. Entries for a `createRun`-dispatched run are
-  // removed on `deleteRun` so this map does not outlive the run it
-  // describes. A `bureau.run()` durable catalog dispatch's entry (AB-241)
-  // has no `deleteRun` equivalent and is never removed, exactly like
-  // `createRun`'s own entry for a run nobody ever calls `deleteRun` on: the
-  // run leaves `store` on its own as it settles (COR-1302), and its
-  // attribution deliberately outlives that release, since `eventHistory`'s
-  // principal gate reads it.
-  const runAttribution = new Map<string, RunAttribution>();
   /**
    * COR-718 — the runs of schedule fires whose attribution this Bureau holds. A fire's
    * entry is released when the fire settles, so a recurring schedule does not grow
@@ -2297,31 +2890,6 @@ async function constructBureau<const D extends AgentDefinitions>(
             };
           },
         });
-  // AB-67/AB-199 — one SteeringGate per session, created (or reused)
-  // EAGERLY by `createRunFromRequest` at the start of every in-memory run —
-  // NOT lazily on the first `submitSteeringCommand` call, which would miss
-  // every run already in flight by the time a caller first pauses it (see
-  // the identical note at `createRunFromRequest`'s own gate lookup, and
-  // `steering.ts`'s `createSteeringGate` doc comment). `submitSteeringCommand`
-  // also creates one on demand for the (rare) case a caller pauses a session
-  // whose current run started before this map existed at all (recovery
-  // paths), but in ordinary operation the run-start path always wins the
-  // race. Held for the bureau's lifetime, like the other per-session maps
-  // above, EXCEPT this one is explicitly cleaned up on `deleteSession` (see
-  // `deleteSession` below) so a reused session id never inherits a deleted
-  // session's pause state / command history / applied floor.
-  const steeringGates = new Map<string, BureauSteeringGate>();
-
-  /**
-   * COR-435 — one session-input mailbox per session incarnation (COR-1476),
-   * for a durably-configured bureau. See `session-input-durability.ts`'s
-   * module doc: the cross-session identity index lives in `runtime.kv`
-   * directly, not in a second `Mailbox`. Cached for the same reason
-   * `steeringMailboxes` is: constructing a second `Mailbox` for the same
-   * `(namespace, resourceId)` would defeat the FIFO ordering that is the
-   * point of using one.
-   */
-  const sessionInputMailboxes = new Map<string, Mailbox>();
 
   /** `undefined` for a non-durable bureau — nothing to persist against. */
   function getSessionInputMailbox(sessionId: string, incarnation: string): Mailbox | undefined {
@@ -2372,47 +2940,14 @@ async function constructBureau<const D extends AgentDefinitions>(
         })
       : undefined;
 
-  /**
-   * The pending `run-ended` steering write of each run that is ending (COR-1476).
-   * It is the durable not-live write the run's session-input settlement waits
-   * for, and rejects when the write failed, so the settlement retries it.
-   */
-  const steeringRunEndWrites = new Map<string, Promise<void>>();
-
-  /** The session-input settlements of runs that have ended and have not finished (COR-1476). */
-  const inFlightSessionInputSettlements = new Set<Promise<void>>();
-  /**
-   * The save that records a run's end in its session, while it is in flight, by run id. A reader
-   * that needs the session as the run left it (`Bureau.whenRunRecorded`) waits on this promise,
-   * not on a count of turns of the event loop, so however slow or retried the save is, it is waited
-   * for.
-   */
-  const terminalSessionRecords = new Map<string, Promise<void>>();
-  const terminalSessionRecordSettlers = new Map<
-    string,
-    { resolve: () => void; reject: (reason: unknown) => void }
-  >();
-
   /** The settlement in flight for each ended run: a run is settled once, however many paths report its end. */
   const sessionInputSettlementsByRun = new Map<string, Promise<void>>();
-
-  /**
-   * Resolves the moment shutdown begins, so a settlement waiting out a retry
-   * backoff ends its wait at once instead of after the whole delay.
-   */
-  const sessionInputClosing = Promise.withResolvers<void>();
 
   /** Tracks a settlement, which never rejects, so shutdown lands it before it tears the stores down. */
   function trackSessionInputSettlement(settling: Promise<void>): void {
     inFlightSessionInputSettlements.add(settling);
     void settling.finally(() => inFlightSessionInputSettlements.delete(settling));
   }
-
-  /** The gate of each durable run that has one, disposed when the run ends however it ends. */
-  const sessionInputGates = new Map<
-    string,
-    { readonly gate: SessionInputGate; readonly sessionId: string }
-  >();
 
   /**
    * Whether `runId` will still replay or re-run the step that appended its
@@ -2754,64 +3289,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       : undefined;
 
   /**
-   * Durable steering (see `steering-log.ts` and
-   * `documentation/durable-steering-log.md`). A durably-configured bureau
-   * keeps each session's steering as an append-only log of events in
-   * `runtime.kv`; the session's gate is a fold of it, and every change to
-   * the gate — admissions, promotions, and run-boundary transitions alike —
-   * is appended first and applied only after, so the local gate changes in
-   * exactly the log's order.
-   *
-   * A cursor records which gate instance it folded into, which session
-   * incarnation, and how far. Each durable gate has its OWN ledger: the
-   * fold must depend on nothing but the log, and the bureau-wide ledger
-   * can hold entries for sessions another process has since deleted.
-   * Cross-session idempotency comes from the log's durable key bindings.
-   */
-  interface SteeringCursor {
-    readonly incarnation: string;
-    readonly gate: BureauSteeringGate;
-    readonly ledger: ReturnType<typeof createSteeringCommandLedger>;
-    /**
-     * Admissions the gate did not accept (rejected, or unsupported), keyed
-     * `principal -> id`, as folded from the log. The ledger records only
-     * accepted commands; these keep a refused command's id decided too, so
-     * a retry is answered from the log instead of decided afresh.
-     */
-    readonly refusals: Map<string, Map<string, SteeringRefusal>>;
-    /** Each accepted command's value as the caller submitted it, where Bureau resolved it. */
-    readonly submitted: Map<string, Map<string, SteeringRequestedValue>>;
-    /**
-     * Runs promoted in the log with no `run-ended` yet, by promotion time.
-     * Each is a durable launch marker: a run counts as starting from its
-     * `promoted` entry until its workflow is queryable, however many runs
-     * start concurrently on the session.
-     */
-    readonly starting: Map<string, string>;
-    /** What the fold has seen so far, checked as each event folds. */
-    readonly history: SteeringFoldHistory;
-    /** The last head read or written. Appends are conditioned on it. */
-    head: SteeringLogHead;
-    /** How many entries have been applied to `gate`. */
-    applied: number;
-  }
-  const steeringCursors = new Map<string, SteeringCursor>();
-  /**
-   * The session incarnation each of this process's durably steered runs
-   * belongs to, until its `run-ended` is logged. A session deleted and
-   * recreated under the same id while an old run is still settling must
-   * not count that run as live for the new incarnation.
-   */
-  const steeringRunIncarnations = new Map<string, string>();
-  /**
-   * Runs whose local handle has settled. A durable run abandoned to another
-   * owner (a lost checkpoint race, a disposed engine) settles with no
-   * terminal event and stays `running` in the store, so the store alone
-   * cannot say whether this process still drives it.
-   */
-  const settledLocalRunIds = new Set<string>();
-
-  /**
    * A run whose local handle settled with no terminal event while the store still says `running`:
    * its engine lost a checkpoint race, was disposed, or saw another engine commit the run's
    * outcome, and `driveDurableRun` stayed write-free in each case. This process no longer drives
@@ -2858,8 +3335,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     flowController?.settle(runId);
     queueMicrotask(() => releaseTerminalRunReviewState(runId));
   }
-  /** One log operation at a time per session, in this process. */
-  const steeringQueues = new Map<string, Promise<unknown>>();
 
   /** `runtime.kv`, when this bureau keeps durable steering at all. */
   function durableSteeringStore(): ConditionalTextValueStore | undefined {
@@ -2975,14 +3450,6 @@ async function constructBureau<const D extends AgentDefinitions>(
         gate.failAcceptedForRun(event.runId, event.now);
         return undefined;
     }
-  }
-
-  /** What a fold of one log has seen, for checking each next event against. */
-  interface SteeringFoldHistory {
-    /** Each run's place in its life: promoted, then (once) ended. */
-    readonly runs: Map<string, 'promoted' | 'ended'>;
-    /** Every `(principal, id)` already decided by an `admit` or `refused`. */
-    readonly keys: Set<string>;
   }
 
   function createSteeringFoldHistory(): SteeringFoldHistory {
@@ -3172,28 +3639,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** How often a session with a live durable run here re-reads its log. */
   const STEERING_POLL_MS = 2_000;
 
-  interface SteeringPoller {
-    readonly incarnation: string;
-    readonly gate: BureauSteeringGate;
-    /** The session's durable runs this process drives. */
-    readonly runIds: Set<string>;
-    readonly timer: ReturnType<typeof runtimeServices.timers.setInterval>;
-    /** The last failure reported, so a repeating one is reported once. */
-    lastFailure?: string | undefined;
-    /** The poll still running, if any: a tick never starts a second one. */
-    inFlight?: Promise<void> | undefined;
-  }
-  /**
-   * One poller per session while this process drives any of its durable
-   * runs. A command admitted in another process reaches these runs only
-   * through the log, so the poller folds it here every
-   * {@link STEERING_POLL_MS}: a remote pause, resume, or configuration
-   * change takes effect at the run's next boundary, and a remote resume
-   * releases a run waiting on its pause. A session deleted elsewhere is
-   * seen here too: that deletion settles only its own process's gate, so
-   * the poller releases this gate's paused runs the same way.
-   */
-  const steeringPollers = new Map<string, SteeringPoller>();
   /** Polls already running, which shutdown awaits before storage closes. */
   const inFlightSteeringPolls = new Set<Promise<void>>();
 
@@ -3297,9 +3742,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     steeringCursors.delete(sessionId);
   }
-
-  /** How many times an append retries after losing a race to another process. */
-  const STEERING_APPEND_ATTEMPTS = 25;
 
   /**
    * Appends a non-admission event after catching up, then applies it. Every
@@ -3488,48 +3930,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       'CONFLICT',
     );
   }
-  // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
-  // every session's gate shares (see `steering.ts`'s `createSteeringGate`
-  // `ledger` parameter doc comment): a same-`(principal, id)` retry against
-  // a DIFFERENT session must resolve to `session-mismatch`, not be silently
-  // admitted as an unrelated command in that other session's own ledger.
-  const steeringCommandLedger = createSteeringCommandLedger();
-  /**
-   * The `policyRef` a caller submitted for an in-process model command Bureau resolved, by the
-   * session's steering gate and then `principal -> id`: the in-process counterpart of a cursor's
-   * `submitted`, which a fork reads to carry the request as the parent made it. Keyed by the gate,
-   * the entries leave with it when the session is deleted or expires, as its ledger entries do, so
-   * a command id reused afterwards, or a session recreated under the same id, never reads them.
-   */
-  const submittedSteeringValues = new WeakMap<
-    BureauSteeringGate,
-    Map<string, Map<string, SteeringRequestedValue>>
-  >();
-  // Keep the exact host-supplied (or bureau-derived) context for approval
-  // resumption. Approval bindings identify the original caller, but are not a
-  // substitute for the complete request context and must not mint authority.
-  const runRequestContexts = new Map<string, ToolRequestContext>();
-  const recoveredRunIds = new Set<string>();
-  const scheduledFireReviewState: ScheduledFireReviewState = {
-    pendingApprovalOverrides,
-    pendingApprovalRounds,
-    terminalReviewSessions,
-    approvalRequestedAt,
-    runRequestContexts,
-    runToolboxesByRunId,
-    resolvedReviewIds,
-    invalidApprovalReviewIds,
-    scheduledFireApprovalRuns,
-    continuingScheduledFires,
-    now: runtimeServices.clock.now,
-  };
   let requestAuthorityValidator:
     ((context: ToolRequestContext) => boolean | Promise<boolean>) | undefined =
     createRunAuthorityValidator(workspace, options.requestAuthorityValidator);
-  const isTransportIssuedAuthority = (context: ToolRequestContext): boolean =>
-    workspace !== undefined ||
-    (context.authority.authorizationRevision !== 'bureau:1' &&
-      context.authority.authorizationRevision !== 'bureau:scheduler:1');
   let durableRecoveryDeferred = false;
   let durableRecoveryStarted = false;
   let durableRecoveryBarrier: Promise<BureauRecoveryReport> = Promise.resolve({
@@ -3566,7 +3969,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   // storage because their workflow type is not registered, in the order the engine reported them.
   // Read back by the pass's own return and by both boot call sites' `.catch()`, like the others.
   let currentRecoverySkippedRuns: Array<{ runId: string; type: string }> | undefined;
-  const liveFrameListeners = new Set<(frame: ServerFrame) => void>();
   // COR-1731: subscribers, counted from `frames()` to their unsubscribe. Not the size of
   // `liveFrameListeners`, which a listener joins only once its boot-frame replay has drained.
   let liveFrameSubscriberCount = 0;
@@ -3590,25 +3992,10 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** The boot repair of task histories (COR-1669), which `shutdown()` awaits before storage closes. */
   let taskResyncBootPass: Promise<void> | undefined;
 
-  const bootFrameRunIds = new Set<string>();
   let liveFramesSubscribed = false;
-  const bootFrameBuffer: ServerFrame[] = [];
   // Frames emitted while the first subscriber is being replayed queue behind
   // the remaining replay instead of interleaving with it.
   let frameReplayQueue: ServerFrame[] | undefined;
-  // COR-625: one memoized terminal-cleanup step per run id. Every trigger
-  // MUST route through `runTerminalCheckpointCleanup` rather than calling the
-  // step directly — the exactly-once guarantee is the memo, not the triggers.
-  // Entries are released only by `deleteRun`, which a caller can reach only
-  // for an already-terminal run, so a released entry cannot be re-created by
-  // any of today's three triggers. A future API that can re-fire a terminal
-  // transition for one run id would break that and must be routed here too. This is what
-  // makes the step exactly-once across its three independent triggers — the
-  // live run's terminal listeners, a recovered run's terminal listeners, and
-  // `cancelDurableRun` on a run this process holds no `ActiveRun` for. Its
-  // entries are released when the run is deleted (`deleteRun`), so
-  // a long-lived bureau does not retain one promise per run forever.
-  const terminalCheckpointCleanups = new Map<string, Promise<RunCleanupAcknowledgement>>();
   // COR-625: registered on a durable run's `closed()` only when a retention
   // policy is actually configured. Registering it unconditionally would
   // disqualify every durable run's `not-required` fast path (a run with a
@@ -3623,32 +4010,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     const retention = currentSettings()['retention.checkpoints'];
     return retention && retention !== 'keep-all' ? runTerminalCheckpointCleanup : undefined;
   };
-  // AB-205/AB-37 — ids `abortRun` has already requested cancellation for
-  // (`ActiveRun.abort()` called) but whose teardown has not yet genuinely
-  // settled. Guards `abortRun` itself against re-calling `abort()` (and
-  // re-chaining a `closed()` continuation) on a same-run repeat call while
-  // it is still `'running'`; NOT surfaced through `getRun`/`listRuns` — see
-  // the doc comment on `abortRun` below for why those two deliberately keep
-  // reporting the real, unmodified `'running'` status for a run in this
-  // window rather than the transitional `'aborting'` value `abortRun`'s own
-  // return reports. An entry is removed once `ActiveRun.closed()` genuinely
-  // settles (AB-204); `Store` itself never writes `'aborting'` (see
-  // `RunStatus`'s doc comment in `operative/src/store/types.ts`).
-  //
-  // AB-369: the value is the `runtimeServices.clock.now()` timestamp
-  // recorded when `abortRun` first requested cancellation for that run —
-  // exposed publicly via `listAbortingRuns()` so a regression in the
-  // `closed().then(() => abortingRunIds.delete(id))` cleanup below surfaces
-  // as a genuinely observable leak (`BureauQuiescenceReport`, `bureau/test`)
-  // instead of an invisible, unbounded-growth bookkeeping mutation.
-  const abortingRunIds = new Map<string, number>();
-  // AB-15: per-run monotonic sequence counter for run-scoped live frames
-  // (`event` and `stream:*`). Stamped once here — the single point where
-  // frames reach `emitLiveFrame` — so the store action listener never has to
-  // coordinate on sequencing itself.
-  // Cleared on `run.removed` (see the store subscription below) so the map
-  // does not grow unbounded across a long-lived bureau.
-  const runSequenceCounters = new Map<string, number>();
 
   function nextRunSeq(runId: string): number {
     const next = (runSequenceCounters.get(runId) ?? 0) + 1;
@@ -3679,9 +4040,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   function seedRunSeqGeneration(runId: string): void {
     runSequenceCounters.set(runId, runtimeServices.clock.now());
   }
-  const sessionPersistenceRetryDelayMilliseconds = SESSION_PERSISTENCE_RETRY_DELAY_MILLISECONDS;
-  const sessionPersistenceSleep = createSessionPersistenceSleep(runtimeServices.timers);
-  const shutdownTimeoutSleep = createShutdownTimeoutSleep(runtimeServices.timers);
 
   function getRunSessionIdentifier(runState: { activeRun: ActiveRun }): string {
     return runSessionIdentifiers.get(runState.activeRun) ?? '';
@@ -4104,13 +4462,6 @@ async function constructBureau<const D extends AgentDefinitions>(
         });
       });
   }
-
-  /**
-   * COR-1481 — the review ids already announced with `review.requested`, per run,
-   * so a review is announced once however many actions follow it. Dropped with the
-   * run.
-   */
-  const announcedReviewRequests = new Map<string, Set<string>>();
 
   /**
    * Announces one review once (`review.requested`), however many times its run reports it.
@@ -4838,35 +5189,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     );
   }
 
-  // ── AB-391: review-transition audit records ride the session outbox ──
-  //
-  // A review transition (`resolveReview`'s approve/deny/reject decision, or
-  // `resumeApproval`'s re-gate `superseded` transition) used to write its
-  // durable audit record via a separate, fire-and-forget
-  // `auditTrailInstance.record()` call AFTER the session-store commit that
-  // makes the transition itself durable (`persistReviewResolutionWithRetry`/
-  // `persistPendingApprovalOverrideWithRetry`). A crash between the two lost
-  // the audit record forever: the session commit already marks the review
-  // resolved, so nothing ever retries the write.
-  //
-  // The fix mirrors AB-389/AB-390's session commit outbox: the review
-  // transition's audit payload rides the SAME `conditionalBatch` as the
-  // session-store commit, as a `SessionOutboxEntry` of kind
-  // `'session.attachment'` (namespace `'audit-record'`) — see
-  // `SessionStore.update()`'s own `options.outbox` doc comment
-  // (`@lostgradient/operative`). `drainOutbox` (this file, generalized from
-  // the session-only `drainSessionOutbox`) replays it into the real audit
-  // trail exactly once, in the same ordinal order as every other outbox
-  // entry for that session, whether that happens promptly (this bureau is
-  // still alive) or after a restart.
-  type ReviewAuditAttachment = {
-    runId: string;
-    type: string;
-    detail: unknown;
-    principal: string;
-    decisionRequest?: ReviewDecisionRequest;
-  };
-  const REVIEW_AUDIT_OUTBOX_NAMESPACE = 'audit-record';
   function reviewAuditOutboxAttachment(
     attachment: ReviewAuditAttachment | undefined,
   ): readonly { namespace: string; payload: JSONValue }[] {
@@ -8647,14 +8969,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       });
     }
   }
-
-  /**
-   * Per run: parks already committed to the durable checkpoint by a previous
-   * process, seeded by `reconstructHumanWaitReviewIfParked` on recovery. The
-   * live action log only holds this process's parks, so the ordinal of the
-   * first live park starts here.
-   */
-  const humanWaitParkBaseline = new Map<string, number>();
 
   /**
    * The 0-based ordinal of the LAST distinct park in a run's action log.
@@ -12454,44 +12768,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
   }
 
-  /**
-   * AB-388 (Codex review, PR #597, "Run audit retention for KV-backed
-   * non-durable bureaus" / "Isolate the manual audit-retention sub-pass"):
-   * `auditTrailInstance` is built whenever `runtime.kv` exists — a
-   * storage backend with `durable: false` gives it a `kv`
-   * without ever giving `runtime.durable` a durable engine. Gating this whole
-   * function's body on `!runtime.durable` (the ORIGINAL shape) made a
-   * configured `retention.audit` policy unreachable for exactly that
-   * configuration — a manual host's own alarm/Cron trigger calling this
-   * got an early `undefined` and never pruned anything, growing the
-   * durable audit keys without bound. `runtime.durable.engine.runMaintenance()`
-   * is still SKIPPED when there is no durable engine (nothing to
-   * maintain), but `pruneStaleRunOwnership()`/`pruneAuditTrail()` are
-   * unconditional — both already self-guard on their own preconditions
-   * (`eventHistoryInstance`/`sessionStore` and `auditTrailInstance`
-   * respectively) and no-op harmlessly when those are absent.
-   *
-   * Each sub-pass runs under its OWN try/catch, mirroring the automatic
-   * timer's identical isolation further below: a `pruneStaleRunOwnership()`
-   * rejection (e.g. `sessionStore.list()` failing) must never prevent
-   * `pruneAuditTrail()` from running this same call — the two are
-   * documented (`packages/bureau/README.md`) as independent sub-passes,
-   * and before this fix a manual host's own call here contradicted that
-   * for exactly the case a rejection actually happens.
-   */
-  // AB-388 (Codex review, PR #597, "Await manual pruning before storage
-  // teardown"): `automaticRunOwnershipPruneCurrentPass` below only tracks
-  // the AUTOMATIC-profile timer's own tick. A caller invoking
-  // `maintain()` directly (the manual/serverless profile's own
-  // alarm/Cron trigger) has no equivalent tracking, so `shutdown()` could
-  // dispose storage while such a call's `pruneStaleRunOwnership()`/
-  // `pruneAuditTrail()` sub-passes were still listing, deleting, or writing
-  // a watermark/summary. Every in-flight manual call registers its pass
-  // here; `shutdown()` drains the set (`Promise.allSettled`, since a
-  // rejection is already diagnosed by each sub-pass's own try/catch, or is
-  // this function's own re-thrown `engineMaintenanceError`) before backend
-  // teardown, alongside the automatic timer's own await.
-  const manualDurableMaintenancePasses = new Set<Promise<void>>();
   // COR-2009 — whether the maintenance passes remove expired records, or the host does it through
   // `removeExpiredRecords` on a schedule of its own.
   const expiredRecordsByMaintenance = options.expiredRecords !== 'on-request';
@@ -13959,7 +14235,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     return [...runIds];
   }
 
-  const inFlightSessionDeletions = new Map<string, Promise<ContextDeletionReport>>();
   function deleteSession(
     id: string,
     deleteOptions?: {
@@ -14039,19 +14314,6 @@ async function constructBureau<const D extends AgentDefinitions>(
       (error as { code?: unknown }).code === 'ERR_ENCODING_INVALID_ENCODED_DATA'
     );
   }
-  /**
-   * What the record kept before a deletion holds (COR-2018): the owner, which the audit entry
-   * carries as `detail.owner`, and the chat's title and message count, which it carries so the log
-   * can say which chat was deleted. The value is stored as JSON; a record written before the
-   * summary was kept is the owner alone, as plain text, and reads as no summary.
-   */
-  type SessionDeletionRecord = {
-    readonly owner: string | undefined;
-    /** Who asked for the deletion, when somebody did: an expiry has no actor. */
-    readonly actor: string | undefined;
-    readonly summary: { readonly title: string | null; readonly messageCount: number } | undefined;
-  };
-  const sessionDeletionOwners = new Map<string, SessionDeletionRecord>();
 
   function serializeSessionDeletionRecord(record: SessionDeletionRecord): string {
     return JSON.stringify({
@@ -14251,8 +14513,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * never fails the commit, the drain or the deletion.
    */
   const claimedRowAssets = new Set<string>();
-  /** Sessions the store is about to expire, held until their `session.deleted` entry drains. */
-  const expiringSessions = new Map<string, AgentSession>();
 
   /**
    * Skips the claim pass has already warned about, so a session that records no owner reports each
@@ -20720,466 +20980,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   let taskResyncInstance: TaskResync | undefined;
 
   /**
-   * Whether `principal` may read `owner`'s durable history right now: the one
-   * rule `eventHistory()` and `subscribeEventHistory()` both apply, so a feed
-   * that cannot be paged by a stranger cannot be tailed by one either.
-   *
-   * Each kind compares the caller with that kind's owner of record, read the way
-   * {@link Bureau.ownerOf} reads it (COR-718), and fails closed when there is
-   * none to read, so an id cannot be probed:
-   *
-   * - run: the owner `runAttribution` records for it (`anonymous:local` for a
-   *   record with none), and no one once the run is deleted (see
-   *   `resolveEventHistory`).
-   * - goal: only a principal `bureau.goals.get` shows the goal to.
-   * - session: `isSessionHistoryReadAuthorized`: only the session's owner, and
-   *   no one when the session does not exist (its history is then a deleted
-   *   aggregate, readable only by a caller that states no principal). A malformed
-   *   owner is closed.
-   * - schedule: the schedule's owner (`ScheduledAgentRunInput.principal`).
-   *
-   * Read fresh on every call, because ownership is not stable for a live feed:
-   * a goal, run, or schedule may not exist yet when a subscription starts, and a
-   * session id can be recreated under another owner.
-   */
-  async function ownerReadableBy(owner: DurableEventOwner, principal: string): Promise<boolean> {
-    switch (owner.kind) {
-      case 'run':
-        // Read the way `ownerOf` reads it, and closed for a run that no longer exists.
-        return (await runOwner(owner.id)) === principal;
-      case 'goal':
-        return (await goalsComposition.goals.get(owner.id, { principal })) !== undefined;
-      case 'session': {
-        // A session that does not exist is closed, not open: its history is
-        // readable only without a principal (see `resolveEventHistory`).
-        if (!runtime.sessionStore) return false;
-        const session = await runtime.sessionStore.load(owner.id);
-        return session !== undefined && isSessionHistoryReadAuthorized(session.metadata, principal);
-      }
-      case 'schedule':
-        return (await scheduleOwner(owner.id)) === principal;
-    }
-  }
-
-  /**
-   * `Bureau.subscribeEventHistory` for a caller that stated a principal. The
-   * store's subscription is opened at once (so an invalid cursor still throws
-   * synchronously, as for a trusted caller), but nothing it produces reaches
-   * `listener` until `ownerReadableBy` says so, and it says so again for every
-   * event, in order, through one serialized chain: an owner that did not exist
-   * when the subscription began (a goal created afterwards, a run dispatched
-   * afterwards) is authorized by the first event that names it, and an owner
-   * whose authority changes mid-feed stops being delivered. An event the
-   * principal may not read is dropped, never queued, and a failed check is
-   * a denial. The subscription stays open and silent rather than reporting a
-   * refusal, so it cannot be used to tell an owner that exists from one that
-   * does not.
-   */
-  function subscribeAuthorized(
-    history: DurableEventHistory,
-    owner: DurableEventOwner,
-    listener: (event: DurableEventEnvelope) => void,
-    principal: string,
-    subscribeOptions: DurableEventHistorySubscribeOptions | undefined,
-  ): Subscription {
-    let delivery: Promise<void> = Promise.resolve();
-    // COR-718 — a session id's history holds every incarnation of the id, and the
-    // live session's owner is not an earlier incarnation's owner. Each event of a
-    // session is therefore judged against the session that is live when it is
-    // judged: it must exist and be the subscriber's, and the event must have been
-    // recorded for that very incarnation. An event recorded for none is never
-    // delivered to a principal. Nothing else separates the incarnations: not a
-    // marker between them, which an expiry never writes, and not the state of the
-    // outbox. The one exception is the gap event the stream synthesizes when
-    // retention has passed the subscriber (COR-1477): it is not a recorded event
-    // of any incarnation, carries nothing owner-scoped, and is the owner's only
-    // way to learn that history was lost, so it reaches an owner of the live session.
-    const deliver = async (event: DurableEventEnvelope, incarnation: string | undefined) => {
-      if (owner.kind === 'session') {
-        try {
-          const live = await runtime.sessionStore?.load(owner.id);
-          if (!live || !isSessionHistoryReadAuthorized(live.metadata, principal)) return;
-          if (
-            event.kind !== DURABLE_HISTORY_GAP_KIND &&
-            (incarnation === undefined || incarnation !== live.incarnation)
-          ) {
-            return;
-          }
-        } catch (error) {
-          // Only the event in hand is lost; the next event loads the session afresh.
-          diagnose({
-            level: 'error',
-            scope: 'durable-event-history',
-            message: `[bureau] Could not load session:${owner.id} for a subscriber; its event "${event.kind}" was not delivered: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-          return;
-        }
-      }
-      // A session was judged above, against the session live at the time. The other kinds
-      // are judged by their owner of record.
-      let readable = owner.kind === 'session';
-      try {
-        if (owner.kind !== 'session') readable = await ownerReadableBy(owner, principal);
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'durable-event-history',
-          message: `[bureau] Could not authorize ${owner.kind}:${owner.id} for a subscriber; its event "${event.kind}" was not delivered: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      }
-      if (!readable || inner.closed) return;
-      try {
-        listener(event);
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'durable-event-history',
-          message: `[bureau] Listener threw for ${owner.kind}:${owner.id} event "${event.kind}": ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      }
-    };
-    const inner = history.subscribeEventHistory(
-      owner,
-      (event, incarnation) => {
-        delivery = delivery.then(() => deliver(event, incarnation));
-      },
-      subscribeOptions,
-    );
-    return inner;
-  }
-
-  /**
-   * AB-313 — authorization and deleted-aggregate handling layered over
-   * `eventHistoryInstance.page()`. This wrapper (not `page()` itself, which
-   * knows nothing about sessions, runs, or principals) is the only place
-   * that can answer "is `principal` allowed to see this owner's history" —
-   * it has `runtime.sessionStore` and `store` in closure, neither of which
-   * `DurableEventHistory` carries.
-   *
-   * Authorization (AB-42's ordering: checked before anything else, so an
-   * unauthorized caller cannot learn a run/session exists) runs ONLY when
-   * `options.principal` is provided AND the owner's live record still
-   * exists — a caller that omits `principal` (an internal/trusted caller,
-   * or a privileged gateway connection) skips it entirely, and an owner
-   * with NO recorded principal is open (matches every other session verb's
-   * "no recorded authority" rule). A denial reports the same
-   * not-found-shaped outcome `submitSessionInput` uses.
-   *
-   * Deleted-aggregate detection is evidence-based, not existence-based: it
-   * looks for the owner's own deletion marker EVENT inside the page that
-   * was just fetched (`session.deleted` for a session, `run.removed` for a
-   * run), never merely "the live record is missing" — a durable event can
-   * legitimately exist for an id that never had (or no longer has) a live
-   * record for other reasons (e.g. a synthetic action recorded before a
-   * session was ever saved), and reporting deleted-aggregate for those
-   * would be a false positive; a genuinely fresh, never-recorded id must
-   * still read back as an ordinary empty page.
-   *
-   * A SESSION owner adds one more override on top of that evidence (AB-372,
-   * Codex review finding, PR #580, "Ignore prior deletion markers while a
-   * reused session is live"): a session id is explicitly supported to be
-   * RECREATED after deletion (`create-bureau.test.ts`'s "does not coalesce
-   * a deleteSession call for a session RECREATED with the same id"), and
-   * `createDurableEventProducer`'s own session.deleted listener does not
-   * prune a prior incarnation's marker from the durable history a recreated
-   * session shares with its predecessor — by design, not for lack of a
-   * mechanism: `SessionDeletedEvent` carries a real per-incarnation
-   * `incarnation` identity since AB-384, but AB-87's retention posture is no
-   * silent data loss, so a settled incarnation's own durable facts stay
-   * queryable forever, exactly like a run's. Evidence of a deletion
-   * that once happened is therefore not sufficient on its own once a
-   * session id has been reused — this function ALSO checks whether
-   * `owner.id` currently names a LIVE session record before reporting
-   * `deleted-aggregate`: a live record wins, and the ordinary page is
-   * returned instead (still carrying that historical marker among its
-   * events — nothing is hidden, only the deleted-aggregate OUTCOME is
-   * suppressed). A run owner has no equivalent override: run ids are freshly
-   * minted, never reused, so `run.removed` evidence is never stale in the
-   * same way.
-   *
-   * A schedule owner is authorized the way a goal's is (COR-718): only the
-   * schedule's owner of record reads its history. Schedule owners have no
-   * deletion concept in this codebase today, so they go on to `page()`.
-   *
-   * AB-385 (coordinator ruling, 2026-09-08, closing the KNOWN LIMITATION
-   * this comment used to document — Codex review finding, PR #580, "Detect
-   * deletion markers beyond the requested page"): evidence of a deletion no
-   * longer comes from scanning the ONE page `history.page()` returns under
-   * `options`' own limit (100 by default) — a session or run with more
-   * durable events than that limit could carry its own deletion marker on a
-   * LATER page this function never inspected, reporting an ordinary page
-   * instead of `deleted-aggregate` for a genuinely deleted owner. Evidence
-   * now comes from `history.latestDeletionMarker(owner)`, a dedicated read
-   * over the ENTIRE retained feed, independent of `since`/`limit` — the
-   * classification below no longer depends on the caller's own pagination
-   * parameters. The requested page's own `events`/`hasMore` are still
-   * returned verbatim on the `deleted-aggregate` outcome; only the OUTCOME
-   * classification uses the independent read, matching both marker kinds.
-   */
-  async function resolveEventHistory(
-    history: DurableEventHistory,
-    owner: DurableEventOwner,
-    requestOptions?: DurableEventHistoryPageOptions,
-  ): Promise<
-    | DurableEventPage
-    | DurableEventGap
-    | EventHistoryNotFoundOutcome
-    | EventHistoryDeletedAggregateOutcome
-  > {
-    const principal = requestOptions?.principal;
-
-    if (owner.kind === 'run' && principal !== undefined) {
-      // AB-313 — fail CLOSED whenever this run's ownership cannot be
-      // verified against `runAttribution` (`request.principal`, AB-54's
-      // best-effort attribution map), rather than treating an absent entry
-      // as open. `runAttribution` is cleared by `deleteRun` (never
-      // reinstated), so a deleted run reads identically to one that
-      // legitimately never had a principal — the two cases cannot be told
-      // apart from this map alone. A run recovered across a process
-      // restart is no longer in the same bucket: AB-359 rehydrates this
-      // map's `principal` from the session's durably persisted
-      // `lastRunOwningPrincipals` entry (`reattachRecoveredRun`), so a
-      // recovered run's REAL owner reads exactly as it did before the
-      // restart, and a recovered run that was genuinely never dispatched
-      // with a principal stays exactly as unresolved as it was live.
-      // Failing open for a deleted or genuinely-unattributed run would let
-      // an unauthenticated caller retrieve durable history for a run they
-      // never owned, including through the deleted-aggregate 200 path
-      // (copilot review, PR #551). Omitting `principal` entirely still
-      // skips this check (an internal/trusted caller), matching every
-      // other owner kind's convention.
-      if (!(await ownerReadableBy(owner, principal))) {
-        return { outcome: 'not-found' };
-      }
-    }
-
-    // COR-851 — a goal's events are as private as the goal itself. The same
-    // rule `bureau.goals.get` applies: omitting `principal` is a trusted call,
-    // and a mismatch reads as `not-found`. A goal that cannot be read at all
-    // (never created, or unreadable) fails closed for the same reason a run
-    // with unverifiable ownership does, so its id cannot be probed. Goal ids
-    // are never reused and a goal is closed, not deleted, so the owner read
-    // here cannot change under the page read below, and a goal owner has no
-    // deletion marker. Checked before anything else, so neither a gap nor an
-    // owner-write wait is observable to a caller who may not see the goal.
-    if (
-      owner.kind === 'goal' &&
-      principal !== undefined &&
-      !(await ownerReadableBy(owner, principal))
-    ) {
-      return { outcome: 'not-found' };
-    }
-
-    // COR-718 — a schedule's history is as private as the schedule: only its owner
-    // reads it, and one that cannot be read at all (never created) fails closed
-    // for the same reason a run with unverifiable ownership does.
-    if (
-      owner.kind === 'schedule' &&
-      principal !== undefined &&
-      !(await ownerReadableBy(owner, principal))
-    ) {
-      return { outcome: 'not-found' };
-    }
-
-    // AB-372 (Codex review findings, PR #580 — see the running history in
-    // this comment for why each earlier shape of this check was
-    // insufficient) — session authorization is checked TWICE, deliberately,
-    // never once: a PRE-page check (immediately below, BEFORE this function
-    // does any other work) and a POST-page check (after `history.page()`
-    // resolves, before this function decides what to return). Both are
-    // necessary, and neither subsumes the other:
-    //
-    // - The PRE-page check exists ONLY to protect the `DurableEventGap`
-    //   outcome — `page()` can return a gap instead of an ordinary page
-    //   (retention has advanced past `since`), and that outcome is returned
-    //   immediately, before any post-page check would ever run. Without
-    //   this, an unauthorized caller whose `since` lands before the
-    //   retention floor would get the gap's own retention metadata instead
-    //   of the documented not-found-shaped denial ("Authorize sessions
-    //   before returning history gaps"). Gated on `principal !== undefined`
-    //   — an internal/trusted caller has nothing to authorize, and skipping
-    //   the load entirely for that case avoids an unnecessary durable-store
-    //   round trip and a spurious rejection if the session store happens to
-    //   be unavailable ("Skip the authorization load when no principal is
-    //   supplied"). Deliberately placed BEFORE `waitForActiveWrites` below
-    //   ("Authorize sessions before waiting on producer writes") — an
-    //   unauthorized caller must get the documented not-found denial
-    //   immediately, never delayed behind (or have its response latency
-    //   reveal) an unrelated owner-write wait it was never entitled to see
-    //   the result of anyway.
-    // - The POST-page check re-loads the session record FRESH, unconditionally
-    //   for every session owner (not gated on whether a deletion marker
-    //   happens to appear on the page), and re-authorizes against THAT
-    //   record before this function returns anything past this point. A
-    //   session id can be recreated, under a DIFFERENT authority, at any
-    //   point between the pre-page read and `page()` resolving — the
-    //   pre-page check alone would still let that later state slip through:
-    //   nested only under "the page contains a `session.deleted` marker"
-    //   left every ordinary-page return unchecked whenever a `since` cursor
-    //   or limit paged around that marker, or when the session was
-    //   genuinely never deleted at all before being recreated with new
-    //   ownership mid-read ("Reauthorize sessions after every history
-    //   read"). This SAME freshly-loaded record is also what the
-    //   deletion-marker branch below uses for its "is this owner still
-    //   live" check — one load serves both concerns, since by construction
-    //   it is the freshest state either one could ever act on.
-    //
-    // Omitting `principal` entirely always skips authorization (an
-    // internal/trusted caller), matching every other owner kind's
-    // convention. A session is readable by every principal that owned a run
-    // on it (`lastRunOwningPrincipals`, COR-1382) as well as by whoever the
-    // recorded authority names; a session with no recorded authority is
-    // still open, and malformed authority metadata fails closed, per
-    // `isSessionHistoryReadAuthorized`'s own documented rule.
-    let readIncarnation: string | undefined;
-    if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
-      const preSession = await runtime.sessionStore.load(owner.id);
-      // COR-718: a caller that states a principal reads only a live session it owns.
-      // History is keyed by session id alone, so a deleted session has no owner left
-      // to compare, and its former owner is no exception; only a trusted caller
-      // (no principal) reads a deleted session's history.
-      if (!preSession || !isSessionHistoryReadAuthorized(preSession.metadata, principal)) {
-        return { outcome: 'not-found' };
-      }
-      readIncarnation = preSession.incarnation;
-    }
-
-    // AB-372 (Codex review finding, PR #580, "Wait for the deletion
-    // projection before serving history"): every write into `history` from
-    // `createDurableEventProducer` is fire-and-forget from its own
-    // dispatching caller's perspective (`deleteSession`/`deleteRun` return
-    // as soon as the synchronous event dispatch completes, not once the
-    // durable write actually commits) — so a caller that awaits
-    // `deleteSession(id)` and immediately calls `eventHistory` for the same
-    // owner could otherwise read an ordinary page a heartbeat before the
-    // deletion's own durable write lands. Awaiting this owner's in-flight
-    // writes first (a snapshot, never an open-ended wait — see
-    // `waitForActiveWrites`'s own doc comment) closes that race, mirroring
-    // `AuditTrail.query()`'s identical `activeWritesByRunId`-based fix
-    // (AB-228, PR #566). A caller with no `durableEventProducerInstance`
-    // (no persistent storage backend) never reaches this function at all —
-    // `Bureau.eventHistory` short-circuits to `'unsupported-capability'`
-    // first — so this is always defined whenever `history` is.
-    await durableEventProducerInstance?.waitForActiveWrites(owner);
-
-    // COR-718 — a principal-stated read of a session keeps only the events recorded
-    // for the live incarnation (`readIncarnation`); every other incarnation's events,
-    // and any recorded for none, are left out by the store, whatever `since` and
-    // `limit` the caller passes.
-    const page = await history.page(
-      owner,
-      readIncarnation === undefined
-        ? requestOptions
-        : { ...requestOptions, incarnation: readIncarnation },
-    );
-    if ('outcome' in page) {
-      // AB-372 (Codex review finding, PR #580, "Reauthorize the session
-      // before returning a post-wait gap"): the pre-page check above ran
-      // BEFORE `waitForActiveWrites`, so it authorized a snapshot that is
-      // now stale by exactly the span of that wait — a session recreated
-      // for a different, unauthorized principal during the wait would
-      // otherwise ride the ALREADY-PASSED pre-page check straight through
-      // to a raw `DurableEventGap`, leaking retention metadata to a caller
-      // who should see nothing but `not-found`. Reauthorize against a
-      // fresh load, right here, before this gap ever reaches the caller —
-      // this is a second, independent check from the pre-page one above
-      // and from the post-page one below (which never runs on this
-      // branch, since a gap returns before reaching it).
-      if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
-        const gapSession = await runtime.sessionStore.load(owner.id);
-        if (!gapSession || !isSessionHistoryReadAuthorized(gapSession.metadata, principal)) {
-          return { outcome: 'not-found' };
-        }
-      }
-      return page; // a DurableEventGap
-    }
-
-    // COR-718 — the page holds the live incarnation's events only (see the read
-    // above). The live session is read again once the page is in hand, because the
-    // id can be deleted or recreated while the page is read: the session must still
-    // be there, still the same incarnation, and still the caller's.
-    if (owner.kind === 'session' && principal !== undefined && runtime.sessionStore) {
-      const liveSession = await runtime.sessionStore.load(owner.id);
-      if (
-        !liveSession ||
-        liveSession.incarnation !== readIncarnation ||
-        !isSessionHistoryReadAuthorized(liveSession.metadata, principal)
-      ) {
-        return { outcome: 'not-found' };
-      }
-      return page;
-    }
-
-    // AB-385 — evidence-based, independent of `options.since`/`options.limit`.
-    // `pageHasDeletionMarker` is the ORIGINAL AB-313 check (does the page
-    // just fetched contain the marker); `latestDeletionMarker` widens it to
-    // the ENTIRE retained feed, not merely this one page. Both are
-    // consulted, deliberately OR'd together rather than the independent
-    // scan alone replacing the page check (Codex review, PR #591,
-    // "Preserve deletion evidence already returned by the page"): retention
-    // can advance between `history.page()` resolving above and
-    // `latestDeletionMarker()` running here, aging the marker below the
-    // feed's floor in the span between the two calls — `latestDeletionMarker`
-    // would then no longer see it, even though `page.events` (a snapshot
-    // taken a moment earlier, while the marker was still retained) still
-    // carries it. Regressing to an ordinary-page classification under that
-    // race would be strictly worse than AB-313's original page-only
-    // detection ever was.
-    const deletionMarkerKind = deletionMarkerKindFor(owner.kind);
-    const pageHasDeletionMarker =
-      deletionMarkerKind !== undefined &&
-      page.events.some((event) => event.kind === deletionMarkerKind);
-    // Scan-avoidance (Codex review, PR #591, "Avoid replaying the entire
-    // fleet for every history page"): `latestDeletionMarker`'s full-feed
-    // scan is skipped whenever the page already fetched above PROVES the
-    // owner's complete retained history — no `since` cursor (nothing before
-    // the beginning was excluded) and `hasMore: false` (nothing after this
-    // page remains) — because in that case `pageHasDeletionMarker` above is
-    // already the complete, exact answer; the independent scan could not
-    // possibly find a marker sitting outside the page's own window if there
-    // IS no "outside" for this call. Every other call (a `since` cursor, a
-    // truncated `hasMore: true` page, or a fresh, still-empty owner where
-    // both are true but a fast internal/trusted answer is fine) still pays
-    // for the independent scan.
-    const pageProvesCompleteHistory = requestOptions?.since === undefined && !page.hasMore;
-    const hasDeletionMarker =
-      pageHasDeletionMarker ||
-      (!pageProvesCompleteHistory && (await history.latestDeletionMarker(owner)) !== undefined);
-
-    // Only load the live session record post-page when it can actually
-    // change the outcome: either a `principal` needs reauthorizing against
-    // it (the recreation race described above), or a deletion marker on
-    // this page needs a liveness check to know whether it is current or
-    // stale (below). Neither applies when there's no marker AND no
-    // principal to reauthorize — an internal/trusted caller reading an
-    // ordinary page gains nothing from this extra `sessionStore.load`, so
-    // skip it rather than pay for a lookup no branch below will use.
-    const liveSession =
-      owner.kind === 'session' && runtime.sessionStore && hasDeletionMarker
-        ? await runtime.sessionStore.load(owner.id)
-        : undefined;
-
-    // A currently-live session record is authoritative over a stale
-    // deletion marker from a PRIOR incarnation of a recreated id — this
-    // owner presently exists, so it is not deleted right now, regardless of
-    // what its durable history contains (its historical events, including
-    // that marker, are still returned in the page; only the outcome
-    // classification is suppressed). `liveSession` is already authorized
-    // above (or the caller is internal/trusted) by the time this runs.
-    if (owner.kind === 'session' && hasDeletionMarker && liveSession) {
-      return page;
-    }
-
-    if (hasDeletionMarker) {
-      return { outcome: 'deleted-aggregate', owner, ...page };
-    }
-    return page;
-  }
-
-  /**
    * COR-1302: registers the `ActiveRun` behind a `bureau.run()` dispatch on
    * `store` while it runs, so `getRun(run.id)`, `abortRun(run.id)`, and
    * `subscribeRunSnapshot` resolve the handle's id on both the direct and the
@@ -21862,55 +21662,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     pendingOf: pendingHumanWaitsOfRun,
     resolve: resolveAnyReview,
   });
-
-  /**
-   * The durable event history of a task, context, or schedule, which `tasks.events`,
-   * `contexts.events`, and `schedules.events` narrow to their owner kind.
-   */
-  function readEventHistory(
-    owner: DurableEventOwner,
-    eventHistoryOptions?: DurableEventHistoryPageOptions,
-  ): Promise<
-    | DurableEventPage
-    | DurableEventGap
-    | EventHistoryUnsupportedOutcome
-    | EventHistoryNotFoundOutcome
-    | EventHistoryDeletedAggregateOutcome
-  > {
-    if (!eventHistoryInstance) {
-      return Promise.resolve({
-        outcome: 'unsupported-capability',
-        reason: 'no-persistent-storage',
-      });
-    }
-    return resolveEventHistory(eventHistoryInstance, owner, eventHistoryOptions);
-  }
-
-  /**
-   * Subscribes to an owner's durable event history, a replay from the cursor and then the live
-   * tail, which each namespace's `subscribeEvents` narrows to its owner kind.
-   */
-  function subscribeToEventHistory(
-    owner: DurableEventOwner,
-    listener: (event: DurableEventEnvelope) => void,
-    subscribeOptions?: DurableEventHistorySubscribeOptions,
-  ): Subscription {
-    if (!eventHistoryInstance) {
-      // No persistent storage backend: nothing to subscribe to. Mirrors
-      // `eventHistory()`'s graceful `'unsupported-capability'` outcome,
-      // projected onto `Subscription`'s synchronous-return shape (which
-      // carries no room for an outcome value) as an already-closed
-      // subscription that never delivers — a caller that must
-      // distinguish "unsupported" from "supported but empty" calls
-      // `eventHistory()` first.
-      return { unsubscribe() {}, closed: true };
-    }
-    const principal = subscribeOptions?.principal;
-    // An omitted principal is a trusted caller, as it is for `eventHistory()`.
-    return principal === undefined
-      ? eventHistoryInstance.subscribeEventHistory(owner, listener, subscribeOptions)
-      : subscribeAuthorized(eventHistoryInstance, owner, listener, principal, subscribeOptions);
-  }
 
   // COR-1704: the schedule operations stay private implementations that share the durable engine,
   // the emitter, and the transition outbox; `events` reads the `schedule` owner of the history the
