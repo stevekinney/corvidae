@@ -277,7 +277,7 @@ describe('a catalog that does not load (row 42v)', () => {
     failing = false;
     await fireEvent.click(within(failed).getByRole('button', { name: newCopy.modelsFailed.retry }));
 
-    await waitFor(() => expect(queryByTestId('agent-models-failed')).toBeNull());
+    await waitFor(() => expect(queryByTestId('agent-models-failed')?.outerHTML ?? null).toBeNull());
     expect(getByRole('textbox', { name: /^Name/ })).toHaveValue('Order helper');
     expect(getByRole('combobox', { name: 'Model' })).toHaveValue('anthropic/claude-sonnet-5');
   });

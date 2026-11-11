@@ -391,7 +391,7 @@ describe('a new agent', () => {
     await fireEvent.click(save);
     expect(await findByText(AGENT_EDITOR_COPY.identifierReserved)).not.toBeNull();
     expect(name).toBeInvalid();
-    await waitFor(() => expect(document.activeElement).toBe(name));
+    await waitFor(() => expect(document.activeElement === name).toBe(true));
     expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
   });
 
@@ -411,7 +411,7 @@ describe('a new agent', () => {
     expect(name).toBeInvalid();
     expect(model).toBeInvalid();
     // The first problem in the form's order is the one that gets focus (row 14u).
-    await waitFor(() => expect(document.activeElement).toBe(name));
+    await waitFor(() => expect(document.activeElement === name).toBe(true));
     expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
   });
 
@@ -435,7 +435,7 @@ describe('a new agent', () => {
     await fireEvent.click(getByRole('button', { name: AGENT_EDITOR_COPY.createAction }));
     expect(await findByText(AGENT_EDITOR_COPY.identifierInvalid)).not.toBeNull();
     expect(identifier).toBeInvalid();
-    await waitFor(() => expect(document.activeElement).toBe(identifier));
+    await waitFor(() => expect(document.activeElement === identifier).toBe(true));
     expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
 
     await fireEvent.click(
