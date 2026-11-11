@@ -342,16 +342,47 @@ function projectOperation(
   }
 }
 
-/** Build the wire action field by field, so a field added to `ToolAction` stays off the wire. */
-function projectAction(action: ToolAction): z.input<typeof toolActionSchema> {
+/**
+ * COR-2280 — the instant a tool approval stops being answerable, as an ISO timestamp: the earlier of
+ * the action's own `expiresAt` and the signed binding's `expiresAt` (epoch milliseconds), each only
+ * when it is a valid, representable instant. Bureau enforces both, so the effective window ends at
+ * whichever comes first. The action's time is valid when `Date.parse` reads it as a finite instant
+ * and the binding's when `new Date(value).getTime()` is finite (NaN, Infinity and anything past the
+ * `Date` range are not); a negative binding time is a deadline already past. The winner is written
+ * as `new Date(instant).toISOString()`, so an action-only deadline loses its original spelling.
+ * `undefined` when neither is valid, which never extends anything: Bureau's enforcement does not
+ * read this value.
+ */
+export function effectiveApprovalExpiry(
+  actionExpiresAt: string | undefined,
+  bindingExpiresAt: unknown,
+): string | undefined {
+  const action = actionExpiresAt === undefined ? Number.NaN : Date.parse(actionExpiresAt);
+  const binding =
+    typeof bindingExpiresAt === 'number' ? new Date(bindingExpiresAt).getTime() : Number.NaN;
+  const valid = [action, binding].filter((instant) => Number.isFinite(instant));
+  if (valid.length === 0) return undefined;
+  return new Date(Math.min(...valid)).toISOString();
+}
+
+/**
+ * Build the wire action field by field, so a field added to `ToolAction` stays off the wire. An
+ * approval's `expiresAt` is its effective deadline ({@link effectiveApprovalExpiry}), which counts
+ * the signed binding's without putting the binding on the wire.
+ */
+function projectAction(
+  action: ToolAction,
+  bindingExpiresAt: unknown,
+): z.input<typeof toolActionSchema> {
   const message = action.message === undefined ? {} : { message: action.message };
   if (action.type === 'input') return { type: 'input', ...message };
+  const expiresAt = effectiveApprovalExpiry(action.expiresAt, bindingExpiresAt);
   return {
     type: 'approval',
     ...message,
     risk: action.risk,
     operation: projectOperation(action.operation),
-    ...(action.expiresAt === undefined ? {} : { expiresAt: action.expiresAt }),
+    ...(expiresAt === undefined ? {} : { expiresAt }),
   };
 }
 
@@ -421,7 +452,7 @@ export function projectReview(
         toolName: review.approval.toolName,
         arguments: review.approval.arguments,
         ...(review.approval.reason === undefined ? {} : { reason: review.approval.reason }),
-        action: projectAction(review.approval.action),
+        action: projectAction(review.approval.action, review.approval.approvalBinding?.expiresAt),
         ...(review.approval.policyPauseTier === undefined
           ? {}
           : { policyPauseTier: review.approval.policyPauseTier }),

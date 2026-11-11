@@ -13,6 +13,8 @@ import {
   responseSchemaFor,
   toInterrupt,
 } from './ag-ui-interrupts.ts';
+import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
+import { projectReview } from './bureau-reviews-operations.ts';
 
 function approval(id: string, round: number): PendingReview {
   return { kind: 'tool-approval', id, round } as unknown as PendingReview;
@@ -228,5 +230,112 @@ describe('the response schema of a question that carries its own answer schema (
 
     expect(interrupt.responseSchema).toEqual(responseSchemaFor(answerSchema));
     expect(toInterrupt(plain).responseSchema).toBe(HUMAN_WAIT_RESPONSE_SCHEMA);
+  });
+});
+
+/** A gated call whose action and signed binding carry the given deadlines, or none. */
+function gatedApproval(actionExpiresAt: string | undefined, bindingExpiresAt: unknown) {
+  return {
+    kind: 'tool-approval',
+    id: 'approval:run-1:call-1',
+    runId: 'run-1',
+    sessionId: 'session-1',
+    round: 2,
+    requestedAt: 0,
+    ageMilliseconds: 0,
+    status: 'pending',
+    approval: {
+      callId: 'call-1',
+      toolName: 'charge-card',
+      arguments: { cents: 500 },
+      reason: 'Operator approval required',
+      action: {
+        type: 'approval',
+        message: 'Approve charge',
+        risk: 'high',
+        operation: { kind: 'other' },
+        ...(actionExpiresAt === undefined ? {} : { expiresAt: actionExpiresAt }),
+      },
+      ...(bindingExpiresAt === undefined
+        ? {}
+        : { approvalBinding: { expiresAt: bindingExpiresAt, nonce: 'binding-nonce' } }),
+    },
+  } as unknown as PendingReview;
+}
+
+describe('the deadline a tool approval interrupt carries (COR-2280)', () => {
+  const EARLY = Date.parse('2030-01-01T00:00:00.000Z');
+  const LATE = Date.parse('2030-01-01T00:05:00.000Z');
+
+  it('carries the binding’s deadline when it is the only one', () => {
+    expect(toInterrupt(gatedApproval(undefined, EARLY)).expiresAt).toBe('2030-01-01T00:00:00.000Z');
+  });
+
+  it('carries the action’s deadline, canonically written, when it is the only one', () => {
+    expect(toInterrupt(gatedApproval('2030-01-01T00:05:00Z', undefined)).expiresAt).toBe(
+      '2030-01-01T00:05:00.000Z',
+    );
+  });
+
+  it('carries the earlier of the two, whichever it is', () => {
+    expect(toInterrupt(gatedApproval('2030-01-01T00:05:00.000Z', EARLY)).expiresAt).toBe(
+      '2030-01-01T00:00:00.000Z',
+    );
+    expect(toInterrupt(gatedApproval('2030-01-01T00:00:00.000Z', LATE)).expiresAt).toBe(
+      '2030-01-01T00:00:00.000Z',
+    );
+    expect(toInterrupt(gatedApproval('2030-01-01T00:00:00Z', EARLY)).expiresAt).toBe(
+      '2030-01-01T00:00:00.000Z',
+    );
+  });
+
+  it('carries none when neither deadline is valid, without throwing', () => {
+    expect(toInterrupt(gatedApproval(undefined, undefined))).not.toHaveProperty('expiresAt');
+    for (const binding of [Number.NaN, Number.POSITIVE_INFINITY, 8.64e15 + 1, '2030', null]) {
+      expect(toInterrupt(gatedApproval('soon', binding))).not.toHaveProperty('expiresAt');
+    }
+  });
+
+  it('skips an invalid deadline in favour of the valid one', () => {
+    expect(toInterrupt(gatedApproval('soon', EARLY)).expiresAt).toBe('2030-01-01T00:00:00.000Z');
+    expect(toInterrupt(gatedApproval('2030-01-01T00:05:00.000Z', Number.NaN)).expiresAt).toBe(
+      '2030-01-01T00:05:00.000Z',
+    );
+  });
+
+  it('reads a negative binding time as a deadline already past', () => {
+    expect(toInterrupt(gatedApproval(undefined, -1)).expiresAt).toBe('1969-12-31T23:59:59.999Z');
+  });
+
+  it('agrees with the review projection, and changes nothing else the interrupt says', () => {
+    const review = gatedApproval('2030-01-01T00:05:00.000Z', EARLY);
+    const projected = projectReview({ ...review, status: 'pending' });
+    const interrupt = toInterrupt(review);
+
+    if (projected.kind !== 'tool-approval' || projected.approval.action.type !== 'approval') {
+      throw new Error('expected an approval');
+    }
+    expect(interrupt.expiresAt).toBe(projected.approval.action.expiresAt);
+    expect(interrupt).toMatchObject({
+      id: 'approval:run-1:call-1',
+      reason: 'tool-approval',
+      toolCallId: 'call-1',
+      message: 'Approve charge',
+      responseSchema: RESUME_PAYLOAD_SCHEMA,
+      metadata: {
+        [BUREAU_METADATA_KEY]: {
+          kind: 'tool-approval',
+          runId: 'run-1',
+          sessionId: 'session-1',
+          round: 2,
+          toolName: 'charge-card',
+          risk: 'high',
+          operation: { kind: 'other' },
+        },
+      },
+    });
+    // The binding stays in the Bureau.
+    expect(JSON.stringify(interrupt)).not.toContain('binding-nonce');
+    expect(JSON.stringify(projected)).not.toContain('binding-nonce');
   });
 });

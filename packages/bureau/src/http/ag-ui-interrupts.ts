@@ -241,14 +241,16 @@ export function toInterrupt(review: PendingReview): Interrupt {
   }
   const action = review.approval.action;
   const message = action.message ?? review.approval.reason;
-  const approvalAction = action.type === 'approval' ? action : undefined;
   const wire = projected.kind === 'tool-approval' ? projected.approval : undefined;
+  // COR-2280: the deadline `bureau.reviews.get` projects, the earlier of the action's and the
+  // signed binding's, so the interrupt and the review agree on when the approval expires.
+  const expiresAt = wire?.action.type === 'approval' ? wire.action.expiresAt : undefined;
   return {
     id: review.id,
     reason: 'tool-approval',
     toolCallId: review.approval.callId,
     ...(message === undefined ? {} : { message }),
-    ...(approvalAction?.expiresAt === undefined ? {} : { expiresAt: approvalAction.expiresAt }),
+    ...(expiresAt === undefined ? {} : { expiresAt }),
     responseSchema: RESUME_PAYLOAD_SCHEMA,
     metadata: {
       [BUREAU_METADATA_KEY]: {

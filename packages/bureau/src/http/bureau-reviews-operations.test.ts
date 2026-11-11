@@ -26,6 +26,7 @@ import {
   type BureauReviewsOperationHost,
   bureauReviewSchema,
   bureauReviewsOperations,
+  effectiveApprovalExpiry,
   projectReview,
 } from './bureau-reviews-operations.ts';
 import { BUREAU_SCOPES } from './bureau-scopes.ts';
@@ -417,6 +418,56 @@ describe('the tool-approval action projection', () => {
         operation: { kind: 'command', command: 'deploy --prod', filesTouched: ['a.txt'] },
       },
     });
+  });
+
+  it('gives a pending review the earlier of its action’s and its binding’s deadlines (COR-2280)', async () => {
+    const base = approvalActionReview({ kind: 'other' });
+    if (base.kind !== 'tool-approval' || base.approval.action.type !== 'approval') {
+      throw new Error('expected an approval');
+    }
+    const bindingOnly = {
+      ...base,
+      approval: {
+        ...base.approval,
+        action: { ...base.approval.action, expiresAt: undefined },
+        approvalBinding: { expiresAt: Date.parse('2029-06-01T00:00:00.000Z'), nonce: SECRET },
+      },
+    } as unknown as PendingReview;
+    const handler = serve(
+      stubHost({
+        list: () => [bindingOnly],
+        get: async () => ({ ...bindingOnly, status: 'pending' as ReviewStatus }),
+      }),
+    );
+
+    const listed = await call(handler, 'bureau.reviews.list', {});
+    const fetched = await call(handler, 'bureau.reviews.get', { id: bindingOnly.id });
+
+    expect(fetched.result?.['approval']).toMatchObject({
+      action: { type: 'approval', expiresAt: '2029-06-01T00:00:00.000Z' },
+    });
+    expect(listed.result?.['reviews']).toMatchObject([
+      { approval: { action: { expiresAt: '2029-06-01T00:00:00.000Z' } } },
+    ]);
+    for (const body of [listed, fetched]) expect(JSON.stringify(body)).not.toContain(SECRET);
+  });
+
+  it('reads each deadline only when it is a valid instant (COR-2280)', () => {
+    const early = Date.parse('2030-01-01T00:00:00.000Z');
+    expect(effectiveApprovalExpiry(undefined, early)).toBe('2030-01-01T00:00:00.000Z');
+    expect(effectiveApprovalExpiry('2030-01-01T00:05:00Z', undefined)).toBe(
+      '2030-01-01T00:05:00.000Z',
+    );
+    expect(effectiveApprovalExpiry('2030-01-01T00:05:00Z', early)).toBe('2030-01-01T00:00:00.000Z');
+    expect(effectiveApprovalExpiry('2029-12-31T23:00:00Z', early)).toBe('2029-12-31T23:00:00.000Z');
+    expect(effectiveApprovalExpiry('2030-01-01T00:00:00Z', early)).toBe('2030-01-01T00:00:00.000Z');
+    expect(effectiveApprovalExpiry(undefined, undefined)).toBeUndefined();
+    expect(effectiveApprovalExpiry('soon', Number.NaN)).toBeUndefined();
+    expect(effectiveApprovalExpiry('soon', Number.POSITIVE_INFINITY)).toBeUndefined();
+    expect(effectiveApprovalExpiry('soon', Number.MAX_SAFE_INTEGER + 2)).toBeUndefined();
+    expect(effectiveApprovalExpiry(undefined, '2030-01-01T00:00:00.000Z')).toBeUndefined();
+    expect(effectiveApprovalExpiry('soon', early)).toBe('2030-01-01T00:00:00.000Z');
+    expect(effectiveApprovalExpiry(undefined, -1)).toBe('1969-12-31T23:59:59.999Z');
   });
 
   it('exposes what each operation kind does and to what', () => {
