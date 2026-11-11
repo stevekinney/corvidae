@@ -396,7 +396,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     const by = container.querySelector('.cinder-approval-card__receipt-by');
 
     expect(squash(by?.textContent)).toBe('by Priya Raman in Reviews, 10:46 AM');
-    expect(by?.textContent).not.toContain('·');
+    expect(by?.textContent).not.toContain(String.fromCodePoint(0xb7));
     const link = getByRole('link', { name: 'Reviews' });
     expect(link.getAttribute('href')).toBe('/reviews');
     expect(by?.contains(link)).toBe(true);

@@ -51,7 +51,7 @@ describe('approval drawer words', () => {
       'Waiting for your approval. Anything you send now queues until you decide.',
     );
     expect(APPROVAL_DRAWER_ACTION).toBe('Review approval');
-    expect(APPROVAL_DRAWER_TEXT).not.toContain('·');
+    expect(APPROVAL_DRAWER_TEXT).not.toContain(String.fromCodePoint(0xb7));
   });
 });
 
