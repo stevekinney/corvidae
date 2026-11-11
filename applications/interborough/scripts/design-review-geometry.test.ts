@@ -33,6 +33,9 @@ function facts(overrides: Partial<GeometryFacts> = {}): GeometryFacts {
     edges: [],
     stacks: [],
     leadingSpace: [],
+    overlaps: [],
+    insets: [],
+    chrome: null,
     ...overrides,
   };
 }
@@ -53,6 +56,7 @@ function capture(overrides: Partial<GeometryCapture> = {}): GeometryCapture {
 function button(inline: number, block: number, overrides: Partial<ControlFact> = {}): ControlFact {
   const height = 32;
   const labelWidth = 40;
+  const rect = overrides.rect ?? { x: 100, y: 100, width: labelWidth + inline * 2, height };
   return {
     name: 'button.cinder-button[size=md]',
     kind: 'button',
@@ -63,11 +67,13 @@ function button(inline: number, block: number, overrides: Partial<ControlFact> =
     rect: { x: 100, y: 100, width: labelWidth + inline * 2, height },
     content: { x: 100 + inline, y: 100 + block, width: labelWidth, height: height - block * 2 },
     fontSize: 13,
-    extendedHitArea: false,
     fullWidth: false,
     boxed: true,
     labelRuns: 1,
+    parent: 0,
     ...overrides,
+    // Nothing extends the area that takes a tap unless a test says so.
+    hit: overrides.hit ?? rect,
   };
 }
 
@@ -109,6 +115,42 @@ describe('targets on a phone', () => {
     });
     const found = auditCapture(facts({ ...phone, controls: [tall] }), capture({ width: 375 }));
     expect(rules(found)).toEqual(['target-oversized']);
+  });
+
+  test('flags a button drawn at the touch minimum, and passes one drawn compact with a larger hit area', () => {
+    const grown = button(40, 14, {
+      rect: { x: 16, y: 100, width: 120, height: 44 },
+      content: { x: 56, y: 114, width: 40, height: 16 },
+    });
+    const compact = button(40, 8, {
+      rect: { x: 16, y: 200, width: 120, height: 32 },
+      content: { x: 56, y: 208, width: 40, height: 16 },
+      hit: { x: 16, y: 194, width: 120, height: 44 },
+    });
+    const touch = { ...phone, pointerCoarse: true };
+    const found = auditCapture(
+      facts({ ...touch, controls: [grown, compact] }),
+      capture({ width: 375 }),
+    );
+    expect(rules(found)).toEqual(['target-oversized']);
+    expect(found[0]?.measured).toContain('drawn 44px tall, over the 36px limit');
+  });
+
+  test('judges a button that draws no box by its hit area alone, and other controls by the looser limit', () => {
+    const ghost = button(10, 14, {
+      boxed: false,
+      rect: { x: 16, y: 100, width: 60, height: 44 },
+      content: { x: 26, y: 114, width: 40, height: 16 },
+    });
+    const row = button(10, 14, {
+      kind: 'other',
+      rect: { x: 16, y: 200, width: 343, height: 44 },
+      content: { x: 26, y: 214, width: 40, height: 16 },
+    });
+    const touch = { ...phone, pointerCoarse: true };
+    expect(
+      auditCapture(facts({ ...touch, controls: [ghost, row] }), capture({ width: 375 })),
+    ).toEqual([]);
   });
 
   test('does not call the same button oversized at desktop width', () => {
@@ -160,10 +202,59 @@ describe('target-undersized', () => {
 
   test('passes one with an extended hit area, and a link inside a sentence', () => {
     const controls = [
-      { ...small, extendedHitArea: true },
+      { ...small, hit: { x: 8, y: 8, width: 24, height: 24 } },
       { ...small, kind: 'link' as const, inline: true },
     ];
     expect(auditCapture(facts({ controls }), capture())).toEqual([]);
+  });
+
+  test('holds the hit area to the touch minimum on a touch screen, but not a text field', () => {
+    const adequate = button(8, 4, {
+      rect: { x: 10, y: 10, width: 56, height: 24 },
+      content: { x: 18, y: 14, width: 40, height: 16 },
+    });
+    const field = { ...adequate, kind: 'field' as const, name: 'input.cinder-input' };
+    const extended = { ...adequate, hit: { x: 10, y: 0, width: 56, height: 44 } };
+    expect(auditCapture(facts({ controls: [adequate] }), capture())).toEqual([]);
+    const found = auditCapture(
+      facts({ pointerCoarse: true, controls: [adequate, field, extended] }),
+      capture(),
+    );
+    expect(rules(found)).toEqual(['target-undersized']);
+    expect(found[0]?.measured).toContain('under the 44px minimum on a touch screen');
+  });
+});
+
+describe('icon-pitch', () => {
+  function icon(x: number, overrides: Partial<ControlFact> = {}): ControlFact {
+    return button(0, 0, {
+      text: '',
+      accessibleLabel: 'Copy',
+      hasIcon: true,
+      boxed: false,
+      rect: { x, y: 100, width: 44, height: 44 },
+      content: { x: x + 15, y: 115, width: 14, height: 14 },
+      ...overrides,
+    });
+  }
+
+  test('flags icon buttons whose glyphs sit several glyphs apart', () => {
+    const found = auditCapture(facts({ controls: [icon(0), icon(48), icon(96)] }), capture());
+    expect(rules(found)).toEqual(['icon-pitch']);
+    expect(found[0]?.measured).toContain('14px glyphs 48px apart');
+  });
+
+  test('passes glyphs close together, icons in different rows or parents, and the two ends of a bar', () => {
+    const tight = [icon(0), icon(32)];
+    const rows = [
+      icon(0, { parent: 1 }),
+      icon(0, { parent: 1, rect: { x: 0, y: 300, width: 44, height: 44 } }),
+    ];
+    const parents = [icon(200, { parent: 2 }), icon(300, { parent: 3 })];
+    const ends = [icon(0, { parent: 4 }), icon(300, { parent: 4 })];
+    expect(
+      auditCapture(facts({ controls: [...tight, ...rows, ...parents, ...ends] }), capture()),
+    ).toEqual([]);
   });
 });
 
@@ -208,7 +299,7 @@ describe('type', () => {
 
 describe('borders', () => {
   function border(contrast: number, interactive: boolean, width = 1, name = 'div.cinder-card') {
-    return { name, width, contrast, interactive, count: 3 };
+    return { name, width, style: 'solid', contrast, interactive, count: 3 };
   }
 
   test('flags a structural border heavier than a hairline should be', () => {
@@ -235,6 +326,19 @@ describe('borders', () => {
     );
     expect(rules(auditCapture(facts({ borders }), capture()))).toEqual(['border-mixed']);
   });
+
+  test('counts a dashed border as a weight of its own', () => {
+    const solid = [1.1, 1.2, 1.3].map((contrast, index) =>
+      border(contrast, false, 1, `div.card-${index}`),
+    );
+    expect(auditCapture(facts({ borders: solid }), capture())).toEqual([]);
+    const found = auditCapture(
+      facts({ borders: [...solid, { ...border(1.3, false, 1, 'div.queued'), style: 'dashed' }] }),
+      capture(),
+    );
+    expect(rules(found)).toEqual(['border-mixed']);
+    expect(found[0]?.measured).toContain('dashed 1.3:1');
+  });
 });
 
 describe('edge-near-miss', () => {
@@ -258,33 +362,125 @@ describe('edge-near-miss', () => {
   });
 });
 
+function stack(
+  name: string,
+  uniformChildren: boolean,
+  gaps: readonly number[],
+  edges: { lefts?: readonly number[]; rights?: readonly number[] } = {},
+) {
+  return { name, uniformChildren, gaps, lefts: [], rights: [], ...edges };
+}
+
+describe('edge-many', () => {
+  test('flags children that start on more left edges, or end on more right edges, than the limit', () => {
+    const stacks = [
+      stack('div.chat-column', false, [8, 8, 8], { lefts: [12, 20, 37, 45] }),
+      stack('div.transcript', false, [8, 8], { rights: [605, 688, 752] }),
+    ];
+    const found = auditCapture(facts({ stacks }), capture());
+    expect(rules(found)).toEqual(['edge-many', 'edge-many']);
+    expect(found[0]?.measured).toContain('4 left edges: 12px, 20px, 37px, 45px');
+    expect(found[1]?.subject).toBe('div.transcript right edges');
+  });
+
+  test('passes two edges, edges a pixel apart, and never judges the stress data', () => {
+    const stacks = [stack('section.panel', false, [8, 8], { lefts: [16, 16.5, 17, 40] })];
+    expect(auditCapture(facts({ stacks }), capture())).toEqual([]);
+    const many = [stack('section.panel', false, [8, 8], { lefts: [16, 24, 40] })];
+    expect(
+      auditCapture(facts({ stacks: many }), capture({ source: 'responsive.spec.ts' })),
+    ).toEqual([]);
+  });
+});
+
+describe('occluded', () => {
+  function overlap(kind: 'covered' | 'faded' | 'over-text', amount: number) {
+    return {
+      kind,
+      subject: 'button.cinder-button[size=sm]',
+      label: 'Approve',
+      by: 'div.bar',
+      amount,
+    };
+  }
+
+  test('flags a control partly covered, one under a fade, and one lying on text', () => {
+    const overlaps = [overlap('covered', 0.4), overlap('faded', 0.5), overlap('over-text', 0.9)];
+    const found = auditCapture(facts({ overlaps }), capture());
+    expect(rules(found)).toEqual(['occluded', 'occluded', 'occluded']);
+    expect(found.map((finding) => finding.subject)).toEqual([
+      'button.cinder-button[size=sm] under div.bar',
+      'button.cinder-button[size=sm] under the fade of div.bar',
+      'button.cinder-button[size=sm] over div.bar',
+    ]);
+  });
+
+  test('passes a fade that only grazes a control', () => {
+    expect(auditCapture(facts({ overlaps: [overlap('faded', 0.1)] }), capture())).toEqual([]);
+  });
+});
+
+describe('inset-uneven', () => {
+  test('flags a box with more room above its content than below, past the tolerance', () => {
+    const insets = [
+      { name: 'div.cinder-alert', above: 26, below: 12, sample: 'Answer incomplete' },
+      { name: 'div.cinder-card', above: 16, below: 12, sample: 'Even enough' },
+    ];
+    const found = auditCapture(facts({ insets }), capture());
+    expect(rules(found)).toEqual(['inset-uneven']);
+    expect(found[0]?.measured).toContain('26px above');
+    expect(auditCapture(facts({ insets }), capture({ source: 'responsive.spec.ts' }))).toEqual([]);
+  });
+});
+
+describe('chrome-share', () => {
+  const chrome = { name: 'div.chat-timeline', top: 8, bottom: 292 };
+
+  test('flags fixed chrome that takes more than its share of a phone', () => {
+    const found = auditCapture(
+      facts({ viewport: { width: 320, height: 640 }, chrome }),
+      capture({ width: 320 }),
+    );
+    expect(rules(found)).toEqual(['chrome-share']);
+    expect(found[0]?.measured).toContain('46%');
+  });
+
+  test('passes a one-line composer, and the same chrome on a desktop', () => {
+    const small = { ...chrome, bottom: 122 };
+    expect(
+      auditCapture(facts({ viewport: { width: 320, height: 640 }, chrome: small }), capture()),
+    ).toEqual([]);
+    expect(auditCapture(facts({ chrome }), capture())).toEqual([]);
+  });
+});
+
 describe('gaps', () => {
   test('flags a gap between siblings that is not a step of the spacing scale', () => {
-    const stacks = [{ name: 'section.panel', uniformChildren: false, gaps: [16, 18, 16] }];
+    const stacks = [stack('section.panel', false, [16, 18, 16])];
     const found = auditCapture(facts({ stacks }), capture());
     expect(rules(found)).toEqual(['gap-off-scale']);
     expect(found[0]?.measured).toContain('18px');
   });
 
   test('flags like siblings spaced unevenly', () => {
-    const stacks = [{ name: 'ul.list', uniformChildren: true, gaps: [8, 12, 8] }];
+    const stacks = [stack('ul.list', true, [8, 12, 8])];
     expect(rules(auditCapture(facts({ stacks }), capture()))).toEqual(['gap-uneven']);
   });
 
   test('treats a gap wider than the slack limit as layout, not spacing', () => {
-    const stacks = [{ name: 'ul.navigation', uniformChildren: false, gaps: [2, 101] }];
+    const stacks = [stack('ul.navigation', false, [2, 101])];
     expect(auditCapture(facts({ stacks }), capture())).toEqual([]);
   });
 
   test('does not hold gaps to a scale the probe could not read', () => {
-    const stacks = [{ name: 'section.panel', uniformChildren: false, gaps: [16, 18, 16] }];
+    const stacks = [stack('section.panel', false, [16, 18, 16])];
     expect(auditCapture(facts({ spaceScale: [0], stacks }), capture())).toEqual([]);
     const report = renderGeometryReport([], { captures: 1, measured: 1, coarse: 1, unscaled: 1 });
     expect(report).toContain('1 measured captures declared no `--cinder-space-*` scale');
   });
 
   test('passes unlike siblings spaced by different steps of the scale', () => {
-    const stacks = [{ name: 'article', uniformChildren: false, gaps: [8, 24, 16] }];
+    const stacks = [stack('article', false, [8, 24, 16])];
     expect(auditCapture(facts({ stacks }), capture())).toEqual([]);
   });
 });

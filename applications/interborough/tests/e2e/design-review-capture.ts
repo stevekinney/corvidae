@@ -11,16 +11,54 @@
  * `manifest.jsonl` in the directory, and writes what the page measures (`design-review-geometry-probe.ts`)
  * to `geometry/<slug>.json` for the geometry audit. The suite runs one worker (`playwright.config.ts`), so the
  * appends never interleave.
+ *
+ * A phone has a finger, not a mouse, and Cinder sizes controls by pointer (`@media (pointer: coarse)`),
+ * so a capture at a phone width turns touch emulation on for its screenshots and measurements and
+ * off again before the specification's own assertions run. It also captures the page a second time
+ * at 320 by 640, the smallest phone the application supports, where fixed chrome crowds the content
+ * and overlays cover it first; no specification opens that size itself.
  */
 import type { Page } from '@playwright/test';
 import { appendFile, mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
+import { GEOMETRY_THRESHOLDS } from '../../scripts/design-review-geometry.ts';
 import {
   designReviewCaptureDirectory,
   designReviewColorScheme,
 } from '../../scripts/environment-configuration.ts';
 import { measureGeometry } from './design-review-geometry-probe.ts';
+
+/** At or below this width a capture is of a phone, and is taken with a coarse pointer. */
+const PHONE_WIDTH_MAXIMUM = GEOMETRY_THRESHOLDS.phoneWidthMaximum;
+
+async function nextFrame(page: Page): Promise<void> {
+  await page.evaluate(
+    () =>
+      new Promise<void>((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+      }),
+  );
+}
+
+/**
+ * Turns on Chromium's touch emulation, which is what `(pointer: coarse)` follows, waits for the
+ * layout, and answers the function that turns it off again. The override lives as long as its
+ * session, so the session stays open until then.
+ */
+async function emulateTouch(page: Page): Promise<() => Promise<void>> {
+  const session = await page.context().newCDPSession(page);
+  await session.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await nextFrame(page);
+  return async () => {
+    await session.send('Emulation.setTouchEmulationEnabled', { enabled: false });
+    await session.detach();
+    await nextFrame(page);
+  };
+}
+
+/** The smallest phone the application supports, which every phone-width capture is repeated at. */
+const SMALL_PHONE = { width: 320, height: 640 } as const;
 
 /** The tallest the viewport is stretched to for a whole-page capture, so a runaway list stays readable. */
 const MAXIMUM_FULL_HEIGHT = 8000;
@@ -79,9 +117,34 @@ export async function captureForDesignReview(
 ): Promise<void> {
   const directory = designReviewCaptureDirectory();
   if (directory === undefined) return;
-  const colorScheme = designReviewColorScheme() ?? 'light';
   const viewportSize = page.viewportSize();
   if (viewportSize === null) throw new Error('A design-review capture needs a fixed viewport.');
+  if (viewportSize.width > PHONE_WIDTH_MAXIMUM) {
+    await captureViewport(page, capture, directory, viewportSize);
+    return;
+  }
+  const restorePointer = await emulateTouch(page);
+  try {
+    await captureViewport(page, capture, directory, viewportSize);
+    if (viewportSize.width !== SMALL_PHONE.width) {
+      await page.setViewportSize(SMALL_PHONE);
+      await nextFrame(page);
+      await captureViewport(page, capture, directory, SMALL_PHONE);
+      await page.setViewportSize(viewportSize);
+    }
+  } finally {
+    await restorePointer();
+  }
+}
+
+/** Screenshots and measures the page at the size it is at, and appends its line to the manifest. */
+async function captureViewport(
+  page: Page,
+  capture: DesignReviewCapture,
+  directory: string,
+  viewportSize: { readonly width: number; readonly height: number },
+): Promise<void> {
+  const colorScheme = designReviewColorScheme() ?? 'light';
   const slug = designReviewSlug(capture, viewportSize.width, colorScheme);
   await mkdir(join(directory, 'screens'), { recursive: true });
 

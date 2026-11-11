@@ -365,6 +365,9 @@ describe('captureDesignReview', () => {
         edges: [],
         stacks: [],
         leadingSpace: [],
+        overlaps: [],
+        insets: [],
+        chrome: null,
       }),
     );
     const manifest = JSON.stringify({

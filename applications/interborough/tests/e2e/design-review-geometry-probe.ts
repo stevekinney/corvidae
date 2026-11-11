@@ -8,7 +8,10 @@
  * It records what a reviewer cannot read off a screenshot: each control's box and the box of the
  * label and icons inside it, the sizes and line heights text is set in, each border's thickness and
  * its contrast against the surface outside it, the left edges content starts on, the gaps between
- * stacked siblings, and wide rows whose content starts far from their leading edge.
+ * stacked siblings and the edges they start and end on, wide rows whose content starts far from
+ * their leading edge, the area of each control that takes a tap, what covers a control or a line of
+ * text, boxes with more room above their content than below it, and how much of the viewport the
+ * chrome around the scrolling region takes.
  */
 import type { Page } from '@playwright/test';
 
@@ -31,6 +34,15 @@ export function collectGeometryFacts(): GeometryFacts {
 
   function half(value: number): number {
     return Math.round(value * 2) / 2;
+  }
+
+  function boxOf(bounds: Bounds): { x: number; y: number; width: number; height: number } {
+    return {
+      x: half(bounds.left),
+      y: half(bounds.top),
+      width: half(bounds.right - bounds.left),
+      height: half(bounds.bottom - bounds.top),
+    };
   }
 
   function isShown(element: Element): boolean {
@@ -197,14 +209,61 @@ export function collectGeometryFacts(): GeometryFacts {
     return [...steps].toSorted((left, right) => left - right);
   }
 
-  function hasExtendedHitArea(element: Element): boolean {
-    return ['::before', '::after'].some((pseudo) => {
-      const style = getComputedStyle(element, pseudo);
-      if (style.content === 'none' || style.position !== 'absolute') return false;
-      return [style.top, style.right, style.bottom, style.left].some(
-        (inset) => Number.parseFloat(inset) < 0,
-      );
-    });
+  /** The box an absolutely positioned pseudo-element of `element` fills, when it has one. */
+  function pseudoBounds(element: Element, pseudo: '::before' | '::after'): Bounds | null {
+    const style = getComputedStyle(element, pseudo);
+    if (style.content === 'none' || style.position !== 'absolute') return null;
+    const own = getComputedStyle(element);
+    // The pseudo-element is placed against this element only when this element is positioned.
+    if (own.position === 'static') return null;
+    const rect = element.getBoundingClientRect();
+    const insets = [style.top, style.right, style.bottom, style.left].map((inset) =>
+      Number.parseFloat(inset),
+    );
+    const [top = Number.NaN, right = Number.NaN, bottom = Number.NaN, left = Number.NaN] = insets;
+    if ([top, right, bottom, left].some((inset) => Number.isNaN(inset))) return null;
+    return {
+      left: rect.left + Number.parseFloat(own.borderLeftWidth) + left,
+      top: rect.top + Number.parseFloat(own.borderTopWidth) + top,
+      right: rect.right - Number.parseFloat(own.borderRightWidth) - right,
+      bottom: rect.bottom - Number.parseFloat(own.borderBottomWidth) - bottom,
+    };
+  }
+
+  /**
+   * The area that takes a tap: the control, any pseudo-element that extends it invisibly, and the
+   * label around a checkbox or radio.
+   */
+  function hitBounds(element: Element): Bounds {
+    let bounds = union(null, element.getBoundingClientRect());
+    for (const pseudo of ['::before', '::after'] as const) {
+      if (getComputedStyle(element, pseudo).pointerEvents === 'none') continue;
+      const extension = pseudoBounds(element, pseudo);
+      if (extension === null) continue;
+      bounds = {
+        left: Math.min(bounds.left, extension.left),
+        top: Math.min(bounds.top, extension.top),
+        right: Math.max(bounds.right, extension.right),
+        bottom: Math.max(bounds.bottom, extension.bottom),
+      };
+    }
+    if (element instanceof HTMLInputElement) {
+      for (const label of element.labels ?? []) {
+        if (isShown(label)) bounds = union(bounds, label.getBoundingClientRect());
+      }
+    }
+    return bounds;
+  }
+
+  const parents = new Map<Element, number>();
+
+  /** A number shared by the controls of one parent, so the audit can tell which sit in one row. */
+  function parentOf(element: Element): number {
+    const parent = element.parentElement ?? element;
+    const known = parents.get(parent);
+    if (known !== undefined) return known;
+    parents.set(parent, parents.size);
+    return parents.size - 1;
   }
 
   function controlKind(element: Element): GeometryFacts['controls'][number]['kind'] {
@@ -281,7 +340,8 @@ export function collectGeometryFacts(): GeometryFacts {
             style.borderTopStyle !== 'none' &&
             colorOf(style.borderTopColor)[3] > 0),
         labelRuns: textNodes(element, true).length,
-        extendedHitArea: hasExtendedHitArea(element),
+        hit: boxOf(hitBounds(element)),
+        parent: parentOf(element),
         // Filling a container that hugs it is not stretching, so it must also span half the viewport.
         fullWidth: rect.width >= available - 1 && rect.width >= viewportWidth / 2,
       });
@@ -328,7 +388,14 @@ export function collectGeometryFacts(): GeometryFacts {
   function borders(): GeometryFacts['borders'][number][] {
     const found = new Map<
       string,
-      { name: string; width: number; contrast: number; interactive: boolean; count: number }
+      {
+        name: string;
+        width: number;
+        style: string;
+        contrast: number;
+        interactive: boolean;
+        count: number;
+      }
     >();
     for (const element of document.body.querySelectorAll('*')) {
       if (SKIPPED_TAGS.has(element.tagName) || element.closest('svg') !== null) continue;
@@ -340,6 +407,7 @@ export function collectGeometryFacts(): GeometryFacts {
         [style.borderLeftWidth, style.borderLeftStyle, style.borderLeftColor],
       ] as const;
       let width = 0;
+      let line = 'solid';
       let color: [number, number, number, number] | null = null;
       for (const [sideWidth, sideStyle, sideColor] of sides) {
         const pixels = Number.parseFloat(sideWidth);
@@ -347,18 +415,20 @@ export function collectGeometryFacts(): GeometryFacts {
         const resolved = colorOf(sideColor);
         if (resolved[3] === 0) continue;
         width = pixels;
+        line = sideStyle;
         color = resolved;
       }
       if (color === null || !isShown(element)) continue;
       const drawn = over(color, surfaceOf(element));
       const ratio = contrast(drawn, surfaceOf(element.parentElement));
       const name = nameOf(element);
-      const key = `${name}|${width}|${ratio}`;
+      const key = `${name}|${width}|${line}|${ratio}`;
       const known = found.get(key);
       if (known === undefined) {
         found.set(key, {
           name,
           width,
+          style: line,
           contrast: ratio,
           // A short box around a field is that field's boundary, as a composer's frame is.
           interactive:
@@ -407,6 +477,10 @@ export function collectGeometryFacts(): GeometryFacts {
   /** The gaps between the children of every container that stacks three or more of them. */
   function stacks(): GeometryFacts['stacks'][number][] {
     const found: GeometryFacts['stacks'][number][] = [];
+    // Lists, quotations, code and tables indent or fill on purpose, so they set no edge of their own.
+    const OWN_EDGE_TAGS = new Set(['UL', 'OL', 'DL', 'BLOCKQUOTE', 'PRE', 'TABLE', 'HR']);
+    const distinct = (values: number[]): number[] =>
+      [...new Set(values)].toSorted((left, right) => left - right);
     for (const element of document.body.querySelectorAll('*')) {
       if (element.children.length < 3 || element.closest('svg') !== null) continue;
       const children = [...element.children].filter((child) => {
@@ -428,7 +502,47 @@ export function collectGeometryFacts(): GeometryFacts {
       }
       if (!stacked || gaps.every((gap) => gap === 0)) continue;
       const names = new Set(children.map((child) => nameOf(child)));
-      found.push({ name: nameOf(element), uniformChildren: names.size === 1, gaps });
+      const style = getComputedStyle(element);
+      // A container that centers or end-aligns its children gives each its own edge by design.
+      const startAligned =
+        !['center', 'end', 'flex-end'].includes(style.alignItems) &&
+        !['center', 'end', 'flex-end'].includes(style.justifyItems);
+      const lefts: number[] = [];
+      const rights: number[] = [];
+      const box = element.getBoundingClientRect();
+      const width = box.width;
+      const start =
+        box.left + Number.parseFloat(style.borderLeftWidth) + Number.parseFloat(style.paddingLeft);
+      const end =
+        box.right -
+        Number.parseFloat(style.borderRightWidth) -
+        Number.parseFloat(style.paddingRight);
+      for (const child of children) {
+        if (OWN_EDGE_TAGS.has(child.tagName)) continue;
+        const childStyle = getComputedStyle(child);
+        if (childStyle.textAlign !== 'start' && childStyle.textAlign !== 'left') continue;
+        if (!startAligned || ['center', 'end', 'flex-end'].includes(childStyle.alignSelf)) continue;
+        const rect = child.getBoundingClientRect();
+        // A child pushed away from the leading edge with no more room after it is centered or
+        // end-aligned (a sent message, a date divider), which is a placement and not an edge.
+        const before = rect.left - start;
+        if (before > 1 && end - rect.right <= before) continue;
+        const content = contentBounds(child);
+        if (content !== null) lefts.push(half(content.left));
+        const boxed =
+          colorOf(childStyle.backgroundColor)[3] > 0 ||
+          (Number.parseFloat(childStyle.borderRightWidth) > 0 &&
+            childStyle.borderRightStyle !== 'none' &&
+            colorOf(childStyle.borderRightColor)[3] > 0);
+        if (boxed && rect.width >= width * 0.4) rights.push(half(rect.right));
+      }
+      found.push({
+        name: nameOf(element),
+        uniformChildren: names.size === 1,
+        gaps,
+        lefts: distinct(lefts),
+        rights: distinct(rights),
+      });
     }
     return found;
   }
@@ -475,6 +589,301 @@ export function collectGeometryFacts(): GeometryFacts {
     return found;
   }
 
+  function intersection(first: Bounds, second: Bounds): { width: number; height: number } {
+    return {
+      width: Math.min(first.right, second.right) - Math.max(first.left, second.left),
+      height: Math.min(first.bottom, second.bottom) - Math.max(first.top, second.top),
+    };
+  }
+
+  function labelOf(element: Element): string {
+    const text = sampleOf(
+      textNodes(element, true)
+        .map((node) => node.data)
+        .join(' '),
+    );
+    return text === ''
+      ? (element.getAttribute('aria-label') ?? element.getAttribute('title') ?? '')
+      : text;
+  }
+
+  /** The strips a scroll fade paints over the edge of its scroller: a gradient that takes no tap. */
+  function fadeBands(): { owner: Element; bounds: Bounds }[] {
+    const bands: { owner: Element; bounds: Bounds }[] = [];
+    for (const element of document.body.querySelectorAll('*')) {
+      for (const pseudo of ['::before', '::after'] as const) {
+        const style = getComputedStyle(element, pseudo);
+        if (style.content === 'none' || style.pointerEvents !== 'none') continue;
+        if (!style.backgroundImage.includes('gradient') || Number.parseFloat(style.opacity) < 0.5) {
+          continue;
+        }
+        if (style.position !== 'sticky' && style.position !== 'absolute') continue;
+        if (!isShown(element)) continue;
+        const rect = element.getBoundingClientRect();
+        const blockSize = Number.parseFloat(style.height);
+        const inlineSize = Number.parseFloat(style.width);
+        // A band pinned to one edge covers that edge of what its owner shows.
+        if (Number.parseFloat(style.bottom) === 0 && blockSize > 0 && blockSize < rect.height) {
+          bands.push({
+            owner: element,
+            bounds: {
+              left: rect.left,
+              right: rect.right,
+              top: rect.bottom - blockSize,
+              bottom: rect.bottom,
+            },
+          });
+        } else if (Number.parseFloat(style.top) === 0 && blockSize > 0 && blockSize < rect.height) {
+          bands.push({
+            owner: element,
+            bounds: {
+              left: rect.left,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.top + blockSize,
+            },
+          });
+        } else if (
+          Number.parseFloat(style.right) === 0 &&
+          inlineSize > 0 &&
+          inlineSize < rect.width
+        ) {
+          bands.push({
+            owner: element,
+            bounds: {
+              left: rect.right - inlineSize,
+              right: rect.right,
+              top: rect.top,
+              bottom: rect.bottom,
+            },
+          });
+        }
+      }
+    }
+    return bands;
+  }
+
+  /** Whether an element sits in a region that has more content than it shows. */
+  function insideScroller(element: Element): boolean {
+    for (let node = element.parentElement; node !== null; node = node.parentElement) {
+      const overflow = getComputedStyle(node).overflowY;
+      if (
+        (overflow === 'auto' || overflow === 'scroll') &&
+        node.scrollHeight > node.clientHeight + 1
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether an element, or one around it, is stuck or fixed to the top of the viewport. */
+  function pinnedToTop(element: Element): boolean {
+    for (let node: Element | null = element; node !== null; node = node.parentElement) {
+      const position = getComputedStyle(node).position;
+      if (position !== 'sticky' && position !== 'fixed') continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.top <= 1 && rect.bottom < window.innerHeight / 2) return true;
+    }
+    return false;
+  }
+
+  /** Controls partly under something else, controls under a fade, and controls drawn over text. */
+  function overlaps(): GeometryFacts['overlaps'][number][] {
+    const found: GeometryFacts['overlaps'][number][] = [];
+    const viewportHeight = window.innerHeight;
+    const shown = [...document.querySelectorAll(CONTROL_SELECTOR)].filter((element) =>
+      isShown(element),
+    );
+    const related = (first: Element, second: Element): boolean =>
+      first.contains(second) || second.contains(first);
+    for (const element of shown) {
+      const rect = element.getBoundingClientRect();
+      const inset = Math.min(3, rect.width / 4, rect.height / 4);
+      const points: [number, number][] = [
+        [rect.left + rect.width / 2, rect.top + rect.height / 2],
+        [rect.left + rect.width / 2, rect.top + inset],
+        [rect.left + rect.width / 2, rect.bottom - inset],
+        [rect.left + inset, rect.top + rect.height / 2],
+        [rect.right - inset, rect.top + rect.height / 2],
+      ];
+      const inView = points.filter(
+        ([x, y]) => x >= 0 && x < viewportWidth && y >= 0 && y < viewportHeight,
+      );
+      // A control cut by the edge of the viewport is scrolling, not covering, and so is one inside a
+      // region that scrolls: what a bar hides there, a swipe reveals.
+      if (inView.length < points.length || insideScroller(element)) continue;
+      const covers = new Map<Element, number>();
+      for (const [x, y] of inView) {
+        const top = document.elementFromPoint(x, y);
+        if (top === null || related(top, element)) continue;
+        // A label is part of the control it names.
+        if (top.closest('label')?.contains(element) === true) continue;
+        // An adornment beside the control in one frame (a field's clear button) is part of it.
+        if (top.parentElement === element.parentElement) continue;
+        // Content scrolled under a bar pinned to the top is scrolling, not covering.
+        if (pinnedToTop(top)) continue;
+        covers.set(top, (covers.get(top) ?? 0) + 1);
+      }
+      const covered = [...covers.values()].reduce((sum, count) => sum + count, 0);
+      // Wholly covered is behind a dialog or a sheet, which is meant; partly covered is the defect.
+      if (covered === 0 || covered === inView.length) continue;
+      const [cover] = [...covers.keys()];
+      if (cover === undefined) continue;
+      found.push({
+        kind: 'covered',
+        subject: nameOf(element),
+        label: labelOf(element),
+        by: nameOf(cover.closest(CONTROL_SELECTOR) ?? cover),
+        amount: covered / inView.length,
+      });
+    }
+    for (const band of fadeBands()) {
+      for (const element of shown) {
+        if (!band.owner.contains(element)) continue;
+        const rect = element.getBoundingClientRect();
+        const shared = intersection(band.bounds, union(null, rect));
+        if (shared.width < 2 || shared.height < 2) continue;
+        found.push({
+          kind: 'faded',
+          subject: nameOf(element),
+          label: labelOf(element),
+          by: nameOf(band.owner),
+          amount: Math.min(shared.height / rect.height, 1),
+        });
+      }
+    }
+    // A control lifted out of the flow (a copy button on a code block) can land on the text beside it.
+    const lifted = shown.filter((element) => {
+      for (let node: Element | null = element, depth = 0; node !== null && depth < 3; depth += 1) {
+        const position = getComputedStyle(node).position;
+        if (position === 'absolute' || position === 'sticky') return true;
+        node = node.parentElement;
+      }
+      return false;
+    });
+    if (lifted.length > 0) {
+      const lines: { parent: Element; rect: DOMRect }[] = [];
+      for (const node of textNodes(document.body, true)) {
+        const parent = node.parentElement;
+        if (parent === null) continue;
+        for (const rect of rectsOf(node)) lines.push({ parent, rect });
+      }
+      for (const element of lifted) {
+        const style = getComputedStyle(element);
+        const boxed =
+          colorOf(style.backgroundColor)[3] > 0 || Number.parseFloat(style.borderTopWidth) > 0;
+        // What lies on the text is what the control draws: its box, or else its label and icon.
+        const drawn = boxed ? union(null, element.getBoundingClientRect()) : contentBounds(element);
+        if (drawn === null) continue;
+        const rect = new DOMRect(
+          drawn.left,
+          drawn.top,
+          drawn.right - drawn.left,
+          drawn.bottom - drawn.top,
+        );
+        for (const line of lines) {
+          if (related(element, line.parent)) continue;
+          const shared = intersection(union(null, rect), union(null, line.rect));
+          if (shared.width < 2 || shared.height < 2) continue;
+          const x = Math.max(rect.left, line.rect.left) + shared.width / 2;
+          const y = Math.max(rect.top, line.rect.top) + shared.height / 2;
+          const top = document.elementFromPoint(x, y);
+          if (top === null || !element.contains(top)) continue;
+          found.push({
+            kind: 'over-text',
+            subject: nameOf(element),
+            label: labelOf(element),
+            by: nameOf(line.parent),
+            amount: Math.min(shared.height / line.rect.height, 1),
+          });
+          break;
+        }
+      }
+    }
+    return found;
+  }
+
+  /** Boxes whose content has more room above it than below it. */
+  function insets(): GeometryFacts['insets'][number][] {
+    const SKIPPED = new Set(['TABLE', 'THEAD', 'TBODY', 'TR', 'TD', 'TH', 'BODY', 'MAIN']);
+    const found: GeometryFacts['insets'][number][] = [];
+    for (const element of document.body.querySelectorAll('*')) {
+      if (SKIPPED.has(element.tagName) || element.closest('svg') !== null) continue;
+      if (element.closest(CONTROL_SELECTOR) !== null) continue;
+      const style = getComputedStyle(element);
+      const bordered =
+        Number.parseFloat(style.borderTopWidth) > 0 &&
+        style.borderTopStyle !== 'none' &&
+        colorOf(style.borderTopColor)[3] > 0 &&
+        Number.parseFloat(style.borderBottomWidth) > 0 &&
+        style.borderBottomStyle !== 'none';
+      if (!bordered && colorOf(style.backgroundColor)[3] === 0) continue;
+      if (!isShown(element)) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.height > 400 || rect.height < 24) continue;
+      // What a scroller shows is a window on its content, not its padding.
+      if (element.scrollHeight > element.clientHeight + 1) continue;
+      let content = contentBounds(element);
+      // A field or a control that draws a box is content too, whatever text it holds.
+      for (const control of element.querySelectorAll(CONTROL_SELECTOR)) {
+        if (!isShown(control)) continue;
+        const controlStyle = getComputedStyle(control);
+        if (
+          control.matches(FIELD_SELECTOR) ||
+          colorOf(controlStyle.backgroundColor)[3] > 0 ||
+          Number.parseFloat(controlStyle.borderTopWidth) > 0
+        ) {
+          content = union(content, control.getBoundingClientRect());
+        }
+      }
+      if (content === null) continue;
+      const above = content.top - rect.top - Number.parseFloat(style.borderTopWidth);
+      const below = rect.bottom - Number.parseFloat(style.borderBottomWidth) - content.bottom;
+      if (above < 0 || below < 0 || above - below < 2) continue;
+      found.push({
+        name: nameOf(element),
+        above: half(above),
+        below: half(below),
+        sample: sampleOf(
+          textNodes(element, true)
+            .map((node) => node.data)
+            .join(' '),
+        ),
+      });
+    }
+    return found;
+  }
+
+  /** How much of the viewport sits above and below the region that scrolls the page's content. */
+  function chrome(): GeometryFacts['chrome'] {
+    const viewportHeight = window.innerHeight;
+    const scrollers = [...document.body.querySelectorAll('*')].filter((element) => {
+      const overflow = getComputedStyle(element).overflowY;
+      if (overflow !== 'auto' && overflow !== 'scroll') return false;
+      const rect = element.getBoundingClientRect();
+      return (
+        isShown(element) && rect.width >= viewportWidth * 0.6 && rect.height >= viewportHeight * 0.2
+      );
+    });
+    // The innermost one is the region the content scrolls in; everything around it stays put.
+    const innermost = scrollers.filter(
+      (element) => !scrollers.some((other) => other !== element && element.contains(other)),
+    );
+    const [region] = innermost.toSorted(
+      (left, right) =>
+        right.getBoundingClientRect().height * right.getBoundingClientRect().width -
+        left.getBoundingClientRect().height * left.getBoundingClientRect().width,
+    );
+    if (region === undefined) return null;
+    const rect = region.getBoundingClientRect();
+    return {
+      name: nameOf(region),
+      top: half(Math.max(rect.top, 0)),
+      bottom: half(Math.max(viewportHeight - rect.bottom, 0)),
+    };
+  }
+
   return {
     viewport: { width: viewportWidth, height: window.innerHeight },
     pointerCoarse: window.matchMedia('(pointer: coarse)').matches,
@@ -485,6 +894,9 @@ export function collectGeometryFacts(): GeometryFacts {
     edges: edges(),
     stacks: stacks(),
     leadingSpace: leadingSpace(),
+    overlaps: overlaps(),
+    insets: insets(),
+    chrome: chrome(),
   };
 }
 
