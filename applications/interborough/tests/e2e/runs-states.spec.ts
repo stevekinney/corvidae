@@ -4,13 +4,14 @@
  * 10q, 10r, 12r to 12v, 14m, 14n, 14p, 14s, 15d, 52v to 52z, 53b, 05t to 05y, 06w and 07j): the list
  * on a phone, a tablet and in the dark, and each state of it that is not a list of rows (first use,
  * filtered to nothing, loading, still loading, canceled, failing, and a server that stopped
- * answering). The sample world's run list is All 20 = Waiting on you 2 + Done 15 + Failed 1 +
- * Canceled 2. A state the sample world does not hold is made by answering the Bureau's own operation
+ * answering). The sample world's run list is All 19 = Waiting on you 2 + Done 14 + Failed 1 +
+ * Canceled 2, and a chat another spec runs on the shared showcase host adds a Done run (and one to
+ * All), so the Done count is read from the page and All is checked against it. A state the sample world does not hold is made by answering the Bureau's own operation
  * with what a different world would answer, and each is captured for the design review under its own
  * name. The timings the placeholders keep (nothing for 300 ms, a status line at 10 s) are driven with
  * the page's clock, never slept.
  */
-import type { Page, Route } from '@playwright/test';
+import type { Locator, Page, Route } from '@playwright/test';
 
 import {
   SAMPLE_NOW,
@@ -30,13 +31,37 @@ const HOST_REQUESTS = /\/(v1|bureau|api)\//;
 
 /** The runs the sample world holds, as the segments count them (Nov 3 correction). */
 const SEGMENTS = [
-  ['All', 20],
+  ['All', 19],
   ['Waiting on you', 2],
   ['Running', 0],
-  ['Done', 15],
+  ['Done', 14],
   ['Failed', 1],
   ['Canceled', 2],
 ] as const;
+
+/**
+ * Expects every segment with the sample world's count. Done (and so All) also counts the chats
+ * other specs ran on the shared host, which end Done, so Done is at least the world's and All is
+ * exactly the sum of the other segments.
+ */
+async function expectSegmentCounts(scope: Page | Locator): Promise<void> {
+  const done = scope.getByRole('radio', { name: /^Done\s*,\s*\d+$/ });
+  await expect(done).toBeVisible();
+  const doneText = (await done.textContent()) ?? '';
+  const doneCount = Number(/(\d+)\s*$/.exec(doneText)?.[1]);
+  expect(doneCount).toBeGreaterThanOrEqual(14);
+  let total = doneCount;
+  for (const [word, count] of SEGMENTS) {
+    if (word === 'All' || word === 'Done') continue;
+    total += count;
+    await expect(
+      scope.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*${String(count)}$`) }),
+    ).toBeVisible();
+  }
+  await expect(
+    scope.getByRole('radio', { name: new RegExp(`^All\\s*,\\s*${String(total)}$`) }),
+  ).toBeVisible();
+}
 
 /** Opens the list at `width` and waits until the runs are listed. */
 async function openRuns(page: Page, width = 1280, path = '/runs'): Promise<void> {
@@ -69,7 +94,7 @@ async function answerOperation(
 const headerCreate = (page: Page) => page.locator('main .cinder-page-header__create');
 /** Every primary button or link on the page, which a list page keeps to the one its state offers. */
 const primaries = (page: Page) => page.locator('main [data-cinder-variant="primary"]');
-const filterBar = (page: Page) => page.getByRole('toolbar', { name: 'Filter runs' });
+const filterBar = (page: Page) => page.getByRole('search', { name: 'Filter runs' });
 
 test.describe('the list on a phone, a tablet and in the dark', () => {
   test('on a phone is two-line rows under day bands, with a Status select and a Filter button beside a secondary "+" (05t, 05v)', async ({
@@ -121,11 +146,7 @@ test.describe('the list on a phone, a tablet and in the dark', () => {
   }) => {
     await page.emulateMedia({ colorScheme: 'dark' });
     await openRuns(page, 1280);
-    for (const [word, count] of SEGMENTS) {
-      await expect(
-        page.getByRole('radio', { name: new RegExp(`^${word}\\s*,\\s*${String(count)}$`) }),
-      ).toBeVisible();
-    }
+    await expectSegmentCounts(page);
     await expect(page.locator('main .cinder-data-list-group__header').first()).toContainText(
       'Central time',
     );
@@ -308,6 +329,10 @@ test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
     });
     await page.setViewportSize({ width, height: 900 });
     await page.goto('/runs');
+    // The placeholders' timers start when the page mounts, so the clock is moved only after it has.
+    await expect(
+      page.locator('main').getByRole('heading', { level: 1, name: 'Runs' }),
+    ).toBeVisible();
     return release;
   }
 
@@ -335,8 +360,9 @@ test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
     await expect(main.locator('li[data-run]')).toHaveCount(0);
 
     await captureForDesignReview(page, { route: '/runs', state: 'loading', source: SOURCE });
-    await checkA11y('runs loading');
+    // The accessibility check waits on animation frames, which a paused clock never runs.
     await page.clock.resume();
+    await checkA11y('runs loading');
     release();
     await expect(main.locator('li[data-run]').first()).toBeVisible();
     await expect(main.locator('.cinder-skeleton-row')).toHaveCount(0);
@@ -376,9 +402,9 @@ test.describe('a read in progress (10k, 10l, 14m, 14n, 14p, 52z)', () => {
       state: 'loading canceled',
       source: SOURCE,
     });
+    await page.clock.resume();
     await checkA11y('runs loading canceled');
 
-    await page.clock.resume();
     release();
     await primaries(page).first().click();
     await expect(main.locator('li[data-run]').first()).toBeVisible();
@@ -415,7 +441,7 @@ test('a server that stops answering over the list keeps it at full contrast and 
   await expect(headerCreate(page)).toHaveAttribute('aria-disabled', 'true');
   await expect(main.locator('li[data-run]').first()).toBeVisible();
   await expect(main.locator('li[data-run]').first()).toHaveCSS('opacity', '1');
-  await expect(main.getByRole('radio', { name: /^All\s*,\s*20$/ })).toBeVisible();
+  await expectSegmentCounts(main);
   await captureForDesignReview(page, { route: '/runs', state: 'stale', source: SOURCE });
   // Reading controls stay live: a segment narrows the list.
   await main.getByRole('radio', { name: /^Failed\s*,\s*1$/ }).click();

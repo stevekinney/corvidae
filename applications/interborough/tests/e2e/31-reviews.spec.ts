@@ -105,10 +105,13 @@ test.describe('a tool approval', () => {
     const review = await waitingReviewOf(request, threadId);
 
     await page.goto('/reviews');
-    // The list is the question itself, longest waiting first; nothing is open until a row is.
+    // The list is the question itself, longest waiting first, and the oldest waiting review is
+    // open on arrival (COR-2017); a row opens its own review.
     await expect(rowOf(page, review)).toContainText('Refund order order-1001 for $42.00?');
-    await expect(paneOf(page)).toHaveCount(0);
+    await expect(paneOf(page)).toHaveCount(1);
     await rowOf(page, review).click();
+    // The click opened this review: its id is the one in the address.
+    await expect(page).toHaveURL(inboxAt(review));
 
     // The pane says what is asked, who asked it, and what the call was given, and where from.
     await expect(paneOf(page)).toContainText('Refund order order-1001 for $42.00?');
@@ -468,8 +471,11 @@ test.describe('a Bureau that fails', () => {
   }) => {
     pageErrors.expect({
       pattern: loggedFailedResponse(500, /bureau\/jsonrpc/),
-      reason: 'the test answers the Bureau’s review list with a 500',
-      count: 3,
+      // The redesigned page and the shell read the list four times on arrival (the view's probe
+      // and the review queries, which do not retry); the feed is held, so the count is exact.
+      reason:
+        'the test answers each of the page’s four reads of the Bureau’s review list with a 500',
+      count: 4,
     });
     // The feed's catch-up would ask the lists again while the page is open, so it is held.
     await holdBureauFeed(page);
