@@ -86,6 +86,7 @@ const styles = {
   lightbox: loadSvelteStyle('../components/chat/message/image-lightbox.svelte'),
   message: loadSvelteStyle('../components/chat/message/chat-message.svelte'),
   messageAttachments: loadSvelteStyle('../components/chat/message/message-attachments.svelte'),
+  markdownTable: loadSvelteStyle('../components/chat/message/markdown-table-scroller.svelte'),
   searchBar: loadSvelteStyle('../components/chat/container/chat-search-bar.svelte'),
   toolCallTimeline: loadSvelteStyle('../components/chat/message/tool-call-timeline.svelte'),
   chatImplementation: loadSvelteStyle('../components/chat/container/chat.svelte'),
@@ -100,6 +101,11 @@ describe('Chat focus-ring recipes', () => {
       'message attachment button',
       styles.messageAttachments,
       '.message-attachment-button:focus-visible',
+    ],
+    [
+      'markdown table scroller',
+      styles.markdownTable,
+      '.message-markdown-table-scroller:focus-visible',
     ],
   ] as const;
 

@@ -90,7 +90,9 @@
       tabindex={overflowing ? 0 : undefined}
       {@attach trackOverflow}
     >
-      {@html html}
+      {#key html}
+        {@html html}
+      {/key}
     </div>
   </div>
 </div>
@@ -140,9 +142,17 @@
     overscroll-behavior-inline: contain;
   }
 
+  /* The frame clips with `overflow: hidden`, so the ring is painted inset, on the frame's edge. */
   .message-markdown-table-scroller:focus-visible {
-    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
-    outline-offset: calc(var(--cinder-ring-width) * -1);
+    outline: var(--cinder-ring-width) solid transparent;
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .message-markdown-table-scroller:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: calc(var(--cinder-ring-width) * -1);
+    }
   }
 
   .message-markdown-table-scroller :global(table) {
