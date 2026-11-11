@@ -82,9 +82,13 @@ it('taints the session when a handler throws on a durable child wait’s answer'
       input: 'work',
     });
     allowParentTool.resolve();
-    await waitUntil(async () => (await bureau.tasks.workflow(parent.id))?.status === 'running', {
-      message: 'parent parks',
-    });
+    await waitUntil(
+      async () => {
+        const workflow = await bureau.tasks.workflow(parent.id);
+        return workflow?.status === 'running';
+      },
+      { message: 'parent parks' },
+    );
     childRelease.resolve();
     await parent.result();
     const session = await bureau.internals.sessionStore?.load(parent.contextId);
