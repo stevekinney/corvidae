@@ -1,10 +1,13 @@
 /**
- * Runs a heavy root stage under a lock that every checkout of this repository on the host shares.
+ * Runs a root stage, under a lock that every checkout of this repository on the host shares unless
+ * `--shared` is given.
  *
- * Each `bun run validate` assumes it has the machine to itself. With a dozen agent sessions
- * validating at once on a ten-core host, the load average reaches 100–200 and tests that do real
- * work inside Bun's five-second default time out at random, a different one each run. Queueing
- * the heavy stages turns that noise into waiting, which is slower per run but deterministic.
+ * Bun test workers are bounded host-wide by the test slot pool (`scripts/bun-test-pool.ts`), which
+ * every `bun test` the stages start passes through, so the test, coverage, lint, type-check, build
+ * and validate stages run `--shared`. The lock remains for the stages whose load the pool cannot
+ * count: the Playwright suites, whose browsers start no Bun test worker, and `harden`, which keeps
+ * the host busy on purpose. Two of either at once would oversubscribe the host with nothing to
+ * bound them.
  *
  * The lock is a directory inside the Git common directory, which every worktree of this
  * repository shares. It is renamed into place with its owner file already inside, and `rename`
@@ -36,21 +39,12 @@
  * pass through here, and the variable outranks it. Measured on 2026-10-22 with a forced validate
  * at four tasks on a 12-core, 32 GB host: the largest task
  * (Cinder's coverage run) peaked at 7.8 GB, all tasks together at 13.3 GB, and the load average
- * reached 58. Processors bind before memory does, because a test task runs up to four Bun workers.
- * Turborepo's own default of ten tasks at once oversubscribes both. A stage that passes
+ * reached 58. Turborepo's own default of ten tasks at once oversubscribes both. A stage that passes
  * `--concurrency` itself still wins, since the flag overrides the variable.
  *
  * `--shared` before the command skips the lock and keeps the install check and the Turborepo
- * defaults. `bun run check`, the per-pull-request gate, uses it: it checks only the affected
- * workspaces, so parallel sessions run it side by side rather than queue behind a full validate.
- *
- * A shared run has no queue, so nothing stops a dozen of them starting together and loading the
- * host past the point where tests time out at random. Before it runs, it therefore backs off while
- * the one-minute load average is above twice the processor count: it polls every 15 seconds,
- * prints one `shared run waiting for load <x> to fall below <y>` line each time the observed load
- * changes, and gives up waiting after 20 minutes, since a host that stays busy that long will not
- * get quieter by waiting longer. The load reader, the clock, and the sleep are injectable. A
- * locked run never reads the load: the lock already serializes it.
+ * defaults. Nothing reads the load average: the test slot pool replaced the load backoff that
+ * shared runs once had.
  *
  * Usage: `bun scripts/run-exclusively.ts [--shared] '<shell command>' [arguments...]`. Arguments
  * reach the command as `"$@"`, so their boundaries survive, the way `bun run <script> -- …` passes
@@ -59,7 +53,7 @@
 
 import { spawn } from 'node:child_process';
 import { mkdir, readdir, readFile, rename, rm, rmdir, stat, writeFile } from 'node:fs/promises';
-import { constants, cpus, loadavg, totalmem } from 'node:os';
+import { constants, cpus, totalmem } from 'node:os';
 import { isAbsolute, join } from 'node:path';
 
 import { rootScriptEnvironment } from './environment-configuration';
@@ -72,7 +66,7 @@ export const heldLockTokenVariable = 'CORVIDAE_HOST_LOCK_TOKEN';
 /** Host memory budgeted to each concurrently running Turborepo task. */
 const memoryPerTurborepoTask = 8 * 1024 ** 3;
 
-/** Processors budgeted to each concurrently running Turborepo task, which may run four Bun workers. */
+/** Processors budgeted to each concurrently running Turborepo task. */
 const processorsPerTurborepoTask = 3;
 
 /**
@@ -85,10 +79,10 @@ export const turborepoAffectedBase = 'origin/main';
 
 /**
  * `environment` with a memory-scaled task concurrency and the `--affected` base filled in where
- * the caller has not chosen its own. A `shared` run takes no lock, so several can run at once; each
- * gets half the concurrency, since processors are what a full host runs out of. The cache
- * directory is deliberately not set: Turborepo shares its local cache across linked worktrees on
- * its own, and `turbo.json`'s `concurrency` caps the runs that never pass through here.
+ * the caller has not chosen its own. Shared and locked runs get the same concurrency: the test
+ * slot pool, not a smaller turbo cap, bounds the Bun workers that several shared runs start. The
+ * cache directory is deliberately not set: Turborepo shares its local cache across linked
+ * worktrees on its own, and `turbo.json`'s `concurrency` caps the runs that never pass through here.
  */
 export function withTurborepoDefaults(
   environment: Readonly<Record<string, string | undefined>>,
@@ -96,13 +90,14 @@ export function withTurborepoDefaults(
     totalMemoryBytes: totalmem(),
     processors: cpus().length,
   },
-  shared = false,
 ): Record<string, string | undefined> {
-  const exclusive = Math.min(
-    Math.floor(host.processors / processorsPerTurborepoTask),
-    Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
+  const concurrency = Math.max(
+    1,
+    Math.min(
+      Math.floor(host.processors / processorsPerTurborepoTask),
+      Math.floor(host.totalMemoryBytes / memoryPerTurborepoTask),
+    ),
   );
-  const concurrency = Math.max(1, shared ? Math.floor(exclusive / 2) : exclusive);
   return {
     ...environment,
     TURBO_CONCURRENCY: environment['TURBO_CONCURRENCY'] || String(concurrency),
@@ -202,7 +197,7 @@ function isProcessGroupAlive(processGroup: number, leaderStartedAt: string | und
   return processStartTime(processGroup) === leaderStartedAt;
 }
 
-async function readOwner(lockDirectory: string): Promise<OwnerRecord | undefined> {
+export async function readOwner(lockDirectory: string): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(lockDirectory, ownerFileName), 'utf8')) as OwnerRecord;
   } catch {
@@ -237,7 +232,10 @@ async function lockState(
  * make that case unreachable, a holder by removing only its own lock and a reclaimer by holding
  * the reclaim guard.
  */
-async function removeLock(lockDirectory: string, expected: OwnerRecord | undefined): Promise<void> {
+export async function removeLock(
+  lockDirectory: string,
+  expected: OwnerRecord | undefined,
+): Promise<void> {
   const aside = `${lockDirectory}.removed-${process.pid}-${crypto.randomUUID()}`;
   try {
     await rename(lockDirectory, aside);
@@ -257,7 +255,7 @@ async function removeLock(lockDirectory: string, expected: OwnerRecord | undefin
  * without its owner file. Renaming a directory onto a non-empty one fails, which is how a held
  * lock refuses a second holder. Resolves to whether this call took the lock.
  */
-async function tryInstall(lockDirectory: string, owner: OwnerRecord): Promise<boolean> {
+export async function tryInstall(lockDirectory: string, owner: OwnerRecord): Promise<boolean> {
   const pending = `${lockDirectory}.pending-${owner.token}`;
   await mkdir(pending);
   try {
@@ -306,7 +304,7 @@ export async function reclaimAbandoned(
 }
 
 /** Records the command's process group in the held lock, replacing the owner file in one rename. */
-async function recordProcessGroup(
+export async function recordProcessGroup(
   lockDirectory: string,
   owner: OwnerRecord,
   processGroup: number,
@@ -364,7 +362,7 @@ async function listTickets(queueDirectory: string): Promise<string[]> {
  * newest ticket already filed, so a clock that steps back cannot put a newcomer ahead of it. The
  * ticket is written aside and renamed in, so a reader never sees it half-written.
  */
-async function enqueue(queueDirectory: string, self: OwnerRecord): Promise<string> {
+export async function enqueue(queueDirectory: string, self: OwnerRecord): Promise<string> {
   await mkdir(queueDirectory, { recursive: true });
   const tickets = await listTickets(queueDirectory);
   const newest = tickets.at(-1);
@@ -387,7 +385,10 @@ async function isTicketLive(queueDirectory: string, name: string): Promise<boole
   }
 }
 
-async function readTicket(queueDirectory: string, name: string): Promise<OwnerRecord | undefined> {
+export async function readTicket(
+  queueDirectory: string,
+  name: string,
+): Promise<OwnerRecord | undefined> {
   try {
     return JSON.parse(await readFile(join(queueDirectory, name), 'utf8')) as OwnerRecord;
   } catch {
@@ -399,7 +400,7 @@ async function readTicket(queueDirectory: string, name: string): Promise<OwnerRe
  * The oldest ticket whose waiter is alive, after pruning the dead ones ahead of it. Resolves to the
  * name of that ticket, which is this waiter's own once nobody live remains ahead.
  */
-async function liveFront(queueDirectory: string, own: string): Promise<string> {
+export async function liveFront(queueDirectory: string, own: string): Promise<string> {
   for (const name of await listTickets(queueDirectory)) {
     if (name === own || (await isTicketLive(queueDirectory, name))) return name;
     await rm(join(queueDirectory, name), { force: true });
@@ -466,59 +467,7 @@ async function waitForTurn(
   }
 }
 
-/** How often a shared run that is backing off from a loaded host reads the load again. */
-export const loadPollIntervalMs = 15_000;
-
-/** The longest a shared run waits for the load to fall before it runs anyway. */
-export const loadWaitLimitMs = 20 * 60 * 1000;
-
-/** A shared run waits while the one-minute load average is above this many times the processors. */
-export const loadPerProcessorLimit = 2;
-
-export type LoadBackoffOptions = {
-  /** The one-minute load average; defaults to the host's. */
-  readonly loadAverage?: () => number;
-  /** The processor count the limit scales with; defaults to the host's. */
-  readonly processors?: number;
-  /** Milliseconds on a monotonic or fake clock; defaults to `Date.now`. */
-  readonly now?: () => number;
-  /** Resolves after `milliseconds`; defaults to a timer. */
-  readonly sleep?: (milliseconds: number) => Promise<void>;
-  readonly report?: (line: string) => void;
-};
-
-/**
- * Waits while the one-minute load average is above `processors × 2`, polling every 15 seconds for
- * at most 20 minutes, and prints a line each time the observed load changes. Resolves once the
- * load is at or below the limit or the limit on waiting is reached, whichever comes first.
- */
-export async function waitForLowLoad(options: LoadBackoffOptions = {}): Promise<void> {
-  const loadAverage = options.loadAverage ?? (() => loadavg()[0] ?? 0);
-  const limit = (options.processors ?? cpus().length) * loadPerProcessorLimit;
-  const now = options.now ?? Date.now;
-  const sleep = options.sleep ?? ((milliseconds: number) => delay(milliseconds, undefined));
-  const report = options.report ?? ((line: string) => process.stderr.write(`${line}\n`));
-  const startedAt = now();
-  let lastReported: string | undefined;
-  for (;;) {
-    const load = loadAverage();
-    if (load <= limit) return;
-    if (now() - startedAt >= loadWaitLimitMs) {
-      report(
-        `run-exclusively: load ${load.toFixed(2)} is still above ${limit.toFixed(2)} after ${loadWaitLimitMs / 60_000} minutes; running anyway`,
-      );
-      return;
-    }
-    const line = `run-exclusively: shared run waiting for load ${load.toFixed(2)} to fall below ${limit.toFixed(2)}`;
-    if (line !== lastReported) {
-      lastReported = line;
-      report(line);
-    }
-    await sleep(loadPollIntervalMs);
-  }
-}
-
-export type RunExclusivelyOptions = LoadBackoffOptions & {
+export type RunExclusivelyOptions = {
   /** Resolving it may fail; the command then runs without the lock rather than not at all. */
   readonly lockDirectory: string | Promise<string>;
   readonly script: string;
@@ -529,9 +478,9 @@ export type RunExclusivelyOptions = LoadBackoffOptions & {
   /** The environment the command inherits; defaults to this process's. */
   readonly environment?: Readonly<Record<string, string | undefined>>;
   /**
-   * Runs without taking the host lock. `bun run check`, the per-pull-request gate, checks only
-   * the affected workspaces, so parallel sessions run it side by side instead of queueing it
-   * behind a full validate. It still gets the install check and the Turborepo defaults.
+   * Runs without taking the host lock: every stage but the Playwright suites and `harden`, whose
+   * Bun test workers the test slot pool bounds instead. It still gets the install check and the
+   * Turborepo defaults.
    */
   readonly shared?: boolean;
 };
@@ -548,7 +497,7 @@ const stragglerGraceMs = 2000;
  * Terminates whatever is left in the command's process group once `sh` has exited, so a leaked
  * background process neither keeps loading the machine nor holds the lock after release.
  */
-async function terminateProcessGroup(processGroup: number): Promise<void> {
+export async function terminateProcessGroup(processGroup: number): Promise<void> {
   const signalGroup = (signal: NodeJS.Signals): boolean => {
     try {
       process.kill(-processGroup, signal);
@@ -571,10 +520,7 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
   let lock: HeldHostLock | undefined;
   const environment = options.environment ?? rootScriptEnvironment();
   try {
-    if (options.shared) {
-      await waitForLowLoad({ ...options, report });
-      return await runInProcessGroup(options, undefined, report, undefined);
-    }
+    if (options.shared) return await runScript(options, undefined, report);
     const lockDirectory = await options.lockDirectory;
     // A parent run that already holds the lock exported its token; a stage it started reuses the
     // lock rather than queueing behind its own parent.
@@ -604,35 +550,59 @@ export async function runExclusively(options: RunExclusivelyOptions): Promise<nu
     report(`run-exclusively: running without the host lock: ${(error as Error).message}`);
   }
   try {
-    return await runInProcessGroup(options, lock, report, lock?.token);
+    return await runScript(options, lock, report);
   } finally {
     await lock?.release();
   }
 }
 
-function pidStartedAtField(): { pidStartedAt?: string } {
-  const pidStartedAt = processStartTime(process.pid);
-  return pidStartedAt === undefined ? {} : { pidStartedAt };
-}
-
-/**
- * Runs the command as the leader of a new process group. `detached` makes it a new session, so
- * the terminal no longer delivers Ctrl-C to it directly; the wrapper forwards SIGINT, SIGTERM, and
- * SIGHUP to the whole group instead. Stdin is closed because a process outside the terminal's
- * foreground group cannot read it, and none of the wrapped stages needs input.
- */
-async function runInProcessGroup(
+/** Runs the wrapped script through `sh -c`, exporting the held lock's token to it. */
+function runScript(
   options: RunExclusivelyOptions,
   lock: HeldHostLock | undefined,
   report: (line: string) => void,
-  token?: string,
 ): Promise<number> {
   const args = options.args ?? [];
   const command = args.length === 0 ? options.script : `${options.script} "$@"`;
   const environment = options.environment ?? rootScriptEnvironment();
-  const child = spawn('sh', ['-c', command, 'sh', ...args], {
+  return runInProcessGroup(['sh', '-c', command, 'sh', ...args], {
+    environment:
+      lock === undefined ? environment : { ...environment, [heldLockTokenVariable]: lock.token },
+    ...(lock === undefined ? {} : { recordProcessGroup: lock.recordProcessGroup }),
+    report,
+  });
+}
+
+/** This process's start time, as the field an owner record carries, when `ps` can tell it. */
+export function pidStartedAtField(): { pidStartedAt?: string } {
+  const pidStartedAt = processStartTime(process.pid);
+  return pidStartedAt === undefined ? {} : { pidStartedAt };
+}
+
+export type ProcessGroupRun = {
+  readonly environment: Readonly<Record<string, string | undefined>>;
+  readonly cwd?: string;
+  /** Records the group in whatever guards it, before the command is awaited. */
+  readonly recordProcessGroup?: (processGroup: number) => Promise<void>;
+  readonly report: (line: string) => void;
+};
+
+/**
+ * Runs `argv` as the leader of a new process group and resolves to its exit code. `detached` makes
+ * it a new session, so the terminal no longer delivers Ctrl-C to it directly; the wrapper forwards
+ * SIGINT, SIGTERM, and SIGHUP to the whole group instead, and terminates what is left of the group
+ * once the leader exits. Stdin is closed because a process outside the terminal's foreground group
+ * cannot read it, and none of the wrapped commands needs input.
+ */
+export async function runInProcessGroup(
+  argv: readonly string[],
+  run: ProcessGroupRun,
+): Promise<number> {
+  const [program = 'sh', ...rest] = argv;
+  const child = spawn(program, rest, {
     detached: true,
-    env: token === undefined ? environment : { ...environment, [heldLockTokenVariable]: token },
+    env: run.environment,
+    ...(run.cwd === undefined ? {} : { cwd: run.cwd }),
     stdio: ['ignore', 'inherit', 'inherit'],
   });
   const exited = new Promise<[number | null, NodeJS.Signals | null]>((resolve, reject) => {
@@ -652,13 +622,13 @@ async function runInProcessGroup(
     }
   };
   const forwarded = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
-  // Registered before the group is recorded in the lock: a caller that reads the recorded group
-  // and signals the wrapper must find the forwarders in place, or the default action ends the
-  // wrapper and orphans the group.
+  // Registered before the group is recorded: a caller that reads the recorded group and signals
+  // the wrapper must find the forwarders in place, or the default action ends the wrapper and
+  // orphans the group.
   for (const signal of forwarded) process.on(signal, forward);
   try {
-    await lock?.recordProcessGroup(processGroup).catch((error: unknown) => {
-      report(`run-exclusively: could not record the command in the host lock: ${String(error)}`);
+    await run.recordProcessGroup?.(processGroup).catch((error: unknown) => {
+      run.report(`could not record the command's process group: ${String(error)}`);
     });
     const [code, signal] = await exited;
     if (signal) return 128 + (constants.signals[signal] ?? 0);
@@ -670,7 +640,7 @@ async function runInProcessGroup(
 }
 
 /** This repository's Git common directory, which every worktree shares. */
-async function gitCommonDirectory(): Promise<string> {
+export async function gitCommonDirectory(): Promise<string> {
   const git = Bun.spawn(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
     stdout: 'pipe',
     stderr: 'ignore',
@@ -703,7 +673,7 @@ if (import.meta.main) {
       script: withPreflight(script),
       args,
       shared,
-      environment: withTurborepoDefaults(rootScriptEnvironment(), undefined, shared),
+      environment: withTurborepoDefaults(rootScriptEnvironment()),
     });
   }
 }

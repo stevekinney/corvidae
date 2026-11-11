@@ -1,6 +1,6 @@
-import { $ } from 'bun';
 import { join } from 'node:path';
 
+import { runPooledBunTest } from '../../../scripts/bun-test-pool.ts';
 import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import {
   coverageTestArguments,
@@ -41,10 +41,23 @@ if (testFiles.length === 0) {
 // `--config=./bunfig.ui.toml` selects the UI's preload and ignores in place of
 // the engine's `bunfig.toml`, exactly as the UI half of `test` does, and the
 // report goes to `coverage/ui/` so it never mixes with the engine gate's
-// `coverage/`.
+// `coverage/`. The run holds a slot of the host-wide test slot pool
+// (`scripts/bun-test-pool.ts`), like every lane that starts through a wrapper.
 console.log(`Running ${testFiles.length} coverage test files in the versioned baseline order.`);
-const run =
-  await $`TZ=UTC bun --config=./bunfig.ui.toml test ${TEST_TIMEOUT_ARGUMENT} --conditions browser --conditions svelte --coverage --coverage-reporter=lcov --coverage-dir=${UI_COVERAGE_DIRECTORY} ${testArguments}`
-    .cwd(packageRoot)
-    .nothrow();
-process.exit(run.exitCode);
+process.exit(
+  await runPooledBunTest({
+    command: ['bun', '--config=./bunfig.ui.toml', 'test', TEST_TIMEOUT_ARGUMENT],
+    bunTestArguments: [
+      '--conditions',
+      'browser',
+      '--conditions',
+      'svelte',
+      '--coverage',
+      '--coverage-reporter=lcov',
+      `--coverage-dir=${UI_COVERAGE_DIRECTORY}`,
+      ...testArguments,
+    ],
+    cwd: packageRoot,
+    environment: { ...process.env, TZ: 'UTC' },
+  }),
+);

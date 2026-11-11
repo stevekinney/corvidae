@@ -1,7 +1,7 @@
 import { buildBrowser } from '@lostgradient/testing';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
-import { TEST_TIMEOUT_ARGUMENT } from '../../test-deadlines.ts';
+import { runPooledBunTest } from '../../bun-test-pool.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 
 const fixtureDirectory = resolve(import.meta.dirname, '../fixtures/curated-highlighter');
@@ -15,15 +15,11 @@ for (const development of [true, false]) {
       outdir: outputDirectory,
       development,
     });
-    const verification = Bun.spawn(
-      ['bun', 'test', TEST_TIMEOUT_ARGUMENT, resolve(fixtureDirectory, 'artifacts.test.ts')],
-      {
-        env: { ...process.env, CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY: outputDirectory },
-        stdout: 'inherit',
-        stderr: 'inherit',
-      },
-    );
-    if ((await verification.exited) !== 0)
+    const verification = await runPooledBunTest({
+      bunTestArguments: [resolve(fixtureDirectory, 'artifacts.test.ts')],
+      environment: { ...process.env, CURATED_HIGHLIGHTER_OUTPUT_DIRECTORY: outputDirectory },
+    });
+    if (verification !== 0)
       throw new Error(`Curated fixture verification failed (development: ${development}).`);
   } finally {
     await rm(outputDirectory, { recursive: true, force: true });

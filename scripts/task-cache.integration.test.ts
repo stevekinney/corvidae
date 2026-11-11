@@ -717,7 +717,9 @@ test('the validate gate runs every suite through the same `test` task the per-pu
   expect(scripts['validate']).toContain(
     'turbo run lint typecheck test:self test test:browser-fixtures',
   );
-  expect(scripts['coverage']).toBe("bun scripts/run-exclusively.ts 'turbo run test:coverage'");
+  expect(scripts['coverage']).toBe(
+    "bun scripts/run-exclusively.ts --shared 'turbo run test:coverage'",
+  );
   for (const [name, script] of Object.entries<string>(scripts)) {
     for (const invocation of script.match(/turbo run [^&']+/g) ?? []) {
       const names = invocation.split(/\s+/).slice(2);
