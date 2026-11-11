@@ -36,6 +36,19 @@
   const answered = $derived(answer !== undefined && (!changing || resolved));
   const kind = $derived(classifyQuestion(part.schema));
   const answerInComposer = $derived(sharedStore?.answerInComposer ?? false);
+  // A question that has choices is drawn in the dock in place of the composer, when the host asks
+  // for `questionPlacement="docked"`, until the person replies in chat instead. Its row then holds
+  // only the question; once it is answered the row is the receipt, as for any question.
+  const docked = $derived(
+    sharedStore !== undefined &&
+      sharedStore.placement === 'docked' &&
+      (kind === 'choice' || kind === 'choice-other' || kind === 'boolean') &&
+      !resolved &&
+      !answered &&
+      !changing &&
+      onInputSubmit !== undefined &&
+      !sharedStore.isDockDismissed(part.toolCallId),
+  );
   const heading = $derived(
     part.message !== undefined && part.message !== ''
       ? part.message
@@ -50,6 +63,7 @@
     failed = false;
     issues = [];
     const generation = store.generation;
+    const wasDocked = docked;
     try {
       // The host is called only with an answer that meets the whole schema, whichever control
       // gave it, so the composer and the specialised controls are held to what SchemaForm is.
@@ -75,6 +89,7 @@
         }),
       );
       changing = false;
+      if (wasDocked) store.noteDockedAnswer();
       return true;
     } catch (error) {
       const found = issuesOfRejection(error);
@@ -91,11 +106,32 @@
   $effect(() => {
     if (sharedStore === undefined || !answerInComposer) return;
     if (kind !== 'text' && kind !== 'choice-other') return;
-    if (resolved || answered || onInputSubmit === undefined) return;
+    if (resolved || answered || docked || onInputSubmit === undefined) return;
     return sharedStore.registerComposerTarget({
       toolCallId: part.toolCallId,
       kind,
       submit: (text) => submitAnswer(text),
+    });
+  });
+
+  // The dock reads the question's state through these getters, so it stays current as the answer is
+  // sent, refused or fails.
+  $effect(() => {
+    if (!docked || sharedStore === undefined) return;
+    return sharedStore.registerDockedQuestion({
+      toolCallId: part.toolCallId,
+      schema: part.schema,
+      message: part.message,
+      submit: (value) => submitAnswer(value),
+      get busy() {
+        return busy;
+      },
+      get failed() {
+        return failed;
+      },
+      get issues() {
+        return issues;
+      },
     });
   });
 </script>
@@ -105,7 +141,9 @@
      falls back to naming the tool. -->
 <section class="chat-tool-input" aria-labelledby={headingId} data-cinder-tool-input>
   <h4 id={headingId} class="chat-tool-input-heading" dir="auto">{heading}</h4>
-  {#if answered || onInputSubmit !== undefined}
+  {#if docked}
+    <p class="chat-tool-input-waiting">Waiting for your answer below</p>
+  {:else if answered || onInputSubmit !== undefined}
     <ChatQuestion
       schema={part.schema}
       id={headingId}
@@ -128,6 +166,12 @@
     display: grid;
     gap: var(--cinder-space-2);
     inline-size: 100%;
+  }
+
+  .chat-tool-input-waiting {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
   }
 
   /* The question: the one heading of the request, in the reading size and weight. */

@@ -62,6 +62,7 @@
   import ChatJumpControls from './chat-jump-controls.svelte';
   import { classifyQuestion } from '../question/question-kind.ts';
   import { provideQuestionStore, QuestionStore } from '../question/question-store.svelte.ts';
+  import ChatQuestionDock from '../question/chat-question-dock.svelte';
   import ChatHistoryTrigger from './chat-history-trigger.svelte';
   import ChatStatusAnnouncer from './chat-status-announcer.svelte';
   import ChatSearchBar from './chat-search-bar.svelte';
@@ -153,6 +154,8 @@
     composerMarkdownStyling = true,
     composerStatus,
     availability,
+    questionPlacement = 'inline',
+    questionLabels,
     empty,
     trailing,
     emptyTitle = 'No messages yet',
@@ -415,8 +418,20 @@
             return reference.id;
           },
     () => maxFileSize,
+    () => questionPlacement,
   );
   provideQuestionStore(questions);
+
+  // The first open question that is docked takes the composer's place; Reply in chat instead puts
+  // it back in its row and gives the composer back.
+  const dockedQuestion = $derived(questions.dockedQuestions[0]);
+  const dockedPosition = $derived(questions.dockedAnswered + 1);
+  const dockedTotal = $derived(questions.dockedAnswered + questions.dockedQuestions.length);
+
+  function replyInChatInstead(toolCallId: string): void {
+    questions.dismissDock(toolCallId);
+    void tick().then(() => inputRef?.focus());
+  }
 
   const commandActions = useChatCommandActions({
     getAdapter: () => adapter,
@@ -2230,7 +2245,10 @@
       />
 
       <!-- Input Area -->
-      <div class="chat-input-area">
+      <div
+        class="chat-input-area"
+        data-question-docked={dockedQuestion !== undefined ? '' : undefined}
+      >
         {#if quotes.quotes.length > 0}
           <ChatQuoteChips
             quotes={quotes.quotes}
@@ -2264,6 +2282,18 @@
             onedit={editQueuedFollowUp}
             onremove={removeQueuedFollowUp}
           />
+        {/if}
+        {#if dockedQuestion !== undefined}
+          {#key dockedQuestion.toolCallId}
+            <ChatQuestionDock
+              id={`${id}-question-dock`}
+              question={dockedQuestion}
+              position={dockedPosition}
+              total={dockedTotal}
+              onReply={() => replyInChatInstead(dockedQuestion.toolCallId)}
+              labels={questionLabels}
+            />
+          {/key}
         {/if}
         <ChatInput
           id={inputId}
@@ -2813,6 +2843,12 @@
 
   .chat-container[data-surface-mode='transparent'] .chat-input-area {
     background: transparent;
+  }
+
+  /* A docked question takes the composer's place. The composer stays mounted, so a draft and its
+     attachments survive, and comes back when the question is answered or replied to in chat. */
+  .chat-input-area[data-question-docked] > :global(.chat-input-shell) {
+    display: none;
   }
 
   /* Responsive adjustments: tighten padding at narrow widths.

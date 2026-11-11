@@ -7,10 +7,10 @@
  * test) keeps its own.
  */
 
-import { getContext, setContext } from 'svelte';
-import { SvelteMap } from 'svelte/reactivity';
+import { getContext, setContext, untrack } from 'svelte';
+import { SvelteMap, SvelteSet } from 'svelte/reactivity';
 
-import type { QuestionAnswerRecord } from './question-answer.ts';
+import type { ChatQuestionIssue, QuestionAnswerRecord } from './question-answer.ts';
 
 /** The largest file a file question takes when the host sets no limit: the composer's own default. */
 export const DEFAULT_MAXIMUM_FILE_SIZE = 10 * 1024 * 1024;
@@ -25,6 +25,27 @@ export interface ComposerQuestionTarget {
   readonly submit: (text: string) => Promise<boolean>;
 }
 
+/** Where a question that has choices is answered: in the transcript row, or docked in place of the composer. */
+export type QuestionPlacement = 'inline' | 'docked';
+
+/** A choice question the dock asks in place of the composer, until it is answered or the person replies in chat instead. */
+export interface DockedQuestionTarget {
+  /** The tool call the question parked. */
+  readonly toolCallId: string;
+  /** The answer schema, which says which choices to draw. */
+  readonly schema: Readonly<Record<string, unknown>>;
+  /** What the question asks. */
+  readonly message: string | undefined;
+  /** Submits `value` as the answer; resolves `true` when the host accepted it. */
+  readonly submit: (value: unknown) => Promise<boolean>;
+  /** Whether an answer is being sent. */
+  readonly busy: boolean;
+  /** Whether the last answer could not be sent for a reason the person cannot fix by editing. */
+  readonly failed: boolean;
+  /** Why the host refused the last answer. */
+  readonly issues: readonly ChatQuestionIssue[];
+}
+
 /** The shared state of a transcript's questions. */
 export class QuestionStore {
   /** The answered questions, by tool call id. */
@@ -33,6 +54,10 @@ export class QuestionStore {
   #generation = 0;
 
   readonly #composerTargets = new SvelteMap<string, ComposerQuestionTarget>();
+  readonly #dockTargets = new SvelteMap<string, DockedQuestionTarget>();
+  readonly #dismissedDocks = new SvelteSet<string>();
+  #dockedAnswered = $state(0);
+  readonly #placement: () => QuestionPlacement;
   readonly #answerInComposer: () => boolean;
   readonly #uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined;
   readonly #maxFileSize: () => number | undefined;
@@ -41,13 +66,16 @@ export class QuestionStore {
    * @param answerInComposer - Whether the host answers free text through the composer.
    * @param uploadFile - Stores a file for a file question and answers its asset id, when the host can.
    * @param maxFileSize - Largest file a file question takes, in bytes; the composer's limit.
+   * @param placement - Where a question that has choices is answered; `docked` puts it in place of the composer.
    */
   constructor(
     answerInComposer: () => boolean,
     uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined = () =>
       undefined,
     maxFileSize: () => number | undefined = () => undefined,
+    placement: () => QuestionPlacement = () => 'inline',
   ) {
+    this.#placement = placement;
     this.#maxFileSize = maxFileSize;
     this.#answerInComposer = answerInComposer;
     this.#uploadFile = uploadFile;
@@ -67,6 +95,9 @@ export class QuestionStore {
     this.#generation += 1;
     this.answers.clear();
     this.#composerTargets.clear();
+    this.#dockTargets.clear();
+    this.#dismissedDocks.clear();
+    this.#dockedAnswered = 0;
   }
 
   /** Whether free text is answered through the composer. */
@@ -90,6 +121,49 @@ export class QuestionStore {
     let latest: ComposerQuestionTarget | undefined;
     for (const target of this.#composerTargets.values()) latest = target;
     return latest;
+  }
+
+  /** Where a question that has choices is answered. */
+  get placement(): QuestionPlacement {
+    return this.#placement();
+  }
+
+  /** Whether the person chose to reply in chat instead of answering the docked question `toolCallId`. */
+  isDockDismissed(toolCallId: string): boolean {
+    return this.#dismissedDocks.has(toolCallId);
+  }
+
+  /** Puts the docked question `toolCallId` back in its transcript row, so the composer is free for a reply. */
+  dismissDock(toolCallId: string): void {
+    this.#dismissedDocks.add(toolCallId);
+  }
+
+  /** The docked questions that are still open, in the order they were asked. */
+  get dockedQuestions(): DockedQuestionTarget[] {
+    return [...this.#dockTargets.values()];
+  }
+
+  /** How many docked questions were answered since the dock last had none open. */
+  get dockedAnswered(): number {
+    return this.#dockedAnswered;
+  }
+
+  /** Counts a docked question as answered, for the dock's `Question 2 of 3`. */
+  noteDockedAnswer(): void {
+    this.#dockedAnswered = untrack(() => this.#dockedAnswered) + 1;
+  }
+
+  /** Makes `target` an open docked question, until the returned function is called. */
+  registerDockedQuestion(target: DockedQuestionTarget): () => void {
+    // A new round starts when the dock was empty, so progress counts only questions asked together.
+    // The size is read untracked: the effect that registers must not re-run as other questions come and go.
+    if (untrack(() => this.#dockTargets.size) === 0) this.#dockedAnswered = 0;
+    this.#dockTargets.set(target.toolCallId, target);
+    return () => {
+      if (this.#dockTargets.get(target.toolCallId) === target) {
+        this.#dockTargets.delete(target.toolCallId);
+      }
+    };
   }
 
   /** Makes `target` the open question the composer answers, until the returned function is called. */

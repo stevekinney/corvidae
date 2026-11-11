@@ -605,6 +605,17 @@ Set `sourcePresentation="inline"` for one chip per source instead of a single So
 <Chat id="assistant-chat" {conversation} {sourcesByMessageId} sourcePresentation="inline" />
 ```
 
+## Docked questions
+
+A question that has choices (a choice, a choice with Something else, a yes or no) is drawn in its transcript row by default. Set `questionPlacement="docked"` and Chat draws it in place of the composer instead, while the run waits on it:
+
+- A warning that the step Needs you, and, when several questions were asked together, `Question 2 of 3`.
+- A fieldset named The agent is asking, with the question as its text and one radio card per choice, each at least 52 px tall and showing its description and the key that chooses it (1, 2, 3 and so on). Something else, drawn for a choice that allows an answer of the person's own, opens a text field. The keys work only while focus is inside the dock and never inside a field.
+- A choice only selects. The primary Answer on the right sends it, and stays off, with its reason in view and named by `aria-describedby`, until something is chosen (or typed). The secondary Reply in chat instead on the left gives the composer back and returns the question to its row, where it can still be answered.
+- Once answered, the transcript row reads You answered, with Change, as it does for any question. The composer stays mounted while the dock shows, so a draft and its attachments survive.
+
+`questionLabels` (`ChatQuestionDockLabels`) replaces any of the words. Every other kind of question stays in its row.
+
 ## Availability
 
 Set `availability` while the conversation cannot be shown as it is. It replaces the transcript, and for two of its kinds the composer too:
@@ -676,6 +687,8 @@ The output is intentionally the base64 source payload for conversationalist's pr
 | `composerPlacement` | `"docked"` \| `"centered"` | no | — | Where the composer sits. `'docked'` (default) keeps it at the bottom of the surface under the transcript. `'centered'` puts the empty state, the composer and `composerFooter` together in the middle of the surface while the conversation has no message, and docks the composer as soon as it has one. |
 | `composerAnswering` | `boolean` | no | — | Whether the host is showing a question the run waits on, outside Chat's own transcript questions: the composer is then in answer mode and its button reads `Answer`; the placeholder stays the host's `composerPlaceholder`, since only the host knows whether its question draws choices. Chat sets answer mode itself, with its own placeholder, while a question it draws is open in the composer. Default `false`. |
 | `disabled` | `boolean` | no | — | Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`. |
+| `questionPlacement` | `"inline"` \| `"docked"` | no | `"inline"` | Where a question that has choices is answered. `'docked'` draws it in place of the composer, with a Needs you warning, a fieldset named The agent is asking, radio cards at least 52 px tall with the keys 1, 2 and 3, Something else, a secondary Reply in chat instead and a primary Answer. See Docked questions. |
+| `questionLabels` | `ChatQuestionDockLabels` | no | — | The words of the docked question, any of which the host can replace. |
 | `answerInComposer` | `boolean` | no | — | Whether the composer answers an open free-text question. A free-text question then reads "Answer below", the composer's placeholder reads "Answer", and sending from the composer calls `onInputSubmit` with the typed text instead of `onSubmit`. Without it (a reviews inbox, which has no composer) a text field is drawn in the question. Every other kind of question is answered in place either way. Default `false`. |
 | `density` | `"comfortable"` \| `"compact"` | no | — | Controls spacing density of the message timeline. - `'comfortable'` (default): standard padding and gap. - `'compact'`: tighter spacing for data-dense contexts (e.g., embedded panels). Action buttons keep `min-height: var(--cinder-touch-target-min)` regardless. |
 | `emptyTitle` | `string` | no | — | The title of the default empty state, drawn with the first-use `EmptyState` of Cinder. Has no effect when a custom `empty` snippet is provided. Default `No messages yet`. |

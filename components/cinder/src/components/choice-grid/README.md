@@ -50,7 +50,7 @@ Responsive grid of large selectable choices with roving keyboard focus, selectio
 </ChoiceGrid>
 ```
 
-`size` applies to tiles only; the card variant sizes itself from its content.
+`size` applies to tiles only; the card variant sizes itself from its content. A host that needs taller cards, such as 52 px radios for a docked question, sets `--_cinder-choice-card-min-block-size` (for example `3.25rem`) on the grid or an ancestor; without it a card is as tall as its content.
 
 ## Compact size
 

@@ -26,6 +26,7 @@ import type {
 import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
+import type { ChatQuestionDockLabels } from './question/chat-question-dock.svelte';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
 import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
@@ -361,6 +362,19 @@ export type ChatProps = Omit<HTMLAttributes<HTMLElement>, 'class' | 'onsubmit'> 
    * Every other kind of question is answered in place either way. Default `false`.
    */
   answerInComposer?: boolean | undefined;
+  /**
+   * Where a question that has choices (a choice, a choice with Something else, a yes or no) is
+   * answered. `'inline'` (default) draws its controls in its transcript row. `'docked'` draws the
+   * question in place of the composer: a Needs you warning, a fieldset named The agent is asking,
+   * radio cards at least 52 px tall with the keys 1, 2 and 3 for the choices, Something else, a
+   * secondary Reply in chat instead and a primary Answer, with `Question 2 of 3` when several were
+   * asked together. A choice only selects; Answer sends it. Reply in chat instead gives the
+   * composer back and returns the question to its row. Every other kind of question stays in its
+   * row either way. Needs {@link ChatProps.onInputSubmit}.
+   */
+  questionPlacement?: 'inline' | 'docked' | undefined;
+  /** The words of the docked question, any of which the host can replace. */
+  questionLabels?: Partial<ChatQuestionDockLabels> | undefined;
   /**
    * Pauses the composer: typing, Send and Enter do nothing, but the editor keeps focus and its text (it is read-only, not disabled), so a draft survives and the composer takes keys again once this clears. A host sets it while the server is unreachable or the chat is disconnected. The composer is also disabled while a reply streams and the adapter has no `sendRunInput`. Default `false`.
    */
