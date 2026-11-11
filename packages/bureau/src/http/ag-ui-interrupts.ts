@@ -13,7 +13,7 @@
 import type { HumanInputSchema } from '@lostgradient/operative';
 import type { Interrupt, ResumeEntry } from '@ag-ui/core';
 
-import type { PendingReview } from '../types.ts';
+import type { ApprovalDecisionSurface, PendingReview } from '../types.ts';
 import { projectReview } from './bureau-reviews-operations.ts';
 import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
 
@@ -28,6 +28,8 @@ import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
  * whitespace, to `reject`, which is the rule the resume boundary enforces. It is the schema of a
  * tool approval, the only interrupt `remember` applies to: a human wait refuses the key, even as
  * `false`, so its schema is {@link HUMAN_WAIT_RESPONSE_SCHEMA}, which does not advertise it.
+ * `decisionSurface` (COR-2292) says where the person decided, `chat` or `reviews`, and is recorded
+ * with a tool approval's decision as display provenance; a human wait refuses it too.
  */
 export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
   type: 'object',
@@ -37,6 +39,7 @@ export const RESUME_PAYLOAD_SCHEMA: Record<string, unknown> = {
     arguments: {},
     answer: {},
     remember: { type: 'boolean' },
+    decisionSurface: { enum: ['chat', 'reviews'] },
   },
   required: ['decision'],
   additionalProperties: false,
@@ -194,6 +197,11 @@ export type AgUiResumePayload = {
    * `bureau.reviews.resolve`'s `remember` does. `false` is the same as leaving it out.
    */
   remember?: boolean;
+  /**
+   * `tool-approval` only (COR-2292): where the person decided, `chat` or `reviews`, recorded with
+   * the decision as display provenance. It grants nothing. Absent, the surface is unknown.
+   */
+  decisionSurface?: ApprovalDecisionSurface;
 };
 
 /**

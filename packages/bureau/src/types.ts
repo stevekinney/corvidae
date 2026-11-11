@@ -1274,6 +1274,14 @@ export type PendingReview = PendingToolApprovalReview | PendingHumanWaitReview;
 export type SessionPendingReview =
   PendingToolApprovalReview | (PendingHumanWaitReview & { readonly sessionId: string });
 
+/**
+ * COR-2292 — where a person decided a tool approval: `chat`, the chat whose run asked, or
+ * `reviews`, the Reviews inbox. It is display provenance and nothing more: it confers no
+ * privilege, plays no part in a decision's identity or its fences, and is absent when the caller
+ * did not say (a CLI, an MCP client, a decision recorded before the field existed).
+ */
+export type ApprovalDecisionSurface = 'chat' | 'reviews';
+
 export interface ResolveReviewInput {
   /** The {@link PendingReview.id} to resolve. */
   id: string;
@@ -1323,6 +1331,13 @@ export interface ResolveReviewInput {
    * and on a `deny` or `reject`.
    */
   remember?: boolean;
+  /**
+   * COR-2292 — `tool-approval` only: where the person decided, when the caller knows. The first
+   * committed decision keeps it (or its absence) on the outcome row, the audit entry and the
+   * resolved-review record; a retry of the same decision from another surface changes none of
+   * them. Omitted, the surface is unknown.
+   */
+  decisionSurface?: ApprovalDecisionSurface;
 }
 
 /** The durable peer-attachment marker carried by an interrupted approval. */
@@ -1410,6 +1425,8 @@ export interface ReviewResolutionFields {
   answerDigest?: string;
   /** The references the approved answer's secret fields were stored under. */
   secretRefs?: readonly string[];
+  /** COR-2292 — where a tool approval was decided, when its decision recorded it. */
+  decisionSurface?: ApprovalDecisionSurface;
 }
 
 /**
@@ -1442,6 +1459,11 @@ export interface ResolvedReview {
   readonly answerDigest?: string | undefined;
   /** The references (`{ secretRef }`) the answer's secret fields were stored under; absent when it had none. */
   readonly secretRefs?: readonly string[] | undefined;
+  /**
+   * COR-2292 — where the person decided a tool approval, as the decision's caller said. Absent when
+   * it did not say, and on every record written before the field existed.
+   */
+  readonly decisionSurface?: ApprovalDecisionSurface | undefined;
 }
 
 /**

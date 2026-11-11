@@ -8,12 +8,14 @@
  *   decided once, so the review id is the whole key; the id embeds a model-chosen call id or signal
  *   name, so it is bounded the way the decision fence bounds it (`boundedReviewId`).
  * - value: JSON `{ version: 1, review, decision, decidedBy, decidedAt, owner?, reason?,
- *   answerDigest?, secretRefs? }`. `review` is an allowlisted snapshot of the review as it was asked
- *   (never a tool approval's signed token or binding); `decidedBy` is the principal that decided;
- *   `decidedAt` is epoch milliseconds; `owner` is the owner of record of the review's run, read
- *   while the run is live and carried in the decision's audit entry, so the record is still listed
- *   for its owner after the run and its session are deleted. Every record has one (a run no one holds
- *   is the local owner's, as `ownerOrLocal` has it).
+ *   answerDigest?, secretRefs?, decisionSurface? }`. `review` is an allowlisted snapshot of the
+ *   review as it was asked (never a tool approval's signed token or binding); `decidedBy` is the
+ *   principal that decided; `decidedAt` is epoch milliseconds; `owner` is the owner of record of
+ *   the review's run, read while the run is live and carried in the decision's audit entry, so the
+ *   record is still listed for its owner after the run and its session are deleted. Every record
+ *   has one (a run no one holds is the local owner's, as `ownerOrLocal` has it). `decisionSurface`
+ *   (COR-2292) is where a tool approval was decided, `chat` or `reviews`, when its caller said; a
+ *   record without it, or with any other value, reads as unknown.
  *
  * A secret answer (COR-1920) is never here: `answerDigest` is the SHA-256 of the answer in its
  * reference form (each secret field reduced to its `{ secretRef }`, which is what the decision fence
@@ -36,6 +38,7 @@
 
 import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lostgradient/storage';
 
+import { isApprovalDecisionSurface } from './approval-decision-metadata';
 import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 import { boundedReviewId } from './review-decision-record';
 import { secretAnswerReference } from './secret-answers';
@@ -149,6 +152,8 @@ export function resolvedReviewOfAudit(
   const owner = payload.detail['owner'];
   const reason = payload.detail['reason'];
   const answerDigest = payload.detail['answerDigest'];
+  // COR-2292: only a tool approval's decision records where it was made, and only as a known value.
+  const decisionSurface = payload.detail['decisionSurface'];
   return {
     review: snapshotOf(review as unknown as PendingReview, STATUS_OF_DECISION[decision]),
     decision,
@@ -158,6 +163,9 @@ export function resolvedReviewOfAudit(
     ...(typeof reason === 'string' ? { reason } : {}),
     ...(typeof answerDigest === 'string' ? { answerDigest } : {}),
     ...(secretRefs.length > 0 ? { secretRefs } : {}),
+    ...(kind === 'tool-approval' && isApprovalDecisionSurface(decisionSurface)
+      ? { decisionSurface }
+      : {}),
   };
 }
 
@@ -172,6 +180,9 @@ function serialize(resolved: ResolvedReview): string {
     ...(resolved.reason === undefined ? {} : { reason: resolved.reason }),
     ...(resolved.answerDigest === undefined ? {} : { answerDigest: resolved.answerDigest }),
     ...(resolved.secretRefs === undefined ? {} : { secretRefs: resolved.secretRefs }),
+    ...(resolved.decisionSurface === undefined
+      ? {}
+      : { decisionSurface: resolved.decisionSurface }),
   });
 }
 
@@ -195,6 +206,7 @@ function parse(raw: string): ResolvedReview | undefined {
     return undefined;
   }
   const secretRefs = value['secretRefs'];
+  const decisionSurface = value['decisionSurface'];
   return {
     review: review as unknown as ResolvedReview['review'],
     decision,
@@ -206,6 +218,9 @@ function parse(raw: string): ResolvedReview | undefined {
     ...(Array.isArray(secretRefs) && secretRefs.every((ref) => typeof ref === 'string')
       ? { secretRefs }
       : {}),
+    // COR-2292: a record written before the field existed, or holding a value outside the closed
+    // set, reads as unknown.
+    ...(isApprovalDecisionSurface(decisionSurface) ? { decisionSurface } : {}),
   };
 }
 

@@ -514,6 +514,70 @@ describe('bureau.reviews.resolve', () => {
     expect(record).toEqual([]);
   });
 
+  it('passes the decision surface through to the decision (COR-2292)', async () => {
+    const record: ResolveReviewInput[] = [];
+    const handler = serve(stubHost({}, record));
+
+    await call(handler, 'bureau.reviews.resolve', {
+      id: 'approval:run-1:call-1',
+      decision: 'approve',
+      decisionSurface: 'reviews',
+    });
+    await call(handler, 'bureau.reviews.resolve', {
+      id: 'approval:run-1:call-1',
+      decision: 'deny',
+    });
+
+    expect(record).toEqual([
+      {
+        id: 'approval:run-1:call-1',
+        decision: 'approve',
+        principal: 'api-key:tester',
+        decisionSurface: 'reviews',
+      },
+      { id: 'approval:run-1:call-1', decision: 'deny', principal: 'api-key:tester' },
+    ]);
+  });
+
+  it('refuses a decision surface outside the closed set, or on a human wait (COR-2292)', async () => {
+    const record: ResolveReviewInput[] = [];
+    const handler = serve(stubHost({}, record));
+    const waitHandler = serve(
+      stubHost(
+        {
+          list: () => [runHumanWaitReview({ runId: 'run-1' })],
+          get: async () => ({
+            ...runHumanWaitReview({ runId: 'run-1' }),
+            status: 'pending' as ReviewStatus,
+          }),
+        },
+        record,
+      ),
+    );
+
+    const cased = await call(handler, 'bureau.reviews.resolve', {
+      id: 'approval:run-1:call-1',
+      decision: 'approve',
+      decisionSurface: 'Reviews',
+    });
+    const unknown = await call(handler, 'bureau.reviews.resolve', {
+      id: 'approval:run-1:call-1',
+      decision: 'approve',
+      decisionSurface: 'https://example.test/reviews',
+    });
+    const onWait = await call(waitHandler, 'bureau.reviews.resolve', {
+      id: 'human-wait:run-2:answer:0',
+      decision: 'approve',
+      answer: 'staging',
+      decisionSurface: 'reviews',
+    });
+
+    expect(cased.error?.data?.httpStatus).toBe(400);
+    expect(unknown.error?.data?.httpStatus).toBe(400);
+    expect(onWait.error?.data?.httpStatus).toBe(422);
+    expect(record).toEqual([]);
+  });
+
   it('requires a reason to reject, and reports a landed reject as applied', async () => {
     const record: ResolveReviewInput[] = [];
     const handler = serve(stubHost({}, record));
@@ -730,6 +794,27 @@ describe('projectReview', () => {
     });
 
     expect(projected).toMatchObject({ kind: 'tool-approval', round: 2 });
+  });
+
+  it('says where a decided tool approval was decided, and nothing when it is unknown (COR-2292)', () => {
+    const decided = {
+      ...(toolApprovalReview() as Extract<PendingReview, { kind: 'tool-approval' }>),
+      status: 'approved' as ReviewStatus,
+      resolvedBy: 'api-key:tester',
+      resolvedAt: 2_000,
+    };
+
+    const known = projectReview({ ...decided, decisionSurface: 'reviews' });
+    const unknown = projectReview(decided);
+
+    expect(known.resolution).toEqual({
+      decision: 'approve',
+      decidedBy: 'api-key:tester',
+      decidedAt: 2_000,
+      decisionSurface: 'reviews',
+    });
+    expect(unknown.resolution).not.toHaveProperty('decisionSurface');
+    expect(bureauReviewSchema.safeParse(known).success).toBe(true);
   });
 
   it('omits optional fields that are absent', () => {

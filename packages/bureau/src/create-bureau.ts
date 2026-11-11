@@ -61,8 +61,11 @@ import {
 } from '@lostgradient/operative';
 import type { SessionTaintSeam } from './session-taint-seam';
 import {
+  APPROVAL_DECISION_METADATA_KEY,
   approvalDecisionMetadata,
   type ApprovalDecisionRecord,
+  decisionSurfaceOf,
+  withFirstDecisionSurface,
 } from './approval-decision-metadata';
 import {
   createSkillArtifactLoader,
@@ -370,6 +373,7 @@ import type {
   Bureau,
   BureauOptions,
   BureauRecoveryReport,
+  ApprovalDecisionSurface,
   BureauShutdownReport,
   ContextDeletionReport,
   PendingHumanWaitReview,
@@ -1240,6 +1244,11 @@ async function constructBureau<const D extends AgentDefinitions>(
       rememberTool?: string | undefined;
       /** COR-1828: the owner of record of the run, for the resolved-review record. */
       owner?: string | undefined;
+      /**
+       * COR-2292: where the first attempt was decided, which its retry records whatever surface
+       * the retry came from.
+       */
+      decisionSurface?: ApprovalDecisionSurface | undefined;
     }
   >();
   const pendingApprovalOverrides = new Map<
@@ -6883,10 +6892,14 @@ async function constructBureau<const D extends AgentDefinitions>(
     decided: ApprovalDecisionRecord,
   ): Record<string, JSONValue> {
     const { [TOOL_TIMING_METADATA_KEY]: _asked, ...kept } = waiting ?? {};
+    // COR-2292: a row already decided keeps the surface its first decision recorded, or none.
+    const held = Object.hasOwn(kept, APPROVAL_DECISION_METADATA_KEY)
+      ? kept[APPROVAL_DECISION_METADATA_KEY]
+      : undefined;
     return {
       ...(ran === undefined ? kept : { ...kept, [TOOL_TIMING_METADATA_KEY]: { ...ran } }),
       // COR-2016: who decided and when, so a page that was not there can say so.
-      ...approvalDecisionMetadata(decided),
+      ...approvalDecisionMetadata(withFirstDecisionSurface(decided, held)),
     };
   }
 
@@ -7079,6 +7092,9 @@ async function constructBureau<const D extends AgentDefinitions>(
                   decidedAt: decidedAtISO,
                   ...(input.reason === undefined ? {} : { reason: input.reason }),
                   ...(asked === undefined ? {} : { asked }),
+                  ...(input.decisionSurface === undefined
+                    ? {}
+                    : { decisionSurface: input.decisionSurface }),
                 }),
               }),
             };
@@ -7532,6 +7548,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             cleanup.secretAnswers,
             cleanup.answerDigest,
             cleanup.owner,
+            cleanup.decisionSurface,
           );
           const cleanupAuditAppended = await persistReviewResolutionWithRetry(
             cleanup.sessionId,
@@ -7583,6 +7600,10 @@ async function constructBureau<const D extends AgentDefinitions>(
                     decision: cleanup.decision,
                     principal: cleanup.principal,
                     ...(cleanup.reason !== undefined ? { reason: cleanup.reason } : {}),
+                    // COR-2292: the first attempt's surface, never this retry's.
+                    ...(cleanup.decisionSurface === undefined
+                      ? {}
+                      : { decisionSurface: cleanup.decisionSurface }),
                   },
                   cleanup.result,
                 )
@@ -7597,6 +7618,7 @@ async function constructBureau<const D extends AgentDefinitions>(
               secretAnswers: cleanup.secretAnswers,
               answerDigest: cleanup.answerDigest,
               owner: cleanup.owner,
+              decisionSurface: cleanup.decisionSurface,
             },
           );
           if (cleanupOutcomeNotWritten !== undefined) throw cleanupOutcomeNotWritten;
@@ -7987,6 +8009,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         secretAnswerAudit,
         answerDigest,
         decisionOwner,
+        decisionSurfaceOf(review, input),
       );
       try {
         auditAlreadyAppended = await persistReviewResolutionWithRetry(
@@ -8028,6 +8051,7 @@ async function constructBureau<const D extends AgentDefinitions>(
             answerDigest,
             rememberTool,
             owner: decisionOwner,
+            decisionSurface: decisionSurfaceOf(review, input),
           });
         }
         resolvingReviewIds.delete(review.id);
@@ -8070,6 +8094,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       secretAnswers: secretAnswerAudit,
       answerDigest,
       owner: decisionOwner,
+      decisionSurface: decisionSurfaceOf(review, input),
       // COR-1828: a superseded call decided nothing, so it keeps no resolved-review record.
       decisionIsFinal: !keepPending,
     });
@@ -8212,6 +8237,8 @@ async function constructBureau<const D extends AgentDefinitions>(
     // COR-1828: the owner of record of the review's run, read while the run is live, so the
     // resolved-review record a replay writes later names it whatever became of the run.
     owner?: string,
+    // COR-2292: where the person decided, which the resolved-review record keeps when given.
+    decisionSurface?: ApprovalDecisionSurface,
   ): ReviewAuditAttachment {
     const secretFields = review.kind === 'human-wait' ? secretFieldsOfReview(review) : [];
     const decisionSuffix =
@@ -8246,6 +8273,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         // COR-1828: what the resolved-review record keeps of the answer.
         ...(answerDigest !== undefined ? { answerDigest } : {}),
         ...(owner !== undefined ? { owner } : {}),
+        ...(decisionSurface !== undefined ? { decisionSurface } : {}),
       },
       principal,
     };
@@ -8325,6 +8353,8 @@ async function constructBureau<const D extends AgentDefinitions>(
       secretAnswers?: readonly SecretAnswerAuditEntry[] | undefined;
       answerDigest?: string | undefined;
       owner?: string | undefined;
+      /** COR-2292: where the person decided, for the audit entry written here. */
+      decisionSurface?: ApprovalDecisionSurface | undefined;
       /**
        * COR-1828: `false` for a decision that left the review pending (a re-gated approval), whose
        * resolved-review record would name a decision nothing acted on and, being written once,
@@ -8345,6 +8375,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         requestOptions?.secretAnswers,
         requestOptions?.answerDigest,
         requestOptions?.owner ?? (await ownerForRecord(review.runId)),
+        requestOptions?.decisionSurface,
       );
       await auditTrailInstance?.record(directAudit);
       // COR-1828: this entry rode no session commit, so no replay will keep the record.
@@ -8888,6 +8919,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         ...(found.reason === undefined ? {} : { resolutionReason: found.reason }),
         ...(found.answerDigest === undefined ? {} : { answerDigest: found.answerDigest }),
         ...(found.secretRefs === undefined ? {} : { secretRefs: found.secretRefs }),
+        ...(found.decisionSurface === undefined ? {} : { decisionSurface: found.decisionSurface }),
       };
     };
     if (!auditTrailInstance) return recorded();
@@ -8930,6 +8962,9 @@ async function constructBureau<const D extends AgentDefinitions>(
       ...(decision?.reason === undefined ? {} : { resolutionReason: decision.reason }),
       ...(decision?.answerDigest === undefined ? {} : { answerDigest: decision.answerDigest }),
       ...(decision?.secretRefs === undefined ? {} : { secretRefs: decision.secretRefs }),
+      ...(decision?.decisionSurface === undefined
+        ? {}
+        : { decisionSurface: decision.decisionSurface }),
     };
   }
 

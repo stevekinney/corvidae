@@ -48,6 +48,7 @@ import {
 } from '../command-ledger.ts';
 import type { CommandLedger, CommandLedgerIdentity } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
+import { isApprovalDecisionSurface } from '../approval-decision-metadata.ts';
 import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../bureau-errors.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
 import type {
@@ -175,7 +176,14 @@ export type ResumeRequest = {
 const CANCELLED_REASON = 'cancelled by the client';
 
 /** The fields a resume payload may hold, as the interrupt's `responseSchema` advertises (`additionalProperties: false`). */
-const RESUME_PAYLOAD_KEYS = new Set(['decision', 'reason', 'arguments', 'answer', 'remember']);
+const RESUME_PAYLOAD_KEYS = new Set([
+  'decision',
+  'reason',
+  'arguments',
+  'answer',
+  'remember',
+  'decisionSurface',
+]);
 
 function isPayload(value: unknown): value is AgUiResumePayload {
   if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
@@ -194,6 +202,14 @@ function isPayload(value: unknown): value is AgUiResumePayload {
   // that asks for it is refused here rather than resolved without the grant it asked for.
   if (payload['remember'] !== undefined && typeof payload['remember'] !== 'boolean') return false;
   if (payload['remember'] === true && payload['decision'] !== 'approve') return false;
+  // COR-2292: where the person decided is one of a closed set, spelled exactly; any other value is
+  // refused rather than recorded as unknown.
+  if (
+    payload['decisionSurface'] !== undefined &&
+    !isApprovalDecisionSurface(payload['decisionSurface'])
+  ) {
+    return false;
+  }
   if (payload['decision'] === 'reject') {
     return typeof payload['reason'] === 'string' && payload['reason'].trim() !== '';
   }
@@ -236,13 +252,27 @@ function resolutionFor(
       // COR-1990: the grant joins the chat in the same commit as the decision, so the continuation
       // the resume starts already holds it. Only `true` is forwarded: `false` is the same as absent.
       const withGrant = payload.remember === true ? { ...base, remember: true as const } : base;
+      const withSurface = withDecisionSurface(withGrant, payload);
       return Object.prototype.hasOwnProperty.call(payload, 'arguments')
-        ? { ...withGrant, arguments: payload.arguments }
-        : withGrant;
+        ? { ...withSurface, arguments: payload.arguments }
+        : withSurface;
     }
     return { ...base, payload: payload.answer };
   }
-  return base;
+  return review.kind === 'tool-approval' ? withDecisionSurface(base, payload) : base;
+}
+
+/**
+ * COR-2292 — `input` with the surface the payload names, which a tool approval records with its
+ * decision as display provenance. A payload that names none leaves the surface unknown.
+ */
+function withDecisionSurface<Input extends ResolveReviewInput>(
+  input: Input,
+  payload: AgUiResumePayload,
+): Input {
+  return payload.decisionSurface === undefined
+    ? input
+    : { ...input, decisionSurface: payload.decisionSurface };
 }
 
 export function createResume(context: ResumeContext) {
@@ -543,7 +573,9 @@ export function createResume(context: ResumeContext) {
       const payload = entry.payload as AgUiResumePayload | undefined;
       if (entry.status !== 'resolved' || payload === undefined || review === undefined) continue;
       // COR-1990: a human wait takes neither `arguments` nor `remember`, a tool approval no `answer`.
-      const foreign = review.kind === 'human-wait' ? ['arguments', 'remember'] : ['answer'];
+      // COR-2292: only a tool approval records where it was decided.
+      const foreign =
+        review.kind === 'human-wait' ? ['arguments', 'remember', 'decisionSurface'] : ['answer'];
       for (const key of foreign) {
         if (Object.hasOwn(payload, key)) {
           return context.refuse(

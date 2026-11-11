@@ -767,6 +767,7 @@ export type {
   PendingReview,
   PendingToolApprovalReview,
   ProviderConfiguration,
+  ApprovalDecisionSurface,
   ResolveReviewInput,
   ResolvedReview,
   ReviewResolutionFields,

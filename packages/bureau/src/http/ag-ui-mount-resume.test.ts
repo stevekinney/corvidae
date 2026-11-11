@@ -2781,3 +2781,61 @@ describe('resuming a tool approval with remember (COR-1990)', () => {
     );
   });
 });
+
+describe('resuming a tool approval with a decision surface (COR-2292)', () => {
+  it('records the chat as where the approval was decided', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Charged.')], toolbox: approvalToolbox([]) },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        const resolve = spyOn(bureau.reviews, 'resolve');
+
+        const frames = await readAgUiStream(
+          await handler(
+            resumeRequest([resolved(id, { decision: 'approve', decisionSurface: 'chat' })]),
+          ),
+        );
+
+        expect(frames.at(-1)!.event).toMatchObject({ outcome: { type: 'success' } });
+        expect(resolve).toHaveBeenCalledWith(
+          expect.objectContaining({ id, decision: 'approve', decisionSurface: 'chat' }),
+        );
+        resolve.mockRestore();
+        expect(await bureau.reviews.get(id)).toMatchObject({ decisionSurface: 'chat' });
+      },
+    );
+  });
+
+  it('refuses a surface outside the closed set before anything is claimed or resolved', async () => {
+    await withHarness(
+      { script: [chargeOnce, say('Ok.')], toolbox: approvalToolbox([]), storage: 'sqlite' },
+      async ({ handler, bureau }) => {
+        const first = await startUntilInterrupted(handler);
+        const id = first.interruptIds[0]!;
+        const resolve = spyOn(bureau.reviews, 'resolve');
+        const refusals: Array<[string, ResumeEntry]> = [
+          ['another case', resolved(id, { decision: 'approve', decisionSurface: 'Reviews' })],
+          ['an unknown place', resolved(id, { decision: 'approve', decisionSurface: 'inbox' })],
+          ['a number', resolved(id, { decision: 'deny', decisionSurface: 1 })],
+        ];
+
+        for (const [index, [name, entry]] of refusals.entries()) {
+          const frames = await readAgUiStream(
+            await handler(resumeRequest([entry], {}, `client-run-${index + 2}`)),
+          );
+          expect(frames, name).toHaveLength(1);
+          expect(frames[0]!.event, name).toMatchObject({
+            type: EventType.RUN_ERROR,
+            code: 'INVALID_INPUT',
+          });
+        }
+
+        expect(resolve).not.toHaveBeenCalled();
+        resolve.mockRestore();
+        expect(await ledgerStates(bureau)).toEqual([]);
+        expect(bureau.reviews.list()).toHaveLength(1);
+      },
+    );
+  });
+});

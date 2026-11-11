@@ -60,6 +60,9 @@ describe('the advertised response schema', () => {
     [{ decision: 'deny', remember: false }],
     [{ decision: 'reject', reason: 'Wrong customer' }],
     [{ decision: 'reject', reason: 'Wrong customer', remember: false }],
+    [{ decision: 'approve', decisionSurface: 'chat' }],
+    [{ decision: 'deny', decisionSurface: 'reviews' }],
+    [{ decision: 'reject', reason: 'Wrong customer', decisionSurface: 'chat' }],
   ])('accepts %j', (payload) => {
     expect(validate(payload)).toBe(true);
   });
@@ -73,6 +76,9 @@ describe('the advertised response schema', () => {
     ['a remember that is not a boolean', { decision: 'approve', remember: 'yes' }],
     ['a deny that asks to remember', { decision: 'deny', remember: true }],
     ['a reject that asks to remember', { decision: 'reject', reason: 'No', remember: true }],
+    ['a decision surface in another case', { decision: 'approve', decisionSurface: 'Reviews' }],
+    ['a decision surface it does not name', { decision: 'approve', decisionSurface: 'inbox' }],
+    ['a decision surface that is not a string', { decision: 'approve', decisionSurface: 1 }],
   ])('refuses %s', (_name, payload) => {
     expect(validate(payload)).toBe(false);
   });
@@ -150,6 +156,7 @@ describe('the response schema of a question that carries its own answer schema (
     ['an approval that says it does not remember', { decision: 'approve', remember: false }],
     ['a deny that says it does not remember', { decision: 'deny', remember: false }],
     ['a reject with no reason', { decision: 'reject' }],
+    ['an answer that says where it was decided', { decision: 'approve', decisionSurface: 'chat' }],
   ])('refuses %s for a wait with no answer schema', (_name, payload) => {
     expect(validateWithoutAnswerSchema(payload)).toBe(false);
   });

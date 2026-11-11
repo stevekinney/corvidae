@@ -127,6 +127,12 @@ async function pendingReviewsOfEveryProcess(
   }
 }
 
+/**
+ * COR-2292: where a person decided a tool approval. Display provenance: it confers no privilege and
+ * is not part of a decision's identity.
+ */
+const decisionSurfaceSchema = z.enum(['chat', 'reviews']);
+
 const reviewStatusSchema = z.enum([
   'pending',
   'approved',
@@ -155,6 +161,11 @@ const bureauResolutionSchema = z.object({
   /** A human wait's approved answer: SHA-256 of its canonical JSON with secret fields as `{ secretRef }`. */
   answerDigest: z.string().optional(),
   secretRefs: z.array(z.string()).optional(),
+  /**
+   * COR-2292: where a tool approval was decided, `chat` or `reviews`, when its decision recorded
+   * it. Absent when the surface is unknown, as it is for every decision recorded before the field.
+   */
+  decisionSurface: decisionSurfaceSchema.optional(),
 });
 
 const reviewCommonFields = {
@@ -374,6 +385,9 @@ function projectResolution(review: PendingReview & ReviewResolutionFields): {
       ...(review.resolutionReason === undefined ? {} : { reason: review.resolutionReason }),
       ...(review.answerDigest === undefined ? {} : { answerDigest: review.answerDigest }),
       ...(review.secretRefs === undefined ? {} : { secretRefs: [...review.secretRefs] }),
+      ...(decision === undefined || review.decisionSurface === undefined
+        ? {}
+        : { decisionSurface: review.decisionSurface }),
     },
   };
 }
@@ -703,6 +717,9 @@ function reviewOfResolved(resolved: ResolvedReview): PendingReview & ReviewResol
     ...(resolved.reason === undefined ? {} : { resolutionReason: resolved.reason }),
     ...(resolved.answerDigest === undefined ? {} : { answerDigest: resolved.answerDigest }),
     ...(resolved.secretRefs === undefined ? {} : { secretRefs: resolved.secretRefs }),
+    ...(resolved.decisionSurface === undefined
+      ? {}
+      : { decisionSurface: resolved.decisionSurface }),
   };
 }
 
@@ -882,6 +899,11 @@ const reviewsResolveInput = z
       .describe(
         'Approving a tool approval: also allow its tool for the rest of this chat (`Allow for the rest of this chat`). Refused with `Unprocessable` for a human wait and for a `deny` or `reject`.',
       ),
+    decisionSurface: decisionSurfaceSchema
+      .optional()
+      .describe(
+        'A tool approval: where the person decided, `chat` or `reviews`, recorded with the decision as display provenance. It grants nothing and is not part of the decision’s identity: the first decision committed keeps its surface, or its absence, and a repeat of that decision from another surface changes neither. Omitted, the surface is unknown. Refused with `Unprocessable` for a human wait.',
+      ),
   })
   // COR-1920: a field the operation does not define is refused, not dropped.
   .strict()
@@ -929,7 +951,7 @@ export const reviewsResolveOperation = defineOperation<
   mcpExposable: true,
   summary: 'Approve, deny, or reject a pending review',
   description:
-    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note and the sentence the tool asked with, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
+    'Resolves a pending review of one of the caller’s own runs as the authenticated caller; the reviewer is never a payload field. A caller holding `bureau.reviews:resolve` resolves any owner’s. `reject` requires a `reason`. The `receipt` is `applied` (including a landed reject, which `decision` reports) or `superseded`. Resolving a review that is already resolved answers `Conflict` when the call asks for a different decision than the one recorded (a resolver that lost), and 404 when it repeats that decision, until command receipts exist; one the caller may not resolve answers 404. `remember: true` on approving a tool approval also allows its tool for the rest of the chat: the next ask for it in that chat that the agent file would make by `on-changes` runs without asking, and no other chat, fork, tool, `always` or `blocked` value, agent-wide always mode or read-only restriction is affected; the response says `remembered`. Resolving a tool approval also writes its outcome into the session’s conversation: the executed result on approve, an error result carrying the reason on deny and reject, each replacing the pending `action_required` result in place, so a run started next on the session answers an up-to-date conversation. The outcome row’s metadata records who decided and when, with the note, the sentence the tool asked with, and the `decisionSurface` the call gave, under `approvalDecision`. A `superseded` receipt writes nothing. A tool approval does not park its run, so once this call decides the last pending review of a chat’s run (approve, deny or reject), it starts the run that answers the decisions, as the chat’s own resume does: one run, owned by the chat’s owner whoever decided, under a command id of the decided run alone, so the chat’s resume of the same reviews, a decision racing it, and a retry all continue with that one run. `continuation` says which run (`started`), or why none could start (`not-started`, the decision having taken effect); it is absent while another review of the run is pending, for a run that is not a chat’s, and for a human wait, whose answer continues its parked run. Approving a human wait takes an `answer`; when the review has an `inputSchema` the answer is checked against it before anything is decided, and one that does not fit answers `InvalidParams` with `data.issues` (`path` rooted at `answer`, `message`, and `code`, the schema keyword that failed) and leaves the review pending. `round` is the round of the review the caller read (`bureau.reviews.get` and `list` return it): a re-gated approval keeps its id and advances its round, so a decision made on round N is refused with a `Conflict` once the review is at another round, before anything is decided, written, or audited. A `Conflict` whose `reason` begins `REVIEW_ROUND_CHANGED: ` is that refusal (nothing took effect; read the review again); one that begins `APPROVAL_OUTCOME_NOT_WRITTEN: ` means the decision took effect (the tool ran or was refused) and only that write failed; any other `Conflict` is a resolver that lost. Omit `round` and the call is not fenced.',
   destructive: true,
   tags: ['Reviews'],
   inputSchema: reviewsResolveInput,
@@ -955,6 +977,14 @@ export const reviewsResolveOperation = defineOperation<
         code: 'Unprocessable',
         message: 'Only a tool approval can be remembered; a human wait takes an answer',
         data: { reason: 'remember addressed to a human wait' },
+      };
+      throw fault;
+    }
+    if (input.decisionSurface !== undefined && review.kind !== 'tool-approval') {
+      const fault: OperationFault = {
+        code: 'Unprocessable',
+        message: 'Only a tool approval records where it was decided',
+        data: { reason: 'decisionSurface addressed to a human wait' },
       };
       throw fault;
     }
@@ -988,6 +1018,7 @@ export const reviewsResolveOperation = defineOperation<
         ...(input.round === undefined ? {} : { round: input.round }),
         ...(input.answer === undefined ? {} : { payload: input.answer }),
         ...(input.remember === true ? { remember: true } : {}),
+        ...(input.decisionSurface === undefined ? {} : { decisionSurface: input.decisionSurface }),
       });
       // A tool approval does not park its run, so the decision that settles the last of them
       // starts the run that answers them, as the chat's own resume does. Only a decision this call
