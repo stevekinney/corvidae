@@ -406,11 +406,15 @@
 
   // When the host takes the sources away, the control (and any panel it opened) unmounts with
   // focus inside it, which would leave focus on the page body. This pre-effect runs before that
-  // removal, while focus can still be read, and hands focus to this message once it is gone.
+  // removal, while focus can still be read, and hands focus to this message at once, so focus never
+  // falls to the body: a container that reclaims focus orphaned by a removal (Chat moves it to its
+  // timeline) would otherwise take it first. If something in the removal still drops focus, the
+  // check after the update hands it to this message again.
   $effect.pre(() => {
     const shown = shownSources !== undefined;
     if (sourcesWereShown && !shown && focusIsInSources(document.activeElement)) {
       const article = articleElement;
+      article?.focus({ preventScroll: true });
       void (async () => {
         await tick();
         const active = document.activeElement;
