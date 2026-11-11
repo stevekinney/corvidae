@@ -97,9 +97,12 @@
   const decisionOverflow = $derived((overflow ?? []).filter((action) => action.decision === true));
   const menuOverflow = $derived((overflow ?? []).filter((action) => action.decision !== true));
   const hasDecisions = $derived(decisions !== undefined || decisionOverflow.length > 0);
-  const hasActions = $derived(
-    hasDecisions || actions !== undefined || createAction !== undefined || menuOverflow.length > 0,
+  // Every action but the create "+": in a narrow header these drop to a row of their own under
+  // the title, and the "+" stays beside it.
+  const hasOtherActions = $derived(
+    hasDecisions || actions !== undefined || menuOverflow.length > 0,
   );
+  const hasActions = $derived(hasOtherActions || createAction !== undefined);
 
   // The title keeps two lines and then ends in an ellipsis. Only a title that is actually cut
   // off gets the Cinder tooltip with all of it, and a stop of its own so the keyboard reaches it:
@@ -291,7 +294,6 @@
       </Dropdown.Menu>
     </Dropdown>
   {/if}
-  {@render createActionButton()}
 {/snippet}
 
 {#if resolvedVariant === 'large' && collapsedBar}
@@ -340,7 +342,9 @@
           <div class="cinder-page-header__facts">{@render facts()}</div>
         {/if}
         {#if hasActions}
-          <div class="cinder-page-header__hero-actions">{@render actionGroups()}</div>
+          <div class="cinder-page-header__hero-actions">
+            {@render actionGroups()}{@render createActionButton()}
+          </div>
         {/if}
       </div>
       {#if focal}
@@ -361,10 +365,17 @@
         {@render headingBody()}
       </div>
 
-      {#if hasActions}
+      {#if hasOtherActions}
         <div class="cinder-page-header__actions">
           <CompactActions>
             {@render actionGroups()}
+          </CompactActions>
+        </div>
+      {/if}
+      {#if createAction}
+        <div class="cinder-page-header__actions cinder-page-header__create-slot">
+          <CompactActions>
+            {@render createActionButton()}
           </CompactActions>
         </div>
       {/if}

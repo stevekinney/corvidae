@@ -162,18 +162,56 @@ describe('PageHeader', () => {
     ).toBe(false);
   });
 
-  test('actions and the create button render at xs and stay beside the title at any width', () => {
+  test('actions and the create button render at xs, the create button in a slot of its own', () => {
     const { container } = render(Harness, { props: { withActions: true } });
     const buttons = container.querySelectorAll('.cinder-page-header__actions button');
     expect(buttons.length).toBe(3);
     for (const button of buttons) expect(button.getAttribute('data-cinder-size')).toBe('xs');
-    // A narrow header may move its inline status under the title, but never the row or actions.
-    const containerRules = stylesheet.split(/@container cinder-page-header/).slice(1);
-    for (const rule of containerRules) {
-      const body = rule.slice(0, rule.indexOf('\n  }'));
-      expect(body).not.toMatch(/__row|__actions|__heading-group/);
-    }
-    expect(stylesheet).not.toMatch(/flex-wrap:\s*wrap[^}]*\}\s*\.cinder-page-header__heading/);
+    // The create "+" is the last action, in its own slot after the others, so a narrow header can
+    // keep it beside the title while the rest move.
+    const slots = [...container.querySelectorAll('.cinder-page-header__row > *')];
+    expect(slots.map((slot) => slot.className)).toEqual([
+      'cinder-page-header__heading-group',
+      'cinder-page-header__actions',
+      'cinder-page-header__actions cinder-page-header__create-slot',
+    ]);
+    expect(slots[2]?.querySelector('.cinder-page-header__create')).not.toBeNull();
+    expect(slots[1]?.querySelector('.cinder-page-header__create')).toBeNull();
+  });
+
+  // Owner decision reversing COR-2337: on a phone the title gets the full row.
+  test('a narrow header moves every action but the create "+" to a row under the title', () => {
+    const narrow =
+      /@container cinder-page-header \(max-width: 32rem\)\s*\{([\s\S]*?)\n {2}\}/.exec(
+        stylesheet,
+      )?.[1] ?? '';
+    expect(narrow).toMatch(/\.cinder-page-header__row \{\s*flex-wrap: wrap;/);
+    expect(narrow).toMatch(/\.cinder-page-header__heading-group \{\s*flex-basis: 0;/);
+    expect(narrow).toMatch(
+      /\.cinder-page-header__actions:not\(\.cinder-page-header__create-slot\) \{\s*order: 1;\s*flex-basis: 100%;/,
+    );
+    // The "+" stays at the end of the title's line.
+    expect(narrow).toMatch(
+      /\.cinder-page-header__row > \.cinder-page-header__actions \+ \.cinder-page-header__create-slot \{\s*margin-inline-start: auto;/,
+    );
+    // A status item never breaks inside itself, and no divider is left at the end of a line.
+    expect(narrow).toMatch(/\.cinder-page-header__status > \* \{\s*white-space: nowrap;/);
+    expect(narrow).toMatch(
+      /\.cinder-page-header__status > \.cinder-divider\[data-cinder-orientation='vertical'\] \{\s*display: none;/,
+    );
+    expect(stylesheet).not.toMatch(/actions never move/);
+  });
+
+  test('a header with only the create "+" draws one actions slot, and none without actions', () => {
+    const { container } = render(PageHeader, {
+      props: { title: 'Agents', createAction: { label: 'New agent', href: '/agents/new' } },
+    });
+    const slots = container.querySelectorAll('.cinder-page-header__actions');
+    expect(slots).toHaveLength(1);
+    expect(slots[0]?.classList.contains('cinder-page-header__create-slot')).toBe(true);
+    cleanup();
+    const bare = render(PageHeader, { props: { title: 'Agents' } });
+    expect(bare.container.querySelector('.cinder-page-header__actions')).toBeNull();
   });
 
   test('under an error header a primary action is secondary and still xs', () => {

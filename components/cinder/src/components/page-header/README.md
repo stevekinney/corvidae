@@ -14,7 +14,7 @@ Page-level heading with named title, description, breadcrumb, and action regions
 
 ## Create action, status and errors
 
-A list page's create action is a `createAction`: a secondary icon-only "+" with a tooltip and an accessible name, drawn last in the actions region so it sits in the same place in every state, whether the list is empty or not. It is always secondary, because an empty state's own button is the only primary on an empty page. It goes inert under a stale `<StaleRegion>` (`mutating` defaults to `true`). A header whose only action is the create "+" keeps it at the right of the title on a phone, where any other actions drop to a row of their own.
+A list page's create action is a `createAction`: a secondary icon-only "+" with a tooltip and an accessible name, drawn last in the actions region so it sits in the same place in every state, whether the list is empty or not. It is always secondary, because an empty state's own button is the only primary on an empty page. It goes inert under a stale `<StaleRegion>` (`mutating` defaults to `true`). In a narrow header (32rem of its own width or less, a phone) the title takes the full row: the create "+" stays at the right of the title, and every other action drops to a row of its own under the title and the status. A status there wraps under the title with each item kept whole, and a vertical divider between status items is not drawn.
 
 ```svelte
 <script lang="ts">

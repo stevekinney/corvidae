@@ -68,6 +68,21 @@ for (const width of WIDTHS) {
       );
     }
     await expect(main.getByRole('button', { name: 'More actions' })).toBeVisible();
+    // On a phone the title has the whole row and the actions drop to a row of their own under it
+    // and the status (owner decision, reversing COR-2337); wider, they stay beside the title.
+    const titleBox = await main.getByRole('heading', { level: 1 }).boundingBox();
+    const editBox = await main.getByRole('button', { name: 'Edit' }).boundingBox();
+    const statusBox = await main.locator('.cinder-page-header__status').boundingBox();
+    if (titleBox === null || editBox === null || statusBox === null) {
+      throw new Error('the title, the status and Edit are drawn');
+    }
+    if (width === 375) {
+      expect(editBox.y).toBeGreaterThanOrEqual(statusBox.y + statusBox.height - 1);
+      await expect(main.getByRole('heading', { level: 1 })).toHaveText('Daily summary');
+      expect(titleBox.height).toBeLessThan(40);
+    } else {
+      expect(editBox.y).toBeLessThan(titleBox.y + titleBox.height);
+    }
     // The sentence, and the line that says when it runs next and when it last ran.
     const sentence = main.getByTestId('schedule-status-line');
     await expect(sentence).toContainText(
