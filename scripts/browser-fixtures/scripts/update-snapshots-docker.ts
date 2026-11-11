@@ -22,6 +22,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { mkdir, readdir, rm } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 
+import { withHostSlots } from '../../host-slots.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import {
   buildBaselineDiffReport,
@@ -44,7 +45,6 @@ import {
   type BaselineComponentScope,
   type BaselineProvenance,
 } from './baseline-provenance.ts';
-import { withHostSlots } from '../../host-slots.ts';
 import {
   CONTAINER_CPUS,
   DOCKERFILE_PATH,

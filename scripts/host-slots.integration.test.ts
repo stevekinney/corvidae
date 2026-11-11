@@ -126,7 +126,8 @@ const secondHolderWaitsForTheFirst = await inScratchPool(async (pool) => {
   expect(secondRan).toBe(false);
   expect(await heldSlots(pool)).toBe(2);
   finishFirst();
-  expect((await first).count).toBe(2);
+  const firstSlots = await first;
+  expect(firstSlots.count).toBe(2);
   const outcome = await second;
   expect(outcome.slots.admission).toBe('held');
   expect(outcome.slots.count).toBe(1);
@@ -173,9 +174,13 @@ const killedHolderIsReclaimed = await inScratchPool(async (pool) => {
     pool,
     'await withHostSlots(2, () => new Promise(() => {}), options);',
   );
-  await waitUntil(async () => (await slotOwner(pool, 1))?.pid === holder.pid, {
-    message: 'the holder took both slots',
-  });
+  await waitUntil(
+    async () => {
+      const owner = await slotOwner(pool, 1);
+      return owner?.pid === holder.pid;
+    },
+    { message: 'the holder took both slots' },
+  );
   holder.kill('SIGKILL');
   await holder.exited;
   const reclaimed = await withHostSlots(
@@ -196,7 +201,8 @@ const killedWrapperKeepsSlotsWhileItsGroupLives = await inScratchPool(async (poo
   let processGroup: number | undefined;
   await waitUntil(
     async () => {
-      processGroup = (await slotOwner(pool, 1))?.processGroup;
+      const owner = await slotOwner(pool, 1);
+      processGroup = owner?.processGroup;
       return processGroup !== undefined;
     },
     { message: 'the wrapper recorded its command group' },
@@ -236,7 +242,7 @@ describe('host slots', () => {
     rethrow(nestedRunDoesNotDoubleAdmit));
   test('a token naming no live holder does not bypass the pool', () =>
     rethrow(staleTokenDoesNotBypass));
-  test("a holder killed outright has its slots reclaimed by the next run", () =>
+  test('a holder killed outright has its slots reclaimed by the next run', () =>
     rethrow(killedHolderIsReclaimed));
   test('a killed wrapper keeps its slots while its command group lives, then frees them', () =>
     rethrow(killedWrapperKeepsSlotsWhileItsGroupLives));
@@ -246,7 +252,12 @@ describe('host slots', () => {
       slots: 4,
       command: ['bun', 'x'],
     });
-    for (const invalid of [['--slots=0', '--', 'x'], ['--slots=2'], ['--', 'x'], ['--slots=2', '--']]) {
+    for (const invalid of [
+      ['--slots=0', '--', 'x'],
+      ['--slots=2'],
+      ['--', 'x'],
+      ['--slots=2', '--'],
+    ]) {
       expect(parseHostSlotsArguments(invalid)).toHaveProperty('error');
     }
   });

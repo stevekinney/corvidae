@@ -32,6 +32,7 @@ import { parseArgs } from 'node:util';
 import { THEME_STORAGE_KEY, buildBrowser } from '@lostgradient/testing';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 
+import { withHostSlots } from '../../host-slots.ts';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import casesData from '../src/fixtures/chat-stress.json';
 import {
@@ -62,7 +63,6 @@ import {
   type SourceIdentity,
   type StressProfile,
 } from './chat-stress-plan.ts';
-import { withHostSlots } from '../../host-slots.ts';
 import { prepareManifest } from './prepare-manifest.ts';
 
 /** The one deadline every wait of the run shares. */
