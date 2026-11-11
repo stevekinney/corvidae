@@ -168,7 +168,8 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/:schedule': /Upcoming above, past below/,
   '/schedules/:schedule/edit': /If Interborough was off/,
   '/goals': /say-hello/,
-  '/goals/:goal': /seeded-goal/,
+  // A goal's page is titled by the goal's name.
+  '/goals/:goal': /say-hello/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
   '/hooks': /No answer/,
   '/hooks/new': /Pick an event to see what this hook does/,

@@ -62,14 +62,12 @@ test('lists the attempts of the seeded goal on its page, each linking to its run
   await page.goto('/goals/seeded-goal');
 
   await expect(page.locator('[data-view="goals"]')).toHaveAttribute('data-state', 'ready');
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('seeded-goal');
-  const attempts = page.locator('tr[data-attempt]');
+  // The page is titled by the goal's name, and each attempt row is the link to its run.
+  await expect(page.getByRole('heading', { level: 1 })).toContainText('say-hello');
+  const attempts = page.locator('[data-attempt]');
   await expect(attempts.first()).toBeVisible();
   const run = await attempts.first().getAttribute('data-run');
-  await expect(attempts.first().getByRole('link', { name: run ?? '' })).toHaveAttribute(
-    'href',
-    `/runs/${run ?? ''}`,
-  );
+  await expect(attempts.first().locator('a').first()).toHaveAttribute('href', `/runs/${run ?? ''}`);
   await checkA11y('goals — one goal and its attempts');
 });
 

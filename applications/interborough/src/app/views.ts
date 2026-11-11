@@ -194,8 +194,10 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   // In the sidebar after Schedules. Holds no console scope, as the audit trail holds none: a caller
   // sees the goals it owns. `/goals/new` is where the first goal is made, so it is never empty. The
   // list at `/goals` keeps its header and its "+" in every state, so it draws its own loading, empty
-  // and failed states (`routes/goals/goal-list.svelte`); one goal's page leaves them to the frame.
-  goals: { scopes: [], canBeEmpty: true, ownsStatesOnPatterns: ['/goals'] },
+  // and failed states (`routes/goals/goal-list.svelte`); so does one goal's page, whose heading reads
+  // "Goal" and whose Attempts heading stays while it loads (`routes/goals/goal-detail.svelte`). The
+  // frame still says a goal is missing or refused.
+  goals: { scopes: [], canBeEmpty: true, ownsStatesOnPatterns: ['/goals', '/goals/:goal'] },
   // In the sidebar after Capabilities. Holds no console scope: a caller sees the hooks it owns. A home that
   // keeps hooks off answers the page's own words, not the frame's. `/hooks/new` is where the first
   // hook is made, so the frame never calls the view empty there. The list keeps its header in every

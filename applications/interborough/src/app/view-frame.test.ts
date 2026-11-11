@@ -449,7 +449,7 @@ describe('a view that owns its states', () => {
 });
 
 describe('a view that owns its states on some routes only', () => {
-  test('is the Agents, Runs and Goals views, on the address of each one’s list', () => {
+  test('is the Agents, Runs and Goals views, on the address of each one’s list and of one goal', () => {
     expect(VIEW_NAMES.filter((view) => VIEWS[view].ownsStatesOnPatterns !== undefined)).toEqual([
       'agents',
       'runs',
@@ -457,7 +457,7 @@ describe('a view that owns its states on some routes only', () => {
     ]);
     expect(VIEWS.agents.ownsStatesOnPatterns).toEqual(['/agents']);
     expect(VIEWS.runs.ownsStatesOnPatterns).toEqual(['/runs']);
-    expect(VIEWS.goals.ownsStatesOnPatterns).toEqual(['/goals']);
+    expect(VIEWS.goals.ownsStatesOnPatterns).toEqual(['/goals', '/goals/:goal']);
   });
 
   test('renders the Runs list, and says error in data-state, when its probe fails', async () => {
@@ -504,14 +504,15 @@ describe('a view that owns its states on some routes only', () => {
     expect(queryByRole('heading', { level: 1, name: VIEW_COPY.goals.empty?.title ?? '' })).toBeNull();
   });
 
-  test('leaves a goal’s page its failure from the frame', async () => {
+  test('renders a goal’s page, and says error in data-state, when its probe fails', async () => {
     stub('goals', 'error');
-    const { container, findByRole } = mount('goals', {
+    const { container, findByTestId, queryByRole } = mount('goals', {
       parameters: { goal: 'goal-1' },
       pattern: '/goals/:goal',
     });
-    await findByRole('heading', { level: 1, name: VIEW_COPY.goals.error.title });
-    expect(frame(container).dataset['state']).toBe('error');
+    expect(await findByTestId('content')).not.toBeNull();
+    await waitFor(() => expect(frame(container).dataset['state']).toBe('error'));
+    expect(queryByRole('heading', { name: VIEW_COPY.goals.error.title })).toBeNull();
   });
 
   test('renders the Agents list, and says error in data-state, when its probe fails', async () => {

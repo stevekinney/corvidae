@@ -3245,30 +3245,115 @@ export const GOALS_COPY = {
   checkLine: (text: string): string => `Check: ${text}`,
   /** The qualifier on Running for a goal that has been asked to stop and has not yet. */
   stopping: 'stopping',
-  /** The goal's own page, which lists its attempts. */
+  /**
+   * The goal's own page (`/goals/:goal`): its name and status, the note that says how it ended or
+   * what it waits on, its attempts newest first, and a Details panel beside them. The page draws
+   * its own loading and failed states under its own header (`ownsStatesOnPatterns` in `views.ts`).
+   */
   detail: {
-    title: (id: string): string => `Goal ${id}`,
-    backToList: 'All goals',
-    agentFact: 'Agent',
-    statusFact: 'Status',
-    attemptsFact: 'Attempts',
-    createdFact: 'Created',
-    updatedFact: 'Updated',
-    endedFact: 'Ended',
-    reasonFact: 'Why it ended',
+    /** The heading while the goal is read, before its name is known (row 68t). */
+    loadingTitle: 'Goal',
+    /** The name of the loading region, and the line that says the read is slow. */
+    loading: 'Loading this goal',
+    stillLoading: 'Still loading this goal…',
+    /** What the page says after "Cancel" in the "Still loading" line: nothing failed, the person stopped it. */
+    stopped: {
+      title: 'Stopped loading this goal',
+      description: 'You stopped the read, so the goal is not shown. Nothing was changed.',
+    },
+    editAction: 'Edit',
+    startAgainAction: 'Start again',
+    stopAction: 'Stop goal',
+    /** Why Start again is off for a model agent while no provider holds a key, and where to fix it. */
+    connectProvider: 'Connect a provider',
+    connectProviderPath: '/settings/models',
+    /** Why Edit and Stop goal are inert while the server gives no answer (row 68w). */
+    offlineReason: 'Edit and Stop goal are off until Interborough answers.',
+    /** The qualifier on Running while an attempt's result is checked (sweep S73). */
+    checkingQualifier: 'checking the result',
+    /** The qualifier on Running while the goal is about to make its next attempt (sweep S73). */
+    retryingQualifier: (next: number, most: number): string =>
+      `attempt ${String(next)} of ${String(most)}`,
     attemptsHeading: 'Attempts',
-    attemptsCaption: 'Attempts of this goal, in the order they ran',
+    /** The accessible name of the list of attempts. */
+    attemptsLabel: 'Attempts of this goal, newest first',
+    attemptTitle: (number: number): string => `Attempt ${String(number)}`,
     noAttempts: {
       title: 'No attempts yet',
       description: 'The goal has not started an attempt. Its attempts are listed here as they run.',
     },
-    attemptColumn: 'Attempt',
-    runColumn: 'Run',
-    statusColumn: 'Status',
-    startedColumn: 'Started',
-    tookColumn: 'Took',
-    finishColumn: 'Finish reason',
-    attemptLabel: (index: number): string => `Attempt ${String(index + 1)}`,
+    /** Line two of an attempt's row, after the agent's name. */
+    line: {
+      took: (duration: string): string => `took ${duration}`,
+      /** While the result is checked, "took" covers the agent's part of the attempt. */
+      agentTook: (duration: string): string => `Agent took ${duration}`,
+      agentStopped: (why: string): string => `Agent stopped: ${why}`,
+      canceledAt: (clock: string, duration: string): string =>
+        `canceled at ${clock} after ${duration}`,
+      canceled: 'canceled',
+      runningFor: (duration: string): string => `running for ${duration}`,
+      waitingApproval: (tool: string): string => `${tool} is waiting for your approval`,
+      waitingQuestion: 'A question is waiting for your answer',
+      /** What an approval is for before its review has been read. */
+      aTool: 'A tool',
+    },
+    /** Why an agent stopped, for the finish reasons that are not its normal end. */
+    agentStopReasons: {
+      tripwire: 'a guardrail',
+      'maximum-steps': 'step limit',
+      'budget-exceeded': 'budget',
+      error: 'error',
+    },
+    /** The note under the header: how the goal ended, or what its attempt waits on. */
+    note: {
+      done: (attempt: number, most: number, when: string | undefined): string =>
+        when === undefined
+          ? `Done on attempt ${String(attempt)} of ${String(most)}: the check was met.`
+          : `Done on attempt ${String(attempt)} of ${String(most)}: the check was met on ${when}.`,
+      gaveUp: (made: number, most: number, when: string | undefined): string =>
+        `Gave up${when === undefined ? '' : ` on ${when}`}, after ${String(made)} of ${String(most)} attempts. None of them met the check.`,
+      stopped: (made: number, most: number, when: string | undefined): string =>
+        `Stopped${when === undefined ? '' : ` on ${when}`}, after ${String(made)} of ${String(most)} attempts.`,
+      attemptCanceled: (attempt: number): string =>
+        `Attempt ${String(attempt)} was canceled; the work it did is kept in its run.`,
+      failed: (made: number, most: number, when: string | undefined): string =>
+        `Failed${when === undefined ? '' : ` on ${when}`}, after ${String(made)} of ${String(most)} attempts.`,
+      openAttempt: (attempt: number): string => `Open attempt ${String(attempt)}`,
+      waiting: (attempt: number, what: string): string =>
+        `Attempt ${String(attempt)} is waiting on you: ${what}`,
+      approvalNeeded: (tool: string): string =>
+        `${tool} needs your approval before it can continue.`,
+      questionNeeded: 'A question needs your answer before it can continue.',
+      /** What an approval is for before its review has been read. */
+      aTool: 'A tool',
+      openInReviews: 'Open in Reviews',
+    },
+    /** "Fri, Oct 30 at 10:08 AM". */
+    when: (day: string, clock: string): string => `${day} at ${clock}`,
+    detailsHeading: 'Details',
+    checkFact: 'Check',
+    agentFact: 'Agent',
+    limitFact: 'Attempt limit',
+    stopsFact: 'Stops',
+    createdFact: 'Created',
+    attemptLimit: (most: number): string => (most === 1 ? '1 attempt' : `${String(most)} attempts`),
+    stops: 'When the check passes, or after the last attempt',
+    created: (when: string, by: string): string => `${when} by ${by}`,
+    createdByYou: 'you',
+    /** The Stop goal confirmation (row 67y). */
+    stop: {
+      title: (name: string): string => `Stop ${name}?`,
+      checking: (attempt: number): string =>
+        `Attempt ${String(attempt)} has finished and its result is being checked. Stopping cancels the check, and the work the attempt did stays in its run. No more attempts start. You can start the goal again later.`,
+      running: (attempt: number): string =>
+        `Attempt ${String(attempt)} is still running. Stopping cancels it, and the work the attempt did stays in its run. No more attempts start. You can start the goal again later.`,
+      between: 'No more attempts start. You can start the goal again later.',
+      busy: 'Stopping…',
+      failedTitle: 'Couldn’t stop the goal.',
+      failed: 'Interborough didn’t answer. Nothing was changed.',
+      changed:
+        'The goal changed while you were reading it. Nothing was changed, so look again and try once more.',
+    },
     loadFailed: {
       title: 'The goal could not be loaded',
       description: 'The server did not answer. Check that the host is running, then try again.',
@@ -6343,7 +6428,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
     loading: { title: 'Loading goals', description: 'Reading the running goals.' },
     // The list at `/goals` draws its own empty and failed states under its own header
     // (`ownsStatesOnPatterns` in `views.ts`), and its empty one in the words `GOALS_COPY` holds, so
-    // the frame and the page never say them two ways. A goal's page keeps the frame's.
+    // the frame and the page never say them two ways. A goal's page draws its own loading and failed
+    // states too (`GOALS_COPY.detail`); the frame keeps only its not-found and forbidden states.
     empty: { ...GOALS_COPY.empty, action: { label: GOALS_COPY.newAction, href: '/goals/new' } },
     error: {
       title: 'Goals are unavailable',

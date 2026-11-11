@@ -13,6 +13,7 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { AGENT_EDITOR_COPY, GOALS_COPY, RETRY_LABEL } from '../../app/copy.ts';
 import RouteOutletHarness from '../../app/shell/route-outlet.test-harness.svelte';
+import { taskFixture, toolApprovalFixture } from '../../lib/bureau-fixtures.test-support.ts';
 import {
   installBureauStub,
   StubFault,
@@ -83,86 +84,93 @@ function open(
     path?: string;
     /** How the Bureau answers that the goal's controller stands, which is started unless said. */
     controller?: { status: 'started' | 'not-needed' | 'start-failed'; reason: string | null };
+    /** The agents the Bureau lists, which are {@link AGENTS} unless said. */
+    agents?: readonly Record<string, unknown>[];
+    /** The providers `/host/providers` reports; left out, the host does not say. */
+    hostProviders?: readonly { name: string; hasKey: boolean }[];
   } = {},
 ) {
   const served: Served = { goals: [...initial], pageSize: options.pageSize ?? 50 };
   let created = 0;
-  stub = installBureauStub({
-    'bureau.agents.list': () => ({ agents: AGENTS }),
-    'bureau.goals.list': (params) => {
-      const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
-      // The Bureau never answers more than a page holds, however many the caller asks for.
-      const asked = typeof params['limit'] === 'number' ? params['limit'] : served.pageSize;
-      const limit = Math.min(asked, served.pageSize);
-      const page = served.goals.slice(offset, offset + limit);
-      return {
-        goals: page,
-        nextOffset: served.goals.length > offset + limit ? offset + limit : null,
-      };
-    },
-    'bureau.goals.get': (params) => {
-      const found = served.goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
-      if (found === undefined) throw new StubFault('NotFound', 404, 'No such goal.');
-      return found;
-    },
-    'bureau.goals.create': (params) => {
-      const validator = params['validator'] as { name: string; version: string };
-      if (
-        validator.name !== KNOWN_VALIDATOR.name ||
-        validator.version !== KNOWN_VALIDATOR.version
-      ) {
-        throw new StubFault(
-          'Unprocessable',
-          422,
-          `The validator "${validator.name}@${validator.version}" is not configured on this Bureau.`,
-          { reason: 'validator-not-found' },
-        );
-      }
-      created += 1;
-      const bounds = params['bounds'] as { maximumAttempts: number; maximumTotalSteps?: number };
-      // As the Bureau does: a goal needs a bound on all its attempts together, besides how many.
-      if (bounds.maximumTotalSteps === undefined) {
-        throw new StubFault('InvalidParams', 400, 'missing-aggregate-bound', {});
-      }
-      const made = goal(`goal-created-${String(created)}`, {
-        agentName: String(params['agentName']),
-        status: 'pending',
-        revision: 1,
-        bounds: {
-          maximumAttempts: bounds.maximumAttempts,
-          maximumTotalDurationMs: null,
-          maximumTotalSteps: null,
-          maximumTotalTokens: null,
-          maximumTotalCostUsd: null,
-        },
-      });
-      served.goals.push(made);
-      return {
-        outcome: 'created',
-        goal: made,
-        controller: options.controller ?? { status: 'started', reason: null },
-      };
-    },
-    'bureau.goals.cancel': (params) => {
-      const found = served.goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
-      if (found === undefined) throw new StubFault('NotFound', 404, 'No such goal.');
-      const expected = params['expectedRevision'];
-      if (typeof expected === 'number' && expected !== found.revision) {
-        throw new StubFault('StaleRevision', 409, 'The goal changed since it was read.', {
-          expectedRevision: expected,
-          currentRevision: found.revision,
+  stub = installBureauStub(
+    {
+      'bureau.agents.list': () => ({ agents: options.agents ?? AGENTS }),
+      'bureau.goals.list': (params) => {
+        const offset = typeof params['offset'] === 'number' ? params['offset'] : 0;
+        // The Bureau never answers more than a page holds, however many the caller asks for.
+        const asked = typeof params['limit'] === 'number' ? params['limit'] : served.pageSize;
+        const limit = Math.min(asked, served.pageSize);
+        const page = served.goals.slice(offset, offset + limit);
+        return {
+          goals: page,
+          nextOffset: served.goals.length > offset + limit ? offset + limit : null,
+        };
+      },
+      'bureau.goals.get': (params) => {
+        const found = served.goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
+        if (found === undefined) throw new StubFault('NotFound', 404, 'No such goal.');
+        return found;
+      },
+      'bureau.goals.create': (params) => {
+        const validator = params['validator'] as { name: string; version: string };
+        if (
+          validator.name !== KNOWN_VALIDATOR.name ||
+          validator.version !== KNOWN_VALIDATOR.version
+        ) {
+          throw new StubFault(
+            'Unprocessable',
+            422,
+            `The validator "${validator.name}@${validator.version}" is not configured on this Bureau.`,
+            { reason: 'validator-not-found' },
+          );
+        }
+        created += 1;
+        const bounds = params['bounds'] as { maximumAttempts: number; maximumTotalSteps?: number };
+        // As the Bureau does: a goal needs a bound on all its attempts together, besides how many.
+        if (bounds.maximumTotalSteps === undefined) {
+          throw new StubFault('InvalidParams', 400, 'missing-aggregate-bound', {});
+        }
+        const made = goal(`goal-created-${String(created)}`, {
+          agentName: String(params['agentName']),
+          status: 'pending',
+          revision: 1,
+          bounds: {
+            maximumAttempts: bounds.maximumAttempts,
+            maximumTotalDurationMs: null,
+            maximumTotalSteps: null,
+            maximumTotalTokens: null,
+            maximumTotalCostUsd: null,
+          },
         });
-      }
-      found.status = 'canceled';
-      found.revision += 1;
-      return {
-        goalRunId: found.goalRunId,
-        outcome: 'canceled',
-        status: 'canceled',
-        revision: found.revision,
-      };
+        served.goals.push(made);
+        return {
+          outcome: 'created',
+          goal: made,
+          controller: options.controller ?? { status: 'started', reason: null },
+        };
+      },
+      'bureau.goals.cancel': (params) => {
+        const found = served.goals.find((candidate) => candidate.goalRunId === params['goalRunId']);
+        if (found === undefined) throw new StubFault('NotFound', 404, 'No such goal.');
+        const expected = params['expectedRevision'];
+        if (typeof expected === 'number' && expected !== found.revision) {
+          throw new StubFault('StaleRevision', 409, 'The goal changed since it was read.', {
+            expectedRevision: expected,
+            currentRevision: found.revision,
+          });
+        }
+        found.status = 'canceled';
+        found.revision += 1;
+        return {
+          goalRunId: found.goalRunId,
+          outcome: 'canceled',
+          status: 'canceled',
+          revision: found.revision,
+        };
+      },
     },
-  });
+    options.hostProviders === undefined ? {} : { hostProviders: options.hostProviders },
+  );
   landAt(options.path ?? '/goals');
   const view = render(RouteOutletHarness, {
     props: {
@@ -424,7 +432,45 @@ describe('a goal’s page', () => {
     },
   ];
 
-  test('lists the attempts in the order they ran, each linking to its run, in the seven words', async () => {
+  const attemptRowsOf = (container: HTMLElement) => [
+    ...container.querySelectorAll<HTMLElement>('[data-attempt]'),
+  ];
+
+  test('is titled by the goal’s name and lists its attempts newest first, each linking to its run', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', {
+          identity: { name: 'Say hello', version: '1' },
+          status: 'succeeded',
+          usage: { attempts: 2, steps: 2, tokens: 2, costUsd: null, durationMs: 120_000 },
+          attempts: ATTEMPTS,
+          closedAt: '2026-10-19T08:05:00.000Z',
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+
+    await view.findByRole('heading', { level: 1, name: 'Say hello' });
+    await waitFor(() => expect(attemptRowsOf(view.container).length).toBe(2));
+    const attempts = attemptRowsOf(view.container);
+    expect(attempts.map((attempt) => attempt.getAttribute('data-run'))).toEqual(['run-b', 'run-a']);
+    // A missed check is neutral: red is the goal's status alone.
+    expect(attempts.map((attempt) => attempt.getAttribute('data-status-word'))).toEqual([
+      'Done',
+      'Check not met',
+    ]);
+    expect(attempts[0]?.querySelector('a')?.getAttribute('href')).toBe('/runs/run-b');
+    expect(
+      view.getByRole('heading', { level: 2, name: `${GOALS_COPY.detail.attemptsHeading} 2 of 3` }),
+    ).not.toBeNull();
+    const facts = within(view.getByTestId('goal-facts'));
+    expect(facts.getByText(GOALS_COPY.detail.checkFact)).not.toBeNull();
+    expect(facts.getByText('Reply says hello')).not.toBeNull();
+    expect(facts.getByText('3 attempts')).not.toBeNull();
+    expect(frameState(view.container)).toBe('ready');
+  });
+
+  test('says the check was met in a note that opens the attempt, and offers Edit but not Start again', async () => {
     const { view } = open(
       [
         goal('goal-1', {
@@ -436,49 +482,156 @@ describe('a goal’s page', () => {
       { path: '/goals/goal-1' },
     );
 
-    await view.findByRole('heading', { level: 1, name: GOALS_COPY.detail.title('goal-1') });
-    await waitFor(() => expect(view.container.querySelectorAll('tr[data-attempt]').length).toBe(2));
-    const attempts = [...view.container.querySelectorAll('tr[data-attempt]')];
-    expect(attempts.map((attempt) => attempt.getAttribute('data-run'))).toEqual(['run-a', 'run-b']);
+    const note = await view.findByTestId('goal-note');
+    expect(note.textContent).toContain('Done on attempt 2 of 3: the check was met');
+    const open2 = within(note).getByRole('link', { name: 'Open attempt 2' });
+    expect(open2.getAttribute('href')).toBe('/runs/run-b');
+    const actions = within(view.getByTestId('goal-actions'));
     expect(
-      attempts.map(
-        (attempt) => within(attempt as HTMLElement).getByText(/Failed|Done/).textContent,
-      ),
-    ).toEqual(['Failed', 'Done']);
-    const link = within(attempts[0] as HTMLElement).getByRole('link', { name: 'run-a' });
-    expect(link.getAttribute('href')).toBe('/runs/run-a');
-    expect(within(view.getByTestId('goal-facts')).getByText('Done')).not.toBeNull();
-    expect(frameState(view.container)).toBe('ready');
+      actions.getByRole('link', { name: GOALS_COPY.detail.editAction }).getAttribute('href'),
+    ).toBe('/goals/goal-1/edit');
+    expect(actions.queryByRole('link', { name: GOALS_COPY.detail.startAgainAction })).toBeNull();
+    expect(actions.queryByRole('button', { name: GOALS_COPY.detail.stopAction })).toBeNull();
   });
 
   test('says there are no attempts yet for a goal that has not started one', async () => {
-    const { view } = open([goal('goal-1', { status: 'pending' })], { path: '/goals/goal-1' });
+    const { view } = open(
+      [goal('goal-1', { status: 'pending', usage: { ...goal('x').usage, attempts: 0 } })],
+      {
+        path: '/goals/goal-1',
+      },
+    );
     await view.findByRole('heading', { level: 3, name: GOALS_COPY.detail.noAttempts.title });
     expect(view.container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
-    expect(within(view.getByTestId('goal-facts')).getByText('Scheduled')).not.toBeNull();
   });
 
-  test('says when and why a goal ended, and links back to the list', async () => {
+  test('offers Start again on a goal that gave up, which opens New goal from it', async () => {
     const { view } = open(
       [
         goal('goal-1', {
           status: 'exhausted',
-          terminalReason: 'out of attempts',
+          terminalReason: 'attempt-limit-reached',
           closedAt: '2026-10-19T09:00:00.000Z',
         }),
       ],
       { path: '/goals/goal-1' },
     );
 
-    const facts = within(await view.findByTestId('goal-facts'));
-    expect(facts.getByText('Failed')).not.toBeNull();
-    expect(facts.getByText(GOALS_COPY.detail.endedFact)).not.toBeNull();
-    expect(facts.getByText('out of attempts')).not.toBeNull();
-    const back = view.getByRole('link', { name: GOALS_COPY.detail.backToList });
-    back.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
-    expect(router.pathname).toBe('/goals/goal-1');
-    back.click();
-    expect(router.pathname).toBe('/goals');
+    const again = await view.findByRole('link', { name: GOALS_COPY.detail.startAgainAction });
+    expect(again.getAttribute('href')).toBe('/goals/new?from=goal-1');
+    expect(again.getAttribute('aria-disabled')).toBeNull();
+    expect(view.getByTestId('goal-note').textContent).toContain('Gave up');
+    again.click();
+    expect(router.pathname).toBe('/goals/new');
+  });
+
+  test('turns Start again off for a model agent while no provider holds a key, and says to connect one', async () => {
+    const { view } = open(
+      [
+        goal('goal-1', {
+          agentName: 'tool-runner',
+          status: 'canceled',
+          closedAt: '2026-10-19T09:00:00.000Z',
+        }),
+      ],
+      {
+        path: '/goals/goal-1',
+        hostProviders: [{ name: 'anthropic', hasKey: false }],
+        // Tool runner names a model, so it needs a provider; Assistant is scripted.
+        agents: AGENTS.map((agent) =>
+          agent.name === 'tool-runner'
+            ? { ...agent, media: { modalities: {}, mimeFamilies: [], mediaLimits: [] } }
+            : agent,
+        ),
+      },
+    );
+
+    const reason = await view.findByRole('link', { name: GOALS_COPY.detail.connectProvider });
+    expect(reason.getAttribute('href')).toBe(GOALS_COPY.detail.connectProviderPath);
+    const again = view
+      .getAllByText(GOALS_COPY.detail.startAgainAction)
+      .map((text) => text.closest('a, button'))
+      .find((element) => element !== null);
+    expect(again?.getAttribute('aria-disabled')).toBe('true');
+    expect(again?.getAttribute('aria-describedby')).toContain(reason.id);
+  });
+
+  test('asks before it stops a goal, then stops it at the revision it read', async () => {
+    const { view, served } = open(
+      [
+        goal('goal-1', {
+          identity: { name: 'Summarize open refunds', version: '1' },
+          status: 'running',
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+
+    await fireEvent.click(await view.findByRole('button', { name: GOALS_COPY.detail.stopAction }));
+    const dialog = within(
+      await view.findByRole('dialog', { name: 'Stop Summarize open refunds?' }),
+    );
+    expect(stub?.callsTo('bureau.goals.cancel')).toEqual([]);
+    await fireEvent.click(dialog.getByRole('button', { name: GOALS_COPY.detail.stopAction }));
+
+    await waitFor(() =>
+      expect(stub?.callsTo('bureau.goals.cancel').map((call) => call.params)).toEqual([
+        { goalRunId: 'goal-1', expectedRevision: 2 },
+      ]),
+    );
+    expect(served.goals[0]?.status).toBe('canceled');
+  });
+
+  test('says an attempt waits on you in an amber note that opens the review in Reviews', async () => {
+    const approval = toolApprovalFixture({ runId: 'run-live' });
+    const { view } = open(
+      [
+        goal('goal-1', {
+          agentName: 'tool-runner',
+          status: 'running',
+          attempts: [
+            {
+              attemptId: 'goal-1-a0',
+              attemptIndex: 0,
+              runId: 'run-live',
+              sessionId: 'session-live',
+              status: 'running',
+              startedAt: '2026-10-19T08:01:00.000Z',
+              completedAt: null,
+              finishReason: null,
+              usage: { steps: 1, tokens: 1, costUsd: null },
+            },
+          ],
+        }),
+      ],
+      { path: '/goals/goal-1' },
+    );
+    stub?.on('bureau.tasks.get', () =>
+      taskFixture({
+        id: 'run-live',
+        status: 'input-required',
+        openWaits: [{ kind: 'tool-approval', reviewId: approval.id, callId: 'call-1' }],
+      }),
+    );
+    stub?.on('bureau.reviews.get', () => approval);
+
+    await waitFor(() =>
+      expect(view.container.querySelector('[data-attempt]')?.getAttribute('data-status-word')).toBe(
+        'Waiting on you',
+      ),
+    );
+    const note = await view.findByTestId('goal-note');
+    expect(note.getAttribute('data-tone')).toBe('warning');
+    await waitFor(() =>
+      expect(note.textContent).toContain(
+        'Attempt 1 is waiting on you: Issue refund needs your approval before it can continue.',
+      ),
+    );
+    expect(
+      within(note)
+        .getByRole('link', { name: GOALS_COPY.detail.note.openInReviews })
+        .getAttribute('href'),
+    ).toBe(`/reviews?review=${encodeURIComponent(`bureau:${approval.id}`)}`);
   });
 
   test('says the goal could not be loaded when the Bureau stops answering after the page opened, and tries again', async () => {
@@ -493,10 +646,29 @@ describe('a goal’s page', () => {
     });
     router.navigate('/goals/goal-1');
 
-    await view.findByRole('heading', { level: 1, name: GOALS_COPY.detail.loadFailed.title });
+    // The page keeps its own header, which reads "Goal" until the goal's name is known.
+    await view.findByRole('heading', { level: 2, name: GOALS_COPY.detail.loadFailed.title });
+    expect(
+      view.getByRole('heading', { level: 1, name: GOALS_COPY.detail.loadingTitle }),
+    ).not.toBeNull();
     const before = asked;
     await fireEvent.click(await view.findByRole('button', { name: RETRY_LABEL }));
     await waitFor(() => expect(asked).toBeGreaterThan(before));
+  });
+
+  test('keeps its heading and its Attempts heading while the goal is read', async () => {
+    const { view } = open([goal('goal-1')]);
+    await waitFor(() => expect(row(view.container, 'goal-1')).not.toBeNull());
+    // The goal never arrives, so the page stays in its loading state.
+    stub?.on('bureau.goals.get', () => new Promise<never>(() => {}));
+    router.navigate('/goals/goal-1');
+
+    await view.findByRole('heading', { level: 1, name: GOALS_COPY.detail.loadingTitle });
+    expect(
+      view.getByRole('heading', { level: 2, name: GOALS_COPY.detail.attemptsHeading }),
+    ).not.toBeNull();
+    expect(view.queryByRole('link', { name: GOALS_COPY.detail.editAction })).toBeNull();
+    expect(view.queryByRole('button', { name: GOALS_COPY.detail.stopAction })).toBeNull();
   });
 
   test('is not found for a goal the Bureau does not have', async () => {
