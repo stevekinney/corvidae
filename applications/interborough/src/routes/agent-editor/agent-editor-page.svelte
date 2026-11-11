@@ -367,6 +367,7 @@
       failure = null;
       timedOut = false;
       stopSaveClock();
+      // poll-reason: timer
       saveClock = setTimeout(saveTimedOut, SAVE_TIMEOUT_MS);
     },
     onSettled: () => stopSaveClock(),
@@ -622,7 +623,7 @@
     <Alert variant="warning" data-testid="agent-save-timed-out">
       <p class="weft-agent-editor__alert-body">{copy.newAgent.timedOut}</p>
       {#snippet actions()}
-        <Button variant="secondary" onclick={submit}>{copy.newAgent.tryAgain}</Button>
+        <Button variant="secondary" data-changes onclick={submit}>{copy.newAgent.tryAgain}</Button>
         <Button variant="ghost" onclick={cancel}>{copy.cancelAction}</Button>
       {/snippet}
     </Alert>

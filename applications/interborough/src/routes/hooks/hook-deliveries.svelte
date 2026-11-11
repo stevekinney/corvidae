@@ -249,6 +249,7 @@
               <Button
                 variant="secondary"
                 size="sm"
+                data-changes
                 disabled={retrying.isPending}
                 onclick={() => retrying.mutate(delivery)}>{copy.retryNow}</Button
               >

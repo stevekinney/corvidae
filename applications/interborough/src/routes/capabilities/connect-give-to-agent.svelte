@@ -116,7 +116,7 @@
   }
 
   .ib-connect-give__agent:focus-visible {
-    outline: 2px solid var(--cinder-focus-ring);
+    outline: var(--cinder-ring-width) solid var(--cinder-ring-color);
     outline-offset: 2px;
   }
 

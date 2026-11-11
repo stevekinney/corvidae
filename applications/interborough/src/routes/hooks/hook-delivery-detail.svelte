@@ -110,7 +110,7 @@
 
   {#if canRetry}
     <div class="ib-hook-delivery__actions">
-      <Button variant="secondary" size="sm" disabled={retrying} onclick={onRetry}>
+      <Button variant="secondary" size="sm" data-changes disabled={retrying} onclick={onRetry}>
         {#snippet leadingIcon()}<RefreshCw aria-hidden="true" />{/snippet}
         {copy.retry}
       </Button>

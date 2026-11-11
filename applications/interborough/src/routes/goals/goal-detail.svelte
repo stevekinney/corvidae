@@ -287,7 +287,12 @@
             </span>
           {/if}
           {#if actions.stop}
-            <Button variant="secondary" onclick={() => (confirmingStop = true)} mutating>
+            <Button
+              variant="secondary"
+              onclick={() => (confirmingStop = true)}
+              mutating
+              data-changes
+            >
               {#snippet leadingIcon()}<Square size={16} />{/snippet}
               {copy.stopAction}
             </Button>

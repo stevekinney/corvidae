@@ -52,6 +52,7 @@
       variant="secondary"
       size="sm"
       mutating
+      data-changes
       disabled={replacing}
       aria-label={`${copy.secretReplace} ${copy.secretLabel.toLowerCase()}`}
       onclick={onReplace}>{copy.secretReplace}</Button

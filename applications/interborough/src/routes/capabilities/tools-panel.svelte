@@ -176,7 +176,11 @@
           {#if missing}
             <ToolPageState kind="not-found" />
           {:else}
-            <EmptyState title={copy.emptyDetailTitle} description={copy.emptyDetailDescription} />
+            <EmptyState
+              kind="first-use"
+              title={copy.emptyDetailTitle}
+              description={copy.emptyDetailDescription}
+            />
           {/if}
         {/snippet}
       </ListDetail>

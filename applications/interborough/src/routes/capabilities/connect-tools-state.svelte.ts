@@ -580,6 +580,7 @@ export class ConnectFlow {
     }
     if (phase.kind === 'connecting') {
       const attempt = phase.attempt;
+      // poll-reason: timer
       this.#timer = setTimeout(() => {
         this.#timer = undefined;
         this.#dispatch({ type: 'slow', attempt });

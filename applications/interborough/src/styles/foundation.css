@@ -152,7 +152,7 @@
  * bar only keeps clear of a home indicator. */
 .weft-shell-tab-bar {
   flex: none;
-  padding-block-end: env(safe-area-inset-bottom, 0px);
+  padding-block-end: env(safe-area-inset-bottom, 0);
 }
 
 /* One ordered column with System pinned to the bottom (design row 03h): the navigation fills the
