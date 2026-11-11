@@ -16193,6 +16193,7 @@ async function constructBureau<const D extends AgentDefinitions>(
       runEventFeeds,
       store,
       sessionStore: runtime.sessionStore,
+      pendingScheduledTaintCount: () => runtime.pendingScheduledTaintCount(),
       kv: runtime.kv,
       get auditTrail(): AuditTrail | undefined {
         return auditTrailInstance;

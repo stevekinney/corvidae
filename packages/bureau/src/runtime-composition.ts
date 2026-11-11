@@ -2622,6 +2622,8 @@ export interface RuntimeComposition {
     runId: string,
     metadata: Readonly<Record<string, JSONValue>> | undefined,
   ): SessionTaintSeam;
+  /** COR-2381 — how many taints a scheduled fire holds for a session it has not yet created. */
+  pendingScheduledTaintCount(): number;
 }
 
 /** COR-1367 — per-dispatch options for {@link RuntimeComposition.createBureauInvariantHooks}. */
@@ -3038,6 +3040,11 @@ async function buildRuntimeComposition(
    * engine's event dispatch.
    */
   function settleScheduledFire(settlement: ScheduledFireSettlement): void {
+    // COR-2381 — a fire whose first step tripped never ran its write-back hook, which is what
+    // deletes a held taint; every exit path of a fire settles here.
+    for (const key of pendingScheduledTaints.keys()) {
+      if (key.endsWith(`\u0000${settlement.runId}`)) pendingScheduledTaints.delete(key);
+    }
     const hook = dependencies.onScheduledFireSettled;
     if (hook === undefined) return;
     void (async () => hook(settlement))().catch((error: unknown) => {
@@ -5982,6 +5989,7 @@ async function buildRuntimeComposition(
     bureauChildInvariants,
     composeRunHooks: composeHooks,
     sessionTaintSeam: sessionTaintSeamFor,
+    pendingScheduledTaintCount: () => pendingScheduledTaints.size,
     resolveSessionAgentRun,
   };
 

@@ -2862,6 +2862,9 @@ export interface BureauInternals {
 
   readonly sessionStore: SessionStore | undefined;
 
+  /** COR-2381 — how many taints scheduled fires hold for sessions they have not yet created. */
+  pendingScheduledTaintCount(): number;
+
   readonly kv: ConditionalTextValueStore | undefined;
 
   /**
