@@ -9,6 +9,8 @@
   import { createQuery } from '@tanstack/svelte-query';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { agentPath } from '../../lib/agent-paths.ts';
   import { getContext } from '../../lib/bureau-client.ts';
   import type { ListedReview } from '../../lib/bureau-reviews.ts';
@@ -25,6 +27,7 @@
 
   let { review, waiting }: ReviewSourceProps = $props();
 
+  const displayName = useAgentDisplayName();
   const sessionId = $derived(review.kind === 'engine-review' ? undefined : review.sessionId);
 
   const chat = createQuery(
@@ -66,7 +69,7 @@
   {REVIEWS_COPY.source.askedBy}
   {#if agent !== undefined}
     <a href={router.href(agentPath(agent))} onclick={(event) => follow(event, agentPath(agent))}
-      >{agent}</a
+      >{agentLabel(displayName(agent), undefined)}</a
     >
   {:else}
     <span

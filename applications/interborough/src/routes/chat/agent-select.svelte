@@ -60,7 +60,7 @@
       <Avatar
         class="ib-agent-select__avatar ib-chat-avatar"
         size="xs"
-        name={agentAvatarName(option.value)}
+        name={agentAvatarName(option.label)}
         alt=""
         data-tone={agentTone(option.value)}
       />

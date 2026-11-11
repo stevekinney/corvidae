@@ -31,7 +31,7 @@
   const count = $derived(GOALS_COPY.attempts(row.made, row.allowed));
   const check = $derived(GOALS_COPY.checkLine(row.check));
   // Line two as plain text, for the tooltip that carries it whole when it is cut.
-  const lineTwoText = $derived(phone ? `${agent}, ${count}` : `${agent}, ${count}, ${check}`);
+  const lineTwoText = $derived(phone ? `${agent}. ${count}` : `${agent}. ${count}. ${check}`);
 </script>
 
 {#snippet attempts()}
@@ -60,11 +60,23 @@
     {/if}
   {/snippet}
   {#snippet meta()}
-    {agent}, {@render attempts()}{#if !phone}, <span data-testid="goal-check">{check}</span>{/if}
+    <span class="ib-goal-row__line"
+      ><span>{agent}</span>{@render attempts()}{#if !phone}<span data-testid="goal-check"
+          >{check}</span
+        >{/if}</span
+    >
   {/snippet}
 </StackedListItem>
 
 <style>
+  /* The pieces of line two are separate elements with a gap between them, not a punctuated string. */
+  .ib-goal-row__line {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    column-gap: var(--cinder-space-3);
+  }
+
   .ib-goal-row__attempts {
     display: inline-flex;
     align-items: center;

@@ -127,6 +127,8 @@ export class GoalFormState {
   prompt = $state('');
   check = $state('');
   agentName = $state('');
+  /** The name of the goal Edit opened on: the first line of the prompt it keeps, the most the view says of it. */
+  currentName = $state('');
   /** `null` while the field is empty, which is out of range. */
   maximumAttempts = $state<number | null>(DEFAULT_MAXIMUM_ATTEMPTS);
   /** Whether a submit has been tried, which is when the problems are shown. */
@@ -146,6 +148,7 @@ export class GoalFormState {
    */
   prefill(goal: Pick<Goal, 'agentName' | 'identity' | 'validator' | 'bounds'>): void {
     this.agentName = goal.agentName;
+    this.currentName = goal.identity.name.trim();
     this.check = checkText(goal.validator.name);
     this.maximumAttempts = goal.bounds.maximumAttempts;
     this.prompt = this.#mode === 'create' ? goal.identity.name.trim() : '';

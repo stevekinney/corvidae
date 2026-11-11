@@ -129,22 +129,22 @@ test.describe('the notification bell, about the person and not the engine', () =
 
     // Not a chat: opening a chat reads its items.
     await page.goto('/agents');
-    await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
+    await expect(bell(page, 'Notifications: 2 unread')).toBeVisible();
     await expect(page.locator('.weft-notification-bell__dot')).toHaveCount(1);
 
-    await bell(page, 'Notifications, 2 unread').click();
+    await bell(page, 'Notifications: 2 unread').click();
     await expect(rows(page)).toHaveCount(2);
     const panel = page.locator('.weft-notification-panel');
-    await expect(panel.getByRole('heading', { name: 'Notifications, 2 unread' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Notifications 2 unread' })).toBeVisible();
     // A review is what it asks, then whose wait it is. The echo chat finished and nothing waits on
     // the person in it, so it is not listed.
     await expect(
-      panel.getByRole('link').filter({ hasText: /Waiting for your approval, .*Tool runner/i }),
+      panel.getByRole('link').filter({ hasText: /Waiting for your approval from Tool runner/i }),
     ).toHaveCount(1);
     await expect(
       panel
         .getByRole('link')
-        .filter({ hasText: /Waiting for your answer, .*Request human input/i }),
+        .filter({ hasText: /Waiting for your answer from Request human input/i }),
     ).toHaveCount(1);
     await expect(panel.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
 
@@ -158,7 +158,7 @@ test.describe('the notification bell, about the person and not the engine', () =
 
   test('approving from the chat clears that item and brings the badge down', async ({ page }) => {
     await page.goto('/agents');
-    await expect(bell(page, 'Notifications, 2 unread')).toBeVisible();
+    await expect(bell(page, 'Notifications: 2 unread')).toBeVisible();
 
     await page.goto(`/chats/${approvalThread}`);
     const approval = page.locator('[data-approval-decision]');
@@ -168,8 +168,8 @@ test.describe('the notification bell, about the person and not the engine', () =
 
     // Within the default five-second expectation: the decision refreshes the bell at once, and its
     // poll would after five seconds anyway.
-    await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
-    await bell(page, 'Notifications, 1 unread').click();
+    await expect(bell(page, 'Notifications: 1 unread')).toBeVisible();
+    await bell(page, 'Notifications: 1 unread').click();
     // Only the question is left: the approval is gone, and the chat it was decided in finished, which
     // nothing waits on the person for.
     await expect(rows(page)).toHaveCount(1);
@@ -180,7 +180,7 @@ test.describe('the notification bell, about the person and not the engine', () =
 
   test('opening an item goes to its chat and reads it', async ({ page }) => {
     await page.goto('/agents');
-    await bell(page, 'Notifications, 1 unread').click();
+    await bell(page, 'Notifications: 1 unread').click();
     await page
       .locator('.weft-notification-panel')
       .getByRole('link')
@@ -195,8 +195,8 @@ test.describe('the notification bell, about the person and not the engine', () =
   test('a finished run is not listed, once the chat is left or ever', async ({ page }) => {
     await page.goto('/agents');
     // A fresh page has read nothing, so the question still counts, and it is the only item.
-    await expect(bell(page, 'Notifications, 1 unread')).toBeVisible();
-    await bell(page, 'Notifications, 1 unread').click();
+    await expect(bell(page, 'Notifications: 1 unread')).toBeVisible();
+    await bell(page, 'Notifications: 1 unread').click();
     await expect(rows(page)).toHaveCount(1);
     await expect(page.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
   });

@@ -83,7 +83,7 @@
           <Avatar
             class="ib-chat-avatar"
             size="xs"
-            name={agentAvatarName(agent.name)}
+            name={agentAvatarName(agentLabel(agent.name, agents))}
             alt=""
             data-tone={agentTone(agent.name)}
           />

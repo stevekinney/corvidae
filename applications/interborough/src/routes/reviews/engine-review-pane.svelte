@@ -19,7 +19,7 @@
     extractReviewSections,
     humanizeKey,
   } from './review-domain.ts';
-  import { resolutionLabel } from './review-items.ts';
+  import { decidedByName, resolutionLabel } from './review-items.ts';
   import ReviewSource from './review-source.svelte';
 
   interface EngineReviewPaneProps {
@@ -56,7 +56,7 @@
     <div class="ib-review-resolution" data-testid="review-resolution">
       <p class="ib-review-resolution__line">
         <Badge variant="neutral" size="sm">{resolutionLabel(review)}</Badge>
-        <span>{REVIEWS_COPY.by} {resolution.decidedBy}</span>
+        <span>{REVIEWS_COPY.by} {decidedByName(resolution.decidedBy, viewer)}</span>
         <RelativeTime date={resolution.decidedAt} />
       </p>
       {#if resolution.reason !== undefined && resolution.reason !== ''}

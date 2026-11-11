@@ -83,7 +83,7 @@
         ><StatusDot status="success" label={copy.clear.title} labelVisible={false} /></span
       >
       <p class="ib-home-attention-clear__words">
-        <strong>{copy.clear.title}</strong>,
+        <strong>{copy.clear.title}.</strong>
         {copy.clear.description}
       </p>
       <HomeLink path="/health" label={copy.link} />

@@ -352,5 +352,7 @@ describe('an agent’s avatar', () => {
   test('spells the first letters of the first two parts of the identifier', () => {
     expect(agentAvatarName('request-human-input')).toBe('request human input');
     expect(agentAvatarName('echo')).toBe('echo');
+    expect(agentAvatarName('demo:request-human-input')).toBe('request human input');
+    expect(agentAvatarName('Tool runner')).toBe('Tool runner');
   });
 });

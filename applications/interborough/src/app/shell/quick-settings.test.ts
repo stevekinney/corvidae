@@ -63,6 +63,27 @@ describe('quick settings', () => {
     expect(link.querySelector('svg.lucide-chevron-right')).not.toBeNull();
   });
 
+  test('offers no Sidebar row on a phone, which has no sidebar to expand or collapse', async () => {
+    const original = window.matchMedia;
+    window.matchMedia = ((media: string) => ({
+      matches: media.includes('width < 640px'),
+      media,
+      addEventListener: () => undefined,
+      removeEventListener: () => undefined,
+    })) as unknown as typeof window.matchMedia;
+    try {
+      const view = mount();
+      const panel = await open(view);
+
+      const rows = Array.from(panel.querySelectorAll('.weft-quick-settings__row')).map((row) =>
+        row.querySelector('.weft-quick-settings__label')?.textContent?.trim(),
+      );
+      expect(rows).toEqual(['Theme']);
+    } finally {
+      window.matchMedia = original;
+    }
+  });
+
   test('the theme switch sets the theme', async () => {
     const view = mount();
     const panel = await open(view);

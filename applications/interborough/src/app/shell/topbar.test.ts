@@ -150,7 +150,7 @@ describe('the top bar', () => {
     ]);
 
     return waitFor(() => {
-      expect(getByRole('button', { name: 'Notifications, 1 unread' })).not.toBeNull();
+      expect(getByRole('button', { name: 'Notifications: 1 unread' })).not.toBeNull();
       expect(container.querySelector('.weft-notification-bell__dot')).not.toBeNull();
     });
   });

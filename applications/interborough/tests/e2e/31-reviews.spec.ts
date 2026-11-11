@@ -359,7 +359,7 @@ test.describe('a question a run asks', () => {
     await expect(rowOf(page, review)).toContainText(HUMAN_INPUT_PROMPT);
     await expect(paneOf(page)).toContainText(HUMAN_INPUT_PROMPT);
     await expect(paneOf(page).getByTestId('review-source')).toContainText(
-      'Asked by demo:request-human-input',
+      /Asked by .*request human input/i,
     );
     await expect(paneOf(page)).toContainText('The agent continues as soon as you answer.');
     await checkA11y('a question in the inbox');

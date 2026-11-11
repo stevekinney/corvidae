@@ -535,7 +535,7 @@ test.describe('the top bar’s popovers on the sample world', () => {
   }) => {
     await open(page, '/', 1280);
     const bell = page.getByRole('banner').getByRole('button', { name: /^Notifications/ });
-    await expect(bell).toHaveAccessibleName('Notifications, 3 unread');
+    await expect(bell).toHaveAccessibleName('Notifications: 3 unread');
     const dot = bell.locator('.weft-notification-bell__dot');
     await expect(dot).toBeVisible();
     expect(await widthOf(dot)).toBe(9);
@@ -545,7 +545,7 @@ test.describe('the top bar’s popovers on the sample world', () => {
     const panel = page.getByRole('dialog', { name: 'Notifications' });
     await expect(panel).toBeVisible();
     expect(await widthOf(panel)).toBe(420);
-    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications, 3 unread');
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications 3 unread');
     await expect(panel.getByRole('button', { name: 'Mark all read' })).toBeVisible();
     // What the person's own hooks announced was cleared; nothing else is a raw event.
     await expect(panel.locator('[data-kind="notice"]')).toHaveCount(0);

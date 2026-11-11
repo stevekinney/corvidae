@@ -3,7 +3,7 @@
    * Notification bell + popover (design rows 02w and 02x): what needs the person (a tool waiting
    * for approval, a question, a failed run, a schedule that missed runs) and what finished in a
    * chat they are not looking at. The bell carries a dot while anything is unread; the popover is
-   * titled "Notifications, 3 unread", lists what waits on the person first, then failures and
+   * titled "Notifications 3 unread", lists what waits on the person first, then failures and
    * missed schedules, and tints the unread rows. A row is a sentence, a second line that says what
    * kind of wait it is and whose it is, and how long ago. The critical strip below the header is a
    * sibling component (`./critical-alert-strip.svelte`) fed by the same store.
@@ -43,10 +43,10 @@
 
   let open = $state(false);
 
-  /** The popover's title, with how many are unread: "Notifications, 3 unread". */
+  /** The popover's title, with how many are unread: "Notifications 3 unread". */
   const panelTitle = $derived(
     store.unreadCount > 0
-      ? `${NOTIFICATION_COPY.panelTitle}, ${NOTIFICATION_COPY.unreadSummary(store.unreadCount)}`
+      ? `${NOTIFICATION_COPY.panelTitle} ${NOTIFICATION_COPY.unreadSummary(store.unreadCount)}`
       : NOTIFICATION_COPY.panelTitle,
   );
 
@@ -125,9 +125,9 @@
   <div class="weft-notification-panel">
     <div class="weft-notification-panel__bar">
       <h2 class="weft-notification-panel__title">
-        {NOTIFICATION_COPY.panelTitle}{#if store.unreadCount > 0}<span
+        {NOTIFICATION_COPY.panelTitle}{#if store.unreadCount > 0}{' '}<span
             class="weft-notification-panel__unread"
-            >, {NOTIFICATION_COPY.unreadSummary(store.unreadCount)}</span
+            >{NOTIFICATION_COPY.unreadSummary(store.unreadCount)}</span
           >{/if}
       </h2>
       <Button variant="ghost" size="sm" data-changes onclick={() => store.markAllRead()}>

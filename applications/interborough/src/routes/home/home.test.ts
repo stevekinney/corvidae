@@ -94,7 +94,7 @@ describe('Home', () => {
     const heading = getByRole('heading', { level: 1, name: 'Home' });
     expect(heading.classList.contains('cinder-sr-only')).toBe(true);
     expect(getByTestId('home-date').textContent?.trim()).toBe(
-      'Monday, Nov 2, Times show in Central time (CST)',
+      'Monday, Nov 2. Times show in Central time (CST).',
     );
     expect(getByRole('heading', { level: 1 })).toBe(heading);
   });
@@ -330,7 +330,7 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
     expect(line.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-      'Nothing needs attention, Storage, schedules, providers and hooks are fine. Open Health',
+      'Nothing needs attention. Storage, schedules, providers and hooks are fine. Open Health',
     );
     expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',

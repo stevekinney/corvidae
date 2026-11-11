@@ -42,6 +42,8 @@
     viewerTimeZone,
     zoneLabel,
   } from '../../lib/format/clock.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
+  import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
   import { routerSelectionLocationFor } from '../../lib/router-selection-location.ts';
   import type { ScopeGate } from '../../lib/scopes.svelte.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
@@ -390,6 +392,8 @@
     return REVIEWS_COPY.decided.rejected;
   }
 
+  const displayName = useAgentDisplayName();
+
   function agentOf(review: ListedReview): string | undefined {
     return review.kind === 'engine-review' ? undefined : review.agentName;
   }
@@ -485,7 +489,7 @@
             <span class="ib-review-row__kind">
               {reviewKindLabel(item.review)}{agentOf(item.review) === undefined
                 ? ''
-                : `, ${agentOf(item.review)}`}
+                : ` ${REVIEWS_COPY.fromAgent(agentLabel(displayName(agentOf(item.review) ?? ''), undefined))}`}
             </span>
           {/snippet}
           {#snippet meta()}

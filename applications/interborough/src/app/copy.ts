@@ -4031,8 +4031,13 @@ export const GOALS_COPY = {
       saving: 'Saving the goal…',
       saveAction: 'Save',
       savingAction: 'Saving…',
-      /** The goal's view never carries its prompt, so the field starts empty and keeps the current one. */
-      promptPlaceholder: 'Leave this empty to keep the current prompt.',
+      /** The goal's view carries only the first line of its prompt, so the field starts empty, says how the current one begins and keeps it. */
+      promptPlaceholder: (name: string): string =>
+        name === ''
+          ? 'Leave this empty to keep the current prompt.'
+          : `Leave this empty to keep the current prompt, which begins “${name}”.`,
+      /** Why the agent cannot change on a goal that already has attempts. */
+      agentLocked: 'Attempts keep the agent they started with.',
       failedTitle: 'Couldn’t save the goal.',
       kept: 'Nothing was changed.',
       changed: 'The goal changed while you were editing it. Look at it again, then try once more.',
@@ -6350,6 +6355,10 @@ export const REVIEWS_COPY = {
   },
   /** Between what became of a review and who did it. */
   by: 'by',
+  /** After a review's kind in its list row: "Tool approval from Tool runner". */
+  fromAgent: (agent: string): string => `from ${agent}`,
+  /** Who decided a review the caller decided, in place of their principal's identifier. */
+  you: 'you',
   reasonIs: 'Reason',
   artifactLabel: 'What the workflow asks you to review',
   answerRecorded: 'The answer was sent to the agent.',
@@ -6481,14 +6490,14 @@ export const NOTIFICATION_COPY = {
   hooksLink: 'Email or webhooks: set up a hook ›',
   /** What the bell button is called; the count says how many items are unread. */
   bellLabel: (count: number): string =>
-    count === 0 ? 'Notifications' : `Notifications, ${String(count)} unread`,
-  /** The count after the popover's title, "Notifications, 3 unread"; nothing when none is unread. */
+    count === 0 ? 'Notifications' : `Notifications: ${String(count)} unread`,
+  /** The count after the popover's title, "Notifications 3 unread"; nothing when none is unread. */
   unreadSummary: (count: number): string => `${String(count)} unread`,
   /** What the dot before an unread row is called, for a screen reader. */
   unreadMark: 'Unread',
   /** The second line of a review: what it waits for, and whose it is. */
   waiting: (kind: 'approval' | 'answer', agent: string): string =>
-    `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'}, ${agent}`,
+    `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'} from ${agent}`,
   failed: (subject: string): string => `${subject} failed`,
   budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
   /** A schedule that did not fire: "Daily summary missed its 3:00 AM run". */

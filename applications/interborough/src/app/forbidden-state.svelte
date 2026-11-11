@@ -21,6 +21,9 @@
 
   let { title, requirement }: ForbiddenStateProps = $props();
 
+  // The scope is the person's to read, and Interborough never says "Bureau" to them: "goals:read".
+  const shownRequirement = $derived(requirement?.replace(/^bureau\./, ''));
+
   /** A button opens its page without leaving the application. */
   function open(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -38,7 +41,7 @@
   headingLevel={1}
   {title}
   reason={FORBIDDEN_COPY.description}
-  {...requirement === undefined ? {} : { requirement }}
+  {...shownRequirement === undefined ? {} : { requirement: shownRequirement }}
 >
   {#snippet actions()}
     <Button

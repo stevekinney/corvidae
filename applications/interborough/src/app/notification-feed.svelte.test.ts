@@ -169,7 +169,7 @@ describe('connectNotificationFeed', () => {
       {
         kind: 'approval',
         title: 'Run issue-refund?',
-        detail: 'Waiting for your approval, Tool runner',
+        detail: 'Waiting for your approval from Tool runner',
       },
     ]);
     expect(store.unreadCount).toBe(1);
@@ -189,7 +189,7 @@ describe('connectNotificationFeed', () => {
 
     await waitFor(() =>
       expect(store.items.find((item) => item.kind === 'approval')?.detail).toBe(
-        'Waiting for your approval, Refund desk',
+        'Waiting for your approval from Refund desk',
       ),
     );
   });
@@ -207,7 +207,7 @@ describe('connectNotificationFeed', () => {
 
     await waitFor(() =>
       expect(store.items.find((item) => item.kind === 'approval')?.detail).toBe(
-        'Waiting for your approval, Tool runner',
+        'Waiting for your approval from Tool runner',
       ),
     );
   });

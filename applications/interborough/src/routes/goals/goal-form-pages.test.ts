@@ -163,7 +163,10 @@ describe('the Edit goal page', () => {
     // The goal's view never carries its prompt, so the field is empty and says what that means.
     const prompt = page.getByLabelText(copy.promptLabel) as HTMLTextAreaElement;
     expect(prompt.value).toBe('');
-    expect(prompt.getAttribute('placeholder')).toBe(copy.edit.promptPlaceholder);
+    expect(prompt.getAttribute('placeholder')).toBe(
+      copy.edit.promptPlaceholder('Summarize open refunds'),
+    );
+    expect(page.getByText(copy.edit.agentLocked)).not.toBeNull();
     expect((page.getByLabelText(copy.checkLabel) as HTMLInputElement).value).toBe(CHECK_TEXT);
     expect((page.getByLabelText(copy.maximumAttemptsLabel) as HTMLInputElement).value).toBe('5');
     expect(page.getByTestId('goal-form-note').textContent).toBe(copy.edit.footer);

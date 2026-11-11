@@ -1,6 +1,6 @@
 /**
  * What the notification bell holds, derived from what the Bureau says is waiting on the person
- * and what has finished: each item is a sentence and a second line, `Waiting for your approval,
+ * and what has finished: each item is a sentence and a second line, `Waiting for your approval from
  * Tool runner` (design row 02w), and never a run. The engine's own event feed (a run starting, a signal arriving) is not here; it lives on the
  * Engine view's activity feed.
  *
@@ -34,6 +34,7 @@
  */
 import { formatTimeOfDay } from '@lostgradient/cinder';
 
+import { agentLabel } from '../lib/agent-label.ts';
 import type { AttentionAlert } from '../lib/bureau-attention.ts';
 import type { BureauNotification } from '../lib/bureau-notifications.ts';
 import type { BureauReview } from '../lib/bureau-reviews.ts';
@@ -121,7 +122,7 @@ export interface NotificationSources {
 /** An agent's name on screen: its display name where the catalog has one, else the words for an unnamed agent. */
 function agentOf(
   name: string | undefined | null,
-  display: AgentDisplayName = (identifier) => identifier,
+  display: AgentDisplayName = (identifier) => agentLabel(identifier, undefined),
 ): string {
   return name === undefined || name === null ? NOTIFICATION_COPY.unnamedAgent : display(name);
 }
@@ -319,7 +320,7 @@ function onePerChat(pending: readonly BureauReview[]): BureauReview[] {
  */
 export function buildNotificationEntries(sources: NotificationSources): NotificationEntry[] {
   const { reviews, notifications, chats, scheduleNames, nowMs } = sources;
-  const display = sources.agentName ?? ((identifier: string) => identifier);
+  const display = sources.agentName ?? ((identifier: string) => agentLabel(identifier, undefined));
   const missedFires = sources.missedFires ?? [];
   const pending = reviews.filter((review) => review.status === 'pending');
   const entries: NotificationEntry[] = onePerChat(pending).map((review) =>

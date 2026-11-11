@@ -254,7 +254,24 @@
     })}
     <!-- While the server gives no answer the shell holds every control that changes something; this
          region is how Edit and Stop goal join them, with the reason drawn beside them. -->
-    {#snippet status()}<StatusDot {word} />{/snippet}
+    <!-- Why an action is off, and the run's notes, sit on the status line beside the title, so the
+         action column holds buttons alone and a phone gives the title its width. -->
+    {#snippet status()}
+      <StatusDot {word} />
+      {#if actions.startAgain && needsProvider}
+        <a
+          class="ib-goal__reason"
+          id={providerReasonId}
+          href={router.href(copy.connectProviderPath)}
+          onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
+        >
+      {/if}
+      {#if connection.unreachable}
+        <span class="ib-goal__reason" id={offlineReasonId} data-testid="goal-offline-reason">
+          {copy.offlineReason}
+        </span>
+      {/if}
+    {/snippet}
     {#snippet headerActions()}
       <div class="ib-goal__actions" data-testid="goal-actions">
         <div class="ib-goal__buttons">
@@ -276,14 +293,6 @@
                 {#snippet leadingIcon()}<RotateCcw size={16} />{/snippet}
                 {copy.startAgainAction}
               </Button>
-              {#if needsProvider}
-                <a
-                  class="ib-goal__reason"
-                  id={providerReasonId}
-                  href={router.href(copy.connectProviderPath)}
-                  onclick={(event) => go(event, copy.connectProviderPath)}>{copy.connectProvider}</a
-                >
-              {/if}
             </span>
           {/if}
           {#if actions.stop}
@@ -298,11 +307,6 @@
             </Button>
           {/if}
         </div>
-        {#if connection.unreachable}
-          <p class="ib-goal__reason" id={offlineReasonId} data-testid="goal-offline-reason">
-            {copy.offlineReason}
-          </p>
-        {/if}
       </div>
     {/snippet}
     <!-- The note's own words say what waits; the dot is its amber mark, so it carries no word. -->

@@ -1,10 +1,12 @@
 /**
  * The name an agent goes by on screen. The catalog answers with a display name beside the
  * identifier, so a page that shows an agent asks for the catalog (shared with every other page that
- * does) and falls back to the identifier until it arrives or when the agent is not in it.
+ * does) and falls back to the identifier, said in words (`agentLabel`), until it arrives or when the
+ * agent is not in it.
  */
 import { createQuery } from '@tanstack/svelte-query';
 
+import { agentLabel } from './agent-label.ts';
 import { listAgents } from './bureau-client.ts';
 import { queryKeys } from './query.ts';
 
@@ -18,6 +20,5 @@ export function useAgentDisplayName(): (agentName: string) => string {
     }),
     undefined,
   );
-  return (agentName) =>
-    catalog.data?.find((agent) => agent.name === agentName)?.displayName ?? agentName;
+  return (agentName) => agentLabel(agentName, catalog.data);
 }

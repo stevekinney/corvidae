@@ -35,7 +35,7 @@
     <Avatar
       class="ib-new-chat__avatar ib-chat-avatar"
       size="md"
-      name={agentAvatarName(current.name)}
+      name={agentAvatarName(agentLabel(current.name, agents))}
       alt=""
       data-tone={agentTone(current.name)}
     />

@@ -102,12 +102,12 @@ describe('buildNotificationEntries', () => {
       {
         kind: 'question',
         title: 'Which environment?',
-        detail: 'Waiting for your answer, request-human-input',
+        detail: 'Waiting for your answer from Request human input',
       },
       {
         kind: 'approval',
         title: 'Run issue-refund?',
-        detail: 'Waiting for your approval, tool-runner',
+        detail: 'Waiting for your approval from Tool runner',
       },
     ]);
   });
@@ -150,7 +150,7 @@ describe('buildNotificationEntries', () => {
       sources({ reviews: [approval({ agentName: undefined })] }),
     );
 
-    expect(entry?.detail).toBe('Waiting for your approval, An agent');
+    expect(entry?.detail).toBe('Waiting for your approval from An agent');
   });
 
   test('a review names its agent as the catalog does, and by its identifier where it has no name', () => {
@@ -163,8 +163,17 @@ describe('buildNotificationEntries', () => {
     );
 
     expect(entries.map((entry) => entry.detail)).toEqual([
-      'Waiting for your answer, request-human-input',
-      'Waiting for your approval, Tool runner',
+      'Waiting for your answer from request-human-input',
+      'Waiting for your approval from Tool runner',
+    ]);
+  });
+
+  test('a review names an agent the catalog does not know in words, not as its identifier', () => {
+    const entries = buildNotificationEntries(sources({ reviews: [approval(), question()] }));
+
+    expect(entries.map((entry) => entry.detail)).toEqual([
+      'Waiting for your answer from Request human input',
+      'Waiting for your approval from Tool runner',
     ]);
   });
 
@@ -281,7 +290,7 @@ describe('buildNotificationEntries', () => {
       serverRead: false,
       kind: 'failed',
       tier: 'warning',
-      title: 'echo failed',
+      title: 'Echo failed',
       detail: 'Hello echo, say this back',
       href: '/chats/session-echo',
       sessionId: 'session-echo',
@@ -296,7 +305,7 @@ describe('buildNotificationEntries', () => {
     expect(entry).toMatchObject({
       kind: 'budget',
       tier: 'warning',
-      title: 'echo exceeded its budget',
+      title: 'Echo exceeded its budget',
     });
   });
 
@@ -430,7 +439,7 @@ describe('buildNotificationEntries', () => {
       }),
     );
 
-    expect(entry?.title).toBe('echo failed');
+    expect(entry?.title).toBe('Echo failed');
   });
 
   test('approvals, questions and failures are warnings', () => {
@@ -483,7 +492,7 @@ describe('the fires a schedule missed', () => {
       tier: 'warning',
       icon: 'calendar-x',
       title: `Nightly digest missed its ${clock(NOW - 90 * 60_000)} run`,
-      detail: `1 missed since ${day(NOW - 90 * 60_000)}, assistant`,
+      detail: `1 missed since ${day(NOW - 90 * 60_000)}, Assistant`,
       href: '/schedules/s-1',
       emittedAtMs: NOW - 90 * 60_000,
     });
@@ -511,7 +520,7 @@ describe('the fires a schedule missed', () => {
 
     expect(rest).toEqual([]);
     expect(entry?.title).toBe(`Nightly digest missed its ${clock(newest)} run`);
-    expect(entry?.detail).toBe(`5 missed since ${day(oldest)}, assistant`);
+    expect(entry?.detail).toBe(`5 missed since ${day(oldest)}, Assistant`);
     expect(entry?.emittedAtMs).toBe(newest);
   });
 
@@ -532,7 +541,7 @@ describe('the fires a schedule missed', () => {
       sources({ missedFires: [missed({ reason: 'dst-gap' })] }),
     );
 
-    expect(entry?.detail).toBe('Its time was skipped by a clock change, assistant');
+    expect(entry?.detail).toBe('Its time was skipped by a clock change, Assistant');
   });
 
   test('is news for a day, and history after', () => {

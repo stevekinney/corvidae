@@ -68,7 +68,7 @@ describe('NotificationBell', () => {
     const dot = container.querySelector('.weft-notification-bell__dot');
     expect(dot?.getAttribute('aria-hidden')).toBe('true');
     expect(dot?.textContent).toBe('');
-    expect(getByRole('button', { name: 'Notifications, 2 unread' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Notifications: 2 unread' })).not.toBeNull();
   });
 
   test('the button says how many are unread, for one item too', () => {
@@ -77,7 +77,7 @@ describe('NotificationBell', () => {
 
     const { getByRole } = render(NotificationBell, { props: { store } });
 
-    expect(getByRole('button', { name: 'Notifications, 1 unread' })).not.toBeNull();
+    expect(getByRole('button', { name: 'Notifications: 1 unread' })).not.toBeNull();
   });
 
   test('each row is the sentence, its second line, and how long ago, in one flat list', async () => {
@@ -85,7 +85,7 @@ describe('NotificationBell', () => {
     store.setActivity([entry(), STANDING]);
     const { getByRole } = render(NotificationBell, { props: { store } });
 
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     const rows = Array.from(document.body.querySelectorAll('.weft-notification-panel__item'));
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
@@ -100,11 +100,11 @@ describe('NotificationBell', () => {
     store.setActivity([entry()]);
     const { getByRole } = render(NotificationBell, { props: { store } });
 
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     expect(document.body.textContent).not.toContain('Open alerts view');
     const title = document.body.querySelector('.weft-notification-panel__title');
-    expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Notifications, 1 unread');
+    expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Notifications 1 unread');
   });
 
   test('says nothing needs the person with the done empty state when the list is empty', async () => {
@@ -139,7 +139,7 @@ describe('NotificationBell', () => {
     store.setLoadFailed(true);
     const { getByRole, getByText } = render(NotificationBell, { props: { store } });
 
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     expect(getByText('Notifications could not be loaded')).not.toBeNull();
     expect(document.body.querySelectorAll('.weft-notification-panel__item')).toHaveLength(1);
@@ -154,7 +154,7 @@ describe('NotificationBell', () => {
       },
     });
     const { getByRole, getByText } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     await fireEvent.click(getByText('Mark all read'));
 
@@ -205,7 +205,7 @@ describe('NotificationBell', () => {
     ]);
     const { getByRole } = render(NotificationBell, { props: { store } });
 
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     const row = document.body.querySelector('[data-kind="missed"]');
     expect(row?.textContent?.replace(/\s+/g, ' ')).toContain(
@@ -219,7 +219,7 @@ describe('NotificationBell', () => {
     store.setActivity([entry({ id: 'review:a' }), entry({ id: 'review:b' }), STANDING]);
 
     const { getByRole, getByText, container } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 2 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 2 unread' }));
     await fireEvent.click(getByText('Mark all read'));
 
     expect(store.unreadCount).toBe(0);
@@ -233,7 +233,7 @@ describe('NotificationBell', () => {
     store.setActivity([entry()]);
 
     const { getByRole, getByText, queryByText } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
     await fireEvent.click(getByText('Refund order 1234 for $42.00?'));
 
     expect(store.items[0]?.read).toBe(true);
@@ -248,7 +248,7 @@ describe('NotificationBell', () => {
     store.setActivity(Array.from({ length: 30 }, (_, index) => entry({ id: `review:${index}` })));
 
     const { getByRole } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 30 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 30 unread' }));
 
     const list = document.body.querySelector('.weft-notification-panel__list');
     const header = document.body.querySelector('.weft-notification-panel__bar');
@@ -263,7 +263,7 @@ describe('NotificationBell', () => {
     store.reportEngineStatus('stale', Date.now());
 
     const { getByRole, getByText } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
     await fireEvent.click(getByText('Server status stale'));
 
     expect(router.pathname).toBe('/health');
@@ -275,7 +275,7 @@ describe('NotificationBell', () => {
     store.setActivity([entry()]);
 
     const { getByRole, getByText } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
     expect(getByText('Mark all read')).not.toBeNull();
 
     await fireEvent.keyDown(document.body, { key: 'Escape' });
@@ -289,7 +289,7 @@ describe('NotificationBell', () => {
     store.setActivity([entry({ id: 'review:a' }), entry({ id: 'review:b' })]);
     store.markRead('review:b');
     const { getByRole } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     const [unread, read] = Array.from(
       document.body.querySelectorAll('.weft-notification-panel__item'),
@@ -304,7 +304,7 @@ describe('NotificationBell', () => {
     const store = memoryStore();
     store.setActivity([entry(), STANDING]);
     const { getByRole } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 1 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 1 unread' }));
 
     const [waiting, standing] = Array.from(
       document.body.querySelectorAll('.weft-notification-panel__item'),
@@ -323,7 +323,7 @@ describe('NotificationBell', () => {
       STANDING,
     ]);
     const { getByRole } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 2 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 2 unread' }));
 
     const tones = Array.from(
       document.body.querySelectorAll('.weft-notification-panel__item-tile'),
@@ -367,7 +367,7 @@ describe('NotificationBell', () => {
       entry({ id: 'review:b', emittedAtMs: Date.now() - 3_600_000 }),
     ]);
     const { getByRole } = render(NotificationBell, { props: { store } });
-    await fireEvent.click(getByRole('button', { name: 'Notifications, 2 unread' }));
+    await fireEvent.click(getByRole('button', { name: 'Notifications: 2 unread' }));
 
     expect(
       Array.from(document.body.querySelectorAll('.weft-notification-panel__item-time')).map(

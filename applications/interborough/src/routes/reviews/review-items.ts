@@ -113,6 +113,14 @@ export function resolutionTone(review: ListedReview): 'success' | 'neutral' {
 }
 
 /**
+ * Who decided a review, as a person says it: "you" when it was the caller, or the Interborough's one
+ * local principal (`anonymous:local`), and the identifier otherwise.
+ */
+export function decidedByName(decidedBy: string, viewer: string | undefined): string {
+  return decidedBy === viewer || decidedBy.startsWith('anonymous:') ? REVIEWS_COPY.you : decidedBy;
+}
+
+/**
  * A decided review's word, with "by you" after it when `viewer` (the caller's principal) is the one
  * who decided it. A review the Bureau closed itself keeps its plain word.
  */

@@ -494,8 +494,10 @@
         <EmptyState
           kind="first-use"
           headingLevel={2}
-          title={CHAT_COPY.list.pickTitle}
-          description={CHAT_COPY.list.pickDescription}
+          title={listState === 'failed' ? CHAT_COPY.list.noChatTitle : CHAT_COPY.list.pickTitle}
+          description={listState === 'failed'
+            ? CHAT_COPY.list.noChatDescription
+            : CHAT_COPY.list.pickDescription}
         >
           {#snippet icon()}<MessageSquarePlus size={28} aria-hidden="true" />{/snippet}
           {#snippet action()}

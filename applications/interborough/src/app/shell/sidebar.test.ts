@@ -81,11 +81,29 @@ function stubEngine(
           result: { items: [], count: options.attention ?? 0, checks: [] },
         });
       }
-      // The Bureau's own pending reviews, which the Reviews count adds to the engine's.
-      const reviews = Array.from({ length: options.bureauReviews ?? 0 }, (_, index) => ({
+      // The merged list the Reviews page and its count both read: the Bureau's own pending reviews
+      // and the engine's workflow reviews, each once.
+      const bureau = Array.from({ length: options.bureauReviews ?? 0 }, (_, index) => ({
         ...toolApprovalFixture({ id: `bureau-review-${index}`, runId: `run-${index}` }),
       }));
-      return Response.json({ jsonrpc: '2.0', id: body.id, result: { reviews } });
+      const engine = Array.from({ length: options.pendingReviews ?? 0 }, (_, index) => ({
+        source: 'engine',
+        kind: 'engine-review',
+        status: 'pending',
+        id: `review-${index}`,
+        runId: `wf-${index}`,
+        requestedAt: Date.now(),
+        ageMilliseconds: 0,
+        reviewType: 'content',
+        reviewers: [],
+        allowPartial: false,
+        artifact: {},
+      }));
+      return Response.json({
+        jsonrpc: '2.0',
+        id: body.id,
+        result: { reviews: [...bureau, ...engine], nextPageToken: null },
+      });
     }),
   );
 }
@@ -307,9 +325,9 @@ describe('the sidebar', () => {
     await waitFor(() => expect(getByRole('link', { name: 'Reviews, 3 need you' })).not.toBeNull());
   });
 
-  test('Reviews counts the Bureau’s alone when the principal does not hold reviews:read', async () => {
+  test('Reviews counts what the list holds, which is the Bureau’s alone for a principal without reviews:read', async () => {
     onDesktop();
-    stubEngine({ bureauReviews: 2, pendingReviews: 3 });
+    stubEngine({ bureauReviews: 2 });
     landAt('/chats');
     const { getByRole } = mount({
       scopes: AUTHORIZATION_SCOPES.filter((scope) => scope !== 'reviews:read'),

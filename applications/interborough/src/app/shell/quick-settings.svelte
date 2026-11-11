@@ -20,6 +20,7 @@
   } from '@lostgradient/cinder';
   import { ChevronRight, Settings, SlidersHorizontal } from '@lucide/svelte';
 
+  import { phoneViewport } from '../../lib/phone-viewport.svelte.ts';
   import { router } from '../../lib/router.svelte.ts';
   import { QUICK_SETTINGS_COPY } from '../copy.ts';
   import type { LayoutPreferences } from '../layout-preferences.svelte.ts';
@@ -73,21 +74,24 @@
         onValueChange={(mode) => theme.set(mode)}
       />
     </div>
-    <div class="weft-quick-settings__row">
-      <span class="weft-quick-settings__label">{QUICK_SETTINGS_COPY.sidebar}</span>
-      <SegmentedControl
-        id="weft-quick-settings-sidebar"
-        label={QUICK_SETTINGS_COPY.sidebar}
-        labelVisible={false}
-        size="sm"
-        value={layout.sidebarCollapsed ? 'collapsed' : 'expanded'}
-        onValueChange={(choice: 'expanded' | 'collapsed') =>
-          layout.setSidebarCollapsed(choice === 'collapsed')}
-      >
-        <Segment value="expanded">{QUICK_SETTINGS_COPY.expanded}</Segment>
-        <Segment value="collapsed">{QUICK_SETTINGS_COPY.collapsed}</Segment>
-      </SegmentedControl>
-    </div>
+    <!-- A phone has no sidebar to expand or collapse, so the choice is not offered there. -->
+    {#if !phoneViewport.current}
+      <div class="weft-quick-settings__row">
+        <span class="weft-quick-settings__label">{QUICK_SETTINGS_COPY.sidebar}</span>
+        <SegmentedControl
+          id="weft-quick-settings-sidebar"
+          label={QUICK_SETTINGS_COPY.sidebar}
+          labelVisible={false}
+          size="sm"
+          value={layout.sidebarCollapsed ? 'collapsed' : 'expanded'}
+          onValueChange={(choice: 'expanded' | 'collapsed') =>
+            layout.setSidebarCollapsed(choice === 'collapsed')}
+        >
+          <Segment value="expanded">{QUICK_SETTINGS_COPY.expanded}</Segment>
+          <Segment value="collapsed">{QUICK_SETTINGS_COPY.collapsed}</Segment>
+        </SegmentedControl>
+      </div>
+    {/if}
     <Link
       href={router.href('/settings')}
       color="inherit"

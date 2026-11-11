@@ -77,7 +77,7 @@
 {:else if phase === 'canceled'}
   <div class="ib-home-stopped" data-page="home" data-mode="canceled">
     <p class="ib-home-stopped__date" data-testid="home-date">
-      {dateLine(clock())}, {timesShowIn(clock())}
+      {dateLine(clock())}. {timesShowIn(clock())}.
     </p>
     <ErrorState
       tone="neutral"
@@ -120,7 +120,7 @@
   {#if mode === 'checklist'}
     {HOME_COPY.firstRun.lead(firstRun.left())}
   {:else}
-    {dateLine(clock())}, {timesShowIn(clock())}
+    {dateLine(clock())}. {timesShowIn(clock())}.
   {/if}
 {/snippet}
 {#snippet countsRow()}<HomeCounts />{/snippet}

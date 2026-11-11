@@ -304,7 +304,12 @@ describe('the states of the list', () => {
     expect(
       within(state).getByRole('button', { name: 'Try again' }).getAttribute('data-cinder-variant'),
     ).toBe('secondary');
-    expect(await findByRole('region', { name: 'Open chat' })).not.toBeNull();
+    const pane = await findByRole('region', { name: 'Open chat' });
+    expect(pane).not.toBeNull();
+    // The list is not there to choose from, so the pane does not point at it.
+    expect(pane.textContent).not.toContain('Choose a chat from the list');
+    expect(within(pane).getByRole('heading', { name: 'No chat open' })).not.toBeNull();
+    expect(within(pane).getByRole('link', { name: 'New chat' })).not.toBeNull();
     expect(await findByRole('searchbox', { name: 'Search chats' })).not.toBeNull();
 
     healthy = true;

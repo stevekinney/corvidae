@@ -8,6 +8,8 @@
    * the provider's own count for the latest step, which lags the estimate by that step's reply.
    *
    * Cinder has no ring, so it is drawn here; it is decoration over the button's name and reading.
+   * The composer's meter already says the percentage, so the header shows the ring alone and keeps the
+   * reading for a screen reader.
    */
   import { Button, Meter, Popover } from '@lostgradient/cinder';
 
@@ -58,7 +60,9 @@
             transform="rotate(-90 10 10)"
           />
         </svg>
-        <span class="weft-context-ring__reading">{COPY.reading(use.percent, used)}</span>
+        <span class="weft-context-ring__reading cinder-sr-only"
+          >{COPY.reading(use.percent, used)}</span
+        >
       </Button>
     {/snippet}
     <div class="weft-context-window" data-testid="context-window">

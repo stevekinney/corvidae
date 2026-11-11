@@ -40,6 +40,15 @@ describe('the forbidden page', () => {
     expect(gate?.querySelector('code')?.textContent).toBe('requires hooks:read');
   });
 
+  test('never says Bureau in the scope it names', () => {
+    landAt('/goals');
+    const { container } = render(ForbiddenState, {
+      props: { title: FORBIDDEN_COPY.title('Goals'), requirement: 'bureau.goals:read' },
+    });
+
+    expect(container.querySelector('code')?.textContent).toBe('requires goals:read');
+  });
+
   test('names no scope when none is known, instead of guessing one', () => {
     landAt('/hooks');
     const { container } = render(ForbiddenState, {

@@ -8,7 +8,8 @@
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
   import type { BureauReview } from '../../lib/bureau-reviews.ts';
-  import { resolutionLabel } from './review-items.ts';
+  import { getPrincipalStore } from '../../lib/scopes.svelte.ts';
+  import { decidedByName, resolutionLabel } from './review-items.ts';
 
   interface ReviewResolutionProps {
     readonly review: BureauReview;
@@ -16,6 +17,7 @@
 
   let { review }: ReviewResolutionProps = $props();
 
+  const principalStore = getPrincipalStore();
   const resolution = $derived(review.resolution);
 </script>
 
@@ -23,7 +25,10 @@
   <p class="ib-review-resolution__line">
     <Badge variant="neutral" size="sm">{resolutionLabel(review)}</Badge>
     {#if resolution !== undefined}
-      <span>{REVIEWS_COPY.by} {resolution.decidedBy}</span>
+      <span
+        >{REVIEWS_COPY.by}
+        {decidedByName(resolution.decidedBy, principalStore.principal?.subject ?? undefined)}</span
+      >
       <RelativeTime date={resolution.decidedAt} />
     {/if}
   </p>

@@ -210,10 +210,11 @@ export function agentTone(agentName: string): number {
 }
 
 /**
- * The words an avatar spells for an agent: the first letters of the first two parts of its
- * identifier ("request-human-input" is "RH"). Cinder's avatar splits on whitespace, so the
- * identifier's hyphens become spaces.
+ * The words an avatar spells for an agent: the first letters of the first two parts of its name.
+ * Pass the name a person reads ("Tool runner" is "TR"), not the identifier. An identifier is still
+ * spelled sensibly: its `namespace:` is dropped and its hyphens become spaces, because Cinder's
+ * avatar splits on whitespace ("demo:request-human-input" is "RH", not "DR").
  */
 export function agentAvatarName(agentName: string): string {
-  return agentName.replaceAll(/[-_.]+/g, ' ');
+  return agentName.replace(/^[^\s:]+:/, '').replaceAll(/[-_.:]+/g, ' ');
 }

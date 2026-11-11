@@ -28,6 +28,7 @@
 
   import { GOALS_COPY } from '../../app/copy.ts';
   import type { AgentSummary } from '../../lib/bureau-client.ts';
+  import { agentLabel as agentName } from '../../lib/agent-label.ts';
   import type { GoalCreated } from '../../lib/bureau-goals.ts';
   import { router } from '../../lib/router.svelte.ts';
   import type { GoalFormFailure } from './goal-form-failure.ts';
@@ -79,18 +80,20 @@
   }: Props = $props();
 
   const copy = GOALS_COPY.form;
+  /** An agent's name as a person says it, from the catalog's display name or its identifier. */
+  const agentNameOf = (identifier: string): string => agentName(identifier, agents);
   const editing = $derived(mode === 'edit');
   const locked = $derived(notStarted !== undefined);
   const problems = $derived(form.shownProblems);
   /** The agent chosen, as the catalog lists it. */
   const chosen = $derived(agents?.find((agent) => agent.name === form.agentName));
-  const agentLabel = $derived(chosen?.displayName ?? form.agentName);
+  const agentLabel = $derived(agentNameOf(form.agentName));
   /** A model agent is chosen and no provider holds a key, so a goal cannot make attempts yet. Edit gates nothing: saving starts no attempt. */
   const gated = $derived(!editing && needsProvider(agents, form.agentName, providerConnected));
 
   const agentOptions = $derived([
     { value: '', label: copy.agentPlaceholder, disabled: true },
-    ...(agents ?? []).map((agent) => ({ value: agent.name, label: agent.displayName })),
+    ...(agents ?? []).map((agent) => ({ value: agent.name, label: agentNameOf(agent.name) })),
   ]);
 
   /** The note beside the buttons, in the order of what matters most. */
@@ -171,7 +174,7 @@
       description={copy.promptDescription}
       rows={4}
       required={!editing}
-      placeholder={editing ? copy.edit.promptPlaceholder : undefined}
+      placeholder={editing ? copy.edit.promptPlaceholder(form.currentName) : undefined}
       error={problems.prompt ?? ''}
       disabled={locked}
       readonly={busy}
@@ -193,7 +196,11 @@
         <Select
           id={GOAL_FIELD_IDS.agent}
           label={copy.agentLabel}
-          description={agentsFailed ? copy.agentUnavailableDescription : copy.agentDescription}
+          description={editing
+            ? copy.edit.agentLocked
+            : agentsFailed
+              ? copy.agentUnavailableDescription
+              : copy.agentDescription}
           required
           error={problems.agent ?? ''}
           bind:value={form.agentName}

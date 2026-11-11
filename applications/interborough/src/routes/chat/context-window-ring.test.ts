@@ -40,6 +40,10 @@ describe('the ring', () => {
       COPY.trigger(42, '84,000', '200,000'),
     );
     expect(trigger(container).textContent).toContain('42%');
+    // The composer's meter says the percentage on screen, so the header's ring does not repeat it.
+    expect(container.querySelector('.weft-context-ring__reading')?.className).toContain(
+      'cinder-sr-only',
+    );
     expect(trigger(container).getAttribute('data-tone')).toBe('normal');
   });
 

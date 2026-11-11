@@ -26,6 +26,13 @@
   font-size: var(--cinder-text-sm);
 }
 
+/* A touch screen has no J and K, so it is not told about them. */
+@media (hover: none) and (pointer: coarse) {
+  .ib-reviews__hint {
+    display: none;
+  }
+}
+
 .ib-review-row__title,
 .ib-review-row__kind {
   display: block;
