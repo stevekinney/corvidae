@@ -541,8 +541,8 @@ export type { GroupedListProps } from './components/grouped-list/index.ts';
 
 export { default as GroupedListItem } from './components/grouped-list-item/index.ts';
 export type {
-  GroupedListItemLeadingKind,
   GroupedListItemLeadUnit,
+  GroupedListItemLeadingKind,
   GroupedListItemProps,
   GroupedListItemUrgency,
 } from './components/grouped-list-item/index.ts';
@@ -778,7 +778,13 @@ export { default as Pagination } from './components/pagination/index.ts';
 export type { PaginationProps } from './components/pagination/index.ts';
 
 export { default as PageHeader } from './components/page-header/index.ts';
-export type { PageHeaderHeadingLevel, PageHeaderProps } from './components/page-header/index.ts';
+export type {
+  PageHeaderHeadingLevel,
+  PageHeaderOverflowAction,
+  PageHeaderProps,
+  PageHeaderTone,
+  PageHeaderVariant,
+} from './components/page-header/index.ts';
 
 export {
   default as PayloadInspector,

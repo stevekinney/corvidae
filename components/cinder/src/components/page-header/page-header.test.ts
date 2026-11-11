@@ -41,12 +41,23 @@ describe('PageHeader', () => {
       headingLevel: { enum: [1, 2, 3, 4, 5, 6], default: 1 },
       error: { type: 'boolean', default: false },
       statusPlacement: { enum: ['inline', 'below'], default: 'below' },
+      variant: { enum: ['default', 'large', 'hero'], default: 'default' },
+      tone: { enum: ['plain', 'tint', 'accent', 'night'], default: 'plain' },
+      titleSoft: { type: 'string' },
+      eyebrow: { type: 'string' },
     });
     expect(pageHeaderSchema.metadata?.unsupportedProps?.map((prop) => prop.name)).toEqual([
       'actions',
+      'art',
       'breadcrumbs',
+      'decisions',
+      'facts',
+      'focal',
+      'media',
       'status',
     ]);
+    expect(validate({ title: 'Poor Decisions', variant: 'hero', tone: 'accent' })).toBe(true);
+    expect(validate({ title: 'Poor Decisions', tone: 'neon' })).toBe(false);
     expect(validate({ title: 'Approvals', description: 'Review pending requests.' })).toBe(true);
     expect(validate({})).toBe(false);
     expect(validate({ title: 'Approvals', headingLevel: 2 })).toBe(true);

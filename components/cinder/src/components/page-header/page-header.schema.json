@@ -6,10 +6,28 @@
       "type": "string",
       "description": "Page-level heading text rendered inside the `headingLevel` heading; the runtime API also accepts a template-only snippet."
     },
+    "titleSoft": {
+      "type": "string",
+      "description": "A lighter phrase drawn straight after the title, in the same heading at the same size, such as\n\", made easier\" after a brand name. Include any leading space or punctuation."
+    },
     "headingLevel": {
       "enum": [1, 2, 3, 4, 5, 6],
       "description": "Heading level for the title element. Defaults to `1`.",
       "default": 1
+    },
+    "variant": {
+      "enum": ["default", "large", "hero"],
+      "description": "The header's layout: `default`, `large` (a large title that collapses into a sticky bar on\nscroll) or `hero` (a full-bleed band).",
+      "default": "default"
+    },
+    "tone": {
+      "enum": ["plain", "tint", "accent", "night"],
+      "description": "The band a `hero` header draws: `plain`, `tint`, `accent` or `night`. The other variants\nignore it.",
+      "default": "plain"
+    },
+    "eyebrow": {
+      "type": "string",
+      "description": "A short neutral line above a `hero` title, such as the section or the place."
     },
     "description": {
       "type": "string",
@@ -35,6 +53,21 @@
       "description": "Where `status` sits: `inline` beside the title on its first line, or `below` the title.",
       "default": "below"
     },
+    "overflowLabel": {
+      "type": "string",
+      "description": "The accessible name of the overflow menu button.",
+      "default": "More actions"
+    },
+    "collapsed": {
+      "type": "boolean",
+      "description": "Whether a `large` title has scrolled away. Bind it to pair the header with an AppBar's\n`titleVisible`.",
+      "default": false
+    },
+    "collapsedBar": {
+      "type": "boolean",
+      "description": "Whether a `large` header draws its own sticky bar with the title once the title scrolls away.\nTurn it off when an AppBar shows the title instead.",
+      "default": true
+    },
     "titleText": {
       "type": "string",
       "description": "The title's plain text, for the full-title tooltip when `title` is a snippet."
@@ -54,9 +87,34 @@
         "description": "Optional trailing actions (buttons, menus, controls)."
       },
       {
+        "name": "art",
+        "reason": "function-or-snippet",
+        "description": "One large icon glyph drawn at low opacity at the bottom inline-end corner of a `hero` band. It\nis decorative and hidden from assistive technology, and it is not drawn when `focal` is set."
+      },
+      {
         "name": "breadcrumbs",
         "reason": "function-or-snippet",
         "description": "Optional breadcrumb navigation rendered above the heading row."
+      },
+      {
+        "name": "decisions",
+        "reason": "function-or-snippet",
+        "description": "The decision action group: approve, deny or edit for an approval, or Cancel for running or\npaused work. It is drawn first among the actions, is never put in the overflow menu, and stays\nvisible at every width."
+      },
+      {
+        "name": "facts",
+        "reason": "function-or-snippet",
+        "description": "A `hero` header's facts beneath the title, such as a KeyFacts row."
+      },
+      {
+        "name": "focal",
+        "reason": "function-or-snippet",
+        "description": "A `hero` header's focal value at the inline end: one large tabular value first, then its label\nin a `<small>`, then an optional Meter. Below 720px of header width it sits above the title."
+      },
+      {
+        "name": "media",
+        "reason": "function-or-snippet",
+        "description": "Optional media at the inline end of a `hero` header. A hero needs none to look finished."
       },
       {
         "name": "status",

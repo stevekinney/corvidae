@@ -120,4 +120,406 @@
     line-height: var(--cinder-leading-tight);
     margin-block: calc((1lh - var(--_cinder-compact-control-height)) / 2);
   }
+
+  /* The decision action group (approve, deny, edit; Cancel for running or paused work) is drawn
+     first among the actions and never collapses into the overflow menu (COR-2320). */
+  .cinder-page-header__decisions {
+    display: inline-flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+  }
+
+  /* The overflow menu button is an icon-only control at the compact height of the other header
+     actions. */
+  .cinder-page-header__overflow {
+    inline-size: var(--_cinder-compact-control-height);
+    min-inline-size: var(--_cinder-compact-control-height);
+    block-size: var(--_cinder-compact-control-height);
+    padding-inline: 0;
+  }
+
+  /* A lighter phrase after the title, in the same heading at the same size. */
+  .cinder-page-header__title-soft {
+    font-weight: 380;
+  }
+
+  /* ── Large title ────────────────────────────────────────────────────────────
+     The title at the large page-title step. Once it scrolls away, the sticky bar before the header
+     shows it at the default page-title size. The actions keep centring on the title's first line
+     box. */
+  .cinder-page-header[data-cinder-variant='large'] .cinder-page-header__title {
+    font-size: var(--cinder-text-page-title-large);
+  }
+
+  .cinder-page-header[data-cinder-variant='large'] .cinder-page-header__actions {
+    font-size: var(--cinder-text-page-title-large);
+  }
+
+  /* A sticky bar of no height in the page's flow; its surface hangs below it, over the content,
+     so showing it never moves the page. */
+  .cinder-page-header__bar {
+    --_cinder-page-header-bar-height: 3.5rem;
+    --_cinder-page-header-bar-mix: 82%;
+    --_cinder-page-header-bar-blur: 16px;
+    position: sticky;
+    inset-block-start: 0;
+    z-index: 1;
+    block-size: 0;
+  }
+
+  .cinder-page-header__bar-surface {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+    display: flex;
+    align-items: center;
+    box-sizing: border-box;
+    min-block-size: var(--_cinder-page-header-bar-height);
+    padding-inline: var(--cinder-space-4);
+    background: var(--cinder-surface-canvas);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition:
+      opacity var(--cinder-duration-fast) var(--cinder-ease-standard),
+      visibility var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-page-header__bar[data-cinder-collapsed] .cinder-page-header__bar-surface {
+    opacity: 1;
+    visibility: visible;
+  }
+
+  .cinder-page-header__bar-title {
+    min-inline-size: 0;
+    overflow: hidden;
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-page-title);
+    font-weight: var(--cinder-font-semibold);
+    letter-spacing: var(--cinder-tracking-display);
+    line-height: var(--cinder-leading-tight);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* Translucent where the platform can blur what scrolls under it; opaque otherwise, and when the
+     person asks for less transparency. */
+  @supports (backdrop-filter: blur(1px)) {
+    .cinder-page-header__bar-surface {
+      background: color-mix(
+        in oklch,
+        var(--cinder-surface-canvas) var(--_cinder-page-header-bar-mix),
+        transparent
+      );
+      backdrop-filter: blur(var(--_cinder-page-header-bar-blur));
+    }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .cinder-page-header__bar-surface {
+      background: var(--cinder-surface-canvas);
+      backdrop-filter: none;
+    }
+  }
+
+  @media (forced-colors: active) {
+    .cinder-page-header__bar-surface {
+      background: Canvas;
+      border-block-end: 1px solid CanvasText;
+      backdrop-filter: none;
+    }
+  }
+
+  /* ── Hero ───────────────────────────────────────────────────────────────────
+     A full-bleed band at page level, never a card: no border, no radius, and it spans its parent.
+     Its content is capped at the page's content width. The band answers to its own width through
+     an unnamed container query on the header, which is already a size container. */
+  .cinder-page-header[data-cinder-variant='hero'] {
+    --_cinder-hero-band: transparent;
+    position: relative;
+    isolation: isolate;
+    overflow: hidden;
+    background: var(--_cinder-hero-band);
+    color: var(--cinder-text-default);
+  }
+
+  .cinder-page-header[data-cinder-tone='tint'] {
+    /* cinder-allow-raw-color: structural-pattern — the tint band, a light or dark indigo wash */
+    --_cinder-hero-band: light-dark(oklch(95.5% 0.03 275), oklch(24% 0.06 275));
+  }
+
+  /* Saturated indigo, hues 262 to 290 only, kept dark enough that the dark theme's muted text
+     clears 4.5:1 on its lightest stop. */
+  .cinder-page-header[data-cinder-tone='accent'] {
+    /* cinder-allow-raw-color: structural-pattern — accent band gradient start, hue 262 */
+    --_cinder-hero-from: oklch(40% 0.19 262);
+    /* cinder-allow-raw-color: structural-pattern — accent band gradient end, hue 290 */
+    --_cinder-hero-to: oklch(35% 0.19 290);
+    --_cinder-hero-band: linear-gradient(135deg, var(--_cinder-hero-from), var(--_cinder-hero-to));
+  }
+
+  /* Near-black with an indigo glow at the inline-end corner. */
+  .cinder-page-header[data-cinder-tone='night'] {
+    /* cinder-allow-raw-color: structural-pattern — the night band's near-black base */
+    --_cinder-hero-night: oklch(17% 0.03 275);
+    /* cinder-allow-raw-color: structural-pattern — the night band's indigo glow */
+    --_cinder-hero-glow: oklch(45% 0.17 275 / 0.45);
+    --_cinder-hero-glow-at: 100% 0%;
+    --_cinder-hero-band:
+      radial-gradient(
+        ellipse 60% 90% at var(--_cinder-hero-glow-at),
+        var(--_cinder-hero-glow),
+        transparent 70%
+      ),
+      var(--_cinder-hero-night);
+  }
+
+  .cinder-page-header[data-cinder-tone='night']:dir(rtl) {
+    --_cinder-hero-glow-at: 0% 0%;
+  }
+
+  /* The decorative layer: dots that fade in from the inline end, and an optional large glyph. It
+     is hidden from assistive technology in the markup, and not drawn at all when the person asks
+     for more contrast or forces colours. */
+  .cinder-page-header__decor {
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    pointer-events: none;
+  }
+
+  .cinder-page-header__pattern {
+    position: absolute;
+    inset: 0;
+    background-image: radial-gradient(currentColor 1px, transparent 1.5px);
+    background-size: var(--cinder-space-4) var(--cinder-space-4);
+    opacity: 0.16;
+    -webkit-mask-image: linear-gradient(to left, black, transparent 65%);
+    mask-image: linear-gradient(to left, black, transparent 65%);
+  }
+
+  .cinder-page-header__pattern:dir(rtl) {
+    -webkit-mask-image: linear-gradient(to right, black, transparent 65%);
+    mask-image: linear-gradient(to right, black, transparent 65%);
+  }
+
+  .cinder-page-header__art {
+    position: absolute;
+    inset-block-end: calc(-1 * var(--cinder-space-6));
+    inset-inline-end: var(--cinder-space-6);
+    inline-size: min(40cqi, 14rem);
+    block-size: min(40cqi, 14rem);
+    opacity: 0.08;
+    line-height: 0;
+  }
+
+  .cinder-page-header__art :where(svg) {
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  @media (prefers-contrast: more), (forced-colors: active) {
+    .cinder-page-header__decor {
+      display: none;
+    }
+  }
+
+  .cinder-page-header__hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas: 'copy focal';
+    align-items: end;
+    gap: var(--cinder-space-6) var(--cinder-space-10);
+    box-sizing: border-box;
+    max-inline-size: var(--cinder-content-width);
+    margin-inline: auto;
+    padding: var(--cinder-space-12) var(--cinder-space-6) var(--cinder-space-10);
+  }
+
+  .cinder-page-header__hero-copy {
+    grid-area: copy;
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+  }
+
+  .cinder-page-header[data-cinder-variant='hero'] .cinder-page-header__breadcrumbs {
+    padding: 0;
+  }
+
+  /* Neutral, never the accent colour. */
+  .cinder-page-header__eyebrow {
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    font-weight: var(--cinder-font-semibold);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  /* A display title sized by the band's width, at weight 760; `titleSoft` beside it is 380. */
+  .cinder-page-header[data-cinder-variant='hero'] .cinder-page-header__title {
+    font-size: clamp(var(--cinder-text-4xl), 6cqi, 3.75rem);
+    font-weight: 760;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+  }
+
+  .cinder-page-header[data-cinder-variant='hero'] .cinder-page-header__description {
+    max-inline-size: var(--cinder-content-width-prose);
+    font-size: var(--cinder-text-base);
+  }
+
+  .cinder-page-header__facts {
+    margin-block-start: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  /* Beneath the title, at the buttons' own size. */
+  .cinder-page-header__hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--cinder-space-2);
+    margin-block-start: var(--cinder-space-4);
+  }
+
+  .cinder-page-header[data-cinder-variant='hero'] .cinder-page-header__overflow {
+    inline-size: var(--cinder-control-height-md);
+    min-inline-size: var(--cinder-control-height-md);
+    block-size: var(--cinder-control-height-md);
+  }
+
+  /* One focal element per screen: a large tabular value, then its label, then an optional meter. */
+  .cinder-page-header__focal {
+    grid-area: focal;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+    font-variant-numeric: tabular-nums;
+    text-align: end;
+  }
+
+  .cinder-page-header__focal > :first-child {
+    font-size: clamp(var(--cinder-text-5xl), 11cqi, 5rem);
+    font-weight: 760;
+    letter-spacing: var(--cinder-tracking-display);
+    line-height: 1;
+  }
+
+  .cinder-page-header__focal small {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
+  }
+
+  .cinder-page-header__focal > :not(:first-child, small) {
+    align-self: stretch;
+    min-inline-size: 10rem;
+  }
+
+  .cinder-page-header__media {
+    grid-area: focal;
+    min-inline-size: 0;
+    max-inline-size: 40cqi;
+  }
+
+  /* Below 720px of band width: one column, the focal value first. */
+  @container (width < 720px) {
+    .cinder-page-header__hero {
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas:
+        'focal'
+        'copy';
+      align-items: start;
+      padding: var(--cinder-space-8) var(--cinder-space-4);
+    }
+
+    .cinder-page-header__focal {
+      align-items: flex-start;
+      text-align: start;
+    }
+
+    .cinder-page-header__media {
+      max-inline-size: none;
+    }
+  }
+
+  /* On the accent and night bands the hero provides the controls' defaults: a white primary with
+     an indigo label, a translucent secondary, and a translucent segmented-control track. Each
+     rule names every state Button styles, so a hover or a press never falls back to the page's
+     colours. The bands are dark theme islands, so text inside them already takes its dark value. */
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button {
+    /* cinder-allow-raw-color: structural-pattern — a white focus ring on a dark band */
+    --_cinder-button-ring: oklch(100% 0 0);
+  }
+
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button[data-cinder-variant='primary']:not(:disabled, [aria-disabled='true']) {
+    /* cinder-allow-raw-color: structural-pattern — the hero's white primary fill */
+    background: oklch(100% 0 0);
+    /* cinder-allow-raw-color: structural-pattern — the indigo label on the white primary */
+    color: oklch(42% 0.2 272);
+    border-color: transparent;
+  }
+
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button[data-cinder-variant='secondary']:not(:disabled, [aria-disabled='true']) {
+    /* cinder-allow-raw-color: structural-pattern — the hero's translucent secondary fill */
+    background: oklch(100% 0 0 / 0.12);
+    /* cinder-allow-raw-color: structural-pattern — white label, 4.5:1 on every secondary state */
+    color: oklch(100% 0 0);
+    /* cinder-allow-raw-color: structural-pattern — the translucent secondary's edge */
+    border-color: oklch(100% 0 0 / 0.3);
+  }
+
+  @media (hover: hover) {
+    :is(
+        .cinder-page-header[data-cinder-tone='accent'],
+        .cinder-page-header[data-cinder-tone='night']
+      )
+      .cinder-button[data-cinder-variant='primary']:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ) {
+      /* cinder-allow-raw-color: structural-pattern — the white primary's hover */
+      background: oklch(93% 0.03 275);
+    }
+
+    :is(
+        .cinder-page-header[data-cinder-tone='accent'],
+        .cinder-page-header[data-cinder-tone='night']
+      )
+      .cinder-button[data-cinder-variant='secondary']:hover:not(:disabled):not(
+        [aria-disabled='true']
+      ) {
+      /* cinder-allow-raw-color: structural-pattern — the translucent secondary's hover */
+      background: oklch(100% 0 0 / 0.2);
+    }
+  }
+
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button[data-cinder-variant='primary']:active:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
+    /* cinder-allow-raw-color: structural-pattern — the white primary's press */
+    background: oklch(88% 0.04 275);
+  }
+
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-button[data-cinder-variant='secondary']:active:not(:disabled):not(
+      [aria-disabled='true']
+    ) {
+    /* cinder-allow-raw-color: structural-pattern — the translucent secondary's press */
+    background: oklch(100% 0 0 / 0.26);
+  }
+
+  :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
+    .cinder-segmented-control:not([data-cinder-variant='tablist']) {
+    /* cinder-allow-raw-color: structural-pattern — the translucent segmented-control track */
+    background: oklch(100% 0 0 / 0.14);
+  }
 }
