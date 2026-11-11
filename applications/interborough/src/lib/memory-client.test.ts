@@ -20,7 +20,7 @@ const MEMORY = {
   trust: 'untrusted',
   createdAt: '2026-11-01T16:12:00.000Z',
   sessionId: 'session-1',
-};
+} as const;
 const HISTORY = {
   id: 'memory-0',
   content: 'Customers prefer refund updates by phone.',
@@ -29,7 +29,7 @@ const HISTORY = {
   trust: 'untrusted',
   writtenAt: '2026-10-30T10:00:00.000Z',
   correctedAt: '2026-11-01T16:12:00.000Z',
-};
+} as const;
 
 /** A fetch that answers every call with `result` in the JSON-RPC envelope, recording each request body. */
 function answering(result: unknown, bodies: unknown[] = []): Fetcher {

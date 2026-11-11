@@ -219,8 +219,8 @@ describe('the list', () => {
     const view = open();
     await view.findByText(AISLE.content);
 
-    const kind = view.getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.kindLabel);
-    const writer = view.getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.writerLabel);
+    const kind = within(view.container).getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.kindLabel);
+    const writer = within(view.container).getByLabelText<HTMLSelectElement>(MEMORY_COPY.filter.writerLabel);
 
     // Each starts on its first choice, which reads "Kind: All" and "Written by: Anyone".
     expect(kind.value).toBe('all');
