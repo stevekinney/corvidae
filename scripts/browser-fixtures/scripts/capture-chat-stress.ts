@@ -231,9 +231,8 @@ function callHook(page: Page, name: string, argument: unknown): Promise<void> {
   return page.evaluate(
     ([hookName, hookArguments]) => {
       const hooks = (window as Window & { corvidaeChatStress?: Hooks }).corvidaeChatStress;
-      const hook = hooks?.[hookName as string];
-      if (hook === undefined)
-        throw new Error(`The page has no host operation named ${String(hookName)}.`);
+      const hook = hooks?.[hookName];
+      if (hook === undefined) throw new Error(`The page has no host operation named ${hookName}.`);
       hook(...(hookArguments as unknown[]));
     },
     [name, argumentsList] as const,
@@ -480,7 +479,7 @@ async function captureProfile(
     await context.addInitScript(
       ([key, value]) => {
         try {
-          localStorage.setItem(key as string, value as string);
+          localStorage.setItem(key, value);
         } catch {
           // A blocked storage leaves the default theme, which the profile's color scheme matches.
         }
@@ -527,7 +526,8 @@ function digest(text: string): string {
 }
 
 async function readIdentity(buildDirectory: string): Promise<SourceIdentity> {
-  const files = (await readdir(buildDirectory, { recursive: true })).map(String).toSorted();
+  const entries = await readdir(buildDirectory, { recursive: true });
+  const files = entries.map(String).toSorted();
   const index = await Bun.file(join(buildDirectory, 'index.html')).text();
   return sourceIdentity({
     head: git(['rev-parse', 'HEAD']).trim(),
@@ -600,7 +600,8 @@ async function main(): Promise<number> {
   try {
     // Ready means the host answers and serves the Chat stress page from this build.
     const ready = await fetch(`${origin}/ready`);
-    const manifest = (await (await fetch(`${origin}/api/manifest`)).json()) as {
+    const manifestResponse = await fetch(`${origin}/api/manifest`);
+    const manifest = (await manifestResponse.json()) as {
       entries: { slug: string }[];
     };
     if (!ready.ok || !manifest.entries.some((entry) => entry.slug === 'chat-stress')) {
@@ -622,7 +623,8 @@ async function main(): Promise<number> {
       left.file.localeCompare(right.file),
   );
   const errors = [...state.errors, ...countProblems(records, cases, profiles)];
-  const files = (await readdir(directory)).filter((name) => name.endsWith('.png'));
+  const captured = await readdir(directory);
+  const files = captured.filter((name) => name.endsWith('.png'));
   const summary: RunSummary = {
     passed: false,
     complete: cases.length === allCases.length && profiles.length >= 4,
