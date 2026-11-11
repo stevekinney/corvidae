@@ -122,6 +122,10 @@ export const OPERATION_MAP = {
   },
   'bureau.contexts.steer': { workspaceClass: 'private-owned', member: 'contexts.steer' },
   'bureau.contexts.fork': { workspaceClass: 'private-owned', member: 'contexts.fork' },
+  'bureau.contexts.regenerate': {
+    workspaceClass: 'private-owned',
+    member: 'contexts.regenerate',
+  },
   'bureau.contexts.rename': { workspaceClass: 'private-owned', member: 'contexts.rename' },
   'bureau.contexts.window': { workspaceClass: 'private-owned', member: 'contexts.window' },
 

@@ -166,6 +166,8 @@ const SCHEMA_SAFE_OUTPUTS: Readonly<Record<string, string>> = {
     'The response is an effort or permission command receipt and its policy outcome; it carries no transcript, prompt, or tool input (contexts-steer-operation output schema).',
   'bureau.contexts.fork':
     'The response is the new context identifier and carried effort and permission command outcomes; it does not carry the forked conversation (contexts-fork-operation output schema).',
+  'bureau.contexts.regenerate':
+    'The response is the context and message identifiers and the committed revision; it does not carry the regenerated answer or any other row (contexts-regenerate-operation output schema).',
   'bureau.notifications.markread':
     'The notification update output is only the count of records updated (notifications operation output schema).',
   'bureau.notifications.dismiss':
