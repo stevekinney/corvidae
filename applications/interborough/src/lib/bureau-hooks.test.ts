@@ -9,11 +9,15 @@ import { afterEach, describe, expect, test } from 'bun:test';
 import {
   createHook,
   deleteHook,
+  deliveryBody,
   getHook,
   listHookDeliveries,
   listHookEventKinds,
   listHooks,
+  replaceHookSecret,
+  retryHookDelivery,
   testHook,
+  testHookDraft,
   updateHook,
 } from './bureau-hooks.ts';
 import { installBureauStub, type BureauStub } from './bureau-stub.test-support.ts';
