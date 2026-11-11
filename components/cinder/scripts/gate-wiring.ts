@@ -55,9 +55,24 @@ export function findGateInvocations(
   return invocations;
 }
 
-/** Whether a statement does work when the module is imported, rather than declaring something. */
+/**
+ * Whether a top-level statement does work when the module is imported. A library module is made
+ * of declarations; anything else at the top level (a call, an `if`, a `try`, a loop) runs.
+ */
 function runsOnImport(statement: ts.Statement): boolean {
-  return ts.isExpressionStatement(statement);
+  return !(
+    ts.isImportDeclaration(statement) ||
+    ts.isExportDeclaration(statement) ||
+    ts.isExportAssignment(statement) ||
+    ts.isVariableStatement(statement) ||
+    ts.isFunctionDeclaration(statement) ||
+    ts.isClassDeclaration(statement) ||
+    ts.isInterfaceDeclaration(statement) ||
+    ts.isTypeAliasDeclaration(statement) ||
+    ts.isEnumDeclaration(statement) ||
+    ts.isModuleDeclaration(statement) ||
+    ts.isEmptyStatement(statement)
+  );
 }
 
 /** The `check-*.ts` files of a scripts directory, by how they run. */

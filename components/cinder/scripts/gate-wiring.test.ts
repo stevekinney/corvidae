@@ -166,4 +166,34 @@ describe('classifyCheckScripts', () => {
       },
     );
   });
+
+  // A script does not have to end in a bare call to run on import.
+  test.each([
+    ['a try block', 'function main() {}\ntry {\n  main();\n} catch {\n  process.exit(1);\n}\n'],
+    ['a condition', "function main() {}\nif (process.argv.includes('--run')) main();\n"],
+    ['a loop', 'function main() {}\nfor (const name of process.argv) main();\n'],
+  ])('reports a check that runs on import through %s', (_shape, source) => {
+    withScriptsDirectory({ 'check-unguarded.ts': source }, (scriptsDirectory) => {
+      expect(classifyCheckScripts(scriptsDirectory).unguarded).toEqual(['check-unguarded.ts']);
+    });
+  });
+
+  test('treats a module of declarations as a library', () => {
+    const source = [
+      "import { join } from 'node:path';",
+      "export const ROOT = join('a', 'b');",
+      'export type Shape = { name: string };',
+      'export interface Named { name: string }',
+      'export enum Mode { Report, Strict }',
+      'export class Scanner {}',
+      'export function scan(): void {}',
+      "export { join as joinPath } from 'node:path';",
+      'export default scan;',
+      '',
+    ].join('\n');
+
+    withScriptsDirectory({ 'check-library.ts': source }, (scriptsDirectory) => {
+      expect(classifyCheckScripts(scriptsDirectory)).toEqual({ entryPoints: [], unguarded: [] });
+    });
+  });
 });
