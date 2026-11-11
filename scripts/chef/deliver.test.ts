@@ -11,9 +11,12 @@ import {
   run,
   type DeliverOptions,
 } from './deliver.ts';
+import { directMerge, type DirectMergeOptions } from './direct-merge.ts';
 import { LinearError, type LinearClient } from './linear.ts';
 import type { MergeGateOptions, MergeGateReport } from './merge-gate.ts';
-import { UsageError } from './process-runner.ts';
+import { UsageError, type Runner, type RunnerResult } from './process-runner.ts';
+import type { GuardsResult } from './text-guards.ts';
+import type { UsageTotals } from './transcript-usage.ts';
 import { Refusal } from './worktree.ts';
 
 const HEAD = 'a'.repeat(40);
@@ -162,10 +165,12 @@ describe('deliver', () => {
     const report = await deliver(options, partial);
     expect(report).toEqual({
       pr: 12,
+      branch: null,
       merged: true,
       mergeCommit: MERGE_COMMIT,
       mergeable: 'MERGEABLE',
       mainHealthWarning: null,
+      guardWaiver: null,
       failedStep: null,
       detail: null,
       issues: [],
@@ -456,7 +461,7 @@ describe('run', () => {
     '--worktree',
     sandbox,
     '--comment-file',
-    options.commentFile,
+    join(sandbox, 'comment.md'),
     ...extra,
   ];
 
@@ -489,6 +494,11 @@ describe('run', () => {
     expect(await usage('--pr', '1', ...base, '--remove-worktree')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--name', 'x')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--bogus')).toBeInstanceOf(UsageError);
+    // A pull request and a branch are exclusive, and one of them is required.
+    expect(await usage('--worktree', sandbox)).toBeInstanceOf(UsageError);
+    expect(
+      await usage('--pr', '1', '--branch', 'work', '--head', HEAD, ...base, '--message-file', 'm'),
+    ).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--usage-log', 'u.tsv')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--transcript', 't.jsonl')).toBeInstanceOf(UsageError);
     expect(await usage('--pr', '1', ...base, '--head', 'abc')).toBeInstanceOf(UsageError);
@@ -569,5 +579,396 @@ describe('run', () => {
     );
     expect(bad.code).toBe(1);
     expect(JSON.parse(bad.output).failedStep).toBe('conflict');
+  });
+});
+
+const BRANCH = 'cor-9-widgets';
+const TREE = '1'.repeat(40);
+const BASE_TREE = '2'.repeat(40);
+const SQUASH = 'e'.repeat(40);
+const NEW_BLOB = '5'.repeat(40);
+const OLD_BLOB = '6'.repeat(40);
+const OLDER_BLOB = '7'.repeat(40);
+const EARLIER = '8'.repeat(40);
+
+const reply = (stdout = '', code = 0, stderr = ''): RunnerResult => ({ code, stdout, stderr });
+
+/** A fake `git` that answers a clean branch merge, with `answers` overriding single commands. */
+function branchWorld(answers: Record<string, RunnerResult> = {}) {
+  const calls: string[] = [];
+  const messageFile = join(sandbox, 'message.md');
+  const defaults: Record<string, RunnerResult> = {
+    [`fetch origin main ${BRANCH}`]: reply(),
+    [`rev-parse --verify refs/remotes/origin/${BRANCH}^{commit}`]: reply(`${HEAD}\n`),
+    'rev-parse --verify refs/remotes/origin/main^{commit}': reply(`${BASE}\n`),
+    [`merge-base ${HEAD} ${BASE}`]: reply(`${BASE}\n`),
+    [`diff --name-only ${BASE} ${HEAD}`]: reply('a.ts\n'),
+    [`rev-parse -q --verify ${HEAD}:a.ts`]: reply(`${NEW_BLOB}\n`),
+    [`rev-parse -q --verify ${BASE}:a.ts`]: reply(`${OLD_BLOB}\n`),
+    [`log -n 60 --since=2 days ago --format=%H ${BASE} -- a.ts`]: reply(`${EARLIER}\n`),
+    [`rev-parse -q --verify ${EARLIER}^:a.ts`]: reply(`${OLDER_BLOB}\n`),
+    [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${TREE}\n`),
+    [`rev-parse ${BASE}^{tree}`]: reply(`${BASE_TREE}\n`),
+    [`commit-tree ${TREE} -p ${BASE} -F ${messageFile}`]: reply(`${SQUASH}\n`),
+    [`push origin ${SQUASH}:refs/heads/main`]: reply(),
+    [`push origin --delete ${BRANCH}`]: reply(),
+  };
+  const runner: Runner = (command) => {
+    const key = command.slice(1).join(' ');
+    calls.push(key);
+    return answers[key] ?? defaults[key] ?? reply('', 1, `unexpected command: ${key}`);
+  };
+  return { runner, calls, messageFile };
+}
+
+const guardsPass = (): GuardsResult => ({ ok: true, failures: [] });
+const guardsFail = (
+  guard: string,
+  findings: string[] = [`${guard} - found a problem`],
+): GuardsResult => ({
+  ok: false,
+  failures: [{ guard, findings, output: findings.join(' | ') }],
+});
+
+/** `deliver --branch` with the real direct merge over a fake `git`, and the guards injected. */
+async function deliverBranch(
+  world: ReturnType<typeof branchWorld>,
+  guards: (revision: string, only?: readonly string[]) => GuardsResult = guardsPass,
+  extra: Partial<DeliverOptions> = {},
+  usage: { usage?: () => UsageTotals; now?: () => Date } = {},
+) {
+  writeFileSync(world.messageFile, 'COR-9: Add widgets\n');
+  const { partial, record } = seams();
+  const report = await deliver(
+    {
+      configPath: options.configPath,
+      branch: BRANCH,
+      expectedHead: HEAD,
+      messageFile: world.messageFile,
+      worktree: sandbox,
+      ...extra,
+    },
+    {
+      ...partial,
+      directMerge: async (directOptions) =>
+        directMerge(directOptions, { runner: world.runner, guards, ...usage }),
+    },
+  );
+  return { report, record };
+}
+
+describe('deliver --branch', () => {
+  test('squashes the branch into main with one commit, pushes it, then deletes the branch', async () => {
+    const world = branchWorld();
+    const revisions: string[] = [];
+    const { report, record } = await deliverBranch(world, (revision) => {
+      revisions.push(revision);
+      return guardsPass();
+    });
+    expect(report).toMatchObject({
+      pr: null,
+      branch: BRANCH,
+      merged: true,
+      mergeCommit: SQUASH,
+      failedStep: null,
+      issues: [],
+    });
+    expect(record.merges).toEqual([]);
+    // The guards ran on the commit that was pushed, and nothing touched a working tree.
+    expect(revisions).toEqual([SQUASH]);
+    const writes = world.calls.filter((call) => /^(push|commit-tree)/.test(call));
+    expect(writes).toEqual([
+      `commit-tree ${TREE} -p ${BASE} -F ${world.messageFile}`,
+      `push origin ${SQUASH}:refs/heads/main`,
+      `push origin --delete ${BRANCH}`,
+    ]);
+    expect(world.calls.some((call) => /^(checkout|merge |reset|worktree|stash)/.test(call))).toBe(
+      false,
+    );
+    expect(renderDeliver(report)).toStartWith(
+      `branch ${BRANCH} merged=true mergeCommit=eeeeeeeeeeee`,
+    );
+  });
+
+  test('a branch that is not the pinned head is refused at head, with nothing written', async () => {
+    const world = branchWorld({
+      [`rev-parse --verify refs/remotes/origin/${BRANCH}^{commit}`]: reply(`${'9'.repeat(40)}\n`),
+    });
+    const { report } = await deliverBranch(world);
+    expect(report).toMatchObject({ merged: false, failedStep: 'head' });
+    expect(report.detail).toContain('not the head pinned at acceptance');
+    expect(world.calls.some((call) => call.startsWith('push'))).toBe(false);
+  });
+
+  test('a failed fetch is named at head', async () => {
+    const world = branchWorld({ [`fetch origin main ${BRANCH}`]: reply('', 128, 'no such ref') });
+    const { report } = await deliverBranch(world);
+    expect(report).toMatchObject({ merged: false, failedStep: 'head' });
+  });
+
+  test('a file set back to the state before a recent commit is refused at revert', async () => {
+    const world = branchWorld({
+      [`rev-parse -q --verify ${EARLIER}^:a.ts`]: reply(`${NEW_BLOB}\n`),
+      [`log -1 --format=%h %s ${EARLIER}`]: reply('abc1234 Add the widget\n'),
+    });
+    const { report } = await deliverBranch(world);
+    expect(report).toMatchObject({ merged: false, failedStep: 'revert' });
+    expect(report.detail).toContain('a.ts undoes abc1234 Add the widget');
+    expect(world.calls.some((call) => call.startsWith('merge-tree'))).toBe(false);
+  });
+
+  test('a conflict with main is refused at conflict, with no commit made', async () => {
+    const world = branchWorld({
+      [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${TREE}\nCONFLICT\n`, 1),
+    });
+    const { report } = await deliverBranch(world);
+    expect(report).toMatchObject({ merged: false, failedStep: 'conflict' });
+    expect(world.calls.some((call) => /^(commit-tree|push)/.test(call))).toBe(false);
+  });
+
+  test('a branch that changes nothing is refused rather than pushed as an empty commit', async () => {
+    const world = branchWorld({
+      [`merge-tree --write-tree ${BASE} ${HEAD}`]: reply(`${BASE_TREE}\n`),
+    });
+    const { report } = await deliverBranch(world);
+    expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
+    expect(report.detail).toContain('changes nothing');
+  });
+
+  test('a failing guard is refused at guards, with nothing pushed', async () => {
+    const world = branchWorld();
+    const { report, record } = await deliverBranch(
+      world,
+      () => guardsFail('check-middle-dot-separators'),
+      { issues: ['COR-9'], completionFiles: [join(sandbox, 'done.md')] },
+    );
+    expect(report).toMatchObject({ merged: false, failedStep: 'guards' });
+    expect(report.detail).toContain('check-middle-dot-separators');
+    expect(world.calls.some((call) => call.startsWith('push'))).toBe(false);
+    expect(record.requests).toEqual([]);
+  });
+
+  test('--fixes-main waives a guard only when its findings are a subset of the same guard on main', async () => {
+    const WAIT = 'check-wait-for-element-assertions';
+    const onBranch = guardsFail(WAIT, ['a.test.ts:1 - absence']);
+    const failing = (branch: GuardsResult, onBase: GuardsResult) => (revision: string) =>
+      revision === BASE ? onBase : branch;
+    const deliverFixing = (branch: GuardsResult, onBase: GuardsResult) =>
+      deliverBranch(branchWorld(), failing(branch, onBase), { fixesMain: true });
+
+    const fixed = await deliverFixing(
+      onBranch,
+      guardsFail(WAIT, ['a.test.ts:1 - absence', 'b.test.ts:2 - identity']),
+    );
+    expect(fixed.report).toMatchObject({ merged: true, failedStep: null });
+    expect(fixed.report.guardWaiver).toContain(WAIT);
+    expect(fixed.report.guardWaiver).toContain('all 1 output lines');
+    expect(renderDeliver(fixed.report)).toContain('WARNING guards:');
+
+    // Same guard, but a finding main does not have: the branch's own, refused.
+    const newFinding = await deliverFixing(onBranch, guardsFail(WAIT, ['c.test.ts:3 - absence']));
+    expect(newFinding.report).toMatchObject({ merged: false, failedStep: 'guards' });
+    // A different guard failing on main, by name alone, waives nothing.
+    const otherGuard = await deliverFixing(onBranch, guardsFail('check-runtime-detection'));
+    expect(otherGuard.report).toMatchObject({ merged: false, failedStep: 'guards' });
+    expect(otherGuard.report.detail).toContain(WAIT);
+    // Main passing the guard waives nothing.
+    const clean = await deliverFixing(onBranch, guardsPass());
+    expect(clean.report).toMatchObject({ merged: false, failedStep: 'guards' });
+    // A failure with no findings cannot match anything.
+    const silent = await deliverFixing(guardsFail(WAIT, []), guardsFail(WAIT, []));
+    expect(silent.report).toMatchObject({ merged: false, failedStep: 'guards' });
+    // A second failing guard that main does not fail is the branch's own, even beside a waivable one.
+    const both: GuardsResult = {
+      ok: false,
+      failures: [
+        ...onBranch.failures,
+        { guard: 'check-middle-dot-separators', findings: ['x:1 - dot'], output: 'x:1 - dot' },
+      ],
+    };
+    const mixed = await deliverFixing(both, guardsFail(WAIT, ['a.test.ts:1 - absence']));
+    expect(mixed.report).toMatchObject({ merged: false, failedStep: 'guards' });
+    expect(mixed.report.detail).toContain(WAIT);
+    expect(mixed.report.detail).toContain('check-middle-dot-separators');
+
+    // The base run is limited to the guards that failed on the branch, and only with the declaration.
+    const asked: (readonly string[] | undefined)[] = [];
+    await deliverBranch(
+      branchWorld(),
+      (revision, only) => {
+        if (revision === BASE) asked.push(only);
+        return onBranch;
+      },
+      { fixesMain: true },
+    );
+    expect(asked).toEqual([[WAIT]]);
+    const revisions: string[] = [];
+    await deliverBranch(branchWorld(), (revision) => {
+      revisions.push(revision);
+      return onBranch;
+    });
+    expect(revisions).toEqual([SQUASH]);
+  });
+
+  test('a rejected push changes nothing: the branch is kept and no issue is closed', async () => {
+    const world = branchWorld({
+      [`push origin ${SQUASH}:refs/heads/main`]: reply('', 1, '! [rejected] (fetch first)'),
+    });
+    const { report, record } = await deliverBranch(world, guardsPass, {
+      issues: ['COR-9'],
+      completionFiles: [join(sandbox, 'done.md')],
+    });
+    expect(report).toMatchObject({ merged: false, mergeCommit: null, failedStep: 'merge' });
+    expect(report.detail).toContain('rejected');
+    expect(world.calls).not.toContain(`push origin --delete ${BRANCH}`);
+    expect(record.requests).toEqual([]);
+  });
+
+  test('a branch that cannot be deleted is step delete with merged true, and no issue is closed', async () => {
+    const world = branchWorld({ [`push origin --delete ${BRANCH}`]: reply('', 1, 'denied') });
+    const { report, record } = await deliverBranch(world, guardsPass, {
+      issues: ['COR-9'],
+      completionFiles: [join(sandbox, 'done.md')],
+    });
+    expect(report).toMatchObject({ merged: true, mergeCommit: SQUASH, failedStep: 'delete' });
+    expect(record.requests).toEqual([]);
+  });
+
+  test('closes the issues after the merge, pairing each with its completion file in order', async () => {
+    const second = join(sandbox, 'second.md');
+    writeFileSync(second, sampleReport);
+    const { report, record } = await deliverBranch(branchWorld(), guardsPass, {
+      issues: ['COR-9', 'COR-10'],
+      completionFiles: [join(sandbox, 'done.md'), second],
+      removeWorktree: { provider: 'claude', name: 'alpha' },
+    });
+    expect(report).toMatchObject({
+      merged: true,
+      failedStep: null,
+      issues: [
+        { identifier: 'COR-9', state: 'Done' },
+        { identifier: 'COR-10', state: 'Done' },
+      ],
+    });
+    expect(record.writes).toEqual([
+      'comment COR-9',
+      'state COR-9',
+      'comment COR-10',
+      'state COR-10',
+    ]);
+    expect(record.removals).toEqual(['alpha']);
+  });
+
+  test('unpaired issues, an unsafe branch or a bad head are refused before anything runs', async () => {
+    const world = branchWorld();
+    const refused = async (extra: Partial<DeliverOptions>) => {
+      const error = await rejectionOf(deliverBranch(world, guardsPass, extra));
+      expect(error).toBeInstanceOf(UsageError);
+      return String(error);
+    };
+    expect(await refused({ issues: ['COR-9'], completionFiles: [] })).toContain('pair in order');
+    expect(await refused({ branch: 'main' })).toContain('default branch');
+    expect(await refused({ branch: '--delete' })).toContain('not a safe branch name');
+    expect(await refused({ branch: 'a..b' })).toContain('not a safe branch name');
+    expect(await refused({ expectedHead: 'abc' })).toContain('not a full commit SHA');
+    expect(world.calls).toEqual([]);
+  });
+
+  test('exactly one of a pull request and a branch, each with its own file, is required', async () => {
+    const { partial } = seams();
+    const refused = async (extra: Partial<DeliverOptions>) => {
+      const error = await rejectionOf(
+        deliver({ configPath: options.configPath, worktree: sandbox, ...extra }, partial),
+      );
+      expect(error).toBeInstanceOf(UsageError);
+      return String(error);
+    };
+    const message = join(sandbox, 'comment.md');
+    expect(await refused({})).toContain('exactly one of --pr and --branch');
+    expect(
+      await refused({ pr: 1, branch: BRANCH, expectedHead: HEAD, messageFile: message }),
+    ).toContain('exactly one of --pr and --branch');
+    expect(await refused({ pr: 1 })).toContain('--pr needs --comment-file');
+    expect(await refused({ pr: 1, commentFile: message, messageFile: message })).toContain(
+      '--message-file applies only with --branch',
+    );
+    expect(await refused({ branch: BRANCH, expectedHead: HEAD })).toContain('needs --message-file');
+    expect(await refused({ branch: BRANCH, messageFile: message })).toContain('needs --head');
+    expect(
+      await refused({
+        branch: BRANCH,
+        expectedHead: HEAD,
+        messageFile: message,
+        commentFile: message,
+      }),
+    ).toContain('--comment-file applies only with --pr');
+  });
+
+  test('no direct merge runner is a named failure, never a silent skip', async () => {
+    const report = await deliver(
+      {
+        configPath: options.configPath,
+        branch: BRANCH,
+        expectedHead: HEAD,
+        messageFile: join(sandbox, 'comment.md'),
+        worktree: sandbox,
+      },
+      {},
+    );
+    expect(report).toMatchObject({ merged: false, failedStep: 'merge' });
+  });
+
+  test('records the spend with branch:<name> where a pull request number would go', async () => {
+    const usageLog = join(sandbox, 'out', 'usage.tsv');
+    const { report } = await deliverBranch(
+      branchWorld(),
+      guardsPass,
+      { usageLog, transcripts: [join(sandbox, 'comment.md')] },
+      {
+        usage: () => ({ input: 1, cachedInput: 2, output: 3 }),
+        now: () => new Date('2026-11-11T12:00:00.000Z'),
+      },
+    );
+    expect(report).toMatchObject({ merged: true, failedStep: null });
+    expect(readFileSync(usageLog, 'utf8')).toBe(
+      `2026-11-11T12:00:00.000Z\tbranch:${BRANCH}\t${SQUASH}\t1\t2\t3\n`,
+    );
+  });
+
+  test('run reads --branch, --head and --message-file and reports the branch as JSON', async () => {
+    const seen: DirectMergeOptions[] = [];
+    const result = await run(
+      [
+        '--config',
+        options.configPath,
+        '--branch',
+        BRANCH,
+        '--head',
+        HEAD,
+        '--worktree',
+        sandbox,
+        '--message-file',
+        join(sandbox, 'comment.md'),
+        '--fixes-main',
+        '--json',
+      ],
+      {
+        directMerge: async (directOptions) => {
+          seen.push(directOptions);
+          return {
+            branch: BRANCH,
+            head: HEAD,
+            base: BASE,
+            merged: true,
+            mergeCommit: SQUASH,
+            failedStep: null,
+            detail: null,
+          };
+        },
+      },
+    );
+    expect(result.code).toBe(0);
+    expect(JSON.parse(result.output)).toMatchObject({ pr: null, branch: BRANCH, merged: true });
+    expect(seen[0]).toMatchObject({ branch: BRANCH, head: HEAD, fixesMain: true });
   });
 });

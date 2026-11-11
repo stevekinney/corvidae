@@ -53,7 +53,7 @@ Use `gate-run.ts control` for anything the triage leaves ambiguous: a task that 
 
 ## Exit codes and main health
 
-`deliver.ts` runs `merge-gate.ts`'s sequence and nothing else before the merge: no gate, no install, no merge of `main` into the branch. It exits 0 merged, 1 a failed step (named), 2 usage. The refusals are all fast and each has one owner:
+`deliver.ts` runs `merge-gate.ts`'s sequence (`--pr`, below) or the branch steps in [direct-merge delivery](../../../../documentation/repository/direct-merge-delivery.md) (`--branch`) and nothing else before the merge: no gate, no install, no merge of `main` into the branch. It exits 0 merged, 1 a failed step (named), 2 usage. The refusals are all fast and each has one owner:
 
 - **`head`**: the pull request is not open, or its head is not the worktree's HEAD or the head pinned with `--head` at acceptance. The worker pushed or the worktree moved after acceptance; re-run the acceptance checks on the new head.
 - **`conflict`**: GitHub reports the pull request `CONFLICTING` or `DIRTY`. It goes back to the worker, which merges `main` in, resolves it, reruns its focused checks, and returns the new head. A base that merely moved (`BEHIND`) is not a conflict and merges as it is.

@@ -1,23 +1,35 @@
 #!/usr/bin/env bun
-// Chef deliver: a pull request's whole post-acceptance lifecycle in one command, so a coordinator
-// launches it once in the background instead of hand-running the merge gate, the Linear closeout
-// and the worktree removal in turn.
+// Chef deliver: a change's whole post-acceptance lifecycle in one command, so a coordinator
+// launches it once in the background instead of hand-running the merge, the Linear closeout and the
+// worktree removal in turn. The change is a pull request (`--pr`) or, since the owner's 2026-11-11
+// decision that a pull request is optional, a pushed branch merged straight into the default
+// branch (`--branch`). Exactly one of the two is given.
 //
-// It runs no test gate and never merges the default branch into the pull request. The worker ran
-// its focused checks before opening the pull request, and GitHub Actions' full suite on every push
-// to `main` is the backstop (AGENTS.md "Gate on local checks"; a local batch validate is in
+// It runs no test gate and never merges the default branch into the change. The worker ran its
+// focused checks before pushing, and GitHub Actions' full suite on every push to `main` is the
+// backstop (AGENTS.md "Gate on local checks"; a local batch validate is in
 // `.agents/skills/chef/references/program-runs.md`), so the default branch moving is not a reason
 // to repeat either.
 //
 // Usage:
 //   bun scripts/chef/deliver.ts --pr <n> --worktree <dir> --comment-file <md> [--head <sha>]
+//   bun scripts/chef/deliver.ts --branch <remote branch> --head <sha> --worktree <dir>
+//                               --message-file <md>
+// and, with either form:
 //                               [--issue <ID> --completion-file <md>]...
 //                               [--remove-worktree --provider claude|codex --name <name>]
 //                               [--usage-log <file> --transcript <path>...]
 //                               [--fixes-main] [--config <json>] [--json]
 //
 // The steps run in order and stop at the first failure, which is named:
-//   merge      `merge-gate.ts`'s own sequence with nothing reimplemented: the pull request is open
+//   merge      with `--branch`, `direct-merge.ts`'s sequence under the merge lock a pull request
+//              merge takes, which names its own failures: `head` (the remote branch is exactly
+//              `--head`), `revert` (the revert check finds nothing), `conflict` (`git merge-tree`
+//              builds the merged tree), `guards` (each guard of `lint:guards` passes on that tree, in a temporary worktree), `merge`
+//              (one squash commit made with `git commit-tree` from `--message-file` and pushed to
+//              the default branch; a rejected push changes nothing, so run it again) and `delete`
+//              (the remote branch). No checkout is changed. With `--pr`,
+//              `merge-gate.ts`'s own sequence with nothing reimplemented: the pull request is open
 //              and its head is the worktree's HEAD and, with `--head`, the head pinned at
 //              acceptance (step `head`); GitHub reports no conflict with the base (step `conflict`,
 //              after waiting briefly while GitHub's mergeability is `UNKNOWN`); every review thread
@@ -35,13 +47,20 @@
 //   worktree   with `--remove-worktree`: `worktree.ts remove`, whose refusal is reported as step
 //              `worktree` with `merged` still true.
 //
-// Output: at most five lines, or with `--json` one object: pr, merged, mergeCommit, mergeable,
-// mainHealthWarning, failedStep, detail and issues (each closed issue's identifier and state).
+// Output: at most five lines, or with `--json` one object: pr, branch, merged, mergeCommit,
+// mergeable, mainHealthWarning, guardWaiver, failedStep, detail and issues (each closed issue's identifier and
+// state). `pr` is null for a branch merge and `branch` null for a pull request merge. The
+// usage-log line of a branch merge holds `branch:<name>` where a pull request's holds its number.
 //
 // Exit codes: 0 merged and every later step succeeded, 1 refused or a step failed (named), 2
 // invalid CLI usage.
 
 import { existsSync, readFileSync } from 'node:fs';
+import {
+  directMergeExclusively,
+  type DirectMergeOptions,
+  type DirectMergeReport,
+} from './direct-merge.ts';
 import { createClient, LinearError, postComment, setState, type LinearClient } from './linear.ts';
 import { mergeGateExclusively, type MergeGateOptions, type MergeGateReport } from './merge-gate.ts';
 import { emitResult, parseOptions, requireOption, UsageError } from './process-runner.ts';
@@ -59,10 +78,16 @@ export { UsageError };
 
 export interface DeliverOptions {
   configPath: string;
-  pr: number;
+  /** The pull request to merge; exactly one of `pr` and `branch` is given. */
+  pr?: number | undefined;
+  /** The pushed remote branch to merge straight into the default branch, with no pull request. */
+  branch?: string | undefined;
   worktree: string;
-  commentFile: string;
-  /** The head pinned at acceptance; the merge refuses when the pull request head differs. */
+  /** The comment posted on the pull request; required with `pr`, refused with `branch`. */
+  commentFile?: string | undefined;
+  /** The squash commit's message; required with `branch`, refused with `pr`. */
+  messageFile?: string | undefined;
+  /** The head pinned at acceptance; required with `branch`, which merges exactly this head. */
   expectedHead?: string | undefined;
   /** The issues to close after the merge, in order; each pairs with the completion file at its index. */
   issues?: string[] | undefined;
@@ -71,18 +96,23 @@ export interface DeliverOptions {
   removeWorktree?: { provider: string; name: string } | undefined;
   usageLog?: string | undefined;
   transcripts?: string[] | undefined;
-  /** Declares this pull request a repair of a red `main`; forwarded to the merge gate. */
+  /** Declares this change a repair of a red `main`; forwarded to the merge gate or direct merge. */
   fixesMain?: boolean | undefined;
 }
 
 export interface DeliverReport {
-  pr: number;
+  /** The pull request number, or `null` for a branch merge. */
+  pr: number | null;
+  /** The merged branch, or `null` for a pull request merge. */
+  branch: string | null;
   merged: boolean;
   mergeCommit: string | null;
   /** GitHub's `mergeable` value at the last read; `null` when it was not read. */
   mergeable: string | null;
   /** Set when `main`'s last batch validate failed: a warning, never a refusal. */
   mainHealthWarning: string | null;
+  /** Set when `--fixes-main` let failing text guards pass because their findings are `main`'s own. */
+  guardWaiver: string | null;
   failedStep: string | null;
   detail: string | null;
   /** The issues closed, in order, each with the Linear state it was left in. */
@@ -92,6 +122,8 @@ export interface DeliverReport {
 export interface DeliverDependencies {
   /** Merges through the merge gate, under the cross-session merge lock. */
   merge: (options: MergeGateOptions) => Promise<MergeGateReport>;
+  /** Merges a branch straight into the default branch, under the same merge lock. */
+  directMerge: (options: DirectMergeOptions) => Promise<DirectMergeReport>;
   /** The Linear client; the command line supplies `createClient()`, which reads the credentials. */
   client: LinearClient;
   remove: (options: RemoveOptions) => RemoveResult;
@@ -145,9 +177,23 @@ export async function deliver(
   partial: Partial<DeliverDependencies> = {},
 ): Promise<DeliverReport> {
   loadRepositoryConfig(options.configPath);
+  if ((options.pr === undefined) === (options.branch === undefined))
+    throw new UsageError('Give exactly one of --pr and --branch.');
   if (!existsSync(options.worktree)) throw new UsageError(`No such worktree: ${options.worktree}`);
-  if (!existsSync(options.commentFile))
-    throw new UsageError(`No such comment file: ${options.commentFile}`);
+  if (options.branch === undefined) {
+    if (options.commentFile === undefined) throw new UsageError('--pr needs --comment-file.');
+    if (options.messageFile !== undefined)
+      throw new UsageError('--message-file applies only with --branch.');
+    if (!existsSync(options.commentFile))
+      throw new UsageError(`No such comment file: ${options.commentFile}`);
+  } else {
+    if (options.messageFile === undefined) throw new UsageError('--branch needs --message-file.');
+    if (options.expectedHead === undefined) throw new UsageError('--branch needs --head.');
+    if (options.commentFile !== undefined)
+      throw new UsageError('--comment-file applies only with --pr.');
+    if (!existsSync(options.messageFile))
+      throw new UsageError(`No such message file: ${options.messageFile}`);
+  }
   const issues = options.issues ?? [];
   const completionFiles = options.completionFiles ?? [];
   if (issues.length !== completionFiles.length)
@@ -170,11 +216,13 @@ export async function deliver(
     completions.push(completion);
   }
   const report: DeliverReport = {
-    pr: options.pr,
+    pr: options.pr ?? null,
+    branch: options.branch ?? null,
     merged: false,
     mergeCommit: null,
     mergeable: null,
     mainHealthWarning: null,
+    guardWaiver: null,
     failedStep: null,
     detail: null,
     issues: [],
@@ -186,26 +234,48 @@ export async function deliver(
   };
 
   // merge
-  const merge = partial.merge;
-  if (merge === undefined) return fail('merge', 'no merge runner was provided.');
-  const merged = await merge({
-    configPath: options.configPath,
-    pr: options.pr,
-    worktree: options.worktree,
-    commentFile: options.commentFile,
-    dryRun: false,
-    checkMainHealth: true,
-    expectedHead: options.expectedHead,
-    fixesMain: options.fixesMain === true,
-    ...(options.usageLog === undefined
+  const usageFields =
+    options.usageLog === undefined
       ? {}
-      : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] }),
-  });
-  report.merged = merged.merged;
-  report.mergeCommit = merged.mergeCommit;
-  report.mergeable = merged.mergeable;
-  report.mainHealthWarning = merged.mainHealthWarning ?? null;
-  if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
+      : { usageLog: options.usageLog, transcripts: options.transcripts ?? [] };
+  if (options.branch !== undefined) {
+    const directMerge = partial.directMerge;
+    if (directMerge === undefined) return fail('merge', 'no direct merge runner was provided.');
+    const direct = await directMerge({
+      configPath: options.configPath,
+      branch: options.branch,
+      head: options.expectedHead ?? '',
+      messageFile: options.messageFile ?? '',
+      worktree: options.worktree,
+      checkMainHealth: true,
+      fixesMain: options.fixesMain === true,
+      ...usageFields,
+    });
+    report.merged = direct.merged;
+    report.mergeCommit = direct.mergeCommit;
+    report.mainHealthWarning = direct.mainHealthWarning ?? null;
+    report.guardWaiver = direct.guardWaiver ?? null;
+    if (direct.failedStep !== null) return fail(direct.failedStep, direct.detail ?? '');
+  } else {
+    const merge = partial.merge;
+    if (merge === undefined) return fail('merge', 'no merge runner was provided.');
+    const merged = await merge({
+      configPath: options.configPath,
+      pr: options.pr ?? 0,
+      worktree: options.worktree,
+      commentFile: options.commentFile ?? '',
+      dryRun: false,
+      checkMainHealth: true,
+      expectedHead: options.expectedHead,
+      fixesMain: options.fixesMain === true,
+      ...usageFields,
+    });
+    report.merged = merged.merged;
+    report.mergeCommit = merged.mergeCommit;
+    report.mergeable = merged.mergeable;
+    report.mainHealthWarning = merged.mainHealthWarning ?? null;
+    if (merged.failedStep !== null) return fail(merged.failedStep, merged.detail ?? '');
+  }
 
   // issue
   for (const [index, identifier] of issues.entries()) {
@@ -243,11 +313,14 @@ export async function deliver(
 }
 
 export function renderDeliver(report: DeliverReport): string {
+  const subject = report.branch === null ? `pr #${report.pr}` : `branch ${report.branch}`;
+  const mergeable = report.branch === null ? ` mergeable=${report.mergeable ?? 'unread'}` : '';
   const lines = [
-    `pr #${report.pr} merged=${report.merged} mergeCommit=${report.mergeCommit?.slice(0, 12) ?? 'none'} mergeable=${report.mergeable ?? 'unread'}`,
+    `${subject} merged=${report.merged} mergeCommit=${report.mergeCommit?.slice(0, 12) ?? 'none'}${mergeable}`,
   ];
   if (report.mainHealthWarning !== null)
     lines.push(`WARNING main health: ${report.mainHealthWarning}`);
+  if (report.guardWaiver !== null) lines.push(`WARNING guards: ${report.guardWaiver}`);
   if (report.issues.length > 0)
     lines.push(
       `issues: ${report.issues.map((closed) => `${closed.identifier} ${closed.state}`).join(', ')}`,
@@ -262,14 +335,29 @@ export async function run(
   dependencies: Partial<DeliverDependencies> = {},
 ): Promise<{ code: number; output: string }> {
   const parsed = parseOptions(argv, {
-    values: ['config', 'pr', 'worktree', 'comment-file', 'head', 'usage-log', 'provider', 'name'],
+    values: [
+      'config',
+      'pr',
+      'branch',
+      'worktree',
+      'comment-file',
+      'message-file',
+      'head',
+      'usage-log',
+      'provider',
+      'name',
+    ],
     repeated: ['transcript', 'issue', 'completion-file'],
     flags: ['remove-worktree', 'fixes-main', 'json'],
   });
   if (parsed.positionals.length > 0)
     throw new UsageError(`Unexpected argument ${parsed.positionals[0]}.`);
-  const pr = requireOption(parsed, 'pr');
-  if (!/^[1-9]\d*$/.test(pr)) throw new UsageError(`"${pr}" is not a pull request number.`);
+  const pr = parsed.values['pr'];
+  const branch = parsed.values['branch'];
+  if ((pr === undefined) === (branch === undefined))
+    throw new UsageError('Give exactly one of --pr and --branch.');
+  if (pr !== undefined && !/^[1-9]\d*$/.test(pr))
+    throw new UsageError(`"${pr}" is not a pull request number.`);
   const expectedHead = parsed.values['head'];
   if (expectedHead !== undefined && !/^[0-9a-f]{40}$/.test(expectedHead))
     throw new UsageError(`--head "${expectedHead}" is not a full commit SHA.`);
@@ -295,9 +383,11 @@ export async function run(
   const report = await deliver(
     {
       configPath: parsed.values['config'] ?? DEFAULT_CONFIGURATION_PATH,
-      pr: Number(pr),
+      pr: pr === undefined ? undefined : Number(pr),
+      branch,
       worktree: requireOption(parsed, 'worktree'),
-      commentFile: requireOption(parsed, 'comment-file'),
+      commentFile: parsed.values['comment-file'],
+      messageFile: parsed.values['message-file'],
       expectedHead,
       issues,
       completionFiles,
@@ -319,6 +409,12 @@ export async function run(
 function productionDependencies(): Partial<DeliverDependencies> {
   return {
     merge: (options) => mergeGateExclusively(options),
+    directMerge: (options) =>
+      directMergeExclusively(options, {}, (holder) =>
+        process.stderr.write(
+          `deliver: waiting for the merge lock${holder === undefined ? '' : ` held by ${holder.command} (pid ${holder.pid})`}\n`,
+        ),
+      ),
     remove: (options) => removeWorktree(options),
     client: createClient(),
   };

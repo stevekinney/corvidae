@@ -95,6 +95,7 @@ bun run audit
 Run quality commands explicitly; there are no Git hooks. Details: [guards](documentation/repository/guards.md), [test lanes and checks](documentation/repository/test-lanes-and-checks.md).
 
 - `bun run audit` tolerates an advisory only through an entry in `scripts/audit-exceptions.ts`; never add a bare `--ignore`.
+- `bun run lint:guards` runs the `scripts/check-*.ts` text guards alone, without oxlint; `lint:root` calls it.
 - A wall-clock or memory target is a `*.bench.ts` measurement; `scripts/check-wall-clock-assertions.ts` fails a `*.test.ts` that bounds a duration.
 - Owner decision: tests that can flake under load stay out of the critical path. Everything `bun run check` and `bun run validate` run has one deadline, the awake-time hang guard (`HANG_GUARD_MILLISECONDS`, 120 seconds), never a performance bound; `scripts/bun-test.ts` passes it, so a `package.json` script never starts `bun test` itself. Wait with `waitUntil`, `awakeTurns`, or `quietFor`, never a sleep, a turn count, a wall-clock deadline, or a timer race ([load-sensitive deadlines](documentation/repository/guards.md#load-sensitive-deadlines)).
 - Guard an inherited-key read with `Object.hasOwn`, a `Map`, or `Object.create(null)`; allowlists only shrink. `bun run release:check`, run before a backport, checks documentation coverage, Markdown examples, and test durations.

@@ -408,22 +408,28 @@ export function mergeGate(
 }
 
 /**
- * `mergeGate` under the cross-session merge lock, so two sessions never merge at once.
- * A dry run takes no lock. The lock is released whatever the outcome, and a dead holder's lock is
- * reclaimed by `run-exclusively.ts`'s helpers.
+ * Run `action` holding the cross-session merge lock: one exclusive lock in the Git common
+ * directory (`corvidae-merge-lock`), so two sessions never merge at once, whether through a pull
+ * request or straight into the default branch. The lock is released whatever the outcome, and a
+ * dead holder's lock is reclaimed by `run-exclusively.ts`'s helpers.
  */
-export async function mergeGateExclusively(
-  options: MergeGateOptions,
-  partial: Partial<MergeGateDependencies> = {},
+export async function withMergeLock<T>(
+  options: {
+    worktree: string;
+    /** What the holder reports to a waiter, for example `merge-gate pr #12`. */
+    command: string;
+    lockDirectory?: string | undefined;
+    lockPollIntervalMs?: number | undefined;
+  },
+  action: () => T | Promise<T>,
+  runner: Runner = defaultRunner,
   onWait?: AcquireHostLockOptions['onWait'],
-): Promise<MergeGateReport> {
-  if (options.dryRun) return mergeGate(options, partial);
+): Promise<T> {
   let lockDirectory = options.lockDirectory;
   if (lockDirectory === undefined) {
-    const common = (partial.runner ?? defaultRunner)(
-      ['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'],
-      { cwd: options.worktree },
-    );
+    const common = runner(['git', 'rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: options.worktree,
+    });
     if (common.code !== 0 || common.stdout.trim() === '')
       throw new UsageError(
         `${options.worktree} is not a Git worktree: ${firstLine(common.stderr)}`,
@@ -435,7 +441,7 @@ export async function mergeGateExclusively(
     ...(processStartTime(process.pid) === undefined
       ? {}
       : { pidStartedAt: processStartTime(process.pid) as string }),
-    command: `merge-gate pr #${options.pr}`,
+    command: options.command,
     cwd: options.worktree,
     acquiredAt: new Date().toISOString(),
   };
@@ -448,10 +454,30 @@ export async function mergeGateExclusively(
     ...(onWait === undefined ? {} : { onWait }),
   });
   try {
-    return mergeGate(options, partial);
+    return await action();
   } finally {
     await held.release();
   }
+}
+
+/** `mergeGate` under the merge lock (`withMergeLock`). A dry run takes no lock. */
+export async function mergeGateExclusively(
+  options: MergeGateOptions,
+  partial: Partial<MergeGateDependencies> = {},
+  onWait?: AcquireHostLockOptions['onWait'],
+): Promise<MergeGateReport> {
+  if (options.dryRun) return mergeGate(options, partial);
+  return withMergeLock(
+    {
+      worktree: options.worktree,
+      command: `merge-gate pr #${options.pr}`,
+      lockDirectory: options.lockDirectory,
+      lockPollIntervalMs: options.lockPollIntervalMs,
+    },
+    () => mergeGate(options, partial),
+    partial.runner ?? defaultRunner,
+    onWait,
+  );
 }
 
 export function renderMergeGate(report: MergeGateReport, dryRun: boolean): string {

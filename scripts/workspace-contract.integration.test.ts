@@ -300,7 +300,8 @@ describe('internal workspace architecture', () => {
     // COR-1883: a schema that changes under a version a plugin already shipped is caught here,
     // not by a CI job, so the guard is a stage of the root lint every `validate` and `check` runs.
     const { scripts = {} } = await readManifest('.');
-    expect(scripts['lint:root']).toContain('bun scripts/check-plugin-identities.ts');
+    expect(scripts['lint:root']).toContain('bun run lint:guards');
+    expect(scripts['lint:guards']).toContain('bun scripts/check-plugin-identities.ts');
   });
 
   test('compiler configuration has a dedicated internal owner and two public presets', async () => {
