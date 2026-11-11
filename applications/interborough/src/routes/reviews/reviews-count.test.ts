@@ -75,9 +75,9 @@ function navigationLabel(container: HTMLElement): string {
   return link?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
-/** What the Waiting tab says, with its count. */
+/** What the Waiting segment says, with its count ("Waiting, 1": the comma is how a reader hears it). */
 function tabLabel(container: HTMLElement): string {
-  return container.querySelector('[role="tab"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
+  return container.querySelector('[role="radio"]')?.textContent?.replace(/\s+/g, ' ').trim() ?? '';
 }
 
 /** Opens the first review in the list, as a click on its row does. */
@@ -205,7 +205,7 @@ describe('the list on /reviews', () => {
   test('shows a review that arrives after five seconds, and says how many wait', async () => {
     const { container } = open('/reviews', { reviews: [approval('a')] });
     await until(() => expect(rows(container)).toBe(1));
-    expect(tabLabel(container)).toBe('Waiting (1)');
+    expect(tabLabel(container)).toBe('Waiting, 1');
 
     world.reviews = [...world.reviews, approval('b')];
     jest.advanceTimersByTime(4_000);
@@ -213,7 +213,7 @@ describe('the list on /reviews', () => {
     expect(rows(container)).toBe(1);
     jest.advanceTimersByTime(1_000);
     await until(() => expect(rows(container)).toBe(2));
-    expect(tabLabel(container)).toBe('Waiting (2)');
+    expect(tabLabel(container)).toBe('Waiting, 2');
   });
 
   test('drops a review that was resolved elsewhere after five seconds', async () => {

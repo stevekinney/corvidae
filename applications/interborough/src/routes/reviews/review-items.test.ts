@@ -13,6 +13,8 @@ import {
   inboxKey,
   neighbourKey,
   resolutionLabel,
+  resolutionTone,
+  resolutionWord,
   reviewKindLabel,
   reviewTitle,
   waitingItems,
@@ -129,5 +131,35 @@ describe('what became of a review, in a word', () => {
     expect(resolutionLabel(review('rejected'))).toBe('Rejected');
     expect(resolutionLabel(review('needs-changes'))).toBe('Changes requested');
     expect(resolutionLabel(engine({ status: 'completed' }))).toBe('Closed');
+  });
+});
+
+describe('the dot a decided review carries', () => {
+  test('is a success for an approval alone, because a decision is not a failure', () => {
+    expect(resolutionTone(decided())).toBe('success');
+    expect(resolutionTone(decided({ status: 'denied' }))).toBe('neutral');
+    expect(resolutionTone(decided({ status: 'rejected' }))).toBe('neutral');
+    expect(resolutionTone(humanWaitFixture({ status: 'approved' }))).toBe('neutral');
+    expect(resolutionTone(decided({ status: 'expired' }))).toBe('neutral');
+  });
+
+  test('says "by you" after the word when the viewer decided it, and not otherwise', () => {
+    expect(resolutionWord(decided(), 'steve')).toBe('Approved by you');
+    expect(resolutionWord(decided(), 'someone-else')).toBe('Approved');
+    expect(resolutionWord(decided(), undefined)).toBe('Approved');
+    expect(resolutionWord(humanWaitFixture({ status: 'approved' }), 'steve')).toBe('Answered');
+    expect(
+      resolutionWord(
+        humanWaitFixture({
+          status: 'approved',
+          resolution: { decidedBy: 'steve', decidedAt: 9 },
+        }),
+        'steve',
+      ),
+    ).toBe('Answered by you');
+  });
+
+  test('keeps the plain word for a review the Bureau closed, even under the viewer’s name', () => {
+    expect(resolutionWord(decided({ status: 'expired' }), 'steve')).toBe('Closed');
   });
 });

@@ -5,11 +5,12 @@
    * (`bureau.reviews.list`), each answered where it is shown: an approval is approved, denied or
    * allowed for the rest of its chat, a question is answered in the shape it asks for, and a
    * workflow review takes the engine's decision form. Done lists what was decided. This owns the
-   * queries and the writes once and hands them down; the tabs are the address (`?tab=done`).
+   * queries and the writes once and hands them down; the segments (Waiting and Done, each with its
+   * count, a dash until it is known) are the address (`?tab=done`). Done is read from the start so
+   * its count is known, and a decision asks both lists again, so both counts follow it. The count is
+   * of the decided reviews read so far (a page is 25), because the Bureau's list carries no total.
    */
-  import { untrack } from 'svelte';
-
-  import { Alert, PageHeader, Tabs } from '@lostgradient/cinder';
+  import { Alert, FilterBar, PageHeader, type FilterSegment } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
   import { isReviewRoundChanged, type BureauHumanWait } from '../../lib/bureau-reviews.ts';
@@ -41,25 +42,23 @@
     return named === 'done' ? 'done' : 'waiting';
   }
 
-  let activeTab = $state<string>(untrack(() => tabOf(router.search)));
+  /** The segment the address names. */
+  const activeTab = $derived(tabOf(router.search));
 
-  /** Puts a tab the person picked in the address; the open review belongs to a tab, so it is left behind. */
+  /** Puts a segment the person picked in the address; the open review belongs to one, so it is left behind. */
   function writeTab(next: string): void {
     if (tabOf(router.search) === next) return;
     router.navigate(next === 'waiting' ? router.pathname : `${router.pathname}?tab=${next}`);
   }
 
-  $effect(() => {
-    const fromUrl = tabOf(router.search);
-    if (fromUrl !== activeTab) activeTab = fromUrl;
-  });
-
   const client = getClient();
   const principalStore = getPrincipalStore();
   const submitGate = $derived(scopeGate(principalStore, ['reviews:write']));
+  /** Who the caller is, so what they decided reads "by you". */
+  const viewer = $derived(principalStore.principal?.subject ?? undefined);
 
   const waitingQuery = waitingReviewsQuery();
-  const doneQuery = doneReviewsQuery(() => activeTab === 'done');
+  const doneQuery = doneReviewsQuery(() => true);
   const decisionMutation = submitReviewDecisionMutation(client);
   const resolveMutation = resolveBureauReviewMutation();
   const answerMutation = answerHumanWaitMutation();
@@ -102,19 +101,43 @@
   /** A decision that took effect but needs saying so: its outcome was not written, or it was not remembered. */
   let notice = $state<{ title: string; message: string } | undefined>(undefined);
 
-  function submitDecision(reviewId: string, submission: ReviewDecisionSubmission): void {
-    decisionMutation.mutate({
-      reviewId,
-      options: {
-        decision: submission.decision,
-        reviewer: submission.reviewer,
-        ...(submission.feedback !== undefined ? { feedback: submission.feedback } : {}),
-        ...(submission.sectionDecisions !== undefined
-          ? { sectionDecisions: submission.sectionDecisions }
-          : {}),
+  function submitDecision(
+    reviewId: string,
+    submission: ReviewDecisionSubmission,
+    onDone: () => void,
+  ): void {
+    decisionMutation.mutate(
+      {
+        reviewId,
+        options: {
+          decision: submission.decision,
+          reviewer: submission.reviewer,
+          ...(submission.feedback !== undefined ? { feedback: submission.feedback } : {}),
+          ...(submission.sectionDecisions !== undefined
+            ? { sectionDecisions: submission.sectionDecisions }
+            : {}),
+        },
       },
-    });
+      { onSuccess: onDone },
+    );
   }
+
+  /**
+   * One segment's count: the number of reviews read, or a dash while the list is not read. A list
+   * that failed shows the dash too, because its banner says why and no number is true.
+   */
+  function segmentCount(query: { data: unknown }, size: number): { count: number | 'pending' } {
+    return { count: query.data === undefined ? 'pending' : size };
+  }
+
+  const segments = $derived<FilterSegment[]>([
+    {
+      value: 'waiting',
+      label: REVIEWS_COPY.tabs.waiting,
+      ...segmentCount(waitingQuery, waiting.length),
+    },
+    { value: 'done', label: REVIEWS_COPY.tabs.done, ...segmentCount(doneQuery, done.length) },
+  ]);
 
   function resolve(request: ResolveRequest): void {
     const { review, decision, reason, remember, onDone } = request;
@@ -224,43 +247,49 @@
     <QueryFaultBanner error={fault.error} onRetry={fault.retry} />
   {/each}
 
-  <Tabs bind:value={activeTab} onValueChange={writeTab}>
-    <Tabs.List label={REVIEWS_COPY.tabsLabel}>
-      <Tabs.Trigger value="waiting">{REVIEWS_COPY.waitingTab(waiting.length)}</Tabs.Trigger>
-      <Tabs.Trigger value="done">{REVIEWS_COPY.tabs.done}</Tabs.Trigger>
-    </Tabs.List>
-    <Tabs.Panel value="waiting">
-      <ReviewsPanel
-        mode="waiting"
-        items={waiting}
-        phase={phaseOf(waitingQuery)}
-        {resolving}
-        submitting={decisionMutation.isPending}
-        {submitGate}
-        {outcome}
-        onResolve={resolve}
-        onAnswer={answer}
-        onSubmit={submitDecision}
-      />
-    </Tabs.Panel>
-    <Tabs.Panel value="done">
-      <ReviewsPanel
-        mode="done"
-        items={done}
-        phase={phaseOf(doneQuery)}
-        {resolving}
-        submitting={decisionMutation.isPending}
-        {submitGate}
-        {outcome}
-        hasMore={doneQuery.hasNextPage}
-        loadingMore={doneQuery.isFetchingNextPage}
-        onLoadMore={async () => {
-          await doneQuery.fetchNextPage();
-        }}
-        onResolve={resolve}
-        onAnswer={answer}
-        onSubmit={submitDecision}
-      />
-    </Tabs.Panel>
-  </Tabs>
+  <!-- The segments stay through every state, so the page never loses its place while a list is read. -->
+  <FilterBar
+    aria-label={REVIEWS_COPY.tabsLabel}
+    searchVisible={false}
+    {segments}
+    segmentValue={activeTab}
+    onSegmentChange={writeTab}
+  />
+
+  <!-- One panel per state, remounted when the state changes: the keys that decide and the selection
+       belong to the list on screen. -->
+  {#if activeTab === 'done'}
+    <ReviewsPanel
+      mode="done"
+      items={done}
+      phase={phaseOf(doneQuery)}
+      {resolving}
+      submitting={decisionMutation.isPending}
+      {submitGate}
+      {outcome}
+      {viewer}
+      hasMore={doneQuery.hasNextPage}
+      loadingMore={doneQuery.isFetchingNextPage}
+      onLoadMore={async () => {
+        await doneQuery.fetchNextPage();
+      }}
+      onResolve={resolve}
+      onAnswer={answer}
+      onSubmit={submitDecision}
+    />
+  {:else}
+    <ReviewsPanel
+      mode="waiting"
+      items={waiting}
+      phase={phaseOf(waitingQuery)}
+      {resolving}
+      submitting={decisionMutation.isPending}
+      {submitGate}
+      {outcome}
+      {viewer}
+      onResolve={resolve}
+      onAnswer={answer}
+      onSubmit={submitDecision}
+    />
+  {/if}
 </section>

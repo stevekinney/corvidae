@@ -58,6 +58,7 @@
 
 <div class="ib-review-pane" data-kind="human-wait" data-review={review.id}>
   <div class="ib-review-pane__content">
+    <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.questionEyebrow}</p>
     <h2 class="ib-review-pane__question" id={`review-${review.id}-question`}>
       <IdentifierText
         text={review.prompt ?? REVIEWS_COPY.questionFallback}

@@ -5,12 +5,17 @@
    * Deny with an optional note the agent reads, and, in a chat, Allow for the rest of this chat.
    * A decided approval shows the same, with what became of it in place of the buttons.
    */
-  import { Alert, Button, Input } from '@lostgradient/cinder';
+  import { Alert, Button, Input, humanizeIdentifier } from '@lostgradient/cinder';
 
   import { REVIEWS_COPY } from '../../app/copy.ts';
   import type { BureauToolApproval } from '../../lib/bureau-reviews.ts';
   import IdentifierText from '../../lib/identifier-text.svelte';
-  import { approvalQuestion, argumentEntries, declaredSummary } from '../../lib/tool-text.ts';
+  import {
+    approvalQuestion,
+    argumentEntries,
+    declaredSummary,
+    reasonSaysAlways,
+  } from '../../lib/tool-text.ts';
   import BureauReviewOperation from './bureau-review-operation.svelte';
   import ReviewResolution from './review-resolution.svelte';
   import ReviewSource from './review-source.svelte';
@@ -41,13 +46,36 @@
   const operation = $derived(
     review.approval.action.type === 'approval' ? review.approval.action.operation : undefined,
   );
+  /** The tool as a person says it ("Issue refund"), beside its identifier. */
+  const toolLabel = $derived(humanizeIdentifier(review.approval.toolName, { casing: 'sentence' }));
+  /** How risky the call is, when it is: what the approval declares, said in words. */
+  const riskWords = $derived.by(() => {
+    const action = review.approval.action;
+    if (action.type !== 'approval') return undefined;
+    if (action.risk === 'high') return REVIEWS_COPY.risk.high;
+    if (action.risk === 'medium') return REVIEWS_COPY.risk.medium;
+    return undefined;
+  });
+  /**
+   * Whether the tool asks on every call (its mode is Always), which allowing it for the rest of the
+   * chat would not change, so the choice is not offered.
+   */
+  const alwaysAsks = $derived(reasonSaysAlways(review.approval.reason));
 </script>
 
 <div class="ib-review-pane" data-kind="tool-approval" data-review={review.id}>
+  <p class="ib-review-pane__eyebrow">{REVIEWS_COPY.toolApproval}</p>
   <h2 class="ib-review-pane__question" id={`review-${review.id}-question`}>
     <IdentifierText text={question} identifiers={[review.approval.toolName]} />
   </h2>
   <ReviewSource {review} {waiting} />
+  <p class="ib-review-pane__wants" data-testid="review-wants">
+    {REVIEWS_COPY.wantsToRun}
+    {toolLabel}
+    <code class="ib-review-pane__code">{review.approval.toolName}</code
+    >{#if riskWords !== undefined},
+      {riskWords}{/if}
+  </p>
   <section class="ib-review-pane__input" aria-label={REVIEWS_COPY.inputLabel}>
     {#if entries.length === 0}
       <p class="ib-review-pane__note">{REVIEWS_COPY.noInput}</p>
@@ -70,7 +98,7 @@
         label={REVIEWS_COPY.noteLabel}
         labelVisible={false}
         description={REVIEWS_COPY.noteDescription}
-        placeholder={REVIEWS_COPY.noteLabel}
+        placeholder={REVIEWS_COPY.notePlaceholder}
         bind:value={note}
         disabled={deciding}
       />
@@ -91,12 +119,14 @@
           disabled={deciding}
           onclick={() => onDecide('deny')}>{REVIEWS_COPY.deny}</Button
         >
-        <Button
-          data-changes
-          variant="ghost"
-          disabled={deciding}
-          onclick={() => onDecide('remember')}>{REVIEWS_COPY.allowForChat}</Button
-        >
+        {#if !alwaysAsks}
+          <Button
+            data-changes
+            variant="ghost"
+            disabled={deciding}
+            onclick={() => onDecide('remember')}>{REVIEWS_COPY.allowForChat}</Button
+          >
+        {/if}
       </div>
     </div>
   {:else}

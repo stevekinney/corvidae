@@ -5760,14 +5760,56 @@ export const TASK_COPY = {
 /** The words `/reviews` uses outside its states. */
 export const REVIEWS_COPY = {
   heading: 'Reviews',
-  description: 'Questions, tool approvals and workflow reviews that are waiting on you.',
+  description: 'Approvals, questions and workflow reviews waiting on you.',
+  /** The accessible name of the segments that say which reviews are listed; narrow, they read "Status: Waiting 2". */
   tabsLabel: 'Reviews by state',
+  /** The segments of the list: the words ahead of their counts. */
   tabs: { waiting: 'Waiting', done: 'Done' },
   /** The accessible name of each list. */
   listLabel: { waiting: 'Waiting on you', done: 'Decided' },
   detailLabel: 'Review',
-  /** What the list tab says, with the count waiting. */
-  waitingTab: (count: number): string => (count === 0 ? 'Waiting' : `Waiting (${String(count)})`),
+  /** Said at the head of the list: the keys that move through it. */
+  keysHint: 'J and K move between reviews.',
+  /** The bands the Done list is grouped under, before the day's date. */
+  day: { today: 'Today', yesterday: 'Yesterday' },
+  /** The small line over an open question's and an open workflow review's heading (an approval's is `toolApproval`). */
+  questionEyebrow: 'Question from an agent',
+  workflowEyebrow: 'Review requested by a workflow',
+  /** Said under an approval's heading, ahead of the tool it wants to run. */
+  wantsToRun: 'It wants to run',
+  /** How risky the tool is, by the risk the approval declares; a low risk says nothing. */
+  risk: { high: 'Dangerous, Can’t be undone', medium: 'Changes things' },
+  /** The placeholder of the note field on an approval. */
+  notePlaceholder: 'Add a note',
+  /** Said in place of a review that left the queue while it was open: the agent moved on. */
+  noLongerWaiting: {
+    message: 'No longer waiting. The agent already moved on, so nothing is needed from you.',
+    next: 'Next review',
+  },
+  /** The words a decision is announced with, politely, once it has landed. */
+  announced: {
+    approved: 'Approved',
+    denied: 'Denied',
+    answered: 'Answered',
+    sentBack: 'Sent back',
+    gone: 'No longer waiting',
+  },
+  /** One announcement: what happened, then the review it happened to ("Approved: Refund order 4471"). */
+  announce: (word: string, title: string): string => (title === '' ? word : `${word}: ${title}`),
+  /** A decided review's word when the viewer decided it ("Approved by you"). */
+  decidedByYou: (word: string): string => `${word} by you`,
+  /** What a workflow review's decision bar says. */
+  workflow: {
+    approve: 'Approve',
+    sendBack: 'Send back',
+    notePlaceholder: 'Say what to change if you send it back',
+    noteDescription:
+      'Saved with your decision. If you send it back, the workflow reads it as what to change.',
+    footer: 'The workflow continues as soon as you answer.',
+    draftLabel: 'Draft',
+    copyDraft: 'Copy the draft',
+    draftCopied: 'Draft copied',
+  },
   /** The status of the list while it is read. */
   loading: 'Loading reviews',
   /** What a person sees under the heading of a list that holds more than a page. */
@@ -5812,8 +5854,8 @@ export const REVIEWS_COPY = {
   agentFact: 'Agent',
   noReviewSelected: 'No review selected',
   chooseReview: 'Choose a review from the list.',
-  allCaughtUp: 'All caught up',
-  nothingWaiting: 'No reviews are waiting on a decision.',
+  allCaughtUp: 'Nothing waiting on you',
+  nothingWaiting: 'When an agent asks for approval or has a question, it shows up here.',
   nothingDecided: 'Nothing decided yet',
   nothingDecidedDescription: 'Reviews you approve, deny or answer are listed here.',
   /** The source line under a question: who asked, where, and since when. */

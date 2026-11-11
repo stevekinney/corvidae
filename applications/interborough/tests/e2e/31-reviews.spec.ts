@@ -277,7 +277,7 @@ test.describe('a tool approval', () => {
     await expect(paneOf(page).getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(paneOf(page).getByRole('button', { name: 'Deny' })).toHaveCount(0);
     // Done is read through the same list, asked for what was resolved.
-    await page.getByRole('tab', { name: /^Waiting/ }).click();
+    await page.getByRole('radio', { name: /^Waiting/ }).click();
     await expect(page).not.toHaveURL(/tab=done/);
     await expect(rowOf(page, review)).toHaveCount(0);
   });
@@ -485,7 +485,7 @@ test.describe('a Bureau that fails', () => {
 
     await expect(page.locator('[data-view="reviews"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('alert').filter({ hasText: 'Something went wrong' })).toBeVisible();
-    await expect(page.getByText('All caught up')).toHaveCount(0);
+    await expect(page.getByText('Nothing waiting on you')).toHaveCount(0);
     await checkA11y('the inbox with the Bureau failing');
   });
 });

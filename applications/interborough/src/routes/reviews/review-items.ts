@@ -103,3 +103,24 @@ export function resolutionLabel(review: ListedReview): string {
       return REVIEWS_COPY.decided.closed;
   }
 }
+
+/**
+ * The tone of the dot a decided review's word carries. Only an approval is a success: an answer, a
+ * send-back and a denial are neutral, because a decision is not a failure.
+ */
+export function resolutionTone(review: ListedReview): 'success' | 'neutral' {
+  return resolutionLabel(review) === REVIEWS_COPY.decided.approved ? 'success' : 'neutral';
+}
+
+/**
+ * A decided review's word, with "by you" after it when `viewer` (the caller's principal) is the one
+ * who decided it. A review the Bureau closed itself keeps its plain word.
+ */
+export function resolutionWord(review: ListedReview, viewer: string | undefined): string {
+  const word = resolutionLabel(review);
+  const decidedBy = review.resolution?.decidedBy;
+  if (viewer === undefined || decidedBy !== viewer || word === REVIEWS_COPY.decided.closed) {
+    return word;
+  }
+  return REVIEWS_COPY.decidedByYou(word);
+}

@@ -28,6 +28,16 @@ describe('Reviews route', () => {
     expect(queryByRole('radio', { name: 'Inbox' })).toBeNull();
   });
 
+  test('keeps its header and shows the segments with a dash for each count until the lists are read', async () => {
+    const { getByRole } = render(ReviewsTestHarness, {
+      props: { client: pendingClient(), scopes: ['reviews:read', 'events:read'] },
+    });
+
+    expect(getByRole('heading', { level: 1, name: 'Reviews' })).not.toBeNull();
+    expect(getByRole('radio', { name: /^Waiting\s*,\s*loading$/ })).not.toBeNull();
+    expect(getByRole('radio', { name: /^Done\s*,\s*loading$/ })).not.toBeNull();
+  });
+
   test('is not locked for a principal without reviews:read, because the Bureau’s reviews need none', async () => {
     const { getByRole, queryByText } = render(ReviewsTestHarness, {
       props: { client: pendingClient(), scopes: [] },

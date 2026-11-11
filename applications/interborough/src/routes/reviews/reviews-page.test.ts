@@ -109,8 +109,8 @@ describe('the reviews page', () => {
       'Which environment should the release go to?',
     );
     expect(rows(container)[2]?.textContent).toContain('Contract approval');
-    // One count, on the tab, and no section of its own for the engine's reviews.
-    expect(getByRole('tab', { name: 'Waiting (3)' })).not.toBeNull();
+    // One count, on the segment, and no section of its own for the engine's reviews.
+    expect(getByRole('radio', { name: /^Waiting\s*,\s*3$/ })).not.toBeNull();
     expect(container.textContent).not.toContain('Workflow reviews');
     expect(container.textContent).not.toContain('Engine');
   });
@@ -777,28 +777,48 @@ describe('answering a Bureau question', () => {
 });
 
 describe('an engine review', () => {
-  test('is decided through its own form, and goes from the list', async () => {
-    const { container, findByRole, getByLabelText } = open({ weftReviews: [weftPending()] });
+  test('is approved from its own bar as the caller, and goes from the list', async () => {
+    const { container, findByRole } = open({ weftReviews: [weftPending()] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await fireEvent.click(await findByRole('radio', { name: 'Approve' }));
-    await fireEvent.input(getByLabelText(/Reviewer/), { target: { value: 'ops@example.com' } });
-    await fireEvent.click(await findByRole('button', { name: 'Submit decision' }));
+    await fireEvent.click(await findByRole('button', { name: 'Approve' }));
     await waitFor(() => expect(stub?.weftDecisions.length).toBe(1));
     expect(stub?.weftDecisions[0]).toMatchObject({
       reviewId: 'weft-review-1',
-      body: { decision: 'approved', reviewer: 'ops@example.com' },
+      body: { decision: 'approved', reviewer: 'tester' },
     });
     await waitFor(() => expect(rows(container).length).toBe(0));
     expect(stub?.callsTo('bureau.reviews.resolve')).toEqual([]);
   });
 
-  test('keeps its own decision form: the reviewer’s name, and no Deny and no reason', async () => {
+  test('is sent back with the note typed, which the workflow reads as what to change', async () => {
     const { container, findByRole, getByLabelText } = open({ weftReviews: [weftPending()] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    expect(await findByRole('button', { name: 'Submit decision' })).not.toBeNull();
-    expect(getByLabelText(/Reviewer/)).not.toBeNull();
+    await fireEvent.input(getByLabelText(REVIEWS_COPY.noteLabel), {
+      target: { value: '  Fix clause 4.  ' },
+    });
+    await fireEvent.click(await findByRole('button', { name: 'Send back' }));
+    await waitFor(() => expect(stub?.weftDecisions.length).toBe(1));
+    expect(stub?.weftDecisions[0]).toMatchObject({
+      reviewId: 'weft-review-1',
+      body: { decision: 'needs-changes', reviewer: 'tester', feedback: 'Fix clause 4.' },
+    });
+  });
+
+  test('is decided by Send back and Approve, with a note, and has no Deny and no reviewer field', async () => {
+    const { container, findByRole, getByLabelText, getByText, queryByRole, queryByLabelText } =
+      open({ weftReviews: [weftPending()] });
+    await waitFor(() => expect(rows(container).length).toBe(1));
+    await openRow(container, 0);
+    expect(await findByRole('button', { name: 'Send back' })).not.toBeNull();
+    expect(queryByRole('button', { name: 'Deny' })).toBeNull();
+    expect(queryByRole('button', { name: 'Submit decision' })).toBeNull();
+    expect(queryByLabelText(/Reviewer/)).toBeNull();
+    expect(getByLabelText(REVIEWS_COPY.noteLabel)).not.toBeNull();
+    expect(getByText(REVIEWS_COPY.workflow.noteDescription)).not.toBeNull();
+    expect(getByText(REVIEWS_COPY.workflow.footer)).not.toBeNull();
+    expect(getByText(REVIEWS_COPY.workflowEyebrow)).not.toBeNull();
     expect(container.textContent).not.toContain('Reason (required to reject)');
   });
 
@@ -816,7 +836,7 @@ describe('an engine review', () => {
     const { container, findByRole } = open({ weftReviews: [weftPending()] });
     await waitFor(() => expect(rows(container).length).toBe(1));
     await openRow(container, 0);
-    await findByRole('button', { name: 'Submit decision' });
+    await findByRole('button', { name: 'Approve' });
     press('a');
     press('d');
     expect(stub?.weftDecisions).toEqual([]);
@@ -874,7 +894,7 @@ describe('the Done tab', () => {
       '/reviews?tab=done',
     );
     await waitFor(() => expect(rows(container).length).toBe(4));
-    expect(getByRole('tab', { name: 'Done', selected: true })).not.toBeNull();
+    expect(getByRole('radio', { name: /^Done\s*,\s*4$/, checked: true })).not.toBeNull();
     const labels = rows(container).map((row) => row.textContent ?? '');
     expect(labels[0]).toContain('Denied');
     expect(labels[1]).toContain('Approved');
@@ -889,7 +909,7 @@ describe('the Done tab', () => {
   test('is opened from the tab, and the Waiting tab does not list what is decided', async () => {
     const { container, findByRole } = open({ reviews: [APPROVAL, approved] });
     await waitFor(() => expect(rows(container).length).toBe(1));
-    await fireEvent.click(await findByRole('tab', { name: 'Done' }));
+    await fireEvent.click(await findByRole('radio', { name: /^Done/ }));
     await waitFor(() => expect(router.search.get('tab')).toBe('done'));
     await waitFor(() => expect(rows(container).length).toBe(1));
     expect(rows(container)[0]?.textContent).toContain('Approved');
@@ -937,7 +957,8 @@ describe('the Done tab', () => {
     const resolved = await findByTestId('review-resolution');
     expect(resolved.textContent).toContain('Changes requested');
     expect(resolved.textContent).toContain('Fix clause 4.');
-    expect(queryByRole('button', { name: 'Submit decision' })).toBeNull();
+    expect(queryByRole('button', { name: 'Approve' })).toBeNull();
+    expect(queryByRole('button', { name: 'Send back' })).toBeNull();
   });
 
   test('says nothing was decided with the first-use kind of empty state', async () => {
