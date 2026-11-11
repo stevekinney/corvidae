@@ -1527,9 +1527,10 @@ describe('the Then step of a new hook', () => {
     await view.findByText(HOOKS_COPY.editor.event.required);
     await view.findByText(HOOKS_COPY.editor.webhook.urlMissing);
     await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label }),
-      ),
+      expect(
+        document.activeElement ===
+          view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label }),
+      ).toBe(true),
     );
     expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
   });
@@ -1543,7 +1544,7 @@ describe('the Then step of a new hook', () => {
     expect(address.getAttribute('aria-invalid')).toBe('true');
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
-    await waitFor(() => expect(document.activeElement).toBe(address));
+    await waitFor(() => expect(document.activeElement === address).toBe(true));
     expect(address.value).toBe('events.pagerduty.com');
     expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
   });
@@ -1745,9 +1746,10 @@ describe('the editor for a hook it cannot change the action of', () => {
     expect(save.disabled).toBe(false);
     await fireEvent.click(save);
     await waitFor(() =>
-      expect(document.activeElement).toBe(
-        view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label }),
-      ),
+      expect(
+        document.activeElement ===
+          view.getByRole('combobox', { name: HOOKS_COPY.editor.event.label }),
+      ).toBe(true),
     );
     expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
   });

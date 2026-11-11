@@ -47,10 +47,10 @@
   const copy = HOOKS_COPY.editor.header;
 </script>
 
-<div class="ib-hook-header" data-testid="hook-header">
+<div class="ib-hook-identity" data-testid="hook-header">
   <PageHeader {title} description={sentence} headingLevel={1}>
     {#snippet actions()}
-      <div class="ib-hook-header__actions">
+      <div class="ib-hook-identity__actions">
         <Toggle
           {...{ 'data-changes': true }}
           id="ib-hook-on"
@@ -82,8 +82,8 @@
     {/snippet}
   </PageHeader>
   {#if latest !== undefined}
-    <p class="ib-hook-header__latest" data-testid="hook-latest-delivery">
-      <span class="ib-hook-header__latest-label">
+    <p class="ib-hook-identity__latest" data-testid="hook-latest-delivery">
+      <span class="ib-hook-identity__latest-label">
         <VisuallyHidden>{copy.latestLabel}</VisuallyHidden>
         {#if latest.word !== undefined}
           <StatusDot word={latest.word} size="sm" data-status-word={latest.word} />
@@ -92,7 +92,7 @@
         {/if}
       </span>
       {#if latest.when !== undefined}
-        <span class="ib-hook-header__when" data-testid="hook-latest-when"
+        <span class="ib-hook-identity__when" data-testid="hook-latest-when"
           >{latest.answer === undefined ? latest.when : `${latest.when}, ${latest.answer}`}</span
         >
       {/if}
@@ -102,20 +102,20 @@
 </div>
 
 <style>
-  .ib-hook-header {
+  .ib-hook-identity {
     display: flex;
     flex-direction: column;
     gap: var(--cinder-space-2);
     min-width: 0;
   }
 
-  .ib-hook-header__actions {
+  .ib-hook-identity__actions {
     display: flex;
     align-items: center;
     gap: var(--cinder-space-3);
   }
 
-  .ib-hook-header__latest {
+  .ib-hook-identity__latest {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
@@ -125,12 +125,12 @@
     font-size: var(--cinder-text-sm);
   }
 
-  .ib-hook-header__latest-label {
+  .ib-hook-identity__latest-label {
     display: inline-flex;
     align-items: center;
   }
 
-  .ib-hook-header__when {
+  .ib-hook-identity__when {
     color: var(--cinder-text-muted);
     overflow-wrap: anywhere;
   }
