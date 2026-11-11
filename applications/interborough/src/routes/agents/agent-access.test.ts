@@ -107,11 +107,13 @@ describe('the tab', () => {
     serve();
     const { findByRole, findByTestId } = mount();
 
-    const tab = await findByRole('tab', { name: 'Access' });
+    // A tab carries its count after its name once it is known ("Access 1"), so the names are read
+    // as the first word of each tab.
+    const tab = await findByRole('tab', { name: /^Access/ });
     expect(tab.getAttribute('aria-selected')).toBe('true');
     await findByTestId('agent-access');
-    const tabs = [...document.querySelectorAll('[role="tab"]')].map((tab) =>
-      tab.textContent.trim(),
+    const tabs = [...document.querySelectorAll('[role="tab"]')].map(
+      (tab) => tab.textContent.trim().split(/\s+/)[0],
     );
     expect(tabs).toEqual(['Chats', 'Instructions', 'Access', 'Hooks', 'Memory', 'Settings']);
   });
