@@ -314,6 +314,19 @@
   function handleInputSubmit(toolCallId: string, value: unknown): void {
     inputSubmissions = [...inputSubmissions, { toolCallId, value }];
   }
+
+  // The artifact-preview network spec opens untrusted HTML and SVG through this hook, so each
+  // adversarial input needs no fixture of its own. Nothing renders until the hook is called.
+  let previewProbe = $state<{ type: 'html' | 'svg'; content: string } | undefined>();
+  $effect(() => {
+    const probeWindow = window as Window & {
+      corvidaeChatHarnessOpenArtifactPreview?: (type: 'html' | 'svg', content: string) => void;
+    };
+    probeWindow.corvidaeChatHarnessOpenArtifactPreview = (type, content) => {
+      previewProbe = { type, content };
+    };
+    return () => delete probeWindow.corvidaeChatHarnessOpenArtifactPreview;
+  });
 </script>
 
 <div class="chat-fixture-stack">
@@ -459,6 +472,12 @@
       {selectedArtifact?.title ?? ''}
     </span>
   </div>
+
+  {#if previewProbe}
+    <div style="height: 12rem;" data-testid="artifact-preview-probe">
+      <ArtifactViewer type={previewProbe.type} content={previewProbe.content} title="Probe" />
+    </div>
+  {/if}
 </div>
 
 <style>
