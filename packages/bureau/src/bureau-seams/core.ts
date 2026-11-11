@@ -217,6 +217,13 @@ export type ReviewAuditAttachment = {
   decisionRequest?: ReviewDecisionRequest;
 };
 
+/** What a chat run's terminal event reports about its spend and who ran it (COR-1915). */
+export type ChatRunSpend = {
+  readonly agentName: string;
+  readonly owner: string;
+  readonly costEstimate: { readonly totalCost: number } | undefined;
+};
+
 /**
  * What every seam factory reads from `constructBureau`. Never destructure an accessor at a
  * factory's top: read `core.x` where it is used, so the read happens at call time.
