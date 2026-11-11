@@ -1,13 +1,13 @@
 /**
- * The hook editor's draft (COR-1858): what makes it valid, the request it makes, and that a signing
- * secret is only ever sent, never loaded back.
+ * The hook editor's draft (COR-1858, COR-2022): what makes it valid, what stops it being saved and
+ * where, and the request it makes. The signing secret is no part of the draft: the Bureau makes one
+ * and shows it once.
  */
 import { describe, expect, test } from 'bun:test';
 
 import type { Hook } from '../../lib/bureau-hooks.ts';
+import { HOOKS_COPY } from './hook-copy.ts';
 import { EVENTS_MAXIMUM, HookFormState } from './hook-form-state.svelte.ts';
-
-const SECRET = 'sixteen-characters-or-more';
 
 function hook(action: Hook['action'], overrides: Partial<Hook> = {}): Hook {
   return {
@@ -29,18 +29,21 @@ function webhook(isNew = true): HookFormState {
   const form = new HookFormState(isNew);
   form.events = ['review.requested'];
   form.url = ' https://example.com/receive ';
-  form.signingSecret = SECRET;
   return form;
 }
 
 describe('a new webhook hook', () => {
-  test('needs an event, an address, and a secret', () => {
+  test('needs an event and an address, and says which is missing, in the order of the steps', () => {
     const form = new HookFormState(true);
     expect(form.isValid).toBe(false);
+    expect(form.problems).toEqual([
+      { field: 'event', message: HOOKS_COPY.editor.event.required },
+      { field: 'url', message: HOOKS_COPY.editor.webhook.urlMissing },
+    ]);
     form.events = ['review.requested'];
+    expect(form.problems.map((problem) => problem.field)).toEqual(['url']);
     form.url = 'https://example.com/receive';
-    expect(form.isValid).toBe(false);
-    form.signingSecret = SECRET;
+    expect(form.problems).toEqual([]);
     expect(form.isValid).toBe(true);
   });
 
@@ -58,16 +61,20 @@ describe('a new webhook hook', () => {
     }
   });
 
-  test('refuses a secret outside 16 to 256 characters', () => {
+  test('says to start an address with https:// unless it is one with a part the Bureau refuses', () => {
+    const copy = HOOKS_COPY.editor.webhook;
     const form = webhook();
-    form.signingSecret = 'short';
-    expect(form.secretProblem).toBeDefined();
-    expect(form.isValid).toBe(false);
-    form.signingSecret = 'x'.repeat(257);
-    expect(form.secretProblem).toBeDefined();
-    form.signingSecret = 'x'.repeat(256);
-    expect(form.secretProblem).toBeUndefined();
-    expect(form.isValid).toBe(true);
+    form.url = 'events.pagerduty.com';
+    expect(form.urlProblem).toBe(copy.urlMissing);
+    expect(form.problems).toEqual([{ field: 'url', message: copy.urlMissing }]);
+    form.url = 'ftp://example.com';
+    expect(form.urlProblem).toBe(copy.urlMissing);
+    form.url = 'https://user:pw@example.com';
+    expect(form.urlProblem).toBe(copy.urlInvalid);
+    form.url = 'https://example.com/#x';
+    expect(form.urlProblem).toBe(copy.urlInvalid);
+    form.url = '  ';
+    expect(form.urlProblem).toBeUndefined();
   });
 
   test('refuses no event and too many', () => {
@@ -78,12 +85,11 @@ describe('a new webhook hook', () => {
     expect(form.isValid).toBe(false);
   });
 
-  test('sends the trimmed address, the secret, and only the name that was typed', () => {
+  test('sends the trimmed address and only the name that was typed, and no secret', () => {
     const form = webhook();
     expect(form.toInput()).toEqual({
       events: ['review.requested'],
       action: { type: 'webhook', url: 'https://example.com/receive' },
-      signingSecret: SECRET,
     });
     form.name = '  Tell the receiver ';
     expect(form.toInput()).toMatchObject({ name: 'Tell the receiver' });
@@ -91,13 +97,12 @@ describe('a new webhook hook', () => {
 });
 
 describe('an existing hook', () => {
-  test('loads everything but the secret, and keeps the secret when the field is left empty', () => {
+  test('loads the hook, and sends nothing for an action it did not change', () => {
     const form = new HookFormState(false);
     const loaded = hook({ type: 'webhook', url: 'https://example.com/a' });
     form.load(loaded);
     expect(form.url).toBe('https://example.com/a');
     expect(form.name).toBe('Kept');
-    expect(form.signingSecret).toBe('');
     expect(form.isValid).toBe(true);
     // The action is the hook's own, so it is not sent again.
     expect(form.toChange(loaded)).toEqual({ name: 'Kept' });
@@ -116,7 +121,6 @@ describe('an existing hook', () => {
 
     const webhook = hook({ type: 'webhook', url: 'https://example.com/a' });
     form.load(webhook);
-    form.signingSecret = SECRET;
     expect(form.toChange(webhook)).not.toHaveProperty('action');
     form.url = 'https://example.com/b';
     expect(form.toChange(webhook)).toMatchObject({
@@ -124,29 +128,19 @@ describe('an existing hook', () => {
     });
   });
 
-  test('is dirty once anything, a typed secret included, differs from the hook it was loaded from', () => {
+  test('is dirty once anything differs from the hook it was loaded from', () => {
     const form = new HookFormState(false);
     const loaded = hook({ type: 'webhook', url: 'https://example.com/a' });
     form.load(loaded);
     expect(form.dirty).toBe(false);
-    form.signingSecret = SECRET;
+    form.url = 'https://example.com/b';
     expect(form.dirty).toBe(true);
-    form.signingSecret = '';
+    form.url = 'https://example.com/a';
     expect(form.dirty).toBe(false);
     form.events = [...form.events, 'goal.failed'];
     expect(form.dirty).toBe(true);
     form.load(loaded);
     expect(form.dirty).toBe(false);
-  });
-
-  test('sends a new secret only when one was typed, and drops what was typed once it is loaded again', () => {
-    const form = new HookFormState(false);
-    const loaded = hook({ type: 'webhook', url: 'https://example.com/a' });
-    form.load(loaded);
-    form.signingSecret = SECRET;
-    expect(form.toChange(loaded)).toMatchObject({ signingSecret: SECRET });
-    form.load(loaded);
-    expect(form.signingSecret).toBe('');
   });
 
   test('removes a name that was cleared', () => {
@@ -176,6 +170,9 @@ describe('the other actions', () => {
     form.events = ['review.requested'];
     form.actionType = 'start-workflow';
     expect(form.isValid).toBe(false);
+    expect(form.problems).toEqual([
+      { field: 'workflow', message: HOOKS_COPY.editor.workflow.required },
+    ]);
     form.workflowId = 'digest';
     form.workflowInput = 'event';
     expect(form.isValid).toBe(true);
@@ -185,17 +182,14 @@ describe('the other actions', () => {
     });
   });
 
-  test('a notification hook sends a title only when one was typed, and never a secret', () => {
+  test('a notification hook has no fields, keeps a title it holds, and never sends a secret', () => {
     const form = new HookFormState(true);
     form.events = ['review.requested'];
     form.actionType = 'notify';
-    form.signingSecret = SECRET;
     expect(form.isValid).toBe(true);
     expect(form.toInput()).toEqual({ events: ['review.requested'], action: { type: 'notify' } });
     form.title = ' Look ';
     expect(form.toInput()).toMatchObject({ action: { type: 'notify', title: 'Look' } });
-    form.title = 'x'.repeat(201);
-    expect(form.isValid).toBe(false);
   });
 });
 

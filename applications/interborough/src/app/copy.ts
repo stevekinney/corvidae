@@ -6367,10 +6367,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       description: HOOKS_COPY.list.loadFailed.noAnswer,
     },
     forbidden: { title: FORBIDDEN_COPY.title('Hooks'), requirement: 'bureau.hooks:read' },
-    notFound: {
-      title: 'This hook doesn’t exist',
-      description: NOT_FOUND_COPY.description,
-    },
+    // The editor says the same when the hook is deleted while its page is open.
+    notFound: HOOKS_COPY.editor.notFound,
   },
   health: {
     label: 'Health',

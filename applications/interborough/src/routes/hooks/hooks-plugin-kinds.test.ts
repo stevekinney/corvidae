@@ -125,9 +125,10 @@ async function chooseEvent(view: ReturnType<typeof open>, search: string, name: 
 describe('a contributed hook action under Then', () => {
   test('is offered beside the built-in actions, and its schema fields render when chosen', async () => {
     const view = open('/hooks/new');
-    const select = (await view.findByLabelText(
-      HOOKS_COPY.editor.action.label,
-    )) as HTMLSelectElement;
+    // The built-in actions are a segmented control until a plugin adds one; then they are this select.
+    const select = (await view.findByRole('combobox', {
+      name: HOOKS_COPY.editor.action.label,
+    })) as HTMLSelectElement;
     await waitFor(() => expect(select.options.length).toBe(4));
     expect([...select.options].map((option) => option.textContent?.trim())).toEqual([
       HOOKS_COPY.editor.action.webhook,
@@ -147,18 +148,16 @@ describe('a contributed hook action under Then', () => {
 
   test('creates a hook with a plugin action holding the configuration typed into its fields', async () => {
     const view = open('/hooks/new');
-    const select = (await view.findByLabelText(
-      HOOKS_COPY.editor.action.label,
-    )) as HTMLSelectElement;
+    // The built-in actions are a segmented control until a plugin adds one; then they are this select.
+    const select = (await view.findByRole('combobox', {
+      name: HOOKS_COPY.editor.action.label,
+    })) as HTMLSelectElement;
     await waitFor(() => expect(select.options.length).toBe(4));
-    await chooseEvent(view, 'review', 'Review requested');
+    await chooseEvent(view, 'review', 'A review is waiting');
     await fireEvent.change(select, { target: { value: 'pager:page' } });
     await fireEvent.input(await waitFor(() => view.getByLabelText(/team/i)), {
       target: { value: 'ops' },
     });
-    expect(view.getByTestId('hook-sentence').textContent).toContain(
-      HOOKS_COPY.sentence.plugin('pager', 'page'),
-    );
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.create').length).toBe(1));
@@ -185,11 +184,12 @@ describe('a contributed hook action under Then', () => {
         ],
       }),
     });
-    const select = (await view.findByLabelText(
-      HOOKS_COPY.editor.action.label,
-    )) as HTMLSelectElement;
+    // The built-in actions are a segmented control until a plugin adds one; then they are this select.
+    const select = (await view.findByRole('combobox', {
+      name: HOOKS_COPY.editor.action.label,
+    })) as HTMLSelectElement;
     await waitFor(() => expect(select.options.length).toBe(4));
-    await chooseEvent(view, 'review', 'Review requested');
+    await chooseEvent(view, 'review', 'A review is waiting');
     await fireEvent.change(select, { target: { value: 'pager:page' } });
     await view.findByTestId('contributed-configuration');
 
@@ -207,11 +207,10 @@ describe('a contributed hook action under Then', () => {
         throw new Error('down');
       },
     });
-    const select = (await view.findByLabelText(
-      HOOKS_COPY.editor.action.label,
-    )) as HTMLSelectElement;
     await waitFor(() => expect(stub?.callsTo('bureau.plugins.contributions').length).toBe(1));
-    expect(select.options.length).toBe(3);
+    // The built-in actions alone are the segmented control, and there is no select to choose from.
+    expect((await view.findAllByRole('radio')).length).toBe(3);
+    expect(view.queryByRole('combobox', { name: HOOKS_COPY.editor.action.label })).toBeNull();
   });
 });
 

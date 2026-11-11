@@ -90,7 +90,6 @@ async function chooseEvent(page: Page, search: string, name: string): Promise<vo
 
 async function fillWebhook(page: Page, url: string, name: string): Promise<void> {
   await page.getByLabel(copy.webhook.urlLabel).fill(url);
-  await page.getByLabel(copy.webhook.secretLabel).fill(SECRET);
   await page.getByLabel(copy.check.nameLabel).fill(name);
 }
 
@@ -103,23 +102,21 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   await expect(page.getByRole('heading', { level: 1, name: copy.newTitle })).toBeVisible();
   await checkA11y('hooks — the new hook editor');
 
-  await chooseEvent(page, 'review', 'Review requested');
+  await chooseEvent(page, 'review', 'A review is waiting');
   await fillWebhook(page, receiverUrl, name);
-  await expect(page.getByTestId('hook-sentence')).toContainText(
-    `When Review requested, send a signed message to ${receiverUrl}`,
-  );
+  await expect(page.getByTestId('hook-check-summary')).toContainText('A review is waiting');
   await page.getByRole('button', { name: copy.check.create }).click();
 
   // The hook is made and its page opens, where the delivery log is beside the steps.
   await expect(page).toHaveURL(/\/hooks\/(?!new$)[^/?]+$/);
-  await expect(page.getByRole('heading', { level: 1, name: copy.editTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   const deliveries = page.getByTestId('hook-deliveries');
   await expect(deliveries.getByText(copy.deliveries.none)).toBeVisible();
-  // The secret is never shown again.
-  await expect(page.getByLabel(copy.webhook.secretLabel)).toHaveValue('');
-  await expect(page.getByText(copy.check.testReaches(receiverUrl))).toBeVisible();
+  // The secret the Bureau made is shown once, on this page, with the note that it cannot be seen again.
+  await expect(page.getByTestId('hook-secret')).toContainText(copy.webhook.secretOnce);
 
   await page.getByRole('button', { name: copy.check.test }).click();
+  await expect(page.getByTestId('hook-test-result')).toContainText('Test event sent.');
 
   const sent = await requestOfKind('hook.test');
   expect(sent.headers['x-signature']).toMatch(/^t=\d+,v1=[0-9a-f]+$/);
@@ -135,10 +132,10 @@ test('fires for a real event, and shows that delivery beside the test', async ({
 }) => {
   const name = `${PREFIX} real event`;
   await page.goto('/hooks/new');
-  await chooseEvent(page, 'chat created', 'Chat created');
+  await chooseEvent(page, 'chat created', 'A chat starts');
   await fillWebhook(page, receiverUrl, name);
   await page.getByRole('button', { name: copy.check.create }).click();
-  await expect(page.getByRole('heading', { level: 1, name: copy.editTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
 
   const thread = newThreadId('hooks');
   try {
@@ -167,19 +164,16 @@ test('limits a hook to one agent with Only for: it fires for that agent, and its
     action: { type: 'notify' },
   });
   await page.goto('/hooks/new');
-  await chooseEvent(page, 'chat created', 'Chat created');
+  await chooseEvent(page, 'chat created', 'A chat starts');
   await page.getByLabel(copy.onlyFor.label).selectOption('agent');
   const subject = page.getByLabel(copy.onlyFor.subject.agent, { exact: true });
   await expect(subject.locator(`option[value="${TEXT_ECHO_AGENT_NAME}"]`)).toBeAttached();
   await subject.selectOption(TEXT_ECHO_AGENT_NAME);
   await page.getByLabel(copy.webhook.urlLabel).fill(receiverUrl);
-  await page.getByLabel(copy.webhook.secretLabel).fill(SECRET);
   await page.getByLabel(copy.check.nameLabel).fill(name);
-  await expect(page.getByTestId('hook-sentence')).toContainText(
-    `for the agent ${TEXT_ECHO_AGENT_NAME}`,
-  );
   await page.getByRole('button', { name: copy.check.create }).click();
-  await expect(page.getByRole('heading', { level: 1, name: copy.editTitle })).toBeVisible();
+  await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
+  await expect(page.getByTestId('hook-sentence')).toContainText('for the agent');
 
   const thread = newThreadId('hooks-only-for');
   try {
@@ -289,7 +283,7 @@ test('searches every event in the picker by its words, its kind, and its area', 
   await expect(page.locator('[role="option"]').nth(50)).toBeAttached();
   for (const [search, name] of [
     ['attempt evaluating', 'Goal attempt evaluating'],
-    ['schedule.missed', 'Schedule missed'],
+    ['schedule.missed', 'A schedule misses a run'],
     ['memory', 'Memory governance'],
   ] as const) {
     await picker.fill(search);

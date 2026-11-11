@@ -31,7 +31,8 @@ afterEach(() => {
   stub = undefined;
 });
 
-const SIGNING_SECRET = 'a-signing-secret-of-twenty-chars';
+const MADE_SECRET = 'whsec_3f9a1c0d7e5b4a62c8d1e0f9';
+const REPLACED_SECRET = 'whsec_b7d2a9e4c1f8035d6e2a4b90';
 
 type HookRow = ReturnType<typeof hook>;
 type DeliveryRow = ReturnType<typeof delivery>;
@@ -150,6 +151,10 @@ function open(
     hostMode?: 'local' | 'remote';
     /** Operations the Bureau refuses, by name, with the fault it answers. */
     refuse?: Record<string, StubFault>;
+    /** The signing secret a created webhook answers with, shown once. */
+    createdSecret?: string;
+    /** What a test of a hook not yet saved answers: delivered, or one that failed with a status. */
+    draftTest?: 'delivered' | { status: number };
   } = {},
 ) {
   const served: Served = {
@@ -201,7 +206,38 @@ function open(
         scope: params['scope'] ?? null,
       });
       served.hooks.push(made);
-      return made;
+      return options.createdSecret === undefined
+        ? made
+        : { ...made, signingSecret: options.createdSecret };
+    },
+    'bureau.hooks.secret.replace': (params) => {
+      const entry = found(params);
+      if (params['expectedRevision'] !== undefined && params['expectedRevision'] !== entry.revision) {
+        throw new StubFault('StaleRevision', 409, 'The hook changed since it was read.', {
+          currentRevision: entry.revision,
+        });
+      }
+      entry.revision += 1;
+      return { ...entry, signingSecret: REPLACED_SECRET };
+    },
+    'bureau.hooks.draft.test': () => {
+      const outcome = options.draftTest ?? 'delivered';
+      if (outcome === 'delivered') return delivery('draft', 'delivered', { test: true });
+      const sent = delivery('draft', 'exhausted', { test: true });
+      sent.attempts = [
+        {
+          number: 1,
+          startedAt: 2_000,
+          finishedAt: 2_100,
+          outcome: 'response',
+          status: outcome.status,
+          responseExcerpt: null,
+          responseTruncated: null,
+          error: null,
+          receipt: null,
+        },
+      ];
+      return sent;
     },
     'bureau.hooks.update': (params) => {
       const entry = found(params);
@@ -602,35 +638,27 @@ describe('the hook editor', () => {
     });
   });
 
-  test('makes a webhook hook from an event, an address and a secret, and sends exactly those', async () => {
+  test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
     const { view } = open([], { path: '/hooks/new' });
-    await chooseEvent(view, 'review', 'Review requested');
-    await waitFor(() =>
-      expect(view.getByTestId('hook-sentence').textContent).toContain('Review requested'),
+    expect(view.getByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle })).not.toBeNull();
+    // A new hook is told what to do first, and has no secret field: the Bureau makes the secret.
+    expect(view.getByTestId('hook-check-summary').textContent).toContain(
+      HOOKS_COPY.editor.check.pickEvent,
     );
+    await chooseEvent(view, 'review', 'A review is waiting');
+    expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.secretLabel)).toBeNull();
 
-    // A secret that is too short is said inline and cannot be saved.
     await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
       target: { value: 'https://example.com/receive' },
-    });
-    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
-      target: { value: 'short' },
-    });
-    await view.findByText(HOOKS_COPY.editor.webhook.secretTooShort);
-    expect(
-      (view.getByRole('button', { name: HOOKS_COPY.editor.check.create }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
-
-    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
-      target: { value: SIGNING_SECRET },
     });
     await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.check.nameLabel), {
       target: { value: 'Tell the receiver' },
     });
-    expect(view.getByTestId('hook-sentence').textContent).toContain(
-      'When Review requested, send a signed message to https://example.com/receive',
-    );
+    // Until it is saved the Check step says the event it will watch, and that nothing watches yet.
+    const summary = view.getByTestId('hook-check-summary');
+    expect(summary.textContent).toContain('A review is waiting');
+    expect(summary.textContent).toContain('review.requested');
+    expect(summary.textContent).toContain(HOOKS_COPY.editor.check.saveToStart);
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.create').length).toBe(1));
@@ -638,17 +666,77 @@ describe('the hook editor', () => {
       name: 'Tell the receiver',
       events: ['review.requested'],
       action: { type: 'webhook', url: 'https://example.com/receive' },
-      signingSecret: SIGNING_SECRET,
     });
     // A hook that is made opens on its own page, where it can be tested.
     await waitFor(() => expect(router.pathname).toBe('/hooks/hook-created-1'));
     await view.findByRole('button', { name: HOOKS_COPY.editor.check.test });
   });
 
+  test('shows the secret the Bureau made once, revealed, and masked once the page is left', async () => {
+    const { view } = open([], { path: '/hooks/new', createdSecret: MADE_SECRET });
+    await chooseEvent(view, 'review', 'A review is waiting');
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'https://example.com/receive' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
+
+    await waitFor(() => expect(router.pathname).toBe('/hooks/hook-created-1'));
+    const secret = await view.findByTestId('hook-secret');
+    // Revealed once, with the note that it cannot be seen again and a Copy button.
+    await waitFor(() => expect(secret.textContent).toContain(MADE_SECRET));
+    expect(secret.textContent).toContain(HOOKS_COPY.editor.webhook.secretOnce);
+    expect(
+      within(secret).getByRole('button', { name: `Copy ${HOOKS_COPY.editor.webhook.secretLabel}` }),
+    ).not.toBeNull();
+
+    // Leaving the page forgets it: the hook opens again with the secret masked and no Copy.
+    cleanup();
+    stub?.restore();
+    stub = undefined;
+    const again = open([hook('hook-created-1')], { path: '/hooks/hook-created-1' });
+    const masked = await again.view.findByTestId('hook-secret');
+    expect(masked.textContent).not.toContain(MADE_SECRET);
+    expect(within(masked).getByTestId('hook-secret-mask').getAttribute('aria-label')).toBe(
+      HOOKS_COPY.editor.webhook.secretMasked,
+    );
+    expect(within(masked).queryByRole('button', { name: /^Copy/ })).toBeNull();
+  });
+
+  test('Replace makes a new secret, names the revision it read, and shows it once', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
+    const secret = await view.findByTestId('hook-secret');
+    expect(secret.textContent).not.toContain(REPLACED_SECRET);
+
+    await fireEvent.click(
+      within(secret).getByRole('button', { name: /^Replace/ }),
+    );
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.secret.replace').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.secret.replace')[0]?.params).toEqual({
+      hookId: 'alpha',
+      expectedRevision: 1,
+    });
+    await waitFor(() => expect(secret.textContent).toContain(REPLACED_SECRET));
+    expect(secret.textContent).toContain(HOOKS_COPY.editor.webhook.secretOnce);
+  });
+
+  test('says a secret that could not be replaced beside the field', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      refuse: {
+        'bureau.hooks.secret.replace': new StubFault('Forbidden', 403, 'Not yours.'),
+      },
+    });
+    const secret = await view.findByTestId('hook-secret');
+    await fireEvent.click(within(secret).getByRole('button', { name: /^Replace/ }));
+    const failure = await within(secret).findByTestId('hook-secret-failure');
+    expect(failure.textContent).toContain(HOOKS_COPY.editor.webhook.secretReplaceFailed);
+  });
+
   test('offers what the chosen events can be limited to, and writes the subject chosen', async () => {
     const { view } = open([], { path: '/hooks/new' });
     expect(view.queryByLabelText(HOOKS_COPY.editor.onlyFor.label)).toBeNull();
-    await chooseEvent(view, 'review', 'Review requested');
+    await chooseEvent(view, 'review', 'A review is waiting');
 
     const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
     expect(Array.from(only.options).map((option) => option.textContent?.trim())).toEqual([
@@ -701,7 +789,7 @@ describe('the hook editor', () => {
         },
       ],
     });
-    await chooseEvent(view, 'review', 'Review requested');
+    await chooseEvent(view, 'review', 'A review is waiting');
     const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
 
     await fireEvent.change(only, { target: { value: 'workflow' } });
@@ -723,7 +811,7 @@ describe('the hook editor', () => {
       path: '/hooks/new',
       refuse: { 'bureau.agents.list': new StubFault('EngineFailure', 500, 'It broke.') },
     });
-    await chooseEvent(view, 'review', 'Review requested');
+    await chooseEvent(view, 'review', 'A review is waiting');
     const only = await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label);
     await fireEvent.change(only, { target: { value: 'agent' } });
 
@@ -738,18 +826,30 @@ describe('the hook editor', () => {
     expect(view.queryByLabelText(HOOKS_COPY.editor.onlyFor.label)).toBeNull();
   });
 
-  test('refuses to save a limit an added event cannot tell, and clears when it is removed', async () => {
-    const { view } = open([hook('alpha', { scope: { kind: 'schedule', id: 'every-hour' } })], {
-      path: '/hooks/alpha',
+  test('refuses to save a limit an added event cannot tell, and saves once the limit is lifted', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await chooseEvent(view, 'review', 'A review is waiting');
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'https://example.com/receive' },
     });
-    const save = (await view.findByRole('button', {
-      name: HOOKS_COPY.editor.check.save,
-    })) as HTMLButtonElement;
-    await view.findByLabelText(HOOKS_COPY.editor.onlyFor.subject.schedule);
-    await chooseEvent(view, 'goal', 'Goal attempt evaluating');
+    const only = await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label);
+    await fireEvent.change(only, { target: { value: 'agent' } });
+    const subject = (await view.findByLabelText(
+      HOOKS_COPY.editor.onlyFor.subject.agent,
+    )) as HTMLSelectElement;
+    await waitFor(() => expect(subject.options.length).toBe(2));
+    await fireEvent.change(subject, { target: { value: AGENT.name } });
+    await chooseEvent(view, 'notification', 'Notification created');
 
     await view.findByTestId('hook-scope-refused');
-    expect(save.disabled).toBe(true);
+    // Save hook stays enabled and is the way to be told: nothing is made, and focus goes to Only for.
+    const save = view.getByRole('button', {
+      name: HOOKS_COPY.editor.check.create,
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await fireEvent.click(save);
+    await waitFor(() => expect(document.activeElement?.id).toBe('ib-hook-only-for'));
+    expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
 
     await fireEvent.change(view.getByLabelText(HOOKS_COPY.editor.onlyFor.label), {
       target: { value: '' },
@@ -758,8 +858,8 @@ describe('the hook editor', () => {
       expect(view.queryByTestId('hook-scope-refused')?.outerHTML ?? null).toBeNull(),
     );
     await fireEvent.click(save);
-    await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
-    expect(stub?.callsTo('bureau.hooks.update')[0]?.params).toMatchObject({ scope: null });
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.create').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.create')[0]?.params).not.toHaveProperty('scope');
   });
 
   test('sends no scope for a save that leaves it, and keeps a subject the lists no longer hold', async () => {
@@ -800,22 +900,24 @@ describe('the hook editor', () => {
   });
 
   // COR-1978: a remote home cannot hold a signing secret, so it writes every other action.
-  test('does not offer a signed message on a remote home, and starts on notify', async () => {
+  test('does not offer a webhook on a remote home, and starts on notify', async () => {
     const { view } = open([], { path: '/hooks/new', hostMode: 'remote' });
-    const action = (await view.findByLabelText(
-      HOOKS_COPY.editor.action.label,
-    )) as HTMLSelectElement;
+    const notify = await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify });
 
-    await waitFor(() => expect(action.value).toBe('notify'));
-    const webhook = Array.from(action.options).find((option) => option.value === 'webhook');
-    expect(webhook?.disabled).toBe(true);
+    await waitFor(() => expect(notify.getAttribute('aria-checked')).toBe('true'));
+    const webhook = view.getByRole('radio', { name: HOOKS_COPY.editor.action.webhook });
+    expect(webhook.getAttribute('aria-disabled')).toBe('true');
     await view.findByText(HOOKS_COPY.editor.action.chooseRemote);
-    expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.secretLabel)).toBeNull();
+    // Notify has no fields, and says what it does.
+    expect(view.getByTestId('hook-notify-note').textContent).toContain(
+      HOOKS_COPY.editor.action.notifyNote,
+    );
+    expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).toBeNull();
   });
 
   test('starts limited to the agent the address names', async () => {
     const { view } = open([], { path: `/hooks/new?agent=${AGENT.name}` });
-    await chooseEvent(view, 'review', 'Review requested');
+    await chooseEvent(view, 'review', 'A review is waiting');
     const only = (await view.findByLabelText(HOOKS_COPY.editor.onlyFor.label)) as HTMLSelectElement;
     await waitFor(() => expect(only.value).toBe('agent'));
     const subject = (await view.findByLabelText(
@@ -824,13 +926,12 @@ describe('the hook editor', () => {
     await waitFor(() => expect(subject.value).toBe(AGENT.name));
   });
 
-  test('never shows a signing secret: an existing hook opens with the field empty, and empty keeps the secret', async () => {
+  test('never shows a stored signing secret: a saved hook masks it, and a save never sends one', async () => {
     const { view } = open([hook('alpha', { name: 'Keep' })], { path: '/hooks/alpha' });
-    const secret = (await view.findByLabelText(
-      HOOKS_COPY.editor.webhook.secretLabel,
-    )) as HTMLInputElement;
-    expect(secret.value).toBe('');
-    expect(secret.type).toBe('password');
+    const secret = await view.findByTestId('hook-secret');
+    expect(within(secret).getByTestId('hook-secret-mask').textContent).not.toContain('whsec');
+    // There is no field to type a secret into: the Bureau makes it.
+    expect(view.container.querySelector('input[type="password"]')).toBeNull();
 
     await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.check.nameLabel), {
       target: { value: 'Kept' },
@@ -847,24 +948,80 @@ describe('the hook editor', () => {
     expect(Object.keys(sent)).not.toContain('signingSecret');
   });
 
-  test('sends a test event to the saved address and shows the delivery beside the editor', async () => {
+  test('sends a test event to the saved address, says what answered under the buttons, and shows the delivery beside the editor', async () => {
     const { view } = open([hook('alpha')], {
       path: '/hooks/alpha',
       deliveries: { alpha: [delivery('alpha', 'exhausted')] },
     });
     const deliveries = await view.findByTestId('hook-deliveries');
     await within(deliveries).findByText('No answer: connect refused');
-    // The page says what the test reaches before it is pressed.
-    expect(
-      view.getByText(HOOKS_COPY.editor.check.testReaches('https://example.com/alpha')),
-    ).not.toBeNull();
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.test').length).toBe(1));
     expect(stub?.callsTo('bureau.hooks.test')[0]?.params).toEqual({ hookId: 'alpha' });
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain(
+      HOOKS_COPY.editor.check.testSent('example.com', '200 OK', 100),
+    );
+    expect(result.textContent).toContain(HOOKS_COPY.editor.webhook.seePayload);
+    // The result sits directly under the buttons, and Save hook is first.
+    const buttons = view.getByRole('button', { name: HOOKS_COPY.editor.check.test }).parentElement;
+    expect(buttons?.firstElementChild?.textContent).toContain(HOOKS_COPY.editor.check.save);
+    expect(buttons?.nextElementSibling).toBe(result);
     await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.testEvent);
     expect(within(deliveries).getByText('Answered 200')).not.toBeNull();
+  });
+
+  test('sends a test event before the first save, saves nothing, and says so', async () => {
+    const { view, served } = open([], { path: '/hooks/new', draftTest: 'delivered' });
+    await chooseEvent(view, 'review', 'A review is waiting');
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'https://hooks.example.com/receive' },
+    });
+
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.draft.test').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.draft.test')[0]?.params).toEqual({
+      url: 'https://hooks.example.com/receive',
+    });
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain(
+      `${HOOKS_COPY.editor.check.testSent('hooks.example.com', '200 OK', 100)} ${HOOKS_COPY.editor.check.testSentUnsaved}`,
+    );
+    expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
+    expect(served.hooks).toEqual([]);
+    expect(router.pathname).toBe('/hooks/new');
+  });
+
+  test('a failed test event is a red alert under the buttons that says what answered', async () => {
+    const { view } = open([], { path: '/hooks/new', draftTest: { status: 410 } });
+    await chooseEvent(view, 'review', 'A review is waiting');
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'https://events.pagerduty.com/v2/enqueue' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
+
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain(HOOKS_COPY.editor.check.testFailed);
+    expect(result.textContent).toContain(
+      HOOKS_COPY.editor.check.testFailedAnswered('events.pagerduty.com', '410 Gone'),
+    );
+    expect(result.textContent).not.toContain(HOOKS_COPY.editor.webhook.seePayload);
+  });
+
+  test('a test event without a usable address asks for one the way Save hook does', async () => {
+    const { view } = open([], { path: '/hooks/new' });
+    await chooseEvent(view, 'review', 'A review is waiting');
+    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'events.pagerduty.com' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
+
+    await view.findByText(HOOKS_COPY.editor.webhook.urlMissing);
+    await waitFor(() => expect(document.activeElement?.id).toBe('ib-hook-url'));
+    expect(stub?.callsTo('bureau.hooks.draft.test').length).toBe(0);
   });
 
   test('offers no test event for an action that would start a real run or write a real notification', async () => {
@@ -876,17 +1033,16 @@ describe('the hook editor', () => {
     })) as HTMLButtonElement;
     expect(test.disabled).toBe(true);
     expect(view.getByText(HOOKS_COPY.editor.check.testWebhookOnly)).not.toBeNull();
-    // The action of a hook is fixed once it is made.
-    expect(
-      (view.getByLabelText(HOOKS_COPY.editor.action.label) as HTMLSelectElement).disabled,
-    ).toBe(true);
+    // The action of a hook is fixed once it is made: its segments are held, and it has no fields.
+    const notify = view.getByRole('radio', { name: HOOKS_COPY.editor.action.notify });
+    expect(notify.getAttribute('aria-disabled')).toBe('true');
+    await waitFor(() => expect(notify.getAttribute('aria-checked')).toBe('true'));
+    expect(view.getByText(HOOKS_COPY.editor.action.fixed)).not.toBeNull();
   });
 
   test('lists an event the action cannot listen to, disabled, with the reason', async () => {
     const { view } = open([], { path: '/hooks/new' });
-    await fireEvent.change(await view.findByLabelText(HOOKS_COPY.editor.action.label), {
-      target: { value: 'notify' },
-    });
+    await fireEvent.click(await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }));
     const input = await view.findByRole('combobox', { name: HOOKS_COPY.editor.event.label });
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: 'notification' } });
@@ -910,15 +1066,14 @@ describe('the hook editor', () => {
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.get').length).toBeGreaterThan(1));
   });
 
-  test('keeps what was typed, a secret included, when the hook changed under a stale save, and reloads on request', async () => {
+  test('keeps what was typed, an address included, when the hook changed under a stale save, and reloads on request', async () => {
     const { view, served } = open([hook('alpha', { name: 'Old' })], { path: '/hooks/alpha' });
     const name = (await view.findByLabelText(
       HOOKS_COPY.editor.check.nameLabel,
     )) as HTMLInputElement;
     await fireEvent.input(name, { target: { value: 'Mine' } });
-    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
-      target: { value: SIGNING_SECRET },
-    });
+    const address = view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel) as HTMLInputElement;
+    await fireEvent.input(address, { target: { value: 'https://example.com/mine' } });
     served.hooks[0]!.revision = 2;
     served.hooks[0]!.name = 'Theirs';
 
@@ -926,9 +1081,7 @@ describe('the hook editor', () => {
 
     await view.findByTestId('hook-changed');
     expect(name.value).toBe('Mine');
-    expect(
-      (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
-    ).toBe(SIGNING_SECRET);
+    expect(address.value).toBe('https://example.com/mine');
     expect(view.queryByTestId('hook-stale')).toBeNull();
 
     // Saving again is still held to the revision the form was read at, so it cannot overwrite.
@@ -940,9 +1093,7 @@ describe('the hook editor', () => {
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.reload }));
     await waitFor(() => expect(name.value).toBe('Theirs'));
     expect(view.queryByTestId('hook-changed')).toBeNull();
-    expect(
-      (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
-    ).toBe('');
+    expect(address.value).toBe('https://example.com/alpha');
   });
 
   test('keeps what was typed when a window-focus refetch finds a newer revision, and updates an unedited form', async () => {
@@ -979,9 +1130,6 @@ describe('the hook editor', () => {
       HOOKS_COPY.editor.check.nameLabel,
     )) as HTMLInputElement;
     await fireEvent.input(name, { target: { value: 'Mine' } });
-    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
-      target: { value: SIGNING_SECRET },
-    });
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.update').length).toBe(1));
@@ -989,11 +1137,6 @@ describe('the hook editor', () => {
 
     expect(view.queryByTestId('hook-changed')).toBeNull();
     expect(name.value).toBe('Mine');
-    await waitFor(() =>
-      expect(
-        (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
-      ).toBe(''),
-    );
     // A second save goes out at the revision the first one wrote.
     await fireEvent.input(name, { target: { value: 'Again' } });
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
@@ -1021,13 +1164,28 @@ describe('the hook editor', () => {
     );
   });
 
-  test('deletes a hook after a confirmation and returns to the list', async () => {
-    const { view, served } = open([hook('alpha')], { path: '/hooks/alpha' });
+  /** Opens the header's More actions menu and presses Delete hook, which asks first. */
+  async function pressDelete(view: ReturnType<typeof open>['view']): Promise<void> {
     await fireEvent.click(
-      await view.findByRole('button', { name: HOOKS_COPY.editor.check.delete }),
+      await view.findByRole('button', { name: HOOKS_COPY.editor.header.menuLabel }),
     );
     await fireEvent.click(
-      await view.findByRole('button', { name: HOOKS_COPY.editor.check.deleteConfirm }),
+      await view.findByRole('menuitem', { name: HOOKS_COPY.editor.check.delete }),
+    );
+  }
+
+  test('deletes a hook from the menu after a confirmation that names it, and returns to the list', async () => {
+    const { view, served } = open([hook('alpha', { name: 'Page on-call' })], {
+      path: '/hooks/alpha',
+    });
+    await pressDelete(view);
+    // The dialog names the hook, says what is lost, and the button names the action.
+    const dialog = await view.findByRole('dialog');
+    expect(dialog.textContent).toContain(HOOKS_COPY.editor.check.deleteTitle('Page on-call'));
+    expect(dialog.textContent).toContain(HOOKS_COPY.editor.check.deleteDescription);
+    expect(stub?.callsTo('bureau.hooks.delete').length).toBe(0);
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: HOOKS_COPY.editor.check.deleteConfirm }),
     );
 
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.delete').length).toBe(1));
@@ -1037,7 +1195,8 @@ describe('the hook editor', () => {
 
   test('says a hook is not found when it is not the caller’s', async () => {
     const { view } = open([], { path: '/hooks/ghost' });
-    await view.findByRole('heading', { level: 1, name: 'This hook doesn’t exist' });
+    await view.findByRole('heading', { level: 1, name: HOOKS_COPY.editor.notFound.title });
+    expect(view.getByText(HOOKS_COPY.editor.notFound.description)).not.toBeNull();
   });
 
   test('says hooks are off on a home that keeps them off, on the new hook page too', async () => {
@@ -1054,9 +1213,9 @@ describe('the hook editor', () => {
         { id: 'broken', state: 'invalid', paused: false },
       ],
     });
-    await fireEvent.change(await view.findByLabelText(HOOKS_COPY.editor.action.label), {
-      target: { value: 'start-workflow' },
-    });
+    await fireEvent.click(
+      await view.findByRole('radio', { name: HOOKS_COPY.editor.action.startWorkflow }),
+    );
     const select = (await view.findByLabelText(
       HOOKS_COPY.editor.workflow.label,
     )) as HTMLSelectElement;
@@ -1067,9 +1226,9 @@ describe('the hook editor', () => {
 
   test('offers a way to make a workflow when none is ready', async () => {
     const { view } = open([], { path: '/hooks/new', workflows: [] });
-    await fireEvent.change(await view.findByLabelText(HOOKS_COPY.editor.action.label), {
-      target: { value: 'start-workflow' },
-    });
+    await fireEvent.click(
+      await view.findByRole('radio', { name: HOOKS_COPY.editor.action.startWorkflow }),
+    );
     await view.findByRole('heading', { level: 3, name: HOOKS_COPY.editor.workflow.none });
     expect(
       view.getByRole('link', { name: HOOKS_COPY.editor.workflow.create }).getAttribute('href'),
@@ -1083,7 +1242,7 @@ describe('when the Bureau refuses', () => {
       issues: [{ path: ['action', 'url'], message: 'refused', code: 'custom' }],
     });
 
-  test('a new hook, the page says so beside what was typed and keeps the secret field’s value', async () => {
+  test('a new hook, the page says so under the Check sentence and keeps what was typed', async () => {
     const { view } = open([], {
       path: '/hooks/new',
       refuse: { 'bureau.hooks.create': invalid() },
@@ -1100,17 +1259,37 @@ describe('when the Bureau refuses', () => {
     await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
       target: { value: 'https://example.com/receive' },
     });
-    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
-      target: { value: SIGNING_SECRET },
-    });
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.create }));
 
     const failure = await view.findByTestId('hook-failure');
     expect(failure.textContent).toContain(HOOKS_COPY.editor.saveFailed);
+    expect(failure.textContent).toContain(HOOKS_COPY.editor.saveFailedKept);
     expect(router.pathname).toBe('/hooks/new');
     expect(
-      (view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel) as HTMLInputElement).value,
-    ).toBe(SIGNING_SECRET);
+      (view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel) as HTMLInputElement).value,
+    ).toBe('https://example.com/receive');
+    // Save hook stays enabled and is the retry: there is no second "Try again".
+    expect(
+      (view.getByRole('button', { name: HOOKS_COPY.editor.check.create }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(false);
+    expect(view.queryByRole('button', { name: RETRY_LABEL })).toBeNull();
+  });
+
+  test('a server error is said with its status, in the words of the design', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      refuse: { 'bureau.hooks.update': new StubFault('EngineFailure', 500, 'It broke.') },
+    });
+    await fireEvent.input(await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel), {
+      target: { value: 'Renamed' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.save }));
+
+    const failure = await view.findByTestId('hook-failure');
+    expect(failure.textContent).toContain(
+      `${HOOKS_COPY.editor.saveFailed} ${HOOKS_COPY.editor.answeredWithError(500)} ${HOOKS_COPY.editor.saveFailedKept}`,
+    );
   });
 
   test('a delivery list that cannot be read, the page says so beside the steps', async () => {
@@ -1130,13 +1309,14 @@ describe('when the Bureau refuses', () => {
     await view.findByText(HOOKS_COPY.editor.event.loadFailed);
   });
 
-  test('a test event that cannot be sent, the page says so', async () => {
+  test('a test event that cannot be sent, the page says so under the buttons', async () => {
     const { view } = open([hook('alpha')], {
       path: '/hooks/alpha',
       refuse: { 'bureau.hooks.test': new StubFault('Unprocessable', 422, 'No secret.') },
     });
     await fireEvent.click(await view.findByRole('button', { name: HOOKS_COPY.editor.check.test }));
-    await view.findByText(new RegExp(HOOKS_COPY.editor.check.testFailed));
+    const result = await view.findByTestId('hook-test-result');
+    expect(result.textContent).toContain(HOOKS_COPY.editor.check.testFailed);
   });
 
   test('a delete, the page stays and says so', async () => {
@@ -1145,10 +1325,14 @@ describe('when the Bureau refuses', () => {
       refuse: { 'bureau.hooks.delete': new StubFault('Forbidden', 403, 'Not yours.') },
     });
     await fireEvent.click(
-      await view.findByRole('button', { name: HOOKS_COPY.editor.check.delete }),
+      await view.findByRole('button', { name: HOOKS_COPY.editor.header.menuLabel }),
     );
     await fireEvent.click(
-      await view.findByRole('button', { name: HOOKS_COPY.editor.check.deleteConfirm }),
+      await view.findByRole('menuitem', { name: HOOKS_COPY.editor.check.delete }),
+    );
+    const dialog = await view.findByRole('dialog');
+    await fireEvent.click(
+      within(dialog).getByRole('button', { name: HOOKS_COPY.editor.check.deleteConfirm }),
     );
     await view.findByText(new RegExp(HOOKS_COPY.editor.check.deleteFailed));
     expect(router.pathname).toBe('/hooks/alpha');
@@ -1206,25 +1390,19 @@ describe('the editor for a hook it cannot change the action of', () => {
     await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
       target: { value: 'https://example.com/receive' },
     });
-    await fireEvent.input(view.getByLabelText(HOOKS_COPY.editor.webhook.secretLabel), {
-      target: { value: SIGNING_SECRET },
-    });
-    await waitFor(() =>
-      expect(
-        (view.getByRole('button', { name: HOOKS_COPY.editor.check.create }) as HTMLButtonElement)
-          .disabled,
-      ).toBe(false),
-    );
 
-    await fireEvent.change(view.getByLabelText(HOOKS_COPY.editor.action.label), {
-      target: { value: 'notify' },
-    });
+    await fireEvent.click(await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }));
 
     const refused = await view.findByTestId('hook-refused-events');
     expect(refused.textContent).toContain(HOOKS_COPY.editor.event.notifyLoop);
-    expect(
-      (view.getByRole('button', { name: HOOKS_COPY.editor.check.create }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+    // Save hook stays enabled; pressing it makes nothing and moves focus to the Event field.
+    const save = view.getByRole('button', {
+      name: HOOKS_COPY.editor.check.create,
+    }) as HTMLButtonElement;
+    expect(save.disabled).toBe(false);
+    await fireEvent.click(save);
+    await waitFor(() => expect(document.activeElement?.id).toBe('ib-hook-event'));
+    expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
   });
+
 });

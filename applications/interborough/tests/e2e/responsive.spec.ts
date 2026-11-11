@@ -171,7 +171,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
   '/hooks': /No answer/,
-  '/hooks/new': /Signing secret/,
+  '/hooks/new': /Pick an event to see what this hook does/,
   '/hooks/:hook': /No answer/,
   // This host's engine holds none of the Bureau's own types; the Bureau's host lists them (26-workflows).
   '/internal-workflows': /No internal workflows/,
