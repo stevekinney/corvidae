@@ -41,7 +41,6 @@
         label={HOME_COPY.countsLabel}
         columns={4}
         variant="cards"
-        edge="border"
         data-testid="home-loading-counts"
       >
         <Statistic label={labels.running} value="" loading />

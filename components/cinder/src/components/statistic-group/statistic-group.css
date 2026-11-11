@@ -185,7 +185,8 @@
     border-block-end: none;
   }
 
-  /* variant: cards — each stat gets a card-style border, background, and shadow */
+  /* variant: cards — each stat gets a card of its own with one edge (COR-1821), a hairline border
+   * by default. */
   .cinder-statistic-group[data-cinder-variant='cards']
     > .cinder-statistic-group__grid
     > .cinder-statistic {
@@ -193,14 +194,15 @@
     background: var(--cinder-surface-raised);
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
-    box-shadow: var(--cinder-shadow-sm);
   }
 
-  /* A flat edge: the card keeps its hairline border and drops the shadow. */
-  .cinder-statistic-group[data-cinder-variant='cards'][data-cinder-edge='border']
+  /* The shadow edge, opted into: one soft shadow and no visible border. The 1px border stays in
+   * the box, transparent, so the card does not change size (as Card's shadow edge does). */
+  .cinder-statistic-group[data-cinder-variant='cards'][data-cinder-edge='shadow']
     > .cinder-statistic-group__grid
     > .cinder-statistic {
-    box-shadow: none;
+    border-color: transparent;
+    box-shadow: var(--cinder-shadow-sm);
   }
 
   /*

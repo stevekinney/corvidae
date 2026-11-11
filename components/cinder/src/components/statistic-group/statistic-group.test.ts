@@ -367,25 +367,33 @@ describe('StatisticGroup', () => {
     expect(root?.getAttribute('class')).toContain('custom');
   });
 
-  test('a cards group draws a shadow until it asks for a flat border edge', async () => {
-    const shadowed = render(StatisticGroup, { children: textSnippet('x'), variant: 'cards' });
+  // L#4 (light sweep): the cards default drew a border and a shadow, two edges on one surface
+  // (COR-1821), so Health's stat cards lifted off the page while Home's identical ones did not.
+  test('a cards group draws one border edge until it asks for the shadow edge', async () => {
+    const flat = render(StatisticGroup, { children: textSnippet('x'), variant: 'cards' });
     expect(
-      shadowed.container.querySelector('.cinder-statistic-group')?.hasAttribute('data-cinder-edge'),
+      flat.container.querySelector('.cinder-statistic-group')?.hasAttribute('data-cinder-edge'),
     ).toBe(false);
     cleanup();
-    const flat = render(StatisticGroup, {
+    const shadowed = render(StatisticGroup, {
       children: textSnippet('x'),
       variant: 'cards',
-      edge: 'border',
+      edge: 'shadow',
     });
     expect(
-      flat.container.querySelector('.cinder-statistic-group')?.getAttribute('data-cinder-edge'),
-    ).toBe('border');
+      shadowed.container.querySelector('.cinder-statistic-group')?.getAttribute('data-cinder-edge'),
+    ).toBe('shadow');
     const css = normalizeCss(
       await readFile(new URL('./statistic-group.css', import.meta.url), 'utf8'),
     );
+    const base =
+      /\.cinder-statistic-group\[data-cinder-variant='cards'\] > \.cinder-statistic-group__grid > \.cinder-statistic \{([^}]*)\}/.exec(
+        css,
+      )?.[1];
+    expect(base).toContain('border: 1px solid var(--cinder-border);');
+    expect(base).not.toContain('box-shadow');
     expect(css).toMatch(
-      /\.cinder-statistic-group\[data-cinder-variant='cards'\]\[data-cinder-edge='border'\] > \.cinder-statistic-group__grid > \.cinder-statistic \{ box-shadow: none; \}/,
+      /\.cinder-statistic-group\[data-cinder-variant='cards'\]\[data-cinder-edge='shadow'\] > \.cinder-statistic-group__grid > \.cinder-statistic \{ border-color: transparent; box-shadow: var\(--cinder-shadow-sm\); \}/,
     );
   });
 
@@ -393,7 +401,7 @@ describe('StatisticGroup', () => {
     const { container } = render(StatisticGroup, {
       children: textSnippet('x'),
       variant: 'shared-borders',
-      edge: 'border',
+      edge: 'shadow',
     });
     expect(
       container.querySelector('.cinder-statistic-group')?.hasAttribute('data-cinder-edge'),

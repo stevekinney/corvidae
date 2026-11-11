@@ -1,14 +1,14 @@
 <script lang="ts" module>
-  export const title = 'Flat cards';
+  export const title = 'Shadow cards';
   export const description =
-    'edge="border" keeps each card’s hairline border and drops the shadow of the `cards` variant.';
+    'edge="shadow" swaps the hairline border of each `cards` stat for one soft shadow. A card draws one edge, never both.';
 </script>
 
 <script lang="ts">
   import { StatisticGroup } from '@lostgradient/cinder';
 </script>
 
-<StatisticGroup label="Home" columns={4} variant="cards" edge="border">
+<StatisticGroup label="Home" columns={4} variant="cards" edge="shadow">
   <StatisticGroup.Statistic label="Running now" value={0} />
   <StatisticGroup.Statistic label="Needs you" value={2} attention />
   <StatisticGroup.Statistic label="Failed in 24 hours" value={0} />

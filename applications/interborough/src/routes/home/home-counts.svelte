@@ -85,13 +85,7 @@
   }
 </script>
 
-<StatisticGroup
-  label={HOME_COPY.countsLabel}
-  columns={4}
-  variant="cards"
-  edge="border"
-  data-testid="home-counts"
->
+<StatisticGroup label={HOME_COPY.countsLabel} columns={4} variant="cards" data-testid="home-counts">
   <Statistic label={copy.running} value={shown(running)} loading={running === undefined} />
   <Statistic
     label={copy.needsYou}
