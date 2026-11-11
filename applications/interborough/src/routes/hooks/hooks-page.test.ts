@@ -217,7 +217,10 @@ function open(
     },
     'bureau.hooks.secret.replace': (params) => {
       const entry = found(params);
-      if (params['expectedRevision'] !== undefined && params['expectedRevision'] !== entry.revision) {
+      if (
+        params['expectedRevision'] !== undefined &&
+        params['expectedRevision'] !== entry.revision
+      ) {
         throw new StubFault('StaleRevision', 409, 'The hook changed since it was read.', {
           currentRevision: entry.revision,
         });
@@ -268,6 +271,37 @@ function open(
       const entry = found(params);
       const sent = delivery(entry.id, 'delivered', { test: true, kind: 'hook.test' });
       served.deliveries.set(entry.id, [sent, ...(served.deliveries.get(entry.id) ?? [])]);
+      return sent;
+    },
+    'bureau.hooks.deliveries.retry': (params) => {
+      const id = String(params['hookId']);
+      const rows = served.deliveries.get(id) ?? [];
+      const target = rows.find((candidate) => candidate.id === params['deliveryId']);
+      if (target === undefined) throw new StubFault('NotFound', 404, 'No such delivery.');
+      const sent = {
+        ...target,
+        status: 'delivered',
+        nextAttemptAt: null,
+        attempts: [
+          ...target.attempts,
+          {
+            number: target.attempts.length + 1,
+            startedAt: 3_000,
+            finishedAt: 3_100,
+            outcome: 'response',
+            status: 200,
+            responseExcerpt: null,
+            responseTruncated: null,
+            error: null,
+            receipt: null,
+          },
+        ],
+        updatedAt: 3_100,
+      };
+      served.deliveries.set(
+        id,
+        rows.map((candidate) => (candidate === target ? sent : candidate)),
+      );
       return sent;
     },
     'bureau.events.catalog': () => ({ events: CATALOG }),
@@ -645,7 +679,9 @@ describe('the hook editor', () => {
 
   test('makes a webhook hook from an event and an address, which the Bureau signs with a secret it makes', async () => {
     const { view } = open([], { path: '/hooks/new' });
-    expect(view.getByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle })).not.toBeNull();
+    expect(
+      view.getByRole('heading', { level: 1, name: HOOKS_COPY.editor.newTitle }),
+    ).not.toBeNull();
     // A new hook is told what to do first, and has no secret field: the Bureau makes the secret.
     expect(view.getByTestId('hook-check-summary').textContent).toContain(
       HOOKS_COPY.editor.check.pickEvent,
@@ -712,9 +748,7 @@ describe('the hook editor', () => {
     const secret = await view.findByTestId('hook-secret');
     expect(secret.textContent).not.toContain(REPLACED_SECRET);
 
-    await fireEvent.click(
-      within(secret).getByRole('button', { name: /^Replace/ }),
-    );
+    await fireEvent.click(within(secret).getByRole('button', { name: /^Replace/ }));
 
     await waitFor(() => expect(stub?.callsTo('bureau.hooks.secret.replace').length).toBe(1));
     expect(stub?.callsTo('bureau.hooks.secret.replace')[0]?.params).toEqual({
@@ -959,7 +993,7 @@ describe('the hook editor', () => {
       deliveries: { alpha: [delivery('alpha', 'exhausted')] },
     });
     const deliveries = await view.findByTestId('hook-deliveries');
-    await within(deliveries).findByText('No answer: connect refused');
+    await waitFor(() => expect(deliveries.textContent).toContain('Gave up'));
 
     await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
 
@@ -975,7 +1009,7 @@ describe('the hook editor', () => {
     expect(buttons?.firstElementChild?.textContent).toContain(HOOKS_COPY.editor.check.save);
     expect(buttons?.nextElementSibling).toBe(result);
     await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.testEvent);
-    expect(within(deliveries).getByText('Answered 200')).not.toBeNull();
+    await waitFor(() => expect(deliveries.textContent).toContain('Delivered, 200 OK'));
   });
 
   test('sends a test event before the first save, saves nothing, and says so', async () => {
@@ -1047,7 +1081,9 @@ describe('the hook editor', () => {
 
   test('lists an event the action cannot listen to, disabled, with the reason', async () => {
     const { view } = open([], { path: '/hooks/new' });
-    await fireEvent.click(await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }));
+    await fireEvent.click(
+      await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }),
+    );
     const input = await view.findByRole('combobox', { name: HOOKS_COPY.editor.event.label });
     await fireEvent.focus(input);
     await fireEvent.input(input, { target: { value: 'notification' } });
@@ -1396,15 +1432,15 @@ describe('the steps of a saved hook', () => {
       return found;
     });
     expect(titles).toEqual(['1 When', '2 Then', '3 Check']);
-    expect(view.container.querySelector('aside#ib-hook-log [data-testid="hook-deliveries"]')).not.toBeNull();
+    expect(
+      view.container.querySelector('aside#ib-hook-log [data-testid="hook-deliveries"]'),
+    ).not.toBeNull();
   });
 
   test('keeps the Check sentence as the hook reads in the editor, in a quiet box above the buttons', async () => {
     const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
     const sentence = await view.findByTestId('hook-sentence');
-    expect(sentence.textContent).toBe(
-      'When a review is waiting, send a webhook to example.com.',
-    );
+    expect(sentence.textContent).toBe('When a review is waiting, send a webhook to example.com.');
     const save = view.getByRole('button', { name: HOOKS_COPY.editor.check.save });
     expect(sentence.nextElementSibling).toBe(save.parentElement);
   });
@@ -1433,10 +1469,14 @@ describe('the steps of a saved hook', () => {
       expect(then.textContent).toContain('Send a webhook to example.com');
       expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).toBeNull();
 
-      await fireEvent.click(within(then).getByRole('button', { name: HOOKS_COPY.editor.steps.edit }));
+      await fireEvent.click(
+        within(then).getByRole('button', { name: HOOKS_COPY.editor.steps.edit }),
+      );
       expect(view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).not.toBeNull();
       expect(view.queryByTestId('hook-step-summary-then')).toBeNull();
-      await fireEvent.click(within(when).getByRole('button', { name: HOOKS_COPY.editor.steps.edit }));
+      await fireEvent.click(
+        within(when).getByRole('button', { name: HOOKS_COPY.editor.steps.edit }),
+      );
       expect(view.getByTestId('hook-event-locked')).not.toBeNull();
     } finally {
       if (original === undefined) Reflect.deleteProperty(window, 'matchMedia');
@@ -1498,7 +1538,9 @@ describe('the Then step of a new hook', () => {
     const address = view.getByLabelText(HOOKS_COPY.editor.webhook.urlLabel) as HTMLInputElement;
     expect(address.placeholder).toBe(HOOKS_COPY.editor.webhook.urlPlaceholder);
 
-    await fireEvent.click(view.getByRole('radio', { name: HOOKS_COPY.editor.action.startWorkflow }));
+    await fireEvent.click(
+      view.getByRole('radio', { name: HOOKS_COPY.editor.action.startWorkflow }),
+    );
     await view.findByLabelText(HOOKS_COPY.editor.workflow.label);
     expect(view.getByText(HOOKS_COPY.editor.workflow.payload)).not.toBeNull();
     expect(view.queryByLabelText(HOOKS_COPY.editor.webhook.urlLabel)).toBeNull();
@@ -1642,7 +1684,7 @@ describe('when the Bureau refuses', () => {
       refuse: { 'bureau.hooks.deliveries': new StubFault('EngineFailure', 500, 'It broke.') },
     });
     const deliveries = await view.findByTestId('hook-deliveries');
-    await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.loadFailed);
+    await within(deliveries).findByText(HOOKS_COPY.editor.deliveries.loadFailed.title);
   });
 
   test('an event list that cannot be read, the page says so in the first step', async () => {
@@ -1735,7 +1777,9 @@ describe('the editor for a hook it cannot change the action of', () => {
       target: { value: 'https://example.com/receive' },
     });
 
-    await fireEvent.click(await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }));
+    await fireEvent.click(
+      await view.findByRole('radio', { name: HOOKS_COPY.editor.action.notify }),
+    );
 
     const refused = await view.findByTestId('hook-refused-events');
     expect(refused.textContent).toContain(HOOKS_COPY.editor.event.notifyLoop);
@@ -1753,5 +1797,262 @@ describe('the editor for a hook it cannot change the action of', () => {
     );
     expect(stub?.callsTo('bureau.hooks.create').length).toBe(0);
   });
+});
 
+describe('a hook’s delivery log', () => {
+  const copy = HOOKS_COPY.editor.deliveries;
+  const PAGER_URL = 'https://events.pagerduty.com/v2/enqueue';
+
+  const logItem = (container: HTMLElement, id: string) =>
+    container.querySelector<HTMLElement>(`li[data-delivery="${id}"]`);
+
+  async function openLogItem(container: HTMLElement, id: string): Promise<HTMLElement> {
+    const item = logItem(container, id);
+    const trigger = item?.querySelector<HTMLButtonElement>('button[aria-expanded]');
+    if (item === null || item === undefined || trigger === null || trigger === undefined) {
+      throw new Error(`No delivery ${id} in the log.`);
+    }
+    await fireEvent.click(trigger);
+    return item;
+  }
+
+  /** A delivery that met a 410 Gone on all eight tries, as the design's failed hook shows it. */
+  function gaveUpDelivery(hookId: string) {
+    const row = delivery(hookId, 'exhausted', {
+      id: 'delivery-gave-up',
+      kind: 'run.error',
+      maxAttempts: 8,
+      request: {
+        url: PAGER_URL,
+        headers: {},
+        body: JSON.stringify({
+          kind: 'run.error',
+          payload: { runId: 'run-1', step: 2, error: 'GitHub didn’t answer (HTTP 503)' },
+        }),
+      },
+    });
+    row.attempts = Array.from({ length: 8 }, (_unused, index) => ({
+      number: index + 1,
+      startedAt: 2_000 + index * 1_000,
+      finishedAt: 2_100 + index * 1_000,
+      outcome: 'response',
+      status: 410,
+      responseExcerpt: null,
+      responseTruncated: null,
+      error: null,
+      receipt: null,
+    }));
+    return row;
+  }
+
+  /** A delivery that has made three tries, got a 503 each time, and is due another soon. */
+  function retryingDelivery(hookId: string) {
+    const row = delivery(hookId, 'pending', {
+      id: 'delivery-retrying',
+      maxAttempts: 8,
+      nextAttemptAt: Date.now() + 40_000,
+    });
+    row.attempts = [1, 2, 3].map((number) => ({
+      number,
+      startedAt: 2_000 + number * 1_000,
+      finishedAt: 2_100 + number * 1_000,
+      outcome: 'response',
+      status: 503,
+      responseExcerpt: null,
+      responseTruncated: null,
+      error: null,
+      receipt: null,
+    }));
+    return row;
+  }
+
+  test('reads each delivery as a line with its word and time, and Failed keeps the ones that failed', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: {
+        alpha: [gaveUpDelivery('alpha'), delivery('alpha', 'delivered', { id: 'delivery-ok' })],
+      },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    expect(within(deliveries).getByRole('heading', { name: copy.heading })).not.toBeNull();
+    expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('Gave up');
+    expect(logItem(deliveries, 'delivery-gave-up')?.textContent).toContain('A run fails');
+    expect(logItem(deliveries, 'delivery-ok')?.textContent).toContain('Delivered, 200 OK');
+    expect(deliveries.textContent).not.toContain(String.fromCodePoint(0xb7));
+
+    await fireEvent.click(within(deliveries).getByRole('radio', { name: copy.failed }));
+    await waitFor(() => expect(logItem(deliveries, 'delivery-ok')?.outerHTML ?? null).toBeNull());
+    expect(logItem(deliveries, 'delivery-gave-up')).not.toBeNull();
+
+    await fireEvent.click(within(deliveries).getByRole('radio', { name: copy.all }));
+    await waitFor(() =>
+      expect(logItem(deliveries, 'delivery-ok')?.outerHTML ?? null).not.toBeNull(),
+    );
+  });
+
+  test('says nothing failed when the Failed filter keeps no delivery', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [delivery('alpha', 'delivered', { id: 'delivery-ok' })] },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    await fireEvent.click(within(deliveries).getByRole('radio', { name: copy.failed }));
+    await within(deliveries).findByText(copy.noneFailed.title);
+  });
+
+  test('opens a failed delivery to its cause, its facts, its first three tries and the payload it sent', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [gaveUpDelivery('alpha')] },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    const item = await openLogItem(deliveries, 'delivery-gave-up');
+
+    const cause = await within(item).findByTestId('hook-delivery-cause');
+    expect(cause.textContent).toBe(
+      'events.pagerduty.com answered 410 Gone on all 8 tries, so Interborough stopped. The webhook URL may have been removed. Check the URL, then retry.',
+    );
+    const facts = within(item).getByTestId('hook-delivery-facts');
+    expect(facts.textContent).toContain(copy.facts.event);
+    expect(facts.textContent).toContain('A run fails');
+    expect(facts.textContent).toContain('run.error');
+    expect(facts.textContent).toContain('events.pagerduty.com');
+    expect(facts.textContent).toContain('410 Gone');
+
+    const tries = within(item).getByTestId('hook-delivery-tries');
+    expect(tries.querySelectorAll('li').length).toBe(3);
+    expect(item.textContent).toContain('5 more tries, all 410 Gone.');
+    await fireEvent.click(within(item).getByRole('button', { name: copy.showAll }));
+    await waitFor(() => expect(tries.querySelectorAll('li').length).toBe(8));
+
+    const payload = within(item).getByTestId('hook-delivery-payload');
+    expect(payload.textContent).toContain(copy.payloadLabel);
+    expect(payload.textContent).toContain('A run fails (run.error)');
+    expect(payload.textContent).toContain('GitHub didn’t answer (HTTP 503)');
+    expect(within(item).getByRole('button', { name: copy.retry })).not.toBeNull();
+  });
+
+  test('sends a failed delivery again from its record, then reads the log again', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [gaveUpDelivery('alpha')] },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    const item = await openLogItem(deliveries, 'delivery-gave-up');
+
+    await fireEvent.click(await within(item).findByRole('button', { name: copy.retry }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.deliveries.retry').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.deliveries.retry')[0]?.params).toEqual({
+      hookId: 'alpha',
+      deliveryId: 'delivery-gave-up',
+    });
+    await waitFor(() =>
+      expect(logItem(deliveries, 'delivery-gave-up')?.dataset['status']).toBe('delivered'),
+    );
+  });
+
+  test('says a delivery was not retried, and keeps the log as it was', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [gaveUpDelivery('alpha')] },
+      refuse: {
+        'bureau.hooks.deliveries.retry': new StubFault('InvalidParams', 422, 'Already delivered.'),
+      },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    const item = await openLogItem(deliveries, 'delivery-gave-up');
+
+    await fireEvent.click(await within(item).findByRole('button', { name: copy.retry }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.deliveries.retry').length).toBe(1));
+    await waitFor(() => expect(document.body.textContent).toContain(copy.retryFailed));
+    expect(logItem(deliveries, 'delivery-gave-up')?.dataset['status']).toBe('exhausted');
+  });
+
+  test('says when a retrying delivery’s next try is due, and Retry now sends it at once', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [retryingDelivery('alpha')] },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    expect(logItem(deliveries, 'delivery-retrying')?.textContent).toContain('Retrying, try 3 of 8');
+    const next = within(deliveries).getByTestId('hook-delivery-next-try');
+    expect(next.textContent).toMatch(/Next try in \d+ seconds/);
+
+    await fireEvent.click(within(next).getByRole('button', { name: copy.retryNow }));
+
+    await waitFor(() => expect(stub?.callsTo('bureau.hooks.deliveries.retry').length).toBe(1));
+    expect(stub?.callsTo('bureau.hooks.deliveries.retry')[0]?.params).toEqual({
+      hookId: 'alpha',
+      deliveryId: 'delivery-retrying',
+    });
+    await waitFor(() =>
+      expect(logItem(deliveries, 'delivery-retrying')?.dataset['status']).toBe('delivered'),
+    );
+  });
+
+  test('offers no retry for a delivery that arrived', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      deliveries: { alpha: [delivery('alpha', 'delivered', { id: 'delivery-ok' })] },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByTestId('hook-delivery-list');
+    const item = await openLogItem(deliveries, 'delivery-ok');
+    await within(item).findByTestId('hook-delivery-detail');
+    expect(within(item).queryByRole('button', { name: copy.retry })).toBeNull();
+    expect(within(deliveries).queryByRole('button', { name: copy.retryNow })).toBeNull();
+  });
+
+  test('is empty for a hook with no delivery yet, in the design’s words', async () => {
+    const { view } = open([hook('alpha')], { path: '/hooks/alpha' });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByText(copy.none.title);
+    expect(deliveries.textContent).toContain(copy.none.description);
+    expect(within(deliveries).queryByRole('radio', { name: copy.failed })).toBeNull();
+  });
+
+  test('is empty for a new hook, reads nothing, and a test event sent before the first save adds nothing', async () => {
+    const { view, served } = open([], { path: '/hooks/new', draftTest: 'delivered' });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByText(copy.none.title);
+
+    await fireEvent.input(await view.findByLabelText(HOOKS_COPY.editor.webhook.urlLabel), {
+      target: { value: 'https://hooks.example.com/receive' },
+    });
+    await fireEvent.click(view.getByRole('button', { name: HOOKS_COPY.editor.check.test }));
+    await view.findByTestId('hook-test-result');
+
+    expect(within(deliveries).queryByTestId('hook-delivery-list')).toBeNull();
+    expect(deliveries.textContent).toContain(copy.none.title);
+    expect(served.deliveryReads).toEqual([]);
+  });
+
+  test('says the log could not be read, and Try again reads the log alone, leaving the hook as it is', async () => {
+    const { view } = open([hook('alpha')], {
+      path: '/hooks/alpha',
+      refuse: { 'bureau.hooks.deliveries': new StubFault('EngineFailure', 500, 'It broke.') },
+    });
+    const deliveries = await view.findByTestId('hook-deliveries');
+    await within(deliveries).findByText(copy.loadFailed.title);
+    expect(deliveries.textContent).toContain(copy.loadFailed.answered(500));
+    // The form beside it is untouched: the hook itself is on the page.
+    await view.findByLabelText(HOOKS_COPY.editor.check.nameLabel);
+    const logReads = stub?.callsTo('bureau.hooks.deliveries').length ?? 0;
+    const hookReads = stub?.callsTo('bureau.hooks.get').length ?? 0;
+
+    await fireEvent.click(within(deliveries).getByRole('button', { name: RETRY_LABEL }));
+
+    await waitFor(() =>
+      expect(stub?.callsTo('bureau.hooks.deliveries').length ?? 0).toBeGreaterThan(logReads),
+    );
+    expect(stub?.callsTo('bureau.hooks.get').length).toBe(hookReads);
+  });
 });

@@ -1,7 +1,8 @@
 <script lang="ts">
   /**
    * `/hooks/new` and `/hooks/:hook`: the editor that makes a hook or changes one, as three numbered
-   * steps down the page, with the delivery log in a side rail (below the steps on a phone).
+   * steps down the page, with the delivery log in a side rail (below the steps on a phone). A hook
+   * that is not saved has an empty log, and a test event sent before the first save adds nothing to it.
    *
    * A hook that is saved opens with a header (`hook-editor-header.svelte`): its name, the real On
    * switch, a "More actions" menu holding Delete hook, the hook as a sentence, and its latest
@@ -963,11 +964,9 @@
             {/if}
           </section>
         </form>
-        {#if !isNew}
-          <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
-            <HookDeliveries {hookId} />
-          </aside>
-        {/if}
+        <aside id={LOG_ID} class="ib-hook-editor__aside" tabindex="-1">
+          <HookDeliveries hookId={isNew ? undefined : hookId} />
+        </aside>
       </div>
     {/if}
   </section>

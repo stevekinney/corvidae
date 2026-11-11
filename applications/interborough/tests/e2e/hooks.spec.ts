@@ -111,7 +111,7 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   await expect(page).toHaveURL(/\/hooks\/(?!new$)[^/?]+$/);
   await expect(page.getByRole('heading', { level: 1, name })).toBeVisible();
   const deliveries = page.getByTestId('hook-deliveries');
-  await expect(deliveries.getByText(copy.deliveries.none)).toBeVisible();
+  await expect(deliveries.getByText(copy.deliveries.none.title)).toBeVisible();
   // The secret the Bureau made is shown once, on this page, with the note that it cannot be seen again.
   await expect(page.getByTestId('hook-secret')).toContainText(copy.webhook.secretOnce);
 
@@ -122,7 +122,7 @@ test('makes a hook in the editor, sends a test event to a receiver, and shows th
   expect(sent.headers['x-signature']).toMatch(/^t=\d+,v1=[0-9a-f]+$/);
   expect(JSON.parse(sent.body)).toMatchObject({ kind: 'hook.test', test: true });
   await expect(deliveries.getByText(copy.deliveries.testEvent)).toBeVisible();
-  await expect(deliveries.getByText('Answered 200')).toBeVisible();
+  await expect(deliveries).toContainText('Delivered, 200 OK');
   await checkA11y('hooks — the editor with a delivery');
 });
 
@@ -145,8 +145,8 @@ test('fires for a real event, and shows that delivery beside the test', async ({
 
     await page.reload();
     const deliveries = page.getByTestId('hook-deliveries');
-    await expect(deliveries.getByText('Chat created')).toBeVisible();
-    await expect(deliveries.getByText('Answered 200').first()).toBeVisible();
+    await expect(deliveries.getByText('A chat starts')).toBeVisible();
+    await expect(deliveries).toContainText('Delivered, 200 OK');
   } finally {
     await deleteChats([thread]);
   }

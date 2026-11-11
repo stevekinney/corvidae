@@ -15,6 +15,7 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import { landAt } from '../chat/pages.test-support.ts';
 import { HOOKS_COPY } from './hook-copy.ts';
+import { eventOptionLabel } from './hook-presentation.ts';
 
 let stub: BureauStub | undefined;
 afterEach(() => {
@@ -233,7 +234,7 @@ describe('an event in a hook’s deliveries', () => {
       'review.requested',
       'schedule.missed',
     ]);
-    expect(within(deliveries).getByText(/Schedule missed/)).toBeTruthy();
+    expect(within(deliveries).getByText(eventOptionLabel('schedule.missed'))).toBeTruthy();
     expect(within(deliveries).queryByText('Someone asked for a review')).toBeNull();
     expect(stub?.callsTo('bureau.events.format')).toHaveLength(0);
   });

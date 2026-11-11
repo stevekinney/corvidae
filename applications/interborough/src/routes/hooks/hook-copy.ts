@@ -336,13 +336,114 @@ export const HOOKS_COPY = {
       deleteConfirm: 'Delete hook',
       deleteFailed: 'The hook was not deleted',
     },
+    /**
+     * The delivery log beside the steps (board PageHooks, rows 84u to 84y, 85k and 86a to 86c). No
+     * sentence here joins parts with a middle dot: a comma does.
+     */
     deliveries: {
-      heading: 'Recent deliveries',
-      none: 'Nothing has been sent yet.',
-      loadFailed: 'The deliveries could not be read.',
+      heading: 'Delivery log',
+      /** The accessible name of the All / Failed switch, whose heading is the log's own. */
+      filterLabel: 'Show deliveries',
+      all: 'All',
+      failed: 'Failed',
+      /** A hook with no delivery yet, which a new hook always is. */
+      none: {
+        title: 'No deliveries yet',
+        description:
+          'Each time this hook fires, the delivery shows here with its tries and the payload.',
+      },
+      /** The Failed filter over a log in which nothing failed. */
+      noneFailed: {
+        title: 'No failed deliveries',
+        description: 'Nothing in this log has failed. Choose All to see every delivery.',
+      },
+      /** The accessible name of the placeholders while the log is read. */
+      loadingLabel: 'Loading the delivery log',
+      /** The status line under the placeholders when the read is slow. */
+      stillLoading: 'Still loading. This is taking longer than usual.',
+      /** What the log says after Cancel in the still-loading line: nothing failed. */
+      stopped: {
+        title: 'Stopped loading the delivery log',
+        description: 'You stopped the read, so the log is not shown. The hook itself is unchanged.',
+      },
+      /** A read of the log that failed: only the log is read again by Try again. */
+      loadFailed: {
+        title: 'Couldn’t load the delivery log',
+        answered: (status: number): string =>
+          `The server answered with an error (${String(status)}). The hook itself is unchanged.`,
+        noAnswer: 'The server didn’t answer. The hook itself is unchanged.',
+        unknown: 'Something went wrong reading the log. The hook itself is unchanged.',
+      },
       testEvent: 'Test event',
-      attempts: (made: number, allowed: number): string =>
-        `${String(made)} of ${String(allowed)} attempts`,
+      /** What a delivery that is retrying says after its word: `Retrying, try 3 of 8`. */
+      tryOf: (made: number, allowed: number): string => `try ${String(made)} of ${String(allowed)}`,
+      /** The right-hand word of one try in the list of tries. */
+      answer: {
+        noAnswer: 'No answer',
+        refused: 'Refused',
+        interrupted: 'Stopped',
+        sending: 'Sending',
+        completed: 'Done',
+        failed: 'Failed',
+      },
+      /** The line about the tries a delivery's list folds away. */
+      moreTries: (count: number, answer: string | undefined): string => {
+        const tries = `${String(count)} more ${count === 1 ? 'try' : 'tries'}`;
+        return answer === undefined ? `${tries}.` : `${tries}, all ${answer}.`;
+      },
+      triesHeading: 'Tries',
+      tryNumber: (number: number): string => `Try ${String(number)}`,
+      showAll: 'Show all',
+      showFewer: 'Show fewer',
+      /** The label of the payload inspector over what the delivery sent. */
+      payloadLabel: 'Payload sent',
+      /** What the inspector says for a delivery that sent no request. */
+      noPayload: 'This delivery sent no payload.',
+      /** The Event field of the payload's Fields view: the event in words, and its kind. */
+      eventField: (words: string, kind: string): string => `${words} (${kind})`,
+      facts: { event: 'Event', sentTo: 'Sent to', lastResponse: 'Last response' },
+      /** Why a delivery ended badly, and what to try, said at the head of its open line. */
+      cause: {
+        receiver: 'The receiver',
+        hintRemoved: 'The webhook URL may have been removed. Check the URL, then retry.',
+        hintSignature:
+          'The receiver may not accept the signature. Check the signing secret, then retry.',
+        hintDefault: 'Check the receiver, then retry.',
+        secretMissing:
+          'The signing secret could not be read, so nothing was sent. Replace the signing secret, then retry.',
+        notSent: (receiver: string): string =>
+          `Interborough never reached ${receiver}, so nothing was sent. Check the URL, then retry.`,
+        refusedOutright: (receiver: string, hint: string): string =>
+          `${receiver} refused this delivery outright, so Interborough stopped. ${hint}`,
+        refused: (detail: string, hint: string): string =>
+          `Interborough refused to send to that address${detail}, so it stopped. ${hint}`,
+        answeredEvery: (receiver: string, answer: string, tries: number, hint: string): string =>
+          `${receiver} answered ${answer} on ${
+            tries === 1 ? 'its one try' : `all ${String(tries)} tries`
+          }, so Interborough stopped. ${hint}`,
+        answeredLast: (receiver: string, answer: string, tries: number, hint: string): string =>
+          `${receiver} answered ${answer} on its last of ${String(tries)} tries, so Interborough stopped. ${hint}`,
+        noAnswer: (receiver: string, tries: number, every: boolean, hint: string): string =>
+          `${receiver} didn’t answer ${
+            every
+              ? tries === 1
+                ? 'its one try'
+                : `any of the ${String(tries)} tries`
+              : `the last of ${String(tries)} tries`
+          }, so Interborough stopped. ${hint}`,
+      },
+      /** The buttons that send a delivery again. */
+      retry: 'Retry delivery',
+      retryNow: 'Retry now',
+      /** The line beside Retry now: when the next try is due, from `nextTryWords`. */
+      nextTry: (when: string): string => `Next try in ${when}`,
+      nextTryDue: 'a moment',
+      retried: {
+        delivered: 'Retried. The delivery went through.',
+        waiting: 'Retried. It will try again soon.',
+        failed: 'Retried, and it failed again.',
+      },
+      retryFailed: 'The delivery was not retried',
     },
   },
   /** What the last attempt of a delivery came to, in a line. */
