@@ -188,8 +188,10 @@ export function createChatSessionController(
       throw error;
     } finally {
       // Not awaited: this run's promise is about this run. A follow-up that
-      // becomes its own turn reports through its own send promise.
-      void followUps.runEnded(outcome, terminalIds);
+      // becomes its own turn reports through its own send promise, and a
+      // failure that escapes the detached call goes to the isolated observer
+      // rather than becoming an unhandled rejection.
+      followUps.runEnded(outcome, terminalIds).catch(reportError);
     }
   };
   const send = async (message: MessageInput, attachments: ChatAttachment[] = []): Promise<void> => {

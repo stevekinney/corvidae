@@ -255,6 +255,9 @@ async function executeTurn({
     provisionalIds: new Set<string>([messageId, userMessageId]),
     runStartIds: new Set<string>(before.ids),
   };
+  // Every turn's transport is announced, so a host can tell a transport of its
+  // own is in flight; the matching end is in the `finally` below.
+  notifyObserver(() => options.hooks?.onTransportStart?.(request.runToken), reportError);
   try {
     const events = await decodeTransportResult(
       await options.transport({
@@ -373,6 +376,8 @@ async function executeTurn({
       onTerminalHistory?.(turnState.terminalConversation);
     emit((handlers) => handlers.onStreamEnd());
     if (lifecycle.active === controller) lifecycle.active = undefined;
+    // Last, after the turn's own cleanup, which an observer cannot prevent.
+    notifyObserver(() => options.hooks?.onTransportEnd?.(request.runToken), reportError);
   }
   if (shouldStopAfterTurn(turnState, executionOwner)) return false;
   return true;

@@ -161,6 +161,23 @@ export type ChatSessionHooks = {
   ) => Promise<ToolResult | undefined>;
   onError?: (error: unknown) => void;
   onStreamingChange?: (streaming: boolean) => void;
+  /**
+   * Called with the run's token when one of its turns hands its request to the
+   * transport: every turn the controller runs, a hidden turn, a follow-up
+   * promoted to a turn, and a retry included. A host that must know whether a
+   * transport of its own is in flight holds the token until
+   * {@link ChatSessionHooks.onTransportEnd} names it. An exception it throws is
+   * reported through `onError` and does not stop the turn.
+   */
+  onTransportStart?: (runToken: number) => void;
+  /**
+   * Called with the same token once that turn's transport has settled, however
+   * it ended. A later turn has a token at least as new, so a host that releases
+   * only an equal token cannot let an older turn's end release a newer one. An
+   * exception it throws is reported through `onError` and does not stop the
+   * turn's cleanup.
+   */
+  onTransportEnd?: (runToken: number) => void;
 };
 /**
  * Identifies the follow-up a {@link ChatSessionRunInput} call is for.

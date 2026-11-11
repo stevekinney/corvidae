@@ -184,7 +184,7 @@ export function createFollowUpQueue({
       );
       reportError(error);
       first.settled.reject(error);
-      void promoteNext();
+      promoteDetached();
       return;
     }
     // The next run's own end handles the rest, so they go out in order.
@@ -194,6 +194,15 @@ export function createFollowUpQueue({
     } catch (error) {
       first.settled.reject(error);
     }
+  };
+
+  /**
+   * Starts {@link promoteNext} without waiting for it. Nothing awaits a detached
+   * promotion, so a failure that escapes it is reported through the isolated
+   * `reportError` observer rather than left as an unhandled rejection.
+   */
+  const promoteDetached = (): void => {
+    promoteNext().catch(reportError);
   };
 
   const handOver = async (record: FollowUp): Promise<void> => {
@@ -241,7 +250,7 @@ export function createFollowUpQueue({
       reportError(error);
       record.settled.reject(error);
       // A later follow-up may have been waiting on this one to settle.
-      if (record.runEnd) void promoteNext();
+      if (record.runEnd) promoteDetached();
       return;
     }
     if (isRetired(record)) {
@@ -256,7 +265,7 @@ export function createFollowUpQueue({
     // halves are known, so the follow-up's fate is too.
     if (record.runEnd) {
       classify(record);
-      void promoteNext();
+      promoteDetached();
     }
   };
 
@@ -383,7 +392,7 @@ export function createFollowUpQueue({
           delete record.removing;
           // A retraction that failed leaves a follow-up its run did not take still
           // owed as a turn of its own.
-          if (stateOf(record) === 'cancelled') void promoteNext();
+          if (stateOf(record) === 'cancelled') promoteDetached();
         }
       })();
       return record.removing;
