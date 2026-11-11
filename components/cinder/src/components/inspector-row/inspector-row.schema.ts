@@ -19,7 +19,10 @@ const schema = {
           type: 'string',
         },
         {
-          type: 'boolean',
+          const: false,
+        },
+        {
+          const: true,
         },
       ],
       description:

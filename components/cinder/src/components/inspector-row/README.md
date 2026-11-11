@@ -60,7 +60,7 @@ The row never holds the value itself: it calls `onCommit` with the new value and
 | Prop | Type | Required | Default | Description |
 | --- | --- | --- | --- | --- |
 | `class` | `string` | no | — | Custom class merged with `.cinder-inspector-row`. |
-| `current` | `string` \| `boolean` | no | — | The value an editor starts from: the text of a `text`, `select` or `date` row, or the state of a `toggle`. |
+| `current` | `string` \| `false` \| `true` | no | — | The value an editor starts from: the text of a `text`, `select` or `date` row, or the state of a `toggle`. |
 | `disabled` | `boolean` | no | `false` | Draws the row as read-only, even when it has an editor. |
 | `editLabel` | `string` | no | — | The accessible name of the editor. Left unset, it reads "Edit" and the label. |
 | `kind` | `"text"` \| `"select"` \| `"date"` \| `"toggle"` | no | — | The built-in editor an activation opens. Leave it unset, with no `editor`, for a read-only row. A `toggle` row has no editor: activating it commits the opposite of `current`. |

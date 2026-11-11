@@ -16,7 +16,10 @@
           "type": "string"
         },
         {
-          "type": "boolean"
+          "const": false
+        },
+        {
+          "const": true
         }
       ],
       "description": "The value an editor starts from: the text of a `text`, `select` or `date` row, or the state of a `toggle`."

@@ -64,9 +64,9 @@ Pass `leadValue` and `leadUnit` instead of a `lead` snippet for a row led by tim
 | `chevron` | `boolean` | no | — | Draws a trailing chevron. Left unset, a row with `href` draws one. |
 | `class` | `string` | no | — | Custom class merged with `.cinder-grouped-list-item`. |
 | `href` | `string` | no | — | Makes the whole row a link to this address. |
+| `leadingKind` | `"icon"` \| `"avatar"` \| `"media"` \| `"control"` | no | `"icon"` | What the leading slot holds. |
 | `leadUnit` | `"min left"` \| `"left"` \| `"min to go"` \| `"starts"` \| `"Mon"` \| `"Tue"` \| `"Wed"` \| `"Thu"` \| `"Fri"` \| `"Sat"` \| `"Sun"` | no | — | The small unit under the lead number, from a closed vocabulary. Used with `leadValue`. |
 | `leadValue` | `string` \| `number` | no | — | The number or word of a time-led row's lead, such as `45` or `9:30`, drawn large. Pair it with `leadUnit`. Ignored when a `lead` snippet is given. A range of times never goes here. |
-| `leadingKind` | `"icon"` \| `"avatar"` \| `"media"` \| `"control"` | no | `"icon"` | What the leading slot holds. |
 | `rel` | `string` | no | — | The link's relationship; `noopener noreferrer` is added for `_blank`. |
 | `selected` | `boolean` | no | `false` | Marks the row as the current one with a tint. |
 | `staleAge` | `string` | no | — | A short age, such as `3d`, drawn with a gray clock before the trailing value. Give it only when the row's information is stale; a fresh row draws no marker. |

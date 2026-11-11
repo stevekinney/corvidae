@@ -50,15 +50,15 @@ const schema = {
     },
     dot: {
       enum: [
-        'neutral',
-        'success',
+        'online',
+        'offline',
         'warning',
         'danger',
         'info',
-        'accent',
-        'online',
-        'offline',
         'pending',
+        'neutral',
+        'success',
+        'accent',
       ],
       description:
         'A status dot shown beside the label (or on the icon when collapsed) in place of the numeric\ncount, for a row whose state is a signal and not a figure. The dot is hidden from assistive\ntechnology, so a row that sets it should also set `count` and `countLabel`, which carry\nthe meaning in the accessible name.',

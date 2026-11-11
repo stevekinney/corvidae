@@ -23,16 +23,16 @@ const schema = {
   metadata: {
     unsupportedProps: [
       {
-        name: 'children',
-        reason: 'function-or-snippet',
-        required: true,
-        description: 'Must be <li> elements containing NavigationItem and/or SideNavigationGroup.',
-      },
-      {
         name: 'brand',
         reason: 'function-or-snippet',
         description:
           "The product's name, mark or workspace switcher, drawn above the primary action and the list.\nWrap it as you like; the slot adds only the padding that aligns it with the rows.",
+      },
+      {
+        name: 'children',
+        reason: 'function-or-snippet',
+        required: true,
+        description: 'Must be <li> elements containing NavigationItem and/or SideNavigationGroup.',
       },
       {
         name: 'primaryAction',
