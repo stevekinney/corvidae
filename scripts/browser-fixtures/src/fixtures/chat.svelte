@@ -17,6 +17,12 @@
   } from '@lostgradient/chat';
   import { Button } from '@lostgradient/cinder';
   import type { ApprovalResolution } from '@lostgradient/cinder';
+  import ClaimSourceFixture from '../../../../components/chat/src/lib/components/chat/message/claim-source-fixture.svelte';
+  import type {
+    ClaimSourceFixtureApi,
+    ClaimSourceFixtureProps,
+    ClaimStreamEvent,
+  } from '../../../../components/chat/src/lib/components/chat/message/claim-source-fixture.ts';
 
   const adapter: ChatAdapter = {
     sendMessage: async () => {},
@@ -327,6 +333,27 @@
     };
     return () => delete probeWindow.corvidaeChatHarnessOpenArtifactPreview;
   });
+
+  // The claim-source streaming spec (COR-2260) mounts the fixture-only probe the same way and feeds
+  // it one replay event at a time. Nothing renders until the mount hook is called.
+  let claimProbe = $state<ClaimSourceFixtureProps | undefined>();
+  let claimApi = $state<ClaimSourceFixtureApi | undefined>();
+  $effect(() => {
+    const claimWindow = window as Window & {
+      corvidaeChatHarnessMountClaimSources?: (
+        representation: ClaimSourceFixtureProps['representation'],
+      ) => void;
+      corvidaeChatHarnessClaimSourceEvent?: (event: ClaimStreamEvent) => void;
+    };
+    claimWindow.corvidaeChatHarnessMountClaimSources = (representation) => {
+      claimProbe = { representation };
+    };
+    claimWindow.corvidaeChatHarnessClaimSourceEvent = (event) => claimApi?.dispatch(event);
+    return () => {
+      delete claimWindow.corvidaeChatHarnessMountClaimSources;
+      delete claimWindow.corvidaeChatHarnessClaimSourceEvent;
+    };
+  });
 </script>
 
 <div class="chat-fixture-stack">
@@ -472,6 +499,14 @@
       {selectedArtifact?.title ?? ''}
     </span>
   </div>
+
+  {#if claimProbe}
+    <div data-testid="claim-source-probe">
+      {#key claimProbe.representation}
+        <ClaimSourceFixture bind:this={claimApi} representation={claimProbe.representation} />
+      {/key}
+    </div>
+  {/if}
 
   {#if previewProbe}
     <div style="height: 12rem;" data-testid="artifact-preview-probe">
