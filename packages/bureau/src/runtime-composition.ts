@@ -24,6 +24,7 @@ import type {
   MemoryAuthority,
   MemoryCapability,
   MemoryEvidenceBundle,
+  MemoryRecallDetection,
   MemoryWriteReceipt,
 } from '@lostgradient/memory';
 import { createMemoryAuthority, MEMORY_CAPABILITIES, requestPrincipal } from '@lostgradient/memory';
@@ -71,6 +72,8 @@ import {
   createCheckpointStore,
   createDefaultGuardrailsPreset,
   createGuardrails,
+  createSessionTaintTracker,
+  DEFAULT_TAINT_THRESHOLD,
   withSessionTaint,
   createIdentityHook,
   createRequestHumanInputTool,
@@ -1432,6 +1435,7 @@ export function createMemoryRecallHook(
   memory: GovernedMemory,
   authority: MemoryAuthority,
   target: RunMemoryTarget,
+  onDetection?: (detection: MemoryRecallDetection, step: number) => void | Promise<void>,
 ): PrepareStepHook {
   return async (context) => {
     // The current prompt, whatever its shape: a string, or the text parts of a
@@ -1467,8 +1471,17 @@ export function createMemoryRecallHook(
     // A policy change that lands while recall runs leaves the bundle admitted
     // under the old policy, so it is recalled once more; if the policy moves
     // again, nothing is appended rather than evidence no current policy admitted.
-    let bundle = await recall();
-    if (bundle.policyRevision !== memory.policyRevision) bundle = await recall();
+    // Every recall's detections are reported, including one the policy change below discards: the
+    // content was read, and a detector flagged it.
+    const recallReporting = async () => {
+      const recalled = await recall();
+      for (const { detection } of recalled.exclusions) {
+        if (detection !== undefined) await onDetection?.(detection, context.step);
+      }
+      return recalled;
+    };
+    let bundle = await recallReporting();
+    if (bundle.policyRevision !== memory.policyRevision) bundle = await recallReporting();
     // The scan above ran under the policy recall started with; rows it kept
     // may be stale under the one in force now, so scan again either way.
     withdrawStale();
@@ -3719,13 +3732,74 @@ async function buildRuntimeComposition(
       collection: request.agentName ?? requestContext?.agentId ?? defaultBureauAgentName,
       sessionId: request.sessionId,
     };
+    // COR-1226 — resolved here rather than at the hook-registration site below,
+    // because the skill toolbox needs the same detectors and the same session
+    // taint tracker, and it is constructed before that point. `createGuardrails`
+    // is a pure function of its options, so calling it earlier changes nothing
+    // about what it returns.
+    const guardrailsConfig = resolveGuardrailsConfiguration();
+    // COR-2105 — a run of a session starts from the session's taint and writes a new one back,
+    // from this tracker as from the agent's own (`AgentRunContext.sessionTaint`).
+    const runIdOfTaint = request.runId ?? request.sessionId;
+    const taintSeam = sessionTaintSeamFor(
+      request.sessionId,
+      runIdOfTaint,
+      runtimeOptions?.sessionMetadata,
+    );
+    const guardrails = guardrailsConfig
+      ? createGuardrails(withSessionTaint(guardrailsConfig, taintSeam, runIdOfTaint))
+      : undefined;
+    // COR-2107 — the tracker a flagged recall taints. It is the Bureau's own tracker, seeded from
+    // the session and writing back through the same seam every other tracker of the run uses
+    // (COR-2105), so the taint it raises is stored whichever tier resolved the run's guardrails,
+    // an agent's own included. When the Bureau runs no guardrails but the agent resolves its own,
+    // a tracker over the same seam stands in, so the agent's declaration is not left unable to
+    // taint its session.
+    const recallTaint =
+      guardrails?.taint ??
+      (sessionAgent?.agentResolvesGuardrails === true
+        ? createSessionTaintTracker({
+            ...(taintSeam.initial === undefined ? {} : { initial: taintSeam.initial }),
+            onTainted: taintSeam.onTainted,
+            runId: runIdOfTaint,
+          })
+        : undefined);
+
     if (memory && memoryAuthority) {
-      hooks.on('prepareStep', createMemoryRecallHook(memory, memoryAuthority, memoryTarget), {
-        id: 'bureau:memory-recall',
-        // Recall admission records the read and can quarantine a poisoned
-        // record; both are idempotent on a replayed step.
-        replay: 'effectful',
-      });
+      // COR-2107 — a recall a detector flagged at or above the run's taint threshold taints the
+      // session, as any other scan path does (COR-2102).
+      const recallTaintThreshold =
+        guardrailsConfig?.taint?.taintThreshold ?? DEFAULT_TAINT_THRESHOLD;
+      hooks.on(
+        'prepareStep',
+        createMemoryRecallHook(
+          memory,
+          memoryAuthority,
+          memoryTarget,
+          recallTaint === undefined
+            ? undefined
+            : (detection, step) => {
+                if (detection.confidence < recallTaintThreshold) return;
+                recallTaint.taint({
+                  reason: `Recalled memory flagged by ${detection.detector} (${detection.category})`,
+                  detector: detection.detector,
+                  category: detection.category,
+                  confidence: detection.confidence,
+                  step,
+                  provenance: 'recalled-memory',
+                });
+                // The write that stores the taint completes before the recall hook returns, as
+                // the guardrail hooks' own does (COR-2105).
+                return recallTaint.settled();
+              },
+        ),
+        {
+          id: 'bureau:memory-recall',
+          // Recall admission records the read and can quarantine a poisoned
+          // record; both are idempotent on a replayed step.
+          replay: 'effectful',
+        },
+      );
       hooks.on(
         'onStep',
         createMemoryPersistHook(memory, memoryAuthority, memoryTarget, request.runId, (receipt) =>
@@ -3747,25 +3821,6 @@ async function buildRuntimeComposition(
         },
       );
     }
-
-    // COR-1226 — resolved here rather than at the hook-registration site below,
-    // because the skill toolbox needs the same detectors and the same session
-    // taint tracker, and it is constructed before that point. `createGuardrails`
-    // is a pure function of its options, so calling it earlier changes nothing
-    // about what it returns.
-    const guardrailsConfig = resolveGuardrailsConfiguration();
-    // COR-2105 — a run of a session starts from the session's taint and writes a new one back,
-    // from this tracker as from the agent's own (`AgentRunContext.sessionTaint`).
-    const runIdOfTaint = request.runId ?? request.sessionId;
-    const guardrails = guardrailsConfig
-      ? createGuardrails(
-          withSessionTaint(
-            guardrailsConfig,
-            sessionTaintSeamFor(request.sessionId, runIdOfTaint, runtimeOptions?.sessionMetadata),
-            runIdOfTaint,
-          ),
-        )
-      : undefined;
 
     // COR-1226 — skill bodies and skill resources are untrusted instruction
     // input and must pass the same detector pipeline as anything else entering
