@@ -118,8 +118,9 @@ describe('the committed Chat stress cases', () => {
   });
 
   it('keeps the middle dot out of every title and source', () => {
+    const middleDot = String.fromCodePoint(0xb7);
     for (const stressCase of cases) {
-      expect(`${stressCase.title} ${stressCase.source}`).not.toContain('·');
+      expect(`${stressCase.title} ${stressCase.source}`).not.toContain(middleDot);
     }
   });
 });

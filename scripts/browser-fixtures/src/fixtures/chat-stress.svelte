@@ -9,6 +9,7 @@
     finalizeStreamingMessage,
     updateStreamingMessage,
     type ChatAdapter,
+    type ChatAttachmentReference,
     type ChatAttachmentUpload,
     type ChatAvailability,
     type ChatComposerStatus,
@@ -149,7 +150,7 @@
             throw new Error('The upload service refused the file.');
           if (file.name.startsWith('uploading')) {
             onProgress?.(0.42);
-            return new Promise((_resolve, reject) => {
+            return new Promise<ChatAttachmentReference>((_resolve, reject) => {
               signal.addEventListener('abort', () =>
                 reject(new DOMException('Aborted', 'AbortError')),
               );
