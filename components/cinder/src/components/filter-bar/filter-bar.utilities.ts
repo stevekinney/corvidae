@@ -34,6 +34,10 @@ const SEARCH_FIELD_WIDTH = 176;
 /** The inline size, in pixels, of an icon-only control (the search button, the Filter button's icon). */
 const ICON_CONTROL_WIDTH = 36;
 const GAP = 8;
+/** The inline padding, in pixels, of one segment button (12px a side). */
+const SEGMENT_PADDING = 24;
+/** The inline padding, in pixels, of the segmented control's track around its buttons. */
+const SEGMENT_TRACK_PADDING = 8;
 /** Average glyph width of the toolbar's 13px text. */
 const GLYPH_WIDTH = 6.4;
 
@@ -110,8 +114,15 @@ export function estimateFilterBarWidth(
   const widths: number[] = [];
 
   if (layout === 'wide') {
-    for (const segment of contents.segments) {
-      widths.push(textWidth(segment.label) + (segment.count === undefined ? 0 : 22) + 36);
+    // The segments are one control, a track with no gap between its buttons, so they take one
+    // place in the row: each button's label, its count and its padding, inside the track's own.
+    if (contents.segments.length > 0) {
+      let track = SEGMENT_TRACK_PADDING;
+      for (const segment of contents.segments) {
+        track +=
+          textWidth(segment.label) + (segment.count === undefined ? 0 : 22) + SEGMENT_PADDING;
+      }
+      widths.push(track);
     }
   } else if (contents.segments.length > 0) {
     const longest = Math.max(

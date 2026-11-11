@@ -126,7 +126,9 @@ describe('width estimates', () => {
       'wide',
     );
     expect(runs).toBeGreaterThan(900);
-    expect(runs).toBeLessThan(1150);
+    // At 1280 pixels the bar beside Interborough's sidebar is about 1040 pixels, where the wide
+    // form, measured at about 915, fits; the segments are one track, never six gapped controls.
+    expect(runs).toBeLessThan(1040);
     const workflows = estimateFilterBarWidth(
       contents({ segments: SEGMENTS, facets: [{ ...CHOICE, key: 'starts', label: 'Starts' }] }),
       'wide',
