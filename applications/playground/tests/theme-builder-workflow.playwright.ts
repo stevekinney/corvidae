@@ -104,7 +104,10 @@ async function downloadText(
 async function sourceEnvelope(): Promise<Record<string, any>> {
   const dialog = await openExport();
   const { text } = await downloadText(dialog, /^Download .*\.cinder-theme\.json$/);
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
   return JSON.parse(text) as Record<string, any>;
 }
@@ -207,7 +210,10 @@ test('6. exports source, CSS and portable output that match the preview', async 
   const portable = await downloadText(dialog, /^Download .*-light-default\.tokens\.json$/);
   const document = JSON.parse(portable.text) as Record<string, any>;
   expect(document['radius'].medium.$value).toEqual({ value: 7, unit: 'px' });
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 
@@ -247,7 +253,10 @@ test('8. blocks the normal CSS export while errors remain, but never the source'
   await expect(dialog.getByTestId('export-source')).toContainText('Cinder Theme v1');
   const downloaded = await downloadText(dialog, /^Download .*\.cinder-theme\.json$/);
   exportedSource = downloaded.text;
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 });
 

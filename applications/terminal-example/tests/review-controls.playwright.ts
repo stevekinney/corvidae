@@ -297,7 +297,10 @@ test('removing the toolbar while Export is open sends focus to the frame on clos
     timeout: 15_000,
   });
   await expect(dialog).toBeVisible();
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(dialog).toBeHidden();
   const insideFrame = await page.evaluate(
     () => document.activeElement?.closest('.cinder-terminal') !== null,

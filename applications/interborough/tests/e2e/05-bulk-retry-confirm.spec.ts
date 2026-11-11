@@ -64,8 +64,11 @@ test('operator bulk-retries every failed workflow with type-to-confirm', async (
   await expect(dialog.getByText('Done')).toBeVisible();
   await checkA11y('workflow list — bulk retry dialog (result)');
 
-  // `exact: true` disambiguates from the modal's own "Close dialog" icon
-  // button, which `name: 'Close'` otherwise fuzzy-matches as a substring.
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  // The modal's own corner icon button is also named "Close", so the footer button is found
+  // inside the footer.
+  await dialog
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await expect(dialog).not.toBeVisible();
 });

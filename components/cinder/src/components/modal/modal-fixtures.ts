@@ -39,4 +39,15 @@ export default [
       title: 'Dialog with anchored overlay',
     },
   },
+  {
+    // The bottom sheet below 760px: opened at the fixture's phone viewport, it docks with a 20px top
+    // radius, a grabber, an upward shadow and 32px under the footer.
+    name: 'sheet',
+    host: './modal.fixture.svelte',
+    props: {
+      open: true,
+      title: 'Filter runs',
+      sheetBelow: '760px',
+    },
+  },
 ];

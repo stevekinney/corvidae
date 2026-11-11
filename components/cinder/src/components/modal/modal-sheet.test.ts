@@ -148,6 +148,18 @@ describe('modal.css and confirm-dialog.css sheet form', () => {
     expect(modalCss).toMatch(/max-height:\s*calc\(90dvh - var\(--_cinder-keyboard-inset, 0px\)\);/);
   });
 
+  test('shapes the sheet: 20px top radius, square bottom, upward shadow, 32px under the last row', () => {
+    const start = modalCss.indexOf(
+      ".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel {",
+    );
+    const rule = modalCss.slice(start, modalCss.indexOf('}', start));
+    expect(rule).toContain('border-radius: 1.25rem 1.25rem 0 0;');
+    expect(rule).toMatch(/box-shadow:\s*0 -/);
+    expect(rule).toContain(
+      'padding-block-end: max(var(--cinder-space-8), env(safe-area-inset-bottom));',
+    );
+  });
+
   test('stacks the footer at full width and 44px with the confirmation on top', () => {
     const footer = modalCss.slice(
       modalCss.indexOf(".cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {"),

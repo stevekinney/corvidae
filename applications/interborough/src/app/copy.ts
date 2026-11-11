@@ -1195,7 +1195,7 @@ export const WORKFLOW_COPY = {
     menu: {
       label: 'More actions',
       sendSignal: 'Send a signal…',
-      /** The footer button that ends the dialog; the dialog's own corner button is named "Close dialog". */
+      /** The footer button that ends the dialog; the dialog's own corner button is also named "Close". */
       closeSignal: 'Done',
       duplicate: 'Duplicate',
       pause: 'Pause',

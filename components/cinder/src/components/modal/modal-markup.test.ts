@@ -52,6 +52,9 @@ describe('Modal markup', () => {
         open: true,
         title: 'Connect Anthropic',
         description: 'Paste an API key, then test it.',
+        // The corner close button carries a Tooltip whose panel and ids depend on a client-only
+        // effect, so the byte-exact comparison leaves it out; modal-rendering.test.ts covers it.
+        closeButtonVisible: false,
         children: textSnippet('Body'),
         footer: emptySnippet,
       },

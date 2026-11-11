@@ -8,6 +8,8 @@
     open?: boolean;
     anchoredOverlay?: boolean;
     title?: string;
+    /** Opens the modal as a bottom sheet below this viewport width, as `sheetBelow` does. */
+    sheetBelow?: string | false;
   };
 
   let {
@@ -15,6 +17,7 @@
     open = true,
     anchoredOverlay = false,
     title = 'Fixture dialog',
+    sheetBelow = false,
   }: FixtureProps = $props();
   let modalOpen = $state(untrack(() => open));
   let overlayOpen = $state(untrack(() => anchoredOverlay));
@@ -28,7 +31,7 @@
   </button>
 
   {#if describedById}
-    <Modal bind:open={modalOpen} {title} {triggerRef} {describedById}>
+    <Modal bind:open={modalOpen} {title} {triggerRef} {describedById} {sheetBelow}>
       <p id={describedById}>
         This dialog includes a description so aria-describedby can be captured in the visual
         fixture.
@@ -67,7 +70,7 @@
       {/snippet}
     </Modal>
   {:else}
-    <Modal bind:open={modalOpen} {title} {triggerRef}>
+    <Modal bind:open={modalOpen} {title} {triggerRef} {sheetBelow}>
       <p>This dialog body is supplied by the host fixture.</p>
 
       {#snippet footer()}

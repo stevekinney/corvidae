@@ -31,6 +31,7 @@
   import { classNames } from '../../utilities/class-names.ts';
   import { useReducedMotion } from '../../utilities/use-reduced-motion.svelte.ts';
   import { createFocusTrap } from '../focus-trap/index.ts';
+  import Tooltip from '../tooltip/tooltip.svelte';
   import {
     createSlidingDialogState,
     focusDialogBodyUnlessAutofocused,
@@ -79,6 +80,9 @@
   let dialogElement: HTMLDialogElement | undefined = $state();
   let panelElement: HTMLDivElement | undefined = $state();
   let bodyElement: HTMLDivElement | undefined = $state();
+  // The close button, which the "Close (Esc)" Tooltip anchors to by reference so the tooltip's
+  // panel is not rendered inside the corner button's own markup.
+  let closeButtonElement: HTMLButtonElement | null = $state(null);
   // `mounted` is false during SSR and becomes true after the first client-side
   // effect. The dialog renders ONLY once mounted — never merely because
   // `open` is true — per OVERLAY-POLICY.md's SSR rule (hard constraint): the
@@ -369,13 +373,23 @@
 
         <!--
           Rendered last so tabbing forward from the panel leaves it last in
-          sequential focus order. CSS positions it visually in the corner.
+          sequential focus order. CSS positions it visually in the corner. The
+          Tooltip sits before the button so the button stays the last focusable
+          element: the tooltip's own panel is not focusable, and it renders in
+          the dialog's top layer while it shows.
         -->
         {#if closeButtonVisible}
+          <Tooltip
+            text="Close (Esc)"
+            placement="bottom"
+            describe={false}
+            triggerRef={closeButtonElement}
+          />
           <button
+            bind:this={closeButtonElement}
             type="button"
             class="cinder-modal__close"
-            aria-label="Close dialog"
+            aria-label="Close"
             onclick={dismiss}
           >
             <svg

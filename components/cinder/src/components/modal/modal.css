@@ -158,7 +158,7 @@
      absolute-positioned close button. */
     padding-block: var(--cinder-space-4);
     padding-inline-start: var(--cinder-space-5);
-    padding-inline-end: calc(var(--cinder-space-5) + 2rem);
+    padding-inline-end: calc(var(--cinder-space-5) + 2.25rem);
     border-block-end: 1px solid var(--cinder-border-muted);
     background: var(--cinder-surface);
     flex-shrink: 0;
@@ -215,8 +215,9 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    width: 2rem;
-    height: 2rem;
+    /* A 36px icon button (COR-2322 AC5). */
+    width: 2.25rem;
+    height: 2.25rem;
     padding: var(--cinder-space-1);
 
     border-radius: var(--cinder-radius-md);
@@ -380,9 +381,17 @@
     border-radius: 0;
   }
 
+  /* The sheet's shape (COR-2322 AC4): a 20px top radius, a square bottom edge that meets the
+   * screen, an upward shadow, and 32px of padding under the last row (more where the device
+   * reports a bottom safe area). The panel paints the sheet surface so the padding band reads as
+   * part of the sheet rather than a raised strip under the footer. Black, not a theme colour,
+   * because a shadow is darkness, not ink: it has to darken the page in both themes. */
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__panel {
     border-width: 1px 0 0;
-    border-radius: var(--cinder-radius-lg) var(--cinder-radius-lg) 0 0;
+    border-radius: 1.25rem 1.25rem 0 0;
+    background: var(--cinder-surface);
+    box-shadow: 0 -0.5rem 1.5rem -0.25rem color-mix(in oklch, black, transparent 80%);
+    padding-block-end: max(var(--cinder-space-8), env(safe-area-inset-bottom));
   }
 
   .cinder-modal__grabber {
@@ -397,7 +406,6 @@
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer {
     flex-direction: column-reverse;
     align-items: stretch;
-    padding-block-end: max(var(--cinder-space-4), env(safe-area-inset-bottom));
   }
 
   .cinder-modal[data-cinder-sheet='docked'] .cinder-modal__footer > * {

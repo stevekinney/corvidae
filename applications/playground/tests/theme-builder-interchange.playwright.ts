@@ -61,7 +61,10 @@ async function downloadSource(page: Page): Promise<string> {
   expect(file.suggestedFilename()).toMatch(/-[0-9a-f-]{8}\.cinder-theme\.json$/);
   const saved = await file.path();
   const text = await readFile(saved, 'utf8');
-  await dialog.getByRole('button', { name: 'Close', exact: true }).click();
+  await dialog
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   return text;
 }
 

@@ -195,7 +195,10 @@ test('every dialog returns focus to its trigger, by Escape and by its own button
   await exportButton.focus();
   await page.keyboard.press('Enter');
   await expect(exporter.getByTestId('export-base')).toBeVisible({ timeout: 60_000 });
-  await exporter.getByRole('button', { name: 'Close', exact: true }).press('Enter');
+  await exporter
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .press('Enter');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(exportButton).toBeFocused();
 });

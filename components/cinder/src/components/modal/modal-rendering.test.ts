@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { setupHappyDom } from '@lostgradient/testing';
+import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 import { resetScrollLock } from '../../_internal/overlay.ts';
@@ -143,7 +144,7 @@ describe('Modal', () => {
     });
     expect(container.querySelector('.cinder-modal__footer')).toBeNull();
   });
-  test('close button has aria-label="Close dialog"', () => {
+  test('close button has aria-label="Close"', () => {
     const { container } = render(Modal, {
       props: {
         open: true,
@@ -152,7 +153,29 @@ describe('Modal', () => {
       },
     });
     const closeButton = container.querySelector('.cinder-modal__close');
-    expect(closeButton?.getAttribute('aria-label')).toBe('Close dialog');
+    expect(closeButton?.getAttribute('aria-label')).toBe('Close');
+  });
+  test('close button is a 36px icon button with no visible words', () => {
+    const css = readFileSync(new URL('./modal.css', import.meta.url), 'utf8');
+    const closeRule = css.split('.cinder-modal__close {')[1]?.split('}')[0];
+    expect(closeRule).toContain('width: 2.25rem');
+    expect(closeRule).toContain('height: 2.25rem');
+    const { container } = render(Modal, {
+      props: { open: true, title: 'Test Modal', children: emptySnippet },
+    });
+    const closeButton = container.querySelector('.cinder-modal__close');
+    expect(closeButton?.textContent?.trim()).toBe('');
+    expect(closeButton?.querySelector('svg')).not.toBeNull();
+  });
+  test('close button is described by a "Close (Esc)" tooltip, not a visible key cap', async () => {
+    const { container } = render(Modal, {
+      props: { open: true, title: 'Test Modal', children: emptySnippet },
+    });
+    await waitUntil(() => document.body.querySelector('[role="tooltip"]') !== null);
+    expect(document.body.querySelector('[role="tooltip"]')?.textContent?.trim()).toBe(
+      'Close (Esc)',
+    );
+    expect(container.querySelector('.cinder-modal__close kbd')).toBeNull();
   });
   test('closeButtonVisible=false omits the close button', () => {
     const { container } = render(Modal, {
