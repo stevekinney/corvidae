@@ -336,74 +336,176 @@
   }
 }
 
-/* The Access tab: a form of sections, one list row per tool, and the budgets in a grid. */
-.ib-agent-access,
-.ib-agent-access__form {
+/*
+ * The Access tab (board PageAgent, rows 38l to 40c): the toolbar with the one allowed count at its
+ * right, one table of tools in groups, then Guardrails and spend. On a narrow container Cinder's
+ * table stacks each row into a card (row 07a).
+ */
+.ib-agent-access {
   display: flex;
   flex-direction: column;
-  gap: var(--cinder-space-6);
+  gap: var(--cinder-space-4);
   min-inline-size: 0;
 }
 
-.ib-access-list {
+.ib-access-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2) var(--cinder-space-4);
+  align-items: center;
+  justify-content: space-between;
+  min-inline-size: 0;
+}
+
+.ib-access-toolbar > :first-child {
+  flex: 1 1 24rem;
+  min-inline-size: 0;
+}
+
+.ib-access-toolbar__count {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-3);
+  align-items: center;
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  font-weight: var(--cinder-font-medium);
+}
+
+/* "Saved as Version 5" with its check, beside the count once a change saved (row 39h). */
+.ib-access-toolbar__saved {
+  display: inline-flex;
+  gap: var(--cinder-space-1);
+  align-items: center;
+  font-weight: var(--cinder-font-normal);
+  color: var(--cinder-text-muted);
+}
+
+.ib-access-toolbar__saved svg {
+  color: var(--cinder-status-success-text);
+}
+
+/* A group's header: a quiet button across the row, its name, then its count in muted words. */
+.ib-access-group__toggle {
+  display: inline-flex;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cinder-text-default);
+  font: inherit;
+  font-weight: var(--cinder-font-medium);
+  cursor: pointer;
+}
+
+.ib-access-group__count {
+  font-weight: var(--cinder-font-normal);
+  color: var(--cinder-text-muted);
+}
+
+/* A tool's name for a person, with its identifier once, small and monospaced (row 38m). */
+.ib-access-row__identity {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0 var(--cinder-space-2);
+  align-items: baseline;
+  min-inline-size: 0;
+}
+
+.ib-access-row__name {
+  font-weight: var(--cinder-font-medium);
+}
+
+.ib-access-row__identifier {
+  font-family: var(--cinder-font-mono);
+  font-size: var(--cinder-text-xs);
+  color: var(--cinder-text-muted);
+  overflow-wrap: anywhere;
+}
+
+/* Risk, a skill's kind and what a tool does: muted words in the body face, never a colour of their own (S32). */
+.ib-access-row__kind,
+.ib-access-row__risk,
+.ib-access-row__follows,
+.ib-access-row__does,
+.ib-access-row__reason {
+  font-size: var(--cinder-text-sm);
+  color: var(--cinder-text-muted);
+}
+
+.ib-access-row__reason {
+  display: block;
+  font-weight: var(--cinder-font-normal);
+}
+
+.ib-access-row__asks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-1) var(--cinder-space-2);
+  align-items: center;
+  min-inline-size: 0;
+}
+
+.ib-access-row__asks > :first-child {
+  flex: 1 1 10rem;
+  min-inline-size: 0;
+}
+
+/* A row's own save in flight (row 39j): the spinner and its word beside the control. */
+.ib-access-row__saving {
+  display: inline-flex;
+  gap: var(--cinder-space-1);
+  align-items: center;
+  font-size: var(--cinder-text-sm);
+  color: var(--cinder-text-muted);
+}
+
+/* The full-width line under a row whose save failed (row 39k), in danger tone, with Try again as a link. */
+.ib-access-failure {
+  margin: 0;
+  font-size: var(--cinder-text-sm);
+  color: var(--cinder-status-danger-text);
+}
+
+.ib-access-failure__retry {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Guardrails and spend (row 38r). */
+.ib-access-guardrails__set {
   display: flex;
   flex-direction: column;
+  gap: var(--cinder-space-2);
   margin: 0;
   padding: 0;
-  list-style: none;
+  border: 0;
+  min-inline-size: 0;
 }
 
-.ib-access-tool,
-.ib-access-skill {
+.ib-access-guardrails__legend {
+  padding: 0;
+  margin-block-end: var(--cinder-space-2);
+  font-weight: var(--cinder-font-medium);
+}
+
+.ib-access-guardrail__control {
   display: flex;
   flex-wrap: wrap;
   gap: var(--cinder-space-1) var(--cinder-space-3);
-  align-items: center;
-  padding-block: var(--cinder-space-2);
-  border-block-end: 1px solid var(--cinder-border-faint);
-  min-inline-size: 0;
+  align-items: flex-start;
 }
 
-.ib-access-tool__name {
+.ib-access-spend {
   display: flex;
-  flex-wrap: wrap;
-  gap: var(--cinder-space-1) var(--cinder-space-3);
-  align-items: center;
-  min-inline-size: 0;
-  max-inline-size: 100%;
-  font-family: var(--cinder-font-mono);
-  overflow-wrap: anywhere;
-}
-
-.ib-access-tool__line,
-.ib-access-skill__reason {
-  flex-basis: 100%;
-  margin: 0;
-  color: var(--cinder-text-muted);
-  font-size: var(--cinder-text-sm);
-  overflow-wrap: anywhere;
-}
-
-.ib-access-tool__approval {
-  flex-basis: 100%;
-  min-inline-size: 0;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
   max-inline-size: 20rem;
-}
-
-.ib-access-skill__name {
-  min-inline-size: 0;
-  font-family: var(--cinder-font-mono);
-  overflow-wrap: anywhere;
-}
-
-.ib-access-budgets {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 14rem), 1fr));
-  gap: var(--cinder-space-3);
-  min-inline-size: 0;
-}
-
-.ib-agent-access__actions {
-  display: flex;
-  justify-content: flex-start;
+  margin-block-start: var(--cinder-space-4);
 }

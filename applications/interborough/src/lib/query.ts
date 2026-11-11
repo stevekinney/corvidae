@@ -106,6 +106,10 @@ export const queryKeys = {
     /** The agents that name each skill, read from the code-defined agents' own statements. */
     users: () => ['skills', 'users'] as const,
   },
+  /** The guardrails installed in the Bureau (`bureau.guardrails.list`). */
+  guardrails: {
+    list: () => ['guardrails', 'list'] as const,
+  },
   /** The Workflows area: the engine's definitions joined with the Bureau's files (`lib/workflow-catalog.ts`). */
   workflowCatalog: {
     list: () => ['workflow-catalog', 'list'] as const,

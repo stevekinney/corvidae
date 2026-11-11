@@ -4148,58 +4148,107 @@ export const AGENT_PAGE_COPY = {
     /** The same line for a plugin's agent, whose file the page cannot change, so it links nowhere. */
     noReferencesReadOnly: 'None added.',
   },
+  /**
+   * The Access tab (board PageAgent, rows 38l to 40c; board ResponsiveAndDark, rows 07a and 07b): a
+   * toolbar with a search, a segment per source and the one allowed count, the tools in collapsible
+   * groups with a leading allow box and an Asks select on each row, the skills, then Guardrails and
+   * spend. Each change saves at once as a new version, and each row says when its own save is in
+   * flight or failed.
+   */
   access: {
     heading: 'Access',
     builtIn: 'This agent is built in, so its access cannot be changed here.',
     loadFailed: 'The access settings could not be loaded.',
     invalid: 'This agent’s file has a problem, so its access cannot be changed until it is fixed.',
-    saveAction: 'Save access',
-    saveFailed: 'The access settings could not be saved.',
-    stale:
-      'This agent’s file changed after the page loaded, so nothing was saved. Your unsaved changes are still here; reloading shows the file as it is now and discards them.',
-    reload: 'Reload from disk',
     forbidden: 'You may not change this agent.',
-    toolsHeading: 'Tools',
-    toolsDescription:
-      'Allow the tools this agent may call, and choose when each asks you first. A chat’s permission mode can change this: it can ask on every call, refuse tools that change things, or skip the asks On changes would raise.',
+    /** The toolbar over the table (row 38l): the search, the source segments, and the allowed count. */
+    toolbarLabel: 'Filter tools',
+    searchLabel: 'Search tools by name',
+    searchPlaceholder: 'Search tools',
+    sourceLabel: 'Source',
+    all: 'All',
+    /** The one allowed count, at the right of the toolbar: "3 of 9 allowed". */
     toolCount: (allowed: number, total: number): string =>
       `${String(allowed)} of ${String(total)} allowed`,
-    toolsListLabel: 'Tools',
-    asksFirstLabel: (tool: string): string => `Asks first for ${tool}`,
+    /** Beside the count once a change saved, and the toast that says the same (row 39h). */
+    saved: (revision: number | null): string =>
+      revision === null ? 'Saved' : `Saved as Version ${String(revision)}`,
+    viewVersions: 'View versions',
+    /** What the offline banner names as the data it still shows (row 40b). */
+    offlineSubject: 'Access',
+    tableCaption: 'The tools this agent may call, and when each asks first',
+    /** The table's columns (row 38m); the first holds each row's allow box. */
+    columns: {
+      allow: 'Allowed',
+      tool: 'Tool',
+      does: 'What it does',
+      risk: 'Risk',
+      asks: 'Asks',
+    },
+    /** The accessible name of a row's allow box. */
+    allowLabel: (tool: string): string => `Allow ${tool}`,
+    /** The accessible name of a row's Asks select. */
+    asksFirstLabel: (tool: string): string => `When ${tool} asks first`,
     approvals: {
       never: 'Never',
       'on-changes': 'On changes',
       always: 'Always',
       blocked: 'Blocked',
     },
-    approvalHints: {
-      never: 'Runs without asking, unless the chat’s permission mode or the tool itself asks.',
-      'on-changes': 'Asks before it changes something, and runs a read without asking.',
-      always: 'Asks before every call.',
-      blocked: 'Never runs. The model is told it was refused.',
-    },
+    /** An Asks option; the tool's own default says so (row 38p). */
+    asksOption: (level: string, isDefault: boolean): string =>
+      isDefault ? `${level} (default)` : level,
     /** Under `never`, for a tool that declares no tier: Armorer still asks about a call it cannot classify. */
     neverUnclassifiedHint:
       'This tool declares no tier, so it still asks before every call, even here.',
+    /** A group's header after its source: how many of its tools are allowed (row 38m). */
+    groupCount: (allowed: number, total: number): string =>
+      `${String(allowed)} of ${String(total)} tools allowed`,
+    /** The group of tools the file lists that the host no longer offers. */
+    notInCatalogGroup: 'No longer offered',
     notInCatalog: 'Not offered by this host any more',
     noToolsTitle: 'This host offers no tools',
     noToolsDescription: 'Tools come from the host’s plugins and saved tool sources.',
-    skillsHeading: 'Skills',
-    skillsDescription:
-      'Executable skills the host found. This agent can activate only the ones checked here. A skill from a source the host does not trust cannot be granted.',
-    skillsReadOnlyDescription:
-      'Executable skills the host found. A skill from a source the host does not trust is refused wherever an agent would use it.',
-    skillsListLabel: 'Skills',
+    noMatchTitle: 'No tools match',
+    noMatchDescription: 'No tool’s name matches this search in this source.',
+    clearSearch: 'Clear search',
+    /** A row's own state while its change is saved (row 39j). */
+    saving: 'Saving…',
+    /** The line under a row whose save failed (row 39k), before its Try again link. */
+    failed: (subject: string, restored: string): string =>
+      `Couldn’t save ${subject}. It went back to ${restored}.`,
+    retry: 'Try again',
+    /** What a failed allow box or guardrail box went back to. */
+    restoredAllowed: 'allowed',
+    restoredNotAllowed: 'not allowed',
+    restoredOn: 'on',
+    restoredOff: 'off',
+    /** The Skills group (row 38q): its title and the note after it; skills are not counted with the tools. */
+    skillsTitle: (count: number): string => (count === 1 ? '1 skill' : `${String(count)} skills`),
+    skillsNote: 'They follow the tools they use.',
+    skillWord: 'Skill',
+    /** The Risk cell of a skill: it has no risk of its own. */
+    skillRisk: '—',
+    skillAsks: 'Follows its tools',
+    /** A skill the agent's file defines itself (sweep S65), listed above the host's. */
+    definedInFile: 'Defined in this file',
+    grantLabel: (skill: string): string => `Grant ${skill}`,
     skillsLoadFailed: 'The skills could not be loaded.',
-    noSkillsTitle: 'No skills found',
-    noSkillsDescription: 'Skills are discovered from the host’s skill sources.',
-    noSkillsAction: 'Open skills',
-    guardrailsHeading: 'Guardrails',
-    guardrailsDescription:
-      'Every agent runs the default guardrails: prompt-injection detection on the input and a PII check on the reply. They cannot be turned off. Add plugin guardrails below.',
-    budgetsHeading: 'Budgets',
-    budgetsDescription:
-      'A run that reaches a limit stops, and says which one. Leave a field empty for no limit.',
+    /** The section under the table (row 38r). */
+    guardrailsHeading: 'Guardrails and spend',
+    guardrailsLabel: 'Guardrails',
+    guardrailsNote: 'Guardrails come from enabled plugins. The default ones always run.',
+    noGuardrails: 'No enabled plugin offers a guardrail.',
+    guardrailsLoadFailed: 'The guardrails could not be loaded.',
+    /** A guardrail the file lists that no enabled plugin offers now. */
+    guardrailMissing: 'Not offered by an enabled plugin',
+    spendLabel: 'Spend limit per chat',
+    spendPlaceholder: 'No limit',
+    spendUnit: 'USD',
+    spendNote: 'Stops and asks when reached.',
+    /** What a failed spend limit is called, and what it went back to when it had none. */
+    spendSubject: 'the spend limit',
+    noLimit: 'No limit',
   },
   settings: {
     heading: 'Settings',

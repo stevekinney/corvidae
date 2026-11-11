@@ -146,12 +146,21 @@ describe('the page of a plugin’s agent', () => {
     expect(container.querySelector('[data-testid="agent-versions"]')).toBeNull();
   });
 
-  test('offers no access editor on the Access tab', async () => {
+  test('shows the Access tab read-only, every box and select off', async () => {
     landAt('/agents/linear%3Atriager/access');
-    serve();
-    const { findByTestId, queryByRole } = mount();
+    const served = serve();
+    const { container, findByTestId } = mount();
 
     await findByTestId('agent-plugin-note');
-    expect(queryByRole('button', { name: AGENT_PAGE_COPY.access.saveAction })).toBeNull();
+    const row = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-tool="lookup-order"]');
+      if (found === null) throw new Error('waiting for the tool');
+      return found;
+    });
+    expect(row.querySelector<HTMLInputElement>('input[type="checkbox"]')?.disabled).toBe(true);
+    expect(row.querySelector<HTMLSelectElement>('select')?.disabled).toBe(true);
+    expect(served.calls.some((call) => call.method === 'bureau.agents.definitions.update')).toBe(
+      false,
+    );
   });
 });

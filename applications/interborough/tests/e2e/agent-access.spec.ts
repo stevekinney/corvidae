@@ -1,21 +1,19 @@
 /**
- * An agent's Access tab against the real host: set when a tool asks first and a budget in the
- * tab, save, and see the file hold it, then chat with the agent as another client would and see the
- * setting enforced. `demo:lookup-order` only reads, so under the default (`on-changes`) a chat runs it;
- * the ask in the second case is the tab's doing alone. The chats are scripted by markers
+ * An agent's Access tab against the real host: set when a tool asks first in the tab, which saves
+ * at once, and see the file hold it, then chat with the agent as another client would and see the
+ * setting enforced. `demo:lookup-order` only reads, so under its default (Never) a chat runs it;
+ * the ask in the second case is the tab's doing alone. A budget the tab does not show (tool calls
+ * per run) survives the tab's write and stops a run. The chats are scripted by markers
  * (`access-provider.ts`). A skill from a trusted source can be granted; one from a source the host
  * does not trust has its box disabled with the reason, and the Bureau refuses the write too.
  */
 import type { Page } from '@playwright/test';
 
-import { AGENT_PAGE_COPY } from '../../src/app/copy.ts';
 import { ACCESS_LOOKUP_MARKER, ACCESS_LOOP_MARKER } from './access-provider.ts';
 import { bureau, createAgentFile, readAgent, removeAgent } from './agent-support.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { E2E_SKILLS } from './skills-support.ts';
-
-const copy = AGENT_PAGE_COPY.access;
 
 const agents = new Set<string>();
 const threads: string[] = [];
@@ -26,9 +24,13 @@ test.afterEach(async ({ request }) => {
   await deleteChats(threads.splice(0));
 });
 
-async function agentWithLookup(request: Parameters<typeof createAgentFile>[0], id: string) {
+async function agentWithLookup(
+  request: Parameters<typeof createAgentFile>[0],
+  id: string,
+  definition: Record<string, unknown> = {},
+) {
   agents.add(id);
-  await createAgentFile(request, id, { tools: ['demo:lookup-order'] });
+  await createAgentFile(request, id, { tools: ['demo:lookup-order'], ...definition });
 }
 
 /** The definition the Bureau holds for the agent now. */
@@ -37,21 +39,21 @@ async function definitionOf(request: Parameters<typeof readAgent>[0], id: string
   return detail.definition;
 }
 
-/** Saves the form on the Access tab and waits for the Bureau to take it. */
-async function save(page: Page): Promise<void> {
-  const button = page.getByRole('button', { name: copy.saveAction });
-  await expect(button).toBeEnabled();
-  // The button is disabled while the save is in flight as well as after it, so it cannot say that
-  // the Bureau took the form; the answer to the update can.
+/** Makes one change on the Access tab, which saves at once, and waits for the Bureau to take it. */
+async function saved(page: Page, change: () => Promise<void>): Promise<void> {
+  // The answer to the update says the Bureau took the change; the row's spinner only says it was sent.
   const answered = page.waitForResponse(
     (response) =>
       response.request().postData()?.includes('bureau.agents.definitions.update') === true,
   );
-  await button.click();
+  await change();
   const response = await answered;
   expect(response.ok()).toBe(true);
-  await expect(button).toBeDisabled();
+  await expect(page.getByTestId('agent-access-saved')).toBeVisible();
 }
+
+/** The Asks select of the Lookup order row. */
+const lookupAsks = (page: Page) => page.locator('[data-tool="demo:lookup-order"] select');
 
 /** The tool approvals the Bureau holds, waiting on a run's tool call. */
 async function pendingApprovals(request: Parameters<typeof bureau>[0], threadId: string) {
@@ -79,10 +81,11 @@ test.describe('the Access tab', () => {
     expect(first).not.toContain('"type":"interrupt"');
 
     await page.goto(`/agents/${id}/access`);
-    await page
-      .getByRole('combobox', { name: copy.asksFirstLabel('demo:lookup-order') })
-      .selectOption('always');
-    await save(page);
+    await saved(page, () =>
+      lookupAsks(page)
+        .selectOption('always')
+        .then(() => undefined),
+    );
     expect(await definitionOf(request, id)).toMatchObject({
       approvals: { 'demo:lookup-order': 'always' },
     });
@@ -101,16 +104,24 @@ test.describe('the Access tab', () => {
       .toBe(1);
   });
 
-  test('a budget set in the tab stops a run, and the run says which limit it reached', async ({
+  test('a budget the tab does not show survives its write, stops a run, and says which limit it reached', async ({
     page,
     request,
   }) => {
     const id = 'e2e-access-budget';
-    await agentWithLookup(request, id);
+    await agentWithLookup(request, id, { limits: { tools: { calls: 1 } } });
 
     await page.goto(`/agents/${id}/access`);
-    await page.getByLabel('Tool calls per run').fill('1');
-    await save(page);
+    await saved(page, () =>
+      lookupAsks(page)
+        .selectOption('blocked')
+        .then(() => undefined),
+    );
+    await saved(page, () =>
+      lookupAsks(page)
+        .selectOption('never')
+        .then(() => undefined),
+    );
     expect(await definitionOf(request, id)).toMatchObject({
       limits: { tools: { calls: 1 } },
     });
@@ -143,12 +154,14 @@ test.describe('the Access tab', () => {
     await agentWithLookup(request, id);
 
     await page.goto(`/agents/${id}/access`);
-    await page
-      .getByRole('combobox', { name: copy.asksFirstLabel('demo:lookup-order') })
-      .selectOption('never');
-    await save(page);
-    await page.getByRole('checkbox', { name: 'demo:lookup-order' }).uncheck();
-    await save(page);
+    await saved(page, () =>
+      lookupAsks(page)
+        .selectOption('always')
+        .then(() => undefined),
+    );
+    await saved(page, () =>
+      page.locator('[data-tool="demo:lookup-order"] input[type="checkbox"]').uncheck(),
+    );
 
     const definition = await definitionOf(request, id);
     expect(definition?.tools).toEqual([]);
@@ -166,13 +179,15 @@ test.describe('the Access tab', () => {
     await expect(untrusted.getByRole('checkbox')).toBeDisabled();
     await expect(untrusted).toContainText('source is not trusted');
 
-    await skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name }).check();
-    await save(page);
+    const summarize = skills.locator(
+      `[data-skill="${E2E_SKILLS.summarize.name}"] input[type="checkbox"]`,
+    );
+    await saved(page, () => summarize.check());
     const granted = await definitionOf(request, id);
     expect(granted?.skills).toEqual([E2E_SKILLS.summarize.name]);
 
     await page.reload();
-    await expect(skills.getByRole('checkbox', { name: E2E_SKILLS.summarize.name })).toBeChecked();
+    await expect(summarize).toBeChecked();
   });
 
   test('the write operation refuses an untrusted skill', async ({ request }) => {

@@ -1,44 +1,46 @@
 <script lang="ts">
   /**
-   * The skills the host found, each with whether the host trusts the source it came from and, when
-   * an agent is refused it, why. With a `form`, for an agent file, each has a box that grants it,
-   * saved with the rest of the tab. A skill an agent cannot activate has its box disabled and the
-   * reason under it, and the Bureau refuses the grant too. A skill the file names that the host no
-   * longer offers is marked and can only be withdrawn. Without a `form`, for an agent defined in
-   * code, the list is read-only.
+   * The Skills group of the Access tab's table (row 38q, sweep S65): a collapsible group headed
+   * with how many skills there are and that they follow the tools they use. First the skills the
+   * agent's file defines itself, granted and marked "Defined in this file"; then the skills the
+   * host found, each with a box that grants it; then any the file names that the host no longer
+   * lists, which can only be withdrawn. Each row shows an em dash for risk and "Follows its tools"
+   * for Asks, and skills are not counted with the tools.
+   *
+   * A grant saves at once, as a tool's change does. A skill an agent cannot activate (an untrusted
+   * source, say) has its box disabled and the reason in its row, and the Bureau refuses the grant
+   * too. On an agent the page cannot write every box is disabled.
    */
-  import {
-    Alert,
-    Badge,
-    Button,
-    Checkbox,
-    EmptyState,
-    SectionHeading,
-    Skeleton,
-  } from '@lostgradient/cinder';
+  import { Checkbox, Spinner, Table } from '@lostgradient/cinder';
   import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
-  import { listSkills } from '../../lib/bureau-skills.ts';
+  import { listSkills, type Skill } from '../../lib/bureau-skills.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { router } from '../../lib/router.svelte.ts';
+  import AgentAccessGroupRow from './agent-access-group-row.svelte';
   import { skillGrantLocked, type AgentAccessState } from './agent-access-state.svelte.ts';
   import {
-    isUntrusted,
+    matchesFilter,
+    matchesSkillFilter,
+    skillHeading,
     skillKey,
-    trustLabel,
     unavailableText,
   } from '../capabilities/capability-presentation.ts';
 
   interface Props {
-    /** The tab's form, for an agent whose file can name skills. */
-    form?: AgentAccessState | undefined;
+    /** The tab's state, which holds the grants and saves them. */
+    form: AgentAccessState;
+    /** What was typed in the toolbar's search. */
+    typed: string;
+    /** Whether the group's rows are hidden. */
+    collapsed: boolean;
+    /** Shows or hides the group's rows. */
+    onToggle: () => void;
   }
 
-  let { form }: Props = $props();
+  let { form, typed, collapsed, onToggle }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.access;
-  const skillsPath = '/capabilities?tab=skills';
 
   const skills = createQuery(
     () => ({
@@ -52,89 +54,174 @@
   /** The skills the file names that the host did not list. */
   const unlisted = $derived.by(() => {
     const listed = new Set((skills.data ?? []).map((skill) => skill.name));
-    return (form?.skills ?? []).filter((name) => !listed.has(name));
+    return form.skills.filter((name) => !listed.has(name));
   });
+  const own = $derived(
+    form.ownSkills.filter(
+      (skill) => matchesFilter(skill.name, typed) || matchesFilter(skill.id, typed),
+    ),
+  );
+  const found = $derived((skills.data ?? []).filter((skill) => matchesSkillFilter(skill, typed)));
+  const missing = $derived(unlisted.filter((name) => matchesFilter(name, typed)));
+  const count = $derived(form.ownSkills.length + (skills.data?.length ?? 0) + unlisted.length);
 
-  function openSkills(event: MouseEvent): void {
-    if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
-      return;
-    }
-    event.preventDefault();
-    router.navigate(skillsPath);
+  function grant(name: string, next: boolean): void {
+    void form.change({
+      key: `skill:${name}`,
+      subject: skillHeading({ name }),
+      restored: next ? copy.restoredNotAllowed : copy.restoredAllowed,
+      apply: () => form.setGranted(name, next),
+      undo: () => form.setGranted(name, !next),
+    });
+  }
+
+  function locked(skill: Skill): boolean {
+    return !form.editable || skillGrantLocked(skill, skills.data ?? [], form.isGranted(skill.name));
   }
 </script>
 
-{#snippet browse()}
-  <Button href={router.href(skillsPath)} variant="secondary" size="sm" onclick={openSkills}
-    >{copy.noSkillsAction}</Button
-  >
+<!-- The cells a skill shares with the others: an em dash for risk and "Follows its tools" for Asks. -->
+{#snippet trailing(name: string)}
+  <Table.Cell>
+    <span class="ib-access-row__risk">{copy.skillRisk}</span>
+  </Table.Cell>
+  <Table.Cell>
+    <span class="ib-access-row__follows">{copy.skillAsks}</span>
+    {#if form.saves.get(`skill:${name}`)?.kind === 'saving'}
+      <span class="ib-access-row__saving" data-testid="agent-access-saving">
+        <Spinner size="sm" label={copy.saving} />
+        <span aria-hidden="true">{copy.saving}</span>
+      </span>
+    {/if}
+  </Table.Cell>
 {/snippet}
 
-<section class="ib-agent-section" aria-label={copy.skillsHeading} data-testid="agent-access-skills">
-  <SectionHeading
-    level={2}
-    title={copy.skillsHeading}
-    description={form === undefined ? copy.skillsReadOnlyDescription : copy.skillsDescription}
-  />
-  {#if skills.isError}
-    <Alert variant="danger">
-      <p>{copy.skillsLoadFailed}</p>
-      <Button variant="secondary" size="sm" onclick={() => void skills.refetch()}
-        >{RETRY_LABEL}</Button
-      >
-    </Alert>
-  {:else if skills.isPending}
-    <div role="status" aria-busy="true" aria-label={copy.skillsHeading}>
-      <Skeleton height="4rem" />
-    </div>
-  {:else if skills.data.length === 0 && unlisted.length === 0}
-    <EmptyState
-      kind="first-use"
-      size="compact"
-      headingLevel={3}
-      title={copy.noSkillsTitle}
-      description={copy.noSkillsDescription}
-      action={browse}
-    />
-  {:else}
-    <ul class="ib-access-list" aria-label={copy.skillsListLabel}>
-      {#each skills.data as skill (skillKey(skill))}
-        <li class="ib-access-skill" data-skill={skill.name} data-trust={skill.trust}>
-          {#if form === undefined}
-            <span class="ib-access-skill__name">{skill.name}</span>
-          {:else}
-            {@const granted = form.isGranted(skill.name)}
-            <div class="ib-access-skill__name">
-              <Checkbox
-                id={`access-skill-${skillKey(skill)}`}
-                label={skill.name}
-                checked={granted}
-                disabled={skillGrantLocked(skill, skills.data, granted)}
-                onValueChange={(next) => form?.setGranted(skill.name, next)}
-              />
-            </div>
-          {/if}
-          <Badge variant={isUntrusted(skill) ? 'warning' : 'success'} size="sm"
-            >{trustLabel(skill)}</Badge
+<!-- The full-width line under a skill whose grant could not be saved. -->
+{#snippet failure(name: string)}
+  {@const save = form.saves.get(`skill:${name}`)}
+  {#if save?.kind === 'failed'}
+    <Table.Row class="ib-access-row__failure" data-failed={name}>
+      <Table.Cell colspan={5}>
+        <p class="ib-access-failure" role="alert">
+          {copy.failed(save.subject, save.restored)}
+          <button type="button" class="ib-access-failure__retry" data-changes onclick={save.retry}
+            >{copy.retry}</button
           >
-          {#if unavailableText(skill) !== undefined}
-            <p class="ib-access-skill__reason">{unavailableText(skill)}</p>
-          {/if}
-        </li>
-      {/each}
-      {#each unlisted as name (name)}
-        <li class="ib-access-skill" data-skill={name}>
-          <div class="ib-access-skill__name">
-            <Checkbox
-              id={`access-skill-unlisted-${name}`}
-              label={name}
-              checked
-              onValueChange={(next) => form?.setGranted(name, next)}
-            />
-          </div>
-          <Badge variant="warning" size="sm">{copy.notInCatalog}</Badge>
-        </li>
-      {/each}
-    </ul>
+        </p>
+      </Table.Cell>
+    </Table.Row>
   {/if}
-</section>
+{/snippet}
+
+<Table.Body data-testid="agent-access-skills">
+  <AgentAccessGroupRow
+    group="skills"
+    label={copy.skillsTitle(count)}
+    count={copy.skillsNote}
+    {collapsed}
+    {onToggle}
+  />
+  {#if !collapsed}
+    {#if skills.isError}
+      <Table.Row>
+        <Table.Cell colspan={5}>
+          <p class="ib-access-failure" role="alert">
+            {copy.skillsLoadFailed}
+            <button
+              type="button"
+              class="ib-access-failure__retry"
+              onclick={() => void skills.refetch()}>{RETRY_LABEL}</button
+            >
+          </p>
+        </Table.Cell>
+      </Table.Row>
+    {/if}
+    {#each own as skill (skill.id)}
+      <Table.Row data-skill={skill.id} data-own-skill="">
+        <Table.Cell controls="fit">
+          <Checkbox
+            id={`access-own-skill-${skill.id}`}
+            aria-label={copy.grantLabel(skill.name)}
+            checked
+            disabled
+          />
+        </Table.Cell>
+        <Table.Cell as="th">
+          <span class="ib-access-row__identity">
+            <span class="ib-access-row__name">{skill.name}</span>
+            <code class="ib-access-row__identifier">{skill.id}</code>
+            <span class="ib-access-row__kind">{copy.definedInFile}</span>
+          </span>
+        </Table.Cell>
+        <Table.Cell>
+          {#snippet detail()}
+            <span class="ib-access-row__does">{skill.description}</span>
+          {/snippet}
+        </Table.Cell>
+        <Table.Cell>
+          <span class="ib-access-row__risk">{copy.skillRisk}</span>
+        </Table.Cell>
+        <Table.Cell>
+          <span class="ib-access-row__follows">{copy.skillAsks}</span>
+        </Table.Cell>
+      </Table.Row>
+    {/each}
+    {#each found as skill (skillKey(skill))}
+      {@const reason = unavailableText(skill)}
+      <Table.Row data-skill={skill.name} data-trust={skill.trust}>
+        <Table.Cell controls="fit">
+          <Checkbox
+            id={`access-skill-${skillKey(skill)}`}
+            aria-label={copy.grantLabel(skillHeading(skill))}
+            checked={form.isGranted(skill.name)}
+            disabled={locked(skill)}
+            mutating
+            data-changes
+            onValueChange={(next) => grant(skill.name, next)}
+          />
+        </Table.Cell>
+        <Table.Cell as="th">
+          <span class="ib-access-row__identity">
+            <span class="ib-access-row__name">{skillHeading(skill)}</span>
+            <code class="ib-access-row__identifier">{skill.name}</code>
+            <span class="ib-access-row__kind">{copy.skillWord}</span>
+          </span>
+          {#if reason !== undefined}
+            <span class="ib-access-row__reason">{reason}</span>
+          {/if}
+        </Table.Cell>
+        <Table.Cell>
+          {#snippet detail()}
+            <span class="ib-access-row__does">{skill.description}</span>
+          {/snippet}
+        </Table.Cell>
+        {@render trailing(skill.name)}
+      </Table.Row>
+      {@render failure(skill.name)}
+    {/each}
+    {#each missing as name (name)}
+      <Table.Row data-skill={name}>
+        <Table.Cell controls="fit">
+          <Checkbox
+            id={`access-skill-unlisted-${name}`}
+            aria-label={copy.grantLabel(name)}
+            checked={form.isGranted(name)}
+            disabled={!form.editable || !form.isGranted(name)}
+            mutating
+            data-changes
+            onValueChange={(next) => grant(name, next)}
+          />
+        </Table.Cell>
+        <Table.Cell as="th">
+          <span class="ib-access-row__identity">
+            <code class="ib-access-row__identifier">{name}</code>
+            <span class="ib-access-row__kind">{copy.notInCatalog}</span>
+          </span>
+        </Table.Cell>
+        <Table.Cell></Table.Cell>
+        {@render trailing(name)}
+      </Table.Row>
+      {@render failure(name)}
+    {/each}
+  {/if}
+</Table.Body>

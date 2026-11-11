@@ -1,49 +1,87 @@
 <script lang="ts">
   /**
-   * The Access tab of an agent's page: which tools the agent may call and when each asks you first
-   * (never, on changes, always, blocked), which of the skills the host found it may activate (one
-   * from a source the host does not trust cannot be granted), the plugin guardrails it runs besides the default ones, and its spend and
-   * tool budgets. It saves the lot as one write that names the hash of the file the page read, so
-   * a file that changed since is refused instead of overwritten, and the page says so with a reload.
+   * The Access tab of an agent's page (board PageAgent, rows 38l to 40c; board ResponsiveAndDark,
+   * rows 07a and 07b; sweeps S32, S65 and W34).
    *
-   * A chat's permission mode can change what is set here: it can ask on every call, refuse tools
-   * that change things, or skip the asks that On changes would raise. An agent defined in code has
-   * no file to write, so it shows the tools it states for itself and says the rest cannot be changed.
+   * A toolbar with a search, a segment per source counting its tools, and at the right the one
+   * allowed count ("3 of 9 allowed"). Under it one table of the tools, in collapsible groups by
+   * source, each row with a leading allow box, the tool's name and identifier, what it does, its
+   * risk in muted words and an Asks select; then the Skills group; then Guardrails and spend: the
+   * plugin guardrails as boxes and the spend limit per chat.
    *
-   * A form with unsaved changes is never replaced by a refetch: when the file's hash moves under it,
-   * the page keeps the form, says nothing was saved, and offers a reload. The page's frame says when
-   * the agent is still being read or could not be (`agent-tab-state.svelte`); this tab says when the
-   * catalog of tools it offers could not be read.
+   * Each change saves at once as a new version (`agent-access-state.svelte.ts`): the row shows its
+   * own spinner while the write is in flight, and goes back with a line that says so when it fails.
+   * After a save the toolbar says "Saved as Version 5" beside the count, and a toast says the same
+   * with View versions, which opens Settings, where the versions are. At rest the tab says nothing
+   * about saving.
+   *
+   * While the server does not answer, the tab draws the offline banner itself and keeps the old
+   * table at full contrast; the boxes, the selects and the spend field go inert and say why when
+   * focused, and the page holds Edit back too, while the search and the segments still work.
+   *
+   * A file that changed on disk under the tab is read again: once no write is waiting, a hash the
+   * tab did not write itself rebuilds the table. An agent the page cannot write (one defined in
+   * code, or a plugin's) shows the same table read-only.
    */
   import {
     Alert,
-    Badge,
+    Banner,
     Button,
+    Checkbox,
     EmptyState,
+    FilterBar,
     Input,
     SectionHeading,
     Skeleton,
-    Textarea,
+    Spinner,
+    StaleRegion,
+    Table,
+    VisuallyHidden,
+    type FilterSegment,
   } from '@lostgradient/cinder';
-  import { createMutation, createQuery, useQueryClient } from '@tanstack/svelte-query';
+  import { Check } from '@lucide/svelte';
+  import { createQuery, useQueryClient } from '@tanstack/svelte-query';
   import { untrack } from 'svelte';
+  import { SvelteSet } from 'svelte/reactivity';
 
-  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
-  import { pluginOfAgent } from '../../lib/agent-paths.ts';
-  import AgentPluginNote from './agent-plugin-note.svelte';
+  import {
+    CONNECTION_MAX_ATTEMPTS,
+    connectionBannerPreset,
+    getConnection,
+  } from '../../app/connection.svelte.ts';
+  import {
+    AGENT_EDITOR_COPY,
+    AGENT_PAGE_COPY,
+    CONNECTION_COPY,
+    RETRY_LABEL,
+  } from '../../app/copy.ts';
+  import { restartActivity } from '../../app/restart/host-restart-flow.svelte.ts';
+  import { hasToastHost, showToast } from '../../app/toast-host.svelte';
   import {
     agentFaultOf,
     getAgentCatalog,
-    getAgentDefinition,
+    listAgentVersions,
     updateAgent,
     type AgentDetail,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
-  import { keyedByOccurrence } from '../../lib/list-keys.ts';
+  import { agentTabPath, pluginOfAgent } from '../../lib/agent-paths.ts';
+  import { listGuardrails } from '../../lib/bureau-guardrails.ts';
   import { queryKeys } from '../../lib/query.ts';
-  import { AgentAccessState } from './agent-access-state.svelte.ts';
+  import { router } from '../../lib/router.svelte.ts';
+  import { LIMIT_BOUNDS } from '../agent-editor/agent-editor-state.svelte.ts';
+  import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
+  import AgentAccessGroupRow from './agent-access-group-row.svelte';
   import AgentAccessSkills from './agent-access-skills.svelte';
+  import {
+    AgentAccessState,
+    groupAccessRows,
+    matchesAccessRow,
+    type AccessWriter,
+  } from './agent-access-state.svelte.ts';
   import AgentAccessToolRow from './agent-access-tool-row.svelte';
+  import AgentPluginNote from './agent-plugin-note.svelte';
+  import { useAgentTabStale } from './agent-tab-stale.ts';
 
   interface Props {
     /** The agent's identifier. */
@@ -55,8 +93,10 @@
   let { id, detail }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.access;
-  const limits = AGENT_EDITOR_COPY.limits;
   const queryClient = useQueryClient();
+  const connection = getConnection();
+  const toasts = hasToastHost();
+  const plugin = $derived(pluginOfAgent(id));
 
   const catalog = createQuery(
     () => ({
@@ -67,211 +107,388 @@
     undefined,
   );
 
-  // The form is rebuilt from the file when the file's hash changes and the person has typed
-  // nothing, or when the hash is the one this page's own save returned. A refetch that returns the
-  // same file keeps what the person has typed, and one that returns a different file keeps it too:
-  // it sets `changed`, and the page offers a reload instead of discarding the edits.
-  let form = $state<AgentAccessState | undefined>();
-  /** The file changed on disk under a form with unsaved edits. */
-  let changed = $state(false);
-  /** The hash this page's last successful save wrote. */
-  let savedHash: string | null = null;
+  const installedGuardrails = createQuery(
+    () => ({
+      queryKey: queryKeys.guardrails.list(),
+      queryFn: ({ signal }) => listGuardrails({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+
+  // The tab draws the connection banner itself, under the agent's header (row 40b), and while the
+  // server does not answer the page holds Edit back as it does for a tab showing old data (row 40c).
+  $effect(() => connection.claimBanner());
+  const markStale = useAgentTabStale();
   $effect(() => {
-    const loaded = detail;
-    const offered = catalog.data;
-    if (loaded === undefined || offered === undefined) return;
-    untrack(() => {
-      if (form !== undefined) {
-        if (form.hash === loaded.hash) return;
-        if (form.dirty && loaded.hash !== savedHash) {
-          changed = true;
-          return;
-        }
-      }
-      form = AgentAccessState.from(loaded, offered);
-      changed = false;
-    });
+    if (!connection.unreachable) return;
+    return markStale();
   });
 
-  /** Reads the file again and fills the form from it, which discards what was typed. */
-  async function reload(): Promise<void> {
-    try {
-      const [loaded, offered] = await Promise.all([
-        queryClient.fetchQuery({
-          queryKey: queryKeys.agents.definition(id),
-          queryFn: ({ signal }) => getAgentDefinition(id, { signal }),
-          staleTime: 0,
-          retry: false,
-        }),
-        queryClient.fetchQuery({
-          queryKey: queryKeys.agents.catalog(),
-          queryFn: ({ signal }) => getAgentCatalog({ signal }),
-          staleTime: Infinity,
-        }),
-      ]);
-      savedHash = null;
-      problem = null;
-      changed = false;
-      form = AgentAccessState.from(loaded, offered);
-    } catch {
-      problem = copy.loadFailed;
-    }
-  }
-
-  const plugin = $derived(pluginOfAgent(id));
-  const isFile = $derived(detail?.source === 'file');
-  const builtInTools = $derived(detail?.codeDefinition?.tools ?? []);
-
+  /** Why a write failed that the row's own line does not say: a refusal with the Bureau's words. */
   let problem = $state<string | null>(null);
+  /** The version the last save made, once known; `undefined` until something here saved. */
+  let savedRevision = $state<number | null | undefined>(undefined);
 
   function refuse(fault: AgentFault): void {
     switch (fault.kind) {
       case 'stale':
-        changed = true;
+        // The row went back; the file is read again, and the table rebuilt once no write waits.
         void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
         return;
       case 'forbidden':
         problem = copy.forbidden;
         return;
       case 'rejected':
-      case 'other':
         problem = fault.message;
         return;
       case 'not-found':
       case 'identifier-taken':
-        problem = copy.saveFailed;
+      case 'other':
         return;
     }
   }
 
-  const save = createMutation(() => ({
-    mutationFn: (state: AgentAccessState) => updateAgent(id, state.hash, state.toDefinition()),
-    onMutate: () => {
-      problem = null;
-    },
-    onSuccess: (result) => {
-      savedHash = result.hash;
-      changed = false;
+  /** Says which version a save made: beside the count, and in a toast with View versions (row 39h). */
+  async function announce(hash: string): Promise<void> {
+    let revision: number | null = null;
+    try {
+      const versions = await queryClient.fetchQuery({
+        queryKey: queryKeys.agents.versions(id),
+        queryFn: ({ signal }) => listAgentVersions(id, { signal }),
+        staleTime: 0,
+        retry: false,
+      });
+      revision =
+        (versions.find((version) => version.hash === hash) ?? versions[0])?.revision ?? null;
+    } catch {
+      revision = null;
+    }
+    savedRevision = revision;
+    if (!toasts) return;
+    showToast(copy.saved(revision), {
+      variant: 'success',
+      action: {
+        label: copy.viewVersions,
+        onAction: () => router.navigate(agentTabPath(id, 'settings')),
+      },
+    });
+  }
+
+  /** One row's write: the whole definition over the hash the tab holds, and what follows it. */
+  const write: AccessWriter = async (expectedHash, definition) => {
+    problem = null;
+    try {
+      const result = await updateAgent(id, expectedHash, definition);
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definition(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.definitions() });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.versions(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.revisions(id) });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.list() });
-    },
-    onError: (error) => refuse(agentFaultOf(error)),
-  }));
+      void announce(result.hash);
+      return result;
+    } catch (error) {
+      refuse(agentFaultOf(error));
+      throw error;
+    }
+  };
 
-  function submit(event: SubmitEvent, state: AgentAccessState): void {
-    event.preventDefault();
-    if (state.canSave && !save.isPending) save.mutate(state);
+  let form = $state<AgentAccessState | undefined>();
+  // The table is filled from the file, and filled again when the file's hash moves to one this
+  // tab did not write, once no write of its own is waiting. A refetch that answers with a hash
+  // the tab wrote, or the one it was filled from, keeps the table as it is.
+  $effect(() => {
+    const loaded = detail;
+    const offered = catalog.data;
+    // Read here, so a file read while a write waited is taken up once the last write answers.
+    const waiting = form?.busy ?? false;
+    if (loaded === undefined || offered === undefined || waiting) return;
+    untrack(() => {
+      if (form !== undefined) {
+        if (form.hash === (loaded.hash ?? '')) return;
+        if (loaded.hash !== null && form.wrote(loaded.hash)) return;
+      }
+      form = AgentAccessState.from(loaded, offered, plugin === null ? write : undefined);
+    });
+  });
+
+  // The toolbar: the search, the source segment, and which groups are folded.
+  let typed = $state('');
+  let segment = $state('all');
+  const collapsed = new SvelteSet<string>();
+
+  function toggle(group: string): void {
+    if (collapsed.has(group)) collapsed.delete(group);
+    else collapsed.add(group);
   }
+
+  const groups = $derived(form === undefined ? [] : groupAccessRows(form.rows));
+  const segments = $derived<FilterSegment[]>([
+    { value: 'all', label: copy.all, count: form?.totalCount ?? 'pending' },
+    ...groups.map((group) => ({
+      value: group.key,
+      label: group.label ?? copy.notInCatalogGroup,
+      count: group.rows.length,
+    })),
+  ]);
+  /** The groups the segment and the search leave, each with the rows the search matches. */
+  const shown = $derived(
+    groups
+      .filter((group) => segment === 'all' || group.key === segment)
+      .map((group) => ({
+        ...group,
+        matching: group.rows.filter((row) => matchesAccessRow(row, typed)),
+      }))
+      .filter((group) => typed.trim() === '' || group.matching.length > 0),
+  );
+
+  // The guardrails a plugin offers an agent, once each, and those the file lists that none offers now.
+  const guardrailChoices = $derived.by(() => {
+    const offered = new Map<string, string>();
+    for (const guardrail of installedGuardrails.data ?? []) {
+      if (guardrail.source !== 'plugin' || guardrail.family === 'memory') continue;
+      if (!offered.has(guardrail.id)) offered.set(guardrail.id, guardrail.description);
+    }
+    const listed = (form?.guardrails ?? []).filter((guardrail) => !offered.has(guardrail));
+    return [
+      ...[...offered].map(([guardrail, description]) => ({ id: guardrail, description })),
+      ...listed.map((guardrail) => ({ id: guardrail, description: copy.guardrailMissing })),
+    ];
+  });
+
+  /** A guardrail's name for a person: the part of its id after the plugin, read as words. */
+  function guardrailName(guardrail: string): string {
+    return humanizeName(guardrail.slice(guardrail.indexOf(':') + 1));
+  }
+
+  function turn(state: AgentAccessState, guardrail: string, on: boolean): void {
+    void state.change({
+      key: `guardrail:${guardrail}`,
+      subject: guardrailName(guardrail),
+      restored: on ? copy.restoredOff : copy.restoredOn,
+      apply: () => state.setGuardrail(guardrail, on),
+      undo: () => state.setGuardrail(guardrail, !on),
+    });
+  }
+
+  /** Saves a typed spend limit when the field is left, unless it is one the Bureau would refuse. */
+  function commitSpend(state: AgentAccessState): void {
+    const next = state.spendPerChat;
+    const before = state.spendApplied;
+    if (state.spendLimit === undefined || next.trim() === before.trim()) return;
+    void state.change({
+      key: 'spend',
+      subject: copy.spendSubject,
+      restored: before.trim() === '' ? copy.noLimit : `${before.trim()} ${copy.spendUnit}`,
+      apply: () => {
+        state.spendPerChat = next;
+        state.spendApplied = next;
+      },
+      undo: () => {
+        state.spendPerChat = before;
+        state.spendApplied = before;
+      },
+    });
+  }
+
+  const spendError = $derived(
+    form?.spendLimit === undefined && form !== undefined
+      ? AGENT_EDITOR_COPY.limits.errors.spend(LIMIT_BOUNDS.spendUsd)
+      : '',
+  );
 </script>
 
-{#snippet editor(state: AgentAccessState)}
-  <form
-    class="ib-agent-access__form"
-    aria-label={copy.heading}
-    onsubmit={(event) => submit(event, state)}
-  >
-    <section class="ib-agent-section" aria-label={copy.toolsHeading}>
-      <SectionHeading level={2} title={copy.toolsHeading} description={copy.toolsDescription}>
-        {#snippet actions()}
-          <span class="ib-agent-note" data-testid="agent-access-count"
-            >{copy.toolCount(state.allowedCount, state.offeredCount)}</span
-          >
-        {/snippet}
-      </SectionHeading>
-      {#if state.rows.length === 0}
-        <EmptyState
-          kind="first-use"
-          size="compact"
-          headingLevel={3}
-          title={copy.noToolsTitle}
-          description={copy.noToolsDescription}
-        />
-      {:else}
-        <ul class="ib-access-list" aria-label={copy.toolsListLabel}>
-          {#each state.rows as tool (tool.name)}
-            <AgentAccessToolRow
-              {tool}
-              allowed={state.isAllowed(tool.name)}
-              approval={state.approvalOf(tool.name)}
-              onAllow={(next) => state.setAllowed(tool.name, next)}
-              onApproval={(next) => state.setApproval(tool.name, next)}
-            />
-          {/each}
-        </ul>
-      {/if}
-    </section>
+<!-- A row's own state beside its control: a spinner while its write is in flight. -->
+{#snippet saving(key: string)}
+  {#if form?.saves.get(key)?.kind === 'saving'}
+    <span class="ib-access-row__saving" data-testid="agent-access-saving">
+      <Spinner size="sm" label={copy.saving} />
+      <span aria-hidden="true">{copy.saving}</span>
+    </span>
+  {/if}
+{/snippet}
 
-    <AgentAccessSkills form={state} />
-
-    <section class="ib-agent-section" aria-label={copy.guardrailsHeading}>
-      <SectionHeading
-        level={2}
-        title={copy.guardrailsHeading}
-        description={copy.guardrailsDescription}
-      />
-      <Textarea
-        id="access-guardrails"
-        label={limits.guardrailsLabel}
-        description={limits.guardrailsDescription}
-        rows={2}
-        error={state.limitErrors.guardrails ?? ''}
-        bind:value={state.guardrails}
-      />
-    </section>
-
-    <section class="ib-agent-section" aria-label={copy.budgetsHeading}>
-      <SectionHeading level={2} title={copy.budgetsHeading} description={copy.budgetsDescription} />
-      <div class="ib-access-budgets">
-        <Input
-          id="access-spend-per-run"
-          label={limits.spendPerRunLabel}
-          description={limits.spendPerRunDescription}
-          inputmode="decimal"
-          error={state.limitErrors.spendPerRun ?? ''}
-          bind:value={state.spendPerRun}
-        />
-        <Input
-          id="access-spend-per-chat"
-          label={limits.spendPerChatLabel}
-          description={limits.spendPerChatDescription}
-          inputmode="decimal"
-          error={state.limitErrors.spendPerChat ?? ''}
-          bind:value={state.spendPerChat}
-        />
-        <Input
-          id="access-tool-calls"
-          label={limits.toolCallsLabel}
-          description={limits.toolCallsDescription}
-          inputmode="numeric"
-          error={state.limitErrors.toolCalls ?? ''}
-          bind:value={state.toolCalls}
-        />
-        <Input
-          id="access-tool-seconds"
-          label={limits.toolSecondsLabel}
-          description={limits.toolSecondsDescription}
-          inputmode="decimal"
-          error={state.limitErrors.toolSeconds ?? ''}
-          bind:value={state.toolSeconds}
-        />
-      </div>
-    </section>
-
-    <div class="ib-agent-access__actions">
-      <Button
-        data-changes
-        type="submit"
-        variant="primary"
-        disabled={!state.canSave || save.isPending}>{copy.saveAction}</Button
+<!-- The line under a control whose save failed, with Try again (row 39k). -->
+{#snippet failure(key: string)}
+  {@const save = form?.saves.get(key)}
+  {#if save?.kind === 'failed'}
+    <p class="ib-access-failure" role="alert" data-failed={key}>
+      {copy.failed(save.subject, save.restored)}
+      <button type="button" class="ib-access-failure__retry" data-changes onclick={save.retry}
+        >{copy.retry}</button
       >
+    </p>
+  {/if}
+{/snippet}
+
+{#snippet table(state: AgentAccessState)}
+  <div class="ib-access-toolbar">
+    <FilterBar
+      aria-label={copy.toolbarLabel}
+      {segments}
+      segmentValue={segment}
+      segmentsLabel={copy.sourceLabel}
+      searchQuery={typed}
+      searchPlaceholder={copy.searchPlaceholder}
+      searchAriaLabel={copy.searchLabel}
+      onSegmentChange={(value) => (segment = value)}
+      onSearchChange={(query) => (typed = query)}
+    />
+    <p class="ib-access-toolbar__count" data-testid="agent-access-count" aria-live="polite">
+      {#if savedRevision !== undefined && !state.busy}
+        <span class="ib-access-toolbar__saved" data-testid="agent-access-saved">
+          <Check aria-hidden="true" size={14} />
+          {copy.saved(savedRevision)}
+        </span>
+      {/if}
+      <span>{copy.toolCount(state.allowedCount, state.totalCount)}</span>
+    </p>
+  </div>
+
+  {#if state.rows.length === 0}
+    <EmptyState
+      kind="first-use"
+      size="compact"
+      headingLevel={3}
+      title={copy.noToolsTitle}
+      description={copy.noToolsDescription}
+    />
+  {:else if shown.length === 0}
+    <EmptyState
+      kind="filtered"
+      size="compact"
+      headingLevel={3}
+      title={copy.noMatchTitle}
+      description={copy.noMatchDescription}
+      onClearFilters={() => {
+        typed = '';
+        segment = 'all';
+      }}
+      clearFiltersLabel={copy.clearSearch}
+    />
+  {/if}
+
+  <Table
+    caption={copy.tableCaption}
+    density="condensed"
+    class="ib-access-table"
+    data-testid="agent-access-table"
+  >
+    <Table.Header>
+      <Table.Row>
+        <Table.HeaderCell><VisuallyHidden>{copy.columns.allow}</VisuallyHidden></Table.HeaderCell>
+        <Table.HeaderCell>{copy.columns.tool}</Table.HeaderCell>
+        <Table.HeaderCell>{copy.columns.does}</Table.HeaderCell>
+        <Table.HeaderCell>{copy.columns.risk}</Table.HeaderCell>
+        <Table.HeaderCell>{copy.columns.asks}</Table.HeaderCell>
+      </Table.Row>
+    </Table.Header>
+    {#each shown as group (group.key)}
+      <Table.Body data-group-body={group.key}>
+        <AgentAccessGroupRow
+          group={group.key}
+          label={group.label ?? copy.notInCatalogGroup}
+          count={copy.groupCount(state.allowedAmong(group.rows), group.rows.length)}
+          collapsed={collapsed.has(group.key)}
+          onToggle={() => toggle(group.key)}
+        />
+        {#if !collapsed.has(group.key)}
+          {#each group.matching as tool (tool.name)}
+            <AgentAccessToolRow form={state} {tool} />
+          {/each}
+        {/if}
+      </Table.Body>
+    {/each}
+    {#if segment === 'all'}
+      <AgentAccessSkills
+        form={state}
+        {typed}
+        collapsed={collapsed.has('skills')}
+        onToggle={() => toggle('skills')}
+      />
+    {/if}
+  </Table>
+
+  <section
+    class="ib-agent-section ib-access-guardrails"
+    aria-label={copy.guardrailsHeading}
+    data-testid="agent-access-guardrails"
+  >
+    <SectionHeading level={2} title={copy.guardrailsHeading} />
+    <fieldset class="ib-access-guardrails__set">
+      <legend class="ib-access-guardrails__legend">{copy.guardrailsLabel}</legend>
+      {#if installedGuardrails.isError}
+        <Alert variant="danger">
+          <p>{copy.guardrailsLoadFailed}</p>
+          <Button variant="secondary" size="sm" onclick={() => void installedGuardrails.refetch()}
+            >{RETRY_LABEL}</Button
+          >
+        </Alert>
+      {:else if installedGuardrails.isPending}
+        <Skeleton height="3rem" />
+      {:else if guardrailChoices.length === 0}
+        <p class="ib-agent-note">{copy.noGuardrails}</p>
+      {:else}
+        {#each guardrailChoices as choice (choice.id)}
+          {@const on = state.hasGuardrail(choice.id)}
+          <div class="ib-access-guardrail" data-guardrail={choice.id}>
+            <div class="ib-access-guardrail__control">
+              <Checkbox
+                id={`access-guardrail-${choice.id}`}
+                label={guardrailName(choice.id)}
+                description={choice.description}
+                checked={on}
+                disabled={!state.editable || (!on && choice.description === copy.guardrailMissing)}
+                mutating
+                data-changes
+                onValueChange={(next) => turn(state, choice.id, next)}
+              />
+              {@render saving(`guardrail:${choice.id}`)}
+            </div>
+            {@render failure(`guardrail:${choice.id}`)}
+          </div>
+        {/each}
+      {/if}
+      <p class="ib-agent-note">{copy.guardrailsNote}</p>
+    </fieldset>
+
+    <div class="ib-access-spend" data-testid="agent-access-spend">
+      <Input
+        id="access-spend-per-chat"
+        label={copy.spendLabel}
+        description={copy.spendNote}
+        placeholder={copy.spendPlaceholder}
+        inputmode="decimal"
+        error={spendError}
+        disabled={!state.editable}
+        readonly={connection.unreachable}
+        aria-disabled={connection.unreachable ? 'true' : undefined}
+        title={connection.unreachable ? CONNECTION_COPY.changesOff : undefined}
+        data-changes
+        bind:value={state.spendPerChat}
+        onchange={() => commitSpend(state)}
+      >
+        {#snippet trailing()}{copy.spendUnit}{/snippet}
+      </Input>
+      {@render saving('spend')}
+      {@render failure('spend')}
     </div>
-  </form>
+  </section>
 {/snippet}
 
 <div class="ib-agent-access" data-testid="agent-access">
+  {#if connection.unreachable && !restartActivity.active}
+    <Banner
+      preset={connectionBannerPreset(connection)}
+      subject={copy.offlineSubject}
+      dataUpdatedAt={connection.lastHealthyAt}
+      retryInSeconds={connection.retryInSeconds}
+      attempt={connection.browserOffline || connection.attempt === 0
+        ? undefined
+        : connection.attempt}
+      maxAttempts={CONNECTION_MAX_ATTEMPTS}
+      onRetry={() => void connection.retryNow()}
+    />
+  {/if}
   {#if catalog.isError}
     <Alert variant="danger">
       <p>{copy.loadFailed}</p>
@@ -279,62 +496,27 @@
         >{RETRY_LABEL}</Button
       >
     </Alert>
-  {:else if plugin !== null}
-    <!-- A plugin's agent is read-only: the tools its file names, and no editor. -->
-    <section class="ib-agent-section" aria-label={copy.heading}>
-      <SectionHeading level={2} title={copy.toolsHeading} />
-      <AgentPluginNote {plugin} />
-      {#if detail === undefined}
-        <Skeleton height="4rem" />
-      {:else}
-        <ul class="ib-agent-chips" aria-label={copy.toolsListLabel}>
-          {#each keyedByOccurrence(detail.definition?.tools ?? [], (tool) => tool) as { key, item: tool } (key)}
-            <li><Badge variant="neutral" size="sm" monospace>{tool}</Badge></li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-  {:else if isFile && detail?.definition === null}
+  {:else if detail !== undefined && detail.source === 'file' && detail.definition === null}
     <Alert variant="warning">
       <p>{copy.invalid}</p>
     </Alert>
-  {:else if detail === undefined || (isFile && form === undefined)}
+  {:else if form === undefined}
     <div role="status" aria-busy="true" aria-label={copy.heading}>
       <Skeleton height="8rem" />
     </div>
-  {:else if !isFile}
-    <section class="ib-agent-section" aria-label={copy.heading}>
-      <SectionHeading level={2} title={copy.toolsHeading} />
+  {:else}
+    {#if plugin !== null}
+      <AgentPluginNote {plugin} />
+    {:else if !form.editable}
       <p class="ib-agent-note" data-testid="agent-built-in">{copy.builtIn}</p>
-      {#if builtInTools.length === 0}
-        <EmptyState
-          kind="first-use"
-          size="compact"
-          headingLevel={3}
-          title={copy.noToolsTitle}
-          description={copy.noToolsDescription}
-        />
-      {:else}
-        <ul class="ib-agent-chips" aria-label={copy.toolsListLabel}>
-          {#each keyedByOccurrence(builtInTools, (tool) => tool) as { key, item: tool } (key)}
-            <li><Badge variant="neutral" size="sm" monospace>{tool}</Badge></li>
-          {/each}
-        </ul>
-      {/if}
-    </section>
-    <AgentAccessSkills />
-  {:else if form !== undefined}
-    {#if changed}
-      <Alert variant="warning">
-        <p>{copy.stale}</p>
-        <Button variant="secondary" size="sm" onclick={() => void reload()}>{copy.reload}</Button>
-      </Alert>
     {/if}
     {#if problem !== null}
       <Alert variant="danger" dismissible onDismiss={() => (problem = null)}>
         <p>{problem}</p>
       </Alert>
     {/if}
-    {@render editor(form)}
+    <StaleRegion stale={connection.unreachable} reason={CONNECTION_COPY.changesOff}>
+      {@render table(form)}
+    </StaleRegion>
   {/if}
 </div>

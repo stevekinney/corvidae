@@ -1,14 +1,16 @@
 /**
- * The Access tab (COR-1853): the tools an agent may call and when each asks first, the skills it
- * may activate (COR-1975), the plugin guardrails and the budgets, and the one write that saves them.
- * The write sends the whole definition, because an update that leaves out `tools` removes them, and
- * it names the hash of the file the page read.
+ * The Access tab (COR-1853, redrawn by COR-2020: board PageAgent, rows 38l to 40c; board
+ * ResponsiveAndDark, rows 07a and 07b): the tools an agent may call in groups by source, when each
+ * asks first, the skills it may activate (COR-1975, sweep S65), the plugin guardrails and the spend
+ * limit per chat. Each change saves at once as its own write, which sends the whole definition,
+ * because an update that leaves out `tools` removes them, and names the hash the tab holds.
  */
-import { focusManager } from '@tanstack/svelte-query';
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { ConnectionMonitor } from '../../app/connection.svelte.ts';
 import { AGENT_PAGE_COPY } from '../../app/copy.ts';
+import type { AgentDefinitionInput } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
 import {
   catalogFixture,
@@ -16,43 +18,72 @@ import {
   readyAgent,
   StubFault,
 } from '../../lib/bureau-stub.test-support.ts';
-import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, landAt } from '../chat/pages.test-support.ts';
 import QueryPage from '../chat/query-page.test-harness.svelte';
-import { AgentAccessState, skillGrantLocked } from './agent-access-state.svelte.ts';
+import {
+  AgentAccessState,
+  groupAccessRows,
+  matchesAccessRow,
+  RETIRED_GROUP,
+  skillGrantLocked,
+} from './agent-access-state.svelte.ts';
 import AgentDetail from './agent-detail.svelte';
 
 const copy = AGENT_PAGE_COPY.access;
 
 let restore: (() => void) | undefined;
+const monitors: ConnectionMonitor[] = [];
 afterEach(() => {
   cleanup();
   restore?.();
   restore = undefined;
+  for (const monitor of monitors.splice(0)) monitor.dispose();
 });
 
 const UPDATE = 'bureau.agents.definitions.update';
 const updatesOf = (served: { calls: { method: string; params: Record<string, unknown> }[] }) =>
   served.calls.filter((call) => call.method === UPDATE);
 
-const mount = () => render(QueryPage, { props: { page: AgentDetail } } as never);
+const mount = (connection?: ConnectionMonitor) =>
+  render(QueryPage, {
+    props: { page: AgentDetail, ...(connection === undefined ? {} : { connection }) },
+  } as never);
 
 const FILE_AGENT = { ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' };
 
+/** Three tools Bureau adds and one from a host server, as the board's sample has them. */
 const TOOLS = [
   {
     name: 'lookup-order',
     description: 'Look an order up.',
-    shortDescription: 'Looks up an order',
-    tier: null,
-    defaultApproval: 'ask' as const,
+    shortDescription: 'Looks an order up by its ID',
+    tier: 'read-only' as const,
+    defaultApproval: 'allow' as const,
+    source: 'bureau' as const,
   },
   {
     name: 'issue-refund',
     description: 'Refund an order.',
-    shortDescription: 'Refunds an order',
+    shortDescription: 'Refunds an order to the original card',
+    tier: 'dangerous' as const,
+    defaultApproval: 'ask' as const,
+    source: 'bureau' as const,
+  },
+  {
+    name: 'triage-refunds',
+    description: 'Sort refund requests.',
+    shortDescription: 'Sorts refund requests',
     tier: 'mutating' as const,
     defaultApproval: 'ask' as const,
+    source: 'bureau' as const,
+  },
+  {
+    name: 'github__list_issues',
+    description: 'List the issues of a repository.',
+    shortDescription: 'Lists issues',
+    tier: null,
+    defaultApproval: 'ask' as const,
+    source: 'host' as const,
   },
 ];
 
@@ -79,12 +110,56 @@ const SKILLS = [
   },
 ];
 
+const GUARDRAILS = [
+  {
+    id: 'acme:pii-redaction',
+    family: 'output',
+    description: 'masks emails and card numbers in replies and tool inputs',
+    configurable: false,
+    configuration: null,
+    source: 'plugin',
+    plugin: 'acme',
+  },
+  // The same guardrail serves a second family; the tab lists it once.
+  {
+    id: 'acme:pii-redaction',
+    family: 'input',
+    description: 'masks emails and card numbers in replies and tool inputs',
+    configurable: false,
+    configuration: null,
+    source: 'plugin',
+    plugin: 'acme',
+  },
+  {
+    id: 'acme:refund-cap',
+    family: 'tools',
+    description: 'blocks refunds over $100',
+    configurable: false,
+    configuration: null,
+    source: 'plugin',
+    plugin: 'acme',
+  },
+  // The host's own guardrails always run, so they are not offered as boxes.
+  {
+    id: 'host:prompt-injection',
+    family: 'input',
+    description: 'detects prompt injection',
+    configurable: false,
+    configuration: null,
+    source: 'host',
+    plugin: 'host',
+  },
+];
+
 type Answers = Parameters<typeof bureau>[0];
 
 function detailWith(patch: Record<string, unknown> = {}) {
   const detail = readyAgent({ id: 'researcher' });
   if (detail.definition === null) throw new Error('expected a definition');
-  return { ...detail, definition: { ...detail.definition, ...patch } };
+  return {
+    ...detail,
+    definition: { ...detail.definition, tools: ['lookup-order', 'issue-refund'], ...patch },
+  };
 }
 
 function serve(extra: Answers = {}, detail = detailWith(), skills: unknown[] = SKILLS) {
@@ -92,6 +167,19 @@ function serve(extra: Answers = {}, detail = detailWith(), skills: unknown[] = S
     'bureau.agents.list': () => ({ agents: [FILE_AGENT] }),
     'bureau.agents.definitions.get': () => detail,
     'bureau.agents.catalog': () => catalogFixture({ tools: TOOLS }),
+    'bureau.agents.versions.list': () => ({
+      versions: [
+        {
+          revision: 5,
+          hash: 'hash-2',
+          savedAt: '2026-11-02T16:44:00.000Z',
+          savedBy: null,
+          definition: null,
+          changedKeys: ['approvals'],
+        },
+      ],
+    }),
+    'bureau.guardrails.list': () => ({ guardrails: GUARDRAILS }),
     'bureau.skills.list': () => ({ revision: 1, skills, sources: [], trustLocked: null }),
     'bureau.contexts.list': () => ({ contexts: [], nextOffset: null }),
     'bureau.memory.list': () => ({ memories: [], nextOffset: null }),
@@ -101,13 +189,28 @@ function serve(extra: Answers = {}, detail = detailWith(), skills: unknown[] = S
   return served;
 }
 
+/** The row of one tool, once the table has drawn it. */
+async function rowOf(container: HTMLElement, tool: string): Promise<HTMLElement> {
+  return waitFor(() => {
+    const found = container.querySelector<HTMLElement>(`[data-tool="${tool}"]`);
+    if (found === null) throw new Error(`waiting for ${tool}`);
+    return found;
+  });
+}
+
+function selectOf(row: HTMLElement): HTMLSelectElement {
+  const found = row.querySelector<HTMLSelectElement>('select');
+  if (found === null) throw new Error('the row has no Asks select');
+  return found;
+}
+
 describe('the tab', () => {
   test('is the Access tab, in the address, after Instructions', async () => {
     landAt('/agents/researcher/access');
     serve();
     const { findByRole, findByTestId } = mount();
 
-    // A tab carries its count after its name once it is known ("Access 1"), so the names are read
+    // A tab carries its count after its name once it is known ("Access 2"), so the names are read
     // as the first word of each tab.
     const tab = await findByRole('tab', { name: /^Access/ });
     expect(tab.getAttribute('aria-selected')).toBe('true');
@@ -118,485 +221,398 @@ describe('the tab', () => {
     expect(tabs).toEqual(['Chats', 'Instructions', 'Access', 'Hooks', 'Memory', 'Settings']);
   });
 
-  test('lists each tool with its tier and, for an allowed tool, when it asks first', async () => {
+  test('says how many tools are allowed, once, and nothing about saving at rest (row 38l)', async () => {
     landAt('/agents/researcher/access');
     serve();
-    const { container, findByTestId, getByRole } = mount();
+    const { container, findByTestId, queryByTestId } = mount();
 
-    const access = await findByTestId('agent-access');
-    await waitFor(() =>
-      expect(container.querySelector('[data-tool="lookup-order"]')).not.toBeNull(),
-    );
-    expect(access.textContent).toContain(copy.toolCount(1, 2));
-    const lookup = container.querySelector('[data-tool="lookup-order"]');
-    const refund = container.querySelector('[data-tool="issue-refund"]');
-    expect(lookup?.textContent).toContain('Looks up an order');
-    expect(refund?.textContent).toContain('Changes things');
-    expect(getByRole('checkbox', { name: 'lookup-order' })).toHaveProperty('checked', true);
-    expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', false);
-    // A tool the agent may not call has no ask-first choice.
-    expect(refund?.querySelector('select')).toBeNull();
-    expect(lookup?.querySelector('select')).toHaveProperty('value', 'on-changes');
-    const options = [...(lookup?.querySelectorAll('option') ?? [])].map((o) => o.textContent);
-    expect(options).toEqual(['Never', 'On changes', 'Always', 'Blocked']);
+    await rowOf(container, 'lookup-order');
+    expect((await findByTestId('agent-access-count')).textContent).toContain(copy.toolCount(2, 4));
+    expect(queryByTestId('agent-access-saved')).toBeNull();
+    expect(container.querySelector('.ib-access-row__saving')).toBeNull();
   });
 
-  test('says an unclassified tool still asks under Never, and a classified one does not', async () => {
+  test('groups the tools by source, each header counting what it allows (row 38m)', async () => {
+    landAt('/agents/researcher/access');
+    serve();
+    const { container } = mount();
+
+    await rowOf(container, 'lookup-order');
+    const headers = [...container.querySelectorAll<HTMLElement>('[data-group]')].map((header) =>
+      header.getAttribute('data-group'),
+    );
+    expect(headers).toEqual(['bureau:', 'host:github', 'skills']);
+    const builtIn = container.querySelector('[data-group="bureau:"]');
+    expect(builtIn?.textContent).toContain('Built in');
+    expect(builtIn?.textContent).toContain(copy.groupCount(2, 3));
+    expect(container.querySelector('[data-group="host:github"]')?.textContent).toContain(
+      copy.groupCount(0, 1),
+    );
+  });
+
+  test('folds a group and opens it again', async () => {
+    landAt('/agents/researcher/access');
+    serve();
+    const { container } = mount();
+
+    await rowOf(container, 'lookup-order');
+    const toggle = container.querySelector<HTMLButtonElement>('[data-group="bureau:"] button');
+    if (toggle === null) throw new Error('expected the group’s toggle');
+    expect(toggle.getAttribute('aria-expanded')).toBe('true');
+    await fireEvent.click(toggle);
+    await waitFor(() =>
+      expect(container.querySelector('[data-tool="lookup-order"]')?.outerHTML ?? null).toBeNull(),
+    );
+    expect(toggle.getAttribute('aria-expanded')).toBe('false');
+    await fireEvent.click(toggle);
+    await rowOf(container, 'lookup-order');
+  });
+
+  test('shows each tool’s name, identifier, line, risk word and Asks at its default (rows 38n to 38p)', async () => {
+    landAt('/agents/researcher/access');
+    serve();
+    const { container, getByRole } = mount();
+
+    const lookup = await rowOf(container, 'lookup-order');
+    const refund = await rowOf(container, 'issue-refund');
+    const triage = await rowOf(container, 'triage-refunds');
+    expect(lookup.textContent).toContain('Lookup order');
+    expect(lookup.querySelector('code')?.textContent).toBe('lookup-order');
+    expect(lookup.textContent).toContain('Looks an order up by its ID');
+    expect(lookup.querySelector('[data-testid="agent-access-risk"]')?.textContent).toBe('Reads');
+    expect(refund.querySelector('[data-testid="agent-access-risk"]')?.textContent).toBe(
+      'Dangerous',
+    );
+    // Risk is said in words, never in a coloured pill (sweep S32).
+    expect(lookup.querySelector('.cinder-badge')).toBeNull();
+
+    expect(selectOf(lookup).value).toBe('never');
+    expect(selectOf(refund).value).toBe('always');
+    expect(selectOf(triage).value).toBe('on-changes');
+    const options = [...selectOf(refund).options].map((option) => option.text.trim());
+    expect(options).toEqual(['Never', 'On changes', 'Always (default)', 'Blocked']);
+
+    expect(getByRole('checkbox', { name: 'Allow Lookup order' })).toHaveProperty('checked', true);
+    expect(getByRole('checkbox', { name: 'Allow Triage refunds' })).toHaveProperty(
+      'checked',
+      false,
+    );
+    // Asks is disabled while a tool is off.
+    expect(selectOf(triage).disabled).toBe(true);
+    expect(selectOf(lookup).disabled).toBe(false);
+  });
+
+  test('says an unclassified tool still asks under Never', async () => {
     landAt('/agents/researcher/access');
     serve(
       {},
       detailWith({
-        tools: ['lookup-order', 'issue-refund'],
-        approvals: { 'lookup-order': 'never', 'issue-refund': 'never' },
+        tools: ['github__list_issues'],
+        approvals: { github__list_issues: 'never' },
       }),
     );
-    const { container, findByTestId } = mount();
+    const { container } = mount();
 
-    await findByTestId('agent-access');
-    const lookup = await waitFor(() => {
-      const found = container.querySelector('[data-tool="lookup-order"]');
-      if (found === null) throw new Error('waiting for the tool');
-      return found;
-    });
-    const refund = container.querySelector('[data-tool="issue-refund"]');
-    expect(lookup.textContent).toContain(copy.neverUnclassifiedHint);
-    expect(lookup.textContent).not.toContain(copy.approvalHints.never);
-    expect(refund?.textContent).toContain(copy.approvalHints.never);
-    expect(refund?.textContent).not.toContain(copy.neverUnclassifiedHint);
+    const issues = await rowOf(container, 'github__list_issues');
+    expect(issues.textContent).toContain(copy.neverUnclassifiedHint);
   });
+});
 
-  test('saves a per-tool Always as the whole definition, over the hash of the file as read', async () => {
+describe('a change', () => {
+  test('saves at once as the whole definition, over the hash of the file as read (row 39j)', async () => {
     landAt('/agents/researcher/access');
-    const served = serve({
-      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
-    });
-    const { container, findByRole } = mount();
+    const served = serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
+    const { container } = mount();
 
-    const save = await findByRole('button', { name: copy.saveAction });
-    expect(save.hasAttribute('data-changes')).toBe(true);
-    expect(save).toHaveProperty('disabled', true);
-    const select = await waitFor(() => {
-      const found = container.querySelector<HTMLSelectElement>('[data-tool="lookup-order"] select');
-      if (found === null) throw new Error('waiting for the tool');
-      return found;
+    await fireEvent.change(selectOf(await rowOf(container, 'issue-refund')), {
+      target: { value: 'blocked' },
     });
-    await fireEvent.change(select, { target: { value: 'always' } });
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(save);
 
-    await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
-    const sent = updatesOf(served)[0]?.params;
-    expect(sent).toMatchObject({
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params).toMatchObject({
       id: 'researcher',
       expectedHash: 'hash-1',
       definition: {
         name: 'Researcher',
         model: 'anthropic/sonnet',
-        tools: ['lookup-order'],
-        approvals: { 'lookup-order': 'always' },
+        tools: ['lookup-order', 'issue-refund'],
+        approvals: { 'issue-refund': 'blocked' },
         instructions: 'You are a careful researcher.',
       },
     });
   });
 
-  test('leaves the default effort out of its write, so the file keeps the one it holds', async () => {
+  test('says which version it made beside the count (row 39h)', async () => {
+    landAt('/agents/researcher/access');
+    serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
+    const { container, findByTestId } = mount();
+
+    await fireEvent.click(
+      (await rowOf(container, 'triage-refunds')).querySelector(
+        'input[type="checkbox"]',
+      ) as HTMLInputElement,
+    );
+
+    const saved = await findByTestId('agent-access-saved');
+    expect(saved.textContent).toContain(copy.saved(5));
+    expect((await findByTestId('agent-access-count')).textContent).toContain(copy.toolCount(3, 4));
+  });
+
+  test('writes no approval for a level that is the tool’s own default (row 39i)', async () => {
     landAt('/agents/researcher/access');
     const served = serve(
-      { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ effort: 'high' }),
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ approvals: { 'issue-refund': 'on-changes' } }),
     );
-    const { container, findByRole } = mount();
+    const { container } = mount();
 
-    const save = await findByRole('button', { name: copy.saveAction });
-    const select = await waitFor(() => {
-      const found = container.querySelector<HTMLSelectElement>('[data-tool="lookup-order"] select');
-      if (found === null) throw new Error('waiting for the tool');
-      return found;
+    const refund = await rowOf(container, 'issue-refund');
+    expect(selectOf(refund).value).toBe('on-changes');
+    await fireEvent.change(selectOf(refund), { target: { value: 'always' } });
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ approvals: null });
+  });
+
+  test('leaves the default effort and the step limit out of its write', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve(
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ effort: 'high', limits: { steps: 9, cost: null, tools: { calls: 3 } } }),
+    );
+    const { container } = mount();
+
+    await fireEvent.change(selectOf(await rowOf(container, 'lookup-order')), {
+      target: { value: 'always' },
     });
-    await fireEvent.change(select, { target: { value: 'always' } });
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(save);
 
-    await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    const definition = updatesOf(served)[0]?.params['definition'] as Record<string, unknown>;
     // An update that omits `effort` keeps the file's; the editor owns the field.
-    expect(updatesOf(served)[0]?.params['definition']).not.toHaveProperty('effort');
+    expect(definition).not.toHaveProperty('effort');
+    expect(definition['limits']).toEqual({ cost: null });
   });
 
   test('drops a tool’s approval in the same write that withdraws the tool', async () => {
     landAt('/agents/researcher/access');
     const served = serve(
-      { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ approvals: { 'lookup-order': 'always' } }),
+      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
+      detailWith({ tools: ['lookup-order'], approvals: { 'lookup-order': 'always' } }),
     );
-    const { findByRole, getByRole } = mount();
+    const { findByRole } = mount();
 
-    const box = await findByRole('checkbox', { name: 'lookup-order' });
-    await fireEvent.click(box);
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+    await fireEvent.click(await findByRole('checkbox', { name: 'Allow Lookup order' }));
 
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    const definition = updatesOf(served)[0]?.params['definition'];
-    expect(definition).toMatchObject({ tools: [], approvals: null });
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      tools: [],
+      approvals: null,
+    });
   });
 
-  test('saves the budgets and refuses a number the Bureau would refuse', async () => {
+  test('that fails puts the row back and says so under it, with Try again (row 39k)', async () => {
     landAt('/agents/researcher/access');
+    let fail = true;
     const served = serve({
-      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
-    });
-    const { findByLabelText, getByRole } = mount();
-
-    const calls = await findByLabelText('Tool calls per run');
-    await fireEvent.input(calls, { target: { value: '2.5' } });
-    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true);
-    await fireEvent.input(calls, { target: { value: '3' } });
-    await fireEvent.input(await findByLabelText('Spend per run (USD)'), {
-      target: { value: '0.5' },
-    });
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-
-    await waitFor(() => expect(updatesOf(served).length > 0).toBe(true));
-    const definition = updatesOf(served)[0]?.params['definition'];
-    expect(definition).toMatchObject({
-      limits: { cost: { run: 0.5 }, tools: { calls: 3 } },
-    });
-  });
-
-  test('says the file changed, and reloads it, when the write is stale', async () => {
-    landAt('/agents/researcher/access');
-    let reads = 0;
-    const served = serve({
-      'bureau.agents.definitions.get': () => {
-        reads += 1;
-        return detailWith();
-      },
-      'bureau.agents.definitions.update': () => {
-        throw faults.stale('hash-2');
-      },
-    });
-    const { findByRole, findByText, getByRole } = mount();
-
-    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-
-    await findByText(copy.stale);
-    await waitFor(() => expect(reads).toBeGreaterThan(1));
-    expect(updatesOf(served).length > 0).toBe(true);
-  });
-
-  test('keeps a dirty form, says the file changed, and reloads on request, when the write is stale', async () => {
-    landAt('/agents/researcher/access');
-    let hash = 'hash-1';
-    serve({
-      'bureau.agents.definitions.get': () => ({ ...detailWith(), hash }),
-      'bureau.agents.definitions.update': () => {
-        hash = 'hash-2';
-        throw faults.stale('hash-2');
-      },
-    });
-    const { findByRole, findByText, getByRole } = mount();
-
-    const refund = await findByRole('checkbox', { name: 'issue-refund' });
-    await fireEvent.click(refund);
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-
-    await findByText(copy.stale);
-    // The refetch has read the new hash, and the form still holds what was ticked.
-    await waitFor(() => expect(hash).toBe('hash-2'));
-    expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', true);
-    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', false);
-
-    await fireEvent.click(getByRole('button', { name: copy.reload }));
-    await waitFor(() =>
-      expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', false),
-    );
-    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true);
-  });
-
-  test('says the file could not be read when a reload fails', async () => {
-    landAt('/agents/researcher/access');
-    let failReads = false;
-    serve({
-      'bureau.agents.definitions.get': () => {
-        if (failReads) throw new Error('down');
-        return detailWith();
-      },
-      'bureau.agents.definitions.update': () => {
-        throw faults.stale('hash-2');
-      },
-    });
-    const { findByRole, findByText, getByRole } = mount();
-
-    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-    await findByText(copy.stale);
-    failReads = true;
-    await fireEvent.click(getByRole('button', { name: copy.reload }));
-
-    await findByText(copy.loadFailed);
-  });
-
-  test('keeps a dirty form when coming back to the window reads a file with a new hash', async () => {
-    landAt('/agents/researcher/access');
-    let hash = 'hash-1';
-    let reads = 0;
-    serve({
-      'bureau.agents.definitions.get': () => {
-        reads += 1;
-        return { ...detailWith(), hash };
-      },
-    });
-    const { findByRole, findByText, getByRole, queryByText } = mount();
-
-    await fireEvent.change(await findByRole('combobox', { name: /lookup-order/ }), {
-      target: { value: 'blocked' },
-    });
-    expect(queryByText(copy.stale)?.outerHTML ?? null).toBeNull();
-
-    hash = 'hash-2';
-    const before = reads;
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
-
-    await waitFor(() => expect(reads).toBeGreaterThan(before));
-    await findByText(copy.stale);
-    expect(getByRole('combobox', { name: /lookup-order/ })).toHaveProperty('value', 'blocked');
-    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', false);
-  });
-
-  test('rebuilds a form with no edits when the file’s hash changes', async () => {
-    landAt('/agents/researcher/access');
-    let hash = 'hash-1';
-    let tools = ['lookup-order'];
-    let reads = 0;
-    serve({
-      'bureau.agents.definitions.get': () => {
-        reads += 1;
-        return { ...detailWith({ tools }), hash };
-      },
-    });
-    const { findByRole, getByRole, queryByText } = mount();
-
-    await findByRole('checkbox', { name: 'issue-refund' });
-    hash = 'hash-2';
-    tools = ['lookup-order', 'issue-refund'];
-    const before = reads;
-    focusManager.setFocused(false);
-    focusManager.setFocused(true);
-
-    await waitFor(() => expect(reads).toBeGreaterThan(before));
-    await waitFor(() =>
-      expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', true),
-    );
-    expect(queryByText(copy.stale)?.outerHTML ?? null).toBeNull();
-  });
-
-  test('rebuilds from the hash a save returned, without calling it a change', async () => {
-    landAt('/agents/researcher/access');
-    let hash = 'hash-1';
-    let tools = ['lookup-order'];
-    const served = serve({
-      'bureau.agents.definitions.get': () => ({ ...detailWith({ tools }), hash }),
-      'bureau.agents.definitions.update': () => {
-        hash = 'hash-2';
-        tools = ['lookup-order', 'issue-refund'];
+      [UPDATE]: () => {
+        if (fail) throw new StubFault('Internal', 500, 'The disk is full.');
         return { id: 'researcher', hash: 'hash-2' };
       },
     });
-    const { findByRole, getByRole, queryByText } = mount();
+    const { container, findByRole } = mount();
 
-    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+    const refund = await rowOf(container, 'issue-refund');
+    await fireEvent.change(selectOf(refund), { target: { value: 'never' } });
 
-    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    const line = await waitFor(() => {
+      const found = container.querySelector<HTMLElement>('[data-failed="issue-refund"]');
+      if (found === null) throw new Error('waiting for the failure line');
+      return found;
+    });
+    expect(line.textContent).toContain(copy.failed('Issue refund', 'Always'));
     await waitFor(() =>
-      expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true),
+      expect(
+        selectOf(container.querySelector('[data-tool="issue-refund"]') as HTMLElement).value,
+      ).toBe('always'),
     );
-    expect(queryByText(copy.stale)?.outerHTML ?? null).toBeNull();
-    expect(getByRole('checkbox', { name: 'issue-refund' })).toHaveProperty('checked', true);
+
+    fail = false;
+    await fireEvent.click(await findByRole('button', { name: copy.retry }));
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(2));
+    expect(updatesOf(served)[1]?.params['definition']).toMatchObject({
+      approvals: { 'issue-refund': 'never' },
+    });
+    await waitFor(() =>
+      expect(container.querySelector('[data-failed="issue-refund"]')?.outerHTML ?? null).toBeNull(),
+    );
   });
 
-  test('restores a tool’s approval when it is withdrawn and allowed again', async () => {
-    landAt('/agents/researcher/access');
-    const served = serve(
-      { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ approvals: { 'lookup-order': 'blocked' } }),
-    );
-    const { container, findByRole, getByRole } = mount();
-
-    const box = await findByRole('checkbox', { name: 'lookup-order' });
-    await fireEvent.click(box);
-    await fireEvent.click(box);
-    expect(container.querySelector('[data-tool="lookup-order"] select')).toHaveProperty(
-      'value',
-      'blocked',
-    );
-    // Nothing differs from the file, so there is nothing to save, and nothing loosened.
-    expect(getByRole('button', { name: copy.saveAction })).toHaveProperty('disabled', true);
-
-    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
-      tools: ['lookup-order', 'issue-refund'],
-      approvals: { 'lookup-order': 'blocked' },
-    });
-  });
-
-  test('saves the guardrails, the chat limit and the tool time as typed', async () => {
-    landAt('/agents/researcher/access');
-    const served = serve({
-      'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
-    });
-    const { findByLabelText, findByRole, getByRole } = mount();
-
-    await fireEvent.input(await findByRole('textbox', { name: 'Guardrails' }), {
-      target: { value: 'acme:pii\nacme:tripwire' },
-    });
-    await fireEvent.input(await findByLabelText('Spend per run (USD)'), {
-      target: { value: '2' },
-    });
-    await fireEvent.input(await findByLabelText('Spend per chat (USD)'), {
-      target: { value: '9' },
-    });
-    await fireEvent.input(await findByLabelText('Tool time per run (seconds)'), {
-      target: { value: '30' },
-    });
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-
-    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
-      guardrails: ['acme:pii', 'acme:tripwire'],
-      limits: { cost: { run: 2, chat: 9 }, tools: { seconds: 30 } },
-    });
-  });
-
-  for (const [name, fault, message] of [
-    ['an agent that is gone', faults.notFound('researcher'), copy.saveFailed],
-    ['a caller who may not change it', new StubFault('Forbidden', 403, 'No.'), copy.forbidden],
-  ] as const) {
-    test(`says why the write failed: ${name}`, async () => {
-      landAt('/agents/researcher/access');
-      serve({
-        'bureau.agents.definitions.update': () => {
-          throw fault;
-        },
-      });
-      const { findByRole, findByText, getByRole } = mount();
-
-      await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-      await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-
-      await findByText(message);
-    });
-  }
-
-  test('dismisses a refusal', async () => {
+  test('that the Bureau refuses says why above the table', async () => {
     landAt('/agents/researcher/access');
     serve({
-      'bureau.agents.definitions.update': () => {
-        throw new StubFault('Unprocessable', 422, 'The budget is not valid.');
+      [UPDATE]: () => {
+        throw new StubFault('Unprocessable', 422, 'The definition is not valid.');
       },
     });
-    const { findByRole, findByText, getByRole, queryByText } = mount();
+    const { findByRole, findByText } = mount();
 
-    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
-    await findByText('The budget is not valid.');
-    await fireEvent.click(getByRole('button', { name: /dismiss/i }));
+    await fireEvent.click(await findByRole('checkbox', { name: 'Allow Triage refunds' }));
 
-    await waitFor(() =>
-      expect(queryByText('The budget is not valid.')?.outerHTML ?? null).toBeNull(),
+    await findByText('The definition is not valid.');
+  });
+
+  test('that is refused to the caller says they may not change the agent', async () => {
+    landAt('/agents/researcher/access');
+    serve({
+      [UPDATE]: () => {
+        throw new StubFault('Forbidden', 403, 'No.');
+      },
+    });
+    const { findByRole, findByText } = mount();
+
+    await fireEvent.click(await findByRole('checkbox', { name: 'Allow Triage refunds' }));
+
+    await findByText(copy.forbidden);
+  });
+
+  test('over a file that changed reads it again and shows it as it is now', async () => {
+    landAt('/agents/researcher/access');
+    let tools = ['lookup-order', 'issue-refund'];
+    let hash = 'hash-1';
+    serve({
+      'bureau.agents.definitions.get': () => ({ ...detailWith({ tools }), hash }),
+      [UPDATE]: () => {
+        tools = ['lookup-order'];
+        hash = 'hash-9';
+        throw faults.stale('hash-9');
+      },
+    });
+    const { findByRole, getByRole } = mount();
+
+    await fireEvent.click(await findByRole('checkbox', { name: 'Allow Triage refunds' }));
+
+    // The file someone else wrote has Issue refund off; the tab shows that, not what it held.
+    const checked = (name: string): boolean =>
+      (getByRole('checkbox', { name }) as HTMLInputElement).checked;
+    await waitFor(() => expect(checked('Allow Issue refund')).toBe(false));
+    expect(checked('Allow Triage refunds')).toBe(false);
+  });
+});
+
+describe('guardrails and spend', () => {
+  test('lists the plugin guardrails once each as boxes, and saves one turned on (row 38r)', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
+    const { container, findByRole, findByText } = mount();
+
+    const pii = await findByRole('checkbox', { name: 'Pii redaction' });
+    expect(container.querySelectorAll('[data-guardrail="acme:pii-redaction"]')).toHaveLength(1);
+    expect(container.querySelector('[data-guardrail="host:prompt-injection"]')).toBeNull();
+    await findByText(copy.guardrailsNote);
+
+    await fireEvent.click(pii);
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      guardrails: ['acme:pii-redaction'],
+    });
+  });
+
+  test('keeps a guardrail the file lists that no plugin offers now, and lets it be turned off', async () => {
+    landAt('/agents/researcher/access');
+    serve({}, detailWith({ guardrails: ['gone:tripwire'] }));
+    const { container, findByRole } = mount();
+
+    const box = await findByRole('checkbox', { name: 'Tripwire' });
+    expect(box).toHaveProperty('checked', true);
+    expect(box).toHaveProperty('disabled', false);
+    expect(container.querySelector('[data-guardrail="gone:tripwire"]')?.textContent).toContain(
+      copy.guardrailMissing,
     );
   });
 
-  test('says why when the Bureau refuses the write', async () => {
+  test('saves a spend limit per chat when the field is left, on a run limit at the same amount', async () => {
     landAt('/agents/researcher/access');
-    serve({
-      'bureau.agents.definitions.update': () => {
-        throw new StubFault('Unprocessable', 422, 'The budget is not valid.');
-      },
+    const served = serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
+    const { findByLabelText } = mount();
+
+    const spend = await findByLabelText(copy.spendLabel);
+    expect(spend.getAttribute('placeholder')).toBe(copy.spendPlaceholder);
+    await fireEvent.input(spend, { target: { value: '5' } });
+    await fireEvent.change(spend);
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
+      limits: { cost: { run: 5, chat: 5 } },
     });
-    const { findByRole, findByText, getByRole } = mount();
+  });
 
-    await fireEvent.click(await findByRole('checkbox', { name: 'issue-refund' }));
-    await fireEvent.click(getByRole('button', { name: copy.saveAction }));
+  test('refuses an amount the Bureau would refuse, and sends nothing', async () => {
+    landAt('/agents/researcher/access');
+    const served = serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
+    const { findByLabelText, findByText } = mount();
 
-    await findByText('The budget is not valid.');
+    const spend = await findByLabelText(copy.spendLabel);
+    await fireEvent.input(spend, { target: { value: 'lots' } });
+    await fireEvent.change(spend);
+
+    await findByText(/Use an amount above 0/);
+    expect(updatesOf(served)).toHaveLength(0);
   });
 });
 
 describe('the skills', () => {
+  test('heads the group with the count and lists the file’s own skills first (row 38q, sweep S65)', async () => {
+    landAt('/agents/researcher/access');
+    serve();
+    const { container, findByTestId } = mount();
+
+    const skills = await findByTestId('agent-access-skills');
+    await waitFor(() => expect(skills.querySelector('[data-skill="summarize"]')).not.toBeNull());
+    // The file's card skill, then the two the host found.
+    expect(skills.querySelector('[data-group="skills"]')?.textContent).toContain(
+      copy.skillsTitle(3),
+    );
+    const rows = [...skills.querySelectorAll('[data-skill]')].map((row) =>
+      row.getAttribute('data-skill'),
+    );
+    expect(rows).toEqual(['cite', 'summarize', 'deploy']);
+    const own = skills.querySelector('[data-skill="cite"]');
+    expect(own?.textContent).toContain(copy.definedInFile);
+    expect(own?.querySelector('input[type="checkbox"]')).toHaveProperty('checked', true);
+    expect(skills.querySelector('[data-skill="summarize"]')?.textContent).toContain(copy.skillAsks);
+    // Skills are not counted with the tools.
+    expect(container.querySelector('[data-testid="agent-access-count"]')?.textContent).toContain(
+      copy.toolCount(2, 4),
+    );
+  });
+
   test('disables an untrusted skill and says why, so it cannot be granted', async () => {
     landAt('/agents/researcher/access');
     serve();
     const { container, findByRole } = mount();
 
-    const box = await findByRole('checkbox', { name: 'deploy' });
+    const box = await findByRole('checkbox', { name: 'Grant Deploy' });
     expect(box).toHaveProperty('disabled', true);
     expect(box).toHaveProperty('checked', false);
     const deploy = container.querySelector('[data-skill="deploy"]');
     expect(deploy?.getAttribute('data-trust')).toBe('untrusted');
-    expect(deploy?.textContent).toContain('Not trusted');
     expect(deploy?.textContent).toContain('Its source is not trusted');
-    expect(await findByRole('checkbox', { name: 'summarize' })).toHaveProperty('disabled', false);
-    expect(container.querySelector('[data-skill="summarize"]')?.textContent).toContain('Trusted');
-  });
-
-  test('grants a skill with the rest of the tab, and keeps the file with no list until then', async () => {
-    landAt('/agents/researcher/access');
-    const served = serve({
-      [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }),
-    });
-    const { findByRole } = mount();
-
-    const box = await findByRole('checkbox', { name: 'summarize' });
-    const save = await findByRole('button', { name: copy.saveAction });
-    expect(box).toHaveProperty('checked', false);
-
-    await fireEvent.click(box);
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(box);
-    // Checking and unchecking leaves the file as it was: nothing to save, and no empty list.
-    await waitFor(() => expect(save).toHaveProperty('disabled', true));
-
-    await fireEvent.click(box);
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(save);
-    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    const [update] = updatesOf(served);
-    expect(update?.params['definition']).toMatchObject({ skills: ['summarize'] });
-  });
-
-  test('withdraws the last skill as an empty list, which grants none', async () => {
-    landAt('/agents/researcher/access');
-    const served = serve(
-      { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
-      detailWith({ skills: ['summarize'] }),
+    expect(await findByRole('checkbox', { name: 'Grant Summarize' })).toHaveProperty(
+      'disabled',
+      false,
     );
-    const { findByRole } = mount();
-
-    const box = await findByRole('checkbox', { name: 'summarize' });
-    expect(box).toHaveProperty('checked', true);
-    await fireEvent.click(box);
-    const save = await findByRole('button', { name: copy.saveAction });
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(save);
-    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ skills: [] });
   });
 
-  test('lets a skill the file names be withdrawn once its source is untrusted, and not granted back', async () => {
+  test('grants a skill at once, and keeps the file with no list until then', async () => {
     landAt('/agents/researcher/access');
-    serve({}, detailWith({ skills: ['deploy'] }));
+    const served = serve({ [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) });
     const { findByRole } = mount();
 
-    const box = await findByRole('checkbox', { name: 'deploy' });
-    expect(box).toHaveProperty('checked', true);
-    expect(box).toHaveProperty('disabled', false);
-    await fireEvent.click(box);
-    await waitFor(() => expect(box).toHaveProperty('disabled', true));
-    expect(box).toHaveProperty('checked', false);
+    await fireEvent.click(await findByRole('checkbox', { name: 'Grant Summarize' }));
+
+    await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ skills: ['summarize'] });
   });
 
   test('keeps a skill the host no longer lists, marked, until it is withdrawn', async () => {
@@ -606,39 +622,17 @@ describe('the skills', () => {
       detailWith({ skills: ['gone', 'summarize'] }),
       [],
     );
-    const { container, findByRole, queryByText } = mount();
+    const { container, findByRole } = mount();
 
-    const gone = await findByRole('checkbox', { name: 'gone' });
+    const gone = await findByRole('checkbox', { name: 'Grant gone' });
     expect(gone).toHaveProperty('checked', true);
     expect(container.querySelector('[data-skill="gone"]')?.textContent).toContain(
       copy.notInCatalog,
     );
-    expect(queryByText(copy.noSkillsTitle)).toBeNull();
 
     await fireEvent.click(gone);
-    const save = await findByRole('button', { name: copy.saveAction });
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(save);
     await waitFor(() => expect(updatesOf(served)).toHaveLength(1));
-    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({
-      skills: ['summarize'],
-    });
-  });
-
-  test('shows the Bureau’s refusal of a grant', async () => {
-    landAt('/agents/researcher/access');
-    serve({
-      [UPDATE]: () => {
-        throw new StubFault('Unprocessable', 422, 'The definition cannot grant "summarize".');
-      },
-    });
-    const { findByRole, findByText } = mount();
-
-    await fireEvent.click(await findByRole('checkbox', { name: 'summarize' }));
-    const save = await findByRole('button', { name: copy.saveAction });
-    await waitFor(() => expect(save).toHaveProperty('disabled', false));
-    await fireEvent.click(save);
-    await findByText('The definition cannot grant "summarize".');
+    expect(updatesOf(served)[0]?.params['definition']).toMatchObject({ skills: ['summarize'] });
   });
 
   test('a shadowed twin of an available skill has no box of its own to change', () => {
@@ -651,33 +645,6 @@ describe('the skills', () => {
     // Whichever the catalog lists first, the available record keeps the box and its twin is the report.
     expect(skillGrantLocked(twin, [twin, available], true)).toBe(true);
     expect(skillGrantLocked(available, [twin, available], false)).toBe(false);
-  });
-
-  test('says there are none, with the way to the skills, and that they could not be loaded', async () => {
-    landAt('/agents/researcher/access');
-    serve({}, detailWith(), []);
-    const { container, findByText, findByRole } = mount();
-
-    await findByText(copy.noSkillsTitle);
-    expect(
-      container.querySelector('[data-testid="agent-access-skills"] [data-cinder-kind="first-use"]'),
-    ).not.toBeNull();
-    const link = await findByRole('link', { name: copy.noSkillsAction });
-    expect(link.getAttribute('href')).toContain('/capabilities?tab=skills');
-  });
-
-  test('opens the skills page from the empty state', async () => {
-    landAt('/agents/researcher/access');
-    serve({}, detailWith(), []);
-    const { findByRole } = mount();
-
-    const link = await findByRole('link', { name: copy.noSkillsAction });
-    // A modified click is the browser's (a new tab), so the page leaves it alone.
-    link.addEventListener('click', (event) => event.preventDefault(), { once: true });
-    await fireEvent.click(link, { metaKey: true });
-    expect(router.pathname).toBe('/agents/researcher/access');
-    link.click();
-    expect(router.pathname).toBe('/capabilities');
   });
 
   test('says the skills could not be loaded, with a retry', async () => {
@@ -694,7 +661,7 @@ describe('the skills', () => {
     await findByText(copy.skillsLoadFailed);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
-    await findByText('deploy');
+    await findByRole('checkbox', { name: 'Grant Summarize' });
   });
 });
 
@@ -711,15 +678,16 @@ describe('the states', () => {
     expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
   });
 
-  test('marks a tool the file lists and the host no longer offers, and lets it be withdrawn', async () => {
+  test('puts a tool the file lists and the host no longer offers in a group of its own', async () => {
     landAt('/agents/researcher/access');
     serve({}, detailWith({ tools: ['lookup-order', 'retired-tool'] }));
-    const { container, findByText } = mount();
+    const { container } = mount();
 
-    await findByText(copy.notInCatalog);
-    expect(
-      container.querySelector('[data-tool="retired-tool"] input[type="checkbox"]'),
-    ).toHaveProperty('checked', true);
+    const retired = await rowOf(container, 'retired-tool');
+    expect(retired.querySelector('input[type="checkbox"]')).toHaveProperty('checked', true);
+    expect(container.querySelector(`[data-group="${RETIRED_GROUP}"]`)?.textContent).toContain(
+      copy.notInCatalogGroup,
+    );
   });
 
   test('says the tab could not be loaded, with a retry that asks again', async () => {
@@ -731,13 +699,13 @@ describe('the states', () => {
         return catalogFixture({ tools: TOOLS });
       },
     });
-    const { findByText, findByRole } = mount();
+    const { container, findByText, findByRole } = mount();
 
     await findByText(copy.loadFailed);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
 
-    await findByRole('button', { name: copy.saveAction });
+    await rowOf(container, 'lookup-order');
   });
 
   test('says an agent whose file has a problem cannot have its access changed', async () => {
@@ -746,39 +714,12 @@ describe('the states', () => {
     const { findByText, queryByRole } = mount();
 
     await findByText(copy.invalid);
-    expect(queryByRole('button', { name: copy.saveAction })).toBeNull();
+    expect(queryByRole('checkbox', { name: 'Allow Lookup order' })).toBeNull();
   });
 
-  test('says an agent in code states no tools', async () => {
+  test('shows an agent in code read-only, with the tools it states and every control off', async () => {
     landAt('/agents/assistant/access');
-    serve({
-      'bureau.agents.list': () => ({ agents: [{ ...AGENT, name: 'assistant', kind: 'code' }] }),
-      'bureau.agents.definitions.get': () => ({
-        ...readyAgent({ id: 'assistant' }),
-        source: 'code',
-        hash: null,
-        definition: null,
-        codeDefinition: {
-          name: 'assistant',
-          description: null,
-          model: null,
-          models: [],
-          tools: [],
-          skills: [],
-          card: [],
-          instructions: null,
-        },
-      }),
-    });
-    const { container, findByText } = mount();
-
-    await findByText(copy.noToolsTitle);
-    expect(container.querySelector('[data-cinder-kind="first-use"]')).not.toBeNull();
-  });
-
-  test('shows an agent in code read-only, with the tools it states and no save', async () => {
-    landAt('/agents/assistant/access');
-    serve({
+    const served = serve({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, name: 'assistant', kind: 'code' }] }),
       'bureau.agents.definitions.get': () => ({
         ...readyAgent({ id: 'assistant' }),
@@ -797,90 +738,230 @@ describe('the states', () => {
         },
       }),
     });
-    const { findByTestId, queryByRole, findByText } = mount();
+    const { container, findByTestId } = mount();
 
     await findByTestId('agent-built-in');
-    await findByText('lookup-order');
-    expect(queryByRole('button', { name: copy.saveAction })).toBeNull();
-    expect(queryByRole('checkbox')).toBeNull();
+    const lookup = await rowOf(container, 'lookup-order');
+    const box = lookup.querySelector<HTMLInputElement>('input[type="checkbox"]');
+    expect(box?.checked).toBe(true);
+    expect(box?.disabled).toBe(true);
+    expect(selectOf(lookup).disabled).toBe(true);
+    expect(updatesOf(served)).toHaveLength(0);
+  });
+
+  test('while the server does not answer, says so and holds every change (rows 40b, 40c)', async () => {
+    landAt('/agents/researcher/access');
+    serve();
+    const monitor = new ConnectionMonitor({
+      probe: async () => {
+        throw new TypeError('Failed to fetch');
+      },
+      probeDelayMs: () => 60_000,
+      browserOffline: false,
+    });
+    monitors.push(monitor);
+    const { container, findByRole, findByText } = mount(monitor);
+
+    const lookup = await rowOf(container, 'lookup-order');
+    monitor.reportUnreachable();
+
+    await findByText('Can’t reach the Interborough server.');
+    const box = await findByRole('checkbox', { name: 'Allow Lookup order' });
+    await waitFor(() => expect(box.getAttribute('aria-disabled')).toBe('true'));
+    // The old table stays: the row is still there, with its value.
+    expect(selectOf(lookup).value).toBe('never');
+    expect(selectOf(lookup).getAttribute('aria-disabled')).toBe('true');
   });
 });
 
-describe('the form state', () => {
+describe('the state', () => {
   const catalog = catalogFixture({ tools: TOOLS });
 
-  function formOf(patch: Record<string, unknown> = {}) {
-    const state = AgentAccessState.from(detailWith(patch), catalog);
-    if (state === undefined) throw new Error('expected a form');
-    return state;
+  /** A state over a writer the test answers by hand, one write at a time. */
+  function stateWith(patch: Record<string, unknown> = {}) {
+    const writes: {
+      hash: string;
+      definition: AgentDefinitionInput;
+      answer: (hash: string) => void;
+      fail: (error: unknown) => void;
+    }[] = [];
+    const state = AgentAccessState.from(
+      detailWith(patch),
+      catalog,
+      (hash, definition) =>
+        new Promise((resolve, reject) => {
+          writes.push({
+            hash,
+            definition,
+            answer: (next) => resolve({ hash: next }),
+            fail: reject,
+          });
+        }),
+    );
+    if (state === undefined) throw new Error('expected a state');
+    return { state, writes };
   }
 
-  test('has no form for an agent without a file', () => {
-    expect(
-      AgentAccessState.from({ ...readyAgent(), source: 'code', definition: null }, catalog),
-    ).toBeUndefined();
+  function allow(state: AgentAccessState, name: string, next: boolean) {
+    return state.change({
+      key: `tool:${name}`,
+      subject: name,
+      restored: next ? 'not allowed' : 'allowed',
+      apply: () => state.setAllowed(name, next),
+      undo: () => state.setAllowed(name, !next),
+    });
+  }
+
+  test('marks a row saving until its write answers, and names the hash the last write returned', async () => {
+    const { state, writes } = stateWith();
+    const first = allow(state, 'triage-refunds', true);
+    expect(state.saves.get('tool:triage-refunds')).toEqual({ kind: 'saving' });
+    expect(state.busy).toBe(true);
+    const second = allow(state, 'github__list_issues', true);
+
+    await waitFor(() => expect(writes).toHaveLength(1));
+    expect(writes[0]?.hash).toBe('hash-1');
+    writes[0]?.answer('hash-2');
+    expect(await first).toEqual({ kind: 'saved', hash: 'hash-2' });
+    // The first write already carried the second change, so nothing is written again.
+    expect(await second).toEqual({ kind: 'unchanged' });
+    expect(writes).toHaveLength(1);
+    expect(state.hash).toBe('hash-2');
+    expect(state.wrote('hash-2')).toBe(true);
+    expect(state.wrote('hash-1')).toBe(true);
+    expect(state.wrote('hash-3')).toBe(false);
+    expect(state.saves.size).toBe(0);
+    expect(state.busy).toBe(false);
   });
 
-  test('is clean until something changes, and clean again when the change is undone', () => {
-    const form = formOf();
-    expect(form.dirty).toBe(false);
-    form.setApproval('lookup-order', 'blocked');
-    expect(form.dirty).toBe(true);
-    expect(form.canSave).toBe(true);
-    form.setApproval('lookup-order', 'on-changes');
-    expect(form.dirty).toBe(false);
+  test('writes a later change over the hash the earlier write returned', async () => {
+    const { state, writes } = stateWith();
+    const first = allow(state, 'triage-refunds', true);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    const second = allow(state, 'github__list_issues', true);
+    writes[0]?.answer('hash-2');
+    await first;
+
+    await waitFor(() => expect(writes).toHaveLength(2));
+    expect(writes[1]?.hash).toBe('hash-2');
+    expect(writes[1]?.definition.tools).toEqual([
+      'lookup-order',
+      'issue-refund',
+      'triage-refunds',
+      'github__list_issues',
+    ]);
+    writes[1]?.answer('hash-3');
+    expect(await second).toEqual({ kind: 'saved', hash: 'hash-3' });
+  });
+
+  test('undoes a failed change, says what it went back to, and saves it again on retry', async () => {
+    const { state, writes } = stateWith();
+    const failed = allow(state, 'triage-refunds', true);
+    await waitFor(() => expect(writes).toHaveLength(1));
+    writes[0]?.fail(new Error('down'));
+
+    expect((await failed).kind).toBe('failed');
+    expect(state.isAllowed('triage-refunds')).toBe(false);
+    const save = state.saves.get('tool:triage-refunds');
+    if (save?.kind !== 'failed') throw new Error('expected a failed row');
+    expect(save.restored).toBe('not allowed');
+
+    save.retry();
+    expect(state.isAllowed('triage-refunds')).toBe(true);
+    await waitFor(() => expect(writes).toHaveLength(2));
+    writes[1]?.answer('hash-2');
+    await waitFor(() => expect(state.saves.size).toBe(0));
+  });
+
+  test('restores a tool’s approval when it is withdrawn and allowed again', () => {
+    const { state } = stateWith({ approvals: { 'lookup-order': 'blocked' } });
+    state.setAllowed('lookup-order', false);
+    expect(state.toDefinition().approvals).toBeNull();
+    state.setAllowed('lookup-order', true);
+    expect(state.approvalOf('lookup-order')).toBe('blocked');
+    expect(state.toDefinition().approvals).toEqual({ 'lookup-order': 'blocked' });
+  });
+
+  test('reads a level the file leaves out as the tool’s own default', () => {
+    const { state } = stateWith();
+    expect(state.approvalOf('lookup-order')).toBe('never');
+    expect(state.approvalOf('issue-refund')).toBe('always');
+    expect(state.approvalOf('triage-refunds')).toBe('on-changes');
+    state.setApproval('issue-refund', 'always');
+    expect(state.approvals.has('issue-refund')).toBe(false);
   });
 
   test('writes the keys it does not edit as they were, and leaves out the ones it must not touch', () => {
-    const form = formOf({
+    const { state } = stateWith({
       models: ['anthropic/haiku'],
-      limits: { steps: 9, cost: { run: 2, warn: [0.5] } },
+      limits: { steps: 9, cost: { run: 2, warn: [0.5] }, tools: null },
     });
-    form.spendPerChat = '5';
-    const written = form.toDefinition();
+    state.spendPerChat = '5';
+    const written = state.toDefinition();
     expect(written).toMatchObject({
       models: ['anthropic/haiku'],
       limits: { cost: { run: 2, chat: 5, warn: [0.5] } },
     });
-    // Left out, the Bureau keeps the file’s step limit.
+    // Left out, the Bureau keeps the file’s step limit and tool limits.
     expect(written.limits).not.toHaveProperty('steps');
+    expect(written.limits).not.toHaveProperty('tools');
+    state.spendPerChat = '';
+    expect(state.toDefinition().limits).toEqual({ cost: { run: 2, warn: [0.5] } });
+    state.spendPerChat = 'lots';
+    expect(state.spendLimit).toBeUndefined();
   });
 
-  test('allows a tool after the ones the file lists, and counts what the host offers', () => {
-    const form = formOf();
-    form.setAllowed('issue-refund', true);
-    expect(form.toDefinition().tools).toEqual(['lookup-order', 'issue-refund']);
-    expect(form.offeredCount).toBe(2);
-    expect(form.allowedCount).toBe(2);
-    form.setAllowed('issue-refund', true);
-    expect(form.tools).toEqual(['lookup-order', 'issue-refund']);
-  });
-
-  test('refuses a chat limit with no run limit, and a guardrail that is not plugin:name', () => {
-    const form = formOf();
-    form.spendPerChat = '4';
-    form.guardrails = 'tripwire';
-    expect(Object.keys(form.limitErrors).toSorted()).toEqual(['guardrails', 'spendPerChat']);
-    expect(form.canSave).toBe(false);
-  });
-});
-
-// COR-2118 — the Access tab edits guardrail ids; one the file configures keeps its configuration.
-describe('a configured guardrail on the Access tab', () => {
-  test('is shown by its id and saved back with its configuration', () => {
-    const detail = readyAgent();
-    if (detail.definition === null) throw new Error('expected a definition');
+  test('keeps a configured guardrail’s configuration (COR-2118)', () => {
     const configured = { id: 'acme:grounding', configuration: { threshold: 0.95 } };
-    const form = AgentAccessState.from(
-      { ...detail, definition: { ...detail.definition, guardrails: ['acme:pii', configured] } },
-      catalogFixture(),
-    );
-    if (form === undefined) throw new Error('expected a form');
+    const { state } = stateWith({ guardrails: ['acme:pii', configured] });
+    expect(state.guardrails).toEqual(['acme:pii', 'acme:grounding']);
+    expect(state.toDefinition().guardrails).toEqual(['acme:pii', configured]);
+    state.setGuardrail('acme:pii', false);
+    expect(state.toDefinition().guardrails).toEqual([configured]);
+  });
 
-    expect(form.guardrails).toBe('acme:pii\nacme:grounding');
-    expect(form.dirty).toBe(false);
-    expect(form.toDefinition().guardrails).toEqual(['acme:pii', configured]);
-    form.guardrails = 'acme:grounding';
-    expect(form.toDefinition().guardrails).toEqual([configured]);
+  test('is read-only for an agent with no file, and saves nothing', async () => {
+    const state = AgentAccessState.from(
+      {
+        ...readyAgent(),
+        source: 'code',
+        hash: null,
+        definition: null,
+        codeDefinition: {
+          name: 'assistant',
+          description: null,
+          model: null,
+          models: [],
+          tools: ['lookup-order'],
+          skills: ['summarize'],
+          card: [],
+          instructions: null,
+        },
+      },
+      catalog,
+    );
+    if (state === undefined) throw new Error('expected a state');
+    expect(state.editable).toBe(false);
+    expect(state.isAllowed('lookup-order')).toBe(true);
+    expect(state.isGranted('summarize')).toBe(true);
+    expect(await allow(state, 'issue-refund', true)).toEqual({ kind: 'unchanged' });
+    expect(state.saves.size).toBe(0);
+  });
+
+  test('groups the rows Built in first, the other sources by name, and the retired last', () => {
+    const state = AgentAccessState.from(detailWith({ tools: ['retired-tool'] }), catalog);
+    if (state === undefined) throw new Error('expected a state');
+    const groups = groupAccessRows(state.rows);
+    expect(groups.map((group) => group.key)).toEqual(['bureau:', 'host:github', RETIRED_GROUP]);
+    expect(groups[0]?.rows.map((row) => row.name)).toEqual([
+      'lookup-order',
+      'issue-refund',
+      'triage-refunds',
+    ]);
+    const issues = groups[1]?.rows[0];
+    if (issues === undefined) throw new Error('expected a row');
+    expect(matchesAccessRow(issues, 'list iss')).toBe(true);
+    expect(matchesAccessRow(issues, 'github__list')).toBe(true);
+    expect(matchesAccessRow(issues, 'refund')).toBe(false);
   });
 });
