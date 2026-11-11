@@ -27,11 +27,8 @@ import type { ChatComposerControlsContext } from './input/composer-controls.ts';
 import type { ChatComposerToolbarContext } from './input/composer-markdown.ts';
 import type { ChatComposerStatus } from './input/composer-status.ts';
 import type { MarkdownNodeOverride, MessagePartOverride } from './message/chat-message-parts.ts';
-<<<<<<< HEAD
-=======
 import type { ChatTurnLabels } from './message/turn-labels.ts';
 import type { ChatTurnState } from './message/turn-state.ts';
->>>>>>> d1ff2caec (COR-2283: Wire each assistant turn's run state and its recovery callbacks from Chat's props to the turn, and the failed-step retry and step start times to the timeline)
 import type { ChatQuestionDockLabels } from './question/question-dock-labels.ts';
 import type { ChatNotSent, MessageNoteInfo, ReasoningInfo, StepInfo } from './utilities/types.ts';
 
