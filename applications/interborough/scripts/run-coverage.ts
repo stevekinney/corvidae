@@ -1,9 +1,11 @@
+import { rm } from 'node:fs/promises';
 import { join } from 'node:path';
 
 import { runPooledBunTest } from '../../../scripts/bun-test-pool.ts';
 import { rootScriptEnvironment } from '../../../scripts/environment-configuration.ts';
 import { TEST_TIMEOUT_ARGUMENT } from '../../../scripts/test-deadlines.ts';
 import {
+  combineEnvironmentCoverage,
   coverageTestArguments,
   discoverCoverageTestFiles,
   UI_COVERAGE_DIRECTORY,
@@ -17,6 +19,23 @@ if (testFiles.length === 0) {
   console.error('No coverage test files were discovered.');
   process.exit(1);
 }
+
+// Host tests require the native environment, while browser tests install DOM globals.
+const hostCoverageDirectory = 'coverage/host';
+await rm(join(packageRoot, hostCoverageDirectory), { recursive: true, force: true });
+const hostExitCode = await runPooledBunTest({
+  command: ['bun', '--config=./bunfig.toml', 'test', TEST_TIMEOUT_ARGUMENT],
+  bunTestArguments: [
+    '--coverage',
+    '--coverage-reporter=lcov',
+    `--coverage-dir=${hostCoverageDirectory}`,
+    'src/host',
+    'fixtures',
+  ],
+  cwd: packageRoot,
+  environment: { ...rootScriptEnvironment(), TZ: 'UTC' },
+});
+if (hostExitCode !== 0) process.exit(hostExitCode);
 
 // Deliberately NOT `--parallel`. `bun test --parallel` implies `--isolate`,
 // giving each test file a fresh module registry. When a
@@ -45,20 +64,29 @@ if (testFiles.length === 0) {
 // `coverage/`. The run holds a slot of the host-wide test slot pool
 // (`scripts/bun-test-pool.ts`), like every lane that starts through a wrapper.
 console.log(`Running ${testFiles.length} coverage test files in the versioned baseline order.`);
-process.exit(
-  await runPooledBunTest({
-    command: ['bun', '--config=./bunfig.ui.toml', 'test', TEST_TIMEOUT_ARGUMENT],
-    bunTestArguments: [
-      '--conditions',
-      'browser',
-      '--conditions',
-      'svelte',
-      '--coverage',
-      '--coverage-reporter=lcov',
-      `--coverage-dir=${UI_COVERAGE_DIRECTORY}`,
-      ...testArguments,
-    ],
-    cwd: packageRoot,
-    environment: { ...rootScriptEnvironment(), TZ: 'UTC' },
-  }),
-);
+const exitCode = await runPooledBunTest({
+  command: ['bun', '--config=./bunfig.ui.toml', 'test', TEST_TIMEOUT_ARGUMENT],
+  bunTestArguments: [
+    '--conditions',
+    'browser',
+    '--conditions',
+    'svelte',
+    '--coverage',
+    '--coverage-reporter=lcov',
+    `--coverage-dir=${UI_COVERAGE_DIRECTORY}`,
+    ...testArguments,
+  ],
+  cwd: packageRoot,
+  environment: { ...rootScriptEnvironment(), TZ: 'UTC' },
+});
+if (exitCode === 0) {
+  const reportPath = join(packageRoot, UI_COVERAGE_DIRECTORY, 'lcov.info');
+  await Bun.write(
+    reportPath,
+    combineEnvironmentCoverage(
+      await Bun.file(reportPath).text(),
+      await Bun.file(join(packageRoot, hostCoverageDirectory, 'lcov.info')).text(),
+    ),
+  );
+}
+process.exit(exitCode);

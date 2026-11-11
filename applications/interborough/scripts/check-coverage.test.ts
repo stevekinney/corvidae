@@ -3,7 +3,9 @@ import { describe, expect, it } from 'bun:test';
 import {
   aggregateByArea,
   areaForFile,
+  combineEnvironmentCoverage,
   overallTotals,
+  parseLcov,
   percentage,
   renderAreaTable,
   uiCoverageRecords,
@@ -155,5 +157,46 @@ describe('renderAreaTable', () => {
 
   it('renders only the header for a run that measured nothing', () => {
     expect(renderAreaTable(new Map())).toEqual(['area | lines | functions']);
+  });
+});
+
+describe('combineEnvironmentCoverage', () => {
+  const record = (file: string, hit: number) =>
+    `SF:${file}\nFNF:2\nFNH:${hit}\nLF:2\nLH:${hit}\nend_of_record\n`;
+  it('uses native host counts once, keeps browser counts and adds every newly measured host file', () => {
+    const combined = parseLcov(
+      combineEnvironmentCoverage(
+        record('src/host/host.ts', 1) + record('src/app/page.svelte', 2),
+        record('src/host/host.ts', 2) +
+          record('src/host/extra.ts', 1) +
+          record('src/app/page.svelte', 0) +
+          record('../other/source.ts', 0),
+      ),
+    );
+    expect(combined).toHaveLength(3);
+    expect(combined.find((entry) => entry.file === 'src/host/host.ts')).toMatchObject({
+      linesHit: 2,
+      functionsHit: 2,
+    });
+    expect(combined.find((entry) => entry.file === 'src/app/page.svelte')).toMatchObject({
+      linesHit: 2,
+      functionsHit: 2,
+    });
+    expect(combined.find((entry) => entry.file === 'src/host/extra.ts')).toMatchObject({
+      linesHit: 1,
+      functionsHit: 1,
+    });
+  });
+  it('fails closed when the native run omits a browser-observed host file', () => {
+    expect(() =>
+      combineEnvironmentCoverage(record('src/host/missing.ts', 1), record('src/host/other.ts', 2)),
+    ).toThrow('missing browser-observed host source');
+  });
+  it('requires native host evidence and rejects malformed or duplicate records', () => {
+    expect(() => combineEnvironmentCoverage('', '')).toThrow('no host source');
+    expect(() => combineEnvironmentCoverage('FNF:2\nend_of_record', '')).toThrow('no source file');
+    expect(() =>
+      combineEnvironmentCoverage(record('src/a.ts', 1) + record('src/a.ts', 1), ''),
+    ).toThrow('Duplicate coverage record');
   });
 });

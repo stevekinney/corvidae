@@ -1,13 +1,8 @@
 import { describe, expect, test } from 'bun:test';
 
-import { parseCliArguments } from './cli-client.ts';
+import { CLI_OPERATION_MAPPINGS, parseCliArguments } from './cli-client.ts';
 
-async function commandRunner(
-  ...arguments_: Parameters<(typeof import('./cli-client.ts'))['executeCli']>
-) {
-  const { executeCli } = await import('./cli-client.ts');
-  return executeCli(...arguments_);
-}
+import { executeCliWithDispatchAssertions as commandRunner } from './cli-dispatch.test-support.ts';
 
 function response(data: unknown): Response {
   return Response.json(data);
@@ -18,6 +13,7 @@ function pathname(url: RequestInfo | URL): string {
 }
 
 describe('CLI configuration commands', () => {
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('parses the complete configuration command surface', () => {
     for (const command of [
       'providers',
@@ -33,6 +29,7 @@ describe('CLI configuration commands', () => {
     }
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('routes read commands through host APIs and Bureau operations', async () => {
     const calls: string[] = [];
     const result = async (arguments_: string[]) =>
@@ -81,6 +78,7 @@ describe('CLI configuration commands', () => {
     ]);
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('uses protected secret input and sends one revisioned provider mutation', async () => {
     const calls: Array<{ method: string; path: string; body?: Record<string, unknown> }> = [];
     const result = await commandRunner(['providers', 'connect', 'anthropic', '--secret-stdin'], {
@@ -112,6 +110,7 @@ describe('CLI configuration commands', () => {
     expect(JSON.stringify(result)).not.toContain('not-an-argument-secret');
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('writes provider plugin configuration through its schema-bearing plugin route', async () => {
     const calls: string[] = [];
     const inputPath = '/tmp/cor2061-provider.json';
@@ -156,6 +155,7 @@ describe('CLI configuration commands', () => {
     ]);
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('rejects unknown and schema-invalid providers before any durable write', async () => {
     const mutations: string[] = [];
     const fetch = async (url: RequestInfo | URL, init?: RequestInit) => {
@@ -197,6 +197,7 @@ describe('CLI configuration commands', () => {
     expect(mutations).toEqual([]);
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('never opens OAuth when no-open is requested and reports settings restart state', async () => {
     let opened = false;
     const calls: string[] = [];
@@ -217,6 +218,7 @@ describe('CLI configuration commands', () => {
     expect(calls).toEqual(['GET /host/tool-sources', 'POST /host/tool-sources/github/authorize']);
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('never opens OAuth in non-interactive mode and rejects inline credential input', async () => {
     let opened = false;
     const noInput = await commandRunner(['tool-sources', 'authorize', 'github', '--no-input'], {
@@ -240,6 +242,7 @@ describe('CLI configuration commands', () => {
     expect(inline.stderr).toContain('never --input');
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('settings set reads the current revision before updating', async () => {
     const methods: string[] = [];
     const result = await commandRunner(['settings', 'set', '--input', '{"tools.wakeup":false}'], {
@@ -260,8 +263,11 @@ describe('CLI configuration commands', () => {
     });
     expect(result.exitCode).toBe(0);
     expect(methods).toEqual(['bureau.settings.get', 'bureau.settings.update']);
+    for (const method of methods)
+      expect(CLI_OPERATION_MAPPINGS.settings.some((operation) => operation === method)).toBe(true);
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('rejects a nonnumeric settings revision before the mutation request', async () => {
     const methods: string[] = [];
     const result = await commandRunner(
@@ -280,6 +286,7 @@ describe('CLI configuration commands', () => {
     expect(methods).toEqual(['bureau.settings.get']);
   });
 
+  // spawn-free: injected fetch handles configuration calls; authorization uses no-open/no-input or an injected opener.
   test('treats an aborted DELETE as an unknown mutation outcome', async () => {
     const result = await commandRunner(['providers', 'disconnect', 'anthropic'], {
       fetch: async (_url, init) => {

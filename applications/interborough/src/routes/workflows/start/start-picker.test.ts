@@ -70,9 +70,9 @@ describe('the start picker', () => {
     }));
     expect(options).toEqual([
       { label: COPY.fieldPlaceholder, disabled: false },
+      { label: `broken (${COPY.invalidReason})`, disabled: true },
       { label: 'digest', disabled: false },
       { label: `later (${COPY.pausedReason})`, disabled: true },
-      { label: `broken (${COPY.invalidReason})`, disabled: true },
       { label: 'order-processing', disabled: false },
     ]);
     expect(options.some((option) => option.label?.includes('agentRun'))).toBe(false);
@@ -106,7 +106,7 @@ describe('the start picker', () => {
     await fireEvent.click(await findByRole('button', { name: COPY.continue }));
     await findByText(COPY.pickError);
     await fireEvent.change(field, { target: { value: 'digest' } });
-    await waitFor(() => expect(queryByText(COPY.pickError)).toBeNull());
+    await waitFor(() => expect(queryByText(COPY.pickError)?.outerHTML ?? null).toBeNull());
   });
 
   test('goes back to the runs with Cancel', async () => {

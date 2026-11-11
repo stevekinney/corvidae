@@ -100,23 +100,151 @@ export type CliCommandResult = {
   readonly metadata?: Record<string, unknown>;
 };
 
-/** The externally callable operations this client exposes to later command work. */
-export const CLI_OPERATION_INVENTORY = [
-  'connection.list',
-  'connection.add',
-  'connection.use',
-  'connection.remove',
-  'whoami',
-  'status',
-  'doctor',
-  'open',
-  'restart',
-  'api.list',
-  'api.describe',
-  'api.call',
-  'agents.*',
-  'workflows.*',
-] as const;
+/** Every public command group and the Host/Bureau/Weft operations it dispatches. */
+export const CLI_OPERATION_MAPPINGS = Object.freeze({
+  connection: [],
+  whoami: ['GET /api/v1/principal'],
+  status: ['GET /host/status'],
+  doctor: ['GET /host/status'],
+  open: [],
+  restart: ['GET /host/status', 'POST /host/restart'],
+  api: ['GET /openrpc.json'],
+  chat: [
+    'POST /bureau/ag-ui/agents/:agent/run',
+    'POST /bureau/ag-ui/threads/:thread/run',
+    'bureau.assets.uploads.create',
+    'bureau.assets.uploads.append',
+    'bureau.assets.uploads.complete',
+    'bureau.assets.uploads.abort',
+  ],
+  chats: [
+    'POST /bureau/ag-ui/runs/:run/cancel',
+    'bureau.contexts.list',
+    'bureau.contexts.get',
+    'bureau.contexts.input',
+    'bureau.contexts.fork',
+    'bureau.contexts.rename',
+    'bureau.contexts.delete',
+    'bureau.contexts.steer',
+  ],
+  reviews: ['bureau.reviews.list', 'bureau.reviews.get', 'bureau.reviews.resolve'],
+  runs: [
+    'GET /bureau/v1/subscriptions/bureau.tasks.events',
+    'GET /v1/workflows/:workflow/events/sse',
+    'bureau.tasks.list',
+    'bureau.tasks.get',
+    'bureau.tasks.inspect',
+    'bureau.tasks.cancel',
+    'bureau.workflows.runs.list',
+    'bureau.workflows.runs.get',
+    'weft.workflows.cancel',
+  ],
+  events: [
+    'GET /bureau/v1/subscriptions/bureau.tasks.events',
+    'GET /v1/workflows/:workflow/events/sse',
+    'bureau.tasks.get',
+    'bureau.workflows.runs.get',
+  ],
+  audit: ['bureau.audit.query'],
+  agents: [
+    'bureau.agents.catalog',
+    'bureau.agents.definitions.list',
+    'bureau.agents.definitions.get',
+    'bureau.agents.definitions.create',
+    'bureau.agents.definitions.update',
+    'bureau.agents.definitions.delete',
+    'bureau.agents.definitions.duplicate',
+    'bureau.agents.versions.list',
+    'bureau.agents.versions.restore',
+    'bureau.agents.try',
+  ],
+  workflows: [
+    'GET /v1/workflows/:workflow/events/sse',
+    'bureau.workflows.runs.get',
+    'bureau.workflows.list',
+    'bureau.workflows.get',
+    'bureau.workflows.create',
+    'bureau.workflows.update',
+    'bureau.workflows.validate',
+    'bureau.workflows.start',
+    'bureau.workflows.signal',
+    'bureau.workflows.history',
+  ],
+  memory: [
+    'bureau.memory.list',
+    'bureau.memory.search',
+    'bureau.memory.get',
+    'bureau.memory.remember',
+    'bureau.memory.correct',
+    'bureau.memory.forget',
+    'bureau.memory.export',
+  ],
+  assets: [
+    'GET /bureau/assets/:asset/content',
+    'bureau.assets.get',
+    'bureau.assets.uploads.create',
+    'bureau.assets.uploads.append',
+    'bureau.assets.uploads.complete',
+    'bureau.assets.uploads.abort',
+  ],
+  schedules: [
+    'bureau.schedules.list',
+    'bureau.schedules.get',
+    'bureau.schedules.create',
+    'bureau.schedules.update',
+    'bureau.schedules.pause',
+    'bureau.schedules.resume',
+    'bureau.schedules.runnow',
+    'bureau.schedules.skipnext',
+  ],
+  goals: ['bureau.goals.list', 'bureau.goals.get', 'bureau.goals.create', 'bureau.goals.cancel'],
+  hooks: [
+    'bureau.hooks.list',
+    'bureau.hooks.get',
+    'bureau.hooks.create',
+    'bureau.hooks.update',
+    'bureau.hooks.secret.replace',
+    'bureau.hooks.delete',
+    'bureau.hooks.test',
+    'bureau.hooks.deliveries',
+  ],
+  providers: [
+    'GET /host/providers',
+    'PUT /host/providers/:provider',
+    'DELETE /host/providers/:provider',
+    'GET /host/plugins',
+    'PUT /host/plugins/:plugin',
+    'bureau.plugins.contributions',
+  ],
+  models: ['bureau.agents.catalog'],
+  tools: ['bureau.agents.catalog'],
+  'tool-sources': [
+    'GET /host/tool-sources',
+    'PUT /host/tool-sources/:id',
+    'DELETE /host/tool-sources/:id',
+    'POST /host/tool-sources/:id/authorize',
+    'POST /host/tool-sources/:id/probe',
+  ],
+  plugins: ['GET /host/plugins', 'PUT /host/plugins/:plugin'],
+  skills: ['bureau.skills.list'],
+  settings: ['bureau.settings.get', 'bureau.settings.update', 'bureau.settings.schema'],
+  completion: [],
+} as const);
+
+/** Shared authority read performed before every authenticated remote command. */
+export const CLI_AUTHORITY_DISPATCH = 'GET /api/v1/principal';
+
+/** Dynamic dispatch that cannot be enumerated by a fixed command mapping. */
+export const CLI_DYNAMIC_DISPATCH = Object.freeze({
+  api: 'api call sends the user-selected operation discovered through OpenRPC to /jsonrpc.',
+});
+
+/** The externally callable operation inventory; internal supervisor operations are excluded. */
+export const CLI_OPERATION_INVENTORY = Object.freeze(
+  Object.entries(CLI_OPERATION_MAPPINGS).flatMap(([command, operations]) =>
+    operations.length === 0 ? [`${command} (local-only; no host operation)`] : operations,
+  ),
+);
 
 const optionNames = new Set([
   'all',
@@ -242,6 +370,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'attachment',
   ],
   chats: [
+    'POST /bureau/ag-ui/runs/:run/cancel',
     'help',
     'output',
     'no-input',
@@ -278,6 +407,8 @@ const commandOptions: Record<string, readonly string[]> = {
     'yes',
   ],
   runs: [
+    'GET /bureau/v1/subscriptions/bureau.tasks.events',
+    'GET /v1/workflows/:workflow/events/sse',
     'help',
     'output',
     'no-input',
@@ -388,6 +519,7 @@ const commandOptions: Record<string, readonly string[]> = {
     'yes',
   ],
   assets: [
+    'GET /bureau/assets/:asset/content',
     'help',
     'output',
     'no-input',
@@ -539,22 +671,102 @@ const helpText: Record<string, string> = {
   completion: 'Usage: interborough completion <bash|zsh|fish>',
 };
 
+const commandExamples: Record<string, string> = {
+  connection: 'connection list',
+  whoami: 'whoami --output json',
+  status: 'status --timeout 30000',
+  doctor: 'doctor --output json',
+  open: 'open',
+  restart: 'restart --yes',
+  api: 'api list --limit 20',
+  chat: 'chat --agent assistant Hello',
+  chats: 'chats list',
+  reviews: 'reviews list',
+  runs: 'runs list --kind task --limit 20',
+  events: 'events watch task-id --kind task --output jsonl',
+  audit: 'audit list --limit 20',
+  agents: 'agents list --limit 20',
+  workflows: 'workflows list --limit 20',
+  memory: 'memory list --agent assistant --limit 20',
+  assets: 'assets upload --file ./report.txt --media-type text/plain',
+  schedules: 'schedules list --limit 20',
+  goals: 'goals list --limit 20',
+  hooks: 'hooks list',
+  providers: 'providers list',
+  models: 'models list',
+  tools: 'tools list',
+  'tool-sources': 'tool-sources list',
+  plugins: 'plugins list',
+  skills: 'skills list',
+  settings: 'settings get',
+  completion: 'completion bash',
+};
+
+const optionValueSyntax: Record<string, string> = {
+  output: 'json',
+  timeout: '30000',
+  url: 'http://127.0.0.1:7234',
+  connection: 'local',
+  workspace: 'workspace-id',
+  'credential-reference': 'INTERBOROUGH_TOKEN',
+  limit: '20',
+  offset: '0',
+  round: '1',
+  'expected-revision': '3',
+  file: './input.json',
+  'input-file': './input.json',
+  'message-file': './message.txt',
+  'output-file': './output.bin',
+  'secret-file': './secret.txt',
+  'secret-output': './secret.txt',
+  input: "'{}'",
+  agent: 'assistant',
+  'agent-name': 'assistant',
+  kind: 'task',
+  format: 'json',
+  'media-type': 'text/plain',
+  wait: '1000',
+};
+
+function isBooleanOption(command: string, option: string): boolean {
+  return (
+    ['all', 'help', 'no-input', 'yes', 'overwrite', 'secret-stdin', 'no-open'].includes(option) ||
+    ((option === 'wait' || option === 'include-runs') && command === 'workflows')
+  );
+}
+
 /** The shell-facing metadata for every public command in the installed CLI. */
 export const CLI_COMMAND_REGISTRY = Object.freeze(
   Object.fromEntries(
-    Object.entries(commandOptions).map(([command, options]) => [
-      command,
-      Object.freeze({
+    Object.entries(commandOptions).map(([command, options]) => {
+      const examples = Object.freeze([
+        `interborough ${command} --help`,
+        `interborough ${commandExamples[command]}`,
+      ]);
+      const flags = options.map(
+        (option) =>
+          `  --${option}${isBooleanOption(command, option) ? '' : ` ${optionValueSyntax[option] ?? '<value>'}`}`,
+      );
+      return [
         command,
-        options: Object.freeze([...options]),
-        help: helpText[command] ?? `Usage: interborough ${command} [options]`,
-      }),
-    ]),
+        Object.freeze({
+          command,
+          options: Object.freeze([...options]),
+          examples,
+          help: `${helpText[command]}\n\nExamples:\n  ${examples.join('\n  ')}\n\nFlags (value syntax; use with the applicable action):\n${flags.join('\n')}`,
+        }),
+      ];
+    }),
   ),
 ) as Readonly<
   Record<
     string,
-    { readonly command: string; readonly options: readonly string[]; readonly help: string }
+    {
+      readonly command: string;
+      readonly options: readonly string[];
+      readonly examples: readonly string[];
+      readonly help: string;
+    }
   >
 >;
 
@@ -603,20 +815,32 @@ const catalogByName = new Map(
   createCatalogSnapshot().operations.map((operation) => [operation.name, operation]),
 );
 
-type CliOperationCoverage =
-  | { readonly command: string; readonly action: string }
-  | { readonly excluded: true; readonly reason: string };
-
 /** Exhaustive mapping from the engine catalog to a public CLI action or an explicit exclusion. */
-export const CLI_OPERATION_COVERAGE: Readonly<Record<string, CliOperationCoverage>> = Object.freeze(
+export const CLI_OPERATION_COVERAGE: Readonly<
+  Record<
+    string,
+    | { readonly command: string; readonly action: string }
+    | { readonly excluded: true; readonly reason: string }
+  >
+> = Object.freeze(
   Object.fromEntries(
-    createCatalogSnapshot().operations.map((operation): [string, CliOperationCoverage] => [
+    createCatalogSnapshot().operations.map((operation) => [
       operation.name,
-      operation.transports.jsonRpcHttp && operation.kind === 'unary'
-        ? { command: 'api', action: 'call' }
+      Object.values(CLI_OPERATION_MAPPINGS).some((operations) =>
+        operations.some((name) => name === operation.name),
+      )
+        ? {
+            command:
+              Object.entries(CLI_OPERATION_MAPPINGS).find(([, operations]) =>
+                operations.some((name) => name === operation.name),
+              )?.[0] ?? 'api',
+            action: 'mapped',
+          }
         : {
-            excluded: true,
-            reason: 'The operation has no unary JSON-RPC-over-HTTP transport exposed by the CLI.',
+            excluded: true as const,
+            reason: operation.name.startsWith('weft.')
+              ? 'Weft catalog operation is not exposed by a public CLI command; use the engine client directly.'
+              : 'Internal or non-CLI Bureau operation is intentionally excluded from the public command surface.',
           },
     ]),
   ),
@@ -648,9 +872,7 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
     if (!optionNames.has(name) || !allowed.has(name)) return usage(`Unknown option --${name}.`);
     if (values.has(name)) return usage(`Duplicate option --${name}.`);
     const inline = equals === -1 ? undefined : argument.slice(equals + 1);
-    const booleanOption =
-      ['all', 'help', 'no-input', 'yes', 'overwrite', 'secret-stdin', 'no-open'].includes(name) ||
-      ((name === 'wait' || name === 'include-runs') && command === 'workflows');
+    const booleanOption = isBooleanOption(command, name);
     if (booleanOption) {
       if (inline !== undefined) return usage(`Option --${name} does not take a value.`);
       values.set(name, true);
@@ -663,7 +885,7 @@ function parse(arguments_: readonly string[]): Parsed | CliResult {
   }
   if (values.get('help') === true) {
     return {
-      stdout: helpText[command] ?? 'Usage: interborough <command>',
+      stdout: CLI_COMMAND_REGISTRY[command]!.help,
       stderr: '',
       exitCode: 0,
     };
@@ -856,68 +1078,8 @@ function targetResolutionFailure(result: CliResult): CliCommandResult {
   return { data: undefined, metadata: { error: result.stderr } };
 }
 
-/** Call one unary operation named by `api call` after validating it against the host catalog. */
-async function executeApiCall(
-  parsed: Parsed,
-  resolved: CliTarget,
-  dependencies: CliClientDependencies,
-  operationName: string,
-): Promise<CliCommandResult> {
-  const inputFile = parsed.options.get('input-file') ?? parsed.options.get('file');
-  const inputOption = parsed.options.get('input');
-  if (inputFile !== undefined && inputOption !== undefined)
-    throw makeCliFailure('Use only one of --input and --input-file.', { usage: true });
-  if (inputFile === '-' && inputOption === '-')
-    throw makeCliFailure('stdin may only be consumed once.', { usage: true });
-  const document = await request(resolved, '/openrpc.json', parsed, dependencies);
-  const methods =
-    isRecord(document.data) && Array.isArray(document.data['methods'])
-      ? document.data['methods']
-      : [];
-  if (!methods.some((method) => isRecord(method) && method['name'] === operationName))
-    throw Object.assign(new Error(`Operation is not externally discoverable: ${operationName}`), {
-      usage: true,
-    });
-  const operation = catalogByName.get(operationName);
-  if (operation === undefined || operation.kind !== 'unary' || !operation.transports.jsonRpcHttp)
-    throw makeCliFailure(
-      `Operation is not a supported unary JSON-RPC operation: ${operationName}.`,
-      { usage: true },
-    );
-  if (operation.destructive && parsed.options.get('yes') !== true)
-    throw makeCliFailure(`Operation ${operationName} is destructive; pass --yes to confirm.`, {
-      exitCode: 5,
-    });
-  const input = inputFile ?? inputOption;
-  const inputText =
-    input === '-'
-      ? await (dependencies.stdin ?? (async () => ''))()
-      : input === undefined
-        ? undefined
-        : await readFile(String(input), 'utf8');
-  if (input === '-' && inputText === undefined)
-    throw Object.assign(new Error('stdin input is unavailable.'), { usage: true });
-  let params: unknown = {};
-  try {
-    params = inputText === undefined ? {} : JSON.parse(inputText);
-  } catch {
-    throw makeCliFailure('Input must contain valid JSON.', { usage: true });
-  }
-  const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: `${Date.now()}`,
-      method: operationName,
-      params,
-    }),
-  });
-  return isRecord(response.data) && Object.hasOwn(response.data, 'result')
-    ? { ...response, data: response.data['result'] }
-    : response;
-}
-
+// The command dispatcher is intentionally exhaustive; each branch is a public command contract.
+// oxlint-disable-next-line complexity
 async function execute(
   parsed: Parsed,
   dependencies: CliClientDependencies,
@@ -1095,8 +1257,67 @@ async function execute(
           null,
       };
     }
-    if (action === 'call' && parsed.arguments[1])
-      return executeApiCall(parsed, resolved, dependencies, parsed.arguments[1]);
+    if (action === 'call' && parsed.arguments[1]) {
+      const inputFile = parsed.options.get('input-file') ?? parsed.options.get('file');
+      const inputOption = parsed.options.get('input');
+      if (inputFile !== undefined && inputOption !== undefined)
+        throw makeCliFailure('Use only one of --input and --input-file.', { usage: true });
+      if (inputFile === '-' && inputOption === '-')
+        throw makeCliFailure('stdin may only be consumed once.', { usage: true });
+      const document = await request(resolved, '/openrpc.json', parsed, dependencies);
+      const methods =
+        isRecord(document.data) && Array.isArray(document.data['methods'])
+          ? document.data['methods']
+          : [];
+      if (!methods.some((method) => isRecord(method) && method['name'] === parsed.arguments[1]))
+        throw Object.assign(
+          new Error(`Operation is not externally discoverable: ${parsed.arguments[1]}`),
+          { usage: true },
+        );
+      const operation = catalogByName.get(parsed.arguments[1]);
+      if (
+        operation === undefined ||
+        operation.kind !== 'unary' ||
+        !operation.transports.jsonRpcHttp
+      )
+        throw makeCliFailure(
+          `Operation is not a supported unary JSON-RPC operation: ${parsed.arguments[1]}.`,
+          { usage: true },
+        );
+      if (operation.destructive && parsed.options.get('yes') !== true)
+        throw makeCliFailure(
+          `Operation ${parsed.arguments[1]} is destructive; pass --yes to confirm.`,
+          { exitCode: 5 },
+        );
+      const input = inputFile ?? inputOption;
+      const inputText =
+        input === '-'
+          ? await (dependencies.stdin ?? (async () => ''))()
+          : input === undefined
+            ? undefined
+            : await readFile(String(input), 'utf8');
+      if (input === '-' && inputText === undefined)
+        throw Object.assign(new Error('stdin input is unavailable.'), { usage: true });
+      let params: unknown = {};
+      try {
+        params = inputText === undefined ? {} : JSON.parse(inputText);
+      } catch {
+        throw makeCliFailure('Input must contain valid JSON.', { usage: true });
+      }
+      const response = await request(resolved, '/jsonrpc', parsed, dependencies, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          jsonrpc: '2.0',
+          id: `${Date.now()}`,
+          method: parsed.arguments[1],
+          params,
+        }),
+      });
+      return isRecord(response.data) && Object.hasOwn(response.data, 'result')
+        ? { ...response, data: response.data['result'] }
+        : response;
+    }
     throw Object.assign(new Error('Usage: api list|describe <operation>|call <operation>.'), {
       usage: true,
     });

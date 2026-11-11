@@ -73,3 +73,14 @@ export function designReviewColorScheme(): DesignReviewColorScheme | undefined {
   if (raw === 'light' || raw === 'dark') return raw;
   throw new Error(`INTERBOROUGH_DESIGN_REVIEW_COLOR_SCHEME must be light or dark, not "${raw}".`);
 }
+
+/** The source identity recorded in installed-release failure evidence, when supplied by the run. */
+export function pluginIdentityBase(): string {
+  return process.env['CORVIDAE_PLUGIN_IDENTITY_BASE'] ?? 'unknown';
+}
+
+/** The candidate source SHA an installed-release evidence run must verify, when supplied. */
+export function expectedReleaseSourceSha(): string | undefined {
+  const value = process.env['CORVIDAE_EXPECTED_RELEASE_SHA'];
+  return value === undefined || value === '' ? undefined : value;
+}

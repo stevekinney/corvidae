@@ -1,8 +1,8 @@
 /**
  * The application's coverage report: this workspace's `test:coverage`. `check-coverage-cli.ts`
- * runs one `run-coverage.ts` pass (the UI's `bun test --coverage` invocation, with the same
+ * runs native host tests followed by browser tests in `run-coverage.ts`, with the same
  * `--config=./bunfig.ui.toml --conditions browser --conditions svelte` flags the UI half of `test`
- * uses), parses the LCOV report it writes to `coverage/ui/lcov.info`, and prints per-area
+ * uses. It combines native host and browser records, parses the LCOV report it writes to `coverage/ui/lcov.info`, and prints per-area
  * line/function coverage. It is a report: no floor fails it, only a failing test run does.
  *
  * **The layout.** The test orders in `coverage-test-order*.ts` name files by this workspace's
@@ -278,4 +278,28 @@ export function renderAreaTable(current: ReadonlyMap<string, AreaCoverage>): str
     );
   }
   return lines;
+}
+
+/** Combine native host coverage with browser coverage without counting a source twice. */
+export function combineEnvironmentCoverage(browserReport: string, hostReport: string): string {
+  const records = (report: string): Map<string, string> => {
+    const result = new Map<string, string>();
+    for (const block of report.split('end_of_record')) {
+      if (block.trim() === '') continue;
+      const file = /(?:^|\n)SF:([^\n]+)/.exec(block)?.[1];
+      if (file === undefined) throw new Error('Coverage record has no source file.');
+      if (result.has(file)) throw new Error(`Duplicate coverage record: ${file}`);
+      result.set(file, `${block.trim()}\nend_of_record\n`);
+    }
+    return result;
+  };
+  const browser = records(browserReport);
+  const host = new Map([...records(hostReport)].filter(([file]) => file.startsWith('src/host/')));
+  if (host.size === 0) throw new Error('Native coverage contains no host source files.');
+  for (const file of browser.keys()) {
+    if (file.startsWith('src/host/') && !host.has(file))
+      throw new Error(`Native coverage is missing browser-observed host source: ${file}`);
+  }
+  for (const [file, record] of host) browser.set(file, record);
+  return [...browser.values()].join('\n');
 }

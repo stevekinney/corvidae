@@ -104,7 +104,7 @@
         label={copy.fieldLabel}
         required
         {options}
-        {error}
+        {...error === undefined ? {} : { error }}
         bind:value={chosen}
         onValueChange={() => (error = undefined)}
       />

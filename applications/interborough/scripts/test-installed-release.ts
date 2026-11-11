@@ -3,10 +3,23 @@ import { mkdir, mkdtemp, readFile, realpath, rename, rm, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 
+import { openBungalow } from '@lostgradient/bungalow';
+import { BUREAU_SCOPES } from '@lostgradient/bureau';
+import { AUTHORIZATION_SCOPES, principalFromApiKey } from '@lostgradient/weft';
 import { enableDemoPlugin } from '../src/host/demo-plugin-home.ts';
+import { startHost } from '../src/host/host.ts';
+import { expectedReleaseSourceSha, pluginIdentityBase } from './environment-configuration.ts';
 import { assertInstalledAppsInChromium } from './test-installed-release-browser.ts';
 import { linkPluginRuntime, writeFixture } from './test-installed-release-fixture.ts';
-import { mcp, runFixtureAgent, type InstalledFetch } from './test-installed-release-transport.ts';
+import {
+  createResponseDroppingProxy,
+  interruptInstalledStream,
+  mcp,
+  runFixtureAgent,
+  verifyInstalledApproval,
+  verifyStaleInstalledWorkflow,
+  type InstalledFetch,
+} from './test-installed-release-transport.ts';
 export { parseRunStartedRunId } from './test-installed-release-transport.ts';
 
 const DEFAULT_EVIDENCE = 'tmp/chef/COR-2039';
@@ -47,6 +60,9 @@ type Acceptance = {
   readonly exit: number;
   readonly details?: Record<string, unknown>;
 };
+
+let installedCommandTracePath: string | undefined;
+const installedCommandTrace: Array<Record<string, unknown>> = [];
 
 export function referencedAssets(html: string): string[] {
   return [...html.matchAll(/(?:src|href)="([^"]+\.(?:js|css))"/g)].map((match) => match[1]!);
@@ -139,6 +155,17 @@ async function freePort(): Promise<number> {
 }
 
 export type InstalledJourneyOperations = {
+  readonly failAfterAuthority?: (hostUrls: readonly string[]) => void | Promise<void>;
+  /** Optional deterministic command seam for exercising the CLI journey without replacing assertions. */
+  readonly runCommand?: (
+    executable: string,
+    arguments_: readonly string[],
+    home: string,
+    cwd: string,
+    registryUrl: string,
+    input?: string,
+    extraEnvironment?: Record<string, string>,
+  ) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
   readonly spawn?: typeof spawn;
   readonly waitForListening?: typeof waitForListening;
   readonly waitForHttp?: typeof waitForHttp;
@@ -149,7 +176,8 @@ export type InstalledJourneyOperations = {
   readonly isProcessAlive?: (pid: number) => boolean;
 };
 
-async function runInstalledCliCommand(
+/** Run an installed command and collect its input, output, and exit settlement. */
+export async function defaultRunInstalledCliCommand(
   executable: string,
   arguments_: readonly string[],
   home: string,
@@ -172,15 +200,36 @@ async function runInstalledCliCommand(
     stderr: 'pipe',
     ...(input === undefined ? {} : { stdin: 'pipe' as const }),
   });
-  if (input !== undefined) {
-    await child.stdin.write(input);
-    await child.stdin.end();
-  }
-  const [stdout, stderr, exitCode] = await Promise.all([
+  const inputCompletion = (async () => {
+    if (input !== undefined) {
+      await child.stdin.write(input);
+      await child.stdin.end();
+    }
+  })().then(
+    () => ({ ok: true as const }),
+    (error: unknown) => ({ ok: false as const, error }),
+  );
+  const [stdout, stderr, exitCode, inputResult] = await Promise.all([
     new Response(child.stdout).text(),
     new Response(child.stderr).text(),
     child.exited,
+    inputCompletion,
   ]);
+  installedCommandTrace.push({
+    arguments: arguments_,
+    exitCode,
+    stdout: stdout.slice(0, 4000),
+    stderr: stderr.slice(0, 4000),
+  });
+  if (installedCommandTracePath !== undefined)
+    await writeFile(
+      installedCommandTracePath,
+      `${JSON.stringify(installedCommandTrace, null, 2)}\n`,
+    );
+  if (!inputResult.ok)
+    throw new Error(`Installed CLI stdin failed (exit ${exitCode}): ${stderr}`, {
+      cause: inputResult.error,
+    });
   return { exitCode, stdout, stderr };
 }
 
@@ -192,6 +241,11 @@ export async function runInstalled(
   existingHome?: string,
   operations: InstalledJourneyOperations = {},
 ): Promise<Acceptance[]> {
+  installedCommandTrace.length = 0;
+  installedCommandTracePath = join(
+    prefix,
+    relocated ? 'installed-command-trace-relocated.json' : 'installed-command-trace.json',
+  );
   const assertions: Acceptance[] = [];
   const pass = (assertion: string, command: string, details?: Record<string, unknown>) =>
     assertions.push({ assertion, command, exit: 0, ...(details === undefined ? {} : { details }) });
@@ -206,6 +260,7 @@ export async function runInstalled(
     sleep: operations.sleep ?? Bun.sleep,
     isProcessAlive: operations.isProcessAlive ?? isProcessAlive,
   };
+  const runInstalledCliCommand = operations.runCommand ?? defaultRunInstalledCliCommand;
   const home = existingHome ?? join(prefix, 'home');
   const cwd = join(prefix, 'unrelated-cwd');
   await mkdir(home, { recursive: true });
@@ -218,6 +273,11 @@ export async function runInstalled(
   }
   console.info(`starting ${executable} home=${home}`);
   const probes: Probe[] = [];
+  let authorityServerToClose:
+    { stop: (closeActiveConnections?: boolean) => void | Promise<void> } | undefined;
+  let actualAuthorityToClose:
+    { stop: (closeActiveConnections?: boolean) => void | Promise<void> } | undefined;
+  const actualHostsToClose: Array<{ host: { close: () => Promise<void> } }> = [];
   const registryRequests: string[] = [];
   const registry = Bun.serve({
     hostname: '127.0.0.1',
@@ -251,7 +311,10 @@ export async function runInstalled(
       port: listening.port,
       sanitizedPath: '/usr/bin:/bin',
     });
-    if (operations.spawn === undefined && executable.endsWith('/interborough')) {
+    if (
+      (operations.spawn === undefined || operations.runCommand !== undefined) &&
+      executable.endsWith('/interborough')
+    ) {
       const definitionFile = join(cwd, 'installed-cli-agent.json');
       const providerFile = join(cwd, 'installed-cli-provider.json');
       const scheduleFile = join(cwd, 'installed-cli-schedule.json');
@@ -299,10 +362,6 @@ export async function runInstalled(
           },
           { args: ['workflows', 'start', 'installed-cli-workflow', '--wait'], json: true },
           { args: ['schedules', 'create', '--file', scheduleFile], json: true },
-          {
-            args: ['schedules', 'create', '--file', scheduleFile],
-            json: true,
-          },
           {
             args: ['chat', '--agent', 'installed-cli-agent', '--message', 'hello', '--no-input'],
             json: true,
@@ -389,6 +448,7 @@ export async function runInstalled(
             return Response.json({ ok: true });
           },
         });
+        authorityServerToClose = authorityServer;
         const authorityUrl = `https://localhost:${authorityServer.port}`;
         const connection = await runInstalledCliCommand(
           executable,
@@ -495,6 +555,223 @@ export async function runInstalled(
             `Dropped installed watch did not fail closed: ${droppedWatch.exitCode} ${droppedWatch.stderr}`,
           );
         await authorityServer.stop(true);
+        authorityServerToClose = undefined;
+
+        const actualHosts = await Promise.all(
+          ['alice', 'bob'].map(async (subject) => {
+            const authorityHome = await mkdtemp(join(home, `authority-${subject}-`));
+            const bungalow = await openBungalow({
+              name: 'interborough',
+              environment: { INTERBOROUGH_HOME: authorityHome },
+            });
+            const workspaceId = bungalow.workspaceId;
+            bungalow.close();
+            const host = await startHost({
+              environment: { INTERBOROUGH_HOME: authorityHome },
+              workspaceId,
+              port: 0,
+              workspaceAuthentication: {
+                authentication: {
+                  resolveApiKeyPrincipal: async (key) =>
+                    key === subject || key === 'outsider' || (subject === 'bob' && key === 'alice')
+                      ? principalFromApiKey({
+                          subject: key,
+                          scopes: [...AUTHORIZATION_SCOPES, ...BUREAU_SCOPES],
+                        })
+                      : null,
+                },
+                workspace: {
+                  workspaceId,
+                  resolveMembership: async ({ subject: member }) =>
+                    member === subject || (subject === 'bob' && member === 'alice')
+                      ? {
+                          version: 1,
+                          workspaceId,
+                          actorId: member,
+                          actorKind: 'user',
+                          owner: `owner-${member}`,
+                          membershipRevision: 'installed-fixture-v1',
+                          capabilities:
+                            member === 'alice'
+                              ? ['workspace:use', 'workspace:manage']
+                              : ['workspace:use'],
+                        }
+                      : null,
+                },
+              },
+            });
+            return { subject, workspaceId, host, home: authorityHome };
+          }),
+        );
+        actualHostsToClose.push(...actualHosts);
+        const actualAuthority = Bun.serve({
+          hostname: '127.0.0.1',
+          port: 0,
+          tls: { key: await readFile(keyPath), cert: await readFile(certificatePath) },
+          fetch: async (request) => {
+            const key = request.headers.get('x-api-key');
+            const selected = actualHosts.find((entry) => entry.subject === key);
+            if (selected === undefined) return new Response('unauthorized', { status: 401 });
+            const target = new URL(request.url);
+            target.protocol = selected.host.url.protocol;
+            target.hostname = selected.host.url.hostname;
+            target.port = selected.host.url.port;
+            const headers = new Headers(request.headers);
+            headers.set('host', target.host);
+            return fetch(target, {
+              method: request.method,
+              headers,
+              ...(request.method === 'GET' || request.method === 'HEAD'
+                ? {}
+                : { body: await request.arrayBuffer() }),
+            });
+          },
+        });
+        actualAuthorityToClose = actualAuthority;
+        await operations.failAfterAuthority?.(
+          actualHosts.map((entry) => entry.host.url.toString()),
+        );
+        const actualUrl = `https://localhost:${actualAuthority.port}`;
+        const aliceConnection = await runInstalledCliCommand(
+          executable,
+          [
+            'connection',
+            'add',
+            'actual-alice',
+            '--url',
+            actualUrl,
+            '--credential-reference',
+            'TOKEN',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (aliceConnection.exitCode !== 0)
+          throw new Error(`Actual authority connection failed: ${aliceConnection.stderr}`);
+        const actualTrusted = await runInstalledCliCommand(
+          executable,
+          ['whoami', '--connection', 'actual-alice', '--workspace', actualHosts[0]!.workspaceId],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (
+          actualTrusted.exitCode !== 0 ||
+          !actualTrusted.stdout.includes(actualHosts[0]!.workspaceId)
+        )
+          throw new Error(
+            `Actual workspace authentication failed: ${actualTrusted.exitCode} ${actualTrusted.stderr}`,
+          );
+        const actualWrongWorkspace = await runInstalledCliCommand(
+          executable,
+          ['whoami', '--connection', 'actual-alice', '--workspace', actualHosts[1]!.workspaceId],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'alice', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (actualWrongWorkspace.exitCode !== 3)
+          throw new Error(`Actual wrong workspace was accepted: ${actualWrongWorkspace.exitCode}`);
+        const bobConnection = await runInstalledCliCommand(
+          executable,
+          [
+            'connection',
+            'add',
+            'actual-bob',
+            '--url',
+            actualUrl,
+            '--credential-reference',
+            'TOKEN',
+          ],
+          home,
+          cwd,
+          registryUrl,
+        );
+        if (bobConnection.exitCode !== 0)
+          throw new Error(`Read-only authority connection failed: ${bobConnection.stderr}`);
+        const adminConnection = await runInstalledCliCommand(
+          executable,
+          [
+            'connection',
+            'add',
+            'actual-admin-bob-host',
+            '--url',
+            actualHosts[1]!.host.url.toString(),
+            '--credential-reference',
+            'TOKEN',
+          ],
+          home,
+          cwd,
+          registryUrl,
+        );
+        if (adminConnection.exitCode !== 0)
+          throw new Error(`Administrator host connection failed: ${adminConnection.stderr}`);
+        const readSchedules = () =>
+          runInstalledCliCommand(
+            executable,
+            [
+              'schedules',
+              'list',
+              '--connection',
+              'actual-admin-bob-host',
+              '--workspace',
+              actualHosts[1]!.workspaceId,
+              '--output',
+              'json',
+            ],
+            home,
+            cwd,
+            registryUrl,
+            undefined,
+            { TOKEN: 'alice' },
+          );
+        const beforeBobMutation = await readSchedules();
+        if (beforeBobMutation.exitCode !== 0)
+          throw new Error(`Administrator schedule read failed: ${beforeBobMutation.stderr}`);
+        const bobWrite = await runInstalledCliCommand(
+          executable,
+          [
+            'schedules',
+            'create',
+            '--file',
+            scheduleFile,
+            '--connection',
+            'actual-bob',
+            '--workspace',
+            actualHosts[1]!.workspaceId,
+            '--output',
+            'json',
+          ],
+          home,
+          cwd,
+          registryUrl,
+          undefined,
+          { TOKEN: 'bob', NODE_EXTRA_CA_CERTS: certificatePath },
+        );
+        if (bobWrite.exitCode === 0)
+          throw new Error('Read-only workspace accepted a schedule mutation');
+        const afterBobMutation = await readSchedules();
+        if (afterBobMutation.exitCode !== 0 || afterBobMutation.stdout !== beforeBobMutation.stdout)
+          throw new Error('Read-only workspace mutation changed durable schedules');
+        await actualAuthority.stop(true);
+        actualAuthorityToClose = undefined;
+        await Promise.all(actualHosts.map((entry) => entry.host.close()));
+        actualHostsToClose.length = 0;
+        pass(
+          'two real authenticated hosts derive deployment identities and reject cross-workspace access',
+          'interborough whoami over installed TLS transport',
+          {
+            trustedWorkspace: actualHosts[0]!.workspaceId,
+            refusedWorkspace: actualHosts[1]!.workspaceId,
+            readOnlyMutationExit: bobWrite.exitCode,
+          },
+        );
         pass(
           'authenticated TLS authority handshake and wrong-workspace refusal',
           'interborough whoami over TLS',
@@ -523,6 +800,209 @@ export async function runInstalled(
           if (payload.schemaVersion !== 1)
             throw new Error(`Installed CLI ${command.args.join(' ')} returned an invalid envelope`);
         }
+      }
+      if (existingHome === undefined) {
+        const mutationDefinitionFile = join(cwd, 'installed-cli-dropped-response-agent.json');
+        await writeFile(
+          mutationDefinitionFile,
+          JSON.stringify({ model: 'installed-fixture/scripted', instructions: 'Use the fixture.' }),
+        );
+        const beforeMutation = await runInstalledCliCommand(
+          executable,
+          ['agents', 'list', '--url', url, '--output', 'json'],
+          home,
+          cwd,
+          registryUrl,
+        );
+        if (beforeMutation.exitCode !== 0)
+          throw new Error(
+            `Could not read agents before dropped-response probe: ${beforeMutation.stderr}`,
+          );
+        const responseProxy = createResponseDroppingProxy(
+          new URL(`http://127.0.0.1:${listening.port}`),
+        );
+        const mutationProxy = responseProxy.server;
+        const droppedMutationRequests = responseProxy.requests;
+        try {
+          const droppedMutation = await runInstalledCliCommand(
+            executable,
+            [
+              'agents',
+              'create',
+              'installed-cli-dropped-response-agent',
+              '--file',
+              mutationDefinitionFile,
+              '--url',
+              `http://127.0.0.1:${mutationProxy.port}`,
+              '--output',
+              'json',
+            ],
+            home,
+            cwd,
+            registryUrl,
+          );
+          if (droppedMutation.exitCode === 0)
+            throw new Error('Dropped-response mutation unexpectedly returned success');
+          const beforeAgents =
+            (JSON.parse(beforeMutation.stdout) as { data?: { agents?: unknown[] } }).data?.agents ??
+            [];
+          let afterAgents: unknown[] = [];
+          for (let attempt = 0; attempt < 20; attempt += 1) {
+            const afterMutation = await runInstalledCliCommand(
+              executable,
+              ['agents', 'list', '--url', url, '--output', 'json'],
+              home,
+              cwd,
+              registryUrl,
+            );
+            if (afterMutation.exitCode !== 0)
+              throw new Error(
+                `Could not read agents after dropped-response probe: ${afterMutation.stderr}`,
+              );
+            afterAgents =
+              (JSON.parse(afterMutation.stdout) as { data?: { agents?: unknown[] } }).data
+                ?.agents ?? [];
+            if (
+              afterAgents.some((agent) =>
+                JSON.stringify(agent).includes('installed-cli-dropped-response-agent'),
+              )
+            )
+              break;
+            await Bun.sleep(100);
+          }
+          const created = afterAgents.filter((agent) =>
+            JSON.stringify(agent).includes('installed-cli-dropped-response-agent'),
+          );
+          if (
+            droppedMutationRequests.length !== 1 ||
+            created.length !== 1 ||
+            afterAgents.length !== beforeAgents.length + 1
+          )
+            throw new Error(
+              `Dropped-response mutation was not committed exactly once: status=${responseProxy.upstreamStatus} requests=${droppedMutationRequests.length} before=${beforeAgents.length} after=${afterAgents.length}`,
+            );
+          pass(
+            'post-commit dropped response fails closed without retry and commits one entity',
+            'agents create through response-dropping proxy',
+            {
+              upstreamStatus: responseProxy.upstreamStatus,
+              requestCount: droppedMutationRequests.length,
+              durableEntityCount: created.length,
+            },
+          );
+        } finally {
+          void mutationProxy.stop(true);
+        }
+
+        const beforeSigint = await runInstalledCliCommand(
+          executable,
+          ['agents', 'list', '--url', url, '--output', 'json'],
+          home,
+          cwd,
+          registryUrl,
+        );
+        const streamServer = Bun.serve({
+          hostname: '127.0.0.1',
+          port: 0,
+          fetch() {
+            const stream = new TransformStream<Uint8Array, Uint8Array>();
+            const writer = stream.writable.getWriter();
+            void writer.write(
+              new TextEncoder().encode(
+                'data: {"type":"RUN_STARTED","runId":"installed-sigint-run"}\n\n' +
+                  'data: {"type":"TEXT_MESSAGE_CONTENT","delta":"ready\\n"}\n\n',
+              ),
+            );
+            return new Response(stream.readable, {
+              headers: { 'content-type': 'text/event-stream' },
+            });
+          },
+        });
+        try {
+          const sigint = Bun.spawn(
+            [
+              executable,
+              'chat',
+              '--agent',
+              'installed-cli-agent',
+              '--message',
+              'sigint readiness',
+              '--url',
+              `http://127.0.0.1:${streamServer.port}`,
+              '--no-input',
+            ],
+            {
+              cwd,
+              env: {
+                PATH: '/usr/bin:/bin',
+                HOME: home,
+                INTERBOROUGH_HOME: home,
+                npm_config_registry: registryUrl,
+                BUN_CONFIG_REGISTRY: registryUrl,
+              },
+              stdout: 'pipe',
+              stderr: 'pipe',
+            },
+          );
+          const { exitCode } = await interruptInstalledStream(sigint, beforeSigint.stdout, () =>
+            runInstalledCliCommand(
+              executable,
+              ['agents', 'list', '--url', url, '--output', 'json'],
+              home,
+              cwd,
+              registryUrl,
+            ),
+          );
+          pass(
+            'compiled CLI stream reaches newline readiness, exits 130 on SIGINT, and preserves state',
+            'chat stream readiness / SIGINT',
+            { exitCode, durableStateUnchanged: true },
+          );
+        } finally {
+          void streamServer.stop(true);
+        }
+
+        const workflowUpdateFile = join(cwd, 'installed-cli-workflow-update.json');
+        await writeFile(
+          workflowUpdateFile,
+          JSON.stringify({
+            trigger: { kind: 'manual' },
+            steps: [
+              {
+                kind: 'activity',
+                handler: 'agent',
+                input: { agent: 'installed-fixture:assistant', message: 'workflow hello' },
+              },
+            ],
+          }),
+        );
+        const staleWorkflow = await verifyStaleInstalledWorkflow(
+          (arguments_) =>
+            runInstalledCliCommand(
+              executable,
+              [...arguments_, '--url', url],
+              home,
+              cwd,
+              registryUrl,
+            ),
+          workflowUpdateFile,
+        );
+        pass(
+          'installed mutations reject stale revisions without retry',
+          'workflows update --if-revision',
+          staleWorkflow,
+        );
+        const { reviewId, runId } = await verifyInstalledApproval((arguments_) =>
+          runInstalledCliCommand(executable, [...arguments_, '--url', url], home, cwd, registryUrl),
+        );
+        pass(
+          'installed CLI approval resolves a durable task to its terminal result',
+          'chat / reviews approve / runs watch',
+          {
+            reviewId,
+            runId,
+          },
+        );
       }
       pass(
         'installed CLI status, diagnosis, provider, definition, workflow, and schedule journeys',
@@ -702,6 +1182,10 @@ export async function runInstalled(
     });
     return assertions;
   } finally {
+    installedCommandTracePath = undefined;
+    await actualAuthorityToClose?.stop(true);
+    await Promise.all(actualHostsToClose.map((entry) => entry.host.close()));
+    await authorityServerToClose?.stop(true);
     await registry.stop(true);
     for (const child of probes) {
       if (child.process.exitCode === null) child.process.kill('SIGTERM');
@@ -723,13 +1207,21 @@ function isProcessAlive(pid: number): boolean {
 async function unpack(
   archive: string,
   prefix: string,
-): Promise<{ executable: string; sha256: string }> {
+): Promise<{ executable: string; sha256: string; manifest: Record<string, unknown> }> {
   const sha256 = createHash('sha256')
     .update(await readFile(archive))
     .digest('hex');
   const result = Bun.spawnSync(['tar', '-xzf', archive, '-C', prefix]);
   if (result.exitCode !== 0) throw new Error(`tar failed: ${result.stderr.toString()}`);
-  return { executable: join(prefix, 'interborough', 'bin', 'interborough'), sha256 };
+  const manifest = JSON.parse(
+    await readFile(join(prefix, 'interborough', 'release.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const expected = expectedReleaseSourceSha();
+  if (expected !== undefined && manifest['sourceSha'] !== expected)
+    throw new Error(
+      `Archive source SHA ${String(manifest['sourceSha'])} did not match ${expected}`,
+    );
+  return { executable: join(prefix, 'interborough', 'bin', 'interborough'), sha256, manifest };
 }
 
 export type InstalledReleaseOperations = {
@@ -755,7 +1247,12 @@ export async function runInstalledRelease(
         assertion: 'archive SHA-256 and disposable unpack',
         command: `sha256sum ${options.archive}`,
         exit: 0,
-        details: { sha256: archive.sha256 },
+        details: {
+          sha256: archive.sha256,
+          manifest: archive.manifest,
+          runtime: { bun: Bun.version, platform: process.platform, architecture: process.arch },
+          environment: { path: '/usr/bin:/bin', registryDisabled: true },
+        },
       });
     } else executable = options.command;
     assertions.push(...(await runOperation(executable, root, false, await freePort())));
@@ -784,6 +1281,37 @@ export async function runInstalledRelease(
       `${JSON.stringify({ archive: options.mode === 'archive' ? options.archive : undefined, assertions }, null, 2)}\n`,
     );
     return evidence;
+  } catch (error) {
+    const evidenceDirectory = options.evidence ?? DEFAULT_EVIDENCE;
+    await mkdir(evidenceDirectory, { recursive: true });
+    const evidence = join(evidenceDirectory, `installed-release-failure-${Date.now()}.json`);
+    const tracePath = join(root, 'installed-command-trace.json');
+    const trace = (await Bun.file(tracePath).exists())
+      ? await readFile(tracePath, 'utf8')
+      : undefined;
+    const relocatedTracePath = join(root, 'relocated', 'installed-command-trace-relocated.json');
+    const relocatedTrace = (await Bun.file(relocatedTracePath).exists())
+      ? await readFile(relocatedTracePath, 'utf8')
+      : undefined;
+    await writeFile(
+      evidence,
+      `${JSON.stringify(
+        {
+          archive: options.mode === 'archive' ? options.archive : undefined,
+          failure:
+            error instanceof Error
+              ? { name: error.name, message: error.message, stack: error.stack }
+              : String(error),
+          source: pluginIdentityBase(),
+          commandTrace: trace === undefined ? undefined : JSON.parse(trace),
+          relocatedCommandTrace:
+            relocatedTrace === undefined ? undefined : JSON.parse(relocatedTrace),
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    throw error;
   } finally {
     await rm(root, { recursive: true, force: true });
   }
