@@ -481,18 +481,29 @@ export const AGENT_EDITOR_COPY = {
    * not. It writes no file and no memory, and ends when the drawer closes or the page is left.
    */
   try: {
+    /** The header button that opens Try it below 1024px (rows 43t, 44a). */
     action: 'Try it',
-    title: 'Try this agent',
-    description:
-      'Chat with the agent as the form describes it now. No agent file or memory is saved, and the chat is removed when you close this. Tools are real: a tool that runs without asking really runs, with whatever effect it has.',
+    /** The title of the panel beside the form, and of the sheet (rows 41n, 43x). */
+    title: 'Try it',
     /** Said when the agent names reference documents, which a trial runs without. */
     leftOut: (documents: readonly string[]): string =>
       `This agent reads ${documents.length === 1 ? 'a document' : 'documents'} that ${documents.length === 1 ? 'is' : 'are'} not available in a trial, so the trial runs without ${documents.length === 1 ? 'it' : 'them'}: ${documents.join(', ')}.`,
-    /** Said when the agent stopped to ask before a tool, which a trial cannot answer. */
-    approvalEnded:
-      'The agent stopped to ask before using a tool, and a trial cannot take that answer, so the trial ended. Set the tool to run without asking, or save the agent and chat with it.',
     /** The line under the title: what the trial runs on. */
     usesChanges: 'Uses your unsaved changes',
+    /** Said beside `usesChanges` once the host reports a model provider with a key (rows 43g, 43x). */
+    providerConnected: 'Provider connected',
+    /** The line above an approval the test run is parked on (row 43d). */
+    waitingOn: (tool: string): string => `Waiting on you for ${tool}`,
+    /** The context line of an approval inside Try it: answering it runs the tool for real (row 43e). */
+    testChat: 'Test chat, this runs for real',
+    /** The accessible name of the sheet's Close control, which keeps the transcript (rows 43x, 43z). */
+    closeSheet: 'Close',
+    /** The page's subtitle on a tablet, where Try it opens from the header (row 44a). */
+    subtitleTablet: 'An agent is a model with instructions and tools. Try it before you save.',
+    /** The page's subtitle on a phone (row 43u). */
+    subtitlePhone: 'An agent is a model with instructions and tools.',
+    /** The new agent form's sticky status while nothing is saved yet (rows 43w, 44b). */
+    notSavedYet: 'Not saved yet',
     messagePlaceholder: 'Send a test message',
     /** The line under the composer, said while no other status is. */
     hint: 'Tools run for real, under this agent’s approval rules. Test chats aren’t saved and leave no memories.',
@@ -506,7 +517,6 @@ export const AGENT_EDITOR_COPY = {
     /** The name of a tool call that is running, "Using Lookup order…", and one that finished. */
     usingTool: 'Using',
     usedTool: 'Used',
-    close: 'End trial',
     /** Said when the form has changed since the trial chat started. */
     changed: 'The form changed after this chat started, so the agent here is the earlier version.',
     notRemoved: 'The trial chat could not be removed. It is left out of your chat list.',

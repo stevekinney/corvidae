@@ -1,7 +1,10 @@
 /**
  * Try it, in the agent editor: a throwaway chat with the form as it stands. It starts from the
- * unsaved draft, saves nothing, and ends (the Bureau deletes the chat's context) when the drawer
- * closes, when the person starts over, and when the page is left, however the start is timed.
+ * unsaved draft, saves nothing, and ends (the Bureau deletes the chat's context) when the person
+ * starts over and when the page is left, however the start is timed. At desktop width it is a panel
+ * always open beside the form (row 41n); below 1024px it is a header button that opens a right
+ * sheet on a tablet and a bottom sheet on a phone, and closing the sheet keeps the transcript
+ * (rows 43t, 43x, 43z, 44a, 44b).
  */
 import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
@@ -19,11 +22,31 @@ import {
 } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import Harness from './agent-editor-test-harness.test-harness.svelte';
+import { TRY_BOTTOM_SHEET_QUERY, TRY_SHEET_QUERY } from './agent-try-session.svelte.ts';
 
 const copy = AGENT_EDITOR_COPY;
 const TRIED = { contextId: 'ctx-1', agentName: 'try:one', taskId: 'task-1' };
 
 let stub: BureauStub | undefined;
+let restoreViewport: (() => void) | undefined;
+
+/** Narrows the viewport to a tablet (640 to 1023px) or a phone (below 640px) for Try it's queries. */
+function viewport(width: 'tablet' | 'phone'): void {
+  const original = window.matchMedia;
+  window.matchMedia = ((query: string) => ({
+    matches: query === TRY_SHEET_QUERY || (width === 'phone' && query === TRY_BOTTOM_SHEET_QUERY),
+    media: query,
+    onchange: null,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+    addListener: () => {},
+    removeListener: () => {},
+    dispatchEvent: () => false,
+  })) as unknown as typeof window.matchMedia;
+  restoreViewport = () => {
+    window.matchMedia = original;
+  };
+}
 
 beforeEach(() => {
   if (!(window instanceof Window)) throw new Error('expected a happy-dom test window');
@@ -34,6 +57,8 @@ beforeEach(() => {
 afterEach(() => {
   stub?.restore();
   stub = undefined;
+  restoreViewport?.();
+  restoreViewport = undefined;
 });
 
 function bureau(
@@ -70,9 +95,8 @@ async function type(element: HTMLElement, value: string): Promise<void> {
   await fireEvent.input(element, { target: { value } });
 }
 
-/** Opens the drawer and starts a chat with `message`. */
+/** Starts a chat with `message` from the Try it panel beside the form (desktop width). */
 async function startChat(view: View, message = 'Hello there'): Promise<void> {
-  await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
   await type(await view.findByRole('textbox', { name: 'Message' }), message);
   await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
 }
@@ -119,26 +143,6 @@ describe('Try it', () => {
     await view.findByRole('region', { name: copy.try.chatLabel });
     expect(calls.callsTo('bureau.agents.try')).toHaveLength(1);
     expect(calls.callsTo('bureau.agents.definitions.create')).toEqual([]);
-  });
-
-  test('ends the chat when the drawer is closed', async () => {
-    const calls = bureau();
-    const view = mount();
-    await startChat(view);
-    await view.findByRole('region', { name: copy.try.chatLabel });
-    expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
-
-    await fireEvent.click(view.getByRole('button', { name: copy.try.close }));
-
-    await waitFor(() =>
-      expect(calls.callsTo('bureau.contexts.delete')).toEqual([
-        { method: 'bureau.contexts.delete', params: { contextId: 'ctx-1' } },
-      ]),
-    );
-    // Opening it again starts from the composer, not the old chat.
-    await fireEvent.click(view.getByRole('button', { name: copy.try.action }));
-    await view.findByRole('textbox', { name: 'Message' });
-    expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
   });
 
   test('ends the chat when the page is left', async () => {
@@ -207,7 +211,7 @@ describe('Try it', () => {
     expect(view.queryByTestId('agent-try-changed')).toBeNull();
   });
 
-  test('deletes a chat that was still starting when the drawer closed', async () => {
+  test('deletes a chat that was still starting when the page was left', async () => {
     let release: (() => void) | undefined;
     const gate = new Promise<void>((resolve) => {
       release = resolve;
@@ -220,7 +224,7 @@ describe('Try it', () => {
     });
     const view = mount();
     await startChat(view);
-    await fireEvent.click(view.getByRole('button', { name: copy.try.close }));
+    view.unmount();
     expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
 
     release?.();
@@ -230,7 +234,6 @@ describe('Try it', () => {
         { method: 'bureau.contexts.delete', params: { contextId: 'ctx-1' } },
       ]),
     );
-    expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
   });
 
   test('says why a definition cannot be tried, and starts no chat', async () => {
@@ -259,7 +262,7 @@ describe('Try it', () => {
     const view = mount();
     await startChat(view);
     await view.findByRole('region', { name: copy.try.chatLabel });
-    await fireEvent.click(view.getByRole('button', { name: copy.try.close }));
+    await fireEvent.click(view.getByRole('button', { name: copy.try.startOver }));
     await waitFor(() => expect(calls.callsTo('bureau.contexts.delete')).toHaveLength(1));
     expect(view.queryByText(copy.try.notRemoved)).toBeNull();
 
@@ -287,20 +290,24 @@ describe('Try it', () => {
   test('is off while the form cannot be tried', async () => {
     bureau();
     const view = mount();
-    const button = await view.findByRole('button', { name: copy.try.action });
-    expect((button as HTMLButtonElement).disabled).toBe(false);
+    const field = await view.findByRole('textbox', { name: 'Message' });
+    expect((field as HTMLTextAreaElement).disabled).toBe(false);
     await type(await view.findByRole('textbox', { name: /^Steps per run/ }), 'many');
-    await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(true));
+    await waitFor(() =>
+      expect((view.getByRole('textbox', { name: 'Message' }) as HTMLTextAreaElement).disabled).toBe(
+        true,
+      ),
+    );
   });
   test('with no model provider connected the shared blocked row stands in for the composer, over an empty transcript', async () => {
     bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: false }] });
     const view = mount();
-    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
 
     await view.findByText('Connect a model provider to chat');
     await view.findByText('Connect a provider');
     expect(view.queryByRole('textbox', { name: 'Message' })).toBeNull();
     expect(view.getByText(copy.try.usesChanges)).not.toBeNull();
+    expect(view.queryByTestId('agent-try-provider')).toBeNull();
     // Reset has nothing to reset until a chat has started.
     expect(
       (view.getByRole('button', { name: copy.try.startOver }) as HTMLButtonElement).disabled,
@@ -310,7 +317,6 @@ describe('Try it', () => {
   test('the composer is one line, “Send a test message”, with the line about real tools under it', async () => {
     bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
     const view = mount();
-    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
 
     const field = await view.findByRole('textbox', { name: 'Message' });
     expect(field.getAttribute('placeholder')).toBe(copy.try.messagePlaceholder);
@@ -435,6 +441,108 @@ describe('Try it', () => {
           .querySelector('.cinder-alert__actions')
           ?.contains(within(block).getByRole('button', { name: copy.try.tryAgain })),
       ).toBe(true);
+      // The form is untouched and the composer stays (row 42t).
+      const field = view.getByRole('textbox', { name: 'Message' });
+      expect(field.getAttribute('placeholder')).toBe(copy.try.messagePlaceholder);
+      expect(view.getByRole('form', { name: copy.formLabel })).not.toBeNull();
     });
+  });
+});
+
+describe('Try it, where it is drawn', () => {
+  test('at desktop width it is a panel always open beside the form, titled Try it, with what it uses and Reset (row 41n)', async () => {
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const view = mount(undefined);
+    const panel = await view.findByTestId('agent-try-panel');
+
+    expect(within(panel).getByRole('heading', { name: copy.try.title })).not.toBeNull();
+    expect(within(panel).getByText(copy.try.usesChanges)).not.toBeNull();
+    const reset = within(panel).getByRole('button', { name: copy.try.startOver });
+    expect(reset.querySelector('svg')).not.toBeNull();
+    // Nothing opens it: there is no Try it button in the header, and no sheet.
+    expect(view.queryByRole('button', { name: copy.try.action })).toBeNull();
+    expect(view.queryByRole('dialog')).toBeNull();
+    // Beside the form, not inside it.
+    const form = view.getByRole('form', { name: copy.formLabel });
+    expect(form.contains(panel)).toBe(false);
+    expect(view.getByTestId('agent-new-subtitle').textContent?.trim()).toBe(copy.newAgent.subtitle);
+  });
+
+  test('says the provider is connected beside what it uses, with no separator glyph (row 43g)', async () => {
+    bureau({}, { hostProviders: [{ name: 'anthropic', hasKey: true }] });
+    const view = mount(undefined);
+
+    const provider = await view.findByTestId('agent-try-provider');
+    expect(provider.textContent?.trim()).toBe(copy.try.providerConnected);
+    expect(view.getByTestId('agent-try-note').textContent).not.toContain('·');
+  });
+
+  test('the new agent form says it is not saved yet in its sticky bar (rows 43w, 44b)', async () => {
+    bureau();
+    const view = mount(undefined);
+    await view.findByRole('textbox', { name: /^Name/ });
+    expect(view.getByTestId('agent-save-status').textContent?.trim()).toBe(copy.try.notSavedYet);
+  });
+
+  test('on a tablet it is a Try it button beside the title that opens a 360px right sheet (rows 43t, 44a)', async () => {
+    viewport('tablet');
+    bureau();
+    const view = mount(undefined);
+
+    const button = await view.findByRole('button', { name: copy.try.action });
+    expect(view.queryByTestId('agent-try-panel')).toBeNull();
+    expect(view.queryByRole('textbox', { name: 'Message' })).toBeNull();
+    expect(view.getByTestId('agent-new-subtitle').textContent?.trim()).toBe(
+      copy.try.subtitleTablet,
+    );
+
+    await fireEvent.click(button);
+    const sheet = await view.findByRole('dialog', { name: copy.try.title });
+    const panel = sheet.querySelector('.cinder-drawer__panel');
+    expect(panel?.getAttribute('data-cinder-placement')).toBe('right');
+    expect(panel?.getAttribute('data-cinder-size')).toBe('sm');
+    expect(within(sheet).getByRole('button', { name: copy.try.startOver })).not.toBeNull();
+    expect(within(sheet).getByRole('button', { name: copy.try.closeSheet })).not.toBeNull();
+    expect(within(sheet).getByRole('textbox', { name: 'Message' })).not.toBeNull();
+  });
+
+  test('on a phone the sheet rises from the bottom, and the subtitle drops the Try it clause (rows 43u, 43x)', async () => {
+    viewport('phone');
+    bureau();
+    const view = mount(undefined);
+
+    const subtitle = await view.findByTestId('agent-new-subtitle');
+    expect(subtitle.textContent?.trim()).toBe(copy.try.subtitlePhone);
+    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
+    const sheet = await view.findByRole('dialog', { name: copy.try.title });
+    expect(
+      sheet.querySelector('.cinder-drawer__panel')?.getAttribute('data-cinder-placement'),
+    ).toBe('bottom');
+  });
+
+  test('closing the sheet keeps the transcript for the next opening, and ends nothing (rows 43z, 44b)', async () => {
+    viewport('phone');
+    const calls = bureau();
+    const view = mount();
+    await type(await view.findByRole('textbox', { name: /^Instructions/ }), 'Kept as typed.');
+
+    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
+    await type(await view.findByRole('textbox', { name: 'Message' }), 'Hello there');
+    await fireEvent.click(view.getByRole('button', { name: /^Send/ }));
+    await view.findByRole('region', { name: copy.try.chatLabel });
+
+    await fireEvent.click(view.getByRole('button', { name: copy.try.closeSheet }));
+    await waitFor(() => expect(view.queryByRole('dialog', { name: copy.try.title })).toBeNull());
+    // Back at the form with nothing lost, and the chat is still there.
+    expect(
+      (view.getByRole('textbox', { name: /^Instructions/ }) as HTMLTextAreaElement).value,
+    ).toBe('Kept as typed.');
+    expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
+
+    await fireEvent.click(view.getByRole('button', { name: copy.try.action }));
+    await view.findByRole('region', { name: copy.try.chatLabel });
+    expect(view.getByTestId('agent-try').getAttribute('data-context-id')).toBe('ctx-1');
+    expect(calls.callsTo('bureau.agents.try')).toHaveLength(1);
+    expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
   });
 });

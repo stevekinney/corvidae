@@ -1,24 +1,37 @@
 <script lang="ts">
   /**
-   * Try it: a drawer beside the agent editor that chats with the agent as the form describes it
-   * now, saved or not (`bureau.agents.try`, COR-1911). The first message starts a throwaway chat
-   * (`agent-try-session.svelte.ts`); from then on the conversation is the application's chat over
-   * that chat's context. No agent file or memory is saved, and the chat is not in the chat list. The
-   * tools are real. A question the agent asks is answered here; a tool that would ask first ends the
-   * trial, because the drawer has no approval to give.
+   * Try it: chats with the agent as the form describes it now, saved or not (`bureau.agents.try`,
+   * COR-1911). The first message starts a throwaway chat (`agent-try-session.svelte.ts`); from then
+   * on the conversation is the application's chat over that chat's context. No agent file or memory
+   * is saved, and the chat is not in the chat list. The tools are real.
+   *
+   * Where it is drawn is the page's `placement`: at desktop width a panel always open beside the
+   * form, titled "Try it" with "Uses your unsaved changes" and Reset (row 41n); below 1024px a sheet
+   * the page header's Try it button opens, a 360px right sheet on a tablet (row 44a) and a bottom
+   * sheet on a phone (row 43x), with Reset and Close. One component owns the trial in every
+   * placement, so closing the sheet keeps the transcript for the next opening, and Close returns to
+   * the form with nothing lost (rows 43z, 44b). Reset, and leaving the page, end the chat, which
+   * deletes its context and the agent with it.
    *
    * The composer is one line, "Send a test message", with Send, which becomes Stop while an answer
-   * streams (and the field is disabled). With no model provider connected the shared blocked row
-   * stands in its place and the transcript is empty. A tool call reads "Using Lookup order…", and an
-   * answer that failed is a titled danger block under the message with Try again.
+   * streams (and the field is disabled), and the line about real tools under it (row 41p). With no
+   * model provider connected the shared blocked row stands in its place and the transcript is
+   * empty; with one, the header says "Provider connected" (row 43g). While the form cannot be tried
+   * (no model, limits that do not parse) the composer is off. A tool call reads "Using Lookup
+   * order…", and an answer that failed is a titled danger block under the message with Try again;
+   * the form is untouched and the composer stays (row 42t).
    *
-   * Closing the drawer, resetting, and leaving the page each end the chat, which deletes its
-   * context and the agent with it. The agent in the chat is the form as it was when the chat
-   * started; the drawer says so once the form has changed, and Reset tries the new one.
+   * A question the agent asks is answered here. A tool that asks first is the shared approval row
+   * in place of its call, under "Waiting on you for Issue refund", with the context line "Test chat,
+   * this runs for real", Add a note, Deny and Approve, which answer this test run only (rows 43d,
+   * 43e).
+   *
+   * The agent in the chat is the form as it was when the chat started; Try it says so once the form
+   * has changed, and Reset tries the new one.
    */
   import { onDestroy } from 'svelte';
 
-  import { Alert, Button, Drawer, RotateCcw } from '@lostgradient/cinder';
+  import { Alert, ApprovalCard, Button, Drawer, RotateCcw } from '@lostgradient/cinder';
   import {
     Chat,
     ChatQuestion,
@@ -26,29 +39,35 @@
     type ChatAdapter,
     type ConversationHistory,
   } from '@lostgradient/chat';
-  import { createQuery } from '@tanstack/svelte-query';
 
   import { AGENT_EDITOR_COPY, CHAT_COPY } from '../../app/copy.ts';
   import { getConnection } from '../../app/connection.svelte.ts';
-  import { getAgentCatalog } from '../../lib/agent-definitions.ts';
-  import { getProviders } from '../../lib/host-providers.ts';
-  import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
+  import { approvalQuestion, declaredSummary } from '../../lib/tool-text.ts';
   import { composerStatusOf } from '../chat/composer-state.ts';
   import { toolDisplayName } from '../chat/tool-activity.ts';
   import type { AgentEditorState } from './agent-editor-state.svelte.ts';
-  import { AgentTrySession } from './agent-try-session.svelte.ts';
+  import { AgentTrySession, type TryPlacement } from './agent-try-session.svelte.ts';
 
   interface Props {
     editor: AgentEditorState;
+    /** Whether the sheet is open. Ignored `beside` the form, where Try it is always open. */
     open: boolean;
+    /** Where Try it is drawn: beside the form, or a right or bottom sheet over it. */
+    placement: TryPlacement;
+    /**
+     * The model providers the host reports, each with whether it has a key, or `undefined` while the
+     * host has not said. None with a key blocks the composer; one with a key is "Provider connected".
+     */
+    providers: readonly { readonly hasKey: boolean }[] | undefined;
   }
 
-  let { editor, open = $bindable() }: Props = $props();
+  let { editor, open = $bindable(), placement, providers }: Props = $props();
 
   const copy = AGENT_EDITOR_COPY.try;
   const connection = getConnection();
   const trial = new AgentTrySession();
+  const headingId = $props.id();
 
   const changed = $derived(
     trial.phase === 'chatting' && JSON.stringify(editor.toTryDefinition()) !== trial.triedWith,
@@ -57,17 +76,11 @@
 
   // With no model provider connected nothing can be answered, so the shared blocked row stands in
   // the composer's place and says so.
-  const providers = createQuery(
-    () => ({
-      queryKey: queryKeys.hostProviders(),
-      queryFn: ({ signal }) => getProviders({ signal }),
-      enabled: open,
-      retry: false,
-    }),
-    undefined,
-  );
   const noProvider = $derived(
-    providers.data !== undefined && !providers.data.providers.some((provider) => provider.hasKey),
+    providers !== undefined && !providers.some((provider) => provider.hasKey),
+  );
+  const providerConnected = $derived(
+    providers !== undefined && providers.some((provider) => provider.hasKey),
   );
   const composerStatus = $derived(
     composerStatusOf({
@@ -83,26 +96,27 @@
     }),
   );
 
-  // A tool call is named the way the tool names itself, "Using Lookup order…".
-  const catalog = createQuery(
-    () => ({
-      queryKey: queryKeys.agents.catalog(),
-      queryFn: ({ signal }) => getAgentCatalog({ signal }),
-      enabled: open,
-      retry: false,
-    }),
-    undefined,
-  );
-  const titles = $derived(
-    new Map((catalog.data?.tools ?? []).map((tool) => [tool.name, tool.title])),
-  );
+  // A tool is named the way it names itself, "Using Lookup order…", from the catalog the form was
+  // built with.
+  const tools = $derived(new Map(editor.toolChoices.map((tool) => [tool.name, tool])));
+
+  /** The name a person reads for the tool a call names. */
+  function toolName(name: string): string {
+    return toolDisplayName(name, tools.get(name)?.title);
+  }
+
+  /** How risky a tool is, by the tier it declares. */
+  function riskOf(name: string): 'low' | 'medium' | 'high' {
+    const tier = tools.get(name)?.tier;
+    return tier === 'read-only' ? 'low' : tier === 'dangerous' ? 'high' : 'medium';
+  }
 
   /** The chat's adapter with the words of a tool call that is running, or that finished. */
   function describedBy(adapter: ChatAdapter): ChatAdapter {
     return {
       ...adapter,
       describeToolCall: (call, result) => {
-        const name = toolDisplayName(call.name, titles.get(call.name));
+        const name = toolName(call.name);
         return result === undefined
           ? { verb: copy.usingTool, detail: `${name}…`, tense: 'present' }
           : { verb: copy.usedTool, detail: name, tense: 'past' };
@@ -115,11 +129,11 @@
   const idleAdapter: ChatAdapter = {
     sendMessage: async (message) => {
       const text = typeof message.content === 'string' ? message.content.trim() : '';
-      if (text !== '') await trial.start(editor.toTryDefinition(), text);
+      if (text !== '' && editor.canTry) await trial.start(editor.toTryDefinition(), text);
     },
   };
 
-  /** The conversation as the drawer shows it: a message the trial could not answer is not "Not sent". */
+  /** The conversation as Try it shows it: a message the trial could not answer is not "Not sent". */
   function answered(conversation: ConversationHistory): ConversationHistory {
     const failed = Object.entries(conversation.messages).filter(
       ([, row]) => row.metadata['_deliveryStatus'] === 'failed',
@@ -133,19 +147,7 @@
     return { ...conversation, messages };
   }
 
-  // Closing the drawer ends the chat: there is nothing to come back to.
-  $effect(() => {
-    if (!open) void trial.end();
-  });
-
-  // A tool that asks first parks the run on an approval this drawer cannot show, so the next message
-  // would answer it unseen. The trial ends and says why.
-  $effect(() => {
-    if (trial.phase === 'chatting' && (trial.chat?.approvals.length ?? 0) > 0) {
-      void trial.endWith(copy.approvalEnded);
-    }
-  });
-
+  // Closing the sheet keeps the chat (rows 43z, 44b); only Reset and leaving the page end it.
   onDestroy(() => {
     void trial.end();
   });
@@ -155,22 +157,32 @@
   }
 </script>
 
-<Drawer bind:open title={copy.title} size="md">
-  <div class="weft-agent-try" data-testid="agent-try" data-context-id={trial.contextId}>
-    <div class="weft-agent-try__bar">
-      <p class="weft-agent-try__note">{copy.usesChanges}</p>
-      <Button
-        data-changes
-        type="button"
-        size="sm"
-        variant="secondary"
-        label={copy.startOver}
-        disabled={trial.phase === 'idle'}
-        onclick={startOver}
-      />
-    </div>
-    <p class="weft-agent-try__description">{copy.description}</p>
+{#snippet heading()}
+  <div class="weft-agent-try__heading">
+    <h2 id={headingId} class="weft-agent-try__title">{copy.title}</h2>
+    <p class="weft-agent-try__note" data-testid="agent-try-note">
+      <span>{copy.usesChanges}</span>
+      {#if providerConnected}
+        <span data-testid="agent-try-provider">{copy.providerConnected}</span>
+      {/if}
+    </p>
+  </div>
+  <!-- Ending the trial deletes its chat: a write to the Bureau. -->
+  <Button
+    data-changes
+    type="button"
+    size="sm"
+    variant="secondary"
+    label={copy.startOver}
+    disabled={trial.phase === 'idle'}
+    onclick={startOver}
+  >
+    {#snippet leadingIcon()}<RotateCcw class="cinder-icon-sm" aria-hidden="true" />{/snippet}
+  </Button>
+{/snippet}
 
+{#snippet body()}
+  <div class="weft-agent-try" data-testid="agent-try" data-context-id={trial.contextId}>
     {#if references.length > 0}
       <Alert variant="info">
         <p class="weft-agent-try__alert-body" data-testid="agent-try-left-out">
@@ -194,6 +206,7 @@
 
     {#if trial.chat !== undefined && trial.phase === 'chatting'}
       {@const chat = trial.chat}
+      {@const waiting = new Set(chat.approvals.map(({ result }) => result.callId))}
       {#if changed}
         <Alert variant="info">
           <p class="weft-agent-try__alert-body" data-testid="agent-try-changed">{copy.changed}</p>
@@ -224,6 +237,50 @@
           streamingStatus={chat.stopping ? CHAT_COPY.stopping : ''}
           capabilities={{ attachments: false, editing: false, quote: false }}
         >
+          <!-- A call parked on its approval is the shared approval row, answered here for this test
+               run only (rows 43d, 43e); every other row is Chat's own. -->
+          {#snippet row({ toolCallPair }, renderDefault)}
+            {@const result = toolCallPair?.result}
+            {#if toolCallPair !== undefined && result !== undefined && result.action?.type === 'approval' && waiting.has(result.callId)}
+              {@const call = toolCallPair.call}
+              {@const name = toolName(call.name)}
+              <div class="weft-agent-try__approval" data-testid="agent-try-approval">
+                <p class="weft-agent-try__waiting">{copy.waitingOn(name)}</p>
+                <ApprovalCard
+                  id={`try-approval-${call.id}`}
+                  layout="row"
+                  headingLevel={4}
+                  question={approvalQuestion({
+                    toolName: name,
+                    arguments: call.arguments,
+                    summary: declaredSummary(
+                      result.action.message,
+                      typeof result.content === 'string' ? result.content : undefined,
+                    ),
+                  })}
+                  tool={{
+                    name: call.name,
+                    label: name,
+                    risk: riskOf(call.name),
+                    irreversible: tools.get(call.name)?.tier === 'dangerous',
+                  }}
+                  operation={{ kind: 'other', argsPreview: call.arguments }}
+                  policyVersion="try"
+                  idempotencyKey={call.id}
+                  state="pending"
+                  {...trial.deciding === undefined ? {} : { resolving: trial.deciding }}
+                  {...connection.unreachable
+                    ? { disabledReason: CHAT_COPY.approval.unreachable }
+                    : {}}
+                  onResolve={(resolution) => void trial.resolveApproval(call.id, resolution)}
+                >
+                  {#snippet context()}{copy.testChat}{/snippet}
+                </ApprovalCard>
+              </div>
+            {:else}
+              {@render renderDefault()}
+            {/if}
+          {/snippet}
           {#snippet trailing()}
             {#if chat.failure !== undefined && !chat.streaming}
               <div class="weft-agent-try__failure" data-testid="agent-try-answer-failure">
@@ -286,7 +343,7 @@
           composerPlaceholder={copy.messagePlaceholder}
           composerHint={copy.hint}
           {composerStatus}
-          disabled={trial.phase === 'starting' || connection.unreachable}
+          disabled={trial.phase === 'starting' || connection.unreachable || !editor.canTry}
           capabilities={{ attachments: false, editing: false, quote: false }}
         >
           {#snippet empty()}
@@ -296,16 +353,68 @@
       </div>
     {/if}
   </div>
+{/snippet}
 
-  {#snippet footer()}
-    <!-- Ending the trial deletes its chat: a write to the Bureau. -->
-    <Button data-changes type="button" variant="primary" onclick={() => (open = false)}
-      >{copy.close}</Button
-    >
-  {/snippet}
-</Drawer>
+{#if placement === 'beside'}
+  <aside class="weft-agent-try-panel" aria-labelledby={headingId} data-testid="agent-try-panel">
+    <header class="weft-agent-try-panel__header">
+      {@render heading()}
+    </header>
+    {@render body()}
+  </aside>
+{:else}
+  <Drawer
+    bind:open
+    title={copy.title}
+    ariaLabelledby={headingId}
+    placement={placement === 'bottom' ? 'bottom' : 'right'}
+    size="sm"
+    closeLabel={copy.closeSheet}
+  >
+    {#snippet header()}
+      <div class="weft-agent-try-sheet__header">
+        {@render heading()}
+      </div>
+    {/snippet}
+    {@render body()}
+  </Drawer>
+{/if}
 
 <style>
+  .weft-agent-try-panel {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-3);
+    min-inline-size: 0;
+  }
+
+  .weft-agent-try-panel__header,
+  .weft-agent-try-sheet__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--cinder-space-2) var(--cinder-space-3);
+  }
+
+  .weft-agent-try-sheet__header {
+    flex: 1;
+    min-inline-size: 0;
+  }
+
+  .weft-agent-try__heading {
+    display: flex;
+    flex-direction: column;
+    gap: var(--cinder-space-1);
+    min-inline-size: 0;
+  }
+
+  .weft-agent-try__title {
+    margin: 0;
+    font-size: var(--cinder-text-lg);
+    font-weight: 600;
+  }
+
   .weft-agent-try {
     display: flex;
     flex-direction: column;
@@ -314,21 +423,22 @@
   }
 
   .weft-agent-try__note,
-  .weft-agent-try__description,
+  .weft-agent-try__waiting,
   .weft-agent-try__alert-title,
   .weft-agent-try__alert-body {
     margin: 0;
   }
 
-  .weft-agent-try__bar {
+  /* What the trial runs on, then whether a provider is connected: two phrases, no separator glyph. */
+  .weft-agent-try__note {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--cinder-space-3);
+    flex-wrap: wrap;
+    gap: 0 var(--cinder-space-3);
+    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-muted);
   }
 
-  .weft-agent-try__note,
-  .weft-agent-try__description {
+  .weft-agent-try__waiting {
     font-size: var(--cinder-text-sm);
     color: var(--cinder-text-muted);
   }
@@ -344,6 +454,7 @@
     min-block-size: 20rem;
   }
 
+  .weft-agent-try__approval,
   .weft-agent-try__question {
     display: flex;
     flex-direction: column;

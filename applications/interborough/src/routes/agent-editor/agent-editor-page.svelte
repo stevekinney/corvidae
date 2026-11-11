@@ -32,14 +32,19 @@
    * typed (row 42v); the view frame's probe has already read the catalog once, so this is a read
    * that failed after it.
    *
-   * Try it, beside Save, opens a drawer that chats with the form as it stands, saved or not
-   * (`agent-try-drawer.svelte`): nothing is written, and closing it ends the chat.
+   * Try it chats with the form as it stands, saved or not (`agent-try-drawer.svelte`), and nothing
+   * is written. At desktop width it is a panel always open beside the form (row 41n); below 1024px
+   * it is a secondary "Try it" button in the header beside the title (row 43t) that opens a 360px
+   * right sheet on a tablet (row 44a) and a bottom sheet on a phone (row 43x). Closing the sheet
+   * keeps the transcript for the next opening (rows 43z, 44b). A new agent's subtitle drops "beside
+   * the form" on a tablet and the whole Try it clause on a phone (rows 44a, 43u).
    *
    * `/agents/new?from=<agent>` is Duplicate: the form for a new agent, filled from that agent (a
    * file agent's definition whole, a built-in agent's own statement of itself, `agent-copy.ts`). It
    * is named and created like any new agent, and a taken identifier is refused the same way.
    */
   import { onMount, tick, untrack } from 'svelte';
+  import { MediaQuery } from 'svelte/reactivity';
 
   import {
     Alert,
@@ -82,6 +87,11 @@
   import AgentEditorNoProvider from './agent-editor-no-provider.svelte';
   import AgentRevisionHistory from './agent-revision-history.svelte';
   import AgentTryDrawer from './agent-try-drawer.svelte';
+  import {
+    TRY_BOTTOM_SHEET_QUERY,
+    TRY_SHEET_QUERY,
+    tryPlacementOf,
+  } from './agent-try-session.svelte.ts';
   import { SAVE_TIMEOUT_MS } from './agent-editor-save.ts';
 
   interface Props {
@@ -190,6 +200,17 @@
   let timedOut = $state(false);
   let confirmingDelete = $state(false);
   let trying = $state(false);
+  // Where Try it is drawn: beside the form at desktop width, else a sheet the header opens.
+  const sheetViewport = new MediaQuery(TRY_SHEET_QUERY, false);
+  const phoneViewport = new MediaQuery(TRY_BOTTOM_SHEET_QUERY, false);
+  const tryPlacement = $derived(tryPlacementOf(sheetViewport.current, phoneViewport.current));
+  const newAgentSubtitle = $derived(
+    tryPlacement === 'beside'
+      ? copy.newAgent.subtitle
+      : tryPlacement === 'right'
+        ? copy.try.subtitleTablet
+        : copy.try.subtitlePhone,
+  );
 
   /** A new agent with no copy to fill it: the form that can be built before the catalog has loaded. */
   const freshAgent = agentId === undefined && copiedFrom === null;
@@ -504,7 +525,7 @@
   <PageHeader title={heading} headingLevel={1}>
     {#snippet description()}
       {#if agentId === undefined}
-        <span data-testid="agent-new-subtitle">{copy.newAgent.subtitle}</span>
+        <span data-testid="agent-new-subtitle">{newAgentSubtitle}</span>
       {:else if latestVersion !== undefined}
         <span data-testid="agent-saved">
           {copy.saved}
@@ -517,15 +538,12 @@
     {/snippet}
     {#snippet actions()}
       {#if editor !== undefined}
-        <!-- Starts a throwaway chat: a write to the Bureau, though it saves nothing. -->
-        <Button
-          data-changes
-          variant="secondary"
-          disabled={!editor.canTry || busy}
-          onclick={() => (trying = true)}
-        >
-          {copy.try.action}
-        </Button>
+        <!-- Below 1024px Try it is this button beside the title, opening the sheet (rows 43t, 44a). -->
+        {#if tryPlacement !== 'beside'}
+          <Button variant="secondary" onclick={() => (trying = true)}>
+            {copy.try.action}
+          </Button>
+        {/if}
       {:else if noProvider}
         <!-- Nothing to save without a model, so Save is not here; Cancel stays (row 42a). -->
         <Button variant="secondary" onclick={cancel}>{copy.cancelAction}</Button>
@@ -644,18 +662,30 @@
         </Alert>
       {/if}
     {/if}
-    {#key editor}
-      <AgentEditorForm
+    <!-- At desktop width the form and Try it sit side by side; below it Try it is a sheet. -->
+    <div class="weft-agent-editor__workspace" data-try={tryPlacement}>
+      <div class="weft-agent-editor__form">
+        {#key editor}
+          <AgentEditorForm
+            {editor}
+            {busy}
+            {saving}
+            onSave={submit}
+            onCancel={cancel}
+            onDelete={() => (confirmingDelete = true)}
+            retryingModels={catalog.isFetching}
+            onRetryModels={() => void catalog.refetch()}
+          />
+        {/key}
+      </div>
+      <!-- One Try it in every placement, so its transcript outlives the sheet (rows 43z, 44b). -->
+      <AgentTryDrawer
         {editor}
-        {busy}
-        {saving}
-        onSave={submit}
-        onCancel={cancel}
-        onDelete={() => (confirmingDelete = true)}
-        retryingModels={catalog.isFetching}
-        onRetryModels={() => void catalog.refetch()}
+        bind:open={trying}
+        placement={tryPlacement}
+        providers={providers.data?.providers}
       />
-    {/key}
+    </div>
   {/if}
 
   {#if agentId !== undefined && !loadFailed}
@@ -664,10 +694,6 @@
     </div>
   {/if}
 </div>
-
-{#if editor !== undefined}
-  <AgentTryDrawer {editor} bind:open={trying} />
-{/if}
 
 <ConfirmDialog
   bind:open={confirmingDelete}
@@ -703,6 +729,26 @@
    */
   .weft-agent-editor__history {
     margin-block-start: var(--cinder-space-6);
+  }
+
+  /*
+   * Beside the form at desktop width, Try it takes what the form's reading width leaves (row 41n,
+   * S35) and stays in view while the form scrolls.
+   */
+  .weft-agent-editor__workspace[data-try='beside'] {
+    display: grid;
+    grid-template-columns: minmax(0, 48rem) minmax(20rem, 1fr);
+    gap: var(--cinder-space-6);
+    align-items: start;
+  }
+
+  .weft-agent-editor__workspace[data-try='beside'] > :global(.weft-agent-try-panel) {
+    position: sticky;
+    inset-block-start: 0;
+  }
+
+  .weft-agent-editor__form {
+    min-inline-size: 0;
   }
 
   .weft-agent-editor__path {

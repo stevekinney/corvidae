@@ -173,8 +173,8 @@ function label(provider: { name: string }): string {
  *
  * Try it chats with the form as it stands, saved or not, through `bureau.agents.try` (COR-1911). It
  * writes no agent file and no memory, leaves the chat out of the chat list, and ends the chat (the
- * Bureau deletes its context, and the agent with it) when the drawer closes and when the page is
- * left. Duplicate fills the form for a new agent from a built-in agent, to be named and created as a
+ * Bureau deletes its context, and the agent with it) on Reset and when the page is left. At the
+ * suite's desktop width it is a panel always open beside the form (row 41n). Duplicate fills the form for a new agent from a built-in agent, to be named and created as a
  * file the person can edit; a name that is taken is refused. The host's provider stub answers, so
  * the tried agent really replies.
  */
@@ -216,13 +216,13 @@ async function agentIds(request: APIRequestContext): Promise<string[]> {
   return (answer.result as { agents: { id: string }[] }).agents.map((agent) => agent.id);
 }
 
+/** The Try it panel beside the form. */
 function drawer(page: Page) {
-  return page.getByRole('dialog', { name: words.try.title });
+  return page.getByTestId('agent-try-panel');
 }
 
-/** Opens Try it on the open editor, and starts a chat with `message`. */
+/** Starts a chat with `message` from the Try it panel on the open editor. */
 async function startTrial(page: Page, message: string): Promise<string> {
-  await page.getByRole('button', { name: words.try.action }).click();
   await drawer(page).getByRole('textbox', { name: 'Message' }).fill(message);
   await drawer(page).getByRole('button', { name: /^Send/ }).click();
   await expect(drawer(page).getByRole('region', { name: words.try.chatLabel })).toBeVisible();
@@ -232,7 +232,7 @@ async function startTrial(page: Page, message: string): Promise<string> {
 }
 
 test.describe('Try it', () => {
-  test('chats with the unsaved draft, writes no file or memory, and ends the chat with the drawer', async ({
+  test('chats with the unsaved draft, writes no file or memory, and ends the chat on Reset', async ({
     page,
     request,
     checkA11y,
@@ -250,7 +250,7 @@ test.describe('Try it', () => {
     // The tried agent replies, and a follow-up reaches it too.
     const region = drawer(page).getByRole('region', { name: words.try.chatLabel });
     await expect(region.getByText(STUB_REPLY)).toBeVisible();
-    await checkA11y('the trial chat in the drawer');
+    await checkA11y('the trial chat in the Try it panel');
     await region.getByRole('textbox').fill('And again');
     await region.getByRole('textbox').press('Enter');
     await expect(region.getByText(STUB_REPLY)).toHaveCount(2);
@@ -275,9 +275,10 @@ test.describe('Try it', () => {
         (memories.result as { memories: unknown[] }).memories.length === 0,
     ).toBe(true);
 
-    // Closing the drawer ends the chat: its context is deleted and the page is as it was.
-    await drawer(page).getByRole('button', { name: words.try.close }).click();
-    await expect(drawer(page)).toBeHidden();
+    // Reset ends the chat: its context is deleted, the panel is back at its composer, and the page
+    // is as it was.
+    await drawer(page).getByRole('button', { name: words.try.startOver }).click();
+    await expect(drawer(page).getByRole('region', { name: words.try.chatLabel })).toBeHidden();
     await expect.poll(() => chatFault(request, contextId)).toBe('NotFound');
     expect(await chatRows(request, 'try')).toEqual([]);
     expect(new URL(page.url()).pathname).toBe('/agents/new');
@@ -312,7 +313,6 @@ test.describe('Try it', () => {
     await expect(page.locator('[data-view="agent-editor"]')).toHaveAttribute('data-state', 'ready');
     await addTools(page, [refused]);
 
-    await page.getByRole('button', { name: words.try.action }).click();
     await drawer(page).getByRole('textbox', { name: 'Message' }).fill('Hello');
     await drawer(page).getByRole('button', { name: /^Send/ }).click();
     await expect(page.getByTestId('agent-try-failure')).toContainText(refused);

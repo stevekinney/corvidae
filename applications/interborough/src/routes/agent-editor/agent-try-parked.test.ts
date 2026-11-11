@@ -1,10 +1,10 @@
 /**
- * Try it, when the run parks: a question the agent asks is shown in the drawer, so the person
- * answers it knowingly; a tool that asks first ends the trial and says why, because the drawer has
- * no approval to give and the next message would answer it unseen. An agent with `references` is
- * tried without them, and the drawer names them.
+ * Try it, when the run parks: a question the agent asks is shown in Try it, so the person answers
+ * it knowingly; a tool that asks first is the shared approval row in Try it, with the context line
+ * that the test chat runs for real, and Approve answers this test run (rows 43d, 43e). An agent
+ * with `references` is tried without them, and Try it names them.
  */
-import { fireEvent, render, waitFor } from '@testing-library/svelte';
+import { fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 import { Window } from 'happy-dom';
 
@@ -139,8 +139,8 @@ function mount() {
 
 type View = ReturnType<typeof mount>;
 
+/** Starts a chat from the Try it panel beside the form (desktop width). */
 async function startChat(view: View): Promise<void> {
-  await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
   await fireEvent.input(await view.findByRole('textbox', { name: 'Message' }), {
     target: { value: 'Refund it' },
   });
@@ -148,7 +148,7 @@ async function startChat(view: View): Promise<void> {
 }
 
 describe('Try it, parked on a question', () => {
-  test('shows the question in the drawer', async () => {
+  test('shows the question in Try it', async () => {
     park(QUESTION, false);
     const view = mount();
     await startChat(view);
@@ -160,7 +160,7 @@ describe('Try it, parked on a question', () => {
     expect(view.queryByTestId('agent-try-failure')).toBeNull();
   });
 
-  test('answers it from the drawer, and the run goes on with the answer', async () => {
+  test('answers it from Try it, and the run goes on with the answer', async () => {
     park(QUESTION, false);
     const view = mount();
     await startChat(view);
@@ -173,19 +173,36 @@ describe('Try it, parked on a question', () => {
 });
 
 describe('Try it, parked on an approval', () => {
-  test('ends the trial and says why, instead of parking unseen', async () => {
+  test('shows the shared approval row with the test chat context, and keeps the trial going', async () => {
     const calls = park(APPROVAL, true);
     const view = mount();
     await startChat(view);
 
-    const failure = await view.findByTestId('agent-try-failure');
-    expect(failure.textContent).toBe(copy.try.approvalEnded);
-    expect(view.queryByRole('region', { name: copy.try.chatLabel })).toBeNull();
-    await waitFor(() =>
-      expect(calls.callsTo('bureau.contexts.delete')).toEqual([
-        { method: 'bureau.contexts.delete', params: { contextId: 'ctx-1' } },
-      ]),
-    );
+    const approval = await view.findByTestId('agent-try-approval');
+    expect(approval.textContent).toContain(copy.try.waitingOn('Issue refund'));
+    expect(approval.textContent).toContain(copy.try.testChat);
+    // The Bureau's message is the policy's reason again, so the question names the tool, as Chat's does.
+    expect(approval.textContent).toContain('Run Issue refund');
+    expect(within(approval).getByRole('button', { name: /^Approve/ })).not.toBeNull();
+    expect(within(approval).getByRole('button', { name: /^Deny/ })).not.toBeNull();
+    // The trial goes on, and nothing is deleted.
+    expect(view.getByRole('region', { name: copy.try.chatLabel })).not.toBeNull();
+    expect(view.queryByTestId('agent-try-failure')).toBeNull();
+    expect(calls.callsTo('bureau.contexts.delete')).toEqual([]);
+  });
+
+  test('Approve answers this test run', async () => {
+    park(APPROVAL, true);
+    const view = mount();
+    await startChat(view);
+
+    const approval = await view.findByTestId('agent-try-approval');
+    await fireEvent.click(within(approval).getByRole('button', { name: /^Approve/ }));
+
+    await waitFor(() => expect(resumes).toHaveLength(1));
+    const resume = JSON.stringify(resumes[0]?.resume);
+    expect(resume).toContain(APPROVAL.id);
+    expect(resume).toContain('approve');
   });
 });
 
@@ -200,7 +217,6 @@ describe('Try it, on an agent with references', () => {
           : { ...file.definition, references: ['notes.md', 'style.md'] },
     });
     const view = mount();
-    await fireEvent.click(await view.findByRole('button', { name: copy.try.action }));
 
     const note = await view.findByTestId('agent-try-left-out');
     expect(note.textContent?.trim()).toBe(copy.try.leftOut(['notes.md', 'style.md']));

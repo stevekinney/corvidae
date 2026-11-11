@@ -7,7 +7,8 @@
    * width, so the fields do not stretch across a wide window (S35).
    *
    * A sticky bar at the foot holds what acts on the agent as a whole: the A2A switch, the save's
-   * status ("Saving…" while it is in flight, rows 43j and 14w), a delete for an agent that exists,
+   * status ("Saving…" while it is in flight, rows 43j and 14w; "Not saved yet" on a new agent
+   * otherwise, rows 43w and 44b), a delete for an agent that exists,
    * and Cancel then Save (row 42n). Save stays enabled whatever the form holds (W35): a submit marks
    * the fields that stop it, and the page focuses the first. While a save is in flight Save is in
    * Cinder's loading state, which ignores a second press, and Cancel stays available. ⌘Enter submits
@@ -270,7 +271,7 @@
 
     <div class="weft-agent-form__actions">
       <p class="weft-agent-form__status" role="status" data-testid="agent-save-status">
-        {saving ? newCopy.saving : ''}
+        {saving ? newCopy.saving : creating ? copy.try.notSavedYet : ''}
       </p>
       {#if editor.mode === 'edit'}
         <Button data-changes variant="danger" disabled={busy} onclick={onDelete}
