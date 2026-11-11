@@ -262,6 +262,15 @@
     margin-block: -0.125em;
   }
 
+  /* While loading, the button script pins the resting width and the spinner joins the row. The
+     label keeps its words instead of absorbing the spinner's room as an ellipsis, so the content
+     overflows evenly into the padding as the spinner rule above describes. The cap at the content
+     box keeps a label that was already truncated at rest from spilling past the button. */
+  .cinder-button[data-cinder-loading] > .cinder-button__label {
+    flex-shrink: 0;
+    max-inline-size: 100%;
+  }
+
   /* ----------------------------------------
  * Color variants
  * ---------------------------------------- */

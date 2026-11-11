@@ -265,7 +265,7 @@ describe('toPropReferenceRows — Button (real manifest)', () => {
     expect(variant).toBeDefined();
     expect(variant?.type).toContain("'primary'");
     expect(variant?.type).toContain(' | ');
-    expect(variant?.defaultValue).toBe("'secondary'");
+    expect(variant?.defaultValue).toBe("'soft'");
     expect(variant?.required).toBe(false);
   });
 

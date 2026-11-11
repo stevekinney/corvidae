@@ -43,6 +43,32 @@ describe('a long Button label is bounded by its container', () => {
     expect(declarationsFor(css, '.cinder-button__shortcut').get('flex-shrink')).toBe('0');
   });
 
+  test('a loading label keeps its words and lets the spinner overflow into the padding', () => {
+    // The script pins the resting width while loading and the spinner joins the row, so a label
+    // that could shrink would take the whole shortfall as an ellipsis ("Save" drawn as "S…").
+    expect(declarationsFor(css, '.cinder-button[data-cinder-loading]::after').get('flex')).toBe(
+      'none',
+    );
+    const loadingLabel = declarationsFor(
+      css,
+      '.cinder-button[data-cinder-loading] > .cinder-button__label',
+    );
+    expect(loadingLabel.get('flex-shrink')).toBe('0');
+    // A label already truncated at rest stays inside the button rather than growing to its words.
+    expect(loadingLabel.get('max-inline-size')).toBe('100%');
+  });
+
+  test('a loading button renders its label in the bounded box with the loading marker', () => {
+    const { getByRole } = render(Button, {
+      props: { variant: 'primary', label: 'Save', loading: true },
+    });
+    const button = getByRole('button', { name: 'Save' });
+    expect(button.hasAttribute('data-cinder-loading')).toBe(true);
+    const labelBox = button.querySelector('.cinder-button__label');
+    expect(labelBox?.parentElement).toBe(button);
+    expect(labelBox?.textContent).toBe('Save');
+  });
+
   test('the root itself does not clip, so the compact hit-area extension stays reachable', () => {
     expect(declarationsFor(css, '.cinder-button').has('overflow')).toBe(false);
   });

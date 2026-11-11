@@ -176,7 +176,7 @@ export const CONTRACT: Record<string, ComponentContract> = {
     kind: 'intersection',
     html_attrs: 'HTMLAttributes',
     props: {
-      variant: { optional: true, type_kind: 'TSTypeReference', default: L('secondary') },
+      variant: { optional: true, type_kind: 'TSTypeReference', default: L('soft') },
       size: { optional: true, type_kind: 'TSTypeReference', default: L('md') },
       fullWidth: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
       loading: { optional: true, type_kind: 'TSBooleanKeyword', default: L(false) },
