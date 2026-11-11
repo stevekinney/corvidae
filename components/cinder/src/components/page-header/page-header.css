@@ -131,12 +131,14 @@
   }
 
   /* The overflow menu button is an icon-only control at the compact height of the other header
-     actions. */
-  .cinder-page-header__overflow {
+     actions, so it never makes the header taller than its title (COR-2337). The extra class
+     outranks the dropdown trigger's own `md` height wherever its stylesheet lands. */
+  .cinder-page-header__actions .cinder-page-header__overflow {
     inline-size: var(--_cinder-compact-control-height);
     min-inline-size: var(--_cinder-compact-control-height);
     block-size: var(--_cinder-compact-control-height);
-    padding-inline: 0;
+    min-block-size: var(--_cinder-compact-control-height);
+    padding: 0;
   }
 
   /* A lighter phrase after the title, in the same heading at the same size. */
@@ -388,7 +390,7 @@
   .cinder-page-header[data-cinder-variant='hero'] .cinder-page-header__overflow {
     inline-size: var(--cinder-control-height-md);
     min-inline-size: var(--cinder-control-height-md);
-    block-size: var(--cinder-control-height-md);
+    padding-inline: 0;
   }
 
   /* One focal element per screen: a large tabular value, then its label, then an optional meter. */
@@ -452,10 +454,25 @@
      an indigo label, a translucent secondary, and a translucent segmented-control track. Each
      rule names every state Button styles, so a hover or a press never falls back to the page's
      colours. The bands are dark theme islands, so text inside them already takes its dark value. */
+  /* The focus ring is white on the dark bands: the dark theme's indigo ring would sit on an indigo
+     band. Both shared ring formulas and Button's own ring hook are redeclared, so filled and
+     outlined controls alike draw it. */
+  .cinder-page-header[data-cinder-tone='accent'],
+  .cinder-page-header[data-cinder-tone='night'] {
+    /* cinder-allow-raw-color: structural-pattern — a white focus ring on a dark band */
+    --_cinder-hero-ring: oklch(100% 0 0);
+    --_cinder-focus-ring-shadow:
+      0 0 0 var(--cinder-ring-offset) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--cinder-ring-offset) + var(--cinder-ring-width)) var(--_cinder-hero-ring);
+    --_cinder-focus-ring-filled-shadow:
+      0 0 0 var(--_cinder-focus-ring-filled-gap) var(--cinder-ring-offset-color),
+      0 0 0 calc(var(--_cinder-focus-ring-filled-gap) + var(--cinder-ring-width))
+        var(--_cinder-hero-ring);
+  }
+
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
     .cinder-button {
-    /* cinder-allow-raw-color: structural-pattern — a white focus ring on a dark band */
-    --_cinder-button-ring: oklch(100% 0 0);
+    --_cinder-button-ring: var(--_cinder-hero-ring);
   }
 
   :is(.cinder-page-header[data-cinder-tone='accent'], .cinder-page-header[data-cinder-tone='night'])
@@ -474,7 +491,7 @@
     /* cinder-allow-raw-color: structural-pattern — white label, 4.5:1 on every secondary state */
     color: oklch(100% 0 0);
     /* cinder-allow-raw-color: structural-pattern — the translucent secondary's edge */
-    border-color: oklch(100% 0 0 / 0.3);
+    border-color: oklch(100% 0 0 / 0.5);
   }
 
   @media (hover: hover) {

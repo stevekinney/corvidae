@@ -142,6 +142,16 @@ describe('PageHeader decisions (COR-2320)', () => {
     }
   });
 
+  test('the overflow button never makes the header taller than its title (COR-2337)', () => {
+    const trigger = declarationsFor(
+      stylesheet,
+      '.cinder-page-header__actions .cinder-page-header__overflow',
+    );
+    expect(trigger.get('block-size')).toBe('var(--_cinder-compact-control-height)');
+    expect(trigger.get('min-block-size')).toBe('var(--_cinder-compact-control-height)');
+    expect(trigger.get('padding')).toBe('0');
+  });
+
   test('an overflow of only decisions draws no menu button at all', () => {
     const { container } = render(Harness, {
       props: { overflow: [{ label: 'Cancel run', decision: true }] },
@@ -364,6 +374,15 @@ describe('PageHeader hero (COR-2320)', () => {
     );
     expect(stylesheet).toMatch(/\.cinder-button\[data-cinder-variant='primary'\]:hover/);
     expect(stylesheet).toMatch(/\.cinder-button\[data-cinder-variant='primary'\]:active/);
+  });
+
+  test('the accent and night bands draw a white focus ring for filled and outlined controls', () => {
+    expect(stylesheet).toContain('--_cinder-hero-ring: oklch(100% 0 0);');
+    expect(stylesheet).toMatch(/--_cinder-focus-ring-shadow:[^;]*var\(--_cinder-hero-ring\);/);
+    expect(stylesheet).toMatch(
+      /--_cinder-focus-ring-filled-shadow:[^;]*var\(--_cinder-hero-ring\)\s*;/,
+    );
+    expect(stylesheet).toMatch(/--_cinder-button-ring: var\(--_cinder-hero-ring\);/);
   });
 
   test('on accent and night the secondary and the segmented-control track are translucent', () => {
