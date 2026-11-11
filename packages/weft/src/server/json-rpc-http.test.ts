@@ -491,3 +491,111 @@ describe('handleJsonRpcHttpRequest — principal pass-through', () => {
     expect(seenPrincipalMethod).toBe('api-key');
   });
 });
+
+describe('handleJsonRpcHttpRequest — request signal pass-through (COR-2296)', () => {
+  /** A request whose signal `controller` aborts, calling `method` with no parameters. */
+  function abortableRequest(method: string, controller: AbortController): Request {
+    return new Request('http://localhost/jsonrpc', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', method, params: {}, id: 1 }),
+      signal: controller.signal,
+    });
+  }
+
+  it('hands authorize and invoke the request’s own signal', async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const registry = createOperationRegistry([
+      makeOp({
+        name: 'weft.test.signal',
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        authorize: async ({ signal }) => {
+          seen.push(signal);
+          return { allowed: true };
+        },
+        invoke: async ({ signal }) => {
+          seen.push(signal);
+          return {};
+        },
+      }),
+    ]);
+    const request = abortableRequest('weft.test.signal', new AbortController());
+
+    const response = await handleJsonRpcHttpRequest(request, {
+      registry,
+      host: fakeEngine,
+      principal: anonymousPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(seen).toHaveLength(2);
+    expect(seen[0]).toBe(request.signal);
+    expect(seen[1]).toBe(request.signal);
+  });
+
+  it('shows the operation a signal aborted before it was invoked, and answers its result unchanged', async () => {
+    const registry = createOperationRegistry([
+      makeOp({
+        name: 'weft.test.aborted',
+        inputSchema: z.object({}),
+        outputSchema: z.object({ aborted: z.boolean() }),
+        invoke: async ({ signal }) => ({ aborted: signal?.aborted === true }),
+      }),
+    ]);
+    const controller = new AbortController();
+    controller.abort();
+    // A request's body does not depend on its signal, so the adapter still reaches the operation.
+    const request = abortableRequest('weft.test.aborted', controller);
+
+    const response = await handleJsonRpcHttpRequest(request, {
+      registry,
+      host: fakeEngine,
+      principal: anonymousPrincipal(),
+    });
+
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({ jsonrpc: '2.0', result: { aborted: true }, id: 1 });
+  });
+
+  it('shows the operation an abort that lands while it is running', async () => {
+    let entered!: () => void;
+    const running = new Promise<void>((resolve) => {
+      entered = resolve;
+    });
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const registry = createOperationRegistry([
+      makeOp({
+        name: 'weft.test.during',
+        inputSchema: z.object({}),
+        outputSchema: z.object({ before: z.boolean(), after: z.boolean() }),
+        invoke: async ({ signal }) => {
+          const before = signal?.aborted === true;
+          entered();
+          await gate;
+          return { before, after: signal?.aborted === true };
+        },
+      }),
+    ]);
+    const controller = new AbortController();
+
+    const responding = handleJsonRpcHttpRequest(abortableRequest('weft.test.during', controller), {
+      registry,
+      host: fakeEngine,
+      principal: anonymousPrincipal(),
+    });
+    await running;
+    controller.abort();
+    release();
+    const response = await responding;
+
+    expect(await response.json()).toEqual({
+      jsonrpc: '2.0',
+      result: { before: false, after: true },
+      id: 1,
+    });
+  });
+});

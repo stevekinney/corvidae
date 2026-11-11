@@ -29,6 +29,57 @@ function baseContext() {
   };
 }
 
+describe('dispatchJsonRpc — request signal (COR-2296)', () => {
+  it('passes no signal to an operation when the transport has none', async () => {
+    let hadSignal: boolean | undefined;
+    const registry = createOperationRegistry([
+      makeOp({
+        name: 'weft.test.nosignal',
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        invoke: async (context) => {
+          hadSignal = 'signal' in context;
+          return {};
+        },
+      }),
+    ]);
+
+    await dispatchJsonRpc('{"jsonrpc":"2.0","method":"weft.test.nosignal","params":{},"id":1}', {
+      ...baseContext(),
+      transport: 'jsonRpcStdio',
+      registry,
+    });
+
+    expect(hadSignal).toBe(false);
+  });
+
+  it('passes the signal it was given to every call of a batch', async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const registry = createOperationRegistry([
+      makeOp({
+        name: 'weft.test.batchsignal',
+        inputSchema: z.object({}),
+        outputSchema: z.object({}),
+        invoke: async ({ signal }) => {
+          seen.push(signal);
+          return {};
+        },
+      }),
+    ]);
+    const signal = new AbortController().signal;
+
+    await dispatchJsonRpc(
+      JSON.stringify([
+        { jsonrpc: '2.0', method: 'weft.test.batchsignal', params: {}, id: 1 },
+        { jsonrpc: '2.0', method: 'weft.test.batchsignal', params: {}, id: 2 },
+      ]),
+      { ...baseContext(), registry, signal },
+    );
+
+    expect(seen).toEqual([signal, signal]);
+  });
+});
+
 describe('dispatchJsonRpc — body-level errors', () => {
   it('returns a parse-error response for malformed JSON', async () => {
     const registry = createOperationRegistry([]);

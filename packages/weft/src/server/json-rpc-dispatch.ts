@@ -37,6 +37,12 @@ export type DispatchJsonRpcContext = {
   readonly transport: Extract<TransportKind, 'jsonRpcHttp' | 'jsonRpcWebSocket' | 'jsonRpcStdio'>;
   readonly registry: OperationRegistry;
   /**
+   * The abort signal of the request that carried the body, when the transport has one (JSON-RPC
+   * over HTTP passes the `Request`'s signal). Every call in the body reads it as
+   * `OperationContext.signal`; it is absent for the WebSocket and stdio transports.
+   */
+  readonly signal?: AbortSignal;
+  /**
    * Produces the document `rpc.discover` answers with. Omitted, the
    * dispatcher generates Weft's own (HTTP and WebSocket methods, with the MCP
    * tools a duck-typed host can list). A handler that serves a narrower
@@ -177,6 +183,7 @@ async function dispatchOne(
     host: context.host,
     transport: context.transport,
     registry: context.registry,
+    ...(context.signal === undefined ? {} : { signal: context.signal }),
   });
   if (result.ok) {
     return { jsonrpc: JSON_RPC_VERSION, result: result.value, id };

@@ -94,6 +94,7 @@ export async function checkAuthorization<Input, SchemaOutput, Host>(
       principal: context.principal,
       host: context.host,
       transport: context.transport,
+      ...(context.signal === undefined ? {} : { signal: context.signal }),
     });
   } catch {
     return failure({ code: 'EngineFailure', message: 'internal error', data: {} });

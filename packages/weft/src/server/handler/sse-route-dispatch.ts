@@ -58,6 +58,7 @@ export async function dispatchServerSentEventsBinding(
     host: options.liveEventStreamContext ?? {},
     transport: 'http-rest',
     registry,
+    signal: options.request.signal,
     ...(options.pipelineTrace === undefined ? {} : { pipelineTrace: options.pipelineTrace }),
   });
   if (result.ok) return shapeSuccess(result.value, options.request);
