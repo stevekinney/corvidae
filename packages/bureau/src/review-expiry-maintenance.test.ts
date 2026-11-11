@@ -14,7 +14,8 @@ import { createTool, createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { createBureau, EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from './create-bureau';
+import { createBureau } from './create-bureau';
+import { EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from './bureau-construction-support';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { fireOnce, pollUntil, reviewOf } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';

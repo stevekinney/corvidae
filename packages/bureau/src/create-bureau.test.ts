@@ -112,12 +112,9 @@ import {
   monitorRecoveredCatalogRun,
   monitorRecoveredScheduledFire,
 } from './recovered-run-classification';
-import {
-  createBureau,
-  createPendingApprovalPersistHook,
-  detachBestEffortPromise,
-  omitKeysWithPrefix,
-} from './create-bureau';
+import { createBureau } from './create-bureau';
+import { createPendingApprovalPersistHook, omitKeysWithPrefix } from './approval-state-records';
+import { detachBestEffortPromise } from './bureau-construction-support';
 import { createAgentSkills } from './agent-skills';
 import { createCatalogSettlementTracker, type DurableEnd } from './catalog-run-settlement';
 import { scheduledFireReviewStateOf } from './scheduled-fire-review-state';
