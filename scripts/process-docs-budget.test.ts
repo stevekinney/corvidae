@@ -28,21 +28,37 @@ describe('process document word budgets', () => {
     expect(readFileSync(join(root, 'AGENTS.md'), 'utf8').length).toBeLessThanOrEqual(16_000);
   });
 
-  test('.agents/skills/chef/SKILL.md stays within 3,000 words', () => {
-    expect(wordsIn('.agents/skills/chef/SKILL.md')).toBeLessThanOrEqual(3000);
+  // The chef skill is the delivery sequence only (COR-2377).
+  test('.agents/skills/chef/SKILL.md stays within 1,500 words', () => {
+    expect(wordsIn('.agents/skills/chef/SKILL.md')).toBeLessThanOrEqual(1500);
   });
+
+  // Each reference's budget is its size when COR-2377 shortened it, rounded up to the next 50.
+  const referenceBudgets = new Map<string, number>([
+    ['codex-protocol.md', 250],
+    ['coordination.md', 950],
+    ['credentials.md', 450],
+    ['decisions.md', 400],
+    ['defect-classes.md', 700],
+    ['execution-record.md', 650],
+    ['execution-report.md', 550],
+    ['linear-policy.md', 1600],
+    ['planning-and-routing.md', 950],
+    ['program-runs.md', 950],
+    ['review-and-deliver.md', 950],
+  ]);
 
   const referenceFiles = readdirSync(join(root, references))
     .filter((name) => name.endsWith('.md'))
     .toSorted();
 
-  test('finds the chef reference documents', () => {
-    expect(referenceFiles.length).toBeGreaterThan(0);
+  test('gives every chef reference document a budget, and no budget to a missing one', () => {
+    expect(referenceFiles).toEqual([...referenceBudgets.keys()].toSorted());
   });
 
-  for (const name of referenceFiles) {
-    test(`${references}/${name} stays within 3,000 words`, () => {
-      expect(wordsIn(join(references, name))).toBeLessThanOrEqual(3000);
+  for (const [name, budget] of referenceBudgets) {
+    test(`${references}/${name} stays within ${budget.toLocaleString('en-US')} words`, () => {
+      expect(wordsIn(join(references, name))).toBeLessThanOrEqual(budget);
     });
   }
 });

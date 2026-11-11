@@ -1,102 +1,47 @@
 # Planning and routing
 
-Read this when writing the work-package table, deciding how much grooming the work needs, choosing a model or effort, or escalating a failing package.
-
-## Grooming
-
-Choose how much grooming the work needs. When the `intake-curmudgeon` and `junior-engineer` agents are installed, you may use either or both up front to interrogate unclear tickets, dependencies, and acceptance criteria. You may instead supply precise context and decisions to the team as needed. Do not run both reviewers by habit or make exhaustive grooming a prerequisite for clear work. Record the chosen approach and its cost/quality rationale; provide context before a worker makes a dependent decision, and update the saved charter when that context changes. This discretion does not waive intake gates required for actual Linear creation or edits. Without those agents, apply the Definition of Ready in [the Linear policy](linear-policy.md) yourself and record the result.
-
-Grooming is discretionary; the readiness pass in [coordination](coordination.md#understand-the-work) "Understand the work" is not. It runs on every issue before dispatch, however clear the issue reads.
+Read this when writing the package table, sizing or batching work, choosing a model, or escalating a failing package.
 
 ## Work packages
 
-Every package needs:
+Each package has a stable identifier, a binary outcome, the files or interfaces it may change, its dependencies with the evidence that releases each one, its batch, its model and effort with a reason, and its verification commands. Build an acyclic dependency graph and name the critical path. An implementation merge does not satisfy a publication edge: the published artifact releases adoption. Close each issue as its own gates pass, even while another batch is unfinished.
 
-- A stable identifier, binary outcome, owner, repository or artifact boundary, and concrete files or shared interfaces it may change.
-- Dependencies with evidence required to release each edge, including package publication, deployment, and downstream adoption where applicable.
-- Batch and parallel-wave membership, agent role, requested model and effort, rationale, and escalation trigger.
-- Exact working directory and verification commands, expected exit status or external result, review owner, and completion evidence.
-- Its mutation tier: a fresh dedicated worktree, or a shared, canonical, or production checkout (see [worktrees and scope](worktrees-and-scope.md)).
-
-Build an acyclic dependency graph and name the critical path. Diagnose cycles before dispatching affected packages. Dispatch only when every prerequisite's required evidence exists. An implementation merge does not satisfy a publication edge.
-
-Distinguish the gate that starts a package from the gate it produces. When implementation and publication are separate packages, verified implementation completion can release the publication package; the registry artifact produced by publication then releases adoption. Reconcile the implementation issue's state against its own acceptance criteria. Do not make publication wait for its own output or keep a satisfied predecessor open merely because downstream delivery remains incomplete.
-
-Give each batch its own binary acceptance criteria, required verification, integration boundary, and tracking closeout. Close independently completed issues as their gates pass even if another batch remains unfinished; preserve real dependencies and explicit user-required whole-program gates.
-
-For Linear work, maintain native blocker relations. Shape a required new execution boundary in the `create-task` issue shape (or the `create-project` shape for a new project), check it against the Definition of Ready in [the Linear policy](linear-policy.md), and write it with `bun scripts/chef/linear.ts create`, which refuses a duplicate title and reads the issue back. Reuse existing issues rather than cloning them into worker tickets. Run required intake gates for new or materially revised Linear payloads before writing. Coordinator approval within the user's authorized scope does not require asking the user again.
+For a new Linear issue, use the `create-task` shape, check it against the Definition of Ready in [the Linear policy](linear-policy.md), and write it with `bun scripts/chef/linear.ts create --team <KEY> --title <t> --file <md> --label <name>`, which refuses a duplicate title. Reuse an existing issue instead of cloning it into a worker ticket.
 
 ## Design programmes
 
-Work built from an agreed design (a Claude Design canvas, its boards, and its index rows) treats each row as a requirement. On the Oct 29 Interborough canvas, 137 of 155 rows reached the issues only as a "Design source" list, 4 reached no issue, and a Nov 2 audit found 309 misses.
+Work built from an agreed design (a Claude Design canvas, its boards, and its index rows) treats each row as a requirement.
 
-- Save the canvas index board (`project/Main.dc.html`, read with the Artifact tool) under `tmp/chef/design/<canvas id>/` and run `design-ledger.ts --index <that file> --canvas <id>` before dispatch. Every row must be a criterion in exactly the issue that builds it, or deferred on an issue with a reason (`Deferred: 19b, because …`). Exit 1 blocks dispatch; fix the issues, not the ledger.
-- Run it again after every readiness split or revision that moves rows: a split that drops a row shows as a gap.
-- `brief.ts` carries the rows and tells the worker to save the named boards under `tmp/chef/briefs/<ID>/boards/` and to return a design-review verdict per row. A design issue's charter names its boards.
-- Close the programme only after `design-ledger.ts` exits 0 and a full drift audit of the canvas against the shipped interface (the `design-review` skill) leaves no unexplained miss. A spot-check that records rows it did not reach keeps the programme open.
-
-## Zero-worker plans
-
-A zero-worker plan records why direct coordinator execution costs less without compromising review, plus the coordinator's settings and gates. If delegation is unavailable and direct execution can satisfy the request, record that limitation and proceed; if a required independent review or explicit team requirement cannot be met, report it as blocked. Do not change global agent configuration to force a preferred routing choice.
-
-## Models and effort in detail
-
-Optimize total cost of accepted work, including context, review, retries, and reasoning. Do not equate a fast model or low effort with the cheapest successful result. Use current runtime availability and authoritative pricing if making monetary comparisons; otherwise record relative cost assumptions without inventing prices or token savings.
-
-| Work | Starting selection | Escalation evidence |
-| --- | --- | --- |
-| Bounded lookup, inventory, deterministic verification | Economical model, low effort; Codex `gpt-5.6-luna` where selectable | Missing relationships or repeated factual mistakes |
-| Clear implementation with known interfaces and tests | Economical coding worker, medium effort; Codex `worker` / `gpt-5.6-luna` | Failed causal diagnosis, interface ambiguity, or rejected implementation |
-| Broader investigation or integration | Capable middle tier, medium effort; Codex `gpt-5.6-terra` or `gpt-5.6-sol` where available | Cross-cutting reasoning or unresolved correctness risk |
-| Architecture, concurrency, security, final high-risk review | Relevant specialist or stronger model, high effort where supported | A specific unresolved risk warrants additional depth |
-
-The table gives starting choices, not a price ranking. On Claude Code the per-role efforts in "Claude Code prices" below replace its effort column. At the cached list prices Opus 5.5 costs 40% of Fable 5.1 per token, so reserve Fable for the cases "Claude Code prices" names. Haiku 5.5's listed price applies to prompts up to 100K tokens; longer prompts cost $0.50/$2.50. Recheck prices before any monetary comparison.
-
-An implementation dispatch on Opus or Fable instead of Sonnet records its reason in the note at dispatch: a named escalation trigger from the table, or a fixed role that cannot be overridden. The spend report flags every such dispatch with that reason, so a missing reason is visible.
-
-Opus 5.5 is the default coordinator and primary reviewer and suits most agent workloads; Sonnet 5.5 is the implementer for packages with known interfaces, binary acceptance criteria, and tests. Fable's premium buys demanding reasoning, not faster execution of a plan that is already specified. A one-way door is a change that is expensive to undo once it ships; a two-way door is internal code a later change can cheaply alter (AGENTS.md "Review guidelines").
-
-Effort runs low through max, and `xhigh` is the usual sweet spot for capability-sensitive coding. Set effort on every dispatch instead of inheriting a default, because Opus 5.5 defaults to `medium` while Sonnet 5.5 defaults to `high`. The coordinator's own effort is the session's setting; record it. Inspect each role's effective model and supported effort instead of assuming a Codex mapping. Prefer a suitable installed role with known settings. If effort cannot be selected, record the configured or inherited value; if unknown, say unknown.
-
-Keep the current coordinator model unless a supported mechanism and authorization allow changing it. Record its actual or inherited settings. Reserve its context for dependency decisions, integration, review, and delivery. Specialist roles can have fixed model and effort settings; never claim an override worked without evidence. For Codex overrides, use a fresh charter such as `fork_turns: "none"` and only supported `model` and `reasoning_effort` fields. For Claude Code, pass the Agent tool's `model` (`sonnet`, `opus`, `haiku`, or `fable`) and `effort` on each dispatch; this routing policy is the explicit instruction that authorizes setting effort. A fixed role definition overrides both. Record the requested values, and the resolved model when a result reports it; a dispatch result is not proof of what ran.
-
-Keep the same owner, meaning the same package, charter, and findings, through a coherent correction cycle. Whether that owner is resumed or re-dispatched fresh with a compact brief is a context decision; see [coordination](coordination.md#keep-contexts-small) "Keep contexts small". Measure cache behavior from transcripts rather than inferring it from dispatch shape, and record observed usage.
-
-## Escalation
-
-Escalate only the failing package. After two unsuccessful attempts at the same defect or acceptance criterion, stop patching, inspect the failure and control, and reassess the causal model before another correction. Record the revised diagnosis and whether scope, budget, ownership, or quality requires a user decision. The counter belongs to the defect across agents, renamed tasks, and follow-ups; replacement never resets it. A regression that a correction introduces in the same module or state machine counts as another attempt at the same class, not as a new defect. After the second, hand the class to the escalation tier for a design pass over the whole outcome space, not a third local patch. A worker whose `review-threads.ts classes` check exits 1 has reached the same point by a different count, and gets the same reassessment. A missing credential, active owner, or absent external artifact requires resolving that dependency, not a larger model. Never lower quality gates to save tokens.
-
-For concurrency, replay, retry, or state-machine work (finish reasons, run, task or settlement lifecycle, parks or suspends, recovery or reattach, shutdown or dispose, retries), require an outcome matrix in the charter before dispatch: every input or failure the code can meet, crossed with every exit it can take, each with its required result. Write it into the acceptance criteria and have the worker turn it into a table-driven test that is red first. The matrix is the guard for the class; scenario lists invite one correction per missed cell. Every row has a "behavior on main today" column filled from evidence (a test run or probe on `main`) and, for any row that changes that behavior, a source: an issue line, a dated revision, or a COR decision. The coordinator searches COR decisions before prescribing a behavior-changing row, and never writes a row from the spec alone. Workers prove each row against `main` red first and list divergences in their return. A matrix written without reading current behavior or decisions invents requirements: the P-COR-89 run's missing sweep arm and receipt-failure abort both came from rows written that way. When a second correction round surfaces the same class, escalate to a design pass over the whole outcome space. An escalation (Fable) charter never includes merging main, resolving conflicts, or running `bun run check`; a cheaper tier does that after the design lands.
-
-## Inputs that block
-
-Unreadable or truncated required input blocks affected packages until it is retrieved completely. Conflicting requirements or irreducibly ambiguous prose need a recorded decision and `needs input`, not a convenient interpretation; continue only work independent of that decision.
-
-## Repository inspection
-
-Inspect each owning repository: instructions, working-tree state, worktree ownership, remote, exact base revision, manifests, pinned toolchain, validation scripts, release contracts, relevant source, and shared contracts between repositories. For a whole Linear project, or work spanning more than one batch, read [program runs](program-runs.md) before planning.
+- Save the canvas index board (`project/Main.dc.html`, read with the Artifact tool) under `tmp/chef/design/<canvas id>/` and run `bun scripts/chef/design-ledger.ts --index <file> --canvas <id>` before dispatch. Every row is a criterion in exactly the issue that builds it, or deferred on an issue with a reason (`Deferred: 19b, because …`). Exit 1 blocks dispatch; fix the issues, not the ledger.
+- Run it again after every split or revision that moves rows.
+- `brief.ts` carries the rows, and the worker returns a design-review verdict per row.
+- Close the programme only after `design-ledger.ts` exits 0 and a full drift audit of the canvas against the shipped interface (the `design-review` skill) leaves no unexplained miss.
 
 ## Sizing and splitting
 
-Size work by area, not by issue (owner decision, 2026-11-10). Tokens per changed line fall as a unit grows: about 66K under 300 lines, 31K at 300 to 1,000, 17K at 1,000 to 3,000, and 8K over 3,000 (236 pull requests joined to usage logs), because a worker's fixed cost is reading its context. Cluster the issues of one area under one worker, target 500 to 2,000 changed lines per unit, and never split below about 300 lines. `focused-checks.ts` warns only above 3,000 changed lines outside tests or 60 files.
+Size work by area, not by issue (owner decision, 2026-11-10). Tokens per changed line fall as a unit grows, from about 66K under 300 lines to 8K over 3,000, because a worker's fixed cost is reading its context. Cluster the issues of one area under one worker, target 500 to 2,000 changed lines per unit, and never split below about 300 lines. `focused-checks.ts` warns above 3,000 changed lines outside tests or 60 files.
 
-Review by tier: a mechanical script (a fidelity or move check) where the change is a pure move; an Opus reviewer for infrastructure, one-way doors, and anything that sets a template; a second reviewer for the lock and concurrency infrastructure, where a bot and CI each caught a real defect the first review missed (2026-11-10).
-
-Estimate each issue's size before dispatch: call sites per removed or renamed member, and test files touched. Over about 60 call sites or about 40 test files, split it at dispatch into a core and design stage and a mechanical stage (the codemod and per-call-site sweep), each with a handoff file from the start so the second worker begins from the first's decisions rather than rediscovering them; when a stage would fall below the floor of about 300 lines above, the floor wins and the issue stays one unit. A one-way door defaults to Opus for the core and design, Sonnet for codemods and per-call-site sweeps, and Opus review. Other sessions keep landing code against the old surface while a large rename runs; delivery no longer fast-checks for that (the `--removed-names` check is dropped). The mechanical-stage worker covers defect class 11 itself by grepping the removed names across the repository, fixtures included, and merges `main` in on a real conflict, and GitHub Actions' full suite on `main` is the backstop.
+Estimate each issue's size before dispatch: call sites per removed or renamed member, and test files touched. Over about 60 call sites or about 40 test files, split it into a core and design stage and a mechanical stage (the codemod and per-call-site sweep), with a handoff file from the start so the second worker begins from the first's decisions; the 300-line floor wins over this split. The mechanical worker greps the removed names across the repository, fixtures included, because other sessions keep landing code against the old surface.
 
 ## Batching
 
-Batch work when it shares one repository, a cohesive change, compatible files, validation, and delivery boundary. Use as few pull requests as those boundaries allow, tracking every included issue. Split cross-repository work and independently released artifacts. Serialize overlapping files, shared contract changes, and integration operations; use separate worktrees for concurrent edits in one repository. Close each independently completed issue as its own gates pass.
+Batch work when it shares one repository, a cohesive change, compatible files, validation, and delivery boundary. Split cross-repository work and independently released artifacts, serialize overlapping files and shared contracts, and give concurrent edits separate worktrees.
 
-## Resolving the runtime
+## Models and effort
 
-Resolve current tools, agent roles, models, effort controls, and concurrency limits before planning dispatch. A model name in a prompt is not proof that the worker ran on it, and fixed role settings beat requested overrides. On an unsupported capability, record one fallback decision and do not repeat the rejected dispatch without new capability evidence. Preserve required independent review or report that boundary blocked.
+On Claude Code, Sonnet 5.5 implements (effort `high`), Opus 5.5 coordinates and is the primary reviewer (`xhigh`), Haiku 5.5 does bounded lookups and mechanically checkable volume (`low`), and Fable 5.1 is escalation only (`high`). On Codex the starting selections are:
 
-## Claude Code prices
+| Work | Codex selection |
+| --- | --- |
+| Bounded lookup, inventory, deterministic verification | `gpt-5.6-luna`, low effort |
+| Clear implementation with known interfaces and tests | `worker` / `gpt-5.6-luna`, medium effort |
+| Broader investigation or integration | `gpt-5.6-terra` or `gpt-5.6-sol` where available, medium effort |
+| Architecture, concurrency, security, final high-risk review | a relevant specialist or stronger model, high effort |
 
-On Claude Code, subject to what the runtime offers (Anthropic list prices per million input/output tokens, cached 2026-10-06; recheck before any monetary comparison):
+Fable is for a one-way door (a persisted format, wire protocol, authorization rule, or published surface), irreducible ambiguity, or a defect that survived two corrections. An implementer on Opus or Fable records its reason in the note at dispatch. On Claude Code pass `model` and `effort` on every dispatch, because defaults differ by model; on Codex pass `model` and `reasoning_effort`. A fixed role definition overrides both, and a dispatch result is not proof of what ran. Review by tier: a script for a pure move, the `chef-reviewer` for infrastructure, one-way doors, and anything that sets a template, and a second reviewer for the lock and concurrency infrastructure.
 
-- Sonnet 5.5 ($2/$10): implementation, effort `high`.
-- Opus 5.5 ($4/$20): coordinator and primary reviewer, effort `xhigh`.
-- Haiku 5.5 ($0.10/$0.50, 1M context): bounded lookups and mechanically checkable volume work, effort `low`.
-- Fable 5.1 ($10/$50): escalation only, effort `high`: a one-way door (a persisted format, wire protocol, authorization rule, or published surface), irreducible ambiguity, or a defect that survived two corrections.
+## Escalation
+
+Escalate only the failing package. After two unsuccessful attempts at the same defect or acceptance criterion, stop patching, inspect the failure against a control, and reassess the causal model before another correction. The count belongs to the defect across agents and follow-ups, and a regression a correction introduces in the same module counts as another attempt. After the second, hand the class to the escalation tier for a design pass over the whole outcome space. A missing credential, owner, or external artifact needs that dependency resolved, not a larger model.
+
+Concurrency, replay, retry, and state-machine work (finish reasons, run or settlement lifecycle, parks and suspends, recovery, shutdown, retries) needs an outcome matrix in the charter before dispatch: every input or failure crossed with every exit, each with its required result, written into the acceptance criteria and turned into a table-driven test that is red first. Every row carries the behavior on `main` today, from a test run or probe, and a row that changes it cites its source: an issue line, a dated revision, or a COR decision found by searching COR. A matrix written from the spec alone invents requirements. An escalation charter never includes merging `main`, resolving conflicts, or running `bun run check`; a cheaper tier does that after the design lands.

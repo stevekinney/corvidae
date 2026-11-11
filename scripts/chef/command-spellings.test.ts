@@ -29,8 +29,8 @@ const skillFiles = [
 ];
 
 const minimumInvocations: Record<string, number> = {
-  '.agents/skills/chef/references/coordination.md': 4,
-  '.agents/skills/chef/references/execution-record.md': 7,
+  '.agents/skills/chef/references/coordination.md': 3,
+  '.agents/skills/chef/references/execution-record.md': 6,
   '.agents/skills/chef/references/execution-report.md': 3,
   '.agents/skills/chef/references/linear-policy.md': 5,
   '.agents/skills/chef/references/planning-and-routing.md': 1,
