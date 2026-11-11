@@ -85,54 +85,31 @@ test.describe('the list', () => {
         '/workflows/new',
       );
 
-      // A code-defined type: its name, the code badge, and what the engine says of it.
+      // A code-defined type: its identifier, alone and monospaced, in a row of its own.
       const code = row(page, 'inventory-sync-sweep');
       await expect(code).toHaveAttribute('data-kind', 'code');
       await expect(code.getByRole('link', { name: 'inventory-sync-sweep' })).toBeVisible();
-      await expect(code).toContainText(WORKFLOW_COPY.codeBadge);
-      await expect(code).not.toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(code.getByTestId('workflow-run-counts')).toHaveText(
-        /^(\d+ runs? in 24 hours( \(\d+ running\))?|No runs yet)$/,
-      );
+      // Only a workflow that is paused or cannot load has a status word.
+      await expect(code).not.toHaveAttribute('data-status', /.+/);
 
-      // A file that loads: its description, the agent-authored badge, the agent that owns it
-      // (monospace, since it is an identifier), its cadence in words, and its counts.
+      // A file that loads: a row that has never run says so at its right edge, with no problem.
       const digest = row(page, SEEDED_WORKFLOWS.digest);
       await expect(digest).toHaveAttribute('data-kind', 'agent-authored');
-      await expect(digest).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      await expect(digest.getByTestId('workflow-description')).toHaveText(
-        'Writes the daily digest.',
-      );
-      await expect(digest.getByTestId('workflow-agent')).toHaveText('assistant');
-      await expect(digest.getByTestId('workflow-agent')).toHaveCSS(
-        'font-family',
-        /mono|Menlo|Consolas|Courier/i,
-      );
-      await expect(digest.getByTestId('workflow-cadence')).toHaveText(
-        describeCadence({ intervalMs: 86_400_000 }),
-      );
-      await expect(digest.getByTestId('workflow-run-counts')).toHaveText(
-        WORKFLOW_COPY.list.neverRun,
-      );
+      await expect(digest.getByTestId('workflow-last-run')).toHaveText(WORKFLOW_COPY.list.neverRun);
       await expect(digest.getByTestId('workflow-problem')).toHaveCount(0);
 
-      // A file started by a signal names the signal.
-      await expect(
-        row(page, SEEDED_WORKFLOWS.approval).getByTestId('workflow-cadence'),
-      ).toContainText(APPROVAL_START_SIGNAL);
-
-      // A file the Bureau cannot use: its error, its issues, and its path.
+      // A file the Bureau cannot use is Can't load, with its file and its problem under it.
       const broken = row(page, SEEDED_WORKFLOWS.broken);
       await expect(broken).toHaveAttribute('data-state', 'invalid');
-      await expect(broken).toContainText(WORKFLOW_COPY.agentAuthoredBadge);
-      // A file the Bureau cannot use has failed: its status is the word Failed, not a badge of its own.
-      await expect(broken).toHaveAttribute('data-status', 'Failed');
-      await expect(broken.getByTestId('workflow-problem')).toContainText('invalid-document');
-      await expect(broken.getByTestId('workflow-issues')).toContainText('steps');
-      await expect(broken.getByTestId('workflow-file-path')).toHaveText(
-        await workflowFilePath(request, SEEDED_WORKFLOWS.broken),
-      );
+      await expect(broken).toHaveAttribute('data-status', WORKFLOW_COPY.list.statusCantLoad);
+      await expect(broken).toContainText(WORKFLOW_COPY.list.fileName(SEEDED_WORKFLOWS.broken));
+      await expect(broken.getByTestId('workflow-problem')).not.toHaveText('');
+      await expect(broken.getByTestId('workflow-last-run')).toHaveText(WORKFLOW_COPY.list.neverRun);
       await expect(broken.getByTestId('workflow-run-counts')).toHaveCount(0);
+
+      // The segments count the rows they show, and the Internal workflows card is not a row.
+      await expect(page.getByRole('radio', { name: /^All\s*,\s*\d+$/ })).toBeVisible();
+      await expect(page.getByRole('radio', { name: /^Problems\s*,\s*\d+$/ })).toBeVisible();
 
       // A source with no file is the engine's alone, so it is left out: the list reads the same
       // before and after a restart.
@@ -173,11 +150,11 @@ test.describe('the list', () => {
     await bureau(request, 'bureau.workflows.signal', { name: 'e2e-counted-go' });
     try {
       await page.goto('/workflows');
-      const counts = row(page, 'e2e-counted').getByTestId('workflow-run-counts');
-      await expect(counts).toHaveText('1 run in 24 hours (1 running)');
-      await expect(row(page, 'e2e-counted').getByTestId('workflow-last-run')).toContainText(
-        'last run',
-      );
+      const counted = row(page, 'e2e-counted');
+      await expect(counted.getByTestId('workflow-run-counts')).toHaveText('1 run in 24 hours');
+      // A run is going, so the right edge says when it began and line two leads with Running.
+      await expect(counted.getByTestId('workflow-last-run')).toContainText('Started');
+      await expect(counted).toContainText(WORKFLOW_COPY.list.runningNow);
     } finally {
       // Let the instance finish, so it does not stay in the host.
       await expect
@@ -203,10 +180,11 @@ test.describe('the list', () => {
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         await expect(row(page, SEEDED_WORKFLOWS.digest)).toBeVisible();
 
-        const link = area(page).getByRole('link', {
-          name: WORKFLOW_COPY.list.internalWorkflows(ENGINE_TYPES.length),
-        });
+        const link = area(page).getByTestId('internal-workflows-card');
         await expect(link).toHaveAttribute('href', '/internal-workflows');
+        await expect(area(page).getByTestId('internal-workflows-count')).toHaveText(
+          WORKFLOW_COPY.list.internalCard.count(ENGINE_TYPES.length),
+        );
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list without the Bureau’s own types at ${width}px`);
 
@@ -220,9 +198,17 @@ test.describe('the list', () => {
           // Each says in a line what it does.
           await expect(row(page, name).getByTestId('workflow-description')).not.toHaveText('');
         }
+        // The name is a link to that workflow's runs, and the code name under it is not one.
         await expect(
-          row(page, 'agentRun').getByRole('link', { name: 'Agent Run' }),
-        ).toHaveAttribute('href', '/workflows/agentRun');
+          row(page, 'agentRun').getByRole('link', { name: 'Chat with an agent' }),
+        ).toHaveAttribute('href', '/workflows/agentRun/runs');
+        await expect(row(page, 'agentRun').getByTestId('workflow-run-counts')).toHaveText(/^\d+$/);
+        await expect(page.getByRole('columnheader')).toHaveText([
+          WORKFLOW_COPY.internal.columns.workflow,
+          WORKFLOW_COPY.internal.columns.description,
+          WORKFLOW_COPY.internal.columns.runs,
+          WORKFLOW_COPY.internal.columns.lastRun,
+        ]);
         await expect(row(page, 'agentRun').getByTestId('workflow-identifier')).toHaveText(
           'agentRun',
         );
@@ -252,17 +238,20 @@ test.describe('the list', () => {
         await page.goto('/workflows');
         await expect(area(page)).toHaveAttribute('data-state', 'ready');
         const empty = area(page).getByTestId('workflows-empty');
-        await expect(empty).toContainText(WORKFLOW_COPY.list.emptyTitle);
-        await expect(empty).toContainText(WORKFLOW_COPY.list.emptyTool);
-        await expect(empty.getByTestId('workflow-directory')).toHaveText(
+        await expect(empty).toContainText(WORKFLOW_COPY.list.empty.title);
+        // The header keeps its "+", and the empty state has its two actions and the hint.
+        await expect(
+          page.getByRole('link', { name: WORKFLOW_COPY.newAction }).first(),
+        ).toBeVisible();
+        await expect(
+          empty.getByRole('link', { name: WORKFLOW_COPY.list.empty.askAction }),
+        ).toHaveAttribute('href', '/chats/new?from=workflows');
+        await expect(area(page).getByTestId('workflow-directory')).toHaveText(
           await workflowDirectory(request),
         );
-        await expect(page.getByRole('link', { name: WORKFLOW_COPY.newAction })).toBeVisible();
-        await expect(
-          area(page).getByRole('link', {
-            name: WORKFLOW_COPY.list.internalWorkflows(ENGINE_TYPES.length),
-          }),
-        ).toBeVisible();
+        // First use is the page: no filter row and no Internal workflows card.
+        await expect(area(page).getByTestId('internal-workflows-card')).toHaveCount(0);
+        await expect(page.getByRole('radio')).toHaveCount(0);
         for (const name of ENGINE_TYPES) await expect(row(page, name)).toHaveCount(0);
         await checkA11y(`the list of a host with no workflow at ${width}px`);
       });

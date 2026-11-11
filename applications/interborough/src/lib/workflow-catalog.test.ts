@@ -14,6 +14,7 @@ import {
   joinCatalog,
   loadCatalog,
   loadCodeActivity,
+  loadInternalActivity,
   resolveWorkflow,
   startingSchedules,
 } from './workflow-catalog.ts';
@@ -472,5 +473,56 @@ describe('the activity of a code-defined type', () => {
     stub.world.failSchedules = true;
     const failed = await loadCodeActivity(stub.client, ['a'], NOW);
     expect(failed.get('a')).toEqual({ runs: null, schedules: null });
+  });
+});
+
+describe('how often an internal type has run', () => {
+  const NOW = Date.now();
+  const MINUTE = 60_000;
+
+  test('is every instance of the type, finished or not, and the newest, from one read of one item each', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        runs: [
+          runFixture('a', 'agentRun', { createdAt: NOW - 10 * MINUTE, status: 'completed' }),
+          runFixture('b', 'agentRun', { createdAt: NOW - 3 * 86_400_000, status: 'failed' }),
+          runFixture('c', 'agentRun', { createdAt: NOW - 30 * MINUTE, status: 'running' }),
+          runFixture('d', 'goalRun', { createdAt: NOW - 40 * 86_400_000 }),
+          runFixture('e', 'other', { createdAt: NOW - MINUTE }),
+        ],
+      }),
+    );
+    const activity = await loadInternalActivity(stub.client, [
+      'agentRun',
+      'goalRun',
+      'scheduleTick',
+    ]);
+    expect(activity.get('agentRun')).toEqual({
+      runs: 3,
+      lastRunAt: new Date(NOW - 10 * MINUTE).toISOString(),
+    });
+    expect(activity.get('goalRun')).toEqual({
+      runs: 1,
+      lastRunAt: new Date(NOW - 40 * 86_400_000).toISOString(),
+    });
+    // A type that has not run has a count of none and no newest, which is not a failed read.
+    expect(activity.get('scheduleTick')).toEqual({ runs: 0, lastRunAt: null });
+    const asked = stub.callsTo('weft.workflows.list');
+    expect(asked).toHaveLength(3);
+    for (const call of asked) expect(call.params['limit']).toBe(1);
+    // The runs of a type nobody asked about are not counted.
+    expect(activity.has('other')).toBe(false);
+  });
+
+  test('has null for a type the engine would not count, never a count of none', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({ runs: [runFixture('a', 'agentRun', { createdAt: NOW - MINUTE })] }),
+    );
+    stub.on('weft.workflows.list', () => {
+      throw workflowFaults.unavailable();
+    });
+    const activity = await loadInternalActivity(stub.client, ['agentRun', 'goalRun']);
+    expect(activity.get('agentRun')).toBeNull();
+    expect(activity.get('goalRun')).toBeNull();
   });
 });

@@ -723,51 +723,99 @@ export const WORKFLOW_COPY = {
   listLabel: 'Workflows',
   /** The list at `/workflows`. */
   list: {
-    /** The link from Workflows to the page of the types the Bureau runs itself. */
-    internalWorkflows: (count: number): string => `Internal workflows (${String(count)})`,
-    /** How many workflows the page lists, as a sentence. */
-    count: (count: number): string => `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
-    filtersLabel: 'Filter workflows',
-    searchLabel: 'Search workflows',
-    searchPlaceholder: 'Search workflows',
-    statusLabel: 'Status',
-    anyStatus: 'Any status',
+    /** The line under the heading. */
+    subtitle: 'Repeatable sequences of steps you built.',
+    /** The segments above the rows, and the name of the group they form. */
+    segmentsLabel: 'Show workflows',
+    segments: { all: 'All', paused: 'Paused', problems: 'Problems' },
+    /** The accessible name of the rows. */
+    rowsLabel: 'Workflows',
     clearAction: 'Clear filters',
     noMatch: {
-      title: 'No workflow matches these filters',
-      description: 'Change the search or the status to see more workflows.',
+      title: 'No workflow matches this filter',
+      description: 'Choose another segment to see more workflows.',
     },
-    columns: {
-      workflow: 'Workflow',
-      kind: 'Kind',
-      starts: 'Starts',
-      runs: 'Runs',
-      status: 'Status',
-    },
-    emptyTitle: 'No workflows yet',
-    emptyBeforeTool: 'Chat with an agent that has the',
-    emptyTool: 'bureau:workflows-create',
-    emptyBeforeDirectory: 'tool, or add a JSON file to',
-    schedules: (count: number): string => `${String(count)} schedules`,
+    /** The words in the status column: only a workflow that is paused or cannot load has one. */
+    statusCantLoad: "Can't load",
+    statusPaused: 'Paused',
+    /** The right edge of a row that has not run. */
+    neverRun: 'Never run',
+    /** The right edge of a row with a run in progress: when that run began. */
+    started: (time: string): string => `Started ${time}`,
+    /** The line under a title: the steps of the file, then how many runs began lately. */
+    steps: (count: number): string => `${String(count)} ${count === 1 ? 'step' : 'steps'}`,
     runs: (count: number): string => `${String(count)} ${count === 1 ? 'run' : 'runs'} in 24 hours`,
-    running: (count: number): string => `(${String(count)} running)`,
-    neverRun: 'No runs yet',
-    lastRun: (relative: string): string => `last run ${relative}`,
+    /** The run in progress, in the line under a title. */
+    runningNow: 'Running',
+    /** A file the Bureau cannot use, named by its file. */
+    fileName: (id: string): string => `${id}.json`,
+    schedules: (count: number): string => `${String(count)} schedules`,
     onSignal: 'On the signal',
+    /** The card under the rows that leads to the types Interborough runs itself. */
+    internalCard: {
+      title: 'Internal workflows',
+      count: (count: number): string =>
+        `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
+      description:
+        'Interborough runs these for chats, goals and schedules. You can watch their runs but not change them.',
+    },
+    /** First use: the empty state is the page. */
+    empty: {
+      title: 'No workflows yet',
+      description:
+        'A workflow is a set of steps that agents and tools run in order. Build one yourself, or, once a provider is connected, describe it and an agent drafts it.',
+      askAction: 'Ask an agent to write one',
+      hintBefore: 'Or add a file to',
+      /** Where the files are when the host does not say. */
+      hintDirectory: '~/.interborough/workflows',
+    },
   },
   /** The page of the workflows Interborough runs itself (`/internal-workflows`). */
   internal: {
     title: 'Internal workflows',
+    /** The page's entry in the breadcrumb trail, after Workflows. */
+    crumb: 'Internal',
     description:
-      'Interborough runs these itself to carry out agent runs, goals, and its heartbeat. Nobody starts one by hand.',
-    backToWorkflows: 'Workflows',
-    count: (count: number): string => `${String(count)} ${count === 1 ? 'workflow' : 'workflows'}`,
-    columns: { workflow: 'Workflow', description: 'What it does' },
+      'Interborough starts these itself to carry out chats, goals and schedules. You can watch their runs, but not start, edit or pause them.',
+    columns: {
+      workflow: 'Workflow',
+      description: 'What it does',
+      runs: 'Runs',
+      lastRun: 'Last run',
+    },
     caption: 'Internal workflows',
     noDescription: 'No description.',
+    /** The last run of a type that has not run. */
+    neverRun: 'Never run',
+    /**
+     * What a person calls each type Interborough registers, and what it does. A type this table
+     * does not name is shown by its identifier in words and the engine's own description.
+     */
+    types: {
+      agentRun: {
+        title: 'Chat with an agent',
+        description:
+          'Runs an agent for a chat or a schedule: the agent reads the conversation, calls its tools and replies.',
+      },
+      goalRun: {
+        title: 'Goal attempts',
+        description:
+          'Runs an agent again and again until a goal check passes, up to the goal attempt limit.',
+      },
+      durableHeartbeatTick: {
+        title: 'Schedule tick',
+        description: 'Wakes up on a timer and starts any schedule that has come due.',
+      },
+      scheduleTick: {
+        title: 'Schedule record',
+        description: 'Records what the scheduler did each time a schedule came due.',
+      },
+    },
+    /** There is nothing to list because the engine has registered none: said as the environment, not as a promise. */
     empty: {
-      title: 'No internal workflows',
-      description: 'This installation does not run any workflows of its own.',
+      title: 'No internal workflows registered',
+      description:
+        'The engine this host talks to has not registered the workflows Interborough runs for chats, goals and schedules. They are listed here once it does, which happens when Interborough is started against its own engine.',
     },
     loadFailed: {
       title: 'The internal workflows could not be loaded',

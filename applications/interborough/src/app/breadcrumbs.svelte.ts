@@ -27,7 +27,8 @@ const pageLeaves = new SvelteMap<string, string>();
  * links: the not-found page adds its own "Not found" after them. A page that supplied details for
  * its own path (`usePageDetails`) has them on its entry as the popover that entry opens. A page
  * that keeps an item open in its address, as Capabilities keeps a tool in `?tool=`, adds that
- * item as one more entry after its own (`usePageLeaf`), so its own entry links back to it.
+ * item as one more entry after its own (`usePageLeaf`), so its own entry links back to it. A route
+ * with a `parent` is led by it.
  */
 export function breadcrumbTrail(
   pathname: string,
@@ -60,6 +61,10 @@ export function breadcrumbTrail(
   const open = leaves.get(pathname);
   if (open !== undefined && items.at(-1)?.path === pathname) {
     items.push({ label: open, path: pathname });
+  }
+  // A page that belongs under another one whose address its own does not contain is led by it.
+  if (own?.parent !== undefined && items.at(-1)?.path === pathname) {
+    items.unshift({ label: own.parent.label, path: own.parent.path });
   }
   return items.map((item, index) => {
     if (!leaf || index !== items.length - 1) return { label: item.label, href: item.path };

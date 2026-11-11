@@ -322,6 +322,11 @@ for (const view of VIEW_NAMES) {
                 frame.getByRole('heading', { level: 2, name: title ?? '' }),
               ).toBeVisible();
             }
+          } else if (outcome === 'empty' && VIEWS[view].pageOwnsEmptyOn?.includes(PATHS[view])) {
+            // The list draws its first use under its own header: the view's name stays the page's
+            // heading, and the state's title is the level-two heading under it.
+            await expect(frame.getByRole('heading', { level: 1 })).toHaveText(copy.label);
+            await expect(frame.getByRole('heading', { level: 2, name: title ?? '' })).toBeVisible();
           } else {
             await expect(frame.getByRole('heading', { level: 1 })).toHaveText(title ?? '');
           }

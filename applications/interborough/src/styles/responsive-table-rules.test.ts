@@ -21,7 +21,6 @@ describe('the tables that hold long values', () => {
     );
     for (const path of [
       '../routes/hooks/hook-table.svelte',
-      '../routes/workflow-definitions/workflow-list.svelte',
       '../routes/workflows/runs/run-list.svelte',
       '../routes/settings/models/models-section.svelte',
     ]) {

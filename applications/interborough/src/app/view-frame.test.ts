@@ -783,6 +783,8 @@ describe('the Workflows area', () => {
     // A view that can be empty has the words for it, and one for a type with no runs.
     expect(VIEW_COPY.workflows.empty).toBeDefined();
     expect(VIEW_COPY.workflows.emptyByPattern?.['/workflows/:workflow/runs']).toBeDefined();
+    // Only the list's page words its own first use; a type's runs say theirs in the frame.
+    expect(view.pageOwnsEmptyOn).toEqual(['/workflows']);
   });
 
   for (const { pattern, parameters } of ROUTES) {
@@ -796,10 +798,18 @@ describe('the Workflows area', () => {
 
     test(`${pattern} is not found for a type neither service knows`, async () => {
       world({ definitions: [], files: [] });
-      const { container, findByRole } = mount('workflows', { parameters, pattern });
+      const { container, findByRole, findByTestId, queryByRole } = mount('workflows', {
+        parameters,
+        pattern,
+      });
       if (pattern === '/workflows') {
-        await findByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' });
+        // The list draws its first-use state under its own header (`pageOwnsEmptyOn`), so the frame
+        // shows the page and none of its own words, and still says the view is empty.
+        expect(await findByTestId('content')).not.toBeNull();
         expect(frame(container).dataset['state']).toBe('empty');
+        expect(
+          queryByRole('heading', { level: 1, name: VIEW_COPY.workflows.empty?.title ?? '' }),
+        ).toBeNull();
         return;
       }
       const words =

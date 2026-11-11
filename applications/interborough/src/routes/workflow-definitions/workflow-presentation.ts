@@ -1,70 +1,220 @@
 /**
  * What the Workflows area says of a catalog row, a file's steps, and its trigger, in the words
- * `copy.ts` holds. Plain functions over data, so the badges and the labels are tested without a
+ * `copy.ts` holds. Plain functions over data, so the rows and the labels are tested without a
  * page.
  */
-import type { BadgeVariant } from '@lostgradient/cinder';
+import { humanizeIdentifier } from '@lostgradient/cinder';
 
 import { WORKFLOW_COPY } from '../../app/copy.ts';
-import { formatRelativeTime } from '../../lib/format/index.ts';
-import { workflowStatusWord, type StatusWord } from '../../lib/status.ts';
-import type { CatalogRow, CodeActivity, DefinitionDetail } from '../../lib/workflow-catalog.ts';
+import { calendarDay, clockTime, rowTime, viewerTimeZone } from '../../lib/format/clock.ts';
+import type {
+  CatalogRow,
+  CodeActivity,
+  DefinitionDetail,
+  InternalActivity,
+} from '../../lib/workflow-catalog.ts';
 import type { WorkflowRunCounts } from '../../lib/workflow-files.ts';
 import { describeCadence } from '../schedules/cadence.ts';
 
-/** One badge on a row: its words, its tone, and the test id of the element that carries it. */
-export type RowBadge = {
-  readonly label: string;
-  readonly variant: BadgeVariant;
+/** The segments above the list: every workflow, the paused ones, and the ones that cannot load. */
+export type ListSegment = 'all' | 'paused' | 'problems';
+
+/** Whether a workflow cannot be used: its file is invalid, or the engine failed to load its source. */
+export function hasProblem(row: CatalogRow): boolean {
+  return row.file?.state === 'invalid' || row.failure !== null;
+}
+
+/**
+ * The one segment a row belongs to besides All: a problem first, because a file that cannot load
+ * is not also read as paused, then paused, else none. Both the filter and the counts read this, so
+ * a segment's number is the number of rows it shows.
+ */
+export function rowSegment(row: CatalogRow): Exclude<ListSegment, 'all'> | null {
+  if (hasProblem(row)) return 'problems';
+  return row.file?.paused === true ? 'paused' : null;
+}
+
+/** Whether a row shows under a segment. */
+export function inSegment(row: CatalogRow, segment: ListSegment): boolean {
+  return segment === 'all' || rowSegment(row) === segment;
+}
+
+/** How many of `rows` each segment shows, counted from the rows themselves. */
+export function segmentCounts(rows: readonly CatalogRow[]): Record<ListSegment, number> {
+  return {
+    all: rows.length,
+    paused: rows.filter((row) => inSegment(row, 'paused')).length,
+    problems: rows.filter((row) => inSegment(row, 'problems')).length,
+  };
+}
+
+/** The rows in the order the list shows them: those that cannot load first, the rest as the catalog sorts them. */
+export function sortListRows(rows: readonly CatalogRow[]): CatalogRow[] {
+  return rows.toSorted((first, second) => Number(hasProblem(second)) - Number(hasProblem(first)));
+}
+
+/** One part of the line under a row's title. */
+export type LinePart = {
+  readonly text: string;
+  /** The part is the run in progress: a solid dot and the word, in the info tone. */
+  readonly status?: 'Running';
+  /** The test id of the element that carries the part. */
   readonly testId?: string;
 };
 
-/**
- * The badges of a row: its kind (`Code`, or `Agent-authored` for every Bureau file), and, for a
- * source, the category it failed to load with. Whether a file is invalid or paused is the row's
- * status (`workflowRowStatus`), not a badge. The agent that owns a file is an identifier, so a row
- * sets it in monospace beside the badges instead.
- */
-export function rowBadges(row: CatalogRow): RowBadge[] {
-  if (row.kind === 'code') return [{ label: WORKFLOW_COPY.codeBadge, variant: 'neutral' }];
-  const badges: RowBadge[] = [{ label: WORKFLOW_COPY.agentAuthoredBadge, variant: 'accent' }];
-  if (row.failure !== null) {
-    badges.push({
-      label: WORKFLOW_COPY.sourceFailed(row.failure),
-      variant: 'danger',
-      testId: 'workflow-failure',
-    });
-  }
-  return badges;
+/** The two words a row's status column can carry. */
+export type ListStatusWord =
+  | typeof WORKFLOW_COPY.list.statusCantLoad
+  | typeof WORKFLOW_COPY.list.statusPaused;
+
+/** What the list shows of one workflow, as Cinder's status-first row says it. */
+export type WorkflowListRow = {
+  /** The identifier: the file's name without `.json`, and the name of the type in the engine. */
+  readonly name: string;
+  /** The title the file gives, or `null`: a file with none is shown by its identifier alone. */
+  readonly title: string | null;
+  /** The status word: only a workflow that cannot load or is paused has one. */
+  readonly statusWord: ListStatusWord | null;
+  /** The right edge of line one, or `null` while the engine has not said. */
+  readonly date: string | null;
+  /** Line two. */
+  readonly line: readonly LinePart[];
+};
+
+/** The year of an instant in a zone. */
+function yearOf(at: number, zone: string): string {
+  return new Intl.DateTimeFormat('en-US', { year: 'numeric', timeZone: zone }).format(at);
 }
 
 /**
- * The status word of a row (`lib/status.ts`): Failed for a file the Bureau cannot use or a source
- * that failed to load, Paused for a paused file, Running while an instance is going, Scheduled when
- * something starts it, and `null` for a workflow with none of those.
+ * When something last happened, for the right edge of a row: the clock for today ("10:42 AM"), and
+ * the day for any other ("Oct 30"), with the year when it is not this one.
  */
-export function workflowRowStatus(
+export function listDate(at: number, now: number, zone: string = viewerTimeZone()): string {
+  if (calendarDay(at, zone) >= calendarDay(now, zone)) return clockTime(at, zone);
+  return new Intl.DateTimeFormat('en-US', {
+    month: 'short',
+    day: 'numeric',
+    ...(yearOf(at, zone) === yearOf(now, zone) ? {} : { year: 'numeric' as const }),
+    timeZone: zone,
+  }).format(at);
+}
+
+/**
+ * The right edge of a row: when the newest run began, "Never run" for a workflow with none, and
+ * when the run in progress began ("Started 10:45 AM") while one is going. `null` when the engine
+ * has not said, so a count that could not be read is never shown as never run.
+ */
+export function rowDate(
+  row: CatalogRow,
+  runs: WorkflowRunCounts | null | undefined,
+  now: number,
+  zone: string = viewerTimeZone(),
+): string | null {
+  if (runs === null || runs === undefined) {
+    // A file the Bureau cannot use has no counts, and has not run.
+    return row.file !== null ? WORKFLOW_COPY.list.neverRun : null;
+  }
+  if (runs.lastRunAt === null) return WORKFLOW_COPY.list.neverRun;
+  const at = Date.parse(runs.lastRunAt);
+  if (Number.isNaN(at)) return null;
+  return runs.active > 0
+    ? WORKFLOW_COPY.list.started(rowTime(at, now, zone))
+    : listDate(at, now, zone);
+}
+
+/**
+ * Line two of a row. A file the Bureau cannot use names its file and the problem. Any other says
+ * what failed to load for a source the engine could not load, then the run in progress, the steps
+ * of the file, and how many runs began in the last 24 hours. The date is never repeated here.
+ */
+export function rowLine(row: CatalogRow, runs: WorkflowRunCounts | null | undefined): LinePart[] {
+  if (row.file?.state === 'invalid') {
+    return [
+      { text: WORKFLOW_COPY.list.fileName(row.name) },
+      ...(row.problem === null ? [] : [{ text: row.problem.message, testId: 'workflow-problem' }]),
+    ];
+  }
+  const parts: LinePart[] = [];
+  if (row.failure !== null) {
+    parts.push({ text: WORKFLOW_COPY.sourceFailed(row.failure), testId: 'workflow-failure' });
+  }
+  if (runs !== null && runs !== undefined && runs.active > 0) {
+    parts.push({ text: WORKFLOW_COPY.list.runningNow, status: 'Running' });
+  }
+  const steps = row.file?.steps;
+  if (steps !== null && steps !== undefined) {
+    parts.push({ text: WORKFLOW_COPY.list.steps(steps.length) });
+  }
+  if (runs !== null && runs !== undefined && runs.last24Hours > 0) {
+    parts.push({ text: WORKFLOW_COPY.list.runs(runs.last24Hours), testId: 'workflow-run-counts' });
+  }
+  return parts;
+}
+
+/**
+ * One workflow as the list's status-first row. A code-defined type's counts come from the engine
+ * apart from the list (`activity`), and read as nothing until they arrive.
+ */
+export function workflowListRow(
   row: CatalogRow,
   activity: CodeActivity | undefined,
-): StatusWord | null {
+  now: number = Date.now(),
+  zone: string = viewerTimeZone(),
+): WorkflowListRow {
   const runs = row.kind === 'code' ? activity?.runs : row.runs;
-  const started =
-    row.kind === 'code'
-      ? schedulesSummary(activity?.schedules ?? null) !== null
-      : triggerSummary(row.trigger) !== null;
-  return workflowStatusWord({
-    invalid: row.file?.state === 'invalid',
-    failed: row.failure !== null,
-    paused: row.file?.paused === true,
-    running: runs?.active ?? 0,
-    started,
-  });
+  const title = row.file?.title?.trim() ?? '';
+  const segment = rowSegment(row);
+  return {
+    name: row.name,
+    title: title === '' ? null : title,
+    statusWord:
+      segment === 'problems'
+        ? WORKFLOW_COPY.list.statusCantLoad
+        : segment === 'paused'
+          ? WORKFLOW_COPY.list.statusPaused
+          : null,
+    date: rowDate(row, runs, now, zone),
+    line: rowLine(row, runs),
+  };
 }
 
-/** Which of its three states a row is in: its file cannot be used, its source failed, or neither. */
-export function rowState(row: CatalogRow): 'invalid' | 'failed' | 'ready' {
-  if (row.file?.state === 'invalid') return 'invalid';
-  return row.failure === null ? 'ready' : 'failed';
+/** What a person calls a type Interborough runs itself, and what it does. */
+export type InternalWords = { readonly title: string; readonly description: string | null };
+
+/**
+ * The name and the line on what an internal type does: the words Interborough gives it, else the
+ * identifier in words and the engine's own description.
+ */
+export function internalWords(name: string, description: string | null): InternalWords {
+  const types = WORKFLOW_COPY.internal.types;
+  if (Object.hasOwn(types, name)) {
+    const known = types[name as keyof typeof types];
+    return { title: known.title, description: known.description };
+  }
+  return { title: humanizeIdentifier(name), description };
+}
+
+/** "Today, 10:42 AM" for today, and "Oct 30, 10:07 AM" for any other day. */
+function stamp(at: number, now: number, zone: string): string {
+  const clock = clockTime(at, zone);
+  return calendarDay(at, zone) >= calendarDay(now, zone)
+    ? `Today, ${clock}`
+    : `${listDate(at, now, zone)}, ${clock}`;
+}
+
+/** The Runs and Last run cells of an internal type: blank while the engine has not said, never zero. */
+export function internalCells(
+  activity: InternalActivity | null | undefined,
+  now: number,
+  zone: string = viewerTimeZone(),
+): { readonly runs: string | null; readonly lastRun: string | null } {
+  if (activity === null || activity === undefined) return { runs: null, lastRun: null };
+  const runs = String(activity.runs);
+  if (activity.lastRunAt === null) return { runs, lastRun: WORKFLOW_COPY.internal.neverRun };
+  const at = Date.parse(activity.lastRunAt);
+  if (Number.isNaN(at)) return { runs, lastRun: null };
+  return { runs, lastRun: stamp(at, now, zone) };
 }
 
 type Described = { readonly kind: string; readonly [key: string]: unknown };
@@ -223,23 +373,4 @@ export function schemaOf(
   if (declared !== null && declared !== undefined) return declared;
   const fromContract = definition?.contract?.[key];
   return fromContract === null ? undefined : fromContract;
-}
-
-/** What a row says of a workflow's instances: how many lately, how many are running, and the last. */
-export function runCountsText(
-  counts: WorkflowRunCounts,
-  now: number = Date.now(),
-): { readonly runs: string; readonly lastRun: string | null } {
-  const lastRun =
-    counts.lastRunAt === null
-      ? null
-      : WORKFLOW_COPY.list.lastRun(formatRelativeTime(Date.parse(counts.lastRunAt), now));
-  if (counts.lastRunAt === null && counts.active === 0 && counts.last24Hours === 0) {
-    return { runs: WORKFLOW_COPY.list.neverRun, lastRun };
-  }
-  const recent = WORKFLOW_COPY.list.runs(counts.last24Hours);
-  return {
-    runs: counts.active > 0 ? `${recent} ${WORKFLOW_COPY.list.running(counts.active)}` : recent,
-    lastRun,
-  };
 }

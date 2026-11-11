@@ -143,6 +143,92 @@
   font-family: var(--cinder-font-mono);
 }
 
+/* ── The list's status-first rows, its empty state, and the Internal workflows card ───── */
+
+/* The region that holds the page under its header lays out as the page does. */
+.ib-workflows__body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-3);
+  min-width: 0;
+}
+
+/* A workflow with no title is its identifier alone, bold and monospaced. */
+.ib-workflow-row__id {
+  font-family: var(--cinder-font-mono);
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+/* Line two is parts side by side, each divided from the one before by a hairline, not a mark in the words. */
+.ib-workflow-line__part {
+  display: inline-flex;
+  align-items: center;
+}
+
+.ib-workflow-line__part + .ib-workflow-line__part::before {
+  content: '';
+  display: inline-block;
+  inline-size: 1px;
+  block-size: 0.9em;
+  margin-inline: var(--cinder-space-2);
+  background: var(--cinder-border-faint);
+}
+
+.ib-workflows__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cinder-space-2);
+  align-items: center;
+  justify-content: center;
+}
+
+/* Under the empty state's box: where a file can be added, as plain text. */
+.ib-workflows__hint {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.ib-workflows__card-title {
+  display: flex;
+  gap: var(--cinder-space-2);
+  align-items: baseline;
+  min-width: 0;
+}
+
+.ib-workflows__card-heading {
+  margin: 0;
+  font-size: var(--cinder-text-base);
+  font-weight: var(--cinder-font-semibold);
+}
+
+.ib-workflows__card-count {
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+.ib-workflows__card-chevron {
+  align-self: center;
+  margin-inline-start: auto;
+  color: var(--cinder-text-muted);
+}
+
+.ib-workflows__card-description {
+  margin: 0;
+  color: var(--cinder-text-secondary);
+  font-size: var(--cinder-text-sm);
+}
+
+/* The code name under an internal workflow's name: small, monospaced, and not a link. */
+.ib-workflows__code-name {
+  display: block;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
 /* ── A workflow's page ──────────────────────────────────────────────────────── */
 
 .ib-workflow__identity {

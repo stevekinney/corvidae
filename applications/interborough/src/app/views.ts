@@ -96,6 +96,14 @@ export type ViewDefinition = {
    */
   readonly pageOwnsLoading?: boolean;
   /**
+   * The route patterns of this view whose page draws its own empty state under its own header, for
+   * a list whose heading, subtitle and "+" stay when nothing is listed (first use, Workflows rows
+   * 12h and 60q). The frame then shows the page when its probe says empty, instead of the frame's
+   * own empty state, while `data-state` still says `empty`. Every other state, and every other
+   * route of the view, stays the frame's.
+   */
+  readonly pageOwnsEmptyOn?: readonly string[];
+  /**
    * Whether the page words its own failure. The frame then shows the page when its probe fails
    * (not when it is refused), instead of replacing it with the generic error, so the page's
    * navigation and heading stay and only its content is the error state; and a failed refresh
@@ -129,6 +137,8 @@ export const VIEWS: Readonly<Record<ViewName, ViewDefinition>> = {
   workflows: {
     scopes: ['workflows:read'],
     canBeEmpty: true,
+    // The list keeps its header and its "+" over its first-use state; a type's runs say theirs in the frame.
+    pageOwnsEmptyOn: ['/workflows'],
   },
   // The list and one run's page read the Bureau's tasks and goals, which hold no console scope. Only
   // the workflow sections of a run, the start picker, and the aggregate view read the engine, and they say

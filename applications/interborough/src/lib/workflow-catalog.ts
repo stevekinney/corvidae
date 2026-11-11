@@ -358,3 +358,40 @@ export async function loadCodeActivity(
   );
   return new Map(entries);
 }
+
+/** How often one type Interborough runs itself has run, as the engine counts it. */
+export type InternalActivity = {
+  /** Every instance of the type, finished or not. */
+  readonly runs: number;
+  /** When the newest instance began (ISO 8601), or `null` for a type that has not run. */
+  readonly lastRunAt: string | null;
+};
+
+/**
+ * The total and the newest instance of each named type, from one `weft.workflows.list` read of one
+ * item each: the engine lists newest first and still answers the total of every match. A type whose
+ * read fails has `null`, so the page leaves its cells blank instead of showing zero runs.
+ */
+export async function loadInternalActivity(
+  client: HttpClient,
+  names: readonly string[],
+): Promise<ReadonlyMap<string, InternalActivity | null>> {
+  async function activityOf(type: string): Promise<InternalActivity | null> {
+    try {
+      const page = instancePageSchema.parse(
+        await client.operations['weft.workflows.list']({ type, limit: 1 }),
+      );
+      const [newest] = page.items;
+      return {
+        runs: page.total,
+        lastRunAt: newest === undefined ? null : new Date(newest.createdAt).toISOString(),
+      };
+    } catch {
+      return null;
+    }
+  }
+  const entries = await Promise.all(
+    names.map(async (name) => [name, await activityOf(name)] as const),
+  );
+  return new Map(entries);
+}

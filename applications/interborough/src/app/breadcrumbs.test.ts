@@ -137,6 +137,15 @@ describe('the breadcrumb trail', () => {
     }
   });
 
+  test('Internal workflows keeps a one-segment path and reads Workflows › Internal, the parent linking to /workflows', () => {
+    expect(breadcrumbTrail('/internal-workflows', NONE)).toEqual([
+      { label: 'Workflows', href: '/workflows' },
+      { label: 'Internal' },
+    ]);
+    // An address that is not that page is not led by its parent.
+    expect(breadcrumbTrail('/workflows', NONE)).toEqual([{ label: 'Workflows' }]);
+  });
+
   test('General is the last crumb of the one-segment settings path', () => {
     expect(breadcrumbTrail('/settings', NONE)).toEqual([
       { label: 'Settings', href: '/settings' },

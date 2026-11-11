@@ -91,6 +91,8 @@
   /** Whether this frame holds New chat, whose loading, empty and error states are drawn as its own page (design rows 24o to 24q). */
   const startsNewChat = initial.view === 'chat' && initial.pattern === '/chats/new';
   const ownsStates = definition.ownsStates === true;
+  /** Whether this route's page draws its own empty state under its own header (`pageOwnsEmptyOn` in `views.ts`). */
+  const pageOwnsEmpty = definition.pageOwnsEmptyOn?.includes(initial.pattern ?? '') === true;
   const probe = probeFor(initial.view, initial.parameters, initial.pattern, initial.search);
 
   const scopeDenied = $derived(
@@ -263,7 +265,7 @@
   data-stale={stale ? 'true' : undefined}
   data-stale-since={stale ? new Date(staleSince).toISOString() : undefined}
 >
-  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && definition.pageOwnsLoading === true) || (state === 'error' && definition.pageOwnsFailure === true)}
+  {#if state === 'ready' || (ownsStates && state !== 'forbidden' && state !== 'not-found') || (state === 'loading' && definition.pageOwnsLoading === true) || (state === 'error' && definition.pageOwnsFailure === true) || (state === 'empty' && pageOwnsEmpty)}
     {#if refreshFailed && !connection.unreachable && !ownsStates}
       {@render refreshError()}
     {/if}

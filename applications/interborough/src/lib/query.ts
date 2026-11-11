@@ -111,6 +111,9 @@ export const queryKeys = {
     list: () => ['workflow-catalog', 'list'] as const,
     /** What the engine says of the code-defined types the list shows: their counts and schedules. */
     activity: (names: readonly string[]) => ['workflow-catalog', 'activity', names] as const,
+    /** How many times each internal type has run, and when it last did (`/internal-workflows`). */
+    internalActivity: (names: readonly string[]) =>
+      ['workflow-catalog', 'internal-activity', names] as const,
     /** The newest runs of one type, from the Bureau for a file and the engine for a code type. */
     recentRuns: (kind: 'code' | 'agent-authored', type: string) =>
       ['workflow-catalog', 'recent-runs', kind, type] as const,

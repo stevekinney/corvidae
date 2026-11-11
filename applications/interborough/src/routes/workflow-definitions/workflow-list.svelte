@@ -1,27 +1,43 @@
 <script lang="ts">
   /**
-   * `/workflows`: the workflows a person can read and act on, as a table with one row each, by name
-   * (`lib/workflow-catalog.ts` says how the engine's types and the Bureau's files are joined). A
-   * row says what the workflow is for, what kind it is, which agent owns it, what starts it, how
-   * busy it is, and its status in one of the seven words (`workflow-row.svelte`). A file the Bureau
-   * cannot use is listed with its error, its issues, and its path, and a source that failed to load
-   * shows the category of the failure, so a broken workflow is never silently missing. The toolbar
-   * under the heading has the count, a search and a status filter, New workflow, and a link to the
-   * internal workflows.
+   * `/workflows`: the workflows a person can read and act on, as Cinder's status-first two-line rows,
+   * one each, by name (`lib/workflow-catalog.ts` says how the engine's types and the Bureau's files
+   * are joined; `workflow-row.svelte` says a row). The header is "Workflows", its subtitle, and the
+   * secondary "+" that makes one. Segments (All, Paused, Problems) partition the rows, each with the
+   * number of rows it shows, counted from the same rows (`workflow-presentation.ts`). A workflow that
+   * cannot load is listed first with its file and its problem, so a broken workflow is never silently
+   * missing, and a source that failed to load shows the category of the failure.
    *
-   * The types the Bureau registers itself to run agents, goals, and its heartbeat are not
-   * workflows a person starts, so they have a page of their own (`internal-workflows.svelte`), linked
-   * from here. With none besides them the page says there are no workflows yet, and where one is
-   * written. New workflow opens the editor that writes the first.
+   * The types Interborough registers itself to run agents, goals and its heartbeat are not
+   * workflows a person starts, so one card below the rows leads to a page of their own
+   * (`internal-workflows.svelte`). It counts them from the same catalog, and it is not drawn while
+   * the list loads, while there is nothing to list, or when the engine holds none of them.
+   *
+   * With no workflow besides those the page is its empty state: the header stays, there is no filter
+   * row and no Internal workflows card, two actions (New workflow, and Ask an agent to write one,
+   * which opens a new chat with an agent that can create workflows), and a line saying where a file
+   * can be added. The frame leaves that state to this page (`pageOwnsEmptyOn` in `app/views.ts`).
    */
-  import { Button, EmptyState, FilterBar, PageHeader, Table } from '@lostgradient/cinder';
-  import { Plus } from '@lucide/svelte';
+  import {
+    Button,
+    Card,
+    DataList,
+    EmptyState,
+    ErrorState,
+    FilterBar,
+    PageHeader,
+    Skeleton,
+    StaleRegion,
+  } from '@lostgradient/cinder';
+  import { ChevronRight, MessageSquare, Plus, Search, Workflow } from '@lucide/svelte';
   import { createQuery } from '@tanstack/svelte-query';
 
-  import { VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
-  import RecordsToolbar from '../../app/records/records-toolbar.svelte';
+  import { getConnection } from '../../app/connection.svelte.ts';
+  import { CONNECTION_COPY, RETRY_LABEL, VIEW_COPY, WORKFLOW_COPY } from '../../app/copy.ts';
   import { getClient } from '../../lib/client.ts';
-  import { getHostPaths, workflowFilePath } from '../../lib/host-paths.ts';
+  import { followLinks } from '../../lib/follow-links.ts';
+  import { getHostPaths } from '../../lib/host-paths.ts';
+  import { newChatFromWorkflowsPath } from '../../lib/new-chat-address.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
   import {
@@ -29,13 +45,19 @@
     loadCatalog,
     loadCodeActivity,
   } from '../../lib/workflow-catalog.ts';
-  import { STATUS_WORDS } from '../../lib/status.ts';
   import { internalWorkflowsPath, workflowNewPath } from '../../lib/workflow-type-paths.ts';
-  import { workflowRowStatus } from './workflow-presentation.ts';
+  import {
+    inSegment,
+    segmentCounts,
+    sortListRows,
+    workflowListRow,
+    type ListSegment,
+  } from './workflow-presentation.ts';
   import WorkflowRow from './workflow-row.svelte';
 
   const client = getClient();
-  const copy = WORKFLOW_COPY;
+  const connection = getConnection();
+  const copy = WORKFLOW_COPY.list;
 
   const catalog = createQuery(
     () => ({
@@ -48,8 +70,9 @@
   );
 
   const rows = $derived(catalog.data ?? []);
+  // The types Interborough runs itself are counted for the card, and are never rows of the list.
   const engineRows = $derived(rows.filter((row) => row.engine));
-  const workflows = $derived(rows.filter((row) => !row.engine));
+  const workflows = $derived(sortListRows(rows.filter((row) => !row.engine)));
   const codeNames = $derived(workflows.filter((row) => row.kind === 'code').map((row) => row.name));
 
   // What the engine says of the code-defined types is read apart from the list, because a count
@@ -64,60 +87,47 @@
     undefined,
   );
 
-  // Where the files are. A host that does not say shows the path relative to the state directory.
+  // Where the files are, for the hint of the empty state. A host that does not say is not asked
+  // again, and the hint names the usual place.
   const hostPaths = createQuery(
     () => ({
       queryKey: queryKeys.hostPaths(),
       queryFn: ({ signal }) => getHostPaths({ signal }),
-      // A host that does not say is not asked again: the fallback path is shown instead.
       retry: false,
     }),
     undefined,
   );
-  const directory = $derived(hostPaths.data?.workflowDirectory ?? copy.fallbackDirectory);
+  const directory = $derived(hostPaths.data?.workflowDirectory ?? copy.empty.hintDirectory);
+
+  // The clock the dates are counted from, read again whenever the rows or their counts are.
+  const now = $derived.by(() => {
+    void catalog.dataUpdatedAt;
+    void activity.dataUpdatedAt;
+    return Date.now();
+  });
+
+  let segment = $state<ListSegment>('all');
+  const counts = $derived(segmentCounts(workflows));
+  const segments = $derived([
+    { value: 'all', label: copy.segments.all, count: counts.all },
+    { value: 'paused', label: copy.segments.paused, count: counts.paused },
+    { value: 'problems', label: copy.segments.problems, count: counts.problems },
+  ]);
+  const visible = $derived(
+    workflows
+      .filter((row) => inSegment(row, segment))
+      .map((row) => ({
+        row,
+        model: workflowListRow(row, activity.data?.get(row.name), now),
+      })),
+  );
 
   const newPath = workflowNewPath();
   const internalPath = internalWorkflowsPath();
+  const askPath = newChatFromWorkflowsPath();
 
-  // The search narrows the names and descriptions on screen; the status narrows by the row's word.
-  let search = $state('');
-  let statusFilter = $state('');
-  const needle = $derived(search.trim().toLowerCase());
-  const visible = $derived(
-    workflows.filter(
-      (row) =>
-        (needle === '' ||
-          row.name.toLowerCase().includes(needle) ||
-          (row.description ?? '').toLowerCase().includes(needle)) &&
-        (statusFilter === '' ||
-          workflowRowStatus(row, activity.data?.get(row.name)) === statusFilter),
-    ),
-  );
-  const filtered = $derived(needle !== '' || statusFilter !== '');
-  const facets = [
-    {
-      type: 'select' as const,
-      key: 'status',
-      label: copy.list.statusLabel,
-      placeholder: copy.list.anyStatus,
-      options: STATUS_WORDS.map((word) => ({ value: word, label: word })),
-    },
-  ];
-  const appliedFilters = $derived(
-    statusFilter === ''
-      ? []
-      : [
-          {
-            key: 'status',
-            value: statusFilter,
-            label: copy.list.statusLabel,
-          },
-        ],
-  );
-
-  function clearFilters(): void {
-    search = '';
-    statusFilter = '';
+  function chooseSegment(value: string): void {
+    segment = value === 'paused' || value === 'problems' ? value : 'all';
   }
 
   function go(event: MouseEvent, path: string): void {
@@ -130,99 +140,136 @@
 </script>
 
 <section class="ib-workflows ib-records" aria-label={VIEW_COPY.workflows.label}>
-  <PageHeader title={VIEW_COPY.workflows.label} headingLevel={1} />
-
-  {#snippet filterBar()}
-    <FilterBar
-      aria-label={copy.list.filtersLabel}
-      searchQuery={search}
-      searchPlaceholder={copy.list.searchPlaceholder}
-      searchAriaLabel={copy.list.searchLabel}
-      {facets}
-      {appliedFilters}
-      onSearchChange={(query) => (search = query)}
-      onFacetChange={(_key, value) => (statusFilter = value)}
-      onFilterRemove={() => (statusFilter = '')}
+  <!-- While the server gives no answer the shell holds every control that changes something; this
+       region is how the header's "+" (and the empty state's button) join them. Rows stay live links. -->
+  <StaleRegion
+    stale={connection.unreachable}
+    reason={CONNECTION_COPY.changesOff}
+    class="ib-workflows__body"
+  >
+    <PageHeader
+      title={VIEW_COPY.workflows.label}
+      description={copy.subtitle}
+      headingLevel={1}
+      error={catalog.isError && catalog.data === undefined}
+      createAction={{
+        label: WORKFLOW_COPY.newAction,
+        href: router.href(newPath),
+        onclick: (event) => go(event, newPath),
+      }}
     />
-  {/snippet}
-  {#snippet toolbarActions()}
-    <Button
-      href={router.href(internalPath)}
-      variant="ghost"
-      size="sm"
-      onclick={(event) => go(event, internalPath)}
-      data-testid="internal-workflows-link">{copy.list.internalWorkflows(engineRows.length)}</Button
-    >
-    <Button
-      href={router.href(newPath)}
-      variant="primary"
-      size="sm"
-      onclick={(event) => go(event, newPath)}
-    >
-      <Plus size={14} aria-hidden="true" />
-      {copy.newAction}
-    </Button>
-  {/snippet}
-  <RecordsToolbar
-    count={copy.list.count(visible.length)}
-    filters={filterBar}
-    action={toolbarActions}
-  />
 
-  {#if catalog.isSuccess && workflows.length === 0}
-    <EmptyState
-      kind="first-use"
-      title={copy.list.emptyTitle}
-      headingLevel={2}
-      data-testid="workflows-empty"
-    >
-      {#snippet action()}
-        <p class="ib-workflows__empty-guide">
-          {copy.list.emptyBeforeTool} <code>{copy.list.emptyTool}</code>
-          {copy.list.emptyBeforeDirectory}
-          <code data-testid="workflow-directory">{directory}</code>.
-        </p>
-      {/snippet}
-    </EmptyState>
-  {:else if catalog.isSuccess && visible.length === 0 && filtered}
-    <EmptyState
-      kind="filtered"
-      title={copy.list.noMatch.title}
-      description={copy.list.noMatch.description}
-      headingLevel={2}
-      clearFiltersLabel={copy.list.clearAction}
-      onClearFilters={clearFilters}
-    />
-  {:else}
-    <Table caption={copy.listLabel} density="condensed" fit class="ib-records__table">
-      <colgroup>
-        <!-- The workflow's name takes what the other columns leave. -->
-        <col />
-        <!-- A kind is a badge ("Agent-authored") and a status one word ("Scheduled"), neither of
-             which wraps, so each column is the fixed width that holds it. -->
-        <col style="width: 8.5rem" />
-        <col style="width: 16%" />
-        <col style="width: 18%" />
-        <col style="width: 7.5rem" />
-      </colgroup>
-      <Table.Header>
-        <Table.Row>
-          <Table.HeaderCell>{copy.list.columns.workflow}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.list.columns.kind}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.list.columns.starts}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.list.columns.runs}</Table.HeaderCell>
-          <Table.HeaderCell>{copy.list.columns.status}</Table.HeaderCell>
-        </Table.Row>
-      </Table.Header>
-      <Table.Body>
-        {#each visible as row (row.name)}
-          <WorkflowRow
-            {row}
-            activity={activity.data?.get(row.name)}
-            filePath={hostPaths.isPending ? undefined : workflowFilePath(directory, row.name)}
-          />
-        {/each}
-      </Table.Body>
-    </Table>
-  {/if}
+    {#if catalog.isError && catalog.data === undefined}
+      <ErrorState
+        bordered
+        title={VIEW_COPY.workflows.error.title}
+        description={VIEW_COPY.workflows.error.description}
+        headingLevel={2}
+        retryLabel={RETRY_LABEL}
+        onRetry={() => void catalog.refetch()}
+      />
+    {:else if catalog.isPending}
+      <div role="status" aria-busy="true" aria-label={VIEW_COPY.workflows.loading.title}>
+        <Skeleton height="3.5rem" />
+        <Skeleton height="3.5rem" />
+        <Skeleton height="3.5rem" />
+      </div>
+    {:else if workflows.length === 0}
+      <EmptyState
+        bordered
+        kind="first-use"
+        title={copy.empty.title}
+        description={copy.empty.description}
+        headingLevel={2}
+        data-testid="workflows-empty"
+      >
+        {#snippet icon()}<Workflow aria-hidden="true" />{/snippet}
+        {#snippet action()}
+          <div class="ib-workflows__empty-actions">
+            <Button
+              variant="primary"
+              href={router.href(newPath)}
+              onclick={(event) => go(event, newPath)}
+              mutating
+            >
+              {#snippet leadingIcon()}<Plus aria-hidden="true" />{/snippet}
+              {WORKFLOW_COPY.newAction}
+            </Button>
+            <Button
+              variant="ghost"
+              href={router.href(askPath)}
+              onclick={(event) => go(event, askPath)}
+            >
+              {#snippet leadingIcon()}<MessageSquare aria-hidden="true" />{/snippet}
+              {copy.empty.askAction}
+            </Button>
+          </div>
+        {/snippet}
+      </EmptyState>
+      <p class="ib-workflows__hint" data-testid="workflows-empty-hint">
+        {copy.empty.hintBefore}
+        <code class="ib-identifier" data-testid="workflow-directory">{directory}</code>
+      </p>
+    {:else}
+      <FilterBar
+        aria-label={copy.segmentsLabel}
+        searchVisible={false}
+        {segments}
+        segmentValue={segment}
+        onSegmentChange={chooseSegment}
+      />
+
+      {#if visible.length === 0}
+        <EmptyState
+          bordered
+          kind="filtered"
+          title={copy.noMatch.title}
+          description={copy.noMatch.description}
+          headingLevel={2}
+          clearFiltersLabel={copy.clearAction}
+          onClearFilters={() => (segment = 'all')}
+        >
+          {#snippet icon()}<Search aria-hidden="true" />{/snippet}
+        </EmptyState>
+      {:else}
+        <div {@attach followLinks}>
+          <DataList
+            items={visible}
+            key={(item) => item.row.name}
+            statusColumn
+            aria-label={copy.rowsLabel}
+          >
+            {#snippet children(item)}
+              <WorkflowRow row={item.row} model={item.model} />
+            {/snippet}
+          </DataList>
+        </div>
+      {/if}
+
+      {#if engineRows.length > 0}
+        <Card
+          edge="border"
+          href={router.href(internalPath)}
+          onclick={(event) => go(event, internalPath)}
+          data-testid="internal-workflows-card"
+          header={cardHeader}
+          children={cardBody}
+        />
+      {/if}
+    {/if}
+  </StaleRegion>
 </section>
+
+{#snippet cardHeader()}
+  <div class="ib-workflows__card-title">
+    <h2 class="ib-workflows__card-heading">{copy.internalCard.title}</h2>
+    <span class="ib-workflows__card-count" data-testid="internal-workflows-count"
+      >{copy.internalCard.count(engineRows.length)}</span
+    >
+    <ChevronRight class="ib-workflows__card-chevron" aria-hidden="true" />
+  </div>
+{/snippet}
+
+{#snippet cardBody()}
+  <p class="ib-workflows__card-description">{copy.internalCard.description}</p>
+{/snippet}

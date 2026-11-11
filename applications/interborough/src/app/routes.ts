@@ -31,6 +31,13 @@ export interface RouteDefinition {
    * General of Settings, so it reads "Settings › General" although its path has one segment.
    */
   leafCrumb?: string;
+  /**
+   * A crumb that comes before the trail the path makes, for a page whose address is one segment
+   * deep but that belongs under another page: `/internal-workflows` keeps a path of its own so a
+   * workflow named `internal` keeps its page, and reads "Workflows › Internal". The parent links
+   * to its own path, never to this page's.
+   */
+  parent?: { readonly label: string; readonly path: string };
   /** Lazily imports the route's default-exported Svelte component. */
   load: () => Promise<{ default: Component }>;
   /**
@@ -152,7 +159,8 @@ export const routes: readonly RouteDefinition[] = [
   {
     pattern: '/internal-workflows',
     kind: 'table',
-    crumb: WORKFLOW_COPY.internal.title,
+    crumb: WORKFLOW_COPY.internal.crumb,
+    parent: { label: VIEW_COPY.workflows.label, path: '/workflows' },
     view: 'workflows',
     load: workflowArea,
   },

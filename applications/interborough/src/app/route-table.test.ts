@@ -163,13 +163,19 @@ describe('the route table', () => {
       const address = addressOf(route.pattern);
       const segments = address.split('/').filter((segment) => segment.length > 0);
       const trail = breadcrumbTrail(address, new Map());
-      // A page that names itself after its path (`/settings` is General) adds one crumb of its own.
-      const crumbs = segments.length + (route.leafCrumb === undefined ? 0 : 1);
+      // A page that names itself after its path (`/settings` is General) adds one crumb of its own,
+      // and one that belongs under another page (`/internal-workflows`) is led by that page.
+      const led = route.parent === undefined ? 0 : 1;
+      const crumbs = segments.length + (route.leafCrumb === undefined ? 0 : 1) + led;
       expect(trail.length, `${route.pattern}: ${JSON.stringify(trail)}`).toBe(crumbs);
-      // Every crumb but the last links to its own leading part of the address.
+      // Every crumb but the last links to its own leading part of the address, and a parent to its own path.
       for (const [index, item] of trail.entries()) {
         if (index === trail.length - 1) expect(item.href, route.pattern).toBeUndefined();
-        else expect(item.href, route.pattern).toBe(`/${segments.slice(0, index + 1).join('/')}`);
+        else if (route.parent !== undefined && index === 0) {
+          expect(item.href, route.pattern).toBe(route.parent.path);
+        } else {
+          expect(item.href, route.pattern).toBe(`/${segments.slice(0, index + 1 - led).join('/')}`);
+        }
       }
     }
   });

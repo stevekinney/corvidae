@@ -8,7 +8,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import { TASK_COPY } from '../../src/app/copy.ts';
+import { TASK_COPY, WORKFLOW_COPY } from '../../src/app/copy.ts';
 import { STATUS_WORDS } from '../../src/lib/status.ts';
 import { STARTED_BY_KINDS, STARTED_BY_LABELS } from '../../src/routes/workflows/runs/started-by.ts';
 import { deleteChats, newThreadId, runToEnd } from './chat-support.ts';
@@ -100,7 +100,7 @@ test.describe('the records pages', () => {
     await expect(page.locator('tr[data-run]').first()).toBeVisible();
   });
 
-  test('Workflows is a table, and links to the Internal workflows page', async ({
+  test('Workflows is a list of status-first rows under segments, with a secondary New workflow in its header', async ({
     page,
     checkA11y,
   }) => {
@@ -108,36 +108,37 @@ test.describe('the records pages', () => {
 
     await expect(page.locator('[data-view="workflows"]')).toHaveAttribute('data-state', 'ready');
     await expect(page.getByRole('heading', { level: 1, name: 'Workflows' })).toBeVisible();
-    await expect(page.getByRole('columnheader')).toHaveText([
-      'Workflow',
-      'Kind',
-      'Starts',
-      'Runs',
-      'Status',
-    ]);
-    await expect(page.locator('tr[data-workflow]').first()).toBeVisible();
-    await checkA11y('records — workflows');
-    await expect(page.getByRole('link', { name: /^Internal workflows \(\d+\)$/ })).toHaveAttribute(
+    await expect(page.getByText(WORKFLOW_COPY.list.subtitle)).toBeVisible();
+    await expect(page.locator('li[data-workflow]').first()).toBeVisible();
+    await expect(page.getByRole('columnheader')).toHaveCount(0);
+    await expect(page.getByRole('radio', { name: /^All\s*,\s*\d+$/ })).toBeVisible();
+    await expect(page.getByRole('link', { name: WORKFLOW_COPY.newAction })).toHaveAttribute(
       'href',
-      '/internal-workflows',
+      '/workflows/new',
     );
+    await checkA11y('records — workflows');
   });
 
   test.describe('on the host whose console is the Bureau’s own engine', () => {
     test.use({ baseURL: E2E_BUREAU_URL });
 
-    test('Internal workflows is a table of the types the Bureau runs itself, each with a line on what it does', async ({
+    test('Internal workflows is a table of the types the Bureau runs itself, each with a line on what it does, reached from the card under the list', async ({
       page,
       checkA11y,
     }) => {
       await page.goto('/workflows');
-      await page.getByRole('link', { name: /^Internal workflows \(\d+\)$/ }).click();
+      await page.getByTestId('internal-workflows-card').click();
 
       await expect(page).toHaveURL(/\/internal-workflows$/);
       await expect(
         page.getByRole('heading', { level: 1, name: 'Internal workflows' }),
       ).toBeVisible();
-      await expect(page.getByRole('columnheader')).toHaveText(['Workflow', 'What it does']);
+      await expect(page.getByRole('columnheader')).toHaveText([
+        WORKFLOW_COPY.internal.columns.workflow,
+        WORKFLOW_COPY.internal.columns.description,
+        WORKFLOW_COPY.internal.columns.runs,
+        WORKFLOW_COPY.internal.columns.lastRun,
+      ]);
       const rows = page.locator('tr[data-workflow][data-engine]');
       await expect(rows.first()).toBeVisible();
       for (const description of await rows.getByTestId('workflow-description').allTextContents()) {
