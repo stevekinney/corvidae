@@ -23,7 +23,7 @@
     /** The name an agent goes by, from its identifier. */
     agentLabel: (agentName: string) => string;
     /**
-     * Where the row leads, when not to the run's own page: a workflow's Runs tab opens the run
+     * Where the row leads, when not to the run's own page: a workflow's Runs tab opens each run
      * under the workflow it belongs to.
      */
     href?: string | undefined;

@@ -39,6 +39,7 @@
   }: Props = $props();
 
   const copy = WORKFLOW_COPY.page.menu;
+  /** Whether the menu has an item to draw: with none, there is no "⋯" button either. */
   const any = $derived(
     canSignal || onDuplicate !== undefined || onPause !== undefined || onDelete !== undefined,
   );

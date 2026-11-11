@@ -64,7 +64,7 @@
   const copy = WORKFLOW_COPY.deleteDialog;
   let alsoSchedules = $state(false);
 
-  // Each opening starts unchecked: a choice made and then canceled is not carried to the next.
+  // Each opening starts unchecked: a choice made and then canceled is not carried to the next one.
   $effect(() => {
     if (open) alsoSchedules = false;
   });
@@ -88,8 +88,9 @@
 </script>
 
 {#snippet description()}
-  {lead}{copy.pastRuns}{copy.file.before}<code>{fileName}</code>{copy.file
-    .middle}<code>{directory}</code>{copy.file.after}
+  {lead}{copy.pastRuns}{copy.file.before}<code>{fileName}</code>{copy.file.middle}<code
+    >{directory}</code
+  >{copy.file.after}
 {/snippet}
 
 <ConfirmDialog

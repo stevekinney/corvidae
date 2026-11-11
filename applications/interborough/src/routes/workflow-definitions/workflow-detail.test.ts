@@ -327,9 +327,7 @@ describe('a code-defined type', () => {
     expect(
       testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state'),
     ).not.toBeNull();
-    expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(
-      WORKFLOW_COPY.page.runs.emptyHint,
-    );
+    expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(WORKFLOW_COPY.page.runs.emptyHint);
   });
 });
 
@@ -593,7 +591,9 @@ describe('an agent-authored type', () => {
       '/workflows/digest/edit',
     );
     await fireEvent.click(getByRole('button', { name: WORKFLOW_COPY.page.menu.label }));
-    expect(await view.findByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause })).not.toBeNull();
+    expect(
+      await view.findByRole('menuitem', { name: WORKFLOW_COPY.page.menu.pause }),
+    ).not.toBeNull();
     expect(view.getByRole('menuitem', { name: WORKFLOW_COPY.page.menu.delete })).not.toBeNull();
     // Send a signal is in the "⋯" menu, and the form is a dialog that is not on the page until chosen.
     expect(testId(container, 'workflow-signal')).toBeNull();

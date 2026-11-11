@@ -25,6 +25,7 @@ import {
   type World,
 } from '../../lib/workflow-world.test-support.ts';
 import RouteOutletHarness from './area-harness.test-harness.svelte';
+import ToastAreaHarness from './toast-area-harness.test-harness.svelte';
 
 let stub: WorkflowStub | undefined;
 
@@ -356,6 +357,35 @@ describe('the delete dialog', () => {
     await choose(view, MENU.delete);
     const dialog = await view.findByRole('dialog', { name: DELETE.title('digest') });
     expect(within(dialog).queryByRole('checkbox')).toBeNull();
+  });
+
+  test('goes to the list once the file is deleted, and names a schedule it could not delete', async () => {
+    stub = installWorkflowWorld(
+      emptyWorld({
+        definitions: [sourceDefinition('digest', { signals: ['approve'] })],
+        files: [readyFile('digest')],
+        schedules: [{ ...RUNNING_SCHEDULE }],
+      }),
+    );
+    router.navigate('/workflows/digest', { replace: true });
+    const view = render(ToastAreaHarness, {
+      props: { client: stub.client, scopes: AUTHORIZATION_SCOPES },
+    } as never);
+    await ready(view.container);
+    await choose(view as unknown as ReturnType<typeof open>, MENU.delete);
+    const dialog = await view.findByRole('dialog', { name: DELETE.title('digest') });
+    await fireEvent.click(
+      within(dialog).getByRole('checkbox', { name: DELETE.alsoDeleteSchedule('Inbox triage') }),
+    );
+    // The schedule is gone from the engine by the time it is asked to delete it: the delete of it fails.
+    if (stub !== undefined) stub.world.schedules = [];
+    await fireEvent.click(
+      await within(dialog).findByRole('button', { name: DELETE.confirmWithSchedule }),
+    );
+    await waitFor(() => expect(router.pathname).toBe('/workflows'));
+    expect(stub?.file('digest')).toBeUndefined();
+    expect(stub?.callsTo('DELETE /schedules/:schedule')).toHaveLength(1);
+    expect(await view.findByText(DELETE.scheduleLeft('Inbox triage'))).not.toBeNull();
   });
 
   test('stays open while the delete is refused, and says why, with nothing deleted', async () => {

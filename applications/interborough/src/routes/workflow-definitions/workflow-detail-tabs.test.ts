@@ -376,10 +376,8 @@ describe('starting a run', () => {
         WORKFLOW_COPY.page.runs.emptyTitle,
       ),
     );
-    expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(
-      WORKFLOW_COPY.page.runs.emptyHint,
-    );
-    // The action is the header's Start run, so the empty state draws no button of its own.
+    expect(testId(root, 'workflow-runs-hint')?.textContent).toBe(WORKFLOW_COPY.page.runs.emptyHint);
+    // The action is the header's Start run, so the empty state draws no button of its own (63c).
     expect(
       testId(root, 'workflow-recent-runs')?.querySelector('.cinder-empty-state button'),
     ).toBeNull();

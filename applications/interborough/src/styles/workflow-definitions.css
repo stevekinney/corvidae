@@ -315,12 +315,6 @@
   font-size: var(--cinder-text-sm);
 }
 
-.ib-workflow__run-status {
-  display: inline-flex;
-  gap: var(--cinder-space-1);
-  align-items: center;
-}
-
 .ib-workflow__alert-title {
   margin: 0;
   font-weight: 600;

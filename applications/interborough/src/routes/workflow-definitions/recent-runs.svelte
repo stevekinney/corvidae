@@ -110,7 +110,7 @@
 
   const everyRun = $derived<RunRow[]>(workflowRunRows(runs.data ?? [], { title, agentName }));
 
-  // The tab's own filters: a status segment and what started the run.
+  // The tab's own filters: a status segment, and what started the run.
   let filter = $state<RunFilter>({});
   const others = $derived<RunFilter>(
     filter.startedBy === undefined ? {} : { startedBy: filter.startedBy },

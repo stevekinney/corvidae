@@ -1016,7 +1016,6 @@ export const WORKFLOW_COPY = {
     statusPaused: 'Paused',
     recentRuns: 'Recent runs',
     runsFailed: 'The runs could not be loaded.',
-    runDuration: (milliseconds: string): string => `took ${milliseconds}`,
     trigger: 'Trigger',
     schedulesHeading: 'Schedules',
     schedulesFailed: 'The schedules could not be loaded.',

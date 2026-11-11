@@ -389,7 +389,9 @@ test.describe('a code-defined type', () => {
       await expect(detail(page)).not.toContainText('Install a revision');
       await expect(detail(page).locator('.weft-revisions-panel')).toHaveCount(0);
       await expect(page.getByRole('button', { name: WORKFLOW_COPY.deleteAction })).toHaveCount(0);
-      await expect(page.getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toHaveCount(0);
+      await expect(page.getByRole('button', { name: WORKFLOW_COPY.page.menu.label })).toHaveCount(
+        0,
+      );
       await expect(page.getByRole('link', { name: WORKFLOW_COPY.editAction })).toHaveCount(0);
 
       // The engine's contract for this type declares no signal, update or query, so there are no facts to list.
@@ -694,7 +696,7 @@ test.describe('pause, resume, and delete', () => {
   });
 });
 
-/** Opens the "⋯" menu and chooses an item by its name: Pause, Duplicate or Delete…. */
+/** Opens the "⋯" menu and chooses an item by its name, such as Pause or Delete…. */
 async function chooseFromMenu(page: Page, name: string): Promise<void> {
   await detail(page).getByRole('button', { name: WORKFLOW_COPY.page.menu.label }).click();
   await page.getByRole('menuitem', { name, exact: true }).click();

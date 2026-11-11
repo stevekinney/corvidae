@@ -445,10 +445,8 @@
     act((hash) => removal.mutate({ hash, schedules: alsoSchedules ? deleteSchedules : [] }));
   }
 
-  /** Whether the file can be copied: one the Bureau loaded, whose text the page has. */
-  const canDuplicate = $derived(
-    file !== undefined && file.state === 'ready' && file.text !== null,
-  );
+  /** Whether the file can be copied: one the Bureau loaded, whose text the page has to copy. */
+  const canDuplicate = $derived(file !== undefined && file.state === 'ready' && file.text !== null);
 
   /** Reads the file again, which discards what the page believed of it. */
   async function reload(): Promise<void> {
