@@ -98,17 +98,22 @@ export function parseExpirationTimestamp(value: string | undefined): number | un
  * What a decided approval was about, in the words of its action: the primary button's own label
  * (or the tool's label, or its humanized name) and the Target fact when there is one, such as
  * "Refund $42.00, order 4471". A decided card titles itself with this instead of repeating the
- * question it asked, which no longer reads as a question once it is answered.
+ * question it asked, which no longer reads as a question once it is answered. With neither a
+ * named action nor a target the tool alone would say less than the question did, so the question
+ * stays.
  */
 export function describeDecidedAction(
   approveLabel: string | undefined,
   tool: { name: string; label?: string | undefined },
   facts: readonly { label: string; value: string }[],
+  question: string,
 ): string {
+  const target = facts.find((fact) => fact.label.trim().toLowerCase() === 'target')?.value.trim();
+  const hasTarget = target !== undefined && target !== '';
+  if (approveLabel === undefined && !hasTarget) return question;
   const action =
     approveLabel ?? tool.label ?? humanizeIdentifier(tool.name, { casing: 'sentence' });
-  const target = facts.find((fact) => fact.label.trim().toLowerCase() === 'target')?.value.trim();
-  return target === undefined || target === '' ? action : `${action}, ${target}`;
+  return hasTarget ? `${action}, ${target}` : action;
 }
 
 /**

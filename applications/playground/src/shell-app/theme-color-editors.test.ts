@@ -363,10 +363,13 @@ describe('dependent roles', () => {
 });
 
 describe('the border-ink editor previews every tier it drives', () => {
-  test('alphaStepsOf finds the seven border tiers, lightest first', () => {
+  // The skeleton fill is a 12% step of the same ink (light sweep L#2), so the ink editor
+  // previews it with the border tiers.
+  test('alphaStepsOf finds the seven border tiers and the skeleton fill, lightest first', () => {
     expect(alphaStepsOf(summaryEnvelope, 'border.ink')).toEqual([
       { path: 'border.muted', alpha: 0.05 },
       { path: 'border', alpha: 0.09 },
+      { path: 'skeleton.background', alpha: 0.12 },
       { path: 'border.strong', alpha: 0.15 },
       { path: 'border.control', alpha: 0.32 },
       { path: 'border.control.hover', alpha: 0.42 },
@@ -423,6 +426,7 @@ describe('the border-ink editor previews every tier it drives', () => {
     expect(shipped.map((step) => step.path)).toEqual([
       'border.muted',
       'border',
+      'skeleton.background',
       'border.strong',
       'border.control',
       'border.control.hover',
@@ -434,6 +438,7 @@ describe('the border-ink editor previews every tier it drives', () => {
     const ratios = shipped.map((step) => step.ratio);
     expect(ratios).toEqual(ratios.toSorted((left, right) => left - right));
     expect(ratios.map((ratio) => ratio >= 3)).toEqual([
+      false,
       false,
       false,
       false,

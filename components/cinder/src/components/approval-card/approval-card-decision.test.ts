@@ -509,8 +509,24 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
   });
 
-  test('a denial without a named action or a target titles itself with the tool', () => {
+  test('a denial with a target but no named action titles itself with the tool and the target', () => {
     const { container, getByRole } = render(ApprovalCard, {
+      props: decisionCard({
+        state: 'denied',
+        decidedBy: 'you',
+        approveLabel: undefined,
+        tool: { name: 'issue_refund', risk: 'high' },
+      }),
+    });
+
+    expect(
+      squash(container.querySelector('.cinder-approval-card__decision-title')?.textContent),
+    ).toBe('Denied: Issue refund, order 4471');
+    expect(getByRole('article', { name: 'Denied: Issue refund, order 4471' })).toBeTruthy();
+  });
+
+  test('with neither a named action nor a target, a decided card keeps its question', () => {
+    const { container } = render(ApprovalCard, {
       props: decisionCard({
         state: 'denied',
         decidedBy: 'you',
@@ -522,8 +538,7 @@ describe('ApprovalCard decision layout: the retained receipt', () => {
 
     expect(
       squash(container.querySelector('.cinder-approval-card__decision-title')?.textContent),
-    ).toBe('Denied: Issue refund');
-    expect(getByRole('article', { name: 'Denied: Issue refund' })).toBeTruthy();
+    ).toBe('Denied: Refund order 4471 for $42.00?');
   });
 
   test('an unavailable approval still asks its question, with the state word beside it', () => {

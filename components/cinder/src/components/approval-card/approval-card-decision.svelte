@@ -215,7 +215,7 @@
 
   // A decided card says what was decided, in the action's own words, instead of repeating the
   // question it asked: "Refund $42.00, order 4471" beside the Approved badge.
-  const decidedAction = $derived(describeDecidedAction(approveLabel, tool, facts));
+  const decidedAction = $derived(describeDecidedAction(approveLabel, tool, facts, question));
   const undecidedPrefix = $derived(UNDECIDED_PREFIX[approvalState]);
 
   const hasWho = $derived(decidedBy !== undefined || decidedIn !== undefined);
