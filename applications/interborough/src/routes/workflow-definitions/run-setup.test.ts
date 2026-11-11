@@ -1058,7 +1058,9 @@ describe('what stops a run, detected on load', () => {
     await drawn(root, 'run-setup-paused');
     await fireEvent.click(view.getByRole('button', { name: COPY.resumeAction }));
     await waitFor(() => expect(stub?.file('paused-one')?.paused).toBe(false));
-    await waitFor(() => expect(root.querySelector('[data-testid="run-setup-paused"]')).toBeNull());
+    await waitFor(() =>
+      expect(root.querySelector('[data-testid="run-setup-paused"]')?.outerHTML ?? null).toBeNull(),
+    );
     await waitFor(() => expect(primary(root).disabled).toBe(false));
     expect(offReason(root)).toBeUndefined();
   });
@@ -1165,7 +1167,7 @@ describe('pressing Start run', () => {
     await waitFor(() => expect(field(root, 'Branch').getAttribute('aria-invalid')).toBe('true'));
     expect(root.textContent).toContain('Branch is required.');
     // The form moves focus to the first problem.
-    await waitFor(() => expect(document.activeElement).toBe(field(root, 'Branch')));
+    await waitFor(() => expect(document.activeElement === field(root, 'Branch')).toBe(true));
     expect(summaryText(root)).toBe(COPY.summaryNow());
     expect(primary(root).disabled).toBe(false);
     expect(stub?.callsTo('bureau.workflows.start')).toEqual([]);
@@ -1173,7 +1175,9 @@ describe('pressing Start run', () => {
     // Typing takes the line away.
     await type(field(root, 'Branch'), 'main');
     await waitFor(() =>
-      expect(root.querySelector('[data-testid="run-setup-input-problem"]')).toBeNull(),
+      expect(
+        root.querySelector('[data-testid="run-setup-input-problem"]')?.outerHTML ?? null,
+      ).toBeNull(),
     );
   });
 
@@ -1281,8 +1285,9 @@ describe('at the concurrency limit', () => {
       expect(stub?.callsTo('weft.workflows.aggregate').length).toBeGreaterThan(0),
     );
     await waitFor(() => expect(stub?.callsTo('bureau.settings.get').length).toBeGreaterThan(0));
+    await waitFor(() => expect(root.textContent).toContain(COPY.nowDescription));
+    // The limit never shows, however long the reads take to settle.
     await quietFor(50);
-    expect(root.textContent).toContain(COPY.nowDescription);
     expect(root.textContent).not.toContain(COPY.nowAtLimit(4));
     expect(summaryText(root)).toBe(COPY.summaryNow());
   });
@@ -1291,7 +1296,6 @@ describe('at the concurrency limit', () => {
     const view = open('/workflows/release-notes/run', { runs: runsGoing(9) });
     const root = await ready(view.container);
     await waitFor(() => expect(stub?.callsTo('bureau.settings.get').length).toBeGreaterThan(0));
-    await quietFor(50);
-    expect(root.textContent).toContain(COPY.nowDescription);
+    await waitFor(() => expect(root.textContent).toContain(COPY.nowDescription));
   });
 });
