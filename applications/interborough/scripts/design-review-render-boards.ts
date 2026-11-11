@@ -24,9 +24,9 @@
  * content (each named), 2 on bad usage or a missing `support.js`.
  */
 import { chromium } from '@playwright/test';
-import { existsSync } from 'node:fs';
+import { closeSync, existsSync, openSync, readSync } from 'node:fs';
 import { mkdir, readdir, readFile } from 'node:fs/promises';
-import { join, relative, resolve } from 'node:path';
+import { extname, join, relative, resolve, sep } from 'node:path';
 
 import { HANG_GUARD_MILLISECONDS } from '../../../testing/testing/src/hang-guard.ts';
 
@@ -258,10 +258,67 @@ export interface RenderEnvironment {
   readonly launchBrowser: () => Promise<BoardBrowser>;
 }
 
-/** Answers a request for a file below `root`, or 404 for anything that resolves outside it. */
+/** A canvas saves its uploaded assets here, each under its asset id with no extension. */
+const BLOB_DIRECTORY = '_blob';
+/** How much of an extensionless blob is read to tell whether it is a stylesheet. */
+const SNIFF_BYTES = 4096;
+const STYLESHEET_AT_RULE =
+  /^@(?:charset|import|namespace|layer|media|supports|font-face|keyframes|property|container|page|counter-style|font-feature-values|scope)\b/i;
+const SCRIPT_KEYWORD =
+  /^(?:import|export|const|let|var|function|class|async|await|return|if|for|while|switch|try|do|new)\b/;
+const DECLARATION_OR_NESTED_RULE = /^\{\s*(?:-{0,2}[a-z][\w-]*\s*:|[}&.#:*\[@>~+])/i;
+
+/** The first {@link SNIFF_BYTES} of a file as text, or `undefined` when it is binary or unreadable. */
+function leadingText(path: string): string | undefined {
+  let descriptor: number | undefined;
+  try {
+    descriptor = openSync(path, 'r');
+    const bytes = new Uint8Array(SNIFF_BYTES);
+    const length = readSync(descriptor, bytes, 0, SNIFF_BYTES, 0);
+    const head = bytes.subarray(0, length);
+    return head.includes(0) ? undefined : new TextDecoder().decode(head);
+  } catch {
+    return undefined;
+  } finally {
+    if (descriptor !== undefined) closeSync(descriptor);
+  }
+}
+
+/**
+ * Whether `text`, the start of an extensionless file, reads as a stylesheet: past any byte-order
+ * mark, whitespace and comments it opens with a CSS at-rule, or with a selector and then a block of
+ * declarations or nested rules. Script, markup and JSON do not.
+ */
+export function looksLikeStylesheet(text: string): boolean {
+  const start = text.replace(/^\uFEFF/, '').replace(/^(?:\s|\/\*[\s\S]*?\*\/)+/, '');
+  if (STYLESHEET_AT_RULE.test(start)) return true;
+  if (SCRIPT_KEYWORD.test(start)) return false;
+  const brace = start.indexOf('{');
+  if (brace <= 0) return false;
+  const selector = start
+    .slice(0, brace)
+    .replace(/\[[^\]]*\]/g, '')
+    .replace(/"[^"]*"|'[^']*'/g, '');
+  if (/[;=<`]/.test(selector)) return false;
+  if (selector.split('(').length !== selector.split(')').length) return false;
+  return DECLARATION_OR_NESTED_RULE.test(start.slice(brace));
+}
+
+/**
+ * Answers a request for a file below `root`, or 404 for anything that resolves outside it. An
+ * extensionless canvas upload under `_blob/` that reads as a stylesheet is served as `text/css`,
+ * because the browser refuses a stylesheet sent as `application/octet-stream` and the board would
+ * render unstyled.
+ */
 export function boardResponse(root: string, request: Request): Response {
   const path = resolve(root, `.${decodeURIComponent(new URL(request.url).pathname)}`);
-  if (relative(root, path).startsWith('..')) return new Response('Not found', { status: 404 });
+  const below = relative(root, path);
+  if (below.startsWith('..')) return new Response('Not found', { status: 404 });
+  if (below.split(sep)[0] === BLOB_DIRECTORY && extname(path) === '') {
+    const text = leadingText(path);
+    if (text !== undefined && looksLikeStylesheet(text))
+      return new Response(Bun.file(path, { type: 'text/css;charset=utf-8' }));
+  }
   return new Response(Bun.file(path));
 }
 

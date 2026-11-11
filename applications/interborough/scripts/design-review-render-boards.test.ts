@@ -382,6 +382,36 @@ describe('boardResponse', () => {
     const response = boardResponse(root, new Request('http://127.0.0.1/..%2F..%2Fetc%2Fpasswd'));
     expect(response.status).toBe(404);
   });
+
+  // Regression (COR-2304): a canvas saves its uploaded stylesheet as `_blob/<id>` with no
+  // extension, which was served as `application/octet-stream`, so the browser refused it.
+  test('serves an extensionless stylesheet blob as text/css', async () => {
+    const stylesheet = '/* tokens */\n:root { --accent: #c33; }\nbody { color: var(--accent); }\n';
+    await mkdir(join(root, '_blob'));
+    await writeFile(join(root, '_blob', 'asset-1'), stylesheet);
+    const response = boardResponse(root, new Request('http://127.0.0.1/_blob/asset-1'));
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toStartWith('text/css');
+    expect(await response.text()).toBe(stylesheet);
+  });
+
+  test('serves a stylesheet blob that opens with an at-rule as text/css', async () => {
+    await mkdir(join(root, '_blob'));
+    await writeFile(join(root, '_blob', 'asset-2'), '@layer base;\n.card { padding: 8px; }\n');
+    const response = boardResponse(root, new Request('http://127.0.0.1/_blob/asset-2'));
+    expect(response.headers.get('content-type')).toStartWith('text/css');
+  });
+
+  test('leaves a blob that is not a stylesheet untyped', async () => {
+    await mkdir(join(root, '_blob'));
+    await writeFile(join(root, '_blob', 'script'), 'export default { name: "board" };\n');
+    await writeFile(join(root, '_blob', 'data'), '[{"name":"board"}]');
+    await writeFile(join(root, '_blob', 'image'), new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0]));
+    for (const name of ['script', 'data', 'image']) {
+      const response = boardResponse(root, new Request(`http://127.0.0.1/_blob/${name}`));
+      expect(response.headers.get('content-type') ?? '').not.toStartWith('text/css');
+    }
+  });
 });
 
 describe('renderBoards', () => {
