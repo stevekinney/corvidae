@@ -1,0 +1,389 @@
+<!-- @dsCard group="Page archetypes" height=880 subtitle="Browse: a time-led text list beside a map. Rows, not cards." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Browse archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Happy hours near Union Station</h1>
+              </div>
+              <p class="cinder-page-header__description">Eleven places are pouring before 7 pm.</p>
+            </div>
+          </div>
+        </div>
+        <div class="arch__split arch__split--map">
+          <div class="arch__column">
+            <div class="cinder-search-field">
+              <div
+                class="cinder-form-field cinder-input-field"
+                data-cinder-variant="default"
+                data-cinder-full-width
+              >
+                <div
+                  class="cinder-form-field__control cinder-input-group cinder-input-group--leading cinder-input-group--trailing"
+                  data-cinder-full-width
+                  data-leading
+                  data-trailing
+                >
+                  <span class="cinder-input-group__leading cinder-_truncate" aria-hidden="true"
+                    ><span class="cinder-search-field__leading" aria-hidden="true"
+                      ><svg
+                        class="cinder-search-field__icon"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="m21 21-4.34-4.34" />
+                        <circle cx="11" cy="11" r="8" /></svg></span
+                  ></span>
+                  <input
+                    class="cinder-input cinder-search-field__input"
+                    id="browse-search"
+                    type="search"
+                    placeholder="Search bars and neighbourhoods"
+                    aria-label="Search bars and neighbourhoods"
+                    data-cinder-full-width
+                    data-cinder-variant="default"
+                    data-cinder-size="md"
+                  />
+                  <span class="cinder-input-group__trailing"
+                    ><button
+                      type="button"
+                      class="cinder-search-field__clear"
+                      aria-label="Clear search"
+                      tabindex="-1"
+                      hidden
+                    >
+                      <svg
+                        class="cinder-search-field__icon"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        aria-hidden="true"
+                      >
+                        <path d="M18 6 6 18" />
+                        <path d="m6 6 12 12" />
+                      </svg></button
+                  ></span>
+                </div>
+                <p id="browse-search-error" class="cinder-form-field__error" aria-live="polite"></p>
+              </div>
+            </div>
+            <div class="cinder-segmented-control-container">
+              <span id="browse-when-label" class="cinder-segmented-control-label cinder-sr-only"
+                >When</span
+              >
+              <div
+                id="browse-when"
+                role="radiogroup"
+                aria-labelledby="browse-when-label"
+                aria-orientation="horizontal"
+                class="cinder-segmented-control"
+                data-cinder-orientation="horizontal"
+                data-cinder-size="md"
+                data-cinder-selection-mode="single"
+                data-cinder-variant="radiogroup"
+                data-cinder-full-width
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked="true"
+                  tabindex="0"
+                  class="cinder-segmented-control-option"
+                  data-cinder-segment-value="now"
+                  data-cinder-selected
+                >
+                  Now
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked="false"
+                  tabindex="-1"
+                  class="cinder-segmented-control-option"
+                  data-cinder-segment-value="later"
+                >
+                  Later today
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked="false"
+                  tabindex="-1"
+                  class="cinder-segmented-control-option"
+                  data-cinder-segment-value="tomorrow"
+                >
+                  Tomorrow
+                </button>
+              </div>
+            </div>
+            <div class="cinder-grouped-list">
+              <p id="browse-soon-header" class="cinder-grouped-list__header">Starting soon</p>
+              <ul class="cinder-grouped-list__group" aria-labelledby="browse-soon-header">
+                <li
+                  class="cinder-grouped-list-item cinder-grouped-list-item--linked cinder-grouped-list-item--timed"
+                >
+                  <div class="cinder-grouped-list-item__content">
+                    <div
+                      class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
+                      data-cinder-urgency="urgent"
+                    >
+                      <span class="cinder-grouped-list-item__lead-value">25</span
+                      ><span class="cinder-grouped-list-item__lead-unit">min left</span>
+                    </div>
+                    <div class="cinder-grouped-list-item__text">
+                      <div class="cinder-grouped-list-item__title">
+                        <a class="cinder-grouped-list-item__link" href="#">Union Station Bar</a>
+                      </div>
+                    </div>
+                    <span class="cinder-grouped-list-item__chevron" aria-hidden="true"
+                      ><svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m9 18 6-6-6-6" /></svg
+                    ></span>
+                  </div>
+                </li>
+                <li
+                  class="cinder-grouped-list-item cinder-grouped-list-item--linked cinder-grouped-list-item--timed"
+                >
+                  <div class="cinder-grouped-list-item__content">
+                    <div
+                      class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
+                      data-cinder-urgency="soon"
+                    >
+                      <span class="cinder-grouped-list-item__lead-value">40</span
+                      ><span class="cinder-grouped-list-item__lead-unit">min to go</span>
+                    </div>
+                    <div class="cinder-grouped-list-item__text">
+                      <div class="cinder-grouped-list-item__title">
+                        <a class="cinder-grouped-list-item__link" href="#">The Cooper Lounge</a>
+                      </div>
+                    </div>
+                    <span class="cinder-grouped-list-item__chevron" aria-hidden="true"
+                      ><svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m9 18 6-6-6-6" /></svg
+                    ></span>
+                  </div>
+                </li>
+                <li
+                  class="cinder-grouped-list-item cinder-grouped-list-item--linked cinder-grouped-list-item--timed"
+                >
+                  <div class="cinder-grouped-list-item__content">
+                    <div
+                      class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
+                      data-cinder-urgency="soon"
+                    >
+                      <span class="cinder-grouped-list-item__lead-value">55</span
+                      ><span class="cinder-grouped-list-item__lead-unit">min to go</span>
+                    </div>
+                    <div class="cinder-grouped-list-item__text">
+                      <div class="cinder-grouped-list-item__title">
+                        <a class="cinder-grouped-list-item__link" href="#">Rioja Bar</a>
+                      </div>
+                    </div>
+                    <span class="cinder-grouped-list-item__chevron" aria-hidden="true"
+                      ><svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m9 18 6-6-6-6" /></svg
+                    ></span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+            <div class="cinder-grouped-list">
+              <p id="browse-later-header" class="cinder-grouped-list__header">Later this evening</p>
+              <ul class="cinder-grouped-list__group" aria-labelledby="browse-later-header">
+                <li
+                  class="cinder-grouped-list-item cinder-grouped-list-item--linked cinder-grouped-list-item--timed"
+                >
+                  <div class="cinder-grouped-list-item__content">
+                    <div
+                      class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
+                    >
+                      <span class="cinder-grouped-list-item__lead-value">5 pm</span
+                      ><span class="cinder-grouped-list-item__lead-unit">starts</span>
+                    </div>
+                    <div class="cinder-grouped-list-item__text">
+                      <div class="cinder-grouped-list-item__title">
+                        <a class="cinder-grouped-list-item__link" href="#">Stoic Brewing</a>
+                      </div>
+                    </div>
+                    <span class="cinder-grouped-list-item__chevron" aria-hidden="true"
+                      ><svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m9 18 6-6-6-6" /></svg
+                    ></span>
+                  </div>
+                </li>
+                <li
+                  class="cinder-grouped-list-item cinder-grouped-list-item--linked cinder-grouped-list-item--timed"
+                >
+                  <div class="cinder-grouped-list-item__content">
+                    <div
+                      class="cinder-grouped-list-item__lead cinder-grouped-list-item__lead--timed"
+                    >
+                      <span class="cinder-grouped-list-item__lead-value">6 pm</span
+                      ><span class="cinder-grouped-list-item__lead-unit">starts</span>
+                    </div>
+                    <div class="cinder-grouped-list-item__text">
+                      <div class="cinder-grouped-list-item__title">
+                        <a class="cinder-grouped-list-item__link" href="#">Mercantile Dining</a>
+                      </div>
+                    </div>
+                    <span class="cinder-grouped-list-item__chevron" aria-hidden="true"
+                      ><svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        stroke-width="2"
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                      >
+                        <path d="m9 18 6-6-6-6" /></svg
+                    ></span>
+                  </div>
+                </li>
+              </ul>
+            </div>
+          </div>
+          <div class="arch__map" role="group" aria-label="Map of places with a happy hour">
+            <span class="arch__marker" style="inset-inline-start: 34%; inset-block-start: 38%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="live"
+                aria-label="Union Station Bar, 25 minutes left"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__dot" aria-hidden="true"></span
+                  ><span class="cinder-map-marker__label">25 min</span></span
+                ><span class="cinder-map-marker__anchor" aria-hidden="true"></span></button
+            ></span>
+            <span class="arch__marker" style="inset-inline-start: 58%; inset-block-start: 52%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="idle"
+                aria-label="The Cooper Lounge, starts in 40 minutes"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__label">40 min</span></span
+                ><span class="cinder-map-marker__anchor" aria-hidden="true"></span></button
+            ></span>
+            <span class="arch__marker" style="inset-inline-start: 72%; inset-block-start: 30%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="idle"
+                aria-label="Rioja Bar, starts in 55 minutes"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__label">55 min</span></span
+                ><span class="cinder-map-marker__anchor" aria-hidden="true"></span></button
+            ></span>
+            <span class="arch__marker" style="inset-inline-start: 46%; inset-block-start: 74%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="cluster"
+                aria-label="Two places starting at 5 pm and 6 pm"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__label">2</span></span
+                >
+              </button></span
+            >
+            <span class="arch__legend"
+              ><section class="cinder-map-legend" aria-label="Map key">
+                <ul class="cinder-map-legend__items">
+                  <li class="cinder-map-legend__item">
+                    <span
+                      class="cinder-map-legend__swatch"
+                      data-state="live"
+                      aria-hidden="true"
+                    ></span
+                    ><span class="cinder-map-legend__label">Pouring now</span>
+                  </li>
+                  <li class="cinder-map-legend__item">
+                    <span
+                      class="cinder-map-legend__swatch"
+                      data-state="idle"
+                      aria-hidden="true"
+                    ></span
+                    ><span class="cinder-map-legend__label">Later</span>
+                  </li>
+                </ul>
+                <p class="cinder-map-legend__attribution">
+                  Map tiles come from the host application.
+                </p>
+              </section></span
+            >
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

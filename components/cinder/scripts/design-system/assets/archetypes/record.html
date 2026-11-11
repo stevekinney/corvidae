@@ -1,0 +1,174 @@
+<!-- @dsCard group="Page archetypes" height=860 subtitle="Record: Sections separated by space, with property rows instead of pills." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Record archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Spring menu launch</h1>
+              </div>
+              <p class="cinder-page-header__description">
+                Plan and ship the new menu to all four locations.
+              </p>
+            </div>
+            <div class="cinder-page-header__actions">
+              <button
+                type="button"
+                class="cinder-button"
+                data-cinder-variant="primary"
+                data-cinder-size="md"
+              >
+                Save changes
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="arch__column">
+          <section class="cinder-section" aria-labelledby="record-properties-title">
+            <div class="cinder-section__header">
+              <div class="cinder-section__heading">
+                <h2 id="record-properties-title" class="cinder-section__title">Properties</h2>
+              </div>
+            </div>
+            <div class="cinder-section__content">
+              <div class="cinder-inspector">
+                <dl class="cinder-inspector__group">
+                  <div class="cinder-inspector-row" data-cinder-readonly>
+                    <dt id="record-owner-label" class="cinder-inspector-row__label">
+                      <span class="cinder-inspector-row__label-text">Owner</span>
+                    </dt>
+                    <dd class="cinder-inspector-row__value">
+                      <span id="record-owner-value" class="cinder-inspector-row__text"
+                        >Ada Lovelace</span
+                      >
+                    </dd>
+                  </div>
+                  <div class="cinder-inspector-row" data-cinder-editable>
+                    <dt id="record-priority-label" class="cinder-inspector-row__label">
+                      <span class="cinder-inspector-row__label-text">Priority</span>
+                    </dt>
+                    <dd class="cinder-inspector-row__value">
+                      <button
+                        type="button"
+                        class="cinder-inspector-row__trigger"
+                        aria-labelledby="record-priority-label record-priority-value"
+                      >
+                        <span id="record-priority-value" class="cinder-inspector-row__text"
+                          >Medium</span
+                        ><span class="cinder-inspector-row__chevron" aria-hidden="true"
+                          ><svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="m9 18 6-6-6-6" /></svg
+                        ></span>
+                      </button>
+                    </dd>
+                  </div>
+                  <div class="cinder-inspector-row" data-cinder-editable>
+                    <dt id="record-due-label" class="cinder-inspector-row__label">
+                      <span class="cinder-inspector-row__label-text">Due</span>
+                    </dt>
+                    <dd class="cinder-inspector-row__value">
+                      <button
+                        type="button"
+                        class="cinder-inspector-row__trigger"
+                        aria-labelledby="record-due-label record-due-value"
+                      >
+                        <span id="record-due-value" class="cinder-inspector-row__text">Nov 24</span
+                        ><span class="cinder-inspector-row__chevron" aria-hidden="true"
+                          ><svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="16"
+                            height="16"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            stroke-width="2"
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                          >
+                            <path d="m9 18 6-6-6-6" /></svg
+                        ></span>
+                      </button>
+                    </dd>
+                  </div>
+                  <div class="cinder-inspector-row" data-cinder-readonly>
+                    <dt id="record-created-label" class="cinder-inspector-row__label">
+                      <span class="cinder-inspector-row__label-text">Created</span>
+                    </dt>
+                    <dd class="cinder-inspector-row__value">
+                      <span id="record-created-value" class="cinder-inspector-row__text"
+                        >Nov 3</span
+                      >
+                    </dd>
+                  </div>
+                </dl>
+              </div>
+            </div>
+          </section>
+          <section class="cinder-section" aria-labelledby="record-notes-title">
+            <div class="cinder-section__header">
+              <div class="cinder-section__heading">
+                <h2 id="record-notes-title" class="cinder-section__title">Notes</h2>
+              </div>
+            </div>
+            <div class="cinder-section__content">
+              <p class="arch__prose">
+                Print the new menus after the tasting on the 19th. Each location needs its own
+                allergen card.
+              </p>
+            </div>
+          </section>
+          <section class="cinder-section" aria-labelledby="record-activity-title">
+            <div class="cinder-section__header">
+              <div class="cinder-section__heading">
+                <h2 id="record-activity-title" class="cinder-section__title">Activity</h2>
+              </div>
+            </div>
+            <div class="cinder-section__content">
+              <div class="cinder-grouped-list">
+                <ul class="cinder-grouped-list__group">
+                  <li class="cinder-grouped-list-item">
+                    <div class="cinder-grouped-list-item__content">
+                      <div class="cinder-grouped-list-item__text">
+                        <div class="cinder-grouped-list-item__title">Ada changed the due date</div>
+                      </div>
+                      <div class="cinder-grouped-list-item__trailing">2 h</div>
+                    </div>
+                  </li>
+                  <li class="cinder-grouped-list-item">
+                    <div class="cinder-grouped-list-item__content">
+                      <div class="cinder-grouped-list-item__text">
+                        <div class="cinder-grouped-list-item__title">
+                          Grace added the tasting notes
+                        </div>
+                      </div>
+                      <div class="cinder-grouped-list-item__trailing">Yesterday</div>
+                    </div>
+                  </li>
+                </ul>
+              </div>
+            </div>
+          </section>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

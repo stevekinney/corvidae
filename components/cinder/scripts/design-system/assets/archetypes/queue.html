@@ -1,0 +1,205 @@
+<!-- @dsCard group="Page archetypes" height=720 subtitle="Queue: items that each need a decision, in a frameless table worked from the top." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Queue archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Approvals</h1>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="cinder-segmented-control-container">
+          <span id="queue-filter-label" class="cinder-segmented-control-label cinder-sr-only"
+            >Show</span
+          >
+          <div
+            id="queue-filter"
+            role="radiogroup"
+            aria-labelledby="queue-filter-label"
+            aria-orientation="horizontal"
+            class="cinder-segmented-control"
+            data-cinder-orientation="horizontal"
+            data-cinder-size="md"
+            data-cinder-selection-mode="single"
+            data-cinder-variant="radiogroup"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked="true"
+              tabindex="0"
+              class="cinder-segmented-control-option"
+              data-cinder-segment-value="waiting"
+              data-cinder-selected
+            >
+              Waiting on you<span class="cinder-segmented-control-option-count"
+                ><span class="cinder-segmented-control-option-count-separator">, </span>3</span
+              >
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked="false"
+              tabindex="-1"
+              class="cinder-segmented-control-option"
+              data-cinder-segment-value="decided"
+            >
+              Decided<span class="cinder-segmented-control-option-count"
+                ><span class="cinder-segmented-control-option-count-separator">, </span>12</span
+              >
+            </button>
+          </div>
+        </div>
+        <div
+          class="cinder-table-scroll cinder-_scroll-fade-inline-end"
+          role="region"
+          aria-label="Approvals waiting on you"
+          tabindex="0"
+          data-cinder-frameless
+        >
+          <table class="cinder-table" data-cinder-density="comfortable" data-cinder-frameless>
+            <thead class="cinder-table__header">
+              <tr class="cinder-table__row">
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Status</div>
+                </th>
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Request</div>
+                </th>
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Worker</div>
+                </th>
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">Waiting</div>
+                </th>
+                <th scope="col" class="cinder-table__header-cell">
+                  <div class="cinder-table__header-content">
+                    <span class="cinder-sr-only">Decision</span>
+                  </div>
+                </th>
+              </tr>
+            </thead>
+            <tbody class="cinder-table__body">
+              <tr class="cinder-table__row">
+                <td class="cinder-table__cell">
+                  <span
+                    class="cinder-status-dot"
+                    data-cinder-status="warning"
+                    data-cinder-size="md"
+                    role="img"
+                    aria-label="Waiting on you"
+                    ><span class="cinder-status-dot__indicator" aria-hidden="true"></span
+                    ><span class="cinder-status-dot__label">Waiting on you</span></span
+                  >
+                </td>
+                <th scope="row" class="cinder-table__cell">Run the migration on staging</th>
+                <td class="cinder-table__cell">Release worker</td>
+                <td class="cinder-table__cell">4 min</td>
+                <td class="cinder-table__cell" data-cinder-controls>
+                  <span class="arch__row"
+                    ><button
+                      type="button"
+                      class="cinder-button"
+                      data-cinder-variant="primary"
+                      data-cinder-size="sm"
+                    >
+                      Approve</button
+                    ><button
+                      type="button"
+                      class="cinder-button"
+                      data-cinder-variant="secondary"
+                      data-cinder-size="sm"
+                    >
+                      Deny
+                    </button></span
+                  >
+                </td>
+              </tr>
+              <tr class="cinder-table__row">
+                <td class="cinder-table__cell">
+                  <span
+                    class="cinder-status-dot"
+                    data-cinder-status="warning"
+                    data-cinder-size="md"
+                    role="img"
+                    aria-label="Waiting on you"
+                    ><span class="cinder-status-dot__indicator" aria-hidden="true"></span
+                    ><span class="cinder-status-dot__label">Waiting on you</span></span
+                  >
+                </td>
+                <th scope="row" class="cinder-table__cell">Delete 14 stale branches</th>
+                <td class="cinder-table__cell">Cleanup worker</td>
+                <td class="cinder-table__cell">22 min</td>
+                <td class="cinder-table__cell" data-cinder-controls>
+                  <span class="arch__row"
+                    ><button
+                      type="button"
+                      class="cinder-button"
+                      data-cinder-variant="primary"
+                      data-cinder-size="sm"
+                    >
+                      Approve</button
+                    ><button
+                      type="button"
+                      class="cinder-button"
+                      data-cinder-variant="secondary"
+                      data-cinder-size="sm"
+                    >
+                      Deny
+                    </button></span
+                  >
+                </td>
+              </tr>
+              <tr class="cinder-table__row">
+                <td class="cinder-table__cell">
+                  <span
+                    class="cinder-status-dot"
+                    data-cinder-status="warning"
+                    data-cinder-size="md"
+                    role="img"
+                    aria-label="Waiting on you"
+                    ><span class="cinder-status-dot__indicator" aria-hidden="true"></span
+                    ><span class="cinder-status-dot__label">Waiting on you</span></span
+                  >
+                </td>
+                <th scope="row" class="cinder-table__cell">Send the weekly digest to 240 people</th>
+                <td class="cinder-table__cell">Digest worker</td>
+                <td class="cinder-table__cell">1 h</td>
+                <td class="cinder-table__cell" data-cinder-controls>
+                  <span class="arch__row"
+                    ><button
+                      type="button"
+                      class="cinder-button"
+                      data-cinder-variant="primary"
+                      data-cinder-size="sm"
+                    >
+                      Approve</button
+                    ><button
+                      type="button"
+                      class="cinder-button"
+                      data-cinder-variant="secondary"
+                      data-cinder-size="sm"
+                    >
+                      Deny
+                    </button></span
+                  >
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

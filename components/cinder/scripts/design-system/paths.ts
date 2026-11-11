@@ -15,8 +15,10 @@ export const editorRoot = join(repositoryRoot, 'components/editor');
 export const playgroundRoot = join(repositoryRoot, 'applications/playground');
 /** One directory per component id, holding its `*.example.svelte` files. */
 export const examplesRoot = join(playgroundRoot, 'src/examples');
-/** The design-system build's checked-in assets: the brand book and the cover card. */
+/** The design-system build's checked-in assets: the brand book, the recipe and the cover card. */
 export const assetsRoot = join(import.meta.dir, 'assets');
+/** The archetype pages and their shared layout, under the assets. */
+export const archetypesRoot = join(assetsRoot, 'archetypes');
 /** The default output directory; the publishable folder is its `project/` child. */
 export const defaultOutputRoot = join(repositoryRoot, 'tmp/cinder-design-system/out');
 

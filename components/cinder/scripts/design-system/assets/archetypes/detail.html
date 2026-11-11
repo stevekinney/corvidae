@@ -1,0 +1,138 @@
+<!-- @dsCard group="Page archetypes" height=900 subtitle="Detail: key facts, the week's schedule and a quiet aside for one record." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Detail archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Union Station Bar</h1>
+              </div>
+            </div>
+            <div class="cinder-page-header__actions">
+              <button
+                type="button"
+                class="cinder-button"
+                data-cinder-variant="secondary"
+                data-cinder-size="md"
+              >
+                Save
+              </button>
+              <a href="#" class="cinder-button" data-cinder-variant="primary" data-cinder-size="md"
+                >Get directions</a
+              >
+            </div>
+          </div>
+        </div>
+        <div class="arch__split arch__split--aside">
+          <div class="arch__column">
+            <ul class="cinder-key-facts" aria-label="Facts about Union Station Bar">
+              <li class="cinder-key-facts__item">
+                <span class="cinder-key-facts__value">Cocktail bar</span>
+              </li>
+              <li class="cinder-key-facts__item">
+                <span class="cinder-key-facts__value">LoDo</span>
+              </li>
+              <li class="cinder-key-facts__item">
+                <span class="cinder-key-facts__value">$$</span>
+              </li>
+            </ul>
+            <section class="cinder-section" aria-labelledby="detail-week-title">
+              <div class="cinder-section__header">
+                <div class="cinder-section__heading">
+                  <h2 id="detail-week-title" class="cinder-section__title">Happy hour</h2>
+                </div>
+              </div>
+              <div class="cinder-section__content">
+                <ol class="cinder-week-schedule" aria-label="Weekly schedule">
+                  <li class="cinder-week-schedule__row">
+                    <span class="cinder-week-schedule__day">Mon</span>
+                    <span class="cinder-week-schedule__times"
+                      ><time>3:00 pm</time> – <time>7:00 pm</time></span
+                    >
+                    <span class="cinder-week-schedule__description">Half-price drinks</span>
+                  </li>
+                  <li class="cinder-week-schedule__row" data-today aria-current="date">
+                    <span class="cinder-week-schedule__day">Tue</span>
+                    <span class="cinder-week-schedule__times"
+                      ><time>3:00 pm</time> – <time>7:00 pm</time></span
+                    >
+                    <span class="cinder-week-schedule__description"
+                      ><span class="cinder-week-schedule__live">On now</span> Half-price
+                      drinks</span
+                    >
+                  </li>
+                  <li class="cinder-week-schedule__row">
+                    <span class="cinder-week-schedule__day">Wed</span>
+                    <span class="cinder-week-schedule__times"
+                      ><time>3:00 pm</time> – <time>7:00 pm</time></span
+                    >
+                    <span class="cinder-week-schedule__description">Half-price drinks</span>
+                  </li>
+                  <li class="cinder-week-schedule__row">
+                    <span class="cinder-week-schedule__day">Thu</span>
+                    <span class="cinder-week-schedule__times"
+                      ><time>3:00 pm</time> – <time>8:00 pm</time></span
+                    >
+                    <span class="cinder-week-schedule__description">Two-for-one wells</span>
+                  </li>
+                  <li class="cinder-week-schedule__row">
+                    <span class="cinder-week-schedule__day">Fri</span>
+                    <span class="cinder-week-schedule__times"
+                      ><time>4:00 pm</time> – <time>2:00 am</time
+                      ><span class="cinder-week-schedule__next-day"> next day</span></span
+                    >
+                    <span class="cinder-week-schedule__description">Late-night menu</span>
+                  </li>
+                </ol>
+              </div>
+            </section>
+            <section class="cinder-section" aria-labelledby="detail-about-title">
+              <div class="cinder-section__header">
+                <div class="cinder-section__heading">
+                  <h2 id="detail-about-title" class="cinder-section__title">About</h2>
+                </div>
+              </div>
+              <div class="cinder-section__content">
+                <p class="arch__prose">
+                  A long, narrow room under the departures board. Order at the bar, then take a
+                  stool by the window.
+                </p>
+              </div>
+            </section>
+          </div>
+          <div class="arch__column">
+            <dl class="cinder-description-list" data-cinder-variant="default">
+              <div class="cinder-description-list__row">
+                <dt class="cinder-_label-text">Address</dt>
+                <dd class="cinder-_value-text">
+                  <div class="cinder-description-list__definition">1701 Wynkoop St, Denver</div>
+                </dd>
+              </div>
+              <div class="cinder-description-list__row">
+                <dt class="cinder-_label-text">Phone</dt>
+                <dd class="cinder-_value-text">
+                  <div class="cinder-description-list__definition">303 555 0142</div>
+                </dd>
+              </div>
+              <div class="cinder-description-list__row">
+                <dt class="cinder-_label-text">Updated</dt>
+                <dd class="cinder-_value-text">
+                  <div class="cinder-description-list__definition">Nov 10</div>
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

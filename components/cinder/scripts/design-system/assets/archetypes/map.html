@@ -1,0 +1,173 @@
+<!-- @dsCard group="Page archetypes" height=760 subtitle="Map: the map is the page and a peek sheet holds the selected place." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Map archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="arch__row">
+          <h1 class="arch__title">Happy hours on the map</h1>
+          <div class="arch__row--end">
+            <div class="cinder-segmented-control-container">
+              <span id="map-when-label" class="cinder-segmented-control-label cinder-sr-only"
+                >When</span
+              >
+              <div
+                id="map-when"
+                role="radiogroup"
+                aria-labelledby="map-when-label"
+                aria-orientation="horizontal"
+                class="cinder-segmented-control"
+                data-cinder-orientation="horizontal"
+                data-cinder-size="md"
+                data-cinder-selection-mode="single"
+                data-cinder-variant="radiogroup"
+              >
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked="true"
+                  tabindex="0"
+                  class="cinder-segmented-control-option"
+                  data-cinder-segment-value="now"
+                  data-cinder-selected
+                >
+                  Now
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked="false"
+                  tabindex="-1"
+                  class="cinder-segmented-control-option"
+                  data-cinder-segment-value="later"
+                >
+                  Later
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="arch__stage">
+          <div class="arch__map" role="group" aria-label="Map of places with a happy hour">
+            <span class="arch__marker" style="inset-inline-start: 30%; inset-block-start: 30%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="selected"
+                aria-label="Union Station Bar, selected"
+                aria-pressed="true"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__label">25 min</span></span
+                ><span class="cinder-map-marker__anchor" aria-hidden="true"></span></button
+            ></span>
+            <span class="arch__marker" style="inset-inline-start: 62%; inset-block-start: 24%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="live"
+                aria-label="The Cooper Lounge, pouring now"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__dot" aria-hidden="true"></span
+                  ><span class="cinder-map-marker__label">Now</span></span
+                ><span class="cinder-map-marker__anchor" aria-hidden="true"></span></button
+            ></span>
+            <span class="arch__marker" style="inset-inline-start: 78%; inset-block-start: 42%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="idle"
+                aria-label="Rioja Bar, starts in 55 minutes"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__label">55 min</span></span
+                ><span class="cinder-map-marker__anchor" aria-hidden="true"></span></button
+            ></span>
+            <span class="arch__marker" style="inset-inline-start: 44%; inset-block-start: 46%"
+              ><button
+                type="button"
+                class="cinder-map-marker"
+                data-state="cluster"
+                aria-label="Three places starting after 5 pm"
+              >
+                <span class="cinder-map-marker__body"
+                  ><span class="cinder-map-marker__label">3</span></span
+                >
+              </button></span
+            >
+          </div>
+          <aside
+            class="cinder-drawer"
+            data-cinder-modal="false"
+            aria-labelledby="map-peek-title"
+            data-cinder-portal-owner="map-peek-scope"
+          >
+            <div id="map-peek-scope" class="cinder-drawer__portal-scope"></div>
+            <div class="cinder-drawer__panel" data-cinder-placement="bottom" data-cinder-size="md">
+              <div class="cinder-drawer__drag-handle" aria-hidden="true">
+                <span class="cinder-drawer__drag-handle-pill"></span>
+              </div>
+              <header class="cinder-drawer__header">
+                <h2 id="map-peek-title" class="cinder-drawer__title">Union Station Bar</h2>
+                <button type="button" class="cinder-drawer__close" aria-label="Close drawer">
+                  <svg
+                    class="cinder-drawer__close-icon"
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 20 20"
+                    fill="currentColor"
+                    aria-hidden="true"
+                  >
+                    <path
+                      d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z"
+                    />
+                  </svg>
+                </button>
+              </header>
+              <div class="cinder-drawer__body cinder-_scroll-fade" tabindex="-1">
+                <div class="arch__column">
+                  <ul class="cinder-key-facts" aria-label="Facts about Union Station Bar">
+                    <li class="cinder-key-facts__item">
+                      <span class="cinder-key-facts__value">Pouring until 7 pm</span>
+                    </li>
+                    <li class="cinder-key-facts__item">
+                      <span class="cinder-key-facts__value">LoDo</span>
+                    </li>
+                    <li class="cinder-key-facts__item">
+                      <span class="cinder-key-facts__value">Half-price drinks</span>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+              <div class="cinder-drawer__footer">
+                <div class="arch__row">
+                  <a
+                    href="#"
+                    class="cinder-button"
+                    data-cinder-variant="primary"
+                    data-cinder-size="md"
+                    >See the full week</a
+                  >
+                  <button
+                    type="button"
+                    class="cinder-button"
+                    data-cinder-variant="secondary"
+                    data-cinder-size="md"
+                  >
+                    Get directions
+                  </button>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </main>
+  </body>
+</html>

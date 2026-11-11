@@ -1,8 +1,10 @@
 /**
  * Builds Cinder's design system for Claude Design: a publishable `project/` folder holding the
  * token files, the brand book, a guideline page per component, a live preview card for every
- * component with playground examples, and `components/bundle.js`, which exposes every component
- * as `window.Cinder` for a design canvas to mount.
+ * component with playground examples, `components/bundle.css` and `components/bundle.js` (which
+ * exposes every component as `window.Cinder` for a design canvas to mount), `recipe.md`, the
+ * class-level markup for a canvas that writes HTML, and a full-page preview card per page
+ * archetype under the "Page archetypes" group.
  *
  * Usage: bun scripts/design-system/build.ts [--out <directory>] [--note <text>]
  *
@@ -254,6 +256,15 @@ async function main(): Promise<number> {
   mkdirSync(cover, { recursive: true });
   copyFileSync(join(assetsRoot, 'cover.html'), join(cover, 'preview.html'));
 
+  step('recipe and archetypes');
+  copyFileSync(join(assetsRoot, 'recipe.md'), join(projectDirectory, 'recipe.md'));
+  const archetypes = readArchetypePreviews(archetypesRoot);
+  for (const archetype of archetypes) {
+    const directory = join(componentsDirectory, archetype.exportName);
+    mkdirSync(directory, { recursive: true });
+    writeFileSync(join(directory, 'preview.html'), archetype.html);
+  }
+
   step('brand book');
   writeFileSync(
     join(projectDirectory, 'README.md'),
@@ -273,7 +284,15 @@ async function main(): Promise<number> {
   withoutCard.length = 0;
   writeComponents(check.results);
 
+  step(`render check: ${archetypes.length} archetypes in light and dark, at phone and desktop`);
+  const archetypeProblems = await checkArchetypeRenders(
+    projectDirectory,
+    join(workDirectory, 'check-archetypes'),
+    archetypes.map((archetype) => archetype.exportName),
+  );
+
   const problems = [
+    ...archetypeProblems.map((problem) => `archetype ${problem}`),
     ...built.failures.map((failure) => `build ${failure}`),
     ...[...snapshots].flatMap(([id, snapshot]) =>
       snapshot.errors.map((error) => `snapshot ${id} ${error}`),
@@ -283,7 +302,7 @@ async function main(): Promise<number> {
   const previewCount = live.length + staticNames.length;
   const note =
     options.note ??
-    `Generated from components/cinder: ${tokens.count} tokens, ${manifest.components.length} components, ${previewCount} previews.`;
+    `Generated from components/cinder: ${tokens.count} tokens, ${manifest.components.length} components, ${previewCount} previews, ${archetypes.length} page archetypes.`;
   writeFileSync(
     join(projectDirectory, 'design-system.json'),
     JSON.stringify(

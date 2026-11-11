@@ -1,0 +1,149 @@
+/* Page layout for the design system's archetype previews. Only the arrangement lives here:
+   every component is Cinder's own markup, styled by bundle.css, and every value is a token. */
+html,
+body {
+  margin: 0;
+}
+body {
+  background: var(--cinder-surface-canvas);
+  color: var(--cinder-text-default);
+  font-family: var(--cinder-font-sans);
+  font-size: var(--cinder-text-body);
+  line-height: var(--cinder-leading-normal);
+}
+h1,
+h2,
+h3,
+p,
+ul,
+ol,
+dl,
+dd {
+  margin: 0;
+}
+ul,
+ol {
+  padding: 0;
+  list-style: none;
+}
+
+/* The page is the container, so one markup serves a phone and a desktop: the arrangement follows
+   the width the page is given, not the width of the window around it. */
+.arch {
+  container-type: inline-size;
+  container-name: arch;
+  box-sizing: border-box;
+  min-block-size: 100vh;
+}
+.arch__body {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-8);
+  max-inline-size: var(--cinder-content-width-wide);
+  margin-inline: auto;
+  padding: var(--cinder-pad-page);
+}
+.arch__column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-6);
+  min-inline-size: 0;
+}
+.arch__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cinder-space-3);
+}
+.arch__row--end {
+  margin-inline-start: auto;
+}
+.arch__split {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: var(--cinder-space-8);
+  align-items: start;
+}
+.arch__narrow {
+  max-inline-size: var(--cinder-content-width-narrow);
+}
+.arch__prose {
+  max-inline-size: var(--cinder-content-width-prose);
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-secondary);
+}
+.arch__title {
+  font-size: var(--cinder-text-page-title);
+  font-weight: var(--cinder-font-semibold);
+  line-height: var(--cinder-leading-tight);
+}
+
+/* The map's stand-in. Cinder has no map surface: the host supplies tiles, and the markers and the
+   legend are Cinder's. A quiet inset surface with a faint grid shows where the tiles go. */
+.arch__map {
+  position: relative;
+  min-block-size: 20rem;
+  border-radius: var(--cinder-radius-surface);
+  background-color: var(--cinder-surface-inset);
+  background-image:
+    linear-gradient(var(--cinder-border-faint) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cinder-border-faint) 1px, transparent 1px);
+  background-size: 4rem 4rem;
+  overflow: hidden;
+}
+.arch__marker {
+  position: absolute;
+  transform: translate(-50%, -100%);
+}
+.arch__legend {
+  position: absolute;
+  inset-inline-start: var(--cinder-space-3);
+  inset-block-end: var(--cinder-space-3);
+}
+
+/* A stage holds a floating surface in the page. A contained transform-free box that establishes a
+   containing block for fixed descendants lets the real, viewport-fixed Drawer sit inside the
+   preview instead of covering the whole card. */
+.arch__stage {
+  position: relative;
+  contain: layout;
+  min-block-size: 32rem;
+  border-radius: var(--cinder-radius-surface);
+  overflow: hidden;
+}
+.arch__stage .arch__map {
+  position: absolute;
+  inset: 0;
+  border-radius: 0;
+}
+.arch__stage .cinder-drawer {
+  position: absolute;
+  inset: 0;
+  inline-size: auto;
+  block-size: auto;
+}
+
+@container arch (min-width: 56rem) {
+  .arch__split--aside {
+    grid-template-columns: minmax(0, 1fr) 20rem;
+  }
+  .arch__split--map {
+    grid-template-columns: minmax(0, 26rem) minmax(0, 1fr);
+  }
+  .arch__map {
+    position: sticky;
+    inset-block-start: var(--cinder-space-6);
+    min-block-size: 32rem;
+  }
+}
+
+@container arch (max-width: 40rem) {
+  .arch__body {
+    gap: var(--cinder-space-6);
+    padding: var(--cinder-space-4);
+  }
+  .arch__title {
+    font-size: var(--cinder-text-section-title);
+  }
+}

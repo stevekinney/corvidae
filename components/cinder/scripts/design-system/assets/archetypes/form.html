@@ -1,0 +1,129 @@
+<!-- @dsCard group="Page archetypes" height=780 subtitle="Form: one column of filled fields, a Select without the browser caret, and the actions at the end." -->
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Form archetype</title>
+    <!-- archetype-styles -->
+  </head>
+  <body>
+    <main class="arch">
+      <div class="arch__body">
+        <div class="cinder-page-header">
+          <div class="cinder-page-header__row">
+            <div class="cinder-page-header__heading-group">
+              <div class="cinder-page-header__title-line">
+                <h1 class="cinder-page-header__title">Add a place</h1>
+              </div>
+            </div>
+          </div>
+        </div>
+        <form class="arch__column arch__narrow" action="#">
+          <section class="cinder-form-section" data-columns="1">
+            <h2 class="cinder-form-section__heading">Details</h2>
+            <p class="cinder-form-section__description">Only the name is required.</p>
+            <div class="cinder-form-section__grid">
+              <div
+                class="cinder-form-field cinder-input-field"
+                data-cinder-variant="default"
+                data-cinder-full-width
+              >
+                <label id="form-name-label" for="form-name" class="cinder-form-field__label"
+                  >Name <span class="cinder-_required-marker" aria-hidden="true"></span
+                ></label>
+                <div class="cinder-form-field__control cinder-input-host" data-cinder-full-width>
+                  <input
+                    id="form-name"
+                    class="cinder-input"
+                    type="text"
+                    required
+                    value="Union Station Bar"
+                    aria-describedby="form-name-description"
+                    data-cinder-full-width
+                    data-cinder-variant="default"
+                    data-cinder-size="md"
+                  />
+                </div>
+                <p id="form-name-description" class="cinder-form-field__description">
+                  As it appears on the sign.
+                </p>
+                <p id="form-name-error" class="cinder-form-field__error" aria-live="polite"></p>
+              </div>
+              <div
+                class="cinder-form-field cinder-input-field"
+                data-cinder-variant="default"
+                data-cinder-full-width
+              >
+                <label id="form-address-label" for="form-address" class="cinder-form-field__label"
+                  >Address</label
+                >
+                <div class="cinder-form-field__control cinder-input-host" data-cinder-full-width>
+                  <input
+                    id="form-address"
+                    class="cinder-input"
+                    type="text"
+                    value="1701 Wynkoop St, Denver"
+                    data-cinder-full-width
+                    data-cinder-variant="default"
+                    data-cinder-size="md"
+                  />
+                </div>
+                <p id="form-address-error" class="cinder-form-field__error" aria-live="polite"></p>
+              </div>
+              <div class="cinder-form-field cinder-select-field" data-cinder-variant="default">
+                <label
+                  id="form-area-label"
+                  for="form-area"
+                  class="cinder-form-field__label cinder-select-field__label"
+                  >Neighbourhood</label
+                >
+                <span class="cinder-select-field__control">
+                  <select
+                    id="form-area"
+                    class="cinder-_input-frame cinder-select"
+                    data-cinder-size="md"
+                    data-cinder-variant="default"
+                  >
+                    <option value="lodo" selected>LoDo</option>
+                    <option value="rino">RiNo</option>
+                    <option value="cap-hill">Capitol Hill</option>
+                  </select>
+                  <span class="cinder-select-field__chevron" aria-hidden="true"></span>
+                </span>
+                <p
+                  id="form-area-error"
+                  class="cinder-form-field__error cinder-select-field__error"
+                  aria-live="polite"
+                ></p>
+              </div>
+            </div>
+          </section>
+          <div class="cinder-form-actions" role="group" aria-label="Form actions">
+            <div class="cinder-form-actions__row">
+              <div class="cinder-form-actions__summary" role="status"></div>
+              <div class="cinder-form-actions__end">
+                <button
+                  type="button"
+                  class="cinder-button"
+                  data-cinder-variant="secondary"
+                  data-cinder-size="md"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  class="cinder-button"
+                  data-cinder-variant="primary"
+                  data-cinder-size="md"
+                >
+                  Save place
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+      </div>
+    </main>
+  </body>
+</html>

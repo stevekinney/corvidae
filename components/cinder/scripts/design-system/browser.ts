@@ -153,3 +153,72 @@ export async function checkRenders(
   });
   return { results, problems };
 }
+
+/** The widths an archetype card is rendered at: a phone and a desktop. */
+const ARCHETYPE_VIEWPORTS = [
+  { name: 'phone', width: 390, height: 844 },
+  { name: 'desktop', width: 1280, height: 900 },
+];
+
+/**
+ * Renders every archetype card with `tokens.css` and `bundle.css` linked, in light and dark, at a
+ * phone and a desktop width, and returns one line per rendering that logged an error, rendered
+ * empty, scrolled sideways, or drew a native select with its browser caret.
+ */
+export async function checkArchetypeRenders(
+  projectDirectory: string,
+  checkDirectory: string,
+  names: string[],
+): Promise<string[]> {
+  const tokensCss = pathToFileURL(join(projectDirectory, 'tokens.css')).href;
+  const bundleCss = pathToFileURL(join(projectDirectory, 'components/bundle.css')).href;
+  const problems: string[] = [];
+  if (names.length === 0) return problems;
+  await withBrowser(async (browser) => {
+    for (const name of names) {
+      const directory = join(checkDirectory, name);
+      mkdirSync(directory, { recursive: true });
+      const html = readFileSync(
+        join(projectDirectory, 'components', name, 'preview.html'),
+        'utf8',
+      ).replace(
+        '<head>',
+        `<head><link rel="stylesheet" href="${tokensCss}"><link rel="stylesheet" href="${bundleCss}">`,
+      );
+      writeFileSync(join(directory, 'index.html'), html);
+      for (const viewport of ARCHETYPE_VIEWPORTS) {
+        for (const theme of ['light', 'dark']) {
+          const page = await browser.newPage({
+            viewport: { width: viewport.width, height: viewport.height },
+          });
+          const errors: string[] = [];
+          page.on('console', (message) => {
+            if (message.type() === 'error') errors.push(message.text().slice(0, 160));
+          });
+          page.on('pageerror', (error) => errors.push(String(error).slice(0, 160)));
+          await page.goto(pathToFileURL(join(directory, 'index.html')).href);
+          await page.evaluate(
+            (value) => document.documentElement.setAttribute('data-theme', value),
+            theme,
+          );
+          await page.waitForTimeout(CHECK_SETTLE_MILLISECONDS);
+          const info = await page.evaluate(() => ({
+            height: Math.ceil(document.body.getBoundingClientRect().height),
+            overflow: document.documentElement.scrollWidth > window.innerWidth,
+            text: document.body.innerText.trim().length,
+            caret: [...document.querySelectorAll('select')].filter(
+              (select) => getComputedStyle(select).appearance !== 'none',
+            ).length,
+          }));
+          await page.close();
+          const where = `${name} ${viewport.name} ${theme}`;
+          if (errors.length > 0) problems.push(`${where} logged ${JSON.stringify(errors)}`);
+          if (info.height < 16 || info.text === 0) problems.push(`${where} rendered empty`);
+          if (info.overflow) problems.push(`${where} scrolls sideways`);
+          if (info.caret > 0) problems.push(`${where} shows the browser's select caret`);
+        }
+      }
+    }
+  });
+  return problems;
+}
