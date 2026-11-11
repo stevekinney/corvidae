@@ -211,16 +211,15 @@ describe('internal workspace architecture', () => {
     expect(validationStages).toEqual([
       'bun run lint:root',
       'bun run typecheck:root',
-      // Every workspace task in one turbo run, so lint, type-checks, tests, and coverage overlap
-      // under the memory-scaled concurrency instead of waiting on each other stage by stage. The
+      // Every workspace task in one turbo run, so lint, type-checks, and tests overlap under the
+      // memory-scaled concurrency instead of waiting on each other stage by stage. The
       // applications' builds stay out: the playground's static export alone takes about five
-      // minutes, and `bun run build` and the Vercel project's own build still run it. `test:gate`
-      // runs each package's suite once: its coverage run where it has one, its `test` otherwise.
-      'turbo run lint typecheck test:self test:gate test:browser-fixtures',
-      // COR-1499: slow correctness tests run serially after the parallel phase, then the duration
-      // report (warnings only) reads the fast phase's reports.
+      // minutes, and `bun run build` and the Vercel project's own build still run it. Every suite
+      // runs through the same `test` task the per-pull-request checks run, so a suite they just ran
+      // is a cache hit here. Coverage is a report (`bun run coverage`), never part of this chain.
+      'turbo run lint typecheck test:self test test:browser-fixtures',
+      // COR-1499: slow correctness tests run serially after the parallel phase.
       'bun run test:slow',
-      'bun run report:test-durations',
       'bun run format:check',
       'bun run audit',
     ]);
@@ -239,8 +238,8 @@ describe('internal workspace architecture', () => {
     // The development loop. Lint and the type-checks run for the workspaces a change can affect,
     // judged against the default branch (`--affected`). Tests run through `affected-tests.ts`,
     // which selects test files by import graph instead of by package and drives the same Turborepo
-    // lanes (`test:gate` for a workspace selected whole, a narrowed `test` for one selected in part,
-    // the root self-tests, the browser fixtures, then the serial slow lanes).
+    // lanes (`test` for a workspace selected whole or in part, the root self-tests, the browser
+    // fixtures, then the serial slow lanes).
     // `validate` stays the full gate. `check` is the per-pull-request gate, so it runs `--shared`:
     // parallel sessions run it side by side instead of queueing it behind a full validate.
     expect(scripts['check']).toBe(
@@ -431,24 +430,29 @@ describe('internal workspace architecture', () => {
       expect(manifest.scripts?.['typecheck'], directory).toContain('--tsconfig ./tsconfig.json');
     }
   });
-  test('every library and component lints its documentation coverage, keyed on the checker', async () => {
+  test('every library and component keeps the inherited-key check in lint, and its documentation checks out of lint and typecheck', async () => {
     // Verification workspaces are tooling for this repository, not a documented surface.
     const documented = libraries.filter((name) => !verificationLibraries.includes(name));
-    const checker = 'bun ../../scripts/check-documentation-coverage.ts';
     for (const name of documented) {
       const directory = `${componentLibraries.includes(name) ? 'components' : 'packages'}/${name}`;
       const manifest = await readManifest(directory);
-      expect(manifest.scripts?.['lint'], directory).toEndWith(` && ${checker}`);
-      // The inherited-key check runs in the same `lint`, so a new workspace cannot skip it.
+      // The inherited-key check is a correctness check, so a new workspace cannot skip it.
       expect(manifest.scripts?.['lint'], directory).toContain(
         ' && bun ../../scripts/check-inherited-key-reads.ts',
+      );
+      // The documentation checks run only under `release:check` (the owner's decision of
+      // 2026-11-10, COR-2370): documentation coverage and the documentation code blocks.
+      expect(manifest.scripts?.['lint'], directory).not.toContain('check-documentation');
+      expect(manifest.scripts?.['typecheck'], directory).not.toContain('documentation');
+      expect(manifest.scripts?.['typecheck:documentation'], directory).toBeUndefined();
+      expect(manifest.scripts?.['release:check'], directory).toBe(
+        'bun ../../scripts/check-documentation-coverage.ts && bun ../../scripts/check-documentation-code-blocks.ts',
       );
     }
     // A package-specific `lint` override replaces the generic task, so each one must restate the
     // checker among its inputs or edits to the checker would replay a stale result.
-    const configuration: { tasks: Record<string, { inputs?: string[] }> } = await Bun.file(
-      join(root, 'turbo.json'),
-    ).json();
+    const configuration: { tasks: Record<string, { inputs?: string[]; dependsOn?: string[] }> } =
+      await Bun.file(join(root, 'turbo.json')).json();
     const lintTasks = Object.entries(configuration.tasks).filter(
       ([task]) => task === 'lint' || (task.endsWith('#lint') && !task.startsWith('//')),
     );
@@ -456,53 +460,63 @@ describe('internal workspace architecture', () => {
     for (const [task, definition] of lintTasks) {
       expect(definition.inputs, task).toContain('$TURBO_DEFAULT$');
       expect(definition.inputs, task).toContain(
-        '$TURBO_ROOT$/scripts/check-documentation-coverage.ts',
-      );
-      expect(definition.inputs, task).toContain(
         '$TURBO_ROOT$/scripts/check-inherited-key-reads.ts',
       );
-    }
-  });
-  test("Interborough's lint runs the documentation coverage check over src/host and src/lib", async () => {
-    // An application has no `exports` map, so its `lint` names the files the check judges.
-    const manifest = await readManifest('applications/interborough');
-    const lint = manifest.scripts?.['lint'] ?? '';
-    expect(lint).toContain(' && bun ../../scripts/check-documentation-coverage.ts --entries ');
-    const entries = lint.split('check-documentation-coverage.ts --entries ')[1] ?? '';
-    expect(entries).toContain("'src/host/**/*.ts'");
-    expect(entries).toContain("'src/lib/**/*.ts'");
-  });
-  test('every library and component type-checks its documentation code blocks, keyed on the checker', async () => {
-    // Verification workspaces are tooling for this repository, not a documented surface.
-    const documented = libraries.filter((name) => !verificationLibraries.includes(name));
-    const checker = 'bun ../../scripts/check-documentation-code-blocks.ts';
-    for (const name of documented) {
-      const directory = `${componentLibraries.includes(name) ? 'components' : 'packages'}/${name}`;
-      const manifest = await readManifest(directory);
-      expect(manifest.scripts?.['typecheck:documentation'], directory).toBe(checker);
-      expect(manifest.scripts?.['typecheck'], directory).toEndWith(
-        ' && bun run typecheck:documentation',
+      expect(definition.inputs, task).not.toContain(
+        '$TURBO_ROOT$/scripts/check-documentation-coverage.ts',
       );
     }
-    // A package-specific `typecheck` override replaces the generic task, so each one must restate
-    // the checker, the module it imports, and the published surface it reads among its inputs, or
-    // edits to them would replay a stale result.
-    const configuration: { tasks: Record<string, { inputs?: string[] }> } = await Bun.file(
-      join(root, 'turbo.json'),
-    ).json();
+    // No type-check task reads the documentation checkers or the published surface any more.
     const typecheckTasks = Object.entries(configuration.tasks).filter(
       ([task]) => task === 'typecheck' || (task.endsWith('#typecheck') && !task.startsWith('//')),
     );
     expect(typecheckTasks.length).toBeGreaterThan(0);
     for (const [task, definition] of typecheckTasks) {
-      expect(definition.inputs, task).toContain('$TURBO_DEFAULT$');
       for (const input of [
         'scripts/check-documentation-code-blocks.ts',
         'scripts/check-documentation-coverage.ts',
         'scripts/published-exports.json',
       ]) {
-        expect(definition.inputs, task).toContain(`$TURBO_ROOT$/${input}`);
+        expect(definition.inputs, task).not.toContain(`$TURBO_ROOT$/${input}`);
       }
+    }
+    // `release:check` is one cacheable task keyed on both checkers, the module the coverage
+    // checker imports, and the published surface the code-block checker reads. It waits for its
+    // dependencies' declarations, as `typecheck` does, because the code blocks import them.
+    const releaseCheck = configuration.tasks['release:check'];
+    expect(releaseCheck?.dependsOn).toEqual(['transit', '^types']);
+    expect(releaseCheck?.inputs).toContain('$TURBO_DEFAULT$');
+    for (const input of [
+      'scripts/check-documentation-code-blocks.ts',
+      'scripts/check-documentation-coverage.ts',
+      'scripts/workspace-exports.ts',
+      'scripts/published-exports.json',
+    ]) {
+      expect(releaseCheck?.inputs, input).toContain(`$TURBO_ROOT$/${input}`);
+    }
+    expect(
+      Object.keys(configuration.tasks).filter((task) => task.endsWith('#release:check')),
+    ).toEqual([]);
+  });
+  test("Interborough's release:check runs the documentation coverage check over src/host and src/lib", async () => {
+    // An application has no `exports` map, so its `release:check` names the files the check judges.
+    const manifest = await readManifest('applications/interborough');
+    expect(manifest.scripts?.['lint'] ?? '').not.toContain('check-documentation');
+    const releaseCheck = manifest.scripts?.['release:check'] ?? '';
+    expect(releaseCheck).toStartWith(
+      'bun ../../scripts/check-documentation-coverage.ts --entries ',
+    );
+    expect(releaseCheck).toContain("'src/host/**/*.ts'");
+    expect(releaseCheck).toContain("'src/lib/**/*.ts'");
+  });
+  test('the root release:check sweeps every workspace, then the duration check, and validate runs neither', async () => {
+    const rootManifest = await readManifest('.');
+    const scripts = rootManifest.scripts ?? {};
+    expect(scripts['release:check']).toBe(
+      "bun scripts/run-exclusively.ts 'turbo run release:check' && bun run check:test-durations",
+    );
+    for (const stage of ['validate', 'check', 'lint', 'typecheck']) {
+      expect(scripts[stage], stage).not.toMatch(/release:check|documentation|published-exports/);
     }
   });
   test('locked workspace executable metadata matches existing manifest entrypoints', async () => {
@@ -620,6 +634,9 @@ describe('internal workspace architecture', () => {
         // Design system artifact under `tmp/` (components/cinder/README.md "Design system"); they
         // build no package output and publish nothing from the workspace.
         if (library === 'cinder' && command.startsWith('design-system:')) continue;
+        // `release:check` is the pre-backport sweep of documentation and published-surface checks
+        // (COR-2370); it packs, publishes, and releases nothing.
+        if (command === 'release:check') continue;
         expect(command).not.toMatch(/build|pack|publish|release|prepare|postinstall/);
       }
       expect(manifest.publishConfig).toBeUndefined();

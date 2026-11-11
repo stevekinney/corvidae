@@ -4,9 +4,8 @@
  *
  * Everything below is dependency-free: no `ResizeObserver`, no runes, and —
  * with the sole exception of {@link domWritingDirectionReader}'s two
- * one-line DOM reads — no direct DOM access either. It is held to the
- * 100%-lines/100%-functions coverage floor (see `coverage-ratchet.json`)
- * because none of it needs live layout to exercise every branch; the reader
+ * one-line DOM reads — no direct DOM access either. Every branch of it is
+ * testable without live layout; the reader
  * indirection in {@link resolveWritingDirection} is exactly what makes that
  * true for RTL detection too, despite happy-dom's `getComputedStyle` being
  * blind to the `dir` attribute (see that function's doc comment).

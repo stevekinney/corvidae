@@ -32,6 +32,23 @@ function unsafeScrollContainerProps(props: Record<string, unknown>): TableScroll
   return props;
 }
 
+describe('Table frameless', () => {
+  test('frameless marks the table and its scroll wrapper, and is off by default', () => {
+    const framed = render(Wrapper, { columns, rows });
+    expect(framed.container.querySelector('[data-cinder-frameless]')).toBeNull();
+    framed.unmount();
+    const bare = render(Wrapper, { columns, rows, frameless: true });
+    expect(bare.container.querySelectorAll('[data-cinder-frameless]').length).toBe(2);
+  });
+
+  test('a header cell never wraps, so a table that does not fit scrolls sideways', async () => {
+    const css = await Bun.file(new URL('./table.css', import.meta.url)).text();
+    const block = css.match(/\.cinder-table__header-cell\s*\{[^}]*\}/)?.[0] ?? '';
+    expect(block).toContain('white-space: nowrap');
+    expect(block).not.toContain('balance');
+  });
+});
+
 describe('Table semantics', () => {
   test('renders semantic <table>, <thead>, <tbody> elements', () => {
     const { container } = render(Wrapper, { columns, rows });
@@ -992,7 +1009,10 @@ describe('CSS rule assertions — sort indicator and focus ring', () => {
     const tableRule = injectTableCssAndFind('.cinder-table-scroll > .cinder-table');
     expect(wrapperRule?.style.overflowX).toBe('auto');
     expect(wrapperRule?.style.borderRadius).toBe('var(--cinder-radius-lg)');
+    // max-content (COR-2311): a table that does not fit scrolls sideways instead of crushing columns.
     expect(tableRule?.style.minInlineSize).toBe('max-content');
+    const headerRule = injectTableCssAndFind('.cinder-table__header-cell');
+    expect(headerRule?.style.whiteSpace).toBe('nowrap');
   });
 
   test('scroll wrapper focus-visible state declares a visible focus ring', () => {

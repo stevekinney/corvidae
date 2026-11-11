@@ -251,8 +251,8 @@
   --cinder-surface-inverse: var(--cinder-text-default);
   /* Upcoming step marker background. Keeps the inset treatment in light mode (surface-inset is visibly recessed vs surface), but lifts to surface in dark mode, where the 18% inset sits only three lightness points above the 15% canvas a marker is drawn on and would read as a hole rather than a marker; the surface (21%) steps up from the canvas. */
   --cinder-surface-upcoming-marker: light-dark(var(--cinder-surface-inset), var(--cinder-surface));
-  /* Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.995 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness. */
-  --cinder-surface-canvas: light-dark(oklch(99.5% 0 255), oklch(15% 0.035 245));
+  /* Page canvas background, distinct from `surface.base` (a card body). Sits on the surface ramp that runs inset -> bg -> surface -> raised. Light mode anchors that ramp at white (0.960 -> 0.975 -> 0.998 -> 1.000); dark mode runs the same ordering at low lightness. */
+  --cinder-surface-canvas: light-dark(oklch(97.5% 0 255), oklch(15% 0.035 245));
   /* The neutral ink that contrasts with the current theme's surfaces: black in light mode, white in dark mode. It is a complete color value, not a bare component triplet, so it can be assigned directly to any color-valued property and mixed with `color-mix()` to build a wash at any alpha. The scrollbar washes (track, thumb, thumb-hover) derive from this one token, so overriding it at :root or in a [data-theme] block re-polarizes them together; a subtree override does not reach them, because the washes are declared at :root and descendants inherit the already-resolved values. The shadow tokens are NOT derived from it and do not follow an override: shadow.small/medium/large carry independently tuned per-arm alphas (0.10 light against 0.09 dark, and so on) that one ink cannot express without changing what they paint. */
   --cinder-polarity-ink: light-dark(oklch(0% 0 0), oklch(100% 0 0));
   /* Structural edge for containers: cards, dialogs, drawers, popovers, panels, tables, toasts. A 9% alpha step over `border.ink`. Quiet on purpose and exempt from WCAG 1.4.11 (the container is identified by its surface and content); a control boundary uses `border.control` instead. */
@@ -948,7 +948,7 @@
   );
   --cinder-surface-inverse: var(--cinder-text-default);
   --cinder-surface-upcoming-marker: var(--cinder-surface-inset);
-  --cinder-surface-canvas: oklch(99.5% 0 255);
+  --cinder-surface-canvas: oklch(97.5% 0 255);
   --cinder-polarity-ink: oklch(0% 0 0);
   --cinder-border: color-mix(in oklch, var(--cinder-border-ink), transparent 91%);
   --cinder-border-ink: oklch(20% 0.02 255);

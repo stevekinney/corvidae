@@ -16,8 +16,7 @@
  * unseen," the way it would be in a general-purpose bottom-sticking list.
  *
  * Everything here is dependency-free arithmetic: no DOM, no runes, no
- * globals. Held to the same 100%-lines/100%-functions coverage floor as
- * `measurement-window.ts` (see `coverage-ratchet.json`).
+ * globals. Like `measurement-window.ts`, every branch is testable without a browser.
  */
 
 import type { VirtualListKey } from '../../../utilities/fixed-virtual-window.ts';

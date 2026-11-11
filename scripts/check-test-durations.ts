@@ -1,7 +1,7 @@
 /**
- * Ratchet on how long a default-gate test may take. On demand it enforces (`bun run
- * check:test-durations`); `bun run validate` runs `--report`, which prints the same findings as
- * warnings and exits 0, because a wall-time budget depends on host load (see `verdict`).
+ * Ratchet on how long a default-gate test may take. It runs on demand, as one step of `bun run
+ * release:check` (through `bun run check:test-durations`), never in `bun run validate`, because a
+ * wall-time budget depends on host load.
  *
  * Bun applies a 5-second budget to every test. A test that does seconds of real
  * work (spawning processes, bundling, git, instrumented loops) sits near that
@@ -226,7 +226,7 @@ export function laneProblems(
   // The root workspace's `test` is a turbo fan-out; its own suites run through `test:self`.
   if (workspace !== '.' && test !== '' && !WRAPPER_NAMES.some((name) => test.includes(name))) {
     problems.push(
-      `${workspace}: its test script does not run through scripts/bun-test-junit.ts (or the playground runner), so the duration ratchet cannot see its tests`,
+      `${workspace}: its test script does not run through scripts/bun-test-junit.ts (or the playground runner), so the duration check cannot see its tests`,
     );
   }
   // `run-tests.ts` is the playground runner, which splits the lanes by file name itself.
@@ -271,8 +271,7 @@ export function laneProblems(
  * The wiring problems of a workspace's `*.integration.test.ts` files, given relative to the
  * workspace (the repository root for the root workspace). Like slow files, they stay out of `test`
  * and run in the serial slow lane, which `bun run check` never runs. Unlike slow files they stay in
- * `test:coverage`: coverage runs only in `bun run validate`, and the per-file floors were measured
- * with them.
+ * `test:coverage`, the on-demand coverage report, so it counts what they exercise.
  */
 export function integrationLaneProblems(
   workspace: string,
@@ -332,25 +331,43 @@ interface Collected {
 }
 
 /**
- * Whether the duration report reads a workspace's JUnit reports. `bun run validate` gates a
- * workspace that has a `test:coverage` script through that coverage run instead of its `test`
- * (the `test:gate` task in `turbo.json`), so its fast lane did not run and writes no report there;
- * the report mode skips it rather than call the missing report a wiring problem or read a stale
- * one. The on-demand enforce mode reruns every `test` first, so it measures every workspace.
+ * The lane wiring problems of every workspace: slow or integration test files that no lane runs,
+ * or a `test` that bypasses the wrapper. They do not depend on a measurement, so the root
+ * self-tests assert this list is empty (`scripts/check-test-durations.test.ts`), which keeps the
+ * guard in `bun run validate` although the duration check itself runs only in `release:check`.
  */
-export function measuresWorkspace(
-  mode: 'report' | 'enforce',
-  scripts: Readonly<Record<string, string>>,
-): boolean {
-  return mode === 'enforce' || scripts['test:coverage'] === undefined;
+export function laneWiringProblems(): string[] {
+  const problems: string[] = [];
+  for (const workspace of walkWorkspaces()) {
+    const directory = workspace === '.' ? root : join(root, workspace);
+    const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
+      scripts?: Record<string, string>;
+    };
+    const skipped =
+      workspace === '.'
+        ? new Set([...SKIPPED_DIRECTORIES, ...WORKSPACE_DIRECTORIES])
+        : SKIPPED_DIRECTORIES;
+    const slowFiles = laneTestFiles(directory, SLOW_LANE_SUFFIX, skipped);
+    const integrationFiles = laneTestFiles(directory, INTEGRATION_LANE_SUFFIX, skipped);
+    problems.push(
+      ...laneProblems(
+        workspace,
+        manifest.scripts ?? {},
+        slowFiles.length > 0,
+        slowFiles.map((file) => relative(directory, file)),
+        integrationFiles.map((file) => relative(directory, file)),
+      ),
+    );
+  }
+  return problems;
 }
 
-function collect(mode: 'report' | 'enforce'): Collected {
+function collect(): Collected {
   const collected: Collected = {
     measured: [],
     coveredWorkspaces: new Set(),
     existingWorkspaces: new Set(),
-    problems: [],
+    problems: laneWiringProblems(),
   };
   for (const workspace of walkWorkspaces()) {
     collected.existingWorkspaces.add(workspace);
@@ -359,23 +376,7 @@ function collect(mode: 'report' | 'enforce'): Collected {
       scripts?: Record<string, string>;
     };
     const scripts = manifest.scripts ?? {};
-    const skipped =
-      workspace === '.'
-        ? new Set([...SKIPPED_DIRECTORIES, ...WORKSPACE_DIRECTORIES])
-        : SKIPPED_DIRECTORIES;
-    const slowFiles = laneTestFiles(directory, SLOW_LANE_SUFFIX, skipped);
-    const integrationFiles = laneTestFiles(directory, INTEGRATION_LANE_SUFFIX, skipped);
-    collected.problems.push(
-      ...laneProblems(
-        workspace,
-        scripts,
-        slowFiles.length > 0,
-        slowFiles.map((file) => relative(directory, file)),
-        integrationFiles.map((file) => relative(directory, file)),
-      ),
-    );
 
-    if (!measuresWorkspace(mode, scripts)) continue;
     const wrapped = Object.values(scripts).some((script) =>
       WRAPPER_NAMES.some((name) => script.includes(name)),
     );
@@ -417,26 +418,21 @@ function writeAllowlist(entries: readonly string[]): void {
 export const SEED_FLOOR_MILLISECONDS = BUDGET_MILLISECONDS * 0.75;
 
 /**
- * Decide the exit code. Over-budget tests and stale entries depend on host load, so `bun run
- * validate` runs the `report` mode, which prints them as warnings and exits 0; the on-demand
- * `enforce` mode (`bun run check:test-durations`) fails on them. Wiring problems (a workspace
- * bypassing the wrapper, slow files without their lane) do not depend on load and fail both.
+ * Decide the exit code: any finding fails, whether a wiring problem (a workspace bypassing the
+ * wrapper, slow files without their lane), an over-budget test, or a stale allowlist entry.
  */
 export function verdict(
-  mode: 'report' | 'enforce',
   wiringProblems: readonly string[],
   overBudget: readonly string[],
   stale: readonly string[],
 ): { exitCode: number; lines: string[] } {
-  const loadDependent = [...overBudget, ...stale];
-  const lines = [...wiringProblems, ...loadDependent];
-  const failing = wiringProblems.length > 0 || (mode === 'enforce' && loadDependent.length > 0);
-  return { exitCode: failing ? 1 : 0, lines };
+  const lines = [...wiringProblems, ...overBudget, ...stale];
+  return { exitCode: lines.length > 0 ? 1 : 0, lines };
 }
 
 function main(): number {
   const mode = Bun.argv[2];
-  const collected = collect(mode === '--report' ? 'report' : 'enforce');
+  const collected = collect();
   const allowlist = readAllowlist();
 
   if (mode === '--seed') {
@@ -474,24 +470,15 @@ function main(): number {
   const stale = findings.stale.map(
     (entry) => `stale allowlist entry (${entry.reason}): ${entry.key}`,
   );
-  const outcome = verdict(
-    mode === '--report' ? 'report' : 'enforce',
-    collected.problems,
-    overBudget,
-    stale,
-  );
+  const outcome = verdict(collected.problems, overBudget, stale);
   if (outcome.lines.length === 0) {
     process.stdout.write(
       `check-test-durations — OK (no fast-lane test over ${BUDGET_MILLISECONDS} ms outside the allowlist of ${allowlist.length}).\n`,
     );
     return 0;
   }
-  const heading =
-    outcome.exitCode === 0
-      ? `check-test-durations — WARNING: the fast lane has tests over ${BUDGET_MILLISECONDS} ms, or the allowlist is stale. Validate does not fail on this; run bun run check:test-durations on a quiet host to enforce it.\n`
-      : `check-test-durations — the fast lane has tests over ${BUDGET_MILLISECONDS} ms, or the allowlist is stale.\n`;
   process.stderr.write(
-    heading +
+    `check-test-durations — the fast lane has tests over ${BUDGET_MILLISECONDS} ms, or the allowlist is stale.\n` +
       `Make the test fast (drop redundant spawns, bundles, history), or move a test that is slow by\n` +
       `nature to a ${SLOW_LANE_SUFFIX} file run by the workspace's test:slow. Never raise the budget or a timeout.\n` +
       `Remove stale entries with: bun scripts/check-test-durations.ts --shrink\n\n`,

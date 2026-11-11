@@ -9,7 +9,8 @@
     inline-size: 100%;
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised);
-    border: 1px solid var(--cinder-border);
+    border: 1px solid transparent;
+    background-clip: padding-box;
     color: var(--cinder-text-default);
     box-shadow: none;
     overflow: hidden;
@@ -44,7 +45,7 @@
   }
 
   /* One edge per surface (COR-1821): a card draws a border or a shadow, never both. The default
-   * edge is the border. The shadow edge keeps the 1px border in the box, so the card does not
+   * edge is none. The shadow edge keeps the 1px border in the box, so the card does not
    * change size, and paints it transparent. These rules sit after the tone rules below so the
    * danger border colour cannot bring a second edge back. */
   @media (hover: hover) {
@@ -92,7 +93,36 @@
 
   .cinder-card[data-cinder-tone='danger'] {
     background: var(--cinder-status-danger-background);
+  }
+
+  /* The border edge is the opt-in for a real panel; the default edge is none (COR-2311), so the
+   * surface step separates a card from the page. */
+  .cinder-card[data-cinder-edge='border'] {
+    border-color: var(--cinder-border);
+  }
+
+  .cinder-card[data-cinder-tone='danger'][data-cinder-edge='border'] {
     border-color: var(--cinder-status-danger-border);
+  }
+
+  /* The plain variant is a heading on the page: no box, no edge, no inset. */
+  .cinder-card[data-cinder-variant='plain'] {
+    background: transparent;
+    border-color: transparent;
+    box-shadow: none;
+    border-radius: 0;
+    overflow: visible;
+  }
+
+  .cinder-card[data-cinder-variant='plain'] > :is(.cinder-card__header, .cinder-card__body) {
+    background: transparent;
+    padding-inline: 0;
+  }
+
+  .cinder-card[data-cinder-variant='plain'] > .cinder-card__footer {
+    background: transparent;
+    padding-inline: 0;
+    border-top-color: transparent;
   }
 
   /* The shadow edge: no visible border, one soft shadow. After the danger rule above so it wins. */

@@ -1,5 +1,4 @@
 import { describe, expect, test } from 'bun:test';
-import { join } from 'node:path';
 import { HANG_GUARD_MILLISECONDS } from '../testing/testing/src/hang-guard.ts';
 import { bunTestArguments } from './bun-test.ts';
 import { TEST_TIMEOUT_ARGUMENT, TEST_TIMEOUT_MILLISECONDS } from './test-deadlines.ts';
@@ -17,14 +16,5 @@ describe('the shared test deadline', () => {
       '--parallel=4',
       'src',
     ]);
-  });
-
-  test('is the value Weft’s coverage run computes for itself, since Weft cannot import root scripts', async () => {
-    const source = await Bun.file(
-      join(import.meta.dir, '..', 'packages', 'weft', 'scripts', 'check-coverage.ts'),
-    ).text();
-    expect(source).toContain(
-      'const TEST_TIMEOUT_ARGUMENT = `--timeout=${2 * HANG_GUARD_MILLISECONDS}`;',
-    );
   });
 });

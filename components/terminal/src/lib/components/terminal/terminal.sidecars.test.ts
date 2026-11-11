@@ -280,9 +280,8 @@ describe('component files', () => {
     expect(existsSync(join(directory, name))).toBe(true);
   });
 
-  test('the workspace root has its manifest and coverage ratchet', () => {
+  test('the workspace root has its manifest', () => {
     expect(existsSync(join(packageRoot, 'components.json'))).toBe(true);
-    expect(existsSync(join(packageRoot, 'coverage-ratchet.json'))).toBe(true);
   });
 
   test('the README documents every public prop', async () => {

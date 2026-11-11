@@ -44,7 +44,8 @@ It only displays a schedule. To edit one, use `ScheduleBuilder`.
 
 <!-- generated:variables:start -->
 
-This component does not declare any local CSS variables.
+- `--cinder-week-schedule-today-background`
+
 <!-- generated:variables:end -->
 
 ## Subcomponents

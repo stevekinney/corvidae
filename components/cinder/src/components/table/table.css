@@ -63,6 +63,15 @@
     --_cinder-scroll-fade-color: var(--cinder-surface);
   }
 
+  /* Frameless (COR-2311): a queue or list view sits on the page with no outline, radius or fill. */
+  .cinder-table[data-cinder-frameless],
+  .cinder-table-scroll[data-cinder-frameless] {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    --_cinder-scroll-fade-color: var(--cinder-surface-canvas);
+  }
+
   .cinder-table-scroll > .cinder-table {
     /* The frame is the scroll box's. */
     border: 0;
@@ -165,7 +174,9 @@
     font-weight: var(--cinder-font-medium);
     color: var(--cinder-text-muted);
     border-bottom: 1px solid var(--cinder-border-muted);
-    text-wrap: balance;
+    /* A header never wraps (COR-2311): a table that does not fit scrolls sideways in its wrapper. */
+    white-space: nowrap;
+    text-wrap: nowrap;
   }
 
   .cinder-table__header-cell[aria-sort='ascending'],

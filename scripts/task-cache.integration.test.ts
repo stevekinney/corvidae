@@ -6,7 +6,6 @@ import { join, posix } from 'node:path';
 
 import { spawnWithHangGuard } from '../testing/testing/src/hang-guard.ts';
 import { outcomeOf, rethrow } from './module-scope-scenario.test-support.ts';
-import { directoryGlob, workspaceParentDirectories } from './workspace-directories.ts';
 
 const root = join(import.meta.dir, '..');
 
@@ -695,53 +694,48 @@ test('every cacheable package task reaches transit, so its key follows its depen
   expect(uncovered).toEqual([]);
 });
 
-test("the validate gate runs each package's suite once, through its coverage run where it has one", async () => {
-  // A package's `test:coverage` runs the same files as its `test`, so the gate runs only the
-  // coverage run there, and `test:coverage` no longer waits for `test`. Some tests write fixed
-  // fixture paths inside the source tree (Cinder's components.test.ts), so the two runs of one
-  // package must then never share a turbo invocation, where they could overlap.
+test('the validate gate runs every suite through the same `test` task the per-pull-request checks run', async () => {
+  // `test:gate` and the per-package overrides that swapped a package's `test` for its coverage run
+  // are gone (COR-2370): a suite `bun scripts/affected-tests.ts run` just ran is a cache hit in
+  // `validate`, because both run the same `test` task on the same inputs.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const tasks: Record<string, { dependsOn?: string[] }> = configuration.tasks;
-  expect(tasks['test:gate']?.dependsOn).toEqual(['transit', 'test']);
+  expect(
+    Object.keys(tasks).filter((name) => name.slice(name.lastIndexOf('#') + 1) === 'test:gate'),
+  ).toEqual([]);
 
-  const coveragePackages: string[] = [];
-  for await (const path of new Bun.Glob(
-    `${directoryGlob(workspaceParentDirectories)}/*/package.json`,
-  ).scan({ cwd: root })) {
-    const manifest = await Bun.file(join(root, path)).json();
-    if (manifest.scripts?.['test:coverage'] !== undefined) coveragePackages.push(manifest.name);
-  }
-  expect(coveragePackages.length).toBeGreaterThan(0);
-  for (const name of coveragePackages) {
-    // Without its own gate entry, the package's coverage floor would silently leave validate.
-    const gate = tasks[`${name}#test:gate`]?.dependsOn ?? [];
-    expect(gate, name).toContain('transit');
-    expect(gate, name).toContain('test:coverage');
-    expect(gate, name).not.toContain('test');
-    expect(tasks[`${name}#test:coverage`]?.dependsOn ?? [], name).not.toContain('test');
+  // Coverage is a report: no task depends on a coverage run, and a coverage run never waits for
+  // `test`, so the report can run alone.
+  for (const [name, definition] of Object.entries(tasks)) {
+    expect(definition.dependsOn ?? [], name).not.toContain('test:coverage');
+    if (name.endsWith('#test:coverage')) {
+      expect(definition.dependsOn ?? [], name).not.toContain('test');
+    }
   }
 
   const { scripts = {} } = await Bun.file(join(root, 'package.json')).json();
+  expect(scripts['validate']).toContain(
+    'turbo run lint typecheck test:self test test:browser-fixtures',
+  );
+  expect(scripts['coverage']).toBe("bun scripts/run-exclusively.ts 'turbo run test:coverage'");
   for (const [name, script] of Object.entries<string>(scripts)) {
     for (const invocation of script.match(/turbo run [^&']+/g) ?? []) {
       const names = invocation.split(/\s+/).slice(2);
       expect(names.includes('test') && names.includes('test:coverage'), name).toBe(false);
+      expect(names, name).not.toContain('test:gate');
     }
   }
 });
 
 test('the check gate is the quick tier: no coverage run and no isolated lane', async () => {
-  // COR-1693 had `check` run a workspace selected whole through `test:gate`, its coverage run, so a
-  // coverage regression could not merge unseen. Coverage runs include each workspace's integration
-  // tests (a process or an out-of-process service), which made `check` depend on host load, so the
-  // owner moved coverage floors to `bun run validate` and the batch validate (2026-11-09): `check`
-  // runs `test` alone, whole or narrowed, and never names a coverage task.
+  // Coverage is a report, run on demand by `bun run coverage`; `check` runs `test` alone, whole or
+  // narrowed, and never names a coverage task. Coverage runs include each workspace's integration
+  // tests (a process or an out-of-process service), which would make `check` depend on host load.
   const { scripts } = await Bun.file(join(root, 'package.json')).json();
   expect(scripts.check as string).toContain('bun scripts/affected-tests.ts run');
   for (const invocation of (scripts.check as string).match(/turbo run [^&']+/g) ?? []) {
     const names = invocation.split(/\s+/).slice(2);
     expect(names).not.toContain('test');
-    expect(names).not.toContain('test:gate');
     expect(names).not.toContain('test:coverage');
   }
 
@@ -755,9 +749,8 @@ test('the check gate is the quick tier: no coverage run and no isolated lane', a
   });
   expect(selection.repositoryRule).not.toBeNull();
   for (const step of planInvocations(selection)) {
-    // The quick tier never judges a coverage floor; `bun run validate` does.
+    // The quick tier never runs a coverage report.
     expect(step.tasks).not.toContain('test:coverage');
-    expect(step.tasks).not.toContain('test:gate');
     expect(step.tasks).not.toContain('test:slow');
   }
 });
@@ -766,17 +759,17 @@ test('the tasks the selector narrows declare the selection variable, so no resul
   // Strict environment mode passes a task only the variables it declares, and hashes them. A
   // narrowed lane without the variable would run everything, or replay a result cached for another
   // selection. Every task the selector runs narrowed, and each package-specific override of one,
-  // names it; the whole-workspace lanes (`test:gate`, `test:coverage`) never read it.
+  // names it; the whole-workspace coverage report (`test:coverage`) never reads it.
   const { SELECTION_VARIABLE } = await import('./affected-tests-manifest.ts');
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const tasks: Record<string, { env?: string[] }> = configuration.tasks;
   for (const [name, definition] of Object.entries(tasks)) {
     const task = name.slice(name.lastIndexOf('#') + 1);
     const narrowed = ['test', 'test:slow', 'test:self', 'test:self:slow', 'test:browser-fixtures'];
-    if (narrowed.includes(task) && !name.endsWith('#test:host')) {
+    if (narrowed.includes(task)) {
       expect(definition.env ?? [], name).toContain(SELECTION_VARIABLE);
     }
-    if (task === 'test:gate' || task === 'test:coverage') {
+    if (task === 'test:coverage') {
       expect(definition.env ?? [], name).not.toContain(SELECTION_VARIABLE);
     }
   }
@@ -862,10 +855,8 @@ test('a package task keys on every root script it runs and every root script tho
   // Over-declarations that predate this guard; the list can only shrink, so a fixed entry must be
   // deleted here and a new one cannot be added without review.
   const knownOverDeclarations = [
-    '@lostgradient/ventriloquist#typecheck declares scripts/check-documentation-coverage.ts, which no script it runs reaches',
     '@lostgradient/ventriloquist#typecheck declares scripts/typecheck-contracts.ts, which no script it runs reaches',
     'test:slow declares scripts/bun-test.ts, which no script it runs reaches',
-    'typecheck declares scripts/check-documentation-coverage.ts, which no script it runs reaches',
   ];
   expect(unreachable.toSorted()).toEqual(knownOverDeclarations);
 });
@@ -887,18 +878,6 @@ test('every test lane that bypasses the JUnit wrapper goes through a runner that
   }
 });
 
-test("Interborough's gate runs the host suite its coverage run leaves out", async () => {
-  // Its coverage run measures the UI suite only, so the gate adds `test:host`, which must stay the
-  // first half of `test`, or the gate and the plain suite would test different files.
-  const manifest = await Bun.file(join(root, 'applications/interborough/package.json')).json();
-  expect(manifest.scripts['test']).toStartWith(`${manifest.scripts['test:host']} && `);
-  const configuration = await Bun.file(join(root, 'turbo.json')).json();
-  expect(configuration.tasks['@lostgradient/interborough#test:coverage'].dependsOn).toEqual([
-    'transit',
-    'test:host',
-  ]);
-});
-
 test('the root self-tests are keyed on the workspace files they validate', async () => {
   // `scripts/workspace-contract.integration.test.ts` reads every workspace manifest and TypeScript configuration,
   // but a root task hashes only root files by default, so without these inputs a manifest-only
@@ -917,11 +896,11 @@ test('the root self-tests are keyed on the workspace files they validate', async
   expect(inputs).toContain('$TURBO_DEFAULT$');
 });
 
-test('the evaluation coverage gate runs in the root coverage graph and caches its report', async () => {
+test('the evaluation coverage report runs in the root coverage graph and caches its report', async () => {
   // Turbo has no generic `test:coverage` task, so a workspace's coverage script
   // runs under `bun run coverage` only when `turbo.json` names it. Dropping this
-  // entry would silently remove `@lostgradient/evaluation`'s 100 percent line and
-  // function threshold from `bun run validate` without failing anything.
+  // entry would silently remove `@lostgradient/evaluation` from the coverage report
+  // without failing anything.
   const configuration = await Bun.file(join(root, 'turbo.json')).json();
   const manifest = await Bun.file(join(root, 'testing/evaluation/package.json')).json();
   expect(manifest.scripts?.['test:coverage']).toContain('--coverage');
@@ -929,6 +908,25 @@ test('the evaluation coverage gate runs in the root coverage graph and caches it
     dependsOn: ['transit'],
     outputs: expect.arrayContaining(['coverage/**']),
   });
+});
+
+test('every workspace that defines a coverage script has a task for it, and none of them fails on a floor', async () => {
+  const configuration = await Bun.file(join(root, 'turbo.json')).json();
+  const { discoverWorkspaces } = await import('./affected-tests.ts');
+  for (const workspace of discoverWorkspaces(root)) {
+    const manifest = await Bun.file(join(root, workspace.directory, 'package.json')).json();
+    const script: string | undefined = manifest.scripts?.['test:coverage'];
+    if (script === undefined) continue;
+    expect(configuration.tasks[`${manifest.name}#test:coverage`], manifest.name).toBeDefined();
+    // The floors (`coverageThreshold`, a recorded ratchet) are gone: the script is the test run
+    // plus a report, and its exit status is the test run's.
+    expect(script, manifest.name).not.toMatch(/ratchet|check-coverage\.ts/);
+  }
+  for await (const path of new Bun.Glob(
+    '{applications,components,packages,testing}/*/bunfig*.toml',
+  ).scan(root)) {
+    expect(await Bun.file(join(root, path)).text(), path).not.toContain('coverageThreshold');
+  }
 });
 
 test('the root package defines the preflight script the lock wrapper runs', async () => {

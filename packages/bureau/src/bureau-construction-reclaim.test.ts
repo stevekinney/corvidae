@@ -610,7 +610,9 @@ describe('a Bureau whose construction fails leaves a reclaimed run resumable (CO
 
 describe('the recovery-skip listener (COR-1586)', () => {
   it('names its event by Weft’s constant, not by a string that could drift from it', async () => {
-    const source = await Bun.file(join(import.meta.dir, 'create-bureau.ts')).text();
+    const source = await Bun.file(
+      join(import.meta.dir, 'bureau-seams', 'durable-recovery.ts'),
+    ).text();
 
     expect(source).not.toContain("'workflow:recovery-skipped'");
     expect(source).toContain('WorkflowRecoverySkippedEvent.type');

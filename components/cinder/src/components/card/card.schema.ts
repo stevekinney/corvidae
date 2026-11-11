@@ -26,13 +26,14 @@ const schema = {
       description: 'Custom class merged with `.cinder-card`.',
     },
     variant: {
-      enum: ['card', 'well'],
-      description: 'Visual container style. `card` is raised; `well` is flatter and inset.',
+      enum: ['card', 'well', 'plain'],
+      description:
+        'Visual container style. `card` is raised; `well` is flatter and inset; `plain` is a heading on the page with no box.',
     },
     edge: {
-      enum: ['border', 'shadow'],
+      enum: ['none', 'border', 'shadow'],
       description:
-        'The one edge the card draws: a `border` (default) or a `shadow`, never both. An interactive\ncard strengthens whichever edge it has on hover.',
+        'The one edge the card draws: `none` (default), a `border`, or a `shadow`, never both. An interactive\ncard strengthens whichever edge it has on hover.',
     },
     headerDivider: {
       type: 'boolean',
@@ -62,7 +63,7 @@ const schema = {
       description: 'Remove side borders/radius and bleed to the viewport edge on narrow screens.',
     },
     padding: {
-      enum: ['default', 'none'],
+      enum: ['none', 'default'],
       description:
         'Body padding. `none` leaves header and footer padding intact while making body content flush with the card edges.',
     },

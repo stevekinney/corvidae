@@ -126,6 +126,15 @@
     block-size: 100%;
   }
 
+  /* One surface split by a hairline (COR-2311): the handle is the rule itself, 1px wide, so the
+   * panes sit flush with no gap between them and no card around either. The 44px hit area is the
+   * handle's ::after, so the thin line stays easy to grab. */
+  .cinder-list-detail__panels
+    > .cinder-resizable-panels__handle[data-cinder-orientation='horizontal'] {
+    inline-size: 1px;
+    overflow: visible;
+  }
+
   /* The divider between the panes is a full-height 1px rule. The grip is drawn on it only while the
    * pointer is over the divider or it has focus, so a resting list-and-detail shows a quiet line. */
   .cinder-list-detail__panels > .cinder-resizable-panels__handle::before {

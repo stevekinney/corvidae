@@ -291,7 +291,13 @@
       {#snippet action()}{@render startRun()}{/snippet}
     </EmptyState>
   {:else}
-    <Table caption={TASK_COPY.listHeading} density="condensed" fit class="ib-records__table">
+    <Table
+      caption={TASK_COPY.listHeading}
+      density="condensed"
+      frameless
+      fit
+      class="ib-records__table"
+    >
       <colgroup>
         <col style="width: 22%" />
         <col style="width: 40%" />

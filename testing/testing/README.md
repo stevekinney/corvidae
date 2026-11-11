@@ -102,11 +102,11 @@ bun run test
 
 From the Corvidae root, use `bunx turbo run lint typecheck test --filter=@lostgradient/testing` or `bun run validate` for the full repository. The package has no build or publishing step.
 
-## Coverage ratchet and test isolation
+## Coverage and test isolation
 
-The `test:coverage` script of `@lostgradient/terminal` passes `--parallel=1 --no-isolate`, and its `test` script stays isolated. Under isolation Bun gives each test file its own module instance and reports coverage for only one of them instead of merging, so a Svelte component loaded by several test files could lose lines that another file executes, and adding a test file could lower the measured ratio. Without isolation the counts merge. `@lostgradient/chat` already runs without isolation, and `@lostgradient/cinder` cannot adopt the flag yet because about 50 tests in about 30 files fail when files share a module registry (Carousel, VirtualList, `shikiHighlighter`, JsonSchemaEditor, Dropdown and others), so its Svelte ratio can still under-report. `scripts/bun-isolated-coverage-reproduction.ts` reproduces the defect, which is reported upstream as [oven-sh/bun#45301](https://github.com/oven-sh/bun/issues/45301).
+The `test:coverage` script of `@lostgradient/terminal` passes `--parallel=1 --no-isolate`, and its `test` script stays isolated. Under isolation Bun gives each test file its own module instance and reports coverage for only one of them instead of merging, so a Svelte component loaded by several test files could lose lines that another file executes, and adding a test file could lower the reported ratio. Without isolation the counts merge. `@lostgradient/chat` already runs without isolation, and `@lostgradient/cinder` cannot adopt the flag yet because about 50 tests in about 30 files fail when files share a module registry (Carousel, VirtualList, `shikiHighlighter`, JsonSchemaEditor, Dropdown and others), so its Svelte ratio can still under-report. `scripts/bun-isolated-coverage-reproduction.ts` reproduces the defect, which is reported upstream as [oven-sh/bun#45301](https://github.com/oven-sh/bun/issues/45301).
 
-Bun also ignores source maps from plugin output, so LCOV lines for `.svelte` files are compiled-output lines. The ratchet reads the `LF` and `LH` totals, so its percentages are unaffected.
+Bun also ignores source maps from plugin output, so LCOV lines for `.svelte` files are compiled-output lines. The report's totals come from `LF` and `LH`, so its percentages are unaffected.
 
 ## Browser fixtures
 

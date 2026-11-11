@@ -13,25 +13,17 @@ import {
   type ActiveRun,
   type AgentRun,
   type AgentSession,
-  type RunEvent,
-  type RunResult,
   type ChildSignalContract,
   // COR-625: operative's OBJECT-form cleanup acknowledgement, aliased on
   // import because `./types` exports an unrelated string-union type under
   // the same name (armorer's shutdown-owner outcome vocabulary). The two are
   // genuinely different values and must not shadow each other here.
   type CleanupAcknowledgement as RunCleanupAcknowledgement,
-  appendAgentInput,
   type BackendDescriptor,
-  type CombinedOperativeEventMap,
-  createActiveRun,
-  createAgentRun,
   createAgentRunEventRegistry,
-  createAgentScheduler,
   createFlowController,
   createRecoveredRunEventSurface,
   createRunFinishedFrame,
-  createRunStartedFrame,
   createSessionInputDeliveryStore,
   createStore,
   type DurableEventOwner,
@@ -40,7 +32,6 @@ import {
   type FlowController,
   hasDefinitionResolver,
   HumanWaitParkedEvent,
-  InvalidScheduleError,
   isAgentRunWorkflowInput,
   isScheduledAgentRunInput,
   type JSONValue,
@@ -56,14 +47,11 @@ import {
   RunRegisteredEvent as StoreRunRegisteredEvent,
   RunRemovedEvent as StoreRunRemovedEvent,
   ScheduleAttemptedEvent,
-  ScheduleCancelledEvent,
   ScheduleCompletedEvent,
   type RunOptions,
   type ScheduledAgentRunInput,
   ScheduleFailedEvent,
-  SchedulePausedEvent,
   SCHEDULER_RUN_ID_PREFIX,
-  ScheduleResumedEvent,
   ScheduleSkippedEvent,
   SessionCreatedEvent,
   SessionDeletedEvent,
@@ -88,7 +76,6 @@ import {
   type Store,
   StoreActionEvent,
   type Subscription,
-  SESSION_ORIGIN_METADATA_KEY,
   sessionOriginOf,
   SESSION_OWNER_METADATA_KEY,
   SESSION_TITLE_METADATA_KEY,
@@ -101,7 +88,6 @@ import {
   readDurableRunResult,
   humanInputSchemaOf,
   sessionOwnerOf,
-  type ScheduleTick,
   summarizeSession,
   TOOL_TIMING_METADATA_KEY,
   type ToolTiming,
@@ -138,7 +124,6 @@ import {
   Mailbox,
   type RecoveredWorkflowInfo,
   type WorkflowState,
-  WorkflowRecoverySkippedEvent,
 } from '@lostgradient/weft';
 import {
   type AnyToolbox,
@@ -169,7 +154,6 @@ import { createAgentDiscoveryTool } from './create-agent-discovery-tool';
 import { createChildRunTools } from './child-run-tools';
 import { createAssetTools } from './asset-tools';
 import { createPluginRegistry, hostGuardrailRows } from './plugins/plugin-registry';
-import { markEventSource } from './event-source';
 import { createGoalForPlugin } from './goals';
 import {
   type AgentDefinitions,
@@ -177,13 +161,8 @@ import {
   createAgentCatalog,
   type CreateAgentCatalogOptions,
 } from './agent-catalog';
-import {
-  AgentFileError,
-  AgentSnapshotError,
-  type AgentFileDefinitionInput,
-  guardrailIdOf,
-} from './agent-file';
-import { createTryAgents, isTryAgentName, TRY_AGENT_NAME_START, tryToolProblem } from './agent-try';
+import { AgentSnapshotError, type AgentFileDefinitionInput, guardrailIdOf } from './agent-file';
+import { createTryAgents, isTryAgentName } from './agent-try';
 import {
   allowedDescriptorsOfFileAgent,
   createAgentFileCatalog,
@@ -211,7 +190,7 @@ import {
   sessionRowHolderPrefix,
 } from './assets/row-asset-claims';
 import { heldClaimsOf } from './assets/internal-access';
-import { humanInputSchemasOf, validateHumanInputOption } from './human-input-option';
+import { validateHumanInputOption } from './human-input-option';
 import {
   validateChildrenOption,
   validateLogsMaximumLinesPerRun,
@@ -255,11 +234,7 @@ import {
 } from './bureau-event-forwarders.ts';
 import { publishWorkflowScheduleOutcomes } from './workflow-schedule-outcomes';
 import { auditMemoryCorrections } from './memory-correction-audit.ts';
-import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
-import {
-  createSessionPersistence,
-  SESSION_END_REASON_HOST_STOPPED,
-} from './bureau-session-persistence';
+import { createSessionPersistence } from './bureau-session-persistence';
 import {
   type BureauChildren,
   type ChildTopology,
@@ -274,16 +249,10 @@ import {
   grantLoosensTool,
 } from './tool-approval';
 import {
-  type CreatedRunSummary,
   createRunCreationLedger,
   BureauLedgerConflictError,
   digestCommandPayload,
-  digestRunCreationPayload,
-  type RunCreationAttempt,
   type RunCreationObservation,
-  type RunCreationReceiptLocation,
-  serializeTaskInput,
-  serializeTaskRequestContext,
 } from './command-ledger';
 import {
   createDurableEventHistory,
@@ -294,7 +263,6 @@ import {
 import { createEventTimestampResolver } from './event-timestamp';
 import {
   ActionEvent,
-  BureauDisposedEvent,
   type BureauEventMap,
   type RecoveredRunVerdict,
   RecoveryAttemptedEvent,
@@ -373,10 +341,7 @@ import {
   recoveredSkillPolicyOf,
   registerTrailingOnStep,
   SESSION_AGENT_DEFINITION_HASH_METADATA_KEY,
-  SESSION_AGENT_REVISION_METADATA_KEY,
   sessionRecordedRevision,
-  sessionRunMediaOptions,
-  wireDurableOptInTools,
 } from './runtime-composition';
 import {
   findRunAgentName,
@@ -396,7 +361,6 @@ import {
   createCatalogAssetReleaseDrain,
   createCatalogRunAssetReleaser,
   createRecoveredRunReleaseListener,
-  type ReleasableConversation,
 } from './catalog-run-asset-release';
 import {
   createCatalogRunSettlementHook,
@@ -416,36 +380,21 @@ import {
   type TaskRegistry,
   type TaskToolGrant,
 } from './task-registry';
-import { isTaskOrigin, type TaskOrigin, taskOriginOfStart, taskOriginTag } from './task-origin';
+import { isTaskOrigin } from './task-origin';
 import { createTaskResync, type TaskResync } from './task-resync';
 import {
   ANONYMOUS_LOCAL_OWNER,
   EXPIRY_ACTOR,
-  ownerFromPrincipal,
   ownerOrLocal,
   RECOVERY_ACTOR,
   SCHEDULER_ACTOR,
 } from './owner-of-record';
-import { toScheduleSpec } from './schedule-spec';
-import {
-  decodeScheduleTransition,
-  type PendingScheduleTransition,
-  SCHEDULE_TRANSITION_KEY_PREFIX,
-  scheduleTransitionKey,
-  scheduleTransitionKeyPrefix,
-  type ScheduleTransitionKind,
-  scheduleTransitionOperation,
-} from './schedule-transition-outbox';
 import {
   agentStepResultFromRun,
   agentStepResultFromState,
   workflowStepRunId,
 } from './workflow-agent-step';
-import {
-  parseWorkflowScheduleId,
-  storedScheduleInput,
-  workflowScheduleBinding,
-} from './workflow-schedule';
+import { storedScheduleInput, workflowScheduleBinding } from './workflow-schedule';
 import {
   createWorkflowRuntime,
   payloadMaximumBytesOf,
@@ -454,7 +403,6 @@ import {
 } from './workflow-runtime';
 import { createBureauWorkerDeployments } from './worker-deployments';
 import { everySchedule, readAttention } from './attention-feed';
-import { isScheduleTickRunId, startScheduleTick } from './schedule-tick';
 import { createWorkflowTools } from './workflow-tools';
 import { createSettingsTools } from './settings/settings-tools';
 import { createWorkflowRevisionLedger } from './workflow-revision-ledger';
@@ -498,8 +446,6 @@ import {
   resolveRunMemoryOwner,
   resolveSessionOwner,
   resolveSessionPreAdmission,
-  SessionAgentConflictError,
-  SessionOwnerConflictError,
 } from './session-authority';
 import {
   createReviewDecisionRecords,
@@ -544,7 +490,6 @@ import {
   type ScheduleFireSettledPayload,
 } from './schedule-fire-settled-event';
 import { createChatSpendLedger } from './chat-spend-ledger';
-import { copyAgentOwnedRunOptions, sessionExecuteOptions } from './session-agent-options';
 import {
   admitSessionInput,
   isSessionInputSessionIdAddressable,
@@ -564,11 +509,7 @@ import {
   SESSION_INPUT_RUN_ENDED_REASON,
 } from './session-input-settlement';
 import { generateSessionOutboxDrainOwnerSuffix } from './session-outbox-drain-owner-suffix';
-import {
-  normalizeRunRequestContext,
-  recoveredRequestContextFromMetadata,
-  persistedRequestAuthority,
-} from './session-request-context';
+import { recoveredRequestContextFromMetadata } from './session-request-context';
 import { allowsModelOverride, describeAgentModels } from './agent-models';
 import {
   assertBranchPoint,
@@ -615,25 +556,11 @@ import type {
   BureauOptions,
   ApprovalPeerRecovery,
   BureauRecoveryReport,
-  BureauShutdownOptions,
-  BureauShutdownOwnerReport,
   BureauShutdownReport,
   CancelDurableRunOutcome,
-  CleanupAcknowledgement,
   ContextDeletionReport,
   ContextWindowReport,
-  CreateRunRequest,
-  LocateRunCreationReceiptRequest,
-  StartTaskOptions,
-  TaskHandle,
-  TaskInput,
-  TryAgentOptions,
-  TryAgentResult,
   OwnedResource,
-  CreateScheduleOptions,
-  DurableScheduleDefinition,
-  DurableScheduleUpdate,
-  ScheduleRevisionGuard,
   PendingHumanWaitReview,
   PendingReview,
   SessionPendingReview,
@@ -668,19 +595,15 @@ import {
   sizeManagedAssets,
 } from './contexts/context-window';
 import { createContexts } from './contexts/create-contexts';
-import { createTaskHandle, createTasks, seedsConversation } from './tasks/create-tasks';
+import { createTasks } from './tasks/create-tasks';
 import { createReviews } from './reviews/create-reviews';
 import { createSchedules } from './schedules/create-schedules';
 import { createWebhookNotifier, type WebhookNotifier } from './webhook-notifier';
 import { workspaceHookEvents } from './hooks/workspace-hook-events.ts';
 import {
-  bindRunWorkspaceAuthority,
-  captureRunWorkspaceAuthority,
   validateRunWorkspaceAuthority,
-  mayUseAutomationInput,
   createRunAuthorityValidator,
   mayRunUseSharedConfiguration,
-  recoverRunWorkspaceAuthority,
 } from './run-authority.ts';
 import { type CreatedHooks } from './hooks/create-hooks';
 import { createRunHookOrigins } from './hooks/run-hook-origins';
@@ -698,12 +621,9 @@ import {
   BureauShuttingDownError,
   TaskRespondError,
   TerminalSessionRecordAbandonedError,
-  ScheduleLocatorUnavailableError,
-  UnknownScheduleAgentError,
   toBadRequest,
 } from './bureau-errors';
 import {
-  ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
   DURABLE_FORCIBLY_TERMINABLE_STATUSES,
   resolveWaitForDurableRun,
   resolveCancelDurableRun,
@@ -715,16 +635,11 @@ import {
 import {
   hasRecoverableTransportAuthority,
   isTerminalApprovalBindingError,
-  emptyRecoveredStepMetadata,
   type SessionLoadOutcome,
   type ClassifyRecoveredRunArgs,
   RECOVERED_RUN_TERMINAL_STATUSES,
   classifyRecoveredRunDetailed,
   dedupeRecoveryPerRunFailures,
-  isRecoverableScheduledFireInput,
-  loadScheduleIdForRecoveredRun,
-  loadExistingScheduledSessionId,
-  monitorRecoveredScheduledFire,
   monitorRecoveredCatalogRun,
 } from './recovered-run-classification';
 import {
@@ -779,25 +694,10 @@ import {
   AUDIT_PAGE_SIZE,
   closingStatusOfRound,
   stringValues,
-  createPendingApprovalPersistHook,
   type ApprovedCallAudit,
   createScheduledFireApprovalHook,
 } from './approval-state-records';
-import {
-  snapshotStartOptions,
-  taskRequestFieldsOf,
-  type SessionTaskFields,
-  validateCreateRunRequest,
-  requestTextOf,
-  rejectUnopenableNewSessionIdentifier,
-  legacyTaskInputOf,
-  appendRequestRows,
-  assertConversationAnswerable,
-  rejectReservedIdentifier,
-  replaceInputText,
-  validateAgentRunInput,
-  createTasksRespondLedger,
-} from './run-request-validation';
+import { validateAgentRunInput, createTasksRespondLedger } from './run-request-validation';
 import {
   STEERING_APPEND_ATTEMPTS,
   REVIEW_AUDIT_OUTBOX_NAMESPACE,
@@ -807,15 +707,29 @@ import {
   type SteeringPoller,
   type SessionDeletionRecord,
   type ReviewAuditAttachment,
+  type ChatRunSpend,
 } from './bureau-seams/core';
 import { createEventHistoryReads, type EventHistoryPeers } from './bureau-seams/event-history';
+import { createTaskStart, type TaskStartPeers } from './bureau-seams/task-start';
+import { createRunCreation, type RunCreationPeers } from './bureau-seams/run-creation';
+import { createShutdown, type ShutdownPeers } from './bureau-seams/shutdown';
+import { createDurableRecovery, type DurableRecoveryPeers } from './bureau-seams/durable-recovery';
+import {
+  createScheduleOperations,
+  type ScheduleOperationsPeers,
+} from './bureau-seams/schedule-operations';
 
 /**
  * The callables the seams of `constructBureau` read from one another and from the parent: the
  * intersection of every seam's peers. The annotation on `peers` is required: without it, a getter
  * that returns a factory's member makes that factory's inferred type circular (TS7022).
  */
-type BureauPeers = EventHistoryPeers;
+type BureauPeers = EventHistoryPeers &
+  TaskStartPeers &
+  RunCreationPeers &
+  ShutdownPeers &
+  DurableRecoveryPeers &
+  ScheduleOperationsPeers;
 
 export function createBureau<const D extends AgentDefinitions = Record<never, never>>(
   options: BureauOptions<D>,
@@ -1642,6 +1556,22 @@ async function constructBureau<const D extends AgentDefinitions>(
    * the poller releases this gate's paused runs the same way.
    */
   const steeringPollers = new Map<string, SteeringPoller>();
+  /** Polls already running, which shutdown awaits before storage closes. */
+  const inFlightSteeringPolls = new Set<Promise<void>>();
+  /** Durable steering submissions in progress, which shutdown awaits. */
+  const inFlightSteeringSubmissions = new Set<Promise<SteeringCommandAdmissionOutcome>>();
+  /**
+   * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
+   * (see that map's own doc comment, below `deleteSession`) to
+   * `(principal, 'session-input', id)`: two concurrent admission attempts
+   * for the identical retry identity share ONE in-flight promise rather
+   * than racing two independent mailbox admissions. Keyed by a joined
+   * string (not a nested Map) for the same reason a plain `Map<string, ...>`
+   * suffices for session deletions — the three components are individually
+   * unbounded strings, so a delimiter that cannot appear in any of them is
+   * used to prevent `("a\x00b", "c")` and `("a", "b\x00c")` from colliding.
+   */
+  const inFlightSessionInputAdmissions = new Map<string, Promise<SessionInputAdmissionOutcome>>();
   // AB-67/AB-199 — the bureau-wide `(principal, id)` idempotency ledger
   // every session's gate shares (see `steering.ts`'s `createSteeringGate`
   // `ledger` parameter doc comment): a same-`(principal, id)` retry against
@@ -1857,6 +1787,9 @@ async function constructBureau<const D extends AgentDefinitions>(
     settledLocalRunIds,
     steeringQueues,
     steeringPollers,
+    inFlightSteeringPolls,
+    inFlightSteeringSubmissions,
+    inFlightSessionInputAdmissions,
     steeringCommandLedger,
     submittedSteeringValues,
     runRequestContexts,
@@ -2140,9 +2073,230 @@ async function constructBureau<const D extends AgentDefinitions>(
     get scheduleOwner() {
       return scheduleOwner;
     },
+    get createRunFromRequest() {
+      return createRunFromRequest;
+    },
+    get abortRun() {
+      return abortRun;
+    },
+    get deleteRun() {
+      return deleteRun;
+    },
+    get getRun() {
+      return getRun;
+    },
+    get waitForDurableRun() {
+      return waitForDurableRun;
+    },
+    get deleteSession() {
+      return deleteSession;
+    },
+    get purgeDurableRun() {
+      return purgeDurableRun;
+    },
+    get loadConversation() {
+      return loadConversation;
+    },
+    get saveSession() {
+      return saveSession;
+    },
+    get trackCatalogAssetRelease() {
+      return trackCatalogAssetRelease;
+    },
+    get abortTask() {
+      return abortTask;
+    },
+    get assertTriedAgentBelongsTo() {
+      return assertTriedAgentBelongsTo;
+    },
+    get bindStartSignal() {
+      return bindStartSignal;
+    },
+    get missingAgentError() {
+      return missingAgentError;
+    },
+    get toolGrantFor() {
+      return toolGrantFor;
+    },
+    get triedOriginMetadata() {
+      return triedOriginMetadata;
+    },
+    get abandonTerminalSessionRecord() {
+      return abandonTerminalSessionRecord;
+    },
+    get chatCostBudgetOf() {
+      return chatCostBudgetOf;
+    },
+    get expectTerminalSessionRecord() {
+      return expectTerminalSessionRecord;
+    },
+    get persistTerminalSession() {
+      return persistTerminalSession;
+    },
+    get saveRunTerminalSession() {
+      return saveRunTerminalSession;
+    },
+    get appendThenApplySteering() {
+      return appendThenApplySteering;
+    },
+    get durableSteeringStore() {
+      return durableSteeringStore;
+    },
+    get enqueueSteering() {
+      return enqueueSteering;
+    },
+    get getSessionSteeringGate() {
+      return getSessionSteeringGate;
+    },
+    get logRunBoundarySteering() {
+      return logRunBoundarySteering;
+    },
+    get pollSessionSteering() {
+      return pollSessionSteering;
+    },
+    get settleAbandonedRun() {
+      return settleAbandonedRun;
+    },
+    get sessionInputGateFor() {
+      return sessionInputGateFor;
+    },
+    get settleSessionInputsAfterRunEnd() {
+      return settleSessionInputsAfterRunEnd;
+    },
+    get trackSessionInputSettlement() {
+      return trackSessionInputSettlement;
+    },
+    get durableTerminalCleanup() {
+      return durableTerminalCleanup;
+    },
+    get runTerminalCheckpointCleanup() {
+      return runTerminalCheckpointCleanup;
+    },
+    get emitLiveFrame() {
+      return emitLiveFrame;
+    },
+    get persistPendingApprovalOverrideWithRetry() {
+      return persistPendingApprovalOverrideWithRetry;
+    },
+    get releaseTerminalRunReviewState() {
+      return releaseTerminalRunReviewState;
+    },
+    get disposeRegisteredStreamListeners() {
+      return disposeRegisteredStreamListeners;
+    },
+    get whenActiveRunTerminal() {
+      return whenActiveRunTerminal;
+    },
+    get whenErroredRunEnds() {
+      return whenErroredRunEnds;
+    },
+    get stopLazyExpirySweep() {
+      return stopLazyExpirySweep;
+    },
+    get releaseSessionInputs() {
+      return releaseSessionInputs;
+    },
+    get drainSessionInputSettlements() {
+      return drainSessionInputSettlements;
+    },
+    get appendFireSettledEvent() {
+      return appendFireSettledEvent;
+    },
+    get dispatchRecoveryClassification() {
+      return dispatchRecoveryClassification;
+    },
+    get dispatchRecoveryLeaseReleasedIfAny() {
+      return dispatchRecoveryLeaseReleasedIfAny;
+    },
+    get onRecoveredWorkflow() {
+      return onRecoveredWorkflow;
+    },
+    get reattachRecoveredRun() {
+      return reattachRecoveredRun;
+    },
+    get reconstructHumanWaitReviewIfParked() {
+      return reconstructHumanWaitReviewIfParked;
+    },
+    get recoverGoalsAtBoot() {
+      return recoverGoalsAtBoot;
+    },
+    get skipRunFinishedByPeer() {
+      return skipRunFinishedByPeer;
+    },
+    get sweepSuspendedSchedulerRuns() {
+      return sweepSuspendedSchedulerRuns;
+    },
+    get closeOpenReviewsOfCanceledFire() {
+      return closeOpenReviewsOfCanceledFire;
+    },
+    get restorePendingApprovalStates() {
+      return restorePendingApprovalStates;
+    },
+    get retryCanceledFireCloses() {
+      return retryCanceledFireCloses;
+    },
+    get eventRetentionCutoff() {
+      return eventRetentionCutoff;
+    },
+    get drainOutbox() {
+      return drainOutbox;
+    },
+    get isChildRun() {
+      return isChildRun;
+    },
+    get attachRecoveredSessionInput() {
+      return attachRecoveredSessionInput;
+    },
+    get resolveRecoveredSessionAgent() {
+      return resolveRecoveredSessionAgent;
+    },
+    get recoverRunSteering() {
+      return recoverRunSteering;
+    },
+    get hookOriginOfRun() {
+      return hookOriginOfRun;
+    },
+    get readScheduledAgentInput() {
+      return readScheduledAgentInput;
+    },
+    get sessionOwner() {
+      return sessionOwner;
+    },
   };
   // The seam block: synchronous, side-effect-free factories, called before anything can reach them.
   const { readEventHistory, subscribeToEventHistory } = createEventHistoryReads<D>(core, peers);
+  const {
+    startTask,
+    missingAgentError,
+    assertTriedAgentBelongsTo,
+    triedOriginMetadata,
+    toolGrantFor,
+    discardTriedRuns,
+    tryAgent,
+    bindStartSignal,
+    abortTask,
+  } = createTaskStart<D>(core, peers);
+  const { createRunFromRequest, locateRunCreationReceipt } = createRunCreation<D>(core, peers);
+  const { shutdown, dispose } = createShutdown<D>(core, peers);
+  const { recoverDurableRuns } = createDurableRecovery<D>(core, peers);
+  const {
+    createSchedule,
+    recordScheduleTick,
+    getSchedule,
+    listSchedules,
+    reassignSchedule,
+    pauseInvalidSchedule,
+    pauseInvalidSchedules,
+    pauseSchedule,
+    resumeSchedule,
+    cancelSchedule,
+    recordPendingScheduleTransitions,
+    skipNextSchedule,
+    unskipSchedule,
+    runScheduleNow,
+    listScheduleMissed,
+    updateSchedule,
+  } = createScheduleOperations<D>(core, peers);
   // COR-660 — the per-tick observation pair, forwarded the same way and for
   // the same reason: a scheduled tick is headless, so the bureau emitter is
   // the only surface it has. Fresh instances again, for the WHATWG
@@ -3639,9 +3793,6 @@ async function constructBureau<const D extends AgentDefinitions>(
   /** How often a session with a live durable run here re-reads its log. */
   const STEERING_POLL_MS = 2_000;
 
-  /** Polls already running, which shutdown awaits before storage closes. */
-  const inFlightSteeringPolls = new Set<Promise<void>>();
-
   function pollSessionSteering(sessionId: string, incarnation: string, runId: string): void {
     const kv = durableSteeringStore();
     const gate = steeringCursors.get(sessionId)?.gate;
@@ -4963,13 +5114,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     }
     return { ...budget, priorChatSpendUsd: spent };
   }
-
-  /** What a chat run's terminal event reports about its spend and who ran it (COR-1915). */
-  type ChatRunSpend = {
-    readonly agentName: string;
-    readonly owner: string;
-    readonly costEstimate: { readonly totalCost: number } | undefined;
-  };
 
   /**
    * Writes a chat run's spend to the chat's ledger (COR-1915), before the session records how the
@@ -7579,1396 +7723,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * run for its owner. Giving catalog runs their own deletion surface remains
    * its own design problem, outside COR-1302 as it was outside AB-241.
    */
-  /**
-   * Starts a task: a session run of `agentName` over `input`, in the context `options.contextId`
-   * names or in a new one, returned as a {@link TaskHandle}. A fresh task's handle iterates its
-   * run's events from the run's creation. A `commandId` retry that replays a task this process
-   * runs iterates the live tail; one this process does not run iterates nothing, and its
-   * `result()` settles from the durable store.
-   */
-  async function startTask(
-    agentName: string,
-    input: TaskInput,
-    callerOptions: StartTaskOptions = {},
-  ): Promise<TaskHandle> {
-    const startOptions = snapshotStartOptions(callerOptions);
-    if (typeof agentName !== 'string' || agentName.trim().length === 0) {
-      toBadRequest('"agentName" must be a non-empty string');
-    }
-    const fields = taskRequestFieldsOf(input);
-    if (seedsConversation(input) && startOptions.contextId !== undefined) {
-      toBadRequest('A task seeded with a "conversation" creates its context: omit "contextId"');
-    }
-    let live: { run: AgentRun<unknown, true>; events: AsyncIterator<RunEvent> } | undefined;
-    const created = await createRunFromRequest({
-      agentName,
-      ...fields,
-      ...(startOptions.contextId === undefined ? {} : { sessionId: startOptions.contextId }),
-      ...(startOptions.principal === undefined ? {} : { principal: startOptions.principal }),
-      ...(startOptions.commandId === undefined
-        ? {}
-        : { runCreationRequestId: startOptions.commandId }),
-      ...(startOptions.requestContext === undefined
-        ? {}
-        : { requestContext: startOptions.requestContext }),
-      ...(startOptions.traceContext === undefined
-        ? {}
-        : { traceContext: startOptions.traceContext }),
-      ...(startOptions.withTraceContext === undefined
-        ? {}
-        : { withTraceContext: startOptions.withTraceContext }),
-      ...(startOptions.origin === undefined ? {} : { origin: startOptions.origin }),
-      ...(startOptions.signal === undefined ? {} : { signal: startOptions.signal }),
-      taskInput: input,
-      onActiveRun(activeRun) {
-        const run = createAgentRun<unknown, true>(activeRun, {
-          onCompletedIteration: 'empty',
-          hasOutput: true,
-        });
-        live = { run, events: run[Symbol.asyncIterator]() };
-      },
-    });
-    // A replay creates no run here: the handle follows the run this process holds, if any, and
-    // the signal is bound to it here. A fresh run's signal was bound as the run was created.
-    if (live === undefined) {
-      const held = store.getRun(created.id)?.activeRun;
-      if (held !== undefined) {
-        const run = createAgentRun<unknown, true>(held, {
-          onCompletedIteration: 'empty',
-          hasOutput: true,
-        });
-        live = { run, events: run[Symbol.asyncIterator]() };
-        if (startOptions.signal !== undefined) {
-          bindStartSignal(startOptions.signal, created.id, held.result);
-        }
-      }
-    }
-    return createTaskHandle<unknown>({
-      id: created.id,
-      contextId: created.sessionId,
-      receipt: created.receipt,
-      live,
-      settle: () => settledTaskResult(created.id),
-      abort: (reason) => abortTask(created.id, reason),
-      snapshot: () => taskSnapshot(created.id),
-    });
-  }
-
-  /**
-   * The refusal of a run of `agentName`, which no catalog agent resolves. A disabled plugin's agent
-   * is listed `unavailable` (COR-2009), so the refusal says why it cannot run.
-   */
-  function missingAgentError(agentName: string): BureauError {
-    const unavailable = agentCatalog
-      .list()
-      .find((listing) => listing.id === agentName)?.unavailable;
-    return new BureauError(
-      unavailable === undefined
-        ? `Unknown agent "${agentName}"`
-        : `Agent "${agentName}" is unavailable: ${unavailable.message}.`,
-      'NOT_FOUND',
-    );
-  }
-
-  /**
-   * COR-1911 — a tried agent belongs to the one context that was started with it: a name that is
-   * held for another context, or for none, is an agent that does not exist.
-   */
-  function assertTriedAgentBelongsTo(agentName: string, sessionId: string): void {
-    if (tryAgents.contextOf(agentName) !== sessionId) {
-      throw new BureauError(`Unknown agent "${agentName}"`, 'NOT_FOUND');
-    }
-  }
-
-  /** COR-1911 — the origin a tried context records once, when its session is created. */
-  function triedOriginMetadata(
-    triedRun: boolean,
-    session: AgentSession | undefined,
-  ): Record<string, string> {
-    return triedRun && session === undefined ? { [SESSION_ORIGIN_METADATA_KEY]: 'try' } : {};
-  }
-
-  /**
-   * COR-1710, COR-1911 — the tools a task starting now is granted: the settings', less
-   * `scheduleWakeup` and `decide` for a tried agent, whatever the settings offer. The admission
-   * record keeps the grant, so the task's recovery offers the same tools.
-   */
-  function toolGrantFor(triedRun: boolean): TaskToolGrant {
-    return triedRun ? { ...toolGrantNow(), wakeup: false, decide: false } : toolGrantNow();
-  }
-
-  /**
-   * COR-1911 — removes the runs of a tried context that has been deleted: each run's task record,
-   * its place in the run store, its durable workflow and its checkpoints. A context a person chats
-   * in keeps these as history until retention ends them; a tried one is a throwaway, so it keeps
-   * none. Best-effort for each step, like the rest of a deletion that has already committed: a
-   * failure is diagnosed and the retention that ends every run's history ends this one's.
-   * The content a deletion of any context leaves (event history, dedupe and surface markers,
-   * audit text) is purged by `chatContentPurge` (COR-1934), which this tried path runs after; the
-   * engine's tombstones (`wf-gen:` and `wf-owner-epoch:`), which keep a run id from being reused,
-   * stay until retention.
-   */
-  async function discardTriedRuns(
-    session: AgentSession,
-    knownRunIds: ReadonlySet<string>,
-  ): Promise<void> {
-    const runIds = new Set(knownRunIds);
-    const owners = session.metadata['lastRunOwningPrincipals'];
-    if (isPlainAuthorityRecord(owners)) for (const runId of Object.keys(owners)) runIds.add(runId);
-    // The run store holds only this process's runs, and the ownership map is pruned once a run's
-    // event history expires, while its task record stays longer: the durable context index is
-    // the complete list of the context's tasks.
-    try {
-      for (const taskId of await tasks.taskIdsOfContext(session.id, session.incarnation)) {
-        runIds.add(taskId);
-      }
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'agent-try',
-        message: `[bureau] Could not list the tasks of a deleted tried context "${session.id}": ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-    const attempt = async (what: string, runId: string, work: () => Promise<unknown>) => {
-      try {
-        await work();
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'agent-try',
-          message: `[bureau] Could not remove the ${what} of run "${runId}" of a deleted tried context "${session.id}": ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      }
-    };
-    for (const runId of runIds) {
-      if (store.getRun(runId) !== undefined) await attempt('run', runId, () => deleteRun(runId));
-      await attempt('task record', runId, () => tasks.remove(runId));
-      if (runtime.durable === undefined) continue;
-      await attempt('workflow and checkpoints', runId, () => purgeDurableRun(runId));
-    }
-  }
-
-  /**
-   * COR-1911 — builds an agent from `definition` as an agent file would be, writes nothing, and
-   * starts a new context with it over `input`. The agent is held in memory for that context alone
-   * and dropped with it; see `agent-try.ts` for what a run of it may not do.
-   */
-  async function tryAgent(
-    definition: AgentFileDefinitionInput,
-    input: TaskInput,
-    tryOptions: TryAgentOptions = {},
-  ): Promise<TryAgentResult> {
-    assertRunAdmissionOpen('run');
-    const owner = ownerFromPrincipal(tryOptions.principal, toBadRequest);
-    if (fileAgents === undefined) {
-      throw new AgentFileError(
-        'agent-directory-not-configured',
-        'This Bureau has no agent source or no models.generate, so it cannot build an agent to try.',
-      );
-    }
-    const refused = tryToolProblem(definition);
-    if (refused !== undefined) throw new AgentFileError(refused.code, refused.message, refused);
-    const contextId = runtimeServices.identifiers.next('session');
-    const agentName = `${TRY_AGENT_NAME_START}${runtimeServices.identifiers.next('try')}`;
-    // Built before it is held: a definition that would not load as a file is refused here with the
-    // file's own field-named problem, and nothing exists.
-    const agent = fileAgents.files.ephemeral(agentName, definition);
-    tryAgents.hold({ name: agentName, agent, definition, owner, contextId });
-    try {
-      const handle = await startTask(agentName, input, {
-        contextId,
-        principal: owner,
-        origin: { kind: 'chat' },
-        ...(tryOptions.requestContext === undefined
-          ? {}
-          : { requestContext: tryOptions.requestContext }),
-        ...(tryOptions.signal === undefined ? {} : { signal: tryOptions.signal }),
-      });
-      return { contextId, agentName, taskId: handle.id };
-    } catch (error) {
-      // A start that failed may have saved the context before it did: take both away.
-      try {
-        await deleteSession(contextId);
-      } catch (cleanupError) {
-        diagnose({
-          level: 'error',
-          scope: 'agent-try',
-          message: `[bureau] A tried agent failed to start, and its context "${contextId}" could not be removed: ${serializeUnknownError(cleanupError)}`,
-          cause: cleanupError,
-        });
-      }
-      tryAgents.release(agentName, contextId);
-      throw error;
-    }
-  }
-
-  /**
-   * Binds a task's start signal to the run this process holds under `id`: an aborted signal
-   * aborts it now, a later abort when it fires. Once the run settles the signal has nothing left
-   * to abort, so the listener goes with it, and a long-lived caller signal does not collect one
-   * per task.
-   */
-  function bindStartSignal(signal: AbortSignal, id: string, settled: Promise<unknown>): void {
-    const onAbort = () => abortTask(id, 'Aborted by the start signal');
-    if (signal.aborted) {
-      onAbort();
-      return;
-    }
-    signal.addEventListener('abort', onAbort, { once: true });
-    const removeListener = () => signal.removeEventListener('abort', onAbort);
-    void settled.then(removeListener, removeListener);
-  }
-
-  /**
-   * Requests cancellation of a task through `abortRun`, so the abort is tracked as every other
-   * one is (`internals.abortingTasks()`). Does nothing once the task has settled or for a task
-   * this process does not hold. The reason reaches the run's abort signal and its children's
-   * parent-cancellation reason.
-   */
-  function abortTask(id: string, reason?: string): void {
-    if (store.getRun(id)?.status !== 'running') return;
-    abortRun(id, reason);
-  }
-
-  /**
-   * A task's liveness now, from the run this process holds. A task this process does not hold
-   * (a replay of a task another process ran) is `NOT_FOUND`.
-   */
-  function taskSnapshot(id: string): LivenessSnapshot {
-    const detail = getRun(id);
-    if (detail !== undefined) return detail.liveness;
-    throw new BureauError(`Task "${id}" is not held by this process`, 'NOT_FOUND');
-  }
-
-  /**
-   * The result of a task this process does not run, once its workflow is terminal in the durable
-   * store: the full `RunResult`, rebuilt from the workflow's summary and the run's checkpoint as
-   * every other durable reader does, since the workflow records only a summary (a step count, no
-   * usage or conversation). A task that did not complete rejects with its error.
-   */
-  async function settledTaskResult(id: string): Promise<RunResult> {
-    const state = await waitForDurableRun(id);
-    if (state === undefined || runtime.durable === undefined) {
-      throw new BureauError('Task results need a durable engine', 'NOT_CONFIGURED', 'durable');
-    }
-    if (state === null) throw new BureauError(`Task "${id}" not found`, 'NOT_FOUND');
-    if (state.status !== 'completed') {
-      throw new BureauError(
-        `Task "${id}" ended ${state.status}${state.error === undefined ? '' : `: ${state.error}`}`,
-        'CONFLICT',
-      );
-    }
-    const reading = await readDurableRunResult(runtime.durable, id, { runtime: runtimeServices });
-    if (reading.status !== 'completed') {
-      throw new BureauError(`Task "${id}" result cannot be read (${reading.status})`, 'CONFLICT');
-    }
-    return reading.result;
-  }
-
-  async function createRunFromRequest(
-    request: CreateRunRequest & SessionTaskFields,
-  ): Promise<CreatedRunSummary> {
-    validateCreateRunRequest(request);
-    // COR-718 — the owner of record: stored once, below, and unchanged afterward. A
-    // host that states no principal owns the run as `anonymous:local`; one that
-    // states anything but text is refused here, before anything is persisted.
-    const owner = ownerFromPrincipal(request.principal, toBadRequest);
-    assertRunAdmissionOpen('run');
-
-    if (request.runCreationRequestId !== undefined) requireRunCreationLedger();
-
-    const sessionId = request.sessionId?.trim() ?? runtimeServices.identifiers.next('session');
-    // COR-1481 — a context being deleted takes no new task: it reads as one that does
-    // not exist, until the deletion has committed and the id may name a new incarnation.
-    if (inFlightSessionDeletions.has(sessionId)) {
-      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-    }
-    const runId = runtimeServices.identifiers.next('run');
-    // The text that stands for the request where only text fits: flow control,
-    // and the session's `lastUserMessage`.
-    const requestText = requestTextOf(request);
-
-    // COR-1577 — which agent this run is. A session is bound to the agent of the run that
-    // created it, so an existing session decides; a new one takes the named agent, or the
-    // default `bureau`. Every refusal here lands before anything is persisted.
-    const { session, conversation } = await loadConversation(sessionId);
-    const baseConversationHistory = conversation.current;
-    rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, session !== undefined);
-
-    // COR-718 — a session belongs to the owner of the run that created it. A
-    // different principal starting a run on it is refused exactly as a session
-    // that does not exist is, so an identifier grants nothing.
-    if (session && !isSessionAuthorityAuthorized(session.metadata, owner)) {
-      throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-    }
-    const agentName = resolveRunAgentName(sessionId, session, request.agentName);
-    // COR-1911 — a tried agent belongs to the one context that was started with it: a name that
-    // is held for another context, or for none, is an agent that does not exist.
-    const triedRun = isTryAgentName(agentName);
-    if (triedRun) assertTriedAgentBelongsTo(agentName, sessionId);
-    // COR-1867 — where the task came from, as its record and its run's `origin:<kind>` tag keep
-    // it. A chat's identifiers are this start's own, never the caller's.
-    const taskOrigin: TaskOrigin = taskOriginOfStart(request.origin, {
-      sessionId,
-      agentName,
-      owner,
-    });
-    // COR-323 — every run belongs to a catalog agent. The implicit `bureau` agent, which ran on
-    // Bureau-wide `generate`/`toolbox` options, no longer exists, so a session stored under it
-    // answers as any unknown agent does.
-    const resolution = await runtime.resolveSessionAgentRun(agentName, runId, owner, undefined, {
-      sessionId,
-      metadata: session?.metadata,
-    });
-    if (resolution.status === 'missing-agent') throw missingAgentError(agentName);
-    if (resolution.status === 'not-durable-capable') {
-      throw new BureauError(
-        `Agent "${agentName}" cannot run in a session: it exposes no definition resolver.`,
-        'UNSUPPORTED_CAPABILITY',
-      );
-    }
-    if (resolution.status === 'resolver-failed') throw resolution.error;
-    const sessionAgent: SessionAgentRun = resolution.run;
-    // Request beats agent, and agent beats Bureau, for what the run is seeded and capped with.
-    const effectiveSystemPrompt = sessionAgent?.instructions ?? runtime.systemPrompt;
-    const effectiveMaximumSteps = sessionAgent?.options.maximumSteps ?? runtime.maximumSteps;
-    const effectiveMaximumTokens = sessionAgent?.options.maximumTokens;
-    // COR-1915 — the agent's `limits.cost.chat` is measured against what the chat's earlier
-    // runs spent. It is read here, before anything is persisted, so a chat whose spend cannot be
-    // read refuses the run instead of starting it unmeasured. The run is told the total once and
-    // is stopped by it only before its first step. Two runs that start together both read the
-    // total as it is: the owner's decision is that the NEXT run stops, not one that has begun.
-    const chatCostBudget = await chatCostBudgetOf(sessionAgent, sessionId, session);
-    const requestContext = await bindRunWorkspaceAuthority(
-      workspace,
-      normalizeRunRequestContext(
-        request.requestContext,
-        runId,
-        sessionId,
-        agentName,
-        request.principal,
-      ),
-      owner,
-    );
-    if (isTransportIssuedAuthority(requestContext)) {
-      if (!requestAuthorityValidator) {
-        throw new BureauError(
-          'Cannot create run: transport-issued request authority cannot be validated.',
-          'CONFLICT',
-        );
-      }
-      if (!(await requestAuthorityValidator(requestContext))) {
-        throw new BureauError(
-          'Cannot create run: request authority is no longer current.',
-          'CONFLICT',
-        );
-      }
-    }
-
-    // AB-13 — admit BEFORE any session/runtime work: createRun returns
-    // synchronously right after the run starts (it does not await
-    // completion), so admission is a synchronous pre-gate — over-cap or
-    // rate-limited or duplicate triggers are rejected outright, not queued.
-    // COR-690: re-checked here because the authority validation above awaits,
-    // and `shutdown()` may have started during it.
-    assertRunAdmissionOpen('run');
-    // COR-424 — a request naming a run-creation request id consults the
-    // command ledger before flow control, so an exact retry replays the
-    // original run instead of being admitted, or rejected, as new work. A
-    // fresh claim is settled exactly once below: completed with the run's
-    // summary once it is durably started, or released when no run results.
-    // The payload digest takes every default at the value this run will use,
-    // so a retry that spells out a default it first omitted is the same
-    // command. The session is the one the request names: an omitted session
-    // is minted afresh per attempt, so its minted id cannot be part of it.
-    const ledgerAttempt =
-      request.runCreationRequestId === undefined
-        ? undefined
-        : await requireRunCreationLedger().begin({
-            // A run creation request id requires an explicit `principal`, so this is
-            // exactly the owner the run records, and the caller a receipt replays to
-            // is the principal that owns the run. The `''` is unreachable.
-            callerId: request.principal ?? '',
-            // The agent the run is, not the one the caller stated: a retry that spells out
-            // the agent an omitted name inherited is the same command, and
-            // `locateRunCreationReceipt` resolves it the same way.
-            agentName,
-            requestId: request.runCreationRequestId.trim(),
-            payloadDigest: digestRunCreationPayload({
-              agentName,
-              input: serializeTaskInput(request.taskInput ?? legacyTaskInputOf(request)),
-              contextId: request.sessionId?.trim(),
-              requestContext: serializeTaskRequestContext(request.requestContext),
-            }),
-            claim: { runId, sessionId },
-          });
-    if (ledgerAttempt?.kind === 'replay') return ledgerAttempt.result;
-    const ledgerClaim = ledgerAttempt;
-    if (flowController) {
-      const decision = flowController.admit({
-        runId,
-        agentName,
-        source: 'api',
-        message: requestText,
-        sessionId,
-        ...(request.principal !== undefined ? { principal: request.principal } : {}),
-      });
-      if (!decision.allowed) {
-        const rejection = new BureauError(
-          `Run rejected by flow control policy (${decision.reason})`,
-          'RATE_LIMITED',
-        );
-        await releaseRunCreationClaim(ledgerClaim, rejection);
-        throw rejection;
-      }
-    }
-
-    // AB-13 — everything below stays INLINE in this same function (not a
-    // separately-awaited helper): an extra `await helper(...)` layer would
-    // add a microtask hop before `createRun` resolves back to the caller,
-    // shifting how much of the in-memory loop's own internal scheduling has
-    // run by the time a caller can first call `abortRun()` — existing
-    // abort-timing tests depend on that not moving. try/catch alone adds no
-    // such hop, so it is the release mechanism here.
-    //
-    // AB-361 review (codex P2 PRRT_kwDORvupsc6ga0TX): distinguishes the
-    // catch block's two reachable cases below — set true the moment
-    // `store.register` succeeds, so a durable-write failure that happens
-    // AFTER registration (this run is already a terminal FAILED run other
-    // callers can see via `listRuns()`/`getRun()`) does not fall through
-    // the SAME `runAttribution.delete(runId)` cleanup a genuinely
-    // never-registered run needs.
-    let registeredForRecovery = false;
-    // COR-1524: whether this run holds a snapshot reference that nothing else will settle if the
-    // run never registers.
-    let heldAgentReference = false;
-    let created: RunSummary;
-    try {
-      if (!session) {
-        if (effectiveSystemPrompt) {
-          conversation.appendSystemMessage(effectiveSystemPrompt);
-        }
-      }
-
-      if (request.message !== undefined) conversation.appendUserMessage(request.message);
-      if (request.inputParts !== undefined) appendAgentInput(conversation, request.inputParts);
-      appendRequestRows(conversation, request.appendMessages);
-      // A run answers the row the conversation ends in: a user message, or a
-      // tool result (the outcome of an approval) with nothing newer.
-      assertConversationAnswerable(conversation);
-
-      // AB-54 usage analytics: resolve agentName/principal deterministically now
-      // (before `store.register`, so it's in place before any listRuns()/getRun()
-      // call can observe this run) rather than relying on the tool-bubble-event
-      // heuristic, which cannot see a run that never calls a tool.
-      runAttribution.set(runId, { agentName, principal: owner });
-      // COR-2009 — the audit log's "Started a run": who started it, the agent, and the chat it runs
-      // in, which the log names by its title. Best effort and not awaited, so starting a run takes
-      // no extra turn (AB-13 above); the trail tracks the write until it is disposed.
-      void auditTrailInstance?.record({
-        runId,
-        type: 'run.started',
-        principal: owner,
-        detail: { agentName, sessionId },
-      });
-      const runRuntime = await runtime.createRunRuntime(
-        {
-          ...request,
-          agentName,
-          sessionId,
-          runId,
-          requestContext,
-        },
-        {
-          sessionAgent,
-          memoryOwner: owner,
-          withoutMemory: triedRun,
-          sessionMetadata: session?.metadata,
-        },
-      );
-      runRequestContexts.set(runId, requestContext);
-
-      const disposeStreamListeners: Array<() => void> = [];
-
-      // COR-1524 — a file agent's definition is stored, and this run tied to it, before the
-      // session names the run, so recovery always finds the snapshot the session's hash points at.
-      if (sessionAgent?.agentBinding !== undefined) {
-        await fileAgents?.recordBoundRun(sessionAgent.agentBinding, runId);
-        heldAgentReference = fileAgents !== undefined;
-      }
-      const savedAsRunning = await saveSession(
-        sessionId,
-        conversation,
-        {
-          lastRunId: runId,
-          lastRunStatus: 'running',
-          // This run's own starting entry: durable steering counts it as
-          // starting, until its `promoted` entry is logged and for a bounded
-          // time, even when another run's save replaces `lastRunId`.
-          ...(durableSteeringStore() === undefined
-            ? {}
-            : { steeringStartingRuns: { [runId]: runtimeServices.clock.nowISO() } }),
-          lastUserMessage: requestText,
-          // COR-1577 — the definition the named agent had when this run started, so recovery can
-          // tell when the catalog's has moved on. Null for the default agent, which has none.
-          [SESSION_AGENT_REVISION_METADATA_KEY]: sessionAgent?.definitionRevision ?? null,
-          // COR-1524 — the file the agent was read from, by hash, so recovery builds from the
-          // snapshot. Null for a code-defined agent, and for the default one.
-          [SESSION_AGENT_DEFINITION_HASH_METADATA_KEY]: sessionAgent?.agentBinding?.hash ?? null,
-          // Reset the active-skill snapshot at the start of every run so a reused
-          // session never seeds a fresh run with the PREVIOUS run's active skills.
-          // The snapshot is otherwise written only by createSkillRecordSnapshotHook
-          // after the run's first onStep boundary; if the durable process crashes
-          // before that first snapshot, recovery would read this session's stale
-          // records and pre-seed the new run with skills a live fresh run would not
-          // have. null clears it: buildRunDepsFromSession runs the value through
-          // isSkillActivationRecordArray, which rejects null → the recovered run
-          // starts empty, exactly as a fresh run would (PRRT_kwDORvupsc6Mddv3).
-          //
-          // All three keys, not just the records. The run id and step are what
-          // readCommittedScheduledSkillSnapshot matches on, and a stale pair left
-          // behind would let it accept a committed step snapshot belonging to a
-          // previous run on this session.
-          activeSkillRecords: null,
-          activeSkillRecordsRunId: null,
-          activeSkillRecordsStep: null,
-          // Durable recovery needs the authority that was safe to persist at
-          // dispatch time. Credentials, tracing, and other request-local data
-          // intentionally never cross the session boundary.
-          lastRequestAuthority: persistedRequestAuthority(requestContext, agentName),
-          lastRequestAuthorities: { [runId]: persistedRequestAuthority(requestContext, agentName) },
-          // AB-359, COR-718 — persist the run's OWNER (`request.principal`, or
-          // `anonymous:local` when it states none), never
-          // `requestContext.authority.principalId`: that is tool-execution
-          // authority, and it is synthesized as `run:${runId}` when the caller
-          // omitted a principal, per `normalizeRunRequestContext` above. Persisting
-          // it lets a recovered run's real owner authorize against durable
-          // `eventHistory` after a process restart, when `runAttribution` (AB-54's
-          // in-memory-only map) has been lost. Written unconditionally, like
-          // `runAttribution.set` above: every run has an owner, so a restart
-          // reads the same owner the run had live.
-          lastRunOwningPrincipals: { [runId]: owner },
-          // COR-718 — the session's owner, written once: `mergeMetadata` keeps the
-          // stored owner when the session already has one.
-          [SESSION_OWNER_METADATA_KEY]: owner,
-          // COR-1911 — the session of an agent being tried says so once, when it is created.
-          ...triedOriginMetadata(triedRun, session),
-        },
-        // Stamp a new session with the dispatched agent (PRRT_kwDORvupsc6MbUsN) so it
-        // is not always recorded as the house default 'bureau'. An existing session keeps the
-        // agent it was created for.
-        agentName,
-        baseConversationHistory,
-      );
-
-      // F3 — opt-in `requestHumanInput` wiring for a REAL durable run
-      // (`options.humanInput`). This closes the tracked wiring gap: the tool's
-      // mutable `pendingHumanWait` slot must be the EXACT object Weft hands
-      // back as `ctx.services` (durable's own per-run deps), and its
-      // `HumanWaitParkedEvent` dispatch must land on the EXACT emitter this
-      // run's `ActiveRun` exposes — neither exists until `createActiveRun`
-      // constructs them below, and both are internal to the durable adapter.
-      // `emitter` is threaded in directly (built here, handed to
-      // `createActiveRun` to use instead of minting its own); the
-      // `ctx.services` reference is captured via `onServices`, a synchronous
-      // hook the durable adapter fires immediately before `engine.prepare` —
-      // see `DurableActiveRunOptions.onServices` in operative for why this is
-      // the only point such a reference can be obtained. Once captured, the
-      // tool's `pendingHumanWait` setter forwards onto it, so a real
-      // `requestHumanInput` call actually parks the workflow AND fires an
-      // observable event — reaching the `activeRun.addEventListener(
-      // HumanWaitParkedEvent.type, …)` listener below (AB-13 `markParked`)
-      // and `store`'s action log (AB-20 `listPendingReviews`).
-      let humanInputEmitter: CompletableEventTarget<CombinedOperativeEventMap> | undefined;
-      // Shared `ctx.services` capture for BOTH durable-only opt-in tools this
-      // run may wire (`requestHumanInput` and `scheduleWakeup`): Weft's
-      // durable adapter fires exactly one `onServices` hook per run
-      // (`DurableActiveRunOptions.onServices`, immediately before
-      // `engine.prepare`), so a SINGLE ref/hook is captured here and handed to
-      // whichever context(s) `wireDurableOptInTools` wires below need it —
-      // two separate hooks would have the later one clobber the earlier
-      // one's `onServices` property in the `createActiveRun` options object
-      // literal, silently breaking whichever tool composed first.
-      const servicesRef: { current?: DurableRunDeps } = {};
-      // COR-1710 — the tools this task is granted, read from the settings once and recorded on its
-      // admission record below, so its recovery offers the same ones.
-      // COR-1911 — a tried agent is granted neither `scheduleWakeup` nor `decide`, whatever the
-      // settings offer, and the admission record below keeps that grant for its recovery.
-      const toolGrant = toolGrantFor(triedRun);
-      const wantsHumanInput = toolGrant.humanInput !== false && !!runtime.durable;
-      const wantsWakeup = toolGrant.wakeup && !!runtime.durable;
-      // COR-1709: offered to exactly the runs that are offered `requestHumanInput`.
-      const decideWiring = lateDecisions.toolWiringFor(!!runtime.durable, owner, toolGrant.decide);
-      if (wantsHumanInput) {
-        humanInputEmitter = new CompletableEventTarget<CombinedOperativeEventMap>();
-      }
-      // AB-336: `wireDurableOptInTools` is the ONE place this wiring lives —
-      // shared with `buildRunDepsFromSession`'s recovery path
-      // (`runtime-composition.ts`), which used to omit it entirely.
-      const runToolbox: BureauToolbox = wireDurableOptInTools(runRuntime.toolbox, servicesRef, {
-        humanInput: wantsHumanInput,
-        inputSchemas: humanInputSchemasOf(toolGrant.humanInput),
-        wakeup: wantsWakeup,
-        runId,
-        decide: decideWiring,
-        ...(humanInputEmitter ? { humanInputEmitter } : {}),
-      });
-      const durableServicesOnServices = runtime.durable
-        ? (services: DurableRunDeps) => {
-            servicesRef.current = services;
-            configureChildWaitServices(services, owner);
-          }
-        : undefined;
-
-      // AB-67/AB-199 — steering is scoped to in-memory (process-local)
-      // sessions only: a durably-configured bureau's `submitSteeringCommand`
-      // always rejects pause/resume as `unsupported-capability`, so a
-      // durable run never needs a gate. An in-memory run's gate is created
-      // (or reused) HERE, eagerly, before `createActiveRun` — not lazily
-      // inside `submitSteeringCommand` — because a pause admitted mid-run
-      // must gate THIS run's own `runStep` boundary; a gate created only on
-      // first use would miss every run already started before the first
-      // `submitSteeringCommand` call for its session. A gate with no
-      // `pause`/`resume` ever admitted against it is inert: `getDesiredState()`
-      // stays `{ paused: false, configVersion: 0 }`, which `run-step.ts`'s
-      // `maybeDispatchSteeringApplied` never fires for (`configVersion > 0`
-      // guard) — identical to today's no-`steering`-dependency behavior.
-      // `promoteForNewRun()` promotes any agent-identity bump a prior run
-      // deferred (AB-199's coordinator amendments, 2026-09-02 addendum); a
-      // no-op when nothing was pending.
-      // AB-200: durable runs get a steering gate too. They were excluded
-      // while `submitSteeringCommand` refused every durable command —
-      // attaching a gate nothing could ever write to was pointless. Now
-      // that durable steering persists and recovers, excluding them would
-      // be the actual bug: a command admitted and durably recovered would
-      // never reach the run it was meant to steer.
-      // A durable run must see the session's logged desired state at its
-      // own step 0, so its start is itself a logged event: catching up and
-      // appending `promoted` folds everything other processes (or this one,
-      // before a restart) admitted, and records the promotion in log order.
-      const steeringKv = durableSteeringStore();
-      const steeringSession =
-        steeringKv === undefined ? undefined : await runtime.sessionStore?.load(sessionId);
-      if (savedAsRunning) runSessionIncarnations.set(runId, savedAsRunning.incarnation);
-      if (
-        steeringKv !== undefined &&
-        (steeringSession === undefined ||
-          steeringSession.incarnation !== savedAsRunning?.incarnation)
-      ) {
-        // Saved just above; gone now, or replaced by a recreated session,
-        // only if deleted concurrently. A durable run must not start on a
-        // gate the steering log does not feed, nor steer, log into, or later
-        // save over a session it was never started in.
-        throw new BureauError(
-          `Session "${sessionId}" was deleted while run "${runId}" was starting.`,
-          'CONFLICT',
-        );
-      }
-      // The session was already saved as running this run. If the run then
-      // never starts, it is recorded as failed rather than left a phantom —
-      // decided inside the session's own update, so it applies only while
-      // this very run is still the session's latest: not to a session
-      // deleted meanwhile (saving would recreate it), nor over a newer run
-      // another process started.
-      const markStartFailed = async (error: unknown): Promise<void> => {
-        if (steeringSession === undefined) return;
-        try {
-          await runtime.sessionStore?.update(sessionId, (current) => {
-            if (current?.incarnation !== steeringSession.incarnation) return undefined;
-            // Never starting now, whichever run is the session's latest.
-            const starting = current.metadata['steeringStartingRuns'];
-            const stillStarting =
-              typeof starting === 'object' && starting !== null && !Array.isArray(starting)
-                ? Object.fromEntries(
-                    Object.entries(starting).filter(([startingRunId]) => startingRunId !== runId),
-                  )
-                : starting;
-            return {
-              ...current,
-              metadata: {
-                ...current.metadata,
-                ...(stillStarting === undefined ? {} : { steeringStartingRuns: stillStarting }),
-                ...(current.metadata['lastRunId'] === runId
-                  ? { lastRunStatus: 'error', lastError: serializeUnknownError(error) }
-                  : {}),
-              },
-            };
-          });
-        } catch (rollbackError) {
-          diagnose({
-            level: 'error',
-            scope: 'steering',
-            message: `[bureau] Could not mark session "${sessionId}" failed after run "${runId}" failed to start: ${serializeUnknownError(rollbackError)}`,
-          });
-        }
-      };
-      if (steeringKv !== undefined && steeringSession !== undefined) {
-        try {
-          await enqueueSteering(sessionId, () =>
-            appendThenApplySteering(steeringKv, sessionId, steeringSession.incarnation, {
-              type: 'promoted',
-              runId,
-              now: runtimeServices.clock.nowISO(),
-            }),
-          );
-        } catch (error) {
-          await markStartFailed(error);
-          throw error;
-        }
-        steeringRunIncarnations.set(runId, steeringSession.incarnation);
-        pollSessionSteering(sessionId, steeringSession.incarnation, runId);
-      } else {
-        getSessionSteeringGate(sessionId).promoteForNewRun(runId, runtimeServices.clock.nowISO());
-      }
-      const steeringGate = getSessionSteeringGate(sessionId);
-      // AB-67/AB-199 — a per-run VIEW of the shared session gate (see
-      // `steering.ts`'s `forRun` doc comment): a pause bound to a DIFFERENT
-      // concurrent run on this same session must never block this one.
-      const runSteeringGate = steeringGate.forRun(runId);
-
-      // COR-690: the last admission check before the run and its toolbox are
-      // registered. Everything from that check to the registration is
-      // synchronous, so a `shutdown()` that started during the awaits above
-      // rejects this run instead of letting it start outside shutdown's snapshot.
-      let activeRun: ReturnType<typeof createActiveRun>;
-      let startedRunOptions: RunOptions;
-      // COR-1707 — with no session store, nothing saves the context's rows or claims what they
-      // reference, so the task holds its own rows, its input included, under its run for the
-      // task's life, as a catalog run does; its end releases them (the terminal listeners below).
-      const rowHolder: 'session' | 'run' = runtime.sessionStore === undefined ? 'run' : 'session';
-      try {
-        // COR-1481 — the task's record, before anything of the run starts, so a
-        // record that cannot be written ends the start like any other start failure.
-        await tasks.recordAdmission({
-          taskId: runId,
-          contextId: sessionId,
-          incarnation: runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation ?? '',
-          agentName,
-          owner,
-          origin: taskOrigin,
-          // The text the run began with, whether it came as `message` or as an appended user row.
-          message: request.message ?? (requestText === '' ? undefined : requestText),
-          tools: toolGrant,
-        });
-        // COR-1476 — inside the block below, so a gate that cannot be built
-        // (its session read fails) ends the promoted run like any other start
-        // failure: its end is logged and its session's input settled.
-        const runSessionInputGate = sessionInputGateFor(
-          sessionId,
-          runId,
-          runSessionIncarnations.get(runId) ?? savedAsRunning?.incarnation,
-        );
-        assertRunAdmissionOpen('run');
-        // COR-1481 — the fence again, now that the session is saved and before the run
-        // registers: a deletion that began during the awaits above has already looked
-        // for this session's runs and would not find this one.
-        if (inFlightSessionDeletions.has(sessionId)) {
-          throw new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND');
-        }
-        startedRunOptions = {
-          generate: runRuntime.generate,
-          toolbox: runToolbox,
-          conversation,
-          // COR-2106 — children this run dispatches carry Bureau's tier.
-          ...bureauInvariantsField(runtime.bureauChildInvariants),
-          // COR-1577 — the named agent's own options (stop conditions, structured output and
-          // its retries, …), before the ones Bureau sets below, which win.
-          ...copyAgentOwnedRunOptions(sessionAgent?.options),
-          ...(chatCostBudget === undefined ? {} : { costBudget: chatCostBudget }),
-          // COR-716 — a managed asset in this run's input (or in input admitted to
-          // its session mid-run) resolves as the run's owner.
-          ...sessionRunMediaOptions(sessionAgent, runtime.mediaOptionsFor(owner, rowHolder)),
-          maximumSteps: effectiveMaximumSteps,
-          maximumTokens: effectiveMaximumTokens,
-          // COR-1577 — a named agent's stop conditions replace the Bureau's default ones.
-          stopWhen: sessionAgent?.options.stopWhen,
-          // AB-260: the bureau's single composed RuntimeServices instance,
-          // snapshotted into every run it starts.
-          runtime: runtimeServices,
-          ...(runSteeringGate ? { steering: runSteeringGate } : {}),
-          // COR-1269 — stamped onto this run's hook-plan observations.
-          sessionId,
-          // COR-1476 — input admitted while this run is live, delivered at
-          // each of its step boundaries.
-          ...(runSessionInputGate ? { sessionInput: runSessionInputGate } : {}),
-          // COR-1265 criterion 8 — merged AFTER the trailing registration, so
-          // the Bureau tier is complete before it becomes the merge's `bureau`
-          // tier. The merge copies every entry into a fresh
-          // registry, which is what makes the plan a snapshot: a registration
-          // added to `runRuntime.hooks` afterwards cannot reach this run.
-          hooks: runtime.composeRunHooks({
-            bureau: registerTrailingOnStep(
-              runRuntime.hooks,
-              'bureau:pending-approval-persist',
-              createPendingApprovalPersistHook(
-                runId,
-                sessionId,
-                pendingApprovalOverrides,
-                persistPendingApprovalOverrideWithRetry,
-              ),
-            ),
-            // COR-1577 — a named agent's own hook tier follows the Bureau's, as on a catalog dispatch.
-            agent: sessionAgent?.options.hooks,
-          }),
-          executeOptions: sessionExecuteOptions(sessionAgent?.options, requestContext),
-          // Thread agentName and runId so curated tool.* bubble events are stamped
-          // with {agentName, runId, step} metadata (C3) and durable launch input
-          // carries the owning agent for audit/recovery attribution (F2). Fall back
-          // to BUREAU_AGENT_NAME when the request omits it, matching the agent the
-          // session is stamped with — otherwise the durable input + tool events
-          // carry an empty agentName while the session says 'bureau'.
-          agentName,
-          runId,
-          // The start's trace context parents this run's spans, as a catalog dispatch's does.
-          ...(request.traceContext === undefined ? {} : { parentContext: request.traceContext }),
-          ...(request.withTraceContext === undefined
-            ? {}
-            : { withTraceContext: request.withTraceContext }),
-        };
-        activeRun = createActiveRun(
-          startedRunOptions,
-          // Route through the durable engine when one was composed (durable
-          // + storage). The conversation already carries the seeded user/system
-          // messages, so no separate `prompt` is passed — the workflow snapshots it.
-          // The run is then checkpointed and resumes from its last step after a crash.
-          runtime.durable
-            ? {
-                engine: runtime.durable.engine,
-                checkpointStore: runtime.durable.checkpointStore,
-                // COR-625: this run's terminal checkpoint-retention step,
-                // folded into its `closed()`. Memoized per run id, so the
-                // listeners below firing it independently costs nothing.
-                ...(durableTerminalCleanup()
-                  ? { terminalCleanup: runTerminalCheckpointCleanup }
-                  : {}),
-                runId,
-                // Carry the owning session in the durable input so boot recovery can
-                // correlate a recovered handle back to its session without a side
-                // table (see recoverDurableRuns / resolveRunServices).
-                sessionId,
-                // Lets durable steering in any process find this run as live
-                // for this session incarnation (`liveSessionRunIdsEverywhere`).
-                tags: [
-                  taskOriginTag(taskOrigin),
-                  ...(steeringSession === undefined
-                    ? []
-                    : [steeringSessionRunTag(sessionId, steeringSession.incarnation)]),
-                ],
-                ...(humanInputEmitter ? { emitter: humanInputEmitter } : {}),
-                ...(durableServicesOnServices ? { onServices: durableServicesOnServices } : {}),
-              }
-            : undefined,
-          // AB-214 review (PRRT_kwDORvupsc6esZTF): thread the authenticated
-          // principal starting this run into `LivenessSnapshot.owner` — AC4
-          // reserves an absent owner for a standalone (non-Bureau) run, and a
-          // Bureau-started run always has one to give.
-          { owner },
-        );
-      } catch (error) {
-        await tasks.discard(runId).catch(() => undefined);
-        // Promoted but never started, so no terminal listener will ever log
-        // its end: log it here, or every process would count this run as
-        // starting and keep a pause bound to it accepted.
-        logRunBoundarySteering(sessionId, steeringGate, {
-          type: 'run-ended',
-          runId,
-          now: runtimeServices.clock.nowISO(),
-        });
-        // COR-1476 — a run that never starts has ended: it releases its gate
-        // and, with no other run on the session, cancels the input left open.
-        // Tracked rather than awaited, as a terminal listener's settlement is,
-        // so a write that must be retried never holds this caller's rejection.
-        trackSessionInputSettlement(settleSessionInputsAfterRunEnd(sessionId, runId));
-        await markStartFailed(error);
-        throw error;
-      }
-      activeRuns.add(activeRun);
-      request.onActiveRun?.(activeRun);
-      runToolboxes.add(runToolbox);
-      runToolboxesByRunId.set(runId, runToolbox);
-      // COR-2106 — what the run gives its tool calls, kept for the approved call that resumes later.
-      const startedScope = runScopedExecutionContextOf(startedRunOptions);
-      if (startedScope !== undefined) runScopedContexts.set(runId, startedScope);
-      if (startedRunOptions.hooks !== undefined) runHookPlans.set(runId, startedRunOptions.hooks);
-      // AB-96 — the versioned run-lifecycle frame stream. Registered before
-      // `store.register` so `run-started` is the first frame a live subscriber
-      // ever sees for this run.
-      const disposeRunFrameForwarder = createRunFrameForwarder(
-        runId,
-        activeRun,
-        (frame) => emitLiveFrame({ type: 'run-envelope', runId, frame }),
-        // AB-260: the bureau's single composed RuntimeServices clock, so
-        // every run-lifecycle frame this forwarder emits is origin-derived
-        // for a manually-clocked bureau rather than reading the real clock.
-        { clock: runtimeServices.clock.now },
-      );
-      disposeStreamListeners.push(disposeRunFrameForwarder);
-      // Registered here, for the same reason the frame forwarder is: before
-      // `store.register`, which is what drives `run.registered` onto this
-      // bureau's own feed. A client that reacts to `run.registered` by
-      // subscribing to `operative.runs.events` would otherwise race an entry
-      // that does not exist yet.
-      disposeStreamListeners.push(
-        attachRunEventFeed(runId, activeRun, runEventFeeds, {
-          now: runtimeServices.clock.now,
-          onError: (error, kind) => {
-            diagnose({
-              level: 'error',
-              scope: 'event-feed',
-              message: `[bureau] run event feed threw recording a "${kind}" event for run ${runId}:`,
-              cause: error,
-            });
-          },
-        }),
-      );
-      emitLiveFrame({
-        type: 'run-envelope',
-        runId,
-        frame: createRunStartedFrame({ runId, sessionId, agentName }, runtimeServices.clock.now),
-      });
-
-      // AB-13 — free this run's concurrency slot while it is parked on a
-      // human-wait signal; `HumanWaitParkedEvent` fires on the SAME emitter
-      // `store.register` subscribes to below, so this observes both the
-      // in-memory and durable paths identically.
-      if (flowController) {
-        activeRun.addEventListener(HumanWaitParkedEvent.type, () => {
-          flowController.markParked(runId);
-        });
-      }
-
-      // AB-67/AB-199 — the write side of cross-run steering dedupe:
-      // `SteeringGate.getAppliedFloor()` (the read side `run-step.ts`
-      // consults) only reflects reality once something raises it.
-      // `runStep` dispatches `SteeringAppliedEvent` on this exact run's
-      // emitter the moment it observes a `configVersion` at its boundary
-      // (`run-step.ts`'s `maybeDispatchSteeringApplied`), so listening here
-      // is the one place that fires for both drivers identically.
-      activeRun.addEventListener(SteeringAppliedEvent.type, (event) => {
-        logRunBoundarySteering(sessionId, steeringGate, {
-          type: 'applied',
-          runId: event.effective.appliedAtRunId,
-          configVersion: event.effective.configVersion,
-          now: event.effective.appliedAt,
-        });
-      });
-
-      /** A task that held its own rows (no session store) lets them go when it ends. */
-      const releaseTaskRowClaims = (ended: ReleasableConversation): void => {
-        if (rowHolder !== 'run') return;
-        void trackCatalogAssetRelease(
-          catalogRunAssets.releaseConversation({
-            runId,
-            principalId: ownerOrLocal(owner),
-            conversation: ended,
-          }),
-        );
-      };
-      // The session will record this run's end once it is terminal; a reader that asks before that
-      // (`whenRunRecorded`) waits for the save, whenever the run gets there.
-      expectTerminalSessionRecord(runId);
-      activeRun.once('run.completed', (event) => {
-        activeRuns.delete(activeRun);
-        erroredActiveRuns.delete(activeRun);
-        releaseTaskRowClaims(event.conversation);
-        releaseRunToolboxWhenIdle(runToolbox);
-        disposeRegisteredStreamListeners(disposeStreamListeners);
-        // COR-625: a terminal transition owes this run one checkpoint-
-        // retention step whether or not anyone ever calls `closed()`.
-        // Memoized per run id, so this and `closed()`'s own fold resolve the
-        // SAME step. Fire-and-forget: the step records its own
-        // acknowledgement durably and never rejects.
-        void runTerminalCheckpointCleanup(runId);
-        // AB-67's ratified Abort row: a session's pause/resume never carries
-        // into a future run. Any command still `accepted` and bound to this
-        // run transitions to `failed`/`'run-terminal'` the moment the run
-        // reaches ANY terminal state — completed here, aborted in the
-        // sibling listener below.
-        logRunBoundarySteering(sessionId, steeringGate, {
-          type: 'run-ended',
-          runId,
-          now: runtimeServices.clock.nowISO(),
-        });
-        flowController?.settle(runId);
-        queueMicrotask(() => releaseTerminalRunReviewState(runId));
-
-        const finishReason = event.finishReason;
-        const lastRunStatus = isFailureFinishReason(finishReason) ? 'error' : 'completed';
-
-        const report = buildTerminalReportFromCompletedEvent(runId, event);
-        emitLiveFrame({
-          type: 'run-envelope',
-          runId,
-          frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
-        });
-
-        persistTerminalSession(
-          () =>
-            saveRunTerminalSession(
-              runId,
-              sessionId,
-              event.conversation,
-              {
-                lastRunId: runId,
-                lastRunStatus,
-                lastFinishReason: event.finishReason,
-                ...(isFailureFinishReason(event.finishReason)
-                  ? { lastError: serializeUnknownError(event.error) }
-                  : {}),
-              },
-              agentName,
-              baseConversationHistory,
-            ),
-          {
-            runId,
-            sessionId,
-            status: lastRunStatus,
-            spend: { agentName, owner, costEstimate: event.costEstimate },
-          },
-        );
-      });
-
-      activeRun.once('run.aborted', (event) => {
-        activeRuns.delete(activeRun);
-        erroredActiveRuns.delete(activeRun);
-        releaseTaskRowClaims(event.conversation);
-        releaseRunToolboxWhenIdle(runToolbox);
-        disposeRegisteredStreamListeners(disposeStreamListeners);
-        // COR-625: a terminal transition owes this run one checkpoint-
-        // retention step whether or not anyone ever calls `closed()`.
-        // Memoized per run id, so this and `closed()`'s own fold resolve the
-        // SAME step. Fire-and-forget: the step records its own
-        // acknowledgement durably and never rejects.
-        void runTerminalCheckpointCleanup(runId);
-        flowController?.settle(runId);
-        queueMicrotask(() => releaseTerminalRunReviewState(runId));
-        // See the identical call in the `run.completed` listener above.
-        logRunBoundarySteering(sessionId, steeringGate, {
-          type: 'run-ended',
-          runId,
-          now: runtimeServices.clock.nowISO(),
-        });
-
-        const report = buildTerminalReportFromAbortedEvent(runId, {
-          usage: event.usage,
-          costEstimate: event.costEstimate,
-          reason: event.reason,
-          error: event.error,
-          steps: store.getRun(runId)?.steps ?? [],
-          conversation: event.conversation,
-        });
-        emitLiveFrame({
-          type: 'run-envelope',
-          runId,
-          frame: createRunFinishedFrame({ runId, report }, runtimeServices.clock.now),
-        });
-
-        persistTerminalSession(
-          () =>
-            // Persist the conversation carried on the abort event, NOT the
-            // launch-time `conversation` closure. On the durable path the workflow
-            // mutates per-step checkpoint snapshots, so a run that aborts after
-            // checkpointed steps (e.g. when engine.cancel() wins the abort race)
-            // reconstructs its abort RunResult from the checkpoint — the event's
-            // conversation reflects those steps, whereas the closure still holds
-            // only the seed transcript. For the in-memory loop the event carries
-            // the same mutated instance, so this is correct on both paths.
-            saveRunTerminalSession(
-              runId,
-              sessionId,
-              event.conversation,
-              {
-                lastRunId: runId,
-                lastRunStatus: 'aborted',
-                // Write lastFinishReason too so an aborted session's metadata is
-                // internally consistent (status + finishReason agree) and a prior
-                // run's stale lastFinishReason on the same session can't linger. This
-                // is also what boot recovery now relies on: a recovered run that
-                // aborts settles through THIS listener (settleRecoveredRun is gone),
-                // so the field must be written here, not only on the old recovery path.
-                lastFinishReason: 'aborted',
-                lastError: serializeUnknownError(event.error),
-                // COR-2009 — why the run ended, when the run did not end itself: the host
-                // stopped it. Written on every abort, so an earlier run's reason never lingers.
-                lastRunEndReason: runsStoppedByShutdown.has(activeRun)
-                  ? SESSION_END_REASON_HOST_STOPPED
-                  : null,
-              },
-              agentName,
-              baseConversationHistory,
-            ),
-          {
-            runId,
-            sessionId,
-            status: 'aborted',
-            spend: { agentName, owner, costEstimate: event.costEstimate },
-          },
-        );
-      });
-
-      activeRun.once('run.error', (_event) => {
-        activeRuns.delete(activeRun);
-        erroredActiveRuns.add(activeRun);
-        releaseRunToolboxWhenIdle(runToolbox);
-        // The stream listeners are deliberately NOT disposed here. `run.error`
-        // is not terminal: Operative follows it with `run.completed`, which
-        // carries the finish reason, so the `run.completed` listener above
-        // disposes them once that event has reached them. Detaching on
-        // `run.error` stopped the run frame forwarder and the run event feed
-        // one event early, so a run that exceeded its budget never announced
-        // it and a failed run's feed never recorded its terminal event
-        // (COR-1419). A recovered run already works this way.
-        // COR-625: a terminal transition owes this run one checkpoint-
-        // retention step whether or not anyone ever calls `closed()`.
-        // Memoized per run id, so this and `closed()`'s own fold resolve the
-        // SAME step. Fire-and-forget: the step records its own
-        // acknowledgement durably and never rejects.
-        void runTerminalCheckpointCleanup(runId);
-        flowController?.settle(runId);
-        queueMicrotask(() => releaseTerminalRunReviewState(runId));
-      });
-
-      // A run can settle without any terminal event: a durable run whose engine lost a
-      // checkpoint compare-and-swap, or was disposed, is abandoned to whoever owns it and
-      // resolves its result quietly (`driveDurableRun`). The terminal listeners above never run
-      // for it, and `run.error` no longer detaches the stream listeners, so a run that reported
-      // an error before being abandoned would keep them attached for good. A result settles
-      // only after any terminal event it carries has been dispatched, so detaching here cannot
-      // cut off the `run.completed` the forwarder and the run event feed are waiting for. The
-      // disposers drain as they run, which makes this a no-op after a terminal listener ran.
-      detachBestEffortPromise(
-        activeRun.result.finally(() => {
-          erroredActiveRuns.delete(activeRun);
-          disposeRegisteredStreamListeners(disposeStreamListeners);
-          // A result settles after any terminal event it carries has been dispatched, so a run
-          // whose save has not started by now will not save: its end is not recorded here.
-          abandonTerminalSessionRecord(runId);
-          // A quietly settled run can stay `running` in the store. Only an abandoned one is
-          // handled: a terminal event already left `running` before the result settled.
-          settleAbandonedRun(sessionId, runId, activeRun);
-        }),
-      );
-
-      store.register(activeRun, runId);
-      registeredForRecovery = true;
-      runSessionIdentifiers.set(activeRun, sessionId);
-
-      // AB-361/AB-34: the started-work control contract says an
-      // acknowledged durable run is durable — a caller that holds this
-      // run's identifier must be able to recover it after a crash at any
-      // later point. `activeRun.durablyStarted` settles with the SAME write
-      // `driveDurableRun`'s `context.engine.prepare(...)` performs on the
-      // durable branch (`durable/active-run-driver.ts`), which commits before
-      // the run's `onRunStart` hook runs, so this never waits on that hook
-      // (COR-297). Awaited here,
-      // AFTER `store.register` (so `run.started` is still the first frame
-      // any live subscriber sees — an earlier await would let the deferred
-      // `drive()` microtask run before this function's own subscription
-      // exists) and immediately before returning, so this function's own
-      // promise cannot resolve until the durable record is committed.
-      // Guarded by `runtime.durable`, not an unconditional `await
-      // activeRun.durablyStarted` — that field is `undefined` on the
-      // in-memory branch (nothing durable to await), and an unconditional
-      // `await undefined` would still cost every in-memory run one extra
-      // microtask tick it does not have today.
-      if (runtime.durable) {
-        await activeRun.durablyStarted;
-      }
-      // Bound before the receipt write below: the run is executing by now, so an abort during a
-      // slow write reaches it at once rather than once the write returns.
-      if (request.signal !== undefined) bindStartSignal(request.signal, runId, activeRun.result);
-
-      created = serializeRunState(store.getRun(runId)!, sessionId);
-    } catch (error) {
-      // Reached either because the run never got as far as `store.register`
-      // (no terminal event to settle through — the original reason this
-      // catch exists), OR because `store.register` succeeded but the
-      // AWAITED `durablyStarted` above rejected (a genuine durable-write
-      // failure — `engine.prepare` rejecting, or a caller-supplied
-      // `onServices` throwing; see `driveDurableRun`'s own review-fixed
-      // handling of both, PRRT_kwDORvupsc6gWc39/PRRT_kwDORvupsc6gWb3a).
-      // Either way this function is about to throw instead of returning a
-      // run identifier to its caller, so release whatever this admission
-      // claimed so it does not leak a phantom concurrency/singleton hold.
-      // In the second case the run itself is already registered, but its
-      // terminal `run.completed` listener already fired SYNCHRONOUSLY,
-      // inside `makeErrorResult`'s `RunCompletedEvent` dispatch — by
-      // construction this happens before this function's own `await
-      // activeRun.durablyStarted` line can even resume (that rejection is
-      // only observed in a later microtask) — never merely "will fire"
-      // asynchronously afterward, so this cleanup is scoped to per-request
-      // bookkeeping this function itself owns, not to unregistering the
-      // run.
-      flowController?.settle(runId);
-      // COR-1524: a run that never registered has no terminal action to settle its snapshot
-      // reference, so the reference is released here; a registered one settles through the store.
-      if (heldAgentReference && !registeredForRecovery) {
-        await fileAgents?.releaseRun(runId);
-      }
-      runRequestContexts.delete(runId);
-      // AB-361 review (codex P2 PRRT_kwDORvupsc6ga0TX): only the
-      // never-registered case may delete `runAttribution` — a run that
-      // reached `store.register` is ALREADY a terminal FAILED run other
-      // callers can observe via `listRuns()`/`getRun()` (its
-      // `run.completed` listener fired synchronously, per the comment
-      // above), and `resolveEventHistory()`'s authorization check fails
-      // closed when this map entry is absent, locking the run's real owner
-      // out of its own event history. A normal terminal run keeps its
-      // attribution until an explicit `deleteRun`; this post-registration
-      // durable-write-failure path must match that, not the
-      // never-registered path's full cleanup.
-      if (!registeredForRecovery) {
-        runAttribution.delete(runId);
-      }
-      // COR-424: no acknowledged run resulted, so the claim is released and a
-      // retry starts afresh. That includes a run registered here whose
-      // durable start then failed: the engine holds no record of it to
-      // recover, so there is nothing for a retry to observe.
-      // COR-718: a save that lost the race to create the session is refused as a
-      // session that is not there, exactly as the preflight check refuses one.
-      // COR-1577: a save that lost the race to bind the session to an agent is refused as the
-      // preflight check refuses a run naming another agent, before the run executes.
-      const rejection =
-        error instanceof SessionOwnerConflictError
-          ? new BureauError(`Session "${sessionId}" not found`, 'NOT_FOUND')
-          : error instanceof SessionAgentConflictError
-            ? new BureauError(
-                // A run that named no agent started on the default one before it saw the
-                // session, so it must not be told it named `bureau`.
-                request.agentName === undefined
-                  ? `Session "${sessionId}" was bound to agent "${error.boundAgentName}" by ` +
-                      `another run while this run, which named no agent, was starting on the ` +
-                      `default agent "${error.requestedAgentName}". Retry to continue the session.`
-                  : error.message,
-                'BAD_REQUEST',
-              )
-            : error;
-      await releaseRunCreationClaim(ledgerClaim, rejection);
-      throw rejection;
-    }
-    // COR-424: the ledger records the run only once it is durably started,
-    // so a retry never replays a run that a restart could not recover. When
-    // recording fails, `complete` rejects with a
-    // `RunCreationReceiptUnrecordedError` naming the run. The caller holds no
-    // handle to that run, so it is aborted rather than left executing
-    // unowned; the claim stays pending, and a retry observes the aborted run
-    // and records its receipt.
-    if (ledgerClaim === undefined) return created;
-    return ledgerClaim.complete(created).catch((error: unknown) => {
-      abortTask(runId, 'Aborted: the task’s receipt was not recorded');
-      throw error;
-    });
-  }
-
-  /**
-   * COR-1577 — which agent a run is. A session is bound to the agent of the run that created it,
-   * so an existing session decides, and a run that names another agent is refused; a new session
-   * takes the named agent, or the default `bureau`. Starting a run and locating its
-   * run-creation receipt both resolve the agent here, so the two cannot disagree on the ledger key.
-   */
-  function resolveRunAgentName(
-    sessionId: string,
-    session: AgentSession | undefined,
-    statedAgentName: string | undefined,
-  ): string {
-    if (
-      session !== undefined &&
-      statedAgentName !== undefined &&
-      statedAgentName !== session.agentName
-    ) {
-      throw new BureauError(
-        `Session "${sessionId}" belongs to agent "${session.agentName}", so a run cannot name ` +
-          `agent "${statedAgentName}".`,
-        'BAD_REQUEST',
-      );
-    }
-    return session?.agentName ?? statedAgentName ?? BUREAU_AGENT_NAME;
-  }
-
-  /**
-   * COR-424 — the run-creation ledger, or `NOT_CONFIGURED` for a bureau whose
-   * receipts could not survive a restart.
-   */
-  function requireRunCreationLedger(): NonNullable<typeof runCreationLedger> {
-    if (runCreationLedger === undefined) {
-      throw new BureauError(
-        'Run-creation receipts need storage and a durable engine: "runCreationRequestId" ' +
-          'is supported only by a bureau with durable execution.',
-        'NOT_CONFIGURED',
-        'durable',
-      );
-    }
-    return runCreationLedger;
-  }
-
-  /**
-   * COR-424 — where a run-creation request's receipt stands, keyed exactly as
-   * `createRunFromRequest` keys the request. See `Bureau.locateRunCreationReceipt`.
-   */
-  async function locateRunCreationReceipt(
-    request: LocateRunCreationReceiptRequest,
-  ): Promise<RunCreationReceiptLocation> {
-    const principal = typeof request.principal === 'string' ? request.principal : '';
-    const requestId =
-      typeof request.runCreationRequestId === 'string' ? request.runCreationRequestId.trim() : '';
-    if (principal.trim().length === 0) toBadRequest('"principal" must be a non-empty string');
-    if (requestId.length === 0) toBadRequest('"runCreationRequestId" must be a non-empty string');
-    const ledger = requireRunCreationLedger();
-    // A request that continued a session was keyed under the session's agent, so naming the
-    // session resolves it the way starting the run did. A session that is not there, or is
-    // another principal's, binds nothing, exactly as it would not have for the run.
-    let agentName = request.agentName;
-    const sessionId = request.sessionId?.trim();
-    // COR-323 — no run belongs to an implicit default agent any more, so a query that names
-    // neither the agent nor the session has no key to look under.
-    if ((sessionId === undefined || sessionId.length === 0) && agentName === undefined) {
-      toBadRequest('"agentName" or "sessionId" must say which agent the run was created as');
-    }
-    if (sessionId !== undefined && sessionId.length > 0) {
-      const { session } = await loadConversation(sessionId);
-      const owner = ownerFromPrincipal(principal, toBadRequest);
-      const visible =
-        session !== undefined && isSessionAuthorityAuthorized(session.metadata, owner)
-          ? session
-          : undefined;
-      agentName = resolveRunAgentName(sessionId, visible, request.agentName);
-      // COR-323 — a session that is missing or not this principal's binds nothing, so the agent
-      // must then be named.
-      if (visible === undefined && request.agentName === undefined) {
-        toBadRequest('"agentName" is required when "sessionId" names no session you can see');
-      }
-    }
-    return ledger.locate({
-      callerId: principal,
-      agentName: agentName ?? BUREAU_AGENT_NAME,
-      requestId,
-    });
-  }
-
-  /**
-   * COR-424 — release a run-creation claim whose request produced no run, so
-   * a retry claims afresh. A failed release leaves the claim pending, and a
-   * retry then reports the claimed run as not started rather than creating
-   * one; the original failure is still what the caller sees.
-   */
-  async function releaseRunCreationClaim(
-    claim: Extract<RunCreationAttempt, { kind: 'claimed' }> | undefined,
-    cause: unknown,
-  ): Promise<void> {
-    if (claim === undefined) return;
-    try {
-      await claim.release(cause);
-    } catch (releaseError) {
-      diagnose({
-        level: 'error',
-        scope: 'run-creation-ledger',
-        message: '[bureau] Failed to release a run-creation claim after the run was not created.',
-        cause: releaseError,
-      });
-    }
-  }
 
   /**
    * The 0-based ordinal of the LAST distinct park in a run's action log.
@@ -9877,921 +8631,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     diagnose: (message, cause) =>
       diagnose({ level: 'error', scope: 'recovery', message: `[bureau] ${message}`, cause }),
   });
-
-  /**
-   * COR-1481 — a crash can land between a run reaching its terminal state and the task record
-   * saying so, or between a catalog run's durable start and its task record being written. At
-   * boot, a task record whose durable run is terminal is settled from the durable state, and a
-   * durable catalog run with no task record is given one. A run still in flight is left to the
-   * recovery that reattaches it, which settles it as it ends.
-   */
-  async function reconcileTaskRecords(): Promise<void> {
-    const durable = runtime.durable;
-    if (!durable) {
-      // COR-1946: with no durable engine every run is process-local, and only the lease rule applies.
-      await abandonedTaskSweeper.run();
-      return;
-    }
-    const settle = async (
-      taskId: string,
-      state: Awaited<ReturnType<typeof durable.engine.get>>,
-    ): Promise<void> => {
-      if (state === null) return;
-      if (
-        state.status !== 'completed' &&
-        state.status !== 'failed' &&
-        state.status !== 'cancelled' &&
-        state.status !== 'timed-out'
-      ) {
-        return;
-      }
-      const result =
-        state.result !== null && typeof state.result === 'object'
-          ? (state.result as Record<string, unknown>)
-          : {};
-      const finishReason =
-        typeof result['finishReason'] === 'string' ? result['finishReason'] : undefined;
-      const status =
-        state.status === 'completed'
-          ? settledTaskState('completed', finishReason)
-          : state.status === 'cancelled'
-            ? 'canceled'
-            : 'failed';
-      const content = typeof result['content'] === 'string' ? result['content'] : '';
-      // COR-1613: a fire canceled while parked on a human wait, whose process died before it
-      // wrote the wait's `canceled` record, has its wait closed here, from the checkpoint.
-      if (state.status === 'cancelled') {
-        // COR-1622: a close that cannot be made is reported and retried at the next boot; it never
-        // keeps the task from being settled.
-        await closeOpenReviewsOfCanceledFire(taskId).catch((error: unknown) => {
-          diagnose({
-            level: 'error',
-            scope: 'recovery',
-            message: `[bureau] Could not close the reviews of canceled schedule fire "${taskId}": ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        });
-      }
-      await tasks.recordSettled(taskId, {
-        at: runtimeServices.clock.nowISO(),
-        status,
-        finishReason: finishReason ?? (status === 'canceled' ? 'aborted' : null),
-        message:
-          status === 'failed' && typeof state.error === 'string'
-            ? state.error.slice(0, 1000)
-            : null,
-        ...(status === 'completed' && content !== ''
-          ? {
-              answer: {
-                text: content.slice(0, TASK_ARTIFACT_TEXT_LIMIT),
-                truncated: content.length > TASK_ARTIFACT_TEXT_LIMIT,
-              },
-            }
-          : {}),
-      });
-    };
-    for (const record of await tasks.unsettled()) {
-      if (store.getRun(record.taskId) !== undefined) continue;
-      await settle(record.taskId, await durable.engine.get(record.taskId));
-    }
-    // COR-1946: what the durable state did not settle, and no durable workflow records, belongs to
-    // the process that admitted it.
-    await abandonedTaskSweeper.run();
-    // COR-1594: a fire whose settlement was written but whose history event never was, because its
-    // process died between the two, would leave a stream open on another process for ever. The
-    // event is deduplicated per fire, so the ones that were appended are skipped by their marker.
-    // A read that fails here is reported and leaves the pass to the next boot, and the steps after
-    // it still run. It is a plain `try`, not a wrapped call, so the boot takes no extra turn.
-    if (eventHistoryInstance !== undefined) {
-      try {
-        // Event retention removes an event together with its deduplication marker, so a fire
-        // settled before its cutoff has neither, by design, and is not announced again at every
-        // boot. Under `'forever'` nothing is retired, so there is no bound.
-        const cutoff = eventRetentionCutoff();
-        for (const record of await tasks.settledFires()) {
-          if (cutoff !== undefined && Date.parse(record.settled?.at ?? '') < cutoff) continue;
-          const owner = { kind: 'run', id: record.taskId } as const;
-          if (
-            await eventHistoryInstance.wasRecorded(
-              owner,
-              SCHEDULE_FIRE_SETTLED_EVENT_KIND,
-              scheduleFireSettledDedupeKey(record.taskId),
-            )
-          ) {
-            continue;
-          }
-          try {
-            await appendFireSettledEvent(record);
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'task-registry',
-              message: `[bureau] Could not record in the history how schedule fire "${record.taskId}" ended: ${serializeUnknownError(error)}`,
-              cause: error,
-            });
-          }
-        }
-      } catch (error) {
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Could not announce the ends of settled schedule fires at boot: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      }
-    }
-    // COR-1622: the open closes of every canceled fire, settled or not.
-    await retryCanceledFireCloses().catch((error: unknown) => {
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Could not retry the closes of canceled schedule fires at boot: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    });
-    // A durable catalog run still in flight whose task record was never written: the lost
-    // admission window. A run that is over is not given a record here: its task either was
-    // settled and has since been removed by retention, or never existed, and recreating it at
-    // every boot would resurrect expired tasks, message text included. The record is dated
-    // from the durable run, and the run settles it through the catalog settlement hook.
-    // COR-1868: a child run, a goal attempt and a workflow step are listed too, so no id prefix
-    // narrows the list; the claim says what each one is.
-    for (let offset = 0; ;) {
-      const page = await durable.engine.list({
-        type: 'agentRun',
-        status: ['pending', 'running', 'suspended'],
-        limit: 100,
-        offset,
-      });
-      for (const summary of page.items) {
-        if ((await tasks.record(summary.id)) !== undefined) continue;
-        const loaded = await runtime.loadCatalogRunRecoveryRecord(summary.id);
-        const createdAt = new Date(summary.createdAt).toISOString();
-        if (loaded.status === 'found' && loaded.record.taskOrigin !== undefined) {
-          // The claim stores the origin the run's start recorded: the task is rebuilt from it.
-          await tasks.recordAdmission(
-            subordinateTaskAdmission(
-              summary.id,
-              { ...loaded.record, taskOrigin: loaded.record.taskOrigin },
-              { ownerOf: ownerOrLocal, originatingMessage: originatingMessageText, createdAt },
-            ),
-          );
-          continue;
-        }
-        // A run claimed before COR-1868 is classified as it always was: only a top-level
-        // `bureau.run()` run is a task.
-        if (!summary.id.startsWith('agent-run-')) continue;
-        if (await isChildRun(summary.id)) continue;
-        if (
-          loaded.status !== 'found' ||
-          loaded.record.goalAttempt !== undefined ||
-          loaded.record.workflowStep !== undefined
-        ) {
-          continue;
-        }
-        await tasks.recordAdmission({
-          taskId: summary.id,
-          contextId: loaded.record.contextId ?? summary.id,
-          incarnation: '',
-          agentName: loaded.record.agentName,
-          owner: ownerOrLocal(loaded.record.principal),
-          // The run's original start is gone with its record: nothing names a surface for it.
-          origin: { kind: 'api' },
-          message: originatingMessageText(loaded.record.input),
-          createdAt,
-        });
-      }
-      offset += page.items.length;
-      if (page.items.length === 0 || offset >= page.total) break;
-    }
-  }
-
-  async function recoverDurableRuns(): Promise<BureauRecoveryReport> {
-    // COR-1421 — retain every live frame for the first subscriber while the
-    // pass runs.
-    recoveryPassActive = true;
-    try {
-      const report = await recoverDurableRunsPass();
-      await reconcileTaskRecords().catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'recovery',
-          message: `[bureau] Could not reconcile task records at boot: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      });
-      // COR-1669: a task whose settlement was written but whose event never was. Not awaited, so
-      // the boot takes no extra turn; held in `taskResyncBootPass`, which `shutdown()` awaits
-      // before storage closes.
-      const repaired = taskResyncInstance?.repairAll().then(
-        () => undefined,
-        (error: unknown) => {
-          diagnose({
-            level: 'error',
-            scope: 'recovery',
-            message: `[bureau] Could not repair task histories at boot: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        },
-      );
-      if (repaired !== undefined) {
-        taskResyncBootPass = Promise.all([taskResyncBootPass, repaired]).then(() => undefined);
-      }
-      // COR-1945: a failed run whose process died after its settlement committed and before its
-      // notification was written, or whose notification write failed, still has its outbox entry.
-      // Held in the same boot pass, so the boot takes no extra turn and `shutdown()` waits for it.
-      const notificationsRepaired = notificationsComposition.repair().then(
-        () => undefined,
-        (error: unknown) => {
-          diagnose({
-            level: 'error',
-            scope: 'recovery',
-            message: `[bureau] Could not repair the owed notifications at boot: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-        },
-      );
-      taskResyncBootPass = Promise.all([taskResyncBootPass, notificationsRepaired]).then(
-        () => undefined,
-      );
-      return report;
-    } finally {
-      recoveryPassActive = false;
-    }
-  }
-
-  async function recoverDurableRunsPass(): Promise<BureauRecoveryReport> {
-    // AB-389 — boot recovery drains the session outbox BEFORE anything
-    // else in this pass, so a crash between a commit and its own drain
-    // (the post-commit trigger never fired, or fired but the process died
-    // before the durable write settled) is caught up before this bureau
-    // serves reads. `drainOutbox()` is a no-op when there is no
-    // session store or no durable event history to drain into, so this
-    // runs unconditionally, ahead of the `!runtime.durable` early return
-    // below (a kv-only session store with no durable engine still has an
-    // outbox — see that function's own doc comment — though with no
-    // durable event history to drain into it resolves immediately).
-    //
-    // Isolated in its own try/catch (Codex P1 review finding, PR #598,
-    // "Isolate outbox failures from durable run recovery"), same rationale
-    // as the scheduler-residue sweep just below: an outbox failure (a
-    // transient session-store outage, say) must be diagnosed loudly, never
-    // let it abort this ENTIRE recovery pass — recovery is single-shot, so
-    // an unguarded throw here would strand every otherwise-recoverable
-    // durable run for the lifetime of this Bureau over an unrelated
-    // subsystem's failure.
-    try {
-      await drainOutbox();
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Session outbox drain failed during boot recovery; durable run recovery continues: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-
-    // COR-772 — load every non-terminal child relationship and reopen its
-    // signal channel BEFORE Weft resumes any workflow, so a recovered child's
-    // re-resolved run options can carry its port. Reconciled below, after
-    // `recoverAll()`, and never by starting a workflow.
-    try {
-      await childTopology.prepareRecovery();
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Could not load child relationships for recovery; durable run recovery continues: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-
-    if (!runtime.durable) {
-      await childTopology.reconcileRecovery();
-      // A goal's stored record is settled without an engine too: a marked
-      // cancellation is committed, and what cannot be read back is reported.
-      const goalFailures = dedupeRecoveryPerRunFailures(await recoverGoalsAtBoot());
-      return {
-        outcome: goalFailures.length > 0 ? 'partial' : 'clean',
-        perRunFailures: goalFailures,
-        skippedRuns: [],
-      };
-    }
-
-    const durable = runtime.durable;
-
-    // Sweep suspended scheduler-origin residue FIRST and UNCONDITIONALLY (not
-    // gated on a session store): a hard crash with a preempted scheduler task in
-    // `suspended` leaves a workflow that recoverAll() never surfaces (suspended ≠
-    // running) and that would otherwise dangle forever. A durable-scheduler-only
-    // deployment (no bureau session store) still needs this. It also clears
-    // suspended runs whose ids could collide with a fresh dispatch's reused
-    // counter id — onTerminalConflict:'start-new' does NOT cover suspended (only
-    // terminal), so the sweep is the sole protection against that collision.
-    //
-    // The sweep is isolated in its own try/catch: a sweep failure (its
-    // sanity-cap throw, or a storage error) is logged LOUDLY but must NOT block
-    // session-run reattach below — a pathological suspended-scheduler backlog
-    // should not also strand every genuine session run's recovery. Its message
-    // is also captured onto the resolved report's `sweepFailure` — including
-    // via `currentRecoverySweepFailure` for the batch-failure path below,
-    // where `recoverAll()` throwing before this function can return means the
-    // ONLY way this pass's sweep failure reaches the resolved report is
-    // through that shared, boot-call-site-read variable.
-    let sweepFailure: { message: string } | undefined;
-    try {
-      const failedCancellations = await sweepSuspendedSchedulerRuns(durable.engine);
-      if (failedCancellations > 0) {
-        // The sweep itself didn't throw, but real collision-risk residue
-        // survived it (each rejection already diagnosed individually inside
-        // sweepSuspendedSchedulerRuns) — an outcome of 'clean' would
-        // misreport that. See sweepSuspendedSchedulerRuns's own doc comment.
-        sweepFailure = {
-          message: `${failedCancellations} suspended scheduler run(s) could not be cancelled during the sweep.`,
-        };
-        currentRecoverySweepFailure = sweepFailure;
-      }
-    } catch (error) {
-      sweepFailure = { message: serializeUnknownError(error) };
-      currentRecoverySweepFailure = sweepFailure;
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Suspended scheduler-run sweep failed; session-run recovery continues: ${serializeUnknownError(error)}`,
-      });
-    }
-
-    // This pass's own per-run 'cancel' collector — reset here, read back
-    // once every handle below has been classified. On the batch-failure path
-    // below (`recoverAll()` throwing), this function exits via rejection
-    // before it can reset either collector itself — the two boot call
-    // sites' `.catch()` handlers reset BOTH `currentRecoveryPerRunFailures`
-    // and `currentRecoverySweepFailure` to `undefined` themselves after
-    // reading them, so a stale entry from this pass never leaks into a
-    // later one.
-    currentRecoveryPerRunFailures = [];
-    currentRecoverySkippedRuns = [];
-
-    // recoverAll resumes the in-flight workflows (firing the services resolver per
-    // run before each generator advances); if it throws, NO handle was classified
-    // at all — a whole-batch failure. This deliberately propagates uncaught (as
-    // before AB-349): both boot call sites' own `.catch()` builds the
-    // `outcome: 'failed'`/`batchFailure` report from it (folding in
-    // `currentRecoverySweepFailure` above, so a sweep failure that happened
-    // just before `recoverAll()` threw is never silently dropped) and keeps
-    // their existing `onDiagnostic` message unchanged — this function's own
-    // diagnostic logging is scoped to failures it can isolate (the sweep,
-    // per-handle reads) without losing the caller's identity.
-    // AB-241 review finding: everything from here through the post-recovery
-    // loop below runs inside a `try` whose `finally` releases
-    // `catalogRunRecoveryCache` unconditionally — including when
-    // `recoverAll()` itself throws after already populating the cache for
-    // one or more successfully-resolved catalog workflows (each resolved
-    // via `onRecoveredWorkflow`'s services resolver, BEFORE the throw). The
-    // earlier plain end-of-function call left those entries in the cache
-    // for the rest of this process's lifetime whenever the batch-failure
-    // path below was taken; `finally` runs on both the normal-return and
-    // rejection paths, so no failure mode leaks them. The rejection itself
-    // is still deliberately allowed to propagate uncaught afterward — the
-    // batch-failure handling this doc comment describes further up is
-    // unchanged.
-    // COR-1583 — a stored run whose workflow type this Bureau has not registered must not stop the
-    // rest of the store recovering: the engine's default refuses the whole batch, on every boot,
-    // for as long as that one run exists. `acknowledgeUnknownWorkflowTypes` has it leave each such
-    // run untouched in storage, with no claim taken, and report it, so a later boot that has
-    // registered the type recovers it. Every skipped run is diagnosed and listed in the report.
-    const onRecoverySkipped = (event: { workflowId: string; workflowType: string }): void => {
-      currentRecoverySkippedRuns?.push({ runId: event.workflowId, type: event.workflowType });
-      diagnose({
-        level: 'warn',
-        scope: 'recovery',
-        message: `[bureau] Left run "${event.workflowId}" of workflow type "${event.workflowType}" as it is: the type is not registered, so it will be recovered by a boot that registers it.`,
-      });
-    };
-    durable.engine.addEventListener(WorkflowRecoverySkippedEvent.type, onRecoverySkipped);
-    try {
-      recoveredWorkflowHandler.resolve(onRecoveredWorkflow);
-      const handles = await durable.engine.recoverAll({
-        onRecoveredWorkflow,
-        acknowledgeUnknownWorkflowTypes: true,
-      });
-
-      // Read each handle's launch metadata CONCURRENTLY, so one slow/stuck read does
-      // not block registration of the rest (no head-of-line blocking). The read is
-      // caught PER HANDLE so the resolved value always carries the handle identity —
-      // a rejected read must not lose the handle, or we could not cancel the
-      // now-resumed-but-unidentifiable run (committee round-2 finding 1). Then
-      // reattach each owned handle SYNCHRONOUSLY in one turn, preserving the
-      // register-before-terminal-event ordering invariant.
-      const resolved = await Promise.all(
-        handles.map(async (handle) => {
-          try {
-            return { handle, metadata: await handle.getLaunchMetadata() };
-          } catch (error) {
-            return { handle, metadata: null, error };
-          }
-        }),
-      );
-
-      const orphanCancellations: Array<{ runId: string; cancel: Promise<void> }> = [];
-      // COR-297 — the cancels of runs prepared and never launched, which the task reconciliation
-      // after this pass must see terminal: nothing else settles those runs' tasks.
-      const preparedCancellations: Promise<void>[] = [];
-      // COR-297 — what a recovered record's state says about Weft's two-phase start. Weft recovers
-      // a `pending` record without resuming it. It is crash residue only when no other process
-      // holds a live claim on it: under `workflow-lease` ownership the process that prepared it may
-      // still be running the start hook. A read that fails is diagnosed and reported as unknown.
-      const preparedState = async (
-        runId: string,
-      ): Promise<'never-launched' | 'preparing-elsewhere' | 'not-pending' | 'unknown'> => {
-        try {
-          const record = await durable.engine.get(runId);
-          if (record?.status !== 'pending') return 'not-pending';
-          const claim = await durable.engine.claimHolder(runId);
-          return claim?.heldByAnyProcess === true && !claim.heldByThisProcess
-            ? 'preparing-elsewhere'
-            : 'never-launched';
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'recovery',
-            message: `[bureau] Could not read the durable record of recovered run "${runId}"; classifying it without its status: ${serializeUnknownError(error)}`,
-            cause: error,
-          });
-          return 'unknown';
-        }
-      };
-      const cancelNeverLaunched = (runId: string, cancel: Promise<void>): void => {
-        orphanCancellations.push({ runId, cancel });
-        preparedCancellations.push(cancel.catch(() => undefined));
-      };
-      const sessionStore = runtime.sessionStore;
-      for (const { handle, metadata, ...rest } of resolved) {
-        // The awaited recovery hook already registered owned interactive runs
-        // before replay. The post-recovery pass only classifies the remaining
-        // handles (scheduled fires, orphans, and unknown ownership).
-        if (store.getRun(handle.id)) continue;
-
-        // AB-240: the awaited recovery hook (`onRecoveredWorkflow`) already
-        // routed a catalog-dispatched run to its own headless monitor above —
-        // skip it here too, the same way an already-registered interactive
-        // run is skipped, so it is never re-classified by the session-ownership
-        // logic below (which would treat its absent session as "orphaned" and
-        // cancel it).
-        if (await runtime.isCatalogRecoveredRun(handle.id)) {
-          // COR-297 — a catalog run prepared and never launched has no monitor (Weft calls no
-          // recovery hook for a `pending` record), so it is cancelled here and its task settles
-          // with the reconciliation after this pass.
-          if ((await preparedState(handle.id)) === 'never-launched') {
-            dispatchRecoveryClassification(handle.id, {
-              verdict: 'cancel',
-              rejection: 'prepared-not-launched',
-            });
-            cancelNeverLaunched(
-              handle.id,
-              durable.engine.cancel(handle.id).then(() => undefined),
-            );
-          }
-          continue;
-        }
-
-        // COR-851: a goal's controller workflow carries `{ goalRunId }`, not an
-        // agent run's input, so the classification below would read it as a
-        // foreign run and cancel it. The goal control plane recovers it instead
-        // (`goals.recover`, below), by what the goal's own record says.
-        if (await goalsComposition.ownsWorkflow(handle.id)) continue;
-
-        // COR-1527: an instance of a workflow file carries a document's trigger, not an agent
-        // run's input, so the classification below would read it as a foreign run and cancel it.
-        // The workflow runtime registered its revision before this recovery; the engine resumes it.
-        // COR-2009: a schedule tick carries what it records, and is the Bureau's own; the engine
-        // resumes it too. Its id says what it is, so this costs no read.
-        if (isScheduleTickRunId(handle.id)) continue;
-        if (workflowRuntime !== undefined) {
-          const instance = await durable.engine.get(handle.id);
-          if (instance !== null && (await workflowRuntime.isWorkflowType(instance.type))) continue;
-        }
-
-        const readError = 'error' in rest ? rest.error : undefined;
-        if (readError !== undefined) {
-          diagnose({
-            level: 'error',
-            scope: 'recovery',
-            message: `[bureau] Could not read launch metadata for recovered run "${handle.id}"; cancelling: ${serializeUnknownError(readError)}`,
-          });
-        }
-
-        // A run is bureau-owned only if its launch metadata narrows to an agentRun
-        // input AND its input runId matches this handle's id (the workflow id is the
-        // run id).
-        const ownedSessionId =
-          readError === undefined &&
-          metadata &&
-          isAgentRunWorkflowInput(metadata.input) &&
-          metadata.input.runId === handle.id
-            ? metadata.input.sessionId
-            : undefined;
-
-        const recoveredScheduleMarker =
-          readError === undefined &&
-          metadata != null &&
-          !isAgentRunWorkflowInput(metadata.input) &&
-          isScheduledAgentRunInput(metadata.input) &&
-          !isRecoverableScheduledFireInput(metadata.input)
-            ? await loadScheduleIdForRecoveredRun(durable.engine, handle.id)
-            : undefined;
-        let recoveredScheduledSessionId: string | undefined;
-        if (
-          recoveredScheduleMarker !== undefined &&
-          recoveredScheduleMarker.status !== 'found' &&
-          sessionStore &&
-          metadata != null &&
-          isScheduledAgentRunInput(metadata.input)
-        ) {
-          try {
-            recoveredScheduledSessionId = await loadExistingScheduledSessionId(
-              sessionStore,
-              metadata.input,
-              handle.id,
-            );
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'recovery',
-              message: `[bureau] Could not inspect scheduled session proof for recovered run "${handle.id}"; continuing without scheduled-fire classification: ${serializeUnknownError(error)}`,
-            });
-          }
-        }
-        const scheduledFire =
-          readError === undefined &&
-          metadata != null &&
-          !isAgentRunWorkflowInput(metadata.input) &&
-          (isRecoverableScheduledFireInput(metadata.input) ||
-            recoveredScheduleMarker?.status === 'found' ||
-            recoveredScheduledSessionId !== undefined);
-
-        // Load the owning session (only meaningful for an owned run with a store).
-        // A throw leaves ownership UNKNOWN — classifyRecoveredRun then skips rather
-        // than cancels, so a transient read blip never terminates a legitimately
-        // recovering run.
-        let sessionLoad: SessionLoadOutcome = { ok: true, session: null };
-        // The incarnation this run was classified against: a later load
-        // that finds another one is a session recreated meanwhile.
-        let classifiedIncarnation: string | undefined;
-        if (ownedSessionId !== undefined && sessionStore) {
-          try {
-            const session = await sessionStore.load(ownedSessionId);
-            classifiedIncarnation = session?.incarnation;
-            sessionLoad = { ok: true, session: session ? { ...session.metadata } : null };
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'recovery',
-              message: `[bureau] Could not load owning session for recovered run "${handle.id}"; leaving it to resume without live visibility: ${serializeUnknownError(error)}`,
-            });
-            sessionLoad = { ok: false };
-          }
-        }
-
-        const classificationArgs: ClassifyRecoveredRunArgs = {
-          handleId: handle.id,
-          scheduledFire,
-          ownedSessionId,
-          metadataReadFailed: readError !== undefined,
-          hasSessionStore: sessionStore !== undefined,
-          sessionLoad,
-          versionMismatch: runtime.workflowVersionMismatches.has(handle.id),
-        };
-        let classification = classifyRecoveredRunDetailed(classificationArgs);
-        // COR-297 — a run that would reattach may be a record its process prepared and never
-        // launched: reattaching it would leave a run whose result never settles. Its state is read
-        // only here, for a would-be reattach; one another live process is still preparing is left
-        // to it, and a read that fails leaves the verdict as it was.
-        if (
-          classification.verdict === 'reattach' ||
-          classification.verdict === 'reattach-version-mismatch'
-        ) {
-          const prepared = await preparedState(handle.id);
-          if (prepared === 'never-launched') {
-            classification = classifyRecoveredRunDetailed({
-              ...classificationArgs,
-              engineRecordStatus: 'pending',
-            });
-          } else if (prepared === 'preparing-elsewhere') {
-            classification = { verdict: 'skip' };
-          }
-        }
-        if (classification.rejection === 'session-not-running') {
-          classification = await skipRunFinishedByPeer(
-            handle.id,
-            classificationArgs,
-            classification,
-          );
-        }
-        // The session says the run is running, and no later boot could repair that once the record
-        // is cancelled, so it is settled first; the cancel is issued whether or not this write
-        // lands, and a cancel that fails leaves the next boot a `session-not-running` run to cancel.
-        if (
-          classification.rejection === 'prepared-not-launched' &&
-          sessionStore &&
-          ownedSessionId !== undefined
-        ) {
-          try {
-            // Fenced to the incarnation that was classified and to this run still being its running
-            // one: another process may have started a run on the session, or recreated it, since.
-            await sessionStore.update(ownedSessionId, (session) =>
-              session !== undefined &&
-              session.incarnation === classifiedIncarnation &&
-              session.metadata['lastRunId'] === handle.id &&
-              session.metadata['lastRunStatus'] === 'running'
-                ? {
-                    ...session,
-                    metadata: {
-                      ...session.metadata,
-                      lastRunStatus: 'aborted',
-                      lastFinishReason: 'aborted',
-                      lastError: `Run "${handle.id}" was prepared but never launched before its process stopped.`,
-                    },
-                  }
-                : undefined,
-            );
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'session-persistence',
-              message: `[bureau] Failed to settle the session of never-launched run "${handle.id}" (session ${ownedSessionId}): ${serializeUnknownError(error)}`,
-              cause: error,
-            });
-          }
-        }
-        const { verdict } = classification;
-        dispatchRecoveryClassification(handle.id, classification);
-        dispatchRecoveryLeaseReleasedIfAny(handle.id);
-
-        if (verdict === 'reattach' || verdict === 'reattach-version-mismatch') {
-          if (verdict === 'reattach-version-mismatch') {
-            diagnose({
-              level: 'warn',
-              scope: 'recovery',
-              message:
-                `[bureau] Reattaching recovered run "${handle.id}" that resumed under a ` +
-                `different workflow version than it was checkpointed with (pin-and-warn; ` +
-                `see documentation/workflow-versioning.md).`,
-            });
-          }
-          // A mocked/custom engine that does not invoke Weft's recovery hook can
-          // still reattach terminal visibility here. Real Weft recovery has
-          // already taken the hook path above, including live event forwarding.
-          let recoveredServices: DurableRunDeps | undefined;
-          let recoveredSession: AgentSession | undefined;
-          if (sessionStore && ownedSessionId) {
-            const fullSession = await sessionStore.load(ownedSessionId);
-            recoveredSession = fullSession;
-            if (fullSession) {
-              const recoveredAgentName = isAgentRunWorkflowInput(metadata?.input)
-                ? metadata.input.agentName
-                : BUREAU_AGENT_NAME;
-              const requestContext = recoveredRequestContextFromMetadata(
-                fullSession.metadata,
-                handle.id,
-                ownedSessionId,
-                recoveredAgentName,
-                runtimeServices.clock.now,
-              );
-              const reattachedSessionAgent = await resolveRecoveredSessionAgent(
-                recoveredAgentName,
-                handle.id,
-                fullSession.metadata,
-                ownedSessionId,
-              );
-              if (reattachedSessionAgent !== 'unavailable') {
-                const runRuntime = await runtime.createRunRuntime(
-                  {
-                    message:
-                      typeof fullSession.metadata['lastUserMessage'] === 'string'
-                        ? fullSession.metadata['lastUserMessage']
-                        : '',
-                    sessionId: ownedSessionId,
-                    runId: handle.id,
-                    agentName: recoveredAgentName,
-                    requestContext,
-                  },
-                  {
-                    sessionAgent: reattachedSessionAgent,
-                    sessionMetadata: fullSession.metadata,
-                    memoryOwner: resolveRunMemoryOwner(fullSession.metadata, handle.id),
-                  },
-                );
-                recoveredServices = {
-                  toolbox: runRuntime.toolbox,
-                  getStepMetadata: emptyRecoveredStepMetadata,
-                  options: {
-                    generate: runRuntime.generate,
-                    toolbox: runRuntime.toolbox,
-                    conversation: new Conversation(fullSession.conversationHistory),
-                    // COR-2106 — children this run dispatches carry Bureau's tier.
-                    ...bureauInvariantsField(runtime.bureauChildInvariants),
-                    ...copyAgentOwnedRunOptions(reattachedSessionAgent?.options),
-                    ...sessionRunMediaOptions(
-                      reattachedSessionAgent,
-                      runtime.mediaOptionsFor(resolveSessionOwner(fullSession.metadata), 'session'),
-                    ),
-                    // AB-260: the bureau's single composed RuntimeServices
-                    // instance, snapshotted into every run it starts — including
-                    // a mocked/custom-engine reattach.
-                    runtime: runtimeServices,
-                    sessionId: ownedSessionId,
-                    // COR-1265 — the Bureau tier, snapshotted.
-                    hooks: runtime.composeRunHooks({
-                      bureau: runRuntime.hooks,
-                      agent: reattachedSessionAgent?.options.hooks,
-                    }),
-                    executeOptions: sessionExecuteOptions(
-                      reattachedSessionAgent?.options,
-                      requestContext,
-                    ),
-                    agentName: recoveredAgentName,
-                    runId: handle.id,
-                  },
-                };
-              }
-            }
-          }
-          if (recoveredServices) {
-            const fullSession = await sessionStore?.load(ownedSessionId!);
-            await restorePendingApprovalStates(
-              recoveredServices.toolbox,
-              fullSession?.metadata,
-              handle.id,
-              ownedSessionId!,
-            );
-          }
-          // Steered and fenced like the primary path: its log folded into the
-          // session's gate, so its end is logged, and its terminal save bound
-          // to the incarnation it was recovered against. The engine has
-          // already resumed it, so a log that cannot be folded is reported
-          // (by `recoverRunSteering`) rather than failing the run.
-          let fallbackSteeringGate: BureauSteeringGate | undefined;
-          if (
-            recoveredServices !== undefined &&
-            recoveredSession !== undefined &&
-            recoveredSession.incarnation === classifiedIncarnation
-          ) {
-            try {
-              fallbackSteeringGate = await recoverRunSteering(
-                ownedSessionId!,
-                recoveredSession,
-                handle.id,
-                recoveredServices,
-              );
-            } catch {
-              fallbackSteeringGate = undefined;
-            }
-          }
-          if (recoveredServices !== undefined) {
-            // The incarnation `reattachRecoveredRun` records for the run
-            // below, read here before it has.
-            await attachRecoveredSessionInput(
-              ownedSessionId!,
-              handle.id,
-              recoveredServices,
-              classifiedIncarnation,
-            );
-          }
-          reattachRecoveredRun(
-            handle.id,
-            ownedSessionId!,
-            handle,
-            undefined,
-            recoveredServices,
-            sessionLoad.ok ? sessionLoad.session : null,
-            fallbackSteeringGate,
-            // Fenced to the classified incarnation even when the session was
-            // recreated since: the old run then saves into nothing.
-            classifiedIncarnation,
-          );
-          // AB-336 — same reconstruction as the primary reattach path above
-          // (`onRecoveredWorkflow`); this post-recovery classification pass
-          // reattaches runs whose live services were rebuilt from config
-          // rather than captured before the crash, but the checkpoint gap
-          // this closes is identical either way.
-          await reconstructHumanWaitReviewIfParked(handle.id);
-        } else if (verdict === 'monitor') {
-          // Scheduled fires have no ActiveRun surface, but the recovered Weft handle
-          // still needs a detached result monitor so failures are visible.
-          void monitorRecoveredScheduledFire(handle, diagnose);
-        } else {
-          if (verdict === 'cancel') {
-            // Collect the cancel (do NOT fire-and-forget swallow): a rejected cancel
-            // could leave an unowned, already-resumed run live with no monitor, so
-            // its failure must be surfaced for operators. engine.cancel terminalizes
-            // the run and rejects its waiter — covering metadata-less / read-failed /
-            // foreign-input / orphaned-session residue without store.register'ing it.
-            const cancel = durable.engine.cancel(handle.id).then(async () => {
-              // COR-1476 — a cancelled run owes its session's input the same
-              // settlement as one that ended on its own.
-              if (ownedSessionId !== undefined) {
-                await settleSessionInputsAfterRunEnd(ownedSessionId, handle.id);
-              }
-              return undefined;
-            });
-            if (classification.rejection === 'prepared-not-launched') {
-              cancelNeverLaunched(handle.id, cancel);
-            } else {
-              orphanCancellations.push({ runId: handle.id, cancel });
-            }
-          }
-          // 'skip' — ownership unknown; leave the run to resume without live visibility.
-        }
-      }
-
-      // Await the orphan cancels DETACHED — boot must not block on them (same as the
-      // recovered-run monitors), but a cancel that REJECTS leaves an unowned run
-      // running, which is an operator-actionable failure, not something to swallow.
-      if (orphanCancellations.length > 0) {
-        void Promise.allSettled(orphanCancellations.map(({ cancel }) => cancel)).then(
-          (outcomes) => {
-            outcomes.forEach((outcome, index) => {
-              if (outcome.status === 'rejected') {
-                diagnose({
-                  level: 'error',
-                  scope: 'recovery',
-                  message: `[bureau] Failed to cancel unowned recovered run "${orphanCancellations[index]!.runId}" — it may still be running: ${serializeUnknownError(outcome.reason)}`,
-                });
-              }
-            });
-            return undefined;
-          },
-        );
-      }
-      // Cancelling a record that never launched is a single write, so boot waits for these. Only
-      // when there are any: a reattached run starts at once, and an extra turn here would hold
-      // `createBureau()` back while it runs.
-      if (preparedCancellations.length > 0) await Promise.all(preparedCancellations);
-    } finally {
-      durable.engine.removeEventListener(WorkflowRecoverySkippedEvent.type, onRecoverySkipped);
-      // AB-241 review finding: the post-recovery loop above is the LAST
-      // consumer of `catalogRunRecoveryCache` for this boot pass (the
-      // awaited `onRecoveredWorkflow` hook, invoked earlier during
-      // `recoverAll()` above, was the first) — release every entry now
-      // rather than let them persist for the rest of this process's
-      // lifetime. `finally` also covers `recoverAll()` itself throwing
-      // after populating one or more entries, which the surrounding `try`
-      // exists to catch. Safe to run before the detached orphan-cancel
-      // promises above settle: none of them touch this cache.
-      runtime.clearCatalogRunRecoveryCache();
-      // COR-772 — reconciled even when `recoverAll()` itself threw: the
-      // engine's durable state is still readable, and a child left
-      // unreconciled would have no observer for the life of this process.
-      // `reconcileRecovery()` diagnoses each child's failure itself and
-      // never rejects, so it cannot mask the error this `finally` follows.
-      await childTopology.reconcileRecovery();
-      // COR-851 — every unfinished goal, now that its controller and its
-      // attempt's run have both been resumed by `recoverAll()` above. Recovery
-      // reports what it could not do rather than throwing.
-      currentRecoveryPerRunFailures?.push(...(await recoverGoalsAtBoot()));
-    }
-
-    // COR-1934 — a deleted chat whose content purge a crash or a failure stopped.
-    try {
-      await chatContentPurge.sweep();
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Boot recovery could not finish the pending content purges of deleted chats: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-
-    // COR-1476 — recovered runs are reattached and visible as live now, so
-    // input left open with no run at all (a process that died between a run's
-    // end and its settlement) is cancelled, and the rest waits for its run.
-    try {
-      await sessionInputSettlement?.sweep();
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'recovery',
-        message: `[bureau] Boot recovery could not sweep the pending session input: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-
-    const perRunFailures = dedupeRecoveryPerRunFailures(currentRecoveryPerRunFailures ?? []);
-    const skippedRuns = currentRecoverySkippedRuns ?? [];
-    currentRecoveryPerRunFailures = undefined;
-    currentRecoverySweepFailure = undefined;
-    currentRecoverySkippedRuns = undefined;
-    const outcome: BureauRecoveryReport['outcome'] =
-      sweepFailure || perRunFailures.length > 0 || skippedRuns.length > 0 ? 'partial' : 'clean';
-    return {
-      outcome,
-      ...(sweepFailure ? { sweepFailure } : {}),
-      perRunFailures,
-      skippedRuns,
-    };
-  }
 
   /**
    * COR-1588 — the one reader of what a held run is attributed to: its recorded attribution,
@@ -15179,19 +13018,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * path. A bureau with no durable mailbox, or a session id too long to
    * address one, answers `unsupported-capability`.
    */
-  /**
-   * COR-435 — generalizes the `inFlightSessionDeletions` coalescing pattern
-   * (see that map's own doc comment, below `deleteSession`) to
-   * `(principal, 'session-input', id)`: two concurrent admission attempts
-   * for the identical retry identity share ONE in-flight promise rather
-   * than racing two independent mailbox admissions. Keyed by a joined
-   * string (not a nested Map) for the same reason a plain `Map<string, ...>`
-   * suffices for session deletions — the three components are individually
-   * unbounded strings, so a delimiter that cannot appear in any of them is
-   * used to prevent `("a\x00b", "c")` and `("a", "b\x00c")` from colliding.
-   */
-  const inFlightSessionInputAdmissions = new Map<string, Promise<SessionInputAdmissionOutcome>>();
-
   function assertSessionInputAdmissionOpen(): void {
     if (runAdmissionClosed) {
       throw new BureauError('Cannot submit session input: Bureau is shutting down.', 'CONFLICT');
@@ -15519,9 +13345,6 @@ async function constructBureau<const D extends AgentDefinitions>(
    * `SteeringGate` is ever consulted or created — see
    * `SteeringCommandAdmissionOutcome`'s doc comment for the exact reasons.
    */
-  /** Durable steering submissions in progress, which shutdown awaits. */
-  const inFlightSteeringSubmissions = new Set<Promise<SteeringCommandAdmissionOutcome>>();
-
   async function submitSteeringCommand(
     sessionId: string,
     request: SteeringCommandRequest,
@@ -19518,1393 +17341,6 @@ async function constructBureau<const D extends AgentDefinitions>(
     // Whatever this sweep released, the timer is only needed while an approval is still held.
     stopLazyExpirySweepWhenNoneHeld();
     return sweptCount;
-  }
-
-  /**
-   * Under a workspace Bureau a schedule may continue only a chat its own owner holds, so a session
-   * that is another owner's, or that does not exist, is answered as not found. Creating and
-   * updating a schedule share this check, because every fire of one that fails it is `unavailable`.
-   */
-  async function refuseScheduleSessionOfAnotherOwner(
-    sessionId: string,
-    owner: string,
-  ): Promise<void> {
-    if (workspace !== undefined && (await sessionOwner(sessionId)) !== owner) {
-      throw new BureauError('Session not found', 'NOT_FOUND');
-    }
-  }
-
-  /**
-   * Whether the owner may keep a schedule's recurring chat. A chat that is not made yet is theirs
-   * to make, as the first fire of a schedule that Bureau named a chat for does; one that exists
-   * must be theirs.
-   */
-  async function mayContinueScheduleSession(
-    sessionId: string | undefined,
-    owner: string,
-  ): Promise<boolean> {
-    if (sessionId === undefined) return true;
-    const held = await sessionOwner(sessionId);
-    return held === undefined || held === owner;
-  }
-
-  async function createSchedule(
-    definition: DurableScheduleDefinition,
-    scheduleOptions?: CreateScheduleOptions,
-    // COR-1879 — the plugin whose host API creates the schedule; its `schedule.created` names it.
-    source?: string,
-  ): Promise<import('@lostgradient/weft').ScheduleSummary | undefined> {
-    definition = structuredClone(definition);
-    // A chat Bureau names itself is unguessable and not yet made, so it is not another owner's to
-    // refuse: the schedule's first fire makes it, owned by the schedule's owner.
-    const allocatedChat = definition.continueChat === true;
-    if (allocatedChat) {
-      if (definition.sessionId !== undefined) {
-        throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
-      }
-      definition.sessionId = runtimeServices.identifiers.next('session');
-    }
-    if (definition.sessionId !== undefined) {
-      rejectReservedIdentifier('"sessionId"', definition.sessionId.trim());
-      // A schedule's session is made by its first fire when none exists yet. Only `.` and `..` are
-      // refused for one that does not, so any other id costs no read of the store.
-      if (unopenableNewSessionIdentifierReason('"sessionId"', definition.sessionId.trim())) {
-        const held = await runtime.sessionStore?.load(definition.sessionId.trim());
-        rejectUnopenableNewSessionIdentifier(
-          '"sessionId"',
-          definition.sessionId.trim(),
-          held !== undefined,
-        );
-      }
-    }
-    const owner = ownerFromPrincipal(definition.principal, toBadRequest);
-    if (definition.sessionId !== undefined && !allocatedChat) {
-      await refuseScheduleSessionOfAnotherOwner(definition.sessionId.trim(), owner);
-    }
-    const workspaceAuthority =
-      workspace === undefined ? undefined : await captureRunWorkspaceAuthority(workspace, owner);
-    if (workspace !== undefined && workspaceAuthority === undefined)
-      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
-    if (!runtime.durable) return undefined;
-    // COR-1667 — resolve the name the way a fire does (`agentCatalog.find`, which includes file
-    // agents), so a typo is refused now instead of as `missing-agent` at the first fire. An agent
-    // that goes missing later still fails at fire time, unchanged.
-    if (agentCatalog.find(definition.agentName) === undefined) {
-      throw new UnknownScheduleAgentError(definition.agentName);
-    }
-    // Register a native weft schedule that fires the `agentRun` workflow on each
-    // tick. The fire path is wired through `resolveRunServices`' scheduled-fire
-    // branch (see runtime-composition.ts): each tick builds fresh run deps from
-    // the ScheduledAgentRunInput, seeds the prompt, and runs the agent (#109).
-    //
-    // Definition validation (blank recurring session, overlap 'allow' + recurring
-    // session) lives in `createAgentSchedule` — the single chokepoint every caller
-    // (bureau, AgentScheduler, the scheduleSelf tool) routes through — so it cannot
-    // be bypassed. We surface its `InvalidScheduleError` as a BAD_REQUEST (400).
-    //
-    // Passing this bureau's own `emitter` here (unlike `pauseSchedule`/
-    // `resumeSchedule`/`cancelSchedule` below, which dispatch directly) forwards
-    // `createAgentSchedule`'s `AgentScheduledEvent` (`schedule.created`, AB-298)
-    // straight onto it, exactly once for the fresh registration this call makes —
-    // no separate dispatch needed here.
-    const scheduler = createAgentScheduler({
-      engine: runtime.durable.engine,
-      // COR-1879: the internal variant a plugin's host API uses marks what it forwards.
-      emitter:
-        source === undefined
-          ? emitter
-          : { dispatch: (event) => emitter.dispatch(markEventSource(event, source)) },
-    });
-    // COR-1952: a schedule a hook-started run creates records the hook before it exists, under an
-    // id minted here, so no fire can run before its origin is readable.
-    const hookOrigin =
-      scheduleOptions?.createdByRun === undefined || scheduleHookOrigins === undefined
-        ? undefined
-        : await hookOriginOfRun(scheduleOptions.createdByRun);
-    const originId =
-      hookOrigin === undefined ? undefined : runtimeServices.identifiers.next('schedule');
-    if (originId !== undefined && hookOrigin !== undefined) {
-      await scheduleHookOrigins!.recordSchedule(originId, hookOrigin);
-    }
-    let handle;
-    try {
-      handle = await scheduler.schedule(definition.agentName, {
-        ...(originId === undefined ? {} : { id: originId }),
-        spec: toScheduleSpec(definition.spec),
-        input: definition.input,
-        ...(definition.description !== undefined ? { description: definition.description } : {}),
-        ...(definition.sessionId !== undefined ? { session: definition.sessionId } : {}),
-        ...(definition.overlap !== undefined ? { overlap: definition.overlap } : {}),
-        ...(definition.timeZone !== undefined ? { timeZone: definition.timeZone } : {}),
-        principal: owner,
-        ...(workspaceAuthority === undefined ? {} : { workspaceAuthority }),
-      });
-    } catch (error) {
-      // Nothing was registered under the id, so its origin names no schedule.
-      if (originId !== undefined) await scheduleHookOrigins?.clearSchedule(originId);
-      if (error instanceof InvalidScheduleError) {
-        toBadRequest(error.message);
-      }
-      throw error;
-    }
-    // The schedule is already registered at this point — a `describe()`
-    // rejection here means only its locator (summary) is unavailable, not
-    // that registration failed. Wrap it in a typed error naming the
-    // `scheduleId` instead of letting `AgentScheduleHandle.describe()`'s bare
-    // `Error('Schedule … no longer exists.')` propagate untyped.
-    try {
-      return await handle.describe();
-    } catch (cause) {
-      throw new ScheduleLocatorUnavailableError(handle.id, { cause });
-    }
-  }
-
-  /**
-   * COR-2009 — starts the schedule tick that records what the scheduler did, naming the schedule by
-   * its description as it is now. Best effort: a tick that cannot be recorded is diagnosed and never
-   * holds up the fire or the notice it records.
-   */
-  async function recordScheduleTick(
-    scheduleId: string,
-    tickOf: (scheduleName: string | null) => ScheduleTick,
-  ): Promise<void> {
-    const engine = runtime.durable?.engine;
-    if (engine === undefined) return;
-    try {
-      const schedule = await engine.getSchedule(scheduleId);
-      await startScheduleTick(engine, tickOf(schedule?.description ?? null));
-    } catch (error) {
-      diagnose({
-        level: 'warn',
-        scope: 'schedules',
-        message: `[bureau] Could not record the schedule tick of schedule "${scheduleId}":`,
-        cause: error,
-      });
-    }
-  }
-
-  async function getSchedule(
-    scheduleId: string,
-  ): Promise<import('@lostgradient/weft').ScheduleSummary | null | undefined> {
-    if (!runtime.durable) return undefined;
-    return runtime.durable.engine.getSchedule(scheduleId);
-  }
-
-  async function listSchedules(
-    filter?: import('@lostgradient/weft').ScheduleFilter,
-  ): Promise<
-    | import('@lostgradient/weft').PaginatedResult<import('@lostgradient/weft').ScheduleSummary>
-    | undefined
-  > {
-    if (!runtime.durable) return undefined;
-    return runtime.durable.engine.listSchedules(filter);
-  }
-
-  /**
-   * COR-1527 — a workflow file owns its schedule, so a write to it through the schedule methods is
-   * answered as if the schedule did not exist; the workflow's own operations are the only way to
-   * change it.
-   */
-  function refuseWorkflowSchedule(scheduleId: string): void {
-    if (workflowRuntime !== undefined && parseWorkflowScheduleId(scheduleId) !== undefined) {
-      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
-    }
-  }
-
-  async function reassignSchedule(
-    scheduleId: string,
-    request: {
-      readonly administrator: string;
-      readonly targetOwner: string;
-      readonly expectedRevision: number;
-    },
-  ): Promise<true | undefined> {
-    const { administrator, targetOwner, expectedRevision } = request;
-    if (workspace === undefined)
-      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
-    const durable = runtime.durable;
-    if (durable === undefined) return undefined;
-    const snapshot = await durable.engine.getSchedule(scheduleId);
-    if (snapshot?.revision !== expectedRevision)
-      throw new BureauError('Schedule revision changed.', 'CONFLICT');
-    const input = await storedScheduleInput(durable.engine, scheduleId);
-    if (
-      typeof input !== 'object' ||
-      input === null ||
-      Array.isArray(input) ||
-      (!isScheduledAgentRunInput(input) &&
-        (parseWorkflowScheduleId(scheduleId) === undefined ||
-          Reflect.get(input, 'kind') !== 'schedule'))
-    )
-      throw new BureauError('Schedule not found.', 'NOT_FOUND');
-    const previous = workflowScheduleBinding(input).workspaceAuthority;
-    if (previous === undefined || previous.workspaceId !== workspace.workspaceId)
-      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
-    const target = await resolveWorkspaceOwner(workspace, targetOwner);
-    const admin = await resolveWorkspaceOwner(workspace, administrator);
-    if (
-      admin === undefined ||
-      !admin.capabilities.includes('workspace:manage') ||
-      target === undefined ||
-      target.actorKind === 'service'
-    )
-      throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
-    const next = {
-      version: 1 as const,
-      workspaceId: target.workspaceId,
-      actorId: target.actorId,
-      authorizingOwner: target.owner,
-      membershipRevision: target.membershipRevision,
-    };
-    const transition: PendingScheduleTransition = {
-      kind: 'schedule.paused',
-      scheduleId,
-      committedAtMs: runtimeServices.clock.now(),
-      reassignment: {
-        workspaceId: workspace.workspaceId,
-        previousActor: previous.actorId,
-        nextActor: target.actorId,
-        administrator: admin.actorId,
-        previousRevision: expectedRevision,
-        nextRevision: expectedRevision + 1,
-      },
-    };
-    const key = scheduleTransitionKey(
-      transition,
-      runtimeServices.identifiers.next('schedule-transition'),
-    );
-    await durable.engine.replaceScheduleInput(
-      scheduleId,
-      { ...input, workspaceAuthority: next, authorityHold: 'reassigned' },
-      {
-        expectedRevision,
-        additionalOperations: [scheduleTransitionOperation(key, transition)],
-      },
-    );
-    try {
-      await recordPendingScheduleTransitions(scheduleTransitionKeyPrefix(scheduleId));
-    } catch {
-      diagnose({
-        level: 'error',
-        scope: 'durable-maintenance',
-        message: 'Schedule reassignment audit remains pending for maintenance.',
-      });
-    }
-    return true;
-  }
-
-  async function pauseInvalidSchedule(scheduleId: string): Promise<void> {
-    if (workspace === undefined || runtime.durable === undefined) return;
-    const snapshot = await runtime.durable.engine.getSchedule(scheduleId);
-    if (snapshot?.status !== 'active') return;
-    const input = await storedScheduleInput(runtime.durable.engine, scheduleId);
-    if (typeof input !== 'object' || input === null || Array.isArray(input)) return;
-    if (!isScheduledAgentRunInput(input) && parseWorkflowScheduleId(scheduleId) === undefined) {
-      if (snapshot.workflowType === 'agentRun')
-        await runtime.durable.engine.pauseSchedule(scheduleId, {
-          expectedRevision: snapshot.revision,
-        });
-      return;
-    }
-    let binding;
-    try {
-      binding = workflowScheduleBinding(input);
-    } catch {
-      await runtime.durable.engine.pauseSchedule(scheduleId, {
-        expectedRevision: snapshot.revision,
-      });
-      return;
-    }
-    const authority = await recoverRunWorkspaceAuthority(
-      workspace,
-      binding.workspaceAuthority,
-      isScheduledAgentRunInput(input) ? input.principal : 'anonymous:local',
-    );
-    const usableInput =
-      !isScheduledAgentRunInput(input) ||
-      (authority !== undefined &&
-        (await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) &&
-        (await mayUseAutomationInput(
-          input.input,
-          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
-        )));
-    if (authority !== undefined && binding.authorityHold === undefined && usableInput) {
-      if (binding.workspaceAuthority === undefined)
-        await runtime.durable.engine.replaceScheduleInput(
-          scheduleId,
-          { ...input, workspaceAuthority: authority },
-          { expectedRevision: snapshot.revision, status: 'active' },
-        );
-      return;
-    }
-    await runtime.durable.engine.replaceScheduleInput(
-      scheduleId,
-      { ...input, authorityHold: binding.authorityHold ?? 'revoked' },
-      { expectedRevision: snapshot.revision },
-    );
-  }
-
-  async function pauseInvalidSchedules(): Promise<void> {
-    if (workspace === undefined || runtime.durable === undefined) return;
-    let offset = 0;
-    for (;;) {
-      const page = await runtime.durable.engine.listSchedules({ offset, limit: 100 });
-      for (const schedule of page.items) await pauseInvalidSchedule(schedule.id);
-      offset += page.items.length;
-      if (page.items.length === 0 || offset >= page.total) break;
-    }
-  }
-
-  async function pauseSchedule(
-    scheduleId: string,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined> {
-    const durable = runtime.durable;
-    if (!durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    await transitionSchedule('schedule.paused', scheduleId, guard, (transition) =>
-      durable.engine.pauseSchedule(scheduleId, transition),
-    );
-    return true;
-  }
-
-  async function resumeSchedule(
-    scheduleId: string,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined> {
-    const durable = runtime.durable;
-    if (!durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    if (workspace === undefined) {
-      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
-        durable.engine.resumeSchedule(scheduleId, transition),
-      );
-    } else {
-      const snapshot = await durable.engine.getSchedule(scheduleId);
-      const input = await readScheduledAgentInput(scheduleId);
-      const authority = await validateRunWorkspaceAuthority(workspace, input?.workspaceAuthority);
-      if (
-        snapshot === null ||
-        input === undefined ||
-        authority === undefined ||
-        !(await mayContinueScheduleSession(input.sessionId, authority.authorizingOwner)) ||
-        !(await mayUseAutomationInput(
-          input.input,
-          runtime.mediaOptionsFor(authority.authorizingOwner, 'session').contentSourceResolver,
-        ))
-      ) {
-        throw new BureauError('Workspace authority unavailable.', 'CONFLICT');
-      }
-      const { authorityHold: _hold, ...resumed } = input;
-      await transitionSchedule('schedule.resumed', scheduleId, guard, (transition) =>
-        durable.engine.replaceScheduleInput(scheduleId, resumed, {
-          ...transition,
-          expectedRevision: transition.expectedRevision ?? snapshot.revision,
-          status: 'active',
-        }),
-      );
-    }
-    return true;
-  }
-
-  async function cancelSchedule(
-    scheduleId: string,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined> {
-    const durable = runtime.durable;
-    if (!durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    await transitionSchedule('schedule.cancelled', scheduleId, guard, (transition) =>
-      durable.engine.cancelSchedule(scheduleId, transition),
-    );
-    return true;
-  }
-
-  /**
-   * COR-194 — commits a schedule transition with its pending record in the same storage write
-   * (`schedule-transition-outbox.ts`), then records it. A transition Weft finds nothing to do for
-   * (pausing a schedule that is not active, resuming an active one) writes nothing, the pending
-   * record included, so it is neither recorded nor dispatched. A record that cannot be written
-   * now stays pending for the boot pass, and the transition itself still succeeds: it committed.
-   */
-  async function transitionSchedule(
-    kind: ScheduleTransitionKind,
-    scheduleId: string,
-    guard: ScheduleRevisionGuard | undefined,
-    apply: (transition: import('@lostgradient/weft').ScheduleTransitionOptions) => Promise<void>,
-  ): Promise<void> {
-    const transition: PendingScheduleTransition = {
-      kind,
-      scheduleId,
-      committedAtMs: runtimeServices.clock.now(),
-    };
-    const key = scheduleTransitionKey(
-      transition,
-      runtimeServices.identifiers.next('schedule-transition'),
-    );
-    await apply({
-      ...scheduleTransitionOptions(guard),
-      additionalOperations: [scheduleTransitionOperation(key, transition)],
-    });
-    // Everything after the commit is a failure to record, never a failure of the transition. The
-    // schedule's whole pending queue is drained, so this transition is recorded behind any earlier
-    // one still pending; when Weft wrote nothing, the queue holds nothing of this call's.
-    try {
-      await recordPendingScheduleTransitions(scheduleTransitionKeyPrefix(scheduleId));
-    } catch (error) {
-      diagnose({
-        level: 'error',
-        scope: 'durable-maintenance',
-        message: `[bureau] Could not record ${kind} for schedule "${scheduleId}"; it stays pending for the next drain: ${serializeUnknownError(error)}`,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * COR-194 — records one pending schedule transition in durable history and the audit trail under
-   * its own key as the dedupe key, removes the pending record, then dispatches the live event. A
-   * write that fails rejects before the pending record is removed, so the transition is recorded
-   * at a later attempt and, through the dedupe key, only once.
-   */
-  async function recordScheduleTransition(
-    key: string,
-    transition: PendingScheduleTransition,
-  ): Promise<void> {
-    // A scan's snapshot can be stale: another process's drain may have recorded and removed the
-    // key since.
-    if ((await runtime.durable!.engine.storage.get(key)) === null) return;
-    const { kind, scheduleId, committedAtMs } = transition;
-    const recordKind = transition.reassignment === undefined ? kind : 'schedule.reassigned';
-    const detail = { scheduleId, ...transition.reassignment };
-    await eventHistoryInstance?.record({ kind: 'schedule', id: scheduleId }, recordKind, detail, {
-      dedupeKey: key,
-      emittedAtMs: committedAtMs,
-    });
-    await auditTrailInstance?.record({
-      runId: `${AUDIT_SCHEDULE_OWNER_PREFIX}${scheduleId}`,
-      type: recordKind,
-      detail,
-      timestampMs: committedAtMs,
-      dedupeKey: key,
-    });
-    await runtime.durable!.engine.storage.delete(key);
-    const record = { dedupeKey: key, committedAtMs };
-    try {
-      emitter.dispatch(
-        kind === 'schedule.paused'
-          ? new SchedulePausedEvent(scheduleId, record)
-          : kind === 'schedule.resumed'
-            ? new ScheduleResumedEvent(scheduleId, record)
-            : new ScheduleCancelledEvent(scheduleId, record),
-      );
-    } catch (error) {
-      // A `bureau.toObservable()` subscriber has no isolation of its own (see `drainOutboxEntry`).
-      diagnose({
-        level: 'error',
-        scope: 'durable-maintenance',
-        message: `[bureau] A bureau.toObservable() subscriber threw on ${kind} for schedule "${scheduleId}":`,
-        cause: error,
-      });
-    }
-  }
-
-  /**
-   * COR-194 — every drain this process runs, chained, so no two overlap: two drains of the same
-   * schedule at once could record its transitions out of order, or one twice.
-   */
-  let scheduleTransitionDrains: Promise<void> = Promise.resolve();
-
-  /**
-   * COR-194 — records every schedule transition still pending under `prefix` (every schedule's,
-   * or one schedule's for the live drain): one a process committed and did not live to record, one
-   * whose record failed after its commit, or one just committed. Each schedule's transitions are
-   * recorded in the order they committed, and a failure defers the rest of that schedule's to a
-   * later pass, so its history is never written out of order. A record this build cannot read is
-   * reported and kept, since a build that can may read it later.
-   */
-  function recordPendingScheduleTransitions(
-    prefix: string = SCHEDULE_TRANSITION_KEY_PREFIX,
-  ): Promise<void> {
-    const drain = scheduleTransitionDrains.then(() => drainScheduleTransitions(prefix));
-    // The chain carries on past a failed drain; the caller still sees the failure.
-    scheduleTransitionDrains = drain.catch(() => undefined);
-    return drain;
-  }
-
-  async function drainScheduleTransitions(prefix: string): Promise<void> {
-    const durable = runtime.durable;
-    if (!durable) return;
-    const pending: Array<[string, Uint8Array]> = [];
-    for await (const entry of durable.engine.storage.scan(prefix)) {
-      pending.push(entry);
-    }
-    const deferredSchedules = new Set<string>();
-    for (const [key, bytes] of pending) {
-      const scheduleSegment = key.slice(SCHEDULE_TRANSITION_KEY_PREFIX.length).split(':')[0];
-      if (deferredSchedules.has(scheduleSegment ?? '')) continue;
-      const transition = decodeScheduleTransition(bytes);
-      if (transition === undefined) {
-        deferredSchedules.add(scheduleSegment ?? '');
-        diagnose({
-          level: 'error',
-          scope: 'durable-maintenance',
-          message: `[bureau] Left pending schedule transition "${key}" in place: this build cannot read it.`,
-        });
-        continue;
-      }
-      try {
-        await recordScheduleTransition(key, transition);
-      } catch (error) {
-        deferredSchedules.add(scheduleSegment ?? '');
-        diagnose({
-          level: 'error',
-          scope: 'durable-maintenance',
-          message: `[bureau] Could not record pending ${transition.kind} for schedule "${transition.scheduleId}"; leaving it and the schedule's later transitions for the next drain: ${serializeUnknownError(error)}`,
-          cause: error,
-        });
-      }
-    }
-  }
-
-  /** What Weft's pause, resume, and cancel take for a guard: the revision, or nothing at all. */
-  function scheduleTransitionOptions(
-    guard: ScheduleRevisionGuard | undefined,
-  ): { expectedRevision: number } | undefined {
-    return guard?.expectedRevision === undefined
-      ? undefined
-      : { expectedRevision: guard.expectedRevision };
-  }
-
-  async function skipNextSchedule(
-    scheduleId: string,
-    guard?: ScheduleRevisionGuard,
-    occurrence?: number,
-  ): Promise<true | undefined> {
-    if (!runtime.durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    await runtime.durable.engine.skipNextScheduleOccurrence(scheduleId, {
-      ...scheduleTransitionOptions(guard),
-      ...(occurrence === undefined ? {} : { occurrence }),
-    });
-    return true;
-  }
-
-  async function unskipSchedule(
-    scheduleId: string,
-    occurrence: number,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined> {
-    if (!runtime.durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    await runtime.durable.engine.unskipScheduleOccurrence(scheduleId, {
-      ...scheduleTransitionOptions(guard),
-      occurrence,
-    });
-    return true;
-  }
-
-  async function runScheduleNow(
-    scheduleId: string,
-  ): Promise<import('@lostgradient/weft').ScheduleTriggerResult | undefined> {
-    if (!runtime.durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    return runtime.durable.engine.triggerSchedule(scheduleId);
-  }
-
-  async function listScheduleMissed(
-    scheduleId: string,
-    read?: { readonly limit?: number | undefined },
-  ): Promise<import('@lostgradient/weft').ScheduleMissedFire[] | null | undefined> {
-    if (!runtime.durable) return undefined;
-    return runtime.durable.engine.listScheduleMissedFires(
-      scheduleId,
-      read?.limit === undefined ? undefined : { limit: read.limit },
-    );
-  }
-
-  async function updateSchedule(
-    scheduleId: string,
-    update: DurableScheduleUpdate,
-    guard?: ScheduleRevisionGuard,
-  ): Promise<true | undefined> {
-    if (!runtime.durable) return undefined;
-    refuseWorkflowSchedule(scheduleId);
-    if (update.overlap !== undefined && update.overlap !== 'skip' && update.overlap !== 'allow') {
-      throw new BureauError(
-        `overlap policy '${String(update.overlap)}' is not supported by Bureau; only 'skip' and 'allow' are offered`,
-        'BAD_REQUEST',
-      );
-    }
-    const engine = runtime.durable.engine;
-    if (update.continueChat === true && update.sessionId !== undefined) {
-      throw new BureauError('"continueChat" and "sessionId" cannot both be given', 'BAD_REQUEST');
-    }
-    const changesRun =
-      update.agentName !== undefined ||
-      update.input !== undefined ||
-      update.sessionId !== undefined ||
-      update.continueChat === true;
-    // The stored state is read for what an edit of the run needs (its input, the overlap and the
-    // revision it was written at), and for the check that a recurring session is never combined
-    // with overlapping fires.
-    const bytes =
-      changesRun || update.overlap === 'allow'
-        ? await engine.storage.get(KEYS.schedule(scheduleId))
-        : null;
-    const stored: unknown = bytes ? decode(bytes) : undefined;
-    const storedRecord =
-      typeof stored === 'object' && stored !== null
-        ? (stored as { input?: unknown; overlap?: unknown; revision?: unknown })
-        : undefined;
-    const storedInput = isScheduledAgentRunInput(storedRecord?.input)
-      ? storedRecord.input
-      : undefined;
-    if (changesRun && storedInput === undefined) {
-      throw new BureauError(`Schedule "${scheduleId}" does not exist`, 'NOT_FOUND');
-    }
-    const nextOverlap = update.overlap ?? storedRecord?.overlap;
-    // A chat Bureau names itself is unguessable and not yet made (see `createSchedule`).
-    const allocatedChat =
-      update.continueChat === true ? runtimeServices.identifiers.next('session') : undefined;
-    const nextSession =
-      allocatedChat ??
-      (update.sessionId === undefined ? storedInput?.sessionId : (update.sessionId ?? undefined));
-    if (update.sessionId !== undefined && update.sessionId !== null) {
-      const sessionId = update.sessionId.trim();
-      rejectReservedIdentifier('"sessionId"', sessionId);
-      if (unopenableNewSessionIdentifierReason('"sessionId"', sessionId)) {
-        const held = await runtime.sessionStore?.load(sessionId);
-        rejectUnopenableNewSessionIdentifier('"sessionId"', sessionId, held !== undefined);
-      }
-      // `changesRun` is true here, so the stored input was read and its principal is the owner.
-      await refuseScheduleSessionOfAnotherOwner(sessionId, ownerOrLocal(storedInput?.principal));
-    }
-    // COR-323: a fire runs as its named agent and refuses a chat another agent began, so an
-    // update that would leave the schedule's agent and its chat apart is refused now, not as an
-    // `unavailable` at every fire after it.
-    const nextAgent = update.agentName ?? storedInput?.agentName;
-    if (allocatedChat === undefined && nextSession !== undefined && nextAgent !== undefined) {
-      const held = await runtime.sessionStore?.load(nextSession);
-      if (held !== undefined && held.agentName !== nextAgent) {
-        throw new BureauError(
-          `Schedule "${scheduleId}" would run agent "${nextAgent}" in a chat that belongs to agent "${held.agentName}". Start a new chat with the change, or keep the agent.`,
-          'BAD_REQUEST',
-        );
-      }
-    }
-    if (nextOverlap === 'allow' && nextSession !== undefined) {
-      // A recurring session is sequential: overlapping fires would interleave its turns, which is
-      // why creating such a schedule refuses `allow` too.
-      throw new BureauError(
-        "overlap 'allow' is incompatible with a recurring session (fires must serialize)",
-        'BAD_REQUEST',
-      );
-    }
-    if (update.agentName !== undefined && agentCatalog.find(update.agentName) === undefined) {
-      throw new UnknownScheduleAgentError(update.agentName);
-    }
-    if (update.input !== undefined && update.input.trim() === '') {
-      throw new BureauError('"input" must be a non-empty string', 'BAD_REQUEST');
-    }
-    let nextInput: ScheduledAgentRunInput | undefined;
-    if (changesRun && storedInput !== undefined) {
-      const { sessionId: _kept, ...rest } = storedInput;
-      nextInput = {
-        ...rest,
-        ...(update.agentName === undefined ? {} : { agentName: update.agentName }),
-        ...(update.input === undefined
-          ? {}
-          : { input: replaceInputText(storedInput.input, update.input) }),
-        ...(nextSession === undefined ? {} : { sessionId: nextSession }),
-      };
-    }
-    // Whatever was read decided what this update may do (the input it rebuilds, and whether
-    // `overlap` and a recurring chat may be combined), so the write is fenced to the revision that
-    // was read when the caller named none: a change made since is refused, not overwritten. An
-    // update of the overlap alone is fenced as well, or it could land on a chat another update gave
-    // the schedule since, which leaves the combination that is refused above.
-    const expectedRevision =
-      guard?.expectedRevision ??
-      (bytes !== null && typeof storedRecord?.revision === 'number'
-        ? storedRecord.revision
-        : undefined);
-    await engine.updateSchedule(scheduleId, toScheduleSpec(update.spec), {
-      ...(update.description === undefined ? {} : { description: update.description }),
-      ...(update.overlap === undefined ? {} : { overlap: update.overlap }),
-      ...(update.timeZone === undefined ? {} : { timeZone: update.timeZone }),
-      ...(nextInput === undefined ? {} : { input: nextInput }),
-      ...(expectedRevision === undefined ? {} : { expectedRevision }),
-    });
-    return true;
-  }
-
-  /**
-   * Every subsystem kind {@link BureauShutdownReport.owners} can report on.
-   * `'heartbeat'` is reserved for the day Bureau composes one — see
-   * `composedOwnerKinds` below, which decides which kinds actually get a row.
-   */
-  const ALL_SHUTDOWN_OWNER_KINDS = [
-    'online-evals',
-    'webhook-notifier',
-    'audit-trail',
-    'event-history',
-    'assets',
-    'durable-engine',
-  ] as const;
-
-  function shutdown(shutdownOptions?: BureauShutdownOptions): Promise<BureauShutdownReport> {
-    // Idempotency guard: shutdown()/dispose() may be called more than once
-    // (the harness does in tests, and `[Symbol.dispose]` may re-enter).
-    // Disposing the engine and especially the raw Storage twice can close an
-    // already-closed SQLite connection; a second call returns the first
-    // call's already-cached report promise, ignoring whatever `policy` it
-    // was given — the FIRST call's policy is what actually ran.
-    if (shutdownPromise) return shutdownPromise;
-    // COR-690: close run admission before anything below snapshots the active
-    // runs or run toolboxes, so nothing admitted afterwards escapes the drain.
-    runAdmissionClosed = true;
-    sessionInputClosing.resolve();
-
-    const policy: 'abort' | 'drain' | 'detach' = shutdownOptions?.policy ?? 'abort';
-    const timeoutMilliseconds = shutdownOptions?.timeoutMilliseconds;
-    // Capture the durable runs left for recovery at admission close: every one under 'detach',
-    // and under 'abort' the ones this process recovered rather than started. The report
-    // must count the same run identities that are still active when teardown
-    // settles, not a stale size snapshot: a run may complete while shutdown
-    // is waiting for workflow/toolbox/owner cleanup.
-    const detachedRuns = new Set<ActiveRun>(
-      runtime.durable && policy !== 'drain'
-        ? [...activeRuns].filter((run) => policy === 'detach' || recoveredActiveRuns.has(run))
-        : [],
-    );
-
-    // COR-1527: stop reacting to the workflow files at once, so nothing registers with an engine
-    // that is about to be disposed; the chain below waits for the apply in progress first.
-    const workflowClosed = workflowRuntime?.close();
-
-    // Which owners this bureau actually composes — a report row is emitted
-    // ONLY for a composed owner (2026-09-02 coordinator ruling).
-    const composedOwnerKinds = ALL_SHUTDOWN_OWNER_KINDS.filter((kind) => {
-      if (kind === 'online-evals') return Boolean(scorerSamplerInstance);
-      if (kind === 'webhook-notifier') return Boolean(webhookNotifierInstance);
-      if (kind === 'audit-trail') return Boolean(auditTrailInstance);
-      if (kind === 'event-history') return Boolean(eventHistoryInstance);
-      if (kind === 'assets') return Boolean(assetServiceInstance);
-      return Boolean(runtime.durable);
-    });
-    const ownerOutcomes = new Map<
-      (typeof ALL_SHUTDOWN_OWNER_KINDS)[number],
-      CleanupAcknowledgement
-    >();
-
-    function buildReport(): BureauShutdownReport {
-      const owners: BureauShutdownOwnerReport[] = composedOwnerKinds.map((kind) => ({
-        kind,
-        outcome: ownerOutcomes.get(kind) ?? 'unresolved',
-      }));
-      // A `.filter().length` per outcome (armorer's own `ExecutionCleanupReport`
-      // shape) rather than one accumulating loop: every predicate runs for
-      // every owner regardless of count, so `notRequired` reads as covered
-      // even on a run with zero `'not-required'` owners today (the union
-      // member is reserved per the shared vocabulary; no Bureau owner
-      // currently produces it).
-      return Object.freeze({
-        admissionClosed: true,
-        policy,
-        detached: [...detachedRuns].filter((run) => activeRuns.has(run)).length,
-        requested: owners.length,
-        completed: owners.filter((owner) => owner.outcome === 'completed').length,
-        failed: owners.filter((owner) => owner.outcome === 'failed').length,
-        unresolved: owners.filter((owner) => owner.outcome === 'unresolved').length,
-        notRequired: owners.filter((owner) => owner.outcome === 'not-required').length,
-        owners: Object.freeze(owners),
-      });
-    }
-
-    // Awaits `run()`, recording its outcome ('completed'/'failed') into
-    // `ownerOutcomes`. Never throws — a rejecting owner drain is diagnosed
-    // and recorded, not propagated, so one failing owner cannot skip the
-    // unconditional backend teardown below (same isolation the pre-AB-207
-    // `dispose()` already gave catalog-run `abort()` failures).
-    async function settleOwner(
-      kind: (typeof ALL_SHUTDOWN_OWNER_KINDS)[number],
-      run: () => Promise<unknown>,
-    ): Promise<void> {
-      try {
-        await run();
-        ownerOutcomes.set(kind, 'completed');
-      } catch (error) {
-        ownerOutcomes.set(kind, 'failed');
-        diagnose({
-          level: 'error',
-          scope: 'shutdown',
-          message: `[bureau] Error during ${kind} shutdown: ${serializeUnknownError(error)}`,
-        });
-      }
-    }
-
-    // Resolves once every run in `terminals` has reached a terminal event,
-    // or once `ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS` has passed, whichever
-    // comes first. The timer is cleared either way so it never outlives the
-    // wait.
-    async function awaitAbortedRunTerminals(terminals: Array<Promise<void>>): Promise<void> {
-      if (terminals.length === 0) return;
-      let graceTimer: RuntimeTimeoutHandle;
-      const grace = new Promise<void>((resolve) => {
-        graceTimer = runtimeServices.timers.setTimeout(
-          resolve,
-          ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
-        );
-      });
-      try {
-        await Promise.race([Promise.all(terminals), grace]);
-      } finally {
-        runtimeServices.timers.clearTimeout(graceTimer);
-      }
-    }
-
-    const chain = (async (): Promise<BureauShutdownReport> => {
-      // COR-1527: a change being applied to the engine finishes while the engine is still there,
-      // and nothing is applied after this, so the disposal below cannot race it.
-      await workflowClosed;
-      // Stop admission before touching runs. The canonical toolbox is the
-      // owner of local execution lifecycle; await its shutdown as the
-      // quiescence fence before releasing durable resources.
-      runtime.baseToolbox.closeAdmission();
-      for (const toolbox of runToolboxes) toolbox.closeAdmission();
-
-      const runTerminals: Array<Promise<unknown>> = [];
-      // Terminal events of the runs 'abort' aborts. Awaited, under a bound,
-      // before the session-persistence drain below — see that await.
-      const abortedRunTerminals: Array<Promise<void>> = [];
-      // COR-1630 — the results of the catalog runs 'abort' aborts: each handle settling is what
-      // starts that run's asset release, so the release is known only after it.
-      const abortedCatalogRunResults: Array<Promise<void>> = [];
-      const abortActiveRuns = policy === 'abort' || (policy === 'detach' && !runtime.durable);
-      const abortCatalogRuns = policy === 'abort' || policy === 'detach';
-      if (abortActiveRuns) {
-        // Deliberately NOT awaited here (or anywhere gating the
-        // unconditional engine/storage teardown below): a caller-owned
-        // `ActiveRun` whose underlying provider call never honors its
-        // `AbortSignal` (a hung dependency, not a well-behaved one) must
-        // never be able to wedge the WHOLE shutdown chain open forever —
-        // the critical backend teardown has to stay reachable regardless
-        // of whether any individual run ever actually settles. A
-        // well-behaved run's `abort()` drops its provider connection
-        // immediately (see `active-run-adapter.ts`'s `abort()` doc), so its
-        // terminal event — and any audit-trail/webhook-notifier write it
-        // triggers — has ample opportunity to land during the real async
-        // work the toolbox-shutdown await below already does, well before
-        // the owner drains further down snapshot each subsystem's in-flight
-        // writes.
-        //
-        // Each run's terminal listener is registered BEFORE its `abort()`,
-        // which may dispatch `run.aborted` synchronously, and a member of
-        // `activeRuns` has not dispatched a terminal event yet (its own
-        // terminal listeners remove it first), as `whenActiveRunTerminal`
-        // requires.
-        for (const activeRun of activeRuns) {
-          // A run this process recovered is left running for the next one, as under 'detach'.
-          if (runtime.durable && recoveredActiveRuns.has(activeRun)) continue;
-          abortedRunTerminals.push(whenActiveRunTerminal(activeRun));
-          runsStoppedByShutdown.add(activeRun);
-          activeRun.abort('Bureau disposed');
-        }
-        // A run that already reported its error is over; it is not aborted, only waited for
-        // under the same bound, so its terminal session save starts before the engine goes.
-        for (const erroredRun of erroredActiveRuns) {
-          abortedRunTerminals.push(whenErroredRunEnds(erroredRun));
-        }
-        // AB-22 review fix: `bureau.run(...)` dispatches are tracked
-        // separately (see `trackCatalogRun`) since a catalog `RunnableAgent`'s
-        // returned handle is not necessarily backed by a bureau-owned
-        // `ActiveRun` — its `abort()` can be arbitrary, untrusted code.
-        // Snapshot before iterating (a synchronous catalog agent can settle
-        // result() immediately from inside abort(), whose trackCatalogRun
-        // cleanup deletes from catalogRuns mid-iteration), and isolate each
-        // call: an in-flight custom handle throwing from abort() must not
-        // reject this entire shutdown() before the unconditional teardown
-        // below runs — that would skip toolbox shutdown, durable-engine
-        // disposal, and storage closure, and since shutdownPromise is
-        // already cached at this point, every subsequent shutdown()/dispose()
-        // call would return the same rejection forever instead of ever
-        // completing cleanup (review round 2, Codex).
-      } else {
-        // 'drain' waits caller-owned runs; 'detach' leaves durable caller-owned runs for recovery.
-        for (const activeRun of activeRuns) {
-          if (policy === 'drain') runTerminals.push(whenActiveRunTerminal(activeRun));
-        }
-        for (const erroredRun of erroredActiveRuns) {
-          runTerminals.push(whenErroredRunEnds(erroredRun));
-        }
-      }
-      if (abortCatalogRuns) {
-        const currentCatalogRuns = [...catalogRuns];
-        for (const catalogRun of currentCatalogRuns) {
-          try {
-            abortedCatalogRunResults.push(
-              Promise.allSettled([catalogRun.result()]).then(() => undefined),
-            );
-          } catch {
-            // A custom handle whose result() throws has no result to wait for; its abort() below
-            // is still called, and its release, if any, is not waited for.
-          }
-        }
-        for (const catalogRun of currentCatalogRuns) {
-          try {
-            catalogRun.abort('Bureau disposed');
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'shutdown',
-              message: `[bureau] A catalog run's abort() threw during disposal; continuing teardown: ${serializeUnknownError(error)}`,
-            });
-          }
-        }
-      } else {
-        // Catalog runs are caller-owned too, but unlike durable ActiveRuns they have no recovery
-        // record, so detach retains the existing abort behavior for them.
-        const currentCatalogRuns = [...catalogRuns];
-        for (const catalogRun of currentCatalogRuns) {
-          runTerminals.push(Promise.allSettled([catalogRun.result()]));
-        }
-      }
-      const toolboxes = [
-        ...new Set([runtime.baseToolbox, ...runToolboxes, ...runToolboxesByRunId.values()]),
-      ];
-      const toolboxPolicy = policy === 'detach' ? 'abort' : policy;
-      const toolboxShutdownResults = await Promise.allSettled([
-        ...toolboxes.map((toolbox) =>
-          toolbox.shutdown({ policy: toolboxPolicy, reason: 'Bureau disposed' }),
-        ),
-        ...runTerminals,
-      ]);
-      for (const result of toolboxShutdownResults) {
-        if (result.status === 'rejected') {
-          diagnose({
-            level: 'error',
-            scope: 'shutdown',
-            message: `[bureau] Error during toolbox shutdown: ${serializeUnknownError(result.reason)}`,
-          });
-        }
-      }
-
-      // COR-1476 — every run's session input is released: the leases go back to
-      // the mailbox and the unpromoted claims are dropped, so the next boot
-      // delivers them. Shutdown only releases; it never starts a run.
-      for (const [runId, { sessionId }] of sessionInputGates) {
-        await releaseSessionInputs(sessionId, runId);
-      }
-
-      // AB-363: stop the automatic-profile run-ownership pruning timer, if
-      // one was started — `clearInterval` alone only cancels FUTURE ticks,
-      // so a pass already in flight is also awaited here, before the
-      // `eventHistoryInstance`/storage disposal further down this same
-      // shutdown runs — otherwise that disposal could race an in-flight
-      // pass still replaying the feed or mid-`sessionStore.update()`
-      // (Codex review, PR #579, "Await running pruning passes before
-      // backend teardown"). `pruneStaleRunOwnership()`'s own promise chain
-      // already `.catch()`es every failure before this point, so awaiting
-      // it here never throws.
-      //
-      // AB-389 (Codex P1 review finding, PR #598, "Await the chained drain
-      // before aborting its producers"): this await MUST happen BEFORE
-      // `backgroundShutdownController.abort()` below, not after — the pass
-      // this awaits chains `drainOutbox()` onto `pruneStaleRunOwnership()`
-      // (see the interval callback's own doc comment), and every session
-      // lifecycle listener `createDurableEventProducer` registers checks
-      // `signal?.aborted` and returns immediately once that shared signal
-      // is aborted, recording nothing. Aborting first would let a pass
-      // already inside `pruneStaleRunOwnership()` run its chained drain
-      // AFTER the abort, dispatching outbox entries whose durable writes
-      // never start — `wasRecorded` still leaves those entries pending for
-      // a later drain (the safety net a redelivery relies on generally),
-      // but there is no reason to manufacture that residual here when
-      // simply awaiting first avoids it entirely.
-      //
-      // AB-388 (Codex review, PR #597, "Fence maintenance admission once
-      // shutdown starts"): closed HERE, synchronously, before anything
-      // below this line awaits — see `maintenanceAdmissionClosed`'s own
-      // doc comment for why the ordering matters.
-      maintenanceAdmissionClosed = true;
-      // COR-772 — land every child-settlement write the run teardown above
-      // produced before the audit trail and storage below go away. Only
-      // writes already under way are awaited here, not a child's own result.
-      // The bounded wait on child results for 'abort' shutdown comes below, so
-      // a child that ignores its abort costs at most that bound.
-      await childTopology.drain();
-      // COR-851 — land every goal signal already being sent. A goal interrupted
-      // by shutdown is deliberately left non-terminal for the next process.
-      await goalsComposition.drain();
-      // Land terminal session saves already under way before the outbox
-      // drain await and `backgroundShutdownController.abort()` below: a save
-      // committing after that abort leaves its `session.saved` entry
-      // unrecorded. Its commit triggers the drain synchronously, so the
-      // `outboxDrainInFlight` await then covers it. See `drain()` for why
-      // this cannot wedge on a run; `timeoutMilliseconds` bounds a hung store.
-      //
-      // An aborted run's save starts later than that: its `run.aborted`
-      // listener runs only once the run has unwound, which is usually after
-      // the waits above have passed. So first give the runs 'abort' aborted
-      // a bounded chance to reach their terminal event — each one's save
-      // has started by the time it resolves, because its own terminal
-      // listener was registered first — and a run that never honors its
-      // abort only costs this bound, never a wedged shutdown.
-      await awaitAbortedRunTerminals(abortedRunTerminals);
-      // A child aborted by this shutdown records its `aborted` settlement only
-      // once its own result arrives, which a durable child's fenced
-      // cancellation makes later than the drain above looked. Wait for it,
-      // under the same bound, so the audit trail is still open to take it. 'detach' aborts
-      // children as 'abort' does, so it waits for them too.
-      if (abortCatalogRuns && childTopology.awaitingSettlements() > 0) {
-        await awaitAbortedRunTerminals([childTopology.settlementsKnown()]);
-      }
-      await childTopology.drain();
-      await sessionPersistence.drain();
-      await drainSessionInputSettlements();
-      // COR-1630 — a catalog run that ended releases its asset claims, shutdown or not. The
-      // aborted runs settle first, under the grace above, which starts their releases. A release
-      // is storage work on a run that has ended, so it is awaited however long the database takes,
-      // not under that grace: a release the grace cut short wrote against the asset service and the
-      // pool after they closed below. Releases close in the step that finds none left
-      // (`createCatalogAssetReleaseDrain`). A run whose durable record still reads in flight is
-      // lost, not ended, and releases nothing (`catalog-run-asset-release.ts`).
-      await awaitAbortedRunTerminals(abortedCatalogRunResults);
-      await catalogAssetReleases.drain();
-      if (automaticRunOwnershipPruneTimerStarted) {
-        runtimeServices.timers.clearInterval(automaticRunOwnershipPruneTimer);
-        automaticRunOwnershipPruneTimerStarted = false;
-      }
-      // COR-1622: the expiry sweep's own timer, and a pass still under way.
-      stopLazyExpirySweep();
-      await lazyExpirySweepPass;
-      // AB-390 — the session-outbox retry timer (armed when this bureau
-      // last lost a claim to a still-live peer) must not fire after
-      // shutdown: a retry drain running post-teardown would race the very
-      // cleanup this shutdown sequence exists to make orderly.
-      if (outboxRetryTimerArmedForMs !== undefined) {
-        runtimeServices.timers.clearTimeout(outboxRetryTimerHandle);
-        outboxRetryTimerArmedForMs = undefined;
-      }
-      // Codex P2 review finding, PR #599, "Await retry drains that have
-      // already fired during shutdown": `clearTimeout` above only prevents
-      // a NOT-YET-FIRED retry timer from firing — it cannot un-fire one
-      // whose callback already started (armed, then fired, in the window
-      // before this shutdown sequence reached this line) and is still
-      // running its own `drainOutbox()` call. Without this await,
-      // shutdown would proceed to abort producers and dispose durable
-      // event history storage while that drain is still dispatching
-      // events or reading/writing storage concurrently with teardown.
-      if (outboxDrainInFlight) {
-        await outboxDrainInFlight;
-      }
-      if (automaticRunOwnershipPruneCurrentPass) {
-        await automaticRunOwnershipPruneCurrentPass;
-      }
-      if (taskResyncBootPass) await taskResyncBootPass;
-      // COR-1946: no further lease renewals or sweeps; the lease itself is removed last.
-      processLease.halt();
-      await abandonedTaskSweeper.close();
-      // AB-388: drain any manual `maintain()` call(s) still in
-      // flight — see `manualDurableMaintenancePasses`'s own doc comment
-      // above. `allSettled` (never `all`): a rejection here is either
-      // already diagnosed by the pass's own sub-pass try/catch, or is a
-      // re-thrown `engineMaintenanceError` the ORIGINAL caller of
-      // `maintain()` observes directly — `shutdown()` must
-      // still complete backend teardown either way. Drained in the SAME
-      // place, and for the SAME reason, as the automatic pass's own await
-      // just above: both must settle before the shared signal aborts and
-      // before backend teardown below.
-      if (manualDurableMaintenancePasses.size > 0) {
-        await Promise.allSettled(manualDurableMaintenancePasses);
-      }
-      // Bureau-owned background work is stopped/awaited identically under
-      // BOTH policies (2026-09-02 coordinator ruling) — abort the shared
-      // signal now, AFTER runs are aborted/drained, toolbox shutdown is
-      // awaited above, and the pruning/outbox pass above has settled, so
-      // an in-flight judge invocation / webhook delivery settles promptly
-      // against the owner drains immediately below rather than being told
-      // to abort before shutdown has even started (which would make the
-      // audit trail's `if (signal?.aborted) return` above drop the very
-      // `run.aborted`/`tool.*` records this shutdown produces).
-      backgroundShutdownController.abort();
-
-      // All pre-teardown is BEST-EFFORT, and the whole body is under an OUTER
-      // try/finally so the critical backend teardown (engine → storage → store)
-      // ALWAYS runs. The synchronous steps below are fallible —
-      // `emitter.dispatch`/`emitter.complete` route through
-      // `CompletableEventTarget.dispatchEvent`, which loops over `toObservable()`
-      // subscribers WITHOUT a try/catch, so a subscriber whose `next`/`complete`
-      // throws propagates straight back here. That path is reachable through the
-      // public Bureau surface (`toObservable()`), so the synchronous pre-teardown
-      // is wrapped to swallow-and-log: a throwing subscriber must not strand the
-      // SQLite/LMDB handle behind the now-`true` `disposed` guard (a second
-      // dispose no-ops), leaking it permanently. Covered by the
-      // "toObservable subscriber throws during dispose" regression test.
-      try {
-        // `runtime.memory.close()` stays a detached best-effort call — it is
-        // not one of the owners this issue's report covers (2026-09-02
-        // ruling: scheduler, online-evals, webhook notifier, audit trail,
-        // durable engine).
-        if (runtime.memory) {
-          detachBestEffortPromise(runtime.memory.close());
-        }
-
-        try {
-          // Dispose every Bureau-owned background subsystem — AWAITED, not
-          // detached (AB-207/AB-37): each is a report-tracked owner drain,
-          // run concurrently, before emitting bureau.disposed so any
-          // in-flight write/delivery/evaluation callback is unsubscribed
-          // cleanly (the webhook notifier also abandons in-flight backoff
-          // waits so a disposed bureau never fires a webhook late).
-          const ownerDrains: Array<Promise<void>> = [];
-          if (auditTrailInstance) {
-            const auditTrail = auditTrailInstance;
-            ownerDrains.push(settleOwner('audit-trail', () => auditTrail.dispose()));
-          }
-          if (eventHistoryInstance) {
-            const eventHistory = eventHistoryInstance;
-            const durableEventProducer = durableEventProducerInstance;
-            ownerDrains.push(
-              settleOwner('event-history', async () => {
-                // The producer (its bureau-event listeners) is disposed
-                // BEFORE the store it writes into, so no in-flight
-                // `record()` call can start against an already-disposed
-                // `FleetEventFeed` (AB-311).
-                // The follower's subscription ends before the feed it reads is released.
-                await fireReviewFollower?.dispose();
-                if (durableEventProducer) await durableEventProducer.dispose();
-                await eventHistory.dispose();
-              }),
-            );
-          }
-          if (webhookNotifierInstance) {
-            const webhookNotifier = webhookNotifierInstance;
-            ownerDrains.push(settleOwner('webhook-notifier', () => webhookNotifier.dispose()));
-          }
-          if (scorerSamplerInstance) {
-            const scorerSampler = scorerSamplerInstance;
-            ownerDrains.push(settleOwner('online-evals', () => scorerSampler.dispose()));
-          }
-          if (assetServiceInstance) {
-            // COR-794: aborts every in-flight asset operation and awaits each
-            // one's cleanup acknowledgement, and clears the collection timer.
-            const assetService = assetServiceInstance;
-            ownerDrains.push(
-              settleOwner('assets', async () => {
-                const report = await assetService.shutdown();
-                // A work handle whose cleanup did not complete fails the owner, not just its report.
-                const unclean = report.acknowledgements.filter(
-                  ({ acknowledgement }) => acknowledgement.status !== 'completed',
-                );
-                if (unclean.length > 0) {
-                  throw new Error(
-                    `Asset work did not clean up: ${unclean.map(({ workId }) => workId).join(', ')}`,
-                  );
-                }
-              }),
-            );
-          }
-          await Promise.allSettled(ownerDrains);
-          // COR-1481 — the settlement and cleanup writes of tasks whose runs have just ended land
-          // before the storage they write to is closed.
-          await tasks.flush();
-          // COR-1631 — so do the freezes of the surfaces those settlements started.
-          await surfaces?.flush();
-          // COR-1941 — so do the notifications those settlements wrote.
-          await notificationsComposition.drain();
-
-          for (const stop of stopForwarding) stop();
-          emitter.dispatch(new BureauDisposedEvent());
-          storeSubscription.unsubscribe();
-          // After `BureauDisposedEvent` is dispatched, so the feed records
-          // its own last event before it stops recording. Unsubscribing
-          // first, then disposing, ends every watcher: disposal aborts the
-          // feed's lifetime signal, which each subscription is bound to.
-          eventFeedSubscription.unsubscribe();
-          notificationsComposition.stop();
-          // Any run feed still registered goes with it — `run.removed` reaps
-          // the runs a host deleted, and this covers the rest.
-          for (const feedRunId of runEventFeeds.runIds()) {
-            disposeRunEventFeed(feedRunId, runEventFeeds);
-          }
-          eventFeed.dispose();
-          emitter.complete();
-        } catch (error) {
-          diagnose({
-            level: 'error',
-            scope: 'shutdown',
-            message: `[bureau] Error during shutdown pre-teardown: ${serializeUnknownError(error)}`,
-          });
-        }
-      } finally {
-        // The per-run `resolveWorkflowServices` resolver is engine-scoped and is
-        // released when the engine is disposed below — there is no module-global
-        // reconstructor to clear here anymore.
-        //
-        // Dispose the durable run engine, then fence off the raw Storage, then the
-        // store — each guarded so a throw in one stage does not skip the next (engine
-        // dispose is synchronous and can throw in a degraded environment). The raw
-        // Storage is the caller's: Bureau stops using it but never closes it, so the
-        // caller closes it after this shutdown returns.
-        try {
-          // Observability dispose runs BEFORE engine dispose: it ends still-open
-          // spans and unsubscribes the engine lifecycle listeners. If the engine
-          // were disposed first, those listeners would already be gone, so the spans
-          // they would have closed in response to the engine's terminal-disposal
-          // events would leak instead. Best-effort — a throw here must not skip the
-          // backend teardown below.
-          try {
-            runtime.durable?.observability?.dispose();
-          } catch (error) {
-            diagnose({
-              level: 'error',
-              scope: 'shutdown',
-              message: `[bureau] Error disposing durable observability: ${serializeUnknownError(error)}`,
-            });
-          }
-          // AB-207: prefer the async disposal path (`[Symbol.asyncDispose]`)
-          // over the synchronous one — `RegistryAgnosticEngine` always
-          // implements both `Disposable` and `AsyncDisposable`, so this
-          // await genuinely observes the engine's own drain rather than
-          // firing a sync teardown and moving on.
-          // Steering admissions already queued read the engine's run
-          // liveness, so they finish before it is disposed; admission closed
-          // with `runAdmissionClosed`. Run-boundary appends queued while the
-          // engine drains are awaited again below, before the backend closes.
-          // The steering pollers stop first, so none queues a fold after it.
-          for (const poller of steeringPollers.values()) {
-            runtimeServices.timers.clearInterval(poller.timer);
-          }
-          steeringPollers.clear();
-          // COR-1476 — session-input admissions in flight read the engine and
-          // the log the same way, and are closed with `runAdmissionClosed` too.
-          await Promise.allSettled([
-            ...inFlightSteeringSubmissions,
-            ...inFlightSessionInputAdmissions.values(),
-            ...inFlightSteeringPolls,
-            ...steeringQueues.values(),
-          ]);
-          if (runtime.durable) {
-            const engine = runtime.durable.engine;
-            await settleOwner('durable-engine', () => engine[Symbol.asyncDispose]());
-          }
-          // COR-1481 — disposing the engine is what ends a durable run that was still in flight,
-          // and each run's `closed()` acknowledgement lands as it does. The cleanup the registry
-          // follows is awaited, with the writes it starts, before the backend closes under them.
-          // A run whose end is known after this records nothing (COR-2005): the tracker is closed.
-          await catalogSettlements.settled();
-          await tasks.idle();
-          // COR-1631 — those settlements freeze their tasks' surfaces too; the freezes land
-          // before the backend closes under them.
-          await surfaces?.flush();
-        } finally {
-          // COR-2005 — `settled()` closed the tracker when it ran; this covers a drain that threw
-          // before it did. A run that ends from here on records nothing: the storage is going away.
-          catalogSettlements.close();
-          // A run that ended in the drain without a save leaves no one to settle its record.
-          for (const runId of terminalSessionRecordSettlers.keys()) {
-            abandonTerminalSessionRecord(runId);
-          }
-          try {
-            // Pending steering log appends (run-boundary events are logged
-            // in the background) finish before the backend closes under
-            // them. Each one reports its own failure as a diagnostic.
-            await steeringSweep;
-            await Promise.allSettled(steeringQueues.values());
-            steeringQueues.clear();
-            steeringCursors.clear();
-          } finally {
-            try {
-              // An agent-directory scan in flight records file revisions in storage, so the
-              // watcher stops and drains before storage closes under it (COR-1669).
-              await fileAgents?.files.close();
-            } finally {
-              // COR-1946: removed after every task write of this shutdown, so a peer need not wait
-              // for it to lapse; a failure only means the peer waits.
-              await processLease.release().catch((error: unknown) => {
-                diagnose({
-                  level: 'error',
-                  scope: 'shutdown',
-                  message: `[bureau] Could not remove the process lease: ${serializeUnknownError(error)}`,
-                  cause: error,
-                });
-              });
-              try {
-                // Bureau stops using the caller's storage, which the caller closes (COR-1767).
-                runtime.stopUsingStorage();
-              } finally {
-                if (ownsStore) {
-                  store.dispose();
-                }
-              }
-            }
-          }
-        }
-      }
-      // COR-1524: stop watching the agent directory and wait for a scan in flight.
-      await fileAgents?.files.close();
-      return buildReport();
-    })();
-
-    // `shutdown()` is documented to never reject — every internal step above
-    // is already best-effort (`settleOwner` catches and records failures),
-    // but some unforeseen failure inside `chain` or the timeout sleep must not propagate through
-    // `Promise.race`/the bare chain reference. This `.catch` is the single
-    // fallback fence: diagnose, then resolve with the best-effort report
-    // `buildReport()` can still produce from whatever `ownerOutcomes` were
-    // recorded before the failure (review finding, PR #442).
-    function settleNeverRejecting(
-      promise: Promise<BureauShutdownReport>,
-    ): Promise<BureauShutdownReport> {
-      return promise.catch((error: unknown) => {
-        diagnose({
-          level: 'error',
-          scope: 'shutdown',
-          message: `[bureau] shutdown() settled via an unexpected rejection, falling back to a best-effort report: ${serializeUnknownError(error)}`,
-        });
-        return buildReport();
-      });
-    }
-
-    if (timeoutMilliseconds === undefined) {
-      detachBestEffortPromise(chain);
-      shutdownPromise = settleNeverRejecting(chain);
-    } else {
-      // Aborted once `chain` itself settles (by either winning the race or
-      // losing it) so the timer never outlives this call — a `shutdown()`
-      // whose real teardown finishes well inside `timeoutMilliseconds` must
-      // not hold a live `setTimeout` open for the remainder of that budget.
-      // `detachBestEffortPromise`, not a bare `void`, on the SAME derived
-      // `.finally()` promise this covers both: an unhandled rejection from
-      // `chain` and the timer-abort side effect.
-      const timeoutAbort = new AbortController();
-      detachBestEffortPromise(chain.finally(() => timeoutAbort.abort()));
-      shutdownPromise = settleNeverRejecting(
-        Promise.race([
-          chain,
-          shutdownTimeoutSleep(timeoutMilliseconds, timeoutAbort.signal).then(() => buildReport()),
-        ]),
-      );
-    }
-
-    return shutdownPromise;
-  }
-
-  // Cached separately from `shutdownPromise`: `dispose()` must keep returning
-  // the SAME promise reference on repeat calls (no externally observable
-  // regression vs. the pre-AB-207 caller-visible contract) — `shutdown()`'s
-  // own idempotency guard caches its own report promise, but each call to
-  // `.then(() => undefined)` below would otherwise mint a new derived
-  // promise every time.
-  let disposePromise: Promise<void> | undefined;
-
-  function dispose(): Promise<void> {
-    if (!disposePromise) {
-      disposePromise = shutdown({ policy: 'abort' }).then(() => undefined);
-    }
-    return disposePromise;
   }
 
   // Build the bureau object first so the audit trail (and webhook notifier)

@@ -24,7 +24,7 @@ import {
  * `bun test --coverage` does not propagate into `bun run`, so the child
  * measurement path itself is not directly instrumented.
  *
- * It is still parent-process contention sensitive: `packages/weft/scripts/check-coverage.ts`
+ * It is still parent-process contention sensitive: the `test:coverage` script
  * runs the entire suite — all ~11.5K tests across ~780 files, this one included — as one
  * `bun test --coverage` invocation, and Bun's coverage workers for the other 779 files
  * compete for CPU with this benchmark's `bun run` child while it measures. A COR

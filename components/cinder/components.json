@@ -65,6 +65,7 @@
       "type",
       "type-role",
       "virtual-list",
+      "week-schedule",
       "z"
     ],
     "stylesEntry": "@lostgradient/cinder",

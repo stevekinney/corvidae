@@ -25,7 +25,7 @@ describe('the tables that hold long values', () => {
       '../routes/workflows/runs/run-list.svelte',
       '../routes/settings/models/models-section.svelte',
     ]) {
-      expect(await read(path), path).toMatch(/<Table [^>]*\bfit\b[^>]*class="ib-records__table"/);
+      expect(await read(path), path).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="ib-records__table"/);
     }
   });
 
@@ -34,7 +34,7 @@ describe('the tables that hold long values', () => {
       /min-inline-size:\s*41rem/,
     );
     const table = await read('../routes/workflows/list/workflow-table.svelte');
-    expect(table).toMatch(/<Table [^>]*\bfit\b[^>]*class="weft-workflows-table"/);
+    expect(table).toMatch(/<Table\s[^>]*\bfit\b[^>]*class="weft-workflows-table"/);
     expect(table).toMatch(/<Table\.HeaderCell>Tags<\/Table\.HeaderCell>/);
   });
 

@@ -33,12 +33,6 @@ export const CLASSIFIED_OVERSIZED_IMPLEMENTATION_FILES = [
       'one pack/install/cleanup lifecycle; splitting it would scatter that lifecycle across files.',
   },
   {
-    path: 'scripts/check-coverage.ts',
-    classification: 'justified-exception',
-    rationale:
-      'Coverage allowances, LCOV parsing, and adjusted-total reporting stay together so the coverage gate has one auditable policy owner.',
-  },
-  {
     path: 'src/core/engine/index.ts',
     classification: 'tracked-elsewhere',
     rationale:
