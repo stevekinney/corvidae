@@ -77,7 +77,14 @@
   import ChatReadReceipt from '../message/chat-read-receipt.svelte';
   import ToolCallTimeline from '../message/tool-call-timeline.svelte';
   import { preloadMarkdownPipeline } from '../message/markdown-pipeline.ts';
-  import { Button, ConfirmDialog, Quote, SelectionPopover } from '@lostgradient/cinder';
+  import {
+    Button,
+    ConfirmDialog,
+    EmptyState,
+    MessageSquare,
+    Quote,
+    SelectionPopover,
+  } from '@lostgradient/cinder';
   import { useChatStreamingState } from './use-chat-streaming-state.svelte.ts';
   import { useChatCommandActions } from './use-chat-command-actions.svelte.ts';
   import { useChatQuotes } from './use-chat-quotes.svelte.ts';
@@ -145,6 +152,8 @@
     composerStatus,
     empty,
     trailing,
+    emptyTitle = 'No messages yet',
+    emptyDescription,
     emptyPrompts,
     messageActions,
     messageStatus,
@@ -2131,20 +2140,17 @@
             {@render empty()}
           {:else}
             <div class="chat-empty" role="status">
-              <p>No messages yet</p>
-              {#if emptyPrompts && emptyPrompts.length > 0}
-                <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
-                  {#each emptyPrompts as prompt, index (index)}
-                    <button
-                      type="button"
-                      class="chat-empty-prompt"
-                      onclick={() => handlePromptClick(prompt)}
-                    >
-                      {prompt}
-                    </button>
-                  {/each}
-                </div>
-              {/if}
+              <EmptyState
+                kind="first-use"
+                headingLevel={2}
+                title={emptyTitle}
+                {...emptyDescription === undefined ? {} : { description: emptyDescription }}
+                {...emptyPrompts && emptyPrompts.length > 0 ? { action: emptyPromptButtons } : {}}
+              >
+                {#snippet icon()}
+                  <MessageSquare />
+                {/snippet}
+              </EmptyState>
             </div>
           {/if}
         {:else if isVirtualized}
@@ -2333,6 +2339,16 @@
       {typingIndicatorState.announcedLabel}
     </div>
   </div>
+
+  {#snippet emptyPromptButtons()}
+    <div class="chat-empty-prompts" role="group" aria-label="Suggested prompts">
+      {#each emptyPrompts ?? [] as prompt, index (index)}
+        <button type="button" class="chat-empty-prompt" onclick={() => handlePromptClick(prompt)}>
+          {prompt}
+        </button>
+      {/each}
+    </div>
+  {/snippet}
 
   {#snippet panel()}
     {#if selectedArtifact}
