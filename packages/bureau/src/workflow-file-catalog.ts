@@ -24,6 +24,7 @@ import { isNamespacedIdentifier } from './namespaced-identifier';
 import { ownerOrLocal } from './owner-of-record';
 import {
   type DefinitionEntry,
+  hashDefinitionBytes,
   SourceConflictError,
   SourceReadOnlyError,
   type WorkflowSource,
@@ -95,9 +96,10 @@ export interface WorkflowFileWriteResult {
 /** What a write may ask to be told about. */
 export interface WorkflowWriteObserver {
   /**
-   * Called with the hash of the bytes this write put on disk, after they are written and before the
-   * rescan that follows reports them. That rescan is the first thing to read the file back, so this
-   * is the only way to know which bytes a write made before a change arrives for them (COR-1890).
+   * Called with the hash of the bytes this write puts on disk, before they are written and again
+   * when the source returns. The directory watcher can read the bytes back and report them before
+   * the source returns, so the first call is what lets the observer know which bytes a write made
+   * before a change arrives for them (COR-1890, COR-2380).
    */
   readonly onWritten?: ((hash: string) => void) | undefined;
 }
@@ -374,6 +376,11 @@ export function createWorkflowFileCatalog(
     expectedHash: string | null,
     observer?: WorkflowWriteObserver,
   ): Promise<WorkflowFileWriteResult> {
+    // The directory watcher scans on its own: once the bytes are in place it can read them back and
+    // report the change before `source.write` resolves here. So the observer hears the hash first,
+    // and again with the one the source returns (the same hash for a source that stores the bytes
+    // as given). A write that then fails leaves a hash no file holds, which names nothing.
+    observer?.onWritten?.(hashDefinitionBytes(bytes));
     const written = await throughSource(() => source.write(id, bytes, { expectedHash }));
     observer?.onWritten?.(written.hash);
     await watched.reload();

@@ -3,7 +3,7 @@
  * code-defined and scripted: `replies` maps an agent's name to what it answers, and each call
  * records the user message it was sent. No provider key is used.
  */
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -97,7 +97,11 @@ export async function startWorkflowBureau(
   });
   const put = async (name: string, text: string): Promise<void> => {
     await mkdir(directory, { recursive: true });
-    await writeFile(join(directory, name), text);
+    // Renamed into place so the watcher never scans a half-written file (see the workflow file
+    // fixtures' `put`).
+    const temporary = join(directory, `.${name}.tmp`);
+    await writeFile(temporary, text);
+    await rename(temporary, join(directory, name));
   };
   return {
     directory,

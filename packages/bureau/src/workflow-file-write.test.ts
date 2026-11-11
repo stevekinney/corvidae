@@ -73,6 +73,23 @@ describe('create', () => {
     expect(fixture.catalog.find('digest')?.agent).toBe('writer');
   });
 
+  it('tells its observer the hash before the bytes are in place, because a watcher can read them back first (COR-2380)', async () => {
+    const heard: string[] = [];
+    let heardBeforeRename: string[] = [];
+    const operations: AgentFileOperations = {
+      ...nodeAgentFileOperations,
+      rename: (from, to) => {
+        heardBeforeRename = [...heard];
+        return nodeAgentFileOperations.rename(from, to);
+      },
+    };
+    const fixture = await start({ operations });
+    const result = await fixture.catalog.create('late', definition, {
+      onWritten: (hash) => heard.push(hash),
+    });
+    expect(heardBeforeRename).toEqual([result.hash]);
+  });
+
   it('leaves no half-written file when the rename fails', async () => {
     const fixture = await start({
       operations: {

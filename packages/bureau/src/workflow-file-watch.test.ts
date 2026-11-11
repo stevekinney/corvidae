@@ -46,9 +46,14 @@ describe('watching the workflow directory', () => {
     await fixture.put('one.json', workflowFileText('one'));
     await fixture.catalog.refresh();
     const first = fixture.catalog.find('one')?.version;
-    const edited = fixture.nextChange((change) => change.changed.includes('one'));
-    await fixture.put(
-      'one.json',
+    // An edit in place truncates and then writes, so a scan can read the file empty in between and
+    // report it invalid first (on Linux it does); wait for the change that holds the new content.
+    const edited = fixture.nextChange((change) => {
+      const version = fixture.catalog.find('one')?.version;
+      return change.changed.includes('one') && version !== undefined && version !== first;
+    });
+    await writeFile(
+      join(fixture.directory, 'one.json'),
       workflowFileText('one', { steps: [{ kind: 'sleep', duration: 1 }] }),
     );
     await edited;
