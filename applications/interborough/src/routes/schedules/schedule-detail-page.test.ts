@@ -138,7 +138,7 @@ describe('the heading of a schedule', () => {
     const toggle = await findByRole('switch', { name: 'Active, Daily summary schedule' });
     expect(toggle.getAttribute('aria-checked')).toBe('true');
     expect(toggle.hasAttribute('data-changes')).toBe(true);
-    await waitFor(() => expect(headerStatus()).toBe('Missed runs · 4'));
+    await waitFor(() => expect(headerStatus()).toBe('Missed runs, 4'));
     // The sentence: the workflow and the agent are links, and the schedule's own time is in parentheses.
     const sentence = await findByTestId('schedule-status-line');
     expect(sentence.textContent?.replace(/\s+/g, ' ').trim()).toMatch(
@@ -213,7 +213,7 @@ describe('Run now', () => {
 
     const button = await findByRole('button', { name: 'Run now' });
     // Let the agents and their models be read, which is when a provider would hold it.
-    await waitFor(() => expect(headerStatus()).toBe('Missed runs · 4'));
+    await waitFor(() => expect(headerStatus()).toBe('Missed runs, 4'));
     expect(button.hasAttribute('aria-disabled')).toBe(false);
     expect((button as HTMLButtonElement).disabled).toBe(false);
   });
@@ -292,7 +292,7 @@ describe('a schedule while one of its runs is going (rows 73c, 73d and 73e)', ()
     const summary = await findByTestId('schedule-summary');
     await waitFor(() =>
       expect(summary.textContent?.replace(/\s+/g, ' ').trim()).toMatch(
-        /^Running now: started \d+ seconds ago · Open run · Next .*\d{1,2}:\d{2} [AP]M · /,
+        /^Running now: started \d+ seconds ago, Open run, Next .*\d{1,2}:\d{2} [AP]M, /,
       ),
     );
     expect(summary.textContent).not.toContain('(in ');

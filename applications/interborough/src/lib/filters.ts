@@ -4,11 +4,11 @@
  * "Shared contracts". The query-string grammar mirrors weft's REST parser
  * verbatim (`weft/src/server/operations/list-filter-query-extractor.ts`),
  * not the plan prose's shorthand naming — ground truth wins:
- * `status` (repeated) · `type` · `tag` (repeated, AND) ·
- * `attr.<name>[.gt|.lt|.gte|.lte]` (see `attribute-filters.ts`) ·
- * `id_prefix` · `failure_category` (repeated, OR) ·
- * `created_at_{gte,gt,lte,lt}` / `updated_at_*` / `execution_deadline_*` ·
- * `include=failureCategory` (repeated) · `limit` / `offset`.
+ * `status` (repeated), `type`, `tag` (repeated, AND);
+ * `attr.<name>[.gt|.lt|.gte|.lte]` (see `attribute-filters.ts`);
+ * `id_prefix`, `failure_category` (repeated, OR);
+ * `created_at_{gte,gt,lte,lt}` / `updated_at_*` / `execution_deadline_*`;
+ * `include=failureCategory` (repeated), `limit` / `offset`.
  */
 import type { FailureCategory, ListFilter, WorkflowStatus } from '@lostgradient/weft';
 

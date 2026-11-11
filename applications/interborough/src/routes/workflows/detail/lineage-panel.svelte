@@ -204,7 +204,7 @@
           </a>
           {#if provenance.occurrence !== undefined}
             <span class="weft-lineage-panel__meta">
-              · occurrence {new Date(provenance.occurrence).toISOString()}
+              occurrence {new Date(provenance.occurrence).toISOString()}
             </span>
           {/if}
         </div>
@@ -212,7 +212,7 @@
 
       {#if restartedFrom}
         <div>
-          <div class="weft-lineage-panel__section-label">Continuation chain · same workflow ID</div>
+          <div class="weft-lineage-panel__section-label">Continuation chain, same workflow ID</div>
           <div class="weft-lineage-continuation">
             <span class="weft-lineage-continuation__chip weft-lineage-continuation__chip--previous">
               <span class="weft-lineage-continuation__label">Previous run</span>

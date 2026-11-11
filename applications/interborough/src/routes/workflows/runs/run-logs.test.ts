@@ -29,7 +29,7 @@ describe('RunLogs', () => {
         client: client(async () => ({ lines: [line(0, 'first'), line(1, 'second')], dropped: 0 })),
       },
     });
-    const trigger = await waitFor(() => getByRole('button', { name: /Logs · 2 lines/ }));
+    const trigger = await waitFor(() => getByRole('button', { name: /Logs, 2 lines/ }));
     expect(queryByRole('list', { name: 'Log lines' })).toBeNull();
     await fireEvent.click(trigger);
     const items = await waitFor(() => getAllByRole('listitem'));

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * The Models part of Settings › Models (board SettingsShell, "Models · /settings/models" and
-   * "Models · provider connected"): every model the connected providers offer, as a table of
+   * The Models part of Settings › Models (board SettingsShell, "Models, /settings/models" and
+   * "Models, provider connected"): every model the connected providers offer, as a table of
    * Model, Abilities, Context and Allowed. It only reads. Which models agents may use is set under
    * Allowed models, so the Allowed column says what that policy permits (a green dot and the word)
    * and the table has no switch, no edit and no Save.

@@ -101,7 +101,7 @@ test.describe('an open chat on the sample world', () => {
     const agent = details.getByRole('link', { name: 'Tool runner' });
     await expect(agent).toHaveAttribute('href', '/agents/tool-runner');
     await expect(details.locator('code', { hasText: /^tool-runner$/ })).toBeVisible();
-    await expect(details).toContainText(/Started\s*Today, 10:30 AM · last active 10:4\d AM/);
+    await expect(details).toContainText(/Started\s*Today, 10:30 AM, last active 10:4\d AM/);
 
     const asRun = details.getByRole('region', { name: 'As run' });
     await expect(asRun).toContainText('Claude Sonnet 5.5');
@@ -614,14 +614,14 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     const decided = page.locator('.cinder-approval-card--row').filter({ hasText: question });
     await expect(decided).toBeVisible();
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews\s*·\s*10:46 AM/,
+      /Approved by you in Reviews,\s*10:46 AM/,
     );
     await expect(decided.getByRole('button', { name: 'Deny' })).toHaveCount(0);
     await expect(decided.getByRole('button', { name: 'Approve' })).toHaveCount(0);
     await expect(page.locator('[data-approval-decision]')).toHaveCount(0);
     // The row collapses to a check, the question and the decision: no tool line and no Input.
     await expect(decided).toHaveText(
-      /^\s*Refund order 4471 for \$42\.00\?\s*Approved by you in Reviews\s*·\s*10:46 AM\s*$/,
+      /^\s*Refund order 4471 for \$42\.00\?\s*Approved by you in Reviews,\s*10:46 AM\s*$/,
     );
     await expect(decided.locator('.cinder-approval-card__decided-glyph')).toHaveAttribute(
       'data-cinder-tone',
@@ -633,7 +633,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       conversationArea(page)
         .locator('.cinder-tool-call-rail__item[data-cinder-status="running"]')
         .filter({ hasText: '4471' }),
-    ).toContainText(/Approved by you in Reviews 10:46 AM · running…/);
+    ).toContainText(/Approved by you in Reviews 10:46 AM, running…/);
     // A polite live region says it once.
     const live = page.getByTestId('chat-decision-announcement');
     await expect(live).toHaveAttribute('aria-live', 'polite');
@@ -669,7 +669,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
     await expect(conversationArea(page).getByRole('img', { name: 'Running' })).toBeVisible();
     // The decision stays as it was, and is not told again.
     await expect(decided.locator('.cinder-approval-card__outcome')).toContainText(
-      /Approved by you in Reviews\s*·\s*10:46 AM/,
+      /Approved by you in Reviews,\s*10:46 AM/,
     );
     await expect(live).toHaveText('Approved in Reviews. Refund order 4471 for $42.00.');
     // While the continuing run is going the rail row says so in place of the result (18i), and
@@ -678,7 +678,7 @@ test.describe('an open chat whose approval is answered in Reviews (18i, 18j)', (
       conversationArea(page)
         .locator('.cinder-tool-call-rail__item[data-cinder-status="running"]')
         .filter({ hasText: '4471' }),
-    ).toContainText(/Approved by you in Reviews 10:46 AM · running…/);
+    ).toContainText(/Approved by you in Reviews 10:46 AM, running…/);
     await expect(conversationArea(page).getByTestId('chat-header')).toContainText('Running');
     // The transcript holds the earlier 4472 turn above this one. The window is tall enough for both
     // turns and rests at the top, so the first reply is read whole and not from its last line.
@@ -843,7 +843,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
       .filter({ hasText: 'Refund order 4398' });
     await expect(denied).toBeVisible();
     await expect(denied.locator('.cinder-approval-card__outcome')).toContainText(
-      /Denied by you\s*·\s*10:40 AM/,
+      /Denied by you,\s*10:40 AM/,
     );
     await expect(denied.locator('.cinder-approval-card__decision-note')).toContainText(NOTE);
     await expect(
@@ -854,7 +854,7 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
         `You denied this refund and said: “${NOTE}” I haven’t issued it, and I’ll wait for the claim before trying again.`,
       ),
     ).toBeVisible();
-    await expect(conversationArea(page)).toContainText('10:40 AM · Claude Sonnet 5.5');
+    await expect(conversationArea(page)).toContainText('10:40 AM, Claude Sonnet 5.5');
     // The composer is the normal live one with Send, and the chat is Done.
     const composer = conversationArea(page).getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeEnabled();

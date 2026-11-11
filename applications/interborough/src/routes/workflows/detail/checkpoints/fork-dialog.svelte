@@ -374,7 +374,7 @@
               // selection (Codex review, PR #978). The FULL revision id is
               // the visible label; there is no truncated form here.
               value: option.revision,
-              label: `${option.revision} · installed ${formatRelativeTime(option.installedAt)}`,
+              label: `${option.revision}, installed ${formatRelativeTime(option.installedAt)}`,
             })),
           ]}
         />

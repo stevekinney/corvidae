@@ -17,7 +17,7 @@ test('operator inspects a server-accepted canonical worker manifest', async ({
 
   const manifest = page.getByRole('region', { name: 'Canonical manifest' });
   await expect(manifest).toBeVisible();
-  await expect(manifest.getByText('Ready · server accepted')).toBeVisible();
+  await expect(manifest.getByText('Ready, server accepted')).toBeVisible();
   await expect(manifest.getByText('e2e-build-1')).toBeVisible();
   await expect(manifest.getByText('checkout-worker-fleet')).toBeVisible();
   await expect(manifest.getByText('order-processing')).toBeVisible();
@@ -51,7 +51,7 @@ test('canonical manifest remains usable across supported widths and themes', asy
 
       const manifest = page.getByRole('region', { name: 'Canonical manifest' });
       await expect(manifest).toBeVisible();
-      await expect(manifest.getByText('Ready · server accepted')).toBeVisible();
+      await expect(manifest.getByText('Ready, server accepted')).toBeVisible();
       await expect(page.getByRole('region', { name: 'Session' })).toBeVisible();
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(

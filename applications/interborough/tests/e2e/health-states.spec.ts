@@ -304,14 +304,14 @@ for (const width of WIDTHS) {
     // Only what this world did: the refund that was done, and the server's start.
     const lines = main.locator('[data-activity]');
     await expect(lines).toHaveCount(2);
-    await expect(lines.nth(0)).toContainText('Run finished · Refund order 4472');
+    await expect(lines.nth(0)).toContainText('Run finished, Refund order 4472');
     await expect(lines.nth(1)).toContainText('Server started');
     const cards = main.getByTestId('metric-cards');
-    // Storage use: 0.4 GB, a flat line, and the axis from "0.4 GB · 24 hours ago" to "Now".
+    // Storage use: 0.4 GB, a flat line, and the axis from "0.4 GB, 24 hours ago" to "Now".
     const storage = cards.locator('[data-metric="storage"]');
     await expect(storage).toContainText('0.4 GB');
     await expect(storage.locator('.cinder-sparkbar')).toBeVisible();
-    await expect(storage).toContainText('0.4 GB · 24 hours ago');
+    await expect(storage).toContainText('0.4 GB, 24 hours ago');
     await expect(storage).toContainText('Now');
     await expect(storage).not.toContainText('Charts fill in');
     await expect(cards.locator('[data-metric="runs-started"]')).toContainText('14');
@@ -441,7 +441,7 @@ test('a deployment with a remote worker that stopped answering lists it second, 
   // The checks say the same four problems.
   await page.goto('/health?advanced=open');
   await expect(page.getByTestId('advanced-diagnostics')).toContainText(
-    '4 need attention · Storage, Schedules, Providers, Workers',
+    '4 need attention, Storage, Schedules, Providers, Workers',
   );
   await page.goto('/health');
   await expect(attentionRows(page)).toHaveCount(4);
@@ -490,7 +490,7 @@ test('a hook whose last delivery failed adds a row second, after the provider', 
   ).toHaveAttribute('data-cinder-status', 'warning');
   const hook = attentionRows(page).nth(1);
   await expect(hook).toContainText(
-    'Notify Slack when a review is waiting’s last delivery failed · 410 Gone',
+    'Notify Slack when a review is waiting’s last delivery failed, 410 Gone',
   );
   await expect(hook).toContainText(
     'hooks.slack.com answered 410 Gone on its last try at 10:42 AM.',
@@ -540,7 +540,7 @@ test('a hook that gave up counts like one whose last delivery failed, and sits l
   await expect(attentionRows(page).nth(1)).toContainText('Storage is over its warning level');
   await expect(attentionRows(page).nth(2)).toContainText('Daily summary missed 4 runs');
   const hook = attentionRows(page).nth(3);
-  await expect(hook).toContainText('Page on-call when a run fails gave up · 410 Gone');
+  await expect(hook).toContainText('Page on-call when a run fails gave up, 410 Gone');
   await expect(hook).toContainText(
     'Stopped after 8 tries on Oct 30. The URL may have been removed.',
   );

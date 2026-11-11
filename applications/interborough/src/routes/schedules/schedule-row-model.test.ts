@@ -103,7 +103,7 @@ function context(parts: Partial<ScheduleRowContext> = {}): ScheduleRowContext {
 }
 
 const text = (segments: readonly RowSegment[]): string =>
-  segments.map((segment) => segment.map((part) => part.text).join('')).join(' · ');
+  segments.map((segment) => segment.map((part) => part.text).join('')).join(', ');
 
 /** Daily summary: Assistant, every day, four missed runs since Oct 30. */
 function dailySummary() {
@@ -123,15 +123,15 @@ function dailySummary() {
 }
 
 describe('a schedule that runs an agent', () => {
-  test('says Missed runs · 4 in line one, the kind first in line two, and no provider blocker for a scripted agent', () => {
+  test('says Missed runs, 4 in line one, the kind first in line two, and no provider blocker for a scripted agent', () => {
     const { summary, attention, overlay: bureau } = dailySummary();
     const row = scheduleRowOf(summary, context({ overlay: bureau, attention }));
     expect(row.title).toBe('Daily summary');
-    expect(row.statusWord).toBe('Missed runs · 4');
+    expect(row.statusWord).toBe('Missed runs, 4');
     expect(row.statusKey).toBe('missed');
     expect(row.blockers).toEqual([]);
     expect(text(row.lineTwo)).toMatch(
-      /^Workflow · Chat with an agent · Assistant · Every day at \d{1,2}:00 (AM|PM)/,
+      /^Workflow, Chat with an agent, Assistant, Every day at \d{1,2}:00 (AM|PM)/,
     );
     expect(row.next.text).toMatch(/^Next /);
     expect(row.next.tone).toBeUndefined();
@@ -140,7 +140,7 @@ describe('a schedule that runs an agent', () => {
   test('on a phone the third line says what was missed and since when, then the cadence', () => {
     const { summary, attention, overlay: bureau } = dailySummary();
     const row = scheduleRowOf(summary, context({ overlay: bureau, attention }));
-    expect(text(row.phoneLineTwo)).toBe('Workflow · Chat with an agent · Assistant');
+    expect(text(row.phoneLineTwo)).toBe('Workflow, Chat with an agent, Assistant');
     expect(text(row.phoneLineThree)).toMatch(/^Missed 4 times since [A-Z][a-z]{2} \d{1,2}$/);
     expect(row.phoneCadence).toMatch(/^every day at /);
   });
@@ -155,7 +155,7 @@ describe('a schedule that runs an agent', () => {
         agents: [{ name: 'assistant', displayName: 'Assistant' } as AgentSummary],
       }),
     );
-    expect(text(row.lineTwo)).toContain('· Assistant ·');
+    expect(text(row.lineTwo)).toContain(', Assistant, ');
   });
 
   test('without the Bureau’s attention list, the missed runs are what the engine counted since it last fired', () => {
@@ -168,7 +168,7 @@ describe('a schedule that runs an agent', () => {
         overlay: overlay({ agents: new Map([['daily', 'assistant']]) }),
       }),
     );
-    expect(row.statusWord).toBe('Missed runs · 4');
+    expect(row.statusWord).toBe('Missed runs, 4');
     expect(row.missedSince).toBeUndefined();
     expect(text(row.phoneLineThree)).toBe('Missed 4 times');
     const caughtUp = scheduleRowOf(
@@ -193,7 +193,7 @@ describe('a schedule that runs an agent', () => {
     expect(model.blockers).toEqual([{ kind: 'provider' }]);
     expect(text(model.lineTwo)).toContain('won’t run until a provider is connected');
     expect(model.next).toMatchObject({ tone: 'warning' });
-    expect(model.next.text).toMatch(/^Due .* · won’t start$/);
+    expect(model.next.text).toMatch(/^Due .*, won’t start$/);
     const connected = scheduleRowOf(
       summary,
       context({
@@ -237,7 +237,7 @@ describe('a schedule that is a workflow file’s trigger', () => {
     );
     expect(row.kind.kind).toBe('workflow-file');
     expect(text(row.lineTwo)).toMatch(
-      /^Workflow · Release notes · Every Friday at .* · From a workflow file$/,
+      /^Workflow, Release notes, Every Friday at .*, From a workflow file$/,
     );
     expect(row.statusWord).toBe('Active');
     // On a phone the file's own words carry the cadence (row 10x): "every Friday", not "Fridays".
@@ -280,7 +280,7 @@ describe('a schedule that is a workflow file’s trigger', () => {
       }),
     );
     expect(text(row.lineTwo)).toContain(
-      'Workflow · Release notes · Assistant, Tool runner · Every Friday',
+      'Workflow, Release notes, Assistant, Tool runner, Every Friday',
     );
     expect(row.agentIds).toEqual(['assistant', 'tool-runner']);
   });
@@ -325,7 +325,7 @@ describe('a schedule that is a workflow file’s trigger', () => {
     ]);
     // One reason on a desktop row, the file; the provider is the second, on the schedule's page.
     expect(text(row.lineTwo)).toMatch(
-      /^Workflow · release-notes can’t load · Tool runner · Every Friday at /,
+      /^Workflow, release-notes can’t load, Tool runner, Every Friday at /,
     );
     expect(row.lineTwo[1]).toEqual([
       { text: 'release-notes', monospace: true },
@@ -366,7 +366,7 @@ describe('a schedule whose workflow was deleted', () => {
       { text: ' was deleted' },
     ]);
     expect(text(row.lineTwo)).toMatch(
-      /^Workflow · weekly-cleanup was deleted · Tool runner · Every Sunday at /,
+      /^Workflow, weekly-cleanup was deleted, Tool runner, Every Sunday at /,
     );
     expect(row.next).toEqual({ text: 'No next run' });
   });

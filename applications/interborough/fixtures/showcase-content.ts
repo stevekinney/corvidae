@@ -150,7 +150,7 @@ export const SHOWCASE_ORDER_REFUND_VALID_FILE: ShowcaseWorkflowFile = {
 
 /**
  * Order refund, the file that can't load: {@link SHOWCASE_ORDER_REFUND_VALID_FILE} with the comma
- * at the end of line 11 missing, so the parser stops at line 12 (PageWorkflow, "File problem · Code
+ * at the end of line 11 missing, so the parser stops at line 12 (PageWorkflow, "File problem, Code
  * tab"). It has no title, so its identifier is its heading, and the Weekly refund audit schedule
  * its last good version made starts it.
  */

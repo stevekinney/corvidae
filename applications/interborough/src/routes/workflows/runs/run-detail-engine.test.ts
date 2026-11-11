@@ -348,7 +348,7 @@ describe('the Details rail of a run the engine holds', () => {
 
     const view = mount(id);
 
-    await waitFor(() => expect(fact(view, 'Version')).toBe('wf 2 · agent 3 · tools 2'));
+    await waitFor(() => expect(fact(view, 'Version')).toBe('wf 2, agent 3, tools 2'));
     expect(fact(view, 'Workflow')).toBe('order-fulfillment');
     expect(fact(view, 'Revision')).toBe('Unpinned (pre-revision record)');
     expect(view.container.querySelector('dd code.ib-identifier')).not.toBeNull();
@@ -660,7 +660,7 @@ describe('the lines a run logged', () => {
 
     const view = mount(id);
 
-    await fireEvent.click(await view.findByRole('button', { name: /^Logs · 2 lines/ }));
+    await fireEvent.click(await view.findByRole('button', { name: /^Logs, 2 lines/ }));
     const rail = await view.findByRole('list', { name: 'Log lines' });
     expect(within(rail).getAllByRole('listitem')).toHaveLength(2);
 

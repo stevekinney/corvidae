@@ -119,7 +119,7 @@ describe('attentionRows', () => {
       ['Storage is over its warning level', '1.6 GB used', 'Review storage'],
       [
         'Daily summary missed 4 runs since Oct 30',
-        'Schedule · Assistant · Every day at 3:00 AM (9:00 AM UTC)',
+        'Schedule, Assistant, Every day at 3:00 AM (9:00 AM UTC)',
         'View schedule',
       ],
       [
@@ -410,7 +410,7 @@ describe('runningRows', () => {
       {
         key: 'run-daily',
         title: 'Daily summary',
-        line: 'Running · Schedule · Assistant · started 10:44 AM',
+        line: 'Running, Schedule, Assistant, started 10:44 AM',
         href: '/runs/run-daily',
       },
     ]);
@@ -443,7 +443,7 @@ describe('runningRows', () => {
   test('says a start before today by its day, and leaves out what it cannot name', () => {
     const yesterday = { ...daily, createdAt: '2026-11-01T16:12:00-06:00', agentName: null };
     expect(runningRows([yesterday], context)[0]?.line).toBe(
-      'Running · Schedule · started Yesterday, 4:12 PM',
+      'Running, Schedule, started Yesterday, 4:12 PM',
     );
   });
 });

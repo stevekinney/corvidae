@@ -172,7 +172,7 @@ const REJECTION_EXPLANATION: Readonly<Record<string, string>> = {
 export function presentDelivery(delivery: TaskDelivery): DeliveryPresentation {
   if (delivery.outcome === 'rejected') {
     return {
-      label: `Rejected · ${delivery.rejectionCode}`,
+      label: `Rejected, ${delivery.rejectionCode}`,
       variant: 'danger',
       explanation:
         REJECTION_EXPLANATION[delivery.rejectionCode] ??
@@ -182,19 +182,19 @@ export function presentDelivery(delivery: TaskDelivery): DeliveryPresentation {
   switch (delivery.disposition) {
     case 'applied':
       return {
-        label: 'Acknowledged · applied',
+        label: 'Acknowledged, applied',
         variant: 'success',
         explanation: 'The result was committed to the ledger.',
       };
     case 'duplicate':
       return {
-        label: 'Acknowledged · duplicate',
+        label: 'Acknowledged, duplicate',
         variant: 'neutral',
         explanation: 'The same result had already been committed; nothing changed.',
       };
     case 'dead-lettered':
       return {
-        label: 'Acknowledged · dead-lettered',
+        label: 'Acknowledged, dead-lettered',
         variant: 'danger',
         explanation:
           'The result was received but could not be persisted, so it was retained as a dead letter.',

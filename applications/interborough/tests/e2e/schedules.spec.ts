@@ -58,7 +58,7 @@ test('lists every schedule as a row that links to it, with the workflow each one
     `/schedules/${SCHEDULE_ID}`,
   );
   // Line two says the kind first, then the workflow.
-  await expect(row).toContainText('Workflow · Inventory sync sweep');
+  await expect(row).toContainText('Workflow, Inventory sync sweep');
   await expect(row).toHaveAttribute('data-status-word', 'Active');
   await checkA11y('schedules — the list');
 });

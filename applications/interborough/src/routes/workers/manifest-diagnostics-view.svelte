@@ -35,7 +35,7 @@
 <section class="weft-manifest-diagnostics" aria-labelledby="manifest-diagnostics-heading">
   <div class="weft-manifest-diagnostics__heading-row">
     <h2 id="manifest-diagnostics-heading">{heading}</h2>
-    {#if refreshing}<Badge variant="neutral">Refreshing · showing cached evidence</Badge>{/if}
+    {#if refreshing}<Badge variant="neutral">Refreshing, showing cached evidence</Badge>{/if}
   </div>
 
   {#if loading}
@@ -73,16 +73,16 @@
           <li class="weft-manifest-comparison-row">
             <div>
               <span class="weft-manifest-comparison-row__title"
-                >{comparison.deploymentName} · {comparison.buildId}</span
+                >{comparison.deploymentName}, {comparison.buildId}</span
               >
               <span class="weft-manifest-comparison-row__workers"
                 >{comparison.workers.length} workers</span
               >
             </div>
             {#if comparison.disagreements.length === 0}
-              <Badge variant="success">Consistent · routing eligible</Badge>
+              <Badge variant="success">Consistent, routing eligible</Badge>
             {:else}
-              <Badge variant="danger">Disagreement · {comparison.disagreements.join(', ')}</Badge>
+              <Badge variant="danger">Disagreement, {comparison.disagreements.join(', ')}</Badge>
             {/if}
           </li>
         {/each}
@@ -118,7 +118,7 @@
               <Table.Cell class="weft-workers-mono">{rejection.workerId ?? 'Unknown'}</Table.Cell>
               <Table.Cell class="weft-workers-mono">{rejection.queue ?? 'Unknown'}</Table.Cell>
               <Table.Cell class="weft-workers-mono"
-                >{rejection.deploymentName ?? 'Unknown'} · {rejection.buildId ??
+                >{rejection.deploymentName ?? 'Unknown'}, {rejection.buildId ??
                   'Unknown'}</Table.Cell
               >
               <Table.Cell title={new Date(rejection.rejectedAt).toISOString()}

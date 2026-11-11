@@ -135,16 +135,16 @@ test.describe('the notification bell, about the person and not the engine', () =
     await bell(page, 'Notifications, 2 unread').click();
     await expect(rows(page)).toHaveCount(2);
     const panel = page.locator('.weft-notification-panel');
-    await expect(panel.getByRole('heading', { name: 'Notifications · 2 unread' })).toBeVisible();
+    await expect(panel.getByRole('heading', { name: 'Notifications, 2 unread' })).toBeVisible();
     // A review is what it asks, then whose wait it is. The echo chat finished and nothing waits on
     // the person in it, so it is not listed.
     await expect(
-      panel.getByRole('link').filter({ hasText: /Waiting for your approval · .*Tool runner/i }),
+      panel.getByRole('link').filter({ hasText: /Waiting for your approval, .*Tool runner/i }),
     ).toHaveCount(1);
     await expect(
       panel
         .getByRole('link')
-        .filter({ hasText: /Waiting for your answer · .*Request human input/i }),
+        .filter({ hasText: /Waiting for your answer, .*Request human input/i }),
     ).toHaveCount(1);
     await expect(panel.getByRole('link').filter({ hasText: /answered/i })).toHaveCount(0);
 

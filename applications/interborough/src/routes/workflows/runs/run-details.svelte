@@ -93,7 +93,7 @@
             : null,
         ]
           .filter((part): part is string => part !== null)
-          .join(' · '),
+          .join(', '),
   );
   const deadlineRemaining = $derived(
     workflow?.executionDeadline === undefined || engine === undefined
@@ -193,7 +193,7 @@
 {#snippet startedBy()}
   {#if workflowOrigin?.kind === 'agent-run'}
     <span data-testid="run-lineage">
-      An agent's tool call · <span>{workflowOrigin.agentId}</span> ·
+      An agent's tool call, <span>{workflowOrigin.agentId}</span>,
       <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
     </span>
   {:else}

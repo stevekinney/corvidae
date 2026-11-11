@@ -93,11 +93,11 @@ test.describe('Chat on a phone (04y, 06l, 06m)', () => {
         .locator('.cinder-stacked-list-item__description, .cinder-stacked-list-item__meta')
         .first(),
     ).toContainText('Hello! How can I help?');
-    // No fixed column: the word is followed by a dot and the message, close by.
+    // No fixed column: the word is followed by a comma and the message, close by.
     const dot = await done
       .locator('.cinder-stacked-list-item__status')
       .evaluate((element) => getComputedStyle(element, '::after').content);
-    expect(dot).toMatch(/^"·"/);
+    expect(dot).toMatch(/^","/);
     const statusBox = await boxOf(done.locator('.cinder-stacked-list-item__status'));
     const previewBox = await boxOf(
       done

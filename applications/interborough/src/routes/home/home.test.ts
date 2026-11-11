@@ -94,7 +94,7 @@ describe('Home', () => {
     const heading = getByRole('heading', { level: 1, name: 'Home' });
     expect(heading.classList.contains('cinder-sr-only')).toBe(true);
     expect(getByTestId('home-date').textContent?.trim()).toBe(
-      'Monday, Nov 2 · Times show in Central time (CST)',
+      'Monday, Nov 2, Times show in Central time (CST)',
     );
     expect(getByRole('heading', { level: 1 })).toBe(heading);
   });
@@ -188,12 +188,12 @@ describe('Home', () => {
     const rows = within(card).getAllByRole('listitem');
     const text = (row: HTMLElement) => row.textContent?.replaceAll(/\s+/g, ' ').trim();
     expect(text(rows[0]!)).toContain('Which environment should the release go to?');
-    expect(text(rows[0]!)).toContain('Question · Request human input · 1 h ago');
+    expect(text(rows[0]!)).toContain('Question, Request human input, 1 h ago');
     expect(within(rows[0]!).getByRole('link', { name: 'Answer' }).getAttribute('href')).toBe(
       '/reviews?review=bureau%3Ahuman-wait%3Arelease',
     );
     expect(text(rows[1]!)).toContain('Refund order 4471 for $42.00?');
-    expect(text(rows[1]!)).toContain('Approval · Tool runner · Can’t be undone · 4 min ago');
+    expect(text(rows[1]!)).toContain('Approval, Tool runner, Can’t be undone, 4 min ago');
     expect(within(rows[1]!).getByRole('link', { name: 'Review' })).not.toBeNull();
     expect(within(card).getByRole('link', { name: 'Open Reviews' }).getAttribute('href')).toBe(
       '/reviews',
@@ -223,7 +223,7 @@ describe('Home', () => {
     await waitFor(() =>
       expect(
         within(card).getAllByRole('listitem')[1]?.textContent?.replaceAll(/\s+/g, ' '),
-      ).toContain('Schedule · Assistant · Every day at 3:00 AM (9:00 AM UTC)'),
+      ).toContain('Schedule, Assistant, Every day at 3:00 AM (9:00 AM UTC)'),
     );
     expect(titles[2]).toContain('No model provider connected');
     expect(within(card).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
@@ -330,7 +330,7 @@ describe('Home with nothing waiting on you and a provider connected', () => {
     const { container, getByTestId } = await open(calm());
     const line = await waitFor(() => getByTestId('attention-clear'));
     expect(line.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-      'Nothing needs attention · Storage, schedules, providers and hooks are fine. Open Health',
+      'Nothing needs attention, Storage, schedules, providers and hooks are fine. Open Health',
     );
     expect(within(line).getByRole('link', { name: 'Open Health' }).getAttribute('href')).toBe(
       '/health',
@@ -759,7 +759,7 @@ describe('Home’s Running now (01w, 01x)', () => {
     const card = await waitFor(() => cardOf(container, 'Running now'));
     const row = await waitFor(() => within(card).getByRole('listitem'));
     expect(words(row)).toBe(
-      'Daily summary Running · Schedule · Assistant · started 10:44 AM View run',
+      'Daily summary Running, Schedule, Assistant, started 10:44 AM View run',
     );
     expect(row.querySelector('.cinder-status-dot')?.getAttribute('data-cinder-status')).toBe(
       'info',
@@ -800,7 +800,7 @@ describe('Home’s Running now (01w, 01x)', () => {
     const { container } = await open(running([chatRun]));
     const card = await waitFor(() => cardOf(container, 'Running now'));
     expect(words(within(card).getByRole('listitem'))).toBe(
-      'Summarize yesterday’s chats and open reviews. Running · Chat · Assistant · started 10:45 AM View run',
+      'Summarize yesterday’s chats and open reviews. Running, Chat, Assistant, started 10:45 AM View run',
     );
   });
 

@@ -74,7 +74,7 @@ describe('names', () => {
 
 describe('a row', () => {
   test('line two says what each state needs said', () => {
-    expect(workerRowMeta(worker())).toBe('payments · 3 running');
+    expect(workerRowMeta(worker())).toBe('payments, 3 running');
     expect(workerRowMeta(worker({ queue: 'reports', disconnectedAt: 1, inFlight: 0 }))).toBe(
       'reports queue',
     );
@@ -85,7 +85,7 @@ describe('a row', () => {
       'Finishing 1 task, then stops',
     );
     expect(workerRowMeta(worker({ health: 'drained', inFlight: 0, drainFinishedTasks: 2 }))).toBe(
-      'Drained · finished its 2 tasks',
+      'Drained, finished its 2 tasks',
     );
   });
 

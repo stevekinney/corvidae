@@ -105,7 +105,7 @@
     {
       term: 'Retry availability',
       definition: task.retryPolicy
-        ? `${retryAvailable ? 'Available' : 'Exhausted'} · attempt ${task.attempt} of ${task.retryPolicy.maxAttempts}`
+        ? `${retryAvailable ? 'Available' : 'Exhausted'}, attempt ${task.attempt} of ${task.retryPolicy.maxAttempts}`
         : 'No retry policy',
     },
     { term: 'Requeues', definition: String(task.requeueCount ?? 0) },

@@ -65,7 +65,7 @@ describe('timelineEntryLabel', () => {
           inputSummary: '{"operationCount":2}',
         }),
       ),
-    ).toBe('Race · 2 branches');
+    ).toBe('Race, 2 branches');
   });
 
   test('speculate has no operationCount in its inputSummary, so no count is shown', () => {
@@ -239,7 +239,7 @@ describe('mapTimelineToSteps', () => {
     expect(steps[0]).toMatchObject({
       kind: 'branch',
       id: 'step-1',
-      label: 'Race · 2 branches',
+      label: 'Race, 2 branches',
     });
     const branch = asBranch(steps[0]);
     expect(branch.lanes).toMatchObject([
@@ -269,7 +269,7 @@ describe('mapTimelineToSteps', () => {
       }),
     ]);
 
-    expect(steps[0]).toMatchObject({ kind: 'branch', label: 'All (parallel) · 4 more omitted' });
+    expect(steps[0]).toMatchObject({ kind: 'branch', label: 'All (parallel), 4 more omitted' });
   });
 
   test('maps speculative children and rolled-back outcome to rewound steps', () => {
@@ -300,7 +300,7 @@ describe('mapTimelineToSteps', () => {
 
     expect(steps[0]).toMatchObject({
       kind: 'branch',
-      label: 'Speculate · rolled-back · 1 more omitted',
+      label: 'Speculate, rolled-back, 1 more omitted',
     });
     const branch = asBranch(steps[0]);
     expect(branch.lanes).toHaveLength(2);

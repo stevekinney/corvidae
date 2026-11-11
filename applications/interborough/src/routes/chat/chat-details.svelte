@@ -61,14 +61,14 @@
   const COPY = CHAT_COPY.details;
   const SETTINGS = CHAT_COPY.settings;
 
-  /** "Today, 10:30 AM · last active 10:45 AM", with the day named again when the chat moved on a later day. */
+  /** "Today, 10:30 AM, last active 10:45 AM", with the day named again when the chat moved on a later day. */
   const started = $derived.by((): string | undefined => {
     if (startedAt === null) return undefined;
     const begun = dayAndTime(startedAt, now);
     if (lastActiveAt === null) return begun;
     const sameDay = calendarDay(lastActiveAt) === calendarDay(startedAt);
     const active = sameDay ? clockTime(lastActiveAt) : dayAndTime(lastActiveAt, now);
-    return `${begun} · ${COPY.lastActive(active)}`;
+    return `${begun}, ${COPY.lastActive(active)}`;
   });
 
   const sessionItems = $derived<DescriptionListItem[]>([

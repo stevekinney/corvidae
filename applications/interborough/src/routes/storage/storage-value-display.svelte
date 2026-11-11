@@ -4,7 +4,7 @@
    * PayloadInspector — values are opaque bytes — handle non-JSON
    * gracefully"). JSON small enough to lay out goes through `PayloadInspector` as fields with a
    * switch to the JSON itself. Text that is not JSON, and JSON too large to lay out, is shown as
-   * plain monospaced text under "Value · text, 2.1 MB", its first 64 KB only, with a note that says
+   * plain monospaced text under "Value, text, 2.1 MB", its first 64 KB only, with a note that says
    * so and that Copy value copies all of it. Anything that fails UTF-8 decoding renders as an
    * explicit binary fallback instead of garbling through the inspector. The inspector is bare: the
    * pane around it is the card.
@@ -41,7 +41,7 @@
   <p class="weft-storage-empty-value">Empty value (0 bytes).</p>
 {:else if preview.kind === 'binary'}
   <p class="weft-storage-binary-value">
-    Binary value · {formatBytes(preview.byteLength)} — not valid UTF-8, cannot be displayed as text.
+    Binary value, {formatBytes(preview.byteLength)} — not valid UTF-8, cannot be displayed as text.
   </p>
 {:else if textView !== undefined}
   <div class="ib-storage-text" data-testid="storage-text-value">

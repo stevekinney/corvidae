@@ -159,7 +159,7 @@ describe('an approval decided on another page', () => {
     expect(row?.querySelector('h4')?.textContent).toBe('Refund order 4471 for $42.00?');
     expect(
       row?.querySelector('.cinder-approval-card__outcome')?.textContent?.replace(/\s+/g, ' '),
-    ).toMatch(/^\s*Approved by you in Reviews\s*·\s*\d{1,2}:\d{2} [AP]M\s*$/);
+    ).toMatch(/^\s*Approved by you in Reviews,\s*\d{1,2}:\d{2} [AP]M\s*$/);
     expect(queryByRole('button', { name: 'Deny' })).toBeNull();
     expect(queryByRole('button', { name: 'Approve' })).toBeNull();
     // The rail row speaks for the same decision in its own words.
@@ -304,7 +304,7 @@ describe('the run a decision on another page continues the chat with (design row
     // While the continuation goes, the rail row reads as that run (18i).
     const railRow = () => container.querySelector('.cinder-tool-call-rail__item');
     expect(railRow()?.getAttribute('data-cinder-status')).toBe('running');
-    expect(railRow()?.textContent).toMatch(/in Reviews \d{1,2}:\d{2} [AP]M · running…/);
+    expect(railRow()?.textContent).toMatch(/in Reviews \d{1,2}:\d{2} [AP]M, running…/);
 
     // The continuation stops. The decision is no longer running, even though the chat as last read
     // still says a run is going: "running…" belongs to the run the decision continued, not the page.

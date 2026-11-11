@@ -262,7 +262,7 @@
     {/if}
   {/snippet}
   {#snippet snapshot()}
-    Snapshot at page load{total > 0 ? ` · ${total.toLocaleString()} matching` : ''}
+    Snapshot at page load{total > 0 ? `, ${total.toLocaleString()} matching` : ''}
   {/snippet}
   {#snippet headerActions()}
     {#if scopedType === undefined}

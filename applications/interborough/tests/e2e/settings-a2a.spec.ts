@@ -1,5 +1,5 @@
 /**
- * Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with Accept A2A calls
+ * Settings › A2A (board PageSettingsSections, "A2A, /settings/a2a" and "A2A with Accept A2A calls
  * off") on the sample world: Accept A2A calls with the restart it needs, the address of the agent
  * card, a switch per agent that saves as it changes, push notifications, and the compact empty
  * state of Recent calls. Turning Accept A2A calls off is drawn from a host that booted with it off.

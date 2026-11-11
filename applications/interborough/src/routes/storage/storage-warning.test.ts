@@ -44,7 +44,7 @@ describe('the storage warning', () => {
   test('says what was measured and links to retention', async () => {
     const view = open(1_717_986_918);
     const warning = await view.findByTestId('storage-warning');
-    expect(warning.textContent).toContain('Storage is over its warning level · 1.6 GB.');
+    expect(warning.textContent).toContain('Storage is over its warning level, 1.6 GB.');
     const link = view.getByRole('link', { name: 'Change retention' });
     expect(link.getAttribute('href')).toBe(router.href('/settings/data-and-retention'));
   });

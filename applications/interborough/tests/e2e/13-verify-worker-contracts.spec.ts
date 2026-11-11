@@ -26,7 +26,7 @@ test('operator reads a worker’s contract verification status', async ({ page, 
 
   const verification = page.getByRole('region', { name: 'Contract verification' });
   await expect(verification).toBeVisible();
-  await expect(verification.getByText('Drift · manifest differs from registry')).toBeVisible();
+  await expect(verification.getByText('Drift, manifest differs from registry')).toBeVisible();
   await expect(
     verification.getByText('Revision differs from the active registry revision'),
   ).toBeVisible();
@@ -174,7 +174,7 @@ for (const failure of FAILURES) {
     // An unclassified error is retried (three times, with backoff) before the panel leaves its
     // loading state, so the title can take longer than a plain fault's: the wait is the hang guard.
     await expect(verification.getByText(failure.title, { exact: true })).toBeVisible();
-    await expect(verification.getByText('Verified · manifest matches registry')).toHaveCount(0);
+    await expect(verification.getByText('Verified, manifest matches registry')).toHaveCount(0);
 
     await checkA11y(`workers — contract verification ${failure.name}`);
   });
@@ -183,7 +183,7 @@ for (const failure of FAILURES) {
 const SURFACES = [
   {
     name: 'worker detail',
-    verdict: 'Drift · manifest differs from registry',
+    verdict: 'Drift, manifest differs from registry',
     open: async (page: Page): Promise<Locator> => {
       await page.goto('/health/workers?worker=e2e-fleet-worker-1&tab=queues');
       return page.getByRole('region', { name: 'Contract verification' });

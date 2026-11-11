@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The Workflow sources tab (board PageSettingsSections, "API reference · Workflow sources"): where
+   * The Workflow sources tab (board PageSettingsSections, "API reference, Workflow sources"): where
    * Interborough reads workflow files from, read-only. Each file is listed by its path with what it
    * holds: how many workflows, their names, and how many schedules. A workflow is edited in its
    * file, and "Open file" belongs on each workflow, so there is none here. The tab draws nothing
@@ -39,10 +39,10 @@
 
   let canceled = $state(false);
 
-  /** What a file holds, in the words under its path: "1 workflow · Order refund, 1 schedule". */
+  /** What a file holds, in the words under its path: "1 workflow, Order refund, 1 schedule". */
   function holds(file: { id: string; trigger: Record<string, unknown> | null }): string {
     const schedules = file.trigger?.['kind'] === 'schedule' ? 1 : 0;
-    const base = `${copy.workflows(1)} · ${humanizeIdentifier(file.id, { casing: 'sentence' })}`;
+    const base = `${copy.workflows(1)}, ${humanizeIdentifier(file.id, { casing: 'sentence' })}`;
     return schedules === 0 ? base : `${base}, ${copy.schedules(schedules)}`;
   }
 

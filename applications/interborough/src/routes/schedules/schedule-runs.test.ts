@@ -258,7 +258,7 @@ describe('the missed runs (rows 72i, 73l and 73m)', () => {
     await fireEvent.click(toggle);
     const band = rows(container, 'band')[0];
     if (band === undefined) throw new Error('expected the band');
-    expect(within(band).getAllByText(/^Missed · Interborough was off$/)).toHaveLength(4);
+    expect(within(band).getAllByText(/^Missed, Interborough was off$/)).toHaveLength(4);
     await fireEvent.click(within(band).getByRole('button', { name: 'Run once now' }));
     expect(started).toBe(1);
   });
@@ -349,7 +349,7 @@ describe('a schedule that is paused, and one that has never run (rows 72v, 72w, 
       'It won’t start until Order refund loads and a provider is connected.',
     );
     expect(container.querySelector('[data-testid="schedule-fire-note"]')?.textContent).toBe(
-      'won’t start · Order refund can’t load · no provider',
+      'won’t start, Order refund can’t load, no provider',
     );
     // Now sits between the upcoming runs and the empty state.
     expect(rows(container, 'now')).toHaveLength(1);

@@ -28,7 +28,6 @@
 <span class="ib-storage-backend" data-testid="storage-backend">
   <span class="ib-storage-backend__line">{line}</span>
   <span class="ib-storage-backend__details">
-    <span class="ib-storage-backend__separator" aria-hidden="true">·</span>
     <Popover bind:open label={HEALTH_FRAME_COPY.popoverLabel} placement="bottom-start">
       {#snippet trigger()}
         {#snippet chevron()}
@@ -69,7 +68,7 @@
     overflow-wrap: anywhere;
   }
 
-  /* The separator wraps with the button, so a long path never strands a "·" at the start of a line. */
+  /* The button stays whole and wraps as one piece beside the path. */
   .ib-storage-backend__details {
     display: inline-flex;
     align-items: center;

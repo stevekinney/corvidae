@@ -55,7 +55,7 @@ test('the counts are one line under the list, and a worker opens beside it', asy
   await page.goto('/health/workers');
   const summary = page.getByTestId('workers-summary');
   await expect(summary).toHaveText(
-    /^\d+ of \d+ connected · \d+ running · \d+ waiting · \d+ failed for good$/,
+    /^\d+ of \d+ connected, \d+ running, \d+ waiting, \d+ failed for good$/,
   );
   // The old stat cards are gone.
   await expect(page.getByText('Total workers')).toHaveCount(0);

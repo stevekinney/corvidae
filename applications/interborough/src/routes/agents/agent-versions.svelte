@@ -110,8 +110,7 @@
             <span class="ib-agent-version__meta">
               <time datetime={version.savedAt}
                 >{formatRelativeTime(Date.parse(version.savedAt))}</time
-              >
-              {#if version.savedBy === null}· {copy.savedByHand}{/if}
+              >{#if version.savedBy === null}, {copy.savedByHand}{/if}
             </span>
             <span class="ib-agent-version__changed">
               {#if version.revision === 1}

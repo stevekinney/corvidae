@@ -45,7 +45,7 @@
       id: entry.key,
       datetime: exactTimestamp(entry.record.claimedAt),
       timestamp: exactTimestamp(entry.record.claimedAt),
-      title: `Attempt ${entry.record.attempt}${entry.owning ? ' · current' : ''}`,
+      title: `Attempt ${entry.record.attempt}${entry.owning ? ', current' : ''}`,
       tone: TONE[entry.dispositionVariant],
     })),
   );
@@ -94,7 +94,7 @@
       {
         term: 'Worker session',
         definition: record.executionIdentity
-          ? `${record.executionIdentity.workerId}${record.sessionGeneration === undefined ? '' : ` · generation ${record.sessionGeneration}`}`
+          ? `${record.executionIdentity.workerId}${record.sessionGeneration === undefined ? '' : `, generation ${record.sessionGeneration}`}`
           : record.sessionGeneration === undefined
             ? 'Not recorded'
             : `Generation ${record.sessionGeneration}`,

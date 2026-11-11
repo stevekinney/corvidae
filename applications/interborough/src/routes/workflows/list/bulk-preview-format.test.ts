@@ -31,7 +31,7 @@ describe('filterSummaryChip', () => {
 
   test('joins present dimensions with the metadata separator, in a stable order', () => {
     expect(filterSummaryChip({ status: 'failed', type: 'payment-capture' })).toBe(
-      'status:failed · type:payment-capture',
+      'status:failed, type:payment-capture',
     );
   });
 
@@ -45,7 +45,7 @@ describe('filterSummaryChip', () => {
         tags: ['nightly', 'retry'],
         attributes: [{ key: 'customerTier' }, { key: 'region' }],
       }),
-    ).toBe('tags:nightly,retry · attributes:customerTier,region');
+    ).toBe('tags:nightly,retry, attributes:customerTier,region');
   });
 
   test('empty tags/attributes arrays are omitted, not rendered as empty segments', () => {

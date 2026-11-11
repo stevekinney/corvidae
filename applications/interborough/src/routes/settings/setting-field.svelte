@@ -47,7 +47,7 @@
     autosave: SettingsAutosave;
     /** What the status line says for a setting a restart just applied ("In effect since 10:44 AM"). */
     appliedNote?: string | undefined;
-    /** Whether the banner's Revert put this setting back to its running value ("Reverted · in effect now"). */
+    /** Whether the banner's Revert put this setting back to its running value ("Reverted, in effect now"). */
     reverted?: boolean;
     /** The row's own words in place of the Bureau's description, such as in the Remote deployment card. */
     descriptionOverride?: string | undefined;

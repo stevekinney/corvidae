@@ -250,10 +250,10 @@ export function matchWaiting(
 
 /** The words a waiting item is found by and read as: the sentence, then what it is about. */
 export function waitingLabel(item: NotificationItem): string {
-  return item.detail === '' ? item.title : `${item.title} · ${item.detail}`;
+  return item.detail === '' ? item.title : `${item.title}, ${item.detail}`;
 }
 
-/** What a waiting item's row says after its sentence: the kind of wait ("Approval · waiting", "Question"). */
+/** What a waiting item's row says after its sentence: the kind of wait ("Approval, waiting", "Question"). */
 export function waitingMeta(item: NotificationItem): string {
   return item.kind === 'approval'
     ? PALETTE_COPY.waitingMeta.approval
@@ -418,13 +418,13 @@ export function runStanding(run: Pick<RunMatch, 'status' | 'waiting'>): string {
 }
 
 /**
- * What a run's row says after its title: the agent that ran, then how it stands ("Tool runner ·
+ * What a run's row says after its title: the agent that ran, then how it stands ("Tool runner,
  * waiting for approval"). A run called after its agent does not name the agent twice.
  */
 export function runMeta(run: RunMatch, agentText: string | undefined): string {
   return agentText === undefined || agentText === run.title
     ? runStanding(run)
-    : `${agentText} · ${runStanding(run)}`;
+    : `${agentText}, ${runStanding(run)}`;
 }
 
 /** How many of the newest runs the palette reads to search them. */

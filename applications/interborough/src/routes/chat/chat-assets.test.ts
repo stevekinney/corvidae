@@ -90,7 +90,7 @@ describe('chat-assets.svelte shows each kind of asset', () => {
     });
 
     expect(Array.from(container.querySelectorAll('a'), (link) => link.textContent?.trim())).toEqual(
-      ['settings-page.svg · 182 KB', 'refund-policy.pdf', 'Download file · 2.0 KB'],
+      ['settings-page.svg, 182 KB', 'refund-policy.pdf', 'Download file, 2.0 KB'],
     );
   });
 

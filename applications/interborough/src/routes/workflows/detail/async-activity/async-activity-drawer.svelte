@@ -122,9 +122,8 @@
 
     <div class="weft-async-activity-drawer__field">
       <span class="weft-async-activity-drawer__label">
-        Completion token
-        <span class="weft-async-activity-drawer__label-note"
-          >· deterministic identifier, not a secret</span
+        Completion token<span class="weft-async-activity-drawer__label-note"
+          >, deterministic identifier, not a secret</span
         >
       </span>
       <div class="weft-async-activity-drawer__token">

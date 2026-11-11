@@ -72,18 +72,18 @@ interface AlertRule {
 const ALERT_RULES: Readonly<Record<string, AlertRule>> = {
   'alert:fired': {
     state: 'firing',
-    title: (frame) => `Alert fired · ${stringField(frame.payload, 'name') ?? 'unnamed'}`,
+    title: (frame) => `Alert fired, ${stringField(frame.payload, 'name') ?? 'unnamed'}`,
     body: (frame) => stringField(frame.payload, 'message') ?? 'An alert condition is firing.',
   },
   'alert:resolved': {
     state: 'resolved',
-    title: (frame) => `Alert resolved · ${stringField(frame.payload, 'name') ?? 'unnamed'}`,
+    title: (frame) => `Alert resolved, ${stringField(frame.payload, 'name') ?? 'unnamed'}`,
     body: (frame) => stringField(frame.payload, 'message') ?? 'This alert has resolved.',
   },
   'constraint:violated': {
     state: 'firing',
     title: (frame) =>
-      `Constraint violated · ${stringField(frame.payload, 'constraint') ?? 'unnamed'}`,
+      `Constraint violated, ${stringField(frame.payload, 'constraint') ?? 'unnamed'}`,
     body: (frame) =>
       frame.workflowId
         ? `Workflow ${truncateId(frame.workflowId)} exceeded a configured constraint.`

@@ -175,16 +175,16 @@
                   >
                   <Table.Cell>
                     {version.executionReferences}
-                    {version.executionReferences > 0 ? 'referenced · reachable' : 'unreferenced'}
+                    {version.executionReferences > 0 ? 'referenced, reachable' : 'unreferenced'}
                   </Table.Cell>
                   <Table.Cell>
                     {#if fleet.workers === 0}
                       None connected
                     {:else}
                       {fleet.workers}
-                      {fleet.workers === 1 ? 'worker' : 'workers'} · {fleet.inFlight}/{fleet.concurrency}
+                      {fleet.workers === 1 ? 'worker' : 'workers'}, {fleet.inFlight}/{fleet.concurrency}
                       in flight{fleet.draining + fleet.drained > 0
-                        ? ` · ${fleet.draining} draining, ${fleet.drained} drained`
+                        ? `, ${fleet.draining} draining, ${fleet.drained} drained`
                         : ''}
                     {/if}
                   </Table.Cell>

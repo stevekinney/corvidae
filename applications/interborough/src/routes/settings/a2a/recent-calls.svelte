@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The Recent calls part of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a"):
+   * The Recent calls part of Settings › A2A (board PageSettingsSections, "A2A, /settings/a2a"):
    * the remote calls that started a task, newest first, each with when it came, who made it and
    * which agent answered ("Today, 9:48 AM", Remote agent “planner”, answered by Tool runner).
    * They are read from the audit trail, where the Bureau keeps one `a2a.call` record per call

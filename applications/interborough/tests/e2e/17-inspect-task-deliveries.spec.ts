@@ -32,7 +32,7 @@ test('an acknowledged cancellation appears as an applied delivery from the worke
 
   const history = page.getByRole('region', { name: 'Result delivery history' });
   await expect(history).toBeVisible();
-  await expect(history.getByText('Acknowledged · applied')).toBeVisible();
+  await expect(history.getByText('Acknowledged, applied')).toBeVisible();
   await expect(history.getByText('The result was committed to the ledger.')).toBeVisible();
   await expect(history.getByText('cancelled', { exact: true })).toBeVisible();
   await expect(history.getByText('WebSocket')).toBeVisible();
@@ -63,7 +63,7 @@ for (const theme of ['light', 'dark'] as const) {
       await openTask(page, E2E_CANCELLED_TASK_OPERATION_ID);
       await expect(page.locator('html')).toHaveAttribute('data-theme', theme);
       const history = page.getByRole('region', { name: 'Result delivery history' });
-      await expect(history.getByText('Acknowledged · applied')).toBeVisible();
+      await expect(history.getByText('Acknowledged, applied')).toBeVisible();
       const overflow = await history.evaluate(
         (element) => element.scrollWidth - element.clientWidth,
       );

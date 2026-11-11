@@ -1,6 +1,6 @@
 /**
  * Testing a key and then saving it, for the dialogs that take one (Connect and Replace key; board
- * SettingsShell, "Connect ·" and "Replace key · in progress"). The key is tested first, with one
+ * SettingsShell, "Connect" and "Replace key, in progress"). The key is tested first, with one
  * request of one token that stores nothing (`POST /host/providers/<name>/test`), and saved
  * (`PUT /host/providers/<name>`) only once the provider has accepted it, so a key that fails is
  * never in use and the key already saved keeps working until the new one passes.

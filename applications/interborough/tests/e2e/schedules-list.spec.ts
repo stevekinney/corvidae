@@ -67,19 +67,19 @@ for (const width of WIDTHS) {
         : ['Daily summary', 'Weekly refund audit', 'Release notes digest', 'Inbox triage'],
     );
     const words = main.locator('li[data-schedule]');
-    await expect(words.nth(0)).toHaveAttribute('data-status-word', 'Missed runs · 4');
+    await expect(words.nth(0)).toHaveAttribute('data-status-word', 'Missed runs, 4');
     await expect(words.nth(phone ? 3 : 1)).toHaveAttribute('data-status-word', 'Active');
     await expect(words.nth(phone ? 1 : 3)).toHaveAttribute('data-status-word', 'Paused');
 
     const refund = words.nth(phone ? 3 : 1);
     await expect(refund).toContainText('can’t load');
     if (width >= 640) {
-      await expect(refund).toContainText(/Due .+ · won’t start/);
+      await expect(refund).toContainText(/Due .+, won’t start/);
       await expect(refund).not.toContainText('provider');
     } else {
       // A phone's third line says the workflow first, then the provider, then the cadence.
       await expect(refund.getByTestId('schedule-line-three')).toContainText(
-        'Order refund can’t load · won’t run until a provider is connected · Mondays at',
+        'Order refund can’t load, won’t run until a provider is connected, Mondays at',
       );
       // Rows are at least 44px tall.
       for (const row of await words.all()) {

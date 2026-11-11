@@ -235,7 +235,7 @@ describe('the table', () => {
         rowsOf(container).map((row) => [cellsOf(row)[1], cellsOf(row)[2], cellsOf(row)[3]]),
       ).toEqual([
         ['You', 'Removed the Anthropic key', 'Anthropic provider'],
-        ['Tool runner', 'Asked to refund order 4471', 'Issue refund · order 4471'],
+        ['Tool runner', 'Asked to refund order 4471', 'Issue refund, order 4471'],
         ['You', 'Started a run', 'Chat › Please refund order 4471, it arrived damaged.'],
         ['Interborough', 'Server started', 'Interborough'],
       ]),
@@ -266,8 +266,8 @@ describe('the table', () => {
       (cell) => cell.textContent?.replace(/\s+/g, ' ').trim(),
     );
     expect(headings).toHaveLength(2);
-    expect(headings[0]).toMatch(/^Today, [A-Z][a-z]{2} \d+ · .+$/);
-    expect(headings[1]).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d+ · .+$/);
+    expect(headings[0]).toMatch(/^Today, [A-Z][a-z]{2} \d+, .+$/);
+    expect(headings[1]).toMatch(/^[A-Z][a-z]{2} [A-Z][a-z]{2} \d+, .+$/);
   });
 
   test('shows the filters in one row with the count, and Export as a secondary button after it', async () => {
@@ -360,7 +360,7 @@ describe('the open event', () => {
     const row = rowsOf(container).find((candidate) =>
       cellsOf(candidate).includes('Asked to refund order 4471'),
     ) as HTMLElement;
-    expect(cellsOf(row)[3]).toBe('Issue refund · order 4471');
+    expect(cellsOf(row)[3]).toBe('Issue refund, order 4471');
 
     await fireEvent.click(row);
 
@@ -378,7 +378,7 @@ describe('the open event', () => {
     );
     expect(facts).toEqual([
       'Tool Issue refund issue-refund',
-      expect.stringContaining('Risk Dangerous · Can’t be undone'),
+      expect.stringContaining('Risk Dangerous, Can’t be undone'),
       'Amount $42.00',
       'Status Waiting on you',
     ]);
@@ -445,7 +445,7 @@ describe('the open event', () => {
       },
     );
     await findByText('Edited an agent');
-    expect(cellsOf(rowsOf(container)[0] as HTMLElement)[3]).toBe('Tool runner · version 3 → 4');
+    expect(cellsOf(rowsOf(container)[0] as HTMLElement)[3]).toBe('Tool runner, version 3 → 4');
 
     const detail = await findByTestId('audit-detail');
     const facts = [...detail.querySelectorAll('dl')].map((list) =>
@@ -454,7 +454,7 @@ describe('the open event', () => {
     expect(facts).toEqual([
       'Agent Tool runner',
       'Version 3 → 4',
-      'Changed Instructions · Tools · added Issue refund',
+      'Changed Instructions, Tools, added Issue refund',
     ]);
     const diff = await findByTestId('audit-instruction-diff');
     expect(diff.textContent).toContain('Showing 6 of');
@@ -474,7 +474,7 @@ describe('the open event', () => {
 
     const detail = await findByTestId('audit-target');
     expect(detail.textContent).toContain(
-      `Target · ${key.length.toLocaleString('en-US')} characters`,
+      `Target, ${key.length.toLocaleString('en-US')} characters`,
     );
     expect(detail.textContent).toContain(key);
     expect(detail.querySelector('button')?.textContent?.trim()).toBe(AUDIT_COPY.copyKey);

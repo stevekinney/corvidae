@@ -63,7 +63,7 @@ describe('Runs started', () => {
   test('counts every run, and splits the ones that wait from the ones that are done', () => {
     const summary = startedSummary(runs, waiting);
     expect(summary).toMatchObject({ total: 5, done: 3, waiting: 2, other: [] });
-    expect(startedCaption(summary)).toBe('3 done · 2 waiting on you');
+    expect(startedCaption(summary)).toBe('3 done, 2 waiting on you');
   });
 
   test('says what else happened: a run that failed, one still running, one that was canceled', () => {
@@ -71,7 +71,7 @@ describe('Runs started', () => {
       [run('a', 'failed'), run('b', 'running'), run('c', 'cancelled'), run('d', 'completed')],
       new Map(),
     );
-    expect(startedCaption(summary)).toBe('1 done · 1 failed · 1 running · 1 canceled');
+    expect(startedCaption(summary)).toBe('1 done, 1 failed, 1 running, 1 canceled');
   });
 
   test('when every run finished it says how the day compares with the one before', () => {
@@ -82,7 +82,7 @@ describe('Runs started', () => {
     // Until the day before is known, or while anything else happened, it says how the runs stand.
     expect(startedCaption(startedSummary(done, new Map()))).toBe('14 done');
     expect(startedCaption(startedSummary([...done, run('late', 'failed')], new Map(), 11))).toBe(
-      '14 done · 1 failed',
+      '14 done, 1 failed',
     );
   });
 

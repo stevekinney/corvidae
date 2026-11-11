@@ -1,6 +1,6 @@
 /**
  * A tool call that is still running (COR-2016, design row 21q): its row says it is running and its
- * clock keeps counting while the call has no answer, so the panel's "Running · 0.0s" moves on.
+ * clock keeps counting while the call has no answer, so the panel's "Running, 0.0s" moves on.
  */
 import { cleanup, fireEvent, render } from '@testing-library/svelte';
 import { afterEach, expect, jest, test } from 'bun:test';

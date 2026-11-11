@@ -330,7 +330,7 @@ function wordingOf(
             summary === undefined
               ? copy.askedToUse(tool)
               : copy.askedTo(lowerFirst(withoutAmount(summary))),
-          target: callLabel === undefined ? tool : `${tool} · ${callLabel}`,
+          target: callLabel === undefined ? tool : `${tool}, ${callLabel}`,
         };
       }
       // What the call was worth, then the tool; with no amount, what it was about.
@@ -342,7 +342,7 @@ function wordingOf(
           summary !== undefined && text(record, 'status') === 'success'
             ? pastTense(withoutAmount(summary))
             : copy.ranTool(tool),
-        target: detail === undefined ? tool : `${detail} · ${tool}`,
+        target: detail === undefined ? tool : `${detail}, ${tool}`,
       };
     }
     case 'review.tool-approval.approved':
@@ -355,7 +355,7 @@ function wordingOf(
           record.type === 'review.tool-approval.approved'
             ? copy.approvedToolCall
             : copy.deniedToolCall,
-        target: callLabel === undefined ? tool : `${tool} · ${callLabel}`,
+        target: callLabel === undefined ? tool : `${tool}, ${callLabel}`,
       };
     }
     case 'memory.corrected':
@@ -378,7 +378,7 @@ function wordingOf(
       const name = resourceName(record.resource, lookups);
       return {
         action: copy.editedAgent,
-        target: `${name} · ${copy.versionRange(previous, revision)}`,
+        target: `${name}, ${copy.versionRange(previous, revision)}`,
       };
     }
     case 'workflow.created':

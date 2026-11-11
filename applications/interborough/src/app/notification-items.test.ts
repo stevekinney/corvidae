@@ -102,12 +102,12 @@ describe('buildNotificationEntries', () => {
       {
         kind: 'question',
         title: 'Which environment?',
-        detail: 'Waiting for your answer · request-human-input',
+        detail: 'Waiting for your answer, request-human-input',
       },
       {
         kind: 'approval',
         title: 'Run issue-refund?',
-        detail: 'Waiting for your approval · tool-runner',
+        detail: 'Waiting for your approval, tool-runner',
       },
     ]);
   });
@@ -150,7 +150,7 @@ describe('buildNotificationEntries', () => {
       sources({ reviews: [approval({ agentName: undefined })] }),
     );
 
-    expect(entry?.detail).toBe('Waiting for your approval · An agent');
+    expect(entry?.detail).toBe('Waiting for your approval, An agent');
   });
 
   test('a review names its agent as the catalog does, and by its identifier where it has no name', () => {
@@ -163,8 +163,8 @@ describe('buildNotificationEntries', () => {
     );
 
     expect(entries.map((entry) => entry.detail)).toEqual([
-      'Waiting for your answer · request-human-input',
-      'Waiting for your approval · Tool runner',
+      'Waiting for your answer, request-human-input',
+      'Waiting for your approval, Tool runner',
     ]);
   });
 
@@ -483,7 +483,7 @@ describe('the fires a schedule missed', () => {
       tier: 'warning',
       icon: 'calendar-x',
       title: `Nightly digest missed its ${clock(NOW - 90 * 60_000)} run`,
-      detail: `1 missed since ${day(NOW - 90 * 60_000)} · assistant`,
+      detail: `1 missed since ${day(NOW - 90 * 60_000)}, assistant`,
       href: '/schedules/s-1',
       emittedAtMs: NOW - 90 * 60_000,
     });
@@ -511,7 +511,7 @@ describe('the fires a schedule missed', () => {
 
     expect(rest).toEqual([]);
     expect(entry?.title).toBe(`Nightly digest missed its ${clock(newest)} run`);
-    expect(entry?.detail).toBe(`5 missed since ${day(oldest)} · assistant`);
+    expect(entry?.detail).toBe(`5 missed since ${day(oldest)}, assistant`);
     expect(entry?.emittedAtMs).toBe(newest);
   });
 
@@ -524,7 +524,7 @@ describe('the fires a schedule missed', () => {
     );
 
     expect(entry?.title).toMatch(/^Assistant missed its /);
-    expect(entry?.detail).toMatch(/ · Assistant$/);
+    expect(entry?.detail).toMatch(/, Assistant$/);
   });
 
   test('says when the one fire missed was skipped by a clock change', () => {
@@ -532,7 +532,7 @@ describe('the fires a schedule missed', () => {
       sources({ missedFires: [missed({ reason: 'dst-gap' })] }),
     );
 
-    expect(entry?.detail).toBe('Its time was skipped by a clock change · assistant');
+    expect(entry?.detail).toBe('Its time was skipped by a clock change, assistant');
   });
 
   test('is news for a day, and history after', () => {

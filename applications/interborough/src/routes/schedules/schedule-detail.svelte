@@ -2,7 +2,7 @@
   /**
    * One schedule (`/schedules/:schedule`; COR-2018, the heading, its actions and the details card
    * of `ScheduleDetail`): named by what it does ("Daily summary"), with the Active switch and its
-   * one status word ("Missed runs · 4", "Paused") beside the name, and the sentence that says what
+   * one status word ("Missed runs, 4", "Paused") beside the name, and the sentence that says what
    * it runs and when ("Runs Chat with an agent with Assistant every day at 3:00 AM (9:00 AM
    * UTC)."), then the line that says when it runs next and when it last ran. Under them are its
    * runs, and beside them the details card: what runs, its input, when, and how it behaves.
@@ -492,18 +492,21 @@
       {#if going !== undefined}
         <span class="ib-schedule__summary-part" data-tone="info" data-testid="schedule-running-now"
           >{copy.summary.runningNow}</span
-        >{copy.summary.startedAgo(startedAgo(going.createdAt, now))}{' · '}<Link
+        >{copy.summary.startedAgo(startedAgo(going.createdAt, now))}{', '}<Link
           underline="always"
           href={router.href(workflowDetailPath(going.id))}>{copy.openRun}</Link
-        >{' · '}
+        >{', '}
       {/if}
       {#each nextSummary(schedule, row, now, connection.unreachable || going !== undefined) as part, index (index)}
-        {#if index > 0}{' · '}{/if}
+        {#if index > 0}{', '}{/if}
         {#if part.tone !== undefined}<span class="ib-schedule__summary-part" data-tone={part.tone}
             >{part.text}</span
           >{:else}{part.text}{/if}
-      {/each}
-      {' · '}<ScheduleLastFire scheduleId={schedule.id} lastFireAt={schedule.lastFireAt} summary />
+      {/each}{', '}<ScheduleLastFire
+        scheduleId={schedule.id}
+        lastFireAt={schedule.lastFireAt}
+        summary
+      />
     </p>
 
     <div class="ib-schedule__layout">

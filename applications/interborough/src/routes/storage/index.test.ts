@@ -367,7 +367,7 @@ describe('the selected key', () => {
     expect(pane.getByTestId('storage-key-name').textContent).toBe('app:config');
     // One line over the key: its group, its size, and when it was written (this stub records none).
     expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toBe(
-      `App data and memory · ${new TextEncoder().encode(KEYS['app:config']).length} B`,
+      `App data and memory, ${new TextEncoder().encode(KEYS['app:config']).length} B`,
     );
     await waitFor(() => expect(pane.getByText('dark')).not.toBeNull());
     expect(pane.getByText('Theme')).not.toBeNull();
@@ -390,7 +390,7 @@ describe('the selected key', () => {
     const pane = within(await select(view, 'app:notes'));
     await waitFor(() => expect(pane.getByText('plain text note')).not.toBeNull());
 
-    expect(pane.getByText('Value · text, 15 B')).not.toBeNull();
+    expect(pane.getByText('Value, text, 15 B')).not.toBeNull();
     expect(pane.queryByRole('radio', { name: STORAGE_COPY.detail.jsonSwitch })).toBeNull();
     expect(pane.getByTestId('storage-text-note').textContent).toBe(
       'This value isn’t JSON, so there is no Fields or JSON switch.',
@@ -402,7 +402,7 @@ describe('the selected key', () => {
     const log = line.repeat(70_000);
     const view = await open({ keys: { ...KEYS, 'log:server': log } });
     const pane = within(await select(view, 'log:server'));
-    await pane.findByText('Value · text, 2.3 MB');
+    await pane.findByText('Value, text, 2.3 MB');
 
     expect(pane.getByTestId('storage-text-note').textContent).toBe(
       'Showing the first 64 KB. Copy value copies all 2.3 MB. This value isn’t JSON, so there is no Fields or JSON switch.',
@@ -568,7 +568,7 @@ describe('Rewritten while editing', () => {
     ).toBe('mine');
     expect(pane.queryByRole('button', { name: STORAGE_COPY.detail.save })).toBeNull();
     expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toMatch(
-      /^App data and memory · \d+ B · app:notes$/,
+      /^App data and memory, \d+ B, app:notes$/,
     );
     // Nothing is overwritten silently.
     expect(new TextDecoder().decode(server?.store.get('app:notes'))).toBe('theirs');
@@ -1229,7 +1229,7 @@ describe('the buttons of a key the application does not manage', () => {
     expect(alert.compareDocumentPosition(editor) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(editor.value).toBe('kept text');
     expect(pane.getByTestId('storage-key-summary').textContent?.trim()).toMatch(
-      /^App data and memory · \d+ B · app:notes$/,
+      /^App data and memory, \d+ B, app:notes$/,
     );
     expect(pane.queryByTestId('storage-key-name')).toBeNull();
     expect(pane.getByRole('button', { name: STORAGE_COPY.detail.save }).textContent?.trim()).toBe(

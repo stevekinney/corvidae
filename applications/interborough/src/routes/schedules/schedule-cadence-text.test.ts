@@ -57,13 +57,13 @@ describe('cadenceText', () => {
       'Every 15 minutes',
     );
     expect(cadenceText({ cronExpression: '0 9 1-7 * 1', timeZone: 'UTC' }, NOW).full).toBe(
-      'Cron · 0 9 1-7 * 1',
+      'Cron, 0 9 1-7 * 1',
     );
   });
 
   test('an expression that cannot be read is said as it is', () => {
     expect(cadenceText({ cronExpression: '0 9 * * * *', timeZone: 'UTC' }, NOW).full).toBe(
-      'Cron · 0 9 * * * *',
+      'Cron, 0 9 * * * *',
     );
   });
 });

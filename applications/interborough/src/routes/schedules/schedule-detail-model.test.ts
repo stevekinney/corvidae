@@ -228,7 +228,7 @@ describe('where a workflow file stopped parsing', () => {
   });
 
   test('says the file and the line, or the type alone when no line is known', () => {
-    expect(problemLocation('order-refund', 12)).toBe('order-refund · order-refund.json line 12');
+    expect(problemLocation('order-refund', 12)).toBe('order-refund, order-refund.json line 12');
     expect(problemLocation('order-refund', undefined)).toBe('order-refund');
   });
 });

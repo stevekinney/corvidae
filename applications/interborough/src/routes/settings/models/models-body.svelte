@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The body of Settings › Models (board SettingsShell, "Models · /settings/models"): one page, three
+   * The body of Settings › Models (board SettingsShell, "Models, /settings/models"): one page, three
    * sections and no tabs. Providers (Connect, or Connected with Manage), Models (the catalog, which
    * only reads) and Decisions (the decision model, its fallback and its limit per task, which are
    * Bureau settings that save as they are left). The first two read the host's providers; the third

@@ -132,10 +132,10 @@
 
   function activeAlertDetail(alert: ActiveAlertLike): string {
     const parts = [
-      `${metricValue(alert, alert.currentValue)} · threshold ${metricValue(alert, alert.threshold)}`,
+      `${metricValue(alert, alert.currentValue)}, threshold ${metricValue(alert, alert.threshold)}`,
     ];
     if (alert.window !== null) parts.push(`window ${alert.window}`);
-    return parts.join(' · ');
+    return parts.join(', ');
   }
 
   const STATE_BADGE: Readonly<Record<AlertRowState, { variant: BadgeVariant; label: string }>> = {

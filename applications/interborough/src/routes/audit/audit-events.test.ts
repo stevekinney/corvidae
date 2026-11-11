@@ -142,7 +142,7 @@ describe('what was done, in words', () => {
     });
     const event = describeRecord(asked, LOOKUPS);
     expect(event?.action).toBe('Asked to refund order 4471');
-    expect(event?.target).toBe('Issue refund · order 4471');
+    expect(event?.target).toBe('Issue refund, order 4471');
     expect(event?.title).toBe('Tool runner asked to refund order 4471');
     // Before the review is read, the tool is named instead.
     expect(describeRecord(asked, NO_LOOKUPS)?.action).toBe('Asked to use Issue refund');
@@ -155,7 +155,7 @@ describe('what was done, in words', () => {
     });
     expect(describeRecord(approved, LOOKUPS)).toMatchObject({
       action: 'Approved a tool call',
-      target: 'Issue refund · order 4471',
+      target: 'Issue refund, order 4471',
       title: 'You approved a tool call',
     });
     const ran = record({
@@ -170,7 +170,7 @@ describe('what was done, in words', () => {
     });
     expect(describeRecord(ran, LOOKUPS)).toMatchObject({
       action: 'Refunded order 4471',
-      target: '$42.00 · Issue refund',
+      target: '$42.00, Issue refund',
     });
     // Without the review to read, the tool is named instead.
     expect(describeRecord(ran, NO_LOOKUPS)?.action).toBe('Ran Issue refund');
@@ -250,7 +250,7 @@ describe('what was done, in words', () => {
         }),
         LOOKUPS,
       ),
-    ).toMatchObject({ action: 'Deleted a chat', target: '“Scratch test” · 12 messages' });
+    ).toMatchObject({ action: 'Deleted a chat', target: '“Scratch test”, 12 messages' });
     expect(
       describeRecord(
         record({
@@ -260,7 +260,7 @@ describe('what was done, in words', () => {
         }),
         LOOKUPS,
       )?.target,
-    ).toBe('“Scratch test” · 1 message');
+    ).toBe('“Scratch test”, 1 message');
     expect(
       describeRecord(record({ type: 'session.deleted', resource: 'session:s-1' }), LOOKUPS)?.target,
     ).toBe('Chat');
@@ -273,7 +273,7 @@ describe('what was done, in words', () => {
         }),
         LOOKUPS,
       ),
-    ).toMatchObject({ action: 'Edited an agent', target: 'Tool runner · version 3 → 4' });
+    ).toMatchObject({ action: 'Edited an agent', target: 'Tool runner, version 3 → 4' });
     expect(
       describeRecord(
         record({
@@ -440,17 +440,17 @@ describe('the pane’s facts', () => {
   test('words what changed in an agent’s version, listing the tools added or removed by their names', () => {
     const name = (id: string) => (id === 'issue-refund' ? 'Issue refund' : id);
     expect(changedWords('instructions,tools', 'issue-refund', undefined, name)).toBe(
-      'Instructions · Tools · added Issue refund',
+      'Instructions, Tools, added Issue refund',
     );
     expect(changedWords('toolApproval,model', undefined, 'a,b', name)).toBe(
-      'Tool approvals · Model · removed a, b',
+      'Tool approvals, Model, removed a, b',
     );
     // The key a saved version recorded under the name it had after COR-2137.
     expect(changedWords('approvals,model', undefined, 'a,b', name)).toBe(
-      'Tool approvals · Model · removed a, b',
+      'Tool approvals, Model, removed a, b',
     );
     expect(changedWords('effort,children,card', undefined, undefined, name)).toBe(
-      'Default effort · Child agents · Skill descriptors',
+      'Default effort, Child agents, Skill descriptors',
     );
     expect(changedWords(undefined, undefined, undefined, name)).toBe('');
     expect(changedWords('retryPolicy', undefined, undefined, name)).toBe('Retry policy');
@@ -468,7 +468,7 @@ describe('the pane’s facts', () => {
     const model = detailOf(event!, LOOKUPS, now);
     expect(model.facts.map((fact) => fact.term)).toEqual(['Provider', 'Effect']);
     expect(model.links).toEqual([{ label: 'Open Providers', href: '/settings/models' }]);
-    expect(model.whenLine).toMatch(/^Today at .* · from this browser$/);
+    expect(model.whenLine).toMatch(/^Today at .*, from this browser$/);
   });
 
   test('a decided call is Done, and a call whose review is gone reads as waiting', () => {

@@ -88,7 +88,7 @@ test.describe('what each schedule starts', () => {
       await expect(row(page, id)).toHaveAttribute('data-kind', 'agent-run');
       // What it is called, the kind first, and how often in words; never the identifier.
       await expect(row(page, id)).toContainText(SEEDED_DESCRIPTION);
-      await expect(row(page, id)).toContainText('Workflow · Chat with an agent');
+      await expect(row(page, id)).toContainText('Workflow, Chat with an agent');
       await expect(row(page, id)).toContainText(/every day at/i);
       await expect(row(page, id)).not.toContainText(id);
       const link = row(page, id).getByRole('link', { name: SEEDED_DESCRIPTION });
@@ -134,7 +134,7 @@ test.describe('what each schedule starts', () => {
     await page.goto('/schedules');
 
     const file = page.locator('li[data-kind="workflow-file"]').first();
-    await expect(file).toContainText('Workflow · ');
+    await expect(file).toContainText('Workflow, ');
     await file.getByRole('link').first().click();
     await expect(page).toHaveURL(/\/schedules\/[^/?]+$/);
     await expect(page.locator('a[href="/workflows/e2e-digest"]').first()).toBeVisible();
@@ -147,7 +147,7 @@ test.describe('what each schedule starts', () => {
       await page.goto('/schedules');
 
       const code = page.locator('li[data-kind="code"]').first();
-      await expect(code).toContainText('Workflow · ');
+      await expect(code).toContainText('Workflow, ');
       await expect(code.getByRole('link').first()).toHaveAttribute('href', /^\/schedules\//);
     });
   });

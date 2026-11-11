@@ -95,11 +95,11 @@ describe('DeploymentVersionsView — what the server reports', () => {
     });
     const a = row(container, 'build-a');
     expect(within(a).getByText('Ready')).not.toBeNull();
-    expect(within(a).getByText('2 referenced · reachable')).not.toBeNull();
+    expect(within(a).getByText('2 referenced, reachable')).not.toBeNull();
     expect(within(a).getByText('None connected')).not.toBeNull();
     const b = row(container, 'build-b');
     expect(within(b).getByText('Current')).not.toBeNull();
-    expect(within(b).getByText(/2 workers · 2\/8 in flight/)).not.toBeNull();
+    expect(within(b).getByText(/2 workers, 2\/8 in flight/)).not.toBeNull();
     expect(within(b).getByText('0 unreferenced')).not.toBeNull();
     expect(within(row(container, 'build-c')).getByText('Ramping')).not.toBeNull();
     expect(container.querySelector('[title="sha256:artifact-build-a"]')).not.toBeNull();

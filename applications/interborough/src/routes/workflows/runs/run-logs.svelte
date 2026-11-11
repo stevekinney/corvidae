@@ -42,7 +42,7 @@
   const trigger = $derived(
     logs.data === undefined
       ? RUN_LOGS_COPY.heading
-      : `${RUN_LOGS_COPY.heading} · ${RUN_LOGS_COPY.count(logs.data.lines.length)}`,
+      : `${RUN_LOGS_COPY.heading}, ${RUN_LOGS_COPY.count(logs.data.lines.length)}`,
   );
 </script>
 

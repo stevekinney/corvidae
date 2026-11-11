@@ -47,7 +47,7 @@ const WEEKDAY_PLURALS = /^(?:Sundays|Mondays|Tuesdays|Wednesdays|Thursdays|Frida
  */
 export function cadenceClause(cadence: ScheduleCadence): string {
   const words = describeCadence(cadence);
-  if (words.startsWith('Cron · ')) return `on cron ${words.slice('Cron · '.length)}`;
+  if (words.startsWith('Cron, ')) return `on cron ${words.slice('Cron, '.length)}`;
   if (words === 'Unknown cadence') return 'on an unknown cadence';
   if (WEEKDAY_PLURALS.test(words)) return `on ${words}`;
   return `${words.charAt(0).toLowerCase()}${words.slice(1)}`;
@@ -59,7 +59,7 @@ export function cadenceClause(cadence: ScheduleCadence): string {
  * expression into words ("every day at 09:00"), where no expression is shown.
  */
 export function cadenceIdentifiers(cadence: ScheduleCadence): string[] {
-  return cadence.cronExpression !== undefined && describeCadence(cadence).startsWith('Cron · ')
+  return cadence.cronExpression !== undefined && describeCadence(cadence).startsWith('Cron, ')
     ? [cadence.cronExpression]
     : [];
 }

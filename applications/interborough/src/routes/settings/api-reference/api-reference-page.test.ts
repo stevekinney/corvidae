@@ -317,11 +317,11 @@ describe('Settings › API reference', () => {
     expect(panel.textContent).toContain(API_REFERENCE_COPY.sources.intro);
     const text = (id: string) =>
       panel.querySelector(`[data-workflow-file="${id}"]`)?.textContent?.replace(/\s+/g, ' ').trim();
-    expect(text('order-refund')).toBe('workflows/order-refund.json 1 workflow · Order refund');
+    expect(text('order-refund')).toBe('workflows/order-refund.json 1 workflow, Order refund');
     expect(text('release-notes')).toBe(
-      'workflows/release-notes.json 1 workflow · Release notes, 1 schedule',
+      'workflows/release-notes.json 1 workflow, Release notes, 1 schedule',
     );
-    expect(text('triage-inbox')).toBe('workflows/triage-inbox.json 1 workflow · Triage inbox');
+    expect(text('triage-inbox')).toBe('workflows/triage-inbox.json 1 workflow, Triage inbox');
     expect(within(panel).queryByRole('button', { name: /open file/i })).toBeNull();
     // The board's read-only tab draws the intro and the files, and nothing under them.
     expect(within(panel).queryAllByRole('button')).toEqual([]);

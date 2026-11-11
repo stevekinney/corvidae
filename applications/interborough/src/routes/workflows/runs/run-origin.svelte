@@ -55,7 +55,7 @@
       <a href={router.href(schedulePath)} onclick={(event) => open(event, schedulePath)}
         ><code class="ib-identifier">{origin.scheduleId}</code></a
       >
-      ({origin.manual ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}` : TASK_COPY.schedule}) ·
+      ({origin.manual ? `${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}` : TASK_COPY.schedule}),
     {/if}
     <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}
       >{origin.title === '' ? TASK_COPY.untitledChat : origin.title}</a
@@ -66,12 +66,11 @@
   {:else if origin.kind === 'agent'}
     {@render link(origin.href)} ({TASK_COPY.agent})
   {:else if origin.kind === 'agent-run'}
-    An agent's tool call · {origin.agentName} ·
+    An agent's tool call, {origin.agentName},
     <a href={router.href(origin.href)} onclick={(event) => open(event, origin.href)}>Calling run</a>
   {:else if origin.kind === 'goal'}
     {@render link(origin.href)}{#if origin.session}
-      {@const session = origin.session}
-      ·
+      {@const session = origin.session},
       <a href={router.href(session.href)} onclick={(event) => open(event, session.href)}
         >{session.title === '' ? TASK_COPY.untitledChat : session.title}</a
       >{/if}

@@ -145,11 +145,11 @@ describe('the list', () => {
       'Draining',
     ]);
     expect(rows[0]?.textContent).toContain('reports queue');
-    expect(rows[1]?.textContent).toContain('payments · 3 running');
+    expect(rows[1]?.textContent).toContain('payments, 3 running');
     expect(rows[2]?.textContent).toContain('Finishing 2 tasks, then stops');
     const summaryLine = await findByTestId('workers-summary');
     expect(summaryLine.textContent).toBe(
-      '2 of 3 connected · 5 running · 12 waiting · 2 failed for good',
+      '2 of 3 connected, 5 running, 12 waiting, 2 failed for good',
     );
   });
 

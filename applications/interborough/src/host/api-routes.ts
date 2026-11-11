@@ -1,5 +1,5 @@
 /**
- * Interborough's own HTTP API (board PageSettingsSections, "API reference · Operations"): the seven
+ * Interborough's own HTTP API (board PageSettingsSections, "API reference, Operations"): the seven
  * operations a person's programs use, each implemented over the Bureau and checked against the
  * caller's scopes (`src/lib/api-scopes.ts`).
  *

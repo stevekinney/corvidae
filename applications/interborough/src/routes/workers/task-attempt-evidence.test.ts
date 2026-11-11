@@ -223,10 +223,10 @@ describe('cancellation evidence', () => {
       }),
     );
     expect(evidence.status).toBe('settled-after-grace-period');
-    expect(evidence.statusLabel).toBe('Settled after grace period · no worker acknowledgement');
+    expect(evidence.statusLabel).toBe('Settled after grace period, no worker acknowledgement');
     expect(evidence.variant).toBe('warning');
     expect(evidence.acknowledgement).toBe(
-      `Not acknowledged · Interborough settled attempt 2 at ${new Date(NOW).toISOString()} after the cancellation grace period elapsed`,
+      `Not acknowledged, Interborough settled attempt 2 at ${new Date(NOW).toISOString()} after the cancellation grace period elapsed`,
     );
   });
 

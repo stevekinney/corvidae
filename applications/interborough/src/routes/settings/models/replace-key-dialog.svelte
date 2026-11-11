@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Replace the key a connected provider already has (board SettingsShell, "Replace key · in
+   * Replace the key a connected provider already has (board SettingsShell, "Replace key, in
    * progress"): a new key is tested first and saved only once the provider accepts it, so the old key
    * keeps working until then. While it tests, "Replace key" is disabled and Cancel stays. A refused
    * key is worded at the field and nothing is saved. The key sequence lives in

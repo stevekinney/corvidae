@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The body of Settings › Plugins (board PageSettingsSections, "Plugins · /settings/plugins"): the
+   * The body of Settings › Plugins (board PageSettingsSections, "Plugins, /settings/plugins"): the
    * plugins Interborough loaded at startup as a list with the open one beside it, under the restart
    * notice every section of Settings shares. The notice counts the plugins that wait for a restart
    * with the settings that do, and Revert and Restart now act on both.
@@ -194,7 +194,7 @@
     ];
     // The plugin turned off is the only plugin change: the dialog and the banner then say what
     // became of it, even while a setting also waits for the restart (board PageSettingsSections,
-    // "Disable · failed" and "Disable · back up").
+    // "Disable, failed" and "Disable, back up").
     const alone =
       turningOff !== undefined &&
       changed.length === 1 &&

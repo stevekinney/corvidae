@@ -68,7 +68,7 @@
           { term: 'Last heartbeat', definition: exactTimestamp(instance.lastHeartbeatAt) },
           {
             term: 'Heartbeat age',
-            definition: `${formatDuration(instance.heartbeatAgeMs)} · ${stale ? 'stale' : 'fresh'} (stale at ${formatDuration(staleAfterMs)})`,
+            definition: `${formatDuration(instance.heartbeatAgeMs)}, ${stale ? 'stale' : 'fresh'} (stale at ${formatDuration(staleAfterMs)})`,
           },
         ]
       : [],

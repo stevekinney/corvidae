@@ -87,7 +87,7 @@ describe('Workers route with no connected worker (rows 78c to 78e)', () => {
     expect(view.getByRole('heading', { level: 1, name: 'Health' })).not.toBeNull();
     expect(view.getByRole('heading', { level: 2, name: 'Workers' })).not.toBeNull();
     expect(view.getByTestId('workers-summary').textContent).toBe(
-      'Work runs inside Interborough · 0 running · 0 waiting',
+      'Work runs inside Interborough, 0 running, 0 waiting',
     );
     expect(view.getByText(copy.empty.description)).not.toBeNull();
     expect(workersTabs(view).length).toBe(0);

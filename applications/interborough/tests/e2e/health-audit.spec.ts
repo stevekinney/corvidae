@@ -182,7 +182,7 @@ test.describe('Health › Audit log on the sample world', () => {
     const headings = await main
       .locator('tbody th[colspan], tbody td[colspan]')
       .evaluateAll((cells) => cells.map((cell) => cell.textContent?.replace(/\s+/g, ' ').trim()));
-    expect(headings[0]).toBe('Today, Nov 2 · Central time');
+    expect(headings[0]).toBe('Today, Nov 2, Central time');
     expect(await cellsOf(page, 0)).toEqual([
       '10:45 AM',
       'You',
@@ -193,7 +193,7 @@ test.describe('Health › Audit log on the sample world', () => {
       '10:42 AM',
       'Tool runner',
       'Asked to refund order 4471',
-      'Issue refund · order 4471',
+      'Issue refund, order 4471',
     ]);
     expect(await cellsOf(page, 2)).toEqual([
       '10:42 AM',
@@ -205,13 +205,13 @@ test.describe('Health › Audit log on the sample world', () => {
       '10:33 AM',
       'Tool runner',
       'Refunded order 4472',
-      '$18.50 · Issue refund',
+      '$18.50, Issue refund',
     ]);
     expect(await cellsOf(page, 4)).toEqual([
       '10:33 AM',
       'You',
       'Approved a tool call',
-      'Issue refund · order 4472',
+      'Issue refund, order 4472',
     ]);
     const today = await rows(page).evaluateAll((all) =>
       all.map((row) => row.querySelector('td, th')?.textContent?.trim() ?? ''),
@@ -223,7 +223,7 @@ test.describe('Health › Audit log on the sample world', () => {
       '10:30 AM',
       'Tool runner',
       'Asked to refund order 4472',
-      'Issue refund · order 4472',
+      'Issue refund, order 4472',
     ]);
     expect(await cellsOf(page, 7)).toEqual([
       '9:00 AM',
@@ -241,19 +241,19 @@ test.describe('Health › Audit log on the sample world', () => {
     // 82h: today lists nine rows, and the log nine plus the two days that follow.
     await expect(rows(page)).toHaveCount(11);
     // 82i: yesterday's one row follows under a heading of its own, then Thu Oct 29's.
-    expect(headings[1]).toBe('Yesterday, Sun Nov 1 · Central time');
+    expect(headings[1]).toBe('Yesterday, Sun Nov 1, Central time');
     expect(await cellsOf(page, 9)).toEqual([
       '4:12 PM',
       'You',
       'Deleted a chat',
-      '“Scratch test” · 12 messages',
+      '“Scratch test”, 12 messages',
     ]);
-    expect(headings[2]).toBe('Thu Oct 29 · Central time');
+    expect(headings[2]).toBe('Thu Oct 29, Central time');
     expect(await cellsOf(page, 10)).toEqual([
       '11:38 AM',
       'You',
       'Edited an agent',
-      'Tool runner · version 3 → 4',
+      'Tool runner, version 3 → 4',
     ]);
     const texts = await rows(page).evaluateAll((all) => all.map((row) => row.textContent ?? ''));
     expect(
@@ -275,7 +275,7 @@ test.describe('Health › Audit log on the sample world', () => {
     const pane = main.getByTestId('audit-detail');
     await expect(pane.locator('h3')).toHaveText('You removed the Anthropic key');
     await expect(pane).toContainText(
-      /^You removed the Anthropic key\s*Today at 10:45:00 AM · from this browser/,
+      /^You removed the Anthropic key\s*Today at 10:45:00 AM, from this browser/,
     );
     await expect(pane.locator('dl').nth(0)).toContainText('Provider');
     await expect(pane.locator('dl').nth(0)).toContainText('Anthropic');
@@ -317,8 +317,8 @@ test.describe('Health › Audit log on the sample world', () => {
     await openAudit(page);
     const main = page.locator('main');
     const headings = main.locator('tbody th[colspan], tbody td[colspan]');
-    await expect(headings.nth(0)).toHaveText('Today, Nov 2 · Central time');
-    await expect(headings.nth(1)).toHaveText('Yesterday, Sun Nov 1 · Central time');
+    await expect(headings.nth(0)).toHaveText('Today, Nov 2, Central time');
+    await expect(headings.nth(1)).toHaveText('Yesterday, Sun Nov 1, Central time');
     const oldest = headings.filter({ hasText: /^Thu Oct 29/ });
     await expect(oldest).toHaveCount(1);
     await oldest.scrollIntoViewIfNeeded();
@@ -352,7 +352,7 @@ test.describe('Health › Audit log on the sample world', () => {
     // 82x: the title, and the line that names the chat by its real title.
     await expect(pane.locator('h3')).toHaveText('Tool runner asked to refund order 4471');
     await expect(pane).toContainText(
-      'Today at 10:42:20 AM · in the chat “Please refund order 4471, it arrived damaged.”',
+      'Today at 10:42:20 AM, in the chat “Please refund order 4471, it arrived damaged.”',
     );
 
     // 82y: Tool with the small identifier, Risk as muted text, Amount, and Status in the warning
@@ -363,7 +363,7 @@ test.describe('Health › Audit log on the sample world', () => {
     await expect(lists.nth(0)).toContainText('Issue refund');
     await expect(lists.nth(0).locator('code')).toHaveText('issue-refund');
     await expect(lists.nth(1)).toContainText('Risk');
-    await expect(lists.nth(1)).toContainText('Dangerous · Can’t be undone');
+    await expect(lists.nth(1)).toContainText('Dangerous, Can’t be undone');
     const riskColor = await lists
       .nth(1)
       .locator('dd span')
@@ -469,14 +469,14 @@ test.describe('Health › Audit log on the sample world', () => {
 
     // 82p: the title, the line, and the rows Agent (a link), Version and Changed.
     await expect(pane.locator('h3')).toHaveText('You edited an agent');
-    await expect(pane).toContainText('Thu Oct 29 at 7:40:12 AM · from this browser');
+    await expect(pane).toContainText('Thu Oct 29 at 7:40:12 AM, from this browser');
     await expect(pane.locator('dl').nth(0)).toContainText('Agent');
     await expect(
       pane.locator('dl').nth(0).getByRole('link', { name: 'Tool runner' }),
     ).toHaveAttribute('href', '/agents/tool-runner');
     await expect(pane.locator('dl').nth(1)).toContainText('3 → 4');
     await expect(pane.locator('dl').nth(2)).toContainText(
-      'Instructions · Tools · added Issue refund',
+      'Instructions, Tools, added Issue refund',
     );
 
     // 82q: a diff clamped to a few lines, with a footer that counts and a Show all at its right.
@@ -549,7 +549,7 @@ test.describe('Health › Audit log on the sample world', () => {
     // 83g: the pane shows the whole value, wrapped, in small monospace, with its length and Copy key.
     const target = main.getByTestId('audit-target');
     await expect(main.getByTestId('audit-detail').locator('dl')).toHaveCount(0);
-    await expect(target).toContainText('Target · 2,000 characters');
+    await expect(target).toContainText('Target, 2,000 characters');
     await expect(target.locator('p').nth(1)).toHaveText(key);
     const mono = await target
       .locator('p')

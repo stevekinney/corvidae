@@ -114,7 +114,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
       /cinder-sr-only/,
     );
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2 · Times show in Central time (CST)',
+      'Monday, Nov 2, Times show in Central time (CST)',
     );
   });
 
@@ -144,10 +144,10 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     const rows = card.getByRole('listitem');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText('Which environment should the release go to?');
-    await expect(rows.nth(0)).toContainText('Question · Request human input · 1 h ago');
+    await expect(rows.nth(0)).toContainText('Question, Request human input, 1 h ago');
     await expect(rows.nth(0).getByRole('link', { name: 'Answer' })).toBeVisible();
     await expect(rows.nth(1)).toContainText('Refund order 4471 for $42.00?');
-    await expect(rows.nth(1)).toContainText('Approval · Tool runner · Can’t be undone · 4 min ago');
+    await expect(rows.nth(1)).toContainText('Approval, Tool runner, Can’t be undone, 4 min ago');
     await expect(rows.nth(1).getByRole('link', { name: 'Review' })).toBeVisible();
     await expect(card.getByRole('link', { name: 'Open Reviews' })).toHaveAttribute(
       'href',
@@ -173,7 +173,7 @@ test.describe('Home on the sample world, with something waiting on you', () => {
     await expect(rows.nth(0).getByRole('link', { name: 'Review storage' })).toBeVisible();
     await expect(rows.nth(1)).toContainText('Daily summary missed 4 runs since Oct 30');
     await expect(rows.nth(1)).toContainText(
-      'Schedule · Assistant · Every day at 3:00 AM (9:00 AM UTC)',
+      'Schedule, Assistant, Every day at 3:00 AM (9:00 AM UTC)',
     );
     await expect(rows.nth(1).getByRole('link', { name: 'View schedule' })).toBeVisible();
     await expect(rows.nth(2)).toContainText('No model provider connected');
@@ -305,7 +305,7 @@ test.describe('Home with nothing waiting and a provider connected', () => {
     await expect(empty.getByRole('link', { name: 'Open Reviews' })).toBeVisible();
     const clear = page.getByTestId('attention-clear');
     await expect(clear).toContainText(
-      'Nothing needs attention · Storage, schedules, providers and hooks are fine.',
+      'Nothing needs attention, Storage, schedules, providers and hooks are fine.',
     );
     await expect(clear.getByRole('link', { name: 'Open Health' })).toBeVisible();
     const rows = page.getByRole('list', { name: 'Recent chats' }).getByRole('listitem');
@@ -526,7 +526,7 @@ test.describe('Home with a run going', () => {
     const row = card.getByRole('listitem');
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('Daily summary');
-    await expect(row).toContainText('Running · Schedule · Assistant · started 10:44 AM');
+    await expect(row).toContainText('Running, Schedule, Assistant, started 10:44 AM');
     await expect(row.locator('.cinder-status-dot')).toHaveAttribute('data-cinder-status', 'info');
     await expect(row.getByRole('link', { name: 'View run' })).toHaveAttribute(
       'href',
@@ -599,7 +599,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     await expect(body).toHaveAttribute('aria-busy', 'true');
     // The date line, the four count labels and the section headings are real text.
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2 · Times show in Central time (CST)',
+      'Monday, Nov 2, Times show in Central time (CST)',
     );
     const counts = page.getByTestId('home-loading-counts').locator('.cinder-statistic');
     await expect(counts.locator('.cinder-statistic__label')).toHaveText([
@@ -676,7 +676,7 @@ test.describe('Home while it loads (02c, 02d, 02e, 02f)', () => {
     // The page keeps its date line, and says the load was canceled in place of the cards.
     await expect(homeBody(page)).toHaveAttribute('data-mode', 'canceled');
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2 · Times show in Central time (CST)',
+      'Monday, Nov 2, Times show in Central time (CST)',
     );
     const canceled = page.getByTestId('home-canceled');
     await expect(canceled).toContainText('Loading canceled');
@@ -917,7 +917,7 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
       /cinder-sr-only/,
     );
     await expect(page.getByTestId('home-date')).toHaveText(
-      'Monday, Nov 2 · Times show in Central time (CST)',
+      'Monday, Nov 2, Times show in Central time (CST)',
     );
     // Four count cards in two columns, with a dot only on a non-zero bad count.
     const stats = page.getByTestId('home-counts').locator('.cinder-statistic');
@@ -942,9 +942,9 @@ test.describe('Home on a phone (05c, 05o, 05p, 05q)', () => {
     const rows = needsYou(page).getByRole('listitem');
     await expect(rows).toHaveCount(2);
     await expect(rows.nth(0)).toContainText('Which environment should the release go to?');
-    await expect(rows.nth(0)).toContainText('Question · Request human input');
+    await expect(rows.nth(0)).toContainText('Question, Request human input');
     await expect(rows.nth(1)).toContainText('Refund order 4471 for $42.00?');
-    await expect(rows.nth(1)).toContainText('Approval · Tool runner · Can’t be undone');
+    await expect(rows.nth(1)).toContainText('Approval, Tool runner, Can’t be undone');
     for (const [index, name] of [
       [0, 'Answer'],
       [1, 'Review'],

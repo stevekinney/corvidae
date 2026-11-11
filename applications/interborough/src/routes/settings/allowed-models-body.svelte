@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The body of Settings › Allowed models (board PageSettingsSections, "Allowed models ·
+   * The body of Settings › Allowed models (board PageSettingsSections, "Allowed models,
    * /settings/allowed-models"): which of the connected providers' models agents may use, as one
    * checkbox per model, and the caller's own preferences among them, as two setting rows. It edits
    * the `modelPolicy` setting in plain words and never shows it as JSON.

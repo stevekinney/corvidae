@@ -266,7 +266,7 @@ describe('the models', () => {
       '200K',
       'Allowed',
     ]);
-    expect(cells(rowOf(container, 'anthropic/claude-haiku-4-5')!)[1]).toBe('Tools · images');
+    expect(cells(rowOf(container, 'anthropic/claude-haiku-4-5')!)[1]).toBe('Tools, images');
   });
 
   test('set the identifier small and monospaced under the name, with a green dot for Allowed', async () => {

@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Remove a provider's key (board SettingsShell, "Remove key · confirm"): a Cinder confirm dialog
+   * Remove a provider's key (board SettingsShell, "Remove key, confirm"): a Cinder confirm dialog
    * with a solid danger button, because removing the key stops every agent that needs one of the
    * provider's models. It names those agents, then says that Run now on their schedules is disabled
    * too and that chats and runs stay. The agents come from the Bureau's definitions (the ones whose

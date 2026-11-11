@@ -125,7 +125,7 @@ describe.skipIf(database === null)('a host on Postgres and S3', () => {
     },
   );
 
-  // Board SettingsShell, "Locked settings · remote mode": the deployment sizes the run cap.
+  // Board SettingsShell, "Locked settings, remote mode": the deployment sizes the run cap.
   test('locks engine.maxConcurrentRuns for the deployment, and refuses to store a new cap', async () => {
     const host = await start();
 

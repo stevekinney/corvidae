@@ -117,9 +117,7 @@ describe('Workers route — the Workers list', () => {
 
     const summary = await findByTestId('workers-summary');
     // A worker that finished draining is listed, but it no longer takes work.
-    expect(summary.textContent).toBe(
-      '1 of 2 connected · 2 running · 12 waiting · 2 failed for good',
-    );
+    expect(summary.textContent).toBe('1 of 2 connected, 2 running, 12 waiting, 2 failed for good');
     // The page's own tab bar is behind Advanced, closed until an address asks for a tab.
     expect(workersTabs(view)).toHaveLength(0);
     expect(queryByText('Total workers')).toBeNull();

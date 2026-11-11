@@ -37,11 +37,10 @@ export const WORKER_COPY = {
     clearFilter: 'Clear filter',
     /** Line two of a row, by how the worker stands. */
     meta: {
-      connected: (queue: string, running: number): string =>
-        `${queue} · ${String(running)} running`,
+      connected: (queue: string, running: number): string => `${queue}, ${String(running)} running`,
       disconnected: (queue: string): string => `${queue} queue`,
       draining: (running: number): string => `Finishing ${tasks(running)}, then stops`,
-      stopped: (finished: number): string => `Drained · finished its ${tasks(finished)}`,
+      stopped: (finished: number): string => `Drained, finished its ${tasks(finished)}`,
     },
     /** What the empty detail pane says while no worker is open. */
     pickTitle: 'Choose a worker',
@@ -65,7 +64,7 @@ export const WORKER_COPY = {
     stillLoadingMilliseconds: 10_000,
     empty: {
       /** The one line under the heading when nothing is connected: nothing runs elsewhere, so nothing is counted. */
-      summary: 'Work runs inside Interborough · 0 running · 0 waiting',
+      summary: 'Work runs inside Interborough, 0 running, 0 waiting',
       title: 'No workers connected',
       description: 'Work runs inside Interborough. Connect a worker to run it elsewhere.',
       howToConnect: 'How to connect a worker',
@@ -155,10 +154,10 @@ export const WORKER_COPY = {
     runLink: (workflow: string): string => `${workflow} run`,
     forThe: 'for the',
     failedLine: (attempts: number, cause: string): string =>
-      `Failed after ${String(attempts)} ${attempts === 1 ? 'try' : 'tries'} · ${cause}`,
+      `Failed after ${String(attempts)} ${attempts === 1 ? 'try' : 'tries'}, ${cause}`,
     unknownCause: 'Its result could not be saved.',
-    waitingLine: (queue: string): string => `On the ${queue} queue · waiting for a ${queue} worker`,
-    backLine: (attempt: number): string => `Back on the queue · try ${String(attempt)}`,
+    waitingLine: (queue: string): string => `On the ${queue} queue, waiting for a ${queue} worker`,
+    backLine: (attempt: number): string => `Back on the queue, try ${String(attempt)}`,
     footnote:
       'Retry puts a task back on the queue. Clear removes the task and its payload; an Undo toast follows.',
     showing: 'waiting tasks',

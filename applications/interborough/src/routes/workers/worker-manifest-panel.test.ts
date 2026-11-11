@@ -59,7 +59,7 @@ describe('WorkerManifestPanel', () => {
       },
     });
 
-    expect(getByText('Ready · server accepted')).not.toBeNull();
+    expect(getByText('Ready, server accepted')).not.toBeNull();
     for (const value of [
       'payments-api',
       'build-7',
@@ -90,7 +90,7 @@ describe('WorkerManifestPanel', () => {
       },
     });
     expect(getByLabelText('Loading canonical worker manifest')).not.toBeNull();
-    expect(queryByText('Ready · server accepted')).toBeNull();
+    expect(queryByText('Ready, server accepted')).toBeNull();
   });
 
   test('shows stale-disconnect evidence when detail resolves to null', () => {
@@ -104,7 +104,7 @@ describe('WorkerManifestPanel', () => {
       },
     });
     expect(getByText('Worker no longer connected')).not.toBeNull();
-    expect(queryByText('Ready · server accepted')).toBeNull();
+    expect(queryByText('Ready, server accepted')).toBeNull();
   });
 
   test('shows malformed/server data failures explicitly', () => {
@@ -144,6 +144,6 @@ describe('WorkerManifestPanel', () => {
         capabilities: {},
       },
     });
-    expect(getByText('Refreshing · showing cached evidence')).not.toBeNull();
+    expect(getByText('Refreshing, showing cached evidence')).not.toBeNull();
   });
 });

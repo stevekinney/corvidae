@@ -154,7 +154,7 @@ describe('failed tasks', () => {
       within(row as HTMLElement).getByRole('link', { name: 'Release notes run' }),
     ).not.toBeNull();
     expect(row?.textContent).toContain('Oct 30');
-    expect(row?.textContent).toContain('Failed after 5 tries · GitHub didn’t answer (HTTP 503).');
+    expect(row?.textContent).toContain('Failed after 5 tries, GitHub didn’t answer (HTTP 503).');
   });
 
   test('each has Retry, Clear, and View payload that name that task', async () => {
@@ -177,7 +177,7 @@ describe('failed tasks', () => {
     const { view } = renderTasks({ retrying: new Set(['op-1', 'op-2']), retryingCount: 2 });
     const row = view.container.querySelector<HTMLElement>('[data-task="op-1"]');
     expect(row?.textContent).toContain('Waiting');
-    expect(row?.textContent).toContain('Back on the queue · try 6');
+    expect(row?.textContent).toContain('Back on the queue, try 6');
     expect(row?.textContent).toContain('Oct 30');
     expect(within(row as HTMLElement).queryByRole('button', { name: 'Retry' })).toBeNull();
   });
@@ -193,7 +193,7 @@ describe('waiting tasks', () => {
     const { view } = renderTasks({ tab: 'waiting', tasks: rows });
     const row = view.container.querySelector<HTMLElement>('[data-task="w-1"]') as HTMLElement;
     expect(row.textContent).toContain('Waiting');
-    expect(row.textContent).toContain('On the reports queue · waiting for a reports worker');
+    expect(row.textContent).toContain('On the reports queue, waiting for a reports worker');
     expect(within(row).queryByRole('button')).toBeNull();
     expect(view.queryByText(/Retry puts a task back/)).toBeNull();
   });

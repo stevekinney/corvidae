@@ -148,7 +148,7 @@ describe('WorkerTechnicalDetails — server-reported session', () => {
       session.getByText(`${new Date(SESSION_NOW - 3_600_000).toISOString()} (1h ago)`),
     ).not.toBeNull();
     expect(session.getByText(new Date(SESSION_NOW - 4_000).toISOString())).not.toBeNull();
-    expect(session.getByText('4s · fresh (stale at 2m)')).not.toBeNull();
+    expect(session.getByText('4s, fresh (stale at 2m)')).not.toBeNull();
     expect(session.getAllByText('Active')).toHaveLength(2);
     expect(session.getByText('Heartbeat fresh')).not.toBeNull();
   });
@@ -160,7 +160,7 @@ describe('WorkerTechnicalDetails — server-reported session', () => {
     const session = sessionRegion(container);
 
     expect(session.getByText('Heartbeat stale')).not.toBeNull();
-    expect(session.getByText('3m · stale (stale at 2m)')).not.toBeNull();
+    expect(session.getByText('3m, stale (stale at 2m)')).not.toBeNull();
     expect(session.getByText(/No heartbeat for 3m\. The session may be slow/)).not.toBeNull();
     expect(session.getAllByText('Draining')).toHaveLength(2);
   });
@@ -276,7 +276,7 @@ describe('WorkerTechnicalDetails — transport-aware session lifecycle (COR-160)
         now: SESSION_NOW,
       },
     });
-    expect(sessionRegion(closed.container).getAllByText('Closed · drained').length).toBeGreaterThan(
+    expect(sessionRegion(closed.container).getAllByText('Closed, drained').length).toBeGreaterThan(
       0,
     );
     closed.unmount();
@@ -290,7 +290,7 @@ describe('WorkerTechnicalDetails — transport-aware session lifecycle (COR-160)
       },
     });
     expect(
-      sessionRegion(closing.container).getAllByText('Closing · draining').length,
+      sessionRegion(closing.container).getAllByText('Closing, draining').length,
     ).toBeGreaterThan(0);
   });
 });

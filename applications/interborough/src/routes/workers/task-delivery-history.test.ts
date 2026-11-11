@@ -57,11 +57,11 @@ describe('TaskDeliveryHistory', () => {
 
     const { findByText, getByText } = renderHistory();
 
-    expect(await findByText('Rejected · stale-attempt')).not.toBeNull();
+    expect(await findByText('Rejected, stale-attempt')).not.toBeNull();
     expect(getByText('attempt 2 owns this task')).not.toBeNull();
     expect(getByText('No ledger attempt carries this token')).not.toBeNull();
     expect(getByText('HTTP long-poll')).not.toBeNull();
-    expect(getByText('Acknowledged · dead-lettered')).not.toBeNull();
+    expect(getByText('Acknowledged, dead-lettered')).not.toBeNull();
     expect(getByText('worker-b')).not.toBeNull();
   });
 
@@ -176,7 +176,7 @@ describe('TaskDeliveryHistory — alike submissions', () => {
       deliveries: [rejected, { ...rejected }],
     });
     const view = renderHistory();
-    const rendered = await view.findAllByText('Rejected · stale-attempt');
+    const rendered = await view.findAllByText('Rejected, stale-attempt');
     expect(rendered).toHaveLength(2);
   });
 });

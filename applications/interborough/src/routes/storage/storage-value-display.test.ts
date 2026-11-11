@@ -57,7 +57,7 @@ describe('StorageValueDisplay', () => {
       props: { value: new TextEncoder().encode('server started') },
     });
 
-    expect(getByText('Value · text, 14 B')).not.toBeNull();
+    expect(getByText('Value, text, 14 B')).not.toBeNull();
     expect(getByTestId('storage-text-value').textContent).toContain('server started');
     expect(queryAllByRole('radio')).toHaveLength(0);
     expect(getByTestId('storage-text-note').textContent).toBe(
@@ -70,7 +70,7 @@ describe('StorageValueDisplay', () => {
     const bytes = new TextEncoder().encode(line.repeat(70_000));
     const { getByText, getByTestId } = render(StorageValueDisplay, { props: { value: bytes } });
 
-    expect(getByText('Value · text, 2.3 MB')).not.toBeNull();
+    expect(getByText('Value, text, 2.3 MB')).not.toBeNull();
     expect(getByTestId('storage-text-note').textContent).toBe(
       'Showing the first 64 KB. Copy value copies all 2.3 MB. This value isn’t JSON, so there is no Fields or JSON switch.',
     );

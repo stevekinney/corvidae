@@ -1,5 +1,5 @@
 /**
- * Settings › Data and retention (board PageSettingsSections, "Data and retention · /settings/data-
+ * Settings › Data and retention (board PageSettingsSections, "Data and retention, /settings/data-
  * and-retention" and "Field error") on the sample world, whose storage alert is firing, and on the
  * seeded host, which has no storage rule. Every change a case makes is one nothing deletes by: the
  * audit window is lengthened and put back, and the field error is never saved.
@@ -112,7 +112,7 @@ test.describe('Settings › Data and retention', () => {
     // Storage is one read-only row, with the alert firing and a link to Health, and no meter.
     const storage = row(page, 'storage-usage');
     await expect(storage).toContainText('Space used');
-    await expect(storage).toContainText('Storage is over its warning level · 1.6 GB');
+    await expect(storage).toContainText('Storage is over its warning level, 1.6 GB');
     await expect(storage).toContainText('Health lists this under Needs attention.');
     await expect(storage.getByRole('link', { name: 'Open Health' })).toHaveAttribute(
       'href',

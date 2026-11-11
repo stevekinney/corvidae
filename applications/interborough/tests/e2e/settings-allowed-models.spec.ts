@@ -1,5 +1,5 @@
 /**
- * Settings › Allowed models (board PageSettingsSections, "Allowed models · /settings/allowed-models")
+ * Settings › Allowed models (board PageSettingsSections, "Allowed models, /settings/allowed-models")
  * and the Settings shell at the three widths (board ResponsiveAndDark, "Settings", "Phone" and
  * "Tablet"). The sample world has no provider connected, so its page is the empty one; the main
  * host has Anthropic connected, so its page lists models, takes an edit and saves it. The sample
@@ -191,8 +191,8 @@ test.describe('Settings › Allowed models, provider connected', () => {
         await expect(row.locator('code')).toBeVisible();
       }
       const expected = [
-        ['claude-opus-5-5', 'Claude Opus 5.5', 'Tools · images'],
-        ['claude-sonnet-5-5', 'Claude Sonnet 5.5', 'Tools · images'],
+        ['claude-opus-5-5', 'Claude Opus 5.5', 'Tools, images'],
+        ['claude-sonnet-5-5', 'Claude Sonnet 5.5', 'Tools, images'],
         ['claude-haiku-5-5', 'Claude Haiku 5.5', 'Tools'],
       ] as const;
       for (const [identifier, name, abilities] of expected) {

@@ -92,7 +92,7 @@ export async function fetchRunDetail(client: RunDetailClient, runId: string): Pr
 
 /**
  * The second line of a run's row: how it started and where it is or where it stopped, joined by
- * middots ("Started with Run now · Collecting merged changes", "Failed at step 2 · GitHub didn't
+ * commas ("Started with Run now, Collecting merged changes", "Failed at step 2, GitHub didn't
  * answer"). A run that went as the cadence says and finished well has nothing to add.
  */
 export function runDetailLine(
@@ -109,5 +109,5 @@ export function runDetailLine(
     }
     if (detail.message !== undefined) parts.push(detail.message);
   }
-  return parts.length === 0 ? undefined : parts.join(' · ');
+  return parts.length === 0 ? undefined : parts.join(', ');
 }

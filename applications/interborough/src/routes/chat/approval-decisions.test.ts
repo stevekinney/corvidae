@@ -131,7 +131,7 @@ describe('a call whose approval a person decided', () => {
     const entry = entryDecided(APPROVED);
     const call = railCall(entry, false, { owner: 'anonymous:local', zone: 'America/Chicago' });
     expect(call.status).toBe('approved');
-    expect(call.decision).toBe('Approved by you 10:46 AM · refunded 4200');
+    expect(call.decision).toBe('Approved by you 10:46 AM, refunded 4200');
   });
 
   test('says where when the page watched it decided on another page', () => {
@@ -142,7 +142,7 @@ describe('a call whose approval a person decided', () => {
       zone: 'America/Chicago',
     };
     expect(railCall(entry, false, context).decision).toBe(
-      'Approved by you in Reviews 10:46 AM · refunded 4200',
+      'Approved by you in Reviews 10:46 AM, refunded 4200',
     );
   });
 
@@ -156,7 +156,7 @@ describe('a call whose approval a person decided', () => {
     // The row reads as the continuing run: the spinner, the decision and "running…", no duration.
     const going = railCall(entry, false, { ...context, continuing: new Set([entry.callId]) });
     expect(going.status).toBe('running');
-    expect(going.result).toBe('Approved by you in Reviews 10:46 AM · running…');
+    expect(going.result).toBe('Approved by you in Reviews 10:46 AM, running…');
     expect(going.duration).toBeUndefined();
     // A decision made in the chat itself, or a run that is not going, keeps the result.
     expect(
@@ -165,10 +165,10 @@ describe('a call whose approval a person decided', () => {
         zone: 'America/Chicago',
         continuing: new Set([entry.callId]),
       }).decision,
-    ).toBe('Approved by you 10:46 AM · refunded 4200');
+    ).toBe('Approved by you 10:46 AM, refunded 4200');
     const stopped = railCall(entry, false, { ...context, continuing: new Set() });
     expect(stopped.status).toBe('approved');
-    expect(stopped.decision).toBe('Approved by you in Reviews 10:46 AM · refunded 4200');
+    expect(stopped.decision).toBe('Approved by you in Reviews 10:46 AM, refunded 4200');
   });
 
   test('says running only for the decision whose run is still going, not for every decision made in Reviews', () => {
@@ -180,9 +180,9 @@ describe('a call whose approval a person decided', () => {
       zone: 'America/Chicago',
       continuing: new Set([going.callId]),
     };
-    expect(decidedLine(going, context)).toBe('Approved by you in Reviews 10:46 AM · running…');
+    expect(decidedLine(going, context)).toBe('Approved by you in Reviews 10:46 AM, running…');
     expect(decidedLine(finished, context)).toBe(
-      'Approved by you in Reviews 10:46 AM · refunded 4200',
+      'Approved by you in Reviews 10:46 AM, refunded 4200',
     );
     expect(railCall(going, false, context).status).toBe('running');
     expect(railCall(finished, false, context).status).toBe('approved');

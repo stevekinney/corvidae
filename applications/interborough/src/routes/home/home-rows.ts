@@ -227,7 +227,7 @@ export function attentionRows(
         const cadence = schedule === undefined ? undefined : viewerCadence(schedule, zone);
         const detail = [copy.missedRuns.kind, agent, cadence]
           .filter((part): part is string => part !== undefined)
-          .join(' · ');
+          .join(', ');
         return {
           key,
           title: copy.missedRuns.title(name, item.count, dayOf(item.since, zone)),
@@ -251,7 +251,7 @@ export function attentionRows(
         return {
           key,
           title: copy.pluginNotLoaded.title(item.plugin),
-          detail: item.problems.length === 0 ? undefined : item.problems.join(' · '),
+          detail: item.problems.length === 0 ? undefined : item.problems.join(', '),
           action: { label: copy.pluginNotLoaded.action, href: '/settings/plugins' },
         };
       case 'no-provider':
@@ -356,7 +356,7 @@ export interface RunningRow {
   readonly title: string;
   /**
    * Line two: the status word, then what started it, which agent runs, and when it started, joined
-   * by middots ("Running · Schedule · Assistant · started 10:44 AM").
+   * by commas ("Running, Schedule, Assistant, started 10:44 AM").
    */
   readonly line: string;
   /** The run's page, which "View run" opens. */
@@ -405,7 +405,7 @@ export function runningRows(tasks: readonly TaskView[], context: RunningContext)
     return {
       key: run.id,
       title,
-      line: `${copy.status} · ${parts.join(' · ')}`,
+      line: `${copy.status}, ${parts.join(', ')}`,
       href: workflowDetailPath(run.id),
     };
   });

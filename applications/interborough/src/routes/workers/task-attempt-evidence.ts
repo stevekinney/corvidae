@@ -303,12 +303,12 @@ function isGracePeriodSettlement(owner: TaskAttemptRecord | undefined): boolean 
 function acknowledgementText(task: TaskLedgerDetail, owner: TaskAttemptRecord | undefined): string {
   if (owner === undefined) return `No record for attempt ${task.attempt} yet`;
   if (owner.disposition !== 'cancelled') {
-    return `Not acknowledged · attempt ${owner.attempt} is ${DISPOSITION_LABEL[owner.disposition].toLowerCase()}`;
+    return `Not acknowledged, attempt ${owner.attempt} is ${DISPOSITION_LABEL[owner.disposition].toLowerCase()}`;
   }
   if (isGracePeriodSettlement(owner)) {
-    return `Not acknowledged · Interborough settled attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)} after the cancellation grace period elapsed`;
+    return `Not acknowledged, Interborough settled attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)} after the cancellation grace period elapsed`;
   }
-  const reason = owner.dispositionReason ? ` · ${owner.dispositionReason}` : '';
+  const reason = owner.dispositionReason ? `, ${owner.dispositionReason}` : '';
   return `Acknowledged by attempt ${owner.attempt} at ${exactTimestamp(owner.dispositionAt)}${reason}`;
 }
 
@@ -337,14 +337,14 @@ export function describeCancellation(task: TaskLedgerDetail): CancellationEviden
     Record<CancellationStatus, { label: string; variant: AttemptBadgeVariant }>
   > = {
     'not-requested': { label: 'Not requested', variant: 'neutral' },
-    requested: { label: 'Requested · awaiting worker acknowledgement', variant: 'warning' },
+    requested: { label: 'Requested, awaiting worker acknowledgement', variant: 'warning' },
     acknowledged: { label: 'Acknowledged by owning attempt', variant: 'success' },
     'settled-after-grace-period': {
-      label: 'Settled after grace period · no worker acknowledgement',
+      label: 'Settled after grace period, no worker acknowledgement',
       variant: 'warning',
     },
     'cancelled-unacknowledged': {
-      label: 'Cancelled · no worker acknowledgement recorded',
+      label: 'Cancelled, no worker acknowledgement recorded',
       variant: 'warning',
     },
   };
@@ -404,7 +404,7 @@ function clock(
     active: 'Active',
     expired: 'Expired',
     'not-set': notSetLabel,
-    settled: 'Settled · no longer running',
+    settled: 'Settled, no longer running',
   }[state];
   const variant: AttemptBadgeVariant =
     state === 'active' ? 'success' : state === 'expired' ? 'danger' : 'neutral';

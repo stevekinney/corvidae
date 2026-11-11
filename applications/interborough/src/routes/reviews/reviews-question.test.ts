@@ -21,6 +21,9 @@ import { router } from '../../lib/router.svelte.ts';
 import { AUTHORIZATION_SCOPES } from '../../lib/scopes.svelte.ts';
 import Harness from './reviews-shell.test-harness.svelte';
 
+// `@lostgradient/chat` words these hints with a middle dot and Interborough does not own that copy yet.
+const CHAT_SEPARATOR = String.fromCodePoint(0xb7);
+
 let stub: BureauWorldStub | undefined;
 let restoreWindow: (() => void) | undefined;
 
@@ -139,7 +142,9 @@ describe('an open question with choices', () => {
 
     await fireEvent.click(view.getByRole('button', { name: /Staging/ }));
     const status = view.container.querySelector('.chat-question-status');
-    expect(status?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging · Undo (5 s)');
+    expect(status?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `Answered Staging ${CHAT_SEPARATOR} Undo (5 s)`,
+    );
     expect(view.getAllByRole('button', { name: /Undo/ })).toHaveLength(1);
     expect(stub?.callsTo('bureau.tasks.respond')).toEqual([]);
 

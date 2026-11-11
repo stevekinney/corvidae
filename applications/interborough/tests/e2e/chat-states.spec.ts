@@ -214,7 +214,7 @@ test.describe('No model provider connected (frame b: 19f, 19h)', () => {
     await expect(lookup).toContainText('$42.00, delivered Monday, flagged damaged');
     await expect(lookup).toContainText('0.4s');
     // The reply is stamped with when it was written and the model that wrote it.
-    await expect(conversation.getByText(/10:42 AM\s*·\s*Claude Sonnet 5\.5/)).toBeVisible();
+    await expect(conversation.getByText(/10:42 AM\s*Claude Sonnet 5\.5/)).toBeVisible();
     // The composer is the one blocked row, not a banner.
     await expect(blockedRow(page)).toContainText('Connect a model provider to chat');
     await expect(blockedRow(page).getByRole('link', { name: 'Connect a provider' })).toBeVisible();
@@ -492,7 +492,7 @@ test.describe('A turn that ends on a tool call (frame j: 20h)', () => {
     await expect(lookup).toContainText('0.4s');
     // No agent reply, and the rail says the run is over rather than looking hung.
     await expect(transcript(page).locator('[data-role="assistant"]')).toHaveCount(0);
-    await expect(rail(page)).toContainText('Run finished · no reply');
+    await expect(rail(page)).toContainText('Run finished, no reply');
     await expect(transcript(page).locator('.chat-note')).toHaveCount(0);
     await captureForDesignReview(page, {
       route: '/chats/:chat',

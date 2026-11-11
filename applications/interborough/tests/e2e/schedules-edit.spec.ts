@@ -99,7 +99,7 @@ test('Edit Weekly cleanup keeps the old workflow name marked, says it was delete
 
   await expect(main.getByRole('heading', { level: 1, name: 'Edit Weekly cleanup' })).toBeVisible();
   const field = main.getByRole('combobox', { name: /^Workflow/ });
-  await expect(field).toContainText('Weekly cleanup · can’t find this workflow');
+  await expect(field).toContainText('Weekly cleanup, can’t find this workflow');
   await expect(field).toHaveAttribute('aria-invalid', 'true');
   await expect(main).toContainText(
     'That workflow was deleted. Pick another to keep this schedule; it stays paused until then.',

@@ -1,5 +1,5 @@
 /**
- * Settings › Models (board SettingsShell, "Models · /settings/models", "Models · provider
+ * Settings › Models (board SettingsShell, "Models, /settings/models", "Models, provider
  * connected" and "More states"). The sample world has no provider connected, so its page is the
  * empty one: three providers with Connect, an empty catalog and the Decisions waiting on TypeSafe.
  * The main host has Anthropic connected; its page is captured with the sample world's three Anthropic
@@ -142,8 +142,8 @@ test.describe('Settings › Models, provider connected', () => {
     const rows = table.locator('tbody tr');
     await expect(rows).toHaveCount(3);
     const expected = [
-      ['Claude Opus 5.5', 'claude-opus-5-5', 'Tools · images', '1M'],
-      ['Claude Sonnet 5.5', 'claude-sonnet-5-5', 'Tools · images', '1M'],
+      ['Claude Opus 5.5', 'claude-opus-5-5', 'Tools, images', '1M'],
+      ['Claude Sonnet 5.5', 'claude-sonnet-5-5', 'Tools, images', '1M'],
       ['Claude Haiku 5.5', 'claude-haiku-5-5', 'Tools', '200K'],
     ] as const;
     for (const [index, [name, identifier, abilities, context]] of expected.entries()) {
@@ -252,7 +252,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     return dialog;
   }
 
-  test('Connect · empty: the key field, the help line and Cancel, Test and Connect', async ({
+  test('Connect, empty: the key field, the help line and Cancel, Test and Connect', async ({
     page,
     checkA11y,
   }) => {
@@ -272,7 +272,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     await captureAtEveryWidth(page, 'connect-empty');
   });
 
-  test('Connect · testing: the masked key, a status with a spinner, a disabled Testing… and an enabled Cancel', async ({
+  test('Connect, testing: the masked key, a status with a spinner, a disabled Testing… and an enabled Cancel', async ({
     page,
     checkA11y,
   }) => {
@@ -297,7 +297,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     release();
   });
 
-  test('Connect · invalid key: the refusal at the field with a warning glyph, and every button still enabled', async ({
+  test('Connect, invalid key: the refusal at the field with a warning glyph, and every button still enabled', async ({
     page,
     checkA11y,
   }) => {
@@ -317,7 +317,7 @@ test.describe('Settings › Models, connect dialogs', () => {
     await captureAtEveryWidth(page, 'connect-invalid-key');
   });
 
-  test('Connect · connected: a success banner with the model count and a single Done', async ({
+  test('Connect, connected: a success banner with the model count and a single Done', async ({
     page,
     checkA11y,
   }) => {
@@ -382,7 +382,7 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     return dialog;
   }
 
-  test('Manage · a connected provider: connected, the model count, Remove key, Replace key and Done', async ({
+  test('Manage, a connected provider: connected, the model count, Remove key, Replace key and Done', async ({
     page,
     checkA11y,
   }) => {
@@ -396,7 +396,7 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     await captureAtEveryWidth(page, 'manage');
   });
 
-  test('Replace key · in progress: the new key tests while the old one stays in use', async ({
+  test('Replace key, in progress: the new key tests while the old one stays in use', async ({
     page,
     checkA11y,
   }) => {
@@ -423,7 +423,7 @@ test.describe('Settings › Models, manage, replace and remove', () => {
     release();
   });
 
-  test('Remove key · confirm: a confirmation that names the model agents and a solid danger button', async ({
+  test('Remove key, confirm: a confirmation that names the model agents and a solid danger button', async ({
     page,
     checkA11y,
   }) => {

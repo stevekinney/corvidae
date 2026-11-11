@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * `/settings/plugins`: the plugins Interborough loaded at startup, with the open one beside the
-   * list (board PageSettingsSections, "Plugins · /settings/plugins"). The body is
+   * list (board PageSettingsSections, "Plugins, /settings/plugins"). The body is
    * `plugins-body.svelte`; this is the Settings frame around it, with the section navigation, the
    * heading and the settings the restart notice counts. The page reads `GET /host/plugins` here, so
    * the read starts with the page and not once the settings are in.

@@ -37,7 +37,7 @@ describe('the metric cards on a quiet day', () => {
     const storage = view.container.querySelector('[data-metric="storage"]');
     expect(storage?.textContent).toContain('0.4 GB');
     expect(storage?.querySelector('.cinder-sparkbar')).not.toBeNull();
-    expect(storage?.textContent).toContain('0.4 GB · 24 hours ago');
+    expect(storage?.textContent).toContain('0.4 GB, 24 hours ago');
     expect(storage?.textContent).toContain('Now');
     const started = view.container.querySelector('[data-metric="runs-started"]');
     expect(started?.textContent).toContain('14');

@@ -142,7 +142,7 @@ describe('with a provider connected', () => {
       'anthropic/claude-haiku-5-5',
     ]);
     expect(rows[0]?.textContent).toContain('claude-opus-5-5');
-    expect(rows[0]?.textContent).toContain('Tools · images');
+    expect(rows[0]?.textContent).toContain('Tools, images');
     expect(rows[2]?.textContent).toContain('Tools');
     expect(rows[2]?.textContent).not.toContain('images');
     for (const checkbox of view.getAllByRole('checkbox')) {

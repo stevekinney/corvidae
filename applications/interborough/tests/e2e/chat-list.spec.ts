@@ -88,7 +88,7 @@ test.describe('the chat list on the sample world', () => {
     const bands = list(page).locator('.cinder-data-list-group__header');
     await expect(bands).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday · Sunday, Nov 1\s*Central time$/,
+      /^Yesterday, Sunday, Nov 1\s*Central time$/,
       /^Friday, Oct 30\s*Central time$/,
       /^Thursday, Oct 29\s*Central time$/,
     ]);
@@ -177,15 +177,15 @@ test.describe('the chat list at other widths', () => {
     await page.addInitScript((key) => window.localStorage.setItem(key, '560'), DIVIDER_KEY);
     await openChats(page);
     await expect(list(page).locator('.cinder-data-list-group__header').first()).toHaveText(
-      /^Today · Monday, Nov 2\s*Central time$/,
+      /^Today, Monday, Nov 2\s*Central time$/,
     );
     await expect(row(page, 'Please refund order 4471, it arrived damaged.')).toContainText(
-      'Tool runner · I found order 4471 ($42.00). I need your approval to refund it.',
+      'Tool runner, I found order 4471 ($42.00). I need your approval to refund it.',
     );
     await expect(row(page, 'Ship the release notes fix.')).toContainText(
-      'Request human input · Which environment should the release go to?',
+      'Request human input, Which environment should the release go to?',
     );
-    await expect(row(page, 'Say hello')).toContainText('Assistant · Hello! How can I help?');
+    await expect(row(page, 'Say hello')).toContainText('Assistant, Hello! How can I help?');
     await captureForDesignReview(page, {
       route: '/chats',
       state: 'wide pane',

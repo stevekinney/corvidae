@@ -1782,7 +1782,7 @@
           {#if replyStep !== undefined && !session.streaming}
             {@const replyModel = replyModelName(message.metadata)}
             {#if replyModel !== undefined}
-              <span class="weft-chat-model">· {replyModel}</span>
+              <span class="weft-chat-model">{replyModel}</span>
             {/if}
             <ReplyDetails
               runId={replyStep.runId}

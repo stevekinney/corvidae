@@ -59,7 +59,7 @@ for (const width of WIDTHS) {
     const toggle = main.getByRole('switch', { name: 'Active, Daily summary schedule' });
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveAttribute('aria-checked', 'true');
-    await expect(main.locator('.cinder-page-header')).toContainText('Missed runs · 4');
+    await expect(main.locator('.cinder-page-header')).toContainText('Missed runs, 4');
     // The actions: secondary Edit and Run now, and the menu.
     for (const name of ['Edit', 'Run now']) {
       await expect(main.getByRole('button', { name })).toHaveAttribute(
@@ -76,11 +76,11 @@ for (const width of WIDTHS) {
     await expect(sentence.getByRole('link', { name: 'Chat with an agent' })).toBeVisible();
     await expect(sentence.getByRole('link', { name: 'Assistant' })).toBeVisible();
     await expect(main.getByTestId('schedule-summary')).toHaveText(
-      'Next Tue Nov 3, 3:00 AM (in 16 hours) · Last ran Oct 29, done',
+      'Next Tue Nov 3, 3:00 AM (in 16 hours), Last ran Oct 29, done',
     );
     await expect(main.getByRole('heading', { level: 2, name: 'Runs' })).toBeVisible();
     await expect(main.getByTestId('schedule-zone')).toHaveText(
-      'Upcoming above, past below · times in Central time',
+      'Upcoming above, past below, times in Central time',
     );
 
     // The details card: What runs, Input (Fields and JSON, one copy button), When, Behaviour, Created.
@@ -166,7 +166,7 @@ test('Inbox triage is paused and its workflow is paused too, with the link that 
     'Resuming this schedule would schedule runs that won’t start',
   );
   await expect(main.getByTestId('schedule-summary')).toContainText(
-    'No next run while paused · Last ran Oct 24, done',
+    'No next run while paused, Last ran Oct 24, done',
   );
   // Edit opens the workflow's editor, so it is a link; the rest are buttons.
   await expect(
@@ -435,7 +435,7 @@ for (const width of WIDTHS) {
     await expect(misses.nth(2)).toContainText('Sat Oct 31, 4:00 AM');
     await expect(misses.nth(3)).toContainText('Fri Oct 30, 4:00 AM');
     for (let index = 0; index < 4; index += 1) {
-      await expect(misses.nth(index)).toContainText('Missed · Interborough was off');
+      await expect(misses.nth(index)).toContainText('Missed, Interborough was off');
     }
     await expect(band.locator('li[data-cinder-kind="separator"]')).toHaveText(
       'Daylight saving time ended Nov 1',
@@ -492,7 +492,7 @@ for (const width of WIDTHS) {
       await expect(
         page.getByRole('switch', { name: 'Active, Daily summary schedule' }),
       ).toBeChecked();
-      await expect(page.locator('main')).toContainText('Missed runs · 4');
+      await expect(page.locator('main')).toContainText('Missed runs, 4');
       await expect(list.locator('li[data-cinder-kind="now"]')).toContainText('Mon Nov 2, 10:46 AM');
       // The pointer leaves the row, so the capture shows Undo at rest rather than hovered.
       await page.mouse.move(0, 0);
@@ -624,7 +624,7 @@ test('Release notes digest: a failed run says where it stopped and why, in one l
   await expect(failed).toHaveCount(1);
   await expect(failed).toContainText('Failed');
   await expect(failed).toContainText('Fri Oct 30, 11:00 AM');
-  await expect(failed).toContainText('Failed at step 2 · GitHub didn’t answer');
+  await expect(failed).toContainText('Failed at step 2, GitHub didn’t answer');
   await expect(failed).toContainText('3 s');
   // The Release notes cadence follows the viewer's own clock, so nothing marks a change in it.
   await expect(list.locator('li[data-cinder-kind="separator"]')).toHaveCount(0);
@@ -681,7 +681,7 @@ for (const width of WIDTHS) {
     await expect(main.getByTestId('schedule-run-now-second')).toHaveCount(0);
     // Nothing is going, so the summary line leads with the next run.
     await expect(main.getByTestId('schedule-summary')).toHaveText(
-      'Next Fri Nov 6, 11:00 AM (in 4 days) · Last ran Oct 30, failed at step 2',
+      'Next Fri Nov 6, 11:00 AM (in 4 days), Last ran Oct 30, failed at step 2',
     );
     await captureForDesignReview(page, {
       route: '/schedules/:schedule',
@@ -820,7 +820,7 @@ for (const width of WIDTHS) {
     // The summary line: the going run, in the info tone with a live link, then next and last.
     const summary = main.getByTestId('schedule-summary');
     await expect(summary).toHaveText(
-      'Running now: started 38 seconds ago · Open run · Next Fri Nov 6, 11:00 AM · Last ran Oct 30, failed at step 2',
+      'Running now: started 38 seconds ago, Open run, Next Fri Nov 6, 11:00 AM, Last ran Oct 30, failed at step 2',
     );
     await expect(main.getByTestId('schedule-running-now')).toHaveText('Running now');
     await expect(main.getByTestId('schedule-running-now')).toHaveAttribute('data-tone', 'info');
@@ -835,7 +835,7 @@ for (const width of WIDTHS) {
     const going = list.locator('li[data-cinder-kind="run"]').first();
     await expect(going).toContainText('Running');
     await expect(going).toContainText('Mon Nov 2, 10:45 AM');
-    await expect(going).toContainText('Started with Run now · Collecting merged changes');
+    await expect(going).toContainText('Started with Run now, Collecting merged changes');
     await expect(going).toContainText('38 s so far');
     await expect(list.locator('li[data-cinder-kind="run"]').last()).toContainText('Failed');
 
@@ -862,7 +862,7 @@ for (const width of WIDTHS) {
     const reasons = card.getByRole('listitem');
     await expect(reasons).toHaveCount(2);
     await expect(reasons.nth(0)).toContainText('Order refund can’t load');
-    await expect(reasons.nth(0)).toContainText('order-refund · order-refund.json line 12');
+    await expect(reasons.nth(0)).toContainText('order-refund, order-refund.json line 12');
     await expect(reasons.nth(0).getByRole('link', { name: 'Open workflow' })).toBeVisible();
     await expect(reasons.nth(1)).toContainText('No model provider is connected.');
     await expect(reasons.nth(1).getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(
@@ -870,7 +870,7 @@ for (const width of WIDTHS) {
       '/settings/models',
     );
     await expect(main.getByTestId('schedule-summary')).toHaveText(
-      'Due today, 11:00 AM (in 14 minutes) · won’t start · Never run',
+      'Due today, 11:00 AM (in 14 minutes), won’t start, Never run',
     );
 
     // The run that is due says why it will not start; both runs are listed.
@@ -882,7 +882,7 @@ for (const width of WIDTHS) {
     await expect(upcoming.nth(1)).toContainText('Mon Nov 2, 11:00 AM');
     await expect(upcoming.nth(1)).toContainText('in 14 minutes');
     await expect(upcoming.nth(1).getByTestId('schedule-fire-note')).toHaveText(
-      'won’t start · Order refund can’t load · no provider',
+      'won’t start, Order refund can’t load, no provider',
     );
     // Both keep Skip, because skipping one prevents its start once things are fixed.
     await expect(
@@ -922,7 +922,7 @@ test('Daily summary shown stale: the summary drops "in 16 hours", the runs are a
   await openSchedule(page, 'Daily summary');
   const main = page.locator('main');
   const summary = main.getByTestId('schedule-summary');
-  await expect(summary).toHaveText('Next Tue Nov 3, 3:00 AM (in 16 hours) · Last ran Oct 29, done');
+  await expect(summary).toHaveText('Next Tue Nov 3, 3:00 AM (in 16 hours), Last ran Oct 29, done');
   const upcoming = runsList(page).locator('li[data-cinder-tone="pending"]');
   const rows = await upcoming.count();
   const skip = main.getByRole('button', { name: /^Skip Tue Nov 3, 3:00 AM/ });
@@ -935,7 +935,7 @@ test('Daily summary shown stale: the summary drops "in 16 hours", the runs are a
   await expect(banner).toContainText('Can’t reach the Interborough server.');
 
   // Old data, controls inert: no relative time it can no longer keep, the same runs, Skip held.
-  await expect(summary).toHaveText('Next Tue Nov 3, 3:00 AM · Last ran Oct 29, done');
+  await expect(summary).toHaveText('Next Tue Nov 3, 3:00 AM, Last ran Oct 29, done');
   await expect(upcoming).toHaveCount(rows);
   await expect(skip).toBeDisabled();
   await expect(runsList(page).locator('li[data-cinder-kind="now"]')).toBeVisible();

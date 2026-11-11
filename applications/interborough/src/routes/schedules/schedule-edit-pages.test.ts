@@ -496,7 +496,7 @@ describe('editing a schedule whose workflow was deleted', () => {
 
     const field = await waitFor(() => {
       const combobox = form.getByRole('combobox', { name: /^Workflow/ });
-      expect(combobox.textContent).toContain('Weekly cleanup · can’t find this workflow');
+      expect(combobox.textContent).toContain('Weekly cleanup, can’t find this workflow');
       return combobox;
     });
     expect(field.getAttribute('aria-invalid')).toBe('true');

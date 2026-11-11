@@ -257,7 +257,7 @@ export const DELEGATION_SECRET_KEY = 'delegation-secret';
  * maintenance, the durable engine, and the claim TTL and renew interval, whose code defaults keep
  * renew below TTL. Hosts that share a database must all run the same overlap-safe configuration,
  * so the Bureau reports each as locked for the reason `shared-storage`. The cap on workflow runs
- * executing at once is the deployment's to size (board SettingsShell, "Locked settings · remote
+ * executing at once is the deployment's to size (board SettingsShell, "Locked settings, remote
  * mode"), so it is locked for the reason `deployment`.
  */
 const REMOTE_LOCKED_SETTINGS = {
@@ -452,7 +452,7 @@ export type HostOptions = {
   readonly warn?: (message: string) => void;
   /**
    * The version this host runs, recorded with its `host.started` audit event so the audit log can
-   * say "Server started · Interborough 2.4.1". Left out, the event carries no version and the log
+   * say "Server started, Interborough 2.4.1". Left out, the event carries no version and the log
    * names the host alone. The showcase host passes the sample world's (`showcase.ts`).
    */
   readonly version?: string;

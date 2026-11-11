@@ -112,9 +112,7 @@ describe('WorkflowList', () => {
     });
 
     await waitFor(() => expect(container.textContent).toContain('order-processing'));
-    await waitFor(() =>
-      expect(container.textContent).toContain("An agent's tool call · assistant"),
-    );
+    await waitFor(() => expect(container.textContent).toContain("An agent's tool call, assistant"));
     expect(
       fetchScript.calls.some(
         (call) => typeof call.init?.body === 'string' && call.init.body.includes('runs.get'),

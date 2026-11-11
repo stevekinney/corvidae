@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The Operations tab (board PageSettingsSections, "API reference · Operations"): a group select
+   * The Operations tab (board PageSettingsSections, "API reference, Operations"): a group select
    * that reads "All groups", the count of operations shown, and a table of method, path, what the
    * operation does and the scope it needs, with the chevron that opens a row at the row's right.
    * The method is monospaced text in its method's colour, as the board draws it. A row opens to

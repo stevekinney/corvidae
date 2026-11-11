@@ -171,7 +171,7 @@
       <PanelFault {error} onRetry={() => void retained.refetch()} />
     {:else if payload?.kind === 'value'}
       <p class="weft-task-deliveries__note">
-        Retained value · {formatBytes(payload.serializedBytes)} serialized
+        Retained value, {formatBytes(payload.serializedBytes)} serialized
       </p>
       <PayloadInspector value={payload.value} label="Retained result" redact={[]} />
     {:else if payload?.kind === 'omitted'}

@@ -86,7 +86,7 @@ describe('DeploymentsPanel — references', () => {
     )!;
 
     const text = row.textContent?.replace(/\s+/g, ' ') ?? '';
-    expect(text).toContain('2 referenced · reachable');
+    expect(text).toContain('2 referenced, reachable');
     expect(text).toContain(
       'Cannot remove: Build billing/build-a is still referenced by 2 pieces of work',
     );

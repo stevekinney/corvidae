@@ -44,7 +44,7 @@ export interface AuditLink {
 
 /** What the pane shows of one event, before any diff of an agent's instructions. */
 export interface AuditDetailModel {
-  /** "Today at 10:45:12 AM · from this browser". */
+  /** "Today at 10:45:12 AM, from this browser". */
   readonly whenLine: string;
   readonly facts: readonly AuditFact[];
   readonly links: readonly AuditLink[];
@@ -59,7 +59,7 @@ function textFact(term: string, value: string, muted = false): AuditFact {
   return { term, value: { kind: 'text', text: value, ...(muted ? { muted } : {}) } };
 }
 
-/** The words of what changed in an agent's version: "Instructions · Tools · added Issue refund". */
+/** The words of what changed in an agent's version: "Instructions, Tools, added Issue refund". */
 export function changedWords(
   changedKeys: string | undefined,
   toolsAdded: string | undefined,
@@ -81,7 +81,7 @@ export function changedWords(
       .join(', ');
   if (toolsAdded !== undefined) parts.push(AUDIT_COPY.toolsAdded(names(toolsAdded)));
   if (toolsRemoved !== undefined) parts.push(AUDIT_COPY.toolsRemoved(names(toolsRemoved)));
-  return parts.join(' · ');
+  return parts.join(', ');
 }
 
 /**

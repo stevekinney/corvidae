@@ -63,7 +63,7 @@ function client(events: WorkflowEvent[] = []) {
 }
 
 describe('EventsTab', () => {
-  test('renders checkpoint events honestly as "Checkpoint · step N"', async () => {
+  test('renders checkpoint events honestly as "Checkpoint, step N"', async () => {
     const events: WorkflowEvent[] = [
       { type: 'workflow:checkpoint', timestamp: 1_000, data: { step: 1 } },
       { type: 'workflow:checkpoint', timestamp: 2_000, data: { step: 2 } },
@@ -74,9 +74,9 @@ describe('EventsTab', () => {
     });
 
     await waitFor(() => {
-      expect(getByText('Checkpoint · step 1')).not.toBeNull();
+      expect(getByText('Checkpoint, step 1')).not.toBeNull();
     });
-    expect(getByText('Checkpoint · step 2')).not.toBeNull();
+    expect(getByText('Checkpoint, step 2')).not.toBeNull();
     expect(getByText('2 events')).not.toBeNull();
   });
 
@@ -129,16 +129,16 @@ describe('EventsTab', () => {
 
     await waitFor(() => {
       expect(getByText('step: 2')).not.toBeNull();
-      expect(getByText('Checkpoint · step 2')).not.toBeNull();
+      expect(getByText('Checkpoint, step 2')).not.toBeNull();
     });
-    expect(queryByText('Checkpoint · step 1')).toBeNull();
+    expect(queryByText('Checkpoint, step 1')).toBeNull();
     expect(getByText('1 events')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Clear step filter' }));
 
     flushSync();
     expect(queryByText('step: 2')?.outerHTML ?? null).toBeNull();
-    expect(getByText('Checkpoint · step 1')).not.toBeNull();
+    expect(getByText('Checkpoint, step 1')).not.toBeNull();
     expect(getByText('2 events')).not.toBeNull();
   });
 
@@ -150,9 +150,9 @@ describe('EventsTab', () => {
     await fireEvent.click(getByRole('button', { name: /Download/ }));
 
     await waitFor(() => {
-      expect(getByText('Event history · JSON')).not.toBeNull();
+      expect(getByText('Event history, JSON')).not.toBeNull();
     });
-    expect(getByText('Events + timeline · JSON')).not.toBeNull();
+    expect(getByText('Events + timeline, JSON')).not.toBeNull();
   });
 
   test('renders "No events to display." once loaded with no events', async () => {
@@ -213,15 +213,15 @@ describe('EventsTab', () => {
       props: { client: client(checkpoints), workflow: workflow(), queryClient },
     });
     await waitFor(() => expect(getByText('workflow:started')).not.toBeNull());
-    expect(getByText('Checkpoint · step 1')).not.toBeNull();
+    expect(getByText('Checkpoint, step 1')).not.toBeNull();
 
     // A window-focus or reconnect refetch, with a checkpoint committed in the meantime.
     checkpoints.push({ type: 'workflow:checkpoint', timestamp: 2_000, data: { step: 2 } });
     await queryClient.refetchQueries({ queryKey: workflowEventsKey('wf_1') });
 
-    await waitFor(() => expect(getByText('Checkpoint · step 2')).not.toBeNull());
+    await waitFor(() => expect(getByText('Checkpoint, step 2')).not.toBeNull());
     expect(getByText('workflow:started')).not.toBeNull();
-    expect(getByText('Checkpoint · step 1')).not.toBeNull();
+    expect(getByText('Checkpoint, step 1')).not.toBeNull();
   });
 
   test('an event with a data payload renders a Details collapsible trigger', async () => {
@@ -242,7 +242,7 @@ describe('EventsTab', () => {
     await waitFor(() => expect(getByRole('button', { name: /Details/ })).not.toBeNull());
   });
 
-  test('clicking "Event history · JSON" downloads the events export', async () => {
+  test('clicking "Event history, JSON" downloads the events export', async () => {
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;
     const createObjectURL = mock(() => 'blob:mock-url');
@@ -258,8 +258,8 @@ describe('EventsTab', () => {
       });
 
       await fireEvent.click(getByRole('button', { name: /Download/ }));
-      await waitFor(() => expect(getByText('Event history · JSON')).not.toBeNull());
-      await fireEvent.click(getByText('Event history · JSON'));
+      await waitFor(() => expect(getByText('Event history, JSON')).not.toBeNull());
+      await fireEvent.click(getByText('Event history, JSON'));
 
       await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     } finally {
@@ -268,7 +268,7 @@ describe('EventsTab', () => {
     }
   });
 
-  test('clicking "Events + timeline · JSON" fetches the timeline and downloads the combined export', async () => {
+  test('clicking "Events + timeline, JSON" fetches the timeline and downloads the combined export', async () => {
     const originalCreateObjectURL = URL.createObjectURL;
     const originalRevokeObjectURL = URL.revokeObjectURL;
     const createObjectURL = mock(() => 'blob:mock-url');
@@ -284,8 +284,8 @@ describe('EventsTab', () => {
       });
 
       await fireEvent.click(getByRole('button', { name: /Download/ }));
-      await waitFor(() => expect(getByText('Events + timeline · JSON')).not.toBeNull());
-      await fireEvent.click(getByText('Events + timeline · JSON'));
+      await waitFor(() => expect(getByText('Events + timeline, JSON')).not.toBeNull());
+      await fireEvent.click(getByText('Events + timeline, JSON'));
 
       await waitFor(() => expect(createObjectURL).toHaveBeenCalledTimes(1));
     } finally {

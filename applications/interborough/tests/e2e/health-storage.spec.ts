@@ -28,7 +28,7 @@ const SOURCE = 'health-storage.spec.ts';
 // The pane's line: the day is a word for today and yesterday, and the date for any other. The
 // browser's clock is the sample world's in a capture and the real one otherwise.
 const UPDATED_SUMMARY =
-  /^Chat sessions · [\d.]+ (B|KB) · updated (today, \d{1,2}:\d{2} (AM|PM)|yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM))$/;
+  /^Chat sessions, [\d.]+ (B|KB), updated (today, \d{1,2}:\d{2} (AM|PM)|yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM))$/;
 const WHEN = /^(Today|Yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}), \d{1,2}:\d{2} (AM|PM)$/;
 
 /** The first rows of the table, as the key, the group, the size and the time each one says. */
@@ -83,7 +83,7 @@ test.describe('Health › Storage on the sample world', () => {
 
     // 80d: the warning, with Change retention, and no capacity or threshold.
     const warning = main.getByTestId('storage-warning');
-    await expect(warning).toContainText('Storage is over its warning level · 1.6 GB.');
+    await expect(warning).toContainText('Storage is over its warning level, 1.6 GB.');
     await expect(warning.getByRole('link', { name: 'Change retention' })).toBeVisible();
     await expect(warning).not.toContainText(/capacity|threshold/i);
 
@@ -433,7 +433,7 @@ const BANNER = 'app:welcome-banner';
 // 96 bytes, which the board's pane header says (row 80w): the text is padded with spaces, which JSON ignores.
 const BANNER_VALUE = '{"dismissed":true,"dismissedOn":"2026-11-01T22:12:00Z"}'.padEnd(96, ' ');
 const BANNER_SUMMARY =
-  /^App data and memory · \d+ B · updated (today, \d{1,2}:\d{2} (AM|PM)|yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM))$/;
+  /^App data and memory, \d+ B, updated (today, \d{1,2}:\d{2} (AM|PM)|yesterday|[A-Z][a-z]{2} [A-Z][a-z]{2} \d{1,2}, \d{1,2}:\d{2} (AM|PM))$/;
 
 /** The address of one key's value, which the pane reads when a row is opened. */
 const valueAddress = (key: string): string => `/v1/storage/${encodeURIComponent(key)}`;
@@ -598,7 +598,7 @@ test.describe('Health › Storage writes and states', () => {
     expect((alertBox?.y ?? 0) + (alertBox?.height ?? 0)).toBeLessThanOrEqual(editorBox?.y ?? 0);
     await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
     await expect(pane.getByTestId('storage-key-summary')).toHaveText(
-      new RegExp(`^App data and memory · 96 B · ${BANNER}$`),
+      new RegExp(`^App data and memory, 96 B, ${BANNER}$`),
     );
     // Cancel, then Save value, and Save value keeps its own label as the retry.
     await expect(pane.getByRole('button')).toHaveText(['Cancel', 'Save value']);
@@ -668,7 +668,7 @@ test.describe('Health › Storage writes and states', () => {
     await expect(editor).toHaveValue('{\n  "dismissed": false\n}');
     await expect(pane.getByRole('button', { name: 'Save value' })).toHaveCount(0);
     await expect(pane.getByTestId('storage-key-summary')).toHaveText(
-      new RegExp(`^App data and memory · \\d+ B · ${BANNER}$`),
+      new RegExp(`^App data and memory, \\d+ B, ${BANNER}$`),
     );
     expect(await storedText(request, BANNER)).toBe(theirs);
     await captureForDesignReview(page, {
@@ -714,9 +714,9 @@ test.describe('Health › Storage writes and states', () => {
 
       // 81b: the heading names the kind and the size, the text is the start of the value, and a note says why.
       await expect(pane.getByTestId('storage-key-summary')).toHaveText(
-        new RegExp(` · ${size} · updated `),
+        new RegExp(`, ${size}, updated `),
       );
-      await expect(pane.getByText(`Value · text, ${size}`)).toBeVisible();
+      await expect(pane.getByText(`Value, text, ${size}`)).toBeVisible();
       await expect(pane.getByRole('radio')).toHaveCount(0);
       await expect(pane.getByTestId('storage-text-note')).toHaveText(
         `Showing the first 64 KB. Copy value copies all ${size}. This value isn’t JSON, so there is no Fields or JSON switch.`,
@@ -970,7 +970,7 @@ test.describe('Health › Storage with the design’s own keys', () => {
     await expect(first).toHaveAttribute('aria-current', 'true');
     const pane = main.getByTestId('storage-key');
     await expect(pane.getByTestId('storage-key-summary')).toHaveText(
-      'Chat sessions · 1.2 KB · updated today, 10:44 AM',
+      'Chat sessions, 1.2 KB, updated today, 10:44 AM',
     );
     // 80k: Fields is the flat list of label and value the board draws.
     const value = pane.getByRole('group', { name: 'Value' });

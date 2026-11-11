@@ -129,7 +129,7 @@ describe('the details popover (16u, 16v)', () => {
     expect(agent.getAttribute('href')).toBe('/agents/tool-runner');
     expect(within(details).getByText('tool-runner').tagName).toBe('CODE');
     expect(details.textContent).toContain(
-      `Started ${dayAndTime(started, Date.now())} · last active ${clockTime(active)}`,
+      `Started ${dayAndTime(started, Date.now())}, last active ${clockTime(active)}`,
     );
     expect(details.textContent).toContain('Today, ');
   });
@@ -143,7 +143,7 @@ describe('the details popover (16u, 16v)', () => {
     const { details } = await open();
 
     expect(details.textContent).toContain(
-      `${dayAndTime(Date.parse('2026-10-19T08:00:00.000Z'), Date.now())} · last active ${dayAndTime(Date.parse('2026-10-21T09:00:00.000Z'), Date.now())}`,
+      `${dayAndTime(Date.parse('2026-10-19T08:00:00.000Z'), Date.now())}, last active ${dayAndTime(Date.parse('2026-10-21T09:00:00.000Z'), Date.now())}`,
     );
   });
 

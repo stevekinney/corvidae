@@ -125,7 +125,7 @@ describe('upcomingRows', () => {
 
     expect(rows.map((row) => row.note)).toEqual([
       undefined,
-      'won’t start · Order refund can’t load · no provider',
+      'won’t start, Order refund can’t load, no provider',
     ]);
   });
 
@@ -140,7 +140,7 @@ describe('upcomingRows', () => {
       NOW,
     );
 
-    expect(rows.at(-1)?.note).toBe('won’t start · order-refund was deleted');
+    expect(rows.at(-1)?.note).toBe('won’t start, order-refund was deleted');
   });
 
   test('says no relative time for a run so far off that its date would be said twice', () => {
@@ -191,7 +191,7 @@ describe('missedBand', () => {
       Date.parse('2026-10-31T09:00:00.000Z'),
       Date.parse('2026-10-30T09:00:00.000Z'),
     ]);
-    expect(band?.rows.every((row) => row.text === 'Missed · Interborough was off')).toBe(true);
+    expect(band?.rows.every((row) => row.text === 'Missed, Interborough was off')).toBe(true);
     expect(band?.newest).toBe(Date.parse('2026-11-02T09:00:00.000Z'));
     expect(band?.oldest).toBe(Date.parse('2026-10-30T09:00:00.000Z'));
   });
@@ -206,8 +206,8 @@ describe('missedBand', () => {
     );
 
     expect(band?.title).toMatch(/^Missed 3 times since/);
-    expect(band?.detail).toBe('The clock skipped this time · Interborough was off');
-    expect(band?.rows[0]?.text).toBe('Missed 2 times · The clock skipped this time');
+    expect(band?.detail).toBe('The clock skipped this time, Interborough was off');
+    expect(band?.rows[0]?.text).toBe('Missed 2 times, The clock skipped this time');
   });
 
   test('says a single miss by its day', () => {

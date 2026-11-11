@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/settings/models`: one page, three sections, no tabs (board SettingsShell, "Models ·
+   * `/settings/models`: one page, three sections, no tabs (board SettingsShell, "Models,
    * /settings/models"). The body is `models-body.svelte`; this is the Settings frame around it, with
    * the section navigation, the heading and the settings the Decisions section edits.
    */

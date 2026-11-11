@@ -127,7 +127,7 @@ test.describe('the sample world', () => {
         expect(gap, `line two of row ${String(index)} is tight under its title`).toBeLessThan(10);
         expect(gap).toBeGreaterThanOrEqual(0);
       }
-      await expect(rows.nth(1)).toContainText('Storage is over its warning level · 1.6 GB');
+      await expect(rows.nth(1)).toContainText('Storage is over its warning level, 1.6 GB');
       await expect(rows.nth(1)).toContainText('Alert firing since');
       await expect(rows.nth(1)).not.toContainText(/capacity|threshold|limit/i);
       await expect(action(1, 'View storage')).toBeVisible();
@@ -166,14 +166,14 @@ test.describe('the sample world', () => {
       await expect(lines).toHaveCount(9);
       for (const [index, text] of [
         'You removed the Anthropic key',
-        'Run started · Refund order 4471 · waiting on you',
-        'Run finished · Refund order 4472',
-        'Storage alert firing · over its warning level',
-        /^Missed runs noticed · Daily summary · was due /,
+        'Run started, Refund order 4471, waiting on you',
+        'Run finished, Refund order 4472',
+        'Storage alert firing, over its warning level',
+        /^Missed runs noticed, Daily summary, was due /,
         'Server started',
-        'Run finished · Say hello',
-        'You deleted a chat · “Scratch test”',
-        'Schedule ran · Daily summary',
+        'Run finished, Say hello',
+        'You deleted a chat, “Scratch test”',
+        'Schedule ran, Daily summary',
       ].entries()) {
         await expect(lines.nth(index)).toHaveText(text);
       }
@@ -230,12 +230,12 @@ test.describe('the sample world', () => {
     );
     await expect(advanced.getByText('Open metrics ›')).toBeVisible();
     await expect(advanced.locator('[data-section="alerts"]')).toContainText(
-      /storage\.size · firing since \d{1,2}:\d{2} (AM|PM) · 1 rule/,
+      /storage\.size, firing since \d{1,2}:\d{2} (AM|PM), 1 rule/,
     );
     await expect(advanced.getByText('Open alerts ›')).toBeVisible();
     // Checks says the same three problems Needs attention does.
     await expect(advanced.locator('[data-section="checks"]')).toContainText(
-      '3 need attention · Storage, Schedules, Providers',
+      '3 need attention, Storage, Schedules, Providers',
     );
     await expect(advanced.locator('[data-section="checks"]')).not.toContainText('Plugins');
     await expect(advanced.getByText('Open checks ›')).toBeVisible();
@@ -268,7 +268,7 @@ test.describe('the sample world', () => {
       await expect(main.locator('.cinder-tabs__collapse')).toContainText('Section: Storage');
       await expect(main.getByRole('tab')).toHaveCount(0);
       await expect(main.getByTestId('storage-warning')).toContainText(
-        'Storage is over its warning level · 1.6 GB.',
+        'Storage is over its warning level, 1.6 GB.',
       );
       await expect(main.getByTestId('storage-warning')).toContainText('Change retention');
       await expect(main.getByTestId('storage-warning')).not.toContainText(/capacity|threshold/i);

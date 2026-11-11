@@ -91,7 +91,7 @@ describe('workerHealthPresentation — priority order', () => {
 
 describe('workersSummaryLine', () => {
   test('an empty fleet reads zero of zero, with nothing running', () => {
-    expect(workersSummaryLine({ workers: [] })).toBe('0 of 0 connected · 0 running');
+    expect(workersSummaryLine({ workers: [] })).toBe('0 of 0 connected, 0 running');
   });
 
   test('counts the workers that take work as connected, and the tasks they hold', () => {
@@ -103,22 +103,22 @@ describe('workersSummaryLine', () => {
       worker({ health: 'active', inFlight: 0, disconnectedAt: 1 }),
     ];
     expect(workersSummaryLine({ workers, waiting: 12, failedForGood: 2 })).toBe(
-      '3 of 5 connected · 7 running · 12 waiting · 2 failed for good',
+      '3 of 5 connected, 7 running, 12 waiting, 2 failed for good',
     );
   });
 
   test('does not count a drained worker as connected, since it stopped', () => {
     const workers = [worker({ health: 'drained', inFlight: 0 })];
-    expect(workersSummaryLine({ workers })).toBe('0 of 1 connected · 0 running');
+    expect(workersSummaryLine({ workers })).toBe('0 of 1 connected, 0 running');
   });
 
   test('leaves out a figure that could not be read instead of reporting zero', () => {
     const workers = [worker({ inFlight: 2 })];
     expect(workersSummaryLine({ workers, failedForGood: 1 })).toBe(
-      '1 of 1 connected · 2 running · 1 failed for good',
+      '1 of 1 connected, 2 running, 1 failed for good',
     );
     expect(workersSummaryLine({ workers, waiting: 0 })).toBe(
-      '1 of 1 connected · 2 running · 0 waiting',
+      '1 of 1 connected, 2 running, 0 waiting',
     );
   });
 });

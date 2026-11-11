@@ -194,7 +194,7 @@ async function restartFromSettings(page: Page) {
 }
 
 test.describe('Restart', () => {
-  test('Disable · failed: says Interborough did not come back, then Keep waiting and the host back up say what became of Web search', async ({
+  test('Disable, failed: says Interborough did not come back, then Keep waiting and the host back up say what became of Web search', async ({
     page,
     pageErrors,
   }) => {
@@ -246,7 +246,7 @@ test.describe('Restart', () => {
     await expect(back).toHaveCount(0);
   });
 
-  test('Restart · failed: after 8 tries the dialog says Your change was saved, what to check, the launch command and Keep waiting', async ({
+  test('Restart, failed: after 8 tries the dialog says Your change was saved, what to check, the launch command and Keep waiting', async ({
     page,
     pageErrors,
   }) => {
@@ -276,7 +276,7 @@ test.describe('Restart', () => {
     await captureAtBothWidths(page, '/settings', 'settings-restart-failed');
   });
 
-  test('Restart · back up: Settings says what applied once Interborough is back', async ({
+  test('Restart, back up: Settings says what applied once Interborough is back', async ({
     page,
     pageErrors,
   }) => {

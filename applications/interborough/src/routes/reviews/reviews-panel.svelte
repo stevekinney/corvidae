@@ -277,7 +277,7 @@
             <span class="ib-review-row__kind">
               {reviewKindLabel(item.review)}{agentOf(item.review) === undefined
                 ? ''
-                : ` · ${agentOf(item.review)}`}
+                : `, ${agentOf(item.review)}`}
             </span>
           {/snippet}
           {#snippet meta()}

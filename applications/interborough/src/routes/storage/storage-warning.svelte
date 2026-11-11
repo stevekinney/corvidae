@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The warning at the top of Health › Storage while a storage alert is firing: "Storage is over its
-   * warning level · 1.6 GB." with a link to change retention. It states what was measured and no
+   * warning level, 1.6 GB." with a link to change retention. It states what was measured and no
    * capacity or threshold, because none is configured. It is the Bureau's own attention list
    * (`bureau.health.attention`), so a fresh installation, which has no storage rule, shows nothing,
    * and neither does a caller the Bureau refuses.

@@ -181,7 +181,7 @@ test('a model agent with no provider connected says it will not run, with a link
   await main.getByLabel(/^Agent/).selectOption({ label: 'Tool runner' });
 
   const notice = main.locator('.cinder-form-field__warning');
-  await expect(notice).toContainText('Won’t run until a provider is connected ·');
+  await expect(notice).toContainText('Won’t run until a provider is connected,');
   await expect(notice.getByRole('link', { name: 'Connect a provider' })).toHaveAttribute(
     'href',
     '/settings/models',
@@ -550,7 +550,7 @@ test('Order refund draws its Line items as a JSON editor with its validity line 
   await expect(input.getByLabel(/^Order number/)).toHaveValue('4398');
   const editor = await jsonEditor(input, /^Line items/);
   await editor.fill('[{"sku":"mug-12","quantity":1}]');
-  await expect(input.getByText('Valid JSON · array of 1 item')).toBeVisible();
+  await expect(input.getByText('Valid JSON, array of 1 item')).toBeVisible();
   await expect(input.getByRole('button', { name: 'Format' })).toBeVisible();
   await captureForDesignReview(page, { route: ROUTE, state: 'order refund input', source: SOURCE });
   await checkA11y('new schedule, Order refund input');

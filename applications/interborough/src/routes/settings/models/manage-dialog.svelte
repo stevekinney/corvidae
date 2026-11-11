@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Manage a connected provider (board SettingsShell, "Manage · a connected provider"): its name,
+   * Manage a connected provider (board SettingsShell, "Manage, a connected provider"): its name,
    * that it is connected and how many models it offers, with Remove key, Replace key and Done. The
    * saved key is never shown again, so there is nothing here to reveal or copy. Remove key and
    * Replace key each close this dialog and open their own.

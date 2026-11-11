@@ -81,18 +81,18 @@ describe('parseTaskDeliveries', () => {
 describe('presentDelivery', () => {
   test('spells out every outcome in text', () => {
     expect(presentDelivery(ACKNOWLEDGED)).toMatchObject({
-      label: 'Acknowledged · applied',
+      label: 'Acknowledged, applied',
       variant: 'success',
     });
     expect(presentDelivery({ ...ACKNOWLEDGED, disposition: 'duplicate' }).label).toBe(
-      'Acknowledged · duplicate',
+      'Acknowledged, duplicate',
     );
     expect(presentDelivery({ ...ACKNOWLEDGED, disposition: 'dead-lettered' })).toMatchObject({
-      label: 'Acknowledged · dead-lettered',
+      label: 'Acknowledged, dead-lettered',
       variant: 'danger',
     });
     expect(presentDelivery(REJECTED)).toMatchObject({
-      label: 'Rejected · stale-attempt',
+      label: 'Rejected, stale-attempt',
       variant: 'danger',
     });
     expect(presentDelivery(REJECTED).explanation).toContain('newer attempt');
@@ -107,7 +107,7 @@ describe('presentDelivery', () => {
     'commit-rejected',
   ] as const)('explains the %s rejection', (rejectionCode) => {
     const presentation = presentDelivery({ ...REJECTED, rejectionCode });
-    expect(presentation.label).toBe(`Rejected · ${rejectionCode}`);
+    expect(presentation.label).toBe(`Rejected, ${rejectionCode}`);
     expect(presentation.explanation.length).toBeGreaterThan(20);
   });
 });

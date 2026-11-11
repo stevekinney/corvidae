@@ -208,7 +208,7 @@ describe('TaskDeadLetterPanel', () => {
     expect(readCalls(scripted)).toBe(0);
     await fireEvent.click(getByRole('button', { name: 'Inspect retained result' }));
 
-    expect(await findByText(/Retained value · 24 B serialized/)).not.toBeNull();
+    expect(await findByText(/Retained value, 24 B serialized/)).not.toBeNull();
     expect(await findByText('R-77', { exact: false })).not.toBeNull();
     expect(readCalls(scripted)).toBe(1);
   });

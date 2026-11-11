@@ -1,5 +1,5 @@
 /**
- * The operations Settings › API reference lists (board PageSettingsSections, "API reference ·
+ * The operations Settings › API reference lists (board PageSettingsSections, "API reference,
  * Operations"), read from Interborough's own OpenAPI description (`/api/openapi.json`,
  * `src/host/api-description.ts`): each operation's method, path and summary, the scope it needs
  * (`x-interborough-scope`), the group it belongs to (its first tag), and an example request and

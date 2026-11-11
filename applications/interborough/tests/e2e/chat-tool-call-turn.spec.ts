@@ -199,7 +199,7 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     await expect(list.getByRole('radiogroup', { name: 'Status' })).toHaveCount(0);
     await expect(list.locator('.cinder-data-list-group__header')).toHaveText([
       /^Today\s*Central time$/,
-      /^Yesterday · Sunday, Nov 1\s*Central time$/,
+      /^Yesterday, Sunday, Nov 1\s*Central time$/,
       /^Thursday, Oct 29\s*Central time$/,
     ]);
     const parcelly = chatRow(page, TOOL_CALL_TURN_TITLE);
@@ -262,7 +262,7 @@ test.describe('the long turn beside the chat list (21o, 21p, 21q)', () => {
     ).toBeVisible();
 
     await expect(rail(page).locator('.cinder-tool-call-rail__summary')).toHaveText(
-      /^\s*Used 30 tools\s*·\s*1 failed\s*·\s*1 waiting on you\s*·\s*18s\s*$/,
+      /^\s*Used 30 tools,\s*1 failed,\s*1 waiting on you,\s*18s\s*$/,
     );
     // The rail: the first three calls, one fold of the twenty-four between, then the failed call,
     // the approved one and the one that waits.

@@ -100,10 +100,8 @@
         >
           {#snippet title()}{row.title}{/snippet}
           {#snippet meta()}
-            {row.kind}
-            {#if row.agent !== undefined}· {row.agent}{/if}
-            {#if row.cantBeUndone}· {copy.cantBeUndone}{/if}
-            · {waitedFor(row.requestedAt, clock())}
+            {row.kind}{#if row.agent !== undefined}, {row.agent}{/if}{#if row.cantBeUndone}, {copy.cantBeUndone}{/if},
+            {waitedFor(row.requestedAt, clock())}
           {/snippet}
         </StackedListItem>
       {/snippet}

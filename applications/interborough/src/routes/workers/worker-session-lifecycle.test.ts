@@ -61,12 +61,12 @@ describe('describeSessionLifecycle — WebSocket', () => {
   test('draining is closing, drained is closed', () => {
     expect(describeSessionLifecycle(instance({ health: 'draining' }), NOW)).toMatchObject({
       state: 'closing',
-      label: 'Closing · draining',
+      label: 'Closing, draining',
       variant: 'warning',
     });
     expect(describeSessionLifecycle(instance({ health: 'drained' }), NOW)).toMatchObject({
       state: 'closed',
-      label: 'Closed · drained',
+      label: 'Closed, drained',
       variant: 'neutral',
     });
   });

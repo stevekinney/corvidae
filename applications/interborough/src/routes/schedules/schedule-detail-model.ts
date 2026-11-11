@@ -126,13 +126,13 @@ export function jsonProblemLine(text: string): number | undefined {
 }
 
 /**
- * Where a workflow's file went wrong, as the blocker card says it: "order-refund ·
+ * Where a workflow's file went wrong, as the blocker card says it: "order-refund,
  * order-refund.json line 12", or the type alone when no line is known.
  */
 export function problemLocation(workflowType: string, line: number | undefined): string {
   return line === undefined
     ? workflowType
-    : `${workflowType} · ${workflowType}.json line ${String(line)}`;
+    : `${workflowType}, ${workflowType}.json line ${String(line)}`;
 }
 
 /** The reason one blocker gives for Run now being off, in a sentence. */

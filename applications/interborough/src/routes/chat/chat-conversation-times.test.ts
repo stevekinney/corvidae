@@ -140,7 +140,7 @@ describe('a chat read from the Bureau', () => {
     ]);
     await findByText('Order 4471 is $42.00, delivered Monday.');
     await waitFor(() =>
-      expect(container.querySelector('.weft-chat-model')?.textContent).toBe('· Claude Sonnet 5.5'),
+      expect(container.querySelector('.weft-chat-model')?.textContent).toBe('Claude Sonnet 5.5'),
     );
     const times = [...container.querySelectorAll('time')].map((time) => [
       time.getAttribute('datetime'),

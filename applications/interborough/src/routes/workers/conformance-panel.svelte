@@ -207,7 +207,7 @@
               <div class="weft-conformance__report">
                 <div class="weft-conformance__verdict">
                   <Badge variant={summary.variant}>{summary.label}</Badge>
-                  <span>{summary.passed} passed · {summary.failed} failed</span>
+                  <span>{summary.passed} passed, {summary.failed} failed</span>
                 </div>
                 <DescriptionList
                   items={[

@@ -1,6 +1,6 @@
 /**
  * COR-2009 — what the host says about an OpenAPI spec before it is connected (PageConnectTools,
- * "OpenAPI spec" and "OpenAPI · invalid spec and no operationIds").
+ * "OpenAPI spec" and "OpenAPI, invalid spec and no operationIds").
  */
 import { describe, expect, test } from 'bun:test';
 

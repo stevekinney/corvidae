@@ -154,7 +154,7 @@ describe('ScheduleDetail', () => {
       expect(stamps).toEqual(stamps.toSorted((first, second) => second - first));
       // The note under Runs says which zone the page reads times in, the viewer's.
       expect(getByTestId('schedule-zone').textContent).toContain(
-        'Upcoming above, past below · times in',
+        'Upcoming above, past below, times in',
       );
     } finally {
       await server.stop();
@@ -246,13 +246,13 @@ describe('ScheduleDetail', () => {
             document
               .querySelector('.cinder-page-header [data-status-word]')
               ?.getAttribute('data-status-word'),
-          ).toBe('Missed runs · 3'),
+          ).toBe('Missed runs, 3'),
         );
         // They are one band below Now, and open to each miss.
         const band = await findByText(/^Missed \d+ times since /);
         expect(band).not.toBeNull();
         await fireEvent.click(await findByRole('button', { name: /Show each/ }));
-        const rows = await findAllByText(/^Missed · /);
+        const rows = await findAllByText(/^Missed, /);
         expect(rows.length).toBeGreaterThan(0);
         unmount();
       }

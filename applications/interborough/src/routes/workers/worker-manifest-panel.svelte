@@ -45,9 +45,9 @@
   <div class="weft-worker-manifest-panel__heading-row">
     <h2 id="worker-manifest-heading">Canonical manifest</h2>
     {#if diagnostics}
-      <Badge variant="success">Ready · server accepted</Badge>
+      <Badge variant="success">Ready, server accepted</Badge>
     {/if}
-    {#if refreshing}<Badge variant="neutral">Refreshing · showing cached evidence</Badge>{/if}
+    {#if refreshing}<Badge variant="neutral">Refreshing, showing cached evidence</Badge>{/if}
   </div>
 
   {#if loading}

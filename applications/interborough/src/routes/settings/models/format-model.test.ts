@@ -1,6 +1,6 @@
 /**
  * The names a person reads for a model, made from the identifier the catalog lists (board
- * PageSettingsSections, "Allowed models · provider connected").
+ * PageSettingsSections, "Allowed models, provider connected").
  */
 import { describe, expect, test } from 'bun:test';
 
@@ -29,7 +29,7 @@ describe('modelDisplayName', () => {
 
 describe('formatModelAbilities', () => {
   test('names tools and images, with the first word capitalized', () => {
-    expect(formatModelAbilities({ tools: true, images: true })).toBe('Tools · images');
+    expect(formatModelAbilities({ tools: true, images: true })).toBe('Tools, images');
     expect(formatModelAbilities({ tools: true, images: false })).toBe('Tools');
     expect(formatModelAbilities({ tools: false, images: true })).toBe('Images');
     expect(formatModelAbilities({ tools: false, images: false })).toBe('Text only');

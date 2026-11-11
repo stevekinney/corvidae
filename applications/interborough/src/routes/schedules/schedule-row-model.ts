@@ -1,7 +1,7 @@
 /**
  * What a row of the Schedules list says, worked out from what the engine and the Bureau say of a
  * schedule, with no DOM in it. A row is a status word, a title, the next run, and a line that is
- * kind first: `Workflow · Chat with an agent · Assistant · Every day at 3:00 AM (9:00 AM UTC) ·
+ * kind first: `Workflow, Chat with an agent, Assistant, Every day at 3:00 AM (9:00 AM UTC),
  * Last run Oct 29`. A reason the schedule will not start comes straight after the kind and the
  * cadence comes after it, so when the line is too long for its row the cadence is what is cut,
  * never the reason. On a phone the status moves to line two beside the kind, and a third line says
@@ -11,7 +11,7 @@
  * workflow's file cannot load, its workflow was deleted, or no model provider is connected and an
  * agent it runs needs a model. Assistant and Echo are scripted and need none, so a schedule that
  * runs only them is never blocked by a provider. A schedule's status is one word: Can't find
- * workflow (it cannot run at all), Paused, Missed runs · N (it missed occurrences and has not fired
+ * workflow (it cannot run at all), Paused, Missed runs, N (it missed occurrences and has not fired
  * since), or Active.
  */
 import {
@@ -46,7 +46,7 @@ export type RowPart = {
   readonly monospace?: boolean;
 };
 
-/** One thing a line says, which the line joins to the next with a middle dot. */
+/** One thing a line says, which the line joins to the next with a comma. */
 export type RowSegment = readonly RowPart[];
 
 /** The reason a schedule will not start. */
@@ -73,7 +73,7 @@ export type ScheduleRow = {
   readonly status: 'active' | 'paused' | 'cancelled';
   readonly kind: ScheduleKind;
   readonly title: string;
-  /** The status word as the row shows it: `Missed runs · 4`, `Active`, `Paused`, `Can't find workflow`. */
+  /** The status word as the row shows it: `Missed runs, 4`, `Active`, `Paused`, `Can't find workflow`. */
   readonly statusWord: StatusDotWordLabel;
   readonly statusKey: RowStatusKey;
   /** How many occurrences it missed and has not caught up on: 0 for a schedule that did not. */
@@ -229,7 +229,7 @@ function nextText(
       : formatDateTime(at, { dayWords: false, now });
   if (blocked) {
     const due = today ? `today, ${formatTimeOfDay(at)}` : when;
-    return { text: `Due ${due} · won’t start`, tone: 'warning' };
+    return { text: `Due ${due}, won’t start`, tone: 'warning' };
   }
   return { text: `Next ${when}` };
 }
@@ -287,7 +287,7 @@ export function scheduleRowOf(schedule: ScheduleSummary, context: ScheduleRowCon
       : statusKey === 'paused'
         ? 'Paused'
         : statusKey === 'missed'
-          ? `Missed runs · ${String(missed.count)}`
+          ? `Missed runs, ${String(missed.count)}`
           : 'Active';
 
   const cadence = cadenceText(schedule, context.now);

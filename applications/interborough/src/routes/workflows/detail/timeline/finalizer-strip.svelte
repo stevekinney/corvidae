@@ -60,7 +60,7 @@
     <div class="weft-finalizer-strip__section">
       <div class="weft-finalizer-strip__section-label">
         <Paintbrush aria-hidden="true" size={12} />
-        Finalizer · runs after {baseStatus === 'timed-out' ? 'a timeout' : 'cancellation'}
+        Finalizer, runs after {baseStatus === 'timed-out' ? 'a timeout' : 'cancellation'}
       </div>
       <div class="weft-finalizer-strip__row">
         {#if inFlight}
@@ -73,10 +73,8 @@
             labelVisible={false}
           />
           <span class="weft-finalizer-strip__row-name">
-            Teardown {succeeded ? 'completed' : 'failed'}
-            {#if status.attempts > 1}
-              · {status.attempts} attempts
-            {/if}
+            Teardown {succeeded ? 'completed' : 'failed'}{#if status.attempts > 1}, {status.attempts}
+              attempts{/if}
           </span>
           {#if failed}
             <Badge size="sm" variant="danger">

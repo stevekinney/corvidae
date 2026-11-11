@@ -3,8 +3,8 @@
    * `/schedules`: every schedule, whichever way it was made (the Bureau's schedules that run an
    * agent, the engine's that start a workflow defined in code, and the trigger in an agent-authored
    * workflow's file), as Cinder's status-first two-line rows. A row is a status word, a bold title
-   * and the next run on line one, and line two kind first (`Workflow · Chat with an agent ·
-   * Assistant · Every day at 3:00 AM (9:00 AM UTC) · Last run Oct 29`). A schedule that missed runs
+   * and the next run on line one, and line two kind first (`Workflow, Chat with an agent,
+   * Assistant, Every day at 3:00 AM (9:00 AM UTC), Last run Oct 29`). A schedule that missed runs
    * sorts first, and a reason a schedule will not start comes straight after the kind. The segments
    * (All, Active, Paused) partition the list, and "Missed runs" is a chip beside them, because a
    * schedule can be both Active and missed. The address owns the filters, so a filtered list can be

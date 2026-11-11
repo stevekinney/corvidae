@@ -74,7 +74,7 @@
     { term: 'Running tasks', definition: `${worker.inFlight} of ${worker.concurrency}` },
     {
       term: 'Version',
-      definition: [worker.buildId, worker.runtimeVersion].filter(Boolean).join(' · ') || '—',
+      definition: [worker.buildId, worker.runtimeVersion].filter(Boolean).join(', ') || '—',
     },
     { term: 'Transport', definition: TRANSPORT_LABEL[worker.transport] },
     { term: 'Connected', definition: formatDuration(Date.now() - worker.connectedAt) + ' ago' },

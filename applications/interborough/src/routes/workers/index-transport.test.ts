@@ -113,7 +113,7 @@ describe('Workers route — transports', () => {
     await fireEvent.click(await findByRole('tab', { name: 'Deployments' }));
 
     expect(await findByText('build-1')).not.toBeNull();
-    expect(await findByText(/1 worker · 1\/4 in flight/)).not.toBeNull();
+    expect(await findByText(/1 worker, 1\/4 in flight/)).not.toBeNull();
     expect(router.search.get('tab')).toBe('deployments');
   });
 });

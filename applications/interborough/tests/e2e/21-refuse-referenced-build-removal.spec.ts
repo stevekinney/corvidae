@@ -27,7 +27,7 @@ test('a build with a run bound to it shows the count, and removal is refused fir
   await expect(buildRow(page)).toBeVisible();
 
   // The count is the held run, and a build that is not draining is first told to drain.
-  await expect(buildRow(page).getByText('1 referenced · reachable')).toBeVisible();
+  await expect(buildRow(page).getByText('1 referenced, reachable')).toBeVisible();
   await expect(buildRow(page).getByRole('button', { name: 'Remove' })).toBeDisabled();
   await expect(
     buildRow(page).getByText(
@@ -69,5 +69,5 @@ test('a build with a run bound to it shows the count, and removal is refused fir
   // Resume the build so the specs after this one see it as they always have.
   await buildRow(page).getByRole('button', { name: 'Resume' }).click();
   await expect(buildRow(page).getByText('Ready', { exact: true })).toBeVisible();
-  await expect(buildRow(page).getByText('1 referenced · reachable')).toBeVisible();
+  await expect(buildRow(page).getByText('1 referenced, reachable')).toBeVisible();
 });

@@ -39,7 +39,7 @@ async function rowText(row: Locator): Promise<[string, string]> {
  * The sample world's tool catalog lists Bureau's, GitHub's and the settings tools, but not the three
  * tools Tool runner's own toolbox holds (`src/host/showcase-agents.ts`), which the Capabilities
  * pages (B12) put in it. Until then the catalog answer carries Issue refund, so the palette's tool
- * row is read as the design draws it ("Issue refund · issue-refund · tool · Tool runner").
+ * row is read as the design draws it ("Issue refund, issue-refund, tool, Tool runner").
  */
 async function listIssueRefundInCatalog(page: Page): Promise<void> {
   await page.route('**/bureau/jsonrpc', async (route) => {
@@ -98,7 +98,7 @@ test.describe('the search palette on the sample world', () => {
     const rows = palette(page).getByRole('option');
     const refund = rows.nth(0);
     await expect(refund).toHaveAttribute('aria-selected', 'true');
-    expect(await rowText(refund)).toEqual(['Refund order 4471 for $42.00?', 'Approval · waiting']);
+    expect(await rowText(refund)).toEqual(['Refund order 4471 for $42.00?', 'Approval, waiting']);
     await expect(refund.locator('.cinder-command-item__leading')).toHaveAttribute(
       'data-cinder-tone',
       'warning',
@@ -163,7 +163,7 @@ test.describe('the search palette on the sample world', () => {
     const group = (name: string) => palette(page).getByRole('group', { name, exact: true });
     const first = group('Waiting on you').getByRole('option').first();
     await expect(first).toHaveAttribute('aria-selected', 'true');
-    expect(await rowText(first)).toEqual(['Refund order 4471 for $42.00?', 'Approval · waiting']);
+    expect(await rowText(first)).toEqual(['Refund order 4471 for $42.00?', 'Approval, waiting']);
 
     const chat = group('Chats').getByRole('option', { name: /^Please refund order 4471/ });
     expect(await rowText(chat)).toEqual([
@@ -174,7 +174,7 @@ test.describe('the search palette on the sample world', () => {
     const run = group('Runs').getByRole('option', {
       name: /^Refund order 4471, Tool runner, waiting for approval$/,
     });
-    expect(await rowText(run)).toEqual(['Refund order 4471', 'Tool runner · waiting for approval']);
+    expect(await rowText(run)).toEqual(['Refund order 4471', 'Tool runner, waiting for approval']);
 
     // One run (the 4471 refund waiting on you): the finished 4472 refund shares its chat and is not
     // titled by it, and the goal attempts, whose identifiers hold "refund", do not match what shows.
@@ -188,7 +188,7 @@ test.describe('the search palette on the sample world', () => {
 
     // A tool: its name for a person, then its identifier small and monospaced, "tool", and who uses it.
     const tool = group('Agents and tools').getByRole('option', { name: /^Issue refund,/ });
-    expect(await rowText(tool)).toEqual(['Issue refund', 'issue-refund · tool · Tool runner']);
+    expect(await rowText(tool)).toEqual(['Issue refund', 'issue-refund, tool, Tool runner']);
     const identifier = tool.locator('.cinder-command-item__meta code.ib-identifier');
     await expect(identifier).toHaveText('issue-refund');
     const [codeFont, metaFont] = await Promise.all([
@@ -248,7 +248,7 @@ test.describe('the search palette on the sample world', () => {
     const rows = palette(page).getByRole('option');
     expect(await rowText(rows.nth(0))).toEqual([
       'Refund order 4471 for $42.00?',
-      'Approval · waiting',
+      'Approval, waiting',
     ]);
     const height = await rows.first().evaluate((element) => element.getBoundingClientRect().height);
     expect(height).toBeGreaterThanOrEqual(44);

@@ -106,9 +106,7 @@ describe('Home while it loads (02c, 02d)', () => {
     // The page region is marked busy.
     expect(page?.getAttribute('aria-busy')).toBe('true');
     // The date line, the four count labels and the four headings are real text.
-    expect(words(getByTestId('home-date'))).toBe(
-      'Monday, Nov 2 · Times show in Central time (CST)',
-    );
+    expect(words(getByTestId('home-date'))).toBe('Monday, Nov 2, Times show in Central time (CST)');
     const stats = [...getByTestId('home-loading-counts').querySelectorAll('.cinder-statistic')];
     expect(
       stats.map((stat) => words(stat.querySelector('.cinder-statistic__label') as Element)),
@@ -202,9 +200,7 @@ describe('Home while it loads slowly (02e, 02f)', () => {
     flushSync();
     // The page keeps its date line, and says the load was canceled in place of the cards.
     expect(container.querySelector('[data-mode="canceled"]')).not.toBeNull();
-    expect(words(getByTestId('home-date'))).toBe(
-      'Monday, Nov 2 · Times show in Central time (CST)',
-    );
+    expect(words(getByTestId('home-date'))).toBe('Monday, Nov 2, Times show in Central time (CST)');
     expect(container.querySelector('h1.cinder-sr-only')?.textContent).toBe('Home');
     const stopped = getByTestId('home-canceled');
     expect(words(stopped)).toContain('Loading canceled');

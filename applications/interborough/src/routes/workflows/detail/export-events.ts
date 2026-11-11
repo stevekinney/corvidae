@@ -1,7 +1,7 @@
 /**
  * Client-side event-history export (plan §9.2 "Event history export", design
- * `Weft New Surfaces.dc.html` §G: "Events Download menu (Event history ·
- * JSON / Events + timeline · JSON)"). Pure over `GET …/events` (+ optionally
+ * `Weft New Surfaces.dc.html` §G: "Events Download menu (Event history,
+ * JSON / Events + timeline, JSON)"). Pure over `GET …/events` (+ optionally
  * `GET …/timeline`) — no upstream work, no server round-trip beyond the
  * fetches the tab already performs.
  */
@@ -17,7 +17,7 @@ export interface EventsAndTimelineExport extends EventHistoryExport {
   readonly timeline: readonly WorkflowTimelineEntry[];
 }
 
-/** Builds the "Event history · JSON" export payload. */
+/** Builds the "Event history, JSON" export payload. */
 export function buildEventHistoryExport(
   workflowId: string,
   events: readonly WorkflowEvent[],
@@ -26,7 +26,7 @@ export function buildEventHistoryExport(
   return { workflowId, exportedAt: new Date(now).toISOString(), events };
 }
 
-/** Builds the "Events + timeline · JSON" export payload. */
+/** Builds the "Events + timeline, JSON" export payload. */
 export function buildEventsAndTimelineExport(
   workflowId: string,
   events: readonly WorkflowEvent[],

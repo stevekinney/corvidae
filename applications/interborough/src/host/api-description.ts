@@ -1,6 +1,6 @@
 /**
  * The OpenAPI description of Interborough's own HTTP API, served at `GET /api/openapi.json` (board
- * PageSettingsSections, "API reference · Discovery documents": "Every operation, for generating a
+ * PageSettingsSections, "API reference, Discovery documents": "Every operation, for generating a
  * client."). It names the seven operations `api-routes.ts` serves, in the order Settings › API
  * reference lists them, each with the scope it needs as `x-interborough-scope`, its group as its
  * one tag, and its request and response schemas made from the schemas the routes validate with

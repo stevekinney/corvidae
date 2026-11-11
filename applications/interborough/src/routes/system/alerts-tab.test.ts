@@ -102,9 +102,9 @@ describe('AlertsTab — active alerts (weft.alerts.list)', () => {
 
     const { findByText, findAllByText } = await renderAlertsTab();
     expect(await findByText('Workflow failure rate')).not.toBeNull();
-    expect(await findByText('25.0% · threshold 10.0% · window 5m')).not.toBeNull();
+    expect(await findByText('25.0%, threshold 10.0%, window 5m')).not.toBeNull();
     expect(await findByText('Storage size')).not.toBeNull();
-    expect(await findByText('2.0 MB · threshold 1.0 MB')).not.toBeNull();
+    expect(await findByText('2.0 MB, threshold 1.0 MB')).not.toBeNull();
     // One Firing badge per active alert — never color alone.
     expect(await findAllByText('Firing')).toHaveLength(2);
   });
@@ -120,7 +120,7 @@ describe('AlertsTab — active alerts (weft.alerts.list)', () => {
 
     const { findByText } = await renderAlertsTab();
     expect(await findByText('queue.depth')).not.toBeNull();
-    expect(await findByText('7 · threshold 5')).not.toBeNull();
+    expect(await findByText('7, threshold 5')).not.toBeNull();
   });
 
   test('a failing weft.alerts.list renders the shared fault banner with a Retry action', async () => {
@@ -152,7 +152,7 @@ describe('AlertsTab — session activity log', () => {
     ]);
 
     const { findByRole, findByText } = await renderAlertsTab();
-    expect(await findByText('Alert fired · dlq-backlog')).not.toBeNull();
+    expect(await findByText('Alert fired, dlq-backlog')).not.toBeNull();
     expect(await findByText('Firing')).not.toBeNull();
 
     // No `workflowId` on this frame's payload — `detailsHref` falls back to

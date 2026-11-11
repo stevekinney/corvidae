@@ -209,7 +209,7 @@ describe('the rows', () => {
       'Inbox triage',
     ]);
     expect(listedRows.map((row) => row.dataset['statusWord'])).toEqual([
-      'Missed runs · 4',
+      'Missed runs, 4',
       'Active',
       'Active',
       'Paused',
@@ -221,7 +221,7 @@ describe('the rows', () => {
     const [daily, refund, release, inbox] = await listed(container);
 
     expect(nextOf(daily as HTMLElement)).toMatch(/^Next /);
-    expect(nextOf(refund as HTMLElement)).toMatch(/^Due .+ · won’t start$/);
+    expect(nextOf(refund as HTMLElement)).toMatch(/^Due .+, won’t start$/);
     expect(
       (refund as HTMLElement)
         .querySelector('[data-testid="schedule-next"]')
@@ -236,10 +236,10 @@ describe('the rows', () => {
     const [daily, refund, release, inbox] = await listed(container);
 
     expect(lineTwoOf(daily as HTMLElement)).toMatch(
-      /^Workflow · Chat with an agent · Assistant · Every day at .+ · Last run [A-Z][a-z]{2} \d{1,2}$/,
+      /^Workflow, Chat with an agent, Assistant, Every day at .+, Last run [A-Z][a-z]{2} \d{1,2}$/,
     );
     expect(lineTwoOf(refund as HTMLElement)).toMatch(
-      /^Workflow · order-refund can’t load · Tool runner · Every Monday at .+ · Never run$/,
+      /^Workflow, order-refund can’t load, Tool runner, Every Monday at .+, Never run$/,
     );
     // The workflow's file name is small and monospaced, and "can't load" is in red.
     const reason = (refund as HTMLElement).querySelector('code.ib-identifier');
@@ -250,10 +250,10 @@ describe('the rows', () => {
         ?.textContent?.trim(),
     ).toBe('can’t load');
     expect(lineTwoOf(release as HTMLElement)).toMatch(
-      /^Workflow · Release notes · Every Friday at .+ · From a workflow file · Last run /,
+      /^Workflow, Release notes, Every Friday at .+, From a workflow file, Last run /,
     );
     expect(lineTwoOf(inbox as HTMLElement)).toMatch(
-      /^Workflow · Triage inbox · Assistant · Every day at .+ · Last run /,
+      /^Workflow, Triage inbox, Assistant, Every day at .+, Last run /,
     );
   });
 
@@ -303,7 +303,7 @@ describe('the rows', () => {
     });
     const row = rows(container).find((candidate) => titleOf(candidate) === 'Weekly refund audit');
     expect(lineTwoOf(row as HTMLElement)).toMatch(
-      /^Workflow · Order refund · won’t run until a provider is connected · Tool runner · /,
+      /^Workflow, Order refund, won’t run until a provider is connected, Tool runner, /,
     );
     expect(lineTwoOf(row as HTMLElement)).not.toContain('can’t load');
   });
@@ -331,7 +331,7 @@ describe('a schedule whose workflow was deleted', () => {
     const row = rows(container).find((candidate) => titleOf(candidate) === 'Weekly cleanup');
     expect(row?.dataset['statusKey']).toBe('cannot-find');
     expect(lineTwoOf(row as HTMLElement)).toMatch(
-      /^Workflow · weekly-cleanup was deleted · Tool runner · Every Sunday at .+ · Last run /,
+      /^Workflow, weekly-cleanup was deleted, Tool runner, Every Sunday at .+, Last run /,
     );
     expect(nextOf(row as HTMLElement)).toBe('No next run');
     // The schedule itself is paused, so it counts there: All 5, Active 4, Paused 1.
@@ -455,7 +455,7 @@ describe('on a phone', () => {
     ]);
     const [daily, inbox, release, refund] = rows(container);
 
-    expect(lineTwoOf(daily as HTMLElement)).toBe('Workflow · Chat with an agent · Assistant');
+    expect(lineTwoOf(daily as HTMLElement)).toBe('Workflow, Chat with an agent, Assistant');
     expect(nextOf(inbox as HTMLElement)).toBe('—');
     // Tomorrow's run is named by its weekday alone, and a later one keeps its date (row 10w).
     expect(nextOf(daily as HTMLElement)).toMatch(/^Next [A-Z][a-z]{2} \d{1,2}:\d{2} (AM|PM)$/);
@@ -466,16 +466,16 @@ describe('on a phone', () => {
       (row?.querySelector('[data-testid="schedule-line-three"]')?.textContent ?? '')
         .replaceAll(/\s+/g, ' ')
         .trim();
-    expect(third(daily)).toMatch(/^Missed 4 times since [A-Z][a-z]{2} \d{1,2} · every day at /);
+    expect(third(daily)).toMatch(/^Missed 4 times since [A-Z][a-z]{2} \d{1,2}, every day at /);
     expect(third(refund)).toMatch(
-      /^Order refund can’t load · won’t run until a provider is connected · Mondays at /,
+      /^Order refund can’t load, won’t run until a provider is connected, Mondays at /,
     );
     expect(
       refund?.querySelector('[data-testid="schedule-line-three"] [data-tone="danger"]')
         ?.textContent,
     ).toBe('Order refund can’t load');
     // A workflow file words its own cadence, so its schedule says "every Friday" (row 10x).
-    expect(third(release)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · every Friday at /);
-    expect(third(inbox)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2} · every day at /);
+    expect(third(release)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2}, every Friday at /);
+    expect(third(inbox)).toMatch(/^Last ran [A-Z][a-z]{2} \d{1,2}, every day at /);
   });
 });

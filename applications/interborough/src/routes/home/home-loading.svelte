@@ -35,7 +35,7 @@
   {onCancel}
 >
   <HomeLayout mode="loading" busy>
-    {#snippet date()}{dateLine(clock())} · {timesShowIn(clock())}{/snippet}
+    {#snippet date()}{dateLine(clock())}, {timesShowIn(clock())}{/snippet}
     {#snippet counts()}
       <StatisticGroup
         label={HOME_COPY.countsLabel}

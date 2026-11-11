@@ -43,7 +43,7 @@ describe('BulkActionDialog — dry-run preview', () => {
       expect(getByText(/Operates on all/)).not.toBeNull();
       expect(getByText('47 matching workflows')).not.toBeNull();
     });
-    expect(getByText('status:failed · type:payment-capture')).not.toBeNull();
+    expect(getByText('status:failed, type:payment-capture')).not.toBeNull();
   });
 
   test('renders previewNote in the preview phase when supplied (WFT-117)', async () => {

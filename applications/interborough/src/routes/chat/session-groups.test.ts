@@ -241,13 +241,13 @@ describe('the day band of a row', () => {
   });
 
   test('names today’s date too in a wide pane, as the list pattern does', () => {
-    expect(group('2026-11-02T10:42:00-06:00', true).label).toBe('Today · Monday, Nov 2');
+    expect(group('2026-11-02T10:42:00-06:00', true).label).toBe('Today, Monday, Nov 2');
   });
 
   test('names Yesterday with its date, and an older day by its date alone, each its own band', () => {
     expect(group('2026-11-01T16:12:00-06:00')).toEqual({
       key: 'yesterday',
-      label: 'Yesterday · Sunday, Nov 1',
+      label: 'Yesterday, Sunday, Nov 1',
       detail: 'Central time',
     });
     const older = group('2026-10-29T11:05:00-05:00');
@@ -274,7 +274,7 @@ describe('the day band of a row', () => {
 
   test('reads the day in the viewer’s zone, not the instant’s own, and puts a future time in Today', () => {
     // 9:30 PM Sunday in Chicago is already Monday at UTC.
-    expect(group('2026-11-02T03:30:00Z').label).toBe('Yesterday · Sunday, Nov 1');
+    expect(group('2026-11-02T03:30:00Z').label).toBe('Yesterday, Sunday, Nov 1');
     expect(group('2026-11-02T12:00:00-06:00').key).toBe('today');
   });
 

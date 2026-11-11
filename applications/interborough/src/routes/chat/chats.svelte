@@ -329,7 +329,7 @@
           statusPlacement="line-two"
           titleLines={phone.current ? 2 : 1}
           tooltip={row.title}
-          metaTooltip={`${agent} · ${row.snippet}`}
+          metaTooltip={`${agent}, ${row.snippet}`}
         >
           {#snippet status()}<StatusDot word={row.status} />{/snippet}
           {#snippet title()}{row.title}{/snippet}
@@ -341,7 +341,7 @@
             {/if}
           {/snippet}
           {#snippet meta()}
-            {#if wide}<span class="ib-chat-row__agent">{`${agent} · `}</span>{/if}{row.snippet}
+            {#if wide}<span class="ib-chat-row__agent">{`${agent}, `}</span>{/if}{row.snippet}
           {/snippet}
         </StackedListItem>
       {/snippet}

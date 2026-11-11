@@ -1,5 +1,5 @@
 /**
- * `/settings/a2a` (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with Accept A2A calls
+ * `/settings/a2a` (board PageSettingsSections, "A2A, /settings/a2a" and "A2A with Accept A2A calls
  * off"): the switch that accepts remote calls, the address of the agent card, a switch per agent,
  * push notifications, and the recent calls. Every row saves as it is left, through
  * `bureau.settings.update`. The Bureau is a stub.

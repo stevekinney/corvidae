@@ -181,7 +181,7 @@ describe('the rows (16f, 16g, 11h)', () => {
     const zoneName = zoneLabel(NOW, zone);
     expect(bands).toEqual([
       `Today ${zoneName}`,
-      `Yesterday · ${dateLine(NOW - 24 * HOUR, zone)} ${zoneName}`,
+      `Yesterday, ${dateLine(NOW - 24 * HOUR, zone)} ${zoneName}`,
       `${dateLine(NOW - 72 * HOUR, zone)} ${zoneName}`,
     ]);
   });
@@ -369,7 +369,7 @@ describe('the list on a phone and a modified click', () => {
         element.textContent?.trim(),
       );
       expect(agents.length).toBeGreaterThan(0);
-      expect(agents.every((text) => text?.endsWith('·'))).toBe(true);
+      expect(agents.every((text) => text?.endsWith(','))).toBe(true);
     } finally {
       if (original === undefined) Reflect.deleteProperty(HTMLElement.prototype, 'clientWidth');
       else Object.defineProperty(HTMLElement.prototype, 'clientWidth', original);

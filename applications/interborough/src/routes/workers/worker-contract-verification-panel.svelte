@@ -53,15 +53,15 @@
     <h2 id="worker-contract-verification-heading">Contract verification</h2>
     {#if verification}
       {#if verification.hasDrift}
-        <Badge variant="danger">Drift · manifest differs from registry</Badge>
+        <Badge variant="danger">Drift, manifest differs from registry</Badge>
       {:else}
-        <Badge variant="success">Verified · manifest matches registry</Badge>
+        <Badge variant="success">Verified, manifest matches registry</Badge>
       {/if}
     {/if}
     {#if verification && error}
-      <Badge variant="warning">Stale · last refresh failed</Badge>
+      <Badge variant="warning">Stale, last refresh failed</Badge>
     {:else if refreshing}
-      <Badge variant="neutral">Refreshing · showing cached evidence</Badge>
+      <Badge variant="neutral">Refreshing, showing cached evidence</Badge>
     {/if}
   </div>
 

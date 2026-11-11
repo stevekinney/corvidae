@@ -1,6 +1,6 @@
 /**
  * What the notification bell holds, derived from what the Bureau says is waiting on the person
- * and what has finished: each item is a sentence and a second line, `Waiting for your approval ·
+ * and what has finished: each item is a sentence and a second line, `Waiting for your approval,
  * Tool runner` (design row 02w), and never a run. The engine's own event feed (a run starting, a signal arriving) is not here; it lives on the
  * Engine view's activity feed.
  *
@@ -241,7 +241,7 @@ function dayOf(milliseconds: number): string {
 /**
  * The item for a schedule that missed fires: how many it missed and since when, at the time its
  * newest miss was due, in the viewer's zone ("Daily summary missed its 3:00 AM run", "4 missed
- * since Oct 30 · Assistant").
+ * since Oct 30, Assistant").
  */
 function missedEntry(source: MissedFireSource, display: AgentDisplayName): NotificationEntry {
   const { scheduleId, name, fires, agentName } = source;
@@ -261,7 +261,7 @@ function missedEntry(source: MissedFireSource, display: AgentDisplayName): Notif
     tier: 'warning',
     icon: 'calendar-x',
     title: NOTIFICATION_COPY.missedRun(label, formatTimeOfDay(newest.occurrence)),
-    detail: `${summary} · ${agent}`,
+    detail: `${summary}, ${agent}`,
     href: scheduleDetailPath(scheduleId),
     emittedAtMs: newest.occurrence,
   };

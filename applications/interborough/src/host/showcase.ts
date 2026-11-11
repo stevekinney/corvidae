@@ -232,7 +232,7 @@ export function showcaseHostOptions(
     extraAgents: showcaseBuiltInAgents(pacing, scripts),
     extraTools: showcaseCatalogTools(pacing),
     // Settings › A2A shows Assistant and Tool runner shared and the rest not (board
-    // PageSettingsSections, "A2A · /settings/a2a").
+    // PageSettingsSections, "A2A, /settings/a2a").
     a2aAgents: SHOWCASE_A2A_AGENTS,
     resolveProviderGenerateFor: (agentOfRun) => showcaseProviderResolver(agentOfRun, scripts),
     nightlyCleanUp: { timeZone: SAMPLE_TIME_ZONE },

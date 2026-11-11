@@ -21,6 +21,9 @@ import {
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
+// `@lostgradient/chat` words these hints with a middle dot and Interborough does not own that copy yet.
+const CHAT_SEPARATOR = String.fromCodePoint(0xb7);
+
 let restore: (() => void) | undefined;
 afterEach(() => {
   cleanup();
@@ -209,7 +212,7 @@ describe('the composer’s settings', () => {
     await waitFor(() => expect(shown(container, 'weft-chat-permission')).toBe('On changes asks'));
 
     expect(note(container)).toBe('');
-    expect(hint(container)).toBe('Enter to send · Shift and Enter for a new line');
+    expect(hint(container)).toBe(`Enter to send ${CHAT_SEPARATOR} Shift and Enter for a new line`);
   });
 
   test('holds no field: the header has the title and the ring', async () => {
@@ -490,6 +493,6 @@ describe('changing a setting from the composer', () => {
 
     expect(await findByText(SETTINGS.permissionNotices.denied)).not.toBeNull();
     expect(note(container)).toBe('');
-    expect(hint(container)).toBe('Enter to send · Shift and Enter for a new line');
+    expect(hint(container)).toBe(`Enter to send ${CHAT_SEPARATOR} Shift and Enter for a new line`);
   });
 });

@@ -12,6 +12,9 @@ import ChatConversation from './chat-conversation.svelte';
 import { bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
+// `@lostgradient/chat` words these hints with a middle dot and Interborough does not own that copy yet.
+const CHAT_SEPARATOR = String.fromCodePoint(0xb7);
+
 let restore: (() => void) | undefined;
 let restoreWindow: (() => void) | undefined;
 afterEach(() => {
@@ -296,7 +299,9 @@ describe('a question in the transcript, answered with an Undo window', () => {
     await fireEvent.click(staging);
 
     const line = container.querySelector('.chat-question-status');
-    expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Answered Staging · Undo (5 s)');
+    expect(line?.textContent?.replace(/\s+/g, ' ').trim()).toBe(
+      `Answered Staging ${CHAT_SEPARATOR} Undo (5 s)`,
+    );
     expect(staging.getAttribute('aria-pressed')).toBe('true');
     expect(getAllByRole('button', { name: /Undo/ })).toHaveLength(1);
     expect(container.querySelector('textarea')?.hasAttribute('readonly')).toBe(true);

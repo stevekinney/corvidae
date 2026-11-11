@@ -205,7 +205,7 @@ test.describe('on a desktop', () => {
 
     // Hovering a row names it in a tooltip, with its count.
     await reviews.hover();
-    await expect(page.getByRole('tooltip')).toContainText('Reviews · 2 need you');
+    await expect(page.getByRole('tooltip')).toContainText('Reviews, 2 need you');
     await captureForDesignReview(page, {
       route: '/',
       state: 'collapsed rail tooltip',
@@ -504,7 +504,7 @@ test.describe('the top bar’s popovers on the sample world', () => {
     const panel = page.getByRole('dialog', { name: 'Notifications' });
     await expect(panel).toBeVisible();
     expect(await widthOf(panel)).toBe(420);
-    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications · 3 unread');
+    await expect(panel.getByRole('heading', { level: 2 })).toHaveText('Notifications, 3 unread');
     await expect(panel.getByRole('button', { name: 'Mark all read' })).toBeVisible();
     // What the person's own hooks announced was cleared; nothing else is a raw event.
     await expect(panel.locator('[data-kind="notice"]')).toHaveCount(0);
@@ -516,10 +516,10 @@ test.describe('the top bar’s popovers on the sample world', () => {
     await expect(rows).toHaveCount(4);
     await expect(panel.getByText(/answered/i)).toHaveCount(0);
     await expect(rows.nth(0)).toContainText('Refund order 4471');
-    await expect(rows.nth(0)).toContainText('Waiting for your approval · Tool runner');
+    await expect(rows.nth(0)).toContainText('Waiting for your approval, Tool runner');
     await expect(rows.nth(0).locator('.weft-notification-panel__item-time')).toHaveText('4 min');
     await expect(rows.nth(1)).toContainText('Which environment should the release go to?');
-    await expect(rows.nth(1)).toContainText('Waiting for your answer · Request human input');
+    await expect(rows.nth(1)).toContainText('Waiting for your answer, Request human input');
     await expect(rows.nth(1).locator('.weft-notification-panel__item-time')).toHaveText('1 h');
     for (const index of [0, 1]) {
       await expect(rows.nth(index)).toHaveAttribute('data-read', 'false');
@@ -530,7 +530,7 @@ test.describe('the top bar’s popovers on the sample world', () => {
     const missed = rows.nth(2);
     await expect(missed).toHaveAttribute('data-kind', 'missed');
     await expect(missed).toContainText('Daily summary missed its 3:00 AM run');
-    await expect(missed).toContainText('4 missed since Oct 30 · Assistant');
+    await expect(missed).toContainText('4 missed since Oct 30, Assistant');
     await expect(missed.locator('.weft-notification-panel__item-time')).toHaveText('7 h');
 
     // The storage rule that is firing is listed read and does not count.

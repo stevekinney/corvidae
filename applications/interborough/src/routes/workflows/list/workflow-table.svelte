@@ -192,8 +192,7 @@
                 <span>
                   <span class="weft-workflows-table__origin-label"
                     >{STARTED_BY_LABELS['agent-run']}</span
-                  >
-                  · {workflowOrigin.agentId}
+                  >, {workflowOrigin.agentId}
                 </span>
                 <a href={router.href(workflowDetailPath(workflowOrigin.runId))}>Calling run</a>
               </span>

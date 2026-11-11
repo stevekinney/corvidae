@@ -219,7 +219,7 @@ describe('the models of a new agent', () => {
         copy.abilities.images,
         copy.abilities.structuredOutput,
         copy.abilities.streaming,
-      ].join(' · '),
+      ].join(', '),
     );
   });
 });

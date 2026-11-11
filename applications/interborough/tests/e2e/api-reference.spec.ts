@@ -1,6 +1,6 @@
 /**
- * Settings › API reference (board PageSettingsSections, "API reference · /settings/api-reference",
- * "API reference · Discovery documents", "Your scopes", "Workflow sources" and "API reference loading
+ * Settings › API reference (board PageSettingsSections, "API reference, /settings/api-reference",
+ * "API reference, Discovery documents", "Your scopes", "Workflow sources" and "API reference loading
  * and failing to load"): one tabs row of four tabs, each filled from what the running server answers.
  * The seeded host serves Interborough's own API description at `/api/openapi.json` and says the one
  * local session holds every scope; the showcase host holds the sample world's workflow files. A failed read must be an error in
@@ -181,13 +181,13 @@ test('Workflow sources lists the workflow files read-only, with no Open file', a
     'workflows/order-refund.json',
   );
   await expect(panel.locator('[data-workflow-file="order-refund"]')).toContainText(
-    '1 workflow · Order refund',
+    '1 workflow, Order refund',
   );
   await expect(panel.locator('[data-workflow-file="release-notes"]')).toContainText(
-    '1 workflow · Release notes, 1 schedule',
+    '1 workflow, Release notes, 1 schedule',
   );
   await expect(panel.locator('[data-workflow-file="triage-inbox"]')).toContainText(
-    '1 workflow · Triage inbox',
+    '1 workflow, Triage inbox',
   );
   await expect(panel.getByRole('button', { name: /open file/i })).toHaveCount(0);
   await captureAtEveryWidth(page, 'workflow-sources', 'Workflow sources');

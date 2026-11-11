@@ -4,8 +4,8 @@
   /**
    * A model's name as a person says it ("Claude Opus 5.5") with the identifier the provider calls it
    * (`claude-opus-5-5`) small and monospaced: under the name in a table row (board SettingsShell,
-   * "Models · provider connected"), or beside it in a row of checkboxes (board PageSettingsSections,
-   * "Allowed models · provider connected"; board ListPatterns, "Option A, for operator tables only").
+   * "Models, provider connected"), or beside it in a row of checkboxes (board PageSettingsSections,
+   * "Allowed models, provider connected"; board ListPatterns, "Option A, for operator tables only").
    * The name is a `<label>` when it names a control. Cinder has no component for this yet; it is
    * the one place both pages draw it, so a Cinder version replaces this file.
    */

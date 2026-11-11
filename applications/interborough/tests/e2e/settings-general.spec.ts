@@ -1,5 +1,5 @@
 /**
- * Settings › General (board SettingsShell, "General · /settings") on the sample world: the page at
+ * Settings › General (board SettingsShell, "General, /settings") on the sample world: the page at
  * 1280 and 375 pixels, a setting saved as its field is left, a value that is refused at its field,
  * a save that does not go through, the banner's Revert with its Undo toast, a remote deployment's
  * locked settings, and the placeholders while the settings load. The restart that follows a saved change is `restart.spec.ts`.
@@ -47,7 +47,7 @@ test.describe('Settings › General', () => {
       await expect(page.getByRole('heading', { level: 2, name: heading })).toBeVisible();
     }
     await expect(page.getByRole('heading', { name: /engine/i })).toHaveCount(0);
-    await expect(settingRow(page, 'storage.backend')).toContainText('SQLite · on this machine');
+    await expect(settingRow(page, 'storage.backend')).toContainText('SQLite, on this machine');
     await expect(
       page.getByRole('navigation', { name: 'Settings sections' }).getByRole('link'),
     ).toHaveText([
@@ -102,7 +102,7 @@ test.describe('Settings › General', () => {
     const row = settingRow(page, 'engine.workflowClaimRenewInterval');
     const saved = await row.getByRole('spinbutton').inputValue();
     await banner.getByRole('button', { name: 'Revert 1 change' }).click();
-    await expect(row.getByRole('status')).toContainText('Reverted · in effect now');
+    await expect(row.getByRole('status')).toContainText('Reverted, in effect now');
     // The host runs the 30 seconds it started with; the 15 it saved waited for a restart.
     await expect(row.getByRole('spinbutton')).toHaveValue('30');
     await expect(banner).toHaveCount(0);
@@ -171,7 +171,7 @@ test.describe('Settings › General', () => {
     await captureAtBothWidths(page, 'save-failed');
   });
 
-  test('locked · remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
+  test('locked, remote mode: the backend and what the deployment owns sit in a Remote deployment card', async ({
     page,
   }) => {
     await page.route('**/host/paths', async (route) => {

@@ -128,7 +128,7 @@ describe('TaskLedgerDetailView', () => {
 
     expect(getByText('Delayed')).not.toBeNull();
     expect(getByText('traceparent, tenant-id')).not.toBeNull();
-    expect(getByText('Available · attempt 2 of 5')).not.toBeNull();
+    expect(getByText('Available, attempt 2 of 5')).not.toBeNull();
     expect(getByText(/deploymentName: payments-v2/)).not.toBeNull();
   });
 
@@ -219,7 +219,7 @@ describe('TaskLedgerDetailView', () => {
 
     expect(getByText('leased')).not.toBeNull();
     expect(getByText('Already dispatched')).not.toBeNull();
-    expect(getByText('Exhausted · attempt 5 of 5')).not.toBeNull();
+    expect(getByText('Exhausted, attempt 5 of 5')).not.toBeNull();
     expect(getByText('tenant-42')).not.toBeNull();
     expect(getByText('wf_sticky')).not.toBeNull();
     expect(getByText('lease expired')).not.toBeNull();
@@ -370,7 +370,7 @@ describe('TaskLedgerDetailView — lease clocks', () => {
     });
     const { container } = render(TaskLedgerDetailView, { props: { task: terminal, now: NOW } });
     expect(
-      within(clock(container, 'execution-deadline')).getByText('Settled · no longer running'),
+      within(clock(container, 'execution-deadline')).getByText('Settled, no longer running'),
     ).not.toBeNull();
     expect(container.querySelector('[data-state="expired"]')).toBeNull();
   });
@@ -457,7 +457,7 @@ describe('TaskLedgerDetailView — fenced attempt history', () => {
     const current = within(attemptEntry(container, 3));
     expect(current.getByText(`${iso(NOW - 5_000)} → still held`)).not.toBeNull();
     expect(current.queryByText('Superseded')).toBeNull();
-    expect(container.textContent).toContain('Attempt 3 · current');
+    expect(container.textContent).toContain('Attempt 3, current');
   });
 });
 
@@ -567,10 +567,10 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     });
     const { getByText, queryByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
 
-    expect(getByText('Requested · awaiting worker acknowledgement')).not.toBeNull();
+    expect(getByText('Requested, awaiting worker acknowledgement')).not.toBeNull();
     expect(getByText('operator requested cancellation')).not.toBeNull();
     expect(getByText(`${iso(NOW - 3_000)} (just now)`)).not.toBeNull();
-    expect(getByText('Not acknowledged · attempt 2 is leased')).not.toBeNull();
+    expect(getByText('Not acknowledged, attempt 2 is leased')).not.toBeNull();
     expect(queryByText(/^Acknowledged/)).toBeNull();
   });
 
@@ -595,7 +595,7 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     });
     const { getByText, queryByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
 
-    expect(getByText('Requested · awaiting worker acknowledgement')).not.toBeNull();
+    expect(getByText('Requested, awaiting worker acknowledgement')).not.toBeNull();
     expect(
       getByText('Attempt 1 recorded cancellation; that does not acknowledge attempt 2'),
     ).not.toBeNull();
@@ -624,7 +624,7 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     expect(getByText('Acknowledged by owning attempt')).not.toBeNull();
     expect(
       getByText(
-        `Acknowledged by attempt 2 at ${iso(NOW - 2_000)} · worker acknowledged cancellation`,
+        `Acknowledged by attempt 2 at ${iso(NOW - 2_000)}, worker acknowledged cancellation`,
       ),
     ).not.toBeNull();
   });
@@ -648,10 +648,10 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     });
     const { getByText, queryByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
 
-    expect(getByText('Settled after grace period · no worker acknowledgement')).not.toBeNull();
+    expect(getByText('Settled after grace period, no worker acknowledgement')).not.toBeNull();
     expect(
       getByText(
-        `Not acknowledged · Interborough settled attempt 2 at ${iso(NOW - 1_000)} after the cancellation grace period elapsed`,
+        `Not acknowledged, Interborough settled attempt 2 at ${iso(NOW - 1_000)} after the cancellation grace period elapsed`,
       ),
     ).not.toBeNull();
     expect(queryByText('Acknowledged by owning attempt')).toBeNull();
@@ -670,7 +670,7 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     });
     const { getByText } = render(TaskLedgerDetailView, { props: { task, now: NOW } });
 
-    expect(getByText('Cancelled · no worker acknowledgement recorded')).not.toBeNull();
+    expect(getByText('Cancelled, no worker acknowledgement recorded')).not.toBeNull();
     expect(getByText('No record for attempt 2 yet')).not.toBeNull();
   });
 
@@ -683,7 +683,7 @@ describe('TaskLedgerDetailView — cancellation evidence', () => {
     expect(within(clock(container, 'session-lease')).getByText('Expired')).not.toBeNull();
     expect(getByText('Not requested')).not.toBeNull();
     expect(getByText('No cancellation to acknowledge')).not.toBeNull();
-    expect(queryByText(/Requested ·/)).toBeNull();
+    expect(queryByText(/Requested,/)).toBeNull();
     expect(container.querySelector('[data-cancellation="not-requested"]')).not.toBeNull();
   });
 });
@@ -758,7 +758,7 @@ describe('TaskLedgerPanel — query states', () => {
     expect(getByRole('heading', { name: 'Authoritative task ledger' })).not.toBeNull();
     expect(getByRole('heading', { name: 'Lease clocks' })).not.toBeNull();
     expect(getByRole('list', { name: 'Attempt history' })).not.toBeNull();
-    expect(getByText('Attempt 2 · current')).not.toBeNull();
+    expect(getByText('Attempt 2, current')).not.toBeNull();
   });
 
   test('falls back to a no-selection state without data or error', () => {

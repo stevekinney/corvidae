@@ -230,7 +230,7 @@ describe('a chat whose run failed on a call', () => {
       expect(
         container.querySelector('.cinder-tool-call-rail__item[data-cinder-status="interrupted"]')
           ?.textContent,
-      ).toContain('Interrupted · may have run'),
+      ).toContain('Interrupted, may have run'),
     );
   });
 
@@ -242,7 +242,7 @@ describe('a chat whose run failed on a call', () => {
       expect(
         container.querySelector('.cinder-tool-call-rail__item[data-cinder-status="interrupted"]')
           ?.textContent,
-      ).toContain('Interrupted · didn’t finish'),
+      ).toContain('Interrupted, didn’t finish'),
     );
   });
 

@@ -143,7 +143,7 @@ describe('the top bar', () => {
         tier: 'warning',
         icon: 'shield-question-mark',
         title: 'Refund order 4471 for $42.00?',
-        detail: 'Waiting for your approval · Tool runner',
+        detail: 'Waiting for your approval, Tool runner',
         href: '/reviews',
         emittedAtMs: Date.now() - 240_000,
       },

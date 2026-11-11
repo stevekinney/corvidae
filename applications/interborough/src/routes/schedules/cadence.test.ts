@@ -57,11 +57,11 @@ describe('describeCronExpression', () => {
   });
 
   test('falls back to raw cron for shapes outside the bounded set', () => {
-    expect(describeCronExpression('*/15 9-17 * * 1-5')).toBe('Cron · */15 9-17 * * 1-5');
+    expect(describeCronExpression('*/15 9-17 * * 1-5')).toBe('Cron, */15 9-17 * * 1-5');
   });
 
   test('falls back to raw cron for a malformed (wrong field count) expression', () => {
-    expect(describeCronExpression('* * *')).toBe('Cron · * * *');
+    expect(describeCronExpression('* * *')).toBe('Cron, * * *');
   });
 });
 

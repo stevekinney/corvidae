@@ -27,7 +27,7 @@
   const showLastRan = $derived(row.statusKey !== 'missed' && row.lastFireAt !== undefined);
   // Line two as plain text, for the tooltip that carries it whole when it is cut.
   const lineTwoText = $derived(
-    row.lineTwo.map((segment) => segment.map((part) => part.text).join('')).join(' · '),
+    row.lineTwo.map((segment) => segment.map((part) => part.text).join('')).join(', '),
   );
 </script>
 
@@ -41,7 +41,7 @@
 {/snippet}
 {#snippet phoneTail()}
   {#if showLastRan}
-    <ScheduleLastFire scheduleId={row.id} lastFireAt={row.lastFireAt} phone />{' · '}
+    <ScheduleLastFire scheduleId={row.id} lastFireAt={row.lastFireAt} phone />{', '}
   {/if}
   {row.phoneCadence}
 {/snippet}

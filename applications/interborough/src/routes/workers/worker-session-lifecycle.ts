@@ -60,8 +60,8 @@ const STATE_PRESENTATION: Readonly<
 > = {
   connected: { label: 'Connected', variant: 'success' },
   reconnecting: { label: 'Reconnecting', variant: 'warning' },
-  closing: { label: 'Closing · draining', variant: 'warning' },
-  closed: { label: 'Closed · drained', variant: 'neutral' },
+  closing: { label: 'Closing, draining', variant: 'warning' },
+  closed: { label: 'Closed, drained', variant: 'neutral' },
 };
 
 function connectionText(instance: SessionInstance, state: SessionLifecycleState): string {

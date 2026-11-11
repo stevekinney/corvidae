@@ -114,7 +114,7 @@ describe('TimelineTab logs', () => {
       logLine(0, 0, 'early'),
       logLine(1, 2, 'late'),
     ]);
-    const trigger = await findByRole('button', { name: 'Logged before the first step · 1 line' });
+    const trigger = await findByRole('button', { name: 'Logged before the first step, 1 line' });
     expect(queryByRole('list', { name: 'Log lines from before the first step' })).toBeNull();
     await fireEvent.click(trigger);
     expect(getByText('early')).not.toBeNull();

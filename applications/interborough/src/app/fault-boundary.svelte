@@ -5,7 +5,7 @@
    * PROJECT-BRIEF "Shared contracts".
    *
    * One `FaultDisplay`-style banner for all six treatments (design reference:
-   * `design/Weft Patterns.dc.html` "Fault / error banner · six fault codes"),
+   * `design/Weft Patterns.dc.html` "Fault / error banner, six fault codes"),
    * matched here with Cinder `Badge` + `@lucide/svelte` icons + Cinder tokens
    * rather than hand-rolled color values. `Internal` additionally shows a
    * collapsible stack trace when the caught error is NOT an `HttpClientError`

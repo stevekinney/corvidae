@@ -34,7 +34,7 @@ export type UpcomingRow = {
   readonly relative: string;
   /** Whether a person asked to skip it. */
   readonly skipped: boolean;
-  /** The second line of a run that will not start: "won't start · Order refund can't load · no provider". */
+  /** The second line of a run that will not start: "won't start, Order refund can't load, no provider". */
   readonly note: string | undefined;
 };
 
@@ -56,7 +56,7 @@ function blockerNote(blockers: readonly RowBlocker[]): string {
         return SCHEDULE_COPY.detail.runs.noteProvider;
     }
   });
-  return [SCHEDULE_COPY.detail.runs.wontStart, ...reasons].join(' · ');
+  return [SCHEDULE_COPY.detail.runs.wontStart, ...reasons].join(', ');
 }
 
 /**
@@ -163,7 +163,7 @@ export type MissedRow = {
   readonly key: string;
   readonly at: number;
   readonly absolute: string;
-  /** "Missed · Interborough was off". */
+  /** "Missed, Interborough was off". */
   readonly text: string;
 };
 
@@ -196,7 +196,7 @@ export function missedBand(missed: readonly MissedFire[], now: number): MissedBa
       count,
       formatDate(oldest, 'en-US', { month: 'short', day: 'numeric' }),
     ),
-    detail: reasons.join(' · '),
+    detail: reasons.join(', '),
     rows: sorted.map((fire) => ({
       key: `${String(fire.occurrence)}:${fire.reason}:${String(fire.recordedAt)}`,
       at: fire.occurrence,

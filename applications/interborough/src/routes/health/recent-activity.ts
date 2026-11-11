@@ -5,8 +5,8 @@
  * chat deleted, and a storage alert that is firing. Engine step noise (`tool.*`, `step.*`, a run's
  * cleanup) is the run's own timeline and is left out.
  *
- * A run is one line, in the state it is in. While it waits on a person it reads "Run started · …
- * · waiting on you" at the time it started; once it is over it reads "Run finished" at the time
+ * A run is one line, in the state it is in. While it waits on a person it reads "Run started, …,
+ * waiting on you" at the time it started; once it is over it reads "Run finished" at the time
  * its last review was decided or the run ended, whichever is later, because a run that paused for
  * an approval ended its first turn long before the person said yes. A run a schedule started is
  * told by the schedule's own line, "Schedule ran".

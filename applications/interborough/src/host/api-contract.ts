@@ -1,5 +1,5 @@
 /**
- * The shapes of Interborough's own HTTP API (board PageSettingsSections, "API reference ·
+ * The shapes of Interborough's own HTTP API (board PageSettingsSections, "API reference,
  * Operations"): what each `/api` operation takes and answers. The routes validate every request
  * with these schemas (`api-routes.ts`) and the served OpenAPI description is made from the same
  * schemas (`api-description.ts`), so the description cannot say something the routes do not do.

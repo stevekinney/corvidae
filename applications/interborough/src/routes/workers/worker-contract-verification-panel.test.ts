@@ -37,7 +37,7 @@ describe('WorkerContractVerificationPanel', () => {
     const { findByRole, findByText, findAllByText } = renderPanel();
 
     expect(await findByRole('region', { name: 'Contract verification' })).not.toBeNull();
-    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
+    expect(await findByText('Verified, manifest matches registry')).not.toBeNull();
     expect(await findAllByText('Matches registry')).not.toHaveLength(0);
     expect(await findByText('1 registry workflow not served by this worker')).not.toBeNull();
   });
@@ -54,7 +54,7 @@ describe('WorkerContractVerificationPanel', () => {
     };
     const { findByText } = renderPanel({ diagnostics: workerManifest({ checkout: drifted }) });
 
-    expect(await findByText('Drift · manifest differs from registry')).not.toBeNull();
+    expect(await findByText('Drift, manifest differs from registry')).not.toBeNull();
     expect(await findByText('Drift detected')).not.toBeNull();
     expect(
       await findByText('Workflow version differs from the active registry revision'),
@@ -87,13 +87,13 @@ describe('WorkerContractVerificationPanel', () => {
     const { findByRole, queryByText } = renderPanel({ loading: true });
     expect(await findByRole('status', { name: 'Loading contract verification' })).not.toBeNull();
     // A verdict is never claimed while evidence is still loading.
-    expect(queryByText('Verified · manifest matches registry')).toBeNull();
+    expect(queryByText('Verified, manifest matches registry')).toBeNull();
   });
 
   test('empty state: no accepted manifest', async () => {
     const { findByText, queryByText } = renderPanel({ diagnostics: null });
     expect(await findByText('No accepted manifest')).not.toBeNull();
-    expect(queryByText('Verified · manifest matches registry')).toBeNull();
+    expect(queryByText('Verified, manifest matches registry')).toBeNull();
   });
 
   test('empty state: no registry snapshot yet', async () => {
@@ -111,7 +111,7 @@ describe('WorkerContractVerificationPanel', () => {
     const { findByText, queryByText } = renderPanel({
       registry: { ...registrySnapshot(), workflows: [], activeRevisions: {} },
     });
-    expect(await findByText('Drift · manifest differs from registry')).not.toBeNull();
+    expect(await findByText('Drift, manifest differs from registry')).not.toBeNull();
     expect(await findByText('checkout')).not.toBeNull();
     expect(queryByText('No registry snapshot yet')).toBeNull();
   });
@@ -125,8 +125,8 @@ describe('WorkerContractVerificationPanel', () => {
 
   test('stale state keeps cached evidence with the neutral refreshing badge', async () => {
     const { findByText } = renderPanel({ refreshing: true });
-    expect(await findByText('Refreshing · showing cached evidence')).not.toBeNull();
-    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
+    expect(await findByText('Refreshing, showing cached evidence')).not.toBeNull();
+    expect(await findByText('Verified, manifest matches registry')).not.toBeNull();
   });
 
   test('permission-denied state', async () => {
@@ -213,8 +213,8 @@ describe('WorkerContractVerificationPanel', () => {
     const { getByRole, queryByText, findByText } = renderPanel();
     // Hashing is asynchronous, so no verdict is claimed on the first render.
     expect(getByRole('status', { name: 'Loading contract verification' })).not.toBeNull();
-    expect(queryByText('Verified · manifest matches registry')).toBeNull();
-    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
+    expect(queryByText('Verified, manifest matches registry')).toBeNull();
+    expect(await findByText('Verified, manifest matches registry')).not.toBeNull();
   });
 
   test('attributes contract-hash drift to the activity that changed, with both hashes', async () => {
@@ -256,7 +256,7 @@ describe('WorkerContractVerificationPanel', () => {
     };
     const { findByText, queryByText } = renderPanel({ registry: unhashable });
     expect(await findByText('Something went wrong')).not.toBeNull();
-    expect(queryByText('Verified · manifest matches registry')).toBeNull();
+    expect(queryByText('Verified, manifest matches registry')).toBeNull();
   });
 
   test('a failed background refetch keeps the cached verdict, marked stale', async () => {
@@ -265,10 +265,10 @@ describe('WorkerContractVerificationPanel', () => {
       error: new HttpClientError(503, 'Service unavailable'),
     });
 
-    expect(await findByText('Verified · manifest matches registry')).not.toBeNull();
-    expect(getByText('Stale · last refresh failed')).not.toBeNull();
+    expect(await findByText('Verified, manifest matches registry')).not.toBeNull();
+    expect(getByText('Stale, last refresh failed')).not.toBeNull();
     expect(getByText('Something went wrong')).not.toBeNull();
-    expect(queryByText('Refreshing · showing cached evidence')).toBeNull();
+    expect(queryByText('Refreshing, showing cached evidence')).toBeNull();
   });
 
   test('with no cached data, the fault replaces the verdict', async () => {
@@ -278,7 +278,7 @@ describe('WorkerContractVerificationPanel', () => {
     });
 
     expect(await findByText('Something went wrong')).not.toBeNull();
-    expect(queryByText('Stale · last refresh failed')).toBeNull();
-    expect(queryByText('Verified · manifest matches registry')).toBeNull();
+    expect(queryByText('Stale, last refresh failed')).toBeNull();
+    expect(queryByText('Verified, manifest matches registry')).toBeNull();
   });
 });

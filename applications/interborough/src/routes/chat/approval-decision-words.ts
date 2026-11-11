@@ -18,7 +18,7 @@ export type DecisionContext = {
   readonly zone?: string | undefined;
   /**
    * The calls decided away from the chat whose continuing run is going. Each says the run is
-   * running in place of its result (design row 18i: "… in Reviews 10:46 AM · running…"), and its
+   * running in place of its result (design row 18i: "… in Reviews 10:46 AM, running…"), and its
    * result is told again once its run stops. It names calls, not the page, because a later run of
    * the same chat does not continue an earlier decision.
    */
@@ -42,7 +42,7 @@ export function decidedPlace(entry: ToolCallEntry, context: DecisionContext): st
     : undefined;
 }
 
-/** The rail's words for a decided call, such as "Approved by you in Reviews 10:46 AM · $42.00 refunded". */
+/** The rail's words for a decided call, such as "Approved by you in Reviews 10:46 AM, $42.00 refunded". */
 export function decidedLine(entry: ToolCallEntry, context: DecisionContext): string | undefined {
   const decision = entry.decision;
   if (decision === undefined) return undefined;

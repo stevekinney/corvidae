@@ -136,18 +136,11 @@
 {/snippet}
 
 {#snippet summary()}
-  {#if status !== undefined}<StatusLabel word={status} />{/if}
-  {#if startedAt !== undefined}
-    · <span title={new Date(startedAt).toISOString()}
-      >{formatRelativeTime(startedAt, Date.now())}</span
-    >
-  {/if}
-  {#if tookMilliseconds !== undefined}
-    · {formatDuration(tookMilliseconds)}
-  {/if}
-  {#if note !== undefined}
-    · {note}
-  {/if}
+  {#if status !== undefined}<StatusLabel word={status} />{/if}{#if startedAt !== undefined}, <span
+      title={new Date(startedAt).toISOString()}>{formatRelativeTime(startedAt, Date.now())}</span
+    >{/if}{#if tookMilliseconds !== undefined}, {formatDuration(
+      tookMilliseconds,
+    )}{/if}{#if note !== undefined}, {note}{/if}
 {/snippet}
 
 {#snippet actions()}

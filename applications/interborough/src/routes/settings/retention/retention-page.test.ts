@@ -314,7 +314,7 @@ describe('Settings › Data and retention › Storage', () => {
     const row = await rowReady(view, 'storage-usage');
 
     await waitFor(() =>
-      expect(row.textContent).toContain('Storage is over its warning level · 1.6 GB'),
+      expect(row.textContent).toContain('Storage is over its warning level, 1.6 GB'),
     );
     expect(row.textContent).toContain('Space used');
     expect(row.textContent).toContain('Health lists this under Needs attention.');

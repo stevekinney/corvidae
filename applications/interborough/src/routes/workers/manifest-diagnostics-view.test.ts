@@ -40,8 +40,8 @@ describe('ManifestDiagnosticsView', () => {
         rejections: [],
       },
     });
-    expect(getByText('payments · build-7')).not.toBeNull();
-    expect(getByText('Disagreement · artifact, manifest')).not.toBeNull();
+    expect(getByText('payments, build-7')).not.toBeNull();
+    expect(getByText('Disagreement, artifact, manifest')).not.toBeNull();
   });
 
   test('shows a consistent same-build claim with an explicit text label', () => {
@@ -52,7 +52,7 @@ describe('ManifestDiagnosticsView', () => {
         rejections: [],
       },
     });
-    expect(getByText('Consistent · routing eligible')).not.toBeNull();
+    expect(getByText('Consistent, routing eligible')).not.toBeNull();
   });
 
   test('renders the bounded Weft admission reason and attempted identity', () => {

@@ -116,7 +116,7 @@ describe('DiagnosticsView — grouped kinds', () => {
     });
 
     expect(getByText(/queue: payments/)).not.toBeNull();
-    expect(getByText(/· last/)).not.toBeNull();
+    expect(getByText(/, last/)).not.toBeNull();
   });
 
   test('a non-dead-lettered group with no deadLetteredAt omits the "last …" suffix', () => {
@@ -129,7 +129,7 @@ describe('DiagnosticsView — grouped kinds', () => {
     });
 
     expect(getByText(/queue: payments/)).not.toBeNull();
-    expect(queryByText(/· last/)).toBeNull();
+    expect(queryByText(/, last/)).toBeNull();
   });
 
   test('evidence rows prefer workflowId over operationId when both are present', () => {

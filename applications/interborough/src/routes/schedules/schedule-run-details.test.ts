@@ -143,7 +143,7 @@ describe('runDetailLine', () => {
   test('says how a run that is going started and where it is', () => {
     expect(
       runDetailLine({ manual: true, currentStep: 'Collecting merged changes' }, 'running'),
-    ).toBe('Started with Run now · Collecting merged changes');
+    ).toBe('Started with Run now, Collecting merged changes');
     expect(runDetailLine({ manual: false, currentStep: 'Collecting' }, 'running')).toBe(
       'Collecting',
     );
@@ -152,7 +152,7 @@ describe('runDetailLine', () => {
   test('says where a failed run stopped and why', () => {
     expect(
       runDetailLine({ manual: false, failedStep: 2, message: 'GitHub didn’t answer' }, 'failed'),
-    ).toBe('Failed at step 2 · GitHub didn’t answer');
+    ).toBe('Failed at step 2, GitHub didn’t answer');
     expect(runDetailLine({ manual: false, message: 'Boom' }, 'failed')).toBe('Boom');
   });
 

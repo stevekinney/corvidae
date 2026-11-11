@@ -466,7 +466,7 @@
   margin-inline-end: auto;
 }
 
-/* The status word of a requested cancellation is a sentence ("Requested · awaiting worker
+/* The status word of a requested cancellation is a sentence ("Requested, awaiting worker
    acknowledgement"). A Cinder badge never wraps, so at 375px it ran 7px past the panel; here it
    still hugs its text, and wraps only when the panel is narrower than the sentence. */
 .weft-task-cancellation__status {

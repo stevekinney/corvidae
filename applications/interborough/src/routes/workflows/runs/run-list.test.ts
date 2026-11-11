@@ -274,13 +274,13 @@ describe('Started by', () => {
     expect(text('o-chat')).toBe('Plan the week');
     expect(text('o-person')).toBe(`A person ${TASK_COPY.personSurface.palette}`);
     expect(text('o-schedule')).toBe(
-      `nightly (${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}) · ${TASK_COPY.untitledChat}`,
+      `nightly (${TASK_COPY.schedule}, ${TASK_COPY.firedByHand}), ${TASK_COPY.untitledChat}`,
     );
     expect(href('o-schedule')).toBe('/schedules/nightly');
     expect(text('o-api')).toBe('The API');
     expect(text('o-agent')).toBe(`planner (${TASK_COPY.agent})`);
     expect(href('o-agent')).toBe('/runs/run-parent');
-    expect(text('o-agent-run')).toBe("An agent's tool call · journey-author · Calling run");
+    expect(text('o-agent-run')).toBe("An agent's tool call, journey-author, Calling run");
     expect(href('o-agent-run')).toBe('/runs/calling-run-1');
     expect(text('o-goal')).toBe(`goal-9 (${TASK_COPY.goal})`);
     expect(href('o-goal')).toBe('/goals/goal-9');

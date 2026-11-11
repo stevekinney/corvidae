@@ -17,6 +17,9 @@ import ChatConversation from './chat-conversation.svelte';
 import { AGENT, bureau, CONTEXT, landAt } from './pages.test-support.ts';
 import QueryPage from './query-page.test-harness.svelte';
 
+// `@lostgradient/chat` words these hints with a middle dot and Interborough does not own that copy yet.
+const CHAT_SEPARATOR = String.fromCodePoint(0xb7);
+
 let restore: (() => void) | undefined;
 afterEach(() => {
   cleanup();
@@ -124,7 +127,7 @@ describe('the live composer', () => {
 
     await waitFor(() => expect(composer(container)?.placeholder).toBe('Message Tool runner…'));
     expect(container.querySelector('.chat-input-hint')?.textContent).toBe(
-      'Enter to send · Shift and Enter for a new line',
+      `Enter to send ${CHAT_SEPARATOR} Shift and Enter for a new line`,
     );
     const send = container.querySelector<HTMLButtonElement>('[data-chat-send]')!;
     expect(send.getAttribute('data-cinder-variant')).toBe('secondary');

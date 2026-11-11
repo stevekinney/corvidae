@@ -2,8 +2,8 @@
   /**
    * Events tab (plan T2.5, §9.2): `Feed` (`kind="log"`) + live tail via
    * `WorkflowTailSource`, cursor resume (`Last-Event-ID`, owned by
-   * `WorkflowTailSource` itself), and the Download menu (§G: "Event history · JSON" / "Events +
-   * timeline · JSON", pure client-side over `GET …/events`).
+   * `WorkflowTailSource` itself), and the Download menu (§G: "Event history, JSON" / "Events +
+   * timeline, JSON", pure client-side over `GET …/events`).
    *
    * ## Checkpoint markers, not a rich event stream
    *
@@ -13,7 +13,7 @@
    * (`{ step }`) — no `WorkflowStarted`/`ActivityCompleted`/`SignalReceived`
    * entries ever appear there, regardless of what the fleet/tail channels'
    * `EVENTS_READ_EVENT_TYPES` enum documents. This tab renders exactly what
-   * the API returns, honestly labeled ("Checkpoint · step N") rather than
+   * the API returns, honestly labeled ("Checkpoint, step N") rather than
    * implying a richer stream than exists. The rich per-operation view lives
    * on the Timeline tab (T3.1, `getTimeline()`). As of Cinder 0.22 the
    * stream renders through `Feed`'s `kind="log"` arm (`EventStreamViewer`
@@ -171,7 +171,7 @@
       datetime: new Date(event.timestamp).toISOString(),
       summary:
         event.type === 'workflow:checkpoint' && typeof step === 'number'
-          ? `Checkpoint · step ${step}`
+          ? `Checkpoint, step ${step}`
           : event.type,
       details: event.data,
     };
@@ -264,10 +264,9 @@
     <Dropdown id={`events-download-${workflow.id}`}>
       <Dropdown.Trigger>Download</Dropdown.Trigger>
       <Dropdown.Menu>
-        <Dropdown.Item onclick={() => void downloadEventsOnly()}>Event history · JSON</Dropdown.Item
-        >
+        <Dropdown.Item onclick={() => void downloadEventsOnly()}>Event history, JSON</Dropdown.Item>
         <Dropdown.Item onclick={() => void downloadEventsAndTimeline()}>
-          Events + timeline · JSON
+          Events + timeline, JSON
         </Dropdown.Item>
       </Dropdown.Menu>
     </Dropdown>

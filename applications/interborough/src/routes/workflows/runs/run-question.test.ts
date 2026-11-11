@@ -110,7 +110,7 @@ describe('the question card on a run waiting for you', () => {
 
     expect(await view.findByText('What you can do')).not.toBeNull();
     expect(view.getByText('This run is waiting on one question.')).not.toBeNull();
-    expect(await view.findByText('Question from Request human input · 1 h ago')).not.toBeNull();
+    expect(await view.findByText('Question from Request human input, 1 h ago')).not.toBeNull();
     expect(view.getByText('Which environment should the release go to?')).not.toBeNull();
     expect(view.getByText('Deploys to the staging site')).not.toBeNull();
     expect(view.getByText('Deploys to the live site')).not.toBeNull();
@@ -125,7 +125,7 @@ describe('the question card on a run waiting for you', () => {
 
   test('with no provider the message bar is the blocked row with Cancel run beside it, and no text box', async () => {
     const view = open([]);
-    await view.findByText('Question from Request human input · 1 h ago');
+    await view.findByText('Question from Request human input, 1 h ago');
 
     const bar = await view.findByTestId('run-message-blocked');
     expect(bar.textContent).toContain('Connect a model provider to send messages');
@@ -140,13 +140,13 @@ describe('the question card on a run waiting for you', () => {
 
   test('has no blocked message bar when a provider is connected', async () => {
     const view = open([{ provider: 'anthropic', id: 'sonnet' }]);
-    await view.findByText('Question from Request human input · 1 h ago');
+    await view.findByText('Question from Request human input, 1 h ago');
     expect(view.queryByTestId('run-message-blocked')).toBeNull();
   });
 
   test('says nothing about a provider when one is connected', async () => {
     const view = open([{ provider: 'anthropic', id: 'sonnet' }]);
-    await view.findByText('Question from Request human input · 1 h ago');
+    await view.findByText('Question from Request human input, 1 h ago');
     expect(view.container.textContent).not.toContain('continues once a provider is connected');
   });
 
@@ -154,7 +154,7 @@ describe('the question card on a run waiting for you', () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
     const view = open([]);
     const production = await view.findByRole('button', { name: /Production/ });
-    await view.findByText('Question from Request human input · 1 h ago');
+    await view.findByText('Question from Request human input, 1 h ago');
     jest.useFakeTimers();
 
     await fireEvent.click(production);
@@ -198,7 +198,7 @@ describe('the question card on a run waiting for you', () => {
     restoreWindow = setAnswerUndoMilliseconds(5000);
     const view = open([]);
     const staging = await view.findByRole('button', { name: /Staging/ });
-    await view.findByText('Question from Request human input · 1 h ago');
+    await view.findByText('Question from Request human input, 1 h ago');
     jest.useFakeTimers();
 
     await fireEvent.click(staging);

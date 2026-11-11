@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The Your scopes tab (board PageSettingsSections, "API reference · Your scopes"): what this
+   * The Your scopes tab (board PageSettingsSections, "API reference, Your scopes"): what this
    * session may do through Interborough's API. Interborough is single-user for now, so these are
    * the scopes of the person at the keyboard, and the page's own boards act with them. The host
    * says which scopes the session holds (`/host/session`), because the host is what checks them on

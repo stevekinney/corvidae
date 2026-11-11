@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The body of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with
+   * The body of Settings › A2A (board PageSettingsSections, "A2A, /settings/a2a" and "A2A with
    * Accept A2A calls off"): the Agent2Agent section and Recent calls, under the restart notice every
    * section shares. The section's rows save as they are left, like the rest of Settings, and say
    * "Saved" or "Applies after restart":

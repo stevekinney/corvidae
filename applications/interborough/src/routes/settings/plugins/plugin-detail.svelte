@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * One plugin (board PageSettingsSections, "Plugins · /settings/plugins", "Demo detail" and
+   * One plugin (board PageSettingsSections, "Plugins, /settings/plugins", "Demo detail" and
    * "Anthropic detail"): its name and version, what it is, whether it is enabled, where it came from,
    * what it adds under the names a person reads with the identifier beside each, its configuration
    * as a form with an explicit Save, its secrets, and what uses it. A plugin that is switched off
@@ -198,8 +198,8 @@
 
   <p class="ib-plugin__source">
     <span class="ib-plugin__source-term">{copy.sections.source}</span>
-    <code class="ib-plugin__source-location">{plugin.location}</code>
-    · {sourceKind(plugin.source)}
+    <code class="ib-plugin__source-location">{plugin.location}</code>,
+    {sourceKind(plugin.source)}
   </p>
 
   {#if groups.length > 0}

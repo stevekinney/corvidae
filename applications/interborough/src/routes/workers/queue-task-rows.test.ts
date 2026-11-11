@@ -32,7 +32,7 @@ describe('queueTaskRows', () => {
       id: 'op-1',
       word: 'Failed for good',
       name: 'collect-merged-changes',
-      line: 'Failed after 5 tries · GitHub didn’t answer (HTTP 503).',
+      line: 'Failed after 5 tries, GitHub didn’t answer (HTTP 503).',
       time: 'Oct 30',
       failed: true,
       run: { id: 'run-1', label: 'Release notes run' },
@@ -46,12 +46,12 @@ describe('queueTaskRows', () => {
       new Set(),
       NOW,
     );
-    expect(row?.line).toBe('Failed after 1 try · The Slack channel #releases no longer exists.');
+    expect(row?.line).toBe('Failed after 1 try, The Slack channel #releases no longer exists.');
   });
 
   test('a failed task with no recorded cause says its result could not be saved', () => {
     const [row] = queueTaskRows([without(task(), 'error')], 'reports', new Set(), NOW);
-    expect(row?.line).toBe('Failed after 5 tries · Its result could not be saved.');
+    expect(row?.line).toBe('Failed after 5 tries, Its result could not be saved.');
   });
 
   test('a waiting task says what it waits for and when it queued', () => {
@@ -64,7 +64,7 @@ describe('queueTaskRows', () => {
     expect(row).toMatchObject({
       word: 'Waiting',
       name: 'render-digest',
-      line: 'On the reports queue · waiting for a reports worker',
+      line: 'On the reports queue, waiting for a reports worker',
       failed: false,
     });
     expect(row?.time).toMatch(/^\d{1,2}:\d{2} [AP]M$/u);
@@ -74,7 +74,7 @@ describe('queueTaskRows', () => {
     const [row] = queueTaskRows([task()], 'reports', new Set(['op-1']), NOW);
     expect(row).toMatchObject({
       word: 'Waiting',
-      line: 'Back on the queue · try 6',
+      line: 'Back on the queue, try 6',
       time: 'Oct 30',
       failed: false,
     });
@@ -87,7 +87,7 @@ describe('queueTaskRows', () => {
       new Set(),
       NOW,
     );
-    expect(row?.line).toBe('Back on the queue · try 6');
+    expect(row?.line).toBe('Back on the queue, try 6');
   });
 
   test('a task that names no run has no run link', () => {

@@ -169,7 +169,7 @@ describe('connectNotificationFeed', () => {
       {
         kind: 'approval',
         title: 'Run issue-refund?',
-        detail: 'Waiting for your approval · Tool runner',
+        detail: 'Waiting for your approval, Tool runner',
       },
     ]);
     expect(store.unreadCount).toBe(1);
@@ -189,7 +189,7 @@ describe('connectNotificationFeed', () => {
 
     await waitFor(() =>
       expect(store.items.find((item) => item.kind === 'approval')?.detail).toBe(
-        'Waiting for your approval · Refund desk',
+        'Waiting for your approval, Refund desk',
       ),
     );
   });
@@ -207,7 +207,7 @@ describe('connectNotificationFeed', () => {
 
     await waitFor(() =>
       expect(store.items.find((item) => item.kind === 'approval')?.detail).toBe(
-        'Waiting for your approval · Tool runner',
+        'Waiting for your approval, Tool runner',
       ),
     );
   });
@@ -566,7 +566,7 @@ describe('connectNotificationFeed', () => {
     await waitFor(() => expect(store.items.map((item) => item.kind)).toContain('missed'));
     const missed = store.items.find((item) => item.kind === 'missed');
     expect(missed?.title).toBe(`Nightly digest missed its ${formatTimeOfDay(NOW - 3_600_000)} run`);
-    expect(missed?.detail).toMatch(/^1 missed since [A-Z][a-z]{2} \d{1,2} · Assistant$/);
+    expect(missed?.detail).toMatch(/^1 missed since [A-Z][a-z]{2} \d{1,2}, Assistant$/);
     expect(missed?.href).toBe('/schedules/s-late');
     expect(store.unreadCount).toBe(1);
     // Only the schedule that missed a fire is asked about.

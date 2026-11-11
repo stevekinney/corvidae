@@ -216,11 +216,11 @@ describe('a call the run ended on', () => {
   });
 
   test('says it may have run for a tool that changes things or that nothing classifies, and did not finish for one that only reads', () => {
-    expect(interruptedWords({ tier: 'mutating' })).toBe('Interrupted · may have run');
-    expect(interruptedWords({ tier: 'dangerous' })).toBe('Interrupted · may have run');
-    expect(interruptedWords({ tier: null })).toBe('Interrupted · may have run');
-    expect(interruptedWords({ tier: undefined })).toBe('Interrupted · may have run');
-    expect(interruptedWords({ tier: 'read-only' })).toBe('Interrupted · didn’t finish');
+    expect(interruptedWords({ tier: 'mutating' })).toBe('Interrupted, may have run');
+    expect(interruptedWords({ tier: 'dangerous' })).toBe('Interrupted, may have run');
+    expect(interruptedWords({ tier: null })).toBe('Interrupted, may have run');
+    expect(interruptedWords({ tier: undefined })).toBe('Interrupted, may have run');
+    expect(interruptedWords({ tier: 'read-only' })).toBe('Interrupted, didn’t finish');
   });
 
   test('is a rail row that never carries an arrow, a result or a green dot', () => {
@@ -230,7 +230,7 @@ describe('a call the run ended on', () => {
       name: 'Issue refund',
       identifier: 'issue-refund',
       input: '4471',
-      result: 'Interrupted · may have run',
+      result: 'Interrupted, may have run',
     });
   });
 

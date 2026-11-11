@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The Decisions part of Settings › Models (board SettingsShell, "Models · /settings/models"): the
+   * The Decisions part of Settings › Models (board SettingsShell, "Models, /settings/models"): the
    * model that answers yes-or-no and classification questions, its fallback, and the most decision
    * calls one task may make, as three setting rows that save as the person leaves them like the
    * rest of Settings (`../setting-field.svelte`). TypeSafe is the decision model and lives here, not

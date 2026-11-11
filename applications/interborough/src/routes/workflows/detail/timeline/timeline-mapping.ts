@@ -110,7 +110,7 @@ export function timelineEntryLabel(entry: WorkflowTimelineEntry): string {
   const operationCount = parseOperationCount(entry.inputSummary);
   return operationCount === null
     ? structuralLabel
-    : `${structuralLabel} · ${operationCount} branches`;
+    : `${structuralLabel}, ${operationCount} branches`;
 }
 
 function isCoordinationEntry(entry: WorkflowTimelineEntry): boolean {
@@ -259,9 +259,9 @@ function branchStepDetails(
 
 function branchGroupLabel(entry: WorkflowTimelineEntry): string {
   const omitted = coordinatorOmittedCount(entry);
-  const omissionLabel = omitted > 0 ? ` · ${omitted} more omitted` : '';
+  const omissionLabel = omitted > 0 ? `, ${omitted} more omitted` : '';
   const speculationLabel =
-    entry.speculationOutcome === undefined ? '' : ` · ${entry.speculationOutcome}`;
+    entry.speculationOutcome === undefined ? '' : `, ${entry.speculationOutcome}`;
   return `${timelineEntryLabel(entry)}${speculationLabel}${omissionLabel}`;
 }
 

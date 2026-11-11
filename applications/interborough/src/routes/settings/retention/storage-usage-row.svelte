@@ -2,7 +2,7 @@
   /**
    * The Storage section's one row, "Space used" (board PageSettingsSections, "Data and retention";
    * row 50g). It is read-only and draws no meter, capacity or warning level. While an alert rule
-   * on the storage size is firing it reads "Storage is over its warning level · 1.6 GB" with an
+   * on the storage size is firing it reads "Storage is over its warning level, 1.6 GB" with an
    * amber dot, and says that Health lists it; with no such rule it reads the plain size, with no
    * dot. The firing alert is Health's (`bureau.health.attention`), and the plain size is the
    * host's (`/host/storage`).

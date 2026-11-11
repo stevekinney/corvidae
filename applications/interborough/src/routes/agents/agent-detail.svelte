@@ -250,8 +250,7 @@
     {#if agent.kind === 'file' && plugin === null && fileVersion !== undefined}
       <p class="ib-agent__version" data-testid="agent-file-version">
         {AGENTS_COPY.fileVersion}
-        <code title={fileVersion}>{shortVersion(fileVersion)}</code>
-        ·
+        <code title={fileVersion}>{shortVersion(fileVersion)}</code>,
         <a href={router.href(settingsPath)} onclick={(event) => goTo(event, settingsPath)}
           >{AGENTS_COPY.history}</a
         >

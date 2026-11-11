@@ -58,7 +58,7 @@ test('operator inspects a seeded authoritative task ledger', async ({ page, chec
   await openTask(page, E2E_TASK_OPERATION_ID);
 
   await expect(page.getByText('queued')).toBeVisible();
-  await expect(page.getByText('Available · attempt 1 of 3')).toBeVisible();
+  await expect(page.getByText('Available, attempt 1 of 3')).toBeVisible();
   await expect(page.getByText('traceparent')).toBeVisible();
   await expect(page.getByText('No heartbeat recorded')).toBeVisible();
 
@@ -91,7 +91,7 @@ test('a leased second attempt shows its fenced history, lease clocks, and heartb
   await expect(first.getByText('Requeued', { exact: true })).toBeVisible();
   await expect(first.getByText('Superseded', { exact: true })).toBeVisible();
   await expect(first.getByText('worker-disconnect')).toBeVisible();
-  await expect(timeline.getByText('Attempt 2 · current')).toBeVisible();
+  await expect(timeline.getByText('Attempt 2, current')).toBeVisible();
   await expect(timeline.locator('[data-attempt="2"]').getByText(/→ still held$/)).toBeVisible();
 
   const session = clock(page, 'session-lease');
@@ -118,10 +118,10 @@ test('a requested cancellation reads as awaiting acknowledgement, never as expir
   await openTask(page, E2E_CANCELLING_TASK_OPERATION_ID);
 
   const cancellation = region(page, 'Cancellation evidence');
-  await expect(cancellation.getByText('Requested · awaiting worker acknowledgement')).toBeVisible();
+  await expect(cancellation.getByText('Requested, awaiting worker acknowledgement')).toBeVisible();
   await expect(cancellation.getByText(E2E_CANCELLATION_REASON)).toBeVisible();
   await expect(cancellation.getByText(/^\d{4}-\d{2}-\d{2}T[\d:.]+Z \(/)).toBeVisible();
-  await expect(cancellation.getByText('Not acknowledged · attempt 1 is leased')).toBeVisible();
+  await expect(cancellation.getByText('Not acknowledged, attempt 1 is leased')).toBeVisible();
 
   // The lease is still running: cancellation never borrows a clock's wording.
   await expect(clock(page, 'session-lease').getByText('Active', { exact: true })).toBeVisible();

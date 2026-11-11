@@ -152,7 +152,7 @@ export const RUN_STEPS_COPY = {
   logsListLabel: 'Log lines of this step',
   logsBeforeFirstListLabel: 'Log lines from before the first step',
   logsBeforeFirst: (lines: number): string =>
-    `Logged before the first step · ${lines === 1 ? '1 line' : `${String(lines)} lines`}`,
+    `Logged before the first step, ${lines === 1 ? '1 line' : `${String(lines)} lines`}`,
 } as const;
 
 /** The words for the runs related to one run, in its Details rail and the topology that opens from it. */
@@ -1264,7 +1264,7 @@ export const SCHEDULE_COPY = {
     /** Said beside Run now while a run is going, because Run now then starts a second one. */
     runNowSecond: 'Another run is going; this starts a second one.',
     runsHeading: 'Runs',
-    runsNote: (zone: string): string => `Upcoming above, past below · times in ${zone}`,
+    runsNote: (zone: string): string => `Upcoming above, past below, times in ${zone}`,
     /** The Runs list: upcoming runs, the Now marker, the missed runs, and what the schedule started. */
     runs: {
       label: 'Runs',
@@ -1288,7 +1288,7 @@ export const SCHEDULE_COPY = {
         'dst-gap': 'The clock skipped this time',
       },
       missedRow: (count: number, reason: string): string =>
-        count > 1 ? `Missed ${String(count)} times · ${reason}` : `Missed · ${reason}`,
+        count > 1 ? `Missed ${String(count)} times, ${reason}` : `Missed, ${reason}`,
       showEach: 'Show each',
       hide: 'Hide',
       runOnce: 'Run once now',
@@ -1425,7 +1425,7 @@ export const SCHEDULE_COPY = {
     fixedInput: 'Set when the schedule was made, and kept as it was.',
     /** The Workflow field of a schedule whose workflow was deleted. */
     workflowGone: {
-      option: (name: string): string => `${name} · can’t find this workflow`,
+      option: (name: string): string => `${name}, can’t find this workflow`,
       message:
         'That workflow was deleted. Pick another to keep this schedule; it stays paused until then.',
       /** Said when another workflow is picked, because a schedule cannot be moved to one. */
@@ -1501,7 +1501,7 @@ export const SCHEDULE_COPY = {
       action: 'New agent',
     },
     /** The agent needs a model and no provider is connected: the warning, then the link that fixes it. */
-    needsProvider: 'Won’t run until a provider is connected ·',
+    needsProvider: 'Won’t run until a provider is connected,',
     connectProvider: 'Connect a provider',
     whenHeading: 'When',
     whenLabel: 'Schedule',
@@ -1640,7 +1640,7 @@ export const DATA_RETENTION_COPY = {
     description: 'What Interborough’s records take up on this machine.',
     firingDescription: 'Health lists this under Needs attention.',
     openHealth: 'Open Health',
-    overWarning: (size: string): string => `Storage is over its warning level · ${size}`,
+    overWarning: (size: string): string => `Storage is over its warning level, ${size}`,
     notReported: 'Not reported yet',
   },
   /** The Clean-up section: the nightly removal of expired records, and "Clean up now" (rows 50h and 50j). */
@@ -1680,7 +1680,7 @@ export const DATA_RETENTION_COPY = {
 } as const;
 
 /**
- * The words of Settings › A2A (board PageSettingsSections, "A2A · /settings/a2a" and "A2A with
+ * The words of Settings › A2A (board PageSettingsSections, "A2A, /settings/a2a" and "A2A with
  * Accept A2A calls off"): the switch that accepts remote calls, the address of the agent card, the
  * agents that answer, push notifications, and the calls that were made. The rows save as they are
  * left, like the rest of Settings.
@@ -1885,7 +1885,7 @@ export const MODELS_COPY = {
     connectLabel: (name: string): string => `Connect ${name}`,
     manageLabel: (name: string): string => `Manage ${name}`,
   },
-  /** Connect (board SettingsShell, "Connect · empty", "testing", "invalid key" and "connected"). */
+  /** Connect (board SettingsShell, "Connect, empty", "testing", "invalid key" and "connected"). */
   connectDialog: {
     title: (name: string): string => `Connect ${name}`,
     /** The line under the title, which says where the dialog is. */
@@ -1927,7 +1927,7 @@ export const MODELS_COPY = {
       `Couldn’t finish testing the key with ${provider}${status === undefined ? '' : ` (${String(status)})`}. Check your connection and try again.`,
     failed: 'The key could not be tested.',
   },
-  /** Replace key (board SettingsShell, "Replace key · in progress"). */
+  /** Replace key (board SettingsShell, "Replace key, in progress"). */
   replaceDialog: {
     title: (name: string): string => `Replace the ${name === '' ? 'provider' : name} key`,
     subtitle: 'The old key stays in use until the new one passes.',
@@ -1937,7 +1937,7 @@ export const MODELS_COPY = {
     cancel: 'Cancel',
     toast: (name: string): string => `${name} key replaced`,
   },
-  /** Manage (board SettingsShell, "Manage · a connected provider"). The saved key is never shown. */
+  /** Manage (board SettingsShell, "Manage, a connected provider"). The saved key is never shown. */
   manageDialog: {
     /** The title while no provider is chosen, which a closed dialog still carries. */
     fallbackTitle: 'Provider',
@@ -1948,7 +1948,7 @@ export const MODELS_COPY = {
     replaceKey: 'Replace key',
     done: 'Done',
   },
-  /** Remove key (board SettingsShell, "Remove key · confirm"). */
+  /** Remove key (board SettingsShell, "Remove key, confirm"). */
   removeDialog: {
     title: (name: string): string => `Remove the ${name} key?`,
     /** Names the agents that stop answering. Run now on their schedules is disabled with them. */
@@ -1972,7 +1972,7 @@ export const MODELS_COPY = {
     failed: 'The key is still saved.',
     locked: 'This host keeps its keys in its deployment, so it cannot remove one.',
   },
-  /** The catalog (board SettingsShell, "Models · /settings/models" and "Models · provider connected"). */
+  /** The catalog (board SettingsShell, "Models, /settings/models" and "Models, provider connected"). */
   models: {
     heading: 'Models',
     /** With no model to list, the catalog says only what it is. */
@@ -2008,7 +2008,7 @@ export const MODELS_COPY = {
       retry: 'Try again',
     },
   },
-  /** The Decisions section (board SettingsShell, "Models · /settings/models"). */
+  /** The Decisions section (board SettingsShell, "Models, /settings/models"). */
   decisions: {
     heading: 'Decisions',
     description:
@@ -2044,7 +2044,7 @@ export function nameList(names: readonly string[]): string {
 }
 
 /**
- * The words of the restart the shell shows (`app/restart`, board SettingsShell "Restart ·" frames):
+ * The words of the restart the shell shows (`app/restart`, board SettingsShell "Restart" frames):
  * the question before it, the dialog while the host stops and starts, how it ends when the host
  * never answers, and the banner that says what applied once it is back. Running work always picks up
  * where it stopped and reviews wait, so nothing here says that nothing is running.
@@ -2673,7 +2673,7 @@ export const HOME_COPY = {
 } as const;
 
 /**
- * The words of Settings › Allowed models (board PageSettingsSections, "Allowed models ·
+ * The words of Settings › Allowed models (board PageSettingsSections, "Allowed models,
  * /settings/allowed-models"): which models agents may use, and the caller's own preferences among
  * them. Saving is explicit, because it raises the policy revision.
  */
@@ -2732,7 +2732,7 @@ export const ALLOWED_MODELS_COPY = {
 
 /** The words the settings page (`/settings`) uses outside its view states. */
 export const SETTINGS_COPY = {
-  /** The General page (board SettingsShell, "General · /settings"). */
+  /** The General page (board SettingsShell, "General, /settings"). */
   general: {
     intro: 'Tools, runs and your own preferences. Settings save as you leave a field.',
     /** The heading narrow widths show over the section select, which names the section. */
@@ -2757,7 +2757,7 @@ export const SETTINGS_COPY = {
       identifier: 'storage.backend',
       description: 'Where Interborough keeps runs, chats and memories. Chosen when it was set up.',
       remoteDescription: 'Where Interborough keeps runs, chats and memories.',
-      local: 'SQLite · on this machine',
+      local: 'SQLite, on this machine',
       remote: 'Postgres and S3',
       setByDeployment: 'Set by the deployment',
     },
@@ -2808,7 +2808,7 @@ export const SETTINGS_COPY = {
     },
     /**
      * A setting's own words where the Remote deployment card shows it, in place of the Bureau's
-     * description (board SettingsShell, "Locked settings · remote mode"): a remote deployment's
+     * description (board SettingsShell, "Locked settings, remote mode"): a remote deployment's
      * runs are not on this machine.
      */
     remoteDescriptions: {
@@ -2830,7 +2830,7 @@ export const SETTINGS_COPY = {
   nothingSaved: 'Nothing was saved.',
   /** A save that did not go through; the typed value is still in the field. */
   couldNotSave: 'Couldn’t save. Your value is still in the field.',
-  /** A locked setting (board SettingsShell, "Locked settings · remote mode"). */
+  /** A locked setting (board SettingsShell, "Locked settings, remote mode"). */
   lockedMessage:
     'Locked by your deployment (remote mode). Change it in the deployment’s configuration.',
   /**
@@ -2899,7 +2899,7 @@ export const SETTINGS_COPY = {
   },
   /**
    * The settings could not be read again while the page already holds them: the banner over the old
-   * values (board PageSettingsSections, "Error · old data on screen"). Cinder's `refresh-failed`
+   * values (board PageSettingsSections, "Error, old data on screen"). Cinder's `refresh-failed`
    * preset writes the rest: when what is shown loaded, and the way to try again.
    */
   refreshFailed: { title: 'Couldn’t refresh these settings.' },
@@ -3083,7 +3083,7 @@ export const AUDIT_COPY = {
   emptyDetailDescription: 'Each event shows who did it, when, and the before and after.',
   /** The line under an event's title. `when` reads "Today at 10:45:12 AM". */
   whenLine: (when: string, context: string | null): string =>
-    context === null ? when : `${when} · ${context}`,
+    context === null ? when : `${when}, ${context}`,
   fromThisBrowser: 'from this browser',
   inTheChat: (title: string): string => `in the chat “${title}”`,
   fact: {
@@ -3105,7 +3105,7 @@ export const AUDIT_COPY = {
   },
   /** What removing a provider's key does, which is the same whichever provider it was. */
   providerRemovedEffect: 'Agents that use a model can’t run until a provider is connected',
-  riskDangerous: 'Dangerous · Can’t be undone',
+  riskDangerous: 'Dangerous, Can’t be undone',
   riskChanges: 'Changes things',
   riskReadOnly: 'Only reads',
   changedWords: {
@@ -3142,8 +3142,7 @@ export const AUDIT_COPY = {
   copiedKey: 'Copied the key',
   copyFailed: 'Couldn’t copy. Select the text and copy it yourself.',
   /** The heading of a target too long for a table cell, with how many characters it has. */
-  targetHeading: (length: number): string =>
-    `Target · ${length.toLocaleString('en-US')} characters`,
+  targetHeading: (length: number): string => `Target, ${length.toLocaleString('en-US')} characters`,
   /** The footer of every event's pane: how long records are kept, and what Export saves. */
   retention: {
     before: 'Audit records are kept 90 days (',
@@ -3272,11 +3271,11 @@ export const AUDIT_EVENT_COPY = {
   editedHook: 'Edited a hook',
   deletedChat: 'Deleted a chat',
   chatTargetDeleted: 'Chat',
-  /** The target of a deleted chat whose record kept its title: "“Scratch test” · 12 messages". */
+  /** The target of a deleted chat whose record kept its title: "“Scratch test”, 12 messages". */
   deletedChatTarget: (title: string, messages: number | undefined): string =>
     messages === undefined
       ? `“${title}”`
-      : `“${title}” · ${messages.toLocaleString('en-US')} ${messages === 1 ? 'message' : 'messages'}`,
+      : `“${title}”, ${messages.toLocaleString('en-US')} ${messages === 1 ? 'message' : 'messages'}`,
   deletedStorageKey: 'Deleted a storage key',
   storageTarget: (key: string): string => `Storage › ${key}`,
   connectedToolSource: 'Connected a tool source',
@@ -3648,10 +3647,10 @@ export const CHAT_COPY = {
      * things, or that nothing classifies, may have run, and a line that says nothing changed would
      * be a guess.
      */
-    interruptedReads: 'Interrupted · didn’t finish',
-    interruptedChanges: 'Interrupted · may have run',
+    interruptedReads: 'Interrupted, didn’t finish',
+    interruptedChanges: 'Interrupted, may have run',
     /** The rail's end state for a turn that ended on a tool call, so it does not look hung. */
-    runFinishedNoReply: 'Run finished · no reply',
+    runFinishedNoReply: 'Run finished, no reply',
     /**
      * How a decided approval is worded on the rail and under the call: "Approved by you 10:33 AM",
      * and, for one decided on a page that is not this one, "Approved by you in Reviews 10:46 AM".
@@ -3673,7 +3672,7 @@ export const CHAT_COPY = {
         time: string,
         after: string,
       ): string =>
-        `${outcome} by ${who}${place === undefined ? '' : ` in ${place}`} ${time}${after === '' ? '' : ` · ${after}`}`,
+        `${outcome} by ${who}${place === undefined ? '' : ` in ${place}`} ${time}${after === '' ? '' : `, ${after}`}`,
       /**
        * Said, politely, when the approval the person was looking at is decided away from the chat.
        * `question` is what the approval asked, such as "Refund order 4471 for $42.00?", which is
@@ -4114,13 +4113,13 @@ export const CHAT_COPY = {
     image: (position: number) => `Image ${position}`,
     audio: (position: number) => `Audio ${position}`,
     video: (position: number) => `Video ${position}`,
-    /** A file's name and size ("settings-page.png · 182 KB"), or "Download file" when the row carries neither; never its media type. */
+    /** A file's name and size ("settings-page.png, 182 KB"), or "Download file" when the row carries neither; never its media type. */
     download: (name?: string, size?: number): string => {
       const facts = [name, size === undefined ? undefined : formatBytes(size)].filter(
         (fact): fact is string => fact !== undefined && fact !== '',
       );
-      if (name !== undefined && name !== '') return facts.join(' · ');
-      return facts.length === 0 ? 'Download file' : `Download file · ${facts.join(' · ')}`;
+      if (name !== undefined && name !== '') return facts.join(', ');
+      return facts.length === 0 ? 'Download file' : `Download file, ${facts.join(', ')}`;
     },
   },
   /**
@@ -4707,7 +4706,7 @@ export const TASK_COPY = {
   /** The heading once everything the run asked has been answered. */
   waitsAnsweredHeading: 'Answered',
   /** The small line over a question: who asked and how long ago. */
-  questionFrom: (agent: string, age: string): string => `Question from ${agent} · ${age}`,
+  questionFrom: (agent: string, age: string): string => `Question from ${agent}, ${age}`,
   /** Said under a question: what choosing an answer does, with the Undo window in seconds. */
   answerSendsNote: (seconds: number): string =>
     seconds <= 0
@@ -4962,7 +4961,7 @@ export const PALETTE_COPY = {
   },
   /** What a waiting row says after its sentence: the kind of wait. */
   waitingMeta: {
-    approval: 'Approval · waiting',
+    approval: 'Approval, waiting',
     question: 'Question',
   },
   /** What a run row says about how it stands, after its agent. */
@@ -5010,13 +5009,13 @@ export const NOTIFICATION_COPY = {
   /** What the bell button is called; the count says how many items are unread. */
   bellLabel: (count: number): string =>
     count === 0 ? 'Notifications' : `Notifications, ${String(count)} unread`,
-  /** The count after the popover's title, "Notifications · 3 unread"; nothing when none is unread. */
-  unreadSummary: (count: number): string => `· ${String(count)} unread`,
+  /** The count after the popover's title, "Notifications, 3 unread"; nothing when none is unread. */
+  unreadSummary: (count: number): string => `${String(count)} unread`,
   /** What the dot before an unread row is called, for a screen reader. */
   unreadMark: 'Unread',
   /** The second line of a review: what it waits for, and whose it is. */
   waiting: (kind: 'approval' | 'answer', agent: string): string =>
-    `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'} · ${agent}`,
+    `${kind === 'approval' ? 'Waiting for your approval' : 'Waiting for your answer'}, ${agent}`,
   failed: (subject: string): string => `${subject} failed`,
   budgetExceeded: (subject: string): string => `${subject} exceeded its budget`,
   /** A schedule that did not fire: "Daily summary missed its 3:00 AM run". */
@@ -5874,7 +5873,7 @@ export const STORAGE_COPY = {
     groupOnly: (group: string): string => group,
     /** The line over the key while its value is being edited after a failed save. */
     editingSummary: (group: string, size: string, key: string): string =>
-      `${group} · ${size} · ${key}`,
+      `${group}, ${size}, ${key}`,
     /** What the pane says while the value is read: nothing for the first 300 ms, then a skeleton. */
     valueLoadingLabel: 'Loading the value',
     /** What the pane says after "Cancel" in the "Still loading" line. */
@@ -5886,7 +5885,7 @@ export const STORAGE_COPY = {
     valueGone: 'This key is no longer stored. Another writer removed it.',
     /** The line over the key: its group, size and when it was written. */
     summary: (group: string, size: string, updated: string | null): string =>
-      updated === null ? `${group} · ${size}` : `${group} · ${size} · updated ${updated}`,
+      updated === null ? `${group}, ${size}` : `${group}, ${size}, updated ${updated}`,
     /** How long a very long key is, said after it. */
     characters: (count: number): string => `(${count.toLocaleString('en-US')} characters)`,
     copyKey: 'Copy key',
@@ -5921,9 +5920,9 @@ export const STORAGE_COPY = {
       kept: 'Your edit is still here.',
     },
     /**
-     * The heading over a value shown as text, which says what it is and how big: "Value · text, 2.1 MB".
+     * The heading over a value shown as text, which says what it is and how big: "Value, text, 2.1 MB".
      */
-    textValueLabel: (size: string): string => `Value · text, ${size}`,
+    textValueLabel: (size: string): string => `Value, text, ${size}`,
     /**
      * The note under a value shown as text. Each part is said only when it is true: that only the
      * start is shown (and Copy value still copies it all), and why there is no Fields or JSON switch.
@@ -5980,7 +5979,7 @@ export const STORAGE_COPY = {
     unknown: 'Storage',
     /** The storage line under the title: the backend, then where it is. */
     line: (backend: string, where: string | undefined): string =>
-      where === undefined ? backend : `${backend} · ${where}`,
+      where === undefined ? backend : `${backend}, ${where}`,
     popoverLabel: 'What the storage can do',
     popoverHint: 'Storage details',
   },

@@ -4,7 +4,7 @@
    * Waiting, it asks the question with the tool, where it came from and the input, takes a note and
    * Allow for the rest of this chat, and offers Deny and Approve; while Interborough cannot be
    * reached both are off, with the reason written above them. Decided, it collapses to what was
-   * asked and what became of it: "Approved by you · 10:33 AM", or "Approved by you in Reviews ·
+   * asked and what became of it: "Approved by you, 10:33 AM", or "Approved by you in Reviews,
    * 10:46 AM" when the decision was made on another page while this one was open, with the note a
    * refusal carried. The row is a group named by its question and focusable by script alone, so the
    * page can bring the person to it on opening without answering it. A held approval of an agent

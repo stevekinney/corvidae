@@ -8,7 +8,7 @@
  * daily, weekly-on-a-day, monthly-on-a-day) plus fixed intervals. It is
  * deliberately not exhaustive — no external cron-humanizer dependency is
  * pulled in for the bundle-size budget (plan §12) — an expression outside
- * the recognized shapes falls back to `Cron · <expression>` rather than
+ * the recognized shapes falls back to `Cron, <expression>` rather than
  * guessing.
  */
 import type { ScheduleIntervalUnit, ScheduleValue } from '@lostgradient/cinder';
@@ -146,10 +146,10 @@ function parseCronFields(fields: readonly string[]): ParsedCronFields {
   };
 }
 
-/** Humanizes a cron expression, falling back to `Cron · <expression>` for shapes outside the bounded set (module doc). */
+/** Humanizes a cron expression, falling back to `Cron, <expression>` for shapes outside the bounded set (module doc). */
 export function describeCronExpression(expression: string): string {
   const rawFields = splitCronFields(expression);
-  if (!rawFields) return `Cron · ${expression}`;
+  if (!rawFields) return `Cron, ${expression}`;
 
   const fields = parseCronFields(rawFields);
   const domAndMonthWildcard = fields.dom.kind === 'wildcard' && fields.month.kind === 'wildcard';
@@ -167,7 +167,7 @@ export function describeCronExpression(expression: string): string {
   const monthly = describeMonthlyShape(fields);
   if (monthly) return monthly;
 
-  return `Cron · ${expression}`;
+  return `Cron, ${expression}`;
 }
 
 const INTERVAL_UNIT_MS: readonly { readonly ms: number; readonly unit: string }[] = [

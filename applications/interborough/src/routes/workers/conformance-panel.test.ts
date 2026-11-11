@@ -73,7 +73,7 @@ describe('ConformancePanel', () => {
     await fireEvent.click(getByRole('button', { name: 'Run conformance' }));
 
     expect(await findByText('Not conformant')).not.toBeNull();
-    expect(getByText('1 passed · 1 failed')).not.toBeNull();
+    expect(getByText('1 passed, 1 failed')).not.toBeNull();
     expect(getByText('registered and acknowledged')).not.toBeNull();
     expect(getByText('no heartbeat within 5s')).not.toBeNull();
     expect(getByText('Pass')).not.toBeNull();

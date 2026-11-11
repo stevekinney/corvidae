@@ -86,7 +86,7 @@ describe('the words of each kind of record', () => {
     const detail = { toolName: 'issue-refund', toolCallId: 'c1' };
     const approved = worded({ type: 'review.tool-approval.approved', detail }, lookups);
     expect(approved.action).toBe('Approved a tool call');
-    expect(approved.target).toBe('Issue refund · order 4471');
+    expect(approved.target).toBe('Issue refund, order 4471');
     expect(worded({ type: 'review.tool-approval.denied', detail }, lookups).action).toBe(
       'Denied a tool call',
     );
@@ -113,12 +113,12 @@ describe('the words of each kind of record', () => {
           detail: { revision: 3, previousRevision: 2 },
         },
         'Edited an agent',
-        'Writer · version 2 → 3',
+        'Writer, version 2 → 3',
       ],
       [
         { type: 'agent.updated', resource: 'agent:writer', detail: { revision: 1 } },
         'Edited an agent',
-        'Writer · version 1',
+        'Writer, version 1',
       ],
       [
         { type: 'workflow.created', resource: 'workflow:daily-report' },

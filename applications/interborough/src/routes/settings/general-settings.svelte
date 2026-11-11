@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The body of Settings › General (board SettingsShell, "General · /settings"): the Bureau's
+   * The body of Settings › General (board SettingsShell, "General, /settings"): the Bureau's
    * settings in four sections (Tools, Runs, Storage, Your preferences), one Cinder `SettingRow` each,
    * and the sticky banner that counts the saved changes waiting for a restart. Every setting saves
    * when its field is left and says so on its own row (`settings-autosave.svelte.ts`); there is no

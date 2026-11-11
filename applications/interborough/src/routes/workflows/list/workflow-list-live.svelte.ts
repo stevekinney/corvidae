@@ -65,7 +65,7 @@ export class WorkflowListLiveController {
     this.#unsubscribe = null;
   }
 
-  /** Invalidates the cached list query so TanStack refetches it, and clears the pending counter. The "+N new · Refresh" click target calls this. */
+  /** Invalidates the cached list query so TanStack refetches it, and clears the pending counter. The "+N new, Refresh" click target calls this. */
   refresh(): void {
     this.newCount = 0;
     void this.#queryClient.invalidateQueries({ queryKey: WORKFLOWS_LIST_KEY_PREFIX });

@@ -62,7 +62,7 @@ test('operator finds, reads, and exports a failed workflow', async ({ page, chec
 
   const [download] = await Promise.all([
     page.waitForEvent('download'),
-    page.getByRole('menuitem', { name: 'Event history · JSON' }).click(),
+    page.getByRole('menuitem', { name: 'Event history, JSON' }).click(),
   ]);
   expect(download.suggestedFilename()).toMatch(/-events-.*\.json$/);
 });

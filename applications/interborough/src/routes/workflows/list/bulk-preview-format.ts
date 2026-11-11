@@ -1,7 +1,7 @@
 /**
  * Pure formatting helpers for the Tier-3 bulk-action dialog (plan §9.2/§10.6
  * T8.1; design `Weft Patterns.dc.html` Tier-3 mock: "Type `cancel 47
- * workflows` to confirm" / filter chip `status:failed · type:payment-capture`).
+ * workflows` to confirm" / filter chip `status:failed, type:payment-capture`).
  */
 /**
  * Structurally loose enough to accept both the server's own
@@ -33,7 +33,7 @@ export function confirmPhraseMatches(input: string, phrase: string): boolean {
 }
 
 /**
- * One-line filter summary chip (design: `status:failed · type:payment-capture`).
+ * One-line filter summary chip (design: `status:failed, type:payment-capture`).
  * Dimensions appear in the same order as `BulkOperationFilterSummary`'s own
  * fields; an omitted dimension is simply absent from the chip. Returns the
  * empty string for a filter with no scoping dimension at all — the bar
@@ -58,5 +58,5 @@ export function filterSummaryChip(filter: FilterSummaryLike): string {
     parts.push(`attributes:${filter.attributes.map((attribute) => attribute.key).join(',')}`);
   }
 
-  return parts.join(' · ');
+  return parts.join(', ');
 }

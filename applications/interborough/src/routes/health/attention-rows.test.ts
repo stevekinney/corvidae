@@ -43,7 +43,7 @@ describe('the rows', () => {
   test('the storage row states what was measured and no threshold, with two actions', () => {
     const row = attentionRow(storage);
     expect(row.glyph).toBe('storage');
-    expect(row.title).toBe('Storage is over its warning level · 1.6 GB');
+    expect(row.title).toBe('Storage is over its warning level, 1.6 GB');
     expect(row.description).toMatch(/^Alert firing since \d{1,2}:\d{2} (AM|PM)\.$/);
     expect(`${row.title} ${row.description}`).not.toMatch(/GB of|limit|capacity|threshold|1\.0 GB/);
     expect(row.actions.map((action) => action.label)).toEqual(['View storage', 'Change retention']);
@@ -92,7 +92,7 @@ describe('the rows', () => {
     });
     expect(row.glyph).toBe('hook');
     expect(row.title).toBe(
-      'Notify Slack when a review is waiting’s last delivery failed · 410 Gone',
+      'Notify Slack when a review is waiting’s last delivery failed, 410 Gone',
     );
     expect(row.description).toMatch(
       /^hooks\.slack\.com answered 410 Gone on its last try at \d{1,2}:\d{2} (AM|PM)\.$/,
@@ -113,7 +113,7 @@ describe('the rows', () => {
       attempts: 8,
       error: null,
     });
-    expect(row.title).toBe('Page on-call when a run fails gave up · 410 Gone');
+    expect(row.title).toBe('Page on-call when a run fails gave up, 410 Gone');
     expect(row.description).toBe('Stopped after 8 tries on Oct 30. The URL may have been removed.');
   });
 
@@ -196,7 +196,7 @@ describe('the rows', () => {
       currentValue: 0.25,
       threshold: 0.1,
     });
-    expect(failing.title).toBe('Workflow failure rate is over its warning level · 25%');
+    expect(failing.title).toBe('Workflow failure rate is over its warning level, 25%');
     expect(failing.actions).toEqual([{ label: 'Open alerts', href: '/health?advanced=alerts' }]);
     const unknown = attentionRow({
       kind: 'alert',

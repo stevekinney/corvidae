@@ -330,8 +330,9 @@
               </a>
             </Table.Cell>
             <Table.Cell class="ib-run-row__what ib-records__wrap">
-              <RunOrigin origin={row.origin} />
-              {#if row.summary !== ''}<span class="ib-records__muted"> · {row.summary}</span>{/if}
+              <RunOrigin origin={row.origin} />{#if row.summary !== ''}<span
+                  class="ib-records__muted">, {row.summary}</span
+                >{/if}
             </Table.Cell>
             <Table.Cell><StatusLabel {word} /></Table.Cell>
             <Table.Cell>

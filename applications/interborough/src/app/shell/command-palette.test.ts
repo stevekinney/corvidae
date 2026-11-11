@@ -371,7 +371,7 @@ describe('the paths of a record', () => {
   });
 });
 
-/** A row's title and its meta: the two parts the design draws on one line, the second after a "·". */
+/** A row's title and its meta: the two parts the design draws on one line, the second after a comma. */
 function rowText(option: HTMLElement): [string, string] {
   const text = option.querySelector('.cinder-command-item__text');
   const meta = option.querySelector('.cinder-command-item__meta');
@@ -401,7 +401,7 @@ describe('every kind of result, in order', () => {
 
     await waitFor(() => expect(groups(view)).toEqual(['Waiting on you', 'Actions']));
     expect(
-      view.getByRole('option', { name: 'tool-runner needs your approval · Refund order 1234' }),
+      view.getByRole('option', { name: 'tool-runner needs your approval, Refund order 1234' }),
     ).not.toBeNull();
     // The Go to rows come first, then New chat, and the map of every shortcut is last (row 03c).
     const labels = view
@@ -468,7 +468,7 @@ describe('every kind of result, in order', () => {
       'Actions',
     ]);
     const label = (index: number) => view.getAllByRole('option')[index]?.getAttribute('aria-label');
-    expect(label(0)).toBe('tool-runner needs your approval · Refund order 1234');
+    expect(label(0)).toBe('tool-runner needs your approval, Refund order 1234');
     expect(
       view.getByRole('option', {
         name: 'Please refund order 4471, it arrived damaged., Tool runner',
@@ -478,12 +478,12 @@ describe('every kind of result, in order', () => {
     const run = view.getByRole('option', {
       name: 'Refund order 4471, Tool runner, waiting for approval',
     });
-    expect(rowText(run)).toEqual(['Refund order 4471', 'Tool runner · waiting for approval']);
+    expect(rowText(run)).toEqual(['Refund order 4471', 'Tool runner, waiting for approval']);
     // A tool reads as its name for a person, the identifier small and monospaced, and who uses it.
     const tool = view.getByRole('option', {
       name: 'Issue refund, issue-refund, tool, Tool runner',
     });
-    expect(rowText(tool)).toEqual(['Issue refund', 'issue-refund · tool · Tool runner']);
+    expect(rowText(tool)).toEqual(['Issue refund', 'issue-refund, tool, Tool runner']);
     expect(tool.querySelector('code.ib-identifier')?.textContent).toBe('issue-refund');
     expect(view.getByRole('option', { name: 'New chat about refund' })).not.toBeNull();
     await fireEvent.click(tool);
@@ -499,7 +499,7 @@ describe('every kind of result, in order', () => {
     await fireEvent.input(await view.findByRole('combobox'), { target: { value: 'refund' } });
 
     const first = await view.findByRole('option', {
-      name: 'tool-runner needs your approval · Refund order 1234',
+      name: 'tool-runner needs your approval, Refund order 1234',
     });
     await waitFor(() => expect(first.getAttribute('aria-selected')).toBe('true'));
     expect(

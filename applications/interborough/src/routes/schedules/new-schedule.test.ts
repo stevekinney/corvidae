@@ -692,7 +692,7 @@ describe('a workflow', () => {
     await fireEvent.input(editor, {
       target: { value: '[{"sku":"mug-12","quantity":1}]' },
     });
-    await view().findByText('Valid JSON · array of 1 item');
+    await view().findByText('Valid JSON, array of 1 item');
     expect(view().getByRole('button', { name: 'Format' })).not.toBeNull();
   });
 

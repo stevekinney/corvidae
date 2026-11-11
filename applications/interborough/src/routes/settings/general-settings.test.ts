@@ -1,5 +1,5 @@
 /**
- * Settings › General (board SettingsShell, "General · /settings"): four sections of Cinder setting
+ * Settings › General (board SettingsShell, "General, /settings"): four sections of Cinder setting
  * rows, each saved as it is left and saying so on its own row, the sticky banner that counts saved
  * changes waiting for a restart, the locked settings of a remote deployment, and the preferences
  * of this browser. The Bureau is a stub that answers as the real one does
@@ -222,9 +222,7 @@ describe('the storage backend', () => {
     const view = open(servedSettings(), { hostMode: 'local' });
     await view.findByRole('group', READY);
     await waitFor(() =>
-      expect(view.getByTestId('storage-backend-value').textContent).toBe(
-        'SQLite · on this machine',
-      ),
+      expect(view.getByTestId('storage-backend-value').textContent).toBe('SQLite, on this machine'),
     );
     const backend = row(view.container, 'storage.backend');
     expect(backend?.textContent).toContain(
@@ -519,7 +517,7 @@ describe('the restart banner', () => {
     expect(within(banner).getByRole('button', { name: 'Restart now' })).not.toBeNull();
     await fireEvent.click(revert);
 
-    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Reverted · in effect now'));
+    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Reverted, in effect now'));
     expect(updates().at(-1)?.params['patch']).toEqual({ [KEY]: 30_000 });
     expect(fieldOf(view.container, KEY).value).toBe('30');
     expect(view.queryByTestId('settings-restart-summary')).toBeNull();
@@ -541,7 +539,7 @@ describe('the restart banner', () => {
     const view = open(servedSettings({ running, pendingRestart: new Set([KEY]) }));
     const banner = await view.findByTestId('settings-restart-summary');
     await fireEvent.click(within(banner).getByRole('button', { name: 'Revert 1 change' }));
-    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Reverted · in effect now'));
+    await waitFor(() => expect(statusOf(view.container, KEY)).toBe('Reverted, in effect now'));
     expect(updates().at(-1)?.params['patch']).toEqual({ [KEY]: null });
   });
 

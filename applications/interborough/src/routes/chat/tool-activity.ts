@@ -427,7 +427,7 @@ export function interruptedWords(entry: Pick<ToolCallEntry, 'tier'>): string {
 
 /**
  * One call as a row of the rail. A call whose approval a person decided says so in their words
- * ("Approved by you 10:33 AM · $18.50 refunded", "Denied by you 10:40 AM"), which `context` words:
+ * ("Approved by you 10:33 AM, $18.50 refunded", "Denied by you 10:40 AM"), which `context` words:
  * who the person is to this chat, and which decisions were made away from it.
  */
 export function railCall(

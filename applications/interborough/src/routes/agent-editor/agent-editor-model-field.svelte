@@ -37,7 +37,7 @@
     return [
       copy.context(abilities.context),
       ...abilities.has.map((ability) => copy.abilities[ability]),
-    ].join(' · ');
+    ].join(', ');
   }
 
   function optionOf(choice: ModelChoice, group: string): ComboboxOption {

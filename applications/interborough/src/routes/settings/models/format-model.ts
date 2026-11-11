@@ -89,7 +89,7 @@ export function modelDisplayName(model: string): string {
 }
 
 /**
- * What a model can do, in a few words for a list of models: "Tools · images", or "Text only" for a
+ * What a model can do, in a few words for a list of models: "Tools, images", or "Text only" for a
  * model that does neither. Only the abilities an agent chooses a model for are named.
  */
 export function formatModelAbilities(model: {
@@ -99,7 +99,7 @@ export function formatModelAbilities(model: {
   const words = ALLOWED_MODELS_COPY.models.abilities;
   const named = [...(model.tools ? [words.tools] : []), ...(model.images ? [words.images] : [])];
   if (named.length === 0) return ALLOWED_MODELS_COPY.models.noAbilities;
-  const text = named.join(' · ');
+  const text = named.join(', ');
   return `${text.slice(0, 1).toUpperCase()}${text.slice(1)}`;
 }
 

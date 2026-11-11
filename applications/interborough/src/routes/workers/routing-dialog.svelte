@@ -196,7 +196,7 @@
   }
 </script>
 
-<Modal bind:open title={`${TITLE[request.kind]} · ${request.deploymentName}`} onDismiss={dismiss}>
+<Modal bind:open title={`${TITLE[request.kind]}, ${request.deploymentName}`} onDismiss={dismiss}>
   {#snippet children()}
     {#if request.kind === 'setrouting' && (step.kind === 'form' || step.kind === 'previewing')}
       <div class="weft-routing-dialog__form">

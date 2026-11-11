@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Recent activity: the latest nine things that happened, one line each with the time at the right,
-   * under a heading that names the zone ("Recent activity · Central time") and a link to the whole
+   * under a heading that names the zone ("Recent activity, Central time") and a link to the whole
    * audit log with the number of events it holds. A line is a run, a schedule, a provider key, the
    * server or a chat (`recent-activity.ts`); step noise is the run's own timeline.
    */
@@ -37,7 +37,7 @@
 <section class="ib-recent-activity" aria-labelledby="ib-recent-activity-title">
   <div class="ib-recent-activity__heading-row">
     <h2 id="ib-recent-activity-title" class="ib-recent-activity__title">
-      {copy.title}<span class="ib-recent-activity__zone"> · {copy.zone}</span>
+      {copy.title}<span class="ib-recent-activity__zone">, {copy.zone}</span>
     </h2>
     <a class="ib-recent-activity__audit" href={router.href(AUDIT_PATH)} onclick={openAudit}>
       {copy.auditLink(total)} ›

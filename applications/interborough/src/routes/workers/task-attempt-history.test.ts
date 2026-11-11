@@ -57,7 +57,7 @@ describe('TaskAttemptHistory — large histories', () => {
     expect(shown[0]).toBe(ATTEMPT_COUNT - ATTEMPT_HISTORY_PAGE_SIZE + 1);
     expect(shown.at(-1)).toBe(ATTEMPT_COUNT);
     expect(shown).toEqual(shown.toSorted((left, right) => left - right));
-    expect(getByText(`Attempt ${ATTEMPT_COUNT} · current`)).not.toBeNull();
+    expect(getByText(`Attempt ${ATTEMPT_COUNT}, current`)).not.toBeNull();
     expect(
       getByText(`Showing the newest ${ATTEMPT_HISTORY_PAGE_SIZE} of ${ATTEMPT_COUNT} attempts.`),
     ).not.toBeNull();

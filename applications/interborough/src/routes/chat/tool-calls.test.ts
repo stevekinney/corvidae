@@ -90,7 +90,7 @@ describe('a turn’s tool calls', () => {
     const result = container.querySelector(
       '[data-cinder-status="interrupted"] .cinder-tool-call-rail__result',
     );
-    expect(result?.textContent?.trim()).toBe('Interrupted · didn’t finish');
+    expect(result?.textContent?.trim()).toBe('Interrupted, didn’t finish');
   });
 
   test('an interrupted call that changes things, or that nothing classifies, says it may have run', () => {
@@ -106,7 +106,7 @@ describe('a turn’s tool calls', () => {
         container
           .querySelector('[data-cinder-status="interrupted"] .cinder-tool-call-rail__result')
           ?.textContent?.trim(),
-      ).toBe('Interrupted · may have run');
+      ).toBe('Interrupted, may have run');
       unmount();
     }
   });
@@ -145,10 +145,10 @@ describe('a turn’s tool calls', () => {
 
   test('a turn that ends on a tool call closes with the run’s end state', () => {
     const { container } = render(Harness, {
-      props: { entries: [entry({ callId: 'c1' })], endLabel: 'Run finished · no reply' },
+      props: { entries: [entry({ callId: 'c1' })], endLabel: 'Run finished, no reply' },
     } as never);
     expect(container.querySelector('.cinder-tool-call-rail__end')?.textContent).toContain(
-      'Run finished · no reply',
+      'Run finished, no reply',
     );
   });
 
@@ -197,7 +197,7 @@ describe('a turn’s tool calls', () => {
     const { container } = render(Harness, { props: { entries, duration: '18s' } } as never);
     const summary = container.querySelector('.cinder-tool-call-rail__summary');
     expect(summary?.textContent?.replaceAll(/\s+/g, ' ').trim()).toBe(
-      'Used 30 tools · 1 failed · 1 waiting on you · 18s',
+      'Used 30 tools, 1 failed, 1 waiting on you, 18s',
     );
     // The first three and the last three stay, the failed and waiting calls with them, and the
     // other twenty-four fold behind one button.

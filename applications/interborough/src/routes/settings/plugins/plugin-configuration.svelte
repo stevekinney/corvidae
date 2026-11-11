@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * A plugin's configuration as a form (board PageSettingsSections, "Plugins · /settings/plugins"):
+   * A plugin's configuration as a form (board PageSettingsSections, "Plugins, /settings/plugins"):
    * one Settings row per field of the plugin's own schema, each with the control its shape calls for
    * (text, select, tags, switch, number, a number with a unit), and one explicit Save. Saving stores
    * the configuration through `PUT /host/plugins/<name>` and restarts nothing: the change waits for

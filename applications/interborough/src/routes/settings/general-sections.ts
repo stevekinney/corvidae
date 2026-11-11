@@ -1,5 +1,5 @@
 /**
- * How Settings › General arranges the Bureau's settings (board SettingsShell, "General · /settings"):
+ * How Settings › General arranges the Bureau's settings (board SettingsShell, "General, /settings"):
  * Tools, Runs, then Storage, or in remote mode the "Remote deployment" card that holds what the
  * deployment owns. The page is drawn from the schema, so a key the Bureau adds lands in a section
  * with no change here; only the order of the first rows of Runs is the page's.

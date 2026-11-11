@@ -385,7 +385,7 @@ describe('starting a run', () => {
     await waitFor(() => expect(row.textContent).toContain("An agent's tool call"));
     expect(row.textContent).toContain('journey-author');
     expect(row.querySelector('a[href="/runs/calling-run-1"]')?.textContent).toBe('Calling run');
-    expect(row.textContent).not.toContain('agent-run ·');
+    expect(row.textContent).not.toContain('agent-run,');
   });
 });
 

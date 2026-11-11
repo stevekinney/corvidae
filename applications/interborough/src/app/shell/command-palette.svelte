@@ -10,7 +10,7 @@
    *
    * With nothing typed it lists what is waiting, then the "Go to" rows and New chat, under no
    * heading of their own (design row 03c). Each row is a glyph, the title, and its meta on the same
-   * line ("Refund order 4471 for $42.00? · Approval · waiting"); the footer names the `>` and `@`
+   * line ("Refund order 4471 for $42.00?, Approval, waiting"); the footer names the `>` and `@`
    * prefixes (design rows 03c, 03g).
    *
    * What is waiting comes from the notification store, and the actions from the shortcut registry
@@ -279,7 +279,7 @@
           {@const agent = run.agentName === null ? undefined : agentLabel(run.agentName)}
           <CommandItem
             value={`run-${run.id}`}
-            accessibleLabel={`${run.title}, ${runMeta(run, agent).replaceAll(' · ', ', ')}`}
+            accessibleLabel={`${run.title}, ${runMeta(run, agent)}`}
             onSelect={() => goTo(workflowDetailPath(run.id))}
           >
             {run.title}
@@ -316,7 +316,7 @@
             {label}
             {#snippet leading()}<Bot />{/snippet}
             {#snippet meta()}{#if named}<code class="ib-identifier">{agent.name}</code
-                >{' · '}{/if}{PALETTE_COPY.agentKind}{/snippet}
+                >{', '}{/if}{PALETTE_COPY.agentKind}{/snippet}
           </CommandItem>
         {/each}
         {#each shown.tools as tool (tool.name)}
@@ -335,7 +335,7 @@
             {tool.title ?? tool.name}
             {#snippet leading()}<Wrench />{/snippet}
             {#snippet meta()}{#if named}<code class="ib-identifier">{tool.name}</code
-                >{' · '}{/if}{PALETTE_COPY.toolKind}{#if users.length > 0}{' · '}{users.join(
+                >{', '}{/if}{PALETTE_COPY.toolKind}{#if users.length > 0}{', '}{users.join(
                   ', ',
                 )}{/if}{/snippet}
           </CommandItem>

@@ -28,7 +28,11 @@ import { join, relative } from 'node:path';
 const root = join(import.meta.dir, '..');
 
 /** Directories scanned, relative to the repository root. */
-export const SCANNED_DIRECTORIES = ['components/cinder', 'applications/playground'];
+export const SCANNED_DIRECTORIES = [
+  'components/cinder',
+  'applications/playground',
+  'applications/interborough',
+];
 
 // Installed dependencies and generated output, mirroring `.gitignore`. Dot directories
 // (`.svelte-kit`, `.turbo`, `.types`) are skipped wholesale.

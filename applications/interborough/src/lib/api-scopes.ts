@@ -1,5 +1,5 @@
 /**
- * The scopes of Interborough's own HTTP API (board PageSettingsSections, "API reference · Your
+ * The scopes of Interborough's own HTTP API (board PageSettingsSections, "API reference, Your
  * scopes"): what a session may do through the `/api` operations the host serves over Bureau
  * (`src/host/api-routes.ts`). They are Interborough's vocabulary, not Weft's: Weft's engine
  * operations under `/api/v1` keep their own scopes (`scopes.svelte.ts`). Interborough is

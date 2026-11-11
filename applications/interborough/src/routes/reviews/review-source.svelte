@@ -76,8 +76,8 @@
     >
   {/if}
   {REVIEWS_COPY.source.in}
-  <a href={router.href(place.path)} onclick={(event) => follow(event, place.path)}>{place.label}</a>
-  <span aria-hidden="true">·</span>
+  <a href={router.href(place.path)} onclick={(event) => follow(event, place.path)}>{place.label}</a
+  >,
   {waiting ? REVIEWS_COPY.source.waitingSince : REVIEWS_COPY.source.askedAt}
   <a href={router.href(runPath)} onclick={(event) => follow(event, runPath)}
     ><RelativeTime date={review.requestedAt} /></a

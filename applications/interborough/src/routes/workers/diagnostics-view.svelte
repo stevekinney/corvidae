@@ -110,10 +110,9 @@
           <span class="weft-workers-mono weft-diagnostic-card__kind">{guidance.title}</span>
           <Badge variant={guidance.variant}>{group.items.length} affected</Badge>
           <span class="weft-diagnostic-card__meta">
-            {#if group.items[0]?.queue}queue: {group.items[0].queue}{/if}
-            {#if group.kind === 'dead-lettered' && group.items[0] && 'deadLetteredAt' in group.items[0] && group.items[0].deadLetteredAt}
-              · last {formatRelativeTime(group.items[0].deadLetteredAt, now)}
-            {/if}
+            {#if group.items[0]?.queue}queue: {group.items[0]
+                .queue}{/if}{#if group.kind === 'dead-lettered' && group.items[0] && 'deadLetteredAt' in group.items[0] && group.items[0].deadLetteredAt}{#if group.items[0]?.queue}{', '}{/if}last
+              {formatRelativeTime(group.items[0].deadLetteredAt, now)}{/if}
           </span>
         </div>
         <p class="weft-diagnostic-card__guidance">

@@ -112,18 +112,18 @@ export const HEALTH_ATTENTION_COPY = {
     action: 'Connect a provider',
   },
   storage: {
-    title: (size: number): string => `Storage is over its warning level · ${formatBytes(size)}`,
+    title: (size: number): string => `Storage is over its warning level, ${formatBytes(size)}`,
     line: (at: string): string => `Alert firing since ${at}.`,
     view: 'View storage',
     retention: 'Change retention',
   },
   failureRate: {
     title: (rate: number): string =>
-      `Workflow failure rate is over its warning level · ${String(Math.round(rate * 100))}%`,
+      `Workflow failure rate is over its warning level, ${String(Math.round(rate * 100))}%`,
   },
   slowSteps: {
     title: (milliseconds: number): string =>
-      `Slowest steps are over their warning level · ${String(Math.round(milliseconds / 1000))} s`,
+      `Slowest steps are over their warning level, ${String(Math.round(milliseconds / 1000))} s`,
   },
   otherAlert: {
     title: (metric: string): string => `${metric} is over its warning level`,
@@ -141,9 +141,9 @@ export const HEALTH_ATTENTION_COPY = {
     failedTitle: (name: string, status: string | null): string =>
       status === null
         ? `${name}’s last delivery failed`
-        : `${name}’s last delivery failed · ${status}`,
+        : `${name}’s last delivery failed, ${status}`,
     gaveUpTitle: (name: string, status: string | null): string =>
-      status === null ? `${name} gave up` : `${name} gave up · ${status}`,
+      status === null ? `${name} gave up` : `${name} gave up, ${status}`,
     unnamed: 'A hook',
     failedLine: (host: string | null, status: string | null, at: string): string =>
       host !== null && status !== null
@@ -191,18 +191,16 @@ export const HEALTH_ACTIVITY_COPY = {
   removedProviderKey: (provider: string): string => `You removed the ${provider} key`,
   addedProviderKey: (provider: string): string => `You connected ${provider}`,
   runStarted: (title: string, waiting: boolean): string =>
-    waiting ? `Run started · ${title} · waiting on you` : `Run started · ${title}`,
-  runFinished: (title: string): string => `Run finished · ${title}`,
-  runFailed: (title: string): string => `Run failed · ${title}`,
-  runStopped: (title: string): string => `Run stopped · ${title}`,
-  alertFiring: (metric: string): string => `Alert firing · ${metric}`,
-  storageAlertFiring: 'Storage alert firing · over its warning level',
+    waiting ? `Run started, ${title}, waiting on you` : `Run started, ${title}`,
+  runFinished: (title: string): string => `Run finished, ${title}`,
+  runFailed: (title: string): string => `Run failed, ${title}`,
+  runStopped: (title: string): string => `Run stopped, ${title}`,
+  alertFiring: (metric: string): string => `Alert firing, ${metric}`,
+  storageAlertFiring: 'Storage alert firing, over its warning level',
   missedRunsNoticed: (name: string, due: string | null): string =>
-    due === null
-      ? `Missed runs noticed · ${name}`
-      : `Missed runs noticed · ${name} · was due ${due}`,
-  scheduleRan: (name: string): string => `Schedule ran · ${name}`,
-  deletedChat: (title: string): string => `You deleted a chat · “${title}”`,
+    due === null ? `Missed runs noticed, ${name}` : `Missed runs noticed, ${name}, was due ${due}`,
+  scheduleRan: (name: string): string => `Schedule ran, ${name}`,
+  deletedChat: (title: string): string => `You deleted a chat, “${title}”`,
   deletedChatUntitled: 'You deleted a chat',
   /** A chat, schedule or agent the page cannot name. */
   untitledChat: 'Untitled chat',
@@ -222,7 +220,7 @@ export const HEALTH_METRICS_COPY = {
   /** The one line that stands in for a chart until there are two sizes to draw. */
   chartsFill: 'Charts fill in as Interborough runs.',
   storageSeries: (size: string): string => `Storage use over the last 24 hours, now ${size}`,
-  axisStart: (size: string): string => `${size} · 24 hours ago`,
+  axisStart: (size: string): string => `${size}, 24 hours ago`,
   axisEnd: 'Now',
   runsCaption: (done: number, waiting: number, other: readonly string[]): string => {
     const parts = [
@@ -230,7 +228,7 @@ export const HEALTH_METRICS_COPY = {
       ...(waiting > 0 ? [`${waiting} waiting on you`] : []),
       ...other,
     ];
-    return parts.length === 0 ? 'No runs started' : parts.join(' · ');
+    return parts.length === 0 ? 'No runs started' : parts.join(', ');
   },
   /** The Runs started caption when every run finished: how the day compares with the one before. */
   comparedWithDayBefore: (difference: number): string =>
@@ -269,7 +267,7 @@ export const HEALTH_ADVANCED_COPY = {
     line: (firing: readonly string[], since: string | null): string =>
       firing.length === 0 || since === null
         ? 'No alert is firing'
-        : `${firing.join(', ')} · firing since ${since} · ${firing.length} ${firing.length === 1 ? 'rule' : 'rules'}`,
+        : `${firing.join(', ')}, firing since ${since}, ${firing.length} ${firing.length === 1 ? 'rule' : 'rules'}`,
     action: 'Open alerts',
   },
   checks: {
@@ -277,7 +275,7 @@ export const HEALTH_ADVANCED_COPY = {
     line: (needAttention: number, areas: readonly string[]): string =>
       needAttention === 0
         ? 'Every check passes'
-        : `${needAttention} need${needAttention === 1 ? 's' : ''} attention · ${areas.join(', ')}`,
+        : `${needAttention} need${needAttention === 1 ? 's' : ''} attention, ${areas.join(', ')}`,
     action: 'Open checks',
     /** What an area says when it found nothing. */
     passes: 'No problem found',

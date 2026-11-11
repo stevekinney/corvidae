@@ -173,7 +173,7 @@ test.describe('New chat on the sample world (23a, 23b, 23c, 23e, 23g, 23j)', () 
     const list = chatList(page);
     const bands = list.locator('.cinder-data-list-group__header');
     await expect(bands.nth(0)).toHaveText(/^Today\s*Central time$/);
-    await expect(bands.nth(1)).toHaveText(/^Yesterday · Sunday, Nov 1\s*Central time$/);
+    await expect(bands.nth(1)).toHaveText(/^Yesterday, Sunday, Nov 1\s*Central time$/);
     await expect(bands.last()).toHaveText(/^Thursday, Oct 29\s*Central time$/);
     const row = (title: string) => list.locator('[data-chat]').filter({ hasText: title });
     const refund = row('Please refund order 4471, it arrived damaged.');

@@ -373,7 +373,7 @@ describe('what is waiting and the actions', () => {
       'review:old',
     ]);
     expect(matchWaiting(items, 'zzz')).toEqual([]);
-    expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval · Refund order 1234');
+    expect(waitingLabel(items[0]!)).toBe('tool-runner needs your approval, Refund order 1234');
     expect(waitingLabel(waitingItem({ detail: '' }))).toBe('echo needs your approval');
   });
 
@@ -432,8 +432,8 @@ describe('the order of the actions (row 03c)', () => {
 });
 
 describe('what a waiting row says after its sentence (rows 03c, 03g)', () => {
-  test('an approval is "Approval · waiting" and a question is "Question"', () => {
-    expect(waitingMeta(waitingItem({ kind: 'approval' }))).toBe('Approval · waiting');
+  test('an approval is "Approval, waiting" and a question is "Question"', () => {
+    expect(waitingMeta(waitingItem({ kind: 'approval' }))).toBe('Approval, waiting');
     expect(waitingMeta(waitingItem({ kind: 'question' }))).toBe('Question');
   });
 });
@@ -537,12 +537,12 @@ describe('runs (row 03g)', () => {
       status: 'input-required' as const,
       waiting: 'approval' as const,
     };
-    expect(runMeta(run, 'Tool runner')).toBe('Tool runner · waiting for approval');
+    expect(runMeta(run, 'Tool runner')).toBe('Tool runner, waiting for approval');
     expect(runMeta({ ...run, waiting: 'answer' }, 'Tool runner')).toBe(
-      'Tool runner · waiting for your answer',
+      'Tool runner, waiting for your answer',
     );
     expect(runMeta({ ...run, status: 'completed', waiting: null }, 'Tool runner')).toBe(
-      'Tool runner · done',
+      'Tool runner, done',
     );
     expect(
       runMeta({ ...run, title: 'Tool runner', status: 'canceled', waiting: null }, 'Tool runner'),

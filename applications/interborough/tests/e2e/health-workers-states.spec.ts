@@ -307,7 +307,7 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
   await expect(page.getByRole('heading', { level: 1, name: 'Health' })).toBeVisible();
   await expect(page.getByRole('heading', { level: 2, name: 'Workers', exact: true })).toBeVisible();
   await expect(page.getByTestId('workers-summary')).toHaveText(
-    '3 of 4 connected · 7 running · 12 waiting · 2 failed for good',
+    '3 of 4 connected, 7 running, 12 waiting, 2 failed for good',
   );
   await expect(page.getByRole('searchbox', { name: 'Filter workers' })).toBeVisible();
 
@@ -317,7 +317,7 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
   await expect(rows(page).nth(0)).toContainText('Reports worker');
   await expect(rows(page).nth(0)).toContainText('reports queue');
   await expect(rows(page).nth(1)).toContainText('Payments worker 1');
-  await expect(rows(page).nth(1)).toContainText('payments · 3 running');
+  await expect(rows(page).nth(1)).toContainText('payments, 3 running');
   await expect(rows(page).nth(3)).toContainText('Finishing 2 tasks, then stops');
   await expect(rows(page).nth(0).locator('[aria-current]').first()).toBeVisible();
 
@@ -351,7 +351,7 @@ test('a deployment with remote workers: the list, the open worker, its notice, f
   await expect(first).toContainText('Failed for good');
   await expect(first.locator('code')).toHaveText('collect-merged-changes');
   await expect(first.getByRole('link', { name: 'Release notes run' })).toBeVisible();
-  await expect(first).toContainText('Failed after 5 tries · GitHub didn’t answer (HTTP 503).');
+  await expect(first).toContainText('Failed after 5 tries, GitHub didn’t answer (HTTP 503).');
   await expect(first.getByRole('button', { name: 'View payload' })).toBeVisible();
   await expect(first.getByRole('button', { name: 'Retry' })).toBeVisible();
   await expect(first.getByRole('button', { name: 'Clear' })).toBeVisible();
@@ -486,7 +486,7 @@ test('Retry all needs no confirmation: the tasks wait again at once and a toast 
   await expect(page.getByRole('button', { name: 'Clear all (2)' })).toBeDisabled();
   const first = page.locator('[data-task="collect-merged-changes"]');
   await expect(first).toContainText('Waiting');
-  await expect(first).toContainText('Back on the queue · try 6');
+  await expect(first).toContainText('Back on the queue, try 6');
   await expect(first).toContainText('Oct 30');
   await captureForDesignReview(page, {
     route: '/health/workers',
@@ -530,7 +530,7 @@ test('a filter that matches nothing keeps the text and the open worker', async (
   await expect(page.getByRole('heading', { name: 'No workers match “billing”' })).toBeVisible();
   await expect(page.getByText('Workers are matched by name and queue.')).toBeVisible();
   await expect(page.getByTestId('workers-summary')).toHaveText(
-    '3 of 4 connected · 7 running · 12 waiting · 2 failed for good',
+    '3 of 4 connected, 7 running, 12 waiting, 2 failed for good',
   );
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Reports worker');
   await captureForDesignReview(page, {
@@ -559,9 +559,7 @@ test('the Waiting tab lists tasks in arrival order, a page at a time', async ({
   const waiting = tasks.locator('li[data-word="Waiting"]');
   await expect(waiting).toHaveCount(3);
   await expect(waiting.first()).toContainText('render-digest');
-  await expect(waiting.first()).toContainText(
-    'On the reports queue · waiting for a reports worker',
-  );
+  await expect(waiting.first()).toContainText('On the reports queue, waiting for a reports worker');
   await expect(tasks.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
   await expect(tasks.getByText('Showing 3 of 12 waiting tasks')).toBeVisible();
   // The count is at the start of the footer and Load more at the end of it (79c).
@@ -607,7 +605,7 @@ test('a long id wraps in the header with a Copy button, and the list cuts it fro
 
   // 79f, 79g.
   await expect(rows(page).first()).toContainText('payments-worker-eu-w…3a68');
-  await expect(rows(page).first()).toContainText('payments · 1 running');
+  await expect(rows(page).first()).toContainText('payments, 1 running');
   await expect(detail(page).getByRole('heading', { level: 2 })).toHaveText('Payments worker EU');
   await expect(detail(page).getByTestId('worker-id')).toHaveText(id);
   await expect(detail(page).getByRole('button', { name: 'Copy the worker ID' })).toBeVisible();
@@ -658,7 +656,7 @@ test('a worker whose drain has finished reads Stopped, with Forget as its only a
   await expect(stopped).toContainText('Search worker');
   // The seconds follow the clock of the run; a capture pins it at 4 s.
   await expect(stopped).toContainText(/\b\d+ s ago\b/);
-  await expect(stopped).toContainText('Drained · finished its 2 tasks');
+  await expect(stopped).toContainText('Drained, finished its 2 tasks');
   await expect(stopped).not.toContainText('Disconnected');
   await expect(stopped.locator('.cinder-status-dot').first()).toHaveAttribute(
     'data-cinder-status',
@@ -759,7 +757,7 @@ for (const width of STATE_WIDTHS) {
     await expect(region).toHaveAttribute('data-state', 'empty');
     await expect(region.getByRole('heading', { level: 2, name: 'Workers' })).toBeVisible();
     await expect(page.getByTestId('workers-summary')).toHaveText(
-      'Work runs inside Interborough · 0 running · 0 waiting',
+      'Work runs inside Interborough, 0 running, 0 waiting',
     );
     // 78d: an empty state in a bordered card, with one secondary button that opens the guide.
     const card = region.locator('.cinder-empty-state');

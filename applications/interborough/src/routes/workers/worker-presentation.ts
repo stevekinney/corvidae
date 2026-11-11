@@ -86,7 +86,7 @@ export interface WorkersSummaryInput {
 }
 
 /**
- * The one line under the Workers list's title, such as `3 of 4 connected · 7 running · 12 waiting ·
+ * The one line under the Workers list's title, such as `3 of 4 connected, 7 running, 12 waiting,
  * 2 failed for good`. A worker is connected while it holds a session and takes work, or finishes
  * what it has (a draining one); one that went away or finished draining is listed but not
  * connected. Running is the tasks the connected workers hold now.
@@ -102,7 +102,7 @@ export function workersSummaryLine(input: WorkersSummaryInput): string {
   if (input.failedForGood !== undefined) {
     parts.push(`${String(input.failedForGood)} failed for good`);
   }
-  return parts.join(' · ');
+  return parts.join(', ');
 }
 
 /** Backlog color per the design mock's `queuedColor`: danger above 50 queued, warning above 0, neutral at 0. */

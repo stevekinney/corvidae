@@ -140,21 +140,21 @@ describe('the lines', () => {
   test('are run-level and system events, newest first, one line for each run in the state it is in', () => {
     expect(texts(activityLines(sources()))).toEqual([
       'You removed the Anthropic key',
-      'Run started · Refund order 4471 · waiting on you',
-      'Run finished · Refund order 4472',
-      'Storage alert firing · over its warning level',
-      'Missed runs noticed · Daily summary · was due <time>',
+      'Run started, Refund order 4471, waiting on you',
+      'Run finished, Refund order 4472',
+      'Storage alert firing, over its warning level',
+      'Missed runs noticed, Daily summary, was due <time>',
       'Server started',
-      'Run finished · Say hello',
-      'Schedule ran · Daily summary',
+      'Run finished, Say hello',
+      'Schedule ran, Daily summary',
     ]);
   });
 
   test('an earlier run of a chat is named by its own review and never by the chat’s latest message (row 76m)', () => {
     const lines = texts(activityLines(sources({ runSentences: new Map() })));
     // Without the review the run is named after its agent, not after the later message.
-    expect(lines).toContain('Run finished · tool-runner');
-    expect(lines).not.toContain('Run finished · Refund order 4471');
+    expect(lines).toContain('Run finished, tool-runner');
+    expect(lines).not.toContain('Run finished, Refund order 4471');
   });
 
   test('a run that paused for an approval finishes when the approval was decided, not when it paused', () => {
@@ -164,7 +164,7 @@ describe('the lines', () => {
 
   test('a run that waits on a question is for Reviews, not for this list', () => {
     expect(texts(activityLines(sources()))).not.toContain(
-      'Run started · Ship the release notes fix · waiting on you',
+      'Run started, Ship the release notes fix, waiting on you',
     );
   });
 
@@ -174,7 +174,7 @@ describe('the lines', () => {
       lines.filter((line) => line.includes('Daily summary') && line.startsWith('Schedule')),
     ).toHaveLength(1);
     expect(
-      lines.some((line) => line.includes('Untitled') || line.startsWith('Run started · assistant')),
+      lines.some((line) => line.includes('Untitled') || line.startsWith('Run started, assistant')),
     ).toBe(false);
   });
 
@@ -198,7 +198,7 @@ describe('the lines', () => {
         }),
       ),
     );
-    expect(lines).toEqual(['Run failed · Say hello', 'Run started · Ship the release notes fix']);
+    expect(lines).toEqual(['Run failed, Say hello', 'Run started, Ship the release notes fix']);
   });
 
   test('a run whose chat is gone is named after its agent', () => {
@@ -215,7 +215,7 @@ describe('the lines', () => {
         waitingRuns: new Map(),
       }),
     );
-    expect(line?.text).toBe('Run started · tool-runner');
+    expect(line?.text).toBe('Run started, tool-runner');
   });
 
   test('a deleted chat is named when the trail names it, and is still listed when it does not', () => {
@@ -233,7 +233,7 @@ describe('the lines', () => {
         attention: [],
       }),
     );
-    expect(texts(named)).toEqual(['You deleted a chat · “Scratch test”']);
+    expect(texts(named)).toEqual(['You deleted a chat, “Scratch test”']);
     const unnamed = activityLines(
       sources({
         records: [
@@ -279,8 +279,8 @@ describe('the lines', () => {
     const lines = activityLines(sources());
     const times = new Map(lines.map((line) => [line.text, line.time]));
     expect(times.get('You removed the Anthropic key')).toMatch(/^\d{1,2}:\d{2} (AM|PM)$/);
-    expect(times.get('Run finished · Say hello')).toMatch(/^Yesterday, \d{1,2}:\d{2} (AM|PM)$/);
-    expect(times.get('Schedule ran · Daily summary')).toBe('Oct 29');
+    expect(times.get('Run finished, Say hello')).toMatch(/^Yesterday, \d{1,2}:\d{2} (AM|PM)$/);
+    expect(times.get('Schedule ran, Daily summary')).toBe('Oct 29');
   });
 });
 
@@ -331,8 +331,8 @@ describe('reading it from the Bureau', () => {
     });
     expect(asked).toEqual([{ cursor: undefined, order: 'newest', total: true }]);
     expect(result.total).toBe(78);
-    expect(texts(result.lines)).toContain('Run started · Refund order 4471 · waiting on you');
-    expect(texts(result.lines)).toContain('Schedule ran · Daily summary');
+    expect(texts(result.lines)).toContain('Run started, Refund order 4471, waiting on you');
+    expect(texts(result.lines)).toContain('Schedule ran, Daily summary');
   });
 
   test('names an earlier run of a chat from the sentence of its review, without the amount (row 76m)', async () => {
@@ -373,8 +373,8 @@ describe('reading it from the Bureau', () => {
       },
     });
     expect(reads).toEqual(['approval:run-5:call-1']);
-    expect(texts(result.lines)).toContain('Run finished · Refund order 4472');
-    expect(texts(result.lines)).toContain('Run started · Refund order 4471 · waiting on you');
+    expect(texts(result.lines)).toContain('Run finished, Refund order 4472');
+    expect(texts(result.lines)).toContain('Run started, Refund order 4471, waiting on you');
   });
 
   test('reads on, a page at a time, until the lines fill the section, and no further than three pages', async () => {
@@ -408,7 +408,7 @@ describe('reading it from the Bureau', () => {
         throw new Error('no schedules');
       },
     });
-    expect(texts(result.lines)).toEqual(['Run started · tool-runner']);
+    expect(texts(result.lines)).toEqual(['Run started, tool-runner']);
     expect(result.total).toBeUndefined();
   });
 });

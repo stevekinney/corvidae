@@ -26,7 +26,7 @@ function entry(overrides: Partial<NotificationEntry> = {}): NotificationEntry {
     tier: 'warning',
     icon: 'shield-question-mark',
     title: 'Refund order 1234 for $42.00?',
-    detail: 'Waiting for your approval · Tool runner',
+    detail: 'Waiting for your approval, Tool runner',
     sessionId: 'session-refund',
     href: '/chats/session-refund',
     emittedAtMs: Date.now() - 120_000,
@@ -89,7 +89,7 @@ describe('NotificationBell', () => {
 
     const rows = Array.from(document.body.querySelectorAll('.weft-notification-panel__item'));
     expect(rows.map((row) => row.textContent?.replace(/\s+/g, ' ').trim())).toEqual([
-      'Refund order 1234 for $42.00? Waiting for your approval · Tool runner 2 min',
+      'Refund order 1234 for $42.00? Waiting for your approval, Tool runner 2 min',
       'Storage passed its warning level 1.6 GB used 2 min',
     ]);
     expect(document.body.querySelector('.weft-notification-panel__group-label')).toBeNull();
@@ -104,7 +104,7 @@ describe('NotificationBell', () => {
 
     expect(document.body.textContent).not.toContain('Open alerts view');
     const title = document.body.querySelector('.weft-notification-panel__title');
-    expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Notifications · 1 unread');
+    expect(title?.textContent?.replace(/\s+/g, ' ').trim()).toBe('Notifications, 1 unread');
   });
 
   test('says nothing needs the person with the done empty state when the list is empty', async () => {
@@ -199,7 +199,7 @@ describe('NotificationBell', () => {
         kind: 'missed',
         icon: 'calendar-x',
         title: 'Daily summary missed its 3:00 AM run',
-        detail: '4 missed since Oct 30 · Assistant',
+        detail: '4 missed since Oct 30, Assistant',
         href: '/schedules/s-1',
       }),
     ]);

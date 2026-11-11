@@ -1,5 +1,5 @@
 /**
- * Settings › Plugins (board PageSettingsSections, "Plugins · /settings/plugins", "Plugin · Save
+ * Settings › Plugins (board PageSettingsSections, "Plugins, /settings/plugins", "Plugin, Save
  * configuration failed", "Demo detail", "Anthropic detail" and "Plugins loading and failing to
  * load") on the sample world, whose plugins are real: Guardrails and Inspectors run, Anthropic,
  * OpenAI, Gemini and TypeSafe need a key, and Demo, Ollama and Voyage are off. Where a board names

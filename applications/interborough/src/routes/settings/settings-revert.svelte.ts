@@ -1,7 +1,7 @@
 /**
  * Revert and its Undo on Settings › General (board SettingsShell, "More states"): the restart
  * banner's "Revert N changes" puts every saved setting that waits for a restart back to the value
- * the host runs now, in one `bureau.settings.update`. Each of those rows then reads "Reverted · in
+ * the host runs now, in one `bureau.settings.update`. Each of those rows then reads "Reverted, in
  * effect now", and an Undo toast offers to put the saved values back. The toast stays until it is
  * acted on or the page is left ({@link SettingsRevert.dispose}).
  *

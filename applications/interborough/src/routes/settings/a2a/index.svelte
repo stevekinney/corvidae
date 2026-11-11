@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/settings/a2a`: what an A2A caller can reach on this host (board PageSettingsSections, "A2A ·
+   * `/settings/a2a`: what an A2A caller can reach on this host (board PageSettingsSections, "A2A,
    * /settings/a2a"). The body is `a2a-body.svelte`; this is the Settings frame around it, with the
    * section navigation, the heading and the settings the section edits.
    */

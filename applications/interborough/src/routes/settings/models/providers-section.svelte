@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * The Providers part of Settings › Models (board SettingsShell, "Models · /settings/models" and
-   * "Models · provider connected"): each provider that has a plugin, in the order Anthropic, OpenAI,
+   * The Providers part of Settings › Models (board SettingsShell, "Models, /settings/models" and
+   * "Models, provider connected"): each provider that has a plugin, in the order Anthropic, OpenAI,
    * Gemini, with what its models are called under its name. A provider with no key shows only
    * Connect; one with a key shows a Connected dot and Manage, which opens the dialog that replaces or
    * removes its key. There is no banner and no "Not

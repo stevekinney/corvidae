@@ -243,7 +243,7 @@ describe('Needs attention', () => {
     const rows = [...card.querySelectorAll('li')];
     expect(rows[0]?.textContent).toContain('No model provider connected');
     expect(rows[0]?.textContent).toContain('The Anthropic key was removed at');
-    expect(rows[1]?.textContent).toContain('Storage is over its warning level · 1.6 GB');
+    expect(rows[1]?.textContent).toContain('Storage is over its warning level, 1.6 GB');
     expect(rows[2]?.textContent).toContain('Daily summary missed 4 runs since Oct 30');
     expect(card.textContent).toContain('Connect a provider');
     expect(card.textContent).toContain('View storage');
@@ -327,7 +327,7 @@ describe('Recent activity', () => {
         ),
       ).toEqual([
         'You removed the Anthropic key',
-        'Storage alert firing · over its warning level',
+        'Storage alert firing, over its warning level',
         'Server started',
       ]),
     );
@@ -437,11 +437,11 @@ describe('Advanced', () => {
     );
     // Checks counts the same problems as Needs attention.
     await waitFor(() =>
-      expect(advanced.textContent).toContain('3 need attention · Storage, Schedules, Providers'),
+      expect(advanced.textContent).toContain('3 need attention, Storage, Schedules, Providers'),
     );
     await waitFor(() =>
       expect(advanced.textContent).toMatch(
-        /storage\.size · firing since \d{1,2}:\d{2} (AM|PM) · 1 rule/,
+        /storage\.size, firing since \d{1,2}:\d{2} (AM|PM), 1 rule/,
       ),
     );
     expect(advanced.textContent).toContain(

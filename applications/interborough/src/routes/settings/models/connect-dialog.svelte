@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * Connect a provider (board SettingsShell, "Connect · empty", "testing", "invalid key" and
+   * Connect a provider (board SettingsShell, "Connect, empty", "testing", "invalid key" and
    * "connected"): one API key, tested before it is saved. Connect is always enabled: pressing it
    * tests the key first, then saves it, or shows why the provider refused it at the field. Test is an
    * optional secondary that only asks. Once the key is saved the dialog says Connected, with how many
@@ -56,7 +56,7 @@
   /**
    * Whether the field shows the key's masked form (`sk-ant-••••`) instead of the key: while it is
    * tested, and after a provider refused it until the person goes back into the field to change it
-   * (board SettingsShell, "Connect · testing" and "Connect · invalid key"). A password field can only
+   * (board SettingsShell, "Connect, testing" and "Connect, invalid key"). A password field can only
    * show bullets, so the masked form is a text the field is given, never built from the key itself.
    */
   let revealed = $state(false);

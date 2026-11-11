@@ -398,8 +398,7 @@
       {#if latestVersion !== undefined}
         <span data-testid="agent-saved">
           {copy.saved}
-          <RelativeTime date={latestVersion.savedAt} />
-          ·
+          <RelativeTime date={latestVersion.savedAt} />,
           <a href={router.href(versionsPath)} onclick={openVersions}
             >{copy.version(latestVersion.revision)}</a
           >

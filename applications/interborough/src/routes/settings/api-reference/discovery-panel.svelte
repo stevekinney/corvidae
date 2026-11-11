@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * The Discovery documents tab (board PageSettingsSections, "API reference · Discovery documents"):
+   * The Discovery documents tab (board PageSettingsSections, "API reference, Discovery documents"):
    * three documents other programs read, each with what it is for, its address in small monospace
    * and a Copy button named for the document ("Copy Agent card"). The OpenAPI description is
    * Interborough's own API at `/api/openapi.json`, and the tool server is at this server's own
