@@ -1,17 +1,27 @@
 [
   {
+    "filePath": "src/components/banner/banner.css",
+    "query": "@media (max-width: 39.99rem)",
+    "allowedCount": 1
+  },
+  {
     "filePath": "src/components/card/card.css",
     "query": "@media (width < 640px)",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/diff-viewer/diff-summary-bar.svelte",
-    "query": "@media (max-width: 360px)",
+    "filePath": "src/components/empty-state/empty-state.css",
+    "query": "@media (max-width: 40rem)",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/diff-viewer/diff-toolbar.svelte",
-    "query": "@media (max-width: 480px)",
+    "filePath": "src/components/error-state/error-state.css",
+    "query": "@media (max-width: 40rem)",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/payload-inspector/payload-inspector.css",
+    "query": "@media (max-width: 30rem)",
     "allowedCount": 1
   },
   {

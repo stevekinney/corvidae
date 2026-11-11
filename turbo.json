@@ -795,6 +795,17 @@
         "$TURBO_ROOT$/scripts/environment-configuration.ts"
       ]
     },
+    "@lostgradient/cinder#lint": {
+      "outputs": [],
+      "dependsOn": ["transit"],
+      "inputs": [
+        "$TURBO_DEFAULT$",
+        "$TURBO_ROOT$/scripts/check-inherited-key-reads.ts",
+        "$TURBO_ROOT$/components/chat/src/**",
+        "$TURBO_ROOT$/components/editor/src/**",
+        "$TURBO_ROOT$/scripts/browser-fixtures/src/**"
+      ]
+    },
     "@lostgradient/cinder#test:coverage": {
       "dependsOn": ["transit"],
       "outputs": ["coverage/**"],

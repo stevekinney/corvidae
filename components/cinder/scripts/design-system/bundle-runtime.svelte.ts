@@ -58,7 +58,7 @@ function fillFor(children: CinderChildren | undefined): FillChildren | undefined
   return (host) => {
     const node = typeof children === 'string' ? document.createTextNode(children) : children;
     host.append(node);
-    return () => node.remove();
+    return () => node.parentNode?.removeChild(node);
   };
 }
 
@@ -82,7 +82,7 @@ export function mountCinder(
   flushSync();
   return {
     update(next) {
-      for (const key of [...last.keys()]) {
+      for (const key of last.keys()) {
         if (Object.hasOwn(next, key)) continue;
         last.delete(key);
         Reflect.deleteProperty(live, key);
@@ -135,6 +135,7 @@ export function mountEntry(
   void entry.load().then(
     (component) => {
       if (!destroyed) mounted = mountCinder(component, target, pending, children);
+      return undefined;
     },
     (error: unknown) => {
       if (destroyed) return;

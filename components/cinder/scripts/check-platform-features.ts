@@ -17,13 +17,13 @@
  *   - `--strict`: compare the viewport-query sites against the checked-in
  *     baseline (`platform-viewport-baseline.json`). Exits non-zero only when a
  *     NEW site appears that the baseline does not grandfather, so the known set
- *     is allowed while regressions fail loudly. `validate` runs this mode, which
+ *     is allowed while regressions fail loudly. `lint` runs this mode, which
  *     is what makes wiring it into the gate meaningful (it distinguishes "the
  *     same known sites" from "a new one"). Pass `--update-baseline` to rewrite
  *     the baseline after an intentional change.
  *
  * Run via `bun run --filter=@lostgradient/cinder platform:audit` (report) or
- * `platform:audit --strict` (gate; wired into `validate`).
+ * `platform:audit --strict` (gate; wired into `lint`).
  *
  * oxlint cannot express this (cross-file inventory, the `@media` vs
  * `@container` distinction, and the grandfathered baseline), so a scanned report

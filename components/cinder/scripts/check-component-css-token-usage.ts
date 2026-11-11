@@ -34,8 +34,8 @@
  *     change (a stale name fixed → the baseline shrinks).
  *
  * Run via `bun run --filter=@lostgradient/cinder tokens:audit` (report) / `tokens:audit
- * --strict` (gate; wired into `check-component-css-token-usage.test.ts`, which runs
- * under `bun run validate` as part of the package's default test suite).
+ * --strict` (gate; wired into `lint`, and asserted against the real tree by
+ * `check-component-css-token-usage.test.ts`).
  *
  * Scan surface (COR-344): a `--cinder-*` reference can go undeclared in three
  * places the original single-package, `<style>`-only scan could not see:

@@ -39,9 +39,7 @@
 
 <!-- generated:variables:start -->
 
-- `--cinder-map-marker-fill`
-- `--cinder-map-marker-ink`
-
+This component does not declare any local CSS variables.
 <!-- generated:variables:end -->
 
 ## Subcomponents

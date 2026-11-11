@@ -30,7 +30,7 @@
  *     the baseline after an intentional change (e.g. a family migration lands).
  *
  * Run via `bun run --filter=@lostgradient/cinder colors:audit` (report) or `colors:audit
- * --strict` (gate; wired into `validate` once report output is clean).
+ * --strict` (gate; wired into `lint`).
  *
  * Scope mirrors `check-platform-features.ts`: component `.css` sidecars AND the
  * `<style>` blocks of `.svelte` files under `src/components` + the shared CSS

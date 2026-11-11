@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
 import { resetScrollLock } from '../../src/_internal/overlay.ts';
-import ButtonGroup from '../../src/components/button-group/index.ts';
-import Button from '../../src/components/button/index.ts';
-import Card from '../../src/components/card/index.ts';
-import Modal from '../../src/components/modal/index.ts';
+import { ButtonGroup } from '../../src/components/button-group/index.ts';
+import { Button } from '../../src/components/button/index.ts';
+import { Card } from '../../src/components/card/index.ts';
+import { Modal } from '../../src/components/modal/index.ts';
 import { installModalDialogStubs } from '../../src/components/modal/modal-test-helpers.ts';
 import { contextsFor } from './bundle-host.ts';
 import {
@@ -139,15 +139,18 @@ describe('Cinder.mount', () => {
 
 describe('lazy components', () => {
   test('load once, on the first mount, and mount with the latest props', async () => {
-    let finishLoading: (component: CinderComponent) => void = () => undefined;
-    const loading = new Promise<CinderComponent>((resolve) => {
+    // The promise is untyped until the registry reads it: the type-aware lint does not see a
+    // `.svelte` module's types, so it calls a cast on `Button` unnecessary, and the type-check,
+    // which does, refuses `Button` without one.
+    let finishLoading: (component: unknown) => void = () => undefined;
+    const loading = new Promise<unknown>((resolve) => {
       finishLoading = resolve;
     });
     let loads = 0;
     const cinder = createCinderGlobal({
       Button: lazyComponent(() => {
         loads += 1;
-        return loading;
+        return loading as Promise<CinderComponent>;
       }),
     });
     expect(loads).toBe(0);
@@ -159,7 +162,7 @@ describe('lazy components', () => {
     expect(element.querySelector('button')).toBeNull();
     expect(loads).toBe(1);
 
-    finishLoading(Button as unknown as CinderComponent);
+    finishLoading(Button);
     await loading;
     expect(element.querySelector('button')?.textContent).toContain('Saved');
     expect(destroyed.querySelector('button')).toBeNull();

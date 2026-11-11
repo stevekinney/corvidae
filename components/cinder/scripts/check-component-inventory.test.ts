@@ -82,6 +82,37 @@ describe('findNeighbourRationaleViolations', () => {
     ).toEqual([]);
   });
 
+  // A rationale names its alternative as the component is exported. Lowercasing alone turned
+  // `DescriptionList` into `descriptionlist`, an id no component has, so only one-word names
+  // (`Badge`) ever matched.
+  it('accepts a rationale that names a multi-word alternative by its exported name', () => {
+    const source =
+      '<script module>/**\n * @cinder\n * @rationale Nearest alternative: DescriptionList — it shows labelled pairs.\n */</script>';
+    const entry = { id: 'new-component', related: [], avoidWhen: [], source };
+
+    expect(
+      findNeighbourRationaleViolations(entry, new Set(['description-list', 'new-component'])),
+    ).toEqual([]);
+    expect(
+      findNeighbourRationaleViolations(entry, new Set(['button', 'new-component'])),
+    ).toHaveLength(1);
+  });
+
+  it('rejects a rationale that names the component itself by its exported name', () => {
+    expect(
+      findNeighbourRationaleViolations(
+        {
+          id: 'new-component',
+          related: [],
+          avoidWhen: [],
+          source:
+            '<script module>/**\n * @cinder\n * @rationale Nearest alternative: NewComponent.\n */</script>',
+        },
+        knownComponentIds,
+      ),
+    ).toHaveLength(1);
+  });
+
   it('ignores rationale text outside the canonical metadata block', () => {
     expect(
       findNeighbourRationaleViolations(

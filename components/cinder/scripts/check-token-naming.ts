@@ -16,7 +16,10 @@
  *   - **No `color.*` top-level namespace.** Every token is a color or is not;
  *     a `color` domain says nothing about intent, which is what a name is for.
  *   - **A token path names a role, not just a domain.** A bare `accent` or
- *     `danger` carries no role, so it cannot be read without context.
+ *     `danger` carries no role, so it cannot be read without context. The one
+ *     exception is a group's `$root` token (DTCG 2025.10): `border.$root` is the
+ *     group's default, resolves to the path `border`, and reads as the default
+ *     among the roles beside it (`border.muted`, `border.strong`).
  *
  * Depth is deliberately NOT capped at three. `status.<name>` reads as a
  * compound domain, and the corpus already carries four-segment component paths
@@ -61,15 +64,38 @@ function propertySegments(cssProperty: string): string[] {
   return cssProperty.replace(/^--_?cinder-/, '').split('-');
 }
 
+/** Accepts a bare path so the path rules stay testable on their own. */
+function pathOf(token: NamedToken | string): string {
+  return typeof token === 'string' ? token : token.path;
+}
+
+/**
+ * The one-segment paths that are a group's `$root` token.
+ *
+ * The registry records a `$root` under its group's own path and keeps no marker
+ * for it, so this reads the shape instead: a DTCG node is a token or a group,
+ * never both, so a path that is also the parent of another token's path can
+ * only have come from that group's `$root`. A bare domain with nothing beneath
+ * it is not one, and still fails.
+ */
+function findGroupRootPaths(tokens: readonly (NamedToken | string)[]): ReadonlySet<string> {
+  const groups = new Set<string>();
+  for (const token of tokens) {
+    const separator = pathOf(token).indexOf('.');
+    if (separator > 0) groups.add(pathOf(token).slice(0, separator));
+  }
+  return groups;
+}
+
 /** Pure so the rules are testable without a registry on disk. */
 export function findNamingViolations(
   tokens: readonly (NamedToken | string)[],
 ): readonly NamingViolation[] {
   const violations: NamingViolation[] = [];
+  const groupRootPaths = findGroupRootPaths(tokens);
 
   for (const token of tokens) {
-    // Accepts a bare path so the path rules stay testable on their own.
-    const path = typeof token === 'string' ? token : token.path;
+    const path = pathOf(token);
     const cssProperty = typeof token === 'string' ? undefined : token.cssProperty;
     // The document-level `$root` token resolves to the empty path; it has no
     // name to check and is not part of the public naming surface.
@@ -77,7 +103,7 @@ export function findNamingViolations(
 
     const segments = path.split('.');
 
-    if (segments.length < 2) {
+    if (segments.length < 2 && !groupRootPaths.has(path)) {
       violations.push({
         path,
         reason: 'is a bare domain with no role — a name should read without context',

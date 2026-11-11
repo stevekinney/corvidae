@@ -1,4 +1,4 @@
 /** CSS custom properties this component reads, which a consumer can override. */
-const variables: readonly string[] = ['--cinder-map-marker-fill', '--cinder-map-marker-ink'];
+const variables: readonly string[] = [];
 
 export default variables;

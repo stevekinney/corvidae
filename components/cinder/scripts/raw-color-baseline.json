@@ -1,13 +1,8 @@
 [
   {
-    "filePath": "src/components/alert/alert.css",
-    "colorClass": "light-dark",
-    "allowedCount": 1
-  },
-  {
-    "filePath": "src/components/alert/alert.css",
-    "colorClass": "oklch",
-    "allowedCount": 2
+    "filePath": "src/components/code-block/code-block.css",
+    "colorClass": "hex",
+    "allowedCount": 3
   },
   {
     "filePath": "src/components/code-block/code-block.css",
@@ -15,23 +10,23 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/command-menu/command-menu.css",
-    "colorClass": "rgb",
+    "filePath": "src/components/code-block/code-block.css",
+    "colorClass": "oklch",
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/input/input.css",
+    "filePath": "src/components/docked-action-bar/docked-action-bar.css",
+    "colorClass": "light-dark",
+    "allowedCount": 1
+  },
+  {
+    "filePath": "src/components/docked-action-bar/docked-action-bar.css",
     "colorClass": "oklch",
     "allowedCount": 2
   },
   {
-    "filePath": "src/components/markdown-editor/markdown-editor.svelte",
-    "colorClass": "hex",
-    "allowedCount": 7
-  },
-  {
-    "filePath": "src/components/markdown-editor/markdown-editor.svelte",
-    "colorClass": "rgb",
+    "filePath": "src/components/input/input.css",
+    "colorClass": "oklch",
     "allowedCount": 1
   },
   {
@@ -55,19 +50,14 @@
     "allowedCount": 1
   },
   {
-    "filePath": "src/components/spinner/spinner.css",
-    "colorClass": "hex",
-    "allowedCount": 1
-  },
-  {
-    "filePath": "src/components/toast-region/toast-region.css",
-    "colorClass": "light-dark",
-    "allowedCount": 1
+    "filePath": "src/components/theme-switch/theme-switch.css",
+    "colorClass": "oklch",
+    "allowedCount": 13
   },
   {
     "filePath": "src/components/toast-region/toast-region.css",
     "colorClass": "oklch",
-    "allowedCount": 3
+    "allowedCount": 1
   },
   {
     "filePath": "src/components/toggle/toggle.css",
@@ -77,11 +67,11 @@
   {
     "filePath": "src/styles/components/_status-surface.css",
     "colorClass": "light-dark",
-    "allowedCount": 4
+    "allowedCount": 3
   },
   {
     "filePath": "src/styles/components/_status-surface.css",
     "colorClass": "oklch",
-    "allowedCount": 8
+    "allowedCount": 6
   }
 ]

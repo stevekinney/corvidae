@@ -31,7 +31,7 @@ The overlay and the sheet are Drawers: opening moves focus into the panel, Tab s
 | Esc | Docked panel, focus inside | Closes the panel and reports `onClose`. |
 | Enter, Space | Any button | Activates it. |
 
-### Names, roles and state
+### Assistive-technology announcements
 
 The docked panel is an `aside` named by the tool's heading. The overlay and the sheet are modal dialogs named by the same heading. The status dot and glyph are decorative; the state is in words ("Failed", "Waiting on you"). Each section is a region named by its heading ("Input", "Error", "Result"), and fields are a description list so a screen reader hears each label with its value. Copying announces "Copied" through the copy button's live region. A running call's spinner is decorative; the status says "Running". The X is named "Close panel" and the sheet's text button "Close".
 
