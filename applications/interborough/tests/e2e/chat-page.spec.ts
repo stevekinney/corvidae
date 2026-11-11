@@ -854,7 +854,9 @@ test.describe('an open chat whose approval was denied with a note (18h)', () => 
         `You denied this refund and said: “${NOTE}” I haven’t issued it, and I’ll wait for the claim before trying again.`,
       ),
     ).toBeVisible();
-    await expect(conversationArea(page)).toContainText('10:40 AM, Claude Sonnet 5.5');
+    // The time and the model are separate items in the footer line (a flex row with a gap), so no
+    // separator is written between them.
+    await expect(conversationArea(page)).toContainText(/10:40 AM\s*Claude Sonnet 5\.5/);
     // The composer is the normal live one with Send, and the chat is Done.
     const composer = conversationArea(page).getByRole('textbox', { name: 'Message' });
     await expect(composer).toBeEnabled();
