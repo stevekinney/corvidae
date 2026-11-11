@@ -1,5 +1,5 @@
 /**
- * The scenario builders behind the Chat stress cases (COR-2289). Each one turns a case's `params`
+ * The scenario builders behind the Chat stress cases (COR-2289). Each builder turns a case's `params`
  * into the conversation and the plain-data props the fixture hands to the real `Chat`; the fixture
  * (`../chat-stress.svelte`) adds the callbacks. A scenario seeds only what a person would find on
  * the page before acting: an approval waiting, a run in progress, a question open. What the person
@@ -21,10 +21,7 @@ import {
 } from '@lostgradient/chat';
 import type { CitationSource } from '@lostgradient/cinder';
 
-import type { StressCase } from './stress-cases.ts';
-
-/** The sample world's "now": every case runs with the browser's clock fixed here. */
-export const STRESS_NOW = '2026-11-02T16:46:00.000Z';
+import type { StressCase, StressScenarioName } from './stress-cases.ts';
 
 const BASE_TIME = Date.parse('2026-11-02T15:00:00.000Z');
 
@@ -237,7 +234,7 @@ function param<Value>(stressCase: StressCase, key: string, fallback: Value): Val
   return value === undefined ? fallback : (value as Value);
 }
 
-const scenarios: Record<string, Scenario> = {
+const scenarios: Record<StressScenarioName, Scenario> = {
   'empty-first-use': () => {
     const setup = baseSetup(start('stress-empty'));
     setup.emptyPrompts = ['Summarize this week', 'Draft a release note', 'Find stale branches'];
@@ -359,14 +356,23 @@ const scenarios: Record<string, Scenario> = {
   },
 
   'tool-group': (stressCase) => {
-    const shape = param<'repeat' | 'steps' | 'approval' | 'identifier' | 'failed'>(
+    const shape = param<'repeat' | 'steps' | 'approval' | 'identifier' | 'failed' | 'running'>(
       stressCase,
       'shape',
       'steps',
     );
     let conversation = appendUserMessage(start('stress-tools'), 'Check the refund queue.');
     const setup = baseSetup(conversation);
-    if (shape === 'repeat') {
+    if (shape === 'running') {
+      // A call with no result yet is a step that is running: the run is live and waits on it.
+      conversation = appendToolCall(conversation, {
+        id: 'read-ledger',
+        name: 'read_ledger',
+        arguments: { month: 'october' },
+      });
+      setup.streaming = true;
+      setup.runInput = true;
+    } else if (shape === 'repeat') {
       for (let index = 1; index <= 20; index += 1) {
         conversation = withCall(
           conversation,
@@ -735,20 +741,9 @@ export function failedStressSetup(): StressSetup {
   return baseSetup(start('stress-failed'));
 }
 
-/** The names of every scenario a case can use. */
-export const STRESS_SCENARIO_NAMES: readonly string[] = Object.keys(scenarios);
-
 /** Builds a case's setup, with stable message ids and times; throws for an unknown scenario. */
 export function buildStressSetup(stressCase: StressCase): StressSetup {
-  const scenario = Object.hasOwn(scenarios, stressCase.scenario)
-    ? scenarios[stressCase.scenario]
-    : undefined;
-  if (scenario === undefined) {
-    throw new Error(
-      `Chat stress case ${stressCase.id} names the unknown scenario '${stressCase.scenario}'.`,
-    );
-  }
-  const setup = scenario(stressCase);
+  const setup = scenarios[stressCase.scenario](stressCase);
   if (stressCase.direction !== undefined) setup.direction = stressCase.direction;
   setup.conversation = stabilize(setup.conversation);
   return setup;

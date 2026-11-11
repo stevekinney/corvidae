@@ -1,0 +1,44 @@
+C1 | Composer | Empty composer outlined muted Send, no grey fill.
+C2 | Composer | Ready composer accent border plus 3 px ring, filled accent Send.
+C3 | Composer | Up next, N queued, sends when this run finishes; Send now instead; dashed indexed queued user ghosts, Edit and named remove; failure or stop discard drawer with Restore. The board supersedes COR-2014.
+C4 | Composer | Run toolbar Running with m:ss, outlined Stop with filled square and label, Add another follow-up placeholder.
+C5 | Composer | Offline warning drawer with the exact draft-saved and reconnect copy; Send aria-describedby points to the banner; status outside the editor column.
+C6 | Composer | Files count and attention summary; type badge, middle truncated name keeping its extension, size or state; upload percentage and progress; retryable failure with danger reason, Retry and remove; unsupported with reason and remove only; disabled Send reason; consistent remove.
+C7 | Composer | Neutral draft-restored drawer with when and Discard draft.
+M1 | Main | Date separator Today, sentence case, muted, no letter spacing.
+M2 | Main | Contiguous steps share one bordered group; header N steps and duration and chevron; status icon, sentence title, muted monospace tool, duration right. Pending and running titles present tense, completed past tense.
+M3 | Main | Twenty identical consecutive calls collapse to one row, Compared 20 recent orders, and lookup_order x20 with total time. One group in state 19; collapsed and expanded state 59.
+M4 | Main | Inline citation chips sit in text flow and show host or label.
+M5 | Main | Timestamp, Copy, Quote, Regenerate icon-plus-label action buttons; uniform gaps and content edge alignment.
+M6 | Main | Approval with no icon gutter, action title, irreversible danger badge, pause sentence, Tool, Target, Amount and Command facts; command always visible monospace, countdown, Add a note, secondary Deny then named primary action. Irreversible forwarded by Chat.
+M7 | Main | Pending approval has an info composer drawer with the exact waiting and queue copy and a Review approval scroll and focus action; a draft Send becomes Queue with the queue icon.
+A1 | Approvals | Irreversible first press arms a danger Press again to refund; hint Reverts in 3 seconds. Escape cancels; 3-second or Escape reset; Cinder InlineConfirm composition.
+A2 | Approvals | Reversible fact and host-supplied Why the agent wants to do this disclosure.
+A3 | Approvals | Two or more approvals in one N approvals waiting group; each with named actions and irreversible marker.
+A4 | Approvals | Resolved receipt remains in the transcript: approved action, by who and time, check badge; expands note, result, command.
+A5 | Approvals | Elsewhere receipt names the actor and links the surface: by Priya Raman in Reviews at 10:46 AM, with Reviews a link to the actual surface.
+A6 | Approvals | Denied receipt quotes the reason inline.
+A7 | Approvals | Expired dashed neutral row: Expired before a decision, action, time, secondary Ask again. Summary no longer waiting. Timed transition closes COR-2280.
+R1 | RunStates | Running step spinner, present tense title ending with an ellipsis, step N of M and elapsed.
+R2 | RunStates | Streaming caret 2 px accent bar.
+R3 | RunStates | Reconnecting partial muted with no caret; turn warning Connection lost. Reconnecting, attempt X of Y. Next try in N s.; Retry now and draining progress.
+R4 | RunStates | Stopped turn neutral pill Stopped by you, partial answer, Continue and Discard.
+R5 | RunStates | Partial failed turn danger alert This answer is incomplete., cause, what Retry keeps, Retry action.
+R6 | RunStates | Empty answer dashed neutral transcript row The agent finished without writing an answer., time, Try again; no orphan timestamp or footnote.
+R7 | RunStates | Failed step counted in header Checked 2 of 3 sources, 1 failed; row opens with visible Failed; danger summary and wrapping diagnostic; Retry this step and Copy error, no status clipping.
+V1 | Availability | First use icon tile, title, agent description and suggested prompt buttons using Cinder EmptyState.
+V2 | Availability | Loading skeleton turns and Loading conversation with N s; editor stays, Send waits for history to load; slow indicator, elapsed and Cancel; Retry after Cancel.
+V3 | Availability | History error Cinder ErrorState with cause, primary Try again, secondary All conversations, no composer. Deleted: This conversation was deleted with primary All conversations, no composer.
+V4 | Availability | Connect a model provider title, primary Connect provider.
+V5 | Availability | Archived neutral composer bar, archive icon, Archived date, secondary New chat and primary Unarchive.
+V6 | Availability | Revoked neutral composer bar, lock, Read only with grantor tooltip, primary Request access.
+X1 | Content | Code hairline with no header; floating accessible Copy language code, overflow right fade; Chat copyable always.
+X2 | Content | Open fence caret inside pre after the final character; Writing top right; no Copy; dashed bottom edge.
+X3 | Content | Wide table hairline container, visible dark header band, no cell wrapping; right fade and +N column cue outside cell text.
+X4 | Content | Arabic messages, user bubble, Citation and approval text dir auto, text-align start; RTL numbers and punctuation correct.
+X5 | Content | Broken image dashed footprint placeholder, image-off, name didn't load, Retry; an image-only message has no Copy.
+P1 | PhoneRun | Dark 390 step header title truncates and 3 steps stays; approval badge above title, wrapped command; equal full-width Deny and primary at 44 px; safe-area bottom padding; Attach and Send at 44.
+P2 | PhoneComposer | Light 390 one row per file, Retry and remove at 44; capped list with fade and N more below; blocking reason under the composer.
+P3 | PhoneQuestion | Dark 390 pending question replaces the composer; fieldset The agent is asking, radios at least 52 px tall with 1, 2 and 3 shortcuts and details; Something else opens text; secondary Reply in chat instead, primary Answer; Needs you step warning; multi-question progression and answer receipt.
+T1 | Tokens | Dark danger text about oklch 76% .15 25 (gamut-adjusted .14 accepted when contrast passes), border 62% .17 25; text 4.5:1 and border 3:1 token tests; dark 48 and 49 red.
+T2 | Tokens | Dark shared chat surface differs from surface-inset; code, table header and Sources count visually distinct at 768 dark.

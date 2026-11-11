@@ -1,5 +1,5 @@
 /**
- * The 80 Chat stress cases (COR-2289) as data: which scenario each one builds, which design rows it
+ * The 80 Chat stress cases (COR-2289) as data: which scenario each case builds, which design rows it
  * proves, and the real component flow the capture tool drives before it screenshots. The cases
  * live in `../chat-stress.json`; this module types and validates them and imports nothing from
  * Chat, so the capture tool and its tests read the same list the fixture serves.
@@ -68,7 +68,7 @@ export interface StressCase {
   /** The design rows the case shows, such as `C3`. At least one. */
   readonly rows: readonly string[];
   /** The scenario builder that makes the conversation and Chat's props (`stress-scenarios.ts`). */
-  readonly scenario: string;
+  readonly scenario: StressScenarioName;
   /** What the scenario takes. */
   readonly params: Readonly<Record<string, unknown>>;
   /** The flow that reaches the primary image, from a fresh load. */
@@ -88,8 +88,43 @@ export interface StressCase {
   readonly deferred?: string;
 }
 
+/** The sample world's "now": every case runs with the browser's clock fixed here, so a date reads Today. */
+export const STRESS_NOW = '2026-11-02T16:46:00.000Z';
+
 /** The number of cases the board requires. */
 export const STRESS_CASE_COUNT = 80;
+
+/**
+ * The scenario builders a case may name (`stress-scenarios.ts` builds one for each). The list lives
+ * here, with no Chat import, so the case tests can check a case's scenario without loading Chat.
+ */
+export const STRESS_SCENARIO_NAMES = [
+  'approval',
+  'attachments',
+  'availability',
+  'citations',
+  'code-blocks',
+  'composer-status',
+  'composer-sweep',
+  'date-and-actions',
+  'empty-first-use',
+  'idle',
+  'images',
+  'long-transcript',
+  'missing-source',
+  'question',
+  'reasoning',
+  'rtl',
+  'run',
+  'stream-code',
+  'tool-group',
+  'turn-state',
+  'two-composers',
+  'wide-table',
+] as const;
+
+/** One scenario name. */
+export type StressScenarioName = (typeof STRESS_SCENARIO_NAMES)[number];
 
 /** The steps a case's JSON may carry, by action. */
 const STEP_ACTIONS = [
@@ -117,7 +152,8 @@ function problemsInStep(step: unknown, where: string): string[] {
   const needsRole =
     action === 'click' || action === 'fill' || action === 'focus' || action === 'expect';
   const problems: string[] = [];
-  if (action === 'upload' && !Array.isArray(step['files'])) problems.push(`${where}: upload needs files`);
+  if (action === 'upload' && !Array.isArray(step['files']))
+    problems.push(`${where}: upload needs files`);
   if (action === 'scroll' && step['to'] !== 'top' && step['to'] !== 'bottom') {
     problems.push(`${where}: scroll goes to top or bottom`);
   }
@@ -146,7 +182,13 @@ function problemsInCase(value: unknown, index: number): string[] {
   if (typeof id !== 'number' || !Number.isInteger(id) || id < 1 || id > STRESS_CASE_COUNT) {
     problems.push(`${where}: id must be an integer from 1 to ${STRESS_CASE_COUNT}`);
   }
-  for (const key of ['slug', 'title', 'source', 'scenario'] as const) {
+  if (
+    typeof value['scenario'] !== 'string' ||
+    !(STRESS_SCENARIO_NAMES as readonly string[]).includes(value['scenario'])
+  ) {
+    problems.push(`${where}: scenario must be one of ${STRESS_SCENARIO_NAMES.join(', ')}`);
+  }
+  for (const key of ['slug', 'title', 'source'] as const) {
     if (typeof value[key] !== 'string' || value[key] === '')
       problems.push(`${where}: ${key} must be a sentence or a name`);
   }

@@ -199,7 +199,7 @@
     "title": "A running chat shows Running, an outlined Stop and the follow-up placeholder; its composer edge is the reference for case 10.",
     "provenance": "issue-named",
     "source": "COR-2289 acceptance and the shared gates name the stable composer edge for cases 09 and 10.",
-    "rows": ["C4"],
+    "rows": ["C4", "R2"],
     "scenario": "run",
     "params": {},
     "steps": [
@@ -248,7 +248,7 @@
     "title": "A reply streaming an unclosed SQL fence shows its first characters inside a code block.",
     "provenance": "issue-named",
     "source": "COR-2276: case 11 at 1440 px showed the SELECT prefix clipped; the repaired case streams an unclosed SQL fence through beginStreaming and pushToken.",
-    "rows": ["X2"],
+    "rows": ["X2", "R2"],
     "scenario": "stream-code",
     "params": {},
     "steps": [
@@ -598,19 +598,19 @@
   },
   {
     "id": 26,
-    "slug": "failed-step",
-    "title": "A failed step is counted in the header with a visible Failed and a wrapping diagnostic.",
+    "slug": "running-step",
+    "title": "A running step shows a spinner, a present tense title, step N of M and the elapsed time.",
     "provenance": "derived",
-    "source": "COR-2289 checkpoint mentions state 26 without saying what it shows; this definition is derived from row R7.",
-    "rows": ["R7"],
+    "source": "COR-2289 checkpoint mentions state 26 without saying what it shows; this definition is derived from row R1, because cases 48 and 78 already show R7.",
+    "rows": ["R1"],
     "scenario": "tool-group",
     "params": {
-      "shape": "failed"
+      "shape": "running"
     },
     "steps": [
       {
         "action": "expect-text",
-        "text": "failed"
+        "text": "read_ledger"
       }
     ],
     "variants": [],

@@ -28,7 +28,7 @@
     type StressSetup,
   } from './chat-stress/stress-scenarios.ts';
 
-  // One real Chat per page load, chosen by `?case=NN` (COR-2289). The case's scenario seeds what a
+  // One real Chat per page load, chosen by `?case=NN` (COR-2289). The case's scenario seeds what the
   // person would find on arrival; every later change comes from a control the capture tool presses
   // or from a host operation on `window.corvidaeChatStress`, which does only what a host does (a
   // dropped connection, a token arriving, a source taken away).
