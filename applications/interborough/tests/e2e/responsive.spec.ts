@@ -59,6 +59,7 @@ interface CatalogEdit {
 interface ProviderSnapshot {
   readonly configurationRevision: string | null;
   readonly catalog: CatalogEdit[];
+  readonly providers: readonly { readonly name: string; readonly hasKey: boolean }[];
 }
 
 /** A scrolling region may hold this many viewports of content before it counts as overflow. */
@@ -460,11 +461,20 @@ async function providerSnapshot(request: APIRequestContext): Promise<ProviderSna
 }
 
 /**
+ * Whether this specification connected Gemini, which the host did not have a key for, so `afterAll`
+ * disconnects it again: a later specification on the same host reads which providers are connected.
+ */
+let connectedGemini = false;
+
+/**
  * Adds a row named `model` to the host's catalog, on Gemini, which has no allowlist, so the host
  * serves it (the end-to-end home restricts Anthropic to two models). Connecting is safe to repeat.
  */
 async function addCatalogRow(request: APIRequestContext, model: string): Promise<void> {
   const providerSnapshotBeforeConnect = await providerSnapshot(request);
+  connectedGemini ||= !providerSnapshotBeforeConnect.providers.some(
+    (entry) => entry.name === 'gemini' && entry.hasKey,
+  );
   const connected = await request.put('/host/providers/gemini', {
     data: {
       apiKey: 'e2e-responsive-gemini-key',
@@ -485,7 +495,7 @@ async function addCatalogRow(request: APIRequestContext, model: string): Promise
   expect(put.status(), 'adding the long model').toBe(200);
 }
 
-/** Takes the row named `model` out of the host's catalog edits. */
+/** Takes the row named `model` out of the host's catalog edits, and disconnects Gemini if this file connected it. */
 async function removeCatalogRow(request: APIRequestContext, model: string): Promise<void> {
   const snapshot = await providerSnapshot(request);
   const edits = snapshot.catalog.filter((edit) => edit.model !== model);
@@ -497,6 +507,16 @@ async function removeCatalogRow(request: APIRequestContext, model: string): Prom
     },
   });
   expect(response.ok(), 'removing the long model').toBe(true);
+  if (!connectedGemini) return;
+  const connected = await providerSnapshot(request);
+  const disconnected = await request.delete('/host/providers/gemini', {
+    data: {
+      operationId: crypto.randomUUID(),
+      expectedRevision: connected.configurationRevision,
+    },
+  });
+  expect(disconnected.status(), 'disconnecting gemini').toBe(200);
+  connectedGemini = false;
 }
 
 /**
