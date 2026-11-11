@@ -1,5 +1,5 @@
 /**
- * The agents list, for the agents a plugin ships (board PageAgents, "Agents · /agents" and its
+ * The agents list, for the agents a plugin ships (board PageAgents, "Agents, /agents" and its
  * captioned states). A plugin's agent that can run is an ordinary row, and a file among them has an
  * editor (the 2026-11-05 amendment makes plugin agents editable; Duplicate lives in the agent's
  * header, not in the row). An agent a disabled plugin holds back is read from the definitions list
@@ -177,7 +177,7 @@ describe('the agents a disabled plugin holds back', () => {
     await findByRole('radio', { name: /^All\s*,\s*5$/ });
     await fireEvent.click(await findByRole('radio', { name: /^Available\s*,\s*3$/ }));
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="agents-unavailable"]')).toBeNull(),
+      expect(container.querySelector('[data-testid="agents-unavailable"]')?.outerHTML ?? null).toBeNull(),
     );
     expect(container.querySelector('[data-testid="agents-available"]')).not.toBeNull();
   });

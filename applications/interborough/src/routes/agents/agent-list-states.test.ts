@@ -1,6 +1,6 @@
 /**
- * The Agents list in the states that are not a list of rows (board PageAgents, "Loading", "Loading ·
- * slow", "First use · no agents", "Only unavailable agents" and "Filtered to nothing"): a read in
+ * The Agents list in the states that are not a list of rows (board PageAgents, "Loading", "Loading,
+ * slow", "First use, no agents", "Only unavailable agents" and "Filtered to nothing"): a read in
  * progress, a read the person gave up on, and a read that failed with nothing to show. The page
  * keeps its heading, its subtitle and its secondary "+" in every one of them, because creating an
  * agent does not need the list. The timings the placeholders keep run under fake timers, never a
@@ -148,7 +148,7 @@ describe('the Agents list when a refresh fails over a list already read', () => 
     failing = false;
     await fireEvent.click(within(failure).getByRole('button', { name: 'Try again' }));
     await waitFor(() =>
-      expect(container.querySelector('[data-testid="agents-refresh-failed"]')).toBeNull(),
+      expect(container.querySelector('[data-testid="agents-refresh-failed"]')?.outerHTML ?? null).toBeNull(),
     );
   });
 });

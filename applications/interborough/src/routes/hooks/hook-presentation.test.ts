@@ -472,7 +472,7 @@ describe('a hook as a row of the list', () => {
     expect(line).toBe(
       `When a review is waiting, send a webhook to example.com, only for Tool runner, last delivery ${activityTime(5, 5)}`,
     );
-    expect(line).not.toContain('·');
+    expect(line).not.toContain(String.fromCodePoint(0xb7));
     // A hook that is on says it at the end of line one instead.
     expect(hookRowText({ ...off, enabled: true }, 5).line).not.toContain('last delivery');
     expect(hookTime({ ...off, enabled: true }, 5)).toBe(activityTime(5, 5));

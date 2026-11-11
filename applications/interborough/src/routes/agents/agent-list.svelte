@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * `/agents`: every agent the Bureau tells the caller of (board PageAgents, "Agents · /agents"),
+   * `/agents`: every agent the Bureau tells the caller of (board PageAgents, "Agents, /agents"),
    * in two bordered cards. "Available" holds the agents that can run, most recently used first,
    * each a status-first two-line row (`agent-list-row.svelte`). "Unavailable" holds the agents a
    * disabled plugin holds back, read from `bureau.agents.definitions.list`, with one "Enable and

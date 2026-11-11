@@ -38,11 +38,12 @@ async function boot(options: Parameters<typeof createBureau>[0]) {
   return bureau;
 }
 
+/** The bounds a test goal runs under unless the test names its own. */
+const GOAL_BOUNDS = { maximumAttempts: 3, maximumTotalSteps: 100 };
+
 /** A goal whose first attempt is in flight and never ends on its own. */
-async function runningGoal(bureau: Bureau, goalRunId = 'g1', maximumAttempts = 3) {
-  await bureau.goals.create(
-    goalRequest({ goalRunId, bounds: { maximumAttempts, maximumTotalSteps: 100 } }),
-  );
+async function runningGoal(bureau: Bureau, goalRunId = 'g1', bounds = GOAL_BOUNDS) {
+  await bureau.goals.create(goalRequest({ goalRunId, bounds }));
   await pollUntil(async () => (await bureau.goals.get(goalRunId))?.status === 'running');
   return (await bureau.goals.get(goalRunId))!;
 }
@@ -268,8 +269,8 @@ describe('bureau.goals.update on a running goal', () => {
       agents: { worker: workerAgent(hangUntilAborted) },
       validators: [createCheckValidator()],
     });
-    await runningGoal(bureau, 'g1', 3);
-    await runningGoal(bureau, 'g-last', 1);
+    await runningGoal(bureau, 'g1');
+    await runningGoal(bureau, 'g-last', { ...GOAL_BOUNDS, maximumAttempts: 1 });
 
     expect(await updateNow(bureau, 'g1', { maximumAttempts: 1 })).toMatchObject({
       outcome: 'rejected',

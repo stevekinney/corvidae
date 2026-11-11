@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * The Tools tab: every tool in the catalog (`bureau.agents.catalog`) as a list with the open tool
-   * beside it. A tool's row is two lines (board PageCapabilities, "Capabilities · Tools tab"): its
+   * beside it. A tool's row is two lines (board PageCapabilities, "Capabilities, Tools tab"): its
    * name for a person at the left with the muted word for what it may do at the right, then where
    * it comes from and a line about it, cut with an ellipsis. From 40 tools the rows are grouped by
    * source. Its details show what it may do, how it is approved by default, where it comes from,

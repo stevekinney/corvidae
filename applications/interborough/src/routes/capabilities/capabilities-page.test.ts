@@ -915,7 +915,7 @@ describe('a skill’s page', () => {
     expect(metaOf(detail)).toEqual(['Instructions only', 'User', 'Loaded when relevant']);
     expect(detail.querySelector('[data-testid="skill-brings"]')).toBeNull();
     // No separator dot stands between the words of the line.
-    expect(detail.querySelector('[data-testid="skill-meta"]')?.textContent).not.toContain('·');
+    expect(detail.querySelector('[data-testid="skill-meta"]')?.textContent).not.toContain(String.fromCodePoint(0xb7));
   });
 
   test('lists the tools a skill brings with what each may do and when it asks, and counts them in the line', async () => {

@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
-   * One agent of the list as Cinder's status-first two-line row (board PageAgents, "Agents ·
-   * /agents" and "Phone · list"). Line one is the bold human name, the identifier once in small
+   * One agent of the list as Cinder's status-first two-line row (board PageAgents, "Agents,
+   * /agents" and "Phone, list"). Line one is the bold human name, the identifier once in small
    * monospace, and when the agent was last used at the right. Line two is the description on one
    * line, then the chat count at the right (and "Built in" after it for an agent the host ships).
    * The status column is empty for an agent that can run, says "Waiting on you" for one with a chat

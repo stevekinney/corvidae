@@ -1,6 +1,6 @@
 <script lang="ts">
   /**
-   * One skill (board PageCapabilities, frame "Skills tab · detail"): its name for a person with its
+   * One skill (board PageCapabilities, frame "Skills tab, detail"): its name for a person with its
    * identifier small and monospaced beside it, the sentence about it, one muted line of what it
    * holds, where it is from and when it loads, the tools it brings (a skill of instructions only
    * has none), whether the host trusts its source (an untrusted skill is marked, and says why

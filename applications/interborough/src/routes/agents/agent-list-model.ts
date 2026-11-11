@@ -1,5 +1,5 @@
 /**
- * The rows of the Agents list as the page draws them (board PageAgents, "Agents · /agents"): the
+ * The rows of the Agents list as the page draws them (board PageAgents, "Agents, /agents"): the
  * agents that can run, from `bureau.agents.list`, and the ones a disabled plugin holds back, from
  * `bureau.agents.definitions.list` (state `unavailable`). A row carries what the two kinds share (a
  * human name, the identifier, a description, when it was last used and how many chats it has had)

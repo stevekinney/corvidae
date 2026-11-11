@@ -6,7 +6,7 @@
 import { loadManifest, type Viewport } from '@lostgradient/testing';
 import { expect, test } from './component-page-fixture.ts';
 
-const phone = { name: 'phone', width: 390, height: 844 } as const satisfies Viewport;
+const phone = { name: 'mobile', width: 390, height: 844 } as const satisfies Viewport;
 
 function requiredEntry(slug: string) {
   const entry = loadManifest().find((candidate) => candidate.slug === slug);

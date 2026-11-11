@@ -1,7 +1,7 @@
 <script lang="ts">
   /**
    * Enabling the plugin behind the unavailable agents, from the list (board PageAgents, "Enable and
-   * restart · confirmation" and its captioned states). The question is a Cinder confirm dialog
+   * restart, confirmation" and its captioned states). The question is a Cinder confirm dialog
    * titled "Enable Demo and restart?": Interborough restarts to load the plugin, which brings the
    * held-back agents back, and an inset note says what the restart does to work in flight. It
    * counts the runs going now and the reviews waiting on the person, and never says nothing is

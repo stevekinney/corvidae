@@ -10,7 +10,7 @@ if (!citationEntry) {
 
 const entry = citationEntry;
 const viewports = [
-  { name: 'phone', width: 320, height: 640 },
+  { name: 'mobile', width: 320, height: 640 },
   { name: 'desktop', width: 1440, height: 900 },
 ] as const satisfies readonly Viewport[];
 

@@ -228,7 +228,7 @@ describe('a skill’s name and line', () => {
       'Instructions and 2 tools',
     );
     expect(skillMeta({ ...SKILL, tools: ['find_customer'] })[0]).toBe('Instructions and 1 tool');
-    expect(skillMeta(SKILL).join('')).not.toContain('·');
+    expect(skillMeta(SKILL).join('')).not.toContain(String.fromCodePoint(0xb7));
   });
 });
 
