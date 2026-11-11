@@ -373,7 +373,9 @@
       height var(--cinder-duration-normal) var(--cinder-ease-standard);
   }
 
-  .cinder-drawer__panel[data-cinder-dragging] {
+  /* Names the detent attribute too, so this outranks the detent transition rule above (a dragged
+   * panel always carries it) and the sheet tracks the pointer instead of easing towards it. */
+  .cinder-drawer__panel[data-cinder-detent][data-cinder-dragging] {
     transition: none;
   }
 

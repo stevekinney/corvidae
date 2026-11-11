@@ -105,7 +105,10 @@ describe('drawer.css detents (COR-2322 AC1)', () => {
         'transition',
       ),
     ).toContain('height var(--cinder-duration-normal) var(--cinder-ease-standard)');
-    expect(declared('.cinder-drawer__panel[data-cinder-dragging]', 'transition')).toBe('none');
+    // The dragging rule must outrank the detent transition rule (0,3,0), so it names the detent too.
+    expect(
+      declared('.cinder-drawer__panel[data-cinder-detent][data-cinder-dragging]', 'transition'),
+    ).toBe('none');
   });
 
   test('a peeking sheet hides its header, body and footer and keeps the bar', () => {

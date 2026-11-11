@@ -84,6 +84,8 @@ test.describe('Drawer detents', () => {
     await page.mouse.down();
     await page.mouse.move(x, y - 300, { steps: 10 });
     await expect(panel).toHaveAttribute('data-cinder-dragging', '');
+    // The sheet tracks the pointer, so no transition runs on any property while it is dragged.
+    await expect(panel).toHaveCSS('transition-property', 'none');
     await page.mouse.up();
     await expect(panel).toHaveAttribute('data-cinder-detent', 'large');
     await expect(panel).not.toHaveAttribute('data-cinder-dragging', '');

@@ -376,7 +376,11 @@ export async function exportedText(page: Page): Promise<string> {
         else native.addEventListener('close', () => resolve(), { once: true });
       }),
   );
-  await page.getByRole('button', { name: 'Close', exact: true }).click();
+  // The Modal's corner icon button is also named "Close", so the footer button is found in the footer.
+  await page
+    .locator('.cinder-modal__footer')
+    .getByRole('button', { name: 'Close', exact: true })
+    .click();
   await closed;
   await expect(snapshot).toBeHidden();
   // Both returns have run once the flush after the `close` event has; only then is focus the spec's.
