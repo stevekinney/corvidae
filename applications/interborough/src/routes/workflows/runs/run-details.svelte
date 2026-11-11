@@ -16,6 +16,8 @@
   import type { Goal } from '../../../lib/bureau-goals.ts';
   import { isTerminalState, type TaskView } from '../../../lib/bureau-tasks.ts';
   import { formatDuration } from '../../../lib/format/index.ts';
+  import { goalPath } from '../../../lib/identifier-paths.ts';
+  import { agentLabel } from '../../../lib/agent-label.ts';
   import { router, workflowDetailPath } from '../../../lib/router.svelte.ts';
   import { getPrincipalStore, scopeGate } from '../../../lib/scopes.svelte.ts';
   import { classifyRevisionAgainstActive } from '../../../lib/workflow-revision.ts';
@@ -25,6 +27,7 @@
   import RunLineage from './run-lineage.svelte';
   import RunLogs from './run-logs.svelte';
   import RunRelated from './run-related.svelte';
+  import { goalTitle } from './run-rows.ts';
   import RunTags from './run-tags.svelte';
   import type { RunEngine } from './run-engine.svelte.ts';
 
@@ -127,8 +130,19 @@
         definition: startedBy,
       });
     }
+    if (goal !== undefined) {
+      list.push({ id: 'goal', term: RUN_DETAIL_COPY.facts.goal, definition: goalLink });
+    }
     if (workflowType !== undefined) {
       list.push({ id: 'workflow', term: RUN_PAGE_COPY.facts.workflow, definition: workflowLink });
+    }
+    const agentName = task?.agentName ?? goal?.agentName;
+    if (agentName !== undefined && agentName !== null) {
+      list.push({
+        id: 'agent',
+        term: RUN_PAGE_COPY.facts.agent,
+        definition: agentLabel(agentName, undefined),
+      });
     }
     list.push({
       id: 'run-id',
@@ -201,6 +215,15 @@
     <ol class="ib-run-lineage" data-testid="run-lineage">
       <RunLineage {runId} {task} {goal} {chat} />
     </ol>
+  {/if}
+{/snippet}
+
+{#snippet goalLink()}
+  {#if goal !== undefined}
+    {@const path = goalPath(goal.goalRunId)}
+    <a class="ib-run-value" href={router.href(path)} onclick={(event) => open(event, path)}
+      >{goalTitle(goal.goalRunId)}</a
+    >
   {/if}
 {/snippet}
 

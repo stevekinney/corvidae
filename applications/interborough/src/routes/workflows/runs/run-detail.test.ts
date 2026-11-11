@@ -120,6 +120,14 @@ describe('where a run came from', () => {
     );
     expect(origin(view.container)?.textContent).toContain(TASK_COPY.list.kinds.goal);
     expect(origin(view.container)?.textContent).toContain(goalTitle('goal-1'));
+    // The rail names the goal as a link, and the agent in words.
+    const rail = view.getByRole('complementary');
+    const goalLink = [...rail.querySelectorAll('a')].find(
+      (link) => link.textContent === goalTitle('goal-1'),
+    );
+    expect(goalLink?.getAttribute('href')).toContain('goal-1');
+    expect(rail.textContent).toContain(RUN_DETAIL_COPY.facts.goal);
+    expect(rail.textContent).toContain('Planner');
   });
 
   test('the chat named in the origin line opens in place too', async () => {

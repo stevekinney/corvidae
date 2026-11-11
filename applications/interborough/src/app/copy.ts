@@ -318,6 +318,8 @@ export const RUN_DETAIL_COPY = {
   /** Said after the identifier of a workflow Interborough runs itself. */
   builtIn: '(built in)',
   /** The header's links to the goal or the schedule a run belongs to, and to set up another run. */
+  /** Labels the Details rail adds for a run a goal made. */
+  facts: { goal: 'Goal' },
   /** The last row of the Started by chain: the run itself, one level in from what started it. */
   lineage: { run: 'Run', thisRun: 'This run' },
   openGoal: 'Open goal',
