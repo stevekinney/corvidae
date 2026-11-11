@@ -35,6 +35,8 @@ The three value channels have distinct ownership. `value` seeds internal state o
 
 `schemaFormInitialDraft(schema, value?)` returns the draft the form shows at mount (a choice's first option, `false` for a switch, `value` merged over them) for a host that saves a form the person never edited, since `onDraftChange` reports nothing before the first edit.
 
+`schemaHoldsConcealedField(schema)` returns whether any schema under `schema`, however deeply nested, is a string marked `writeOnly` or `x-secret` or an array of such strings, and treats a schema nested deeper than 32 levels as concealed. `SchemaForm` uses it to withhold its Edit as JSON panel; a host that offers its own raw JSON editor beside the form applies the same rule.
+
 Pass `issues` to show problems the host found with a submitted value, such as a server-side refusal: each `{ path, message }` appears on the field its `path` names (property names and array indexes; `[]` is the whole value) like a built-in validation message, and editing the field clears it. A string with `writeOnly: true` is a password field. A path that names no field shows on the form itself. A summary of a closed group prints a value as `••••` when its schema, or any schema under it, is `writeOnly` or `x-secret`, and the hidden output field is emptied once `onSubmit` settles, and a form whose schema has such a field offers no Edit as JSON panel, since the panel prints the whole value. An optional `date`, `time` or `date-time` field left blank (or cleared) is omitted from the value instead of sent as an empty string, which no RFC 3339 check accepts.
 
 ## Control shapes

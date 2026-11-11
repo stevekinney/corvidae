@@ -3,7 +3,10 @@ import './schema-form.css';
 import SchemaForm from './schema-form.svelte';
 
 export default SchemaForm;
-export { initialDraftOf as schemaFormInitialDraft } from './schema-form-model.ts';
+export {
+  initialDraftOf as schemaFormInitialDraft,
+  schemaHoldsConcealedField,
+} from './schema-form-model.ts';
 export {
   readSchemaFormData,
   validateSchemaValue as validateSchemaFormValue,

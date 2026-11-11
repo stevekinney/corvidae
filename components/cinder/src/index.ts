@@ -879,6 +879,7 @@ export {
   default as SchemaForm,
   readSchemaFormData,
   schemaFormInitialDraft,
+  schemaHoldsConcealedField,
   validateSchemaFormValue,
 } from './components/schema-form/index.ts';
 export type {
