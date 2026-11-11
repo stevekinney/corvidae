@@ -88,19 +88,13 @@ jobs:
             filter: --filter=./packages/* --filter=!@lostgradient/weft --filter=!@lostgradient/bureau
           - name: applications, plugins, testing
             filter: --filter=./applications/* --filter=./plugins/* --filter=./testing/*
-          # Linux failure for follow-up (COR-2380): bureau's
-          # src/workflow-file-watch.test.ts "watching the workflow directory > picks up an added
-          # file" (the catalog lacks `late` after the change event) and a sibling "a file with an
-          # unrecognized key and a schedule > leaves the schedule running when the file gains a
-          # key on a step, and reports it" failed on one run and passed on another, so they race.
-          # The last run also failed "a workflow’s history on a Bureau > records the file it finds
-          # as 1.0.0, and a save through Bureau as the next version, with who saved it and from
-          # where".
           - name: bureau
             filter: --filter=@lostgradient/bureau
-            advisory: true
-          # This shard ran Weft's coverage run until COR-2370 and now runs its `test` task, which
-          # has not run in this shard yet; it stays advisory until it passes on Linux.
+          # This shard ran Weft's coverage run until COR-2370 and now runs its `test` task. It stays
+          # advisory because two heartbeat tests fail on `main` on macOS too ("clears a cancelled
+          # attempt's automatic heartbeat interval while its activity ignores the signal" in
+          # worker/long-poll.test.ts and worker/index.server-messages.test.ts); COR-2380 owns the
+          # Linux failures only, so the flag goes when `main` is green there.
           - name: weft
             filter: --filter=@lostgradient/weft
             advisory: true
@@ -146,9 +140,5 @@ jobs:
       # Bureau's event-history-run-ownership-recovery-lmdb integration test fails on `main` itself
       # (COR-2379); it is not marked advisory here.
       - run: bun run test:slow --continue --filter=!@lostgradient/ventriloquist
-      # Linux failure for follow-up (COR-2380): ventriloquist's "the
-      # PTY start gate > the release channel is closed once, however many times the gate is
-      # released or abandoned" failed once with `Expected: 10` on a runner.
       - run: bunx turbo run test:slow --concurrency=1 --filter=@lostgradient/ventriloquist
-        continue-on-error: true
         if: ${{ !cancelled() }}
