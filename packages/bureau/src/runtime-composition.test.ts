@@ -821,6 +821,10 @@ describe('memory recall feeds session taint (COR-2107)', () => {
     bureauGuardrails?: false;
     /** The run belongs to a catalog agent that resolves its own guardrails. */
     agentResolvesGuardrails?: boolean;
+    /** The `taintThreshold` the session agent declares in its own guardrails. */
+    agentTaintThreshold?: number;
+    /** The run belongs to a session agent, whether or not it resolves its own guardrails. */
+    sessionAgent?: boolean;
   }) {
     const flagged = createMemoryGovernancePolicy({
       revision: 'governance:recall-taint',
@@ -881,7 +885,8 @@ describe('memory recall feeds session taint (COR-2107)', () => {
           runId: `${sessionId}-run`,
           requestContext: defaultRunRequestContext,
         },
-        options.agentResolvesGuardrails === true && sessionId === 'chat-2'
+        (options.agentResolvesGuardrails === true || options.sessionAgent === true) &&
+          sessionId === 'chat-2'
           ? {
               sessionAgent: {
                 agentName: 'own-guardrails',
@@ -891,7 +896,10 @@ describe('memory recall feeds session taint (COR-2107)', () => {
                   conversation: createConversationHistory({ id: 'own-guardrails' }),
                 },
                 definitionRevision: 1,
-                agentResolvesGuardrails: true,
+                agentResolvesGuardrails: options.agentResolvesGuardrails === true,
+                ...(options.agentTaintThreshold === undefined
+                  ? {}
+                  : { agentTaintThreshold: options.agentTaintThreshold }),
                 generationMode: 'selectable',
                 instructions: undefined,
               },
@@ -985,9 +993,36 @@ describe('memory recall feeds session taint (COR-2107)', () => {
     expect(thrown.stored).toMatchObject({ category: 'detector-failure' });
   });
 
-  it('taints nothing when neither the Bureau nor the agent runs guardrails', async () => {
+  it('taints the session whether or not any guardrail tier is in force (COR-2385)', async () => {
+    for (const agentResolvesGuardrails of [false, true]) {
+      const { stored } = await recallTaints({
+        confidence: 0.95,
+        bureauGuardrails: false,
+        sessionAgent: true,
+        agentResolvesGuardrails,
+      });
+      expect(stored).toMatchObject({ provenance: 'recalled-memory', category: 'probe' });
+    }
     const { stored } = await recallTaints({ confidence: 0.95, bureauGuardrails: false });
-    expect(stored).toBeUndefined();
+    expect(stored).toMatchObject({ provenance: 'recalled-memory', category: 'probe' });
+  });
+
+  it("judges a recall against the agent's declared taintThreshold (COR-2385)", async () => {
+    // Above the default threshold, below the agent's: no taint, though the Bureau's would taint.
+    const strict = await recallTaints({
+      confidence: 0.95,
+      agentResolvesGuardrails: true,
+      agentTaintThreshold: 0.99,
+    });
+    expect(strict.stored).toBeUndefined();
+    // Below the default threshold, at the agent's: taints.
+    const lenient = await recallTaints({
+      confidence: 0.5,
+      agentResolvesGuardrails: true,
+      agentTaintThreshold: 0.4,
+      bureauGuardrails: false,
+    });
+    expect(lenient.stored).toMatchObject({ provenance: 'recalled-memory', category: 'probe' });
   });
 });
 
