@@ -23,6 +23,7 @@ import {
   installWorkflowWorld,
   invalidFile,
   readyFile,
+  runFixture,
   scheduleFixture,
   sourceDefinition,
   workflowFaults,
