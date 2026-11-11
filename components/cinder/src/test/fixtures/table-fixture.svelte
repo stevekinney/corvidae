@@ -16,6 +16,7 @@
     frameless?: boolean;
     scrollContainerProps?: TableScrollContainerProps;
     stackBelow?: string | false;
+    fit?: boolean;
     includeHeaderSelectionState?: boolean;
     includeHeaderSelectionHandler?: boolean;
     renderSecondHeaderRow?: boolean;
@@ -52,6 +53,7 @@
     frameless = false,
     scrollContainerProps,
     stackBelow,
+    fit = false,
     includeHeaderSelectionState = true,
     includeHeaderSelectionHandler = true,
     renderSecondHeaderRow = false,
@@ -97,6 +99,7 @@
   {selectable}
   {scrollable}
   {frameless}
+  {fit}
   {...scrollContainerProps !== undefined ? { scrollContainerProps } : {}}
   {...stackBelow !== undefined ? { stackBelow } : {}}
 >

@@ -15,6 +15,7 @@ import {
   SessionUpdateEvent,
 } from '../events';
 import { createFreshAttemptSession } from '../fresh-attempt/start-fresh-attempt';
+import { readSessionTaint, SESSION_TAINT_METADATA_KEY } from '../guardrails/session-taint';
 import type { Subscription } from '../liveness';
 import type { CleanupAcknowledgement, ClosedOptions } from '../types';
 import { conversationThroughRun } from './run-conversation-boundary';
@@ -350,9 +351,14 @@ export function createSessionHandle(
                 ? {}
                 : { [SESSION_FORKED_FROM_MESSAGE_METADATA_KEY]: options.throughMessageId }),
             };
+      // COR-2105: the one other key a fork keeps is the session's taint, whatever the fork point:
+      // a fork of a session that is tainted when it is made is tainted, so a fork cannot be used to
+      // launder a session the guardrails flagged.
+      const taint = readSessionTaint(session.metadata);
       const forkedMetadata = {
         ...(owner === undefined ? {} : { [SESSION_OWNER_METADATA_KEY]: owner }),
         ...lineage,
+        ...(taint === undefined ? {} : { [SESSION_TAINT_METADATA_KEY]: { ...taint } }),
       };
       if (options?.id !== undefined) {
         const existing = await store.load(options.id);

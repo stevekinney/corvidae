@@ -8,6 +8,8 @@
   .cinder-copy-button {
     appearance: none;
     display: inline-flex;
+    /* A copy button beside a value keeps its size; the value gives way first. */
+    flex-shrink: 0;
     align-items: center;
     gap: var(--cinder-space-1);
     padding: var(--cinder-space-1) var(--cinder-space-2);
@@ -23,6 +25,13 @@
       color var(--cinder-duration-fast) var(--cinder-ease-standard),
       background var(--cinder-duration-fast) var(--cinder-ease-standard),
       border-color var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  /* An icon-only button is still a 24px target, however narrow the place it sits in. */
+  .cinder-copy-button[data-cinder-icon-only] {
+    justify-content: center;
+    min-inline-size: 1.5rem;
+    min-block-size: 1.5rem;
   }
 
   /* Sticky-hover suppression on touch: wrap hover-only chrome so it doesn't

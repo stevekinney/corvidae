@@ -11,7 +11,7 @@ import { type BatchOperation } from '@lostgradient/storage';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from './create-bureau.ts';
+import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from './durable-run-waits.ts';
 import { openHarness, runAgentInput, startRequest } from './http/ag-ui-fixtures.test-support.ts';
 import { readAgUiStream } from './http/ag-ui-stream.test-support.ts';
 import { pollUntil } from './test/session-input-fixtures.ts';

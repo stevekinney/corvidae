@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { MediaContent } from 'conversationalist';
 
 import type { AgentDefinitions } from './agent-catalog';
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice } from './testing/asset-fixtures.test-support';
 import { MemoryStorage } from '@lostgradient/storage';

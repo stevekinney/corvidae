@@ -88,7 +88,6 @@ export { default as gridListItemSchema } from '../components/grid-list-item/grid
 export { default as gridListSchema } from '../components/grid-list/grid-list.schema.ts';
 export { default as gridSchema } from '../components/grid/grid.schema.ts';
 export { default as guidanceRegionSchema } from '../components/guidance-region/guidance-region.schema.ts';
-export { default as hostProviderSchema } from '../components/host-provider/host-provider.schema.ts';
 export { default as hoverCardSchema } from '../components/hover-card/hover-card.schema.ts';
 export { default as imageSchema } from '../components/image/image.schema.ts';
 export { default as inlineConfirmSchema } from '../components/inline-confirm/inline-confirm.schema.ts';
@@ -100,6 +99,7 @@ export { default as jsonSchemaEditorSchema } from '../components/json-schema-edi
 export { default as jsonViewerSchema } from '../components/json-viewer/json-viewer.schema.ts';
 export { default as kanbanBoardSchema } from '../components/kanban-board/kanban-board.schema.ts';
 export { default as kbdSchema } from '../components/kbd/kbd.schema.ts';
+export { default as keyFactsSchema } from '../components/key-facts/key-facts.schema.ts';
 export { default as keyValueEditorSchema } from '../components/key-value-editor/key-value-editor.schema.ts';
 export { default as keyboardShortcutsSchema } from '../components/keyboard-shortcuts/keyboard-shortcuts.schema.ts';
 export { default as labelSchema } from '../components/label/label.schema.ts';
@@ -174,6 +174,7 @@ export { default as spectrumChartSchema } from '../components/spectrum-chart/spe
 export { default as speedDialActionSchema } from '../components/speed-dial-action/speed-dial-action.schema.ts';
 export { default as speedDialSchema } from '../components/speed-dial/speed-dial.schema.ts';
 export { default as spinnerSchema } from '../components/spinner/spinner.schema.ts';
+export { default as spotlightSchema } from '../components/spotlight/spotlight.schema.ts';
 export { default as stackSchema } from '../components/stack/stack.schema.ts';
 export { default as stackedListItemSchema } from '../components/stacked-list-item/stacked-list-item.schema.ts';
 export { default as staleRegionSchema } from '../components/stale-region/stale-region.schema.ts';

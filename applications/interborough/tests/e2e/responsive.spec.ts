@@ -89,6 +89,11 @@ const LONG_SCHEDULE_ID = `responsive-schedule-${String(Date.now())}`;
 const LONG_SCHEDULE_DESCRIPTION = `Responsive ${'s'.repeat(300)}`;
 const LONG_SCHEDULE_ZONE = 'America/Argentina/Buenos_Aires';
 const LONG_REVIEW_TITLE = `Refund ${'w'.repeat(300)}`;
+/**
+ * A tag of one unbroken word on the seeded order-processing run, listed by the engine's workflow
+ * table: at the engine's longest (128 bytes).
+ */
+const LONG_TAG = `responsive-tag-${'t'.repeat(113)}`;
 const MEMORY_THREAD = newThreadId('responsive-memory');
 /** The agent-authored workflow the end-to-end host starts with; it has a file, so it has an editor. */
 const WORKFLOW_FILE = 'e2e-digest';
@@ -159,7 +164,7 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/schedules/new (workflow)': /Pick what runs, then when, then name it/,
   // The long-named schedule's page prints its runs and the zone they are shown in.
   '/schedules/:schedule': /Upcoming above, past below/,
-  '/schedules/:schedule/edit': /Description/,
+  '/schedules/:schedule/edit': /If Interborough was off/,
   '/goals': /seeded-goal/,
   '/goals/:goal': /seeded-goal/,
   // The list prints the failed test delivery of the seeded hook, which loads after the hook does.
@@ -174,16 +179,16 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   '/health/workers (worker open)': /Last heard from/,
   // Only an open queue prints its strategy, with the seeded retry storm among its recovery diagnostics.
   '/health/workers (queue open)': /Strategy/,
-  // The audit log lists the seeded schedule's creation.
-  '/health/audit': /Created a schedule/,
+  // The newest events are the hooks the seed made last; `reveal` loads back to the schedule's creation.
+  '/health/audit': /Created a hook/,
   // The added row's long name, beside the Decisions part's heading, which loads last.
   '/settings/models': /mmmmmmmmmm/,
-  // The agent that opts in prints its name, and its card address holds it too.
-  '/settings/a2a': /responsive-long-description/,
+  // The agent that opts in is listed by its name as a person says it.
+  '/settings/a2a': /Responsive long description/,
   // Each tab of the API reference prints a value only its own read gives.
   '/settings/api-reference': /\/api\//,
   '/settings/api-reference (discovery)': /\/openapi\.json/,
-  '/settings/api-reference (scopes)': /workflows:read/,
+  '/settings/api-reference (scopes)': /hooks:write/,
   '/settings/api-reference (sources)': /Where Interborough reads workflow files from/,
 };
 
@@ -298,7 +303,10 @@ async function settle(page: Page, pattern: string, width: number): Promise<void>
 
 /** Types into a picker and chooses the option with that text, as a person does. */
 async function choosePicker(page: Page, label: RegExp, option: string): Promise<void> {
-  await page.getByRole('combobox', { name: label }).click();
+  const picker = page.getByRole('combobox', { name: label });
+  // A picker ignores clicks while its options load, as Cinder's Combobox does by design.
+  await expect(picker).not.toHaveAttribute('aria-busy', 'true');
+  await picker.click();
   await page
     .getByRole('option', { name: new RegExp(option) })
     .first()
@@ -310,6 +318,33 @@ async function choosePicker(page: Page, label: RegExp, option: string): Promise<
  * time, so it searches for the long key's start and opens the key.
  */
 const reveal: Readonly<Record<string, (page: Page) => Promise<void>>> = {
+  // A record table ends a long value with an ellipsis and keeps the whole of it in the title (row 16c).
+  '/settings/models': async (page) => {
+    await expect(
+      page.locator(`.ib-model-name__identifier .cinder-text[title="${LONG_MODEL}"]`),
+    ).toBeVisible();
+  },
+  '/health/runs': async (page) => {
+    await expect(page.locator(`.cinder-badge__label[title="${LONG_TAG}"]`).first()).toBeVisible();
+  },
+  '/hooks': async (page) => {
+    await expect(
+      page.locator(`a.ib-hooks__sentence .cinder-text[title*="${LONG_HOOK_URL}"]`),
+    ).toBeVisible();
+    await expect(page.locator(`.ib-hooks__name[title="${LONG_HOOK_NAME}"]`).first()).toBeVisible();
+  },
+  // The log loads a page of events at a time as it scrolls, and the seeded schedule's creation is
+  // older than the first page once the earlier specifications have written their own events.
+  '/health/audit': async (page) => {
+    const created = page.getByText('Created a schedule').first();
+    await expect
+      .poll(async () => {
+        if ((await created.count()) > 0) return true;
+        await page.locator('main.weft-shell-outlet tbody tr').last().scrollIntoViewIfNeeded();
+        return false;
+      })
+      .toBe(true);
+  },
   // The whole log is closed until asked for; open it so its lines are measured too.
   '/runs/:run (steps and logs)': async (page) => {
     const logs = page.locator('[data-section="logs"]');
@@ -465,8 +500,31 @@ async function reviewOfRun(
   return review.id;
 }
 
+let seed: ResponsiveSeed;
 let addresses: Readonly<Record<string, string>>;
 let variantAddresses: Readonly<Record<string, string>>;
+
+/**
+ * The routes that print the waiting review. A tool approval stops waiting a few minutes after it is
+ * asked for, so the one `beforeAll` seeded may be gone by the time a run reaches these routes; each
+ * asks for a fresh one first when it is.
+ */
+const NEEDS_WAITING_REVIEW = new Set([
+  '/reviews',
+  '/chats/:chat (approval waiting)',
+  '/reviews (review open)',
+]);
+
+async function ensureWaitingReview(request: APIRequestContext): Promise<void> {
+  const listed = (await bureauCall(request, 'bureau.reviews.list', {})) as {
+    reviews: { id: string; sessionId?: string }[];
+  };
+  if (listed.reviews.some((review) => review.sessionId === REVIEW_THREAD)) return;
+  const waitingReview = await reviewOfRun(request, REVIEW_THREAD, LONG_REVIEW_TITLE);
+  seed = { ...seed, review: `bureau:${waitingReview}` };
+  addresses = responsiveAddresses(seed);
+  variantAddresses = responsiveVariants(seed);
+}
 
 test.beforeAll(async ({ playwright }) => {
   const request = await playwright.request.newContext({ baseURL: E2E_BASE_URL });
@@ -515,6 +573,13 @@ test.beforeAll(async ({ playwright }) => {
     await addCatalogRow(request, LONG_MODEL);
     const listed = await request.get('/v1/workflows?type=order-processing&limit=1');
     const runs = (await listed.json()) as { items?: { id: string }[] };
+    const taggedRun = runs.items?.[0]?.id;
+    if (taggedRun !== undefined) {
+      const tagged = await request.post(`/v1/workflows/${encodeURIComponent(taggedRun)}/tags`, {
+        data: { tags: [LONG_TAG] },
+      });
+      expect(tagged.status(), `tagging the run: ${await tagged.text()}`).toBeLessThan(300);
+    }
     const timelineResponse = await request.get(
       `/v1/workflows/${encodeURIComponent(RUN_STEPS_RUN_ID)}/timeline`,
     );
@@ -545,7 +610,7 @@ test.beforeAll(async ({ playwright }) => {
       scope: { kind: 'agent', id: INSTRUCTIONS_AGENT_ID },
       action: { type: 'notify' },
     });
-    const seed: ResponsiveSeed = {
+    seed = {
       chat: CHAT_THREAD,
       agent: AGENT_ID,
       instructionsAgent: INSTRUCTIONS_AGENT_ID,
@@ -699,6 +764,7 @@ for (const route of routes) {
 
   if (owner === undefined) {
     test(`${route.pattern} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
+      if (NEEDS_WAITING_REVIEW.has(route.pattern)) await ensureWaitingReview(page.request);
       for (const width of WIDTHS) {
         expect(
           await problemsAt(page, route.pattern, width),
@@ -731,6 +797,7 @@ for (const route of routes) {
 const VARIANTS = Object.keys(responsiveVariants({ workflowFile: WORKFLOW_FILE } as ResponsiveSeed));
 for (const variant of VARIANTS) {
   test(`${variant} fits at 375, 768 and 1280 pixels, on every tab`, async ({ page }) => {
+    if (NEEDS_WAITING_REVIEW.has(variant)) await ensureWaitingReview(page.request);
     for (const width of WIDTHS) {
       expect(await problemsAt(page, variant, width), `${variant} at ${width}px`).toEqual([]);
     }

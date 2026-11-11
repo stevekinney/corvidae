@@ -14,7 +14,6 @@ function generate(fileBaseName: string, componentName: string) {
   return generateSchemaForComponent({
     typesFilePath: join(fixturesDirectory, `${fileBaseName}.ts`),
     componentName,
-    depthToSrc: 2,
   });
 }
 

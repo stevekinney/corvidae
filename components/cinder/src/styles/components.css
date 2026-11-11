@@ -76,7 +76,7 @@
 @import '../components/feed-boundary/feed-boundary.css';
 @import '../components/feed-event/feed-event.css';
 @import '../components/feed/feed.css';
-@import './components/experimental.css';
+@import '../components/popover/popover-surface.css';
 @import '../components/file-upload/file-upload.css';
 @import '../components/filter-bar/filter-bar.css';
 @import '../components/find-bar/find-bar.css';
@@ -88,7 +88,6 @@
 @import '../components/form/form.css';
 @import '../components/grid-list/grid-list.css';
 @import '../components/grid/grid.css';
-@import '../components/host-provider/host-provider.css';
 @import '../components/hover-card/hover-card.css';
 @import '../components/image/image.css';
 @import '../components/inline-confirm/inline-confirm.css';
@@ -101,6 +100,7 @@
 @import '../components/json-viewer/json-viewer.css';
 @import '../components/kanban-board/kanban-board.css';
 @import '../components/kbd/kbd.css';
+@import '../components/key-facts/key-facts.css';
 @import '../components/key-value-editor/key-value-editor.css';
 @import '../components/keyboard-shortcuts/keyboard-shortcuts.css';
 @import '../components/label/label.css';
@@ -170,6 +170,7 @@
 @import '../components/spectrum-chart/spectrum-chart.css';
 @import '../components/speed-dial/speed-dial.css';
 @import '../components/spinner/spinner.css';
+@import '../components/spotlight/spotlight.css';
 @import '../components/stack/stack.css';
 @import '../components/stacked-list-item/stacked-list-item.css';
 @import '../components/stale-region/stale-region.css';

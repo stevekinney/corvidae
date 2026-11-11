@@ -6,7 +6,7 @@ import {
 } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError } from '../../create-bureau.ts';
+import { BureauError } from '../../bureau-errors.ts';
 import { createMemoryStorageFixture } from '../../test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';

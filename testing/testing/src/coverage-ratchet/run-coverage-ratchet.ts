@@ -8,13 +8,10 @@ import {
   parseCoverageThresholds,
   parseRuntimeLcovRecords,
   parseSvelteLcovRecords,
-  parseSvelteMeasurementPlatform,
   runtimeImportsOfTestSupport,
   sourceFilesMissingFromLcov,
-  svelteCoveragePlatformNotice,
   uncoveredLineReport,
   type CoverageScope,
-  type SvelteMeasurementPlatform,
 } from './coverage-ratchet.ts';
 
 /**
@@ -38,8 +35,6 @@ export type CoverageRatchetResult = {
 export type CoverageRatchetOptions = {
   /** The package whose `coverage-ratchet.json` and `coverage/lcov.info` are checked. */
   packageRoot: string;
-  /** Overrides the running platform when comparing it with `svelteMeasuredOn`. */
-  platform?: SvelteMeasurementPlatform;
   /**
    * Opt-in. Globs, relative to `packageRoot`, of the source files the tests are expected to load.
    * A file that matches, falls inside the ratchet's scope, and has no LCOV record fails the check,
@@ -59,10 +54,6 @@ export async function runCoverageRatchet(
   options: CoverageRatchetOptions,
 ): Promise<CoverageRatchetResult> {
   const packageRoot = resolve(options.packageRoot);
-  const platform = options.platform ?? {
-    platform: process.platform,
-    architecture: process.arch,
-  };
   const thresholdsSource = await Bun.file(resolve(packageRoot, 'coverage-ratchet.json')).text();
   const thresholds = parseCoverageThresholds(thresholdsSource);
   const coverageSource = await Bun.file(resolve(packageRoot, 'coverage/lcov.info')).text();
@@ -81,13 +72,6 @@ export async function runCoverageRatchet(
     failures.push(
       ...coverageFailures(svelteAverages, thresholds.svelte).map((failure) => `svelte ${failure}`),
     );
-
-    // Platform measurement advisories do not change the coverage result.
-    const platformNotice = svelteCoveragePlatformNotice(
-      parseSvelteMeasurementPlatform(thresholdsSource),
-      platform,
-    );
-    if (platformNotice) messages.push({ stream: 'warn', text: platformNotice });
   }
 
   if (options.expectedSourceGlobs !== undefined) {

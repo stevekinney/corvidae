@@ -3,13 +3,13 @@ import type { HTMLAttributes } from 'svelte/elements';
 
 import type { NonMetadataHTMLElementTagName } from '../../utilities/html-element-types.ts';
 
-export type TextVariant = 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body';
+export type TextVariant = 'display' | 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'caption' | 'body';
 
 /** Element tags valid for the `as` prop: visible, non-void content elements. */
 export type TextElement = NonMetadataHTMLElementTagName;
 
 type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
-  /** Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs. @default 'body' */
+  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. @default 'body' */
   variant?: TextVariant;
   /** Element tag that overrides the variant's default element. */
   as?: TextElement;
@@ -31,7 +31,7 @@ type TextBaseProps = Omit<HTMLAttributes<HTMLElement>, 'children' | 'class'> & {
   tailLength?: number;
 };
 
-/** The text to show: rich content, or a plain string that can be cut in the middle. */
+/** The text to show: rich content, or a plain string that can be cut in the middle or at its end. */
 type TextContentProps =
   | {
       /** Required text content. */
@@ -49,12 +49,24 @@ type TextContentProps =
       /** The plain text to cut in the middle. */
       text: string;
       children?: undefined;
+    }
+  | {
+      /**
+       * Keeps the text on one line and ends it with an ellipsis when it is too long, for a long value
+       * in a narrow place: a name above its detail in a table row, an identifier in a list. The line
+       * takes the typography of what holds it, so it reads as part of that text, and the full text is
+       * its `title` unless `title` is set. Needs `text`.
+       */
+      truncate: 'end';
+      /** The plain text to end with an ellipsis. */
+      text: string;
+      children?: undefined;
     };
 
 export type TextProps = TextBaseProps & TextContentProps;
 
 export interface TextSchemaProps {
-  /** Typography variant. Headings render `h1` to `h5`; `caption` and `body` render paragraphs. @default "body" */
+  /** Typography variant. Headings render `h1` to `h5`, and `display` renders an `h1`; `caption` and `body` render paragraphs. @default "body" */
   variant?: TextVariant;
   /** Element tag that overrides the variant's default element. */
   as?: TextElement;
@@ -64,9 +76,9 @@ export interface TextSchemaProps {
   clamp?: number;
   /** Whether a clamped run is open to its full length. @default false */
   expanded?: boolean;
-  /** Cuts the text in the middle when it is too long for one line. Needs `text`. */
-  truncate?: 'middle';
-  /** The plain text to cut in the middle with `truncate="middle"`. */
+  /** Cuts the text in the middle, or ends it with an ellipsis, when it is too long for one line. Needs `text`. */
+  truncate?: 'middle' | 'end';
+  /** The plain text to cut with `truncate`. */
   text?: string;
   /** With `truncate="middle"`, how many characters at the end of the text stay visible. @default 4 */
   tailLength?: number;

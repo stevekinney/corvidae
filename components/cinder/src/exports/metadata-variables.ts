@@ -88,7 +88,6 @@ export { default as gridListItemVariables } from '../components/grid-list-item/g
 export { default as gridListVariables } from '../components/grid-list/grid-list.variables.ts';
 export { default as gridVariables } from '../components/grid/grid.variables.ts';
 export { default as guidanceRegionVariables } from '../components/guidance-region/guidance-region.variables.ts';
-export { default as hostProviderVariables } from '../components/host-provider/host-provider.variables.ts';
 export { default as hoverCardVariables } from '../components/hover-card/hover-card.variables.ts';
 export { default as imageVariables } from '../components/image/image.variables.ts';
 export { default as inlineConfirmVariables } from '../components/inline-confirm/inline-confirm.variables.ts';
@@ -100,6 +99,7 @@ export { default as jsonSchemaEditorVariables } from '../components/json-schema-
 export { default as jsonViewerVariables } from '../components/json-viewer/json-viewer.variables.ts';
 export { default as kanbanBoardVariables } from '../components/kanban-board/kanban-board.variables.ts';
 export { default as kbdVariables } from '../components/kbd/kbd.variables.ts';
+export { default as keyFactsVariables } from '../components/key-facts/key-facts.variables.ts';
 export { default as keyValueEditorVariables } from '../components/key-value-editor/key-value-editor.variables.ts';
 export { default as keyboardShortcutsVariables } from '../components/keyboard-shortcuts/keyboard-shortcuts.variables.ts';
 export { default as labelVariables } from '../components/label/label.variables.ts';
@@ -174,6 +174,7 @@ export { default as spectrumChartVariables } from '../components/spectrum-chart/
 export { default as speedDialActionVariables } from '../components/speed-dial-action/speed-dial-action.variables.ts';
 export { default as speedDialVariables } from '../components/speed-dial/speed-dial.variables.ts';
 export { default as spinnerVariables } from '../components/spinner/spinner.variables.ts';
+export { default as spotlightVariables } from '../components/spotlight/spotlight.variables.ts';
 export { default as stackVariables } from '../components/stack/stack.variables.ts';
 export { default as stackedListItemVariables } from '../components/stacked-list-item/stacked-list-item.variables.ts';
 export { default as staleRegionVariables } from '../components/stale-region/stale-region.variables.ts';

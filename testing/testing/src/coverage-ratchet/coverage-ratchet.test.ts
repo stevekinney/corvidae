@@ -13,9 +13,7 @@ import {
   parseLcovRecords,
   parseRuntimeLcovRecords,
   parseSvelteLcovRecords,
-  parseSvelteMeasurementPlatform,
   runtimeImportsOfTestSupport,
-  svelteCoveragePlatformNotice,
   uncoveredLineReport,
   UNREACHABLE_LINE_MARKER,
 } from './coverage-ratchet.ts';
@@ -73,9 +71,10 @@ describe('threshold parsing', () => {
   });
 
   test('ignores metadata that is not a threshold', () => {
-    expect(
-      parseCoverageThresholds('{"lines":0.5,"functions":0.5,"svelteMeasuredOn":{"note":"x"}}'),
-    ).toEqual({ lines: 0.5, functions: 0.5 });
+    expect(parseCoverageThresholds('{"lines":0.5,"functions":0.5,"note":"x"}')).toEqual({
+      lines: 0.5,
+      functions: 0.5,
+    });
   });
 
   test.each([
@@ -216,38 +215,6 @@ describe('averages and failures', () => {
   test('formats unhit lines as ranges', () => {
     expect(formatLineRanges([7, 1, 2, 3, 3])).toBe('1-3, 7');
     expect(formatLineRanges([])).toBe('');
-  });
-});
-
-describe('Svelte measurement platform provenance', () => {
-  const recorded = { platform: 'linux', architecture: 'x64' };
-
-  test('reads the recorded platform, and treats anything malformed as absent', () => {
-    expect(
-      parseSvelteMeasurementPlatform(
-        '{"svelteMeasuredOn":{"platform":"linux","architecture":"x64"}}',
-      ),
-    ).toEqual(recorded);
-    expect(parseSvelteMeasurementPlatform('{}')).toBeUndefined();
-    expect(parseSvelteMeasurementPlatform('[]')).toBeUndefined();
-    expect(
-      parseSvelteMeasurementPlatform('{"svelteMeasuredOn":{"platform":"linux"}}'),
-    ).toBeUndefined();
-    expect(
-      parseSvelteMeasurementPlatform('{"svelteMeasuredOn":{"platform":1,"architecture":"x64"}}'),
-    ).toBeUndefined();
-  });
-
-  test('notices only a recorded platform that differs from the running one', () => {
-    expect(svelteCoveragePlatformNotice(undefined, recorded)).toBeUndefined();
-    expect(svelteCoveragePlatformNotice(recorded, recorded)).toBeUndefined();
-    const notice = svelteCoveragePlatformNotice(recorded, {
-      platform: 'darwin',
-      architecture: 'arm64',
-    });
-    expect(notice).toContain('linux/x64');
-    expect(notice).toContain('darwin/arm64');
-    expect(notice).toContain('NOT authoritative');
   });
 });
 

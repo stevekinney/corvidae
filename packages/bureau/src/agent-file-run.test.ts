@@ -19,7 +19,7 @@ import {
 } from '@lostgradient/memory';
 import { MemoryStorage } from '@lostgradient/storage';
 
-import { BureauError, UnknownScheduleAgentError } from './create-bureau';
+import { BureauError, UnknownScheduleAgentError } from './bureau-errors';
 import { runTask, taskContent, waitForTaskState } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import {

@@ -17,7 +17,8 @@ import { createToolbox, type Tool } from 'armorer';
 import { createFleetEventFeed } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { DURABLE_HISTORY_GAP_KIND } from './durable-event-history';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

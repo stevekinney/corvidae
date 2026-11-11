@@ -89,6 +89,7 @@
   type="button"
   data-cinder-copied={copied || undefined}
   aria-label={label ?? 'Copy to clipboard'}
+  data-cinder-icon-only={iconOnly || undefined}
   onclick={handleClick}
   class={classNames('cinder-copy-button', className)}
 >

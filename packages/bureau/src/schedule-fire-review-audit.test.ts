@@ -7,7 +7,7 @@ import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { type GenerateFunction, stopWhen, createAgent } from '@lostgradient/operative';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import { BureauError } from './create-bureau';
+import { BureauError } from './bureau-errors';
 import { OWNER, rpc } from './http/management/management-fixtures.test-support.ts';
 import {
   approvalToolbox,

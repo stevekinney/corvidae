@@ -51,11 +51,8 @@ import type { ScheduleSummary, WorkflowState } from '@lostgradient/weft';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 import type { AgentDefinitions } from '../agent-catalog';
-import {
-  ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS,
-  createBureau,
-  detachBestEffortPromise,
-} from '../create-bureau';
+import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from '../durable-run-waits';
+import { createBureau, detachBestEffortPromise } from '../create-bureau';
 import type {
   Bureau,
   BureauOptions,

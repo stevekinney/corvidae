@@ -19,15 +19,17 @@ import {
   closeToolPicker,
   createAgentFile,
   faultCodeOf,
+  listedStateOf,
   openToolPicker,
   readAgent,
   readCatalog,
   readProviderPaths,
   removeAgent,
+  writeAgentFileAtomically,
 } from './agent-support.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { captureForDesignReview } from './design-review-capture.ts';
-import { E2E_BUREAU_URL } from './e2e-constants.ts';
+import { E2E_FIRST_RUN_URL } from './e2e-constants.ts';
 import { expect, test } from './fixtures.ts';
 
 const WIDTHS = [375, 1280] as const;
@@ -350,10 +352,12 @@ test.describe('a new agent', () => {
   });
 });
 
-// The second host (`e2e-constants.ts`) has a home with no `configuration.json`, so its model catalog
-// is empty, which is what a fresh installation looks like.
+// The first-run host (`e2e-constants.ts`) is a fresh installation: a home with no `configuration.json`,
+// so its model catalog is empty. The second host's home names a provider (the chat-proof agents on
+// it need a model), so it no longer shows this state. These cases only read the host, and they run
+// before `first-run.spec.ts`, which connects a provider there.
 test.describe('a new agent on a host with no model provider', () => {
-  test.use({ baseURL: E2E_BUREAU_URL });
+  test.use({ baseURL: E2E_FIRST_RUN_URL });
 
   for (const width of WIDTHS) {
     test(`shows where to add a provider instead of the form, at ${width} pixels`, async ({
@@ -742,10 +746,13 @@ test.describe('a file the Bureau cannot use', () => {
       await page.setViewportSize({ width, height: 900 });
       const path = join(await agentDirectory(request), 'e2e-invalid.md');
       created.add('e2e-invalid');
-      await writeFile(
+      await writeAgentFileAtomically(
         path,
         '---\nmodel: openai/gpt-4.1\n---\nA file with a model nobody offers.\n',
       );
+      // The Bureau learns of a new file from its watcher, not from the request that asks for it,
+      // so the page is opened once the Bureau lists the file.
+      await expect.poll(() => faultCodeOf(request, 'e2e-invalid')).toBeUndefined();
 
       await page.goto('/agents/e2e-invalid/edit');
       await expect(editor(page)).toHaveAttribute('data-state', 'ready');
@@ -758,7 +765,7 @@ test.describe('a file the Bureau cannot use', () => {
       await checkA11y(`invalid file at ${width}px`);
 
       // Fixing the file on disk and reloading shows the form.
-      await writeFile(
+      await writeAgentFileAtomically(
         path,
         '---\nname: Fixed\nmodel: anthropic/sonnet\n---\nA file with a model the catalog offers.\n',
       );
@@ -781,11 +788,13 @@ test.describe('the list of agents', () => {
       await page.setViewportSize({ width, height: 900 });
       const path = join(await agentDirectory(request), 'e2e-invalid-listed.md');
       created.add('e2e-invalid-listed');
-      await writeFile(
+      await writeAgentFileAtomically(
         path,
         '---\nmodel: openai/gpt-4.1\n---\nA file with a model nobody offers.\n',
       );
       await makeAgent(request, 'e2e-listed');
+      // The Bureau learns of a new file from its watcher, so the list is opened once it lists it.
+      await expect.poll(() => listedStateOf(request, 'e2e-invalid-listed')).toBe('invalid');
 
       await page.goto('/agents');
       await expect(page.locator('[data-view="agents"]')).toHaveAttribute('data-state', 'ready');
@@ -807,10 +816,11 @@ test.describe('the list of agents', () => {
       await expect(page.getByTestId('agent-problem')).toContainText('unknown-model');
 
       // Fixed on disk, the file is an agent, and the list no longer calls it invalid.
-      await writeFile(
+      await writeAgentFileAtomically(
         path,
         '---\nname: Fixed Listed\nmodel: anthropic/sonnet\n---\nA file with a model the catalog offers.\n',
       );
+      await expect.poll(() => listedStateOf(request, 'e2e-invalid-listed')).toBe('ready');
       await page.goto('/agents');
       await expect(page.locator('[data-agent="e2e-invalid-listed"]')).toHaveCount(1);
       await expect(page.locator('[data-agent="e2e-invalid-listed"]')).not.toHaveAttribute(

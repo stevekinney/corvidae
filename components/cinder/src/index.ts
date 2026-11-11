@@ -538,9 +538,6 @@ export type { GridListItemProps } from './components/grid-list-item/index.ts';
 export { default as HoverCard } from './components/hover-card/index.ts';
 export type { HoverCardPlacement, HoverCardProps } from './components/hover-card/index.ts';
 
-export { default as HostProvider } from './components/host-provider/index.ts';
-export type { HostPlatform, HostProviderProps } from './components/host-provider/index.ts';
-
 export { default as Image } from './components/image/index.ts';
 export type { ImageFit, ImageProps, ImageSize } from './components/image/index.ts';
 
@@ -609,6 +606,9 @@ export type {
   KanbanBoardColumnMoveChange,
   KanbanBoardProps,
 } from './components/kanban-board/index.ts';
+
+export { default as KeyFacts } from './components/key-facts/index.ts';
+export type { KeyFact, KeyFactsProps } from './components/key-facts/index.ts';
 
 export { default as Kbd } from './components/kbd/index.ts';
 export type { KbdProps } from './components/kbd/index.ts';
@@ -1049,6 +1049,9 @@ export type {
 
 export { default as Spinner } from './components/spinner/index.ts';
 export type { SpinnerProps, SpinnerSize, SpinnerVariant } from './components/spinner/index.ts';
+
+export { default as Spotlight } from './components/spotlight/index.ts';
+export type { SpotlightProps } from './components/spotlight/index.ts';
 
 export { default as SpeedDial } from './components/speed-dial/index.ts';
 export type {

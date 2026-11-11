@@ -6,7 +6,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 
 import type { AgentSkills, AgentSkillsRun } from './agent-policy';
-import { resolveAgentGuardrails, resolvesOwnGuardrails } from './agent-policy';
+import { resolveAgentGuardrails, resolvesOwnGuardrails, withSessionTaint } from './agent-policy';
 import { createAgent } from './create-agent';
 import { createDefaultGuardrailsPreset } from './guardrails/default-preset';
 import { guardrailOf } from './guardrails/guardrail-entries';
@@ -326,5 +326,52 @@ describe('createAgent skills seam', () => {
     expect(received).toHaveLength(2);
     expect(received[0]?.guardrails).toBeUndefined();
     expect(received[0]?.hooks).not.toBe(received[1]?.hooks);
+  });
+});
+
+describe('withSessionTaint (COR-2105)', () => {
+  const event = { reason: 'r', detector: 'd', category: 'c', confidence: 1, step: 0 };
+
+  it('stores the session taint even when the configuration callback throws', async () => {
+    const order: string[] = [];
+    const configuration = withSessionTaint(
+      {
+        taint: {
+          onTainted: () => {
+            order.push('own');
+            throw new Error('own failed');
+          },
+        },
+      },
+      { onTainted: async () => void order.push('session') },
+      'run-1',
+    );
+    expect(await configuration.taint?.onTainted?.(event)).toBeUndefined();
+    expect(order).toEqual(['session', 'own']);
+  });
+
+  it('waits for both callbacks and carries the run id, and leaves the shared configuration alone', async () => {
+    const shared = { taint: { onTainted: async () => {} } };
+    const configuration = withSessionTaint(
+      shared,
+      {
+        initial: {
+          category: 'c',
+          detector: 'd',
+          provenance: 'user-input',
+          confidence: 1,
+          at: 1,
+          runId: 'earlier',
+        },
+        onTainted: async () => {
+          throw new Error('rejected');
+        },
+      },
+      'run-2',
+    );
+    expect(await configuration.taint?.onTainted?.(event)).toBeUndefined();
+    expect(configuration.taint?.runId).toBe('run-2');
+    expect(configuration.taint?.initial?.runId).toBe('earlier');
+    expect(shared.taint).not.toHaveProperty('runId');
   });
 });

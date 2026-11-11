@@ -365,6 +365,27 @@ describe('Table sort behavior', () => {
   });
 });
 
+describe('Table fit', () => {
+  test('fit marks the table, and a table leaves it off by default', () => {
+    const fitted = render(Wrapper, { columns, rows, fit: true });
+    expect(fitted.container.querySelector('table')?.getAttribute('data-cinder-fit')).toBe('true');
+    const ordinary = render(Wrapper, { columns, rows });
+    expect(ordinary.container.querySelector('table')?.hasAttribute('data-cinder-fit')).toBe(false);
+  });
+
+  test('a fitted table drops the scroll box minimum that sizes an ordinary table to its content', () => {
+    expect(tableCss).toMatch(
+      /\.cinder-table-scroll > \.cinder-table\s*\{[^}]*min-inline-size:\s*max-content;/,
+    );
+    expect(tableCss).toMatch(
+      /\.cinder-table-scroll > \.cinder-table\[data-cinder-fit\]\s*\{[^}]*min-inline-size:\s*0;/,
+    );
+    expect(tableCss).toMatch(
+      /\.cinder-table\[data-cinder-fit\] \.cinder-table__cell-text\s*\{[^}]*max-inline-size:\s*100%;/,
+    );
+  });
+});
+
 describe('Table sticky header', () => {
   test('stickyHeader=true sets the data attribute on the table', () => {
     const { container } = render(Wrapper, { columns, rows, stickyHeader: true });

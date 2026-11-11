@@ -85,6 +85,7 @@ export {
   resolvesOwnGuardrails,
   withActiveSkillToolPolicy,
   withDelegatedToolCapabilities,
+  withSessionTaint,
 } from './agent-policy';
 export type {
   AgentSkills,

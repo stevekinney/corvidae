@@ -75,7 +75,6 @@ import formExamplesJson from '../components/form/form.examples.json' with { type
 import gridListExamplesJson from '../components/grid-list/grid-list.examples.json' with { type: 'json' };
 import gridExamplesJson from '../components/grid/grid.examples.json' with { type: 'json' };
 import guidanceRegionExamplesJson from '../components/guidance-region/guidance-region.examples.json' with { type: 'json' };
-import hostProviderExamplesJson from '../components/host-provider/host-provider.examples.json' with { type: 'json' };
 import hoverCardExamplesJson from '../components/hover-card/hover-card.examples.json' with { type: 'json' };
 import imageExamplesJson from '../components/image/image.examples.json' with { type: 'json' };
 import inlineConfirmExamplesJson from '../components/inline-confirm/inline-confirm.examples.json' with { type: 'json' };
@@ -87,6 +86,7 @@ import jsonSchemaEditorExamplesJson from '../components/json-schema-editor/json-
 import jsonViewerExamplesJson from '../components/json-viewer/json-viewer.examples.json' with { type: 'json' };
 import kanbanBoardExamplesJson from '../components/kanban-board/kanban-board.examples.json' with { type: 'json' };
 import kbdExamplesJson from '../components/kbd/kbd.examples.json' with { type: 'json' };
+import keyFactsExamplesJson from '../components/key-facts/key-facts.examples.json' with { type: 'json' };
 import keyValueEditorExamplesJson from '../components/key-value-editor/key-value-editor.examples.json' with { type: 'json' };
 import keyboardShortcutsExamplesJson from '../components/keyboard-shortcuts/keyboard-shortcuts.examples.json' with { type: 'json' };
 import lineChartExamplesJson from '../components/line-chart/line-chart.examples.json' with { type: 'json' };
@@ -255,8 +255,6 @@ export const gridListExamples = gridListExamplesJson;
 /** Code examples for this component. */
 export const guidanceRegionExamples = guidanceRegionExamplesJson;
 /** Code examples for this component. */
-export const hostProviderExamples = hostProviderExamplesJson;
-/** Code examples for this component. */
 export const hoverCardExamples = hoverCardExamplesJson;
 /** Code examples for this component. */
 export const imageExamples = imageExamplesJson;
@@ -278,6 +276,8 @@ export const jsonViewerExamples = jsonViewerExamplesJson;
 export const kanbanBoardExamples = kanbanBoardExamplesJson;
 /** Code examples for this component. */
 export const kbdExamples = kbdExamplesJson;
+/** Code examples for this component. */
+export const keyFactsExamples = keyFactsExamplesJson;
 /** Code examples for this component. */
 export const keyValueEditorExamples = keyValueEditorExamplesJson;
 /** Code examples for this component. */

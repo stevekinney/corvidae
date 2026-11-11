@@ -6,7 +6,8 @@
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 import { expect } from '@playwright/test';
-import { join } from 'node:path';
+import { rename, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 
 import { AGENT_EDITOR_COPY } from '../../src/app/copy.ts';
 
@@ -157,6 +158,27 @@ export async function faultCodeOf(
 ): Promise<string | undefined> {
   const answer = await bureau(request, 'bureau.agents.definitions.get', { id });
   return answer.fault?.code;
+}
+
+/**
+ * Writes an agent file the way a person editing by hand should (`packages/bureau/documentation/agent-files.md`,
+ * "Watching"): to a dotfile beside it, renamed into place, so no scan of the directory reads the
+ * file empty or half written and lists it as gone or broken.
+ */
+export async function writeAgentFileAtomically(path: string, text: string): Promise<void> {
+  const temporary = join(dirname(path), `.${crypto.randomUUID()}.tmp`);
+  await writeFile(temporary, text);
+  await rename(temporary, path);
+}
+
+/** The state the Bureau's list of agents gives `id` (`ready` or `invalid`), or `undefined` when it lists none. */
+export async function listedStateOf(
+  request: APIRequestContext,
+  id: string,
+): Promise<'ready' | 'invalid' | undefined> {
+  const answer = await bureau(request, 'bureau.agents.definitions.list', {});
+  const agents = (answer.result as { agents: { id: string; state: 'ready' | 'invalid' }[] }).agents;
+  return agents.find((agent) => agent.id === id)?.state;
 }
 
 /** Deletes an agent if it still exists. A spec that already removed or broke the file is fine. */

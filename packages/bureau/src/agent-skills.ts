@@ -181,6 +181,7 @@ export function createSkillGuardrailOptions(
         guardrails.taint.taint({
           reason: event.detail ?? `Detection by ${event.detector}`,
           detector: event.detector,
+          category: event.category,
           confidence: event.confidence,
           step: 0,
           provenance: event.provenance,

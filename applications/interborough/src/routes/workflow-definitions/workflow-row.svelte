@@ -7,7 +7,7 @@
    * could not be read is never shown as zero. A file the Bureau cannot use shows its error, its
    * issues, and its path.
    */
-  import { Badge, CodeLocation, Table } from '@lostgradient/cinder';
+  import { Badge, CodeLocation, Table, Text } from '@lostgradient/cinder';
 
   import { WORKFLOW_COPY } from '../../app/copy.ts';
   import { useAgentDisplayName } from '../../lib/agent-display-name.svelte.ts';
@@ -64,7 +64,9 @@
   data-status={status ?? undefined}
 >
   <Table.Cell class="ib-records__wrap">
-    <a class="ib-workflow-name" href={router.href(path)} onclick={go}>{row.name}</a>
+    <a class="ib-workflow-name ib-workflow-row__name" href={router.href(path)} onclick={go}
+      ><Text as="span" truncate="end" text={row.name} /></a
+    >
     {#if row.description}
       <p class="ib-workflow-row__description" data-testid="workflow-description">
         {row.description}

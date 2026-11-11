@@ -291,7 +291,14 @@
       {#snippet action()}{@render startRun()}{/snippet}
     </EmptyState>
   {:else}
-    <Table caption={TASK_COPY.listHeading} density="condensed" frameless>
+    <Table caption={TASK_COPY.listHeading} density="condensed" frameless fit class="ib-records__table">
+      <colgroup>
+        <col style="width: 22%" />
+        <col style="width: 40%" />
+        <col style="width: 16%" />
+        <col style="width: 11%" />
+        <col style="width: 11%" />
+      </colgroup>
       <Table.Header>
         <Table.Row>
           <Table.HeaderCell>{TASK_COPY.listColumns.agent}</Table.HeaderCell>
@@ -305,7 +312,7 @@
         {#each rows as row (row.id)}
           {@const word = taskStatusWord(row.status)}
           <Table.Row data-run={row.id} data-status={word}>
-            <Table.Cell class="ib-records__wrap">
+            <Table.Cell truncate>
               <a
                 class="ib-run-row__agent"
                 href={router.href(workflowDetailPath(row.id))}

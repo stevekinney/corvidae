@@ -14,7 +14,7 @@ import { principalFromApiKey } from '@lostgradient/weft';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, describe, expect, it } from 'bun:test';
 
-import type { BureauError } from './create-bureau';
+import type { BureauError } from './bureau-errors';
 import { projectReview } from './http/bureau-reviews-operations';
 import { createMemoryAssetStorage } from './assets/storage';
 import { createBureauHandler } from './http/create-bureau-handler';

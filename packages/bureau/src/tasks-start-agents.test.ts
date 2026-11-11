@@ -25,7 +25,8 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import { BureauError, createBureau } from './create-bureau';
+import { BureauError } from './bureau-errors';
+import { createBureau } from './create-bureau';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { listHeldTasks, runTask } from './test';
 import type { StartTaskOptions } from './types';

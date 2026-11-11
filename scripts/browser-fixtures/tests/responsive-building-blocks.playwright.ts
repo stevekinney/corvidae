@@ -103,6 +103,41 @@ test.describe('at a 375px phone viewport', () => {
     expect(await ordinaryWrapper.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
   });
 
+  test('a fitted table ends a long value with an ellipsis and keeps the whole of it', async ({
+    page,
+  }) => {
+    await page.goto(namedFixtureRoute('table', 'assertion'));
+    const wrapper = page.getByRole('region', { name: 'Stored values table scroll area' });
+    const table = wrapper.getByRole('table', { name: 'Stored values' });
+    await expect(table).toHaveAttribute('data-cinder-fit', 'true');
+
+    // A 2,000-character key neither widens the table nor makes its box scroll sideways (row 16c).
+    const sizes = await wrapper.evaluate((element) => ({
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(sizes.scrollWidth).toBeLessThanOrEqual(sizes.clientWidth);
+    expect(await widthOf(table)).toBeLessThanOrEqual(PHONE.width);
+
+    // The key is cut with an ellipsis on one line, and the whole key is its title.
+    const key = table.locator('.cinder-table__cell-text').first();
+    const longKey = `storage-key-${'k'.repeat(1988)}`;
+    await expect(key).toHaveAttribute('title', longKey);
+    const cut = await key.evaluate((element) => ({
+      textOverflow: getComputedStyle(element).textOverflow,
+      whiteSpace: getComputedStyle(element).whiteSpace,
+      clientWidth: element.clientWidth,
+      scrollWidth: element.scrollWidth,
+    }));
+    expect(cut.textOverflow).toBe('ellipsis');
+    expect(cut.whiteSpace).toBe('nowrap');
+    expect(cut.scrollWidth).toBeGreaterThan(cut.clientWidth);
+
+    // The short column keeps its value whole beside the cut one.
+    await expect(table.getByRole('cell', { name: '4 KB' })).toBeInViewport();
+    await expectNoSidewaysScroll(page);
+  });
+
   test('a popover that takes focus opens as the bottom Drawer', async ({ page }) => {
     await page.goto(fixtureRoute('popover'));
     await page.getByTestId('transformed-popover-trigger').click();

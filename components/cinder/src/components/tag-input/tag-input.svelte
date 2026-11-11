@@ -511,7 +511,7 @@
            minting a distinct id per occurrence. -->
       {#each currentTags as tag, index (tagIds[index])}
         <li class="cinder-tag-input__chip">
-          <span class="cinder-tag-input__chip-label">{tag}</span>
+          <span class="cinder-tag-input__chip-label" title={tag}>{tag}</span>
           {#if !field.disabled && !resolvedReadonly}
             <button
               type="button"

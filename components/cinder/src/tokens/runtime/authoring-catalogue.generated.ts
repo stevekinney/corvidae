@@ -2518,6 +2518,53 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'font.heading',
+      cssProperty: '--cinder-font-heading',
+      category: 'typography',
+      component: null,
+      description:
+        'Heading font weight (650), between semibold and bold, for headings set at the heading type role.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'font-weight',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'font.heading' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'font.heading',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'fontWeight',
+              origin: 'local',
+              declaredAt: { document: 'sets/foundation.tokens.json', path: 'font.heading' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'font.bold',
       cssProperty: '--cinder-font-bold',
       category: 'typography',
@@ -3162,6 +3209,52 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       ],
     },
     {
+      path: 'leading.heading',
+      cssProperty: '--cinder-leading-heading',
+      category: 'typography',
+      component: null,
+      description: 'Heading line height (1.2), for headings set at the heading type role.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'line-height',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'leading.heading' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'leading.heading',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'number',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/foundation.tokens.json', path: 'leading' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
       path: 'leading.snug',
       cssProperty: '--cinder-leading-snug',
       category: 'typography',
@@ -3387,6 +3480,54 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
               type: 'number',
               origin: 'local',
               declaredAt: { document: 'sets/foundation.tokens.json', path: 'tracking.tight' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'tracking.display',
+      cssProperty: '--cinder-tracking-display',
+      category: 'typography',
+      component: null,
+      description:
+        'Display letter-spacing, -0.02em, for page titles and display headings. Expressed as a unitless number with an em recipe because DTCG dimension units are limited to px and rem.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'letter-spacing',
+      disposition: {
+        edit: 'recipe',
+        cssExport: 'supported',
+        dtcgExport: 'subset',
+        cssSerialization: 'trusted-recipe',
+        reason: 'The DTCG value is exported; the trusted CSS recipe that governs emission is not.',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/foundation.tokens.json', path: 'tracking.display' },
+            layers: [
+              {
+                document: 'sets/foundation.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'tracking.display',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'number',
+              origin: 'local',
+              declaredAt: { document: 'sets/foundation.tokens.json', path: 'tracking.display' },
             },
             inputs: { aliases: [], refs: [], extends: [], recipes: [] },
           },
@@ -10276,7 +10417,7 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
       cssProperty: '--cinder-text-page-title',
       category: 'typography',
       component: null,
-      description: 'Page title size (20px); set it at semibold.',
+      description: 'Page title size (24px); set it at semibold with --cinder-tracking-display.',
       themeAware: false,
       deprecated: false,
       profile: 'font-size',
@@ -10304,6 +10445,147 @@ export const AUTHORING_CATALOGUE: AuthoringCatalogue = {
                 kind: 'set',
                 layer: 'sets.foundation',
                 path: 'type-role.page-title',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'type-role' },
+            },
+            inputs: { aliases: ['font.size.3xl'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'type-role.page-title-large',
+      cssProperty: '--cinder-text-page-title-large',
+      category: 'typography',
+      component: null,
+      description:
+        'Large page title size (28px), for a roomy page such as the comfortable density; set it at semibold with --cinder-tracking-display.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'font-size',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'type-role.page-title-large' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'type-role.page-title-large',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'type-role' },
+            },
+            inputs: { aliases: [], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'type-role.display',
+      cssProperty: '--cinder-text-display',
+      category: 'typography',
+      component: null,
+      description:
+        'Display size (36px) for a single focal heading; set it at semibold with --cinder-tracking-display.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'font-size',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'type-role.display' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'type-role.display',
+                via: 'declared',
+              },
+            ],
+            effectiveType: {
+              type: 'dimension',
+              origin: 'inherited',
+              declaredAt: { document: 'sets/semantic.tokens.json', path: 'type-role' },
+            },
+            inputs: { aliases: ['font.size.5xl'], refs: [], extends: [], recipes: [] },
+          },
+        },
+      ],
+    },
+    {
+      path: 'type-role.heading',
+      cssProperty: '--cinder-text-heading',
+      category: 'typography',
+      component: null,
+      description:
+        'Heading size (20px), for a heading below the page title; set it at --cinder-font-heading weight, --cinder-leading-heading line height and --cinder-tracking-tight.',
+      themeAware: false,
+      deprecated: false,
+      profile: 'font-size',
+      disposition: {
+        edit: 'supported',
+        cssExport: 'supported',
+        dtcgExport: 'complete',
+        cssSerialization: 'typed-value',
+      },
+      variants: [
+        {
+          contexts: [
+            'light/default',
+            'light/reduced',
+            'light/forced-reduced-motion',
+            'dark/default',
+            'dark/reduced',
+            'dark/forced-reduced-motion',
+          ],
+          provenance: {
+            winner: { document: 'sets/semantic.tokens.json', path: 'type-role.heading' },
+            layers: [
+              {
+                document: 'sets/semantic.tokens.json',
+                kind: 'set',
+                layer: 'sets.foundation',
+                path: 'type-role.heading',
                 via: 'declared',
               },
             ],

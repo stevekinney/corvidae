@@ -341,6 +341,37 @@
   }
 
   /* ----------------------------------------
+ * Fit — a table that fills its container and never scrolls sideways for a long value (row 16c).
+ * The scroll box sizes a table to its max-content, so a long value would widen it, and a fixed
+ * layout table with a column of no set width reports the engine's largest table width (1,000,000px
+ * in Chromium). A fitted table drops that minimum and lays out its columns in the width it is
+ * given: a truncating cell ellipsizes at its column's width and every other cell wraps.
+ * ---------------------------------------- */
+
+  .cinder-table[data-cinder-fit] {
+    table-layout: fixed;
+    inline-size: 100%;
+  }
+
+  .cinder-table-scroll > .cinder-table[data-cinder-fit] {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+  }
+
+  .cinder-table[data-cinder-fit] :is(.cinder-table__cell, .cinder-table__header-cell) {
+    overflow-wrap: break-word;
+  }
+
+  /* No value paints over the next column: what does not wrap or truncate is cut at its own cell. */
+  .cinder-table[data-cinder-fit] .cinder-table__cell {
+    overflow: clip;
+  }
+
+  .cinder-table[data-cinder-fit] .cinder-table__cell-text {
+    max-inline-size: 100%;
+  }
+
+  /* ----------------------------------------
  * Controls — every control in a `controls` column fills the cell, so the
  * controls share the one width the column has and a longer value in one row
  * cannot make its control wider than its neighbours.

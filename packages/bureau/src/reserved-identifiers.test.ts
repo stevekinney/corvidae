@@ -78,6 +78,13 @@ describe("reservedWorkflowIdentifierReason and the audit trail's synthetic owner
     );
   });
 
+  it('refuses the id the host files its own records under, and only that exact id', () => {
+    expect(
+      reservedWorkflowIdentifierReason('child run identifier', auditTrail.AUDIT_HOST_OWNER_ID),
+    ).toContain('reserved-identifier');
+    expect(reservedWorkflowIdentifierReason('child run identifier', 'hostname')).toBeUndefined();
+  });
+
   it.each(['agents', 'agent-1', 'researcher'])('leaves %p free', (id) => {
     expect(reservedWorkflowIdentifierReason('child run identifier', id)).toBeUndefined();
   });

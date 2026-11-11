@@ -118,10 +118,7 @@ async function runGenerateMode(args: string[]): Promise<void> {
   const targetName = args.find((arg) => !arg.startsWith('-'));
   const components = await discoverComponentDirectories();
   const filtered = targetName
-    ? components.filter(
-        (component) =>
-          component.name === targetName || `experimental/${component.name}` === targetName,
-      )
+    ? components.filter((component) => component.name === targetName)
     : components;
   if (filtered.length === 0) {
     process.stderr.write(
