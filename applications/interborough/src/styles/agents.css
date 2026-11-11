@@ -145,6 +145,28 @@
   font-size: var(--cinder-text-base);
 }
 
+/* The lines under an agent's name, on every tab: its description, the status line, and the reason
+ * it cannot answer. */
+.ib-agent__summary {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cinder-space-1);
+  min-width: 0;
+}
+
+.ib-agent__status,
+.ib-agent__reason {
+  margin: 0;
+  color: var(--cinder-text-muted);
+  font-size: var(--cinder-text-sm);
+}
+
+/* A tab's count follows its name, muted, so the name leads and the numbers line up. */
+.ib-agent-tabs__count {
+  color: var(--cinder-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 .ib-agent-facts {
   display: flex;
   flex-wrap: wrap;

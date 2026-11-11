@@ -13,9 +13,8 @@ import { getSettings } from '../lib/bureau-settings.ts';
 import { listTasks } from '../lib/bureau-tasks.ts';
 import { defaultAgentQuery, workflowAuthorQuery } from '../lib/default-agent.ts';
 import { classifyFault } from '../lib/faults.ts';
-import { listMemories } from '../lib/memory-client.ts';
 import { startedFromWorkflows } from '../lib/new-chat-address.ts';
-import { AGENT_MEMORY_PATTERN, queryKeys } from '../lib/query.ts';
+import { queryKeys } from '../lib/query.ts';
 import {
   CATALOG_STALE_TIME_MS,
   loadCatalog,
@@ -68,6 +67,28 @@ export type ViewProbe = (client: HttpClient, queryClient: QueryClient) => Promis
 /** A fault a probe raises itself for something the Bureau answered, with the status the Bureau would have. */
 function notFound(what: string): ViewProbeFault {
   return new ViewProbeFault(`No ${what} was found.`, 404);
+}
+
+/**
+ * An agent the Bureau does not list can still have a page: one that a disabled plugin ships is
+ * `unavailable`, which the list leaves out because it lists what can run, and its page is readable
+ * (design rows 39c and 46g). Any other agent the list leaves out is not found. The answer is the
+ * page's own read of the agent, so the page does not ask again.
+ */
+async function probeUnlistedAgent(queryClient: QueryClient, agent: string): Promise<void> {
+  let state: string;
+  try {
+    const detail = await queryClient.fetchQuery({
+      queryKey: queryKeys.agents.definition(agent),
+      queryFn: ({ signal }) => getAgentDefinition(agent, { signal }),
+      retry: false,
+    });
+    state = detail.state;
+  } catch (error) {
+    if (classifyFault(error)?.kind === 'not-found') throw notFound('agent');
+    throw error;
+  }
+  if (state !== 'unavailable') throw notFound('agent');
 }
 
 /** The audit log: empty when the caller may see no event, which the Bureau answers for any caller. */
@@ -225,10 +246,11 @@ export function probeFor(
         const agents = await queryClient.fetchQuery({ ...agentsListQuery(), staleTime: 0 });
         const agent = parameters['agent'];
         if (agent === undefined) return { empty: agents.length === 0 };
-        if (!agents.some((entry) => entry.name === agent)) throw notFound('agent');
-        // An agent's memory page shows even when the agent has no memory, because that is where
-        // the first one is added, and says so itself. This read settles whether it can be shown.
-        if (pattern === AGENT_MEMORY_PATTERN) await listMemories(agent, { limit: 1 });
+        // Every tab of an agent's page asks only whether the agent is there: a tab that cannot
+        // load says so in its own body, under the header and the tabs (design rows 39e and 39f).
+        if (!agents.some((entry) => entry.name === agent)) {
+          await probeUnlistedAgent(queryClient, agent);
+        }
         return { empty: false };
       };
     case 'audit':

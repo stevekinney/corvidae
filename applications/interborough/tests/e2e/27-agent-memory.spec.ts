@@ -1,8 +1,9 @@
 /**
- * `/agents/:agent/memories`: what an agent remembers of the caller's chats as a list with the open
- * memory beside it, a search that runs as you type, a kind filter, one memory's facts, adding a
- * memory, forgetting, correcting in place, and the governance actions (share, legal hold,
- * quarantine, export).
+ * The Memory tab of an agent's page (`/agents/:agent/memory`, the open memory in `?selected=`),
+ * under the agent's header and tab bar: what an agent remembers of the caller's chats as a list
+ * with the open memory beside it, a search that runs as you type, a kind filter, one memory's
+ * facts, adding a memory, forgetting, correcting in place, and the governance actions (share,
+ * legal hold, quarantine, export).
  *
  * Most cases seed their memory with a scripted chat turn, because a run's persist hook writes what
  * an agent answers; the `echo-text` agent (`text-echo-agent.ts`) answers with what it was sent, so a
@@ -11,14 +12,14 @@
  */
 import type { Page } from '@playwright/test';
 
-import { MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
+import { AGENT_PAGE_COPY, MEMORY_COPY, VIEW_COPY } from '../../src/app/copy.ts';
 import { newThreadId, runToEnd } from './chat-support.ts';
 import { expect, test } from './fixtures.ts';
 import { TEXT_ECHO_AGENT_NAME, TEXT_ECHO_SOLO_AGENT_NAME } from './text-echo-agent.ts';
 
 const WIDTHS = [375, 1280] as const;
 
-const MEMORY_PATH = `/agents/${TEXT_ECHO_AGENT_NAME}/memories`;
+const MEMORY_PATH = `/agents/${TEXT_ECHO_AGENT_NAME}/memory`;
 
 /** A label no other case stores: it is both what the agent is sent and what it remembers. */
 const uniqueLabel = (prefix: string) => `${prefix} ${crypto.randomUUID().slice(0, 8)}`;
@@ -63,7 +64,11 @@ test.describe('the memory page', () => {
     await page.goto(MEMORY_PATH);
 
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
-    await expect(page.getByRole('heading', { level: 1 })).toHaveText(MEMORY_COPY.heading);
+    // The tab sits under the agent's own header, with Memory the open tab of its bar.
+    await expect(page.getByTestId('agent-header')).toBeVisible();
+    await expect(
+      page.getByRole('tab', { name: new RegExp(`^${AGENT_PAGE_COPY.tabs.memory}`) }),
+    ).toHaveAttribute('aria-selected', 'true');
     await expect(rowOf(page, label)).toHaveCount(1);
 
     // A search lists the memories that match, best first, says how relevant each is and how many
@@ -129,7 +134,7 @@ test.describe('the memory page', () => {
   }) => {
     const label = uniqueLabel('Only memory');
     await runToEnd(request, TEXT_ECHO_SOLO_AGENT_NAME, newThreadId('memory-solo'), label);
-    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memories`);
+    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
 
     await forgetFromDetails(page, label);
 
@@ -140,7 +145,7 @@ test.describe('the memory page', () => {
     ).toBeVisible();
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
     // Opening the page again asks the Bureau again, and the agent is empty.
-    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memories`);
+    await page.goto(`/agents/${TEXT_ECHO_SOLO_AGENT_NAME}/memory`);
     await expect(page.getByRole('heading', { name: MEMORY_COPY.nothing.title })).toBeVisible();
   });
 
@@ -210,7 +215,7 @@ test.describe('the memory page', () => {
     await expect(
       detailOf(page).getByText(MEMORY_COPY.kind.episodic.label, { exact: true }),
     ).toBeVisible();
-    await expect(page).toHaveURL(/\/memories\/[^/?]+$/);
+    await expect(page).toHaveURL(/\/memory\?selected=[^&]+$/);
   });
 
   test('narrows the list to a kind in plain words, over the memories loaded so far', async ({
@@ -327,7 +332,7 @@ test.describe('the memory page', () => {
   }) => {
     // No spec chats with `internal`, so it has remembered nothing. Keep it that way: a spec that
     // does would stop this one from seeing the empty state.
-    await page.goto('/agents/demo:internal/memories');
+    await page.goto('/agents/demo:internal/memory');
 
     await expect(frame(page)).toHaveAttribute('data-state', 'ready');
     const empty = frame(page).locator('[data-cinder-kind="first-use"]');
@@ -336,7 +341,7 @@ test.describe('the memory page', () => {
   });
 
   test('is not found for an agent the Bureau does not list', async ({ page }) => {
-    await page.goto('/agents/nobody/memories');
+    await page.goto('/agents/nobody/memory');
 
     await expect(frame(page)).toHaveAttribute('data-state', 'not-found');
     await expect(frame(page).getByRole('heading', { level: 1 })).toHaveText(
@@ -351,6 +356,7 @@ test.describe('the memory page', () => {
 
     await expect(page).toHaveURL(new RegExp(`${MEMORY_PATH}$`));
     await expect(frame(page)).toHaveAttribute('data-view', 'agents');
+    await expect(page.getByTestId('agent-header')).toBeVisible();
   });
 });
 

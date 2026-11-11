@@ -49,7 +49,7 @@
     type AgentCatalog,
     type AgentFault,
   } from '../../lib/agent-definitions.ts';
-  import { agentPath } from '../../lib/agent-paths.ts';
+  import { agentPath, agentTabPath } from '../../lib/agent-paths.ts';
   import { shortcuts } from '../../lib/shortcuts.ts';
   import { getSettings } from '../../lib/bureau-settings.ts';
   import { agentFilePath, getHostPaths } from '../../lib/host-paths.ts';
@@ -162,7 +162,7 @@
     enabled: agentId !== undefined,
   }));
   const latestVersion = $derived(versions.data?.[0]);
-  const versionsPath = $derived(`${agentPath(agentId ?? '')}?tab=settings`);
+  const versionsPath = $derived(agentTabPath(agentId ?? '', 'settings'));
 
   let editor = $state<AgentEditorState>();
   /** A write was refused because the file changed on disk after the form was filled. */

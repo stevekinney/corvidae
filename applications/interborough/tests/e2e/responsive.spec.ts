@@ -121,16 +121,16 @@ const MARKERS: Readonly<Record<string, RegExp>> = {
   // Only the open skill's detail prints this heading; the long word is in its row at 1280 too.
   '/capabilities (skill open)': /Where it comes from/,
   '/agents/:agent': /An agent description that keeps going/,
-  '/agents/:agent (instructions tab)': /iiiiiiiiii/,
+  '/agents/:agent/instructions': /iiiiiiiiii/,
   // The skills load last, and the seeded long-named one is among them.
-  '/agents/:agent (access tab)': /responsive-skill-kkkkkkkk/,
-  '/agents/:agent (hooks tab)': /for the agent/,
-  '/agents/:agent (settings tab)': /Version 1/,
+  '/agents/:agent/access': /responsive-skill-kkkkkkkk/,
+  '/agents/:agent/hooks': /for the agent/,
+  '/agents/:agent/settings': /Version 1/,
   // Only the form prints this heading; the long word is in the textarea, which the text does not include.
   '/agents/:agent/edit': /Guardrails and limits/,
-  '/agents/:agent/memories': /mmmmmmmmmm/,
+  '/agents/:agent/memory': /mmmmmmmmmm/,
   // The open memory prints its text and the facts under it; the row's text is clamped.
-  '/agents/:agent/memories/:memory': /Where it came from/,
+  '/agents/:agent/memory (memory open)': /Where it came from/,
   '/workflows': /order-processing/,
   '/workflows/:workflow/runs': /order-processing/,
   '/workflows/:workflow (file)': /Writes the daily digest/,

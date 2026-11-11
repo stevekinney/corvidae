@@ -24,7 +24,7 @@ import {
   type WorkflowStub,
   type World,
 } from '../lib/workflow-world.test-support.ts';
-import { FORBIDDEN_COPY, RETRY_LABEL, VIEW_COPY } from './copy.ts';
+import { RETRY_LABEL, VIEW_COPY } from './copy.ts';
 import Harness from './view-frame.test-harness.svelte';
 import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 import { VIEW_NAMES, VIEWS, type ViewName } from './views.ts';
@@ -693,7 +693,15 @@ describe('the chat list, a new chat, and the agents', () => {
   });
 
   test('an agent’s page is not found for an identifier the Bureau does not list', async () => {
-    stubBureau({ 'bureau.agents.list': () => agents({ name: 'assistant' }) });
+    stubBureau({
+      'bureau.agents.list': () => agents({ name: 'assistant' }),
+      'bureau.agents.definitions.get': () =>
+        Response.json({
+          jsonrpc: '2.0',
+          id: 1,
+          error: { code: -32000, message: 'No', data: { weftCode: 'NotFound', httpStatus: 404 } },
+        }),
+    });
     const missing = mount('agents', { parameters: { agent: 'nobody' } });
     expect(
       await missing.findByRole('heading', {
@@ -709,8 +717,7 @@ describe('the chat list, a new chat, and the agents', () => {
   });
 });
 
-describe('an agent’s memory page, under the Agents view', () => {
-  const PATTERN = '/agents/:agent/memories';
+describe('the tabs of an agent’s page, under the Agents view', () => {
   const rpc = (method: string, result: unknown) =>
     Response.json({ jsonrpc: '2.0', id: method, result });
   const fault = (status: number, code: string) =>
@@ -719,107 +726,96 @@ describe('an agent’s memory page, under the Agents view', () => {
       id: 1,
       error: { code: -32000, message: 'No', data: { weftCode: code, httpStatus: status } },
     });
-  const MEMORY = {
-    id: 'memory-1',
-    content: 'The user prefers aisle seats.',
-    memoryClass: 'episodic',
-    source: 'conversation',
-    trust: 'untrusted',
-    createdAt: '2026-10-19T08:00:00.000Z',
-    sessionId: 'session-1',
+  /** An agent a disabled plugin ships, as `bureau.agents.definitions.get` shows it. */
+  const UNAVAILABLE = {
+    id: 'demo:release-helper',
+    source: 'code',
+    state: 'unavailable',
+    unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+    name: 'Release helper',
+    description: 'Drafts release notes from the pull requests merged since the last tag.',
+    a2a: false,
+    hash: null,
+    problem: null,
+    definition: null,
+    codeDefinition: null,
+    referenceSizes: null,
   };
-  const copy = VIEW_COPY.agents;
 
-  /** Answers the two operations the memory page's probe asks, by name. */
-  function stubBureau(memories: () => Response): void {
-    restore = installFetchImplementation(async (_input, init) => {
-      const method = operationOf(init?.body)?.method ?? '';
-      if (method === 'bureau.agents.list') return rpc(method, { agents: [{ ...AGENT }] });
-      if (method === 'bureau.memory.list') return memories();
-      throw new Error(`Unexpected request: ${method}`);
-    });
-  }
-
-  const mountMemory = () =>
-    mount('agents', { pattern: PATTERN, parameters: { agent: 'assistant' } });
-
-  test('is loading, with the memory words, while the Bureau is asked', async () => {
-    restore = installFetchImplementation(() => new Promise<Response>(() => {}));
-    const { container, findByRole } = mountMemory();
-    const words = copy.loadingByPattern?.[PATTERN];
-
-    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(container.textContent).toContain(words?.description ?? '');
-    expect(frame(container).dataset['state']).toBe('loading');
-    expect(words?.title).not.toBe(copy.loading.title);
-  });
-
-  test('shows the page when the agent has no memory, which is where the first one is added', async () => {
-    stubBureau(() => rpc('bureau.memory.list', { memories: [], nextOffset: null }));
-    const { container, findByTestId } = mountMemory();
-
-    expect(await findByTestId('content')).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('ready');
-  });
-
-  test('is failing, with a retry, when the Bureau cannot answer', async () => {
-    stubBureau(() => fault(500, 'EngineFailure'));
-    const { container, findByRole, getByRole } = mountMemory();
-    const words = copy.errorByPattern?.[PATTERN];
-
-    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(container.textContent).toContain(words?.description ?? '');
-    expect(frame(container).dataset['state']).toBe('error');
-    expect(getByRole('button', { name: RETRY_LABEL })).not.toBeNull();
-  });
-
-  test('is forbidden, in the words that name the scope, when the Bureau refuses the caller the memory', async () => {
-    stubBureau(() => fault(403, 'Forbidden'));
-    const { container, findByRole } = mountMemory();
-    const words = copy.forbiddenByPattern?.[PATTERN];
-
-    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(container.textContent).toContain('bureau.memory:read');
-    expect(container.textContent).toContain(FORBIDDEN_COPY.description);
-    expect(frame(container).dataset['state']).toBe('forbidden');
-    expect(words?.title).not.toBe(copy.forbidden.title);
-  });
-
-  test('is ready when the agent remembers something', async () => {
-    stubBureau(() => rpc('bureau.memory.list', { memories: [MEMORY], nextOffset: null }));
-    const { container, findByTestId } = mountMemory();
-
-    expect(await findByTestId('content')).not.toBeNull();
-    expect(frame(container).dataset['state']).toBe('ready');
-  });
-
-  test('is worded and probed as the memory page when a memory is open in its path', async () => {
-    stubBureau(() => fault(403, 'Forbidden'));
-    const { container, findByRole } = mount('agents', {
-      pattern: '/agents/:agent/memories/:memory',
-      parameters: { agent: 'assistant', memory: 'memory-1' },
-    });
-    const words = copy.forbiddenByPattern?.[PATTERN];
-
-    expect(await findByRole('heading', { level: 1, name: words?.title ?? '' })).not.toBeNull();
-    expect(container.textContent).toContain('bureau.memory:read');
-    expect(frame(container).dataset['state']).toBe('forbidden');
-  });
-
-  test('is not found for an agent the Bureau does not list, before the memory is asked for', async () => {
+  /** Answers each operation by name, and records which were asked. */
+  function stubBureau(answers: Record<string, () => Response>): string[] {
     const asked: string[] = [];
     restore = installFetchImplementation(async (_input, init) => {
       const method = operationOf(init?.body)?.method ?? '';
       asked.push(method);
-      return rpc(method, { agents: [{ ...AGENT, name: 'other' }] });
+      const answer = answers[method];
+      if (answer === undefined) throw new Error(`Unexpected request: ${method}`);
+      return answer();
     });
-    const { container, findByRole } = mountMemory();
+    return asked;
+  }
+
+  test('asks only whether the agent is there, on Memory as on every tab', async () => {
+    const asked = stubBureau({
+      'bureau.agents.list': () => rpc('bureau.agents.list', { agents: [{ ...AGENT }] }),
+    });
+    const { container, findByTestId } = mount('agents', {
+      pattern: '/agents/:agent/memory',
+      parameters: { agent: 'assistant' },
+    });
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+    expect(asked).toEqual(['bureau.agents.list']);
+  });
+
+  test('shows the page of an agent a disabled plugin ships, which the list leaves out', async () => {
+    stubBureau({
+      'bureau.agents.list': () => rpc('bureau.agents.list', { agents: [{ ...AGENT }] }),
+      'bureau.agents.definitions.get': () => rpc('bureau.agents.definitions.get', UNAVAILABLE),
+    });
+    const { container, findByTestId } = mount('agents', {
+      pattern: '/agents/:agent/access',
+      parameters: { agent: 'demo:release-helper' },
+    });
+
+    expect(await findByTestId('content')).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('ready');
+  });
+
+  test('is not found for an agent the Bureau neither lists nor holds', async () => {
+    stubBureau({
+      'bureau.agents.list': () => rpc('bureau.agents.list', { agents: [{ ...AGENT }] }),
+      'bureau.agents.definitions.get': () => fault(404, 'NotFound'),
+    });
+    const { container, findByRole } = mount('agents', {
+      pattern: '/agents/:agent/memory',
+      parameters: { agent: 'nobody' },
+    });
 
     expect(
-      await findByRole('heading', { level: 1, name: copy.notFound?.title ?? '' }),
+      await findByRole('heading', { level: 1, name: VIEW_COPY.agents.notFound?.title ?? '' }),
     ).not.toBeNull();
     expect(frame(container).dataset['state']).toBe('not-found');
-    expect(asked).toEqual(['bureau.agents.list']);
+  });
+
+  test('is not found for an unlisted agent that is not held back by a plugin', async () => {
+    stubBureau({
+      'bureau.agents.list': () => rpc('bureau.agents.list', { agents: [{ ...AGENT }] }),
+      'bureau.agents.definitions.get': () =>
+        rpc('bureau.agents.definitions.get', {
+          ...UNAVAILABLE,
+          id: 'broken',
+          state: 'invalid',
+          unavailable: null,
+        }),
+    });
+    const { container, findByRole } = mount('agents', { parameters: { agent: 'broken' } });
+
+    expect(
+      await findByRole('heading', { level: 1, name: VIEW_COPY.agents.notFound?.title ?? '' }),
+    ).not.toBeNull();
+    expect(frame(container).dataset['state']).toBe('not-found');
   });
 });
 

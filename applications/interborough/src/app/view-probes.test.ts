@@ -5,7 +5,13 @@ import { afterEach, describe, expect, test } from 'bun:test';
 
 import { agentsListQuery } from '../lib/agent-queries.ts';
 import { goalFixture, taskFixture } from '../lib/bureau-fixtures.test-support.ts';
-import { installBureauStub, StubFault, type BureauStub } from '../lib/bureau-stub.test-support.ts';
+import {
+  faults,
+  installBureauStub,
+  readyAgent,
+  StubFault,
+  type BureauStub,
+} from '../lib/bureau-stub.test-support.ts';
 import { probeFor, RUNS_RECHECK_MS } from './view-probes.ts';
 
 let stub: BureauStub | undefined;
@@ -104,6 +110,9 @@ describe('the agents probe', () => {
             }
           : { agents: [] };
       },
+      'bureau.agents.definitions.get': () => {
+        throw faults.notFound('alpha');
+      },
     });
     const queryClient = new QueryClient();
     await queryClient.fetchQuery(agentsListQuery());
@@ -131,12 +140,57 @@ describe('the agents probe', () => {
     ).toMatchObject({ status: 403 });
 
     stub.restore();
-    stub = installBureauStub({ 'bureau.agents.list': () => ({ agents: [] }) });
+    stub = installBureauStub({
+      'bureau.agents.list': () => ({ agents: [] }),
+      'bureau.agents.definitions.get': () => {
+        throw faults.notFound('alpha');
+      },
+    });
     const missing = probeFor('agents', { agent: 'alpha' });
     if (missing === undefined) throw new Error('Expected an agent probe.');
     expect(
       await rejectionOf(
         missing(new HttpClient({ baseUrl: 'http://localhost/api' }), new QueryClient()),
+      ),
+    ).toMatchObject({ status: 404 });
+  });
+
+  test('lets through an agent a disabled plugin ships, which the list leaves out, on every tab', async () => {
+    stub = installBureauStub({
+      'bureau.agents.list': () => ({ agents: [] }),
+      'bureau.agents.definitions.get': () =>
+        readyAgent({
+          id: 'demo:release-helper',
+          source: 'code',
+          state: 'unavailable',
+          unavailable: { code: 'plugin-disabled', message: 'Plugin Demo is disabled' },
+          definition: null,
+        }),
+    });
+    const queryClient = new QueryClient();
+    for (const pattern of ['/agents/:agent', '/agents/:agent/memory']) {
+      const probe = probeFor('agents', { agent: 'demo:release-helper' }, pattern);
+      if (probe === undefined) throw new Error('Expected an agent probe.');
+      expect(await probe(new HttpClient({ baseUrl: 'http://localhost/api' }), queryClient)).toEqual(
+        { empty: false },
+      );
+    }
+    // The page reads the same answer instead of asking again.
+    expect(queryClient.getQueryData(['agents', 'definition', 'demo:release-helper'])).toMatchObject(
+      { state: 'unavailable' },
+    );
+  });
+
+  test('is not found for an agent the list leaves out that no plugin holds back', async () => {
+    stub = installBureauStub({
+      'bureau.agents.list': () => ({ agents: [] }),
+      'bureau.agents.definitions.get': () => readyAgent({ id: 'broken', state: 'invalid' }),
+    });
+    const probe = probeFor('agents', { agent: 'broken' });
+    if (probe === undefined) throw new Error('Expected an agent probe.');
+    expect(
+      await rejectionOf(
+        probe(new HttpClient({ baseUrl: 'http://localhost/api' }), new QueryClient()),
       ),
     ).toMatchObject({ status: 404 });
   });

@@ -398,7 +398,7 @@ test('corrects what an agent remembers, and a new chat recalls the correction an
 }) => {
   const original = `Original ${RUN} seat 12A`;
   const correction = `Corrected ${RUN} seat 14C`;
-  const memoryAddress = `/agents/${RECALL_AGENT_NAME}/memories`;
+  const memoryAddress = `/agents/${RECALL_AGENT_NAME}/memory`;
 
   // With nothing recalled the agent echoes the label, and the chat stores that answer.
   await page.goto(`/chats/new?agent=${RECALL_AGENT_NAME}`);

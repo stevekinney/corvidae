@@ -157,7 +157,7 @@ describe('the agents a disabled plugin holds back', () => {
       expect(held?.querySelector('[data-testid="agent-held"]')?.textContent).toBe(
         'Plugin Demo is disabled',
       );
-      expect(held?.querySelector('a[href$="/memories"]')).toBeNull();
+      expect(held?.querySelector('a[href$="/memory"]')).toBeNull();
       // Its address is not an agent the Bureau lists, so the row opens nothing.
       expect(held?.querySelector('a[href]')).toBeNull();
       expect(held?.querySelector('[data-testid="agent-new-chat"]')).toBeNull();

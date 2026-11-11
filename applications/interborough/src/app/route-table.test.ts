@@ -26,7 +26,8 @@ const RETIRED_PATHS = [
   '/system',
   '/tasks',
   '/tasks/run-1',
-  '/agents/assistant/memory',
+  '/agents/assistant/memories',
+  '/agents/assistant/memories/memory-1',
 ] as const;
 
 /** The patterns a path's leading segments name: `/a/:b/c` is `/a`, `/a/:b`, then itself. */
@@ -93,8 +94,11 @@ describe('the route table', () => {
         '/chats/:chat',
         '/agents/:agent',
         '/agents/:agent/edit',
-        '/agents/:agent/memories',
-        '/agents/:agent/memories/:memory',
+        '/agents/:agent/instructions',
+        '/agents/:agent/access',
+        '/agents/:agent/hooks',
+        '/agents/:agent/memory',
+        '/agents/:agent/settings',
         '/workflows/:workflow',
         '/workflows/:workflow/runs',
         '/workflows/:workflow/runs/:run',

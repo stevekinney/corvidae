@@ -508,7 +508,7 @@ test.describe('an agent that exists', () => {
       'effort: low',
     );
 
-    await page.goto('/agents/e2e-effort?tab=settings');
+    await page.goto('/agents/e2e-effort/settings');
     await expect(page.getByTestId('agent-default-effort')).toHaveText('Low');
 
     await page.goto('/agents/e2e-effort/edit');
@@ -517,7 +517,7 @@ test.describe('an agent that exists', () => {
     await expect(page).toHaveURL(/\/agents\/e2e-effort$/);
     const cleared = await readAgent(request, 'e2e-effort');
     expect(cleared.definition?.effort).toBeNull();
-    await page.goto('/agents/e2e-effort?tab=settings');
+    await page.goto('/agents/e2e-effort/settings');
     await expect(page.getByTestId('agent-default-effort')).toHaveText('Not set');
   });
 
@@ -540,13 +540,11 @@ test.describe('an agent that exists', () => {
     const afterOptIn = await readAgent(request, 'e2e-a2a');
     expect(afterOptIn.a2a).toBe(true);
     expect(afterOptIn.definition?.a2a).toBe(true);
-    // Its page offers a chat with it and carries no badge, and shows the file's own model, tools
-    // and version.
+    // Its page offers a chat with it and carries no badge, and shows the file's own model and
+    // tools. Its versions are on the Settings tab, not in the header.
     await expect(page.getByRole('link', { name: 'New chat' }).first()).toBeVisible();
     await expect(page.getByTestId('agent-facts')).toContainText('anthropic/sonnet');
-    await expect(page.getByTestId('agent-file-version')).toContainText(
-      afterOptIn.hash?.slice(0, 8) ?? '',
-    );
+    await expect(page.getByTestId('agent-file-version')).toHaveCount(0);
 
     await page.goto('/agents/e2e-a2a/edit');
     const again = page.getByRole('switch', { name: copy.a2aLabel });

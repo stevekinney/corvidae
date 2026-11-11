@@ -44,19 +44,23 @@ describe('page width by kind of page', () => {
   });
 
   test('one area holds pages of more than one width, so the width is not the area’s', () => {
-    // The agents area: its list is a table's width, an agent's page reads, and its memory and editor are wide.
+    // The agents area: its list is a table's width, and so are an agent's page and its editor.
     expect(widthOf('/agents')).toBe('full');
-    expect(widthOf('/agents/:agent')).toBe('reading');
-    expect(widthOf('/agents/:agent/memories')).toBe('full');
-    expect(widthOf('/agents/:agent/memories/:memory')).toBe('full');
     expect(widthOf('/agents/new')).toBe('full');
     expect(widthOf('/agents/:agent/edit')).toBe('full');
-    // The memory page and an agent's page share the `agents` view and differ in width.
-    const memory = routes.find((route) => route.pattern === '/agents/:agent/memories');
-    const openMemory = routes.find((route) => route.pattern === '/agents/:agent/memories/:memory');
+    // A run's setup is a form in the reading column, beside the wide run page of the same workflow.
+    expect(widthOf('/workflows/:workflow/run')).toBe('reading');
+    expect(widthOf('/workflows/:workflow/runs/:run')).toBe('full');
+  });
+
+  test('gives every tab of an agent’s page one width and view, so the header does not move between tabs', () => {
     const detail = routes.find((route) => route.pattern === '/agents/:agent');
-    expect(memory?.view).toBe(detail?.view);
-    expect(openMemory?.view).toBe(detail?.view);
+    for (const tab of ['instructions', 'access', 'hooks', 'memory', 'settings']) {
+      const pattern = `/agents/:agent/${tab}`;
+      expect(widthOf(pattern), pattern).toBe('full');
+      expect(routes.find((route) => route.pattern === pattern)?.view, pattern).toBe(detail?.view);
+    }
+    expect(widthOf('/agents/:agent')).toBe('full');
   });
 
   test('the operator tables stay wide and every settings section has the page to itself, its navigation beside one column', () => {

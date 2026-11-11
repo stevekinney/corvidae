@@ -1,6 +1,6 @@
 /**
  * The top bar's breadcrumb trail (design row 06a), derived from the route table: each leading
- * part of the address that a route matches contributes that route's `crumb`, so `/agents/abc/memories`
+ * part of the address that a route matches contributes that route's `crumb`, so `/agents/abc/memory`
  * reads Agents › abc › Memory. A crumb that names a path parameter shows the parameter until the
  * page on screen supplies a better label, such as the agent's name, with {@link usePageLabel}.
  */

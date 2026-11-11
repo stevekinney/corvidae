@@ -97,7 +97,7 @@ test('quick settings has no density switch, and the Sidebar choice survives a re
 });
 
 test('the breadcrumb trail follows the route, and its links open their pages', async ({ page }) => {
-  await page.goto('/agents/demo:assistant/memories');
+  await page.goto('/agents/demo:assistant/memory');
   const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
   await expect(trail.getByRole('link', { name: 'Agents' })).toBeVisible();
   await expect(trail.getByText('Memory')).toHaveAttribute('aria-current', 'page');

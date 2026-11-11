@@ -127,7 +127,7 @@ describe('the list of agents', () => {
     // Every agent offers Memory and New chat, each named for the agent; Edit is for a file agent
     // only, and the slot keeps its place where there is none.
     for (const name of ['assistant', 'researcher', 'internal']) {
-      expect(rows(name)?.querySelector(`a[href="/agents/${name}/memories"]`)).not.toBeNull();
+      expect(rows(name)?.querySelector(`a[href="/agents/${name}/memory"]`)).not.toBeNull();
       expect(rows(name)?.querySelector(`a[href="/chats/new?agent=${name}"]`)).not.toBeNull();
     }
     expect(rows('assistant')?.querySelector('[aria-label="Memory of Assistant"]')).not.toBeNull();
@@ -335,7 +335,7 @@ describe('the list of agents', () => {
     landAt('/agents');
     const memoryLink = await findByRole('link', { name: 'Memory of Researcher' });
     memoryLink.click();
-    expect(router.pathname).toBe('/agents/researcher/memories');
+    expect(router.pathname).toBe('/agents/researcher/memory');
 
     landAt('/agents');
     const newLink = await findByRole('link', { name: 'New agent' });
@@ -555,7 +555,7 @@ describe('one agent’s page', () => {
     expect(container.textContent?.match(/Chat 1/g)).toHaveLength(1);
   });
 
-  test('shows a file agent’s model, tools and skills, its file version, and its chats, with the name once', async () => {
+  test('shows a file agent’s model, tools and skills, and its chats, with the name once and no file version', async () => {
     const served = serve(FILE_AGENT, {
       model: 'anthropic/sonnet',
       tools: ['lookup-order'],
@@ -569,24 +569,17 @@ describe('one agent’s page', () => {
     await findByText('anthropic/sonnet');
     expect(container.textContent).toContain('lookup-order');
     expect(container.textContent).toContain('Cite');
-    // The version of the file, by its short hash, with the history that lives in its Settings tab.
-    const version = container.querySelector('[data-testid="agent-file-version"]');
-    expect(version?.textContent).toContain('File version');
-    expect(version?.querySelector('code')?.textContent).toBe('hash-1');
-    expect(version?.querySelector('a')?.getAttribute('href')).toBe(
-      '/agents/researcher?tab=settings',
-    );
-    // Opening the history is a navigation in the app, not a page load.
-    const history = version?.querySelector('a');
-    if (history === null || history === undefined) throw new Error('expected a history link');
-    history.click();
-    expect(router.pathname).toBe('/agents/researcher');
-    expect(router.search.get('tab')).toBe('settings');
+    // The header names no file version: the versions live in the Settings tab.
+    expect(container.querySelector('[data-testid="agent-file-version"]')).toBeNull();
+    expect(container.textContent).not.toContain('File version');
     expect(container.textContent).not.toContain('Revision');
     expect(container.querySelector('h1')?.textContent?.trim()).toBe('Researcher');
     await findByText('Plan the week');
     expect(
-      served.calls.find((call) => call.method === 'bureau.contexts.list')?.params,
+      // The header counts every chat a person started; the Chats tab asks for this agent's.
+      served.calls.find(
+        (call) => call.method === 'bureau.contexts.list' && call.params['agentName'] !== undefined,
+      )?.params,
     ).toMatchObject({ agentName: 'researcher', sortBy: 'updatedAt', sortOrder: 'desc' });
   });
 
@@ -729,17 +722,19 @@ describe('one agent’s page', () => {
     expect(served.calls.some((call) => call.method === 'bureau.agents.models')).toBe(true);
   });
 
-  test('puts the memory count on a Memory tab, and choosing the tab opens the memory page', async () => {
+  test('puts the memory count on a Memory tab, and choosing the tab shows the memory in the page', async () => {
     serve(AGENT);
     landAt('/agents/assistant');
-    const { findByRole, getByRole } = mount(AgentDetail);
+    const { findByRole, findByText, getByRole } = mount(AgentDetail);
 
     const tab = await findByRole('tab', { name: 'Memory 1' });
     // Memory is a tab among the page's others, not an action in its header.
     expect(getByRole('tablist').contains(tab)).toBe(true);
-    expect(getByRole('tab', { name: 'Chats' }).getAttribute('aria-selected')).toBe('true');
+    expect(getByRole('tab', { name: /^Chats/ }).getAttribute('aria-selected')).toBe('true');
     await fireEvent.click(tab);
-    expect(router.pathname).toBe('/agents/assistant/memories');
+    await waitFor(() => expect(router.pathname).toBe('/agents/assistant/memory'));
+    expect(tab.getAttribute('aria-selected')).toBe('true');
+    expect(await findByText(MEMORY.content)).not.toBeNull();
   });
 
   test('counts a memory once when a list that shifted gave it on two pages', async () => {
@@ -765,7 +760,7 @@ describe('one agent’s page', () => {
     await findByRole('tab', { name: 'Memory 3' });
   });
 
-  test('marks a memory count that has more pages unread, and says just Memory for an agent that remembers nothing', async () => {
+  test('marks a memory count that has more pages unread, and counts zero for an agent that remembers nothing', async () => {
     memoryList = () => ({ memories: [MEMORY], nextOffset: 1 });
     serve(AGENT);
     landAt('/agents/assistant');
@@ -779,7 +774,8 @@ describe('one agent’s page', () => {
     landAt('/agents/assistant');
     const none = mount(AgentDetail);
     await none.findByRole('link', { name: 'New chat' });
-    expect(none.getByRole('tab', { name: 'Memory' })).toBeTruthy();
+    // An empty tab is a fact read before it is opened (board PageAgent, row 39o).
+    expect(await none.findByRole('tab', { name: 'Memory 0' })).toBeTruthy();
   });
 
   test('keeps the Memory tab and drops the count when the Bureau cannot read the memory', async () => {
@@ -799,18 +795,18 @@ describe('one agent’s page', () => {
       expect(client.getQueryState(queryKeys.memory.list('assistant'))?.status).toBe('error'),
     );
     await fireEvent.click(getByRole('tab', { name: 'Memory' }));
-    expect(router.pathname).toBe('/agents/assistant/memories');
+    await waitFor(() => expect(router.pathname).toBe('/agents/assistant/memory'));
   });
 
-  test('moving focus along the tabs does not open the memory page; choosing the Memory tab does', async () => {
+  test('moving focus along the tabs does not choose one, because each is a history entry; Enter does', async () => {
     serve(AGENT);
     landAt('/agents/assistant');
     const { findByRole, getByRole } = mount(AgentDetail);
 
-    const hooks = await findByRole('tab', { name: 'Hooks' });
+    const hooks = await findByRole('tab', { name: /^Hooks/ });
     hooks.focus();
     await fireEvent.keyDown(hooks, { key: 'ArrowRight' });
-    // Focus reached Memory, and the page stayed: Settings is still one more arrow away.
+    // Focus reached Memory, and the address stayed: Settings is still one more arrow away.
     expect(document.activeElement).toBe(getByRole('tab', { name: /^Memory/ }));
     expect(router.pathname).toBe('/agents/assistant');
     await fireEvent.keyDown(document.activeElement as Element, { key: 'ArrowRight' });
@@ -819,7 +815,7 @@ describe('one agent’s page', () => {
 
     getByRole('tab', { name: /^Memory/ }).focus();
     await fireEvent.keyDown(document.activeElement as Element, { key: 'Enter' });
-    expect(router.pathname).toBe('/agents/assistant/memories');
+    await waitFor(() => expect(router.pathname).toBe('/agents/assistant/memory'));
   });
 
   test('offers Edit for an agent that is a file, and not for one defined in code', async () => {

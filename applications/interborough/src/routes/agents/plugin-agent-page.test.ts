@@ -93,7 +93,7 @@ describe('the page of a plugin’s agent', () => {
   });
 
   test('offers no Edit on the Instructions tab, and says the plugin ships the agent', async () => {
-    landAt('/agents/linear%3Atriager?tab=instructions');
+    landAt('/agents/linear%3Atriager/instructions');
     serve();
     const { findByTestId, queryByRole } = mount();
 
@@ -105,7 +105,7 @@ describe('the page of a plugin’s agent', () => {
   });
 
   test('offers no Delete and no saved versions on the Settings tab', async () => {
-    landAt('/agents/linear%3Atriager?tab=settings');
+    landAt('/agents/linear%3Atriager/settings');
     serve();
     const { container, findByTestId, queryByRole } = mount();
 
@@ -116,7 +116,7 @@ describe('the page of a plugin’s agent', () => {
   });
 
   test('offers no access editor on the Access tab', async () => {
-    landAt('/agents/linear%3Atriager?tab=access');
+    landAt('/agents/linear%3Atriager/access');
     serve();
     const { findByTestId, queryByRole } = mount();
 

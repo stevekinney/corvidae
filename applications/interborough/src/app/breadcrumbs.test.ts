@@ -69,28 +69,26 @@ describe('the breadcrumb trail', () => {
     expect(breadcrumbTrail('/health', NONE)).toEqual([{ label: 'Health' }]);
   });
 
-  test('an open memory is one more level under Memory, and its page names it', () => {
-    const open = '/agents/assistant-1/memories/memory-7';
-    expect(breadcrumbTrail(open, NONE)).toEqual([
+  test('each tab of an agent’s page is one level under the agent, and Chats is the agent alone', () => {
+    expect(breadcrumbTrail('/agents/assistant-1', NONE)).toEqual([
+      { label: 'Agents', href: '/agents' },
+      { label: 'assistant-1' },
+    ]);
+    expect(breadcrumbTrail('/agents/assistant-1/access', NONE)).toEqual([
       { label: 'Agents', href: '/agents' },
       { label: 'assistant-1', href: '/agents/assistant-1' },
-      { label: 'Memory', href: '/agents/assistant-1/memories' },
-      { label: 'memory-7' },
+      { label: 'Access' },
     ]);
-    const labels = new Map([[open, 'The user prefers aisle seats.']]);
-    expect(breadcrumbTrail(open, labels).at(-1)).toEqual({
-      label: 'The user prefers aisle seats.',
-    });
   });
 
   test('a nested page links each ancestor and shows a parameter until the page names it', () => {
-    expect(breadcrumbTrail('/agents/assistant-1/memories', NONE)).toEqual([
+    expect(breadcrumbTrail('/agents/assistant-1/memory', NONE)).toEqual([
       { label: 'Agents', href: '/agents' },
       { label: 'assistant-1', href: '/agents/assistant-1' },
       { label: 'Memory' },
     ]);
     const labels = new Map([['/agents/assistant-1', 'assistant']]);
-    expect(breadcrumbTrail('/agents/assistant-1/memories', labels)).toEqual([
+    expect(breadcrumbTrail('/agents/assistant-1/memory', labels)).toEqual([
       { label: 'Agents', href: '/agents' },
       { label: 'assistant', href: '/agents/assistant-1' },
       { label: 'Memory' },
@@ -158,7 +156,7 @@ describe('the breadcrumb trail', () => {
   });
 
   test('a mounted page supplies its label, and the parameter returns when it unmounts', async () => {
-    const path = '/agents/assistant-2/memories';
+    const path = '/agents/assistant-2/memory';
     const view = render(Harness, { props: { path: '/agents/assistant-2', label: undefined } });
     await tick();
     expect(breadcrumbTrail(path)[1]?.label).toBe('assistant-2');

@@ -1,6 +1,7 @@
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
 
+import { AGENT_PAGE_COPY } from '../../app/copy.ts';
 import { faults, readyAgent, StubFault } from '../../lib/bureau-stub.test-support.ts';
 import { router } from '../../lib/router.svelte.ts';
 import { AGENT, bureau, CONTEXT, landAt } from '../chat/pages.test-support.ts';
@@ -50,7 +51,9 @@ async function pick(select: HTMLElement, value: string): Promise<void> {
 }
 
 const lastListed = (served: ReturnType<typeof serve>) =>
-  served.calls.filter((call) => call.method === 'bureau.contexts.list').at(-1)?.params;
+  served.calls
+    .filter((call) => call.method === 'bureau.contexts.list' && 'agentName' in call.params)
+    .at(-1)?.params;
 
 describe('the controls over an agent’s chats', () => {
   test('asks for who started them and for the order, and clears a search', async () => {
@@ -88,7 +91,8 @@ describe('the controls over an agent’s chats', () => {
     });
     const { findByRole, findByText } = mount();
 
-    await findByText('These chats could not be loaded.');
+    // Nothing was read, so the list's place says the tab could not load, and the filters stay.
+    await findByText(AGENT_PAGE_COPY.tabState.failedTitle);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
 
@@ -125,55 +129,79 @@ describe('the empty Chats tab', () => {
 });
 
 describe('the tabs of an agent’s page', () => {
-  test('write the address when a tab is picked, and an unknown tab is Chats', async () => {
+  test('write each tab’s own address when it is picked, Chats being the agent’s', async () => {
     landAt('/agents/researcher');
     serve();
     const { findByRole } = mount();
 
     await fireEvent.click(await findByRole('tab', { name: 'Instructions' }));
-    await waitFor(() => expect(router.search.get('tab')).toBe('instructions'));
-    await fireEvent.click(await findByRole('tab', { name: 'Chats' }));
-    await waitFor(() => expect(router.search.get('tab')).toBeNull());
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher/instructions'));
+    expect(router.search.get('tab')).toBeNull();
+    await fireEvent.click(await findByRole('tab', { name: /^Chats/ }));
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
+  });
+
+  test('replace an address from before the tabs had paths with the tab’s path, and one naming no tab with Chats', async () => {
+    landAt('/agents/researcher?tab=access&from=old');
+    serve();
+    const { findByRole } = mount();
+
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher/access'));
+    expect(router.search.get('tab')).toBeNull();
+    // The rest of the query stays.
+    expect(router.search.get('from')).toBe('old');
+    expect((await findByRole('tab', { name: /^Access/ })).getAttribute('aria-selected')).toBe(
+      'true',
+    );
 
     router.navigate('/agents/researcher?tab=nonsense');
     await waitFor(() => expect(router.search.get('tab')).toBeNull());
+    expect(router.pathname).toBe('/agents/researcher');
   });
 
-  test('send Edit in the Instructions tab to the editor in the app', async () => {
-    landAt('/agents/researcher?tab=instructions');
-    serve();
-    const { findAllByRole } = mount();
-
-    // The header holds one Edit, and the tab another.
-    await waitFor(async () =>
-      expect(await findAllByRole('link', { name: 'Edit' })).toHaveLength(2),
-    );
-    const edits = await findAllByRole('link', { name: 'Edit' });
-    await fireEvent.click(edits[1] as HTMLElement);
-
-    expect(router.pathname).toBe('/agents/researcher/edit');
+  test('show each tab of the address on a reload', async () => {
+    for (const tab of ['instructions', 'access', 'hooks', 'memory', 'settings'] as const) {
+      landAt(`/agents/researcher/${tab}`);
+      serve();
+      const { findByRole, unmount } = mount();
+      const name = new RegExp(`^${AGENT_PAGE_COPY.tabs[tab]}`);
+      expect((await findByRole('tab', { name })).getAttribute('aria-selected')).toBe('true');
+      unmount();
+      restore?.();
+      restore = undefined;
+    }
   });
 });
 
-describe('Edit in the Instructions tab', () => {
-  test('is left to the browser when a modifier key is held', async () => {
-    landAt('/agents/researcher?tab=instructions');
+describe('Edit, which the header holds once for every tab', () => {
+  test('is in the header alone, not repeated in the Instructions tab, and opens the editor in the app', async () => {
+    landAt('/agents/researcher/instructions');
     serve();
-    const { findAllByRole } = mount();
+    const { findAllByRole, findByTestId } = mount();
 
-    await waitFor(async () =>
-      expect(await findAllByRole('link', { name: 'Edit' })).toHaveLength(2),
-    );
+    await findByTestId('agent-instructions-body');
     const edits = await findAllByRole('link', { name: 'Edit' });
-    await fireEvent.click(edits[1] as HTMLElement, { ctrlKey: true });
+    expect(edits).toHaveLength(1);
+    expect((await findByTestId('agent-header')).contains(edits[0] as HTMLElement)).toBe(true);
+    await fireEvent.click(edits[0] as HTMLElement);
 
-    expect(router.pathname).toBe('/agents/researcher');
+    expect(router.pathname).toBe('/agents/researcher/edit');
+  });
+
+  test('is left to the browser when a modifier key is held', async () => {
+    landAt('/agents/researcher/instructions');
+    serve();
+    const { findByRole } = mount();
+
+    await fireEvent.click(await findByRole('link', { name: 'Edit' }), { ctrlKey: true });
+
+    expect(router.pathname).toBe('/agents/researcher/instructions');
   });
 });
 
 describe('the Instructions tab, when there is nothing to show', () => {
   test('offers to add instructions to a file that has none', async () => {
-    landAt('/agents/researcher?tab=instructions');
+    landAt('/agents/researcher/instructions');
     serve({}, () => {
       const detail = readyAgent({ id: 'researcher' });
       return detail.definition === null
@@ -190,7 +218,7 @@ describe('the Instructions tab, when there is nothing to show', () => {
   });
 
   test('offers nothing to an agent in code that states no instructions', async () => {
-    landAt('/agents/assistant?tab=instructions');
+    landAt('/agents/assistant/instructions');
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT] }),
       'bureau.agents.definitions.get': () => ({
@@ -211,7 +239,7 @@ describe('the Instructions tab, when there is nothing to show', () => {
   });
 
   test('says the agent could not be loaded and tries again', async () => {
-    landAt('/agents/researcher?tab=instructions');
+    landAt('/agents/researcher/instructions');
     let fail = true;
     serve({
       'bureau.agents.definitions.get': () => {
@@ -221,7 +249,7 @@ describe('the Instructions tab, when there is nothing to show', () => {
     });
     const { findByRole, findByText } = mount();
 
-    await findByText('The instructions could not be loaded.');
+    await findByText(AGENT_PAGE_COPY.tabState.failedTitle);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
 
@@ -231,7 +259,7 @@ describe('the Instructions tab, when there is nothing to show', () => {
 
 describe('the Settings tab, when something goes wrong', () => {
   test('says the settings could not be loaded and tries again', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     let fail = true;
     serve({
       'bureau.agents.definitions.get': () => {
@@ -241,7 +269,7 @@ describe('the Settings tab, when something goes wrong', () => {
     });
     const { findByRole, findByText, findAllByText } = mount();
 
-    await findByText('The settings could not be loaded.');
+    await findByText(AGENT_PAGE_COPY.tabState.failedTitle);
     fail = false;
     await fireEvent.click(await findByRole('button', { name: 'Try again' }));
 
@@ -250,7 +278,7 @@ describe('the Settings tab, when something goes wrong', () => {
   });
 
   test('shows a file with no step limit as running the default of 25 steps', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     serve();
     const { findByTestId } = mount();
 
@@ -263,7 +291,7 @@ describe('the Settings tab, when something goes wrong', () => {
   });
 
   test('shows an agent in code without limits, Delete or versions', async () => {
-    landAt('/agents/assistant?tab=settings');
+    landAt('/agents/assistant/settings');
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT] }),
       'bureau.agents.definitions.get': () => ({
@@ -305,7 +333,7 @@ describe('the Settings tab, when something goes wrong', () => {
     ['an agent that is gone', faults.notFound('researcher'), 'The agent could not be deleted.'],
   ] as const) {
     test(`says why a delete failed: ${name}`, async () => {
-      landAt('/agents/researcher?tab=settings');
+      landAt('/agents/researcher/settings');
       serve({
         'bureau.agents.definitions.delete': () => {
           throw fault;
@@ -317,12 +345,12 @@ describe('the Settings tab, when something goes wrong', () => {
       await fireEvent.click(await findByRole('button', { name: 'Delete' }));
 
       await findByText(new RegExp(message));
-      expect(router.pathname).toBe('/agents/researcher');
+      expect(router.pathname).toBe('/agents/researcher/settings');
     });
   }
 
   test('says a caller who may not delete may not', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     serve({
       'bureau.agents.definitions.delete': () => {
         throw new StubFault('Forbidden', 403, 'No.');
@@ -340,7 +368,7 @@ describe('the Settings tab, when something goes wrong', () => {
 
 describe('the Settings tab of an agent in code that names no model', () => {
   test('says the model is not set', async () => {
-    landAt('/agents/assistant?tab=settings');
+    landAt('/agents/assistant/settings');
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT] }),
       'bureau.agents.definitions.get': () => ({
@@ -363,7 +391,7 @@ describe('the Settings tab of an agent in code that names no model', () => {
 
 describe('the versions of an agent', () => {
   test('says there are none, and that they could not be loaded, with a retry', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     let fail = true;
     serve({
       'bureau.agents.versions.list': () => {
@@ -386,7 +414,7 @@ describe('the versions of an agent', () => {
     ['a definition that no longer loads', faults.unprocessable('The model is gone.')],
   ] as const) {
     test(`says why a restore failed: ${name}`, async () => {
-      landAt('/agents/researcher?tab=settings');
+      landAt('/agents/researcher/settings');
       const version = (revision: number) => ({
         revision,
         hash: `identity-${String(revision)}`,

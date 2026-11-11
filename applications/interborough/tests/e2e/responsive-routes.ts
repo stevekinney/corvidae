@@ -69,11 +69,15 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
     '/capabilities': '/capabilities',
     // The agent whose instructions hold a word no line can break at, so the editor's textarea is measured with it.
     '/agents/:agent/edit': `/agents/${instructionsAgent}/edit`,
-    '/agents/:agent/memories': `/agents/${memoryAgent}/memories`,
-    // The memory with the long word open: below 900px the details replace the list, and the text,
-    // the three columns of facts and the governance actions are measured.
-    '/agents/:agent/memories/:memory': `/agents/${memoryAgent}/memories/${encodeURIComponent(seed.memory)}`,
     '/agents/:agent': `/agents/${agent}`,
+    // The tabs of the agent whose instructions hold a word no line can break at. Its Access tab
+    // holds the largest budgets the Bureau accepts, a tool set to ask every time, and the host's
+    // skills among them, one with a long name.
+    '/agents/:agent/instructions': `/agents/${instructionsAgent}/instructions`,
+    '/agents/:agent/access': `/agents/${instructionsAgent}/access`,
+    '/agents/:agent/hooks': `/agents/${instructionsAgent}/hooks`,
+    '/agents/:agent/settings': `/agents/${instructionsAgent}/settings`,
+    '/agents/:agent/memory': `/agents/${memoryAgent}/memory`,
     '/workflows': '/workflows',
     '/workflows/new': '/workflows/new',
     '/workflows/:workflow': `/workflows/${workflow}`,
@@ -115,7 +119,7 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  * Addresses of a route in a second state, by `<pattern> (<state>)`, each opened and measured like a
  * route of its own. The seeded workflow type is code-defined, so the file header's four buttons
  * (Start run, Pause, Edit, Delete) and a file's Code, Runs and History tabs are reached here,
- * as are an agent's Instructions, Access and Settings tabs, with the tab named in the address (`?tab=`).
+ * as is an agent's Memory tab with the memory that holds the long word open.
  * The Capabilities page's Skills tab, and one seeded long-named skill open, are reached the same way,
  * as are its Sources tab and the seeded OpenAPI source open,
  * as is the Workers page with the seeded worker open and its Task queues tab with a seeded queue
@@ -125,14 +129,10 @@ export function responsiveAddresses(seed: ResponsiveSeed): Readonly<Record<strin
  */
 export function responsiveVariants(seed: ResponsiveSeed): Readonly<Record<string, string>> {
   const file = `/workflows/${encodeURIComponent(seed.workflowFile)}`;
-  const agent = `/agents/${encodeURIComponent(seed.instructionsAgent)}`;
   return {
-    '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
-    // The Access tab of the agent with the largest budgets the Bureau accepts, a tool set to ask
-    // every time, and the host's skills among them, one with a long name.
-    '/agents/:agent (access tab)': `${agent}?tab=access`,
-    '/agents/:agent (hooks tab)': `${agent}?tab=hooks`,
-    '/agents/:agent (settings tab)': `${agent}?tab=settings`,
+    // The memory with the long word open: below 900px the details replace the list, and the text,
+    // the three columns of facts and the governance actions are measured.
+    '/agents/:agent/memory (memory open)': `/agents/${encodeURIComponent(seed.memoryAgent)}/memory?selected=${encodeURIComponent(seed.memory)}`,
     '/workflows/:workflow (file)': file,
     '/workflows/:workflow (file, code tab)': `${file}?tab=code`,
     '/workflows/:workflow (file, runs tab)': `${file}?tab=runs`,

@@ -8,19 +8,14 @@
    * no versions.
    *
    * Delete and Restore name the hash of the file the page read, so a file that changed since is
-   * refused instead of overwritten, and the page says so with a reload.
+   * refused instead of overwritten, and the page says so with a reload. The tab bar names the tab,
+   * so the body repeats no heading of its own (sweep S51), and the page's frame says when the agent
+   * is still being read or could not be (`agent-tab-state.svelte`).
    */
-  import {
-    Alert,
-    Badge,
-    Button,
-    ConfirmDialog,
-    SectionHeading,
-    Skeleton,
-  } from '@lostgradient/cinder';
+  import { Alert, Badge, Button, ConfirmDialog, Skeleton } from '@lostgradient/cinder';
   import { createMutation, useQueryClient } from '@tanstack/svelte-query';
 
-  import { AGENT_PAGE_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy.ts';
   import {
     agentFaultOf,
     DEFAULT_STEP_LIMIT,
@@ -41,11 +36,9 @@
     id: string;
     /** The agent as the Bureau shows it, once read. */
     detail: AgentDetail | undefined;
-    failed: boolean;
-    onRetry: () => void;
   }
 
-  let { id, detail, failed, onRetry }: Props = $props();
+  let { id, detail }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.settings;
   const queryClient = useQueryClient();
@@ -99,12 +92,7 @@
 </script>
 
 <div class="ib-agent-settings" data-testid="agent-settings">
-  {#if failed}
-    <Alert variant="danger">
-      <p>{copy.loadFailed}</p>
-      <Button variant="secondary" size="sm" onclick={onRetry}>{RETRY_LABEL}</Button>
-    </Alert>
-  {:else if settings === undefined || detail === undefined}
+  {#if settings === undefined || detail === undefined}
     <div role="status" aria-busy="true" aria-label={copy.heading}>
       <Skeleton height="8rem" />
     </div>
@@ -116,7 +104,6 @@
     {/if}
 
     <section class="ib-agent-section" aria-label={copy.heading}>
-      <SectionHeading level={2} title={copy.heading} />
       {#if plugin !== null}
         <AgentPluginNote {plugin} />
       {:else if !isFile}

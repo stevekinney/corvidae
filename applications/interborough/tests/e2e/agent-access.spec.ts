@@ -78,7 +78,7 @@ test.describe('the Access tab', () => {
     expect(first).toContain('The order was looked up.');
     expect(first).not.toContain('"type":"interrupt"');
 
-    await page.goto(`/agents/${id}?tab=access`);
+    await page.goto(`/agents/${id}/access`);
     await page
       .getByRole('combobox', { name: copy.asksFirstLabel('demo:lookup-order') })
       .selectOption('always');
@@ -108,7 +108,7 @@ test.describe('the Access tab', () => {
     const id = 'e2e-access-budget';
     await agentWithLookup(request, id);
 
-    await page.goto(`/agents/${id}?tab=access`);
+    await page.goto(`/agents/${id}/access`);
     await page.getByLabel('Tool calls per run').fill('1');
     await save(page);
     expect(await definitionOf(request, id)).toMatchObject({
@@ -142,7 +142,7 @@ test.describe('the Access tab', () => {
     const id = 'e2e-access-withdraw';
     await agentWithLookup(request, id);
 
-    await page.goto(`/agents/${id}?tab=access`);
+    await page.goto(`/agents/${id}/access`);
     await page
       .getByRole('combobox', { name: copy.asksFirstLabel('demo:lookup-order') })
       .selectOption('never');
@@ -159,7 +159,7 @@ test.describe('the Access tab', () => {
     const id = 'e2e-access-skills';
     await agentWithLookup(request, id);
 
-    await page.goto(`/agents/${id}?tab=access`);
+    await page.goto(`/agents/${id}/access`);
     const skills = page.getByTestId('agent-access-skills');
     const untrusted = skills.locator(`[data-skill="${E2E_SKILLS.deploy.name}"]`);
     await expect(untrusted).toHaveAttribute('data-trust', 'untrusted');
@@ -203,7 +203,7 @@ for (const width of [375, 768, 1280] as const) {
     await page.setViewportSize({ width, height: 900 });
     const id = 'e2e-access-axe';
     await agentWithLookup(request, id);
-    await page.goto(`/agents/${id}?tab=access`);
+    await page.goto(`/agents/${id}/access`);
     await expect(page.getByTestId('agent-access-skills')).toBeVisible();
     await checkA11y(`the Access tab of an agent at ${width}px`);
   });

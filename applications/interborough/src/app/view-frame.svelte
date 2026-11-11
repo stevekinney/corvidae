@@ -42,13 +42,7 @@
 
   import { getClient } from '../lib/client.ts';
   import { classifyFault, isNetworkFailure } from '../lib/faults.ts';
-  import {
-    AGENT_MEMORY_PATTERN,
-    agentMemoryViewInstance,
-    queryKeys,
-    viewFramePattern,
-    workflowViewInstance,
-  } from '../lib/query.ts';
+  import { queryKeys, workflowViewInstance } from '../lib/query.ts';
   import { router } from '../lib/router.svelte.ts';
   import NewChatLoading from '../routes/chat/new-chat-loading.svelte';
   import { getPrincipalStore } from '../lib/scopes.svelte.ts';
@@ -80,7 +74,7 @@
   const initial = untrack(() => ({
     view,
     parameters,
-    pattern: viewFramePattern(pattern),
+    pattern,
     search: new URLSearchParams(router.current.search),
   }));
   const copy = VIEW_COPY[initial.view];
@@ -120,12 +114,14 @@
    */
   function probeInstance(): string | null {
     const opened = initial.parameters;
-    const agent = opened['agent'];
-    if (agent !== undefined) {
-      return initial.pattern === AGENT_MEMORY_PATTERN ? agentMemoryViewInstance(agent) : agent;
-    }
+    // Every tab of an agent's page asks the same question about the agent, so they share one answer.
     const item =
-      opened['run'] ?? opened['schedule'] ?? opened['chat'] ?? opened['goal'] ?? opened['hook'];
+      opened['agent'] ??
+      opened['run'] ??
+      opened['schedule'] ??
+      opened['chat'] ??
+      opened['goal'] ??
+      opened['hook'];
     if (item !== undefined) return item;
     // A type's page, runs, and editor ask different questions about one type.
     const workflow = opened['workflow'];

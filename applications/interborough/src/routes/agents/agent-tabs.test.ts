@@ -45,7 +45,9 @@ function serve(extra: Answers = {}, definition = readyAgent({ id: 'researcher' }
 }
 
 const lastListed = (served: ReturnType<typeof serve>) =>
-  served.calls.filter((call) => call.method === 'bureau.contexts.list').at(-1)?.params;
+  served.calls
+    .filter((call) => call.method === 'bureau.contexts.list' && 'agentName' in call.params)
+    .at(-1)?.params;
 
 describe('the request the Chats tab makes', () => {
   test('sends no filter for the defaults and names the order', () => {
@@ -183,7 +185,7 @@ describe('the Chats tab', () => {
 
 describe('the Instructions tab', () => {
   test('renders the file’s body as a document and lists its reference documents', async () => {
-    landAt('/agents/researcher?tab=instructions');
+    landAt('/agents/researcher/instructions');
     const definition = readyAgent({ id: 'researcher' });
     if (definition.definition === null) throw new Error('expected a definition');
     serve(
@@ -210,16 +212,14 @@ describe('the Instructions tab', () => {
       'references/style.md',
       'references/glossary.md',
     ]);
+    // The header holds the one Edit; the tab does not repeat it (sweep S51).
     const edits = await findAllByRole('link', { name: 'Edit' });
-    expect(edits.map((edit) => edit.getAttribute('href'))).toEqual([
-      '/agents/researcher/edit',
-      '/agents/researcher/edit',
-    ]);
+    expect(edits.map((edit) => edit.getAttribute('href'))).toEqual(['/agents/researcher/edit']);
     expect(container.querySelector('[role="status"]')).toBeNull();
   });
 
   test('says an agent with no reference documents reads none', async () => {
-    landAt('/agents/researcher?tab=instructions');
+    landAt('/agents/researcher/instructions');
     serve();
     const { container, findByText } = mount();
 
@@ -229,7 +229,7 @@ describe('the Instructions tab', () => {
   });
 
   test('says an agent defined in code cannot be edited, and offers no Edit', async () => {
-    landAt('/agents/assistant?tab=instructions');
+    landAt('/agents/assistant/instructions');
     const served = bureau({
       'bureau.agents.list': () => ({ agents: [AGENT] }),
       'bureau.agents.definitions.get': () => ({
@@ -278,7 +278,7 @@ describe('the Hooks tab', () => {
 
   test('lists the hooks the Bureau holds for this agent, and New hook starts one limited to it', async () => {
     const served = serve({ 'bureau.hooks.list': () => ({ hooks: [HOOK] }) });
-    landAt('/agents/researcher?tab=hooks');
+    landAt('/agents/researcher/hooks');
     const view = mount();
 
     await view.findByRole('link', {
@@ -292,7 +292,7 @@ describe('the Hooks tab', () => {
 
     // A click meant for a new tab is the browser's to follow.
     await fireEvent.click(newHook, { metaKey: true });
-    expect(router.pathname).toBe('/agents/researcher');
+    expect(router.pathname).toBe('/agents/researcher/hooks');
     await fireEvent.click(newHook);
     await waitFor(() => expect(router.pathname).toBe('/hooks/new'));
     expect(router.search.get('agent')).toBe('researcher');
@@ -300,7 +300,7 @@ describe('the Hooks tab', () => {
 
   test('says an agent with no hooks has none, with New hook as the action', async () => {
     serve({ 'bureau.hooks.list': () => ({ hooks: [] }) });
-    landAt('/agents/researcher?tab=hooks');
+    landAt('/agents/researcher/hooks');
     const view = mount();
 
     await view.findByRole('heading', { name: HOOKS_COPY.agentTab.emptyTitle });
@@ -315,7 +315,7 @@ describe('the Hooks tab', () => {
         });
       },
     });
-    landAt('/agents/researcher?tab=hooks');
+    landAt('/agents/researcher/hooks');
     const off = mount();
     await off.findByRole('heading', { level: 2, name: HOOKS_COPY.unavailable.title });
     cleanup();
@@ -328,7 +328,7 @@ describe('the Hooks tab', () => {
         return { hooks: [HOOK] };
       },
     });
-    landAt('/agents/researcher?tab=hooks');
+    landAt('/agents/researcher/hooks');
     const view = mount();
     await view.findByText(HOOKS_COPY.agentTab.loadFailed);
     failing = false;
@@ -367,7 +367,7 @@ describe('the Settings tab', () => {
   });
 
   test('shows the model, the models to switch to and the step limit, and leaves access to its own tab', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
     const { findByTestId, container } = mount();
 
@@ -382,7 +382,7 @@ describe('the Settings tab', () => {
   });
 
   test('says the default effort a chat starts at, and Not set when the file sets none', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     const agent = withSettings();
     serve(
       { 'bureau.agents.versions.list': () => ({ versions: [] }) },
@@ -398,7 +398,7 @@ describe('the Settings tab', () => {
   });
 
   test('says Not set for an agent whose file sets no default effort', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     serve({ 'bureau.agents.versions.list': () => ({ versions: [] }) }, withSettings());
     const { findByTestId } = mount();
     const shown = await findByTestId('agent-default-effort');
@@ -406,7 +406,7 @@ describe('the Settings tab', () => {
   });
 
   test('restores an older version over the hash of the file as read, and lists the result', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     let versions = [version(2, 'identity-2', ['instructions']), version(1, 'identity-1', ALL_KEYS)];
     const served = serve(
       {
@@ -434,7 +434,7 @@ describe('the Settings tab', () => {
   });
 
   test('says why a restore was refused', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     serve(
       {
         'bureau.agents.versions.list': () => ({
@@ -454,7 +454,7 @@ describe('the Settings tab', () => {
   });
 
   test('names a first version and a later save that changed nothing apart', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     serve(
       {
         'bureau.agents.versions.list': () => ({
@@ -471,7 +471,7 @@ describe('the Settings tab', () => {
   });
 
   test('says the agent changed and refetches the versions when a restore is stale', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     let listed = 0;
     serve(
       {
@@ -494,7 +494,7 @@ describe('the Settings tab', () => {
   });
 
   test('deletes the agent over the hash of the file as read and returns to the list', async () => {
-    landAt('/agents/researcher?tab=settings');
+    landAt('/agents/researcher/settings');
     const served = serve(
       {
         'bureau.agents.versions.list': () => ({ versions: [] }),

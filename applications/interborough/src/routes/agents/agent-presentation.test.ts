@@ -2,11 +2,13 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   agentFacts,
+  agentStatusLine,
+  allowedToolCount,
   chatCountText,
   chatUsageByAgent,
-  memoryTabText,
   newChatPath,
   shortVersion,
+  tabCountText,
   toolCountText,
 } from './agent-presentation.ts';
 
@@ -15,6 +17,52 @@ const MEDIA = { modalities: {}, mimeFamilies: [], mediaLimits: [] };
 describe('an agent as the agents views show it', () => {
   test('opens a new chat at an address that names it, encoded', () => {
     expect(newChatPath('research bot')).toBe('/chats/new?agent=research%20bot');
+  });
+});
+
+describe('the status line under an agent’s description', () => {
+  const usage = (waiting: number, running: number, count = 3) => ({
+    count,
+    lastChatAt: null,
+    waiting,
+    running,
+  });
+
+  test('says a chat waits on the person first, in amber, then the count, with no middle dot', () => {
+    expect(agentStatusLine(usage(1, 1), { known: true, unavailable: false })).toEqual({
+      tone: 'warning',
+      text: 'Waiting on you, 3 chats',
+    });
+    expect(agentStatusLine(usage(0, 2), { known: true, unavailable: false })).toEqual({
+      tone: 'info',
+      text: 'Running, 3 chats',
+    });
+    expect(agentStatusLine(usage(0, 0), { known: true, unavailable: false })).toEqual({
+      tone: null,
+      text: '3 chats',
+    });
+    expect(agentStatusLine(usage(1, 0), { known: true, unavailable: false })?.text).not.toContain(
+      String.fromCodePoint(0xb7),
+    );
+  });
+
+  test('says an agent with no chats has none, and says nothing while the chats are not known', () => {
+    expect(agentStatusLine(undefined, { known: true, unavailable: false })).toEqual({
+      tone: null,
+      text: 'No chats yet',
+    });
+    expect(agentStatusLine(undefined, { known: false, unavailable: false })).toBeUndefined();
+  });
+
+  test('says an agent a disabled plugin ships is unavailable, in a neutral tone, whatever its chats do', () => {
+    expect(agentStatusLine(usage(1, 0, 1), { known: true, unavailable: true })).toEqual({
+      tone: 'neutral',
+      text: 'Unavailable, 1 chat',
+    });
+    expect(agentStatusLine(undefined, { known: false, unavailable: true })).toEqual({
+      tone: 'neutral',
+      text: 'Unavailable',
+    });
   });
 });
 
@@ -53,6 +101,7 @@ describe('what an agent’s chats say of its use', () => {
       count: 3,
       lastChatAt: Date.parse('2026-10-23T11:57:00.000Z'),
       waiting: 0,
+      running: 0,
     });
     expect(usage.get('tool-runner')?.count).toBe(1);
     expect(usage.has('assistant')).toBe(false);
@@ -78,6 +127,8 @@ describe('what an agent’s chats say of its use', () => {
 
     expect(usage.get('echo')?.waiting).toBe(1);
     expect(usage.get('tool-runner')?.waiting).toBe(0);
+    expect(usage.get('echo')?.running).toBe(1);
+    expect(usage.get('tool-runner')?.running).toBe(0);
   });
 
   test('counts a session the Bureau gave twice once, as a list that shifted between page reads does', () => {
@@ -126,6 +177,7 @@ describe('what an agent’s chats say of its use', () => {
       count: 3,
       lastChatAt: Date.parse('2026-10-23T11:57:00.000Z'),
       waiting: 0,
+      running: 0,
     });
     expect(
       chatUsageByAgent([
@@ -135,7 +187,7 @@ describe('what an agent’s chats say of its use', () => {
   });
 
   test('words the count of chats, and says none yet for an agent that has had none', () => {
-    const usage = { count: 1, lastChatAt: NOW - 3 * 60_000, waiting: 0 };
+    const usage = { count: 1, lastChatAt: NOW - 3 * 60_000, waiting: 0, running: 0 };
 
     expect(chatCountText(usage)).toBe('1 chat');
     expect(chatCountText({ ...usage, count: 12 })).toBe('12 chats');
@@ -260,12 +312,22 @@ describe('an agent’s facts', () => {
   });
 });
 
-describe('an agent’s Memory tab and file version', () => {
-  test('carries the count once it is known, with a plus when pages are unread', () => {
-    expect(memoryTabText(undefined, false)).toBe('Memory');
-    expect(memoryTabText(0, false)).toBe('Memory');
-    expect(memoryTabText(12, false)).toBe('Memory 12');
-    expect(memoryTabText(20, true)).toBe('Memory 20+');
+describe('an agent’s tab counts and file version', () => {
+  test('carries a tab’s count once it is known, zero included, with a plus when pages are unread', () => {
+    expect(tabCountText(undefined)).toBeUndefined();
+    expect(tabCountText(0)).toBe('0');
+    expect(tabCountText(12)).toBe('12');
+    expect(tabCountText(20, true)).toBe('20+');
+  });
+
+  test('counts the tools an agent may call from its file, its own statement, or its listing', () => {
+    const file = { definition: { tools: ['a', 'b', 'c'] }, codeDefinition: null } as never;
+    const code = { definition: null, codeDefinition: { tools: ['a', 'b'] } } as never;
+    const silent = { definition: null, codeDefinition: null } as never;
+    expect(allowedToolCount(file, undefined)).toBe(3);
+    expect(allowedToolCount(code, ['x'])).toBe(2);
+    expect(allowedToolCount(silent, ['x'])).toBe(1);
+    expect(allowedToolCount(undefined, undefined)).toBeUndefined();
   });
 
   test('names a file version by the short form of its hash', () => {

@@ -11,7 +11,9 @@
    * no file to write, so it shows the tools it states for itself and says the rest cannot be changed.
    *
    * A form with unsaved changes is never replaced by a refetch: when the file's hash moves under it,
-   * the page keeps the form, says nothing was saved, and offers a reload.
+   * the page keeps the form, says nothing was saved, and offers a reload. The page's frame says when
+   * the agent is still being read or could not be (`agent-tab-state.svelte`); this tab says when the
+   * catalog of tools it offers could not be read.
    */
   import {
     Alert,
@@ -48,11 +50,9 @@
     id: string;
     /** The agent as the Bureau shows it, once read. */
     detail: AgentDetail | undefined;
-    failed: boolean;
-    onRetry: () => void;
   }
 
-  let { id, detail, failed, onRetry }: Props = $props();
+  let { id, detail }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.access;
   const limits = AGENT_EDITOR_COPY.limits;
@@ -272,16 +272,11 @@
 {/snippet}
 
 <div class="ib-agent-access" data-testid="agent-access">
-  {#if failed || catalog.isError}
+  {#if catalog.isError}
     <Alert variant="danger">
       <p>{copy.loadFailed}</p>
-      <Button
-        variant="secondary"
-        size="sm"
-        onclick={() => {
-          onRetry();
-          void catalog.refetch();
-        }}>{RETRY_LABEL}</Button
+      <Button variant="secondary" size="sm" onclick={() => void catalog.refetch()}
+        >{RETRY_LABEL}</Button
       >
     </Alert>
   {:else if plugin !== null}

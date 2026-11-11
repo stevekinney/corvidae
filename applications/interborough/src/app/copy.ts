@@ -3479,12 +3479,57 @@ export const AGENTS_COPY = {
 /** The words of an agent's page: its tabs, the controls over its chats, its instructions and its settings. */
 export const AGENT_PAGE_COPY = {
   tabsLabel: 'Sections of this agent',
+  /** Each tab's name, in the tab bar, in the narrow form's select and as the last breadcrumb. */
   tabs: {
     chats: 'Chats',
     instructions: 'Instructions',
     access: 'Access',
     hooks: 'Hooks',
+    memory: 'Memory',
     settings: 'Settings',
+  },
+  /**
+   * The header every tab shares (board PageAgent, rows 38a to 38c): the status line under the
+   * description, which names what the agent's chats are doing and then how many there are, and the
+   * reason an agent that needs a model cannot answer while no provider is connected.
+   */
+  header: {
+    waiting: 'Waiting on you',
+    running: 'Running',
+    unavailable: 'Unavailable',
+    noChats: 'No chats yet',
+    /** The status word, then the chat count: "Waiting on you, 3 chats". */
+    status: (state: string, chats: string): string => `${state}, ${chats}`,
+    needsProvider: 'Can’t answer until a provider is connected,',
+    connectProvider: 'Connect a provider',
+  },
+  /**
+   * What a tab body shows when it has nothing to show yet or its read failed (board PageAgent,
+   * "Loading" and "Error" frames, rows 39e to 39g). The header and the tab bar stay as they are.
+   */
+  tabState: {
+    loading: (tab: string): string => `Loading ${tab}`,
+    stillLoading: 'Still loading this tab. This is taking longer than usual.',
+    failedTitle: 'Couldn’t load this tab',
+    failedDescription: (status: number | undefined): string =>
+      status === undefined
+        ? 'The server didn’t answer. Nothing you did caused it.'
+        : `The server answered with an error (${String(status)}). Nothing you did caused it.`,
+    /** The tab still shows what it last loaded, and the banner over it says when that was. */
+    staleTitle: 'Couldn’t refresh this tab.',
+    staleSubject: 'this tab',
+  },
+  /**
+   * An agent whose plugin is disabled (board PageAgent, "Agent from a disabled plugin", rows 39c and
+   * 39d): it can be read and duplicated, and the banner over each tab says why it cannot run.
+   */
+  unavailable: {
+    title: (agent: string): string => `${agent} isn’t available`,
+    description: (plugin: string): string =>
+      `Its plugin, ${plugin}, is disabled. Chats stay readable; sending, approving and running need the agent.`,
+    enable: 'Enable and restart',
+    /** Why New chat is held: the reason its tooltip gives. */
+    newChatReason: (plugin: string): string => `Enable ${plugin} to start a chat`,
   },
   chats: {
     stateLabel: 'Show chats that are',
@@ -3495,7 +3540,6 @@ export const AGENT_PAGE_COPY = {
     startedBy: { any: 'Anyone', chat: 'You', schedule: 'A schedule', goal: 'A goal' },
     sortLabel: 'Sort by',
     sorts: { updated: 'Last activity', newest: 'Newest', oldest: 'Oldest' },
-    loadFailed: 'These chats could not be loaded.',
     emptyTitle: 'No chats with this agent yet',
     emptyDescription: 'A chat you start with it is listed here.',
     filteredTitle: 'No chats match',
@@ -3528,7 +3572,6 @@ export const AGENT_PAGE_COPY = {
     referencesDescription: 'Documents the agent reads, as paths beside its file.',
     noReferencesTitle: 'No reference documents',
     noReferencesDescription: 'This agent reads no documents besides its instructions.',
-    loadFailed: 'The instructions could not be loaded.',
   },
   access: {
     heading: 'Access',
@@ -3594,7 +3637,6 @@ export const AGENT_PAGE_COPY = {
     none: 'No limit',
     notSet: 'Not set',
     builtIn: 'This agent is built in, so its settings cannot be changed here.',
-    loadFailed: 'The settings could not be loaded.',
     deleteAction: 'Delete agent',
     deleteFailed: 'The agent could not be deleted.',
     deleteDialog: {
@@ -4302,9 +4344,10 @@ export const CHAT_COPY = {
 export type MemoryDeletionState = 'completed' | 'pending' | 'exempt' | 'failed' | 'unknown';
 
 /**
- * The words the Memory page uses outside its view states (`/agents/:agent/memories`): the list, the
- * search, one memory's lineage, and what forgetting and correcting answer. The page's loading,
- * empty, error, forbidden, and not-found states are the Agents view's (`VIEW_COPY.agents`).
+ * The words of an agent's Memory tab (`/agents/:agent/memory`): the list, the search, one memory's
+ * lineage, and what forgetting and correcting answer. The tab's first load and a first read that
+ * fails are worded as every tab's are (`AGENT_PAGE_COPY.tabState`), and not found is the Agents
+ * view's (`VIEW_COPY.agents`).
  */
 export const MEMORY_COPY = {
   /** The link on an agent's page that opens its memory. */
@@ -5798,27 +5841,8 @@ export const VIEW_COPY: Readonly<Record<ViewName, ViewCopy>> = {
       title: 'This agent doesn’t exist',
       description: NOT_FOUND_COPY.description,
     },
-    // An agent's memory page (`/agents/:agent/memories`) asks the Bureau for what the agent remembers.
-    loadingByPattern: {
-      '/agents/:agent/memories': {
-        title: 'Loading memory',
-        description: 'Asking the server what this agent remembers of your chats.',
-      },
-    },
-    errorByPattern: {
-      '/agents/:agent/memories': {
-        title: 'Memory is unavailable',
-        description:
-          'The server did not answer, or it keeps no memory. Check that the host is running, then try again.',
-      },
-    },
-    forbiddenByPattern: {
-      '/agents/:agent/memories': {
-        title: FORBIDDEN_COPY.title('this agent’s memory'),
-        // Memory is the one kind a credential does not reach by owning it, even for your own chats.
-        requirement: 'bureau.memory:read',
-      },
-    },
+    // Every tab of an agent's page, Memory among them, words its own loading and failure in its
+    // body under the agent's header (`AGENT_PAGE_COPY.tabState`), so the view has no words by pattern.
   },
   'agent-editor': {
     label: 'Agent editor',

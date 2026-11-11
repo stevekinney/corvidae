@@ -1,8 +1,12 @@
 /**
- * `/agents/:agent` by its tabs, against the real host: Chats (filtered by state, who started them
- * and a title search, each applied by the Bureau before it cuts a page), Instructions (the file's
- * body as a document, with Edit, and the reference documents), Access (the tools and when each asks first, the skills, guardrails and budgets; see
- * `agent-access.spec.ts`) and Settings (the model, Delete, and the saved versions with Restore). The tab is in the address.
+ * An agent's page by its tabs, against the real host: Chats (`/agents/:agent`, filtered by state,
+ * who started them and a title search, each applied by the Bureau before it cuts a page),
+ * Instructions (`/instructions`, the file's body as a document and the reference documents), Access
+ * (`/access`, the tools and when each asks first, the skills, guardrails and budgets; see
+ * `agent-access.spec.ts`), Memory (`/memory`, inside the same header and tab bar; see
+ * `27-agent-memory.spec.ts`) and Settings (`/settings`, the model, Delete, and the saved versions
+ * with Restore). Each tab is a path of its own; an address from before that (`?tab=`) is replaced
+ * with the tab's path.
  */
 import type { APIRequestContext, Page } from '@playwright/test';
 
@@ -101,7 +105,7 @@ test.describe('the Chats tab', () => {
 });
 
 test.describe('the Instructions tab', () => {
-  test('renders the body as a document, offers Edit, and says there are no reference documents', async ({
+  test('renders the body as a document, leaves Edit to the header, and says there are no reference documents', async ({
     page,
     request,
   }) => {
@@ -109,27 +113,52 @@ test.describe('the Instructions tab', () => {
     agents.add(id);
     await createAgentFile(request, id, { instructions: '# Be careful\n\nCite **every** source.' });
 
-    await page.goto(`/agents/${id}?tab=instructions`);
+    await page.goto(`/agents/${id}/instructions`);
 
     const body = page.getByTestId('agent-instructions-body');
     await expect(body.getByRole('heading', { name: 'Be careful' })).toBeVisible();
     await expect(body.locator('strong')).toHaveText('every');
     await expect(page.getByText(AGENT_PAGE_COPY.instructions.noReferencesTitle)).toBeVisible();
-    await page.getByRole('main').getByRole('link', { name: 'Edit' }).last().click();
+    // The header holds the one Edit; the tab does not repeat it.
+    await expect(page.getByRole('main').getByRole('link', { name: 'Edit' })).toHaveCount(1);
+    await page.getByTestId('agent-header').getByRole('link', { name: 'Edit' }).click();
     await expect(page).toHaveURL(new RegExp(`/agents/${id}/edit$`));
   });
 
-  test('keeps the tab in the address, and an unknown tab is Chats', async ({ page, request }) => {
+  test('gives each tab its own path, which a reload keeps, and replaces an old ?tab= address', async ({
+    page,
+    request,
+  }) => {
     const id = 'e2e-page-tabs';
     agents.add(id);
     await createAgentFile(request, id);
 
     await page.goto(`/agents/${id}`);
     await page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.instructions }).click();
-    await expect(page).toHaveURL(new RegExp(`/agents/${id}\\?tab=instructions$`));
+    await expect(page).toHaveURL(new RegExp(`/agents/${id}/instructions$`));
+    await page.reload();
+    await expect(
+      page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.instructions }),
+    ).toHaveAttribute('aria-selected', 'true');
+    // The breadcrumb names the tab under the agent.
+    await expect(page.getByRole('navigation', { name: 'Breadcrumb' })).toContainText(
+      AGENT_PAGE_COPY.tabs.instructions,
+    );
     await page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.chats }).click();
     await expect(page).toHaveURL(new RegExp(`/agents/${id}$`));
 
+    // Memory is a tab of the same page: the header and the tab bar stay above it.
+    await page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.memory }).click();
+    await expect(page).toHaveURL(new RegExp(`/agents/${id}/memory$`));
+    await expect(page.getByTestId('agent-header')).toBeVisible();
+
+    // An address from before each tab had a path opens the tab, not a missing page.
+    await page.goto(`/agents/${id}?tab=access`);
+    await expect(page).toHaveURL(new RegExp(`/agents/${id}/access$`));
+    await expect(page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.access })).toHaveAttribute(
+      'aria-selected',
+      'true',
+    );
     await page.goto(`/agents/${id}?tab=nonsense`);
     await expect(page).toHaveURL(new RegExp(`/agents/${id}$`));
     await expect(page.getByRole('tab', { name: AGENT_PAGE_COPY.tabs.chats })).toHaveAttribute(
@@ -155,7 +184,7 @@ test.describe('the Settings tab', () => {
     });
     expect(saved.fault).toBeUndefined();
 
-    await page.goto(`/agents/${id}?tab=settings`);
+    await page.goto(`/agents/${id}/settings`);
 
     const versions = page.getByTestId('agent-versions');
     await expect(versions.locator('[data-revision]')).toHaveCount(2);
@@ -170,7 +199,7 @@ test.describe('the Settings tab', () => {
     agents.add(id);
     await createAgentFile(request, id);
 
-    await page.goto(`/agents/${id}?tab=settings`);
+    await page.goto(`/agents/${id}/settings`);
     await page.getByRole('button', { name: AGENT_PAGE_COPY.settings.deleteAction }).click();
     await page
       .getByRole('dialog')
@@ -185,13 +214,13 @@ test.describe('the Settings tab', () => {
 
 for (const width of WIDTHS) {
   test.describe(`at ${width} pixels`, () => {
-    for (const tab of ['chats', 'instructions', 'access', 'settings'] as const) {
+    for (const tab of ['chats', 'instructions', 'access', 'memory', 'settings'] as const) {
       test(`the ${tab} tab passes axe`, async ({ page, request, checkA11y }) => {
         await page.setViewportSize({ width, height: 900 });
         const id = 'e2e-page-axe';
         agents.add(id);
         await createAgentFile(request, id);
-        await page.goto(`/agents/${id}${tab === 'chats' ? '' : `?tab=${tab}`}`);
+        await page.goto(`/agents/${id}${tab === 'chats' ? '' : `/${tab}`}`);
         // At the phone width the tab bar is one select named Tab, and the open tab is its value.
         await expectTabOpen(page.locator('body'), AGENT_PAGE_COPY.tabs[tab]);
         if (tab === 'settings') await expect(page.getByTestId('agent-versions')).toBeVisible();

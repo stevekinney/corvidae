@@ -1,31 +1,31 @@
 <script lang="ts">
   /**
    * The Instructions tab of an agent's page: the body of the agent's file as a rendered document,
-   * with Edit, and the reference documents the file lists. An agent defined in code has no file to
-   * edit, so it says so where Edit would be and shows the instructions it states for itself when
-   * it states any. The Markdown is rendered and sanitized by `@lostgradient/markdown`.
+   * and the reference documents the file lists. The tab bar names the tab and the header holds
+   * Edit, so the body repeats neither (sweep S51). An agent defined in code has no file to edit, so
+   * it says so and shows the instructions it states for itself when it states any. The page's frame
+   * says when the agent is still being read or could not be (`agent-tab-state.svelte`). The
+   * Markdown is rendered and sanitized by `@lostgradient/markdown`.
    */
-  import { Alert, Button, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
+  import { Button, EmptyState, SectionHeading, Skeleton } from '@lostgradient/cinder';
   import { renderMarkdown } from '@lostgradient/markdown';
 
-  import { AGENT_PAGE_COPY, AGENT_EDITOR_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { AGENT_PAGE_COPY } from '../../app/copy.ts';
   import type { AgentDetail } from '../../lib/agent-definitions.ts';
   import { keyedByOccurrence } from '../../lib/list-keys.ts';
   import { router } from '../../lib/router.svelte.ts';
   import AgentPluginNote from './agent-plugin-note.svelte';
 
   interface Props {
-    /** Where Edit goes: the agent's editor. */
+    /** Where Add instructions goes: the agent's editor. */
     editPath: string;
     /** The plugin that ships the agent, or `null`: its file is read-only. */
     plugin: string | null;
     /** The agent as the Bureau shows it, once read. */
     detail: AgentDetail | undefined;
-    failed: boolean;
-    onRetry: () => void;
   }
 
-  let { editPath, plugin, detail, failed, onRetry }: Props = $props();
+  let { editPath, plugin, detail }: Props = $props();
 
   const copy = AGENT_PAGE_COPY.instructions;
 
@@ -54,26 +54,12 @@
 {/snippet}
 
 <div class="ib-agent-instructions" data-testid="agent-instructions">
-  {#if failed}
-    <Alert variant="danger">
-      <p>{copy.loadFailed}</p>
-      <Button variant="secondary" size="sm" onclick={onRetry}>{RETRY_LABEL}</Button>
-    </Alert>
-  {:else if detail === undefined}
+  {#if detail === undefined}
     <div role="status" aria-busy="true" aria-label={copy.heading}>
       <Skeleton height="8rem" />
     </div>
   {:else}
     <section class="ib-agent-section" aria-label={copy.heading}>
-      <SectionHeading level={2} title={copy.heading}>
-        {#snippet actions()}
-          {#if isFile && plugin === null}
-            <Button href={router.href(editPath)} variant="secondary" size="sm" onclick={goToEditor}
-              >{AGENT_EDITOR_COPY.editAction}</Button
-            >
-          {/if}
-        {/snippet}
-      </SectionHeading>
       {#if plugin !== null}
         <AgentPluginNote {plugin} />
       {:else if !isFile}

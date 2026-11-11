@@ -31,6 +31,7 @@ const used = (lastChatAt: number | null, count = 1, waiting = 0) => ({
   count,
   lastChatAt,
   waiting,
+  running: 0,
 });
 
 describe('what an agent is called in a row', () => {

@@ -1,7 +1,8 @@
 /**
- * Duplicate on an agent's page. A built-in agent and a file agent offer it as a link to the form
- * for a new agent filled from them (`/agents/new?from=`), which writes nothing; a plugin's agent
- * keeps its own Duplicate, which writes the copy (`plugin-agent-page.test.ts`).
+ * Duplicate on an agent's page. A built-in agent, which cannot be edited, offers it as a link to
+ * the form for a new agent filled from it (`/agents/new?from=`), which writes nothing; a plugin's
+ * agent keeps its own Duplicate, which writes the copy (`plugin-agent-page.test.ts`). An agent file
+ * the owner keeps has Edit and New chat in its header and no Duplicate (board PageAgent, row 38c).
  */
 import { cleanup, fireEvent, render, waitFor } from '@testing-library/svelte';
 import { afterEach, describe, expect, test } from 'bun:test';
@@ -54,13 +55,13 @@ describe('Duplicate on an agent’s page', () => {
     expect(served.calls.some((call) => call.method.includes('create'))).toBe(false);
   });
 
-  test('is offered beside Edit on a file agent', async () => {
+  test('is not in the header of a file agent, which holds Edit and New chat', async () => {
     landAt('/agents/researcher');
     serve({ ...AGENT, name: 'researcher', displayName: 'Researcher', kind: 'file' });
-    const { findByRole } = mount();
+    const { findByRole, queryByRole } = mount();
 
     await findByRole('link', { name: AGENT_EDITOR_COPY.editAction });
-    const duplicate = await findByRole('link', { name: AGENT_PAGE_COPY.duplicate });
-    expect(duplicate.getAttribute('href')).toBe('/agents/new?from=researcher');
+    await findByRole('link', { name: 'New chat' });
+    expect(queryByRole('link', { name: AGENT_PAGE_COPY.duplicate })).toBeNull();
   });
 });

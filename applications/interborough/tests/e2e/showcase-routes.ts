@@ -25,9 +25,12 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
     '/agents/new': '/agents/new',
     '/capabilities': '/capabilities',
     '/agents/:agent/edit': `/agents/${agent}/edit`,
-    '/agents/:agent/memories': `/agents/${agent}/memories`,
-    '/agents/:agent/memories/:memory': `/agents/${agent}/memories/${encodeURIComponent(world.memory)}`,
     '/agents/:agent': `/agents/${agent}`,
+    '/agents/:agent/instructions': `/agents/${agent}/instructions`,
+    '/agents/:agent/access': `/agents/${agent}/access`,
+    '/agents/:agent/hooks': `/agents/${agent}/hooks`,
+    '/agents/:agent/memory': `/agents/${agent}/memory`,
+    '/agents/:agent/settings': `/agents/${agent}/settings`,
     '/workflows': '/workflows',
     '/workflows/new': '/workflows/new',
     '/workflows/:workflow': `/workflows/${workflow}`,
@@ -67,13 +70,17 @@ export function showcaseAddresses(world: SampleWorldRecords): Readonly<Record<st
 
 /**
  * Addresses of a route in another state, by `<pattern> (<state>)`: the sample world's other chats
- * (the release question, the lookup, the chat a restart ended), Tool runner's tabs, Release notes'
- * tabs and Order refund, which can't load, a run in each state the sample world holds, the Reviews
- * page with a review open, the schedules that are paused, missed runs and can't load, the goals
- * that gave up and were stopped, and the hook that is off. Each is captured like a route of its own.
+ * (the release question, the lookup, the chat a restart ended), Tool runner's Memory tab with a
+ * memory open, the page of Release helper, which the disabled Demo plugin ships, on its Chats and
+ * Memory tabs, Workflow author, which has no chats, Release notes' tabs and Order refund, which
+ * can't load, a run in each state the sample world holds, the Reviews page with a review open, the
+ * schedules that are paused, missed runs and can't load, the goals that gave up and were stopped,
+ * and the hook that is off. Each is captured like a route of its own.
  */
 export function showcaseVariants(world: SampleWorldRecords): Readonly<Record<string, string>> {
   const agent = `/agents/${encodeURIComponent(world.agent)}`;
+  // The Demo plugin's Release helper: the sample world keeps Demo off, so the agent is unavailable.
+  const heldByPlugin = `/agents/${encodeURIComponent('demo:release-helper')}`;
   const workflow = `/workflows/${encodeURIComponent(world.workflows.releaseNotes)}`;
   const thread = (id: string): string => `/chats/${encodeURIComponent(id)}`;
   const run = (id: string): string => `/runs/${encodeURIComponent(id)}`;
@@ -83,10 +90,10 @@ export function showcaseVariants(world: SampleWorldRecords): Readonly<Record<str
     '/chats/:chat (question waiting)': thread(world.chats.release),
     '/chats/:chat (lookup done)': thread(world.chats.lookUp4468),
     '/chats/:chat (ended by a restart)': thread(world.chats.billing),
-    '/agents/:agent (instructions tab)': `${agent}?tab=instructions`,
-    '/agents/:agent (access tab)': `${agent}?tab=access`,
-    '/agents/:agent (hooks tab)': `${agent}?tab=hooks`,
-    '/agents/:agent (settings tab)': `${agent}?tab=settings`,
+    '/agents/:agent/memory (memory open)': `${agent}/memory?selected=${encodeURIComponent(world.memory)}`,
+    '/agents/:agent (disabled plugin)': heldByPlugin,
+    '/agents/:agent/memory (disabled plugin)': `${heldByPlugin}/memory`,
+    '/agents/:agent (no chats)': '/agents/workflow-author',
     '/workflows/:workflow (code tab)': `${workflow}?tab=code`,
     '/workflows/:workflow (runs tab)': `${workflow}?tab=runs`,
     '/workflows/:workflow (history tab)': `${workflow}?tab=history`,

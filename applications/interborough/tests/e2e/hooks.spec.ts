@@ -184,7 +184,7 @@ test('limits a hook to one agent with Only for: it fires for that agent, and its
   const thread = newThreadId('hooks-only-for');
   try {
     await runToEnd(request, TEXT_ECHO_AGENT_NAME, thread, 'Say something');
-    await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}?tab=hooks`);
+    await page.goto(`/agents/${TEXT_ECHO_AGENT_NAME}/hooks`);
     const row = page.getByTestId('agent-hooks').locator('li[data-hook]', { hasText: name });
     await expect(row.locator('[data-status-word="Delivered"]')).toBeVisible();
 

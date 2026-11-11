@@ -1,4 +1,4 @@
-import { AGENTS_COPY, MEMORY_COPY } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY, AGENTS_COPY } from '../../app/copy.ts';
 import type { AgentDetail } from '../../lib/agent-definitions.ts';
 import type { AgentModels, AgentSummary, ChatContext } from '../../lib/bureau-client.ts';
 
@@ -13,13 +13,16 @@ export type AgentChatUsage = {
   readonly lastChatAt: number | null;
   /** How many of the chats wait on the person: the Bureau's `awaiting-input` activity. */
   readonly waiting: number;
+  /** How many of the chats have a run going now: the Bureau's `running` activity. */
+  readonly running: number;
 };
 
 /**
  * The chat count and last-chat time of each agent, from the sessions the Bureau lists. Both are the
  * Bureau's own figures grouped by the agent each session names: a count is the sessions, and the
  * last-chat time is the latest `updatedAt` among them (a session that is still being talked in
- * counts as used now). `waiting` counts the sessions that wait on the person. A session read twice counts once. An agent with no session has no entry.
+ * counts as used now). `waiting` counts the sessions that wait on the person, and `running` the
+ * ones with a run going. A session read twice counts once. An agent with no session has no entry.
  */
 export function chatUsageByAgent(
   contexts: readonly Pick<ChatContext, 'id' | 'agentName' | 'updatedAt' | 'activity'>[],
@@ -37,6 +40,7 @@ export function chatUsageByAgent(
     usage.set(context.agentName, {
       count: (known?.count ?? 0) + 1,
       waiting: (known?.waiting ?? 0) + (context.activity === 'awaiting-input' ? 1 : 0),
+      running: (known?.running ?? 0) + (context.activity === 'running' ? 1 : 0),
       lastChatAt:
         latest === null
           ? (known?.lastChatAt ?? null)
@@ -103,14 +107,66 @@ export function toolCountText(tools: readonly string[] | null): string | undefin
   return tools.length === 0 ? AGENTS_COPY.noTools : AGENTS_COPY.toolCount(tools.length);
 }
 
+/** The status line under an agent's description: its words, and the tone of the dot beside them. */
+export type AgentStatusLine = {
+  /** The dot's tone, or `null` for a line with no dot. */
+  readonly tone: 'warning' | 'info' | 'neutral' | null;
+  /** "Waiting on you, 3 chats", "Unavailable, 1 chat", "No chats yet" or "3 chats". */
+  readonly text: string;
+};
+
 /**
- * The label of an agent's Memory tab. The count follows once the Bureau has said how many
- * memories there are, with a plus when only the first page of them has been read; an agent that
- * remembers nothing is just "Memory", because "Memory 0" reads as a fault.
+ * The status line under an agent's description (board PageAgent, rows 38b, 39c and 39o): what its
+ * chats are doing, in the tone of the dot beside it, then how many chats it has. A chat that waits
+ * on the person comes first, then one that is running. An agent a disabled plugin ships is
+ * unavailable whatever its chats are doing. An agent with no chats says so alone, and one whose
+ * chats are all at rest has only its count, with no dot. `undefined` while the chats are not
+ * `known`.
  */
-export function memoryTabText(count: number | undefined, more: boolean): string {
-  if (count === undefined || (count === 0 && !more)) return MEMORY_COPY.link;
-  return AGENTS_COPY.memoryWithCount(count, more);
+export function agentStatusLine(
+  usage: AgentChatUsage | undefined,
+  options: { readonly known: boolean; readonly unavailable: boolean },
+): AgentStatusLine | undefined {
+  const words = AGENT_PAGE_COPY.header;
+  const count = usage?.count ?? 0;
+  if (options.unavailable) {
+    const text = options.known
+      ? words.status(words.unavailable, AGENTS_COPY.chatCount(count))
+      : words.unavailable;
+    return { tone: 'neutral', text };
+  }
+  if (!options.known) return undefined;
+  if (usage === undefined || count === 0) return { tone: null, text: words.noChats };
+  if (usage.waiting > 0) {
+    return { tone: 'warning', text: words.status(words.waiting, AGENTS_COPY.chatCount(count)) };
+  }
+  if (usage.running > 0) {
+    return { tone: 'info', text: words.status(words.running, AGENTS_COPY.chatCount(count)) };
+  }
+  return { tone: null, text: AGENTS_COPY.chatCount(count) };
+}
+
+/**
+ * How many tools an agent may call, for its Access tab's count: the tools its file names, the tools
+ * an agent defined in code states for itself, or else the tools its listing names. `undefined`
+ * when none of them says, which is never shown as none.
+ */
+export function allowedToolCount(
+  detail: Pick<AgentDetail, 'definition' | 'codeDefinition'> | undefined,
+  listed: readonly string[] | undefined,
+): number | undefined {
+  const tools = detail?.definition?.tools ?? detail?.codeDefinition?.tools ?? listed;
+  return tools?.length;
+}
+
+/**
+ * A tab's count as the tab bar shows it after the tab's name: the number, with a plus when only the
+ * first pages have been read, or `undefined` while it is not known. Zero is shown, because an empty
+ * tab is a fact the person reads before opening it (board PageAgent, row 39o).
+ */
+export function tabCountText(count: number | undefined, more = false): string | undefined {
+  if (count === undefined) return undefined;
+  return `${String(count)}${more ? '+' : ''}`;
 }
 
 /** The short form of an agent file's hash that names its version, as the revision history shows it. */

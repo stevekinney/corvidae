@@ -103,7 +103,7 @@ function serve(extra: Answers = {}, detail = detailWith(), skills: unknown[] = S
 
 describe('the tab', () => {
   test('is the Access tab, in the address, after Instructions', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve();
     const { findByRole, findByTestId } = mount();
 
@@ -117,7 +117,7 @@ describe('the tab', () => {
   });
 
   test('lists each tool with its tier and, for an allowed tool, when it asks first', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve();
     const { container, findByTestId, getByRole } = mount();
 
@@ -140,7 +140,7 @@ describe('the tab', () => {
   });
 
   test('says an unclassified tool still asks under Never, and a classified one does not', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve(
       {},
       detailWith({
@@ -164,7 +164,7 @@ describe('the tab', () => {
   });
 
   test('saves a per-tool Always as the whole definition, over the hash of the file as read', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve({
       'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
     });
@@ -198,7 +198,7 @@ describe('the tab', () => {
   });
 
   test('leaves the default effort out of its write, so the file keeps the one it holds', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
       detailWith({ effort: 'high' }),
@@ -221,7 +221,7 @@ describe('the tab', () => {
   });
 
   test('drops a tool’s approval in the same write that withdraws the tool', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
       detailWith({ approvals: { 'lookup-order': 'always' } }),
@@ -238,7 +238,7 @@ describe('the tab', () => {
   });
 
   test('saves the budgets and refuses a number the Bureau would refuse', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve({
       'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
     });
@@ -261,7 +261,7 @@ describe('the tab', () => {
   });
 
   test('says the file changed, and reloads it, when the write is stale', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let reads = 0;
     const served = serve({
       'bureau.agents.definitions.get': () => {
@@ -283,7 +283,7 @@ describe('the tab', () => {
   });
 
   test('keeps a dirty form, says the file changed, and reloads on request, when the write is stale', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let hash = 'hash-1';
     serve({
       'bureau.agents.definitions.get': () => ({ ...detailWith(), hash }),
@@ -312,7 +312,7 @@ describe('the tab', () => {
   });
 
   test('says the file could not be read when a reload fails', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let failReads = false;
     serve({
       'bureau.agents.definitions.get': () => {
@@ -335,7 +335,7 @@ describe('the tab', () => {
   });
 
   test('keeps a dirty form when coming back to the window reads a file with a new hash', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let hash = 'hash-1';
     let reads = 0;
     serve({
@@ -363,7 +363,7 @@ describe('the tab', () => {
   });
 
   test('rebuilds a form with no edits when the file’s hash changes', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let hash = 'hash-1';
     let tools = ['lookup-order'];
     let reads = 0;
@@ -390,7 +390,7 @@ describe('the tab', () => {
   });
 
   test('rebuilds from the hash a save returned, without calling it a change', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let hash = 'hash-1';
     let tools = ['lookup-order'];
     const served = serve({
@@ -415,7 +415,7 @@ describe('the tab', () => {
   });
 
   test('restores a tool’s approval when it is withdrawn and allowed again', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve(
       { 'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }) },
       detailWith({ approvals: { 'lookup-order': 'blocked' } }),
@@ -442,7 +442,7 @@ describe('the tab', () => {
   });
 
   test('saves the guardrails, the chat limit and the tool time as typed', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve({
       'bureau.agents.definitions.update': () => ({ id: 'researcher', hash: 'hash-2' }),
     });
@@ -474,7 +474,7 @@ describe('the tab', () => {
     ['a caller who may not change it', new StubFault('Forbidden', 403, 'No.'), copy.forbidden],
   ] as const) {
     test(`says why the write failed: ${name}`, async () => {
-      landAt('/agents/researcher?tab=access');
+      landAt('/agents/researcher/access');
       serve({
         'bureau.agents.definitions.update': () => {
           throw fault;
@@ -490,7 +490,7 @@ describe('the tab', () => {
   }
 
   test('dismisses a refusal', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({
       'bureau.agents.definitions.update': () => {
         throw new StubFault('Unprocessable', 422, 'The budget is not valid.');
@@ -509,7 +509,7 @@ describe('the tab', () => {
   });
 
   test('says why when the Bureau refuses the write', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({
       'bureau.agents.definitions.update': () => {
         throw new StubFault('Unprocessable', 422, 'The budget is not valid.');
@@ -526,7 +526,7 @@ describe('the tab', () => {
 
 describe('the skills', () => {
   test('disables an untrusted skill and says why, so it cannot be granted', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve();
     const { container, findByRole } = mount();
 
@@ -542,7 +542,7 @@ describe('the skills', () => {
   });
 
   test('grants a skill with the rest of the tab, and keeps the file with no list until then', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve({
       [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }),
     });
@@ -567,7 +567,7 @@ describe('the skills', () => {
   });
 
   test('withdraws the last skill as an empty list, which grants none', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
       detailWith({ skills: ['summarize'] }),
@@ -585,7 +585,7 @@ describe('the skills', () => {
   });
 
   test('lets a skill the file names be withdrawn once its source is untrusted, and not granted back', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({}, detailWith({ skills: ['deploy'] }));
     const { findByRole } = mount();
 
@@ -598,7 +598,7 @@ describe('the skills', () => {
   });
 
   test('keeps a skill the host no longer lists, marked, until it is withdrawn', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     const served = serve(
       { [UPDATE]: () => ({ id: 'researcher', hash: 'hash-2' }) },
       detailWith({ skills: ['gone', 'summarize'] }),
@@ -624,7 +624,7 @@ describe('the skills', () => {
   });
 
   test('shows the Bureau’s refusal of a grant', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({
       [UPDATE]: () => {
         throw new StubFault('Unprocessable', 422, 'The definition cannot grant "summarize".');
@@ -652,7 +652,7 @@ describe('the skills', () => {
   });
 
   test('says there are none, with the way to the skills, and that they could not be loaded', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({}, detailWith(), []);
     const { container, findByText, findByRole } = mount();
 
@@ -665,7 +665,7 @@ describe('the skills', () => {
   });
 
   test('opens the skills page from the empty state', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({}, detailWith(), []);
     const { findByRole } = mount();
 
@@ -673,13 +673,13 @@ describe('the skills', () => {
     // A modified click is the browser's (a new tab), so the page leaves it alone.
     link.addEventListener('click', (event) => event.preventDefault(), { once: true });
     await fireEvent.click(link, { metaKey: true });
-    expect(router.pathname).toBe('/agents/researcher');
+    expect(router.pathname).toBe('/agents/researcher/access');
     link.click();
     expect(router.pathname).toBe('/capabilities');
   });
 
   test('says the skills could not be loaded, with a retry', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let fail = true;
     serve({
       'bureau.skills.list': () => {
@@ -698,7 +698,7 @@ describe('the skills', () => {
 
 describe('the states', () => {
   test('says the host offers no tools, with the first-use kind', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve(
       { 'bureau.agents.catalog': () => catalogFixture({ tools: [] }) },
       detailWith({ tools: [] }),
@@ -710,7 +710,7 @@ describe('the states', () => {
   });
 
   test('marks a tool the file lists and the host no longer offers, and lets it be withdrawn', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({}, detailWith({ tools: ['lookup-order', 'retired-tool'] }));
     const { container, findByText } = mount();
 
@@ -721,7 +721,7 @@ describe('the states', () => {
   });
 
   test('says the tab could not be loaded, with a retry that asks again', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     let fail = true;
     serve({
       'bureau.agents.catalog': () => {
@@ -739,7 +739,7 @@ describe('the states', () => {
   });
 
   test('says an agent whose file has a problem cannot have its access changed', async () => {
-    landAt('/agents/researcher?tab=access');
+    landAt('/agents/researcher/access');
     serve({}, { ...detailWith(), state: 'invalid', definition: null } as never);
     const { findByText, queryByRole } = mount();
 
@@ -748,7 +748,7 @@ describe('the states', () => {
   });
 
   test('says an agent in code states no tools', async () => {
-    landAt('/agents/assistant?tab=access');
+    landAt('/agents/assistant/access');
     serve({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, name: 'assistant', kind: 'code' }] }),
       'bureau.agents.definitions.get': () => ({
@@ -775,7 +775,7 @@ describe('the states', () => {
   });
 
   test('shows an agent in code read-only, with the tools it states and no save', async () => {
-    landAt('/agents/assistant?tab=access');
+    landAt('/agents/assistant/access');
     serve({
       'bureau.agents.list': () => ({ agents: [{ ...AGENT, name: 'assistant', kind: 'code' }] }),
       'bureau.agents.definitions.get': () => ({

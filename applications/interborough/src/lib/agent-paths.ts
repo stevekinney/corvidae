@@ -1,12 +1,38 @@
 /**
- * The addresses of an agent: its page, its editor, and its memory. This is the one module that spells them, so a
- * link to an agent from the agent list, a schedule, or a goal cannot disagree about how a name is
- * encoded (`app/routes.test.ts` fails if another file builds one).
+ * The addresses of an agent: its page and each of its tabs, its editor, and its memory. This is the
+ * one module that spells them, so a link to an agent from the agent list, a schedule, or a goal
+ * cannot disagree about how a name is encoded (`app/routes.test.ts` fails if another file builds one).
  */
 
-/** An agent's page. */
+/**
+ * The tabs of an agent's page, in the order the tab bar shows them. Each is a path of its own under
+ * the agent (`/agents/<name>/access`), except Chats, which is the agent's own address.
+ */
+export const AGENT_TABS = [
+  'chats',
+  'instructions',
+  'access',
+  'hooks',
+  'memory',
+  'settings',
+] as const;
+
+/** One tab of an agent's page. */
+export type AgentTab = (typeof AGENT_TABS)[number];
+
+/** Whether `value` names a tab of an agent's page. */
+export function isAgentTab(value: string): value is AgentTab {
+  return AGENT_TABS.some((tab) => tab === value);
+}
+
+/** An agent's page, which opens on its Chats tab. */
 export function agentPath(name: string): string {
   return `/agents/${encodeURIComponent(name)}`;
+}
+
+/** One tab of an agent's page: Chats is the page's own address, and every other tab is nested under it. */
+export function agentTabPath(name: string, tab: AgentTab): string {
+  return tab === 'chats' ? agentPath(name) : `${agentPath(name)}/${tab}`;
 }
 
 /** An agent's editor. */
@@ -19,14 +45,14 @@ export function agentDuplicatePath(name: string): string {
   return `/agents/new?from=${encodeURIComponent(name)}`;
 }
 
-/** What an agent remembers. */
-export function agentMemoryPath(name: string): string {
-  return `${agentPath(name)}/memories`;
-}
-
-/** One memory of an agent, open beside the list of the others: the identifier is one path segment. */
-export function agentMemoryItemPath(name: string, memory: string): string {
-  return `${agentMemoryPath(name)}/${encodeURIComponent(memory)}`;
+/**
+ * What an agent remembers: its page's Memory tab, with the memory `selected` open beside the list
+ * when one is named. The open memory is in the query (`?selected=`), so choosing one replaces the
+ * address in place and the tab stays mounted.
+ */
+export function agentMemoryPath(name: string, selected?: string): string {
+  const tab = agentTabPath(name, 'memory');
+  return selected === undefined ? tab : `${tab}?${new URLSearchParams({ selected }).toString()}`;
 }
 
 /**

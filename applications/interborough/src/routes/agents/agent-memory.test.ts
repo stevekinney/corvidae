@@ -1,15 +1,16 @@
 /**
- * The Memory page (`/agents/:agent/memories`) against a stand-in for the server's memory operations:
- * the list with the open memory beside it, the search that runs as you type, the kind filter, one
- * memory's facts, adding a memory, what forgetting answers in each of the deletion's states,
- * correcting in place (the original is kept in the history), and the governance actions (share,
- * hold, quarantine, export). The Agents view's frame owns the page's loading, failing, locked and
- * not-found states (`app/view-frame.test.ts`). The real server is exercised in the Playwright suite.
+ * The Memory tab of an agent's page (`/agents/:agent/memory`) against a stand-in for the server's
+ * memory operations: the list with the open memory beside it (`?selected=`), the search that runs as
+ * you type, the kind filter, one memory's facts, adding a memory, what forgetting answers in each of
+ * the deletion's states, correcting in place (the original is kept in the history), and the
+ * governance actions (share, hold, quarantine, export). The tab words its own first load and its
+ * failure in its body (`agent-tab-state.svelte`); the Agents view's frame owns not-found
+ * (`app/view-frame.test.ts`). The real server is exercised in the Playwright suite.
  */
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/svelte';
 import { afterEach, describe, expect, mock, test } from 'bun:test';
 
-import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+import { AGENT_PAGE_COPY, MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
 import {
   installBureauStub,
   StubFault,
@@ -94,7 +95,7 @@ function bureau(answers: Answers = {}): BureauStub {
   return stub;
 }
 
-function open(path = '/agents/assistant/memories') {
+function open(path = '/agents/assistant/memory') {
   landAt(path);
   return mount(AgentMemory);
 }
@@ -154,13 +155,15 @@ describe('the list', () => {
     );
   });
 
-  test('is a list with the open memory beside it: the title, Export and the filters sit in its own header', async () => {
+  test('is a list with the open memory beside it: Add, Export and the filters sit in its own header', async () => {
     bureau();
     const view = open();
     await view.findByText(AISLE.content);
 
     const list = view.getByRole('region', { name: MEMORY_COPY.listLabel });
-    expect(within(list).getByRole('heading', { level: 1 }).textContent).toBe(MEMORY_COPY.heading);
+    // The tab bar names the tab, so the list repeats no heading of its own (sweep S51).
+    expect(within(list).queryByRole('heading', { level: 1 })).toBeNull();
+    expect(within(list).getByRole('button', { name: MEMORY_COPY.add.action })).not.toBeNull();
     expect(
       within(list).getByRole('button', { name: MEMORY_COPY.govern.export.action }),
     ).not.toBeNull();
@@ -232,7 +235,9 @@ describe('the list', () => {
     });
     const { findByText, getByRole } = open();
 
-    await findByText(MEMORY_COPY.listFailed);
+    // Nothing was read, so the tab's body says it could not load, under the header and the tabs.
+    await findByText(AGENT_PAGE_COPY.tabState.failedTitle);
+    await findByText(AGENT_PAGE_COPY.tabState.failedDescription(500));
     failing = false;
     await fireEvent.click(getByRole('button', { name: RETRY_LABEL }));
 
@@ -504,33 +509,30 @@ describe('one memory', () => {
     expect(factOf(detail, MEMORY_COPY.detail.fields.legalHold)).toBeNull();
   });
 
-  test('keeps the open memory in the path, and opens the one the path names', async () => {
+  test('keeps the open memory in the address, and opens the one the address names', async () => {
     bureau();
-    const view = open('/agents/assistant/memories/memory-window');
+    const view = open('/agents/assistant/memory?selected=memory-window');
 
     const detail = await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
     await waitFor(() =>
       expect(detail.querySelector('blockquote')?.textContent).toContain(WINDOW.content),
     );
     await fireEvent.click(rowOf(view, AISLE.id));
-    await waitFor(() => expect(router.pathname).toBe(`/agents/assistant/memories/${AISLE.id}`));
-    // The path names the memory, so no `?memory=` is left beside it.
-    expect(router.search.get('memory')).toBeNull();
-    expect(router.current.route?.pattern).toBe('/agents/:agent/memories/:memory');
-    expect(router.current.params['memory']).toBe(AISLE.id);
+    await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
+    // The tab stays the Memory tab: only the query names the memory.
+    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.current.route?.pattern).toBe('/agents/:agent/memory');
   });
 
-  test('writes an identifier that is not a plain segment into the path whole, and reads it back', async () => {
+  test('writes an identifier that is not a plain word into the address whole, and reads it back', async () => {
     const odd = { ...AISLE, id: 'memory/with space?and#more', content: 'An odd identifier.' };
     bureau({ 'bureau.memory.list': () => ({ memories: [odd], nextOffset: null }) });
     const view = open();
 
     await fireEvent.click(await waitFor(() => rowOf(view, odd.id)));
-    await waitFor(() =>
-      expect(router.pathname).toBe(`/agents/assistant/memories/${encodeURIComponent(odd.id)}`),
-    );
-    expect(router.current.params['memory']).toBe(odd.id);
-    expect(router.search.toString()).toBe('');
+    await waitFor(() => expect(router.search.get('selected')).toBe(odd.id));
+    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.search.toString()).toBe(new URLSearchParams({ selected: odd.id }).toString());
   });
 
   test('stays on the memory page, with the same typed search, when a memory is chosen', async () => {
@@ -546,18 +548,18 @@ describe('one memory', () => {
     );
 
     await fireEvent.click(rowOf(view, AISLE.id));
-    await waitFor(() => expect(router.pathname).toBe(`/agents/assistant/memories/${AISLE.id}`));
+    await waitFor(() => expect(router.search.get('selected')).toBe(AISLE.id));
 
     // Choosing a memory is not a new page: what was typed is still in the box.
     expect((search as HTMLInputElement).value).toBe('aisle');
   });
 
-  test('shows the list alone when the path stops naming a memory, as Back does', async () => {
+  test('shows the list alone when the address stops naming a memory, as Back does', async () => {
     bureau();
-    const view = open(`/agents/assistant/memories/${AISLE.id}`);
+    const view = open(`/agents/assistant/memory?selected=${AISLE.id}`);
     await view.findByRole('region', { name: MEMORY_COPY.detail.heading });
 
-    router.navigate('/agents/assistant/memories');
+    router.navigate('/agents/assistant/memory');
 
     await view.findByText(MEMORY_COPY.nothingOpen.title);
     expect(view.container.querySelector('[data-memory-detail]')).toBeNull();
@@ -610,7 +612,8 @@ describe('one memory', () => {
     const link = within(detail).getByRole('link', { name: MEMORY_COPY.detail.openChat });
 
     link.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, metaKey: true }));
-    expect(router.pathname).toBe(`/agents/assistant/memories/${AISLE.id}`);
+    expect(router.pathname).toBe('/agents/assistant/memory');
+    expect(router.search.get('selected')).toBe(AISLE.id);
     link.click();
 
     expect(router.pathname).toBe('/chats/session-1');
@@ -618,7 +621,7 @@ describe('one memory', () => {
 
   test('keeps a row for a memory the list does not hold while it is read, and says when it cannot be', async () => {
     bureau({ 'bureau.memory.get': () => new Promise(() => {}) });
-    const view = open('/agents/assistant/memories/memory-elsewhere');
+    const view = open('/agents/assistant/memory?selected=memory-elsewhere');
 
     // While it is read the row is a placeholder, not a blank.
     await waitFor(() =>
@@ -632,7 +635,7 @@ describe('one memory', () => {
         throw new StubFault('EngineFailure', 500, 'The server broke.');
       },
     });
-    const failed = open('/agents/assistant/memories/memory-elsewhere');
+    const failed = open('/agents/assistant/memory?selected=memory-elsewhere');
     await waitFor(() =>
       expect(textOf(rowOf(failed, 'memory-elsewhere'))).toContain(MEMORY_COPY.detail.failed),
     );
@@ -794,7 +797,7 @@ describe('forgetting a memory', () => {
         return { id: AISLE.id, deletion: 'completed', receipt: RECEIPT };
       },
     });
-    landAt('/agents/assistant/memories');
+    landAt('/agents/assistant/memory');
     const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
     const detail = await openDetails(view, AISLE.content);
     await fireEvent.click(
@@ -1032,12 +1035,12 @@ describe('correcting a memory', () => {
     await waitFor(() => expect(served.callsTo('bureau.memory.correct')).toHaveLength(1));
     // The person moves on to another memory while the correction is still being saved.
     await fireEvent.click(rowOf(view, WINDOW.id));
-    await waitFor(() => expect(router.current.params['memory']).toBe(WINDOW.id));
+    await waitFor(() => expect(router.search.get('selected')).toBe(WINDOW.id));
 
     release({ id: AISLE.id, memory: { ...AISLE, id: 'memory-corrected', source: 'operator' } });
 
     expect(await view.findByText(MEMORY_COPY.correct.saved.title)).not.toBeNull();
-    expect(router.current.params['memory']).toBe(WINDOW.id);
+    expect(router.search.get('selected')).toBe(WINDOW.id);
   });
 });
 
@@ -1092,7 +1095,7 @@ describe('adding a memory', () => {
     });
     await waitFor(() => expect(view.queryByRole('dialog')?.outerHTML ?? null).toBeNull());
     await waitFor(() => expect(served.callsTo('bureau.memory.list').length).toBeGreaterThan(1));
-    await waitFor(() => expect(router.current.params['memory']).toBe(ADDED.id));
+    await waitFor(() => expect(router.search.get('selected')).toBe(ADDED.id));
   });
 
   test('starts empty the next time, once a memory was saved', async () => {
@@ -1350,7 +1353,7 @@ describe('adding a memory', () => {
       },
       'bureau.memory.get': () => ({ memory: ADDED, lineage: NO_LINEAGE }),
     });
-    landAt('/agents/assistant/memories');
+    landAt('/agents/assistant/memory');
     const view = render(FramedMemory, { props: { agentId: 'assistant' } } as never);
 
     const heading = await view.findByText(MEMORY_COPY.nothing.title, { selector: 'h2' });
@@ -1897,7 +1900,7 @@ describe('a correction that was refused', () => {
     await waitFor(() => expect(served.callsTo('bureau.memory.correct')).toHaveLength(1));
     // The person moves on to another memory while the correction is being saved.
     await fireEvent.click(rowOf(view, WINDOW.id));
-    await waitFor(() => expect(router.current.params['memory']).toBe(WINDOW.id));
+    await waitFor(() => expect(router.search.get('selected')).toBe(WINDOW.id));
     await waitFor(() =>
       expect(
         view.container.querySelector(`[data-memory-detail="${AISLE.id}"]`)?.outerHTML ?? null,
@@ -1911,13 +1914,13 @@ describe('a correction that was refused', () => {
       MEMORY_COPY.correct.refusal['successor-not-admitted'].title,
     );
     expect(textOf(view.container.querySelector('[data-correction-draft]'))).toBe(CORRECTION);
-    expect(router.current.params['memory']).toBe(WINDOW.id);
+    expect(router.search.get('selected')).toBe(WINDOW.id);
 
     await fireEvent.click(
       view.getByRole('button', { name: MEMORY_COPY.correct.notSaved.editAgain }),
     );
 
-    expect(router.current.params['memory']).toBe(AISLE.id);
+    expect(router.search.get('selected')).toBe(AISLE.id);
     await waitFor(() =>
       expect(
         (view.getByLabelText(MEMORY_COPY.correct.edit.label) as HTMLTextAreaElement).value,
@@ -2078,17 +2081,23 @@ describe('what a governance note claims', () => {
 });
 
 describe('the agent’s page', () => {
-  test('has a Memory tab that opens its memory, which keeps the Agents view', async () => {
+  test('has a Memory tab with its own address, which shows the memory under the agent’s header', async () => {
     bureau({ 'bureau.agents.list': () => ({ agents: [AGENT] }) });
     stub?.on('bureau.contexts.list', () => ({ contexts: [], nextOffset: null }));
     landAt('/agents/assistant');
-    const { findByRole } = mount(AgentDetail);
+    const { findByRole, findByText, getByTestId } = mount(AgentDetail);
 
     const tab = await findByRole('tab', { name: /^Memory/ });
     await fireEvent.click(tab);
 
-    expect(router.pathname).toBe('/agents/assistant/memories');
+    await waitFor(() => expect(router.pathname).toBe('/agents/assistant/memory'));
     expect(router.current.route?.view).toBe('agents');
     expect(router.current.params['agent']).toBe('assistant');
+    // The memory list is the tab's body: the agent's header and its tab bar stay above it.
+    expect(await findByText(AISLE.content)).not.toBeNull();
+    expect(getByTestId('agent-header')).not.toBeNull();
+    expect((await findByRole('tab', { name: /^Memory/ })).getAttribute('aria-selected')).toBe(
+      'true',
+    );
   });
 });

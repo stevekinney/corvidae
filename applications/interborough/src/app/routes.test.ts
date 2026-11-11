@@ -13,10 +13,11 @@ import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import {
+  AGENT_TABS,
   agentEditPath,
-  agentMemoryItemPath,
   agentMemoryPath,
   agentPath,
+  agentTabPath,
 } from '../lib/agent-paths.ts';
 import {
   matchRoute,
@@ -98,6 +99,19 @@ describe('the route table', () => {
       pattern: '/agents/:agent',
       params: { agent: 'assistant' },
     });
+  });
+
+  test('gives each tab of an agent’s page a nested address on the same page, Chats being the agent’s own', () => {
+    expect(agentTabPath('a b', 'chats')).toBe('/agents/a%20b');
+    for (const tab of AGENT_TABS) {
+      const match = matchRoute(agentTabPath('a b', tab));
+      expect(match?.params, tab).toEqual({ agent: 'a b' });
+      expect(componentPathOf(match?.pattern ?? ''), tab).toBe(
+        sourcePath('../routes/agents/agent-detail.svelte'),
+      );
+    }
+    expect(agentTabPath('assistant', 'access')).toBe('/agents/assistant/access');
+    expect(agentTabPath('assistant', 'memory')).toBe('/agents/assistant/memory');
   });
 
   test('serves the engine run list under /health, in the engine view, apart from the Bureau runs', () => {
@@ -372,14 +386,13 @@ describe('a link to an agent', () => {
     expect(agentPath('a b/c')).toBe('/agents/a%20b%2Fc');
     expect(agentEditPath('assistant')).toBe('/agents/assistant/edit');
     expect(matchRoute(agentPath('a b/c'))?.params).toEqual({ agent: 'a b/c' });
-    expect(agentMemoryPath('assistant')).toBe('/agents/assistant/memories');
-    // An open memory is one path segment, whatever its identifier holds.
-    expect(agentMemoryItemPath('a b', 'm/1?x#y')).toBe('/agents/a%20b/memories/m%2F1%3Fx%23y');
-    expect(matchRoute(agentMemoryItemPath('a b', 'm/1?x#y'))).toEqual({
-      pattern: '/agents/:agent/memories/:memory',
-      params: { agent: 'a b', memory: 'm/1?x#y' },
+    expect(agentMemoryPath('assistant')).toBe('/agents/assistant/memory');
+    // The open memory is in the query, whatever its identifier holds.
+    expect(agentMemoryPath('a b', 'm/1?x#y')).toBe('/agents/a%20b/memory?selected=m%2F1%3Fx%23y');
+    expect(matchRoute(agentMemoryPath('a b', 'm/1?x#y').split('?')[0]!)).toEqual({
+      pattern: '/agents/:agent/memory',
+      params: { agent: 'a b' },
     });
-    expect(matchRoute(agentMemoryPath('assistant'))?.pattern).toBe('/agents/:agent/memories');
 
     const offenders: string[] = [];
     for await (const path of new Glob('**/*.{svelte,ts}').scan(sourceRoot)) {

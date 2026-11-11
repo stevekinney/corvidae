@@ -352,7 +352,7 @@ test.describe('on a phone', () => {
   test('below a section root the bar shows a back button labelled with the parent (04f)', async ({
     page,
   }) => {
-    await open(page, '/agents/demo:assistant/memories', 375, 812, false);
+    await open(page, '/agents/demo:assistant/memory', 375, 812, false);
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
     const back = trail.getByRole('link', { name: /Back to/ });
     await expect(back).toBeVisible();
@@ -364,7 +364,7 @@ test.describe('on a phone', () => {
       expect(await cut(trail.locator('[aria-current="page"]'))).toBe(true);
     }
     await captureForDesignReview(page, {
-      route: '/agents/:agent/memories',
+      route: '/agents/:agent/memory',
       state: 'back button',
       source: SOURCE,
     });
@@ -392,7 +392,7 @@ test.describe('on a phone', () => {
   test('an ancestor that cannot show its first word folds into a "…" menu (S18)', async ({
     page,
   }) => {
-    await open(page, '/agents/demo:assistant/memories', 1280);
+    await open(page, '/agents/demo:assistant/memory', 1280);
     await page.setViewportSize({ width: 320, height: 640 });
     const trail = page.getByRole('banner').getByRole('navigation', { name: 'Breadcrumb' });
     // No fragment such as "C ›" is left over: every visible crumb shows its whole word.

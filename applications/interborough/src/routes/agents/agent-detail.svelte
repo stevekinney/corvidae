@@ -1,25 +1,45 @@
 <script lang="ts">
   /**
-   * `/agents/:agent`: one agent, with its name once, its description, what it is made of (its model
-   * when the Bureau can tell, its tools and skills), a New chat action, and six tabs: Chats (the
-   * chats had with it, filtered), Instructions (the body of its file and the reference documents it
-   * reads), Access (its tools and when each asks first, its skills, guardrails and budgets), Hooks
-   * (the hooks limited to it), Memory (with how many memories it has) and Settings (its model and
-   * step limit, Delete, and its saved versions with Restore). The tab is in the address (`?tab=`),
-   * and Chats is the address with none.
+   * An agent's page: one frame with one header over six tabs, each at its own address
+   * (`lib/agent-paths.ts`): Chats (`/agents/:agent`, the chats had with it, filtered), Instructions
+   * (`/instructions`, the body of its file and the reference documents it reads), Access
+   * (`/access`, its tools and when each asks first, its skills, guardrails and budgets), Hooks
+   * (`/hooks`, the hooks limited to it), Memory (`/memory`, what it remembers, with the open memory
+   * in `?selected=`) and Settings (`/settings`, its model and step limit, Delete, and its saved
+   * versions with Restore). A reload and the breadcrumb keep the tab. An address from before the
+   * tabs had paths of their own (`?tab=access`) is replaced with the tab's path, and one that names
+   * no tab is Chats.
    *
-   * Memory is a tab that opens the agent's memory page (`/agents/:agent/memories`), a wide list with
-   * the open memory beside it, rather than a panel here: choosing it leaves this page, so it is never
-   * the selected tab and has no `?tab=` value. Because choosing it leaves, the tabs do not activate
-   * on focus, or an arrow key past Hooks would open the memory page before Settings could be reached.
+   * The header is the same on every tab (board PageAgent, rows 38a to 38c): the agent's name with
+   * its identifier small and monospaced beside it, its description, a status line (what its chats
+   * are doing and how many there are), and, for an agent that needs a model while no provider is
+   * connected, the reason it cannot answer with a link to connect one. Its actions are Edit for an
+   * agent file the owner keeps, Duplicate for one that cannot be edited here, and New chat, the one
+   * primary action. The tab bar carries each tab's count once it is known. Choosing a tab writes its
+   * address and keeps the page mounted, so the header and the tab bar never reload; a tab only
+   * opens on a click or Enter, because each one is a history entry.
    *
-   * An agent file shows the version of the file it runs, with a link to the history that lives in
-   * the Settings tab. An agent defined in code has no file, so it shows no version and no Edit action.
-   * An agent whose listing carries no tools is not claimed to have none: see `agent-facts.svelte`.
+   * Each tab's body words its own loading, failure and old data (`agent-tab-state.svelte`), so the
+   * header and the tabs stay live while it does. While a tab shows data its last read failed to
+   * refresh, Edit is held back (`agent-tab-stale.ts`).
+   *
+   * An agent a disabled plugin ships is not in the agent list, which lists what can run, so the
+   * page reads it from its definition: its status is Unavailable, New chat is held with the reason,
+   * Duplicate stays, and a banner over every tab says why, with Enable and restart
+   * (`agent-unavailable-banner.svelte`).
    */
   import { untrack } from 'svelte';
 
-  import { Alert, Button, PageHeader, Tabs } from '@lostgradient/cinder';
+  import {
+    Alert,
+    Button,
+    PageHeader,
+    StaleRegion,
+    StatusDot,
+    Tabs,
+    Tooltip,
+  } from '@lostgradient/cinder';
+  import { Pencil, Plus } from '@lucide/svelte';
   import {
     createInfiniteQuery,
     createMutation,
@@ -28,17 +48,24 @@
   } from '@tanstack/svelte-query';
 
   import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, AGENTS_COPY, CHAT_COPY } from '../../app/copy.ts';
+  import { AGENT_EDITOR_COPY, AGENT_PAGE_COPY, CHAT_COPY } from '../../app/copy.ts';
   import {
     agentDuplicatePath,
     agentEditPath,
-    agentMemoryPath,
     agentPath,
+    agentTabPath,
+    isAgentTab,
     pluginOfAgent,
+    type AgentTab,
   } from '../../lib/agent-paths.ts';
   import { agentFaultOf, duplicateAgent, getAgentDefinition } from '../../lib/agent-definitions.ts';
+  import { agentLabel } from '../../lib/agent-label.ts';
   import { agentsListQuery } from '../../lib/agent-queries.ts';
+  import { listAllContexts } from '../../lib/bureau-client.ts';
+  import { listHooks } from '../../lib/bureau-hooks.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
+  import { getPlugins } from '../../lib/host-plugins.ts';
+  import { getProviders } from '../../lib/host-providers.ts';
   import { listMemories, MEMORY_PAGE_SIZE } from '../../lib/memory-client.ts';
   import { queryKeys } from '../../lib/query.ts';
   import { router } from '../../lib/router.svelte.ts';
@@ -47,32 +74,112 @@
   import AgentFacts from './agent-facts.svelte';
   import AgentHooks from './agent-hooks.svelte';
   import AgentInstructions from './agent-instructions.svelte';
+  import AgentMemory from './agent-memory.svelte';
   import AgentSettings from './agent-settings.svelte';
-  import { memoryTabText, newChatPath, shortVersion } from './agent-presentation.ts';
+  import AgentTabState from './agent-tab-state.svelte';
+  import AgentUnavailableBanner from './agent-unavailable-banner.svelte';
+  import {
+    agentStatusLine,
+    allowedToolCount,
+    chatUsageByAgent,
+    newChatPath,
+    tabCountText,
+  } from './agent-presentation.ts';
+  import { provideAgentTabStale } from './agent-tab-stale.ts';
 
   const id = untrack(() => router.current.params['agent'] ?? '');
+  const plugin = pluginOfAgent(id);
+  const copy = AGENT_PAGE_COPY;
 
-  let activeTab = $state(untrack(() => router.search.get('tab') ?? 'chats'));
+  /** The tab the address names: the last segment of its route, and Chats for the agent's own path. */
+  function tabOfRoute(): AgentTab {
+    const last = router.current.route?.pattern.split('/').at(-1) ?? '';
+    return isAgentTab(last) ? last : 'chats';
+  }
+
+  let activeTab = $state<string>(untrack(tabOfRoute));
 
   const agents = createQuery(agentsListQuery);
-  const agent = $derived(agents.data?.find((entry) => entry.name === id));
-  // The top bar's trail names the agent as a person reads it, once the listing has answered.
-  usePageLabel(() => ({ path: agentPath(id), label: agent?.displayName }));
+  const listed = $derived(agents.data?.find((entry) => entry.name === id));
 
+  // The agent's own statement of itself: the tabs other than Chats read it, the header counts an
+  // agent file's tools from it, and it is what says that an agent the list leaves out is held back
+  // by a disabled plugin. On Chats an agent defined in code needs none of that: its listing names
+  // its tools.
   const definition = createQuery(
     () => ({
       queryKey: queryKeys.agents.definition(id),
       queryFn: ({ signal }) => getAgentDefinition(id, { signal }),
-      // A file's version is in the header; the other tabs read the agent's own statement of itself too.
-      enabled: agent !== undefined && (agent.kind === 'file' || activeTab !== 'chats'),
+      enabled:
+        agents.data !== undefined &&
+        (listed === undefined || listed.kind === 'file' || activeTab !== 'chats'),
       retry: false,
     }),
     undefined,
   );
-  const fileVersion = $derived(definition.data?.hash ?? undefined);
+  const unavailable = $derived(listed === undefined && definition.data?.state === 'unavailable');
+  /** The agent's name as a person reads it, and its description: the listing's, or its definition's. */
+  const name = $derived(
+    listed?.displayName ??
+      (unavailable ? agentLabel(definition.data?.name ?? id, undefined) : undefined),
+  );
+  const description = $derived(
+    listed !== undefined ? listed.description : (definition.data?.description ?? null),
+  );
+  // The top bar's trail names the agent as a person reads it, once the Bureau has answered.
+  usePageLabel(() => ({ path: agentPath(id), label: name }));
 
-  // The memory page's own query, so a visit to either warms the other. A failure drops the count
-  // and keeps the tab: the memory page itself says why it cannot show memories.
+  // The chats a person started, as the agent list counts them, so the list and the page agree.
+  const chats = createQuery(
+    () => ({
+      queryKey: queryKeys.contexts.usage(),
+      queryFn: ({ signal }) => listAllContexts({ signal, origin: 'chat' }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const usage = $derived(
+    chats.data === undefined ? undefined : chatUsageByAgent(chats.data).get(id),
+  );
+  const status = $derived(agentStatusLine(usage, { known: chats.data !== undefined, unavailable }));
+
+  // Whether any provider holds a key, the rule the first-run checklist states. An agent that runs
+  // on a model cannot answer without one; one that names no model, such as a script, can.
+  const providers = createQuery(
+    () => ({
+      queryKey: queryKeys.hostProviders(),
+      queryFn: ({ signal }) => getProviders({ signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+  const needsProvider = $derived(
+    !unavailable &&
+      listed !== undefined &&
+      listed.media !== null &&
+      providers.data !== undefined &&
+      !providers.data.providers.some((provider) => provider.hasKey),
+  );
+
+  // The plugin's title, as Settings › Plugins shows it, for the words about a disabled one.
+  const plugins = createQuery(
+    () => ({
+      queryKey: queryKeys.hostPlugins(),
+      queryFn: ({ signal }) => getPlugins({ signal }),
+      enabled: unavailable,
+      retry: false,
+    }),
+    undefined,
+  );
+  const pluginTitle = $derived(
+    plugins.data?.plugins.find((entry) => entry.descriptor.name === plugin)?.descriptor.title ??
+      /^Plugin (.+) is disabled$/.exec(definition.data?.unavailable?.message ?? '')?.[1] ??
+      plugin ??
+      '',
+  );
+
+  // The memory tab's own query, so the count and the tab warm each other. A failure drops the count
+  // and keeps the tab: the tab itself says why it cannot show memories.
   const memories = createInfiniteQuery(
     () => ({
       queryKey: queryKeys.memory.list(id),
@@ -93,13 +200,42 @@
           (memory) => memory.id,
         ).length,
   );
-  const memoryLabel = $derived(memoryTabText(memoryCount, memories.hasNextPage));
 
-  const plugin = pluginOfAgent(id);
+  // The Hooks tab's own query, for its count.
+  const hooks = createQuery(
+    () => ({
+      queryKey: queryKeys.hooks.ofAgent(id),
+      queryFn: ({ signal }: { signal: AbortSignal }) =>
+        listHooks({ scope: { kind: 'agent', id } }, { signal }),
+      retry: false,
+    }),
+    undefined,
+  );
+
+  const counts = $derived({
+    chats: tabCountText(chats.data === undefined ? undefined : (usage?.count ?? 0)),
+    access: tabCountText(
+      definition.data === undefined && listed?.tools === undefined
+        ? undefined
+        : allowedToolCount(definition.data, listed?.tools),
+    ),
+    hooks: tabCountText(hooks.data?.length),
+    memory: tabCountText(memoryCount, memories.hasNextPage),
+  });
+
+  // How many tab bodies show data a read failed to refresh: while any does, Edit is held back.
+  let staleTabs = $state(0);
+  provideAgentTabStale(() => {
+    staleTabs += 1;
+    return () => {
+      staleTabs -= 1;
+    };
+  });
+
   const queryClient = useQueryClient();
   let duplicateProblem = $state<string | null>(null);
 
-  // A plugin's agent is read-only; Duplicate writes a copy into the owner's agents and opens it.
+  // A plugin's agent cannot be edited here; Duplicate writes a copy into the owner's agents and opens it.
   const duplicate = createMutation(() => ({
     mutationFn: () => duplicateAgent(id),
     onMutate: () => {
@@ -112,7 +248,7 @@
     },
     onError: (error) => {
       const fault = agentFaultOf(error);
-      const words = AGENT_PAGE_COPY.plugin;
+      const words = copy.plugin;
       if (fault.kind === 'identifier-taken')
         duplicateProblem = words.exists(id.slice(id.indexOf(':') + 1));
       else if (fault.kind === 'not-found') duplicateProblem = words.notLoaded;
@@ -122,10 +258,9 @@
   }));
 
   const editPath = agentEditPath(id);
-  // Duplicate on an agent that is not a plugin's opens the form for a new agent filled from it.
+  // Duplicate on an agent defined in code opens the form for a new agent filled from it.
   const duplicatePath = agentDuplicatePath(id);
-  const settingsPath = `${agentPath(id)}?tab=settings`;
-  const memoryPath = agentMemoryPath(id);
+  const connectPath = '/settings/models';
 
   function goTo(event: MouseEvent, path: string): void {
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey || event.button !== 0) {
@@ -135,173 +270,225 @@
     router.navigate(path);
   }
 
-  function openNewChat(event: MouseEvent): void {
-    goTo(event, newChatPath(id));
-  }
-
-  type TabValue = 'chats' | 'instructions' | 'access' | 'hooks' | 'settings';
-  const TABS: readonly TabValue[] = ['chats', 'instructions', 'access', 'hooks', 'settings'];
-
-  /** The tab that opens the memory page. It is not a `TabValue`: it is never the selected tab. */
-  const MEMORY_TAB = 'memory';
-  /** Whether the tab just chosen was Memory, whose `onValueChange` must not write the address. */
-  let leavingForMemory = false;
-
-  // Choosing Memory leaves for the memory page, and answers with the tab already selected so the
-  // bar keeps showing it until the page goes.
-  function openMemoryTab(next: string): string | undefined {
-    if (next !== MEMORY_TAB) return undefined;
-    leavingForMemory = true;
-    router.navigate(memoryPath);
-    return activeTab;
-  }
-
-  // The URL owns the tab, so a tab can be linked and the back button returns to it: `activeTab`
-  // follows `?tab=`, and a tab the person picks writes the address from Tabs' `onValueChange`, so
-  // a jump through history to an older `?tab=` entry is only read, never written back over. Chats
-  // is the address with no `tab`.
-
+  // The address owns the tab, so a tab can be linked and the back button returns to it:
+  // `activeTab` follows the route, and a tab the person picks writes the address from Tabs'
+  // `onValueChange`, so a jump through history to an older tab is only read, never written back
+  // over. Choosing a tab keeps the page mounted: the address names the same agent.
   function writeTab(next: string): void {
-    if (leavingForMemory) {
-      leavingForMemory = false;
-      return;
-    }
-    const search = new URLSearchParams(router.search);
-    if ((search.get('tab') ?? 'chats') === next) return;
-    if (next === 'chats') search.delete('tab');
-    else search.set('tab', next);
-    const query = search.size === 0 ? '' : `?${search.toString()}`;
-    router.navigate(`${agentPath(id)}${query}`);
+    if (!isAgentTab(next) || tabOfRoute() === next) return;
+    router.navigate(agentTabPath(id, next), { keep: true });
   }
 
   $effect(() => {
-    const fromUrl = router.search.get('tab') ?? 'chats';
+    const fromUrl = tabOfRoute();
     if (fromUrl !== activeTab) activeTab = fromUrl;
   });
 
-  // An address that names a tab this page does not have is Chats: say so in the address, in place.
+  // An address from before each tab had a path (`?tab=access`) goes to the tab's path, in place;
+  // one that names no tab is Chats. Any other part of the query stays.
   $effect(() => {
     const named = router.search.get('tab');
-    if (named === null || TABS.some((tab) => tab === named)) return;
+    if (named === null) return;
     const search = new URLSearchParams(router.search);
     search.delete('tab');
     const query = search.size === 0 ? '' : `?${search.toString()}`;
-    router.navigate(`${agentPath(id)}${query}`, { replace: true });
+    const tab: AgentTab = isAgentTab(named) ? named : 'chats';
+    untrack(() =>
+      router.navigate(`${agentTabPath(id, tab)}${query}`, { replace: true, keep: true }),
+    );
   });
 </script>
 
-{#snippet title()}
-  <span class="ib-agent-title" data-identifier={agent?.displayName === agent?.name ? '' : undefined}
-    >{agent?.displayName}</span
-  >
+{#snippet identifier()}
+  {#if name !== undefined && name !== id}
+    <code class="ib-agent-id" data-testid="agent-identifier">{id}</code>
+  {/if}
 {/snippet}
 
 {#snippet headerActions()}
-  <!-- An agent defined in code has no file, so there is nothing to edit; it can still be duplicated. -->
   {#if plugin !== null}
+    <!-- A plugin's agent, running or held back, is changed through a copy the owner keeps. -->
     <Button
       data-changes
       variant="secondary"
       size="sm"
       loading={duplicate.isPending}
-      onclick={() => duplicate.mutate()}>{AGENT_PAGE_COPY.plugin.duplicate}</Button
+      onclick={() => duplicate.mutate()}>{copy.plugin.duplicate}</Button
     >
+  {:else if listed?.kind === 'file'}
+    <Button
+      href={router.href(editPath)}
+      variant="secondary"
+      size="sm"
+      mutating
+      onclick={(event) => goTo(event, editPath)}
+    >
+      {#snippet leadingIcon()}<Pencil aria-hidden="true" size={14} />{/snippet}
+      {AGENT_EDITOR_COPY.editAction}
+    </Button>
   {:else}
-    {#if agent?.kind === 'file'}
-      <Button
-        href={router.href(editPath)}
-        variant="secondary"
-        size="sm"
-        onclick={(event) => goTo(event, editPath)}>{AGENT_EDITOR_COPY.editAction}</Button
-      >
-    {/if}
-    <!-- Nothing is written here: the copy is named and created in the form. -->
+    <!-- An agent defined in code has no file to edit. Nothing is written here: the copy is named
+         and created in the form. -->
     <Button
       href={router.href(duplicatePath)}
       variant="secondary"
       size="sm"
-      onclick={(event) => goTo(event, duplicatePath)}>{AGENT_PAGE_COPY.duplicate}</Button
+      onclick={(event) => goTo(event, duplicatePath)}>{copy.duplicate}</Button
     >
   {/if}
-  <Button href={router.href(newChatPath(id))} variant="primary" size="sm" onclick={openNewChat}
-    >{CHAT_COPY.newChat}</Button
-  >
+  {#if unavailable}
+    <!-- Held, not removed: it keeps its place and its focus, and says why it is off. -->
+    <Tooltip text={copy.unavailable.newChatReason(pluginTitle)}>
+      <Button variant="primary" size="sm" aria-disabled="true">
+        {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
+        {CHAT_COPY.newChat}
+      </Button>
+    </Tooltip>
+  {:else}
+    <Button
+      href={router.href(newChatPath(id))}
+      variant="primary"
+      size="sm"
+      onclick={(event) => goTo(event, newChatPath(id))}
+    >
+      {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
+      {CHAT_COPY.newChat}
+    </Button>
+  {/if}
 {/snippet}
 
-{#if agent}
-  <article class="ib-agent" data-page="agent-detail">
-    <PageHeader data-testid="agent-header" headingLevel={1} {title} actions={headerActions} />
-    {#if agent.displayName !== agent.name}
-      <code class="ib-agent-id">{agent.name}</code>
-    {/if}
+<!-- The name and a count, as a tab carries them: "Access 3". -->
+{#snippet counted(label: string, count: string | undefined)}
+  {label}
+  {#if count !== undefined}
+    <span class="ib-agent-tabs__count">{count}</span>
+  {/if}
+{/snippet}
 
-    {#if duplicateProblem !== null}
-      <Alert variant="danger" dismissible onDismiss={() => (duplicateProblem = null)}>
-        <p>{duplicateProblem}</p>
-      </Alert>
-    {/if}
+{#snippet unavailableBanner()}
+  {#if unavailable && plugin !== null}
+    <AgentUnavailableBanner {id} name={name ?? id} {plugin} {pluginTitle} />
+  {/if}
+{/snippet}
 
-    {#if agent.description}
-      <p class="ib-agent__description">{agent.description}</p>
-    {/if}
+{#if name !== undefined}
+  <StaleRegion stale={staleTabs > 0} reason={copy.tabState.staleTitle}>
+    <article class="ib-agent" data-page="agent-detail">
+      <PageHeader
+        data-testid="agent-header"
+        headingLevel={1}
+        title={name}
+        status={identifier}
+        statusPlacement="inline"
+        actions={headerActions}
+      />
 
-    <AgentFacts {agent} detailed />
+      {#if duplicateProblem !== null}
+        <Alert variant="danger" dismissible onDismiss={() => (duplicateProblem = null)}>
+          <p>{duplicateProblem}</p>
+        </Alert>
+      {/if}
 
-    {#if agent.kind === 'file' && plugin === null && fileVersion !== undefined}
-      <p class="ib-agent__version" data-testid="agent-file-version">
-        {AGENTS_COPY.fileVersion}
-        <code title={fileVersion}>{shortVersion(fileVersion)}</code>,
-        <a href={router.href(settingsPath)} onclick={(event) => goTo(event, settingsPath)}
-          >{AGENTS_COPY.history}</a
-        >
-      </p>
-    {/if}
+      <div class="ib-agent__summary">
+        {#if description}
+          <p class="ib-agent__description">{description}</p>
+        {/if}
+        {#if status !== undefined}
+          <p class="ib-agent__status" data-testid="agent-status">
+            {#if status.tone === null}
+              {status.text}
+            {:else}
+              <StatusDot size="sm" status={status.tone} label={status.text} />
+            {/if}
+          </p>
+        {/if}
+        {#if needsProvider}
+          <p class="ib-agent__reason" data-testid="agent-provider-reason">
+            {copy.header.needsProvider}
+            <a href={router.href(connectPath)} onclick={(event) => goTo(event, connectPath)}
+              >{copy.header.connectProvider}</a
+            >
+          </p>
+        {/if}
+      </div>
 
-    <Tabs
-      bind:value={activeTab}
-      onValueChangeRequest={openMemoryTab}
-      onValueChange={writeTab}
-      activateOnFocus={false}
-    >
-      <Tabs.List label={AGENT_PAGE_COPY.tabsLabel}>
-        <Tabs.Trigger value="chats">{AGENT_PAGE_COPY.tabs.chats}</Tabs.Trigger>
-        <Tabs.Trigger value="instructions">{AGENT_PAGE_COPY.tabs.instructions}</Tabs.Trigger>
-        <Tabs.Trigger value="access">{AGENT_PAGE_COPY.tabs.access}</Tabs.Trigger>
-        <Tabs.Trigger value="hooks">{AGENT_PAGE_COPY.tabs.hooks}</Tabs.Trigger>
-        <Tabs.Trigger value={MEMORY_TAB} data-opens-page>{memoryLabel}</Tabs.Trigger>
-        <Tabs.Trigger value="settings">{AGENT_PAGE_COPY.tabs.settings}</Tabs.Trigger>
-      </Tabs.List>
-      <Tabs.Panel value="chats">
-        <AgentChats {id} />
-      </Tabs.Panel>
-      <Tabs.Panel value="instructions">
-        <AgentInstructions
-          {editPath}
-          {plugin}
-          detail={definition.data}
-          failed={definition.isError}
-          onRetry={() => void definition.refetch()}
-        />
-      </Tabs.Panel>
-      <Tabs.Panel value="access">
-        <AgentAccess
-          {id}
-          detail={definition.data}
-          failed={definition.isError}
-          onRetry={() => void definition.refetch()}
-        />
-      </Tabs.Panel>
-      <Tabs.Panel value="hooks">
-        <AgentHooks {id} />
-      </Tabs.Panel>
-      <Tabs.Panel value="settings">
-        <AgentSettings
-          {id}
-          detail={definition.data}
-          failed={definition.isError}
-          onRetry={() => void definition.refetch()}
-        />
-      </Tabs.Panel>
-    </Tabs>
-  </article>
+      {#if listed !== undefined}
+        <AgentFacts agent={listed} detailed />
+      {/if}
+
+      <Tabs bind:value={activeTab} onValueChange={writeTab} activateOnFocus={false}>
+        <Tabs.List label={copy.tabsLabel}>
+          <Tabs.Trigger value="chats" label={copy.tabs.chats}
+            >{@render counted(copy.tabs.chats, counts.chats)}</Tabs.Trigger
+          >
+          <Tabs.Trigger value="instructions" label={copy.tabs.instructions}
+            >{copy.tabs.instructions}</Tabs.Trigger
+          >
+          <Tabs.Trigger value="access" label={copy.tabs.access}
+            >{@render counted(copy.tabs.access, counts.access)}</Tabs.Trigger
+          >
+          <Tabs.Trigger value="hooks" label={copy.tabs.hooks}
+            >{@render counted(copy.tabs.hooks, counts.hooks)}</Tabs.Trigger
+          >
+          <Tabs.Trigger value="memory" label={copy.tabs.memory}
+            >{@render counted(copy.tabs.memory, counts.memory)}</Tabs.Trigger
+          >
+          <Tabs.Trigger value="settings" label={copy.tabs.settings}
+            >{copy.tabs.settings}</Tabs.Trigger
+          >
+        </Tabs.List>
+        <Tabs.Panel value="chats">
+          {@render unavailableBanner()}
+          <AgentChats {id} />
+        </Tabs.Panel>
+        <Tabs.Panel value="instructions">
+          {@render unavailableBanner()}
+          <AgentTabState
+            tab={copy.tabs.instructions}
+            shape="form"
+            pending={definition.isPending}
+            error={definition.error}
+            updatedAt={definition.dataUpdatedAt}
+            onRetry={() => void definition.refetch()}
+          >
+            <AgentInstructions {editPath} {plugin} detail={definition.data} />
+          </AgentTabState>
+        </Tabs.Panel>
+        <Tabs.Panel value="access">
+          {@render unavailableBanner()}
+          <AgentTabState
+            tab={copy.tabs.access}
+            shape="form"
+            pending={definition.isPending}
+            error={definition.error}
+            updatedAt={definition.dataUpdatedAt}
+            onRetry={() => void definition.refetch()}
+          >
+            <AgentAccess {id} detail={definition.data} />
+          </AgentTabState>
+        </Tabs.Panel>
+        <Tabs.Panel value="hooks">
+          {@render unavailableBanner()}
+          <AgentHooks {id} />
+        </Tabs.Panel>
+        <Tabs.Panel value="memory">
+          {@render unavailableBanner()}
+          <AgentMemory />
+        </Tabs.Panel>
+        <Tabs.Panel value="settings">
+          {@render unavailableBanner()}
+          <AgentTabState
+            tab={copy.tabs.settings}
+            shape="form"
+            pending={definition.isPending}
+            error={definition.error}
+            updatedAt={definition.dataUpdatedAt}
+            onRetry={() => void definition.refetch()}
+          >
+            <AgentSettings {id} detail={definition.data} />
+          </AgentTabState>
+        </Tabs.Panel>
+      </Tabs>
+    </article>
+  </StaleRegion>
 {/if}

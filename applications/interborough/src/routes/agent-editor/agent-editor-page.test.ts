@@ -1015,7 +1015,7 @@ describe('the header Save', () => {
     expect(saved.textContent).toContain('2 min ago');
     const link = saved.querySelector('a');
     expect(link?.textContent).toBe(AGENT_EDITOR_COPY.version(4));
-    expect(link?.getAttribute('href')).toContain('/agents/researcher?tab=settings');
+    expect(link?.getAttribute('href')).toBe('/agents/researcher/settings');
   });
 
   test('opens the versions in the app, unless the click asks for a new tab', async () => {
@@ -1035,10 +1035,9 @@ describe('the header Save', () => {
     const link = await findByRole('link', { name: AGENT_EDITOR_COPY.version(2) });
 
     await fireEvent.click(link, { metaKey: true });
-    expect(router.pathname).not.toBe('/agents/researcher');
+    expect(router.pathname).not.toBe('/agents/researcher/settings');
     await fireEvent.click(link);
-    await waitFor(() => expect(router.pathname).toBe('/agents/researcher'));
-    expect(router.search.get('tab')).toBe('settings');
+    await waitFor(() => expect(router.pathname).toBe('/agents/researcher/settings'));
   });
 
   test('registers ⌘Enter, which saves from a field, and removes it when the page goes', async () => {

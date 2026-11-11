@@ -1,16 +1,18 @@
 <script lang="ts">
   /**
-   * `/agents/:agent/memories`: what an agent remembers of the caller's chats, as a list with the
-   * open memory beside it (Cinder's `ListDetail`, the same layout as Chats and Reviews). The open
-   * memory is in the path, `/agents/:agent/memories/:memory`, so it can be linked and reloaded;
-   * choosing one replaces the address in place (the page stays mounted, with what was typed). The list's
-   * header holds the title, Add a memory (`memory-add.svelte`), Export, a search that runs as you
-   * type, and a kind filter in plain names. A memory opens beside the list with Correct and Forget
-   * on its context line and the governance actions below it (`memory-detail.svelte`).
+   * The Memory tab of an agent's page (`/agents/:agent/memory`): what the agent remembers of the
+   * caller's chats, as a list with the open memory beside it (Cinder's `ListDetail`, the same layout
+   * as Chats and Reviews), under the agent's header and tab bar. The open memory is in the address
+   * (`?selected=`), so it can be linked and reloaded; choosing one replaces the address in place
+   * (the tab stays mounted, with what was typed). The list's header holds Add a memory
+   * (`memory-add.svelte`), Export, a search that runs as you type, and a kind filter in plain names;
+   * the tab's name is the tab bar's, so the list repeats no heading of its own. A memory opens beside
+   * the list with Correct and Forget on its context line and the governance actions below it
+   * (`memory-detail.svelte`).
    *
-   * The Agents view's frame (`app/view-frame.svelte`) asks the server first and owns the words for
-   * loading, failing, locked, and an agent that is not there. An agent with no memory is not one of
-   * those: this page says so itself, because it is where the first memory is added. A blank search
+   * While the first page of the list is read, or when that read fails, the tab says so in its body
+   * (`agent-tab-state.svelte`), and the header and the tabs stay. An agent with no memory is not one
+   * of those: the tab says so itself, because it is where the first memory is added. A blank search
    * lists, newest first; a search ranks every memory the agent has, because ranking has no score
    * floor, so a search never answers "nothing matched" from the server: the page counts the
    * memories that hold a word of the query. The kind filter works over the pages read so far, and
@@ -31,9 +33,8 @@
   import { Download, Plus } from '@lucide/svelte';
   import { createInfiniteQuery, createQuery } from '@tanstack/svelte-query';
 
-  import { usePageLabel } from '../../app/breadcrumbs.svelte.ts';
-  import { MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
-  import { agentMemoryItemPath, agentMemoryPath } from '../../lib/agent-paths.ts';
+  import { AGENT_PAGE_COPY, MEMORY_COPY, RETRY_LABEL } from '../../app/copy.ts';
+  import { agentMemoryPath } from '../../lib/agent-paths.ts';
   import { combinePages } from '../../lib/combine-pages.ts';
   import {
     listMemories,
@@ -49,12 +50,12 @@
   import MemoryDetail from './memory-detail.svelte';
   import MemoryGovernance from './memory-governance.svelte';
   import {
-    excerpt,
     matchesKind,
     matchesQuery,
     refusalWords,
     type KindFilter,
   } from './memory-presentation.ts';
+  import AgentTabState from './agent-tab-state.svelte';
   import MemoryRow from './memory-row.svelte';
 
   /** The most memories a search ranks: the server's own ceiling, so a match is rarely left out. */
@@ -65,8 +66,8 @@
   let typed = $state('');
   const applied = $derived(typed.trim());
   let kindFilter = $state<KindFilter>('all');
-  /** The open memory: the one the path names, so a link and a reload open it. */
-  const selectedId = $derived(router.current.params['memory'] ?? null);
+  /** The open memory: the one the address names, so a link and a reload open it. */
+  const selectedId = $derived(router.search.get('selected'));
   let notice = $state<'corrected' | 'added' | undefined>(undefined);
   /** A correction that was refused, with the text that was sent, until it is dismissed or retried. */
   let refused = $state<
@@ -157,18 +158,6 @@
     const known = base.find((row) => row.id === selectedId);
     return [{ kind: 'memory', id: selectedId, memory: known?.memory, score: null, pinned: true }];
   });
-  /** The open memory's first words, once the list or the search has it. */
-  function openMemoryWords(): string | undefined {
-    const row = items.find((candidate) => candidate.id === selectedId);
-    return row?.kind === 'memory' && row.memory !== undefined
-      ? excerpt(row.memory.content)
-      : undefined;
-  }
-  // The top bar names the open memory by its first words, in place of its identifier.
-  usePageLabel(() => ({
-    path: selectedId === null ? '' : agentMemoryItemPath(agentId, selectedId),
-    label: openMemoryWords(),
-  }));
   const items = $derived<ListRow[]>([
     ...pinned,
     ...shown,
@@ -250,241 +239,248 @@
   }
 
   /**
-   * Opens a memory, or the list alone for `null`, in the path. It replaces the entry and keeps the
-   * page mounted: the address names what the page already shows, so what was typed stays typed.
+   * Opens a memory, or the list alone for `null`, in the address. It replaces the entry and keeps
+   * the tab mounted: the address names what the tab already shows, so what was typed stays typed.
    */
   function select(id: string | null): void {
     if (id === selectedId) return;
-    router.navigate(id === null ? agentMemoryPath(agentId) : agentMemoryItemPath(agentId, id), {
-      replace: true,
-      keep: true,
-    });
+    router.navigate(agentMemoryPath(agentId, id ?? undefined), { replace: true, keep: true });
   }
 </script>
 
-<div class="ib-memory" data-agent={agentId}>
-  {#if notice !== undefined}
-    {@const saved = notice === 'added' ? MEMORY_COPY.add.saved : MEMORY_COPY.correct.saved}
-    <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
-      <p class="ib-memory__alert-title">{saved.title}</p>
-      <p class="ib-memory__alert-body">{saved.description}</p>
-    </Alert>
-  {/if}
-
-  {#if refused !== undefined}
-    {@const failure = refused}
-    {@const words = refusalWords(refused.fault)}
-    <Alert variant="danger" dismissible onDismiss={() => (refused = undefined)}>
-      <p class="ib-memory__alert-title" data-correction-refusal={refused.fault.kind}>
-        {MEMORY_COPY.correct.notSaved.title}
-      </p>
-      <p class="ib-memory__alert-body">{words.title}</p>
-      {#if words.description !== ''}
-        <p class="ib-memory__alert-body">{words.description}</p>
-      {/if}
-      <p class="ib-memory__alert-body">{MEMORY_COPY.correct.notSaved.draftLabel}</p>
-      <blockquote class="ib-memory__draft" data-correction-draft>{refused.content}</blockquote>
-      {#if selectedId !== refused.id}
-        <Button variant="secondary" size="sm" onclick={() => editAgain(failure)}
-          >{MEMORY_COPY.correct.notSaved.editAgain}</Button
-        >
-      {/if}
-    </Alert>
-  {/if}
-
-  {#if active.isError}
-    <Alert variant="danger">
-      <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
-      <Button variant="secondary" size="sm" onclick={() => void active.refetch()}
-        >{RETRY_LABEL}</Button
-      >
-    </Alert>
-  {/if}
-
-  <MemoryChanges
-    bind:this={changes}
-    {agentId}
-    bind:outcome
-    {holds}
-    bind:forgetPending
-    onForgotten={gone}
-  />
-  <MemoryGovernance
-    bind:this={governance}
-    {agentId}
-    {holds}
-    bind:pending={governancePending}
-    onQuarantined={gone}
-  />
-  <MemoryAdd bind:this={adding} {agentId} onAdded={added} />
-
-  <!-- A kind that hides the search hits is not "no match": the hits are there. -->
-  {#snippet emptiness()}
-    {#if active.isPending}
-      <div role="status" aria-busy="true" aria-label={MEMORY_COPY.loading}>
-        <Skeleton height="1.5rem" width="50%" />
-        <Skeleton height="6rem" />
-      </div>
-    {:else if active.isError}
-      <!-- The fault is reported above the list, so this is not read as an empty agent. -->
-    {:else if kindFilter !== 'all' && (applied === '' || base.length > 0)}
-      <EmptyState
-        kind="filtered"
-        size="compact"
-        headingLevel={2}
-        title={MEMORY_COPY.noKind.title}
-        description={MEMORY_COPY.noKind.description}
-        clearFiltersLabel={MEMORY_COPY.clearMatch}
-        onClearFilters={clearAll}
-      />
-    {:else if applied !== ''}
-      <EmptyState
-        kind="filtered"
-        size="compact"
-        headingLevel={2}
-        title={MEMORY_COPY.noMatch.title(applied)}
-        description={MEMORY_COPY.noMatch.description}
-        clearFiltersLabel={MEMORY_COPY.clearMatch}
-        onClearFilters={clearAll}
-      />
-    {:else}
-      <EmptyState
-        kind="first-use"
-        size="compact"
-        headingLevel={2}
-        title={MEMORY_COPY.nothing.title}
-        description={MEMORY_COPY.nothing.description}
-      >
-        {#snippet action()}
-          <Button data-changes variant="primary" size="sm" onclick={() => adding?.ask()}
-            >{MEMORY_COPY.add.action}</Button
-          >
-        {/snippet}
-      </EmptyState>
+<!-- The first read of the list decides whether the tab has anything to show. A failure after that,
+     or a search's, is said above the list, which keeps what it shows. -->
+<AgentTabState
+  tab={AGENT_PAGE_COPY.tabs.memory}
+  shape="rows"
+  pending={listing.isPending}
+  error={listing.data === undefined ? listing.error : null}
+  updatedAt={listing.dataUpdatedAt}
+  onRetry={() => void listing.refetch()}
+>
+  <div class="ib-memory" data-agent={agentId}>
+    {#if notice !== undefined}
+      {@const saved = notice === 'added' ? MEMORY_COPY.add.saved : MEMORY_COPY.correct.saved}
+      <Alert variant="success" dismissible onDismiss={() => (notice = undefined)}>
+        <p class="ib-memory__alert-title">{saved.title}</p>
+        <p class="ib-memory__alert-body">{saved.description}</p>
+      </Alert>
     {/if}
-  {/snippet}
 
-  <div class="ib-memory__frame" data-shortcut-region="list-detail">
-    <ListDetail
-      {items}
-      key={(row: ListRow) => row.id}
-      label={MEMORY_COPY.listLabel}
-      detailLabel={MEMORY_COPY.detail.heading}
-      backLabel={MEMORY_COPY.backToList}
-      emptyTitle={MEMORY_COPY.nothingOpen.title}
-      emptyDescription={MEMORY_COPY.nothingOpen.description}
-      selectedKey={selectedId}
-      onSelectedKeyChange={open}
-      selectionParameter={null}
-      storageKey="interborough-memory"
-    >
-      {#snippet header()}
-        <div class="ib-memory__title-row">
-          <h1 class="ib-memory__title">{MEMORY_COPY.heading}</h1>
-          <div class="ib-memory__title-actions">
-            <Button data-changes variant="secondary" size="sm" onclick={() => adding?.ask()}>
-              {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
-              {MEMORY_COPY.add.action}
-            </Button>
-            <Button
-              data-changes
-              variant="secondary"
-              size="sm"
-              disabled={governancePending}
-              onclick={() => governance?.exportAll()}
-            >
-              {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
-              {MEMORY_COPY.govern.export.action}
-            </Button>
-          </div>
+    {#if refused !== undefined}
+      {@const failure = refused}
+      {@const words = refusalWords(refused.fault)}
+      <Alert variant="danger" dismissible onDismiss={() => (refused = undefined)}>
+        <p class="ib-memory__alert-title" data-correction-refusal={refused.fault.kind}>
+          {MEMORY_COPY.correct.notSaved.title}
+        </p>
+        <p class="ib-memory__alert-body">{words.title}</p>
+        {#if words.description !== ''}
+          <p class="ib-memory__alert-body">{words.description}</p>
+        {/if}
+        <p class="ib-memory__alert-body">{MEMORY_COPY.correct.notSaved.draftLabel}</p>
+        <blockquote class="ib-memory__draft" data-correction-draft>{refused.content}</blockquote>
+        {#if selectedId !== refused.id}
+          <Button variant="secondary" size="sm" onclick={() => editAgain(failure)}
+            >{MEMORY_COPY.correct.notSaved.editAgain}</Button
+          >
+        {/if}
+      </Alert>
+    {/if}
+
+    {#if active.isError && (applied !== '' || listing.data !== undefined)}
+      <Alert variant="danger">
+        <p class="ib-memory__alert-title">{MEMORY_COPY.listFailed}</p>
+        <Button variant="secondary" size="sm" onclick={() => void active.refetch()}
+          >{RETRY_LABEL}</Button
+        >
+      </Alert>
+    {/if}
+
+    <MemoryChanges
+      bind:this={changes}
+      {agentId}
+      bind:outcome
+      {holds}
+      bind:forgetPending
+      onForgotten={gone}
+    />
+    <MemoryGovernance
+      bind:this={governance}
+      {agentId}
+      {holds}
+      bind:pending={governancePending}
+      onQuarantined={gone}
+    />
+    <MemoryAdd bind:this={adding} {agentId} onAdded={added} />
+
+    <!-- A kind that hides the search hits is not "no match": the hits are there. -->
+    {#snippet emptiness()}
+      {#if active.isPending}
+        <div role="status" aria-busy="true" aria-label={MEMORY_COPY.loading}>
+          <Skeleton height="1.5rem" width="50%" />
+          <Skeleton height="6rem" />
         </div>
-        <SearchField
-          id="ib-memory-search"
-          aria-label={MEMORY_COPY.searchLabel}
-          placeholder={MEMORY_COPY.searchPlaceholder}
-          bind:value={typed}
-          onClear={() => (typed = '')}
+      {:else if active.isError}
+        <!-- The fault is reported above the list, so this is not read as an empty agent. -->
+      {:else if kindFilter !== 'all' && (applied === '' || base.length > 0)}
+        <EmptyState
+          kind="filtered"
+          size="compact"
+          headingLevel={2}
+          title={MEMORY_COPY.noKind.title}
+          description={MEMORY_COPY.noKind.description}
+          clearFiltersLabel={MEMORY_COPY.clearMatch}
+          onClearFilters={clearAll}
         />
-        <Select
-          id="ib-memory-kind"
-          label={MEMORY_COPY.filter.label}
-          labelVisible={false}
-          size="sm"
-          options={kindOptions}
-          value={kindFilter}
-          onchange={(event) => (kindFilter = filterNamed(event.currentTarget.value))}
+      {:else if applied !== ''}
+        <EmptyState
+          kind="filtered"
+          size="compact"
+          headingLevel={2}
+          title={MEMORY_COPY.noMatch.title(applied)}
+          description={MEMORY_COPY.noMatch.description}
+          clearFiltersLabel={MEMORY_COPY.clearMatch}
+          onClearFilters={clearAll}
         />
-        {#if pinned.length > 0 && shown.length === 0}
-          <div data-testid="memory-pinned-status">{@render emptiness()}</div>
-        {/if}
-        {#if loaded > 0}
-          <p class="ib-memory__count" data-testid="memory-count">
-            {MEMORY_COPY.count(loaded, listing.hasNextPage)}
-          </p>
-        {/if}
-        {#if applied !== '' && base.length > 0}
-          <p class="ib-memory__count" role="status" data-testid="memory-match-count">
-            {MEMORY_COPY.matchCount(base.length, total, searchFilled)}
-          </p>
-        {/if}
-        {#if kindFilter !== 'all' && base.length > 0}
-          <p class="ib-memory__count" data-testid="memory-kind-note">
-            {MEMORY_COPY.filter.note(
-              shown.length,
-              base.length,
-              applied === '' && listing.hasNextPage,
-            )}
-          </p>
-        {/if}
-      {/snippet}
-      {#snippet list(row, context)}
-        {#if row.kind === 'more'}
-          <div class="ib-memory__more">
-            <Button
-              variant="secondary"
-              size="sm"
-              disabled={listing.isFetchingNextPage}
-              onclick={() => void listing.fetchNextPage()}>{MEMORY_COPY.loadMore}</Button
+      {:else}
+        <EmptyState
+          kind="first-use"
+          size="compact"
+          headingLevel={2}
+          title={MEMORY_COPY.nothing.title}
+          description={MEMORY_COPY.nothing.description}
+        >
+          {#snippet action()}
+            <Button data-changes variant="primary" size="sm" onclick={() => adding?.ask()}
+              >{MEMORY_COPY.add.action}</Button
             >
+          {/snippet}
+        </EmptyState>
+      {/if}
+    {/snippet}
+
+    <div class="ib-memory__frame" data-shortcut-region="list-detail">
+      <ListDetail
+        {items}
+        key={(row: ListRow) => row.id}
+        label={MEMORY_COPY.listLabel}
+        detailLabel={MEMORY_COPY.detail.heading}
+        backLabel={MEMORY_COPY.backToList}
+        emptyTitle={MEMORY_COPY.nothingOpen.title}
+        emptyDescription={MEMORY_COPY.nothingOpen.description}
+        selectedKey={selectedId}
+        onSelectedKeyChange={open}
+        selectionParameter={null}
+        storageKey="interborough-memory"
+      >
+        {#snippet header()}
+          <div class="ib-memory__title-row">
+            <div class="ib-memory__title-actions">
+              <Button data-changes variant="secondary" size="sm" onclick={() => adding?.ask()}>
+                {#snippet leadingIcon()}<Plus aria-hidden="true" size={14} />{/snippet}
+                {MEMORY_COPY.add.action}
+              </Button>
+              <Button
+                data-changes
+                variant="secondary"
+                size="sm"
+                disabled={governancePending}
+                onclick={() => governance?.exportAll()}
+              >
+                {#snippet leadingIcon()}<Download aria-hidden="true" size={14} />{/snippet}
+                {MEMORY_COPY.govern.export.action}
+              </Button>
+            </div>
           </div>
-        {:else}
-          <MemoryRow
-            {agentId}
-            id={row.id}
-            memory={row.memory}
-            query={applied}
-            score={row.score}
-            pinned={row.pinned}
-            selected={context.selected}
-            onOpen={context.open}
+          <SearchField
+            id="ib-memory-search"
+            aria-label={MEMORY_COPY.searchLabel}
+            placeholder={MEMORY_COPY.searchPlaceholder}
+            bind:value={typed}
+            onClear={() => (typed = '')}
           />
-        {/if}
-      {/snippet}
-      {#snippet listEmpty()}
-        {@render emptiness()}
-      {/snippet}
-      {#snippet detail(row)}
-        {#key row.id}
-          <MemoryDetail
-            {agentId}
-            id={row.id}
-            hold={holds.get(row.id)}
-            {forgetPending}
-            {governancePending}
-            onOpen={open}
-            onForget={(memory) => changes?.askToForget(memory)}
-            onCorrected={corrected}
-            onCorrectionFailed={correctionFailed}
-            resume={resume?.id === row.id ? resume.content : undefined}
-            onShare={(memory) => governance?.askToShare(memory)}
-            onHold={(id, change) => governance?.changeHold(id, change)}
-            onQuarantine={(memory) => governance?.askToQuarantine(memory)}
+          <Select
+            id="ib-memory-kind"
+            label={MEMORY_COPY.filter.label}
+            labelVisible={false}
+            size="sm"
+            options={kindOptions}
+            value={kindFilter}
+            onchange={(event) => (kindFilter = filterNamed(event.currentTarget.value))}
           />
-        {/key}
-      {/snippet}
-    </ListDetail>
+          {#if pinned.length > 0 && shown.length === 0}
+            <div data-testid="memory-pinned-status">{@render emptiness()}</div>
+          {/if}
+          {#if loaded > 0}
+            <p class="ib-memory__count" data-testid="memory-count">
+              {MEMORY_COPY.count(loaded, listing.hasNextPage)}
+            </p>
+          {/if}
+          {#if applied !== '' && base.length > 0}
+            <p class="ib-memory__count" role="status" data-testid="memory-match-count">
+              {MEMORY_COPY.matchCount(base.length, total, searchFilled)}
+            </p>
+          {/if}
+          {#if kindFilter !== 'all' && base.length > 0}
+            <p class="ib-memory__count" data-testid="memory-kind-note">
+              {MEMORY_COPY.filter.note(
+                shown.length,
+                base.length,
+                applied === '' && listing.hasNextPage,
+              )}
+            </p>
+          {/if}
+        {/snippet}
+        {#snippet list(row, context)}
+          {#if row.kind === 'more'}
+            <div class="ib-memory__more">
+              <Button
+                variant="secondary"
+                size="sm"
+                disabled={listing.isFetchingNextPage}
+                onclick={() => void listing.fetchNextPage()}>{MEMORY_COPY.loadMore}</Button
+              >
+            </div>
+          {:else}
+            <MemoryRow
+              {agentId}
+              id={row.id}
+              memory={row.memory}
+              query={applied}
+              score={row.score}
+              pinned={row.pinned}
+              selected={context.selected}
+              onOpen={context.open}
+            />
+          {/if}
+        {/snippet}
+        {#snippet listEmpty()}
+          {@render emptiness()}
+        {/snippet}
+        {#snippet detail(row)}
+          {#key row.id}
+            <MemoryDetail
+              {agentId}
+              id={row.id}
+              hold={holds.get(row.id)}
+              {forgetPending}
+              {governancePending}
+              onOpen={open}
+              onForget={(memory) => changes?.askToForget(memory)}
+              onCorrected={corrected}
+              onCorrectionFailed={correctionFailed}
+              resume={resume?.id === row.id ? resume.content : undefined}
+              onShare={(memory) => governance?.askToShare(memory)}
+              onHold={(id, change) => governance?.changeHold(id, change)}
+              onQuarantine={(memory) => governance?.askToQuarantine(memory)}
+            />
+          {/key}
+        {/snippet}
+      </ListDetail>
+    </div>
   </div>
-</div>
+</AgentTabState>
 
 <style>
   .ib-memory {
@@ -494,9 +490,10 @@
     min-inline-size: 0;
   }
 
-  /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one. */
+  /* ListDetail fills the height it is given and scrolls each pane, so the frame gives it one: what
+     the window leaves under the agent's header and tab bar. */
   .ib-memory__frame {
-    block-size: max(28rem, calc(100dvh - 8rem));
+    block-size: max(28rem, calc(100dvh - 18rem));
     min-inline-size: 0;
     border: 1px solid var(--cinder-border-muted);
     border-radius: var(--cinder-radius-md);
@@ -508,19 +505,13 @@
     flex-wrap: wrap;
     gap: var(--cinder-space-2) var(--cinder-space-3);
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
 
   .ib-memory__title-actions {
     display: flex;
     flex-wrap: wrap;
     gap: var(--cinder-space-2);
-  }
-
-  .ib-memory__title {
-    margin: 0;
-    font-size: var(--cinder-text-lg);
-    font-weight: 600;
   }
 
   .ib-memory__count {

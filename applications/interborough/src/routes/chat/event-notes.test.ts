@@ -109,7 +109,7 @@ describe('noteAnnouncementOf', () => {
         recordId: 'rec-1',
         collection: 'preferences',
         memoryClass: 'episodic',
-        href: '/agents/helper/memories',
+        href: '/agents/helper/memory',
       },
     });
   });
@@ -301,7 +301,7 @@ describe('withStoredMemoryNotes', () => {
         recordId: 'rec-1',
         collection: 'prefs',
         memoryClass: 'semantic',
-        href: '/agents/helper/memories',
+        href: '/agents/helper/memory',
       },
     ]);
     expect(notesOn(history, 'a2')).toEqual([]);

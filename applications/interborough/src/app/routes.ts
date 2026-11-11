@@ -1,6 +1,6 @@
 import type { Component } from 'svelte';
 
-import { SETTINGS_SECTION_COPY, VIEW_COPY, WORKFLOW_COPY } from './copy.ts';
+import { AGENT_PAGE_COPY, SETTINGS_SECTION_COPY, VIEW_COPY, WORKFLOW_COPY } from './copy.ts';
 import type { PageKind, ViewName } from './views.ts';
 
 /**
@@ -48,6 +48,7 @@ export interface RouteDefinition {
 }
 
 const agentEditor = () => import('../routes/agent-editor/index.svelte');
+const agentPage = () => import('../routes/agents/agent-detail.svelte');
 const workflowArea = () => import('../routes/workflow-definitions/index.svelte');
 const runArea = () => import('../routes/workflows/index.svelte');
 const schedulesArea = () => import('../routes/schedules/index.svelte');
@@ -106,28 +107,52 @@ export const routes: readonly RouteDefinition[] = [
     view: 'agent-editor',
     load: agentEditor,
   },
-  // What an agent remembers, and the one memory open in it. They keep the `agents` view, whose frame probes the memory too.
-  {
-    pattern: '/agents/:agent/memories',
-    kind: 'list-detail',
-    crumb: 'Memory',
-    view: 'agents',
-    load: () => import('../routes/agents/agent-memory.svelte'),
-  },
-  // One memory open beside the list: the same page, so it shares the page's view and kind.
-  {
-    pattern: '/agents/:agent/memories/:memory',
-    kind: 'list-detail',
-    crumb: { param: 'memory' },
-    view: 'agents',
-    load: () => import('../routes/agents/agent-memory.svelte'),
-  },
+  // An agent's page and its tabs (`lib/agent-paths.ts`, `AGENT_TABS`): one frame with one header,
+  // so every tab is the same component, view and width, and only the tab body changes. Chats is
+  // the agent's own address; each other tab is a path under it, so a reload and the breadcrumb keep
+  // the place. Memory holds a list with the open memory beside it (`?selected=`), so the frame is
+  // wide on every tab and the header does not move between them.
   {
     pattern: '/agents/:agent',
-    kind: 'reading',
+    kind: 'table',
     crumb: { param: 'agent' },
     view: 'agents',
-    load: () => import('../routes/agents/agent-detail.svelte'),
+    load: agentPage,
+  },
+  {
+    pattern: '/agents/:agent/instructions',
+    kind: 'table',
+    crumb: AGENT_PAGE_COPY.tabs.instructions,
+    view: 'agents',
+    load: agentPage,
+  },
+  {
+    pattern: '/agents/:agent/access',
+    kind: 'table',
+    crumb: AGENT_PAGE_COPY.tabs.access,
+    view: 'agents',
+    load: agentPage,
+  },
+  {
+    pattern: '/agents/:agent/hooks',
+    kind: 'table',
+    crumb: AGENT_PAGE_COPY.tabs.hooks,
+    view: 'agents',
+    load: agentPage,
+  },
+  {
+    pattern: '/agents/:agent/memory',
+    kind: 'list-detail',
+    crumb: AGENT_PAGE_COPY.tabs.memory,
+    view: 'agents',
+    load: agentPage,
+  },
+  {
+    pattern: '/agents/:agent/settings',
+    kind: 'table',
+    crumb: AGENT_PAGE_COPY.tabs.settings,
+    view: 'agents',
+    load: agentPage,
   },
   // The tools and skills agents can use: Tools and Skills tabs, each a list with the open item beside it.
   {

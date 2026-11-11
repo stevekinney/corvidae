@@ -100,11 +100,11 @@ describe('a chat opened again', () => {
 
     await findByText('Remembered');
     const link = container.querySelector<HTMLAnchorElement>('a[data-chat-note-link]');
-    expect(link?.getAttribute('href')).toBe('/agents/assistant/memories');
+    expect(link?.getAttribute('href')).toBe('/agents/assistant/memory');
 
     await fireEvent.click(link!);
 
-    expect(window.location.pathname).toBe('/agents/assistant/memories');
+    expect(window.location.pathname).toBe('/agents/assistant/memory');
   });
 });
 
