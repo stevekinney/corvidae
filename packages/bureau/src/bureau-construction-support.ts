@@ -17,14 +17,13 @@ import { type BureauWorkflows } from './workflow-runtime';
 import type { AgentSource, WorkflowSource } from './sources/definition-source';
 import { resolveDefinitionSource } from './sources/validate-definition-source';
 import { type AnswerEncryptionKeys } from './secret-answers';
+import type { Bureau, BureauWatcherHealth } from './bureau-types/facade';
 import type {
-  Bureau,
   BureauOptions,
-  BureauWatcherHealth,
   DiagnosticSink,
   ExpiredRecordKind,
   ExpiredRecordRemoval,
-} from './types';
+} from './bureau-types/options';
 import type { BureauNotifications } from './notifications/notification-types';
 import { type WebhookDeliveryEngine, type WebhookNotifierOptions } from './webhook-notifier';
 import type { HooksDependencies } from './hooks/create-hooks.ts';

@@ -31,7 +31,7 @@ import {
 } from './catalog-run-asset-release';
 import type { CatalogRunSettlement } from './catalog-run-settlement';
 import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const RUN = 'agent-run-1';
 const held = (rowId: string) => runRowHolderId(RUN, rowId);

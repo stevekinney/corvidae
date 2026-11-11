@@ -21,7 +21,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { openGovernedMemory } from './test/process-crash-work-integrity-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 

@@ -20,7 +20,7 @@ import { waitForCondition } from '../test';
 import { createAudit } from './create-audit.ts';
 import { CompletableEventTarget } from '@lostgradient/lifecycle';
 import { yieldToPortableEventLoop } from '@lostgradient/weft';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 
 /** A Bureau that is only an event target, for a trail's dedicated listeners. */
 function createStubBureau(): { bureau: Bureau; emit: (event: Event) => void } {

@@ -55,7 +55,8 @@ import {
   pollUntil,
 } from './testing/goal-fixtures.test-support';
 import { inspect } from './testing/goal-recovery-fixtures.test-support';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import {
   createSqliteStorageFixture,

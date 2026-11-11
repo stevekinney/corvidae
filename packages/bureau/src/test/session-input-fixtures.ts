@@ -26,7 +26,8 @@ import { createToolbox } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
-import type { Bureau, BureauOptions, BureauInternals } from '../types';
+import type { Bureau, BureauInternals } from '../bureau-types/facade';
+import type { BureauOptions } from '../bureau-types/options';
 import type { PersistentBureauStorageFixture } from './storage-fixtures';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 

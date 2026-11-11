@@ -33,7 +33,8 @@ import {
   createChildTopologyStore,
 } from './child-topology-store';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BureauDiagnostic, CancelDurableRunOutcome } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
 
 // ---------------------------------------------------------------------------
 // Fakes

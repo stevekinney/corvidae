@@ -6,7 +6,7 @@
 import { describe, expect, it } from 'bun:test';
 
 import { createFireReviewSeeds } from './fire-review-seeds';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 function seedsWith(read: (runId: string) => Promise<void>) {
   const diagnostics: BureauDiagnostic[] = [];

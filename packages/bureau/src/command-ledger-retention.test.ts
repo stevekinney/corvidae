@@ -26,7 +26,7 @@ import {
 } from './command-ledger';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { RunSummary } from './types';
+import type { RunSummary } from './bureau-types/runs';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);

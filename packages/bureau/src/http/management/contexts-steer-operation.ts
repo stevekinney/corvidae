@@ -46,7 +46,8 @@ import { z } from 'zod';
 
 import { BureauError, BureauShuttingDownError } from '../../bureau-errors.ts';
 import type { SteeringCommandAdmissionOutcome, SteeringCommandSnapshot } from '../../steering.ts';
-import type { BureauContexts, BureauInternals } from '../../types.ts';
+import type { BureauContexts } from '../../bureau-types/contexts.ts';
+import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   resourceNotFound,

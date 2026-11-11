@@ -5,7 +5,8 @@
 import { createAgent, createMockGenerate } from '@lostgradient/operative';
 import { z } from 'zod';
 
-import type { Bureau, TaskHandle } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { TaskHandle } from './bureau-types/tasks';
 
 const agents = {
   plain: createAgent({ generate: createMockGenerate([]), name: 'plain' }),

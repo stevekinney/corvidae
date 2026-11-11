@@ -14,7 +14,7 @@ import { createDefaultRuntimeServices } from '@lostgradient/lifecycle';
 import { type AgentSession, stopWhen } from '@lostgradient/operative';
 import { describe, expect, it } from 'bun:test';
 
-import type { RunSummary } from '../types.ts';
+import type { RunSummary } from '../bureau-types/runs.ts';
 import {
   aliceHandlerOver,
   as,

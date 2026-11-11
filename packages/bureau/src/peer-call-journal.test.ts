@@ -23,7 +23,7 @@ import {
   IMMEDIATE_TASK_RETENTION,
   retireSettledTasksOnRealClock,
 } from './testing/run-retirement.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,

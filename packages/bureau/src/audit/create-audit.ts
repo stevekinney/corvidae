@@ -27,7 +27,7 @@ import type {
   AuditQueryPage,
   AuditQueryRecord,
   BureauAudit,
-} from '../types.ts';
+} from '../bureau-types/audit.ts';
 
 /** How many records a page holds when {@link AuditQuery.limit} is omitted. */
 export const DEFAULT_AUDIT_PAGE_LIMIT = 50;

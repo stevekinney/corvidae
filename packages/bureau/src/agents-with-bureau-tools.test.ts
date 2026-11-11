@@ -12,7 +12,7 @@ import type { AgentDefinitions } from './agent-catalog.ts';
 import type { BureauOwnTools } from './agents-with-bureau-tools.ts';
 import { createBureau } from './create-bureau.ts';
 import { disposeServed, serve } from './http/management/agent-definitions-fixtures.test-support.ts';
-import type { Bureau } from './types.ts';
+import type { Bureau } from './bureau-types/facade.ts';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 

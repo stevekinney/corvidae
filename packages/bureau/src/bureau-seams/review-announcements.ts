@@ -21,7 +21,7 @@ import {
 } from '../review-closing-events';
 import { ReviewRequestedEvent, ReviewSupersededEvent } from '../events';
 import type { RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
-import type { ServerFrame } from '../types';
+import type { ServerFrame } from '../bureau-types/frames';
 import { committedFireReviewIds } from '../scheduled-fire-review-state';
 import { serializeActionDetail, serializeUnknownError } from '../serialization';
 

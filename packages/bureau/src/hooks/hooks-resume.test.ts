@@ -7,7 +7,7 @@ import type { EncryptionKey } from '@lostgradient/cryptography';
 import { textValueStore } from '@lostgradient/storage';
 import { afterEach, beforeAll, describe, expect, it } from 'bun:test';
 
-import type { BureauDiagnostic } from '../types.ts';
+import type { BureauDiagnostic } from '../bureau-types/options.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
 import { waitForCondition } from '../test';
 import { HOOK_SIGNATURE_HEADER, verifyHookSignature } from './hook-signature.ts';

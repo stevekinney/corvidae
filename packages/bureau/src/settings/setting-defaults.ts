@@ -34,7 +34,7 @@ import {
 import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
-} from '../types.ts';
+} from '../bureau-types/options.ts';
 import {
   A2A_DEFAULTS,
   A2A_PUSH_DEFAULTS,

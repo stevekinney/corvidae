@@ -10,7 +10,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { BureauError } from './bureau-errors';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { CHAT_SPEND_KEY_PREFIX } from './chat-spend-ledger';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';

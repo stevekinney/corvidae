@@ -23,7 +23,8 @@ import {
   createConstructionWindowFixtures,
   constructionWindowGenerate,
 } from './testing/construction-window.test-support';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { agentFileDirectory } from './sources/agent-file-directory';

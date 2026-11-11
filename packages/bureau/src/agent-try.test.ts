@@ -42,7 +42,9 @@ import {
   type Observation,
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
-import type { Bureau, BureauDiagnostic, TryAgentResult } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
+import type { TryAgentResult } from './bureau-types/tasks';
 
 const harnesses: FileBureauHarness[] = [];
 const cleanups: Array<() => Promise<void>> = [];

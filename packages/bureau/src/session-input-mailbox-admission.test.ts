@@ -4,7 +4,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { createAgent } from '@lostgradient/operative';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';

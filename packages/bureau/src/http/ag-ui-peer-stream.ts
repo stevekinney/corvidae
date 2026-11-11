@@ -42,10 +42,10 @@ import type {
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
-  BureauContexts,
   BureauReviews,
-  BureauTasks,
-} from '../types.ts';
+} from '../bureau-types/reviews.ts';
+import type { BureauContexts } from '../bureau-types/contexts.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import {

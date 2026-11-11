@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { resolveWaitForDurableRun } from './durable-run-waits';
 import { waitForCondition } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createSqliteStorageFixture, type BureauStorageFixture } from './test/storage-fixtures';

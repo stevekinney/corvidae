@@ -23,7 +23,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau, BureauInternals } from './types';
+import type { Bureau, BureauInternals } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import {
   createSqliteStorageFixture,

@@ -16,7 +16,8 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { BureauContexts, BureauInternals } from '../../types.ts';
+import type { BureauContexts } from '../../bureau-types/contexts.ts';
+import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { mayAccessLoadedContext, noSessions } from './contexts-operations.ts';
 import {

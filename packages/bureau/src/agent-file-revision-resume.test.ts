@@ -29,7 +29,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';

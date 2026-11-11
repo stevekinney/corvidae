@@ -10,7 +10,7 @@ import {
 } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
-import type { PendingReview, ResolvedReview, ResolveReviewInput } from '../types.ts';
+import type { PendingReview, ResolvedReview, ResolveReviewInput } from '../bureau-types/reviews.ts';
 import {
   type BureauReviewsOperationHost,
   bureauReviewsOperations,

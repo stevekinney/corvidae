@@ -15,7 +15,7 @@ import { describe, expect, it } from 'bun:test';
 
 import { waitForCondition, waitForTaskState } from '../../test';
 import { pngBytes } from '../../testing/asset-fixtures.test-support.ts';
-import type { ContextWindowReport } from '../../types.ts';
+import type { ContextWindowReport } from '../../bureau-types/contexts.ts';
 import { modelsOf, noopTool, OPUS_5, OPUS_5_5 } from '../../testing/model-override.test-support.ts';
 import {
   openBureau,

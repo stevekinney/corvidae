@@ -44,7 +44,7 @@ import {
   type InteractiveSurfaces,
 } from '../interactive-surface/store.ts';
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
-import type { DurableEventHistorySubscribe } from '../types.ts';
+import type { DurableEventHistorySubscribe } from '../bureau-types/common.ts';
 import { type EventStamp, stamp } from './ag-ui-vocabulary.ts';
 
 /** The `activityType` of a surface's `ACTIVITY_SNAPSHOT`. */

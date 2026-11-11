@@ -48,7 +48,7 @@ import {
   UnknownScheduleAgentError,
 } from '../../bureau-errors.ts';
 import { scheduleInputPreview } from '../../schedule-input-preview.ts';
-import type { BureauSchedules } from '../../types.ts';
+import type { BureauSchedules } from '../../bureau-types/schedules.ts';
 import type { WorkflowScheduleBlocker } from '../../workflow-runtime.ts';
 import type { BureauScope } from '../bureau-scopes.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';

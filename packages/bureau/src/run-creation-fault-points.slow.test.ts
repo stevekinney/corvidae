@@ -53,7 +53,7 @@ import {
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
 import { startTaskFrom } from './test/task-start-request.ts';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { readChildJson } from './test/child-output-file';
 
 const CHILD = join(import.meta.dir, 'test', 'run-creation-crash-child.ts');

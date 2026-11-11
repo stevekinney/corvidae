@@ -23,7 +23,8 @@ import { approvalToolbox } from './http/management/management-fixtures.test-supp
 import { noopTool, OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau, BureauContexts } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauContexts } from './bureau-types/contexts';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';

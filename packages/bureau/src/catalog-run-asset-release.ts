@@ -55,7 +55,7 @@ import type { AssetService } from './assets/types';
 import type { CatalogRunSettlement, DurableEnd, DurableEndReader } from './catalog-run-settlement';
 import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import { serializeUnknownError } from './serialization';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** The rows of a finished run, as the walker reads them: hidden ones included. */
 export interface ReleasableConversation {

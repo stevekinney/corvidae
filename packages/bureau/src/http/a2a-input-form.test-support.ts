@@ -17,7 +17,7 @@ import { expect } from 'bun:test';
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { createCommandLedger } from '../command-ledger.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,

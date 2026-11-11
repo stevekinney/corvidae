@@ -33,7 +33,7 @@ import {
   goalWorkflowId,
 } from './goal-state';
 import { createGoalStore, type GoalTransitionRequest } from './goal-store';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const GOAL = 'goal-1';
 const SECRET_FEEDBACK = 'FEEDBACK-the-secret-instructions';

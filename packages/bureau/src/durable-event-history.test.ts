@@ -57,7 +57,8 @@ import {
 } from './events';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 async function createMemoryStorage(): Promise<Storage> {
   return new MemoryStorage();

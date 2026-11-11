@@ -10,7 +10,7 @@ import { describe, expect, it } from 'bun:test';
 import { createConversationHistory } from 'conversationalist';
 
 import { createRuntimeComposition } from './runtime-composition';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { MemoryStorage } from '@lostgradient/storage';
 
 function fakeRunOptions(): RunOptions {

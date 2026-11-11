@@ -22,7 +22,7 @@ import type {
 import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 
 import type { GoalState } from './goal-state';
-import type { DurableEventHistoryRead, DurableEventHistorySubscribe } from './types';
+import type { DurableEventHistoryRead, DurableEventHistorySubscribe } from './bureau-types/common';
 
 /** The slice of the durable engine the goal control plane drives. */
 export type GoalEngine = Pick<

@@ -12,7 +12,7 @@ import type { HumanInputSchema } from '@lostgradient/operative';
 import type { AuditRecord, AuditTrail } from '../audit-trail.ts';
 import { secretFieldsOfReview } from '../secret-answers.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { BureauReviews } from '../types.ts';
+import type { BureauReviews } from '../bureau-types/reviews.ts';
 
 /** A human wait that asks for structured input: what to ask, and the shape of the answer. */
 export type WaitForm = {

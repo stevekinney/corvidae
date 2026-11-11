@@ -37,7 +37,8 @@ import {
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, PendingHumanWaitReview, ResolveReviewInput } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { PendingHumanWaitReview, ResolveReviewInput } from './bureau-types/reviews';
 import { createMemoryAssetStorage } from './assets/storage';
 
 /** The owner string of the API key `owner-key`, whose subject is `tester`. */

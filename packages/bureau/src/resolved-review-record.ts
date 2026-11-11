@@ -42,7 +42,7 @@ import { isApprovalDecisionSurface } from './approval-decision-metadata';
 import { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 import { boundedReviewId } from './review-decision-record';
 import { secretAnswerReference } from './secret-answers';
-import type { PendingReview, ResolvedReview, ReviewStatus } from './types';
+import type { PendingReview, ResolvedReview, ReviewStatus } from './bureau-types/reviews';
 
 /** The key prefix of resolved-review records, apart from every other record's. */
 export const RESOLVED_REVIEW_KEY_PREFIX = 'bureau-resolved-review:v1:';

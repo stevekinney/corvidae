@@ -13,12 +13,14 @@ import { createTaskResponder, type TaskResponderDependencies } from './respond-t
 import {
   INSPECTED_STEP_LIMIT,
   type BureauTasks,
-  type DurableEventHistoryRead,
-  type DurableEventHistorySubscribe,
   type TaskHandle,
   type TaskInput,
   type TaskInspection,
-} from '../types.ts';
+} from '../bureau-types/tasks.ts';
+import {
+  type DurableEventHistoryRead,
+  type DurableEventHistorySubscribe,
+} from '../bureau-types/common.ts';
 
 /**
  * What {@link createTasks} composes `bureau.tasks` from: the Bureau's own task implementations,

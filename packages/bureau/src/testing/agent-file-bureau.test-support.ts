@@ -16,7 +16,8 @@ import {
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 import { lookupTool } from './agent-file-fixtures.test-support.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { agentFileDirectory } from '../sources/agent-file-directory';

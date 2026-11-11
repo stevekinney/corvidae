@@ -18,7 +18,7 @@ import {
   settlementForRejection,
 } from './catalog-run-settlement';
 import { settledTaskState } from './task-registry';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 import { ownEntry } from './own-entry';
 
 /**

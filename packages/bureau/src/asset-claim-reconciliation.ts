@@ -35,7 +35,7 @@ import type { AssetHeldClaim, AssetService } from './assets/types';
 import type { DurableEnd, DurableEndReader } from './catalog-run-settlement';
 import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import { serializeUnknownError } from './serialization';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** What one reconciliation pass did. */
 export interface AssetClaimReconciliationReport {

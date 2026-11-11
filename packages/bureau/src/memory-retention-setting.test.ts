@@ -25,7 +25,8 @@ import type { AgentDefinitions } from './agent-catalog.ts';
 import { projectBureauEvent } from './bureau-event-feed.ts';
 import { createBureau } from './create-bureau.ts';
 import { MemoryGovernanceEvent } from './events.ts';
-import type { Bureau, BureauOptions } from './types.ts';
+import type { Bureau } from './bureau-types/facade.ts';
+import type { BureauOptions } from './bureau-types/options.ts';
 
 const BUREAU_ID = 'memory-retention-setting';
 const DAY = 86_400_000;

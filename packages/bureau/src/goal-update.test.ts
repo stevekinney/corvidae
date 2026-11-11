@@ -21,7 +21,7 @@ import {
   pollUntil,
   workerAgent,
 } from './testing/goal-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const open: Bureau[] = [];
 afterEach(async () => {

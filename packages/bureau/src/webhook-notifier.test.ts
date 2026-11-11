@@ -13,7 +13,8 @@ import { afterEach, describe, expect, it, spyOn } from 'bun:test';
 
 import type { AuditTrail } from './audit-trail';
 import { ActionEvent } from './events';
-import type { Bureau, PendingReview } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { PendingReview } from './bureau-types/reviews';
 import {
   computeWebhookDeliveryDeadlineMs,
   DEFAULT_WEBHOOK_MAX_ATTEMPTS,

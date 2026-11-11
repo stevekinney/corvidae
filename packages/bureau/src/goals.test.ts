@@ -35,7 +35,7 @@ import {
 } from './testing/goal-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { spyOnPrune } from './testing/prune-spy.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { quietFor } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 

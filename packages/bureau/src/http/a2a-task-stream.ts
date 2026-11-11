@@ -47,7 +47,9 @@ import { INTERACTIVE_SURFACE_EVENT_KINDS } from '../interactive-surface/store.ts
 import type { InteractiveSurface } from '../interactive-surface/types.ts';
 import type { TaskRegistry, TaskView } from '../task-registry.ts';
 import { bearsSettlement } from '../task-resync.ts';
-import type { Bureau, BureauReviews, BureauTasks } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauReviews } from '../bureau-types/reviews.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
 import {
   type FormsAuditInternals,
   formsOf,

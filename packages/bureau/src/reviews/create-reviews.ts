@@ -1,4 +1,4 @@
-import type { BureauReviews, PendingReview } from '../types.ts';
+import type { BureauReviews, PendingReview } from '../bureau-types/reviews.ts';
 
 /**
  * What {@link createReviews} composes `bureau.reviews` from: the Bureau's own implementations,

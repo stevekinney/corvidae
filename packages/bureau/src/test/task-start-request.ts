@@ -1,4 +1,5 @@
-import type { Bureau, StartTaskOptions, TaskHandle, TaskInput } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { StartTaskOptions, TaskHandle, TaskInput } from '../bureau-types/tasks.ts';
 
 /**
  * One `bureau.tasks.start` call written as a single object, so a test can vary a start field by

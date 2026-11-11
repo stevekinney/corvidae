@@ -25,7 +25,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { DiagnosticEvent } from './events';
 import { waitForTaskState } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const BUREAU_ID = 'memory-partition-bureau';
 

@@ -59,9 +59,8 @@ import type {
   BureauReviews,
   PendingHumanWaitReview,
   ResolveReviewResult,
-  TaskRespondRequest,
-  TaskRespondResult,
-} from '../types.ts';
+} from '../bureau-types/reviews.ts';
+import type { TaskRespondRequest, TaskRespondResult } from '../bureau-types/tasks.ts';
 
 /** The version of this command's contract, part of every ledger identity. */
 export const TASKS_RESPOND_OPERATION_VERSION = 'bureau.tasks.respond.v1';

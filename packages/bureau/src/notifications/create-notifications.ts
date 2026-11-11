@@ -10,7 +10,7 @@ import type { ConditionalTextValueStore } from '@lostgradient/storage';
 import type { RuntimeClock, RuntimeIdentifiers } from '@lostgradient/lifecycle';
 
 import { serializeUnknownError } from '../serialization.ts';
-import type { DiagnosticSink } from '../types.ts';
+import type { DiagnosticSink } from '../bureau-types/options.ts';
 import {
   type BuiltInNotificationsOptions,
   startBuiltInNotifications,

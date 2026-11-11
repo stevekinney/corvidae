@@ -14,7 +14,7 @@ import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { TaskToolGrant } from '../task-registry.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
 import type { AgentSource } from '../sources/definition-source.ts';
-import type { BureauOptions } from '../types.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 import { effectiveSettings, readSettingsRecord, type StoredSettings } from './create-settings.ts';
 import {
   ENGINE_PATCH_FIELDS,

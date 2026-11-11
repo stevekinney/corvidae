@@ -10,7 +10,7 @@ import { type AgentDefinitions, createAgentCatalog } from './agent-catalog';
 import type { BureauModelPolicyOptions } from './model-policy';
 import { createBureau } from './create-bureau';
 import { OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau[] = [];

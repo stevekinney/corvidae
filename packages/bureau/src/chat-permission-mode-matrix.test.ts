@@ -33,7 +33,8 @@ import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bu
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { createToolApprovalHooks, decideChatPermission } from './tool-approval';
 import { ToolClashError } from './toolbox-additions';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const SECRET = 'permission-mode-matrix-secret';
 const executed: string[] = [];

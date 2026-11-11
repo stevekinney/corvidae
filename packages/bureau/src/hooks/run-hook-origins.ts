@@ -9,7 +9,7 @@
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
 
 import { bureauNameOf } from '../namespaced-identifier.ts';
-import type { BureauDiagnostic } from '../types.ts';
+import type { BureauDiagnostic } from '../bureau-types/options.ts';
 import { isTaskOrigin, type StoredTaskOrigin, taskOriginParentOf } from '../task-origin.ts';
 import { createHookOriginLookup } from './hook-origin.ts';
 import type { HookRunSubjects } from './hook-scope.ts';

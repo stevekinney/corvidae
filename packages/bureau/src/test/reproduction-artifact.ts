@@ -41,7 +41,7 @@ import type {
 import { summarizeToolInput } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
-import type { BureauShutdownReport } from '../types';
+import type { BureauShutdownReport } from '../bureau-types/facade';
 import type { BureauTestHarness } from './harness';
 
 export type { ScriptedOutcome } from '@lostgradient/operative';

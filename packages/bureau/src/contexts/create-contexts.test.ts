@@ -12,7 +12,7 @@ import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
 import { finishes } from '../test/task-record-crash-agent.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];

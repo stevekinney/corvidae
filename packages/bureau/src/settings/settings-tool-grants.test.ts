@@ -18,7 +18,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { TASK_RECORD_KEY_PREFIX } from '../task-registry';
 import { waitForCondition } from '../test';
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,

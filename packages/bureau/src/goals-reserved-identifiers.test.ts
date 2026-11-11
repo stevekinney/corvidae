@@ -24,7 +24,7 @@ import {
   workerAgent,
   workflowStatus,
 } from './testing/goal-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
 

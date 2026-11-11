@@ -45,7 +45,7 @@ import { agentFileDirectory } from './sources/agent-file-directory';
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { agentFileText, KNOWN_MODEL, lookupTool } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { BureauOptions } from './types';
+import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 
 const decoder = new TextDecoder();

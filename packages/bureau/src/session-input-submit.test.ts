@@ -12,7 +12,7 @@ import {
   savesSessionAs,
   seamStorage,
 } from './test/session-input-fixtures';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { quietFor } from '@lostgradient/testing/wait-until';

@@ -71,7 +71,9 @@ import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';
 import type { ActionEvent } from './events';
 import { resolveDiagnosticSink } from './serialization';
-import type { Bureau, DiagnosticSink, PendingReview } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { DiagnosticSink } from './bureau-types/options';
+import type { PendingReview } from './bureau-types/reviews';
 
 // ── Public surface ──────────────────────────────────────────────────
 

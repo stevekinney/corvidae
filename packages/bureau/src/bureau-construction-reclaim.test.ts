@@ -30,7 +30,8 @@ import {
 } from './testing/construction-window.test-support';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { pollUntil } from './testing/goal-fixtures.test-support';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import type { Storage } from '@lostgradient/storage';

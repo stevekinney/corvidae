@@ -1,6 +1,6 @@
 import { checkHumanInputSchemas, type HumanInputSchema } from '@lostgradient/operative';
 
-import type { BureauHumanInputOption } from './types';
+import type { BureauHumanInputOption } from './bureau-types/options';
 
 /**
  * COR-1700 — whether {@link BureauHumanInputOption} offers `requestHumanInput`: it does unless the

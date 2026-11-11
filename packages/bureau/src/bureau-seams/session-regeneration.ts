@@ -16,7 +16,7 @@ import {
   digestCommandPayload,
 } from '../command-ledger';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
-import type { SessionPendingReview } from '../types';
+import type { SessionPendingReview } from '../bureau-types/reviews';
 import { SessionForkRefusedError, assertBranchPoint } from '../session-fork';
 import {
   REGENERATE_OPERATION_VERSION,

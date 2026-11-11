@@ -30,7 +30,7 @@ import {
   workerAgent,
 } from './testing/goal-fixtures.test-support';
 import { bootOver } from './testing/goal-recovery-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void> | void> = [];

@@ -38,7 +38,8 @@ import {
 import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
-import type { Bureau, RecoverableStartedApproval } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { RecoverableStartedApproval } from '../bureau-types/reviews';
 import type { BureauAssetOptions } from '../index';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createSqliteStorageFixture } from './storage-fixtures';

@@ -22,7 +22,8 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
 import { fireBureauOptions, forgetDrivenRuntimes } from './schedule-fire-stream.test-support';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 
 const harness = createScheduleFireHarness();
 

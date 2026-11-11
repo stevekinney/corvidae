@@ -36,7 +36,7 @@ import type { BureauGoalRequest } from '../goal-types';
 import { ownerOrLocal } from '../owner-of-record';
 import { createRuntimeComposition } from '../runtime-composition';
 import { CATALOG_RUN_RECOVERY_KEY_PREFIX } from '../catalog-run-recovery-record';
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 import { createDiagnostics, goalRequest } from './goal-fixtures.test-support';
 
 export interface BootOptions<D extends AgentDefinitions> {

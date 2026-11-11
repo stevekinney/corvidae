@@ -44,7 +44,7 @@ import {
   type TestDatabase,
   workerAgent,
 } from './testing/goal-fixtures.test-support';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const cleanups: Array<() => Promise<void> | void> = [];
 let database: TestDatabase = createUnsetTestDatabase();

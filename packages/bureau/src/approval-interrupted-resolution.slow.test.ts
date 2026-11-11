@@ -32,7 +32,8 @@ import {
   INTERRUPTED_APPROVAL_FILE,
 } from './test/process-crash-work-integrity-fixtures';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
-import type { Bureau, RecoverableStartedApprovalInput } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { RecoverableStartedApprovalInput } from './bureau-types/reviews';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
 import { reviewDecisionKey } from './review-decision-record';

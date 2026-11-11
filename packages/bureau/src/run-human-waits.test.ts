@@ -12,7 +12,7 @@ import type { RegistryAgnosticEngine } from '@lostgradient/weft';
 import { describe, expect, it } from 'bun:test';
 
 import { createRunHumanWaits, type RunHumanWaitsDependencies } from './run-human-waits';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 type Diagnostic = Parameters<DiagnosticSink>[0];
 

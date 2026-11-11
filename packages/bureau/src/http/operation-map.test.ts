@@ -28,7 +28,7 @@ import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { BUREAU_HANDLER_OPERATIONS, createBureauHandler } from './create-bureau-handler.ts';
 import { OPERATION_MAP, type OperationBinding } from './operation-map.ts';
 

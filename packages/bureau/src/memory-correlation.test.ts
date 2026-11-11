@@ -26,7 +26,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForTaskState } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const requestContext: ToolRequestContext = {
   authority: {

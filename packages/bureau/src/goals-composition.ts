@@ -58,7 +58,8 @@ import type { BureauGoalRecoveryReport, BureauGoals, GoalEngine } from './goal-t
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
 import { type BureauGoalsDependencies, createBureauGoals } from './goals';
 import type { GoalAttemptClaimFence, GoalAttemptClaimOwner } from './catalog-run-recovery-record';
-import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
+import type { DiagnosticSink } from './bureau-types/options';
 
 export interface GoalsCompositionDependencies {
   readonly workspace?: WorkspaceRuntimeAuthority | undefined;

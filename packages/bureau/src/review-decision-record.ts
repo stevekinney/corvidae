@@ -69,7 +69,7 @@ import { type ConditionalTextValueStore, encodeStorageKeyComponent } from '@lost
 
 import { canonicalJson } from './command-ledger';
 import { withoutCiphertext } from './secret-answers';
-import type { ResolveReviewInput } from './types';
+import type { ResolveReviewInput } from './bureau-types/reviews';
 
 export const REVIEW_DECISION_KEY_PREFIX = 'review-decision:v1';
 

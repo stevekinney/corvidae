@@ -32,7 +32,8 @@ import type {
   WorkflowTimelineEntry,
 } from '@lostgradient/weft';
 
-import type { DiagnosticSink, PendingHumanWaitReview } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
+import type { PendingHumanWaitReview } from './bureau-types/reviews';
 import { workflowFileStepsInCanonicalOrder, type WorkflowFileStep } from './workflow-file';
 
 /** The steps as written of the revision an instance runs on. */

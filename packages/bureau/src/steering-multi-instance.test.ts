@@ -31,7 +31,7 @@ import { z } from 'zod';
 import { STEERABLE_MODELS } from './testing/default-agent.test-support';
 import { createBureau } from './create-bureau';
 import type { SteeringCommandRequest } from './steering';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { createRuntimeComposition } from './runtime-composition';
 import {
   appendSteeringLogEvent,

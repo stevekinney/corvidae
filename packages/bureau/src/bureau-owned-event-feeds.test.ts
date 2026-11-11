@@ -21,7 +21,7 @@ import type { BureauEventEnvelope } from './bureau-event-feed.ts';
 import { createBureau } from './create-bureau';
 import { waitForCondition, waitForTaskState } from './test';
 import { retireSettledTasks, SHORT_TASK_RETENTION } from './testing/run-retirement.test-support';
-import type { BureauOptions } from './types';
+import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 
 const CANARY = 'ModelOutputCanary';

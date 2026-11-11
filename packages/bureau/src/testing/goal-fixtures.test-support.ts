@@ -28,7 +28,8 @@ import { createSqliteStorageFixture } from '../test/storage-fixtures';
 
 import type { GoalState } from '../goal-state';
 import type { BureauGoalRequest } from '../goal-types';
-import type { Bureau, BureauDiagnostic } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauDiagnostic } from '../bureau-types/options';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
 /**

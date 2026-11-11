@@ -31,16 +31,12 @@ import {
 } from 'conversationalist';
 
 import type { BureauChildRecord } from '../child-topology-store.ts';
-import type {
-  Bureau,
-  PendingReview,
-  RunDetail,
-  ServerFrame,
-  BureauContexts,
-  BureauReviews,
-  BureauTasks,
-  BureauInternals,
-} from '../types.ts';
+import type { Bureau, BureauInternals } from '../bureau-types/facade.ts';
+import type { PendingReview, BureauReviews } from '../bureau-types/reviews.ts';
+import type { RunDetail } from '../bureau-types/runs.ts';
+import type { ServerFrame } from '../bureau-types/frames.ts';
+import type { BureauContexts } from '../bureau-types/contexts.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
 import { toInterrupt } from './ag-ui-interrupts.ts';
 import { type AnswerRow, snapshotMessages, snapshotMessagesWithAnswers } from './ag-ui-messages.ts';
 import { openPeerStream } from './ag-ui-peer-stream.ts';

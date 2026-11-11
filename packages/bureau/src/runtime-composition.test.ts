@@ -81,7 +81,7 @@ import {
   recoveredRequestContext,
 } from './run-request-context';
 
-import type { ProviderConfiguration } from './types';
+import type { ProviderConfiguration } from './bureau-types/options';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';

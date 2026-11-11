@@ -13,7 +13,7 @@ import type {
   BureauShutdownOwnerReport,
   BureauShutdownReport,
   CleanupAcknowledgement,
-} from '../types';
+} from '../bureau-types/facade';
 import type { RuntimeTimeoutHandle } from '@lostgradient/lifecycle';
 import { detachBestEffortPromise } from '../bureau-construction-support';
 import { disposeRunEventFeed } from '../run-event-feed-attachment.ts';

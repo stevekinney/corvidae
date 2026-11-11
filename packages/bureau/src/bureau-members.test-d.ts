@@ -10,18 +10,12 @@ import type { AgentModels } from './agent-models.ts';
 import type { BureauDecisions } from './decisions/types.ts';
 import type { BureauSettings } from './settings/types.ts';
 import type { BureauMemberPath } from './http/operation-map.ts';
-import type {
-  Bureau,
-  BureauAudit,
-  BureauContexts,
-  BureauTasks,
-  BureauInternals,
-  BureauRecoveryReport,
-  BureauReviews,
-  BureauSchedules,
-  StartTaskOptions,
-  TaskHandle,
-} from './types.ts';
+import type { Bureau, BureauInternals, BureauRecoveryReport } from './bureau-types/facade.ts';
+import type { BureauAudit } from './bureau-types/audit.ts';
+import type { BureauContexts } from './bureau-types/contexts.ts';
+import type { BureauTasks, StartTaskOptions, TaskHandle } from './bureau-types/tasks.ts';
+import type { BureauReviews } from './bureau-types/reviews.ts';
+import type { BureauSchedules } from './bureau-types/schedules.ts';
 
 /** Compiles only when `Value` is `never`, so a member that returned names itself in the error. */
 type AssertNever<Value extends never> = Value;

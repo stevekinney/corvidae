@@ -19,7 +19,7 @@ import { waitForCondition } from '../test';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from '../testing/agent-file-bureau.test-support';
-import type { BureauDiagnostic } from '../types';
+import type { BureauDiagnostic } from '../bureau-types/options';
 import { listedPlugins } from '../testing/plugin-listing.test-support';
 
 const SECRET = 'plugin-tool-secret';

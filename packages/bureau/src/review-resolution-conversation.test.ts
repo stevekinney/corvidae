@@ -31,7 +31,7 @@ import {
 } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { APPROVAL_DECISION_METADATA_KEY } from './approval-decision-metadata';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
 

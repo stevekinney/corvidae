@@ -32,7 +32,7 @@ import {
 } from './testing/workflow-bureau.test-support';
 import { taskOriginParentTag } from './task-origin';
 import type { TaskView } from './task-registry';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const harnesses: WorkflowBureauHarness[] = [];

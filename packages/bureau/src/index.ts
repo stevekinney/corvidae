@@ -714,10 +714,19 @@ export type {
 export type {
   AbortingRun,
   Bureau,
-  BureauChildrenOptions,
   BureauDiagnostics,
-  BureauEventType,
   BureauInternals,
+  BureauRecoveryReport,
+  BureauWatcherHealth,
+  BureauShutdownOptions,
+  BureauShutdownOwnerReport,
+  BureauShutdownReport,
+  CleanupAcknowledgement,
+  OwnedResource,
+} from './bureau-types/facade';
+export type {
+  BureauChildrenOptions,
+  BureauEventType,
   BureauMemoryAuthorityOptions,
   BureauOptions,
   BureauLogsOptions,
@@ -729,18 +738,45 @@ export type {
   BureauRetentionOptions,
   ExpiredRecordKind,
   ExpiredRecordRemoval,
-  BureauRecoveryReport,
-  BureauWatcherHealth,
+  BureauRunOptions,
+  CacheConfiguration,
+  DurableGuardrailsConfiguration,
+  IdentityConfiguration,
+  LoadedSkill,
+  ProviderConfiguration,
+  RetentionWindowOption,
+  SkillCatalogEntry,
+  SkillProvider,
+  SkillRuntimeConfiguration,
+  BureauHumanInputOption,
+  StreamingConfiguration,
+} from './bureau-types/options';
+export type {
   BureauAudit,
   AuditQuery,
   BureauAuditQueryOptions,
   AuditQueryPage,
   AuditQueryRecord,
+} from './bureau-types/audit';
+export type {
   BureauReviews,
+  PendingHumanWaitReview,
+  PendingReview,
+  PendingToolApprovalReview,
+  ApprovalDecisionSurface,
+  ResolveReviewInput,
+  ResolvedReview,
+  ReviewResolutionFields,
+  ResolveReviewResult,
+  WorkflowReviewOrigin,
+} from './bureau-types/reviews';
+export type {
   BureauContexts,
   ContextWindowCategory,
   ContextWindowCategoryName,
   ContextWindowReport,
+} from './bureau-types/contexts';
+export type {
   BureauAgents,
   BureauTasks,
   StartTaskOptions,
@@ -753,54 +789,33 @@ export type {
   TryAgentResult,
   TaskRespondRequest,
   TaskRespondResult,
+} from './bureau-types/tasks';
+export type {
   BureauSchedules,
-  BureauRunOptions,
-  BureauShutdownOptions,
-  BureauShutdownOwnerReport,
-  BureauShutdownReport,
-  CacheConfiguration,
-  CleanupAcknowledgement,
-  CreateRunRequest,
   CreateScheduleOptions,
-  DurableGuardrailsConfiguration,
   DurableScheduleDefinition,
-  EventHistoryDeletedAggregateOutcome,
-  EventHistoryNotFoundOutcome,
-  EventHistoryUnsupportedOutcome,
-  FlowControlPolicy,
-  IdentityConfiguration,
-  LoadedSkill,
+} from './bureau-types/schedules';
+export type {
+  CreateRunRequest,
   LocateRunCreationReceiptRequest,
-  OwnedResource,
-  PendingHumanWaitReview,
-  PendingReview,
-  PendingToolApprovalReview,
-  ProviderConfiguration,
-  ApprovalDecisionSurface,
-  ResolveReviewInput,
-  ResolvedReview,
-  ReviewResolutionFields,
-  ResolveReviewResult,
-  RetentionWindowOption,
   RunDetail,
   RunEventRecord,
   RunStepDetail,
   RunSummary,
-  ServerFrame,
-  SkillCatalogEntry,
-  SkillProvider,
-  SkillRuntimeConfiguration,
-  BureauHumanInputOption,
-  StreamFrame,
-  StreamingConfiguration,
-  ToolPolicy,
-  WorkflowReviewOrigin,
-} from './types';
+} from './bureau-types/runs';
+export type {
+  EventHistoryDeletedAggregateOutcome,
+  EventHistoryNotFoundOutcome,
+  EventHistoryUnsupportedOutcome,
+} from './bureau-types/common';
+export type { FlowControlPolicy } from '@lostgradient/operative';
+export type { ServerFrame, StreamFrame } from './bureau-types/frames';
+export type { ToolPolicy } from 'armorer/protocol';
 export { ANONYMOUS_LOCAL_OWNER } from './owner-of-record';
 export {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
-} from './types';
+} from './bureau-types/options';
 export type {
   WebhookDeliveryRecord,
   WebhookNotifier,
@@ -866,7 +881,7 @@ export type {
 } from './hooks/hook-types';
 export { hookUrlDefect } from './hooks/hook-url-policy';
 export type { HookUrlPolicy } from './hooks/hook-url-policy';
-export type { BureauHooksOptions } from './types';
+export type { BureauHooksOptions } from './bureau-types/options';
 /*
  * A bureau's lifecycle events, projected onto Weft's replay-plus-live feed
  * and exposed as `bureau.events` in the same catalog that carries Weft's own

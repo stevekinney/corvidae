@@ -55,12 +55,12 @@ import {
 } from './review-decision-record';
 import type { SecretAnswerAuditEntry } from './secret-answers';
 import type { RunAttribution } from './serialization';
+import type { DiagnosticSink } from './bureau-types/options';
 import type {
-  DiagnosticSink,
   PendingHumanWaitReview,
   ResolveReviewInput,
   ResolveReviewResult,
-} from './types';
+} from './bureau-types/reviews';
 
 /** The sentinel a denied or rejected park resumes with; identical to the session path's. */
 export function humanWaitDenialPayload(

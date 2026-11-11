@@ -30,7 +30,7 @@ import {
   lookupTool,
   OTHER_MODEL,
 } from './testing/agent-file-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';

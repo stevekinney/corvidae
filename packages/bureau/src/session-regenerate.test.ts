@@ -48,7 +48,7 @@ import {
 import { waitForCondition, waitForTaskState } from './test';
 import { approvalToolbox } from './http/management/management-fixtures.test-support';
 import { OPUS_5, OPUS_5_5 } from './testing/model-override.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { startTaskFrom } from './test/task-start-request.ts';
 
 const cleanups: Array<() => Promise<void> | void> = [];

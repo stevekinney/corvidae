@@ -15,7 +15,7 @@ import {
   startWorkflowToolsBureau,
   type WorkflowToolsHarness,
 } from './testing/workflow-tools-bureau.test-support';
-import type { BureauInternals } from './types';
+import type { BureauInternals } from './bureau-types/facade';
 
 const harnesses: WorkflowToolsHarness[] = [];
 const cleanups: Array<() => Promise<void>> = [];

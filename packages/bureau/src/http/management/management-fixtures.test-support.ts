@@ -15,7 +15,8 @@ import { type AssetStorage, createMemoryAssetStorage } from '../../assets/storag
 import type { AssetPolicyInput, AssetPorts } from '../../assets/types';
 import { createBureau } from '../../create-bureau.ts';
 import { createSqliteStorageFixture } from '../../test/storage-fixtures';
-import type { Bureau, BureauHumanInputOption } from '../../types.ts';
+import type { Bureau } from '../../bureau-types/facade.ts';
+import type { BureauHumanInputOption } from '../../bureau-types/options.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
 import type { AgentDefinitions } from '../../agent-catalog';

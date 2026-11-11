@@ -52,12 +52,12 @@ import type {
   SessionTaintSource,
   SessionTaintSeam,
 } from './session-taint-seam';
+import type { CreateRunRequest } from './bureau-types/runs';
 import type {
-  CreateRunRequest,
   SkillRuntimeConfiguration,
   CacheConfiguration,
   BureauOptions,
-} from './types';
+} from './bureau-types/options';
 import type { ModelPolicySource } from './code-agent-model-policy';
 import type {
   CatalogRunRecoveryLoad,

@@ -37,7 +37,7 @@ import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { createBureau } from '../../create-bureau.ts';
 import { waitForTaskState } from '../../test';
-import type { Bureau } from '../../types.ts';
+import type { Bureau } from '../../bureau-types/facade.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import { createBureauHandler, BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import { memoryExportFileName } from './memory-history.ts';

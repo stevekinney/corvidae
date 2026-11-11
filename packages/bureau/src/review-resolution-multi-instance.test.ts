@@ -41,14 +41,14 @@ import {
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import type {
-  Bureau,
-  BureauOptions,
   PendingHumanWaitReview,
   PendingReview,
   PendingToolApprovalReview,
-  StartTaskOptions,
-} from './types';
+} from './bureau-types/reviews';
+import type { StartTaskOptions } from './bureau-types/tasks';
 
 const APPROVAL_SECRET = 'review-resolution-multi-instance-secret';
 

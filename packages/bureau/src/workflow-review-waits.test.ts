@@ -23,7 +23,7 @@ import {
   type WorkflowBureauHarness,
 } from './testing/workflow-bureau.test-support';
 import { AGENT_STEP } from './testing/workflow-file-fixtures.test-support';
-import type { PendingHumanWaitReview } from './types';
+import type { PendingHumanWaitReview } from './bureau-types/reviews';
 import { workflowReviewId } from './workflow-review-waits';
 
 describe('workflowReviewId', () => {

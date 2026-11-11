@@ -7,7 +7,7 @@ import type {
   PendingReview,
   PendingToolApprovalReview,
   SessionPendingReview,
-} from './types';
+} from './bureau-types/reviews';
 
 declare const approval: PendingToolApprovalReview;
 export const approvalSession: string = approval.sessionId;

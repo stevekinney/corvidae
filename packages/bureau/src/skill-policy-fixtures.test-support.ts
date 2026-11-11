@@ -12,7 +12,7 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import { discoverSkills, type SkillCatalogRevision } from './skills';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 
 const roots: string[] = [];

@@ -40,7 +40,7 @@ import type {
   ResolveReviewResult,
   ReviewStatus,
   SessionPendingReview,
-} from '../types';
+} from '../bureau-types/reviews';
 import { type ApprovedCallAudit, isJsonObject } from '../approval-state-records';
 import type { BureauCore, ReviewAuditAttachment, ScheduledFireApprovalEnding } from './core';
 import type { BureauToolbox } from '../runtime-composition-types';

@@ -12,7 +12,7 @@ import type {
   BureauChildrenOptions,
   BureauRetentionOptions,
   RetentionWindowOption,
-} from './types.ts';
+} from './bureau-types/options.ts';
 
 /** Throws the caller's bad-request error. */
 export type BadRequest = (message: string) => never;

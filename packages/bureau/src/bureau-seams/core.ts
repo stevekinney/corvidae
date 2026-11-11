@@ -27,14 +27,10 @@ import type {
 import type { AgentDefinitions, createAgentCatalog } from '../agent-catalog';
 import type { AssetService } from '../assets/types';
 import type { AuditTrail } from '../audit-trail';
-import type {
-  ApprovalDecisionSurface,
-  Bureau,
-  BureauShutdownReport,
-  ContextDeletionReport,
-  PendingReview,
-  ServerFrame,
-} from '../types';
+import type { ApprovalDecisionSurface, PendingReview } from '../bureau-types/reviews';
+import type { Bureau, BureauShutdownReport } from '../bureau-types/facade';
+import type { ContextDeletionReport } from '../bureau-types/contexts';
+import type { ServerFrame } from '../bureau-types/frames';
 import type { BureauEventMap } from '../events';
 import type {
   BureauSteeringGate,

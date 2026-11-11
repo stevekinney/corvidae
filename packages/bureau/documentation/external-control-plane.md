@@ -638,7 +638,7 @@ The first consumer is Interborough, Corvidae's main application. It is served fr
 
 ## Bureau method map
 
-Every current `Bureau` member (`packages/bureau/src/types.ts:1102-1836`) maps to the taxonomy or is internal:
+Every current `Bureau` member (`packages/bureau/src/bureau-types/facade.ts`) maps to the taxonomy or is internal:
 
 | Bureau member | External mapping |
 | --- | --- |

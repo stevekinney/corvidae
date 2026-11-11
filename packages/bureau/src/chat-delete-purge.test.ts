@@ -21,7 +21,8 @@ import { createBureau } from './create-bureau';
 import { createDurableEventHistory } from './durable-event-history';
 import { type BureauStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { startTaskFrom } from './test/task-start-request.ts';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 /** What the chat that is deleted is asked and answers; every other chat gets other text. */
 const ANSWER = 'ANSWER-SENTINEL-4f1c';

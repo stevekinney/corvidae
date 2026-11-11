@@ -1,4 +1,6 @@
-import type { Bureau, BureauTasks, RunDetail } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
+import type { RunDetail } from '../bureau-types/runs.ts';
 
 /**
  * The session tasks this process holds, in the order they were registered, optionally only those

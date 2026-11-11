@@ -26,7 +26,7 @@ import {
   OTHER_MODEL,
 } from './testing/agent-file-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { WorkspaceMembershipOptions } from './http/workspace-principal';
 
 type Script = GenerateFunction;

@@ -14,7 +14,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { runTask, waitForTaskState } from './test';
 import { withResolvedOptions } from './testing/named-agent.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 import {

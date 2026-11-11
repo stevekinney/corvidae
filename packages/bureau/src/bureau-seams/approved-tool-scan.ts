@@ -16,7 +16,7 @@ import {
   scanToolResult,
 } from '@lostgradient/operative';
 import type { HookRegistry } from '@lostgradient/lifecycle';
-import type { PendingReview } from '../types';
+import type { PendingReview } from '../bureau-types/reviews';
 import type { SessionTaintSeam } from '../session-taint-seam';
 import type { ToolExecutionResult } from 'armorer';
 import { catalogRunGuardrailsContext } from '../bureau-catalog-dispatch';

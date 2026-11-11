@@ -23,7 +23,8 @@ import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';
 

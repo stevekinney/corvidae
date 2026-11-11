@@ -15,7 +15,7 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 import {
   createSqliteStorageFixture,

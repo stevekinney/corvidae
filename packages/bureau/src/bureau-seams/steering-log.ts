@@ -43,7 +43,7 @@ import {
 import type { WorkflowState } from '@lostgradient/weft';
 import { detachBestEffortPromise } from '../bureau-construction-support';
 import { serializeUnknownError } from '../serialization';
-import type { RunSummary } from '../types';
+import type { RunSummary } from '../bureau-types/runs';
 
 /** The callables steering log reads from elsewhere in `constructBureau`. */
 export interface SteeringLogPeers {

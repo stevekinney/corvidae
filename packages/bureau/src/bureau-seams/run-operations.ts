@@ -4,14 +4,9 @@
  * `constructBureau` and reached only through `createBureau`; task start, sessions, child runs,
  * maintenance, fire approval restore and review records call into it.
  */
-import type {
-  AbortingRun,
-  CancelDurableRunOutcome,
-  PendingReview,
-  ReviewStatus,
-  RunSummary,
-  SessionPendingReview,
-} from '../types';
+import type { AbortingRun } from '../bureau-types/facade';
+import type { CancelDurableRunOutcome, RunSummary } from '../bureau-types/runs';
+import type { PendingReview, ReviewStatus, SessionPendingReview } from '../bureau-types/reviews';
 import type {
   ActiveRun,
   AgentSession,

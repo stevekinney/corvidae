@@ -19,7 +19,7 @@ import { EXPIRY_SWEEP_INTERVAL_MILLISECONDS } from './bureau-construction-suppor
 import { OWNER } from './http/management/management-fixtures.test-support.ts';
 import { fireOnce, pollUntil, reviewOf } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
 import {

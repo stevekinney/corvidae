@@ -1,7 +1,7 @@
 // Type-level tripwire (COR-2132): the scorer option and its list were renamed, so a host that still
 // passes `onlineEvals`, or the option's `judges` member, fails type-checking.
 
-import type { BureauOptions } from './types.ts';
+import type { BureauOptions } from './bureau-types/options.ts';
 
 type ScorerOption = Pick<BureauOptions, 'scorers'>;
 

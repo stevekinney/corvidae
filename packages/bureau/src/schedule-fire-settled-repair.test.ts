@@ -26,7 +26,7 @@ import {
   parkedGenerate,
   settledEventsOf,
 } from './schedule-fire-stream.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const harness = createScheduleFireHarness();
 

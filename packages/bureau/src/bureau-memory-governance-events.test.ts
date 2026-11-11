@@ -29,7 +29,7 @@ import { createBureau } from './create-bureau';
 import { MemoryGovernanceEvent } from './events';
 import { agentFileDirectory } from './sources/agent-file-directory';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const SECRET = 'SECRET-record-content-4417';
 

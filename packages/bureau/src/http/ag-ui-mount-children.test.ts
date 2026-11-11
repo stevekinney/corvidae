@@ -17,7 +17,7 @@ import { createToolbox } from 'armorer';
 import { describe, expect, it, spyOn } from 'bun:test';
 
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import {
   aliceHandlerOver,
   as,

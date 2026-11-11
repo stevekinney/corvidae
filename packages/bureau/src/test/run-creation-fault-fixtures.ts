@@ -3,7 +3,7 @@
  * and its crash child (`run-creation-crash-child.ts`) share: the request both Bureaus receive, the
  * scenarios the child can play, and the marker it leaves behind before it dies.
  */
-import type { TaskHandle } from '../types';
+import type { TaskHandle } from '../bureau-types/tasks';
 import type { TaskStartRequest } from './task-start-request.ts';
 
 /** The client request Bureau A is interrupted on and Bureau B receives as the retry. */

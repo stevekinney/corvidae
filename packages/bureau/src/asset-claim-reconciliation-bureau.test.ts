@@ -35,7 +35,7 @@ import { runRowHolderId, sessionRowHolderPrefix } from './assets/row-asset-claim
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 

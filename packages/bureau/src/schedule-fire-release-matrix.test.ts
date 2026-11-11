@@ -27,7 +27,7 @@ import {
 } from './schedule-fire-fixtures.test-support';
 import { scheduledFireHoldings, scheduledFireReviewStateOf } from './scheduled-fire-review-state';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { expireReviews } from './testing/expired-reviews.test-support';
 
 const harness = createScheduleFireHarness();

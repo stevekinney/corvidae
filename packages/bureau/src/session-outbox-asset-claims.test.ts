@@ -31,7 +31,8 @@ import type { AssetStorage } from './assets/storage';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, bob, pngBytes } from './testing/asset-fixtures.test-support';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

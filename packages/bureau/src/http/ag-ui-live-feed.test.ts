@@ -2,7 +2,8 @@ import { describe, expect, test } from 'bun:test';
 import { EventType } from '@ag-ui/core';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 
-import type { RunEventRecord, ServerFrame } from '../types.ts';
+import type { RunEventRecord } from '../bureau-types/runs.ts';
+import type { ServerFrame } from '../bureau-types/frames.ts';
 import { createAgUiLiveFeedRegistry, type AgUiLiveUpdate } from './ag-ui-live-feed.ts';
 
 const context = { nativeRunId: 'run-1', sessionId: 'thread', now: () => 1 };

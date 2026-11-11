@@ -29,7 +29,7 @@ import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { listHeldTasks, runTask } from './test';
-import type { StartTaskOptions } from './types';
+import type { StartTaskOptions } from './bureau-types/tasks';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';

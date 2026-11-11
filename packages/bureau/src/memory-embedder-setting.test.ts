@@ -27,7 +27,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from './agent-catalog.ts';
 import { createBureau } from './create-bureau.ts';
-import type { Bureau } from './types.ts';
+import type { Bureau } from './bureau-types/facade.ts';
 
 const BUREAU_ID = 'memory-embedder-setting';
 const FAKE = 'fake';

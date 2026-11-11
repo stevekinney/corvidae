@@ -19,7 +19,7 @@ import {
   pollUntil,
   reviewOf,
 } from './schedule-fire-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const harness = createScheduleFireHarness();
 

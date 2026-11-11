@@ -24,7 +24,7 @@ import type {
   EventHistoryDeletedAggregateOutcome,
   EventHistoryNotFoundOutcome,
   EventHistoryUnsupportedOutcome,
-} from '../types';
+} from '../bureau-types/common';
 import type { BureauCore } from './core';
 
 /** The callables event history reads from elsewhere in `constructBureau`. */

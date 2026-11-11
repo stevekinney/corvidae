@@ -13,7 +13,7 @@ import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { waitForCondition } from '../test';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { type Json, message } from './a2a-mount.test-support.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import {

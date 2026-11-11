@@ -57,15 +57,15 @@ import {
   ReviewAnswerInvalidError,
   ReviewRoundChangedError,
 } from '../bureau-errors.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import type {
-  Bureau,
   PendingReview,
   PendingToolApprovalReview,
   ResolvedReview,
   ReviewResolutionFields,
   BureauReviews,
   WorkflowReviewOrigin,
-} from '../types.ts';
+} from '../bureau-types/reviews.ts';
 import type { BureauScope } from './bureau-scopes.ts';
 import {
   mayUseCrossOwnerScope,

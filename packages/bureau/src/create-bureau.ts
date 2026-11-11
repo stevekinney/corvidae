@@ -266,20 +266,15 @@ import {
   createSteeringCommandLedger,
   type SteeringCommandAdmissionOutcome,
 } from './steering';
-import type {
-  Bureau,
-  BureauOptions,
-  BureauRecoveryReport,
-  ApprovalDecisionSurface,
-  BureauShutdownReport,
-  ContextDeletionReport,
-  PendingReview,
-  ServerFrame,
-} from './types';
+import type { Bureau, BureauRecoveryReport, BureauShutdownReport } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
+import type { ApprovalDecisionSurface, PendingReview } from './bureau-types/reviews';
+import type { ContextDeletionReport } from './bureau-types/contexts';
+import type { ServerFrame } from './bureau-types/frames';
 import {
   DEFAULT_PRINCIPAL_SESSION_INPUT_BACKLOG_LIMIT,
   DEFAULT_SESSION_INPUT_BACKLOG_LIMIT,
-} from './types';
+} from './bureau-types/options';
 import { isSettlingRunAction } from './run-settlement';
 import { createAudit } from './audit/create-audit';
 import { createChatContentPurge } from './chat-content-purge';

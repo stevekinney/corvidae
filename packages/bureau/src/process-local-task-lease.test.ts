@@ -36,7 +36,7 @@ import {
 } from './process-lease';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { TaskRecord } from './task-registry';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const ORIGIN_MS = Date.parse('2026-10-30T00:00:00.000Z');
 const SECOND = 1_000;

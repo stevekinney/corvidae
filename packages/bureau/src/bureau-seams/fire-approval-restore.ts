@@ -23,7 +23,7 @@ import type {
   ResolveReviewInput,
   ReviewStatus,
   SessionPendingReview,
-} from '../types';
+} from '../bureau-types/reviews';
 import type { BureauCore, ReviewAuditAttachment, ScheduledFireApprovalEnding } from './core';
 import { isScheduledFireAuthority } from '../bureau-invariant-hooks';
 import { type BureauToolbox } from '../runtime-composition-types';

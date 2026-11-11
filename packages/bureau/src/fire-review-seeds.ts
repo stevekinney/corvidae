@@ -12,7 +12,7 @@
  * @module fire-review-seeds
  */
 
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 import { serializeUnknownError } from './serialization';
 
 /** What the seeds need of the Bureau that owns them. */

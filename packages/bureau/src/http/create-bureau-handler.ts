@@ -92,16 +92,12 @@ import { type A2ATaskRecords, createA2ATaskRecords } from './a2a-task-record.ts'
 import { mediaInputModesOf, mediaOutputModesOf } from './a2a-agent-card.ts';
 import { createTaskReader } from './a2a-task-reader.ts';
 import { a2aOptInOverridesOf, isOptedIntoA2A } from './a2a-opt-in.ts';
-import type {
-  Bureau,
-  BureauAgents,
-  BureauAudit,
-  BureauInternals,
-  BureauReviews,
-  BureauTasks,
-  BureauContexts,
-  BureauSchedules,
-} from '../types.ts';
+import type { Bureau, BureauInternals } from '../bureau-types/facade.ts';
+import type { BureauAgents, BureauTasks } from '../bureau-types/tasks.ts';
+import type { BureauAudit } from '../bureau-types/audit.ts';
+import type { BureauReviews } from '../bureau-types/reviews.ts';
+import type { BureauContexts } from '../bureau-types/contexts.ts';
+import type { BureauSchedules } from '../bureau-types/schedules.ts';
 import type { BureauNotifications } from '../notifications/notification-types.ts';
 import { describeCodeWorkflow } from '../workflow-runtime.ts';
 import { bureauReviewsOperations } from './bureau-reviews-operations.ts';

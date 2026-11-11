@@ -3,7 +3,7 @@
  * fetch against the handler, every run is scripted (no model), and every event
  * read back is parsed with `@ag-ui/core`'s own schema.
  */
-import type { TaskHandle } from '../types.ts';
+import type { TaskHandle } from '../bureau-types/tasks.ts';
 import { EventType, type RunAgentInput } from '@ag-ui/core';
 import { createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';

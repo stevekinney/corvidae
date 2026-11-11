@@ -17,7 +17,7 @@ import type { AgentSession } from '@lostgradient/operative';
 
 import { BureauError } from '../bureau-errors.ts';
 import { isDurableRunUnsettled } from '../durable-run-waits.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import {
   type AgUiLease,
   type AgUiLeases,

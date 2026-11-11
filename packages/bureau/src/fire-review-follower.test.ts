@@ -21,7 +21,8 @@ import {
 import { ReviewCanceledEvent } from './events';
 import { createFireReviewFollower, type FireReviewFollower } from './fire-review-follower';
 import { reviewCanceledDedupeKey } from './review-closing-events';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { awakeTurns, quietFor } from '@lostgradient/testing/wait-until';
 
 const sleep = (milliseconds: number) => new Promise((resolve) => setTimeout(resolve, milliseconds));

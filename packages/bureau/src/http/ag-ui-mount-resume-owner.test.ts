@@ -10,7 +10,7 @@ import { createTool, createToolbox } from 'armorer';
 import { describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
-import type { PendingReview } from '../types.ts';
+import type { PendingReview } from '../bureau-types/reviews.ts';
 import {
   aliceHandlerOver,
   as,

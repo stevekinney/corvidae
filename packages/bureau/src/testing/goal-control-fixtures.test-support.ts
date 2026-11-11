@@ -17,7 +17,7 @@ import {
 import { createGoalStore, type GoalStore } from '../goal-store';
 import type { GoalEngine } from '../goal-types';
 import { createGoalValidatorCatalog } from '../goal-validator-catalog';
-import type { BureauDiagnostic } from '../types';
+import type { BureauDiagnostic } from '../bureau-types/options';
 
 export const NOW = '2026-10-02T12:00:00.000Z';
 

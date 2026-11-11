@@ -25,7 +25,8 @@ import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { listHeldTasks, waitForTaskState } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import { storageOverTextStore } from './testing/text-store-storage.test-support';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];

@@ -33,7 +33,7 @@ import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-s
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
 import { listedPlugins } from './testing/plugin-listing.test-support';
 import type { BureauPluginSecrets } from './plugins/plugin-types';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 /** An every-agent set whose `onStep` records the content of each step it sees. */
 function stepAudit(seen: string[]): PluginInterceptor {

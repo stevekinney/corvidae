@@ -51,14 +51,10 @@ import { readContextTombstone } from '../context-tombstone.ts';
 import { isApprovalDecisionSurface } from '../approval-decision-metadata.ts';
 import { ApprovalOutcomeNotWrittenError, ReviewRoundChangedError } from '../bureau-errors.ts';
 import { humanWaitAnswerRowIdentifier, humanWaitDenialPayload } from '../human-wait-signal.ts';
-import type {
-  PendingReview,
-  ResolveReviewInput,
-  BureauContexts,
-  BureauReviews,
-  BureauTasks,
-  BureauInternals,
-} from '../types.ts';
+import type { PendingReview, ResolveReviewInput, BureauReviews } from '../bureau-types/reviews.ts';
+import type { BureauContexts } from '../bureau-types/contexts.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
+import type { BureauInternals } from '../bureau-types/facade.ts';
 import {
   answerFromText,
   formatReviewAnswerIssues,

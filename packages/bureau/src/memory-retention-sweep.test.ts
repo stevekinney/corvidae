@@ -38,7 +38,7 @@ import {
   DEFAULT_RUN_MEMORY_CAPABILITIES,
 } from './run-memory';
 import { waitForTaskState } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const BUREAU_ID = 'retention-bureau';
 const DAY = 86_400_000;

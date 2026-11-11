@@ -24,7 +24,7 @@ import {
   hangUntilAborted,
 } from '../testing/goal-fixtures.test-support';
 import { listHeldTasks, waitForCondition } from '../test';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import {
   attachRunRequest,
   attachThreadRequest,

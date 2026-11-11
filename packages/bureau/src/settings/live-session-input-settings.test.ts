@@ -12,7 +12,7 @@ import { describe, expect, it } from 'bun:test';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 
 async function open(): Promise<Bureau<AgentDefinitions>> {

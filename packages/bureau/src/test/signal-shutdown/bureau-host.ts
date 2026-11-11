@@ -29,7 +29,7 @@ import { createTool, createToolbox } from 'armorer';
 import { z } from 'zod';
 
 import { createBureau } from '../../create-bureau';
-import type { BureauShutdownReport } from '../../types';
+import type { BureauShutdownReport } from '../../bureau-types/facade';
 import { announce, fail, parseHostArguments, writeMarker } from './host-support';
 import { handleShutdownSignals } from './shutdown-handler';
 import type { AgentDefinitions } from '../../agent-catalog';

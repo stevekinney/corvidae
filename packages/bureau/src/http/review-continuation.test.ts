@@ -33,7 +33,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it, spyOn } from 'bun:test';
 import { z } from 'zod';
 
-import type { StartTaskOptions, TaskInput } from '../types.ts';
+import type { StartTaskOptions, TaskInput } from '../bureau-types/tasks.ts';
 import { listHeldTasks, waitForTaskState } from '../test';
 import { AG_UI_LEASE_KEY_PREFIX } from './ag-ui-lease.ts';
 import {

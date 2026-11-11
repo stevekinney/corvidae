@@ -20,7 +20,8 @@ import {
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore } from './core';
 import { KEYS, decode } from '@lostgradient/weft';
-import type { OwnedResource, PendingReview, ReviewResolutionFields } from '../types';
+import type { OwnedResource } from '../bureau-types/facade';
+import type { PendingReview, ReviewResolutionFields } from '../bureau-types/reviews';
 import type { RunAttribution } from '../serialization';
 import { type ScheduledAgentRunInput, isScheduledAgentRunInput } from '@lostgradient/operative';
 import type { WorkflowScheduleBlocker } from '../workflow-runtime';

@@ -28,7 +28,8 @@ import {
   createSqliteStorageFixture,
 } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 import { type TaskStartRequest, startTaskFrom } from './test/task-start-request.ts';
 import { waitUntil } from '@lostgradient/testing/wait-until';

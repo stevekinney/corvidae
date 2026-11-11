@@ -73,5 +73,5 @@ The durable workflow checkpoints a whole step—generation and tools together—
 - [Durable engine comparison](../packages/operative/src/durable/create-run-engine.ts)
 - [Cursor contract](../packages/operative/src/durable/types.ts)
 - [Mismatch event](../packages/operative/src/events.ts)
-- [Bureau option](../packages/bureau/src/types.ts)
+- [Bureau option](../packages/bureau/src/bureau-types/options.ts)
 - [Bureau recovery classification](../packages/bureau/src/create-bureau.ts)

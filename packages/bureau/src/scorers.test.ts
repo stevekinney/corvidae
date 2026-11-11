@@ -27,7 +27,7 @@ import {
   worstProgress,
   worstReachability,
 } from './scorers';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { WebhookDeliveryLivenessSnapshot, WebhookNotifier } from './webhook-notifier';
 
 // ── Minimal Bureau stub ──────────────────────────────────────────────

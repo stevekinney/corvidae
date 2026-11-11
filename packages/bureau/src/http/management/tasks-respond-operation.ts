@@ -26,7 +26,7 @@ import { z } from 'zod';
 import { BureauError, TaskRespondError } from '../../bureau-errors.ts';
 import { type TasksRespondInput, tasksRespondInput } from '../../tasks/respond-to-task.ts';
 import type { TaskRegistry } from '../../task-registry.ts';
-import type { BureauTasks, TaskRespondResult } from '../../types.ts';
+import type { BureauTasks, TaskRespondResult } from '../../bureau-types/tasks.ts';
 import { reviewFault, reviewReceiptSchema } from '../bureau-reviews-operations.ts';
 import {
   type BureauOwnershipHost,

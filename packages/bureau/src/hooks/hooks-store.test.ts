@@ -8,7 +8,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';
 import { afterEach, beforeAll, describe, expect, it, spyOn } from 'bun:test';
 
-import type { BureauDiagnostic } from '../types.ts';
+import type { BureauDiagnostic } from '../bureau-types/options.ts';
 import { HOOK_SECRET_KEY_PREFIX } from './hook-store.ts';
 import { HookError, type HookSecretStore } from './hook-types.ts';
 import {

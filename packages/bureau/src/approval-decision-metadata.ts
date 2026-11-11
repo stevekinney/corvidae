@@ -13,7 +13,7 @@
 
 import type { JSONValue } from 'armorer/protocol';
 
-import type { ApprovalDecisionSurface } from './types';
+import type { ApprovalDecisionSurface } from './bureau-types/reviews';
 
 /** Where a `tool-result` row keeps how its approval was decided: an {@link ApprovalDecisionRecord}. */
 export const APPROVAL_DECISION_METADATA_KEY = 'approvalDecision';

@@ -23,7 +23,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, base64Of, bob, pngBytes } from './testing/asset-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { runTask } from './test';
 
 const cleanups: Array<() => Promise<void>> = [];

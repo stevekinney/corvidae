@@ -12,7 +12,7 @@ import type { PrepareStepHook, OnStepHook } from '@lostgradient/operative';
 import { MEMORY_EVIDENCE_METADATA_KEY } from '@lostgradient/operative';
 import type { ToolRequestContext } from 'armorer';
 import { Conversation, getOwn, messageText } from 'conversationalist';
-import type { BureauMemoryAuthorityOptions } from './types';
+import type { BureauMemoryAuthorityOptions } from './bureau-types/options';
 
 /** COR-41 — what Bureau delegates to a run when the deployment configures nothing else. */
 export const DEFAULT_RUN_MEMORY_CAPABILITIES: readonly MemoryCapability[] = Object.freeze([

@@ -13,7 +13,8 @@ import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
 import { retireSettledTasks, SHORT_TASK_RETENTION } from '../testing/run-retirement.test-support';
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
-import type { Bureau, BureauOptions } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauOptions } from '../bureau-types/options';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './types';
 
 const version = INTERACTIVE_SURFACE_CONTRACT_VERSION;

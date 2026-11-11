@@ -19,7 +19,7 @@ import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,

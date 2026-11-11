@@ -18,7 +18,7 @@ import { pollUntil } from './testing/goal-fixtures.test-support';
 import { scriptedAgents, startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import type { AgentDefinitions } from './agent-catalog';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 

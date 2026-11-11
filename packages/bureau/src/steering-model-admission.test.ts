@@ -30,7 +30,8 @@ import {
   twinModels,
   TWIN_OF_OPUS_5_5,
 } from './testing/model-override.test-support';
-import type { Bureau, BureauContexts } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauContexts } from './bureau-types/contexts';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage, type Storage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';

@@ -20,7 +20,8 @@ import {
   pollUntil,
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const harness = createScheduleFireHarness();

@@ -1,5 +1,6 @@
 export { createBureau } from '../create-bureau';
-export type { Bureau, BureauOptions } from '../types';
+export type { Bureau } from '../bureau-types/facade';
+export type { BureauOptions } from '../bureau-types/options';
 export type { AssetStorageFixture, DurableAssetStorageFixture } from './asset-storage-fixtures';
 export {
   createDurableAssetStorageFixture,

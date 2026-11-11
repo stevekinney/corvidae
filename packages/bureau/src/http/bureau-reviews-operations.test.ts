@@ -21,7 +21,8 @@ import {
 } from '../bureau-errors.ts';
 import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
-import type { Bureau, PendingReview, ResolveReviewInput, ReviewStatus } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { PendingReview, ResolveReviewInput, ReviewStatus } from '../bureau-types/reviews.ts';
 import {
   type BureauReviewsOperationHost,
   bureauReviewSchema,

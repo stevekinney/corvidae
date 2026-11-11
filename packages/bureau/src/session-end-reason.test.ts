@@ -19,7 +19,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const databases: PersistentBureauStorageFixture[] = [];

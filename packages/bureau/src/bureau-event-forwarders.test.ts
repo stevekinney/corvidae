@@ -25,7 +25,7 @@ import {
   RunRegisteredEvent,
   ScheduleMissedEvent,
 } from './events';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 function diagnosticHarness() {
   const sunk: BureauDiagnostic[] = [];

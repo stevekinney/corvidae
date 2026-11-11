@@ -1,8 +1,8 @@
+import type { BureauContexts } from '../bureau-types/contexts.ts';
 import type {
-  BureauContexts,
   DurableEventHistoryRead,
   DurableEventHistorySubscribe,
-} from '../types.ts';
+} from '../bureau-types/common.ts';
 
 /**
  * What {@link createContexts} composes `bureau.contexts` from: the Bureau's own context

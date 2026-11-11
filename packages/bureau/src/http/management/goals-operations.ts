@@ -33,7 +33,7 @@ import { z } from 'zod';
 import type { BureauGoalCreateOutcome, BureauGoalUpdateOutcome } from '../../goal-types.ts';
 import type { GoalState } from '../../goal-state.ts';
 import { ownerOrLocal } from '../../owner-of-record.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau } from '../../bureau-types/facade.ts';
 import {
   mayUseCrossOwnerScope,
   type BureauOwnershipHost,

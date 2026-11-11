@@ -20,7 +20,7 @@ import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import { approvalToolbox, chargesOnce } from './http/management/management-fixtures.test-support';
 import { createMemoryDefinitionSource } from './testing/memory-definition-source.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const ORIGIN = '2026-10-29T00:00:00.000Z';
 

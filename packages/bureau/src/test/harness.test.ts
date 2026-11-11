@@ -8,7 +8,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, TaskHandle } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { TaskHandle } from '../bureau-types/tasks';
 import {
   BureauHarnessUnsupportedError,
   type BureauTestHarness,

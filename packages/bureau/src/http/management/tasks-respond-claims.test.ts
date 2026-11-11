@@ -24,7 +24,8 @@ import {
   TASKS_RESPOND_LEDGER_KEY_PREFIX,
   TASKS_RESPOND_OPERATION_VERSION,
 } from '../../tasks/respond-to-task.ts';
-import type { PendingReview, ReviewStatus, TaskRespondResult } from '../../types.ts';
+import type { PendingReview, ReviewStatus } from '../../bureau-types/reviews.ts';
+import type { TaskRespondResult } from '../../bureau-types/tasks.ts';
 import { mayAccessOwnedResource } from '../owner-predicate.ts';
 import {
   type BureauTasksRespondOperationHost,

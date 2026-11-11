@@ -28,7 +28,8 @@ import {
   reviewOf,
   storedText,
 } from './schedule-fire-fixtures.test-support';
-import type { Bureau, PendingReview, PendingToolApprovalReview } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { PendingReview, PendingToolApprovalReview } from './bureau-types/reviews';
 import { quietFor } from '@lostgradient/testing/wait-until';
 
 const harness = createScheduleFireHarness();

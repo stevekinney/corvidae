@@ -23,7 +23,7 @@ import {
   createSqliteStorageFixture,
   type PersistentBureauStorageFixture,
 } from './test/storage-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 function clock() {
   let minute = 0;

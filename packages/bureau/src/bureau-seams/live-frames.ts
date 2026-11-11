@@ -8,7 +8,7 @@ import type { ActiveRun } from '@lostgradient/operative';
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore } from './core';
 import type { LiveTask } from '../task-registry';
-import type { ServerFrame } from '../types';
+import type { ServerFrame } from '../bureau-types/frames';
 import { serializeRunState } from '../serialization';
 
 /**

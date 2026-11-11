@@ -13,7 +13,7 @@ import {
   hangUntilAborted,
   workerAgent,
 } from './testing/goal-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const open: Bureau[] = [];

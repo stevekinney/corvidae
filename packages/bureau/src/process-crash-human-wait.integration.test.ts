@@ -41,7 +41,7 @@ import {
   SECOND_HUMAN_WAIT_PROMPT,
   SECOND_HUMAN_WAIT_SIGNAL,
 } from './test/process-crash-work-integrity-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';
 

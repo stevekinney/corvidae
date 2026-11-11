@@ -15,7 +15,7 @@ import type { AgentSession } from '@lostgradient/operative';
 
 import { ownerOrLocal } from '../owner-of-record.ts';
 import { resolveSessionOwner } from '../session-authority.ts';
-import type { BureauContexts } from '../types.ts';
+import type { BureauContexts } from '../bureau-types/contexts.ts';
 
 /** A session, and the owner of record the session itself names. */
 export type OwnedSession = { readonly session: AgentSession; readonly owner: string };

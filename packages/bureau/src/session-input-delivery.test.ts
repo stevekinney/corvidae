@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import { admitSessionInput, createSessionInputMailbox } from './session-input-durability';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 

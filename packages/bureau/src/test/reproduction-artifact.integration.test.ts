@@ -14,7 +14,7 @@ import { createToolbox } from 'armorer';
 import { afterEach, describe, expect, it } from 'bun:test';
 
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { BureauShutdownReport } from '../types';
+import type { BureauShutdownReport } from '../bureau-types/facade';
 import type { BureauTestHarness } from './harness';
 import { closedTask } from './closed-task';
 import { createBureauTestHarness } from './harness';

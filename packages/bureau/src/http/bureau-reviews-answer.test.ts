@@ -27,7 +27,7 @@ import { createMemoryAssetStorage } from '../assets/storage';
 import { createBureau } from '../create-bureau.ts';
 import { ReviewAnswerInvalidError } from '../bureau-errors.ts';
 import { waitForCondition } from '../test';
-import type { PendingReview, ResolveReviewInput } from '../types.ts';
+import type { PendingReview, ResolveReviewInput } from '../bureau-types/reviews.ts';
 import { responseSchemaFor, toInterrupt } from './ag-ui-interrupts.ts';
 import {
   type BureauReviewsOperationHost,

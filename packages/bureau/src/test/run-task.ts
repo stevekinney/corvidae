@@ -1,6 +1,7 @@
 import type { RunResult } from '@lostgradient/operative';
 
-import type { Bureau, StartTaskOptions, TaskHandle, TaskInput } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { StartTaskOptions, TaskHandle, TaskInput } from '../bureau-types/tasks.ts';
 
 /**
  * Starts a task of `agentName` and waits for its result, the shape a test that reads only the

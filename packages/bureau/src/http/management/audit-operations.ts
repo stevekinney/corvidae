@@ -24,7 +24,7 @@ import {
   decodeAuditCursor,
   MAXIMUM_AUDIT_TYPES,
 } from '../../audit/create-audit.ts';
-import type { AuditQueryPage, BureauAudit } from '../../types.ts';
+import type { AuditQueryPage, BureauAudit } from '../../bureau-types/audit.ts';
 import {
   mayUseCrossOwnerScope,
   type BureauOwnershipHost,

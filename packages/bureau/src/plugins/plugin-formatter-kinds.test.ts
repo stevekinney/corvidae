@@ -10,7 +10,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog';
 import { createBureau } from '../create-bureau';
 import { listedPlugins } from '../testing/plugin-listing.test-support';
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 

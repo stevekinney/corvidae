@@ -27,13 +27,10 @@
 import type { AgentSession } from '@lostgradient/operative';
 import { getOwn } from 'conversationalist';
 
-import type {
-  Bureau,
-  BureauContexts,
-  BureauReviews,
-  BureauTasks,
-  PendingToolApprovalReview,
-} from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauContexts } from '../bureau-types/contexts.ts';
+import type { BureauReviews, PendingToolApprovalReview } from '../bureau-types/reviews.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
 import { releaseQuietly } from './ag-ui-lease.ts';
 import { readSessionOwnedBy } from './ag-ui-session-owner.ts';
 import { createThreadAdmission, type ThreadAdmission } from './ag-ui-thread-admission.ts';

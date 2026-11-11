@@ -17,7 +17,8 @@ import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
 import { parseClientMessage, toActionRequest } from '../a2ui/client-actions.ts';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from '../interactive-surface/types.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { Bureau, BureauReviews } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauReviews } from '../bureau-types/reviews.ts';
 import type { TasksRespondInput } from '../tasks/respond-to-task.ts';
 
 /**

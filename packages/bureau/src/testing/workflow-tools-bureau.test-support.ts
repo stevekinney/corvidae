@@ -16,7 +16,8 @@ import {
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import type { AgentFileOperations } from '../sources/agent-file-operations.ts';
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools.ts';
 import { agentFileText, KNOWN_MODEL } from './agent-file-fixtures.test-support.ts';
 import { awakeTurns } from '@lostgradient/testing/wait-until';

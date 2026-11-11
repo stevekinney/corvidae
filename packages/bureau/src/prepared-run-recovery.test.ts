@@ -23,7 +23,8 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { finishes } from './test/task-record-crash-agent';
-import type { Bureau, BureauDiagnostic, BureauRecoveryReport } from './types';
+import type { Bureau, BureauRecoveryReport } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 describe('classifyRecoveredRunDetailed with the durable record status (COR-297)', () => {
   const base = {

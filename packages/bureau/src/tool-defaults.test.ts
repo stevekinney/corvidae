@@ -29,7 +29,8 @@ import { runTask, waitForTaskState } from './test';
 import { AGENT_STEP, workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 

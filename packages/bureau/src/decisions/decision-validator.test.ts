@@ -15,7 +15,7 @@ import {
   TERMINAL_STATUSES,
   workerAgent,
 } from '../testing/goal-fixtures.test-support.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { decisionValidator } from './decision-validator.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 

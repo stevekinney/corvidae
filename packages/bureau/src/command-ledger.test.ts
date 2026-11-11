@@ -27,7 +27,7 @@ import {
 import { BureauError } from './bureau-errors';
 import { createMemoryStorageFixture } from './test/storage-fixtures';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { RunSummary } from './types';
+import type { RunSummary } from './bureau-types/runs';
 
 const authority = {
   principalId: 'alice',

@@ -4,7 +4,7 @@
  * the reviews its entries answer and opens a new stream, on the same native run
  * for a human wait and on a fresh one for a tool approval.
  */
-import type { TaskHandle } from '../types.ts';
+import type { TaskHandle } from '../bureau-types/tasks.ts';
 import { type Event, EventType, type ResumeEntry } from '@ag-ui/core';
 import { createDefaultRuntimeServices, createManualRuntimeServices } from '@lostgradient/lifecycle';
 import { stopWhen, type Toolbox, waitForCondition } from '@lostgradient/operative';

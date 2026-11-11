@@ -14,7 +14,7 @@ import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { createAskingAgent, finishes } from './test/task-record-crash-agent';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures: Array<{ dispose(): Promise<void> }> = [];

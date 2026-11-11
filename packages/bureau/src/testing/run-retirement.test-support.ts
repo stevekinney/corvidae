@@ -7,7 +7,8 @@
  */
 import type { ManualRuntimeServices } from '@lostgradient/lifecycle';
 
-import type { Bureau, BureauOptions } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauOptions } from '../bureau-types/options';
 
 /** The `retention.tasks.olderThan` a test passes so that `retireSettledTasks` retires every settled task. */
 export const TASK_RETENTION_MILLISECONDS = 60_000;

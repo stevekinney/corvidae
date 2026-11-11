@@ -27,7 +27,7 @@ import {
 import { runTombstoneKey } from './chat-content-tombstone';
 import { ActionEvent, type BureauEventMap } from './events';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 // ── Minimal Bureau stub ──────────────────────────────────────────────
 

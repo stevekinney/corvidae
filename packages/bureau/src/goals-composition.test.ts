@@ -17,7 +17,7 @@ import { createGoalValidatorCatalog } from './goal-validator-catalog';
 import { composeBureauGoals, GOAL_DRAIN_BUDGET_MS } from './goals-composition';
 import { NOW, runningGoal, scriptedEngine } from './testing/goal-control-fixtures.test-support';
 import { CHECK } from './testing/goal-fixtures.test-support';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const turns = async (count = 200) => {
   for (let turn = 0; turn < count; turn += 1) await Promise.resolve();

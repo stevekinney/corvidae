@@ -35,7 +35,8 @@ import { defineOperation, type OperationFault } from '@lostgradient/weft';
 import { z } from 'zod';
 
 import { BureauError } from '../../bureau-errors.ts';
-import type { BureauContexts, BureauInternals } from '../../types.ts';
+import type { BureauContexts } from '../../bureau-types/contexts.ts';
+import type { BureauInternals } from '../../bureau-types/facade.ts';
 import { type BureauOwnershipHost, ownerOfPrincipal } from '../owner-predicate.ts';
 import {
   resourceNotFound,

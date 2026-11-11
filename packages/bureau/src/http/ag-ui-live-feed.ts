@@ -1,6 +1,7 @@
 import { type Event, EventType } from '@ag-ui/core';
 
-import type { RunEventRecord, ServerFrame } from '../types.ts';
+import type { RunEventRecord } from '../bureau-types/runs.ts';
+import type { ServerFrame } from '../bureau-types/frames.ts';
 import { RunProjector, type NativeTerminal, type Projection } from './ag-ui-projection.ts';
 import type { EventStamp } from './ag-ui-vocabulary.ts';
 

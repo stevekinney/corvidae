@@ -28,7 +28,7 @@ import { createRuntimeComposition } from './runtime-composition';
 import { createSteppedGenerate, noopTool } from './testing/model-override.test-support';
 import { waitForTaskState } from './test';
 import { startTaskFrom } from './test/task-start-request.ts';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const rows = createModelCatalog().descriptors;
 const row = (provider: string, model: string): BackendDescriptor => {

@@ -13,7 +13,7 @@ import { z } from 'zod';
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau } from './create-bureau';
 import { waitForTaskState } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 import {

@@ -31,7 +31,8 @@ import {
   seamStorage,
   userTexts,
 } from './test/session-input-fixtures';
-import type { Bureau, BureauDiagnostic, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic, BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { listHeldTasks } from './test';

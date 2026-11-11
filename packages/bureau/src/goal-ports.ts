@@ -102,7 +102,7 @@ import {
 } from './goal-state';
 import type { GoalStore } from './goal-store';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
-import type { CancelDurableRunOutcome } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
 
 /** The deterministic names the workflow and the store share. */
 export const goalIdentifiers: GoalWorkflowPorts['identifiers'] = {

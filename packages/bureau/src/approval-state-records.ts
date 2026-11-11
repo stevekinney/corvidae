@@ -1,6 +1,6 @@
 import { type JSONValue, type OnStepHook } from '@lostgradient/operative';
 import { TERMINAL_REVIEW_STATUSES } from './review-closing-events';
-import type { ApprovalPeerRecovery, PendingReview } from './types';
+import type { ApprovalPeerRecovery, PendingReview } from './bureau-types/reviews';
 
 export function omitKeysWithPrefix(
   record: Record<string, JSONValue>,

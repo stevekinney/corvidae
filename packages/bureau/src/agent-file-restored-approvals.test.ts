@@ -19,7 +19,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from './create-bureau';
 import { createAgentSnapshotStore } from './agent-snapshot-store';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { agentFileDirectory } from './sources/agent-file-directory';
 

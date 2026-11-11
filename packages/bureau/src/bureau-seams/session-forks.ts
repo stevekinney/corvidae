@@ -17,7 +17,8 @@ import type {
 } from '../steering';
 import { CONTEXT_WINDOW_TASK_SCAN_LIMIT } from '../bureau-construction-support';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
-import type { ContextWindowReport, SessionPendingReview } from '../types';
+import type { ContextWindowReport } from '../bureau-types/contexts';
+import type { SessionPendingReview } from '../bureau-types/reviews';
 import {
   type ContextWindowTool,
   type ReportedStepUsage,

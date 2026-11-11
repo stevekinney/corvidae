@@ -36,7 +36,7 @@ import type {
   ContextWindowCategory,
   ContextWindowCategoryName,
   ContextWindowReport,
-} from '../types.ts';
+} from '../bureau-types/contexts.ts';
 
 /** The order the categories are reported in, so a client can rely on it. */
 export const CONTEXT_WINDOW_CATEGORIES: readonly ContextWindowCategoryName[] = [

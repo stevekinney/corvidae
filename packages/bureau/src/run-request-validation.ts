@@ -23,7 +23,8 @@ import {
 import { unopenableNewSessionIdentifierReason } from './reserved-identifiers';
 import { type CommandLedger, createPrunedCommandLedger } from './command-ledger';
 import { parseStartTaskOrigin, type StartTaskOrigin } from './task-origin';
-import type { CreateRunRequest, StartTaskOptions, TaskInput, TaskRespondResult } from './types';
+import type { CreateRunRequest } from './bureau-types/runs';
+import type { StartTaskOptions, TaskInput, TaskRespondResult } from './bureau-types/tasks';
 import { TASKS_RESPOND_LEDGER_KEY_PREFIX, type TasksRespondClaim } from './tasks/respond-to-task';
 import { toBadRequest } from './bureau-errors';
 

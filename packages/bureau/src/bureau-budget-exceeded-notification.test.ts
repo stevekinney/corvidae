@@ -25,7 +25,7 @@ import { z } from 'zod';
 import { createBureau } from './create-bureau';
 import { waitForCondition, waitForTaskState } from './test';
 import { holdFirstTerminalRunCommit } from './test/held-terminal-commit';
-import type { BureauOptions } from './types';
+import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 import { MemoryStorage } from '@lostgradient/storage';
 import { createSqliteStorageFixture } from './test/storage-fixtures';

@@ -25,7 +25,7 @@ import { join } from 'node:path';
 import { createBureau } from './create-bureau';
 import { createMemoryAssetStorageFixture } from './test/asset-storage-fixtures';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void>> = [];

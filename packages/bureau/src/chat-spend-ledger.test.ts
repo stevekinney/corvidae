@@ -8,7 +8,7 @@ import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { describe, expect, it } from 'bun:test';
 
 import { CHAT_SPEND_KEY_PREFIX, createChatSpendLedger } from './chat-spend-ledger';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const OWNER = 'anonymous:local';
 

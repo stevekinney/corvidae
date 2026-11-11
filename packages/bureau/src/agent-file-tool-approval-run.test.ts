@@ -21,7 +21,7 @@ import {
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const executed: string[] = [];
 

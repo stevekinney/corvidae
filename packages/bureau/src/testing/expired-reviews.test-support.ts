@@ -3,7 +3,7 @@
  * a manual host runs `maintain`. A test that holds approvals past their bindings runs
  * that pass at the clock reading it names and counts what the pass expired.
  */
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 
 /**
  * Runs one durable maintenance pass at `now` (the runtime clock when omitted) and resolves how

@@ -74,7 +74,8 @@ import {
   taskOriginParentOf,
   taskOriginView,
 } from './task-origin';
-import type { CancelDurableRunOutcome, PendingReview } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
+import type { PendingReview } from './bureau-types/reviews';
 
 /** The key prefix of a task's record. */
 export const TASK_RECORD_KEY_PREFIX = 'bureau-task:v1:';

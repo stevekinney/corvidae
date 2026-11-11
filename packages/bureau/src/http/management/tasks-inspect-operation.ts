@@ -15,7 +15,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { BureauTasks } from '../../types.ts';
+import type { BureauTasks } from '../../bureau-types/tasks.ts';
 import { mayAccessTask, type BureauTasksOperationHost } from './tasks-operations.ts';
 import {
   resourceNotFound,

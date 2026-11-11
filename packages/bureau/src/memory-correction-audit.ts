@@ -12,7 +12,7 @@
 import type { GovernedMemory, MemoryGovernanceNotification } from '@lostgradient/memory';
 
 import { auditTrailAgentOwnerId } from './audit-trail.ts';
-import type { DiagnosticSink } from './types.ts';
+import type { DiagnosticSink } from './bureau-types/options.ts';
 
 /** The audit type a correction is recorded under. */
 export const MEMORY_CORRECTED_AUDIT_TYPE = 'memory.corrected';

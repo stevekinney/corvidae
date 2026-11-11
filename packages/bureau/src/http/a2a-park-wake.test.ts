@@ -17,7 +17,7 @@ import { waitUntil } from '@lostgradient/testing/wait-until';
 import { describe, expect, it } from 'bun:test';
 
 import { A2UI_EXTENSION_URI } from '../a2ui/catalogs.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { COMMAND_RECEIPTS_EXTENSION_URI } from './a2a-command-receipts.ts';
 import { attachHandler } from './a2a-input-form.test-support.ts';
 import {

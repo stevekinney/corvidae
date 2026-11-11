@@ -19,7 +19,7 @@ import {
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
 import { createBureau } from '../../create-bureau.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau } from '../../bureau-types/facade.ts';
 import { BUREAU_SCOPES } from '../bureau-scopes.ts';
 import {
   buildBureauHandlerHost,

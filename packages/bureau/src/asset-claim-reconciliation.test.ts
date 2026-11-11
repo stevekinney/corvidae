@@ -28,7 +28,7 @@ import { createAssetClaimReconciler } from './asset-claim-reconciliation';
 import type { DurableEnd } from './catalog-run-settlement';
 import type { CatalogRunRecoveryLoad } from './catalog-run-recovery-record';
 import { alice, aliceAdministrator, pngBytes } from './testing/asset-fixtures.test-support';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const UNTIL = '9999-12-31T23:59:59.999Z';
 const services: AssetService[] = [];

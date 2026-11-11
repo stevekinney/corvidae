@@ -25,7 +25,7 @@ import {
 } from './schedule-tick.ts';
 import { isTaskOrigin, taskOriginTag, TASK_ORIGIN_KINDS } from './task-origin.ts';
 import type { AgentDefinitions } from './agent-catalog.ts';
-import type { Bureau } from './types.ts';
+import type { Bureau } from './bureau-types/facade.ts';
 
 const cleanups: Array<() => Promise<void>> = [];
 afterEach(async () => {

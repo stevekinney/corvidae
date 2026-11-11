@@ -60,7 +60,7 @@ import {
   guardrailContractFault,
 } from '../agent-contributions';
 import { createToolApprovalHooks } from '../tool-approval';
-import type { BureauOptions } from '../types';
+import type { BureauOptions } from '../bureau-types/options';
 import { WORKFLOW_TOOL_NAMES } from '../workflow-tools';
 import {
   createVersionedCatalog,

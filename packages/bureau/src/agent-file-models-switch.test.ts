@@ -11,7 +11,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { startTaskFrom } from './test/task-start-request.ts';
 
 const harnesses: FileBureauHarness[] = [];

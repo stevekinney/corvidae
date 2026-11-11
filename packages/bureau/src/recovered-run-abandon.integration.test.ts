@@ -28,7 +28,7 @@ import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
 import { expectScenarioPassed, type ScenarioScope, settleScenario } from './test/hoisted-scenario';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { readChildJson } from './test/child-output-file';

@@ -11,7 +11,8 @@ import { createToolbox } from 'armorer';
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import { waitForCondition } from '../test';
-import type { Bureau, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 import type { HookDelivery, HookDeliveryStatus } from './hook-types.ts';
 
 /** One request the scripted receiver saw. */

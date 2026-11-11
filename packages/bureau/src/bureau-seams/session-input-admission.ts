@@ -30,7 +30,7 @@ import {
   readSessionInputReceipt,
 } from '../session-input-durability';
 import { SESSION_INPUT_RUN_ENDED_REASON } from '../session-input-settlement';
-import type { SessionPendingReview } from '../types';
+import type { SessionPendingReview } from '../bureau-types/reviews';
 import { humanWaitDeliveryId } from '../run-human-waits';
 import { serializeUnknownError } from '../serialization';
 import { withoutGrantsFor } from '../session-grants';

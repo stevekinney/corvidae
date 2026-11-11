@@ -32,7 +32,7 @@ import {
   base64Of,
   pngBytes,
 } from './testing/asset-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { MemoryStorage } from '@lostgradient/storage';
 
 const cleanups: Array<() => Promise<void>> = [];

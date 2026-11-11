@@ -14,7 +14,7 @@
 import type { Subscription } from '@lostgradient/lifecycle';
 import { afterAwakeTime } from '@lostgradient/testing/hang-guard';
 
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 
 /** What a running scenario hands its owner so that a hung scenario can be cleaned up. */
 export interface ScenarioScope {

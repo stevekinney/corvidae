@@ -52,7 +52,7 @@ import {
   seedRetrying,
   seedRunning,
 } from './testing/goal-recovery-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { quietFor } from '@lostgradient/testing/wait-until';
 
 const cleanups: Array<() => Promise<void> | void> = [];

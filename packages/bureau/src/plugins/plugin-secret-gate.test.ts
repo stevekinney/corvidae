@@ -30,7 +30,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { INTERCEPTOR_POINTS } from '../agent-contributions';
 import { createBureau } from '../create-bureau';
 import { waitForCondition } from '../test';
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 import { composePlugins } from './compose-plugins';
 import {
   createPluginSecretGate,

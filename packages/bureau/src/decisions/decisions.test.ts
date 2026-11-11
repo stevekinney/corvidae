@@ -18,7 +18,8 @@ import { z } from 'zod';
 import { canonicalJson } from '../command-ledger.ts';
 import { BureauError } from '../bureau-errors.ts';
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 import { hosted } from './hosted-decisions.test-support.ts';
 import { MemoryStorage } from '@lostgradient/storage';
 

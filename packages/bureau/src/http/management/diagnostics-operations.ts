@@ -15,7 +15,7 @@ import { authorizeWorkspaceOperation } from '../workspace-authorization.ts';
 import { defineOperation } from '@lostgradient/weft';
 import { z } from 'zod';
 
-import type { BureauDiagnostics } from '../../types.ts';
+import type { BureauDiagnostics } from '../../bureau-types/facade.ts';
 import { unaryTransports as transports, unknownKeyPolicy } from './management-schemas.ts';
 
 /** What the diagnostics operation reads from the handler's `host`. */

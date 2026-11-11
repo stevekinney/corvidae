@@ -45,7 +45,7 @@ import { authentication } from './http/management/management-fixtures.test-suppo
 import { waitForCondition } from './test';
 import { createSqliteStorageFixture, type BureauStorageFixture } from './test/storage-fixtures';
 import { base64Of, pngBytes, textBytes } from './testing/asset-fixtures.test-support.ts';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { INTERACTIVE_SURFACE_CONTRACT_VERSION } from './interactive-surface/types';
 import {
   BUREAU_RESERVED_KEY_FAMILIES,

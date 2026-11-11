@@ -11,7 +11,7 @@ import { createMemoryStorageFixture } from '../../test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { listHeldTasks, waitForCondition, closedTask } from '../../test';
-import type { ContextDeletionReport } from '../../types.ts';
+import type { ContextDeletionReport } from '../../bureau-types/contexts.ts';
 import { createAgUiLeases } from '../ag-ui-lease.ts';
 import { type BureauHandlerSource, createBureauHandler } from '../create-bureau-handler.ts';
 import {

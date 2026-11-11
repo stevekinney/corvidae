@@ -1,4 +1,4 @@
-import type { OwnedResource } from '../types.ts';
+import type { OwnedResource } from '../bureau-types/facade.ts';
 import { BUREAU_EVENT_CATALOG } from '../bureau-event-catalog.ts';
 import {
   resolveWorkspaceOwner,

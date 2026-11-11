@@ -20,7 +20,7 @@ import { createBureau } from '../create-bureau.ts';
 import type { BureauPlugins } from '../plugins/plugin-types.ts';
 import { agentFileDirectory } from '../sources/agent-file-directory.ts';
 import { layeredAgentSource } from '../sources/layered-source.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 
 /** What {@link createPluginTestHost} takes beside the plugin. */
 export interface PluginTestHostOptions {

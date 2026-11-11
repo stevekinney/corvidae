@@ -72,7 +72,7 @@ import type { GoalConversations } from './goal-conversation';
 import { attemptSignalId, goalWorkflowId, isTerminalGoalStatus } from './goal-state';
 import type { GoalStore } from './goal-store';
 import { ownerOrLocal } from './owner-of-record';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 export interface AttemptTarget {
   readonly goalRunId: string;

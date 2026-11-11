@@ -20,7 +20,8 @@ import { RunCreationReceiptUnrecordedError } from './command-ledger';
 import { createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau, BureauDiagnostic } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const ORIGIN = '2026-10-27T00:00:00.000Z';
 const LEDGER_ENTRY_PREFIX = 'command-ledger:v1:entry:';

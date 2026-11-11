@@ -26,7 +26,8 @@ import {
 import { createSqliteStorageFixture } from '../test/storage-fixtures';
 import { agentFileText, KNOWN_MODEL } from '../testing/agent-file-fixtures.test-support';
 import { startFileBureau, type FileBureauHarness } from '../testing/agent-file-bureau.test-support';
-import type { Bureau, BureauDiagnostic } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauDiagnostic } from '../bureau-types/options';
 import { BUREAU_PLUGIN_NAME, BUREAU_PLUGIN_VERSION } from './bureau-plugin';
 import type { BureauPluginEntry } from './plugin-types';
 

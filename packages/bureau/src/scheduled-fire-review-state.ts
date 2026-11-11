@@ -23,7 +23,7 @@ import type { ToolRequestContext } from 'armorer';
 
 import type { BureauToolbox } from './runtime-composition-types';
 import { isPlainAuthorityRecord } from './session-authority';
-import type { PendingReview } from './types';
+import type { PendingReview } from './bureau-types/reviews';
 
 type ToolApproval = Extract<PendingReview, { kind: 'tool-approval' }>['approval'];
 

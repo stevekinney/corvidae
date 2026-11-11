@@ -354,5 +354,6 @@ Because `H` is `boolean`, `output()` is not available on the returned run and th
 - [Durable workflow](../packages/operative/src/durable/run-workflow.ts)
 - [Durable engine](../packages/operative/src/durable/create-run-engine.ts)
 - [Durable checkpoint types](../packages/operative/src/durable/types.ts)
-- [Bureau options and API](../packages/bureau/src/types.ts)
+- [Bureau options](../packages/bureau/src/bureau-types/options.ts)
+- [Bureau API](../packages/bureau/src/bureau-types/facade.ts)
 - [Bureau factory and recovery](../packages/bureau/src/create-bureau.ts)

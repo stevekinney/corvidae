@@ -209,7 +209,7 @@ export class RecoveryLeaseReleasedEvent extends Event {
  * Declared locally rather than imported from `./types` (which itself
  * imports {@link BureauEventMap} from this module) so this file stays free
  * of a type-only import cycle — the same reason {@link RecoveredRunVerdict}
- * above is a local literal union rather than re-exported from `types.ts`.
+ * above is a local literal union rather than re-exported from `bureau-types/facade.ts`.
  */
 export type ReviewEventKind = 'tool-approval' | 'human-wait';
 

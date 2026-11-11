@@ -1,6 +1,6 @@
 import { AbortAgentRunError } from '@lostgradient/operative';
 import { type WorkflowState } from '@lostgradient/weft';
-import type { CancelDurableRunOutcome } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
 import { BureauError } from './bureau-errors';
 
 /**

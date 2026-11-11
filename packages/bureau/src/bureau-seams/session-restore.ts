@@ -21,7 +21,7 @@ import {
   type SessionAgentRun,
   type SkillSnapshot,
 } from '../runtime-composition-types';
-import type { PendingReview } from '../types';
+import type { PendingReview } from '../bureau-types/reviews';
 import {
   adoptRestoredScheduledFire,
   releaseScheduledFireReviews,

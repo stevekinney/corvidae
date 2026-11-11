@@ -80,7 +80,7 @@ import { deletionMarkerKindFor } from './durable-event-history';
 import type { ChatAsset } from './chat-asset-purge';
 import type { RunMemoryPlacement } from './chat-memory-purge';
 import { serializeUnknownError } from './serialization';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** The reserved key prefix of the records of purges that are owed. */
 const PENDING_PREFIX = 'chat-content-purge-pending:v1:';

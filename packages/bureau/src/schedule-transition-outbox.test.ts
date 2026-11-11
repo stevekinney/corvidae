@@ -24,7 +24,7 @@ import {
 } from './schedule-transition-outbox';
 import { finishes } from './test/task-record-crash-agent';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 const fixtures: Array<{ dispose(): Promise<void> }> = [];

@@ -8,7 +8,11 @@ import type {
 import { withEnhancedStreaming, withCache } from '@lostgradient/operative';
 import type { TextValueStore } from '@lostgradient/storage';
 import { type ConversationHistory, getOwn } from 'conversationalist';
-import type { ProviderConfiguration, StreamingConfiguration, CacheConfiguration } from './types';
+import type {
+  ProviderConfiguration,
+  StreamingConfiguration,
+  CacheConfiguration,
+} from './bureau-types/options';
 import type { MediaRunOptions, SessionAgentRun } from './runtime-composition-types';
 
 /**

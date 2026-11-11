@@ -57,7 +57,7 @@ import {
 } from '@lostgradient/storage';
 
 import { serializeUnknownError } from './serialization';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** The key prefix of a run's spend record. */
 export const CHAT_SPEND_KEY_PREFIX = 'bureau-chat-spend:v2:';

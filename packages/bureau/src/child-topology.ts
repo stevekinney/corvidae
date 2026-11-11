@@ -123,7 +123,8 @@ import { principalAllows } from './principal-allows';
 import { reservedWorkflowIdentifierReason } from './reserved-identifiers';
 import { DEFAULT_DELEGATION_TIME_TO_LIVE_MILLISECONDS } from './settings/setting-defaults';
 import type { AgentTaskOrigin } from './task-origin';
-import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
+import type { DiagnosticSink } from './bureau-types/options';
 
 // ---------------------------------------------------------------------------
 // Public contract

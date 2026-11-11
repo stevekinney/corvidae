@@ -27,7 +27,7 @@ import {
 import { CLAIM_RENEW_MS, CLAIM_TTL_MS } from './test/process-crash-work-integrity-fixtures';
 import { workflowFileText } from './testing/workflow-file-fixtures.test-support';
 import { workflowStepRunId } from './workflow-agent-step';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { workflowFileDirectory } from './sources/workflow-file-directory';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import type { Storage } from '@lostgradient/storage';

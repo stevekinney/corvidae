@@ -35,7 +35,7 @@ import {
   validAgentFile,
 } from './testing/agent-file-fixtures.test-support';
 import { startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const fixtures: AgentFileFixture[] = [];

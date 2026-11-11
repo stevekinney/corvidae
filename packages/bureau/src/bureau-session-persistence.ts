@@ -19,7 +19,7 @@ import {
   SessionAgentConflictError,
   SessionOwnerConflictError,
 } from './session-authority';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 const BUREAU_AGENT_NAME = 'bureau';
 const SESSION_PERSISTENCE_MAXIMUM_ATTEMPTS = 3;

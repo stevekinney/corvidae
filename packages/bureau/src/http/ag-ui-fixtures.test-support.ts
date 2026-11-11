@@ -34,7 +34,8 @@ import type { GovernedMemory } from '@lostgradient/memory';
 import { createBureau } from '../create-bureau.ts';
 import { seamStorage, type StorageSeam } from '../test/session-input-fixtures.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
-import type { Bureau, BureauDiagnostic, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauDiagnostic, BureauOptions } from '../bureau-types/options.ts';
 import {
   type AgUiAuthorization,
   type AgUiBureau,

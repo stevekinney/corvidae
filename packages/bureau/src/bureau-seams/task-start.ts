@@ -17,17 +17,15 @@ import {
 } from '@lostgradient/operative';
 import type { BureauCore } from './core';
 import { BureauError, toBadRequest } from '../bureau-errors';
+import type { ContextDeletionReport } from '../bureau-types/contexts';
+import type { CreateRunRequest, RunDetail, RunSummary } from '../bureau-types/runs';
 import type {
-  ContextDeletionReport,
-  CreateRunRequest,
-  RunDetail,
-  RunSummary,
   StartTaskOptions,
   TaskHandle,
   TaskInput,
   TryAgentOptions,
   TryAgentResult,
-} from '../types';
+} from '../bureau-types/tasks';
 import type { CreatedRunSummary } from '../command-ledger';
 import {
   type SessionTaskFields,

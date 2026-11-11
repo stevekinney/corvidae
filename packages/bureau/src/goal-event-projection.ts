@@ -50,7 +50,7 @@ import { GOAL_EVENT_KINDS, type GoalEventKind, GoalLifecycleEvent } from './even
 import type { GoalAuditEvent, GoalState } from './goal-state';
 import { goalRestartId, goalTransitionId } from './goal-state';
 import type { GoalStoreObservation } from './goal-store';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /**
  * What a goal write left behind, plus `replayed`: every audit entry the

@@ -18,7 +18,7 @@ import { MemoryStorage } from '@lostgradient/storage';
 import { encodeCursor } from '@lostgradient/weft';
 
 import { SETTING_KEYS, type SettingKey } from '../../settings/settings-schema.ts';
-import type { BureauOptions } from '../../types.ts';
+import type { BureauOptions } from '../../bureau-types/options.ts';
 import { BUREAU_HANDLER_OPERATIONS } from '../create-bureau-handler.ts';
 import {
   openBureau,

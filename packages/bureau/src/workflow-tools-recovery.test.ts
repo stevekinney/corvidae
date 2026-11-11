@@ -12,7 +12,7 @@ import { afterEach, expect, it } from 'bun:test';
 
 import { createBureau } from './create-bureau';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { WORKFLOW_TOOL_NAMES } from './workflow-tools';
 import type { AgentDefinitions } from './agent-catalog';
 import { awakeTurns } from '@lostgradient/testing/wait-until';

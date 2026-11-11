@@ -6,7 +6,7 @@
 
 import type { PluginHost } from '@lostgradient/interborough-plugin';
 
-import type { Bureau } from './types.ts';
+import type { Bureau } from './bureau-types/facade.ts';
 
 declare const bureau: Bureau;
 

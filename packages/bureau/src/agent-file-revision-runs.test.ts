@@ -18,7 +18,7 @@ import { SESSION_AGENT_REVISION_METADATA_KEY } from './session-agent-revision';
 import { waitForCondition, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 
 const cleanups: Array<() => Promise<void> | void> = [];

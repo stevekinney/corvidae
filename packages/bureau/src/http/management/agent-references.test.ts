@@ -18,7 +18,7 @@ import { findAgentReferences } from '../../agent-references.ts';
 import { createMemoryAssetStorage } from '../../assets/storage';
 import { createBureau } from '../../create-bureau.ts';
 import { workflowFileDirectory } from '../../sources/workflow-file-directory.ts';
-import type { Bureau } from '../../types.ts';
+import type { Bureau } from '../../bureau-types/facade.ts';
 import type { WorkflowListing } from '../../workflow-file-catalog.ts';
 import { createBureauHandler } from '../create-bureau-handler.ts';
 import { callAs } from './agent-definitions-fixtures.test-support.ts';

@@ -19,7 +19,7 @@ import type {
   DurableScheduleDefinition,
   DurableScheduleUpdate,
   ScheduleRevisionGuard,
-} from '../types';
+} from '../bureau-types/schedules';
 import {
   InvalidScheduleError,
   ScheduleCancelledEvent,

@@ -42,10 +42,10 @@ import type { Conversation, ConversationHistory } from 'conversationalist';
 import type {
   CreateRunRequest,
   LocateRunCreationReceiptRequest,
-  PendingReview,
   RunSummary,
-  ServerFrame,
-} from '../types';
+} from '../bureau-types/runs';
+import type { PendingReview } from '../bureau-types/reviews';
+import type { ServerFrame } from '../bureau-types/frames';
 import {
   type CreatedRunSummary,
   type RunCreationAttempt,

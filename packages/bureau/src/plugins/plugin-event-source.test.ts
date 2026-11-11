@@ -14,7 +14,7 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { eventSourceOf } from '../event-source';
 import { GOAL_EVENT_KINDS } from '../events';
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 

@@ -1,6 +1,6 @@
 import type { CleanupAcknowledgement, ClosedOptions } from '@lostgradient/operative';
 
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 
 /**
  * Operative's `closed()` acknowledgement for a task this process holds: it settles once the run's

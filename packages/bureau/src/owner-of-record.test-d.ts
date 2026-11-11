@@ -6,12 +6,9 @@
 import type { ScheduledAgentRunInput } from '@lostgradient/operative';
 
 import type { BureauGoalRequest } from './goal-types.ts';
-import type {
-  Bureau,
-  CreateRunRequest,
-  DurableScheduleDefinition,
-  OwnedResource,
-} from './types.ts';
+import type { Bureau, OwnedResource } from './bureau-types/facade.ts';
+import type { CreateRunRequest } from './bureau-types/runs.ts';
+import type { DurableScheduleDefinition } from './bureau-types/schedules.ts';
 
 declare const bureau: Bureau;
 

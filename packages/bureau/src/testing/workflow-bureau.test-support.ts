@@ -11,7 +11,8 @@ import { createAgent, type GenerateContext } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
-import type { Bureau, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 import { workflowFileText } from './workflow-file-fixtures.test-support.ts';
 import { workflowFileDirectory } from '../sources/workflow-file-directory';
 import { MemoryStorage } from '@lostgradient/storage';

@@ -21,7 +21,7 @@ import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const runtime = createManualRuntimeServices({ identifierSeed: 'option-grouping' });
 

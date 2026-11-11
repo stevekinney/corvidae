@@ -133,7 +133,11 @@ import {
 } from '@lostgradient/operative';
 
 import type { AgentDefinitions } from '../agent-catalog';
-import type { AbortingRun, BureauShutdownOptions, BureauShutdownReport } from '../types';
+import type {
+  AbortingRun,
+  BureauShutdownOptions,
+  BureauShutdownReport,
+} from '../bureau-types/facade';
 import type { BureauTestHarness } from './harness';
 
 /** One shutdown owner Bureau itself reported as `'unresolved'` — a bounded `timeoutMilliseconds` wait elapsed before its drain settled. */

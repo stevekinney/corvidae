@@ -21,7 +21,8 @@ import { type GoalState, goalWorkflowId, isTerminalGoalStatus } from './goal-sta
 import type { GoalStore, GoalTransitionResult } from './goal-store';
 import type { BureauGoalControllerStart, GoalEngine } from './goal-types';
 import type { GoalValidatorCatalog } from './goal-validator-catalog';
-import type { CancelDurableRunOutcome, DiagnosticSink } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** What the control plane's operations share. */
 export interface GoalControlDependencies {

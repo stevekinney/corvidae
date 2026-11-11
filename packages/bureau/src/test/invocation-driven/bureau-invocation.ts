@@ -32,7 +32,8 @@ import {
 import { createToolbox } from 'armorer';
 
 import { createBureau } from '../../create-bureau';
-import type { BureauDiagnostic, BureauShutdownReport } from '../../types';
+import type { BureauDiagnostic } from '../../bureau-types/options';
+import type { BureauShutdownReport } from '../../bureau-types/facade';
 import { emit, parseInvocationArguments, pollUntil, readClock, WAKEUP_MS } from './protocol';
 import type { AgentDefinitions } from '../../agent-catalog';
 import { BunSQLiteStorage } from '@lostgradient/storage-bun-sqlite';

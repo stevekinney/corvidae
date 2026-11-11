@@ -5,7 +5,7 @@
 import Ajv from 'ajv';
 import { describe, expect, it } from 'bun:test';
 
-import type { PendingReview } from '../types.ts';
+import type { PendingReview } from '../bureau-types/reviews.ts';
 import {
   interruptKey,
   RESUME_PAYLOAD_SCHEMA,

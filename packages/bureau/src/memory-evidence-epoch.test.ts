@@ -34,7 +34,7 @@ import { createBureau } from './create-bureau';
 import { createMemoryRecallHook, createRunMemoryAuthority } from './run-memory';
 import { waitForCondition, waitForTaskState } from './test';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const requestContext: ToolRequestContext = {
   authority: {

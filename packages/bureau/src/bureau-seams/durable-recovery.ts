@@ -17,7 +17,7 @@ import {
 } from '@lostgradient/operative';
 import { BUREAU_AGENT_NAME } from '../bureau-construction-support';
 import type { BureauCore } from './core';
-import type { BureauRecoveryReport } from '../types';
+import type { BureauRecoveryReport } from '../bureau-types/facade';
 import type { BureauSteeringGate } from '../steering';
 import { sessionRunMediaOptions } from '../provider-resolution';
 import { type BureauToolbox, type SessionAgentRun } from '../runtime-composition-types';

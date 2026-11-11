@@ -12,7 +12,7 @@ import { z } from 'zod';
 
 import { createBureau } from '../create-bureau';
 import type { AgentDefinitions } from '../agent-catalog';
-import type { Bureau } from '../types';
+import type { Bureau } from '../bureau-types/facade';
 
 /**
  * COR-1916 — the racers' claim TTL and renewal interval. The crashed child's claim keeps the

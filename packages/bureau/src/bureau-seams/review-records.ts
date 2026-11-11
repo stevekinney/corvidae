@@ -17,7 +17,7 @@ import type {
   ReviewResolutionFields,
   ReviewStatus,
   SessionPendingReview,
-} from '../types';
+} from '../bureau-types/reviews';
 import { type ApprovedCallAudit, approvalGrantsOf } from '../approval-state-records';
 import type { BureauChildChat } from '../child-topology-store';
 import type {

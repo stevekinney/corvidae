@@ -56,7 +56,7 @@ import {
   type TaskRegistry,
   type TaskView,
 } from '../../task-registry.ts';
-import type { BureauTasks } from '../../types.ts';
+import type { BureauTasks } from '../../bureau-types/tasks.ts';
 import { type BureauOwnershipHost } from '../owner-predicate.ts';
 import { resourceNotFound, taskStateSchema } from './management-schemas.ts';
 import { mayAccessTask } from './tasks-operations.ts';

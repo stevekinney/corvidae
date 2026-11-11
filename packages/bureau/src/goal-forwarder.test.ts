@@ -27,7 +27,7 @@ import { createAttemptForwarder } from './goal-forwarder';
 import { attemptSignalId, createGoalState, goalTransitionId } from './goal-state';
 import { createGoalStore, type GoalStore } from './goal-store';
 import { pollUntil } from './testing/goal-fixtures.test-support';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const NOW = '2026-10-02T12:00:00.000Z';
 const runtime = createDefaultRuntimeServices();

@@ -78,7 +78,7 @@ import { yieldToPortableEventLoop } from '@lostgradient/weft';
 
 import { serializeUnknownError } from './serialization';
 import { settledTaskState } from './task-registry';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** How a catalog run ended. */
 export interface CatalogRunSettlement {

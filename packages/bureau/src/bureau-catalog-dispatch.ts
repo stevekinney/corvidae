@@ -52,7 +52,7 @@ import {
   type TaskOrigin,
 } from './task-origin';
 import type { TaskToolGrant } from './task-registry';
-import type { BureauHumanInputOption, BureauRunOptions } from './types';
+import type { BureauHumanInputOption, BureauRunOptions } from './bureau-types/options';
 
 type CatalogRunErrorCode = 'CONFLICT' | 'NOT_FOUND';
 

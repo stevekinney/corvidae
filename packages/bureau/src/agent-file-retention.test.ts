@@ -10,7 +10,7 @@ import { createSqliteStorageFixture } from './test/storage-fixtures';
 import { runTask, waitForTaskState } from './test';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { BureauOptions } from './types';
+import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';

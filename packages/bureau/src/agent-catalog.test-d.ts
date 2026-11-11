@@ -19,7 +19,7 @@ import type {
 } from './agent-catalog';
 import { createAgentCatalog } from './agent-catalog';
 import { createBureau } from './create-bureau';
-import type { TaskHandle } from './types';
+import type { TaskHandle } from './bureau-types/tasks';
 
 const plainAgent = createAgent({ generate: createMockGenerate([]), name: 'plain' });
 

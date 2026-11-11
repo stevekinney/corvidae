@@ -26,7 +26,7 @@ import {
 } from './hooks.test-support.ts';
 import { createHookStore, HOOK_DELIVERY_KEY_PREFIX, HOOK_KEY_PREFIX } from './hook-store.ts';
 import { HookError, type HookDeliveryRecord } from './hook-types.ts';
-import type { BureauDiagnostic } from '../types.ts';
+import type { BureauDiagnostic } from '../bureau-types/options.ts';
 import type { BureauWorkflows } from '../workflow-runtime.ts';
 
 let key: EncryptionKey;

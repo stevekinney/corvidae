@@ -1,7 +1,7 @@
 import { expect, test } from 'bun:test';
 import { EventType } from '@ag-ui/core';
 import { waitUntil } from '@lostgradient/testing/wait-until';
-import type { ServerFrame } from '../types.ts';
+import type { ServerFrame } from '../bureau-types/frames.ts';
 import { savesSessionAs } from '../test/session-input-fixtures.ts';
 import {
   attachRunRequest,

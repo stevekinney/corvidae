@@ -12,7 +12,7 @@
 import { rm, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 
-import type { BureauDiagnostic } from '../types.ts';
+import type { BureauDiagnostic } from '../bureau-types/options.ts';
 import type { EncryptionKey } from '@lostgradient/cryptography';
 import { MemoryStorage, textValueStore } from '@lostgradient/storage';
 import { quietFor, waitUntil } from '@lostgradient/testing/wait-until';

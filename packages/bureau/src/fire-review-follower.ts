@@ -34,7 +34,7 @@ import type { DurableEventEnvelope } from '@lostgradient/operative';
 import type { DurableEventHistory, DurableEventOwnersSubscription } from './durable-event-history';
 import { REVIEW_CLOSING_EVENT_KINDS } from './review-closing-events';
 import { serializeUnknownError } from './serialization';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** How many events of a followed fire's history a catch-up reads per page. */
 const CATCH_UP_PAGE_LIMIT = 500;

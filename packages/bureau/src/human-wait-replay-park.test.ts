@@ -25,7 +25,7 @@ import { createTemporaryPath, removeTemporaryPath } from '@lostgradient/testing/
 import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { waitForCondition } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 
 const STEP_KEY_PREFIX = 'durable-run:';

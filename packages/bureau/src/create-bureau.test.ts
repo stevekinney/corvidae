@@ -124,7 +124,10 @@ import { createHumanWaitContext, createWakeupContext } from './run-request-conte
 import { createMemoryPersistHook, createRunMemoryAuthority } from './run-memory';
 import { listHeldTasks, waitForCondition, waitForRunState, waitForTaskState } from './test';
 import { throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import { type Bureau, type BureauContexts, type BureauDiagnostic, type ServerFrame } from './types';
+import { type Bureau } from './bureau-types/facade';
+import { type BureauContexts } from './bureau-types/contexts';
+import { type BureauDiagnostic } from './bureau-types/options';
+import { type ServerFrame } from './bureau-types/frames';
 import { advancingTurn, withAdvancingClock } from './testing/advancing-turn.test-support';
 import {
   IMMEDIATE_TASK_RETENTION,

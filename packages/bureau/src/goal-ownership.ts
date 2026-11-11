@@ -44,7 +44,7 @@ import type {
   CatalogRunRecoveryLoad,
   CatalogRunRecoveryRecord,
 } from './catalog-run-recovery-record';
-import type { CancelDurableRunOutcome } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
 
 /** An id a goal tried to use belongs to something that is not the goal. */
 export class GoalOwnershipError extends Error {

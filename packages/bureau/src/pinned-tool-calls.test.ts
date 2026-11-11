@@ -17,7 +17,7 @@ import { z } from 'zod';
 
 import type { AgentDefinitions } from './agent-catalog';
 import { createBureau, PinnedToolUnavailableError } from './index';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { waitForTaskState } from './test';
 
 const APPROVAL_SECRET = 'pinned-tool-secret';

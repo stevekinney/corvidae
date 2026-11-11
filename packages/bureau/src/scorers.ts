@@ -51,7 +51,7 @@ import { Conversation } from 'conversationalist';
 import type { AgentDefinitions } from './agent-catalog';
 import type { AuditTrail } from './audit-trail';
 import type { ActionEvent } from './events';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { WebhookNotifier } from './webhook-notifier';
 import { formatVersionedId } from './versioned-catalog';
 

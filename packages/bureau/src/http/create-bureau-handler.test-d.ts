@@ -5,7 +5,7 @@
 
 import type { AuthConfig, OperationHandler, OperationHandlerMount } from '@lostgradient/weft';
 
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 import { BUREAU_SCOPES, type BureauScope } from './bureau-scopes.ts';
 import { type BureauHandlerOptions, createBureauHandler } from './create-bureau-handler.ts';
 

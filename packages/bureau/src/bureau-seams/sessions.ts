@@ -24,7 +24,8 @@ import type { BureauSteeringGate } from '../steering';
 import type { ChatAsset } from '../chat-asset-purge';
 import { ChatRunsNotEndedError, type DeletedChat } from '../chat-content-purge';
 import type { ConditionalTextValueStore } from '@lostgradient/storage';
-import type { ContextDeletionReport, RunSummary } from '../types';
+import type { ContextDeletionReport } from '../bureau-types/contexts';
+import type { RunSummary } from '../bureau-types/runs';
 import type { RunMemoryPlacement } from '../chat-memory-purge';
 import { THREAD_LEASE_RETRY_MILLISECONDS } from '../bureau-construction-support';
 import {

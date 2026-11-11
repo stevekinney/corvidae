@@ -24,7 +24,7 @@ import {
   createLatch,
   hangUntilAborted,
 } from './testing/goal-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const bureaus: Bureau<AgentDefinitions>[] = [];
 

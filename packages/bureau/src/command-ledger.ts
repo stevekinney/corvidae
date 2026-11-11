@@ -86,7 +86,7 @@ import {
 } from '@lostgradient/storage';
 import { type WorkflowState } from '@lostgradient/weft';
 
-import type { RunSummary } from './types';
+import type { RunSummary } from './bureau-types/runs';
 import { getOwn } from 'conversationalist';
 
 /**

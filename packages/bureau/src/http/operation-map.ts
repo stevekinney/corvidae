@@ -12,7 +12,7 @@
  * Moving a namespace in-process (`tasks`, `contexts`, `schedules`, ...) is one edit per operation
  * here: change its `member` string to the new path.
  */
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 
 /** Past this many segments a path is not a Bureau member any row names. */
 type MaximumPathDepth = 3;

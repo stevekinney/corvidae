@@ -51,7 +51,7 @@ import {
   settleScenario,
   waitForBureauState,
 } from './test/hoisted-scenario';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { unexpectedChildStderr } from './test/child-stderr';
 import { createLmdbStorageFixture, createSqliteStorageFixture } from './test/storage-fixtures';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';

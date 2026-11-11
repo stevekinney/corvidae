@@ -1,8 +1,8 @@
+import type { BureauSchedules } from '../bureau-types/schedules.ts';
 import type {
-  BureauSchedules,
   DurableEventHistoryRead,
   DurableEventHistorySubscribe,
-} from '../types.ts';
+} from '../bureau-types/common.ts';
 
 /**
  * What {@link createSchedules} composes `bureau.schedules` from: the Bureau's own schedule

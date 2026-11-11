@@ -26,7 +26,7 @@ import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { resolvedReviewOfAudit } from './resolved-review-record';
 import { waitForTaskState } from './test';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const APPROVAL_SECRET = 'decision-surface-secret';
 

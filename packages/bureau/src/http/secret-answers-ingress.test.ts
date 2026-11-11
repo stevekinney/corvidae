@@ -40,7 +40,8 @@ import {
   SECRET_ANSWER_KEY_PREFIX,
 } from '../secret-answers.ts';
 import { waitForCondition } from '../test';
-import type { Bureau, PendingReview } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { PendingReview } from '../bureau-types/reviews.ts';
 import { createBureauAgentCard } from './a2a-agent-card.ts';
 import {
   A2A_SEND_LEDGER_KEY_PREFIX,

@@ -29,7 +29,7 @@ import {
   startFileBureau,
 } from './testing/agent-file-bureau.test-support';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const executed: string[] = [];
 

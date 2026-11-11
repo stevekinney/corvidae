@@ -12,7 +12,7 @@ import type {
   PendingReview,
   ResolveReviewInput,
   SessionPendingReview,
-} from '../types';
+} from '../bureau-types/reviews';
 import { type BureauCore, REVIEW_AUDIT_OUTBOX_NAMESPACE, type ReviewAuditAttachment } from './core';
 import { BureauError } from '../bureau-errors';
 import type { JSONValue } from '@lostgradient/operative';

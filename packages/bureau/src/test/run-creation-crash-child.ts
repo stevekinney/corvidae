@@ -30,7 +30,8 @@ import { createToolbox, type Tool } from 'armorer';
 
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
-import type { Bureau, BureauDiagnostic } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauDiagnostic } from '../bureau-types/options';
 import {
   type FaultMarker,
   type FaultScenario,

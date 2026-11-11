@@ -30,7 +30,7 @@ import type {
   ScheduleFireEventMap,
 } from '../runtime-composition-types';
 import type { CatalogRunRecoveryRecord } from '../catalog-run-recovery-record';
-import type { DiagnosticSink } from '../types';
+import type { DiagnosticSink } from '../bureau-types/options';
 import type { SecretAnswerStore } from '../secret-answers';
 import type { SkillCatalogRevision, SkillEventMap } from '../skills';
 import type { StorageFence } from '../storage-fence';

@@ -13,7 +13,7 @@
 import type { HumanInputSchema } from '@lostgradient/operative';
 import type { Interrupt, ResumeEntry } from '@ag-ui/core';
 
-import type { ApprovalDecisionSurface, PendingReview } from '../types.ts';
+import type { ApprovalDecisionSurface, PendingReview } from '../bureau-types/reviews.ts';
 import { projectReview } from './bureau-reviews-operations.ts';
 import { BUREAU_METADATA_KEY } from './ag-ui-vocabulary.ts';
 

@@ -46,7 +46,7 @@ import {
 import { boundedReviewId } from '../review-decision-record.ts';
 import { serializeUnknownError } from '../serialization.ts';
 import type { TaskView } from '../task-registry.ts';
-import type { DiagnosticSink } from '../types.ts';
+import type { DiagnosticSink } from '../bureau-types/options.ts';
 import type { NotificationOutbox } from './notification-outbox.ts';
 import type { NotificationStore } from './notification-store.ts';
 import {

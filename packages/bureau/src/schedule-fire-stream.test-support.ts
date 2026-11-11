@@ -16,7 +16,8 @@ import {
 } from './http/management/management-fixtures.test-support.ts';
 import { handlerOf } from './schedule-fire-fixtures.test-support';
 import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 
 export const OWNERSHIP = {
   ownership: 'workflow-lease',

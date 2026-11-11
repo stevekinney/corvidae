@@ -23,7 +23,7 @@ import {
   ScheduleMissedEvent,
 } from './events';
 import { markEventSource } from './event-source';
-import type { DiagnosticSink } from './types';
+import type { DiagnosticSink } from './bureau-types/options';
 
 /** The Bureau's one diagnostic choke point; see {@link createDiagnosticDispatcher}. */
 export interface DiagnosticDispatcher {

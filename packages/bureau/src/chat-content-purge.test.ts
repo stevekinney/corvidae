@@ -18,7 +18,7 @@ import {
 import { CHAT_CONTENT_TOMBSTONE_PREFIX, runTombstoneKey } from './chat-content-tombstone';
 import { A2A_TASK_RECORD_KEY_PREFIX, createA2ATaskRecords } from './http/a2a-task-record';
 import type { DurableEventHistory, DurableEventProducer } from './durable-event-history';
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 
 const PENDING_PREFIX = 'chat-content-purge-pending:v1:';
 

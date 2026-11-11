@@ -24,7 +24,7 @@ import {
   settledEventsOf,
 } from './schedule-fire-stream.test-support';
 import { SCHEDULE_FIRE_SETTLED_EVENT_KIND } from './schedule-fire-settled-event';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const harness = createScheduleFireHarness();
 

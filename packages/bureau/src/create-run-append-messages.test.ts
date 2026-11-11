@@ -20,7 +20,7 @@ import { BureauLedgerConflictError } from './command-ledger';
 import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { createSqliteStorageFixture } from './test/storage-fixtures';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 import { startTaskFrom } from './test/task-start-request.ts';
 import { MemoryStorage } from '@lostgradient/storage';

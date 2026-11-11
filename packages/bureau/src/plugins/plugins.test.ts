@@ -12,7 +12,8 @@ import { z } from 'zod';
 import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { agentFileDirectory } from '../sources/agent-file-directory';
-import type { Bureau, BureauOptions } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauOptions } from '../bureau-types/options';
 import type { BureauPluginEntry } from './plugin-types';
 import { listedPlugins } from '../testing/plugin-listing.test-support';
 

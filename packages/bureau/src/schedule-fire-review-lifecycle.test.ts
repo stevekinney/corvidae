@@ -35,7 +35,7 @@ import {
   reviewsOf,
 } from './schedule-fire-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { expireReviews } from './testing/expired-reviews.test-support';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 

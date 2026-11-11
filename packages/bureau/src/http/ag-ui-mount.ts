@@ -79,7 +79,9 @@ import { BureauLedgerConflictError } from '../command-ledger.ts';
 import { readContextTombstone } from '../context-tombstone.ts';
 import { BureauError } from '../bureau-errors.ts';
 import { isDurableRunUnsettled } from '../durable-run-waits.ts';
-import type { Bureau, BureauReviews, BureauInternals, BureauTasks } from '../types.ts';
+import type { Bureau, BureauInternals } from '../bureau-types/facade.ts';
+import type { BureauReviews } from '../bureau-types/reviews.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
 import type { TaskState } from '../task-registry.ts';
 import {
   managedAssetIdsOf,

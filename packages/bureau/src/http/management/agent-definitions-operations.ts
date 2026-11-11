@@ -48,7 +48,7 @@ import { defineOperation, type OperationFault, type Principal } from '@lostgradi
 import { z } from 'zod';
 
 import type { AgentDefinitions } from '../../agent-catalog.ts';
-import type { BureauAgents } from '../../types.ts';
+import type { BureauAgents } from '../../bureau-types/tasks.ts';
 import {
   AGENT_IDENTIFIER_MAX_LENGTH,
   agentAllowedSkillsSchema,

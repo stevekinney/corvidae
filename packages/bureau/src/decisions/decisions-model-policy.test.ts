@@ -16,7 +16,7 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { createBureau } from '../create-bureau.ts';
 import { ModelPolicyDeniedError } from '../file-agent-generate.ts';
 import type { BureauModelPolicyOptions } from '../model-policy.ts';
-import type { Bureau } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
 
 const bureaus: Bureau[] = [];
 afterEach(async () => {

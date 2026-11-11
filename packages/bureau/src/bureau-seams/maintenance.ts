@@ -12,7 +12,8 @@
 import type { AgentDefinitions } from '../agent-catalog';
 import type { BureauCore } from './core';
 import { BureauError } from '../bureau-errors';
-import type { ContextDeletionReport, ExpiredRecordRemoval } from '../types';
+import type { ContextDeletionReport } from '../bureau-types/contexts';
+import type { ExpiredRecordRemoval } from '../bureau-types/options';
 import { DEFAULT_EVENT_RETENTION_MS } from '../settings/setting-defaults';
 import { DURABLE_FORCIBLY_TERMINABLE_STATUSES } from '../durable-run-waits';
 import {

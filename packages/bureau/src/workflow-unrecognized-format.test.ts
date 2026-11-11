@@ -23,7 +23,7 @@ import {
   validateWorkflowDocument,
 } from '@lostgradient/weft';
 
-import type { BureauDiagnostic } from './types';
+import type { BureauDiagnostic } from './bureau-types/options';
 import { createWorkflowDocumentHost } from './workflow-host';
 import { parseWorkflowFile, workflowVersionOf } from './workflow-file';
 import { startWorkflowBureau } from './testing/workflow-bureau.test-support';

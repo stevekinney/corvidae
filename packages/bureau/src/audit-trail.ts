@@ -33,7 +33,8 @@ import {
   serializeActionDetail,
   serializeUnknownError,
 } from './serialization';
-import type { Bureau, DiagnosticSink } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { DiagnosticSink } from './bureau-types/options';
 
 // ── Public surface ──────────────────────────────────────────────────
 

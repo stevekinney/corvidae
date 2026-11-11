@@ -21,7 +21,9 @@ import { BureauError } from './bureau-errors';
 import { createBureau } from './create-bureau';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
 import { humanWaitDeliveryId } from './run-human-waits';
-import type { Bureau, BureauOptions, PendingReview } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
+import type { PendingReview } from './bureau-types/reviews';
 import { waitUntil } from '@lostgradient/testing/wait-until';
 import { MemoryStorage } from '@lostgradient/storage';
 import {

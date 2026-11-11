@@ -33,7 +33,7 @@ import {
   skillsRecorded,
 } from './skill-policy-fixtures.test-support';
 import { rejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import { createAgentSkills } from './agent-skills';
 
 const harness = createScheduleFireHarness();

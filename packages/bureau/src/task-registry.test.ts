@@ -22,7 +22,8 @@ import {
 import type { TaskOrigin } from './task-origin';
 import { notificationOutboxKey } from './notifications/notification-outbox';
 import { rejectionOf, throwingRejectionOf } from '@lostgradient/testing/promise-outcome';
-import type { CancelDurableRunOutcome, PendingReview } from './types';
+import type { CancelDurableRunOutcome } from './bureau-types/runs';
+import type { PendingReview } from './bureau-types/reviews';
 
 const OWNER = 'api-key:alice';
 

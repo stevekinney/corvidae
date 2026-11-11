@@ -1,6 +1,7 @@
 import { waitForRunState } from '@lostgradient/operative';
 
-import type { BureauTasks, RunDetail } from '../types.ts';
+import type { BureauTasks } from '../bureau-types/tasks.ts';
+import type { RunDetail } from '../bureau-types/runs.ts';
 
 /**
  * Waits until `bureau.tasks.detail(taskId)` satisfies `predicate` (by default, until the task is no

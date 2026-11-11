@@ -31,7 +31,8 @@ import {
   type TaskCleanupState,
   type TaskRegistry,
 } from '../../task-registry.ts';
-import type { Bureau, BureauContexts, BureauInternals } from '../../types.ts';
+import type { Bureau, BureauInternals } from '../../bureau-types/facade.ts';
+import type { BureauContexts } from '../../bureau-types/contexts.ts';
 import {
   mayUseCrossOwnerScope,
   type BureauOwnershipHost,

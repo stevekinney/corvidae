@@ -8,7 +8,7 @@ import type { Storage } from '@lostgradient/storage';
 import type { DurableEventHistory } from '../durable-event-history';
 import { serializeUnknownError } from '../serialization';
 import type { TaskRegistry } from '../task-registry';
-import type { DiagnosticSink } from '../types';
+import type { DiagnosticSink } from '../bureau-types/options';
 import { createInteractiveSurfaces, type InteractiveSurfaces } from './store';
 
 /** What {@link createBureauInteractiveSurfaces} reads from the Bureau it serves. */

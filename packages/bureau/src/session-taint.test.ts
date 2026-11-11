@@ -29,7 +29,7 @@ import { createBureau } from './create-bureau';
 import { createRuntimeComposition } from './runtime-composition';
 import { createSessionTaintSeam } from './session-taint-seam';
 import { SessionTaintEvent } from './events';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 
 const OWNER = 'api-key:alice';
 const MARKER = 'FLAGGED-TEXT-MARKER-7731';

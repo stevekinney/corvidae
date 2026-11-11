@@ -15,7 +15,7 @@ import { createBureau } from './create-bureau';
 import { digestReviewDelivery } from './review-decision-record';
 import { RESOLVED_REVIEW_KEY_PREFIX } from './resolved-review-record';
 import { waitForCondition } from './test';
-import type { BureauOptions } from './types';
+import type { BureauOptions } from './bureau-types/options';
 
 const ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(ORIGIN);

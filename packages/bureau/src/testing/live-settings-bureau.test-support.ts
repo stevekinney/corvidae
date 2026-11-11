@@ -12,7 +12,8 @@ import { createToolbox, type Tool } from 'armorer';
 import type { AgentDefinitions } from '../agent-catalog.ts';
 import { createBureau } from '../create-bureau.ts';
 import { createSqliteStorageFixture } from '../test/storage-fixtures.ts';
-import type { Bureau, BureauOptions } from '../types.ts';
+import type { Bureau } from '../bureau-types/facade.ts';
+import type { BureauOptions } from '../bureau-types/options.ts';
 
 export const LIVE_SETTINGS_ORIGIN = '2026-10-13T00:00:00.000Z';
 const ORIGIN_MS = Date.parse(LIVE_SETTINGS_ORIGIN);

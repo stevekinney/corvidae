@@ -51,7 +51,7 @@ import type { RuntimeClock, RuntimeIdentifiers } from '@lostgradient/lifecycle';
 import { z } from 'zod';
 
 import { serializeUnknownError } from '../serialization.ts';
-import type { DiagnosticSink } from '../types.ts';
+import type { DiagnosticSink } from '../bureau-types/options.ts';
 import {
   type BureauNotification,
   type BureauNotifications,

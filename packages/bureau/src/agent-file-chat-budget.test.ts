@@ -15,7 +15,7 @@ import { join } from 'node:path';
 import { CHAT_SPEND_KEY_PREFIX, createChatSpendLedger } from './chat-spend-ledger';
 import { agentFileText, KNOWN_MODEL } from './testing/agent-file-fixtures.test-support';
 import { type FileBureauHarness, startFileBureau } from './testing/agent-file-bureau.test-support';
-import type { Bureau } from './types';
+import type { Bureau } from './bureau-types/facade';
 import type { AgentDefinitions } from './agent-catalog';
 
 /** Opus 5.5 is $4 per million tokens in: 50,000 prompt tokens cost $0.20. */

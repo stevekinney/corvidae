@@ -12,7 +12,8 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { createBureau } from '../create-bureau';
 import { createSettingsTools } from './settings-tools';
 import { startWorkflowToolsBureau } from '../testing/workflow-tools-bureau.test-support';
-import type { Bureau, BureauOptions } from '../types';
+import type { Bureau } from '../bureau-types/facade';
+import type { BureauOptions } from '../bureau-types/options';
 
 const agents: AgentDefinitions = {
   anchor: createAgent({ name: 'anchor', generate: async () => ({ content: 'a', toolCalls: [] }) }),

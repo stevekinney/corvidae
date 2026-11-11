@@ -54,15 +54,11 @@ import type { AgentDefinitions } from '../agent-catalog';
 import { ABORTED_RUN_TERMINAL_GRACE_MILLISECONDS } from '../durable-run-waits';
 import { createBureau } from '../create-bureau';
 import { detachBestEffortPromise } from '../bureau-construction-support';
-import type {
-  Bureau,
-  BureauOptions,
-  BureauShutdownOptions,
-  DurableScheduleDefinition,
-  ResolveReviewInput,
-  ResolveReviewResult,
-  TaskHandle,
-} from '../types';
+import type { Bureau, BureauShutdownOptions } from '../bureau-types/facade';
+import type { BureauOptions } from '../bureau-types/options';
+import type { DurableScheduleDefinition } from '../bureau-types/schedules';
+import type { ResolveReviewInput, ResolveReviewResult } from '../bureau-types/reviews';
+import type { TaskHandle } from '../bureau-types/tasks';
 import type { BureauQuiescenceReport } from './quiescence';
 import { assertBureauQuiescent, BureauQuiescenceError } from './quiescence';
 import type { BureauStorageFixture } from './storage-fixtures';

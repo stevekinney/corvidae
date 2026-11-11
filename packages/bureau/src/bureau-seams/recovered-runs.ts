@@ -55,7 +55,7 @@ import {
   type ScheduleFireSettledPayload,
   scheduleFireSettledDedupeKey,
 } from '../schedule-fire-settled-event';
-import type { ServerFrame } from '../types';
+import type { ServerFrame } from '../bureau-types/frames';
 import type { SteeringLogEvent } from '../steering-log';
 import type { TaskRecord } from '../task-registry';
 import { attachRunEventFeed } from '../run-event-feed-attachment.ts';

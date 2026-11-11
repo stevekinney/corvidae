@@ -10,7 +10,8 @@ import { afterEach, describe, expect, it } from 'bun:test';
 import { z } from 'zod';
 
 import { createBureau } from './create-bureau';
-import type { Bureau, BureauOptions } from './types';
+import type { Bureau } from './bureau-types/facade';
+import type { BureauOptions } from './bureau-types/options';
 import type { AgentDefinitions } from './agent-catalog';
 import { listHeldTasks } from './test';
 import { quietFor } from '@lostgradient/testing/wait-until';
