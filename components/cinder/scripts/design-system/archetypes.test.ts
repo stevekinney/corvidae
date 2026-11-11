@@ -141,7 +141,9 @@ describe('the checked-in archetype pages', () => {
     const ids = previews.map((preview) => preview.id);
     for (const required of REQUIRED_ARCHETYPES) expect(ids).toContain(required);
     for (const preview of previews) {
-      expect(preview.html).toMatch(/^<!-- @dsCard group="Page archetypes" height=\d+ subtitle="/);
+      expect(preview.html).toMatch(
+        /^<!-- @dsCard group="Page archetypes" height=\d+(?: width=\d+)? subtitle="/,
+      );
       expect(preview.html).toContain('<style>');
       expect(preview.html).not.toContain(ARCHETYPE_STYLES_MARKER);
       expect(preview.html).toContain('<main class="arch">');

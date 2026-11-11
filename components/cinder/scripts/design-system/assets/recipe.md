@@ -40,7 +40,7 @@ One labelled primary per screen. Variants: `primary`, `secondary`, `ghost`, `gho
   data-cinder-variant="ghost"
   data-cinder-size="md"
   data-cinder-icon-only
-  aria-label="Edit"
+  aria-label="Add a place"
 >
   <span class="cinder-button__icon" aria-hidden="true"
     ><svg
@@ -471,7 +471,24 @@ A row of sections at the top of a page is a SegmentedControl whose options are l
 
 ## Drawer
 
-A modal drawer is a `dialog` that the canvas opens with `showModal()`. Its markup in flow, which is what a static board needs, is the non-modal `aside` below, with the panel at the `right` edge for a side drawer or the `bottom` edge for a peek sheet. The Drawer is fixed to the viewport, so a board that shows one in the page puts it in a box that is a containing block for fixed elements, as the Map archetype does with `contain: layout`.
+A modal drawer is a `dialog` that the canvas opens with `showModal()`. Its markup in flow, which is what a static board needs, is the non-modal `aside` below, with the panel at the `right` edge for a side drawer or the `bottom` edge for a peek sheet. The Drawer is fixed to the viewport and as wide and tall as it, so a board that shows one in the page puts it in a box with `position: relative` and `contain: layout`, which makes the box the containing block for fixed elements, and sizes the drawer to the box, as the Map archetype does:
+
+```css
+.stage {
+  position: relative;
+  contain: layout;
+  overflow: hidden;
+  min-block-size: 32rem;
+}
+.stage .cinder-drawer {
+  position: absolute;
+  inset: 0;
+  inline-size: auto;
+  block-size: auto;
+}
+```
+
+A button in a page header's actions is drawn at `xs`, as `PageHeader` does, with the flag `data-cinder-compact`.
 
 ```html
 <aside

@@ -37,8 +37,8 @@ export function archetypeExportName(id: string): string {
  * with its `@dsCard` marker, or when the stylesheet would end its own `<style>`.
  */
 export function archetypePreviewHtml(source: string, css: string): string {
-  const parts = source.split(ARCHETYPE_STYLES_MARKER);
-  if (parts.length !== 2) {
+  const at = source.indexOf(ARCHETYPE_STYLES_MARKER);
+  if (at === -1 || source.indexOf(ARCHETYPE_STYLES_MARKER, at + 1) !== -1) {
     throw new Error(`an archetype page holds ${ARCHETYPE_STYLES_MARKER} exactly once`);
   }
   if (!source.includes('<head>')) throw new Error('an archetype page needs a literal <head>');
@@ -48,7 +48,9 @@ export function archetypePreviewHtml(source: string, css: string): string {
     );
   }
   if (/<\/style/i.test(css)) throw new Error('the archetype stylesheet holds a </style');
-  return `${parts[0]}<style>\n${css}</style>${parts[1]}`;
+  const before = source.slice(0, at);
+  const after = source.slice(at + ARCHETYPE_STYLES_MARKER.length);
+  return `${before}<style>\n${css}</style>${after}`;
 }
 
 /** Reads every archetype page in `directory`, in file-name order, with the shared layout inlined. */

@@ -201,7 +201,7 @@ export async function checkArchetypeRenders(
             (value) => document.documentElement.setAttribute('data-theme', value),
             theme,
           );
-          await page.waitForTimeout(CHECK_SETTLE_MILLISECONDS);
+          // The pages are static markup, so the load event is the whole render: nothing settles.
           const info = await page.evaluate(() => ({
             height: Math.ceil(document.body.getBoundingClientRect().height),
             overflow: document.documentElement.scrollWidth > window.innerWidth,
