@@ -231,6 +231,16 @@ export type ChatRunSpend = {
 };
 
 /**
+ * COR-1596 — how one approval of a fire ends. Every way it can (decided, expired, canceled,
+ * revoked, abandoned by a crash, found unrestorable) goes through
+ * {@link releaseScheduledFireApproval}, and none prunes on its own, because the state is in two
+ * homes (the session's metadata and this process's maps) and an ending that released one
+ * forgot the other: resolve and expiry, then settle, then cancel each did, in turn.
+ */
+export type ScheduledFireApprovalEnding =
+  'resolved' | 'expired' | 'canceled' | 'revoked' | 'removed' | 'abandoned' | 'invalid';
+
+/**
  * What every seam factory reads from `constructBureau`. Never destructure an accessor at a
  * factory's top: read `core.x` where it is used, so the read happens at call time.
  */
