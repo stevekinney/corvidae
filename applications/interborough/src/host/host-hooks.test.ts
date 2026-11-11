@@ -97,6 +97,38 @@ describe('hooks on a home that runs on the person’s own machine', () => {
     });
   });
 
+  test('test a webhook before it is saved, keeping nothing, and retry a kept delivery from its record (COR-2022)', async () => {
+    const host = await start();
+    const target = receiver();
+
+    const draft = await call(host, 'bureau.hooks.draft.test', { url: target.url });
+    expect(draft.error).toBeUndefined();
+    expect(draft.result).toMatchObject({ hookId: 'draft', status: 'delivered', test: true });
+    expect(target.received).toHaveLength(1);
+    expect((await call(host, 'bureau.hooks.list', {})).result.hooks).toEqual([]);
+
+    const created = await call(host, 'bureau.hooks.create', {
+      events: ['review.requested'],
+      action: { type: 'webhook', url: target.url },
+    });
+    expect(created.error).toBeUndefined();
+    const hookId = created.result.id as string;
+    // A secret the host made is shown on the create answer, and no read carries it.
+    const secret = created.result.signingSecret as string;
+    expect(secret).toMatch(/^whsec_[0-9a-f]{24}$/);
+    expect(JSON.stringify(await call(host, 'bureau.hooks.get', { hookId }))).not.toContain(secret);
+
+    const tested = await call(host, 'bureau.hooks.test', { hookId });
+    expect(tested.result.status).toBe('delivered');
+    // A delivered delivery has nothing to retry.
+    const retried = await call(host, 'bureau.hooks.deliveries.retry', {
+      hookId,
+      deliveryId: tested.result.id,
+    });
+    expect(retried.error?.data?.issues?.[0]?.path).toEqual(['deliveryId']);
+    expect(target.received).toHaveLength(2);
+  });
+
   test('describe every event a hook can listen to', async () => {
     const host = await start();
     const catalog = await call(host, 'bureau.events.catalog', {});

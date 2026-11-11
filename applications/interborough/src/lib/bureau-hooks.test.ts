@@ -197,6 +197,139 @@ describe('the Bureau’s hooks', () => {
     });
   });
 
+  test('keep the request a delivery sent, its body included, and when its next try is due (COR-2022)', async () => {
+    const body = JSON.stringify({
+      id: 'delivery-1',
+      hookId: 'hook-1',
+      kind: 'run.error',
+      payload: { runId: 'run-7', step: 2, error: 'GitHub didn’t answer (HTTP 503)' },
+    });
+    stub = installBureauStub({
+      'bureau.hooks.deliveries': () => ({
+        deliveries: [
+          {
+            ...DELIVERY,
+            status: 'pending',
+            request: { ...DELIVERY.request, body },
+            nextAttemptAt: 40_000,
+          },
+          DELIVERY,
+        ],
+      }),
+    });
+    const [waiting, settled] = await listHookDeliveries('hook-1', 20);
+
+    expect(waiting?.request).toEqual({
+      url: 'https://example.com/a',
+      headers: { 'x-delivery-id': 'd' },
+      body,
+    });
+    expect(waiting?.nextAttemptAt).toBe(40_000);
+    expect(deliveryBody(waiting!)).toMatchObject({
+      kind: 'run.error',
+      payload: { runId: 'run-7', error: 'GitHub didn’t answer (HTTP 503)' },
+    });
+    // A delivery with no try due, and one from a Bureau that predates the field, read alike.
+    expect(settled?.nextAttemptAt).toBeNull();
+    expect(deliveryBody({ request: null })).toBeUndefined();
+    expect(deliveryBody({ request: { url: 'u', headers: {}, body: 'not json' } })).toBeUndefined();
+  });
+
+  test('refuse a delivery whose request has no body, rather than show a payload that is not there', async () => {
+    stub = installBureauStub({
+      'bureau.hooks.deliveries': () => ({
+        deliveries: [{ ...DELIVERY, request: { url: 'https://example.com/a' } }],
+      }),
+    });
+    expect(await throwingRejectionOf(listHookDeliveries('hook-1', 20))).toThrow();
+  });
+
+  test('carry a generated signing secret on the create answer alone, and null when the person chose it', async () => {
+    stub = installBureauStub({
+      'bureau.hooks.create': (params) =>
+        params['signingSecret'] === undefined
+          ? { ...HOOK, signingSecret: 'whsec_3f9a1c0d7e5b4a62c8d1e0f9' }
+          : { ...HOOK, signingSecret: null },
+      'bureau.hooks.get': () => HOOK,
+    });
+    const generated = await createHook({
+      events: ['run.error'],
+      action: { type: 'webhook', url: 'https://example.com/a' },
+    });
+    expect(generated.signingSecret).toBe('whsec_3f9a1c0d7e5b4a62c8d1e0f9');
+    const chosen = await createHook({
+      events: ['run.error'],
+      action: { type: 'webhook', url: 'https://example.com/a' },
+      signingSecret: 'sixteen-characters-or-more',
+    });
+    expect(chosen.signingSecret).toBeNull();
+    // A read never carries one.
+    expect(await getHook('hook-1')).not.toHaveProperty('signingSecret');
+  });
+
+  test('replace a signing secret against the revision that was read, answering the new one once', async () => {
+    stub = installBureauStub({
+      'bureau.hooks.secret.replace': () => ({
+        ...HOOK,
+        revision: 2,
+        signingSecret: 'whsec_0123456789abcdef01234567',
+      }),
+    });
+    const replaced = await replaceHookSecret('hook-1', 1);
+    expect(replaced.signingSecret).toBe('whsec_0123456789abcdef01234567');
+    expect(replaced.revision).toBe(2);
+    expect(stub.callsTo('bureau.hooks.secret.replace')[0]?.params).toEqual({
+      hookId: 'hook-1',
+      expectedRevision: 1,
+    });
+
+    await replaceHookSecret('hook-1');
+    expect(stub.callsTo('bureau.hooks.secret.replace')[1]?.params).toEqual({ hookId: 'hook-1' });
+  });
+
+  test('refuse a replaced-secret answer that carries no secret', async () => {
+    stub = installBureauStub({ 'bureau.hooks.secret.replace': () => HOOK });
+    expect(await throwingRejectionOf(replaceHookSecret('hook-1'))).toThrow();
+  });
+
+  test('test a webhook before it is saved, sending only the URL and the secret the person chose', async () => {
+    const draft = { ...DELIVERY, hookId: 'draft', maxAttempts: 1 };
+    stub = installBureauStub({ 'bureau.hooks.draft.test': () => draft });
+
+    const sent = await testHookDraft({ url: 'https://hooks.example.com/in' });
+    expect(sent).toMatchObject({ hookId: 'draft', status: 'delivered' });
+    expect(sent.attempts[0]?.status).toBe(200);
+    expect(stub.callsTo('bureau.hooks.draft.test')[0]?.params).toEqual({
+      url: 'https://hooks.example.com/in',
+    });
+
+    await testHookDraft({
+      url: 'https://hooks.example.com/in',
+      signingSecret: 'sixteen-characters-or-more',
+    });
+    expect(stub.callsTo('bureau.hooks.draft.test')[1]?.params).toEqual({
+      url: 'https://hooks.example.com/in',
+      signingSecret: 'sixteen-characters-or-more',
+    });
+  });
+
+  test('retry one delivery of one hook, and answer its record', async () => {
+    stub = installBureauStub({
+      'bureau.hooks.deliveries.retry': () => ({
+        ...DELIVERY,
+        status: 'pending',
+        maxAttempts: 2,
+        nextAttemptAt: null,
+      }),
+    });
+    const retried = await retryHookDelivery('hook-1', 'delivery-1');
+    expect(retried).toMatchObject({ id: 'delivery-1', status: 'pending', maxAttempts: 2 });
+    expect(stub.callsTo('bureau.hooks.deliveries.retry')[0]?.params).toEqual({
+      hookId: 'hook-1',
+      deliveryId: 'delivery-1',
+    });
+  });
+
   test('offer the events the Bureau describes, with where each can come from', async () => {
     stub = installBureauStub({
       'bureau.events.catalog': () => ({
