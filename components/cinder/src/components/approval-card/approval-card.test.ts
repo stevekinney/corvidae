@@ -2489,3 +2489,42 @@ describe('ApprovalCard decided row order', () => {
     expect(container.querySelector('.cinder-approval-card__tool-label')).toBeNull();
   });
 });
+
+describe('ApprovalCard on a phone', () => {
+  test('wraps a command so none of it hides behind a sideways scroll', () => {
+    const { container } = render(ApprovalCard, {
+      ...approvalCardProps({
+        operation: { kind: 'command', command: 'bun run components:check --filter=cinder' },
+      }),
+    });
+
+    expect(container.querySelector('.cinder-code-block--wrap')).not.toBeNull();
+  });
+
+  test('puts the status badges above the question in a narrow card', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__header \{\s*display: grid;[^}]*'icon badges'\s*'icon title';[^}]*row-gap: 0;/,
+    );
+    expect(css).toMatch(/__badges \{\s*grid-area: badges;/);
+    expect(css).toMatch(/__badges:empty \{\s*display: none;/);
+    expect(css).toMatch(/__title-group \{\s*grid-area: title;/);
+  });
+
+  test('names the risk glyph wrapper so the narrow layout can place it', () => {
+    const { container } = render(ApprovalCard, { ...approvalCardProps() });
+
+    expect(
+      container.querySelector('.cinder-approval-card__header > .cinder-approval-card__risk-tip'),
+    ).not.toBeNull();
+  });
+
+  test('keeps Deny and the primary decision equal, full-width 44px targets in a narrow card', () => {
+    const css = readFileSync(new URL('./approval-card.css', import.meta.url), 'utf8');
+
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^@]*__action-buttons \.cinder-button\[data-cinder-size\] \{\s*flex: 1 1 0;\s*min-height: var\(--cinder-touch-target-min\);/,
+    );
+  });
+});

@@ -29,7 +29,10 @@
   } = $props();
 </script>
 
-<div class="chat-entry-frame-shell">
+<div
+  class="chat-entry-frame-shell"
+  style={status ? `--_chat-entry-frame-status-length: ${[...status].length}` : undefined}
+>
   <Collapsible
     bind:open
     trigger={label}
@@ -87,6 +90,7 @@
 
   .chat-entry-frame__status {
     position: absolute;
+    white-space: nowrap;
     inset-block-start: calc(var(--cinder-touch-target-min) / 2);
     inset-inline-end: 2.5rem;
     transform: translateY(-50%);
@@ -112,8 +116,14 @@
     padding-inline-start: calc(var(--cinder-space-3) + 1rem);
   }
 
+  /* The title gives way to the status, never the other way round: the label stops short of the
+     status by the status's own length (in characters, which over-reserves a little because the
+     label's type is larger), so a long title ends in an ellipsis and "3 steps" stays whole. The
+     2.5rem is the chevron's column, which the status sits to the left of. */
   .chat-entry-frame-shell:has(.chat-entry-frame__status) :global(.cinder-collapsible__label) {
-    padding-inline-end: 6rem;
+    padding-inline-end: calc(
+      2.5rem + var(--_chat-entry-frame-status-length, 0) * 1ch + var(--cinder-space-2)
+    );
   }
 
   .chat-entry-frame-shell :global(.cinder-collapsible__chevron) {

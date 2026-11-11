@@ -2582,6 +2582,9 @@
   .chat-input-area {
     flex-shrink: 0;
     padding: var(--cinder-chat-timeline-padding);
+    /* On a phone with a home indicator the composer keeps clear of it: the area's own bottom
+       padding grows by the safe-area inset, which is 0 wherever the page has none. */
+    padding-block-end: calc(var(--cinder-chat-timeline-padding) + env(safe-area-inset-bottom, 0px));
     background: var(--cinder-surface);
   }
 

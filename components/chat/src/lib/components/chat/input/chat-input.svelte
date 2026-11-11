@@ -2024,12 +2024,14 @@
   @container (max-inline-size: 28rem) {
     .chat-input-footer :global(.cinder-button) {
       min-block-size: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
     }
   }
 
   @media (any-pointer: coarse) {
     .chat-input-footer :global(.cinder-button) {
       min-block-size: var(--cinder-touch-target-min);
+      min-inline-size: var(--cinder-touch-target-min);
     }
 
     /* Send and Stop sit side by side once a follow-up is typed, so their hit areas must not touch. */

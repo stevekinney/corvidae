@@ -248,6 +248,13 @@ describe('the controls snippet is told when the composer is narrow', () => {
       /@container \(max-inline-size: 28rem\)\s*\{\s*\.chat-input-footer :global\(\.cinder-button\)\s*\{\s*min-block-size: var\(--cinder-touch-target-min\);/,
     );
   });
+
+  test('Attach and Send are at least 44px on both sides on a phone-width composer and a touch screen', async () => {
+    const source = await Bun.file(new URL('./chat-input.svelte', import.meta.url)).text();
+    const touchSized =
+      /\.chat-input-footer :global\(\.cinder-button\) \{\s*min-block-size: var\(--cinder-touch-target-min\);\s*min-inline-size: var\(--cinder-touch-target-min\);/g;
+    expect(source.match(touchSized)).toHaveLength(2);
+  });
 });
 
 describe('attachments', () => {

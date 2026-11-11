@@ -1004,6 +1004,37 @@
       text-align: start;
     }
 
+    /* The status badge sits above the question, in the column beside the risk glyph, so the
+     * question keeps the full line under it. A resolved or answerable card with no badge draws no
+     * badge row, because the empty group is hidden and the row gap is zero. */
+    .cinder-approval-card__header {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      grid-template-areas:
+        'icon badges'
+        'icon title';
+      row-gap: 0;
+    }
+
+    .cinder-approval-card__risk-tip {
+      grid-area: icon;
+    }
+
+    .cinder-approval-card__badges {
+      grid-area: badges;
+      justify-content: flex-start;
+      margin-block-end: var(--cinder-space-2);
+    }
+
+    .cinder-approval-card__badges:empty {
+      display: none;
+    }
+
+    .cinder-approval-card__title-group {
+      grid-area: title;
+      min-inline-size: 0;
+    }
+
     .cinder-approval-card__row-spacer {
       display: none;
     }

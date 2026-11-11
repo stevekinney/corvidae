@@ -378,7 +378,7 @@
 {#snippet operationPreview()}
   {#if operation.kind === 'command' && operation.command}
     <div class="cinder-approval-card__section">
-      <CodeBlock code={operation.command} language="shell" languageLabelVisible={false} />
+      <CodeBlock code={operation.command} language="shell" languageLabelVisible={false} wrap />
     </div>
   {:else if operation.kind === 'patch' && operation.diff}
     <div class="cinder-approval-card__section">
@@ -663,7 +663,7 @@
     <Card padding="none" class="cinder-approval-card__surface">
       {#snippet header()}
         <div class="cinder-approval-card__header">
-          <Tooltip text={riskLabel} describe={false}>
+          <Tooltip text={riskLabel} describe={false} class="cinder-approval-card__risk-tip">
             <!-- svelte-ignore a11y_no_noninteractive_tabindex (Keyboard focus exposes the risk tooltip without inventing a button action.) -->
             <span
               class="cinder-approval-card__risk-icon"
