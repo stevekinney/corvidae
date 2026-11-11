@@ -446,9 +446,9 @@
       .join('');
     return `${body}${attachmentChips}`;
   });
-  const copyValue = $derived(
-    textContent || imageParts.map((part) => part.image.alt || 'Image attachment').join('\n'),
-  );
+  // Copy carries the message's text. An image-only message has no text to copy, so it offers no
+  // Copy action; a message with text still copies its images alongside it (`copyHtml`, `copyImage`).
+  const copyValue = $derived(textContent);
   const copyImage = $derived.by(() => {
     return imageParts[0] === undefined ? undefined : mediaDisplayUrl(imageParts[0].image);
   });

@@ -57,6 +57,32 @@ describe('transcript presentation', () => {
     ).not.toBeNull();
   });
 
+  test('an image-only message offers no Copy, in either presentation', () => {
+    const imageOnly = message({
+      content: [{ type: 'image', source: { kind: 'remote-url', url: 'chart.png' }, alt: 'Chart' }],
+    });
+    const transcript = mount({ message: imageOnly });
+    expect(transcript.container.querySelector('.message-attachment')).not.toBeNull();
+    expect(transcript.container.querySelector('.chat-message-copy')).toBeNull();
+    cleanup();
+
+    const bubble = mount({ message: imageOnly, presentation: 'default' });
+    expect(bubble.container.querySelector('.message-attachment')).not.toBeNull();
+    expect(bubble.container.querySelector('.chat-message-copy')).toBeNull();
+    cleanup();
+
+    // A message with text still copies.
+    const withText = mount({
+      message: message({
+        content: [
+          { type: 'text', text: 'Here is the chart.' },
+          { type: 'image', source: { kind: 'remote-url', url: 'chart.png' }, alt: 'Chart' },
+        ],
+      }),
+    });
+    expect(withText.container.querySelector('.chat-message-copy')).not.toBeNull();
+  });
+
   test('a message written today is stamped with its time of day, and one from another day with its date too', () => {
     setSystemTime(new Date('2026-11-02T17:00:00.000Z'));
     try {

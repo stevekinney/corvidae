@@ -3160,6 +3160,60 @@ test.describe('chat harness — composer help', () => {
   });
 });
 
+test.describe('chat harness — broken image attachments (COR-2279)', () => {
+  // A data URL that is not an image: the browser fires `error` without a network request.
+  const undecodableImage = `data:image/png;base64,${Buffer.from('not an image').toString('base64')}`;
+  const healthyImage = `data:image/png;base64,${validPng.toString('base64')}`;
+
+  for (const profile of [
+    { width: 320, colorScheme: 'dark' as const },
+    { width: 1440, colorScheme: 'light' as const },
+  ]) {
+    test(`a failed image shows a named fallback without zoom at ${profile.width}px ${profile.colorScheme}`, async ({
+      browser,
+    }) => {
+      const { page, harness, dispose } = await openHarness(browser, {
+        colorScheme: profile.colorScheme,
+        viewport: { width: profile.width, height: 900 },
+      });
+      try {
+        await appendHarnessImages(page, [
+          { type: 'image', url: undecodableImage, mimeType: 'image/png', text: 'receipt.png' },
+          { type: 'image', url: healthyImage, mimeType: 'image/png', text: 'Healthy image' },
+        ]);
+        const message = harness.locator('.chat-message-wrapper[data-role="user"]').last();
+        const failed = message.locator('.message-attachment[data-unavailable]');
+        await expect(failed).toHaveCount(1);
+        await expect(failed).toContainText("receipt.png didn't load");
+        await expect(
+          failed.getByRole('button', { name: 'Retry loading receipt.png' }),
+        ).toBeVisible();
+        // No native broken-image glyph and no zoom affordance on the failed thumbnail.
+        await expect(failed.locator('img')).toHaveCount(0);
+        await expect(failed.locator('.message-attachment-maximize')).toHaveCount(0);
+        await expect(message.getByRole('button', { name: 'View image: receipt.png' })).toHaveCount(
+          0,
+        );
+
+        // The healthy neighbour stays keyboard-zoomable and opens as the only lightbox image.
+        const healthy = message.getByRole('button', { name: 'View image: Healthy image' });
+        await healthy.focus();
+        await page.keyboard.press('Enter');
+        const lightbox = page.locator('.lightbox-image');
+        await expect(lightbox).toHaveAttribute('alt', 'Healthy image');
+        await expect(page.locator('.lightbox-counter')).toHaveCount(0);
+        await page.keyboard.press('Escape');
+
+        // An image-only message has no Copy.
+        await expect(message.locator('.chat-message-copy')).toHaveCount(0);
+        await expectNoHorizontalOverflow(page);
+      } finally {
+        await dispose();
+      }
+    });
+  }
+});
+
 test.describe('chat harness — composer acceptance matrix', () => {
   const wideImageMarkup = svgMarkup(1600, 400, 'navy');
   const wideImage = `data:image/svg+xml,${encodeURIComponent(wideImageMarkup)}`;

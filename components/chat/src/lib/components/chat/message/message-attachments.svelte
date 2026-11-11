@@ -19,7 +19,8 @@
 <script lang="ts">
   import { classNames } from '../../../utilities/class-names.ts';
   import { mediaDisplayUrl } from '../builders.ts';
-  import { Maximize2 } from '@lostgradient/cinder';
+  import { Button, Maximize2, RotateCcw } from '@lostgradient/cinder';
+  import { SvelteMap } from 'svelte/reactivity';
   import ImageLightbox from './image-lightbox.svelte';
 
   let {
@@ -48,13 +49,21 @@
   let lightboxOpen = $state(false);
   let lightboxIndex = $state(0);
 
-  // Pre-compute lightbox image array for the lightbox component
-  const lightboxImages = $derived(
-    validImages.map(({ image, url }, index) => ({
-      src: url,
-      alt: getAltText(image, index + 1),
-    })),
+  // Addresses whose image fired `error`. Keyed by address, not position, so a new address in the
+  // same slot loads normally. A failed image shows a placeholder in its reserved box and leaves
+  // the lightbox, whose navigation then skips it.
+  let failedUrls = $state<string[]>([]);
+  // How many times each address has been retried; part of the thumbnail key, so a retry mounts a
+  // fresh `<img>` that requests the address again.
+  const retryCounts = new SvelteMap<string, number>();
+
+  // Pre-compute lightbox image array for the lightbox component: healthy images only.
+  const lightboxEntries = $derived(
+    validImages
+      .map(({ image, url }, index) => ({ src: url, alt: getAltText(image, index + 1), index }))
+      .filter((entry) => !failedUrls.includes(entry.src)),
   );
+  const lightboxImages = $derived(lightboxEntries.map(({ src, alt }) => ({ src, alt })));
 
   /**
    * Extracts the image URL from an image content item.
@@ -92,12 +101,21 @@
     onimageload?.(index);
   }
 
-  function handleError(index: number, event: Event) {
+  function handleError(index: number, url: string, event: Event) {
+    if (!failedUrls.includes(url)) failedUrls = [...failedUrls, url];
     onimageerror?.(index, event);
   }
 
+  function retryImage(url: string) {
+    retryCounts.set(url, (retryCounts.get(url) ?? 0) + 1);
+    failedUrls = failedUrls.filter((failed) => failed !== url);
+  }
+
+  // The lightbox holds healthy images only, so a thumbnail opens at its place among those.
   function openLightbox(index: number) {
-    lightboxIndex = index;
+    const healthyIndex = lightboxEntries.findIndex((entry) => entry.index === index);
+    if (healthyIndex === -1) return;
+    lightboxIndex = healthyIndex;
     lightboxOpen = true;
   }
 </script>
@@ -109,39 +127,63 @@
   data-count={validImages.length}
   {...rest}
 >
-  {#each validImages as { image, url, dimensions }, loopIndex (url + '-' + loopIndex)}
+  {#each validImages as { image, url, dimensions }, loopIndex (`${url}-${loopIndex}-${retryCounts.get(url) ?? 0}`)}
     {@const displayIndex = loopIndex + 1}
     {@const alt = getAltText(image, displayIndex)}
+    {@const unavailable = failedUrls.includes(url)}
     <figure
       class="message-attachment"
       role="listitem"
       data-cinder-image-placeholder={dimensions ? undefined : ''}
+      data-unavailable={unavailable ? '' : undefined}
       style={dimensions ? `aspect-ratio: ${dimensions.width} / ${dimensions.height}` : undefined}
     >
-      <button
-        type="button"
-        class="message-attachment-button"
-        aria-label={`View image: ${alt}`}
-        title="Maximize image"
-        onclick={() => openLightbox(loopIndex)}
-      >
-        <img
-          src={url}
-          {alt}
-          {loading}
-          decoding="async"
-          class="message-attachment-image"
-          width={dimensions?.width}
-          height={dimensions?.height}
-          onload={() => handleLoad(loopIndex)}
-          onerror={(event) => handleError(loopIndex, event)}
-        />
-        <span class="message-attachment-maximize" aria-hidden="true">
-          <Maximize2 class="cinder-icon-sm" />
-        </span>
-      </button>
-      {#if alt && alt !== `Image attachment ${displayIndex}`}
-        <figcaption class="cinder-sr-only">{alt}</figcaption>
+      {#if unavailable}
+        <!-- The image failed: the same reserved box names what did not load and offers Retry,
+             with no zoom and no native broken-image glyph. -->
+        <div class="message-attachment-unavailable">
+          <p class="message-attachment-unavailable-text" dir="auto">
+            <span class="message-attachment-unavailable-name">{alt}</span>
+            didn't load
+          </p>
+          <Button
+            type="button"
+            class="message-attachment-retry"
+            size="xs"
+            variant="secondary"
+            aria-label={`Retry loading ${alt}`}
+            onclick={() => retryImage(url)}
+          >
+            <RotateCcw class="cinder-icon-xs" aria-hidden="true" />
+            Retry
+          </Button>
+        </div>
+      {:else}
+        <button
+          type="button"
+          class="message-attachment-button"
+          aria-label={`View image: ${alt}`}
+          title="Maximize image"
+          onclick={() => openLightbox(loopIndex)}
+        >
+          <img
+            src={url}
+            {alt}
+            {loading}
+            decoding="async"
+            class="message-attachment-image"
+            width={dimensions?.width}
+            height={dimensions?.height}
+            onload={() => handleLoad(loopIndex)}
+            onerror={(event) => handleError(loopIndex, url, event)}
+          />
+          <span class="message-attachment-maximize" aria-hidden="true">
+            <Maximize2 class="cinder-icon-sm" />
+          </span>
+        </button>
+        {#if alt && alt !== `Image attachment ${displayIndex}`}
+          <figcaption class="cinder-sr-only">{alt}</figcaption>
+        {/if}
       {/if}
     </figure>
   {/each}
@@ -188,6 +230,41 @@
 
   .message-attachments[data-count='1'] .message-attachment[data-cinder-image-placeholder] {
     inline-size: min(20rem, 100%);
+  }
+
+  /* A failed image keeps its footprint as a dashed outline, so the layout does not move. */
+  .message-attachment[data-unavailable] {
+    border: 1px dashed var(--cinder-border-strong);
+    background: transparent;
+  }
+
+  .message-attachments[data-count='1'] .message-attachment[data-unavailable] {
+    inline-size: min(20rem, 100%);
+    min-block-size: 6rem;
+  }
+
+  .message-attachment-unavailable {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: var(--cinder-space-2);
+    block-size: 100%;
+    padding: var(--cinder-space-3);
+    text-align: start;
+  }
+
+  .message-attachment-unavailable-text {
+    margin: 0;
+    max-inline-size: 100%;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
+    overflow-wrap: anywhere;
+  }
+
+  .message-attachment-unavailable-name {
+    color: var(--cinder-text-default);
+    font-weight: var(--cinder-font-semibold);
   }
 
   /* Button wrapper: removes chrome but keeps keyboard-operable behavior */
