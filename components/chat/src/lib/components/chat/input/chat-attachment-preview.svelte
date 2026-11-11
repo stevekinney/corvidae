@@ -5,6 +5,10 @@
   export interface ChatAttachmentPreviewProps {
     attachment: ChatAttachment;
     class?: string;
+    /** The upload failure reason, rendered inside the file tile. */
+    error?: string | undefined;
+    /** Stable identifier retained for attachment error assertions and host styling. */
+    errorId?: string | undefined;
     /** A control drawn at the end of the chip, inside its border, such as Remove. */
     action?: Snippet | undefined;
   }
@@ -15,7 +19,13 @@
   import { formatBytes } from '../../../utilities/format-bytes.ts';
   import { fileTypeBadge, splitFileName, uploadPercent } from './attachment-tile.ts';
 
-  let { attachment, class: className, action }: ChatAttachmentPreviewProps = $props();
+  let {
+    attachment,
+    class: className,
+    error,
+    errorId,
+    action,
+  }: ChatAttachmentPreviewProps = $props();
 
   const badge = $derived(fileTypeBadge(attachment.file.name, attachment.kind));
   const name = $derived(splitFileName(attachment.file.name));
@@ -28,7 +38,7 @@
   An attached file is a tile: a type badge, the file's name (truncated in the middle, so the
   extension always shows), its size and, while it uploads, how far along it is, then an optional
   control at its end. A file that failed keeps its tile, in the danger colour; its reason is drawn
-  beside it by the composer.
+  inside the same tile.
 -->
 <span
   class={classNames('chat-attachment-preview', className)}
@@ -69,6 +79,12 @@
     </span>
   {/if}
 
+  {#if attachment.status === 'error'}
+    <span class="chat-attachment-preview-error" data-attachment-error={errorId} dir="auto">
+      {error ?? 'Upload failed. Try again, or remove it.'}
+    </span>
+  {/if}
+
   {#if action}
     {@render action()}
   {/if}
@@ -79,13 +95,13 @@
     position: relative;
     display: inline-flex;
     align-items: center;
-    gap: var(--cinder-space-1-5);
+    gap: var(--cinder-space-1);
     min-inline-size: 0;
     max-inline-size: 100%;
     padding-block: var(--cinder-space-1);
-    padding-inline: var(--cinder-space-2);
+    padding-inline: var(--cinder-space-1-5);
     overflow: hidden;
-    border: 1px solid var(--cinder-border-control);
+    border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-md);
     background: var(--cinder-surface-raised);
     font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
@@ -135,6 +151,14 @@
     flex: none;
     color: var(--cinder-text-muted);
     white-space: nowrap;
+  }
+
+  .chat-attachment-preview-error {
+    flex: 1 1 100%;
+    min-inline-size: 0;
+    color: var(--cinder-status-danger-text);
+    font-size: var(--cinder-text-xs);
+    line-height: var(--cinder-leading-snug);
   }
 
   /* A failed file keeps its chip; the colour says which one the reason beside it is about. */

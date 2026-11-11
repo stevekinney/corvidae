@@ -21,6 +21,7 @@
     parts,
     messageId,
     messagePart,
+    approvalLayout = 'decision',
     markdownNode,
     quoteSource,
     expanded = false,
@@ -107,7 +108,7 @@
   {:else if part.type === 'tool-result'}
     <ToolResultPart {part} />
   {:else if part.type === 'tool-approval'}
-    <ToolApprovalPart {part} {onApprovalResolve} {onApprovalRequestAgain} />
+    <ToolApprovalPart {part} {onApprovalResolve} {onApprovalRequestAgain} layout={approvalLayout} />
   {:else if part.type === 'tool-input'}
     <ToolInputPart {part} {onInputSubmit} />
   {:else if part.type === 'reasoning'}

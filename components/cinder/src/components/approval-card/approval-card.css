@@ -487,7 +487,7 @@
     box-sizing: border-box;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-3) 14px;
+    padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
   }
@@ -643,7 +643,7 @@
   .cinder-approval-card__input {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
   }
 
   .cinder-approval-card__input-toggle {
@@ -651,6 +651,7 @@
     display: flex;
     align-items: center;
     gap: var(--cinder-space-2);
+    min-block-size: 24px;
     min-inline-size: 0;
     padding: 0;
     border: 0;
@@ -669,6 +670,8 @@
 
   .cinder-approval-card__input-toggle svg {
     flex: none;
+    align-self: center;
+    margin-block-start: 1px;
     transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
   }
 
@@ -707,7 +710,7 @@
   .cinder-approval-card__row-input {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-2);
+    gap: var(--cinder-space-1);
   }
 
   .cinder-approval-card__row-input[hidden] {
@@ -726,6 +729,38 @@
     gap: var(--cinder-space-2);
   }
 
+  /* InlineConfirm owns the two-press state, but its action and status hint participate directly in
+   * this row so Deny and the primary share one baseline and painted height. */
+  .cinder-approval-card__row-actions .cinder-inline-confirm__two-press {
+    display: contents;
+  }
+
+  .cinder-approval-card__row-actions .cinder-inline-confirm__two-press-hint {
+    flex: 1 0 100%;
+    margin: 0;
+    text-align: end;
+  }
+
+  /* Approval words are critical confirmation text. Keep them inside the equal action faces even
+   * when the armed irreversible label is longer than the phone can fit. The shared Button keeps
+   * its single-line label contract elsewhere; this local action composition is deliberately
+   * allowed to reflow rather than truncate or paint over the neighbouring Deny target. */
+  .cinder-approval-card__row-actions .cinder-button {
+    block-size: auto;
+    align-self: stretch;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    line-height: var(--cinder-leading-tight);
+  }
+
+  .cinder-approval-card__row-actions .cinder-button__label {
+    overflow: visible;
+    text-overflow: clip;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    text-align: center;
+  }
+
   .cinder-approval-card__row-spacer {
     flex: 1 1 0;
   }
@@ -733,6 +768,7 @@
   /* "Add a note" is a link in the accent colour, not a button. */
   .cinder-approval-card__note-toggle {
     appearance: none;
+    min-block-size: 24px;
     padding: 0;
     border: 0;
     border-radius: var(--cinder-radius-sm);
@@ -768,14 +804,26 @@
     box-sizing: border-box;
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
-    padding: var(--cinder-space-3) 14px;
+    padding: var(--cinder-space-3);
     background: var(--cinder-surface-raised);
     font-size: var(--cinder-text-sm);
   }
 
   .cinder-approval-card--decision[data-cinder-state='expired'] {
-    border-style: dashed;
-    background: transparent;
+    border-color: var(--cinder-status-warning-border);
+    background: var(--cinder-status-warning-background);
+  }
+
+  .cinder-approval-card__expired-label {
+    color: var(--cinder-text-muted);
+    font-size: var(--cinder-text-xs);
+    font-weight: var(--cinder-font-medium);
+  }
+
+  .cinder-approval-card__expired-subject {
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
   }
 
   .cinder-approval-card__expired-row {
@@ -786,7 +834,9 @@
   }
 
   .cinder-approval-card__expired-row .cinder-approval-card__decision-title {
-    font-size: var(--cinder-text-sm);
+    color: var(--cinder-text-default);
+    font-size: var(--cinder-text-base);
+    font-weight: var(--cinder-font-semibold);
   }
 
   .cinder-approval-card__expiry-actions {
@@ -797,7 +847,7 @@
   }
 
   .cinder-approval-card__expiry-actions .cinder-button {
-    padding-inline: var(--cinder-space-4);
+    padding-inline: var(--cinder-space-3);
   }
 
   @container (inline-size < 24rem) {
@@ -850,7 +900,7 @@
     line-height: var(--cinder-leading-tight);
   }
 
-  .cinder-approval-card__receipt-head .cinder-approval-card__decision-title {
+  .cinder-approval-card__receipt-meta .cinder-approval-card__decision-title {
     font-size: var(--cinder-text-sm);
   }
 
@@ -890,6 +940,10 @@
     color: var(--cinder-text-subtle);
   }
 
+  .cinder-approval-card__fact--tool > dd {
+    grid-column: 1 / -1;
+  }
+
   .cinder-approval-card__fact > dd {
     margin: 0;
     min-inline-size: 0;
@@ -900,6 +954,18 @@
 
   .cinder-approval-card__fact > dd[data-cinder-monospace] {
     font-family: var(--cinder-font-mono);
+  }
+
+  /* The question and facts may contain mixed-direction prose. Keep the command's explicit LTR
+   * reading order, but mirror the definition-list columns with the actual fact direction so RTL
+   * labels, values, and their alignment do not leave the card half-LTR. */
+  .cinder-approval-card__fact:dir(rtl) {
+    grid-template-columns: minmax(0, 1fr) max-content;
+    direction: rtl;
+  }
+
+  .cinder-approval-card__fact--command:dir(rtl) {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   /* The command is always open, so it is a code block that wraps: none of it hides behind a
@@ -915,12 +981,18 @@
     flex-wrap: wrap;
     align-items: center;
     gap: var(--cinder-space-1) var(--cinder-space-3);
-    margin-block-end: calc(-1 * var(--cinder-space-1));
+    margin-block-end: 0;
   }
 
   .cinder-approval-card__decision-tools .cinder-approval-card__note-toggle {
     flex: none;
     margin-inline-start: auto;
+  }
+
+  /* The disclosure keeps a 44px coarse hit region, but the following status row should sit
+     against its visible label instead of inheriting a second dead band from the card stack. */
+  .cinder-approval-card__why ~ .cinder-approval-card__decision-tools {
+    margin-block-start: calc(-1 * var(--cinder-space-2));
   }
 
   @container (inline-size < 24rem) {
@@ -939,8 +1011,6 @@
     }
 
     .cinder-approval-card--decision .cinder-approval-card__row-actions .cinder-button {
-      white-space: normal;
-      overflow-wrap: anywhere;
       line-height: var(--cinder-leading-tight);
     }
 
@@ -962,13 +1032,20 @@
   .cinder-approval-card__arm-hint {
     margin: 0;
     color: var(--cinder-text-subtle);
-    font-size: var(--cinder-text-xs);
+    font-size: var(--cinder-text-sm);
+    line-height: var(--cinder-leading-snug);
     text-align: start;
+  }
+
+  @media (any-pointer: coarse) {
+    .cinder-approval-card__arm-escape {
+      display: none;
+    }
   }
 
   .cinder-approval-card__why-body {
     margin: 0;
-    padding-block-start: var(--cinder-space-1);
+    padding-block-start: 0;
     color: var(--cinder-text-muted);
     line-height: var(--cinder-leading-snug);
     text-align: start;
@@ -1001,6 +1078,10 @@
     color: var(--cinder-text-subtle);
     line-height: var(--cinder-leading-snug);
     text-align: start;
+  }
+
+  .cinder-approval-card__receipt-by {
+    font-size: var(--cinder-text-sm);
   }
 
   .cinder-approval-card__receipt-quote-text {
@@ -1255,7 +1336,7 @@
   @container (inline-size < 32rem) {
     /* The input line wraps rather than cutting its values, so a phone still reads all of it. */
     .cinder-approval-card__input-toggle {
-      align-items: flex-start;
+      align-items: center;
     }
 
     .cinder-approval-card__input-pairs {

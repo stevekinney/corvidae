@@ -15,7 +15,7 @@
  */
 import type { Page } from '@playwright/test';
 
-import type { GeometryFacts } from '../../scripts/design-review-geometry.ts';
+import type { GeometryFacts } from './design-review-geometry.ts';
 
 /** Runs in the page: answers the facts the geometry audit reads. */
 export function collectGeometryFacts(): GeometryFacts {

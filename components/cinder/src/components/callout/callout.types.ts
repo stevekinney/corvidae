@@ -94,6 +94,8 @@ export type CalloutProps = Omit<
    * itself stays static.
    */
   action?: Snippet;
+  /** Layout for the action slot. `inline` keeps one compact action beside the message. */
+  actionLayout?: 'stacked' | 'inline';
   /** Callout body content. */
   children: Snippet;
   /**

@@ -91,8 +91,8 @@ async function send(container: HTMLElement, text: string): Promise<void> {
  * run waits there until the run finishes, unless Send now instead is used (COR-2284).
  */
 async function sendNow(container: HTMLElement): Promise<void> {
-  const button = [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-    (candidate) => candidate.textContent?.trim() === 'Send now instead',
+  const button = container.querySelector<HTMLButtonElement>(
+    'button[aria-label="Send now instead"]',
   );
   expect(button).toBeDefined();
   await fireEvent.click(button!);

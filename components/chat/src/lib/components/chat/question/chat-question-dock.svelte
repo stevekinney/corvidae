@@ -31,6 +31,7 @@
   import { Button, ChoiceGrid, ChoiceGridItem, CircleAlert, Input } from '@lostgradient/cinder';
   import { tick } from 'svelte';
 
+  import { overflowFadeEdges } from '../../../utilities/overflow-fade-edges.ts';
   import { DEFAULT_QUESTION_DOCK_LABELS, OTHER_CHOICE } from './question-dock-labels.ts';
   import { choicesOf, classifyQuestion, type QuestionChoice } from './question-kind.ts';
 
@@ -60,8 +61,10 @@
   const choiceCount = $derived(choices.length + (allowsOther ? 1 : 0));
 
   let root = $state<HTMLFormElement | undefined>();
+  let optionsScroll = $state<HTMLDivElement | undefined>();
   let selected = $state<string | null>(null);
   let text = $state('');
+  const choicesFade = overflowFadeEdges();
 
   const pickingOther = $derived(selected === OTHER_CHOICE);
   const ready = $derived(selected !== null && (!pickingOther || text.trim() !== ''));
@@ -89,6 +92,14 @@
   /** Focuses the own-answer field once Something else has opened it. */
   async function focusOwnAnswer(): Promise<void> {
     await tick();
+    const selectedRadio = optionsScroll?.querySelector<HTMLElement>(
+      '[role="radio"][aria-checked="true"]',
+    );
+    if (selectedRadio && optionsScroll) {
+      const radioBox = selectedRadio.getBoundingClientRect();
+      const viewportBox = optionsScroll.getBoundingClientRect();
+      optionsScroll.scrollTop += radioBox.top - viewportBox.top;
+    }
     root?.querySelector<HTMLInputElement>('input[type="text"], input:not([type])')?.focus();
   }
 
@@ -141,59 +152,88 @@
       </span>
     {/if}
   </div>
-  <fieldset class="chat-question-dock-fieldset">
-    <legend id={legendId} class="chat-question-dock-legend" dir="auto">{labels.legend}</legend>
-    {#if question.message !== undefined && question.message !== ''}
-      <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
-    {/if}
-    <ChoiceGrid
-      variant="card"
-      columns={1}
-      ariaLabelledby={question.message !== undefined && question.message !== ''
-        ? questionId
-        : legendId}
-      bind:value={selected}
-    >
-      {#each choices as choice, index (index)}
-        <ChoiceGridItem
-          value={String(index)}
-          disabled={question.busy}
-          {...choice.description === undefined ? {} : { description: choice.description }}
-        >
-          <span class="chat-question-dock-choice">
-            <span class="chat-question-dock-choice-label" dir="auto">{choice.label}</span>
-            <kbd class="chat-question-dock-key" aria-hidden="true">{index + 1}</kbd>
-          </span>
-        </ChoiceGridItem>
-      {/each}
-      {#if allowsOther}
-        <ChoiceGridItem value={OTHER_CHOICE} disabled={question.busy}>
-          <span class="chat-question-dock-choice">
-            <span class="chat-question-dock-choice-label" dir="auto">{labels.somethingElse}</span>
-            <kbd class="chat-question-dock-key" aria-hidden="true">{choices.length + 1}</kbd>
-          </span>
-        </ChoiceGridItem>
+  <div class="chat-question-dock-body">
+    <fieldset class="chat-question-dock-fieldset">
+      <legend id={legendId} class="chat-question-dock-legend" dir="auto">{labels.legend}</legend>
+      {#if question.message !== undefined && question.message !== ''}
+        <p id={questionId} class="chat-question-dock-question" dir="auto">{question.message}</p>
       {/if}
-    </ChoiceGrid>
-    {#if pickingOther}
-      <Input
-        id={`${id}-other`}
-        label={labels.ownAnswer}
-        labelVisible={false}
-        placeholder={labels.ownAnswerPlaceholder}
-        bind:value={text}
-        disabled={question.busy}
-      />
-    {/if}
-  </fieldset>
-  {#if errorText !== ''}
-    <p id={errorId} class="chat-question-dock-error" role="alert">{errorText}</p>
-  {:else if question.failed}
-    <p id={errorId} class="chat-question-dock-error" role="alert">{labels.failed}</p>
-  {/if}
-  {#if !ready}
-    <p id={hintId} class="chat-question-dock-hint" dir="auto">{reason}</p>
-  {/if}
+      <div class="chat-question-dock-options">
+        <p
+          class="chat-question-dock-scroll-cue chat-question-dock-scroll-cue-above"
+          aria-hidden="true"
+        >
+          {labels.moreChoicesAbove}
+        </p>
+        <div
+          bind:this={optionsScroll}
+          class="chat-question-dock-options-scroll"
+          {@attach choicesFade}
+        >
+          <ChoiceGrid
+            variant="card"
+            size="sm"
+            columns={1}
+            ariaLabelledby={question.message !== undefined && question.message !== ''
+              ? questionId
+              : legendId}
+            bind:value={selected}
+          >
+            {#each choices as choice, index (index)}
+              <ChoiceGridItem
+                value={String(index)}
+                disabled={question.busy}
+                {...choice.description === undefined ? {} : { description: choice.description }}
+              >
+                <span class="chat-question-dock-choice">
+                  <span class="chat-question-dock-choice-label" dir="auto">{choice.label}</span>
+                  <kbd class="chat-question-dock-key" aria-hidden="true">{index + 1}</kbd>
+                </span>
+              </ChoiceGridItem>
+            {/each}
+            {#if allowsOther}
+              <ChoiceGridItem value={OTHER_CHOICE} disabled={question.busy}>
+                <span class="chat-question-dock-choice">
+                  <span class="chat-question-dock-choice-label" dir="auto"
+                    >{labels.somethingElse}</span
+                  >
+                  <kbd class="chat-question-dock-key" aria-hidden="true">{choices.length + 1}</kbd>
+                </span>
+              </ChoiceGridItem>
+            {/if}
+          </ChoiceGrid>
+        </div>
+        {#if !pickingOther}
+          <p
+            class="chat-question-dock-scroll-cue chat-question-dock-scroll-cue-below"
+            aria-hidden="true"
+          >
+            {labels.moreChoicesBelow}
+          </p>
+        {/if}
+      </div>
+      <div class="chat-question-dock-completion">
+        {#if pickingOther}
+          <Input
+            id={`${id}-other`}
+            label={labels.ownAnswer}
+            labelVisible={false}
+            placeholder={labels.ownAnswerPlaceholder}
+            bind:value={text}
+            disabled={question.busy}
+          />
+        {/if}
+        {#if errorText !== ''}
+          <p id={errorId} class="chat-question-dock-error" role="alert">{errorText}</p>
+        {:else if question.failed}
+          <p id={errorId} class="chat-question-dock-error" role="alert">{labels.failed}</p>
+        {/if}
+        {#if !ready}
+          <p id={hintId} class="chat-question-dock-hint" dir="auto">{reason}</p>
+        {/if}
+      </div>
+    </fieldset>
+  </div>
   <div class="chat-question-dock-actions">
     <Button type="button" variant="secondary" disabled={question.busy} onclick={onReply}>
       {labels.replyInChat}
@@ -215,6 +255,8 @@
     --_cinder-choice-card-min-block-size: 3.25rem;
 
     display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    box-sizing: border-box;
     gap: var(--cinder-space-3);
     inline-size: 100%;
     min-inline-size: 0;
@@ -222,6 +264,7 @@
     border: 1px solid var(--cinder-border);
     border-radius: var(--cinder-radius-lg);
     background: var(--cinder-surface-raised, var(--cinder-surface));
+    max-block-size: min(100%, 28rem);
   }
 
   .chat-question-dock-header {
@@ -259,6 +302,86 @@
     border: 0;
   }
 
+  .chat-question-dock-body {
+    min-block-size: 0;
+    overflow: clip;
+  }
+
+  .chat-question-dock-fieldset {
+    position: relative;
+    grid-template-areas:
+      'question'
+      'options'
+      'completion';
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    block-size: 100%;
+    padding-block-start: var(--cinder-space-5);
+  }
+
+  .chat-question-dock-legend {
+    position: absolute;
+    inset-block-start: 0;
+    inset-inline: 0;
+  }
+
+  .chat-question-dock-options {
+    grid-area: options;
+    display: grid;
+    grid-template-rows: auto minmax(0, 1fr) auto;
+    min-block-size: 0;
+    gap: var(--cinder-space-1);
+  }
+
+  .chat-question-dock-options-scroll {
+    min-block-size: 0;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scroll-padding-block: var(--cinder-space-2);
+    scroll-snap-type: block mandatory;
+    scrollbar-gutter: stable;
+  }
+
+  .chat-question-dock-scroll-cue {
+    display: none;
+    margin: 0;
+    color: var(--cinder-text-muted);
+    font-size: var(--_cinder-chat-text-xs, var(--cinder-text-xs));
+    line-height: var(--cinder-leading-tight, 1.25);
+    text-align: center;
+  }
+
+  .chat-question-dock-options:has(
+      :global(.chat-question-dock-options-scroll[data-cinder-overflows-start])
+    )
+    > .chat-question-dock-scroll-cue-above,
+  :global(
+    .chat-question-dock-options-scroll[data-cinder-overflows] ~ .chat-question-dock-scroll-cue-below
+  ) {
+    display: block;
+  }
+
+  .chat-question-dock-completion {
+    grid-area: completion;
+    display: grid;
+    gap: var(--cinder-space-2);
+    min-inline-size: 0;
+    padding: var(--cinder-space-2) var(--cinder-space-1) var(--cinder-space-1);
+  }
+
+  .chat-question-dock-body :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+    padding-block: var(--cinder-space-2);
+    gap: var(--cinder-space-2);
+    scroll-snap-align: start;
+    scroll-snap-stop: always;
+  }
+
+  .chat-question-dock-body
+    :global(
+      .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
+    ) {
+    line-height: var(--cinder-leading-tight, 1.25);
+  }
+
   .chat-question-dock-legend {
     margin-block-end: var(--cinder-space-1);
     padding: 0;
@@ -267,6 +390,7 @@
   }
 
   .chat-question-dock-question {
+    grid-area: question;
     margin: 0 0 var(--cinder-space-1);
     line-height: var(--cinder-leading-snug);
     font-size: var(--_cinder-chat-text-base, var(--cinder-text-base));
@@ -300,6 +424,12 @@
     text-align: center;
   }
 
+  @media (any-pointer: coarse) {
+    .chat-question-dock-key {
+      display: none;
+    }
+  }
+
   .chat-question-dock-hint {
     margin: 0;
     color: var(--cinder-text-muted);
@@ -321,9 +451,17 @@
     flex-wrap: wrap;
     justify-content: space-between;
     gap: var(--cinder-space-2);
+    padding-block-start: var(--cinder-space-2);
+    border-block-start: 1px solid var(--cinder-border);
+    background: var(--cinder-surface-raised, var(--cinder-surface));
   }
 
   @media (max-width: 479.98px), (any-pointer: coarse) {
+    .chat-question-dock {
+      block-size: min(26.5rem, calc(100dvh - 2 * var(--cinder-space-3)));
+      max-block-size: min(26.5rem, calc(100dvh - 2 * var(--cinder-space-3)));
+    }
+
     .chat-question-dock-actions :global(.cinder-button) {
       flex: 1 1 auto;
       min-block-size: var(--cinder-touch-target-min);

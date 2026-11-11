@@ -14,7 +14,9 @@
 
 import type { Locator, Page } from '@playwright/test';
 
+/** A browser evaluator that can await a render-frame callback. */
 export type FrameCallbackEvaluator = {
+  /** Evaluates a callback in the browser frame. */
   evaluate(callback: () => Promise<void>): Promise<void>;
 };
 

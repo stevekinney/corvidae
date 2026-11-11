@@ -17,6 +17,7 @@ import {
   createConversationHistory,
 } from './builders.ts';
 import type { ConversationHistory } from './conversation-model.ts';
+import { QuestionStore, type DockedQuestionTarget } from './question/question-store.svelte.ts';
 
 setupHappyDom();
 
@@ -121,6 +122,18 @@ function composerShell(container: HTMLElement): HTMLElement {
   return container.querySelector<HTMLElement>('.chat-input-area > .chat-input-shell')!;
 }
 
+function dockTarget(toolCallId: string): DockedQuestionTarget {
+  return {
+    toolCallId,
+    schema: { enum: ['one', 'two'] },
+    message: toolCallId,
+    submit: async () => true,
+    busy: false,
+    failed: false,
+    issues: [],
+  };
+}
+
 describe('with the default placement', () => {
   test('draws a question that has choices in its row and no dock', async () => {
     const { container } = render(Chat, {
@@ -172,8 +185,10 @@ describe('a docked question', () => {
     );
     expect(composerShell(container)).not.toBeNull();
     expect(container.querySelector('[data-cinder-tool-input] .chat-question-choices')).toBeNull();
-    expect(container.querySelector('.chat-tool-input-waiting')?.textContent?.trim()).toBe(
-      'Waiting for your answer below',
+    expect(container.querySelector('.chat-tool-input-heading')).toBeNull();
+    expect(container.querySelector('.chat-tool-input-waiting')).toBeNull();
+    expect(container.querySelector('[data-cinder-tool-input]')?.getAttribute('aria-label')).toBe(
+      'Which environment?',
     );
   });
 
@@ -204,6 +219,15 @@ describe('a docked question', () => {
     ).text();
 
     expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
+    expect(source).toContain('chat-question-dock-legend');
+    expect(source).toContain('chat-question-dock-options-scroll');
+    expect(source).toContain('chat-question-dock-completion');
+    expect(source).toContain('moreChoicesAbove');
+    expect(source).toContain('moreChoicesBelow');
+    expect(source).not.toContain('chat-question-dock-body cinder-_scroll-fade');
+    expect(source).toContain('overflow-y: auto;');
+    expect(source).toContain('@media (any-pointer: coarse)');
+    expect(source).toContain('display: none;');
   });
 
   test('keeps Answer off, with its reason in view and named, until something is chosen', async () => {
@@ -326,6 +350,23 @@ describe('a docked question', () => {
     expect(answers).toEqual(['canary-2']);
   });
 
+  test('keeps question context and custom answer outside the choice scroll boundary', async () => {
+    const { container } = mountDocked('dock-scroll-boundary', ENVIRONMENT_OR_OTHER);
+    await settle();
+
+    const dock = dockOf(container)!;
+    const optionsScroll = dock.querySelector('.chat-question-dock-options-scroll')!;
+    const question = dock.querySelector('.chat-question-dock-question')!;
+    expect(optionsScroll.contains(question)).toBe(false);
+
+    await fireEvent.click(radiosOf(container)[2]!);
+    await settle();
+
+    const customAnswer = dock.querySelector('input[type="text"]')!;
+    expect(optionsScroll.contains(customAnswer)).toBe(false);
+    expect(dock.querySelector('.chat-question-dock-completion')?.contains(customAnswer)).toBe(true);
+  });
+
   test('a yes or no question has a Yes card and a No card', async () => {
     const answers: unknown[] = [];
     const { container } = mountDocked('dock-boolean', { type: 'boolean' }, (_toolCallId, value) => {
@@ -403,6 +444,29 @@ describe('a docked question', () => {
 });
 
 describe('several docked questions', () => {
+  test('resets progress for a genuinely later round after the dock stays empty', async () => {
+    const store = new QuestionStore(() => false);
+    const removeFirst = store.registerDockedQuestion(dockTarget('first-round'));
+    store.noteDockedAnswer();
+    removeFirst();
+    await tick();
+
+    store.registerDockedQuestion(dockTarget('second-round'));
+    expect(store.dockedAnswered).toBe(0);
+  });
+
+  test('reset invalidates a pending round reset', async () => {
+    const store = new QuestionStore(() => false);
+    const remove = store.registerDockedQuestion(dockTarget('stale-round'));
+    store.noteDockedAnswer();
+    remove();
+    store.reset();
+    store.noteDockedAnswer();
+    await tick();
+
+    expect(store.dockedAnswered).toBe(1);
+  });
+
   test('ask one at a time with Question 1 of 2, then Question 2 of 2, and show no progress for one', async () => {
     const answers: [string, unknown][] = [];
     const { container } = render(Chat, {

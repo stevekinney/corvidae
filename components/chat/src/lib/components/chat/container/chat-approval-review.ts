@@ -98,6 +98,10 @@ export function focusPendingApproval(root: ParentNode | null | undefined): boole
     '.cinder-approval-card[data-cinder-state="pending"][tabindex]',
   );
   if (!card) return false;
+  const actions = card.querySelector<HTMLElement>(
+    '.cinder-approval-card__row-actions, .cinder-approval-card__action-row',
+  );
+  actions?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   card.focus({ preventScroll: true });
   return card.ownerDocument.activeElement === card;
 }

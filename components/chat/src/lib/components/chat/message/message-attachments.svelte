@@ -234,8 +234,8 @@
 
   /* A failed image keeps its footprint as a dashed outline, so the layout does not move. */
   .message-attachment[data-unavailable] {
-    border: 1px dashed var(--cinder-border-strong);
-    background: transparent;
+    border: 1px solid var(--cinder-border);
+    background: var(--cinder-surface-inset);
   }
 
   .message-attachments[data-count='1'] .message-attachment[data-unavailable] {
@@ -244,10 +244,10 @@
   }
 
   .message-attachment-unavailable {
-    display: flex;
-    flex-direction: column;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: center;
-    justify-content: center;
+    justify-content: stretch;
     gap: var(--cinder-space-2);
     block-size: 100%;
     padding: var(--cinder-space-3);

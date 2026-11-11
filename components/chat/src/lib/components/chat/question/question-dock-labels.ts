@@ -16,6 +16,10 @@ export type ChatQuestionDockLabels = {
   progress: (position: number, total: number) => string;
   /** The choice that opens a field for an answer of the person's own. Default `Something else`. */
   somethingElse: string;
+  /** The cue shown after scrolling away from the first choice. */
+  moreChoicesAbove: string;
+  /** The cue shown when more choices remain below the visible choices. */
+  moreChoicesBelow: string;
   /** The accessible name of that field. Default `Your own answer`. */
   ownAnswer: string;
   /** The placeholder of that field. Default `Type your answer…`. */
@@ -41,6 +45,8 @@ export const DEFAULT_QUESTION_DOCK_LABELS: ChatQuestionDockLabels = {
   legend: 'The agent is asking',
   progress: (position, total) => `Question ${position} of ${total}`,
   somethingElse: 'Something else',
+  moreChoicesAbove: 'More choices above',
+  moreChoicesBelow: 'More choices below',
   ownAnswer: 'Your own answer',
   ownAnswerPlaceholder: 'Type your answer…',
   replyInChat: 'Reply in chat instead',

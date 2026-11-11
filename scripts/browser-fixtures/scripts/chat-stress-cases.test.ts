@@ -68,6 +68,9 @@ describe('the committed Chat stress cases', () => {
     expect(variants.toSorted()).toEqual(
       [
         '33-expanded',
+        '50-revealed',
+        '61-revealed',
+        '57-reviewed',
         '59-collapsed',
         '68-option2',
         '68-something-else',

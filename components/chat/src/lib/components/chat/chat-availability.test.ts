@@ -106,9 +106,7 @@ describe('a conversation that is loading', () => {
     expect(region.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
       'Loading conversation…',
     );
-    expect(region.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toBe(
-      '0 s',
-    );
+    expect(region.querySelector('[data-chat-availability-elapsed]')).toBeNull();
     // The transcript that was there is out of sight, not discarded.
     expect(timelineOf(container).style.display).toBe('none');
     // One status for a screen reader, with no ticking number in it.
@@ -171,9 +169,7 @@ describe('a conversation that is loading', () => {
     expect(container.querySelector('.chat-availability-reading')?.textContent?.trim()).toBe(
       'جارٍ تحميل المحادثة…',
     );
-    expect(container.querySelector('[data-chat-availability-elapsed]')?.textContent?.trim()).toBe(
-      '0 ث',
-    );
+    expect(container.querySelector('[data-chat-availability-elapsed]')).toBeNull();
     expect(buttonNamed(container, 'انتظر')).not.toBeUndefined();
   });
 
@@ -201,12 +197,21 @@ describe('a canceled read', () => {
     expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
       'Loading was canceled',
     );
+    expect(state.querySelector('.chat-availability-canceled-icon')).not.toBeNull();
+    expect(state.querySelector('.lucide-search')).toBeNull();
     const retry = buttonNamed(container, 'Retry')!;
     const list = buttonNamed(container, 'All conversations')!;
     expect(retry.getAttribute('data-cinder-variant')).toBe('primary');
     expect(list.getAttribute('data-cinder-variant')).toBe('secondary');
-    // The editor still waits for the history.
-    expect(buttonNamed(container, 'Loading…')!.disabled).toBe(true);
+    // The editor remains mounted and editable, but canceled is not presented as ongoing loading.
+    const editor = container.querySelector<HTMLTextAreaElement>('textarea.chat-input-editor')!;
+    expect(editor.readOnly).toBe(false);
+    const send = buttonNamed(container, 'Send message')!;
+    expect(send.disabled).toBe(true);
+    expect(
+      container.querySelector('[data-chat-composer-drawer="drawer-notice"]')?.textContent,
+    ).toContain('Retry loading the conversation before sending.');
+    expect(send.getAttribute('aria-describedby')).toContain('availability-canceled-input-drawer');
 
     await fireEvent.click(retry);
     await fireEvent.click(list);
@@ -271,6 +276,8 @@ describe('a deleted conversation', () => {
     expect(state.querySelector('.cinder-error-state-title')?.textContent?.trim()).toBe(
       'This conversation was deleted',
     );
+    expect(state.querySelector('.chat-availability-deleted-icon')).not.toBeNull();
+    expect(state.querySelector('.lucide-search')).toBeNull();
     const list = buttonNamed(container, 'All conversations')!;
     expect(list.getAttribute('data-cinder-variant')).toBe('primary');
     expect(composerWrapperOf(container).style.display).toBe('none');

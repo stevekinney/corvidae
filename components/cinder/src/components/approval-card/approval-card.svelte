@@ -533,6 +533,8 @@
       {tool}
       approvalState={effectiveState}
       question={rowQuestion}
+      command={decisionCommand}
+      {approveLabel}
       {sourceText}
       {requestedText}
       {requestedIso}

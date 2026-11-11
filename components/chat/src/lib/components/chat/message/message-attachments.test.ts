@@ -89,7 +89,7 @@ describe('MessageAttachments image layout contract', () => {
     expect(source).toContain('opacity: 1;');
   });
 
-  test('a failed image keeps its dashed footprint with its name, Retry and no zoom', async () => {
+  test('a failed image keeps a balanced status footprint with its name, Retry and no zoom', async () => {
     const onimageerror = mock(() => {});
     const { container } = render(MessageAttachments, {
       props: {
@@ -113,7 +113,8 @@ describe('MessageAttachments image layout contract', () => {
       /receipt\.png\s+didn't load/,
     );
     expect(figure?.querySelector('.message-attachment-retry')?.textContent).toContain('Retry');
-    expect(source).toContain('border: 1px dashed var(--cinder-border-strong)');
+    expect(source).toContain('border: 1px solid var(--cinder-border)');
+    expect(source).toContain('grid-template-columns: minmax(0, 1fr) auto');
   });
 
   test('Retry requests the image again in a fresh element', async () => {

@@ -1374,6 +1374,7 @@ describe('ApprovalCard row layout', () => {
 
     await fireEvent.click(getByRole('button', { name: 'Deny' }));
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
 
     expect(onResolve.mock.calls).toEqual([
       [{ decision: 'deny', remember: false }],
@@ -1477,6 +1478,7 @@ describe('ApprovalCard row layout', () => {
     await fireEvent.input(field, { target: { value: '  Check the carrier first.  ' } });
     await fireEvent.click(getByRole('button', { name: 'Deny' }));
     await fireEvent.click(getByRole('button', { name: 'Approve' }));
+    await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
 
     expect(onResolve.mock.calls).toEqual([
       [{ decision: 'deny', reason: 'Check the carrier first.', remember: false }],
@@ -1507,6 +1509,55 @@ describe('ApprovalCard row layout', () => {
     await view.rerender({ ...props, idempotencyKey: 'two' });
     expect(view.queryByLabelText('Note (optional)')).toBeNull();
     expect(requiredInstance(view.getByRole('checkbox'), HTMLInputElement).checked).toBe(false);
+  });
+
+  test('resets an armed irreversible row when the request changes', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const props = refundRow({ onResolve, idempotencyKey: 'one' });
+    const view = render(ApprovalCard, { props });
+    await fireEvent.click(view.getByRole('button', { name: 'Approve' }));
+    expect(view.getByRole('button', { name: /Press again to approve/i })).not.toBeNull();
+
+    await view.rerender({ ...props, idempotencyKey: 'two' });
+    await fireEvent.click(view.getByRole('button', { name: 'Approve' }));
+    expect(onResolve).not.toHaveBeenCalled();
+    await fireEvent.click(view.getByRole('button', { name: /Press again to approve/i }));
+    expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+  });
+
+  test('keeps irreversible guards independent for two compact rows', async () => {
+    const firstResolve = mock((_resolution: unknown) => undefined);
+    const secondResolve = mock((_resolution: unknown) => undefined);
+    const first = render(ApprovalCard, {
+      props: refundRow({ idempotencyKey: 'first', onResolve: firstResolve }),
+    });
+    const second = render(ApprovalCard, {
+      props: refundRow({ idempotencyKey: 'second', onResolve: secondResolve }),
+    });
+
+    const primary = (view: typeof first, name: RegExp | string): HTMLButtonElement =>
+      requiredInstance(
+        Array.from(view.container.querySelectorAll('button')).find((button) =>
+          name instanceof RegExp
+            ? name.test(button.textContent ?? '')
+            : button.textContent?.trim() === name,
+        ),
+        HTMLButtonElement,
+      );
+
+    await fireEvent.click(primary(first, 'Approve'));
+    await fireEvent.click(primary(second, 'Approve'));
+    expect(primary(first, /Press again to approve/i)).not.toBeNull();
+    expect(primary(second, /Press again to approve/i)).not.toBeNull();
+    expect(firstResolve).not.toHaveBeenCalled();
+    expect(secondResolve).not.toHaveBeenCalled();
+
+    await fireEvent.click(primary(first, /Press again to approve/i));
+    expect(firstResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+    expect(secondResolve).not.toHaveBeenCalled();
+    await fireEvent.click(primary(second, /Press again to approve/i));
+    expect(secondResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
   });
 
   test('holds Deny and Approve while the reason is given, with aria-disabled, and names it on both', async () => {
@@ -1807,6 +1858,9 @@ describe('ApprovalCard answers in flight, failed and read-only', () => {
         expect(getByRole('article').getAttribute('data-cinder-state')).toBe('pending');
 
         await fireEvent.click(getByRole('button', { name: 'Approve' }));
+        if (layout === 'row') {
+          await fireEvent.click(getByRole('button', { name: /Press again to approve/i }));
+        }
         expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
       });
 

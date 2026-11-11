@@ -26,7 +26,11 @@ import {
 import { runPooledBunTest } from './bun-test-pool.ts';
 import { budgetFailures, readAllowlist } from './check-test-durations.ts';
 import { rootScriptEnvironment } from './environment-configuration.ts';
-import { bunCrashReportsSince, workerCrashMessage } from './worker-crash-report.ts';
+import {
+  bunCrashReportsSince,
+  crashedWorkerFiles,
+  workerCrashMessage,
+} from './worker-crash-report.ts';
 
 export const JUNIT_DIRECTORY = join('test-output', 'junit');
 
@@ -56,6 +60,7 @@ export function finishRun(
   write: (message: string) => void,
 ): number {
   if (exitCode !== 0) return exitCode;
+  if (reportXmls.some((report) => crashedWorkerFiles(report).length > 0)) return 1;
   const failures = budgetFailures(workspace, reportXmls, allowlist);
   if (failures.length > 0) {
     write(

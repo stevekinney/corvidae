@@ -107,6 +107,35 @@
     white-space: nowrap;
   }
 
+  .cinder-callout--inline-action {
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    column-gap: var(--cinder-space-3);
+    row-gap: 0;
+  }
+
+  .cinder-callout--inline-action .cinder-callout__content {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .cinder-callout--inline-action .cinder-callout__action {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .cinder-callout--inline-action:has(> .cinder-callout__icon) {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+  }
+
+  .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__content {
+    grid-column: 2;
+  }
+
+  .cinder-callout--inline-action:has(> .cinder-callout__icon) .cinder-callout__action {
+    grid-column: 3;
+  }
+
   /* ----------------------------------------
  * Status variants
  *

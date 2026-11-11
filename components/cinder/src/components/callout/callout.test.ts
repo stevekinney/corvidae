@@ -196,6 +196,42 @@ describe('Callout neutral variant and action', () => {
       );
     }
   });
+
+  test('supports an explicit inline action layout without changing the stacked default', () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const { container } = render(Callout, {
+      props: { actionLayout: 'inline', action, children: textSnippet('Connection paused.') },
+    });
+    expect(container.querySelector('.cinder-callout--inline-action')).not.toBeNull();
+    cleanup();
+    const stacked = render(Callout, {
+      props: { action, children: textSnippet('Connection paused.') },
+    });
+    expect(stacked.container.querySelector('.cinder-callout--inline-action')).toBeNull();
+  });
+
+  test('keeps an icon, long copy and inline action in separate grid tracks', async () => {
+    const action = createRawSnippet(() => ({ render: () => '<button>Retry</button>' }));
+    const icon = createRawSnippet(() => ({ render: () => '<svg aria-hidden="true"></svg>' }));
+    const { container } = render(Callout, {
+      props: {
+        actionLayout: 'inline',
+        action,
+        icon,
+        children: textSnippet(
+          'This is a deliberately long notice that must remain readable when the available width becomes narrow.',
+        ),
+      },
+    });
+    const root = container.querySelector('.cinder-callout--inline-action')!;
+    expect(root.querySelector('.cinder-callout__icon')).not.toBeNull();
+    expect(root.querySelector('.cinder-callout__content')?.textContent).toContain(
+      'deliberately long',
+    );
+    expect(root.querySelector('.cinder-callout__action button')?.textContent).toBe('Retry');
+    const css = await Bun.file(new URL('./callout.css', import.meta.url)).text();
+    expect(css).toContain('.cinder-callout--inline-action:has(> .cinder-callout__icon)');
+  });
 });
 
 describe('Callout title', () => {

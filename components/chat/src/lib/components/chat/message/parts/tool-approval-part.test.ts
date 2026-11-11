@@ -88,6 +88,28 @@ describe('ToolApprovalPart', () => {
     expect(container.textContent).toContain('deploy_to_production --environment production');
   });
 
+  test('uses the compact actionable row when grouped with another approval', () => {
+    const onApprovalResolve = mock(() => undefined);
+    const { container, getByRole } = render(ToolApprovalPart, {
+      props: {
+        part: pendingPart({ details: { irreversible: true } }),
+        layout: 'row',
+        onApprovalResolve,
+      },
+    });
+    const card = container.querySelector('.cinder-approval-card');
+    expect(card?.getAttribute('data-cinder-layout')).toBe('row');
+    expect(container.querySelector('.cinder-approval-card__row-actions')).not.toBeNull();
+    expect(container.textContent).toContain('Deny');
+    expect(container.textContent).toContain('Approve');
+    const approve = getByRole('button', { name: 'Approve' });
+    fireEvent.click(approve);
+    expect(onApprovalResolve).not.toHaveBeenCalled();
+    expect(container.textContent).toContain('Press again to approve');
+    fireEvent.click(getByRole('button', { name: 'Press again to approve' }));
+    expect(onApprovalResolve).toHaveBeenCalledTimes(1);
+  });
+
   test('an expired approval asks the host for a fresh approval for its tool call', async () => {
     const calls: string[] = [];
     const { getByRole, queryByRole } = render(ToolApprovalPart, {

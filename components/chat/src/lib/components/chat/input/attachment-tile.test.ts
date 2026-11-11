@@ -5,6 +5,7 @@ import {
   attachmentBlockingReason,
   attachmentCountText,
   canRetry,
+  compactAttachmentSelection,
   fileTypeBadge,
   needsAttention,
   splitFileName,
@@ -76,6 +77,19 @@ describe('the attention summary', () => {
     expect(canRetry({ status: 'error', retryable: true })).toBe(true);
     expect(canRetry({ status: 'error' })).toBe(false);
     expect(canRetry({ status: 'uploading', retryable: true })).toBe(false);
+  });
+
+  test('compact shelves promote every attention file before ordinary rows', () => {
+    const attachments = [
+      { id: 'ready-a', status: 'ready' as const },
+      { id: 'failed-a', status: 'error' as const },
+      { id: 'failed-b', status: 'error' as const },
+      { id: 'ready-b', status: 'ready' as const },
+    ];
+    expect(compactAttachmentSelection(attachments).map(({ id }) => id)).toEqual([
+      'failed-a',
+      'failed-b',
+    ]);
   });
 });
 

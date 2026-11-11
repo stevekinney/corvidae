@@ -133,6 +133,25 @@
     display: block;
   }
 
+  /* Reasoning is a quiet disclosure inside the transcript, not a second card or select-like
+   * control. EntryFrame still supplies the shared disclosure semantics and focus treatment. */
+  .chat-reasoning :global(.chat-entry-frame) {
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+  }
+
+  .chat-reasoning :global(.chat-entry-frame__trigger) {
+    min-block-size: 2rem;
+    padding-block: var(--cinder-space-1);
+    padding-inline: 0;
+  }
+
+  .chat-reasoning :global(.chat-entry-frame__panel-inner) {
+    padding-inline: 0;
+    border-block-start: 0;
+  }
+
   .chat-reasoning-content {
     /* Hidden + non-focusable while collapsed. A scrollable region with
        overflow-y:auto is keyboard-focusable in some browsers even at zero

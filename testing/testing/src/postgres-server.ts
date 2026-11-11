@@ -8,9 +8,13 @@ import { spawnWithHangGuard } from './hang-guard.ts';
 
 /** A live PostgreSQL the storage suites can talk to, however it was obtained. */
 export type PostgresTestDatabase = {
+  /** Hostname of the test database. */
   host: string;
+  /** Port of the test database. */
   port: number;
+  /** Connection URL. */
   url: string;
+  /** Closes the disposable database. */
   [Symbol.asyncDispose](): Promise<void>;
 };
 

@@ -7,6 +7,7 @@
  */
 import { createHash } from 'node:crypto';
 
+import type { GeometryFacts } from '@lostgradient/testing/design-review-geometry';
 import { caseLabel, type StressCase } from '../src/fixtures/chat-stress/stress-cases.ts';
 
 /** One viewport, theme and input mode a case is drawn at. */
@@ -86,6 +87,8 @@ export interface CaptureRecord {
   readonly focus?: FocusStop;
   /** What went wrong with the page at this image; empty for a clean one. */
   readonly problems: readonly string[];
+  /** Geometry and paint evidence captured immediately before this frame. */
+  readonly measurement?: PageMeasurement;
   /** Why the case cannot prove its row here, when it is deferred. */
   readonly deferred?: string;
 }
@@ -124,6 +127,8 @@ export function expectedCounts(
 
 /** What a page reports about itself once a case has run, collected in the page by the tool. */
 export interface PageMeasurement {
+  /** Full Craft geometry facts from the shared design-review probe for this exact frame. */
+  readonly geometry?: GeometryFacts;
   /** Console errors and uncaught page errors since the page loaded. */
   readonly pageErrors: readonly string[];
   /** The document's scroll width and the window's width. */
@@ -134,6 +139,42 @@ export interface PageMeasurement {
     readonly width: number;
     readonly height: number;
   }[];
+  /** Coarse-pointer controls report their painted content separately from the hit region. */
+  readonly controlGeometry?: readonly {
+    readonly name: string;
+    readonly hitWidth: number;
+    readonly hitHeight: number;
+    readonly paintedWidth: number;
+    readonly paintedHeight: number;
+    readonly reachableWidth: number;
+    readonly reachableHeight: number;
+    readonly samples: readonly {
+      readonly x: number;
+      readonly y: number;
+      readonly top: string;
+      readonly hitsTarget: boolean;
+    }[];
+  }[];
+  /** Positioned masks, fades, and overlays sampled over important controls or code. */
+  readonly occlusions?: readonly {
+    readonly target: string;
+    readonly overlay: string;
+    readonly overlapWidth: number;
+    readonly overlapHeight: number;
+  }[];
+  /** Bottom chrome is recorded as evidence; its share is intentionally not a universal pass/fail. */
+  readonly bottomChrome?: {
+    readonly height: number;
+    readonly viewportHeight: number;
+    readonly share: number;
+    readonly parts: readonly {
+      readonly name: string;
+      readonly top: number;
+      readonly bottom: number;
+    }[];
+  };
+  /** Number of code blocks still waiting for the highlighter at capture time. */
+  readonly pendingHighlights?: number;
   /** Status text whose box clips it. */
   readonly clippedStatuses: readonly string[];
   /** The resolved direction and alignment of the text blocks a right-to-left case shows. */
@@ -162,6 +203,11 @@ export function measurementProblems(
 ): string[] {
   const problems: string[] = [];
   for (const error of measurement.pageErrors) problems.push(`page error: ${error}`);
+  if ((measurement.pendingHighlights ?? 0) > 0) {
+    problems.push(
+      `code highlighting is still pending for ${measurement.pendingHighlights} block(s)`,
+    );
+  }
   if (measurement.documentWidth.scroll > measurement.documentWidth.client) {
     problems.push(
       `document overflow: ${measurement.documentWidth.scroll} px of content in ${measurement.documentWidth.client} px`,
@@ -175,6 +221,16 @@ export function measurementProblems(
     }
   }
   for (const status of measurement.clippedStatuses) problems.push(`clipped status: ${status}`);
+  for (const occlusion of measurement.occlusions ?? []) {
+    problems.push(
+      `visual overlay occludes ${occlusion.target} by ${occlusion.overlapWidth} by ${occlusion.overlapHeight} px (${occlusion.overlay})`,
+    );
+  }
+  for (const control of measurement.controlGeometry ?? []) {
+    if (control.samples.some((sample) => !sample.hitsTarget)) {
+      problems.push(`hit region sample missed ${control.name}`);
+    }
+  }
   if (measurement.jumpOverlapsTranscript) problems.push('jump control overlaps the transcript');
   if (measurement.approvalStillWaiting)
     problems.push('approval still waits after its receipt appears');

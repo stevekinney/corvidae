@@ -10,6 +10,8 @@
     /** Called when the user resolves the approval. */
     onApprovalResolve?:
       ((toolCallId: string, resolution: ApprovalResolution) => void | Promise<void>) | undefined;
+    /** Uses the compact actionable row when several approvals share one tool group. */
+    layout?: 'decision' | 'row';
   };
 </script>
 
@@ -17,7 +19,7 @@
   import { ApprovalCard } from '@lostgradient/cinder';
   import type { ApprovalCardProps } from '@lostgradient/cinder';
 
-  let { part, onApprovalResolve, onApprovalRequestAgain }: ToolApprovalPartProps = $props();
+  let { part, onApprovalResolve, onApprovalRequestAgain, layout = 'decision' }: ToolApprovalPartProps = $props();
 
   const canResolve = $derived(
     part.state === 'pending' && !part.resolutionInFlight && onApprovalResolve !== undefined,
@@ -39,7 +41,7 @@
       headingLevel: 4,
       // The explicit decision, which stays as a receipt once decided. The adapter adds what the
       // approval action does not carry: whether it can be undone, a named primary, facts.
-      layout: 'decision',
+      layout,
     };
 
     if (part.details?.approveLabel !== undefined) props.approveLabel = part.details.approveLabel;

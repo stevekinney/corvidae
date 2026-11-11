@@ -83,6 +83,36 @@ afterEach(() => {
 });
 
 describe('ChatMessage — tool-call rendering', () => {
+  test('does not leave an orphan timestamp for a paired pending approval', () => {
+    const message = toolCallMessage();
+    const pair: ToolCallPair = {
+      call: message.toolCall!,
+      result: {
+        callId: message.toolCall!.id,
+        outcome: 'action_required',
+        content: null,
+        action: {
+          type: 'approval',
+          risk: 'high',
+          operation: { kind: 'command', command: 'echo approval', argsPreview: {} },
+          policyVersion: 'test-policy',
+          idempotencyKey: 'approval-1',
+        },
+      },
+    };
+    const { container } = render(ChatMessage, {
+      props: {
+        message: { ...message, content: '' },
+        toolCallPairs: [pair],
+        presentation: 'transcript',
+      },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-approval]')).not.toBeNull();
+    expect(container.querySelector('.chat-message-line')).not.toBeNull();
+    expect(container.querySelectorAll('time')).toHaveLength(0);
+  });
+
   test('threads owning stream activity through message tool rendering', () => {
     const messageSource = readFileSync(join(import.meta.dir, 'chat-message.svelte'), 'utf8');
     const rendererSource = readFileSync(
@@ -103,6 +133,31 @@ describe('ChatMessage — tool-call rendering', () => {
     expect(source).toContain('class="chat-tool-call-toggle"');
     expect(source).not.toContain('RunStepTimeline');
     expect(source).not.toContain('tool-call-group');
+  });
+
+  test('keeps tool surfaces on their structural reading widths without changing user bubbles', () => {
+    const messageSource = readFileSync(join(import.meta.dir, 'chat-message.svelte'), 'utf8');
+    const timelineSource = readFileSync(join(import.meta.dir, 'tool-call-timeline.svelte'), 'utf8');
+    expect(messageSource).toMatch(
+      /\.chat-message-wrapper\[data-tool-pair\]\s*\{[^}]*inline-size:\s*100%;[^}]*max-inline-size:\s*var\(--cinder-chat-message-max-width,\s*48rem\);[^}]*min-inline-size:\s*0;/s,
+    );
+    expect(messageSource).toContain(
+      'max-width: min(80%, var(--cinder-chat-message-max-width, 48rem));',
+    );
+    expect(timelineSource).toMatch(
+      /\.chat-tool-call-timeline\s*\{[^}]*inline-size:\s*100%;[^}]*max-inline-size:\s*var\(--cinder-chat-message-max-width,\s*48rem\);[^}]*min-inline-size:\s*0;/s,
+    );
+    expect(messageSource).not.toMatch(
+      /\.chat-message-wrapper\[data-tool-pair\][\s\S]{0,180}inline-size:\s*min\(80%/,
+    );
+    expect(timelineSource).not.toMatch(/\.chat-tool-call-timeline[\s\S]{0,180}42rem/);
+  });
+
+  test('separates a timeline summary from its single approval card', () => {
+    const source = readFileSync(join(import.meta.dir, '../container/chat.svelte'), 'utf8');
+    expect(source).toMatch(
+      /\.chat-tool-call-group\s*\{[^}]*display:\s*flex;[^}]*flex-direction:\s*column;[^}]*gap:\s*var\(--cinder-space-2\);/s,
+    );
   });
 
   test('renders custom message status inside the semantic article while timestamps stay below the bubble', () => {

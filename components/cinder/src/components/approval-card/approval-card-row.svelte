@@ -22,6 +22,10 @@
     approvalState: ApprovalState;
     /** The question the approval asks. */
     question: string;
+    /** The command or operation evidence, shown while the request is pending. */
+    command: string | undefined;
+    /** The primary action's label. */
+    approveLabel: string | undefined;
     /** Who asked, already written with its prefix: "Approval from Tool runner". */
     sourceText: string | undefined;
     /** When it was asked, already written as relative time. */
@@ -85,6 +89,7 @@
 
   import Button from '../button/button.svelte';
   import Checkbox from '../checkbox/checkbox.svelte';
+  import InlineConfirm from '../inline-confirm/inline-confirm.svelte';
   import Textarea from '../textarea/textarea.svelte';
   import ApprovalCardFailure from './approval-card-failure.svelte';
   import ApprovalCardOutcome from './approval-card-outcome.svelte';
@@ -98,6 +103,8 @@
     tool,
     approvalState,
     question,
+    command,
+    approveLabel,
     sourceText,
     requestedText,
     requestedIso,
@@ -126,13 +133,14 @@
 
   const inputId = $derived(`${rootId}-input`);
   const noteId = $derived(`${rootId}-note`);
+  const hintId = $derived(`${rootId}-arm-hint`);
   const disabledReasonId = $derived(`${rootId}-disabled-reason`);
 
   let inputOpen = $state(false);
   let noteOpen = $state(false);
   let note = $state('');
   let remember = $state(false);
-
+  let armed = $state(false);
   // The note and the checkbox belong to one request. A different request must never inherit
   // what the approver typed for the last one, so the reset compares the previous key by hand:
   // a `$derived` would also re-run on unrelated host updates and wipe in-progress text.
@@ -170,6 +178,14 @@
     if (trimmedNote) resolution.reason = trimmedNote;
     resolve?.(resolution);
   }
+
+  function pressDeny(): void {
+    armed = false;
+    decide('deny');
+  }
+
+  const irreversible = $derived(tool.irreversible === true);
+  const primaryLabel = $derived(approveLabel ?? 'Approve');
 </script>
 
 {#if context !== undefined}
@@ -351,6 +367,10 @@
         </div>
       {/if}
 
+      {#if command !== undefined}
+        <pre class="cinder-approval-card__command" dir="ltr"><code>{command}</code></pre>
+      {/if}
+
       {#if canAnswer && failure !== undefined}
         <ApprovalCardFailure {failure} />
       {/if}
@@ -406,24 +426,28 @@
             loading={resolving === 'deny'}
             loadingStatus="Denying…"
             aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-            onclick={() => decide('deny')}
+            onclick={pressDeny}
           >
             {resolving === 'deny' ? 'Denying…' : 'Deny'}
           </Button>
-          <Button
-            type="button"
-            variant="primary"
-            size="sm"
-            mutating
-            disabled={isBusy && resolving !== 'approve'}
-            aria-disabled={disabledReason === undefined ? undefined : 'true'}
+          <InlineConfirm
+            presentation="two-press"
+            bind:armed
+            confirmLabel={primaryLabel}
+            armedLabel={`Press again to ${primaryLabel.charAt(0).toLowerCase()}${primaryLabel.slice(1)}`}
+            armedHint="Reverts in 3 seconds. Escape cancels."
+            {requestKey}
+            requiresSecondPress={irreversible}
+            disabled={isBusy}
+            blocked={disabledReason !== undefined}
+            ariaDisabled={disabledReason !== undefined}
             loading={resolving === 'approve'}
-            loadingStatus="Approving…"
-            aria-describedby={disabledReason === undefined ? undefined : disabledReasonId}
-            onclick={() => decide('approve')}
-          >
-            {resolving === 'approve' ? 'Approving…' : 'Approve'}
-          </Button>
+            loadingLabel="Approving…"
+            ariaDescribedBy={disabledReason === undefined ? hintId : disabledReasonId}
+            hintClass="cinder-approval-card__arm-hint"
+            {hintId}
+            onConfirm={() => decide('approve')}
+          />
         </div>
         {#if footnote !== undefined}
           <p class="cinder-approval-card__footnote" dir="auto">{footnote}</p>

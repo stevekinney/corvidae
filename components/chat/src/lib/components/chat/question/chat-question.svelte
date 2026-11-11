@@ -82,6 +82,8 @@
     Check,
     Checkbox,
     CheckboxGroup,
+    ChoiceGrid,
+    ChoiceGridItem,
     FileUpload,
     Input,
     NumberInput,
@@ -130,6 +132,14 @@
 
   const kind = $derived(classifyQuestion(schema));
   const choices = $derived(choicesOf(schema));
+  const selectableChoices = $derived(
+    kind === 'boolean'
+      ? [
+          { value: true, label: 'Yes' },
+          { value: false, label: 'No' },
+        ]
+      : choices,
+  );
   const steps = $derived(ratingStepsOf(schema));
   const bounds = $derived(ratingBounds(schema));
   const errorText = $derived(issues.map((issue) => issue.message).join(' '));
@@ -221,7 +231,7 @@
     hold.undo();
     if (typeof picked !== 'number') return;
     queueMicrotask(() =>
-      root?.querySelectorAll<HTMLElement>('.chat-question-choices button')[picked]?.focus(),
+      root?.querySelectorAll<HTMLElement>('.chat-question-choices [role="radio"]')[picked]?.focus(),
     );
   }
 
@@ -246,7 +256,9 @@
   $effect(() => {
     const nowBusy = busy;
     const refused = failed || issues.length > 0;
-    if (wasBusy && !nowBusy && refused) hold.reopen();
+    if (wasBusy && !nowBusy && refused) {
+      hold.reopen();
+    }
     wasBusy = nowBusy;
   });
 
@@ -258,6 +270,7 @@
   let timeText = $state('');
   let numberDraft = $state<number | null>(null);
   let picked = $state<unknown[]>([]);
+  const choiceSelection = $derived(hold.pick === undefined ? null : String(hold.pick));
   let rating = $state<unknown>(undefined);
   let files = $state<FileUploadEntry[]>([]);
   let uploadError = $state<string | undefined>();
@@ -338,6 +351,16 @@
   const mediaType = $derived(acceptedMediaType(schema));
   const fileSizeLimit = $derived(maxFileSize ?? 10 * 1024 * 1024);
 
+  // ChoiceGrid owns the radio semantics and roving keyboard focus. Use its function binding setter
+  // as the user-selection boundary so hold reopen/phase changes cannot replay an old selection.
+  function selectChoice(selection: string | null): void {
+    if (selection === null || busy || hold.phase !== 'open') return;
+    const index = Number(selection);
+    if (!Number.isInteger(index)) return;
+    const choice = selectableChoices[index];
+    if (choice !== undefined) pickAnswer(choice.value, choice.label, index);
+  }
+
   async function acceptFile(accepted: File[]): Promise<void> {
     const file = accepted[0];
     if (file === undefined || uploadFile === undefined) return;
@@ -385,40 +408,30 @@
     </div>
   {:else}
     {#if kind === 'choice' || kind === 'choice-other'}
-      <div class="chat-question-choices" role="group" aria-label={title}>
+      <ChoiceGrid
+        class="chat-question-choices"
+        variant="card"
+        size="sm"
+        columns={1}
+        ariaLabel={title}
+        bind:value={() => choiceSelection, selectChoice}
+      >
         {#each choices as choice, index (String(choice.value))}
-          {@const chosen = holding && hold.pick === index}
-          <Button
-            type="button"
-            variant="secondary"
-            class="chat-question-choice"
-            data-selected={chosen ? '' : undefined}
-            aria-pressed={holding ? chosen : undefined}
-            aria-disabled={holding && !chosen ? 'true' : undefined}
-            disabled={busy && !holding}
-            aria-label={choice.description === undefined ? undefined : choice.label}
-            aria-describedby={choice.description === undefined ||
-            (holding && holdCopy?.selected !== undefined)
-              ? undefined
-              : `${id}-choice-${index}-description`}
-            onclick={() => pickAnswer(choice.value, choice.label, index)}
+          {@const description =
+            holding && holdCopy?.selected !== undefined
+              ? String(index) === choiceSelection
+                ? holdCopy.selected
+                : undefined
+              : choice.description}
+          <ChoiceGridItem
+            value={String(index)}
+            disabled={busy || holding}
+            {...description === undefined ? {} : { description }}
           >
-            <span class="chat-question-choice-text">
-              <span class="chat-question-choice-label">{choice.label}</span>
-              {#if holding && holdCopy?.selected !== undefined}
-                {#if chosen}
-                  <span class="chat-question-choice-description">{holdCopy.selected}</span>
-                {/if}
-              {:else if choice.description !== undefined}
-                <span
-                  class="chat-question-choice-description"
-                  id={`${id}-choice-${index}-description`}>{choice.description}</span
-                >
-              {/if}
-            </span>
-          </Button>
+            <span class="chat-question-choice-label" dir="auto">{choice.label}</span>
+          </ChoiceGridItem>
         {/each}
-      </div>
+      </ChoiceGrid>
       {@render holdStatus()}
       {#if kind === 'choice-other' && !answerInComposer}
         <form
@@ -475,23 +488,20 @@
         <Button type="submit" variant="primary" disabled={busy || !canSendPicked}>Send</Button>
       </form>
     {:else if kind === 'boolean'}
-      <div class="chat-question-choices" role="group" aria-label={title}>
+      <ChoiceGrid
+        class="chat-question-choices"
+        variant="card"
+        size="sm"
+        columns={1}
+        ariaLabel={title}
+        bind:value={() => choiceSelection, selectChoice}
+      >
         {#each [{ value: true, label: 'Yes' }, { value: false, label: 'No' }] as option, index (option.label)}
-          {@const chosen = holding && hold.pick === index}
-          <Button
-            type="button"
-            variant="secondary"
-            class="chat-question-choice"
-            data-selected={chosen ? '' : undefined}
-            aria-pressed={holding ? chosen : undefined}
-            aria-disabled={holding && !chosen ? 'true' : undefined}
-            disabled={busy && !holding}
-            onclick={() => pickAnswer(option.value, option.label, index)}
-          >
-            {option.label}
-          </Button>
+          <ChoiceGridItem value={String(index)} disabled={busy || holding}>
+            <span class="chat-question-choice-label" dir="auto">{option.label}</span>
+          </ChoiceGridItem>
         {/each}
-      </div>
+      </ChoiceGrid>
       {@render holdStatus()}
       {#if errorText !== ''}
         <p class="chat-question-error" id={errorId} role="alert">{errorText}</p>
@@ -704,77 +714,27 @@
 
   /* Choices sit side by side and wrap; a host that wants them to share the row sets the grow. */
   .chat-question-choices {
-    display: flex;
-    flex-wrap: wrap;
+    --_cinder-choice-card-min-block-size: 3.25rem;
+    display: grid;
     gap: var(--cinder-space-2-5, 0.625rem);
   }
 
-  .chat-question-choices :global(.chat-question-choice) {
-    flex: var(--chat-question-choice-grow, 0) 1 auto;
-    justify-content: flex-start;
-    min-inline-size: min(12.5rem, 100%);
-    block-size: auto;
-    white-space: normal;
-    text-align: start;
+  .chat-question-choices :global(.cinder-choice-grid-item[data-cinder-variant='card']) {
+    padding-block: var(--cinder-space-2);
+    gap: var(--cinder-space-2);
   }
 
-  @media (any-pointer: coarse) {
-    .chat-question-choices :global(.chat-question-choice) {
-      flex-basis: 100%;
-      min-block-size: var(--cinder-touch-target-min);
-      padding: var(--cinder-space-2) var(--cinder-space-3);
-      border-radius: var(--cinder-radius-md);
-    }
-  }
-
-  /* The pick of a held or sent answer: an accent edge and tint; the others stand back. The pick is
-   * aria-pressed, which Cinder's button draws as a filled accent face with its on-fill label, so
-   * the tint has the page's own text colour with it, or the label would be white on a pale tint.
-   * On a dark surface the soft tint is nearly the unpicked choice's raised face, so the pick takes
-   * a stronger tint and the full accent edge: it reads as picked once focus has left it. */
-  .chat-question-choices :global(.chat-question-choice[data-selected]),
-  .chat-question-choices :global(.chat-question-choice[data-selected]:hover) {
-    border-color: light-dark(var(--cinder-accent-border), var(--cinder-accent-solid));
-    background: light-dark(
-      var(--cinder-accent-background),
-      color-mix(in oklch, var(--cinder-accent-solid) 32%, var(--cinder-surface))
-    );
-    color: var(--cinder-text-default);
-  }
-
-  /* The choices of a held or sent answer stand still but keep their contrast: the board draws the
-   * one that was not picked as the ordinary choice it was (surface, border and text of an enabled
-   * secondary button), not in Cinder's faded disabled look. */
-  .chat-question-choices :global(.chat-question-choice[aria-disabled='true']) {
-    cursor: default;
-    opacity: 1;
-  }
-
-  .chat-question-choices :global(.chat-question-choice[aria-disabled='true']:not([data-selected])) {
-    background: var(--cinder-button-background);
-    color: var(--cinder-button-foreground);
-    border-color: var(--cinder-button-border);
-  }
-
-  .chat-question-choice-text {
-    display: grid;
-    gap: var(--cinder-space-1);
-    min-inline-size: 0;
-  }
-
-  .chat-question-choice-label,
-  .chat-question-choice-description {
-    overflow-wrap: anywhere;
+  .chat-question-choices
+    :global(
+      .cinder-choice-grid-item[data-cinder-variant='card'] .cinder-choice-grid-item__description
+    ) {
+    line-height: var(--cinder-leading-tight, 1.25);
   }
 
   .chat-question-choice-label {
+    min-inline-size: 0;
+    overflow-wrap: anywhere;
     font-weight: var(--cinder-font-semibold);
-  }
-
-  .chat-question-choice-description {
-    color: var(--cinder-text-muted);
-    font-size: var(--_cinder-chat-text-sm, var(--cinder-text-sm));
-    font-weight: var(--cinder-font-normal, normal);
   }
 
   /* One inline line inside the question: what was answered, and the Undo that is still open. */

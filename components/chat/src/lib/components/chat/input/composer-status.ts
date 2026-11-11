@@ -48,6 +48,17 @@ export type ChatComposerStatus =
   | { kind: 'queued'; count?: number }
   | { kind: 'offline' }
   | {
+      kind: 'drawer-notice';
+      /** Message shown above the composer. */
+      text: string;
+      /** Visual tone for the notice. */
+      tone?: 'neutral' | 'info' | 'warning' | 'danger';
+      /** Optional action rendered beside the notice. */
+      action?: ChatComposerBlockedAction | undefined;
+      /** When set, Send is disabled and this reason is associated with it for assistive technology. */
+      sendDisabledReason?: string | undefined;
+    }
+  | {
       kind: 'draft-restored';
       /** When the draft was written, in words, such as `yesterday at 4:12 PM`. */
       when: string;
@@ -103,8 +114,12 @@ export function isComposerNoticeStatus(
 /** Whether a status is drawn as a drawer above the composer rather than the line under it. */
 export function isComposerDrawerStatus(
   status: ChatComposerStatus | undefined,
-): status is Extract<ChatComposerStatus, { kind: 'offline' | 'draft-restored' }> {
-  return status?.kind === 'offline' || status?.kind === 'draft-restored';
+): status is Extract<ChatComposerStatus, { kind: 'offline' | 'draft-restored' | 'drawer-notice' }> {
+  return (
+    status?.kind === 'offline' ||
+    status?.kind === 'draft-restored' ||
+    status?.kind === 'drawer-notice'
+  );
 }
 
 /** The words a status shows: on the line under the composer, or in its drawer. */
@@ -113,6 +128,7 @@ export function composerStatusText(status: ChatComposerStatus): string {
   if (status.kind === 'archived') return `Archived ${status.when}`;
   if (status.kind === 'read-only') return COMPOSER_READ_ONLY_LABEL;
   if (status.kind === 'offline') return COMPOSER_OFFLINE_TEXT;
+  if (status.kind === 'drawer-notice') return status.text;
   if (status.kind === 'draft-restored') return `Restored your unsent draft from ${status.when}.`;
   if (status.kind === 'steering') return 'A message now steers the run.';
   if (status.kind === 'note') return status.text;

@@ -2,16 +2,36 @@
 @import '../popover/popover.css';
 @layer cinder.components {
   .cinder-citation {
-    display: inline;
-    container-type: inline-size;
+    /* A Citation can be a flex item in chat source rows. `inline` blockifies to a zero-width flex
+     * item when combined with inline-size containment, leaving its marker painted offscreen. Keep
+     * the inline flow contract while giving flex layout a measurable intrinsic width. */
+    display: inline-block;
   }
   .cinder-citation__marker {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
     border: 0;
     background: none;
     color: var(--cinder-accent-text);
     cursor: pointer;
     font: inherit;
     padding: 0 var(--cinder-space-0-5);
+    vertical-align: middle;
+  }
+
+  .cinder-citation__marker:focus-visible {
+    outline: none;
+    border-radius: var(--cinder-radius-sm);
+    box-shadow: inset 0 0 0 var(--cinder-ring-width) var(--cinder-ring-color);
+  }
+
+  @media (forced-colors: active) {
+    .cinder-citation__marker:focus-visible {
+      outline: var(--cinder-ring-width) solid ButtonText;
+      outline-offset: 2px;
+      box-shadow: none;
+    }
   }
   /* The panel is a column, so the title, the optional excerpt, the optional link and the pager
      are separate boxes with one token gap between them. An absent excerpt is an absent box and
@@ -24,7 +44,27 @@
     text-align: start;
     overflow-wrap: anywhere;
     line-height: var(--cinder-leading-normal);
-    padding: var(--cinder-space-1);
+    /* The owning Popover/Drawer supplies the surface inset. Keeping this panel content-only
+       prevents an empty band when a source has no excerpt or link. */
+    padding: 0;
+  }
+
+  /* Citation owns a compact sheet contract while Popover/Drawer continue to own modal focus,
+     safe-area handling and dismissal. The drawer remains one raised surface; only its body carries
+     the citation panel's shared 12px edge. */
+  .cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__header {
+    padding: var(--cinder-space-1) var(--cinder-space-3);
+    border-block-end: 0;
+    background: transparent;
+  }
+
+  .cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__title {
+    font-size: var(--cinder-text-md);
+  }
+
+  .cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__body {
+    padding: var(--cinder-space-2) var(--cinder-space-3);
+    background: transparent;
   }
   /* A title is clamped to two lines; its whole text stays in the DOM for assistive technology. */
   .cinder-citation__title {
@@ -88,6 +128,10 @@
     block-size: 1rem;
   }
   @media (pointer: coarse) {
+    .cinder-citation__marker {
+      min-block-size: var(--cinder-touch-target-min);
+    }
+
     .cinder-citation__pagination button,
     .cinder-citation__link {
       display: inline-flex;

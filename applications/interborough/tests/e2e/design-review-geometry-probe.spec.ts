@@ -5,8 +5,8 @@
  */
 import { expect, test } from '@playwright/test';
 
-import { auditCapture, type GeometryCapture } from '../../scripts/design-review-geometry.ts';
-import { measureGeometry } from './design-review-geometry-probe.ts';
+import { auditCapture, type GeometryCapture } from '@lostgradient/testing/design-review-geometry';
+import { measureGeometry } from '@lostgradient/testing/design-review-geometry-probe';
 
 const PAGE = `
   <style>

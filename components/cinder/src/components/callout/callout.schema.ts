@@ -19,6 +19,11 @@ const schema = {
       description:
         "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark.",
     },
+    actionLayout: {
+      enum: ['stacked', 'inline'],
+      description:
+        "Layout for the action slot. Default `'stacked'`; use `'inline'` for one compact action beside the message.",
+    },
     class: {
       type: 'string',
       description:

@@ -399,6 +399,9 @@ describe('Chat — scrollFadeVisible', () => {
     expect(source).toMatch(
       /\.chat-container\[data-surface-mode='default'\] \.chat-timeline\s*\{\s*background:\s*var\(--_cinder-chat-shared-surface\);/,
     );
+    expect(source).toMatch(
+      /\.chat-container\[data-surface-mode='default'\] > :global\(\.chat-availability\)\s*\{\s*background:\s*var\(--_cinder-chat-shared-surface\);/,
+    );
   });
 });
 
@@ -560,6 +563,154 @@ describe('Chat — code highlighting', () => {
 });
 
 describe('Chat — message rendering', () => {
+  test('keeps an approval card inside the contiguous tool group', () => {
+    const conversation = createConversation({ id: 'conversation-grouped-approval' });
+    const now = new Date().toISOString();
+    const messages: TestMessage[] = [
+      {
+        id: 'grouped-call-1',
+        role: 'tool-call',
+        content: '',
+        position: 0,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'grouped-call-1', name: 'lookup', arguments: {} },
+      },
+      {
+        id: 'grouped-call-2',
+        role: 'tool-call',
+        content: '',
+        position: 1,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'grouped-call-2', name: 'issue-refund', arguments: { amount: 20 } },
+      },
+      {
+        id: 'grouped-result-2',
+        role: 'tool-result',
+        content: '',
+        position: 2,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolResult: {
+          callId: 'grouped-call-2',
+          outcome: 'action_required',
+          content: null,
+          action: {
+            type: 'approval',
+            message: 'Refund this purchase?',
+            risk: 'high',
+            operation: { kind: 'command', command: 'refund --amount 20', argsPreview: {} },
+            policyVersion: 'test-policy',
+            idempotencyKey: 'grouped-approval',
+          },
+        },
+      },
+      {
+        id: 'grouped-call-3',
+        role: 'tool-call',
+        content: '',
+        position: 3,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'grouped-call-3', name: 'notify', arguments: {} },
+      },
+    ];
+    const groupedConversation: TestConversation = {
+      ...conversation,
+      ids: messages.map((message) => message.id),
+      messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+    };
+
+    const { container } = render(Chat, {
+      props: { id: 'chat-grouped-approval', conversation: groupedConversation },
+    });
+
+    expect(container.querySelector('[data-cinder-tool-call-count="3"]')).not.toBeNull();
+    expect(container.querySelectorAll('.chat-tool-call-timeline')).toHaveLength(1);
+    expect(container.querySelectorAll('.cinder-approval-card')).toHaveLength(1);
+    expect(container.textContent).toContain('Refund this purchase?');
+  });
+
+  test('keeps an input question as a question row instead of an approval detail', async () => {
+    const conversation = createConversation({ id: 'conversation-grouped-question' });
+    const now = new Date().toISOString();
+    const messages: TestMessage[] = [
+      {
+        id: 'completed-call',
+        role: 'tool-call',
+        content: '',
+        position: 0,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'completed-call', name: 'lookup', arguments: {} },
+      },
+      {
+        id: 'completed-result',
+        role: 'tool-result',
+        content: '',
+        position: 1,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolResult: { callId: 'completed-call', outcome: 'success', content: { ok: true } },
+      },
+      {
+        id: 'question-call',
+        role: 'tool-call',
+        content: '',
+        position: 2,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolCall: { id: 'question-call', name: 'requestHumanInput', arguments: {} },
+      },
+      {
+        id: 'question-result',
+        role: 'tool-result',
+        content: '',
+        position: 3,
+        createdAt: now,
+        metadata: {},
+        hidden: false,
+        toolResult: {
+          callId: 'question-call',
+          outcome: 'action_required',
+          content: null,
+          action: {
+            type: 'input',
+            message: 'Which ledger should I use?',
+            schema: { enum: ['October', 'November'] },
+          },
+        },
+      },
+    ];
+    const questionConversation: TestConversation = {
+      ...conversation,
+      ids: messages.map((message) => message.id),
+      messages: Object.fromEntries(messages.map((message) => [message.id, message])),
+    };
+
+    const { container } = render(Chat, {
+      props: {
+        id: 'chat-grouped-question',
+        conversation: questionConversation,
+        onInputSubmit: () => undefined,
+      },
+    });
+    await tick();
+
+    expect(container.querySelector('[data-cinder-tool-call-count="2"]')).not.toBeNull();
+    expect(container.querySelectorAll('.chat-tool-call-timeline')).toHaveLength(1);
+    expect(container.querySelector('.chat-question-choices')).not.toBeNull();
+    expect(container.querySelector('.cinder-approval-card')).toBeNull();
+  });
+
   test('renders user and assistant messages with their content and roles', () => {
     let conversation = createConversation({ id: 'conversation-messages' });
     conversation = appendUserMessage(conversation, 'What is the capital of France?');

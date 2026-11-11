@@ -9,7 +9,7 @@ describe('Chat composer area', () => {
     const source = await Bun.file(new URL('./chat.svelte', import.meta.url)).text();
 
     expect(source).toMatch(
-      /\.chat-input-area \{[^}]*padding: var\(--cinder-chat-timeline-padding\);[^}]*padding-block-end: calc\(\s*var\(--cinder-chat-timeline-padding\) \+ env\(safe-area-inset-bottom, 0px\)\s*\);/,
+      /\.chat-input-area \{[^}]*padding: var\(--cinder-chat-timeline-padding\) var\(--cinder-chat-reading-inline-padding\);[^}]*padding-block-end: calc\(\s*var\(--cinder-chat-timeline-padding\) \+ env\(safe-area-inset-bottom, 0px\)\s*\);/,
     );
   });
 });

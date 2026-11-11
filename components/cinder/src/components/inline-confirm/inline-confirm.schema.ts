@@ -12,6 +12,41 @@ const schema = {
       type: 'string',
       description: 'Label for the confirming action.',
     },
+    presentation: {
+      enum: ['strip', 'two-press'],
+      description: 'The in-flow strip (default) or a single guarded action button.',
+      default: 'strip',
+    },
+    armedLabel: {
+      type: 'string',
+      description: 'Full accessible label shown after the first press in two-press presentation.',
+    },
+    requestKey: {
+      type: 'string',
+      description: 'Request identity; changing it disarms two-press presentation.',
+    },
+    disabled: {
+      type: 'boolean',
+      description: 'Disables and disarms two-press presentation.',
+      default: false,
+    },
+    armedHint: {
+      type: 'string',
+      description: 'Status text shown while the two-press action is armed.',
+    },
+    loading: {
+      type: 'boolean',
+      description: 'Shows a loading state on the action button.',
+      default: false,
+    },
+    loadingLabel: {
+      type: 'string',
+      description: 'Accessible loading label for the action button.',
+    },
+    ariaDescribedBy: {
+      type: 'string',
+      description: "Id referenced by the action button's aria-describedby.",
+    },
     cancelLabel: {
       type: 'string',
       description: "Label for the cancelling action. Defaults to `'Cancel'`.",
@@ -40,7 +75,7 @@ const schema = {
     },
   },
   additionalProperties: false,
-  required: ['confirmLabel', 'prompt'],
+  required: ['confirmLabel'],
   metadata: {
     unsupportedProps: [
       {

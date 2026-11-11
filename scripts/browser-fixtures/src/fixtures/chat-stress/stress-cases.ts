@@ -30,10 +30,14 @@ export type StressStep =
   | { action: 'click'; role: string; name: string; nth?: number }
   | { action: 'fill'; role: string; name: string; text: string; nth?: number }
   | { action: 'focus'; role: string; name: string; nth?: number }
+  | { action: 'focus-source' }
+  | { action: 'expect-source-open' }
   | { action: 'press'; key: string }
   | { action: 'hook'; name: string; argument?: unknown }
-  | { action: 'expect'; role: string; name: string; nth?: number }
-  | { action: 'expect-text'; text: string }
+  | { action: 'expect'; role: string; name: string; nth?: number; scope?: string }
+  | { action: 'expect-text'; text: string; scope?: string; exact?: boolean }
+  | { action: 'expect-offscreen'; selector: string }
+  | { action: 'expect-absent'; selector: string }
   | { action: 'upload'; files: readonly StressUpload[] }
   | { action: 'scroll'; to: 'top' | 'bottom' };
 
@@ -131,10 +135,14 @@ const STEP_ACTIONS = [
   'click',
   'fill',
   'focus',
+  'focus-source',
+  'expect-source-open',
   'press',
   'hook',
   'expect',
   'expect-text',
+  'expect-offscreen',
+  'expect-absent',
   'upload',
   'scroll',
 ] as const;
@@ -204,10 +212,25 @@ function problemsInCase(value: unknown, index: number): string[] {
     problems.push(`${where}: focusSweep must be a boolean`);
   const steps = value['steps'];
   if (!Array.isArray(steps)) problems.push(`${where}: steps must be an array`);
-  else
+  else {
     steps.forEach((step, stepIndex) =>
       problems.push(...problemsInStep(step, `${where} step ${stepIndex + 1}`)),
     );
+    const sourceOpenIndex = steps.findIndex(
+      (step) => isRecord(step) && step['action'] === 'expect-source-open',
+    );
+    if (sourceOpenIndex >= 0) {
+      if (value['scenario'] !== 'citations') {
+        problems.push(`${where}: expect-source-open belongs to a citations case`);
+      }
+      const withdrawalIndex = steps.findIndex(
+        (step) => isRecord(step) && step['action'] === 'hook' && step['name'] === 'withdrawSource',
+      );
+      if (withdrawalIndex < 0 || sourceOpenIndex > withdrawalIndex) {
+        problems.push(`${where}: expect-source-open must precede withdrawSource`);
+      }
+    }
+  }
   const variants = value['variants'];
   if (!Array.isArray(variants)) problems.push(`${where}: variants must be an array`);
   else {

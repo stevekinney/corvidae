@@ -105,6 +105,12 @@ describe('ApprovalCard decision layout', () => {
     ]);
     expect(facts[3]?.[0]).toBe('Command');
     expect(facts[3]?.[1]).toContain('refund --order 4471 --amount 42.00');
+    expect(container.querySelector('.cinder-approval-card__fact dt')?.className).toBe(
+      'cinder-sr-only',
+    );
+    expect(container.querySelector('.cinder-approval-card__fact--command dt')?.className).toBe(
+      'cinder-sr-only',
+    );
     const command = container.querySelector('.cinder-approval-card__command');
     expect(command?.closest('[hidden]')).toBeNull();
     expect(command?.querySelector('.cinder-code-block--wrap')).not.toBeNull();
@@ -244,7 +250,9 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
     expect(armed.getAttribute('data-cinder-variant')).toBe('danger');
     // Each Button keeps its own empty loading live region, so the hint is found by its text and
     // its status role is asserted on it.
-    const hint = getByText(ARM_HINT);
+    const hint = getByText(
+      (_, element) => element?.classList.contains('cinder-approval-card__arm-hint') ?? false,
+    );
     expect(hint.getAttribute('role')).toBe('status');
     expect(squash(hint.textContent)).toBe(ARM_HINT);
     expect(armed.getAttribute('aria-describedby')).toBe(hint.id);
@@ -252,6 +260,34 @@ describe('ApprovalCard decision layout: arming an irreversible action', () => {
     await fireEvent.click(armed);
 
     expect(onResolve).toHaveBeenCalledTimes(1);
+    expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
+  });
+
+  test('keeps a long armed label in its own button while preserving the Deny target', async () => {
+    const onResolve = mock((_resolution: unknown) => undefined);
+    const { container, getByRole } = render(ApprovalCard, {
+      props: decisionCard({
+        approveLabel: 'Refund this order for $42.00 immediately',
+        onResolve,
+      }),
+    });
+
+    await fireEvent.click(
+      getByRole('button', { name: 'Refund this order for $42.00 immediately' }),
+    );
+
+    const armed = getByRole('button', {
+      name: 'Press again to refund this order for $42.00 immediately',
+    });
+    const deny = getByRole('button', { name: 'Deny' });
+    expect(armed.querySelector('.cinder-button__label')?.textContent).toBe(
+      'Press again to refund this order for $42.00 immediately',
+    );
+    expect(
+      Array.from(container.querySelectorAll('.cinder-approval-card__row-actions .cinder-button')),
+    ).toEqual([deny, armed]);
+
+    await fireEvent.click(armed);
     expect(onResolve).toHaveBeenCalledWith({ decision: 'approve', remember: false });
   });
 
@@ -597,6 +633,27 @@ describe('ApprovalCard decision layout stylesheet', () => {
     expect(css).toMatch(/\.cinder-approval-card__fact \{\s*display: grid;/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*background:/);
     expect(css).not.toMatch(/\.cinder-approval-card__command \{[^}]*border:/);
+    expect(css).toMatch(
+      /\.cinder-approval-card--decision\[data-cinder-state='expired'\] \{[^}]*border-color:\s*var\(--cinder-status-warning-border\)/s,
+    );
+    expect(css).toMatch(/@media \(any-pointer: coarse\) \{[^}]*__arm-escape \{\s*display: none;/s);
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-button__label \{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-button \{[^}]*block-size:\s*auto;[^}]*align-self:\s*stretch;/s,
+    );
+    expect(css).toMatch(/\.cinder-approval-card__row-actions \{[^}]*align-items:\s*center;/s);
+    expect(css).toMatch(
+      /\.cinder-approval-card__row-actions \.cinder-inline-confirm__two-press \{[^}]*display:\s*contents;/s,
+    );
+    expect(css).toMatch(/\.cinder-inline-confirm__two-press-hint \{[^}]*flex:\s*1 0 100%;/s);
+    expect(css).toMatch(
+      /@container \(inline-size < 32rem\) \{[^}]*\.cinder-approval-card__input-toggle \{\s*align-items:\s*center;/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-approval-card__why ~ \.cinder-approval-card__decision-tools \{[^}]*margin-block-start:\s*calc\(-1 \* var\(--cinder-space-2\)\)/s,
+    );
   });
 
   // C#14 (chat stress sweep): at 320 the label column left a long tool identifier a few

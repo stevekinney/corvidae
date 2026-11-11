@@ -190,6 +190,7 @@ function parsedEntry(
   }
 }
 
+/** Parses fixture declarations from source text without executing the module. */
 export function parseFixtureFileStatic(sourcePath: string, contents: string): FileParseResult {
   const componentName = basename(dirname(sourcePath));
   if (!COMPONENT_NAME_PATTERN.test(componentName))

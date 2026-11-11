@@ -57,6 +57,8 @@ export class QuestionStore {
   readonly #dockTargets = new SvelteMap<string, DockedQuestionTarget>();
   readonly #dismissedDocks = new SvelteSet<string>();
   #dockedAnswered = $state(0);
+  // Defer round resets so a Svelte effect handoff can preserve multi-question progress.
+  #dockRoundResetToken = 0;
   readonly #placement: () => QuestionPlacement;
   readonly #answerInComposer: () => boolean;
   readonly #uploadFile: () => ((file: File, signal: AbortSignal) => Promise<string>) | undefined;
@@ -98,6 +100,7 @@ export class QuestionStore {
     this.#dockTargets.clear();
     this.#dismissedDocks.clear();
     this.#dockedAnswered = 0;
+    this.#dockRoundResetToken += 1;
   }
 
   /** Whether free text is answered through the composer. */
@@ -155,13 +158,22 @@ export class QuestionStore {
 
   /** Makes `target` an open docked question, until the returned function is called. */
   registerDockedQuestion(target: DockedQuestionTarget): () => void {
-    // A new round starts when the dock was empty, so progress counts only questions asked together.
-    // The size is read untracked: the effect that registers must not re-run as other questions come and go.
-    if (untrack(() => this.#dockTargets.size) === 0) this.#dockedAnswered = 0;
+    // A new round starts when the dock stays empty for a microtask. During a handoff, the old
+    // question unregisters before the next one registers, so resetting synchronously loses the
+    // `Question 2 of 2` progress label.
+    this.#dockRoundResetToken += 1;
     this.#dockTargets.set(target.toolCallId, target);
     return () => {
       if (this.#dockTargets.get(target.toolCallId) === target) {
         this.#dockTargets.delete(target.toolCallId);
+        if (this.#dockTargets.size === 0) {
+          const token = ++this.#dockRoundResetToken;
+          queueMicrotask(() => {
+            if (token === this.#dockRoundResetToken && this.#dockTargets.size === 0) {
+              this.#dockedAnswered = 0;
+            }
+          });
+        }
       }
     };
   }

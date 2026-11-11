@@ -160,7 +160,7 @@ describe('useChatMessageGroups paired tool-result filtering', () => {
     });
   });
 
-  test('action-required tool calls remain individual so approval controls stay interactive', () => {
+  test('action-required tool calls stay in the contiguous group for aggregate summaries', () => {
     const conversation = [
       toolUseMessage('call-a', 'call-a'),
       toolResultMessage('result-a', 'call-a', 'action_required'),
@@ -170,7 +170,29 @@ describe('useChatMessageGroups paired tool-result filtering', () => {
 
     const groups = useChatMessageGroups({ getMessages: () => conversation });
 
-    expect(groups.renderRows.map((row) => row.type)).toEqual(['date', 'message', 'message']);
+    expect(groups.renderRows.map((row) => row.type)).toEqual(['date', 'tool-call-group']);
+    expect(groups.renderRows[1]).toMatchObject({
+      type: 'tool-call-group',
+      messages: [{ id: 'call-a' }, { id: 'call-b' }],
+    });
+  });
+
+  test('one contiguous run counts ordinary and waiting calls together', () => {
+    const conversation = [
+      toolUseMessage('call-a', 'call-a', 'lookup'),
+      toolResultMessage('result-a', 'call-a'),
+      toolUseMessage('call-b', 'call-b', 'issue-refund'),
+      toolResultMessage('result-b', 'call-b', 'action_required'),
+      toolUseMessage('call-c', 'call-c', 'notify'),
+    ];
+
+    const groups = useChatMessageGroups({ getMessages: () => conversation });
+    const group = groups.renderRows.find((row) => row.type === 'tool-call-group');
+
+    expect(group).toMatchObject({
+      type: 'tool-call-group',
+      messages: [{ id: 'call-a' }, { id: 'call-b' }, { id: 'call-c' }],
+    });
   });
 
   test('explicit ungrouped tool calls replace the action-required default', () => {

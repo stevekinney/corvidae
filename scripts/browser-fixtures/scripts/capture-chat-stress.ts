@@ -30,6 +30,15 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 
 import { THEME_STORAGE_KEY, buildBrowser } from '@lostgradient/testing';
+import {
+  GEOMETRY_THRESHOLDS,
+  auditCapture,
+  consolidateFindings,
+  renderGeometryReport as renderCraftGeometryReport,
+  type GeometryCapture,
+  type GeometryFinding,
+} from '@lostgradient/testing/design-review-geometry';
+import { measureGeometry } from '@lostgradient/testing/design-review-geometry-probe';
 import { HANG_GUARD_MILLISECONDS } from '@lostgradient/testing/hang-guard';
 
 import { environmentConfiguration } from '../environment-configuration.ts';
@@ -78,7 +87,7 @@ type Hooks = Record<string, (...argumentsList: unknown[]) => void>;
 type InPageMeasurement = Omit<PageMeasurement, 'pageErrors' | 'withdrawal' | 'approvalReceiptFits'>;
 
 /** Runs in the page: the geometry the plan checks. */
-function measureInPage(options: {
+export function measureInPage(options: {
   coarse: boolean;
   rtl: boolean;
   settledApproval: boolean;
@@ -88,7 +97,11 @@ function measureInPage(options: {
     const box = element.getBoundingClientRect();
     const style = getComputedStyle(element);
     return (
-      box.width > 1 && box.height > 1 && style.visibility !== 'hidden' && style.display !== 'none'
+      box.width > 1 &&
+      box.height > 1 &&
+      style.visibility !== 'hidden' &&
+      style.display !== 'none' &&
+      element.closest('[hidden], [inert], [aria-hidden="true"]') === null
     );
   };
   const nameOf = (element: Element): string =>
@@ -97,9 +110,136 @@ function measureInPage(options: {
       .trim()
       .slice(0, 60);
 
+  const boxOf = (
+    element: Element,
+  ): { left: number; top: number; right: number; bottom: number } => {
+    const box = element.getBoundingClientRect();
+    return { left: box.left, top: box.top, right: box.right, bottom: box.bottom };
+  };
+  const rectArea = (left: number, top: number, right: number, bottom: number): number =>
+    Math.max(0, right - left) * Math.max(0, bottom - top);
+  const topAt = (x: number, y: number): string => {
+    const element = document.elementFromPoint(x, y);
+    return element === null ? '' : nameOf(element);
+  };
+  const hitTargetAt = (target: Element, x: number, y: number): boolean => {
+    const hit = document.elementFromPoint(x, y);
+    return hit !== null && (hit === target || target.contains(hit));
+  };
+  const modalBackground = (element: Element): boolean => {
+    const modal = [
+      ...document.querySelectorAll('[role="dialog"][aria-modal="true"], [aria-modal="true"]'),
+    ].find((candidate) => isVisible(candidate));
+    return modal !== undefined && !modal.contains(element);
+  };
+  // Cinder overlays are portaled to document.body, outside the fixture shell. Only include
+  // visible overlay surfaces (and the shell) so background application controls cannot become
+  // a false part of the captured fixture's reachable geometry.
+  const overlayRoots = [
+    ...document.querySelectorAll(
+      '[role="dialog"], .cinder-citation__panel, .cinder-popover__sheet',
+    ),
+  ].filter(isVisible);
+  const roots = [shell, ...overlayRoots.filter((root) => root !== shell)];
+  const elementsInScope = <T extends Element>(selector: string): T[] => {
+    const elements = new Set<T>();
+    for (const root of roots) {
+      if (root.matches(selector)) elements.add(root as T);
+      for (const element of root.querySelectorAll<T>(selector)) elements.add(element);
+    }
+    return [...elements];
+  };
+  const reachableBox = (element: Element, box: DOMRect): DOMRect | undefined => {
+    if (modalBackground(element)) return undefined;
+    let left = Math.max(0, box.left);
+    let top = Math.max(0, box.top);
+    let right = Math.min(innerWidth, box.right);
+    let bottom = Math.min(innerHeight, box.bottom);
+    let ancestor = element.parentElement;
+    while (ancestor !== null && ancestor !== shell.parentElement) {
+      const style = getComputedStyle(ancestor);
+      const clipX =
+        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflow) ||
+        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowX);
+      const clipY =
+        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflow) ||
+        ['hidden', 'clip', 'auto', 'scroll'].includes(style.overflowY);
+      if (clipX || clipY) {
+        const clip = ancestor.getBoundingClientRect();
+        const clipLeft = clip.left + ancestor.clientLeft;
+        const clipTop = clip.top + ancestor.clientTop;
+        if (clipX) {
+          left = Math.max(left, clipLeft);
+          right = Math.min(right, clipLeft + ancestor.clientWidth);
+        }
+        if (clipY) {
+          top = Math.max(top, clipTop);
+          bottom = Math.min(bottom, clipTop + ancestor.clientHeight);
+        }
+      }
+      ancestor = ancestor.parentElement;
+    }
+    return right > left && bottom > top
+      ? new DOMRect(left, top, right - left, bottom - top)
+      : undefined;
+  };
+  const maskHasTransparentStop = (value: string): boolean =>
+    value !== 'none' && /transparent|rgba?\([^)]*,\s*0\)|hsla?\([^)]*,\s*0\)/i.test(value);
+  const paintedBox = (element: Element, box: DOMRect): { width: number; height: number } => {
+    const style = getComputedStyle(element);
+    const face = getComputedStyle(element, '::before');
+    if (face.content !== 'none' && face.position === 'absolute') {
+      const parseInset = (value: string): number => {
+        const parsed = Number.parseFloat(value);
+        return Number.isFinite(parsed) ? parsed : 0;
+      };
+      const top = parseInset(face.top);
+      const right = parseInset(face.right);
+      const bottom = parseInset(face.bottom);
+      const left = parseInset(face.left);
+      if (face.width === 'auto' || face.height === 'auto') {
+        return {
+          width: Math.max(0, box.width - left - right),
+          height: Math.max(0, box.height - top - bottom),
+        };
+      }
+      return {
+        width: Math.max(0, Number.parseFloat(face.width)),
+        height: Math.max(0, Number.parseFloat(face.height)),
+      };
+    }
+    const transparent = (color: string): boolean =>
+      color === 'transparent' || color.endsWith(', 0)');
+    if (style.backgroundClip === 'border-box') {
+      return { width: box.width, height: box.height };
+    }
+    const horizontal =
+      transparent(style.borderLeftColor) && transparent(style.borderRightColor)
+        ? parseFloat(style.borderLeftWidth) + parseFloat(style.borderRightWidth)
+        : 0;
+    const vertical =
+      transparent(style.borderTopColor) && transparent(style.borderBottomColor)
+        ? parseFloat(style.borderTopWidth) + parseFloat(style.borderBottomWidth)
+        : 0;
+    return {
+      width: Math.max(0, box.width - horizontal),
+      height: Math.max(0, box.height - vertical),
+    };
+  };
+
   const smallTargets: { name: string; width: number; height: number }[] = [];
+  const controlGeometry: {
+    name: string;
+    hitWidth: number;
+    hitHeight: number;
+    paintedWidth: number;
+    paintedHeight: number;
+    reachableWidth: number;
+    reachableHeight: number;
+    samples: { x: number; y: number; top: string; hitsTarget: boolean }[];
+  }[] = [];
   if (options.coarse) {
-    const controls = shell.querySelectorAll(
+    const controls = elementsInScope<HTMLElement>(
       'button, [role="button"], [role="radio"], [role="checkbox"], a[href], textarea, select, summary',
     );
     for (const element of controls) {
@@ -108,6 +248,34 @@ function measureInPage(options: {
       // A link inside a sentence is sized by its text, not by the touch target rule.
       if (element.matches('a') && element.closest('p, li, td') !== null) continue;
       const box = element.getBoundingClientRect();
+      const reachable = reachableBox(element, box);
+      if (reachable === undefined) continue;
+      const painted = paintedBox(element, box);
+      const samplePoints: readonly [number, number][] = [
+        [reachable.left + reachable.width / 2, reachable.top + reachable.height / 2],
+        [reachable.left + Math.min(8, reachable.width / 2), reachable.top + reachable.height / 2],
+        [reachable.right - Math.min(8, reachable.width / 2), reachable.top + reachable.height / 2],
+        [reachable.left + reachable.width / 2, reachable.top + Math.min(8, reachable.height / 2)],
+        [
+          reachable.left + reachable.width / 2,
+          reachable.bottom - Math.min(8, reachable.height / 2),
+        ],
+      ];
+      controlGeometry.push({
+        name: nameOf(element),
+        hitWidth: Math.round(box.width * 100) / 100,
+        hitHeight: Math.round(box.height * 100) / 100,
+        paintedWidth: Math.round(painted.width * 100) / 100,
+        paintedHeight: Math.round(painted.height * 100) / 100,
+        reachableWidth: Math.round(reachable.width * 100) / 100,
+        reachableHeight: Math.round(reachable.height * 100) / 100,
+        samples: samplePoints.map(([x, y]) => ({
+          x: Math.round(x * 100) / 100,
+          y: Math.round(y * 100) / 100,
+          top: topAt(x, y),
+          hitsTarget: hitTargetAt(element, x, y),
+        })),
+      });
       if (box.width < 44 || box.height < 44) {
         smallTargets.push({
           name: nameOf(element),
@@ -117,6 +285,142 @@ function measureInPage(options: {
       }
     }
   }
+
+  const occlusions: {
+    target: string;
+    overlay: string;
+    overlapWidth: number;
+    overlapHeight: number;
+  }[] = [];
+  const important = elementsInScope<HTMLButtonElement>('button, [role="button"]').filter(
+    (element) => {
+      const label = nameOf(element).toLowerCase();
+      const approvalSurface = element.closest(
+        '[class*="approval"], [data-chat-approval-drawer], .chat-tool-call-summary',
+      );
+      return (
+        label.includes('approve') ||
+        label.includes('deny') ||
+        label.includes('copy') ||
+        label.includes('refund') ||
+        (approvalSurface !== null && !label.includes('review'))
+      );
+    },
+  );
+  for (const target of important) {
+    const targetBox = target.getBoundingClientRect();
+    if (
+      !isVisible(target) ||
+      reachableBox(target, targetBox) === undefined ||
+      targetBox.bottom <= 0 ||
+      targetBox.top >= innerHeight
+    )
+      continue;
+    for (const candidate of elementsInScope('*')) {
+      if (candidate === target || target.contains(candidate)) continue;
+      const style = getComputedStyle(candidate);
+      const pseudoStyles = [
+        getComputedStyle(candidate, '::before'),
+        getComputedStyle(candidate, '::after'),
+      ];
+      const positioned = ['absolute', 'fixed', 'sticky'].includes(style.position);
+      const namedFade = candidate.matches(
+        '[data-approval-fade], [class*="fade"], [class*="overlay"], [class*="mask"], .cinder-_scroll-fade, .cinder-_scroll-fade-start',
+      );
+      const visualMask =
+        maskHasTransparentStop(style.maskImage) ||
+        maskHasTransparentStop(style.webkitMaskImage) ||
+        pseudoStyles.some(
+          (pseudo) =>
+            maskHasTransparentStop(pseudo.maskImage) ||
+            maskHasTransparentStop(pseudo.webkitMaskImage),
+        );
+      const visualFade =
+        namedFade &&
+        (style.backgroundImage.includes('gradient') ||
+          style.opacity !== '1' ||
+          pseudoStyles.some(
+            (pseudo) => pseudo.backgroundImage.includes('gradient') || pseudo.opacity !== '1',
+          ));
+      if (!positioned || (!visualMask && !visualFade)) continue;
+      const candidateBox = candidate.getBoundingClientRect();
+      const left = Math.max(targetBox.left, candidateBox.left);
+      const top = Math.max(targetBox.top, candidateBox.top);
+      const right = Math.min(targetBox.right, candidateBox.right);
+      const bottom = Math.min(targetBox.bottom, candidateBox.bottom);
+      if (rectArea(left, top, right, bottom) === 0) continue;
+      const samples = [
+        [targetBox.left + targetBox.width / 2, targetBox.top + targetBox.height / 2],
+        [targetBox.left + 2, targetBox.top + targetBox.height / 2],
+        [targetBox.right - 2, targetBox.top + targetBox.height / 2],
+      ] as const;
+      if (visualMask || visualFade || samples.some(([x, y]) => !hitTargetAt(target, x, y))) {
+        occlusions.push({
+          target: nameOf(target),
+          overlay: nameOf(candidate),
+          overlapWidth: Math.round((right - left) * 100) / 100,
+          overlapHeight: Math.round((bottom - top) * 100) / 100,
+        });
+      }
+    }
+    if (nameOf(target).toLowerCase().includes('copy')) {
+      const codeBlock = target.closest(
+        '[data-cinder-markdown-kind="code-block"], .cinder-code-block',
+      );
+      const code = codeBlock?.querySelector('pre, code');
+      const viewport = codeBlock?.querySelector('.cinder-code-block__viewport');
+      if (code !== null && code !== undefined && codeBlock !== null && codeBlock !== undefined) {
+        const codeBox = code.getBoundingClientRect();
+        const viewportBox = (viewport ?? codeBlock).getBoundingClientRect();
+        const visibleCode = reachableBox(code, codeBox);
+        const left = Math.max(
+          targetBox.left,
+          visibleCode?.left ?? viewportBox.left,
+          viewportBox.left,
+        );
+        const top = Math.max(targetBox.top, visibleCode?.top ?? viewportBox.top, viewportBox.top);
+        const right = Math.min(
+          targetBox.right,
+          visibleCode?.right ?? viewportBox.right,
+          viewportBox.right,
+        );
+        const bottom = Math.min(
+          targetBox.bottom,
+          visibleCode?.bottom ?? viewportBox.bottom,
+          viewportBox.bottom,
+        );
+        if (rectArea(left, top, right, bottom) > 0) {
+          occlusions.push({
+            target: nameOf(target),
+            overlay: 'code content',
+            overlapWidth: Math.round((right - left) * 100) / 100,
+            overlapHeight: Math.round((bottom - top) * 100) / 100,
+          });
+        }
+      }
+    }
+  }
+
+  const chromeParts: { name: string; top: number; bottom: number }[] = [];
+  for (const element of shell.querySelectorAll(
+    '.chat-input-area, [data-chat-approval-drawer], [data-chat-follow-up], [data-chat-attachment]',
+  )) {
+    if (!isVisible(element)) continue;
+    const box = boxOf(element);
+    chromeParts.push({
+      name: nameOf(element),
+      top: Math.round(box.top * 100) / 100,
+      bottom: Math.round(box.bottom * 100) / 100,
+    });
+  }
+  const chromeTop =
+    chromeParts.length === 0 ? innerHeight : Math.min(...chromeParts.map((part) => part.top));
+  const bottomChrome = {
+    height: Math.round(Math.max(0, innerHeight - chromeTop) * 100) / 100,
+    viewportHeight: innerHeight,
+    share: Math.round((Math.max(0, innerHeight - chromeTop) / innerHeight) * 10000) / 10000,
+    parts: chromeParts,
+  };
 
   const clippedStatuses: string[] = [];
   for (const element of shell.querySelectorAll(
@@ -159,6 +463,10 @@ function measureInPage(options: {
       client: document.documentElement.clientWidth,
     },
     smallTargets,
+    controlGeometry,
+    occlusions,
+    bottomChrome,
+    pendingHighlights: shell.querySelectorAll('[data-cinder-highlight-state="pending"]').length,
     clippedStatuses,
     directions,
     jumpOverlapsTranscript:
@@ -204,16 +512,39 @@ function observeAnnouncements(): void {
 }
 
 /** Runs in the page: checks that the action has a rendered focus ring and the citation closed. */
-function readWithdrawal(): { announcements: number; focusVisible: boolean } {
+export function readWithdrawal(): { announcements: number; focusVisible: boolean } {
   const host = window as WithdrawalWindow;
   const active = document.activeElement;
   const shell = document.querySelector('[data-testid="chat-stress-shell"]');
   const style = active === null ? undefined : getComputedStyle(active);
+  const hasPaint = (pseudo: '::before' | '::after'): boolean => {
+    if (active === null) return false;
+    const pseudoStyle = getComputedStyle(active, pseudo);
+    const content = pseudoStyle.content;
+    const opacity = Number.parseFloat(pseudoStyle.opacity);
+    const visibility = pseudoStyle.visibility;
+    const display = pseudoStyle.display;
+    return (
+      content !== 'none' &&
+      content !== 'normal' &&
+      opacity > 0 &&
+      visibility !== 'hidden' &&
+      display !== 'none' &&
+      (pseudoStyle.boxShadow !== 'none' ||
+        pseudoStyle.outlineStyle !== 'none' ||
+        pseudoStyle.backgroundColor !== 'rgba(0, 0, 0, 0)')
+    );
+  };
+  const focusPainted =
+    style?.boxShadow !== 'none' ||
+    style?.outlineStyle !== 'none' ||
+    hasPaint('::before') ||
+    hasPaint('::after');
   const box = active?.getBoundingClientRect();
   const focusVisible =
     active?.matches('.chat-message-action-button') === true &&
     shell?.contains(active) === true &&
-    style?.boxShadow !== 'none' &&
+    focusPainted &&
     box !== undefined &&
     box.width > 0 &&
     box.bottom > 0 &&
@@ -287,11 +618,13 @@ function callHook(page: Page, name: string, argument: unknown): Promise<void> {
   );
 }
 
-function locate(page: Page, step: Extract<StressStep, { role: string }>) {
-  return page.getByRole(step.role as Role, { name: step.name }).nth(step.nth ?? 0);
+export function locate(page: Page, step: Extract<StressStep, { role: string }>) {
+  const scope = 'scope' in step ? step.scope : undefined;
+  const root = scope === undefined ? page : page.locator(scope);
+  return root.getByRole(step.role as Role, { name: step.name }).nth(step.nth ?? 0);
 }
 
-async function runStep(page: Page, step: StressStep): Promise<void> {
+export async function runStep(page: Page, step: StressStep): Promise<void> {
   switch (step.action) {
     case 'click':
       await locate(page, step).click({ timeout: DEADLINE });
@@ -301,6 +634,25 @@ async function runStep(page: Page, step: StressStep): Promise<void> {
       return;
     case 'focus':
       await locate(page, step).focus({ timeout: DEADLINE });
+      return;
+    case 'focus-source':
+      await page
+        .locator('[data-chat-sources-trigger] .cinder-citation__marker')
+        .first()
+        .focus({ timeout: DEADLINE });
+      await page
+        .locator('[data-chat-sources-trigger] .cinder-citation__marker')
+        .first()
+        .evaluate((element) => {
+          if (document.activeElement !== element)
+            throw new Error('Source marker did not receive focus.');
+        });
+      return;
+    case 'expect-source-open':
+      await page.locator('.cinder-citation__panel').first().waitFor({
+        state: 'visible',
+        timeout: DEADLINE,
+      });
       return;
     case 'press':
       await page.keyboard.press(step.key);
@@ -312,7 +664,41 @@ async function runStep(page: Page, step: StressStep): Promise<void> {
       await locate(page, step).waitFor({ state: 'visible', timeout: DEADLINE });
       return;
     case 'expect-text':
-      await page.getByText(step.text).first().waitFor({ state: 'visible', timeout: DEADLINE });
+      await (step.scope === undefined ? page : page.locator(step.scope))
+        .getByText(step.text, { exact: step.exact === true })
+        .first()
+        .waitFor({ state: 'visible', timeout: DEADLINE });
+      return;
+    case 'expect-offscreen':
+      await page.waitForFunction(
+        (selector) => {
+          const element = document.querySelector(selector);
+          if (element === null) return false;
+          const box = element.getBoundingClientRect();
+          let left = Math.max(0, box.left);
+          let top = Math.max(0, box.top);
+          let right = Math.min(innerWidth, box.right);
+          let bottom = Math.min(innerHeight, box.bottom);
+          let ancestor = element.parentElement;
+          while (ancestor !== null) {
+            const style = getComputedStyle(ancestor);
+            if (['hidden', 'clip', 'auto', 'scroll'].includes(style.overflow)) {
+              const clip = ancestor.getBoundingClientRect();
+              left = Math.max(left, clip.left + ancestor.clientLeft);
+              top = Math.max(top, clip.top + ancestor.clientTop);
+              right = Math.min(right, clip.left + ancestor.clientWidth);
+              bottom = Math.min(bottom, clip.top + ancestor.clientHeight);
+            }
+            ancestor = ancestor.parentElement;
+          }
+          return right <= left || bottom <= top;
+        },
+        step.selector,
+        { timeout: DEADLINE },
+      );
+      return;
+    case 'expect-absent':
+      await page.locator(step.selector).first().waitFor({ state: 'hidden', timeout: DEADLINE });
       return;
     case 'upload':
       await page
@@ -351,7 +737,12 @@ async function openCase(
   const startTime = new Date(STRESS_NOW);
   // Expiry needs both the clock and the deadline callbacks to advance. Its isolated context
   // leaves the ordinary captures on a fixed instant with real browser timers.
-  if (stressCase.slug === 'approval-expired') await context.clock.install({ time: startTime });
+  if (
+    stressCase.slug === 'approval-expired' ||
+    stressCase.slug === 'loading-slow' ||
+    stressCase.slug === 'loading-canceled'
+  )
+    await context.clock.install({ time: startTime });
   else await context.clock.setFixedTime(startTime);
   const page = await context.newPage();
   page.setDefaultTimeout(DEADLINE);
@@ -376,16 +767,32 @@ async function openCase(
 }
 
 async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonly StressStep[]) {
+  if (stressCase.slug === 'loading-slow' || stressCase.slug === 'loading-canceled') {
+    await opened.page.clock.fastForward(1_000);
+  }
   if (stressCase.slug === 'approval-expired') {
     await opened.page
       .getByText('1 waiting for approval', { exact: false })
       .first()
       .waitFor({ state: 'visible', timeout: DEADLINE });
-    await opened.page.locator('[data-chat-approval-drawer]').waitFor({
+    await opened.page.locator('.cinder-approval-card').first().waitFor({
       state: 'visible',
       timeout: DEADLINE,
     });
     await opened.page.clock.fastForward(31_000);
+    await opened.page.waitForFunction(
+      () => {
+        const card = document.querySelector('.cinder-approval-card');
+        const summaries = [...document.querySelectorAll('.chat-tool-call-summary')];
+        return (
+          card?.textContent?.toLowerCase().includes('expired') === true &&
+          summaries.some((summary) => summary.textContent?.includes('1 expired')) &&
+          summaries.every((summary) => !summary.textContent?.includes('waiting for approval'))
+        );
+      },
+      undefined,
+      { timeout: DEADLINE },
+    );
   }
   for (const step of steps) {
     // Count announcements from the moment the host withdraws the source, not before.
@@ -395,11 +802,16 @@ async function runSteps(opened: OpenCase, stressCase: StressCase, steps: readonl
     await runStep(opened.page, step);
   }
   if (stressCase.slug === 'approval-expired') {
-    await opened.page.locator('[data-chat-approval-drawer]').waitFor({
-      state: 'hidden',
+    await opened.page.getByRole('button', { name: 'Ask again' }).waitFor({
+      state: 'visible',
       timeout: DEADLINE,
     });
   }
+  await opened.page.waitForFunction(
+    () => document.querySelector('[data-cinder-highlight-state="pending"]') === null,
+    undefined,
+    { timeout: DEADLINE },
+  );
 }
 
 async function measure(
@@ -416,6 +828,7 @@ async function measure(
   const withdrawal = stressCase.id === 45 ? await opened.page.evaluate(readWithdrawal) : undefined;
   const measurement: PageMeasurement = {
     ...inPage,
+    geometry: await measureGeometry(opened.page),
     pageErrors: opened.errors,
     ...(withdrawal === undefined ? {} : { withdrawal }),
     ...(stressCase.id === 55
@@ -430,6 +843,66 @@ interface RunState {
   readonly origin: string;
   readonly records: CaptureRecord[];
   readonly errors: string[];
+}
+
+function renderInteractionGeometryReport(records: readonly CaptureRecord[]): string {
+  const lines = [
+    '# Chat stress geometry report',
+    '',
+    'Metrics are recorded from the same page state as each frame. Bottom-chrome share is evidence only; it is not a universal pass/fail threshold.',
+    '',
+    '| Frame | Controls (hit → reachable) | Occlusions | Pending highlights | Bottom chrome |',
+    '| --- | --- | ---: | ---: | ---: |',
+  ];
+  for (const record of records) {
+    const measurement = record.measurement;
+    if (measurement === undefined) continue;
+    const occlusions = measurement.occlusions ?? [];
+    const chrome = measurement.bottomChrome;
+    const details = occlusions.map((entry) => `${entry.target} ← ${entry.overlay}`).join(', ');
+    const controls = (measurement.controlGeometry ?? [])
+      .map(
+        (control) =>
+          `${control.name}: ${control.hitWidth}×${control.hitHeight} → ${control.reachableWidth}×${control.reachableHeight}`,
+      )
+      .join('<br>');
+    lines.push(
+      `| ${record.file}${details === '' ? '' : ` (${details})`} | ${controls === '' ? 'none' : controls} | ${occlusions.length} | ${measurement.pendingHighlights ?? 0} | ${chrome === undefined ? 'n/a' : `${Math.round(chrome.share * 10000) / 100}% (${chrome.height}px)`} |`,
+    );
+  }
+  return `${lines.join('\n')}\n`;
+}
+
+function renderCraftGeometryArtifacts(records: readonly CaptureRecord[]): {
+  readonly report: string;
+  readonly findings: object;
+} {
+  const findings: GeometryFinding[] = [];
+  let measured = 0;
+  let coarse = 0;
+  let unscaled = 0;
+  for (const record of records) {
+    const facts = record.measurement?.geometry;
+    if (facts === undefined) continue;
+    measured += 1;
+    if (facts.pointerCoarse) coarse += 1;
+    if (facts.spaceScale.length < 3) unscaled += 1;
+    const capture: GeometryCapture = {
+      route: '/chat-stress',
+      state: `case ${caseLabel(record.caseId)}${record.variant === undefined ? '' : ` (${record.variant})`}`,
+      source: 'chat-stress',
+      width: facts.viewport.width,
+      colorScheme: record.profile.endsWith('-dark') ? 'dark' : 'light',
+      viewport: record.file,
+    };
+    findings.push(...auditCapture(facts, capture));
+  }
+  const coverage = { captures: records.length, measured, coarse, unscaled } as const;
+  const consolidated = consolidateFindings(findings);
+  return {
+    report: renderCraftGeometryReport(consolidated, coverage),
+    findings: { coverage, thresholds: GEOMETRY_THRESHOLDS, findings: consolidated },
+  };
 }
 
 /** Takes one image of a case: a fresh page, the steps, the picture and its measurement. */
@@ -447,12 +920,14 @@ async function captureImage(
   const label = `case ${caseLabel(stressCase.id)} at ${profile.name}${image.variant === undefined ? '' : ` ${image.variant}`}`;
   let problems: string[] = [];
   let edge: number | null = null;
+  let measurement: PageMeasurement | undefined;
   let opened: OpenCase | undefined;
   try {
     opened = await openCase(context, state.origin, stressCase);
     await runSteps(opened, stressCase, image.steps);
     const measured = await measure(opened, stressCase, profile);
     problems = measured.problems;
+    measurement = measured.measurement;
     edge = measured.measurement.composerEdge;
   } catch (error) {
     problems = [`flow failed: ${error instanceof Error ? error.message : String(error)}`];
@@ -484,6 +959,7 @@ async function captureImage(
       ...(image.variant === undefined ? {} : { variant: image.variant }),
       file,
       problems,
+      ...(measurement === undefined ? {} : { measurement }),
       ...(stressCase.deferred === undefined ? {} : { deferred: stressCase.deferred }),
     });
   }
@@ -508,6 +984,12 @@ async function captureFocusSweep(
       if (!stop.inside || !stop.fresh) break;
       const variant = focusVariantName(index);
       const file = variantImageName(profile, stressCase.id, variant);
+      const measured = await measure(opened, stressCase, profile);
+      if (measured.problems.length > 0) {
+        state.errors.push(
+          `case ${caseLabel(stressCase.id)} at ${profile.name} ${variant}: ${measured.problems.join('; ')}`,
+        );
+      }
       await opened.page.screenshot({
         path: join(state.directory, file),
         animations: 'disabled',
@@ -521,7 +1003,8 @@ async function captureFocusSweep(
         variant,
         file,
         focus: { index, name: stop.name },
-        problems: [],
+        problems: measured.problems,
+        measurement: measured.measurement,
       });
     }
   } catch (error) {
@@ -740,6 +1223,16 @@ async function main(): Promise<number> {
   await writeFile(
     join(directory, 'manifest.jsonl'),
     `${records.map((record) => JSON.stringify(record)).join('\n')}\n`,
+  );
+  const craftGeometry = renderCraftGeometryArtifacts(records);
+  await writeFile(
+    join(directory, 'interaction-geometry-report.md'),
+    renderInteractionGeometryReport(records),
+  );
+  await writeFile(join(directory, 'geometry-report.md'), craftGeometry.report);
+  await writeFile(
+    join(directory, 'geometry-findings.json'),
+    `${JSON.stringify(craftGeometry.findings, null, 2)}\n`,
   );
   await writeFile(join(directory, 'summary.json'), `${JSON.stringify(finalSummary, null, 2)}\n`);
 

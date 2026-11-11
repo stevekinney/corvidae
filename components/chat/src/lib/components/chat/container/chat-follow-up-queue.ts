@@ -30,6 +30,14 @@ export const FOLLOW_UP_DRAWER_TITLE = 'Up next';
 
 /** The action that hands the queued follow-ups to the running run now, as live input. */
 export const FOLLOW_UP_SEND_NOW_LABEL = 'Send now instead';
+/** Accessible labels for the compact per-row queue controls. */
+export function followUpEditLabel(index: number): string {
+  return `Edit queued follow-up ${index}`;
+}
+
+export function followUpRemoveLabel(index: number): string {
+  return `Remove queued follow-up ${index}`;
+}
 
 /** The discard drawer's action, which puts the follow-ups back in the composer. */
 export const FOLLOW_UP_RESTORE_LABEL = 'Restore';

@@ -123,53 +123,6 @@
     width: 100%;
   }
 
-  /* A button in a header's actions draws at xs but keeps a touch-sized hit area on coarse
-     pointers: an invisible block-axis extension, never visual height. */
-  @media (pointer: coarse) {
-    /* Keep the painted control compact while exposing its touch target as a stable, inspectable
-       surface. The pseudo-element extends only along the block axis; it never covers adjacent
-       controls in the inline axis and therefore does not create competing tap regions. */
-    .cinder-button[data-cinder-hit-target='44']:not([data-cinder-compact]) {
-      position: relative;
-      z-index: 0;
-    }
-
-    .cinder-button[data-cinder-hit-target='44']:not([data-cinder-compact])::before {
-      content: '';
-      position: absolute;
-      z-index: 0;
-      inset-inline: 0;
-      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
-    }
-
-    .cinder-button[data-cinder-size='xs']:not([data-cinder-compact]) {
-      min-height: var(--cinder-button-height-xs-fine, 1.5rem);
-    }
-
-    .cinder-button[data-cinder-size='sm']:not([data-cinder-compact]) {
-      min-height: var(--cinder-button-height-sm-fine, 1.75rem);
-    }
-
-    .cinder-button[data-cinder-size='md']:not([data-cinder-compact]) {
-      min-height: var(--cinder-button-height-md-fine, 2rem);
-    }
-
-    .cinder-button[data-cinder-size='lg']:not([data-cinder-compact]) {
-      min-height: var(--cinder-button-height-lg-fine, 2.5rem);
-    }
-
-    .cinder-button[data-cinder-compact] {
-      position: relative;
-    }
-
-    .cinder-button[data-cinder-compact]::before {
-      content: '';
-      position: absolute;
-      inset-inline: 0;
-      inset-block: calc((100% - var(--cinder-touch-target-min)) / 2);
-    }
-  }
-
   /* ----------------------------------------
  * Size variants
  * ---------------------------------------- */
@@ -229,9 +182,8 @@
     min-width: var(--cinder-button-height-lg);
   }
 
-  /* A compact button (in a header's actions) keeps its fine-pointer visual height on a coarse
-     pointer, where the `xs` step is raised to the touch target; the hit-area extension above
-     supplies the 44px target. Declared after the size rules so it wins at equal specificity. */
+  /* A compact button (in a header's actions) keeps its fine-pointer visual height. The coarse
+     pointer rule above owns its real 44px hit box, so this value remains the painted surface size. */
   .cinder-button[data-cinder-compact] {
     min-height: var(--_cinder-compact-control-height);
   }
@@ -719,6 +671,92 @@
       background: ButtonFace;
       border-color: ButtonBorder;
       color: ButtonText;
+    }
+  }
+
+  /* On coarse pointers the button owns the 44px hit region. A transparent border expands the
+     element's real box, while `padding-box` keeps every existing variant/state background on the
+     compact face. This leaves one element as both the hit target and the stateful face. */
+  @media (pointer: coarse) {
+    .cinder-button[data-cinder-hit-target='44'] {
+      min-height: var(--cinder-touch-target-min);
+      background-clip: padding-box;
+      border: 10px solid transparent;
+      border-color: transparent !important;
+    }
+
+    /* Variant shorthands reset background-clip. Match their specificity so every state keeps the
+       compact face clip, including icon-only chrome, hover, pressed and loading. */
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-variant] {
+      background-clip: padding-box !important;
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='xs'] {
+      border-width: 10px;
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='sm'] {
+      border-width: 8px;
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='md'] {
+      border-width: 6px;
+    }
+
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-size='lg'] {
+      border-width: 2px;
+    }
+
+    /* The inset ring is clipped to the padding box, so outlined faces remain compact while their
+       transparent border continues to provide the full hit region. Filled and ghost text faces
+       intentionally remain borderless. */
+    .cinder-button[data-cinder-hit-target='44'][data-cinder-variant='secondary']:not(
+        :focus-visible
+      ) {
+      box-shadow: inset 0 0 0 1px var(--cinder-button-border);
+    }
+
+    @media (forced-colors: active) {
+      .cinder-button[data-cinder-hit-target='44'] {
+        border: 1px solid ButtonBorder !important;
+        background-clip: content-box;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-variant] {
+        background-clip: content-box !important;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-size='xs'] {
+        padding-block: 10px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-size='sm'] {
+        padding-block: 8px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-size='md'] {
+        padding-block: 6px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-size='lg'] {
+        padding-block: 2px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='xs'] {
+        padding-inline: 10px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='sm'] {
+        padding-inline: 8px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='md'] {
+        padding-inline: 6px;
+      }
+
+      .cinder-button[data-cinder-hit-target='44'][data-cinder-icon-only][data-cinder-size='lg'] {
+        padding-inline: 2px;
+      }
     }
   }
 }

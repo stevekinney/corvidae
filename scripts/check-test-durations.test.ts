@@ -238,6 +238,8 @@ describe('budgetFailures', () => {
 describe('finishRun', () => {
   const slowReport =
     '<testsuite><testcase name="t" classname="c" time="3" file="f.test.ts" /></testsuite>';
+  const workerCrashReport =
+    '<testsuite name="f.test.ts"><testcase name="(worker crashed)"><failure message="worker process crashed before reporting results" /></testcase></testsuite>';
 
   test('warns about an over-budget test in a passing run but never fails the run', () => {
     const messages: string[] = [];
@@ -255,6 +257,12 @@ describe('finishRun', () => {
       ),
     ).toBe(0);
     expect(messages).toEqual([]);
+  });
+
+  test('fails a passing leader when a worker crash is recorded, while preserving a real failure', () => {
+    expect(finishRun('w', 0, [workerCrashReport], [], () => {})).toBe(1);
+    expect(finishRun('w', 7, [workerCrashReport], [], () => {})).toBe(7);
+    expect(finishRun('w', 0, [slowReport], [], () => {})).toBe(0);
   });
 });
 

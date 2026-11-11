@@ -52,7 +52,7 @@
     "scenario": "availability",
     "params": {
       "kind": "loading",
-      "slowAfterSeconds": 0
+      "slowAfterSeconds": 1
     },
     "steps": [
       {
@@ -74,7 +74,7 @@
     "scenario": "availability",
     "params": {
       "kind": "loading",
-      "slowAfterSeconds": 0
+      "slowAfterSeconds": 1
     },
     "steps": [
       {
@@ -583,7 +583,7 @@
       {
         "action": "expect",
         "role": "button",
-        "name": "Approve"
+        "name": "Run export"
       }
     ],
     "variants": [],
@@ -878,13 +878,7 @@
     "params": {
       "presentation": "inline"
     },
-    "steps": [
-      {
-        "action": "expect",
-        "role": "button",
-        "name": "docs.example.com"
-      }
-    ],
+    "steps": [{ "action": "focus-source" }],
     "variants": [],
     "focusSweep": false
   },
@@ -1075,15 +1069,12 @@
       "withdrawable": true
     },
     "steps": [
-      {
-        "action": "focus",
-        "role": "button",
-        "name": "docs.example.com"
-      },
+      { "action": "focus-source" },
       {
         "action": "press",
         "key": "Enter"
       },
+      { "action": "expect-source-open" },
       {
         "action": "hook",
         "name": "withdrawSource",
@@ -1221,12 +1212,45 @@
         ]
       },
       {
+        "action": "expect-text",
+        "text": "3 files"
+      },
+      {
         "action": "expect",
         "role": "button",
-        "name": "Remove receipts.pdf"
+        "name": "Remove plan.pdf"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "Remove ledger.pdf"
+      },
+      {
+        "action": "expect",
+        "role": "button",
+        "name": "1 more below"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "revealed",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "plan.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "ledger.pdf", "mimeType": "application/pdf", "bytes": 4096 },
+              { "name": "receipts.pdf", "mimeType": "application/pdf", "bytes": 8192 }
+            ]
+          },
+          { "action": "expect-text", "text": "3 files" },
+          { "action": "click", "role": "button", "name": "1 more below" },
+          { "action": "expect", "role": "button", "name": "Remove plan.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove ledger.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipts.pdf" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -1273,7 +1297,7 @@
       },
       {
         "action": "expect-text",
-        "text": "Retry or remove"
+        "text": "need attention"
       }
     ],
     "variants": [],
@@ -1293,9 +1317,28 @@
     },
     "steps": [
       {
+        "action": "expect-text",
+        "text": "Which ledger should orders_reconciliation_ledger_export_with_a_very_long_generated_identifier_v2 export?",
+        "scope": "[data-chat-question-dock] fieldset",
+        "exact": true
+      },
+      {
         "action": "expect",
-        "role": "heading",
-        "name": "Which ledger should"
+        "role": "radio",
+        "name": "Staging",
+        "scope": "[data-chat-question-dock] fieldset"
+      },
+      {
+        "action": "expect",
+        "role": "radio",
+        "name": "Production",
+        "scope": "[data-chat-question-dock] fieldset"
+      },
+      {
+        "action": "expect",
+        "role": "radio",
+        "name": "Canary",
+        "scope": "[data-chat-question-dock] fieldset"
       }
     ],
     "variants": [],
@@ -1338,7 +1381,7 @@
       {
         "action": "click",
         "role": "button",
-        "name": "Approve"
+        "name": "Refund $42.00"
       },
       {
         "action": "expect-text",
@@ -1403,7 +1446,8 @@
     "rows": ["M7"],
     "scenario": "approval",
     "params": {
-      "shape": "reversible"
+      "shape": "reversible",
+      "approvalOffscreen": true
     },
     "steps": [
       {
@@ -1413,9 +1457,18 @@
         "text": "Also notify finance"
       },
       {
+        "action": "scroll",
+        "to": "top"
+      },
+      {
+        "action": "expect-offscreen",
+        "selector": ".cinder-approval-card[data-cinder-state=\"pending\"]"
+      },
+      {
         "action": "expect",
         "role": "button",
-        "name": "Review approval"
+        "name": "Review approval",
+        "scope": ".cinder-approval-card[data-cinder-state=\"pending\"], [data-chat-approval-drawer]"
       },
       {
         "action": "expect",
@@ -1423,7 +1476,33 @@
         "name": "Queue message"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "reviewed",
+        "steps": [
+          { "action": "scroll", "to": "top" },
+          {
+            "action": "click",
+            "role": "button",
+            "name": "Review approval",
+            "scope": "[data-chat-approval-drawer]"
+          },
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Refund $42.00",
+            "scope": ".cinder-approval-card[data-cinder-state=\"pending\"]"
+          },
+          {
+            "action": "expect",
+            "role": "button",
+            "name": "Deny",
+            "scope": ".cinder-approval-card[data-cinder-state=\"pending\"]"
+          },
+          { "action": "expect-absent", "selector": "[data-chat-approval-drawer]" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {
@@ -1596,12 +1675,57 @@
         ]
       },
       {
+        "action": "expect-text",
+        "text": "14 files"
+      },
+      {
         "action": "expect",
         "role": "button",
         "name": "11 more"
       }
     ],
-    "variants": [],
+    "variants": [
+      {
+        "name": "revealed",
+        "steps": [
+          {
+            "action": "upload",
+            "files": [
+              { "name": "receipt-01.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-02.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-03.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-04.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-05.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-06.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-07.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-08.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-09.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-10.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-11.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-12.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-13.pdf", "mimeType": "application/pdf", "bytes": 2048 },
+              { "name": "receipt-14.pdf", "mimeType": "application/pdf", "bytes": 2048 }
+            ]
+          },
+          { "action": "expect-text", "text": "14 files" },
+          { "action": "click", "role": "button", "name": "11 more" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-01.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-02.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-03.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-04.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-05.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-06.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-07.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-08.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-09.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-10.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-11.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-12.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-13.pdf" },
+          { "action": "expect", "role": "button", "name": "Remove receipt-14.pdf" }
+        ]
+      }
+    ],
     "focusSweep": false
   },
   {

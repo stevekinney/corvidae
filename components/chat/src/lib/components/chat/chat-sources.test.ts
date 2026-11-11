@@ -469,19 +469,68 @@ describe('Chat — sourcePresentation="inline"', () => {
     ).toBe('group');
   });
 
-  test('each chip reads its host or its label, in order, with duplicates kept', async () => {
+  test('coarse pointers use one compact Sources marker instead of a touch-target wall', async () => {
+    const originalMatchMedia = window.matchMedia;
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      value: (query: string) => ({
+        matches: query === '(pointer: coarse)',
+        media: query,
+        onchange: null,
+        addEventListener: () => {},
+        removeEventListener: () => {},
+        addListener: () => {},
+        removeListener: () => {},
+        dispatchEvent: () => false,
+      }),
+    });
+    try {
+      const { container, rerender } = render(Chat, {
+        id: 'sources-inline-coarse',
+        conversation: sourcedConversation(),
+        sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+        sourcePresentation: 'inline',
+      });
+      await tick();
+
+      const article = messageArticle(container, 'assistant-a');
+      expect(article.querySelector('.chat-message-source-chips')).toBeNull();
+      const compact = article.querySelector<HTMLButtonElement>(
+        '.chat-message-sources-citation .cinder-citation__marker',
+      );
+      expect(compact?.getAttribute('aria-label')).toBe('Sources (4)');
+      compact?.focus();
+      expect(document.activeElement).toBe(compact);
+
+      await rerender({ sourcesByMessageId: new Map() });
+      await waitFor(() => expect(document.activeElement === article).toBe(true));
+    } finally {
+      Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        value: originalMatchMedia,
+      });
+    }
+  });
+
+  test('each chip disambiguates same-host sources with their supplied labels', async () => {
+    const ambiguousSources: readonly CitationSource[] = [
+      { label: 'Annual report', url: 'https://example.com/annual' },
+      { label: 'Board minutes' },
+      { label: 'Audit appendix', url: 'https://example.com/audit' },
+      { label: 'Unsafe source', url: 'javascript:alert(1)' },
+    ];
     const { container } = render(Chat, {
       id: 'sources-inline-labels',
       conversation: sourcedConversation(),
-      sourcesByMessageId: new Map([['assistant-a', sourcesForA]]),
+      sourcesByMessageId: new Map([['assistant-a', ambiguousSources]]),
       sourcePresentation: 'inline',
     });
     await tick();
 
     expect(chips(container, 'assistant-a').map((chip) => chip.textContent?.trim())).toEqual([
-      'example.com',
+      'Annual report',
       'Board minutes',
-      'example.com',
+      'Audit appendix',
       'Unsafe source',
     ]);
     // The text is drawn with its own direction, so a right-to-left label stays readable.

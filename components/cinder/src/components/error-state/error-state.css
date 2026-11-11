@@ -171,10 +171,27 @@
   }
 
   .cinder-error-state-details-summary {
-    display: inline-block;
+    display: inline-flex;
+    align-items: center;
+    gap: var(--cinder-space-1);
     cursor: pointer;
-    color: var(--cinder-text-subtle);
+    color: var(--cinder-text-default);
     line-height: var(--cinder-leading-normal);
+  }
+
+  .cinder-error-state-details-summary::before {
+    content: '›';
+    display: inline-block;
+    inline-size: 1rem;
+    block-size: 1rem;
+    font-size: var(--cinder-text-lg);
+    line-height: 0.875rem;
+    text-align: center;
+    transition: transform var(--cinder-duration-fast) var(--cinder-ease-standard);
+  }
+
+  .cinder-error-state-details[open] .cinder-error-state-details-summary::before {
+    transform: rotate(90deg);
   }
 
   @media (any-pointer: coarse) {

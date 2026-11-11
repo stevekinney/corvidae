@@ -4,14 +4,22 @@ import { compile, compileModule, parse } from 'svelte/compiler';
 import ts from 'typescript';
 import { environmentConfiguration } from './environment-configuration.ts';
 
+/** Svelte compiler output target. */
 export type SvelteGenerationTarget = 'client' | 'server';
 
+/** Options controlling the Svelte Bun plugin compiler. */
 export type SvelteCompilerPluginOptions = {
+  /** Output target. */
   generate?: SvelteGenerationTarget;
+  /** Whether to inject compiled CSS. */
   injectCss?: boolean;
+  /** Whether to compile in development mode. */
   development?: boolean;
+  /** Decides whether a source may contain a style block. */
   allowStyleBlock?: (path: string) => boolean;
+  /** Rewrites the source filename used by the compiler. */
   filename?: (path: string) => string;
+  /** Transforms generated server output. */
   transformServerOutput?: (input: { code: string; path: string; dev: boolean }) => string;
 };
 
@@ -22,14 +30,19 @@ type SvelteCompilerPluginHooks = {
     ((input: { code: string; path: string; dev: boolean }) => string) | undefined;
 };
 
+/** Source location of a server component boundary call. */
 export type ServerComponentBoundary = {
+  /** Column containing the call. */
   column: number;
+  /** Zero-based call index in the source. */
   index: number;
+  /** Line containing the call. */
   line: number;
 };
 
 const typeScriptTranspiler = new Bun.Transpiler({ loader: 'ts' });
 
+/** Returns whether Svelte source contains an authored style block. */
 export function hasAuthoredStyleBlock(source: string): boolean {
   const ast = parse(source, { modern: true });
   return Boolean(ast.css);
@@ -87,6 +100,7 @@ function parseJavaScript(source: string, fileName: string): ts.SourceFile {
 
 const COMPONENT_BOUNDARY_TOKEN = /\.\s*component\s*\(/;
 
+/** Finds component boundary calls with exactly one argument. */
 export function findOneArgumentServerComponentBoundaries(
   source: string,
   fileName = 'component.js',
@@ -113,6 +127,7 @@ export function findOneArgumentServerComponentBoundaries(
   return boundaries;
 }
 
+/** Preserves the identity of a server component while transforming its source. */
 export function preserveServerComponentIdentity(source: string, fileName = 'component.js'): string {
   const sourceFile = parseJavaScript(source, fileName);
   const componentFunction = findDefaultComponentFunction(sourceFile);
@@ -146,6 +161,7 @@ export function preserveServerComponentIdentity(source: string, fileName = 'comp
   return transformedSource;
 }
 
+/** Compiles a Svelte component for Bun's module loader. */
 export function compileSvelteComponentForBun(
   source: string,
   path: string,
@@ -182,6 +198,7 @@ export function compileSvelteComponentForBun(
   return { contents: code, loader: 'js', resolveDir: dirname(path) };
 }
 
+/** Compiles a Svelte rune module for Bun's module loader. */
 export function compileSvelteRuneModuleForBun(
   source: string,
   path: string,
@@ -198,6 +215,7 @@ export function compileSvelteRuneModuleForBun(
   return { contents: result.js.code, loader: 'js', resolveDir: dirname(path) };
 }
 
+/** Creates the Bun plugin used to compile Svelte source in tests. */
 export function sveltePlugin(options: SvelteCompilerPluginOptions = {}): BunPlugin {
   const generate = options.generate ?? 'client';
   const injectCss = options.injectCss ?? false;

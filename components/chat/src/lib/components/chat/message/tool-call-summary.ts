@@ -208,9 +208,20 @@ export function formatToolCallDuration(milliseconds: number): string {
 }
 
 /** The tool names in first-use order, with a count when a tool ran more than once. */
+function toolDisplayName(pair: ToolCallPair): string {
+  // Input actions are semantic, regardless of the adapter's internal operation name. The
+  // expanded row still exposes the exact technical name; the collapsed summary describes work.
+  return pair.result?.outcome === 'action_required' && pair.result.action?.type !== 'approval'
+    ? 'Requested input'
+    : pair.call.name;
+}
+
 function toolNamesSegment(pairs: readonly ToolCallPair[]): string {
   const counts = new Map<string, number>();
-  for (const pair of pairs) counts.set(pair.call.name, (counts.get(pair.call.name) ?? 0) + 1);
+  for (const pair of pairs) {
+    const name = toolDisplayName(pair);
+    counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
   return Array.from(counts, ([name, count]) => (count > 1 ? `${name} ×${count}` : name)).join(', ');
 }
 

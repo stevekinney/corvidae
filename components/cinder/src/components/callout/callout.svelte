@@ -29,6 +29,7 @@
     title,
     icon,
     action,
+    actionLayout = 'stacked',
     class: className,
     children,
     ...rest
@@ -64,6 +65,7 @@
     {...restWithoutForbidden}
     class={classNames(
       'cinder-callout',
+      actionLayout === 'inline' && 'cinder-callout--inline-action',
       variant !== 'neutral' && 'cinder-_status-surface',
       variant !== 'neutral' && 'cinder-_status-surface-border',
       className,
@@ -96,6 +98,7 @@
     {...restWithoutForbidden}
     class={classNames(
       'cinder-callout',
+      actionLayout === 'inline' && 'cinder-callout--inline-action',
       variant !== 'neutral' && 'cinder-_status-surface',
       variant !== 'neutral' && 'cinder-_status-surface-border',
       className,

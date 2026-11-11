@@ -46,9 +46,9 @@ describe('ChatMessage text direction', () => {
 
       const content = container.querySelector('.message-content');
       expect(content?.getAttribute('dir')).toBe('auto');
-      // The article, its header and its actions keep the page's direction.
-      expect(container.querySelector('article')?.hasAttribute('dir')).toBe(false);
-      expect(container.querySelector('.chat-message-wrapper')?.hasAttribute('dir')).toBe(false);
+      expect(container.querySelector('.chat-message-body')?.getAttribute('dir')).toBe('auto');
+      expect(container.querySelector('.chat-message-wrapper')?.getAttribute('dir')).toBe('ltr');
+      expect(container.querySelector('article.chat-message')?.getAttribute('dir')).toBe('ltr');
     },
   );
 
@@ -111,5 +111,16 @@ describe('ChatMessage text direction', () => {
     expect(container.querySelector('.chat-message-sources-detail')?.getAttribute('dir')).toBe(
       'auto',
     );
+  });
+
+  test('RTL body geometry anchors source and transcript chrome without mirroring it', async () => {
+    expect(contentSource).toContain('dir="auto"');
+    const messageSource = await Bun.file(`${import.meta.dir}/chat-message.svelte`).text();
+    expect(messageSource).toContain('class="chat-message-line"\n    dir="ltr"');
+    expect(messageSource).toContain('class="chat-message-sources" dir="ltr"');
+    expect(messageSource).toContain(
+      '.chat-message-wrapper:has(:global(.message-content):dir(rtl)) .chat-message-sources',
+    );
+    expect(messageSource).toContain('justify-content: flex-end;');
   });
 });

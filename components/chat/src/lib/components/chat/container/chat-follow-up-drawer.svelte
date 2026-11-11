@@ -18,11 +18,13 @@
 </script>
 
 <script lang="ts">
-  import { Button, X } from '@lostgradient/cinder';
+  import { Button, Pencil, SendHorizontal, Tooltip, X } from '@lostgradient/cinder';
   import {
     FOLLOW_UP_DRAWER_TITLE,
     FOLLOW_UP_SEND_NOW_LABEL,
     followUpPreview,
+    followUpEditLabel,
+    followUpRemoveLabel,
     followUpQueueSummary,
   } from './chat-follow-up-queue.ts';
 
@@ -36,19 +38,25 @@
      ghost of the user message it will become, numbered in the order it will go. -->
 <section class="chat-follow-up-drawer" aria-labelledby={titleId} data-chat-follow-up-drawer="">
   <div class="chat-follow-up-drawer-header">
-    <p class="chat-follow-up-drawer-heading" id={titleId}>
+    <h3 class="chat-follow-up-drawer-heading" id={titleId}>
       <span class="chat-follow-up-drawer-title">{FOLLOW_UP_DRAWER_TITLE}</span>
       <span class="chat-follow-up-drawer-summary">{followUpQueueSummary(items.length)}</span>
-    </p>
+    </h3>
     {#if canSendNow}
-      <Button
-        type="button"
-        variant="ghost-accent"
-        size="sm"
-        class="chat-follow-up-drawer-action"
-        label={FOLLOW_UP_SEND_NOW_LABEL}
-        onclick={onsendnow}
-      />
+      <Tooltip text={FOLLOW_UP_SEND_NOW_LABEL} placement="top">
+        <Button
+          type="button"
+          variant="ghost-accent"
+          size="sm"
+          class="chat-follow-up-drawer-action"
+          label={FOLLOW_UP_SEND_NOW_LABEL}
+          iconOnly
+          aria-label={FOLLOW_UP_SEND_NOW_LABEL}
+          onclick={onsendnow}
+        >
+          <SendHorizontal class="cinder-icon-sm" aria-hidden="true" />
+        </Button>
+      </Tooltip>
     {/if}
   </div>
   <ol class="chat-follow-up-drawer-list">
@@ -57,25 +65,36 @@
         <span class="chat-follow-up-ghost-index" aria-hidden="true">{index + 1}</span>
         <p class="chat-follow-up-ghost-text" dir="auto">{followUpPreview(item)}</p>
         <div class="chat-follow-up-ghost-actions">
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            class="chat-follow-up-ghost-action"
-            label="Edit"
-            aria-label={`Edit queued follow-up ${index + 1}`}
-            onclick={() => onedit(item.id)}
-          />
-          <Button
-            type="button"
-            variant="ghost"
-            size="sm"
-            class="chat-follow-up-ghost-action"
-            aria-label={`Remove queued follow-up ${index + 1}`}
-            onclick={() => onremove(item.id)}
-          >
-            <X class="cinder-icon-xs" aria-hidden="true" />
-          </Button>
+          <Tooltip text={followUpEditLabel(index + 1)} placement="top">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              quiet
+              class="chat-follow-up-ghost-action"
+              label={followUpEditLabel(index + 1)}
+              iconOnly
+              aria-label={followUpEditLabel(index + 1)}
+              onclick={() => onedit(item.id)}
+            >
+              <Pencil class="cinder-icon-sm" aria-hidden="true" />
+            </Button>
+          </Tooltip>
+          <Tooltip text={followUpRemoveLabel(index + 1)} placement="top">
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              quiet
+              class="chat-follow-up-ghost-action"
+              label={followUpRemoveLabel(index + 1)}
+              iconOnly
+              aria-label={followUpRemoveLabel(index + 1)}
+              onclick={() => onremove(item.id)}
+            >
+              <X class="cinder-icon-xs" aria-hidden="true" />
+            </Button>
+          </Tooltip>
         </div>
       </li>
     {/each}
@@ -86,7 +105,7 @@
   .chat-follow-up-drawer {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
+    gap: var(--cinder-space-0-5, 0.125rem);
     margin-block-end: var(--cinder-space-2);
     font-size: var(--cinder-text-sm);
   }
@@ -96,15 +115,17 @@
     align-items: center;
     justify-content: space-between;
     gap: var(--cinder-space-2);
-    padding-inline-start: var(--cinder-space-2);
+    padding-inline-start: 0;
   }
 
   /* The title and the summary are their own elements, never joined by a separator glyph. */
   .chat-follow-up-drawer-heading {
-    line-height: var(--cinder-leading-tight);
+    line-height: var(--cinder-leading-normal);
     min-inline-size: 0;
     margin: 0;
     text-align: start;
+    font-size: inherit;
+    font-weight: inherit;
   }
 
   .chat-follow-up-drawer-title {
@@ -126,12 +147,15 @@
   .chat-follow-up-drawer-list {
     display: flex;
     flex-direction: column;
-    gap: var(--cinder-space-1);
+    gap: 0;
     max-block-size: 12rem;
     margin: 0;
     padding: 0;
     overflow-y: auto;
     list-style: none;
+    border: 1px solid var(--cinder-border-muted);
+    border-radius: var(--cinder-radius-md);
+    background: var(--cinder-surface-raised);
   }
 
   .chat-follow-up-ghost {
@@ -139,10 +163,14 @@
     align-items: center;
     gap: var(--cinder-space-2);
     min-inline-size: 0;
-    padding-inline-start: var(--cinder-space-2);
-    border: 1px dashed var(--cinder-border-control);
-    border-radius: var(--cinder-radius-md);
+    min-block-size: 2rem;
+    padding: 0 var(--cinder-space-2);
+    border-block-end: 1px solid var(--cinder-border-muted);
     color: var(--cinder-text-muted);
+  }
+
+  .chat-follow-up-ghost:last-child {
+    border-block-end: 0;
   }
 
   .chat-follow-up-ghost-index {

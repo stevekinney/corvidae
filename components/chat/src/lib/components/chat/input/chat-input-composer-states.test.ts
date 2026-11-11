@@ -61,7 +61,7 @@ describe('empty and ready (C1, C2)', () => {
 });
 
 describe('the run toolbar (C4)', () => {
-  test('a working run shows Running and its clock, icon-only Stop, and the follow-up placeholder', () => {
+  test('a working run keeps visible progress compact and exposes duration accessibly', () => {
     const { container } = render(ChatInput, {
       id: 'state-running',
       placeholder: 'Message the agent',
@@ -71,18 +71,33 @@ describe('the run toolbar (C4)', () => {
     });
 
     const running = container.querySelector('[data-chat-running]')!;
-    expect(running.querySelector('.chat-input-running-label')?.textContent).toBe('Running');
-    expect(running.querySelector('.chat-input-running-time')?.textContent).toBe('0:00');
-    expect(running.textContent).not.toContain(String.fromCodePoint(0xb7));
+    expect(running.getAttribute('aria-hidden')).toBe('true');
+    expect(running.querySelector('.cinder-spinner')).not.toBeNull();
+    expect(container.querySelector('[data-chat-running-announcement]')?.textContent).toContain(
+      'Running for 0:00',
+    );
 
     const stop = container.querySelector<HTMLButtonElement>(
       'button[aria-label="Stop generating"]',
     )!;
     expect(stop.textContent?.trim()).toBe('');
     expect(stop.getAttribute('data-cinder-variant')).toBe('secondary');
+    expect(stop.getAttribute('data-cinder-variant')).not.toBe('danger');
     expect(stop.querySelector('svg')).not.toBeNull();
 
     expect(editorOf(container).placeholder).toBe('Add another follow-up…');
+  });
+
+  test('a loading send stays icon-only while its accessible label names the wait', () => {
+    const { container } = render(ChatInput, {
+      id: 'state-starting',
+      value: 'Draft',
+      starting: 'Loading…',
+    });
+    const send = sendOf(container);
+    expect(send.getAttribute('aria-label')).toBe('Loading…');
+    expect(send.hasAttribute('data-cinder-icon-only')).toBe(true);
+    expect(send.querySelector('.chat-input-spinner')).not.toBeNull();
   });
 
   test('an idle composer has no run toolbar and keeps its own placeholder', () => {
@@ -107,7 +122,7 @@ describe('the offline drawer (C5)', () => {
     await tick();
 
     const drawer = container.querySelector<HTMLElement>('[data-chat-composer-drawer="offline"]')!;
-    expect(drawer.querySelector('.chat-input-drawer-text')?.textContent).toBe(
+    expect(drawer.querySelector('.chat-input-drawer-callout')?.textContent).toContain(
       "You're offline. Your draft is saved here, and Send comes back when you reconnect.",
     );
     // The drawer sits above the box, outside the text column.
@@ -121,6 +136,90 @@ describe('the offline drawer (C5)', () => {
     const send = sendOf(container);
     expect(send.disabled).toBe(true);
     expect(send.getAttribute('aria-describedby')?.split(' ')).toContain(drawer.id);
+  });
+});
+
+describe('generic drawer notices', () => {
+  test('renders every semantic tone through Cinder Callout', () => {
+    for (const tone of ['neutral', 'info', 'warning', 'danger'] as const) {
+      const { container } = render(ChatInput, {
+        id: `state-notice-${tone}`,
+        status: { kind: 'drawer-notice', text: `${tone} notice`, tone },
+      });
+      const drawer = container.querySelector('[data-chat-composer-drawer="drawer-notice"]')!;
+      expect(drawer.querySelector('.cinder-callout')?.getAttribute('data-cinder-variant')).toBe(
+        tone,
+      );
+      expect(drawer.textContent).toContain(`${tone} notice`);
+      cleanup();
+    }
+  });
+
+  test('a blocking reason is visible and described, while a nonblocking notice leaves Send enabled', async () => {
+    const nonblocking = render(ChatInput, {
+      id: 'state-notice-enabled',
+      status: { kind: 'drawer-notice', text: 'History is ready.', tone: 'info' },
+    });
+    await fireEvent.input(editorOf(nonblocking.container), {
+      target: { value: 'Keep this draft.' },
+    });
+    await tick();
+    expect(sendOf(nonblocking.container).disabled).toBe(false);
+
+    const blocking = render(ChatInput, {
+      id: 'state-notice-blocked',
+      status: {
+        kind: 'drawer-notice',
+        text: 'Conversation unavailable.',
+        tone: 'warning',
+        sendDisabledReason: 'Retry before sending.',
+      },
+    });
+    await fireEvent.input(editorOf(blocking.container), { target: { value: 'Keep this draft.' } });
+    await tick();
+    expect(blocking.container.querySelector('.chat-input-drawer-reason')?.textContent).toBe(
+      'Retry before sending.',
+    );
+    expect(sendOf(blocking.container).disabled).toBe(true);
+    expect(sendOf(blocking.container).getAttribute('aria-describedby')).toContain(
+      'state-notice-blocked-drawer',
+    );
+  });
+
+  test('keeps a notice action in Callout’s dedicated action slot', () => {
+    const { container } = render(ChatInput, {
+      id: 'state-notice-action',
+      status: {
+        kind: 'drawer-notice',
+        text: 'Conversation unavailable.',
+        tone: 'warning',
+        action: { label: 'Retry', onclick: () => {} },
+      },
+    });
+    const callout = container.querySelector('.cinder-callout')!;
+    expect(callout.classList.contains('cinder-callout--inline-action')).toBe(true);
+    expect(callout.querySelector('.cinder-callout__action button')?.textContent).toContain('Retry');
+    expect(callout.querySelector('.cinder-callout__content .cinder-button')).toBeNull();
+  });
+
+  test('clearing a blocking notice enables Send without submitting the draft', async () => {
+    let submitted = 0;
+    const view = render(ChatInput, {
+      id: 'state-notice-clears',
+      status: {
+        kind: 'drawer-notice',
+        text: 'Retry before sending.',
+        sendDisabledReason: 'Retry before sending.',
+      },
+      onsubmit: () => (submitted += 1),
+    });
+    await fireEvent.input(editorOf(view.container), { target: { value: 'Keep this draft.' } });
+    await tick();
+    await view.rerender({ status: undefined });
+    await tick();
+    expect(editorOf(view.container).value).toBe('Keep this draft.');
+    expect(sendOf(view.container).disabled).toBe(false);
+    expect(submitted).toBe(0);
   });
 });
 
@@ -143,7 +242,7 @@ describe('the draft-restored drawer (C7)', () => {
     const drawer = container.querySelector<HTMLElement>(
       '[data-chat-composer-drawer="draft-restored"]',
     )!;
-    expect(drawer.querySelector('.chat-input-drawer-text')?.textContent).toBe(
+    expect(drawer.querySelector('.chat-input-drawer-callout')?.textContent).toContain(
       'Restored your unsent draft from yesterday at 4:12 PM.',
     );
     // A restored draft can still be sent.

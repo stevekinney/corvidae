@@ -50,6 +50,7 @@ const TICK_MILLISECONDS = 1_000;
  */
 const { setTimeout: hostSetTimeout, clearTimeout: hostClearTimeout } = globalThis;
 
+/** Options for measuring awake time without relying on wall-clock deadlines. */
 export interface AwakeTimeOptions {
   /** Whether fake timers are installed, so real time cannot be measured. Defaults to never. */
   fakeTimersActive?: () => boolean;
@@ -269,6 +270,7 @@ export function afterAwakeTimeSinceProgress(
   };
 }
 
+/** Spawn options augmented with an awake-time hang guard. */
 export type HangGuardedSpawnOptions<
   In extends SpawnOptions.Writable,
   Out extends SpawnOptions.Readable,
@@ -378,12 +380,18 @@ export function spawnPipedWithHangGuard(
 
 /** What `runWithHangGuard` resolves to: the fields of Bun's `SyncSubprocess` that tests read. */
 export interface CompletedProcess {
+  /** Process exit code, when it exited normally. */
   exitCode: number | null;
-  signalCode: NodeJS.Signals | number | null;
-  success: boolean;
-  stdout: Buffer;
-  stderr: Buffer;
+  /** Process identifier. */
   pid: number;
+  /** Signal that terminated the process, when applicable. */
+  signalCode: NodeJS.Signals | number | null;
+  /** Captured standard error output. */
+  stderr: Buffer;
+  /** Captured standard output. */
+  stdout: Buffer;
+  /** Whether the process exited successfully. */
+  success: boolean;
 }
 
 /**

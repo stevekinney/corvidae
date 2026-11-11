@@ -1,8 +1,6 @@
 import type { Snippet } from 'svelte';
 
-export type InlineConfirmProps = {
-  /** Confirmation prompt text. */
-  prompt: string;
+type InlineConfirmSharedProps = {
   /** Label for the confirming action. */
   confirmLabel: string;
   /** Label for the cancelling action. Defaults to `'Cancel'`. @default 'Cancel' */
@@ -25,6 +23,30 @@ export type InlineConfirmProps = {
    * @default false
    */
   open?: boolean;
+  /** The in-flow strip (default) or a single guarded action button. */
+  presentation?: 'strip' | 'two-press';
+  /** Bindable armed state for two-press presentation. */
+  armed?: boolean;
+  /** Request identity; changing it disarms two-press presentation. */
+  requestKey?: string;
+  /** Disables and disarms two-press presentation. */
+  disabled?: boolean;
+  /** Blocks interaction while keeping the action focusable for an explanatory reason. */
+  blocked?: boolean;
+  /** Requires a second press; defaults to `true` in two-press presentation. */
+  requiresSecondPress?: boolean;
+  /** Explicit aria-disabled value for a blocked action. */
+  ariaDisabled?: boolean;
+  /** Full accessible label shown after the first press. */
+  armedLabel?: string;
+  /** Status text shown while the two-press action is armed. */
+  armedHint?: string;
+  /** Shows a loading state on the action button. */
+  loading?: boolean;
+  /** Accessible loading label for the action button. */
+  loadingLabel?: string;
+  /** Id referenced by the action button's aria-describedby. */
+  ariaDescribedBy?: string;
   /** Additional content rendered below the prompt, above the confirm/cancel actions, while the confirmation is open. */
   children?: Snippet;
   /** Called when the user confirms the action, after `open` is already set to `false`. */
@@ -33,4 +55,22 @@ export type InlineConfirmProps = {
   onCancel?: () => void;
   /** Additional class merged with the component's root class. */
   class?: string;
+  /** Additional class merged with the two-press status hint. */
+  hintClass?: string;
+  /** Id assigned to the two-press status hint. */
+  hintId?: string;
 };
+
+export type InlineConfirmProps = InlineConfirmSharedProps &
+  (
+    | {
+        /** Strip confirmation prompt text. */
+        presentation?: 'strip';
+        prompt: string;
+      }
+    | {
+        /** Single guarded action button without a competing Cancel action. */
+        presentation: 'two-press';
+        prompt?: never;
+      }
+  );

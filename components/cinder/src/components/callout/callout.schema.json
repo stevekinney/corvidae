@@ -14,6 +14,10 @@
       "enum": ["aside", "note"],
       "description": "Root semantics. Default `'aside'`; use `'note'` for static note semantics without a complementary landmark."
     },
+    "actionLayout": {
+      "enum": ["stacked", "inline"],
+      "description": "Layout for the action slot. Default `'stacked'`; use `'inline'` for one compact action beside the message."
+    },
     "class": {
       "type": "string",
       "description": "Extra classes appended to the root element. Pass via the explicit\n`class` prop — it is excluded from rest-prop spread, so writing\n`class=\"x\"` inside spread attributes will not reach the root."

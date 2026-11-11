@@ -324,6 +324,33 @@ describe('Citation', () => {
     expect(panel).toContain('text-align: start;');
   });
 
+  test('keeps the reference marker visually quiet while reserving a coarse pointer target', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const marker = /\.cinder-citation__marker \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+
+    expect(marker).toContain('background: none;');
+    expect(marker).toContain('border: 0;');
+    expect(stylesheet).toMatch(
+      /@media \(pointer: coarse\) \{\s*\.cinder-citation__marker \{[^}]*min-block-size: var\(--cinder-touch-target-min\);/s,
+    );
+  });
+
+  test('uses one compact body inset for anchored and sheet presentation', () => {
+    const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
+    const panel = /\.cinder-citation__panel \{[^}]*\}/.exec(stylesheet)?.[0] ?? '';
+
+    expect(panel).toContain('padding: 0;');
+    expect(stylesheet).toContain(
+      '.cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__header',
+    );
+    expect(stylesheet).toContain('background: transparent;');
+    expect(stylesheet).toContain(
+      '.cinder-popover__sheet:has(.cinder-citation__panel) .cinder-drawer__body',
+    );
+    expect(stylesheet).not.toContain('.cinder-popover__sheet .cinder-drawer__header');
+    expect(stylesheet).toContain('padding: var(--cinder-space-2) var(--cinder-space-3);');
+  });
+
   test('composes Popover styles through the citation entry point', () => {
     const stylesheet = readFileSync(new URL('./citation.css', import.meta.url), 'utf8');
 

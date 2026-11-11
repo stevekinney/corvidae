@@ -220,6 +220,7 @@ export function blockBaselineGuard(
   return { ok: false, message };
 }
 
+/** Returns whether a screenshot path belongs to the requested component scope. */
 export function isScreenshotInComponentScope(
   slug: string,
   rawComponentScope = environmentConfiguration().cinderTestComponents,

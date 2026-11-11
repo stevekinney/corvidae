@@ -79,8 +79,8 @@ async function submit(container: HTMLElement, text: string): Promise<void> {
 }
 
 function sendNowButton(container: HTMLElement): HTMLButtonElement | undefined {
-  return [...container.querySelectorAll<HTMLButtonElement>('button')].find(
-    (button) => button.textContent?.trim() === 'Send now instead',
+  return (
+    container.querySelector<HTMLButtonElement>('button[aria-label="Send now instead"]') ?? undefined
   );
 }
 

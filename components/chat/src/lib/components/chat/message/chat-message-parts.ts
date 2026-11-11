@@ -83,6 +83,8 @@ export type ChatMessagePartsRendererProps = {
    * step parts via `messagePart`.
    */
   messagePart?: MessagePartOverride | undefined;
+  /** Layout used by grouped approval prompts. */
+  approvalLayout?: 'decision' | 'row' | undefined;
   /** Optional override for wide or interactive block nodes inside markdown. */
   markdownNode?: MarkdownNodeOverride | undefined;
   /**

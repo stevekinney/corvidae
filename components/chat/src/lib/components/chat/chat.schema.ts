@@ -46,7 +46,7 @@ const schema = {
     composerPlaceholder: {
       type: 'string',
       description:
-        "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message...`.",
+        "The composer's placeholder, such as `Message Tool runner…`. While a question waits on an answer, the answer placeholder replaces it. Default `Type a message…`.",
     },
     clearComposerOnSubmit: {
       type: 'boolean',

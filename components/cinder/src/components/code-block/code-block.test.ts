@@ -77,6 +77,9 @@ describe('CodeBlock — static structure', () => {
     // With no language, even a published highlighter must never run.
     await Promise.resolve();
     expect(highlighter).not.toHaveBeenCalled();
+    expect(
+      container.querySelector('.cinder-code-block')?.getAttribute('data-cinder-highlight-state'),
+    ).toBe('plain');
   });
 
   test('stable viewport has tabindex="0" for keyboard scroll access', () => {
@@ -103,12 +106,10 @@ describe('CodeBlock — static structure', () => {
     expect(viewport?.classList.contains('cinder-_scroll-fade-inline-end')).toBe(true);
   });
 
-  test('code-block.css sets a translucent (not fully opaque) --_cinder-scroll-fade-color', async () => {
+  test('code-block.css ends the scroll fade in the viewport surface', async () => {
     const cssPath = new URL('./code-block.css', import.meta.url);
     const source = await Bun.file(cssPath).text();
-    expect(source).toMatch(
-      /--_cinder-scroll-fade-color:\s*color-mix\(\s*in srgb,\s*var\(--cinder-code-block-background\)\s*35%,\s*transparent\s*\)/,
-    );
+    expect(source).toContain('--_cinder-scroll-fade-color: var(--cinder-code-block-background);');
   });
 
   test('preserves two-space tab sizing on plain and highlighted code via the shared token', async () => {
@@ -214,7 +215,10 @@ describe('CodeBlock — static structure', () => {
 
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
     expect(css).toMatch(
-      /\.cinder-code-block--floating-meta \.cinder-code-block__meta\s*\{[^}]*position:\s*absolute/s,
+      /\.cinder-code-block--floating-meta\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) auto/s,
+    );
+    expect(css).toMatch(
+      /\.cinder-code-block--floating-meta \.cinder-code-block__viewport\s*\{[^}]*grid-column:\s*1/s,
     );
   });
 
@@ -347,36 +351,8 @@ describe('CodeBlock — static structure', () => {
 
   test('code surface background is one component-owned declaration', async () => {
     const css = await Bun.file(new URL('./code-block.css', import.meta.url)).text();
-
-    // Read the code-surface DECLARATION rather than counting `light-dark(` across
-    // the whole file. A file-wide count is a proxy for the real contract and breaks
-    // the moment CodeBlock legitimately uses `light-dark()` for anything else (a
-    // future token, a forced-colors tweak), which would be a confusing false
-    // failure pointing at the wrong line.
-    const surfaceDeclaration = css.match(/--_cinder-code-block-code-surface:\s*([\s\S]*?);/)?.[1];
-    expect(surfaceDeclaration, 'code surface declaration must exist').toBeDefined();
-
-    // Two contracts here, and the second is an accessibility one.
-    //
-    // SINGLE SOURCE: exactly one declaration decides the code surface, and every
-    // painted layer (block, viewport, plain <pre>, Shiki's <pre>) references it, so
-    // they cannot drift apart.
-    //
-    // THE FORK IS LOAD-BEARING: that declaration must stay a `light-dark()` fork
-    // whose LIGHT arm is `--cinder-surface-raised` (pure white). Shiki's
-    // `github-light` palette is fitted to #ffffff with almost no margin — `#d73a49`
-    // measures 4.58:1 on white against a 4.5:1 AA floor — so any darkening of the
-    // light surface fails WCAG. Collapsing this to a single `--cinder-surface-inset`
-    // token reads as a tidy simplification and silently drops the red to 4.07:1 and
-    // the diff green to 4.11:1, which the axe sweep then catches on CodeBlock,
-    // ApprovalCard, and everything else embedding highlighted code. It has been
-    // tried; this assertion exists so the next attempt fails here instead of in CI.
-    expect(surfaceDeclaration).toMatch(/^light-dark\(/);
-    // The LIGHT arm specifically — that is the one carrying the WCAG constraint.
-    expect(surfaceDeclaration).toMatch(
-      /^light-dark\(\s*var\(--cinder-surface-raised\)\s*,\s*var\(--cinder-surface-inset\)\s*\)$/,
-    );
-    expect(css).not.toContain('--cinder-code-block-background:');
+    expect(css).toContain('background: var(--cinder-surface-inset);');
+    expect(css).toContain('box-shadow: inset 0 0 0 1px var(--cinder-border-muted);');
     expect(css).toContain('background: var(--cinder-code-block-background);');
     expect(css).toContain('background: var(--cinder-code-block-background) !important;');
   });
@@ -411,6 +387,9 @@ describe('CodeBlock — highlighter resolution (prop, then context, then none)',
     expect(highlighter).toHaveBeenCalledWith('const x = 1;', 'js');
     // The context highlighter output replaces the plain fallback.
     expect(container.querySelector('.cinder-code-block__pre')).toBeNull();
+    expect(
+      container.querySelector('.cinder-code-block')?.getAttribute('data-cinder-highlight-state'),
+    ).toBe('ready');
   });
 
   test('an explicit highlighter prop wins over the context highlighter', async () => {

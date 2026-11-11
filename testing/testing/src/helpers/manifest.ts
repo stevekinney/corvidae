@@ -2,16 +2,33 @@ import { readFileSync } from 'node:fs';
 import { environmentConfiguration } from '../environment-configuration.ts';
 import type { FixtureCategory, InteractionStep, MaskRule } from '../visual-fixtures.ts';
 
+/** Supported browser color themes. */
 export type Theme = 'light' | 'dark';
+/** Supported browser viewport names. */
 export type ViewportName = 'mobile' | 'tablet' | 'desktop';
-export type Viewport = { name: ViewportName; width: number; height: number };
+/** Dimensions associated with a viewport name. */
+export type Viewport = {
+  /** Viewport name. */
+  name: ViewportName;
+  /** Width in CSS pixels. */
+  width: number;
+  /** Height in CSS pixels. */
+  height: number;
+};
 
+/** One fixture entry in the generated manifest. */
 export type ManifestFixtureEntry = {
+  /** Fixture name. */
   name: string;
+  /** Whether rendering is direct or host-backed. */
   mode: 'direct' | 'host';
+  /** Hash of the fixture source content. */
   fixtureContentHash: string;
+  /** Declared interaction steps. */
   interact?: InteractionStep[];
+  /** Declared screenshot masks. */
   mask?: MaskRule[];
+  /** Fixture category. */
   category: FixtureCategory;
 };
 
@@ -24,14 +41,19 @@ export type ManifestFixtureEntry = {
  * list instead of the synthesised default.
  */
 export type ComponentEntry = {
+  /** Component display name. */
   name: string;
+  /** Component slug. */
   slug: string;
+  /** Component route. */
   route: string;
   /** Explicit fixture list for components with multiple visual states. When absent, a single `'default'` fixture is used. */
   fixtures?: ManifestFixtureEntry[];
 };
 
+/** All themes included in the standard manifest matrix. */
 export const THEMES: readonly Theme[] = ['light', 'dark'] as const;
+/** All viewports included in the standard manifest matrix. */
 export const VIEWPORTS: readonly Viewport[] = [
   { name: 'mobile', width: 375, height: 900 },
   { name: 'tablet', width: 768, height: 900 },
@@ -83,10 +105,12 @@ function read(
   return parsed;
 }
 
+/** Loads and validates the generated browser fixture manifest. */
 export function loadManifest(path?: string): ComponentEntry[] {
   return read(path).entries;
 }
 
+/** Returns the digest recorded in the generated browser fixture manifest. */
 export function manifestDigest(path?: string): string {
   return read(path).digest;
 }

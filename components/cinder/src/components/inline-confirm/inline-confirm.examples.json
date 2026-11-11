@@ -8,6 +8,12 @@
       "title": "Basic inline confirmation",
       "description": "Confirm a destructive action without leaving the current flow.",
       "code": "<script lang=\"ts\">\n  import { InlineConfirm } from '@lostgradient/cinder';\n</script>\n\n<InlineConfirm prompt=\"Remove this workspace?\" confirmLabel=\"Remove workspace\" open destructive />\n"
+    },
+    {
+      "id": "two-press",
+      "title": "Two-press irreversible action",
+      "description": "Require an explicit second press without adding a competing Cancel action.",
+      "code": "<InlineConfirm presentation=\"two-press\" confirmLabel=\"Refund $42.00\" armedLabel=\"Press again to refund $42.00\" armedHint=\"Reverts in 3 seconds. Escape cancels.\" requestKey=\"refund-42\" />\n"
     }
   ]
 }

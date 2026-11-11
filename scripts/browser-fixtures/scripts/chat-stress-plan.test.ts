@@ -67,6 +67,38 @@ describe('profiles', () => {
   });
 });
 
+describe('question witnesses', () => {
+  it('scopes case 52 to its exact docked question and every choice', () => {
+    const question = caseNumbered(52);
+    expect(question.steps).toEqual([
+      {
+        action: 'expect-text',
+        text: 'Which ledger should orders_reconciliation_ledger_export_with_a_very_long_generated_identifier_v2 export?',
+        scope: '[data-chat-question-dock] fieldset',
+        exact: true,
+      },
+      {
+        action: 'expect',
+        role: 'radio',
+        name: 'Staging',
+        scope: '[data-chat-question-dock] fieldset',
+      },
+      {
+        action: 'expect',
+        role: 'radio',
+        name: 'Production',
+        scope: '[data-chat-question-dock] fieldset',
+      },
+      {
+        action: 'expect',
+        role: 'radio',
+        name: 'Canary',
+        scope: '[data-chat-question-dock] fieldset',
+      },
+    ]);
+  });
+});
+
 describe('image names', () => {
   it('write <width>-<theme>-<case>.png for a primary with a two digit case', () => {
     expect(primaryImageName(narrow, 24)).toBe('320-dark-24.png');
@@ -80,12 +112,12 @@ describe('image names', () => {
 });
 
 describe('expectedCounts', () => {
-  it('hold 320 primaries and 32 fixed variants before any focus image', () => {
+  it('hold 320 primaries and 44 fixed variants before any focus image', () => {
     const counts = expectedCounts(cases, STRESS_PROFILES, {});
     expect(counts.primary).toBe(320);
-    expect(counts.fixedVariants).toBe(32);
+    expect(counts.fixedVariants).toBe(44);
     expect(counts.focus).toBe(0);
-    expect(counts.total).toBe(352);
+    expect(counts.total).toBe(364);
   });
 
   it('add the focus stops each profile found', () => {
@@ -96,7 +128,7 @@ describe('expectedCounts', () => {
       '320-dark': 13,
     });
     expect(counts.focus).toBe(54);
-    expect(counts.total).toBe(406);
+    expect(counts.total).toBe(418);
   });
 });
 
@@ -132,6 +164,51 @@ describe('measurementProblems', () => {
     expect(measurementProblems(clipped, narrow, caseNumbered(24))).toEqual([
       'clipped status: Waiting for approval',
     ]);
+  });
+
+  it('rejects captures that still have pending code highlighting', () => {
+    expect(
+      measurementProblems({ ...CLEAN, pendingHighlights: 1 }, narrow, caseNumbered(12)),
+    ).toEqual(['code highlighting is still pending for 1 block(s)']);
+  });
+
+  it('rejects an overlay that covers a named approval action', () => {
+    expect(
+      measurementProblems(
+        {
+          ...CLEAN,
+          occlusions: [
+            { target: 'Approve', overlay: 'transcript fade', overlapWidth: 84, overlapHeight: 12 },
+          ],
+        },
+        narrow,
+        caseNumbered(21),
+      ),
+    ).toEqual(['visual overlay occludes Approve by 84 by 12 px (transcript fade)']);
+  });
+
+  it('rejects a hit-region sample that does not reach its control', () => {
+    expect(
+      measurementProblems(
+        {
+          ...CLEAN,
+          controlGeometry: [
+            {
+              name: 'Approve',
+              hitWidth: 84,
+              hitHeight: 44,
+              paintedWidth: 84,
+              paintedHeight: 32,
+              reachableWidth: 84,
+              reachableHeight: 44,
+              samples: [{ x: 1, y: 1, top: 'fade', hitsTarget: false }],
+            },
+          ],
+        },
+        narrow,
+        caseNumbered(21),
+      ),
+    ).toEqual(['hit region sample missed Approve']);
   });
 
   it('flags a jump control that covers the transcript and a receipt that still waits', () => {
@@ -316,7 +393,7 @@ describe('countProblems', () => {
   it('names a missing fixed variant', () => {
     const records = completeRun().filter((entry) => entry.file !== '390-light-33-expanded.png');
     expect(countProblems(records, cases, STRESS_PROFILES)).toEqual([
-      'expected 32 fixed variant images, found 31',
+      'expected 44 fixed variant images, found 43',
     ]);
   });
 

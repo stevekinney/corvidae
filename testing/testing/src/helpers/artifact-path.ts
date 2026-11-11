@@ -12,9 +12,13 @@ import type { Theme, ViewportName } from './manifest.ts';
  * - `fixture`: the fixture name, or `'default'` when no explicit fixture was used.
  */
 export type ArtifactKey = {
+  /** Component slug. */
   slug: string;
+  /** Color theme. */
   theme: Theme;
+  /** Viewport name. */
   viewport: ViewportName;
+  /** Fixture name. */
   fixture: string;
 };
 

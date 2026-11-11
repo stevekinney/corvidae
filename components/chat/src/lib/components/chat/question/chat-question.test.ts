@@ -41,7 +41,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
       enum: ['stg', 'prod'],
       'x-labels': { stg: 'Staging', prod: 'Production' },
     });
-    await fireEvent.click(screen.getByRole('button', { name: 'Production' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Production' }));
     expect(submitted).toEqual(['prod']);
   });
 
@@ -53,18 +53,18 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
       'x-labels': { stg: 'Staging', prod: 'Production' },
       'x-descriptions': { prod: long },
     });
-    const described = screen.getByRole('button', { name: 'Production' });
-    const description = container.querySelector('.chat-question-choice-description');
+    const described = container.querySelectorAll<HTMLElement>('[role="radio"]')[1]!;
+    const description = container.querySelector('.cinder-choice-grid-item__description');
     expect(description?.textContent).toBe(long);
     expect(described.contains(description)).toBe(true);
-    expect(described.getAttribute('aria-describedby')).toBe('q-choice-1-description');
+    expect(described.getAttribute('aria-describedby')).toBeTruthy();
     const label = described.querySelector('.chat-question-choice-label');
-    expect(label?.nextElementSibling).toBe(description);
+    expect(label?.closest('.cinder-choice-grid-item__card')?.contains(description)).toBe(true);
     // A choice without a description draws the label alone, as it did before.
-    const plain = screen.getByRole('button', { name: 'Staging' });
-    expect(plain.querySelector('.chat-question-choice-description')).toBeNull();
+    const plain = container.querySelectorAll<HTMLElement>('[role="radio"]')[0]!;
+    expect(plain.querySelector('.cinder-choice-grid-item__description')).toBeNull();
     expect(plain.hasAttribute('aria-describedby')).toBe(false);
-    expect(container.querySelectorAll('.chat-question-choice-description')).toHaveLength(1);
+    expect(container.querySelectorAll('.cinder-choice-grid-item__description')).toHaveLength(1);
     await fireEvent.click(described);
     expect(submitted).toEqual(['prod']);
   });
@@ -84,7 +84,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
       'x-allowOther': true,
     };
     const first = await ask(schema);
-    await fireEvent.click(screen.getByRole('button', { name: 'blue' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'blue' }));
     expect(first.submitted).toEqual(['blue']);
     cleanup();
 
@@ -106,7 +106,7 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
       { answerInComposer: true },
     );
     expect(screen.queryByPlaceholderText('Choose an answer above, or type your own…')).toBeNull();
-    expect(screen.getAllByRole('button').map((button) => button.textContent?.trim())).toEqual([
+    expect(screen.getAllByRole('radio').map((radio) => radio.textContent?.trim())).toEqual([
       'red',
       'blue',
     ]);
@@ -142,8 +142,8 @@ describe('ChatQuestion draws each kind from its schema and submits a valid answe
 
   test('yes or no: two buttons that answer true and false', async () => {
     const { submitted } = await ask({ type: 'boolean' });
-    await fireEvent.click(screen.getByRole('button', { name: 'Yes' }));
-    await fireEvent.click(screen.getByRole('button', { name: 'No' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'Yes' }));
+    await fireEvent.click(screen.getByRole('radio', { name: 'No' }));
     expect(submitted).toEqual([true, false]);
   });
 
@@ -435,30 +435,15 @@ describe('ChatQuestion Change on a moment', () => {
 });
 
 describe('the pick of a held answer', () => {
-  test('keeps the page’s own text colour on its tint, so the label is never the on-fill white of Cinder’s pressed button', async () => {
+  test('uses Cinder card selection so the radio indicator and label share one state', async () => {
     const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
-    const rule =
-      /\.chat-question-choices :global\(\.chat-question-choice\[data-selected\]\)[^{]*\{([^}]*)\}/u.exec(
-        source,
-      )?.[1];
-
-    expect(rule).toContain('var(--cinder-accent-background)');
-    expect(rule).toContain('color: var(--cinder-text-default)');
+    expect(source).toContain('variant="card"');
+    expect(source).toContain('--_cinder-choice-card-min-block-size: 3.25rem;');
   });
 
-  test('is told from the unpicked choice in a dark theme by a stronger tint and the full accent edge, and keeps the soft tint in a light one', async () => {
+  test('leaves selected-state colour and contrast to the shared ChoiceGridItem component', async () => {
     const source = await Bun.file(new URL('./chat-question.svelte', import.meta.url)).text();
-    const rule =
-      /\.chat-question-choices :global\(\.chat-question-choice\[data-selected\]\)[^{]*\{([^}]*)\}/u.exec(
-        source,
-      )?.[1];
-
-    // `light-dark()` keeps the light value the board draws and gives a dark theme its own.
-    expect(rule).toMatch(
-      /border-color: light-dark\(var\(--cinder-accent-border\), var\(--cinder-accent-solid\)\)/u,
-    );
-    expect(rule).toMatch(
-      /background: light-dark\(\s*var\(--cinder-accent-background\),\s*color-mix\(in oklch, var\(--cinder-accent-solid\) 3\d%, var\(--cinder-surface\)\)\s*\)/u,
-    );
+    expect(source).not.toContain('chat-question-choice[data-selected]');
+    expect(source).toContain('ChoiceGridItem');
   });
 });

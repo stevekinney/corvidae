@@ -222,6 +222,21 @@ describe('toolCallSummaryParts', () => {
     );
     expect(parts.problems).toEqual(['1 denied']);
   });
+
+  test('uses a human summary for the internal input-request operation', () => {
+    expect(
+      toolCallSummaryParts(
+        [
+          {
+            call: { id: 'input', name: 'customQuestionTool' },
+            result: { callId: 'input', outcome: 'action_required', action: { type: 'input' } },
+          } as ToolCallPair,
+        ],
+        ['waiting-input'],
+        [undefined],
+      ).tools,
+    ).toBe('Requested input');
+  });
 });
 
 describe('foldRepeatedSteps', () => {

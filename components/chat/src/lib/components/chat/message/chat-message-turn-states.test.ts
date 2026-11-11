@@ -124,7 +124,7 @@ describe('R3: reconnecting', () => {
 });
 
 describe('R4: stopped', () => {
-  test('a neutral pill, Discard on the left and Continue on the right, and the turn keeps its line', async () => {
+  test('a contained neutral notice keeps Discard and Continue beside the stopped status', async () => {
     const continueTurn = mock((_messageId: string) => undefined);
     const discardTurn = mock((_messageId: string) => undefined);
     const { container, getByRole } = mount({
@@ -134,9 +134,12 @@ describe('R4: stopped', () => {
     });
     const row = outcome(container);
     expect(row?.getAttribute('data-kind')).toBe('stopped');
-    const pill = row?.querySelector('.cinder-badge');
-    expect(pill?.textContent?.trim()).toBe('Stopped by you, partial answer');
-    expect(pill?.textContent).not.toContain(String.fromCodePoint(0xb7));
+    const callout = row?.querySelector('[role="note"]');
+    expect(row?.querySelector('.chat-turn-stopped-card')).not.toBeNull();
+    expect(callout?.getAttribute('data-cinder-variant')).toBe('neutral');
+    expect(callout?.querySelector('.chat-turn-outcome-title')?.textContent?.trim()).toBe(
+      'Stopped by you, partial answer',
+    );
 
     const buttons = Array.from(row?.querySelectorAll('button') ?? [], (button) =>
       button.textContent?.trim(),
@@ -148,6 +151,7 @@ describe('R4: stopped', () => {
     expect(getByRole('button', { name: 'Discard' }).getAttribute('data-cinder-variant')).toBe(
       'secondary',
     );
+    expect(row?.querySelector('.chat-turn-stopped .chat-turn-actions')).not.toBeNull();
 
     await fireEvent.click(getByRole('button', { name: 'Continue' }));
     await fireEvent.click(getByRole('button', { name: 'Discard' }));
@@ -199,6 +203,11 @@ describe('R5: failed partway', () => {
     expect(retryTurn).toHaveBeenCalledWith('a1');
     // The partial answer stays readable above the alert.
     expect(container.querySelector('.chat-message-body')?.textContent).toContain('Order 4398');
+  });
+
+  test('the failed heading aligns to the top of its recovery action', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    expect(source).toMatch(/\.chat-turn-alert-header\s*\{[^}]*align-items:\s*flex-start;/su);
   });
 
   test('without a host sentence, the alert says what Retry keeps in Chat’s words', () => {
@@ -278,5 +287,13 @@ describe('a turn without a state', () => {
       turnState: { kind: 'reconnecting', attempt: 9, attempts: 3, nextTryIn: 2 },
     });
     expect(outcome(container)).toBeNull();
+  });
+});
+
+describe('approval receipt timestamp', () => {
+  test('suppresses the transcript timestamp only for approval-only turns', async () => {
+    const source = await Bun.file(new URL('./chat-message.svelte', import.meta.url)).text();
+    expect(source).toContain("part.type === 'tool-approval'");
+    expect(source).toMatch(/createdAtValue\s*&&\s*formattedCreatedAt\s*&&\s*!approvalOnlyTurn/u);
   });
 });

@@ -17,8 +17,8 @@ import {
   auditGeometry,
   consolidateFindings,
   renderGeometryReport,
-  runGeometryAudit,
-} from './design-review-geometry.ts';
+} from '@lostgradient/testing/design-review-geometry';
+import { runGeometryAudit } from './design-review-geometry.ts';
 
 const SCALE = [0, 2, 4, 6, 8, 10, 12, 14, 16, 20, 24, 28, 32, 40, 48, 64];
 

@@ -57,7 +57,6 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-const DRAWER_COPY = 'Waiting for your approval. Anything you send now queues until you decide.';
 const QUESTION = 'Refund order 4471 for $42.00?';
 /** A decided card is named for what was decided, not for the question it asked. */
 const APPROVED_REFUND = 'Approved: Refund $42.00, order 4471';
@@ -130,7 +129,7 @@ describe('Chat composer drawer for a waiting approval', () => {
     expect(sendButton(container).getAttribute('aria-label')).toBe('Send message');
   });
 
-  test('says an approval waits, in the exact words, with Review approval', () => {
+  test('offers Review approval without repeating the transcript card explanation', () => {
     const { container } = render(Chat, {
       id: 'chat-drawer-waiting',
       conversation: approvalConversation('drawer-waiting'),
@@ -138,7 +137,7 @@ describe('Chat composer drawer for a waiting approval', () => {
     const drawer = drawerOf(container);
 
     expect(drawer).not.toBeNull();
-    expect(drawer?.querySelector('.chat-approval-drawer-text')?.textContent).toBe(DRAWER_COPY);
+    expect(drawer?.querySelector('.chat-approval-drawer-text')).toBeNull();
     expect(getByRole(drawer!, 'button', { name: 'Review approval' })).not.toBeNull();
   });
 

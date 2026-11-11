@@ -65,9 +65,33 @@ describe('ChatInput layout CSS', () => {
 
     const chatContainerBlock =
       cssBlocks(chatInputSource, '.chat-input-editor-container').at(0) ?? '';
-    expectDeclaration(chatContainerBlock, 'min-height', '2.5rem');
+    expectDeclaration(chatContainerBlock, 'min-height', 'var(--cinder-touch-target-min)');
     expect(chatInputSource).not.toContain('--editor-min-height');
     expect(chatInputSource).not.toContain('markdown-editor');
     expect(chatInputSource).not.toContain('ProseMirror');
+  });
+
+  test('keeps the collapsed attachment rows content-sized and reserves overflow only after reveal', async () => {
+    const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
+    expect(chatInputSource).toMatch(/data-expanded=\{attachmentsExpanded \|\| undefined\}/);
+    expect(chatInputSource).toMatch(
+      /\.chat-input-attachments\[data-expanded\]\s*\{[^}]*max-block-size:\s*12rem;[^}]*overflow-y:\s*auto;/,
+    );
+    const base = cssBlocks(chatInputSource, '.chat-input-attachments {')[0] ?? '';
+    expect(base).not.toContain('max-block-size');
+    expect(base).not.toContain('overflow-y');
+  });
+
+  test('keeps the editor and toolbar at 44px while trimming only surrounding inset', async () => {
+    const chatInputSource = stripCssComments(await Bun.file(chatInputPath).text());
+    const editor = cssBlocks(chatInputSource, '.chat-input-editor {')[0] ?? '';
+    expectDeclaration(editor, 'min-height', 'var(--cinder-touch-target-min)');
+    expect(chatInputSource).toMatch(
+      /\.chat-input \{[^}]*padding:\s*var\(--cinder-space-0-5, 0\.125rem\) var\(--cinder-space-2\);/,
+    );
+    expect(chatInputSource).toMatch(
+      /\.chat-input \{[^}]*gap:\s*var\(--cinder-space-0-5, 0\.125rem\);/,
+    );
+    expect(chatInputSource).toContain('padding-block-end: var(--cinder-space-0-5, 0.125rem);');
   });
 });

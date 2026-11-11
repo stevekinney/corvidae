@@ -41,10 +41,10 @@ describe('chat message action buttons', () => {
   });
 
   test('the transcript line spaces its time and actions evenly and starts on the content edge', () => {
-    const lineRule = extractRule(source, /(?:^|\n)\s*\.chat-message-line\s*\{/);
+    const lineRule = extractRule(source, '.chat-message-line {\n    display: flex;');
     expect(lineRule).toContain('gap: var(--cinder-space-1)');
     const actionsRule = extractRule(source, '.chat-message-line-actions {');
-    expect(actionsRule).toContain('gap: var(--cinder-space-1)');
+    expect(actionsRule).toContain('gap: 0');
     const buttonRule = extractRule(
       source,
       '.chat-message-line :global(.chat-message-action-button) {',
@@ -70,6 +70,29 @@ describe('chat message action buttons', () => {
     expect(source.indexOf('chat-message-quote-button')).toBeLessThan(
       source.indexOf('chat-message-regenerate-button'),
     );
+  });
+
+  test('assistant bubbles use body rhythm and action cells without an inter-button gap', () => {
+    const assistantRule = extractRule(
+      source,
+      ".chat-message-wrapper[data-role='assistant'] .chat-message {",
+    );
+    expect(assistantRule).toContain('padding-block: 0;');
+    const actionsRule = extractRule(source, '.chat-message-actions {');
+    expect(actionsRule).toContain('gap: 0;');
+    const buttonRule = extractRule(source, ':global(.chat-message-action-button) {');
+    expect(buttonRule).toContain('min-width: var(--cinder-touch-target-min);');
+    expect(buttonRule).toContain('min-height: var(--cinder-touch-target-min);');
+  });
+
+  test('keeps keyboard focus visible for both fine and coarse action targets', () => {
+    expect(source).toContain(
+      '.chat-message-line :global(.chat-message-action-button:focus-visible)::before',
+    );
+    expect(source).toContain('inset: 0;');
+    expect(source).toContain('inset: var(--cinder-space-1-5);');
+    expect(source).toContain('.chat-message-not-sent-icon:focus-visible');
+    expect(source).toContain('outline: var(--cinder-ring-width) solid var(--cinder-ring-color);');
   });
 
   test('base rule uses border-box sizing and a transparent reserving border', () => {

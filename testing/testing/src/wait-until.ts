@@ -31,6 +31,7 @@ async function sleepOnePollInterval(): Promise<void> {
   await new Promise<void>((resolve) => hostSetTimeout(resolve, POLL_INTERVAL_MILLISECONDS));
 }
 
+/** Options controlling a condition wait. */
 export interface WaitUntilOptions {
   /** What the wait is for, named in the failure. Defaults to `condition`. */
   message?: string;

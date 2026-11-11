@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { afterEach, describe, expect, test } from 'bun:test';
+import { afterEach, describe, expect, jest, test } from 'bun:test';
 import { readFileSync } from 'node:fs';
 
 import { setupHappyDom } from '@lostgradient/testing';
@@ -7,6 +7,7 @@ import { setupHappyDom } from '@lostgradient/testing';
 setupHappyDom();
 
 const { cleanup, fireEvent, render, waitFor } = await import('@testing-library/svelte');
+const { tick } = await import('svelte');
 const { default: InlineConfirm } = await import('./inline-confirm.svelte');
 
 afterEach(cleanup);
@@ -26,6 +27,9 @@ describe('InlineConfirm', () => {
     const css = readFileSync(new URL('./inline-confirm.css', import.meta.url), 'utf8');
 
     expect(css).toMatch(/\.cinder-inline-confirm\s*\{[^}]*flex-wrap: wrap/);
+    expect(css).toMatch(
+      /\.cinder-inline-confirm__actions \.cinder-button__label \{[^}]*white-space:\s*normal;[^}]*overflow-wrap:\s*anywhere;/s,
+    );
     expect(css).not.toContain('container-type: inline-size');
     expect(css).not.toContain('@container');
     expect(css).not.toContain('@media (max-width: 32rem)');
@@ -49,6 +53,69 @@ describe('InlineConfirm', () => {
     expect(queryByRole('group')).toBeNull();
   });
 
+  test('two-press presentation owns the guard without rendering a competing Cancel action', async () => {
+    let confirmations = 0;
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Refund $42.00',
+      armedLabel: 'Press again to refund $42.00',
+      armedHint: 'Reverts in 3 seconds. Escape cancels.',
+      requestKey: 'refund-1',
+      onConfirm: () => confirmations++,
+    });
+
+    await fireEvent.click(view.getByRole('button', { name: 'Refund $42.00' }));
+    expect(confirmations).toBe(0);
+    expect(view.getByRole('button', { name: 'Press again to refund $42.00' })).not.toBeNull();
+    expect(view.queryByRole('button', { name: 'Cancel' })).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Press again to refund $42.00' }));
+    expect(confirmations).toBe(1);
+  });
+
+  test('two-press presentation resets on request identity and Escape', async () => {
+    let confirmations = 0;
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Refund',
+      armedLabel: 'Press again to refund',
+      requestKey: 'one',
+      onConfirm: () => confirmations++,
+    });
+    await fireEvent.click(view.getByRole('button', { name: 'Refund' }));
+    await view.rerender({ requestKey: 'two' });
+    expect(view.queryByRole('button', { name: 'Press again to refund' })).toBeNull();
+    await fireEvent.click(view.getByRole('button', { name: 'Refund' }));
+    const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    document.dispatchEvent(event);
+    expect(event.defaultPrevented).toBe(true);
+    expect(view.queryByRole('button', { name: 'Press again to refund' })).toBeNull();
+    expect(confirmations).toBe(0);
+  });
+
+  test('external disarm clears the old timer before a fresh arm', async () => {
+    jest.useFakeTimers();
+    const view = render(InlineConfirm, {
+      presentation: 'two-press',
+      confirmLabel: 'Refund',
+      armedLabel: 'Press again to refund',
+      onConfirm: () => undefined,
+    });
+    await fireEvent.click(view.getByRole('button', { name: 'Refund' }));
+    jest.advanceTimersByTime(1_000);
+    await view.rerender({ armed: false });
+    await fireEvent.click(view.getByRole('button', { name: 'Refund' }));
+    jest.advanceTimersByTime(2_001);
+    await tick();
+    expect(view.getByRole('button', { name: 'Press again to refund' })).not.toBeNull();
+    jest.advanceTimersByTime(998);
+    await tick();
+    expect(view.getByRole('button', { name: 'Press again to refund' })).not.toBeNull();
+    jest.advanceTimersByTime(1);
+    await tick();
+    expect(view.queryByRole('button', { name: 'Press again to refund' })).toBeNull();
+    jest.useRealTimers();
+  });
+
   test('restores captured focus when confirmation synchronously unmounts', async () => {
     const trigger = document.createElement('button');
     trigger.type = 'button';
@@ -68,6 +135,24 @@ describe('InlineConfirm', () => {
 
     expect(document.activeElement).toBe(trigger);
     trigger.remove();
+  });
+
+  test('keeps long confirmation labels as bounded label elements', () => {
+    const { container, getByRole } = render(InlineConfirm, {
+      prompt: 'Remove this workspace?',
+      confirmLabel: 'Remove this workspace and all of its data permanently',
+      open: true,
+    });
+
+    const confirm = getByRole('button', {
+      name: 'Remove this workspace and all of its data permanently',
+    });
+    expect(confirm.querySelector('.cinder-button__label')?.textContent).toBe(
+      'Remove this workspace and all of its data permanently',
+    );
+    expect(
+      container.querySelectorAll('.cinder-inline-confirm__actions .cinder-button'),
+    ).toHaveLength(2);
   });
 
   test('focuses the safe cancel action and dismisses from Escape', async () => {
