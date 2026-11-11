@@ -6,7 +6,12 @@
 import { AGENT_PAGE_COPY, CAPABILITIES_COPY } from '../../app/copy.ts';
 import type { AgentCatalog, ToolApproval } from '../../lib/agent-definitions.ts';
 import type { Skill } from '../../lib/bureau-skills.ts';
-import type { ToolSourceStanding, ToolSourceTool } from '../../lib/host-tool-sources.ts';
+import { waitedFor } from '../../lib/format/clock.ts';
+import type {
+  SourceToolApproval,
+  ToolSourceStanding,
+  ToolSourceTool,
+} from '../../lib/host-tool-sources.ts';
 import { standingOf, type ToolStanding } from '../../lib/tool-standing.ts';
 import { humanizeName } from '../settings/plugins/plugin-presentation.ts';
 
