@@ -34,7 +34,6 @@ import {
   OPERATIVE_RESOLVE_RUN_OPTIONS,
   type PermissionMode,
   readGenerationProfile,
-  declaredTaintThreshold,
   resolvesOwnGuardrails,
   RunRegisteredEvent as StoreRunRegisteredEvent,
   RunRemovedEvent as StoreRunRemovedEvent,
@@ -247,6 +246,7 @@ import {
 } from './settings/settings-options';
 import { createModels, validateModelsOptions, type Models } from './models/create-models';
 import { createScorerSampler, type ScorerSampler } from './scorers';
+import { agentTaintThresholdField } from './agent-taint-threshold.ts';
 import { disposeRunEventFeed } from './run-event-feed-attachment.ts';
 import type {
   BureauToolbox,
@@ -2995,9 +2995,7 @@ async function constructBureau<const D extends AgentDefinitions>(
         options: resolvedOptions,
         definitionRevision: readGenerationProfile(agent).revision,
         agentResolvesGuardrails: resolvesOwnGuardrails(agent),
-        ...(declaredTaintThreshold(agent) === undefined
-          ? {}
-          : { agentTaintThreshold: declaredTaintThreshold(agent) }),
+        ...agentTaintThresholdField(agent),
         generationMode: readGenerationProfile(agent).mode,
         recoveredChild: childContext !== undefined,
         ...(agentBinding === undefined ? {} : { agentBinding }),
