@@ -390,10 +390,13 @@ test.describe('Start run', () => {
     });
     await page.goto(`/runs/${runId}`);
 
-    // The Bureau's record of the instance fills the page: the workflow leads it, and links to its page.
+    // The Bureau's record of the instance fills the page: the workflow leads it, and the Details
+    // rail names it in words ("e2e-page-record" reads "E2e page record") and links to its page.
     await expect(page.getByRole('heading', { level: 1, name: id })).toBeVisible();
     await expect(
-      page.getByRole('complementary', { name: 'Details' }).getByRole('link', { name: id }),
+      page
+        .getByRole('complementary', { name: 'Details' })
+        .getByRole('link', { name: 'E2e page record', exact: true }),
     ).toHaveAttribute('href', `/workflows/${id}`);
     await expect(page.getByText('No workflow found')).toHaveCount(0);
 

@@ -169,13 +169,20 @@ export async function expectTabNames(
   root: Locator,
   names: readonly (string | RegExp)[],
 ): Promise<void> {
+  // A pattern is matched against the raw text, which keeps the whitespace around a tab's trailing
+  // slot, so an anchored pattern is widened to allow it; a string is already compared normalized.
+  const expected = names.map((name) =>
+    typeof name === 'string'
+      ? name
+      : new RegExp(`^\\s*${name.source.replace(/^\^/, '').replace(/\$$/, '')}\\s*$`, name.flags),
+  );
   if (!tabsAreCollapsed(root)) {
-    await expect(root.getByRole('tab')).toHaveText([...names]);
+    await expect(root.getByRole('tab')).toHaveText(expected);
     return;
   }
   const select = collapsedTabs(root);
   await select.click();
-  await expect(root.page().getByRole('option')).toHaveText([...names]);
+  await expect(root.page().getByRole('option')).toHaveText(expected);
   await select.press('Escape');
 }
 
