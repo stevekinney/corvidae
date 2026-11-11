@@ -961,7 +961,9 @@
               <Alert variant={testResult.ok ? 'success' : 'danger'} data-testid="hook-test-result">
                 {testResult.text}
                 {#if testResult.ok && !isNew}
-                  <Link href={`#${LOG_ID}`} onclick={jumpToLog}>{copy.webhook.seePayload}</Link>
+                  <Link href={`#${LOG_ID}`} underline="always" onclick={jumpToLog}
+                    >{copy.webhook.seePayload}</Link
+                  >
                 {/if}
               </Alert>
             {/if}

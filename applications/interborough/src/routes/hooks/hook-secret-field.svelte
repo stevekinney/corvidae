@@ -63,7 +63,7 @@
   {/if}
   <p class="ib-hook-secret__help">
     {copy.secretHelp}
-    <Link href="#ib-hook-log" onclick={onSeePayload}>{copy.seePayload}</Link>
+    <Link href="#ib-hook-log" underline="always" onclick={onSeePayload}>{copy.seePayload}</Link>
   </p>
 </div>
 
