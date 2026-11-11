@@ -183,6 +183,7 @@ describe('the decision surface of a tool approval (COR-2292)', () => {
       expect(await decisionStamp(bureau, run.contextId)).not.toHaveProperty('decisionSurface');
       expect(await bureau.reviews.get(review.id)).not.toHaveProperty('decisionSurface');
       const [record] = await bureau.reviews.listResolved();
+      expect(record).toMatchObject({ decision: 'approve', decidedBy: 'alice' });
       expect(record).not.toHaveProperty('decisionSurface');
     } finally {
       await bureau.dispose();
@@ -236,6 +237,7 @@ describe('the decision surface of a tool approval (COR-2292)', () => {
 
       expect(await decisionStamp(bureau, run.contextId)).not.toHaveProperty('decisionSurface');
       const [record] = await bureau.reviews.listResolved();
+      expect(record).toMatchObject({ decision: 'approve', decidedBy: 'alice' });
       expect(record).not.toHaveProperty('decisionSurface');
     } finally {
       await bureau.dispose();
